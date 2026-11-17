@@ -120,7 +120,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **Provider traffic** — every Claude and Codex child goes through the loopback
   gateway (gateway.ts, gatewayCore.ts, its own utility process); routing by
   headroom, usage-reset recovery across hosts, Meta keys, failure kinds (`failureKind.ts`, `FailureCard`), the
-  turn's wait words, warm harnesses, the request shape trace and the codex
+  turn's wait words, warm harnesses, GPT-6.2 Sol and Astra in the shared
+  Codex catalog (defaults unchanged), the request shape trace and the codex
   model-metadata wait. [docs/agents/provider-traffic.md](docs/agents/provider-traffic.md)
 - **Prompt overhead** — what a fresh thread's first request carries, measured
   per model by `bun run script:measure-first-request`; prompt byte budgets

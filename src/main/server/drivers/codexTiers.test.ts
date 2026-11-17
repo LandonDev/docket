@@ -34,6 +34,20 @@ describe('codex speed tiers', () => {
     expect(astra.speedTiers).toBeUndefined()
   })
 
+  it.each(['gpt-6.2-sol', 'gpt-6.2-astra'])('uses only live speed tiers for %s', (model) => {
+    try {
+      applySpeedTiers({})
+      expect(serviceTierFor({ fast: true, ultrafast: true }, model)).toBeNull()
+      applySpeedTiers(tiersFromModelList({ data: [{ model, serviceTiers: [{ id: 'priority' }, { id: 'ultrafast' }] }] }))
+      expect(serviceTierFor({ fast: true }, model)).toBe('priority')
+      expect(serviceTierFor({ ultrafast: true }, model)).toBe('ultrafast')
+      applySpeedTiers({})
+      expect(serviceTierFor({ fast: true, ultrafast: true }, model)).toBeNull()
+    } finally {
+      applySpeedTiers({})
+    }
+  })
+
   it('a missing or broken cache reads as empty', () => {
     expect(readTierCache({ getSetting: () => null, setSetting: () => {} })).toEqual({ last: null, accounts: {} })
     expect(readTierCache({ getSetting: () => '{nope', setSetting: () => {} })).toEqual({ last: null, accounts: {} })

@@ -36,13 +36,27 @@ describe('resolveModel', () => {
   it('an id the catalog does not list is kept, never swapped for the default', () => {
     expect(resolveModel('claude', 'claude-opus-9')).toEqual({ provider: 'claude', model: 'claude-opus-9' })
   })
-  it('the codex list opens with the Sol pair; the Claude list has Sonnet 5.5 and Haiku 5.5, not Sonnet 5', () => {
-    expect(CATALOG.codex.models.slice(0, 3).map((m) => m.id)).toEqual(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra'])
+  it('the codex list opens with GPT-6.2; the Claude list has Sonnet 5.5 and Haiku 5.5, not Sonnet 5', () => {
+    expect(CATALOG.codex.models.slice(0, 5).map((m) => m.id)).toEqual(['gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra'])
     expect(CATALOG.codex.defaultModel).toBe('gpt-5.6-sol')
     const claude = CATALOG.claude.models.map((m) => m.id)
     expect(claude).toContain('claude-sonnet-5-5')
     expect(claude).toContain('claude-haiku-5-5')
     expect(claude).not.toContain('claude-sonnet-5')
+  })
+})
+
+describe.each(['gpt-6.2-sol', 'gpt-6.2-astra'])('%s', (id) => {
+  it('routes to Codex from another provider and keeps its full reasoning ladder', () => {
+    const model = modelInfo('codex', id)!
+    expect(model.label).toBe(id === 'gpt-6.2-sol' ? 'GPT-6.2 Sol' : 'GPT-6.2 Astra')
+    expect(model.reasoning).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+    expect(model.defaultReasoning).toBe('medium')
+    expect(resolveModel('claude', id)).toEqual({ provider: 'codex', model: id })
+    expect(resolveModel('codex', id)).toEqual({ provider: 'codex', model: id })
+    expect(model.speedTiers).toBeUndefined()
+    expect(model.context).toBeUndefined()
+    expect(model.minCodexVersion).toBeUndefined()
   })
 })
 

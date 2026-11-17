@@ -192,6 +192,19 @@ it("app_start_thread with no model takes the provider's catalog default, whateve
   expect(created[0]).toMatchObject({ provider: 'claude', model: CATALOG.claude.defaultModel })
 })
 
+it.each(['gpt-6.2-sol', 'gpt-6.2-astra'])('app_start_thread accepts %s and preserves the model and effort', async (model) => {
+  policyRegistry(DEFAULT_RULES)
+  const result = await appStartThread(policyFake, caller, {
+    threadType: 'chat',
+    provider: 'codex',
+    model,
+    reasoning: 'ultra',
+    firstMessage: 'go'
+  })
+  expect(result).toEqual({ threadId: 'thread-1', title: 'a thread' })
+  expect(created[0]).toMatchObject({ provider: 'codex', model, reasoning: 'ultra' })
+})
+
 it('app_start_thread keeps the catalog refusals: an effort off the ladder, an unknown model', async () => {
   policyRegistry(DEFAULT_RULES)
   const ladder = await appStartThread(policyFake, caller, {

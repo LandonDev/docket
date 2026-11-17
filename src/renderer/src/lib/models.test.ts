@@ -379,6 +379,26 @@ describe.each(["5.2", "5.1"])("Claude Fable %s", (version) => {
   });
 });
 
+describe.each(["gpt-6.2-sol", "gpt-6.2-astra"])("%s in the picker", (native) => {
+  afterEach(() => resetHarnessModelOverlays());
+
+  it("uses the catalog label and sends the exact native id with the chosen effort", () => {
+    setHarnessModels("codex", agentModelsFor(CATALOG.codex), CATALOG.codex.defaultModel);
+    const model = resolveModel("codex", native);
+    expect(model.id).toBe(`codex:${native}`);
+    expect(model.name).toBe(native === "gpt-6.2-sol" ? "GPT-6.2 Sol" : "GPT-6.2 Astra");
+    expect(nativeModelId(model)).toBe(native);
+    expect(model.settings?.find((s) => s.id === "effort")).toMatchObject({
+      value: "medium",
+      options: ["low", "medium", "high", "xhigh", "max", "ultra"].map((value) => ({ value, label: effortWord(value) })),
+    });
+    expect(mergeModelSettings(model, { effort: "ultra" })).toEqual({ effort: "ultra" });
+    expect(model.settings?.some((s) => s.id === "fast" || s.id === "ultrafast")).toBe(false);
+    expect(defaultModelId("codex")).toBe("codex:gpt-5.6-sol");
+    expect(modelsFor("codex").slice(0, 2).map((m) => m.nativeId)).toEqual(["gpt-6.2-sol", "gpt-6.2-astra"]);
+  });
+});
+
 describe("Meta's models", () => {
   afterEach(() => {
     resetHarnessModelOverlays();

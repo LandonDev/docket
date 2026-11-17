@@ -58,6 +58,16 @@ routed to (aliax-core's `forward`). Two listeners:
 - The installed codex version is read once at boot (drivers/codexVersion.ts)
   and catalog rows with `minCodexVersion` above it are hidden everywhere
   (picker, spawn table, app tools). GPT-6.1 Sol and GPT-6 Sol need 0.162.1.
+- GPT-6.2 Sol (`gpt-6.2-sol`) and GPT-6.2 Astra (`gpt-6.2-astra`)
+  lead the shared Codex catalog. Both offer low through ultra effort and
+  start at medium; the provider default stays GPT-5.6 Sol. The desktop
+  picker and spawn tools read these rows. Speed tiers still come from the
+  serving CLI; the catalog does not assume a context size or a minimum
+  CLI version for these new IDs. Official IDs:
+  [Sol](https://developers.openai.com/api/docs/models/gpt-6.2-sol),
+  [Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra).
+  Codex 0.163.0 on the box did not list either ID on 2026-11-17, so live
+  model access and the CLI's metadata remain unverified here.
 - Codex runs a turn on fallback model metadata (a 258,400 window, every
   tool inline) for a model its `model/list` does not name yet; one Mac
   thread's first request was 309k tokens that way and compacted after every

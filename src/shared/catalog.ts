@@ -182,9 +182,23 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
     // deprecated gpt-5.4 family. The default stays on gpt-5.6-sol: 0.162
     // defaults to gpt-6.1-sol, but a 0.153 install rejects both Sol ids
     // with a 400, so the default must be a model every CLI can run; the
-    // Sol rows carry minCodexVersion (0.162.1 is the oldest CLI verified
-    // to run them) and are hidden on an older install.
+    // 6.0/6.1 Sol rows carry minCodexVersion (0.162.1 is the oldest CLI
+    // verified to run them) and are hidden on an older install.
+    // GPT-6.2 IDs come from the official model docs (2026-11-17); no CLI
+    // minimum or context size is asserted without a live harness probe.
     models: [
+      {
+        id: 'gpt-6.2-sol',
+        label: 'GPT-6.2 Sol',
+        reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+        defaultReasoning: 'medium'
+      },
+      {
+        id: 'gpt-6.2-astra',
+        label: 'GPT-6.2 Astra',
+        reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+        defaultReasoning: 'medium'
+      },
       {
         id: 'gpt-6.1-sol',
         label: 'GPT-6.1 Sol',
