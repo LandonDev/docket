@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { addonTitle } from "../lib/addonNames";
+import { addonTitle } from "@shared/addonNames";
 import { SECTION_LABELS } from "../lib/composerTriggers";
 import type { ProjectFile } from "../lib/fs";
 import type { ProjectMeta, SessionMeta, SlashCommand } from "../lib/tcserver/types";

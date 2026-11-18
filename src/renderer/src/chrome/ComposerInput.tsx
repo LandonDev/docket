@@ -9,7 +9,7 @@ import {
   type KeyboardEvent
 } from 'react'
 import { brandOf } from '../lib/addonBrand'
-import { addonTitle } from '../lib/addonNames'
+import { addonTitle } from '@shared/addonNames'
 import { easeFieldHeight, settleFieldHeight } from '../lib/composerHeight'
 import { pastePlan } from '../lib/composerPaste'
 import {

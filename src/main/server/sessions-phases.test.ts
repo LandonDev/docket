@@ -341,7 +341,8 @@ it('describeTool words every tool the strip can meet; an unknown name is humaniz
     ['ExitPlanMode', 'Finishing the plan'],
     ['Workflow', 'Running a workflow'],
     ['ToolSearch', 'Finding tools'],
-    ['mcp__cosmic-admin__file_read', 'Using cosmic-admin'],
+    ['mcp__cosmic-admin__file_read', 'Using Cosmic Admin'],
+    ['mcp__lifeos__list_tasks', 'Using LifeOS'],
     ['ListMcpResourcesTool', 'Using list mcp resources tool'],
     ['some_other_tool', 'Using some other tool']
   ]

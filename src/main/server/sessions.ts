@@ -3,6 +3,7 @@ import { sweepThreadAttachments } from './attachmentUploads'
 import { attachmentDir } from './attachmentDir'
 import { ThreadNotes } from './threadNotes'
 import { NOTES_STREAK_LIMIT } from '@shared/notes'
+import { addonTitle } from '@shared/addonNames'
 import { contextThrashRow, isThrashing, recentCompactions } from '@shared/contextThrash'
 import {
   isCommitCall,
@@ -365,7 +366,7 @@ function activityOf(event: AgentEvent): Activity | null | undefined {
   if (event.type === 'tool-call' && !event.partial && !event.parentCallId) {
     if (event.display?.app) {
       return {
-        text: event.display.action ? `${event.display.action}` : `Using ${event.display.app}`,
+        text: event.display.action ? `${event.display.action}` : `Using ${addonTitle(event.display.app)}`,
         kind: 'investigate'
       }
     }
@@ -431,7 +432,7 @@ function describeTool(name: string, input: unknown): Activity {
       const mcp = /^mcp__(.+?)__(.+)$/.exec(name)
       const known = TOOL_WORDS[mcp ? mcp[2] : name]
       if (known) return known
-      if (mcp) return { text: `Using ${mcp[1]}`, kind: 'investigate' }
+      if (mcp) return { text: `Using ${addonTitle(mcp[1])}`, kind: 'investigate' }
       return { text: `Using ${humanizeToolName(name)}`, kind: 'investigate' }
     }
   }

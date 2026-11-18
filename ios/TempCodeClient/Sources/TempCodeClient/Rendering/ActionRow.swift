@@ -92,7 +92,7 @@ public struct ActionRow: Hashable, Sendable {
     }
 
     private static func addonTitle(_ name: String) -> String {
-        let proper = ["github": "GitHub", "google-drive": "Google Drive", "googledrive": "Google Drive", "heroui": "HeroUI", "reui": "ReUI", "node_repl": "Node REPL", "openaideveloperdocs": "OpenAI Docs", "pdf": "PDF", "computer-use": "Computer Use"]
+        let proper = ["github": "GitHub", "google-drive": "Google Drive", "googledrive": "Google Drive", "heroui": "HeroUI", "lifeos": "LifeOS", "reui": "ReUI", "node_repl": "Node REPL", "openaideveloperdocs": "OpenAI Docs", "pdf": "PDF", "computer-use": "Computer Use"]
         return proper[name.lowercased()] ?? name.components(separatedBy: CharacterSet(charactersIn: "-_")).map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
     }
 }

@@ -41,6 +41,17 @@ plan-8YMm3ynnFZYs.md (grants) and plan-vJP8mPAPorvc.md (pages).
   `TEMP_CODE_ADDONS`, which is fixed at spawn, so a scope gaining its first
   add-on or losing its last reboots their handles at the next turn
   (addons/scopeFlip.ts).
+- **How a call shows.** A row names the add-on, never the app: both
+  forms above go through `addonCallOf` (src/shared/addonNames.ts), which
+  main's `toolDisplay`, codex's `bridgeDisplay` and the Muse translator
+  use to set `display.app` to the add-on's name, and the renderer's
+  `connectorOf` as a fallback for older rows. The mark comes from
+  `brandOf` (lib/addonBrand.ts: simple-icons, or a checked-in PNG under
+  assets/mcp/ such as cosmic-admin and lifeos); the name from
+  `addonTitle`, shared with the server's working line, with a copy in
+  iOS's ActionRow.swift. iOS draws names only, no marks. TempCode reads
+  no `serverInfo.icons`: a brand with no BRANDS entry gets the
+  puzzle-piece glyph.
 - **The app tools and their cards** (addons/tools.ts): `addon_list`,
   `addon_add`, `addon_remove` (deferred on Claude, always on the bridge),
   `addon_find`, `addon_call`. `addon_add` always asks, and only a person

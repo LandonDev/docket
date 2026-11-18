@@ -4,12 +4,16 @@
  * humanized action) a codex connector call gets from appContext.
  *
  * Two detectors:
+ *  - Add-on calls through the app server (`mcp__app__lifeos__list_tasks`,
+ *    `addon_call`) → the add-on's own name (addonCallOf).
  *  - MCP names: mcp__linear__search_issues → { app: 'linear', action:
  *    'Search issues' } — the brand mark resolves from the server name.
  *  - Commands/URLs: a Bash/shell command or WebFetch that talks to a
  *    known API host → { app } (the action stays with the summarizer's
  *    caption, which already reads well).
  */
+
+import { addonCallOf } from '@shared/addonNames'
 
 export interface ToolDisplay {
   app?: string
@@ -53,6 +57,9 @@ function humanizeAction(tool: string): string {
 /** Identity for a tool call, when it clearly belongs to a known service.
  *  Returns undefined for plain tools — their existing faces stay. */
 export function toolDisplay(name: string, input: unknown): ToolDisplay | undefined {
+  // An add-on reached through the app server is the add-on's call, not the app's.
+  const addon = addonCallOf(name, input)
+  if (addon) return { app: addon.addon, action: humanizeAction(addon.tool) }
   const mcp = /^mcp__(.+?)__(.+)$/.exec(name)
   if (mcp) {
     // In-app toolsets (orchestrator/app) are mechanics, not services.

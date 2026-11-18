@@ -19,6 +19,7 @@ import TempCodeContract
         let underscored = ActionRow.of(PhraseFixture.call("mcp__claude_ai_Gmail__list_messages"))
         #expect(underscored.connector == "claude_ai_Gmail")
         #expect(ActionRow.of(PhraseFixture.call("mcp__github__listIssues")).verb == "GitHub")
+        #expect(ActionRow.of(PhraseFixture.call("mcp__lifeos__list_tasks")).verb == "LifeOS")
         #expect(ActionRow.of(PhraseFixture.call("mcp__app__update_notes")).connector == nil)
     }
 

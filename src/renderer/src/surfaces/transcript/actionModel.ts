@@ -1,5 +1,5 @@
 // A8 (action rows): what one action row draws, decided once and tested.
-import { addonTitle } from "../../lib/addonNames";
+import { addonCallOf, addonTitle } from "@shared/addonNames";
 import type { Block } from "../../lib/session";
 import { useTitlesOf } from "../../lib/threadMentions";
 import { kindOf, sentenceName, toolPhraseParts, type ToolKind } from "../../lib/toolPhrase";
@@ -61,6 +61,8 @@ function foldFiller(action: Action): Action {
 function connectorOf(block: Block): string | undefined {
   const app = block.tool?.display?.app;
   if (app) return app;
+  const addon = addonCallOf(block.tool?.name ?? "", block.tool?.input);
+  if (addon) return addon.addon;
   const server = mcpServerOf(block.tool?.name ?? "");
   return server && server !== "app" ? server : undefined;
 }

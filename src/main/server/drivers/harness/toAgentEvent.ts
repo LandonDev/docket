@@ -2,6 +2,11 @@ import { nanoid } from 'nanoid'
 import type { AgentEvent, ToolPreview } from '@shared/events'
 import type { DriverCtx } from '../types'
 import type { HarnessEvent } from './types'
+import { addonCallOf } from '@shared/addonNames'
+import { toolDisplay } from '../display'
+
+/** An add-on call through the app bridge wears the add-on's face; every other call keeps the harness's own. */
+const museAddonDisplay = (name: string, input: unknown) => (addonCallOf(name, input) ? toolDisplay(name, input) : undefined)
 
 /**
  * HarnessEvent → AgentEvent. One translator per driver handle; the driver
@@ -125,7 +130,8 @@ export function createTranslator(ctx: DriverCtx, opts: TranslatorOptions = {}): 
   }
 
   const emitTool = (callId: string, rec: ToolRec): void => {
-    emit({ type: 'tool-call', callId, name: rec.name, input: rec.input, preview: rec.preview })
+    const display = museAddonDisplay(rec.name, rec.input)
+    emit({ type: 'tool-call', callId, name: rec.name, input: rec.input, preview: rec.preview, ...(display ? { display } : {}) })
   }
 
   const tool = (ev: Extract<HarnessEvent, { type: 'tool.started' | 'tool.updated' }>): void => {

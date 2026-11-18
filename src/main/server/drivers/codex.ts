@@ -22,6 +22,7 @@ import { NICE_LEVEL } from '@shared/bashMarks'
 import { existsSync } from 'node:fs'
 import { codexSkillRoot, codexSkillScope, disableHomeSkillsArgs, homeSkillFiles, trackCodexSkills } from '../skills/codexSkills'
 import { COMPUTER_PICTURES_TEXT, MAX_IMAGE_PARTS, parseShotLine } from '@shared/computer/tools'
+import { addonCallOf } from '@shared/addonNames'
 
 /**
  * Codex driver — `codex app-server`, protocol v2 (verified live against
@@ -340,7 +341,13 @@ function mcpDisplay(item: Item): { app?: string; action?: string } {
 // "Showed page"), not the generic "app / Html preview" connector face.
 const APP_FACED_TOOLS = new Set(['update_plan', 'html_preview', 'html_render'])
 const bridgeDisplay = (item: Item) =>
-  item.server === 'app' && APP_FACED_TOOLS.has(String(item.tool)) ? undefined : mcpDisplay(item)
+  item.server === 'app' && APP_FACED_TOOLS.has(String(item.tool)) ? undefined : (addonDisplay(item) ?? mcpDisplay(item))
+
+/** The bridge's addon_call reads as the add-on it reached: "LifeOS  List tasks". */
+const addonDisplay = (item: Item) => {
+  const name = `${item.server}.${item.tool}`
+  return addonCallOf(name, item.arguments) ? toolDisplay(name, item.arguments) : undefined
+}
 
 /** Bridged app tools keep their MCP "server.tool" name except the task
  *  list: the bridge's update_plan stands in for the native tool Codex no

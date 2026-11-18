@@ -83,6 +83,13 @@ describe('tools', () => {
     expect(events[2]).toEqual({ type: 'tool-result', callId: 'c1', output: 'a.ts\n', isError: false })
   })
 
+  test("an add-on call through the app bridge carries the add-on's display; other calls carry none", () => {
+    const { events, t } = harness({ toolName: (tool) => tool.title })
+    t.push({ type: 'tool.started', callId: 'c1', title: 'mcp__app__addon_call', input: { tool: 'lifeos__list_tasks', arguments: {} } })
+    t.push({ type: 'tool.started', callId: 'c2', title: 'mcp__app__update_notes', input: {} })
+    expect(of(events, 'tool-call').map((e) => e.display)).toEqual([{ app: 'lifeos', action: 'List tasks' }, undefined])
+  })
+
   test('failed → isError with detail as output; the result is emitted once', () => {
     const { events, t } = harness()
     t.push({ type: 'tool.started', callId: 'c1', title: 'Edit a.ts', kind: 'edit' })

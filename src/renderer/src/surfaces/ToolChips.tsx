@@ -2,7 +2,7 @@ import { AddonMark } from "../chrome/AddonMark";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { HarnessIcon } from "../chrome/HarnessIcon";
-import { addonTitle } from "../lib/addonNames";
+import { addonTitle } from "@shared/addonNames";
 import { openUrl } from "../lib/native";
 import type { Block, HarnessId } from "../lib/session";
 import { useMetaById } from "../lib/threads/agents";

@@ -105,6 +105,11 @@ describe("actionOf", () => {
     expect(actionOf(call("mcp__app__app_list_threads", {}), CWD).connector).toBeUndefined();
   });
 
+  it("an add-on call names the add-on, even with no display from the host", () => {
+    expect(actionOf(call("mcp__app__lifeos__list_tasks", {}), CWD).connector).toBe("lifeos");
+    expect(actionOf(call("mcp__app__addon_call", { tool: "lifeos__list_tasks" }), CWD).connector).toBe("lifeos");
+  });
+
   it("an app call naming a thread links to it", () => {
     const view = { label: "Read thread", detail: "Auth rewrite", phrase: "read thread", threadId: "t1" };
     const a = actionOf(call("mcp__app__app_read_thread", { threadId: "t1" }), CWD, view);

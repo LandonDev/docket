@@ -17,6 +17,7 @@ import {
   siWebflow,
 } from "simple-icons";
 import cosmicAdminMark from "../assets/mcp/cosmic-admin.png";
+import lifeosMark from "../assets/mcp/lifeos.png";
 
 /** Brand marks for addon names: a simple-icons vector, or a raster mark for
  *  a brand simple-icons doesn't carry. */
@@ -40,6 +41,7 @@ const BRANDS: Record<string, BrandIcon | undefined> = {
   supabase: siSupabase,
   postgres: siPostgresql,
   "cosmic-admin": { img: cosmicAdminMark },
+  lifeos: { img: lifeosMark },
 };
 
 export function brandOf(name: string): BrandIcon | undefined {
