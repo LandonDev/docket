@@ -29,6 +29,7 @@ import {
   questionsOf,
   reasoningEffortOf,
   retryWords,
+  SERVE_ARGS,
   serveArgs,
   sessionResumeParams,
   sessionStartParams,
@@ -149,7 +150,7 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
       cwd: session.cwd,
       configDir,
       credentialFile: museDirKind(configDir) === 'account',
-      args,
+      args: [...SERVE_ARGS, ...args],
       onStderr,
       onExit: (exit) => {
         hostExit = exit

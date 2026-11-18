@@ -27,6 +27,15 @@ mismatch logs one `[muse]` line.
   (a thread on no account) does not. Both set `GH_CONFIG_DIR` to the
   person's gh dir when it is unset, since tool processes inherit the owned
   `XDG_CONFIG_HOME` and `gh` would lose its login (M6).
+  Every `muse serve` runs with `--trust-workspace` (`SERVE_ARGS`): in a
+  workspace it does not trust, Muse withholds the person's own settings.json
+  MCP servers (not only the project's `.mcp.json`), its rules, skills and
+  delegation, and the wire has no per-session trust. The person's servers
+  cannot ride `config.mcpServers` either: `session/start` refuses a session
+  server named like a settings server. So a server in `~/.config/muse/
+  settings.json` (linked into every config dir) reaches every Muse thread,
+  OAuth logins and tool filters included, and a settings server named `app`
+  would make every session start fail.
   `harness/museProtocol.ts` is the pure mapping: `safe` → `:ask-me` +
   `promptUnmatched`, `edits` → `:ask-me` + `onRequest`, `auto` →
   `:unrestricted` + `allowAll`; the app-tools bridge rides `session/start`'s
@@ -93,7 +102,12 @@ mismatch logs one `[muse]` line.
 - Proof: `bun run script:e2e-muse` (scripts/e2e-muse.ts: an in-process
   registry on the real binary and the login its config dir holds; a shell
   call, a denied network approval, a steer received, a cancel; skips with one
-  line where `muse` or the catalog is missing). Unit: muse.test.ts on
+  line where `muse` or the catalog is missing), and scripts/e2e-muse-user-mcp.ts
+  (`XDG_CONFIG_HOME=<dir> bun --preload scripts/lib/electron-stub.ts
+  scripts/e2e-muse-user-mcp.ts <cwd> <server> <tool> <expected>`: an auto
+  thread calls a tool of a settings.json server; on 2026-11-18 the box's
+  lifeos thread dir answered `mcp__lifeos__get_settings` → America/Chicago).
+  Unit: muse.test.ts on
   `harness/museFakeServe.mjs`, museProtocol, museCatalog (the recorded
   `model-list.json`), museHost's exit words, museConfigDirs, museSettings,
   providerEnums, the rules, failureKind, binaries and sendSpans cases.

@@ -318,6 +318,15 @@ export function answersOf(request: Pick<UserInputRequestParams, 'questions'>, an
  *  Linux host whose sandbox is unavailable (no usable bubblewrap) every shell
  *  call would be refused, so the host restarts without one; the thread's
  *  worktree and the process guard are the fence then. Nothing elsewhere. */
+/** What every `muse serve` gets. `--trust-workspace`: Muse withholds the
+ *  person's own settings.json MCP servers, the workspace's .mcp.json, rules
+ *  and skills, and its own delegation in a workspace it does not trust, and
+ *  the wire has no per-session trust. A TempCode thread runs in a workspace
+ *  the person added, and Claude and Codex threads load all of these there.
+ *  A session server may not share a name with a settings server (session/start
+ *  refuses it), so the person's servers cannot ride `config.mcpServers`. */
+export const SERVE_ARGS = ['--trust-workspace']
+
 export function serveArgs(platform: NodeJS.Platform, init: { sandboxAvailability?: string }): string[] {
   return platform === 'linux' && init.sandboxAvailability === 'unavailable' ? ['--disable-sandbox'] : []
 }

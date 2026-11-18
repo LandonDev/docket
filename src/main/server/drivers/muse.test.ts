@@ -323,6 +323,14 @@ describe('the muse driver over the fake host', () => {
     }
   })
 
+  it.skipIf(process.platform !== 'linux')('runs `muse serve --trust-workspace`, so the person\'s own MCP servers load', async () => {
+    const t = ctxFor()
+    const h = await museDriver.start(t.ctx)
+    handles.push(h)
+    const argv = readFileSync(`/proc/${h.pid?.()}/cmdline`, 'utf8').split('\0')
+    expect(argv.slice(argv.indexOf('serve'))).toEqual(['serve', '--trust-workspace', ''])
+  })
+
   it.skipIf(process.platform !== 'linux')('runs `muse serve` under its (account, scope) dir: the own dir for a thread on no account, the account\'s with the file backend', async () => {
     const root = join(fakeDir, 'muse-accounts')
     configureMuseDirs({ root, readBlob: (a) => (a === 'me@x' ? '{"providers":{"meta":{"access_token":"t"}}}' : null), userConfigDir: join(fakeDir, 'cfg', 'muse') })
