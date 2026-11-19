@@ -236,7 +236,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
     "vitest": "^3.2.4",
-    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#7b799ada174310de496c0fba0ea0d716453a2dd2"
+    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#75ff59bc8ad6a736e707a4bf76bf74d3bedc0632"
   },
   "overrides": {
     "yjs": "13.6.31"
