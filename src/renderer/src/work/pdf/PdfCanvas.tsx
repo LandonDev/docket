@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PdfCite, PdfField, PdfSignature, PdfView } from "@shared/contract-work-pdf";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
+import { GroupInput, Input, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { dayTime } from "../../lib/duration";
 import { modOrCtrl } from "../../lib/keys";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
+import { Tip } from "../../components/tip";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { Download } from "../icons";
@@ -89,6 +89,9 @@ export function PdfBody({ item: canvasItem, source, shell, host, pdf: item, widt
   const run = useCallback((work: Promise<PdfView>, fallback: string): Promise<void> => work.then(setView, (error: unknown) => sayError(error, fallback)), [setView]);
 
   useEffect(() => nav.review(proposed.length > 0), [nav, proposed.length]);
+  // A file that did not open (or waits for its password) has no pages for the bar: it drops its bone.
+  const shut = !!viewError || doc.phase === "failed" || doc.phase === "password";
+  useEffect(() => nav.shut(shut), [nav, shut]);
   useFeeds(shell, doc.phase === "ready" ? view : null, proposed, at, setCurrent, nav, host, run);
 
   const sign = (): void => {
@@ -97,7 +100,7 @@ export function PdfBody({ item: canvasItem, source, shell, host, pdf: item, widt
     else setPad(true);
   };
 
-  if (viewError) return <EmptyState title="Couldn't open this PDF" line={viewError} />;
+  if (viewError) return <EmptyState title="Couldn't open this PDF" line={viewError} action={{ label: "Retry", onClick: item.retry }} />;
   if (!view || doc.phase === "loading") return <PageSkeleton />;
   if (doc.phase === "password") return <Locked wrong={doc.wrong} onOpen={item.unlock} />;
   if (doc.phase === "failed") return <EmptyState title="Couldn't open this PDF" line={doc.message} action={{ label: "Retry", onClick: item.retry }} />;
@@ -239,26 +242,20 @@ function Locked({ wrong, onOpen }: { wrong: boolean; onOpen(password: string): v
 
 // ── the bar ──────────────────────────────────────────────────────────
 
-function Tip({ label, children }: { label: string; children: ReactElement }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 const ZOOM_WORDS: Record<string, string> = { fit: "Fit width", 1: "100%", 1.25: "125%", 1.5: "150%" };
 
 /**
  * What fits beside the mode and the stepper, as the prototype gives way at
  * each width: the zoom and Save go first, then (while the stepper is there)
- * Find and the pager's arrows. Width 0 is a static page, which shows all.
+ * Find and the pager, whose count would sit beside the stepper's. Width 0
+ * is a static page, which shows all.
  */
 export function barFits(width: number, reviewing: boolean, finding: boolean): { pager: boolean; arrows: boolean; zoom: boolean; find: boolean; save: boolean } {
   const w = width === 0 ? Infinity : width;
-  if (finding) return { pager: w >= 460, arrows: w >= 560, zoom: false, find: true, save: false };
-  return { pager: true, arrows: !reviewing || w >= 560, zoom: reviewing ? w >= 700 : w >= 460, find: !reviewing || w >= 560, save: reviewing ? w >= 760 : w >= 520 };
+  // Under 560px while the stepper is there, its count is the one fraction in the bar: the pager goes.
+  const pager = !reviewing || w >= 560;
+  if (finding) return { pager: pager && w >= 460, arrows: w >= 560, zoom: false, find: true, save: false };
+  return { pager, arrows: !reviewing || w >= 560, zoom: reviewing ? w >= 700 : w >= 460, find: !reviewing || w >= 560, save: reviewing ? w >= 760 : w >= 520 };
 }
 
 /** The kind's tools in the bar: the pager, the zoom, Find, and a copy to keep. */
@@ -266,7 +263,8 @@ export function Bar({ item, env, host: given }: CanvasBodyProps<PdfState> & PdfD
   const nav = navOf(item.id);
   const state = useNav(nav);
   const host = given ?? hostFor(env, item.id);
-  if (state.pages === 0) return null;
+  // While the file opens the bar holds a bone where the pager will be, so the body does not move when it lands.
+  if (state.pages === 0) return state.shut ? null : <Skeleton data-pdf-bar-bone className="h-3 w-30" />;
   const fits = barFits(state.width, state.reviewing, state.find.open);
   return (
     <>
@@ -345,9 +343,31 @@ function FindField({ nav }: { nav: PdfNav }) {
   }, [nav, text]);
   const count = find.query.trim() ? (find.hits.length === 0 ? (find.searching ? "" : "No matches") : `${find.current + 1} of ${find.hits.length}`) : "";
   return (
-    <div role="search" className="flex h-6 w-[236px] min-w-0 shrink items-center gap-0.5 rounded-md border border-(--accent) ps-2 pe-0.5 shadow-[inset_0_0_0_1px_var(--accent)]">
-      <Search className="size-3 shrink-0 text-muted-foreground" />
-      <input
+    <InputGroup
+      role="search"
+      className="h-6 w-[236px] shrink gap-0.5 rounded-md ps-2 pe-0.5 [&_svg:not([class*='size-'])]:size-3"
+      leading={<Search />}
+      trailing={
+        <>
+          <Tip label="Previous match">
+            <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Previous match" disabled={find.hits.length === 0} onClick={() => nav.step(-1)}>
+              <ChevronUp />
+            </Button>
+          </Tip>
+          <Tip label="Next match">
+            <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Next match" disabled={find.hits.length === 0} onClick={() => nav.step(1)}>
+              <ChevronDown />
+            </Button>
+          </Tip>
+          <Tip label="Close find">
+            <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Close find" onClick={() => nav.closeFind()}>
+              <X />
+            </Button>
+          </Tip>
+        </>
+      }
+    >
+      <GroupInput
         ref={input}
         autoFocus
         aria-label="Find"
@@ -364,21 +384,12 @@ function FindField({ nav }: { nav: PdfNav }) {
             nav.closeFind();
           }
         }}
-        className="h-[22px] min-w-0 flex-1 bg-transparent px-0.5 text-xs text-foreground outline-none"
+        className="px-0.5 text-xs text-foreground"
       />
       <span data-pdf-find-count aria-live="polite" className="shrink-0 px-1 text-xs text-muted-foreground tabular-nums">
         {count}
       </span>
-      <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Previous match" disabled={find.hits.length === 0} onClick={() => nav.step(-1)}>
-        <ChevronUp />
-      </Button>
-      <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Next match" disabled={find.hits.length === 0} onClick={() => nav.step(1)}>
-        <ChevronDown />
-      </Button>
-      <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Close find" onClick={() => nav.closeFind()}>
-        <X />
-      </Button>
-    </div>
+    </InputGroup>
   );
 }
 

@@ -16,7 +16,7 @@ import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import { fakeDoc, fakeEngine } from "../pdf/testkit";
-import { changeIndex, slideOfChange, stageWidth } from "./SlidesCanvas";
+import { changeIndex, renderDetail, slideOfChange, stageWidth } from "./SlidesCanvas";
 import { change, deckView, fakeDeckHost, slide } from "./testkit";
 
 const host = vi.hoisted(() => ({
@@ -59,10 +59,11 @@ function kinds(): Record<string, CanvasKindDef> {
 }
 
 let n = 0;
-function open(view: DeckView) {
+function open(view: DeckView, opened?: () => Promise<DeckView>) {
   // Each test its own item, so the deck's per-item store starts fresh.
   item = canvasItem(`deck${++n}`, { kind: "slides", title: "Sponsor deck.pptx", source: { at: "file", host: "local", path: "/work/deck.pptx" } });
   deckHost = fakeDeckHost({ ...view, itemId: item.id });
+  if (opened) deckHost.open = opened;
   host.current = fakeHost([item], host as never);
   return render(
     <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
@@ -158,6 +159,8 @@ describe("the slides kind", () => {
     const shape = await found('[data-shape="3"]');
     fireEvent.click(shape);
     expect(shape.getAttribute("aria-pressed")).toBe("true");
+    // Picked is the selection's fill alone; the accent outline is the focus ring's, not a second mark.
+    expect(shape.className).not.toMatch(/outline-2|outline-\(--accent\)/);
     expect(await screen.findByRole("button", { name: /Ask/ })).toBeTruthy();
   });
 
@@ -171,6 +174,9 @@ describe("the slides kind", () => {
   it("offers PowerPoint in the tab row for a hosted deck, and says there what waits in TempCode", async () => {
     open({ ...revised(), hosted: true });
     const tabs = await screen.findByRole("tablist", { name: "Open in" });
+    // The 24px switch keeps its pill inside the track: the list is the indicator's box at the switch's height.
+    expect(tabs.className).toContain("relative");
+    expect(tabs.className).toContain("group-data-[orientation=horizontal]/tabs:h-6");
     fireEvent.click(within(tabs).getByRole("tab", { name: "PowerPoint" }));
     expect(await screen.findByText("5 suggestions wait in TempCode")).toBeTruthy();
     expect(screen.getByText("Not built yet")).toBeTruthy();
@@ -191,6 +197,56 @@ describe("the slides kind", () => {
     expect(line.textContent).toContain("Can't draw the slides");
     expect(thumbs()).toHaveLength(12);
     expect(thumbs()[2].textContent).toContain("Slide 3");
+  });
+
+  it("says why with the host's reason alone, not the line's own word twice", async () => {
+    open(deckView({ renders: { file: null, proposed: null }, renderError: "There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches." }));
+    const line = await found('[data-canvas-state="failed"]');
+    expect(line.textContent).toContain("LibreOffice is not installed on this host or on one it reaches.");
+    expect(line.textContent).not.toContain("no picture");
+    expect(renderDetail("There is no picture of the slides: the converter stopped.")).toBe("The converter stopped.");
+    expect(renderDetail("Something else")).toBe("Something else");
+  });
+
+  it("holds the bar's bone and the deck's shape while it loads, the strip under the stage in a narrow canvas", async () => {
+    open(deckView(), () => new Promise<DeckView>(() => undefined));
+    const bar = await found("[data-canvas-bar]");
+    expect(bar.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    const bones = await found("[data-slides-skeleton]");
+    expect(bones.className).toContain("@container");
+    expect(bones.firstElementChild!.className).toContain("@max-[400px]:flex-col-reverse");
+  });
+
+  it("draws a deck the host could not open as the state line with Retry, with no bones under it", async () => {
+    let fail = true;
+    open(deckView(), () => (fail ? Promise.reject(new Error("The deck is not where it was.")) : Promise.resolve(deckHost.view)));
+    const line = await found('[data-canvas-state="failed"]');
+    expect(line.textContent).toContain("Couldn't open this deck");
+    expect(line.textContent).toContain("The deck is not where it was.");
+    expect(document.querySelector("[data-slides-skeleton]")).toBeNull();
+    expect(document.querySelector('[data-canvas-bar] [data-slot="skeleton"]')).toBeNull();
+    expect(screen.queryByText("Couldn't open this deck", { selector: "[data-slot=empty] *" })).toBeNull();
+    fail = false;
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(await found("[data-slides-stage]")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull());
+  });
+
+  it("shows a change to the speaker notes once, in the Notes section", async () => {
+    const view = deckView({
+      slides: [slide(1, { notes: "Thank the sponsors", change: "c1", tint: "add", from: "proposed" }), ...Array.from({ length: 11 }, (_, i) => slide(i + 2))],
+      changes: [change("c1", 1, { edits: [{ where: "Title", before: "Hello", after: "Welcome" }, { where: "Notes", before: "Thank them", after: "Thank the sponsors" }] })],
+      renders: { file: { rev: "f1", size: 1000, pages: 12 }, proposed: { rev: "p1", size: 1000, pages: 12 } },
+    });
+    open(view);
+    const edits = await found("[data-slide-edits]");
+    expect(edits.textContent).toContain("Welcome");
+    expect(edits.textContent).not.toContain("Notes");
+    expect(edits.textContent).not.toContain("Thank");
+    const notes = await found("[data-slide-notes-edit]");
+    expect(notes.querySelector(".line-through")!.textContent).toBe("Thank them");
+    expect(notes.textContent).toContain("Thank the sponsors");
+    expect(screen.getAllByText(/Thank the sponsors/)).toHaveLength(1);
   });
 
   it("shows what the agent wrote directly with its Undo", async () => {

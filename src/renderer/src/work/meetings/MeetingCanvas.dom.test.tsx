@@ -21,6 +21,7 @@ const host = vi.hoisted(() => ({
   calls: [] as { method: string; params: Record<string, unknown> }[],
   decide: null as null | ((params: Record<string, unknown>) => unknown),
   down: false,
+  hold: null as Promise<void> | null,
   refuseStart: false,
   recording: null as null | ((params: Record<string, unknown>) => unknown),
 }));
@@ -32,6 +33,7 @@ vi.mock("../../lib/connection", async (original) => {
       if (!method.startsWith("work.meetings.")) return host.current!.link.request(method, params);
       host.calls.push({ method, params });
       if (method === "work.meetings.get") {
+        if (host.hold) await host.hold;
         if (host.down) throw new Error("socket closed");
         return { meeting: host.meeting };
       }
@@ -69,6 +71,7 @@ beforeEach(async () => {
   host.calls = [];
   host.decide = null;
   host.down = false;
+  host.hold = null;
   host.refuseStart = false;
   await new Promise<void>((done) => openMenus(done));
 });
@@ -83,7 +86,7 @@ async function seat(meeting: Meeting | null, item: CanvasItem = ITEM) {
     </CanvasSeat>,
   );
   await waitFor(() => expect(canvasOf("t1").loaded).toBe(true));
-  await waitFor(() => expect(view.container.querySelector("[data-meeting], [data-meeting-empty], [data-meeting-skeleton], [data-meeting-failed]")).toBeTruthy());
+  await waitFor(() => expect(view.container.querySelector("[data-meeting], [data-meeting-empty], [data-meeting-skeleton], [data-meeting-failed], [data-canvas-state]")).toBeTruthy());
   await act(async () => {});
   return view;
 }
@@ -323,10 +326,56 @@ describe("the meeting canvas", () => {
     const { container } = await seat(sampleMeeting());
     await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("The host did not answer"));
     expect(container.querySelector("[data-meeting-empty]")).toBeNull();
+    // The failure is the state line's alone: no skeleton pulses under it, and the bar holds no bone.
+    expect(container.querySelector("[data-meeting-skeleton]")).toBeNull();
+    expect(container.querySelector("[data-meeting-bar-bone]")).toBeNull();
     host.down = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
+  });
+
+  it("Find gives way to the stepper while tasks wait, and comes back once none do", async () => {
+    host.decide = (params) => {
+      const ids = params.actionIds as string[];
+      host.meeting = sampleMeeting({ rev: 5, notes: { ...SAMPLE_NOTES, actions: SAMPLE_NOTES.actions.map((a) => (ids.includes(a.id) ? { ...a, state: "filed" as const, lifeosTaskId: "t9" } : a)) } });
+      return { meeting: host.meeting, failed: [] };
+    };
+    const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
+    const bar = await waitFor(() => container.querySelector("[data-canvas-bar]") as HTMLElement);
+    await waitFor(() => expect(within(bar).getByText("1/3")).toBeTruthy());
+    expect(within(bar).queryByRole("button", { name: "Find" })).toBeNull();
+    const waiting = SAMPLE_NOTES.actions.filter((a) => a.state === "proposed").map((a) => a.id);
+    await act(async () => {
+      await host.decide!({ actionIds: waiting });
+      push(host.meeting!);
+    });
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Find" })).toBeTruthy());
+    expect(within(bar).queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+  });
+
+  it("while the meeting loads the bar holds a bone where its tools will be", async () => {
+    let release!: () => void;
+    host.hold = new Promise<void>((r) => (release = r));
+    const { container } = await seat(sampleMeeting());
+    expect(container.querySelector("[data-meeting-skeleton]")).toBeTruthy();
+    await waitFor(() => expect(container.querySelector("[data-canvas-bar] [data-meeting-bar-bone]")).toBeTruthy());
+    await act(async () => release());
+    await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());
+    expect(container.querySelector("[data-meeting-bar-bone]")).toBeNull();
+  });
+
+  it("a recording that would not play says so on the one state line with Retry, never as a red line of its own", async () => {
+    const { container } = await seat(sampleMeeting());
+    await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("The recording did not play"));
+    expect(container.querySelector("[data-canvas-state=failed]")!.textContent).toContain("It could not be read");
+    expect(container.querySelector("[data-meeting] .text-destructive")).toBeNull();
+    // The player keeps its row; Retry reads the copy again.
+    expect(container.querySelector("[data-meeting-player]")).toBeTruthy();
+    fireEvent.click(within(container.querySelector("[data-canvas-state]") as HTMLElement).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("The recording did not play"));
   });
 
   it("a turn's minute is a button: the keyboard reaches it and it seeks", async () => {

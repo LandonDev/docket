@@ -7,6 +7,8 @@ import { ChevronDown, X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Tip } from "../../components/tip";
+import { dayTime } from "../../lib/duration";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { Comment, History, ZoomIn, ZoomOut } from "../icons";
 import { Notes, NotesSkeleton } from "./Notes";
@@ -124,11 +126,9 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   }, [shell, view?.mode, view?.shared, other, actions, view]);
   useEffect(() => {
     const w = view?.lastWrite;
-    shell.written(w ? { text: `${w.text}, ${new Date(w.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`, undo: () => actions.undo(w.id) } : null);
+    shell.written(w ? { text: `${w.text}, ${dayTime(w.at)}`, undo: () => actions.undo(w.id) } : null);
   }, [shell, view?.lastWrite, actions]);
   useEffect(() => {
-    // A proxy that could not be made fails the version only for a viewer that needs it.
-    const unshowable = (v: MediaVersion | undefined): string | undefined => (!v ? undefined : v.state === "failed" ? v.error : !shownPlay(v) && v.proxyError ? v.proxyError : undefined);
     const failed = [shown, other].find((v) => unshowable(v) !== undefined);
     shell.statusLine(
       failed
@@ -159,6 +159,8 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
     </Button>
   );
 
+  // A host that did not answer is the pane's state line, over the empty stage: no bones under a failure.
+  if (!view && error) return <Stage />;
   if (!view || !shown) return <Loading kind={IMAGE_EXT.test(item.source.at === "file" ? item.source.path : item.title) ? "image" : "video"} />;
 
   const play = shownPlay(shown);
@@ -230,9 +232,20 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   );
 }
 
+/** Why a version cannot be shown here: it failed, or the copy this viewer needs could not be made. */
+function unshowable(v: MediaVersion | undefined): string | undefined {
+  return !v ? undefined : v.state === "failed" ? v.error : !shownPlay(v) && v.proxyError ? v.proxyError : undefined;
+}
+
+/** The empty stage a failure leaves: the pane's state line says why, with Retry. */
+function Stage() {
+  return <div data-media-failed className="size-full bg-(--stage)" />;
+}
+
 /** While the host reads the file or makes what this viewer needs: the player's bones, and what is under way. */
 function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVersion }) {
-  // A failure is the pane's state line alone: the body keeps its bones, with nothing under way.
+  // A failure is the pane's state line alone, over the empty stage: never bones that wait for nothing.
+  if (version && unshowable(version) !== undefined) return <Stage />;
   const word = version?.state !== "preparing" || version.proxyError ? undefined : version.probe?.kind === "image" ? `Converting ${version.name}` : "Making a copy this viewer can play";
   if (kind === "image")
     return (
@@ -268,9 +281,11 @@ function Preparing({ word, progress }: { word: string; progress?: number }) {
 
 /** The kind's own tools in the pane's bar: a picture's facts and zoom, a video's versions, a compare's two pickers. */
 export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>) {
-  const { view } = useMedia(env, item.id);
+  const { view, error } = useMedia(env, item.id);
   const { shown, other } = shownOf(view, state);
-  if (!view || !shown) return null;
+  // While the host reads the file the bar holds one bone where the mode will be, so the body does not drop 32px when it lands.
+  if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
+  if (!shown) return null;
   const versions = view.versions;
   const set = (patch: Partial<MediaState>): void => setState({ ...state, ...patch });
   const versionRows = (checked: string) => [...versions].reverse().map((v) => ({ kind: "item" as const, id: v.id, label: `v${v.n}`, hint: short(v.addedAt), checked: v.id === checked }));
@@ -296,9 +311,11 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
         {picker(a, (id) => set(a.id === shown.id ? { versionId: id } : { compare: id }))}
         <span>and</span>
         {picker(b, (id) => set(b.id === shown.id ? { versionId: id } : { compare: id }))}
-        <Button variant="ghost" size="icon-xs" aria-label="Close the compare" className="text-muted-foreground" onClick={() => set({ compare: undefined })}>
-          <X />
-        </Button>
+        <Tip label="Close the compare">
+          <Button variant="ghost" size="icon-xs" aria-label="Close the compare" className="text-muted-foreground" onClick={() => set({ compare: undefined })}>
+            <X />
+          </Button>
+        </Tip>
       </>
     );
   }
@@ -318,9 +335,11 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
           {play.width ? <span>{`${play.width} × ${play.height}`}</span> : null}
           {p ? <span>{p.size >= 1e6 ? `${(p.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(p.size / 1e3))} KB`}</span> : null}
         </span>
-        <Button variant="ghost" size="icon-xs" aria-label="Zoom out" className="text-muted-foreground" onClick={() => step(-1)}>
-          <ZoomOut />
-        </Button>
+        <Tip label="Zoom out">
+          <Button variant="ghost" size="icon-xs" aria-label="Zoom out" className="text-muted-foreground" onClick={() => step(-1)}>
+            <ZoomOut />
+          </Button>
+        </Tip>
         <RowsMenu
           label="Zoom"
           align="start"
@@ -333,23 +352,27 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
             </Button>
           }
         />
-        <Button variant="ghost" size="icon-xs" aria-label="Zoom in" className="text-muted-foreground" onClick={() => step(1)}>
-          <ZoomIn />
-        </Button>
+        <Tip label="Zoom in">
+          <Button variant="ghost" size="icon-xs" aria-label="Zoom in" className="text-muted-foreground" onClick={() => step(1)}>
+            <ZoomIn />
+          </Button>
+        </Tip>
       </>
     );
   }
 
   if (versions.length < 2) return null;
+  // History sits at the bar's end, labelled, where every kind's History is (docs/DESIGN.md "The canvas pane").
   return (
     <RowsMenu
       label="Versions"
-      align="start"
+      align="end"
       rows={versionRows(shown.id)}
       onPick={(id) => (id === shown.id ? undefined : set({ compare: id }))}
       trigger={
-        <Button variant="ghost" size="icon-xs" aria-label="Versions" className="text-muted-foreground">
+        <Button variant="ghost" size="xs" className="ms-auto">
           <History />
+          History
         </Button>
       }
     />

@@ -14,14 +14,18 @@ import type { CanvasItem } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
 import type { CanvasShell, ReviewAdapter } from "../canvas/kind";
 
-const host = vi.hoisted(() => ({ view: null as unknown as MediaView, calls: [] as Array<{ method: string; params: Record<string, unknown> }> }));
+const host = vi.hoisted(() => ({ view: null as unknown as MediaView, calls: [] as Array<{ method: string; params: Record<string, unknown> }>, viewFails: null as string | null, hold: false }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
     environmentId: "local",
     connected: true,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       host.calls.push({ method, params });
-      if (method === "work.media.view") return host.view;
+      if (method === "work.media.view") {
+        if (host.hold) return new Promise(() => undefined);
+        if (host.viewFails) throw new Error(host.viewFails);
+        return host.view;
+      }
       if (method === "work.media.note") {
         const note: MediaNote = { id: `n${host.view.notes.length + 1}`, itemId: host.view.itemId, kind: "comment", anchor: params.anchor as MediaNote["anchor"], body: String(params.body), by: "owner", state: "kept", resolved: false, createdAt: 9, updatedAt: 9 };
         host.view = { ...host.view, notes: [...host.view.notes, note], rev: host.view.rev + 1 };
@@ -43,7 +47,9 @@ vi.mock("./seek", () => ({
   watchFrames: () => () => undefined,
 }));
 
-import { Body, selectionChip } from "./MediaCanvas";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
+import { dayTime } from "../../lib/duration";
+import { Bar, Body, selectionChip } from "./MediaCanvas";
 import { levelFor, scaleOf } from "./Picture";
 import { resetMediaStore } from "./store";
 
@@ -77,6 +83,8 @@ async function mount(view: Partial<MediaView> = {}) {
 beforeEach(async () => {
   resetMediaStore();
   host.calls = [];
+  host.viewFails = null;
+  host.hold = false;
   seeks.to = [];
   HTMLElement.prototype.setPointerCapture ??= () => undefined;
   HTMLMediaElement.prototype.pause = () => undefined;
@@ -128,7 +136,8 @@ describe("the media canvas", () => {
 
   it("says what the agent wrote straight onto the person's own file, with its Undo", async () => {
     const { shell } = await mount({ lastWrite: { id: "w1", text: "Added 7 chapters", at: Date.UTC(2026, 10, 18, 19, 4) } });
-    await waitFor(() => expect(shell.written).toHaveBeenLastCalledWith(expect.objectContaining({ text: expect.stringMatching(/^Added 7 chapters, /) })));
+    // The time in the app's one form: the day named when it was not today.
+    await waitFor(() => expect(shell.written).toHaveBeenLastCalledWith(expect.objectContaining({ text: `Added 7 chapters, ${dayTime(Date.UTC(2026, 10, 18, 19, 4))}` })));
     const line = shell.written.mock.lastCall![0] as { undo(): Promise<void> };
     await act(() => line.undo());
     expect(host.calls.find((c) => c.method === "work.media.undo")?.params).toEqual({ itemId: "item1", writeId: "w1" });
@@ -145,9 +154,78 @@ describe("the media canvas", () => {
     await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "trailer v3.mp4 could not be shown", detail: "ffprobe could not read it" })));
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(document.body.textContent).not.toContain("Making a copy");
+    // The empty stage under the line, never the player's bones waiting for nothing.
+    expect(document.querySelector("[data-media-failed]")).not.toBeNull();
+    expect(document.querySelector("[data-media-loading]")).toBeNull();
     const line = shell.statusLine.mock.lastCall![0] as { action: { run(): Promise<void> } };
     await act(() => line.action.run());
     expect(host.calls.filter((c) => c.method === "work.media.view").at(-1)?.params).toMatchObject({ itemId: "item1", retry: true });
+  });
+
+  it("draws a host that did not answer as the empty stage under the state line, with no bones in the body or the bar", async () => {
+    host.viewFails = "The host did not answer";
+    host.view = { itemId: "item1", kind: "video", versions: [V3], notes: [], mode: "writes", shared: false, rev: 1 };
+    const shell = fakeShell();
+    render(
+      <>
+        <Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={shell} />
+        <div data-bar>
+          <Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={shell} />
+        </div>
+      </>,
+    );
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "The host did not answer" })));
+    expect(document.querySelector("[data-media-failed]")).not.toBeNull();
+    expect(document.querySelector("[data-media-loading]")).toBeNull();
+    expect(document.querySelector('[data-slot="skeleton"]')).toBeNull();
+  });
+
+  it("holds one bone in the bar while the host reads the file, so the body does not drop when it lands", async () => {
+    host.hold = true;
+    host.view = { itemId: "item1", kind: "video", versions: [V3], notes: [], mode: "writes", shared: false, rev: 1 };
+    render(<Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    expect(document.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+  });
+
+  it("puts History at the bar's end, labelled, and two cuts one over the other in a narrow player", async () => {
+    const V2: MediaVersion = { ...V3, id: "v2", n: 2, name: "trailer v2.mp4", addedAt: 0 };
+    await mount({ versions: [V2, V3] });
+    render(<Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    const history = screen.getByRole("button", { name: "History" });
+    expect(history.className).toContain("ms-auto");
+    cleanup();
+    host.view = { itemId: "item1", kind: "video", versions: [V2, V3], notes: [], mode: "writes", shared: false, rev: 1 };
+    render(<Body item={ITEM} source={ITEM.source} env="local" state={{ compare: "v2" }} setState={() => undefined} shell={fakeShell()} />);
+    const cuts = await waitFor(() => document.querySelector<HTMLElement>("[data-media-cuts]")!);
+    expect(cuts.className).toContain("@[600px]:grid-cols-2");
+    expect(cuts.className.split(" ")).not.toContain("grid-cols-2");
+    expect(cuts.closest("[data-media-player]")!.className).toContain("@container");
+  });
+
+  it("starts a chapter's title 8px after its time, with no empty author column", async () => {
+    const chapter: MediaNote = { id: "c1", itemId: "item1", kind: "chapter", anchor: { versionId: "v3", frame: 240 }, body: "Intro", by: "owner", state: "kept", resolved: false, createdAt: 1, updatedAt: 1 };
+    await mount({ notes: [chapter] });
+    const row = screen.getByRole("button", { name: /Intro/ });
+    expect(row.children).toHaveLength(2);
+    expect(row.children[1].className).toContain("col-span-2");
+  });
+
+  it("names every icon control in the transport on hover", async () => {
+    await mount();
+    await act(async () => {
+      (document.activeElement as HTMLElement | null)?.blur();
+      warmTooltips();
+      await tooltipChunk.load();
+      await Promise.resolve();
+    });
+    const full = screen.getByRole("button", { name: "Full screen" });
+    await act(async () => {
+      fireEvent.pointerEnter(full, { pointerType: "mouse" });
+      fireEvent.mouseEnter(full);
+      fireEvent.mouseMove(full);
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    expect((await screen.findByText("Full screen", { selector: "[data-slot=tooltip-content] *, [data-slot=tooltip-content]" })).closest("[data-slot=tooltip-content]")).toBeTruthy();
   });
 
   it("hands Ask a stretch as the thread reads it, with its exact frames", () => {

@@ -10,7 +10,7 @@ import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { CSS_PER_POINT, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
-import { deckStoreOf, linkDeckHost, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
+import { deckStoreOf, linkDeckHost, openDeck, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
 
 /**
  * The slides kind (docs/agents/work-slides.md; the approved page is
@@ -62,6 +62,15 @@ export function changeIndex(view: DeckView, key: string | null): number {
   return slide?.change ? view.changes.findIndex((c) => c.id === slide.change) : -1;
 }
 
+/**
+ * The host's reason a deck has no picture, without the words the state
+ * line's own word already says ("There is no picture of the slides: …").
+ */
+export function renderDetail(error: string): string {
+  const rest = error.replace(/^There is no picture of the slides:\s*/, "");
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
 /** The slide to show for a change: where it lands, else the place it leaves. */
 export function slideOfChange(view: DeckView, change: SlideChange): DeckSlide | undefined {
   const all = view.slides.filter((s) => s.change === change.id);
@@ -97,9 +106,14 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
 
   const run = useCallback((work: Promise<DeckView>, fallback: string): Promise<void> => work.then((next) => store.view(next), (e: unknown) => sayError(e, fallback)), [store]);
   const select = useCallback((key: string) => store.set({ current: key }), [store]);
-  useFeeds(shell, view, renderError, current, side, select, host, run);
+  const retry = useCallback((): Promise<void> => {
+    store.set({ error: null });
+    return openDeck(host, store);
+  }, [host, store]);
+  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry);
 
-  if (error) return <EmptyState title="Couldn't open this deck" line={error} />;
+  // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
+  if (error) return null;
   if (!view) return <DeckSkeleton />;
   if (side === "powerpoint") return <EmptyState title="Not built yet" />;
 
@@ -130,12 +144,14 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
 function useFeeds(
   shell: CanvasShell,
   view: DeckView | null,
+  error: string | null,
   renderError: string | undefined,
   current: string | null,
   side: "tempcode" | "powerpoint",
   select: (key: string) => void,
   host: DeckHost,
   run: (work: Promise<DeckView>, fallback: string) => Promise<void>,
+  retry: () => Promise<void>,
 ): void {
   const inPowerPoint = side === "powerpoint";
   const mode = view?.mode;
@@ -146,9 +162,15 @@ function useFeeds(
   }, [shell, host, mode, inPowerPoint, run]);
 
   useEffect(() => {
-    shell.statusLine(renderError ? { tone: "failed", word: "Can't draw the slides", detail: renderError } : null);
+    shell.statusLine(
+      error
+        ? { tone: "failed", word: "Couldn't open this deck", detail: error, action: { label: "Retry", run: retry } }
+        : renderError
+          ? { tone: "failed", word: "Can't draw the slides", detail: renderDetail(renderError) }
+          : null,
+    );
     return () => shell.statusLine(null);
-  }, [shell, renderError]);
+  }, [shell, error, renderError, retry]);
 
   const written = view?.written;
   const pending = view?.changes.length ?? 0;
@@ -218,12 +240,20 @@ function Strip({ view, current, narrow, docOf, pictures, onPick }: { view: DeckV
               data-slide={slide.key}
               data-tint={slide.tint ?? undefined}
               onClick={() => onPick(slide.key)}
-              className="group/th relative flex shrink-0 items-start gap-1 text-start"
+              className="group/th relative flex shrink-0 items-start gap-1 rounded-md text-start"
             >
               <span className={`w-5 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums ${on ? "text-foreground" : "text-muted-foreground"}`}>{slide.number ?? ""}</span>
               <span
-                className={`block rounded-md p-[3px] transition-[background-color] duration-(--dur-hover) ease-(--ease-out) ${
-                  slide.tint === "add" ? (on ? "bg-[color-mix(in_srgb,var(--success)_30%,transparent)]" : FRAME_TINT.add) : slide.tint === "del" ? FRAME_TINT.del : on ? "bg-muted" : "group-hover/th:bg-foreground/6"
+                className={`block rounded-md p-[3px] transition-[background-color] duration-(--dur-hover) ease-(--ease-out) motion-reduce:transition-none ${
+                  slide.tint === "add"
+                    ? on
+                      ? "bg-[color-mix(in_srgb,var(--success)_30%,transparent)]"
+                      : FRAME_TINT.add
+                    : slide.tint === "del"
+                      ? FRAME_TINT.del
+                      : on
+                        ? "bg-muted"
+                        : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
                 }`}
               >
                 <Picture doc={pictures ? docOf(slide) : null} page={slide.page} width={THUMB} ghost={slide.tint === "del"} title={slide.title} thumb />
@@ -337,6 +367,9 @@ function Main({ view, slide, doc, width, height, itemTitle, source, shell }: { v
   };
   useEffect(() => () => shell.selection(null), [shell]);
   const shapes = slide.tint === "del" ? [] : slide.shapes.filter((s) => s.bbox && s.text.trim());
+  // A change to the notes is drawn once, in the Notes section; the list above it is the slide's shapes.
+  const notesEdit = change?.edits.find((e) => e.where === NOTES_WHERE);
+  const edits = change?.edits.filter((e) => e !== notesEdit) ?? [];
   return (
     <div data-slides-main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
       <div className="flex shrink-0 justify-center px-4 pt-4">
@@ -354,17 +387,21 @@ function Main({ view, slide, doc, width, height, itemTitle, source, shell }: { v
                 aria-label={shape.name}
                 aria-pressed={picked === shape.id}
                 style={boxStyle(shape.bbox!)}
-                className={`absolute rounded-[4px] outline-offset-4 transition-[background-color] duration-(--dur-hover) ${picked === shape.id ? `${tints.sel} outline-2 outline-(--accent)` : ""}`}
+                className={`absolute rounded-[4px] transition-[background-color] duration-(--dur-hover) ${picked === shape.id ? tints.sel : ""}`}
                 onClick={(event) => pick(shape, event.currentTarget)}
               />
             ))}
           </div>
         </div>
       </div>
-      {change && change.edits.length > 0 ? <Edits change={change} /> : null}
+      {edits.length > 0 ? <Edits edits={edits} /> : null}
       <div className="shrink-0 px-5 pt-4 pb-5">
         <div className="text-xs font-medium text-muted-foreground">Notes</div>
-        {slide.notes.trim() ? (
+        {notesEdit ? (
+          <p data-slide-notes-edit tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
+            <Diff before={notesEdit.before} after={notesEdit.after} />
+          </p>
+        ) : slide.notes.trim() ? (
           <p tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
             {slide.notes}
           </p>
@@ -382,16 +419,14 @@ function Main({ view, slide, doc, width, height, itemTitle, source, shell }: { v
  * The prototype tints the words in the slide itself; a real slide is a
  * picture, so its changed shapes are tinted there and the words are here.
  */
-function Edits({ change }: { change: SlideChange }) {
+function Edits({ edits }: { edits: SlideChange["edits"] }) {
   return (
     <div data-slide-edits className="flex shrink-0 flex-col gap-3 px-5 pt-4">
-      {change.edits.map((edit, i) => (
+      {edits.map((edit, i) => (
         <div key={i} className="min-w-0">
           <div className="text-xs font-medium text-muted-foreground">{edit.where}</div>
           <p className="mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty">
-            {edit.before ? <span className="rounded-sm bg-(--del-bg) text-muted-foreground line-through decoration-destructive/70">{edit.before}</span> : null}
-            {edit.before && edit.after ? " " : null}
-            {edit.after ? <span className="rounded-sm bg-(--add-bg)">{edit.after}</span> : null}
+            <Diff before={edit.before} after={edit.after} />
           </p>
         </div>
       ))}
@@ -399,25 +434,42 @@ function Edits({ change }: { change: SlideChange }) {
   );
 }
 
+/** The `where` the host gives an edit of the speaker notes (src/main/server/work/slides/view.ts). */
+const NOTES_WHERE = "Notes";
+
+/** The words before, struck in the removed tint, then the words after in the added tint. */
+function Diff({ before, after }: { before: string; after: string }) {
+  return (
+    <>
+      {before ? <span className="rounded-sm bg-(--del-bg) text-muted-foreground line-through decoration-destructive/70">{before}</span> : null}
+      {before && after ? " " : null}
+      {after ? <span className="rounded-sm bg-(--add-bg)">{after}</span> : null}
+    </>
+  );
+}
+
+/** Loading, in the body's shape: the strip beside the stage, or under it in a canvas under 400px (`NARROW`), as the body lays it out. */
 function DeckSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading" className="flex min-h-0 flex-1">
-      <div className="flex w-[140px] shrink-0 flex-col border-e border-border bg-sidebar pt-2 pr-2 pl-1">
-        {Array.from({ length: 7 }, (_, i) => (
-          <div key={i} className="flex gap-1 py-[3px]">
-            <span className="w-5" />
-            <Skeleton className="m-[3px] aspect-video w-24" />
-          </div>
-        ))}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex justify-center px-4 pt-4">
-          <Skeleton className="aspect-video w-full max-w-[560px]" />
+    <div data-slides-skeleton aria-busy="true" aria-label="Loading" className="@container flex min-h-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 @max-[400px]:flex-col-reverse">
+        <div className="flex w-[140px] shrink-0 flex-col overflow-hidden border-e border-border bg-sidebar pt-2 pr-2 pl-1 @max-[400px]:w-auto @max-[400px]:flex-row @max-[400px]:gap-1 @max-[400px]:border-e-0 @max-[400px]:border-t @max-[400px]:p-2">
+          {Array.from({ length: 7 }, (_, i) => (
+            <div key={i} className="flex shrink-0 gap-1 py-[3px] @max-[400px]:py-0">
+              <span className="w-5 @max-[400px]:hidden" />
+              <Skeleton className="m-[3px] aspect-video w-24" />
+            </div>
+          ))}
         </div>
-        <div className="flex flex-col gap-2 px-5 pt-4">
-          <Skeleton className="h-2.5 w-12" />
-          <Skeleton className="h-3 w-[86%]" />
-          <Skeleton className="h-3 w-[62%]" />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex justify-center px-4 pt-4">
+            <Skeleton className="aspect-video w-full max-w-[560px]" />
+          </div>
+          <div className="flex flex-col gap-2 px-5 pt-4">
+            <Skeleton className="h-2.5 w-12" />
+            <Skeleton className="h-3 w-[86%]" />
+            <Skeleton className="h-3 w-[62%]" />
+          </div>
         </div>
       </div>
     </div>
@@ -433,7 +485,7 @@ export function TabEnd({ item }: CanvasBodyProps<SlidesState>) {
   if (!view?.hosted) return null;
   return (
     <Tabs value={side} onValueChange={(next) => store.set({ side: next as "tempcode" | "powerpoint" })} className="mx-1 shrink-0 gap-0">
-      <TabsList aria-label="Open in" className="h-6 p-0.5">
+      <TabsList aria-label="Open in" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
         <TabsIndicator />
         <TabsTrigger value="tempcode" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
           TempCode
@@ -446,11 +498,16 @@ export function TabEnd({ item }: CanvasBodyProps<SlidesState>) {
   );
 }
 
-/** In the real PowerPoint the stepper is not there: how many changes wait here, and the way back to them. */
+/**
+ * While the deck loads the bar holds one bone where the mode will be, so the
+ * body does not drop 32px when it lands; in the real PowerPoint the stepper
+ * is not there: how many changes wait here, and the way back to them.
+ */
 export function Bar({ item }: CanvasBodyProps<SlidesState>) {
   const store = deckStoreOf(item.id);
-  const { view, side } = useDeck(store);
-  const pending = view?.changes.length ?? 0;
+  const { view, error, side } = useDeck(store);
+  if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
+  const pending = view.changes.length;
   if (side !== "powerpoint" || pending === 0) return null;
   return (
     <>

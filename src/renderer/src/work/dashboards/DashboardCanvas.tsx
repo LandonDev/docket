@@ -1,10 +1,13 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { DashBlock, DashboardView, DashFigure, DashFormat, DashFrom, DashProposal, DashSheet } from "@shared/contract-work-dashboards";
 import { ExternalLink, RefreshCw } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
+import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { TooltipProvider } from "../../components/ui/tooltip";
+import { Tip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
@@ -68,6 +71,8 @@ export function Body(props: Props) {
   const store = storeOf(item.id);
   const { view, error } = useSlot(store);
 
+  // A failed first read is said once, on the state line with Retry; Retry reads again.
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     const load = (): void =>
@@ -83,12 +88,16 @@ export function Body(props: Props) {
       off();
       clearInterval(t);
     };
-  }, [host, store]);
+  }, [host, store, attempt]);
 
   const [current, setCurrent] = useState(0);
-  useFeeds(shell, host, store, view, current, setCurrent);
+  const retryOpen = (): void => {
+    store.set({ error: null });
+    setAttempt((n) => n + 1);
+  };
+  useFeeds(shell, host, store, view, error, retryOpen, current, setCurrent);
 
-  if (error) return <EmptyState title="Couldn't open this dashboard" line={error} />;
+  if (error) return null;
   if (!view) return <DashSkeleton />;
   if (!view.blocks.length) return <EmptyState title="Ask for a number" />;
   const proposed = view.blocks.filter((b) => b.proposed);
@@ -120,7 +129,16 @@ function groups(blocks: Block[]): ({ kind: "figures"; blocks: Extract<Block, { k
 }
 
 /** What the body tells the pane: the mode (shown, not switched), the stepper over proposed blocks, a read that failed, More's sheets. */
-function useFeeds(shell: CanvasShell, host: DashHost, store: DashStore, view: DashboardView | null, current: number, setCurrent: (n: number) => void): void {
+function useFeeds(
+  shell: CanvasShell,
+  host: DashHost,
+  store: DashStore,
+  view: DashboardView | null,
+  error: string | null,
+  retryOpen: () => void,
+  current: number,
+  setCurrent: (n: number) => void,
+): void {
   const has = !!view;
   useEffect(() => {
     if (!has) return shell.mode(null);
@@ -154,19 +172,23 @@ function useFeeds(shell: CanvasShell, host: DashHost, store: DashStore, view: Da
   }, [shell, host, store, proposedIds, by, current, setCurrent]);
 
   const failed = view?.failed;
+  const retry = useRef(retryOpen);
+  retry.current = retryOpen;
   useEffect(() => {
     shell.statusLine(
-      failed
-        ? {
-            tone: "failed",
-            word: "Couldn't read the figures",
-            detail: failed,
-            action: { label: "Retry", run: () => host.refresh().then((v) => store.set({ view: v }), (e: unknown) => sayError(e, "Couldn't read the figures")) },
-          }
-        : null,
+      error
+        ? { tone: "failed", word: "Couldn't open this dashboard", detail: error, action: { label: "Retry", run: () => retry.current() } }
+        : failed
+          ? {
+              tone: "failed",
+              word: "Couldn't read the figures",
+              detail: failed,
+              action: { label: "Retry", run: () => host.refresh().then((v) => store.set({ view: v }), (e: unknown) => sayError(e, "Couldn't read the figures")) },
+            }
+          : null,
     );
     return () => shell.statusLine(null);
-  }, [shell, host, store, failed]);
+  }, [shell, host, store, failed, error]);
 
   const sheets = view ? sheetsOf(view.blocks) : [];
   const sheetKey = sheets.map((s) => `${s.sheetTitle}`).join("\n");
@@ -193,12 +215,17 @@ function sheetsOf(blocks: Block[]): { sheet: DashSheet; sheetTitle: string }[] {
 
 // ── the bar ──────────────────────────────────────────────────────────
 
-/** "As of", said once, and Refresh. Nothing while blocks wait: the stepper has the end. */
+/**
+ * "As of", said once, and Refresh; "Out of date" before it once a sheet the
+ * page reads has moved. Nothing while blocks wait: the stepper has the end.
+ * While the page loads, one bone where the mode will be.
+ */
 export function Bar(props: Props) {
   const host = hostFor(props);
   const store = storeOf(props.item.id);
-  const { view, refreshing } = useSlot(store);
-  if (!view || !view.asOf || view.blocks.some((b) => b.proposed)) return null;
+  const { view, error, refreshing } = useSlot(store);
+  if (!view) return error ? null : <Skeleton data-dash-bar-bone className="h-3 w-30" />;
+  if (!view.asOf || view.blocks.some((b) => b.proposed)) return null;
   const refresh = (): void => {
     store.set({ refreshing: true });
     void host
@@ -211,6 +238,7 @@ export function Bar(props: Props) {
   };
   return (
     <span data-dash-asof className="ms-auto flex shrink-0 items-center gap-1 tabular-nums">
+      {view.stale ? <span className="font-medium text-foreground">Out of date</span> : null}
       <span>As of {dayTime(view.asOf)}</span>
       {/* While it reads, the spinner takes the button's own 24px place, so nothing beside it moves. */}
       {refreshing ? (
@@ -218,9 +246,11 @@ export function Bar(props: Props) {
           <Spinner className="size-3" />
         </span>
       ) : (
-        <Button variant="ghost" size="icon-xs" aria-label="Refresh" onClick={refresh} className="text-muted-foreground">
-          <RefreshCw />
-        </Button>
+        <Tip label="Refresh">
+          <Button variant="ghost" size="icon-xs" aria-label="Refresh" onClick={refresh} className="text-muted-foreground">
+            <RefreshCw />
+          </Button>
+        </Tip>
       )}
     </span>
   );
@@ -242,7 +272,7 @@ function Figures({ blocks, stale, current, open }: { blocks: Extract<Block, { ki
         <div
           key={row[0].f.id}
           data-block={i === 0 ? blocks[0].id : undefined}
-          className={`grid grid-cols-3 gap-x-6 border-b border-border pb-4 @max-[520px]:gap-x-3 ${i === 0 ? "mt-8 first:mt-0" : "mt-6"} ${proposed ? `${PROPOSED} pt-3` : ""} ${row.some((x) => x.block === current) ? CURRENT : ""}`}
+          className={`grid grid-cols-3 gap-x-6 border-b border-border pb-4 @max-[520px]:gap-x-3 ${i === 0 ? "mt-8 first:mt-0 [h2+&]:mt-4" : "mt-6"} ${proposed ? `${PROPOSED} pt-3` : ""} ${row.some((x) => x.block === current) ? CURRENT : ""}`}
         >
           {row.map(({ f }) => (
             <Figure key={f.id} f={f} stale={stale} open={open} />
@@ -326,13 +356,13 @@ function Section({ block, stale, current }: { block: Block; stale: boolean; curr
     );
   if (block.kind === "text")
     return (
-      <p data-block={block.id} className={`mt-6 text-sm leading-[22px] text-pretty first:mt-0 ${tint}`}>
+      <p data-block={block.id} className={`mt-6 text-sm leading-[22px] text-pretty first:mt-0 [h2+&]:mt-4 ${tint}`}>
         {block.text}
       </p>
     );
   if (block.kind === "figures") return null;
   return (
-    <section data-block={block.id} className={`mt-8 first:mt-0 ${tint}`}>
+    <section data-block={block.id} className={`mt-8 first:mt-0 [h2+&]:mt-4 ${tint}`}>
       <h3 className="text-[13px] leading-5 font-semibold">{block.title}</h3>
       <div className="mt-3">{block.kind === "chart" ? <Chart bars={block.bars} format={block.format} stale={stale} title={block.title} /> : <FlatTable block={block} />}</div>
     </section>
@@ -343,18 +373,40 @@ const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD
 const plain = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 const tick = (v: number, format: DashFormat): string => (format === "money" ? money.format(v) : format === "percent" ? `${plain.format(v)}%` : plain.format(v));
 
-/** A round top for the axis: 1, 2 or 5 times a power of ten, over the largest bar. */
-export function niceMax(v: number): number {
-  if (v <= 0) return 1;
-  const p = 10 ** Math.floor(Math.log10(v));
-  return ([1, 2, 5, 10].map((m) => m * p).find((m) => m >= v) ?? 10 * p) as number;
+const full = (v: number, format: DashFormat): string =>
+  format === "money" ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : format === "percent" ? `${v.toLocaleString("en-US")}%` : v.toLocaleString("en-US");
+
+/**
+ * The axis: three round steps (1, 2 or 5 times a power of ten) whose top
+ * clears the largest bar, so every tick is a number a person would write;
+ * whole steps when every bar is a whole number (a count never reads 1.7).
+ */
+export function axis(max: number, whole: boolean): { step: number; top: number } {
+  const need = Math.max(max, 0) / 3;
+  if (need <= 0) return { step: 1, top: 3 };
+  const p = 10 ** Math.floor(Math.log10(need));
+  let step = [1, 2, 5, 10].map((m) => m * p).find((m) => m >= need * (1 - 1e-9)) ?? 10 * p;
+  if (whole) step = Math.max(1, Math.round(step));
+  return { step, top: 3 * step };
 }
 
-/** One series of plain bars on the neutral: the current (last) bar in foreground, the rest a muted step of it; no legend. */
+const MONTH = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(\s+'?\d{2,4})?$/i;
+const DAY = /^(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?$/i;
+const PERIOD = /^(q[1-4]|h[12]|w(ee)?k?\s?\d{1,2}|week\s\d{1,2})(\s+'?\d{2,4})?$/i;
+const YEAR = /^(19|20)\d{2}$/;
+const DATE = /^\d{4}-\d{2}(-\d{2})?$|^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/;
+
+/** Whether the bars are a run of periods (months, weeks, quarters, years, dates): only then is the last one "now", stressed. */
+export function isTimeSeries(labels: string[]): boolean {
+  return labels.length > 1 && labels.every((l) => [MONTH, DAY, PERIOD, YEAR, DATE].some((r) => r.test(l.trim())));
+}
+
+/** One series of plain bars on the neutral, no legend; on a run of periods the current (last) bar in foreground, the rest a muted step of it. Each bar names its value on hover. */
 function Chart({ bars, format, stale, title }: { bars: { label: string; value: number }[]; format: DashFormat; stale: boolean; title: string }) {
   if (!bars.length) return <p className="text-[13px] text-muted-foreground">Nothing to draw yet.</p>;
-  const top = niceMax(Math.max(...bars.map((b) => b.value)));
-  const ticks = [0, top / 3, (2 * top) / 3, top];
+  const { step, top } = axis(Math.max(...bars.map((b) => b.value)), bars.every((b) => Number.isInteger(b.value)));
+  const ticks = [0, step, 2 * step, top];
+  const now = isTimeSeries(bars.map((b) => b.label)) ? bars.length - 1 : -1;
   return (
     <div role="img" aria-label={`${title}: ${bars.map((b) => `${b.label} ${tick(b.value, format)}`).join(", ")}`} className="grid h-[168px] grid-cols-[40px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_20px]">
       <div className="relative text-xs text-muted-foreground tabular-nums">
@@ -364,25 +416,25 @@ function Chart({ bars, format, stale, title }: { bars: { label: string; value: n
           </span>
         ))}
       </div>
-      <div className="relative flex items-end justify-around border-b border-border">
-        {ticks.slice(1).map((t) => (
-          <i key={t} aria-hidden className="absolute inset-x-0 h-0 border-t border-dashed border-border" style={{ bottom: `${(t / top) * 100}%` }} />
-        ))}
-        {bars.map((b, i) => {
-          const on = i === bars.length - 1;
-          return (
-            <i
-              key={`${b.label}${i}`}
-              aria-hidden
-              className={`relative z-1 w-[min(32px,56%)] rounded-t-[3px] ${on ? (stale ? "bg-(--chart-neutral-stale)" : "bg-foreground") : "bg-(--chart-neutral-rest)"}`}
-              style={{ height: `${(Math.max(0, b.value) / top) * 100}%` }}
-            />
-          );
-        })}
-      </div>
+      <TooltipProvider>
+        <div className="relative flex items-end justify-around border-b border-border">
+          {ticks.slice(1).map((t) => (
+            <i key={t} aria-hidden className="absolute inset-x-0 h-0 border-t border-dashed border-border" style={{ bottom: `${(t / top) * 100}%` }} />
+          ))}
+          {bars.map((b, i) => (
+            <Tip key={`${b.label}${i}`} label={`${b.label}, ${full(b.value, format)}`}>
+              <i
+                data-bar={i === now ? "now" : ""}
+                className={`relative z-1 w-[min(32px,56%)] rounded-t-[3px] ${i === now ? (stale ? "bg-(--chart-neutral-stale)" : "bg-foreground") : "bg-(--chart-neutral-rest)"}`}
+                style={{ height: `${(Math.max(0, b.value) / top) * 100}%` }}
+              />
+            </Tip>
+          ))}
+        </div>
+      </TooltipProvider>
       <div className="col-start-2 flex justify-around text-xs leading-5 text-muted-foreground">
         {bars.map((b, i) => (
-          <span key={`${b.label}${i}`} className={`flex w-0 justify-center whitespace-nowrap ${i === bars.length - 1 ? "font-medium text-foreground" : ""}`}>
+          <span key={`${b.label}${i}`} className={`flex w-0 justify-center whitespace-nowrap ${i === now ? "font-medium text-foreground" : ""}`}>
             {b.label}
           </span>
         ))}
@@ -395,30 +447,28 @@ function FlatTable({ block }: { block: Extract<Block, { kind: "table" }> }) {
   if (!block.rows.length) return <p className="text-[13px] text-muted-foreground">No rows.</p>;
   const align = (i: number): string => (block.numeric[i] ? "text-end tabular-nums" : "text-start");
   return (
-    <div className="overflow-x-auto overflow-y-hidden">
-      <table className="w-full text-[13px] leading-5">
-        <thead>
-          <tr className="border-b border-border">
-            {block.head.map((h, i) => (
-              <th key={i} className={`h-8 px-3 text-xs font-medium whitespace-nowrap text-muted-foreground first:ps-0 last:pe-0 ${align(i)}`}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {block.rows.map((r, i) => (
-            <tr key={i} className="border-b border-border last:border-0">
-              {r.map((v, j) => (
-                <td key={j} className={`h-8 max-w-[280px] truncate px-3 whitespace-nowrap first:ps-0 last:pe-0 ${align(j)}`}>
-                  {v}
-                </td>
-              ))}
-            </tr>
+    <DataTable className="leading-5">
+      <TableHeader>
+        <TableRow>
+          {block.head.map((h, i) => (
+            <TableHead key={i} className={align(i)}>
+              {h}
+            </TableHead>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {block.rows.map((r, i) => (
+          <TableRow key={i}>
+            {r.map((v, j) => (
+              <TableCell key={j} className={`h-8 max-w-[280px] truncate ${align(j)}`}>
+                {v}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </DataTable>
   );
 }
 

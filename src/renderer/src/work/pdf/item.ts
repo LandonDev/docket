@@ -62,9 +62,12 @@ export function usePdfItem(
   const [doc, setDoc] = useState<DocState>({ phase: "loading" });
   const [password, setPassword] = useState<string | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
+  // Bumped by Retry after the view itself did not come: the host is asked again.
+  const [asks, setAsks] = useState(0);
 
   useEffect(() => {
     let live = true;
+    setViewError(null);
     const off = host.onView((next) => live && setView(next));
     host.open().then(
       (got) => live && setView(got),
@@ -74,7 +77,7 @@ export function usePdfItem(
       live = false;
       off();
     };
-  }, [host]);
+  }, [host, asks]);
 
   const rev = view?.rev;
   const size = view?.size;
@@ -110,5 +113,10 @@ export function usePdfItem(
     };
   }, [host, engine, rev, size, password, attempt]);
 
-  return useMemo(() => ({ view, viewError, doc, setView, unlock: setPassword, retry: () => setAttempt((n) => n + 1) }), [view, viewError, doc]);
+  // Retry asks again for what did not come: the view, else the file.
+  const failedView = viewError !== null;
+  return useMemo(
+    () => ({ view, viewError, doc, setView, unlock: setPassword, retry: () => (failedView ? setAsks : setAttempt)((n) => n + 1) }),
+    [view, viewError, doc, failedView],
+  );
 }

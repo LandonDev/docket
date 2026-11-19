@@ -79,15 +79,20 @@ export function deckStoreOf(itemId: string): DeckStore {
 }
 export const useDeck = (store: DeckStore): DeckState => useSyncExternalStore(store.subscribe, store.get, store.get);
 
+/** Asks the host for the deck: its view, else the word for why not. Retry asks again. */
+export function openDeck(host: DeckHost, store: DeckStore, live: () => boolean = () => true): Promise<void> {
+  return host.open().then(
+    (view) => void (live() && store.view(view)),
+    (error: unknown) => void (live() && store.set({ error: error instanceof Error && error.message ? error.message : "The host did not answer" })),
+  );
+}
+
 /** Loads the view once and follows the push. */
 export function useDeckView(host: DeckHost, store: DeckStore): void {
   useEffect(() => {
     let live = true;
     const off = host.onView((view) => live && store.view(view));
-    host.open().then(
-      (view) => live && store.view(view),
-      (error: unknown) => live && store.set({ error: error instanceof Error && error.message ? error.message : "The host did not answer" }),
-    );
+    void openDeck(host, store, () => live);
     return () => {
       live = false;
       off();

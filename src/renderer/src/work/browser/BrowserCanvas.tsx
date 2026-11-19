@@ -94,8 +94,9 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
     });
   const handBack = (): void => press("back", () => setDriver(env, pane, "agent"));
   const host = siteHost(state);
+  // Its own container, the free room in the bar: a verb the pane cannot hold gives way by the pane's width, not the window's.
   return (
-    <>
+    <span data-slot="browser-bar" className="@container/browser flex min-w-0 flex-1 items-center gap-2">
       {face.face === "loading" ? (
         <Skeleton className="h-3 w-32" />
       ) : host ? (
@@ -105,7 +106,7 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
         </span>
       ) : null}
       <FaceEnd face={face} env={env} busy={busy} press={press} takeOver={takeOver} handBack={handBack} />
-    </>
+    </span>
   );
 }
 
@@ -129,30 +130,30 @@ function FaceEnd({
       return null;
     case "agent":
       return (
-        <>
-          <span className="ms-auto shrink-0 whitespace-nowrap">The agent is driving</span>
+        <span className="ms-auto flex shrink-0 items-center gap-2">
+          <span className="whitespace-nowrap">The agent is driving</span>
           <Button variant="secondary" size="xs" disabled={!!busy} onClick={takeOver}>
             <BusyLabel busy={busy === "take"} label="Take over" />
           </Button>
-        </>
+        </span>
       );
     case "needs":
       return (
-        <>
-          <StatusMark state="waiting" word={face.words} className="ms-auto min-w-0 truncate" />
-          <Button size="xs" disabled={!!busy} onClick={takeOver}>
+        <span className="ms-auto flex min-w-0 items-center gap-2">
+          <StatusMark state="waiting" word={face.words} className="min-w-0 truncate" />
+          <Button size="xs" className="shrink-0" disabled={!!busy} onClick={takeOver}>
             <BusyLabel busy={busy === "take"} label="Take over" />
           </Button>
-        </>
+        </span>
       );
     case "owner":
       return (
-        <>
-          <span className="ms-auto shrink-0 whitespace-nowrap text-foreground">You are driving</span>
+        <span className="ms-auto flex shrink-0 items-center gap-2">
+          <span className="whitespace-nowrap text-foreground">You are driving</span>
           <Button variant="secondary" size="xs" disabled={!!busy} onClick={handBack}>
             <BusyLabel busy={busy === "back"} label="Hand back" />
           </Button>
-        </>
+        </span>
       );
     case "done":
       return <span className="ms-auto shrink-0 whitespace-nowrap">{face.words}</span>;
@@ -165,7 +166,7 @@ function FaceEnd({
               <BusyLabel busy={busy === "back"} label="Hand back" />
             </Button>
           ) : (
-            <Button variant="ghost" size="xs" className="max-[560px]:hidden" disabled={!!busy} onClick={takeOver}>
+            <Button variant="ghost" size="xs" data-slot="browser-take-over" className="@max-[540px]/browser:hidden" disabled={!!busy} onClick={takeOver}>
               <BusyLabel busy={busy === "take"} label="Take over" />
             </Button>
           )}
@@ -247,23 +248,26 @@ function LiveView({ stream, box, label }: { stream: ReturnType<typeof useLiveStr
 function StillView({ env, held }: { env: string; held: OutboxItem | null }) {
   // Read by the ref's key: a push that rewrites the same item fetches nothing again.
   const key = held ? JSON.stringify(held.ref) : null;
-  const [src, setSrc] = useState<string | null | undefined>(undefined);
+  // undefined while it comes; null when the host kept none; "failed" when the host did not answer, which is not the same thing.
+  const [src, setSrc] = useState<string | null | undefined | "failed">(undefined);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!key) return setSrc(null);
     let live = true;
     setSrc(undefined);
     heldPicture(env, JSON.parse(key) as HeldRef).then(
       (s) => live && setSrc(s),
-      () => live && setSrc(null),
+      () => live && setSrc("failed"),
     );
     return () => {
       live = false;
     };
-  }, [env, key]);
+  }, [env, key, attempt]);
   if (!key) return <ViewportLine words="The agent is not driving the browser now" />;
   const picture = held?.payload as HeldSubmitPayload | null;
   const shape = picture?.picture ? `${picture.picture.width} / ${picture.picture.height}` : "16 / 10";
   if (src === undefined) return <Skeleton className="w-full rounded-lg" style={{ aspectRatio: shape }} />;
+  if (src === "failed") return <ViewportLine words="The page's picture did not load" onRetry={() => setAttempt((n) => n + 1)} />;
   if (!src) return <ViewportLine words="No picture of this page was kept" />;
   return <img src={src} alt={held?.summary ?? ""} draggable={false} className={cn(pictureClass(true), "h-auto")} style={{ aspectRatio: shape }} />;
 }

@@ -4,6 +4,8 @@ import type { CanvasSource } from "@shared/work";
 import { ChevronLeft, ChevronRight, Copy, Search, X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { GroupInput, InputGroup } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Tip } from "../../components/tip";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { uploadAttachment } from "../../lib/attachmentUpload";
 import { dayTime } from "../../lib/duration";
@@ -31,8 +33,10 @@ export interface MeetingState {
 }
 const FIRST: MeetingState = { tab: "transcript", find: null };
 
-/** The pane's feeds from the meeting: the mode, what the agent wrote, the tasks to step through, and a filing that failed. */
-function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, current: string | null, onStep: (id: string) => void, unread: { error: string; retry(): void } | null) {
+type Failure = { error: string; retry(): void };
+
+/** The pane's feeds from the meeting: the mode, what the agent wrote, the tasks to step through, and the one state line (a read, a filing or a playback that failed). */
+function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, current: string | null, onStep: (id: string) => void, unread: Failure | null, unplayed: Failure | null) {
   const [fileError, setFileError] = useState<{ error: string; ids: string[] } | null>(null);
   const ready = meeting?.status === "ready";
   const notes = meeting?.notes ?? null;
@@ -81,12 +85,15 @@ function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, curr
 
   const unreadError = unread?.error ?? null;
   const retry = unread?.retry;
+  const playError = unplayed?.error ?? null;
+  const replay = unplayed?.retry;
   useEffect(() => {
     const failed = fileError;
     if (unreadError && retry) shell.statusLine({ tone: "failed", word: "The host did not answer", detail: unreadError, action: { label: "Retry", run: retry } });
-    else shell.statusLine(failed ? { tone: "failed", word: "Not filed in LifeOS", detail: failed.error, action: { label: "Try again", run: () => decide(failed.ids, "accept") } } : null);
+    else if (failed) shell.statusLine({ tone: "failed", word: "Not filed in LifeOS", detail: failed.error, action: { label: "Try again", run: () => decide(failed.ids, "accept") } });
+    else shell.statusLine(playError && replay ? { tone: "failed", word: "The recording did not play", detail: playError, action: { label: "Retry", run: replay } } : null);
     return () => shell.statusLine(null);
-  }, [shell, fileError, decide, unreadError, retry]);
+  }, [shell, fileError, decide, unreadError, retry, playError, replay]);
 
   return proposed;
 }
@@ -209,7 +216,8 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
     [meeting, seek, reveal],
   );
   const retry = useCallback(() => loadMeeting(env, item.id), [env, item.id]);
-  const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null);
+  const { toggle } = player;
+  const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null, player.error ? { error: player.error, retry: toggle } : null);
   const current = proposed.some((a) => a.id === task) ? task : (proposed[0]?.id ?? null);
   const selected = useStretch(turnsBox, shell, meeting, source);
   useMore(shell, env, meeting, item.source.at === "file" ? (item.source.path.split(/[\\/]/).pop() ?? item.title) : item.title);
@@ -242,7 +250,9 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
     };
     return <Failed meeting={{ from: null, error: startError }} onRetry={retry} title="Could not open the recording" />;
   }
-  if (!loaded || (needsFile && source.at === "file") || (error && !meeting)) return <TurnsSkeleton />;
+  // A read that failed is the state line's alone: nothing under it pretends to load.
+  if (error && !meeting) return null;
+  if (!loaded || (needsFile && source.at === "file")) return <TurnsSkeleton />;
   if (!meeting || meeting.status === "empty") {
     return (
       <div
@@ -270,7 +280,6 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   return (
     <div data-meeting={meeting.status} className="flex min-h-0 flex-1 flex-col">
       {hasPlayer ? <PlayerRow meeting={meeting} player={player} span={span} /> : null}
-      {player.error ? <p className="px-3 pt-2 text-xs text-destructive">{player.error}</p> : null}
       <div ref={scroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {meeting.status === "failed" ? (
           <Failed meeting={meeting} onRetry={() => startMeeting(env, item.id).then(() => undefined, (err: unknown) => sayError(err, "Couldn't start it again"))} />
@@ -298,13 +307,19 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   );
 }
 
-/** The bar's tools: the Notes and Transcript switch once there are notes, then Find. */
+/**
+ * The bar's tools: the Notes and Transcript switch once there are notes, then
+ * Find, which gives way to the review stepper while tasks wait (meeting.html).
+ * While the meeting loads the bar holds one bone where the mode will be.
+ */
 export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState>) {
   const view = state ?? FIRST;
-  const { meeting } = useMeeting(env, item.id);
+  const { meeting, loaded, error } = useMeeting(env, item.id);
   const input = useRef<HTMLInputElement>(null);
-  if (!meeting || meeting.status === "empty") return null;
+  if (!meeting && !loaded) return <Skeleton data-meeting-bar-bone className="h-3 w-24" />;
+  if (!meeting || meeting.status === "empty" || (error && !meeting)) return null;
   const notes = meeting.status === "ready" && meeting.notes !== null;
+  const stepping = meeting.status === "ready" && proposedTasks(meeting).length > 0;
   const hits = view.find ? findHits(meeting.segments, view.find.query) : [];
   const index = hits.length && view.find ? ((view.find.index % hits.length) + hits.length) % hits.length : -1;
   const move = (by: number): void => {
@@ -324,7 +339,7 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
           </TabsList>
         </Tabs>
       ) : null}
-      {view.find ? (
+      {stepping ? null : view.find ? (
         <div data-meeting-find className="ms-auto flex min-w-0 items-center gap-1">
           <InputGroup className="h-6 w-56 rounded-md px-2 [&_svg:not([class*='size-'])]:size-3" leading={<Search />}>
             <GroupInput
@@ -349,20 +364,28 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
           {view.find.query.trim() ? (
             <span className="mx-1 whitespace-nowrap tabular-nums">{hits.length ? `${index + 1}/${hits.length}` : "None"}</span>
           ) : null}
-          <Button variant="ghost" size="icon-xs" aria-label="Previous match" disabled={hits.length < 2} onClick={() => move(-1)}>
-            <ChevronLeft />
-          </Button>
-          <Button variant="ghost" size="icon-xs" aria-label="Next match" disabled={hits.length < 2} onClick={() => move(1)}>
-            <ChevronRight />
-          </Button>
-          <Button variant="ghost" size="icon-xs" aria-label="Close find" onClick={() => setState({ ...view, find: null })}>
-            <X />
-          </Button>
+          <Tip label="Previous match">
+            <Button variant="ghost" size="icon-xs" aria-label="Previous match" disabled={hits.length < 2} onClick={() => move(-1)}>
+              <ChevronLeft />
+            </Button>
+          </Tip>
+          <Tip label="Next match">
+            <Button variant="ghost" size="icon-xs" aria-label="Next match" disabled={hits.length < 2} onClick={() => move(1)}>
+              <ChevronRight />
+            </Button>
+          </Tip>
+          <Tip label="Close find">
+            <Button variant="ghost" size="icon-xs" aria-label="Close find" onClick={() => setState({ ...view, find: null })}>
+              <X />
+            </Button>
+          </Tip>
         </div>
       ) : (
-        <Button variant="ghost" size="icon-xs" aria-label="Find" className="ms-auto text-muted-foreground" onClick={() => setState({ ...view, tab: "transcript", find: { query: "", index: 0 } })}>
-          <Search />
-        </Button>
+        <Tip label="Find">
+          <Button variant="ghost" size="icon-xs" aria-label="Find" className="ms-auto text-muted-foreground" onClick={() => setState({ ...view, tab: "transcript", find: { query: "", index: 0 } })}>
+            <Search />
+          </Button>
+        </Tip>
       )}
     </>
   );

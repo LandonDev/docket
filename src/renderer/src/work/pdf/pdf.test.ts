@@ -7,6 +7,7 @@ import { readRange, runBox } from "./engine";
 import { findOnPage } from "./find";
 import { COLUMN_TOP, currentPage, layOut, PAGE_GAP, quadsOf, scaleFor, scrollTarget, visibleRange, FIT_FLOOR, ZOOM_MAX } from "./layout";
 import { PdfNav } from "./nav";
+import { barFits } from "./PdfCanvas";
 import { fakeDoc } from "./testkit";
 
 afterEach(resetCites);
@@ -238,5 +239,15 @@ describe("citations", () => {
     expect(citeClick(event, host)).toBe(false);
     expect(prevented()).toBe(false);
     expect(host.show).not.toHaveBeenCalled();
+  });
+});
+
+describe("what fits in the bar", () => {
+  it("shows one fraction at a time under 560px: the stepper's count, not the pager", () => {
+    expect(barFits(520, true, false).pager).toBe(false);
+    expect(barFits(520, true, true).pager).toBe(false);
+    expect(barFits(600, true, false).pager).toBe(true);
+    expect(barFits(400, false, false).pager).toBe(true);
+    expect(barFits(0, true, false).pager).toBe(true);
   });
 });

@@ -86,19 +86,26 @@ export function Body(props: Props) {
   }, [handle, change]);
   const act = useCallback((work: Promise<SheetView>, fallback: string): Promise<void> => work.then((next) => sync.view(next), (error: unknown) => sayError(error, fallback)), [sync]);
 
-  useFeeds(shell, sync, view, state.sendError, state.dropped, changes, current, handle, locked, act);
+  const failed = state.failed ?? (typeof prepared === "string" ? prepared : null);
+  useFeeds(shell, sync, failed ? null : view, state.sendError, state.dropped && !failed, changes, current, handle, locked, act);
   useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act);
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const width = useWidth(box);
+  const frameRef = useCallback((node: HTMLDivElement | null) => {
+    frame.current = node;
+    setBox(node);
+  }, []);
 
   // The cell in hand, when a suggestion is laid in it: what the value replaces. Read on every render, which each laying causes.
   const was = selection ? sync.was(selection.sheet, selection.row, selection.column) : undefined;
 
-  const failed = state.failed ?? (typeof prepared === "string" ? prepared : null);
+  // A sheet that did not open says so once, in the body: the bar keeps no line about it.
   if (failed) return <EmptyState title="Couldn't open this sheet" line={failed} action={{ label: "Retry", onClick: () => void sync.open() }} />;
   if (!view || !book || prepared !== true) return <SheetSkeleton />;
   const Canvas = grid.Canvas;
   return (
     <div
-      ref={frame}
+      ref={frameRef}
       data-sheet-item={item.id}
       className="relative flex min-h-0 flex-1 flex-col"
       onPointerUp={(event) => {
@@ -117,7 +124,7 @@ export function Body(props: Props) {
         labels={LABELS}
         className="min-h-0 flex-1"
       />
-      {handle ? <Charts charts={view.charts} grid={grid} handle={handle} tick={state.tick} locked={locked} remove={(chart) => act(sync.host.chart(chart, true), "Couldn't remove the chart")} /> : null}
+      {handle ? <Charts charts={view.charts} grid={grid} handle={handle} tick={state.tick} locked={locked} width={chartWidth(width)} remove={(chart) => act(sync.host.chart(chart, true), "Couldn't remove the chart")} /> : null}
     </div>
   );
 }
@@ -150,7 +157,7 @@ function useFeeds(
   const name = view?.name;
   const missing = view?.missing;
   const readOnly = view?.readOnly;
-  const saveError = sendError ?? view?.saveError;
+  const saveError = view ? (sendError ?? view.saveError) : undefined;
   const store = view?.store;
   useEffect(() => {
     if (missing) shell.statusLine({ tone: "needs", word: `${name} moved`, detail: "Read only" });
@@ -161,6 +168,7 @@ function useFeeds(
     return () => shell.statusLine(null);
   }, [shell, sync, name, missing, readOnly, saveError, dropped, store]);
 
+  const opened = view !== null;
   const written = view?.written;
   const count = changes.changes.length;
   useEffect(() => {
@@ -173,7 +181,7 @@ function useFeeds(
 
   useEffect(() => {
     const list = changes.changes;
-    if (list.length === 0) return shell.review(null);
+    if (!opened || list.length === 0) return shell.review(null);
     const step = (to: number): void => {
       const next = list[to];
       if (!next) return;
@@ -191,12 +199,12 @@ function useFeeds(
     };
     shell.review(review);
     return () => shell.review(null);
-  }, [shell, sync, host, changes, current, handle, act]);
+  }, [shell, sync, host, opened, changes, current, handle, act]);
 }
 
 /** A selection of more than one cell: Ask over it with the range named, and More's Chart while it spans two columns. */
 function useSelectionFeed(
-  { source, shell }: Props,
+  { item, source, shell }: Props,
   sync: SheetSync,
   grid: SheetGrid,
   handle: SheetHandle | null,
@@ -215,7 +223,6 @@ function useSelectionFeed(
   useEffect(() => {
     const picked = held.current;
     if (!picked || !handle || !many) return shell.selection(null);
-    const sheetName = handle.store.get().sheets.find((s) => s.id === picked.sheet)?.name ?? "";
     const r = picked.range;
     const clipped = `${cellRef(r.startRow, r.startColumn)}:${cellRef(Math.min(r.endRow, r.startRow + QUOTE_ROWS - 1), Math.min(r.endColumn, r.startColumn + QUOTE_COLUMNS - 1))}`;
     const quote = grid
@@ -226,9 +233,9 @@ function useSelectionFeed(
     const at = pointer.current;
     const box = frame.current?.getBoundingClientRect();
     const rect = at ? new DOMRect(at.x, at.y, 0, 0) : new DOMRect(box?.left ?? 0, (box?.top ?? 0) + 40, box?.width ?? 0, 0);
-    shell.selection({ chip: { kind: "selection", label: sheetName ? `${picked.reference}, ${sheetName}` : picked.reference, ref: source, quote }, rect });
+    shell.selection({ chip: { kind: "selection", label: `${picked.reference}, ${item.title}`, ref: source, quote }, rect });
     return () => shell.selection(null);
-  }, [shell, handle, grid, key, many, source, pointer, frame]);
+  }, [shell, handle, grid, key, many, item.title, source, pointer, frame]);
 
   const wide = !!range && range.endColumn > range.startColumn && !locked && !!handle;
   const store = sync.state.view?.store;
@@ -275,38 +282,58 @@ const cellRef = (row: number, column: number): string => `${letters(column)}${ro
 // ── charts ───────────────────────────────────────────────────────────
 
 const CHART_WIDTH = 380;
+const CHART_MIN = 200;
+/** The grid's row numbers and a margin: what a chart leaves of the body's width. */
+const CHART_ROOM = 64;
+
+/** A chart's width in a body this wide: 380px, less where the body is narrower, never under 200. Width 0 is a body not yet measured. */
+export function chartWidth(body: number): number {
+  return body > 0 ? Math.max(CHART_MIN, Math.min(CHART_WIDTH, body - CHART_ROOM)) : CHART_WIDTH;
+}
+
+/** An element's width, kept as it resizes. */
+function useWidth(node: HTMLElement | null): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node]);
+  return width;
+}
 /** The chart's height for its bars: its padding, the title row, 22px a bar, the axis. */
 const chartHeight = (bars: number): number => 12 + 20 + 8 + Math.max(1, bars) * 22 + 8 + 16 + 12 + 2;
 
-function Charts({ charts, grid, handle, tick, locked, remove }: { charts: SheetChart[]; grid: SheetGrid; handle: SheetHandle; tick: number; locked: boolean; remove(chart: SheetChart): Promise<void> }) {
+function Charts({ charts, grid, handle, tick, locked, width, remove }: { charts: SheetChart[]; grid: SheetGrid; handle: SheetHandle; tick: number; locked: boolean; width: number; remove(chart: SheetChart): Promise<void> }) {
   const { active } = useGridState(handle.store);
   return (
     <>
       {charts
         .filter((chart) => chart.sheet === active)
         .map((chart) => (
-          <PlacedChart key={chart.id} chart={chart} grid={grid} handle={handle} tick={tick} locked={locked} remove={remove} />
+          <PlacedChart key={chart.id} chart={chart} grid={grid} handle={handle} tick={tick} locked={locked} width={width} remove={remove} />
         ))}
     </>
   );
 }
 
-function PlacedChart({ chart, grid, handle, tick, locked, remove }: { chart: SheetChart; grid: SheetGrid; handle: SheetHandle; tick: number; locked: boolean; remove(chart: SheetChart): Promise<void> }) {
+function PlacedChart({ chart, grid, handle, tick, locked, width, remove }: { chart: SheetChart; grid: SheetGrid; handle: SheetHandle; tick: number; locked: boolean; width: number; remove(chart: SheetChart): Promise<void> }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   // The values as the cells hold them now, suggestions laid in: a chart over a change shows what it would leave.
   const bars = useMemo(() => chartBars(grid.values(handle, chart.sheet, chart.range)), [grid, handle, chart.sheet, chart.range, tick]);
   const height = chartHeight(bars.length);
-  useEffect(() => grid.place(handle, chart, { width: CHART_WIDTH, height }, setSlot), [grid, handle, chart, height]);
+  useEffect(() => grid.place(handle, chart, { width, height }, setSlot), [grid, handle, chart, width, height]);
   if (!slot) return null;
-  return createPortal(<ChartObject chart={chart} bars={bars} locked={locked} remove={() => void remove(chart)} />, slot);
+  return createPortal(<ChartObject chart={chart} bars={bars} locked={locked} width={width} remove={() => void remove(chart)} />, slot);
 }
 
 /** One of our charts: plain bars on the neutral, named by the range's first column, one series, no legend. */
-export function ChartObject({ chart, bars, locked, remove }: { chart: SheetChart; bars: Bars[]; locked: boolean; remove(): void }) {
+export function ChartObject({ chart, bars, locked, width = CHART_WIDTH, remove }: { chart: SheetChart; bars: Bars[]; locked: boolean; width?: number; remove(): void }) {
   const { top, ticks } = chartTicks(bars.reduce((m, b) => Math.max(m, b.value), 0));
   const pct = (n: number): string => `${Math.max(0, Math.min(100, (n / top) * 100)).toFixed(1)}%`;
   return (
-    <div data-sheet-chart={chart.id} className="flex w-[380px] max-w-full flex-col gap-2 rounded-lg border border-border bg-background p-3" style={{ width: CHART_WIDTH }}>
+    <div data-sheet-chart={chart.id} className="flex max-w-full flex-col gap-2 rounded-lg border border-border bg-background p-3" style={{ width }}>
       <div className="flex h-5 min-w-0 items-center gap-2 text-xs">
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">{chart.title}</span>
         {locked ? null : (
@@ -405,10 +432,11 @@ export function SheetSkeleton() {
   );
 }
 
-/** While the sheet loads the bar holds one bone where the mode will be; after, the pane's own parts fill it, and Share (milestone 31). */
+/** While the sheet loads the bar holds one bone where the mode will be; after, the pane's own parts fill it, and Share on a LifeOS sheet (milestone 31). */
 export function Bar(props: Props) {
   const { view, book, failed } = useSheetSync(syncFor(props));
   if (failed) return null;
+  // ShareButton draws nothing for a source no guest link can reach (a file): only a LifeOS sheet shares.
   if (view && book) return <ShareButton env={props.env} source={props.source} title={props.item.title} />;
   return <Skeleton className="h-3 w-30" />;
 }
@@ -438,7 +466,7 @@ export function TabEnd(props: Props) {
       }}
       className="mx-1 shrink-0 gap-0"
     >
-      <TabsList aria-label="Open in" className="h-6 p-0.5">
+      <TabsList aria-label="Open in" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
         <TabsIndicator />
         <TabsTrigger value="tempcode" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
           TempCode

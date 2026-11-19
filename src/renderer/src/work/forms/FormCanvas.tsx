@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import type { FormBody, FormQuestion, FormResponses, FormView } from "@shared/contract-work-forms";
 import { Check, ChevronDown, CircleDot, Copy, FileText, MoreHorizontal, Plus, TextCursor, Trash2, X, CaseSensitive } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -6,7 +6,10 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Switch } from "../../components/ui/switch";
+import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
+import { Tip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
@@ -36,12 +39,16 @@ interface Slot {
   error: string | null;
   half: Half;
   publishing: boolean;
+  /** His edits, standing over the host's view until the save that carries them answers; kept when a save fails. */
+  edits: FormBody | null;
+  /** Why the last save failed, while his edits wait unsaved. */
+  saveError: string | null;
 }
 class FormStore {
   private slot: Slot;
   private readonly listeners = new Set<() => void>();
   constructor(half: Half) {
-    this.slot = { view: null, error: null, half, publishing: false };
+    this.slot = { view: null, error: null, half, publishing: false, edits: null, saveError: null };
   }
   get = (): Slot => this.slot;
   set = (patch: Partial<Slot>): void => {
@@ -78,6 +85,8 @@ export function Body(props: Props) {
   const slot = useSlot(store);
   const { view, error, half } = slot;
 
+  // A failed open is said once, on the state line with Retry; Retry opens it again.
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     host.open().then(
@@ -89,15 +98,26 @@ export function Body(props: Props) {
       live = false;
       off();
     };
-  }, [host, store]);
+  }, [host, store, attempt]);
   useEffect(() => {
     if (state?.half !== half) setState({ half });
   }, [half, state?.half, setState]);
 
   const [current, setCurrent] = useState(0);
   useFeeds(shell, host, store, view, current, setCurrent);
+  const saveError = slot.saveError;
+  useEffect(() => {
+    const retryOpen = (): void => {
+      store.set({ error: null });
+      setAttempt((n) => n + 1);
+    };
+    if (error) shell.statusLine({ tone: "failed", word: "Couldn't open this form", detail: error, action: { label: "Retry", run: retryOpen } });
+    else if (saveError) shell.statusLine({ tone: "failed", word: "Not saved", detail: saveError, action: { label: "Retry", run: () => saverOf(store, host).retry() } });
+    else shell.statusLine(null);
+    return () => shell.statusLine(null);
+  }, [shell, host, store, error, saveError]);
 
-  if (error) return <EmptyState title="Couldn't open this form" line={error} />;
+  if (error) return null;
   if (!view) return <FormSkeleton />;
   return (
     <div data-form className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -168,8 +188,9 @@ function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: Fo
 export function Bar(props: Props) {
   const host = hostFor(props);
   const store = storeOf(props.item.id, props.state?.half);
-  const { view, half, publishing } = useSlot(store);
-  if (!view) return null;
+  const { view, error, half, publishing } = useSlot(store);
+  // While the form loads the bar holds one bone where the switch will be, so the body never moves under it.
+  if (!view) return error ? null : <Skeleton data-form-bar-bone className="h-3 w-30" />;
   const publish = (): void => {
     store.set({ publishing: true });
     void run(host.publish(), store, "Couldn't publish the form").finally(() => store.set({ publishing: false }));
@@ -177,7 +198,7 @@ export function Bar(props: Props) {
   return (
     <>
       <Tabs value={half} onValueChange={(next) => store.set({ half: next as Half })} className="mx-1 shrink-0 gap-0">
-        <TabsList aria-label="Half" className="h-6 p-0.5">
+        <TabsList aria-label="Half" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
           <TabsIndicator />
           <TabsTrigger value="questions" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
             Questions
@@ -217,9 +238,11 @@ function LiveLink({ link, close }: { link: string; close(): Promise<void> }) {
       <a href={link} target="_blank" rel="noreferrer" className="min-w-0 truncate text-xs text-accent underline-offset-3 hover:underline">
         {shown}
       </a>
-      <Button variant="ghost" size="icon-xs" aria-label={copied ? "Copied" : "Copy link"} onClick={copy} className="text-muted-foreground">
-        {copied ? <Check /> : <Copy />}
-      </Button>
+      <Tip label={copied ? "Copied" : "Copy link"}>
+        <Button variant="ghost" size="icon-xs" aria-label={copied ? "Copied" : "Copy link"} onClick={copy} className="text-muted-foreground">
+          {copied ? <Check /> : <Copy />}
+        </Button>
+      </Tip>
       <Button
         variant="ghost"
         size="xs"
@@ -262,71 +285,81 @@ const SAVE_AFTER = 500;
 /**
  * His edits go to the host half a second after the last one, one save at a
  * time, each at the rev the host last answered (read when it goes, never
- * when it was typed). A save that fails drops only the edit it carried. A
- * pending edit is sent at once when the half closes.
+ * when it was typed). The edits stand in the store until a save of them
+ * answers; a save that fails keeps them, and the state line says so with
+ * Retry. A pending edit is sent at once when the half closes (`flush`).
  */
-function useSaver(host: FormHost, store: FormStore, setEdits: (f: (now: FormBody | null) => FormBody | null) => void): { later(next: FormBody): void } {
-  const state = useRef<{ timer: ReturnType<typeof setTimeout> | null; waiting: FormBody | null; busy: boolean; queued: FormBody | null } | null>(null);
-  state.current ??= { timer: null, waiting: null, busy: false, queued: null };
-  const s = state.current;
-  const send = useCallback(
-    (next: FormBody): void => {
-      if (s.busy) {
-        s.queued = next;
-        return;
-      }
-      const rev = store.get().view?.rev;
-      if (rev === undefined) return;
-      s.busy = true;
-      host
-        .save(rev, next)
-        .then(
-          (v) => store.set({ view: v }),
-          (e: unknown) => sayError(e, "Couldn't save the form"),
-        )
-        .finally(() => {
-          setEdits((now) => (now === next ? null : now));
-          s.busy = false;
-          const queued = s.queued;
-          s.queued = null;
-          if (queued) send(queued);
-        });
-    },
-    [host, store, setEdits, s],
-  );
-  useEffect(
-    () => () => {
-      if (!s.timer || !s.waiting) return;
-      clearTimeout(s.timer);
-      s.timer = null;
-      send(s.waiting);
-    },
-    [s, send],
-  );
-  return {
+interface Saver {
+  later(next: FormBody): void;
+  flush(): void;
+  retry(): Promise<void>;
+}
+const savers = new WeakMap<FormStore, Saver>();
+function saverOf(store: FormStore, host: FormHost): Saver {
+  const had = savers.get(store);
+  if (had) return had;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let waiting: FormBody | null = null;
+  let busy = false;
+  let queued: FormBody | null = null;
+  const send = (next: FormBody): Promise<void> => {
+    if (busy) {
+      queued = next;
+      return Promise.resolve();
+    }
+    const rev = store.get().view?.rev;
+    if (rev === undefined) return Promise.resolve();
+    busy = true;
+    return host
+      .save(rev, next)
+      .then(
+        (v) => store.set({ view: v, saveError: null, edits: store.get().edits === next ? null : store.get().edits }),
+        (e: unknown) => store.set({ saveError: e instanceof Error && e.message ? e.message : "The host did not answer" }),
+      )
+      .finally(() => {
+        busy = false;
+        const again = queued;
+        queued = null;
+        if (again) void send(again);
+      });
+  };
+  const saver: Saver = {
     later(next) {
-      s.waiting = next;
-      if (s.timer) clearTimeout(s.timer);
-      s.timer = setTimeout(() => {
-        s.timer = null;
-        s.waiting = null;
-        send(next);
+      store.set({ edits: next });
+      waiting = next;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        waiting = null;
+        void send(next);
       }, SAVE_AFTER);
     },
+    flush() {
+      if (!timer || !waiting) return;
+      clearTimeout(timer);
+      timer = null;
+      const next = waiting;
+      waiting = null;
+      void send(next);
+    },
+    retry() {
+      const edits = store.get().edits;
+      return edits ? send(edits) : Promise.resolve();
+    },
   };
+  savers.set(store, saver);
+  return saver;
 }
 
 function Questions({ view, host, store, current, onStep }: { view: FormView; host: FormHost; store: FormStore; current: number; onStep(n: number): void }) {
   // His edits stand over the host's view until the save that carries them answers.
-  const [edits, setEdits] = useState<FormBody | null>(null);
+  const { edits } = useSlot(store);
   const [focus, setFocus] = useState<string | null>(null);
-  const saver = useSaver(host, store, setEdits);
+  const saver = saverOf(store, host);
+  useEffect(() => () => saver.flush(), [saver]);
   const body = edits ?? view.body;
   const editable = view.state !== "closed";
-  const edit = (next: FormBody): void => {
-    setEdits(next);
-    saver.later(next);
-  };
+  const edit = (next: FormBody): void => saver.later(next);
 
   const shown = useMemo(() => shownQuestions(body, edits ? [] : view.suggestions), [body, edits, view.suggestions]);
   const list = useRef<HTMLDivElement>(null);
@@ -366,6 +399,7 @@ function Questions({ view, host, store, current, onStep }: { view: FormView; hos
                 focused={focus === s.q.id && !s.mark}
                 current={s.change !== undefined && s.change === current}
                 editable={editable && !s.mark}
+                opens={editable || s.change !== undefined}
                 onFocus={() => {
                   if (s.change !== undefined) onStep(s.change);
                   else setFocus(s.q.id);
@@ -391,14 +425,15 @@ function Jump({ sections }: { sections: Shown[] }) {
   return (
     <nav aria-label="Sections" className="hidden w-44 shrink-0 flex-col gap-0.5 py-6 ps-4 pe-2 @[640px]:flex">
       {sections.map((s) => (
-        <button
+        <Button
           key={s.q.id}
-          type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => document.getElementById(`fq-${s.q.id}`)?.scrollIntoView({ block: "start" })}
-          className="h-7 truncate rounded-md px-2 text-start text-[13px] text-muted-foreground transition-[background-color,color] duration-(--dur-hover) hover:bg-foreground/5 hover:text-foreground"
+          className="justify-start font-normal text-muted-foreground hover:text-foreground"
         >
-          {s.q.label}
-        </button>
+          <span className="truncate">{s.q.label}</span>
+        </Button>
       ))}
     </nav>
   );
@@ -438,6 +473,7 @@ function QuestionBlock({
   focused,
   current,
   editable,
+  opens,
   onFocus,
   onChange,
 }: {
@@ -445,11 +481,21 @@ function QuestionBlock({
   focused: boolean;
   current: boolean;
   editable: boolean;
+  /** Whether a press does anything: opens the question to edit, or steps to its change. A closed form's questions only read. */
+  opens: boolean;
   onFocus(): void;
   onChange(q: FormQuestion | null): void;
 }) {
   const { q, mark, was } = shown;
-  const tint = mark === "add" ? "bg-(--add-bg)" : mark === "del" ? "bg-(--del-bg)" : focused ? "bg-muted" : "hover:bg-foreground/4";
+  const editing = focused && editable;
+  const tint = mark === "add" ? "bg-(--add-bg)" : mark === "del" ? "bg-(--del-bg)" : editing ? "bg-muted" : opens ? "hover:bg-foreground/4" : "";
+  // Reached by the keyboard too: Tab lands on a question, Enter or Space opens it. Keys inside its own fields are theirs.
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    onFocus();
+  };
+  const press = opens && !editing ? { role: "button", tabIndex: 0, onClick: onFocus, onKeyDown } : {};
   const outline = current ? "outline-1 outline-foreground/40 outline-solid" : "";
   const label =
     mark === "change" && was && was.label !== q.label ? (
@@ -463,8 +509,8 @@ function QuestionBlock({
     );
   if (q.type === "section")
     return (
-      <div id={`fq-${q.id}`} data-q={q.id} data-change={shown.change} onClick={onFocus} className={`mt-5 rounded-xl px-3 py-1 transition-[background-color] duration-(--dur-hover) ${tint} ${outline}`}>
-        {focused && editable ? (
+      <div id={`fq-${q.id}`} data-q={q.id} data-change={shown.change} {...press} className={`focus-ring mt-5 rounded-xl px-3 py-1 transition-[background-color] duration-(--dur-hover) ${tint} ${outline}`}>
+        {editing ? (
           <SectionEdit q={q} onChange={onChange} />
         ) : (
           <h2 className="text-base leading-6 font-semibold tracking-[-0.01em]">{label}</h2>
@@ -478,10 +524,10 @@ function QuestionBlock({
       data-change={shown.change}
       data-mark={mark}
       aria-current={focused || current ? "true" : undefined}
-      onClick={onFocus}
-      className={`rounded-xl p-3 transition-[background-color] duration-(--dur-hover) ${tint} ${outline}`}
+      {...press}
+      className={`focus-ring rounded-xl p-3 transition-[background-color] duration-(--dur-hover) ${tint} ${outline}`}
     >
-      {focused && editable ? (
+      {editing ? (
         <input
           aria-label="Question"
           autoFocus
@@ -495,8 +541,8 @@ function QuestionBlock({
           {q.required && mark !== "del" ? <span className="text-muted-foreground"> *</span> : null}
         </div>
       )}
-      <Field q={q} was={mark === "change" ? was : undefined} editing={focused && editable} onChange={onChange} />
-      {focused && editable ? <EditRow q={q} onChange={onChange} /> : null}
+      <Field q={q} was={mark === "change" ? was : undefined} editing={editing} onChange={onChange} />
+      {editing ? <EditRow q={q} onChange={onChange} /> : null}
     </div>
   );
 }
@@ -511,23 +557,26 @@ function SectionEdit({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestio
         onChange={(e) => onChange({ ...q, label: e.target.value })}
         className="block min-w-0 flex-1 rounded-md border-0 bg-transparent text-base leading-6 font-semibold tracking-[-0.01em]"
       />
-      <Button variant="ghost" size="icon-xs" aria-label="Delete section" className="text-muted-foreground" onClick={() => onChange(null)}>
-        <Trash2 />
-      </Button>
+      <Tip label="Delete section">
+        <Button variant="ghost" size="icon-xs" aria-label="Delete section" className="text-muted-foreground" onClick={() => onChange(null)}>
+          <Trash2 />
+        </Button>
+      </Tip>
     </div>
   );
 }
 
-const FIELD = "mt-2 h-8 max-w-[360px] rounded-lg border border-input bg-background";
+/** The answer's box; each type sets its own height and width, so none overrides another's. */
+const FIELD = "mt-2 rounded-lg border border-input bg-background";
 
 /** The answer's place as the filler sees it; a choice's options, editable in place while he edits the question. */
 function Field({ q, was, editing, onChange }: { q: FormQuestion; was?: FormQuestion; editing: boolean; onChange(q: FormQuestion): void }) {
-  if (q.type === "short") return <div data-field className={FIELD} />;
-  if (q.type === "long") return <div data-field className={`${FIELD} h-[72px] max-w-none`} />;
+  if (q.type === "short") return <div data-field className={`${FIELD} h-8 max-w-[360px]`} />;
+  if (q.type === "long") return <div data-field className={`${FIELD} h-[72px]`} />;
   if (editing) return <OptionsEdit q={q} onChange={onChange} />;
   if (q.type === "dropdown")
     return (
-      <div data-field className={`${FIELD} flex max-w-[200px] items-center justify-between ps-3 pe-2 text-[13px] text-muted-foreground`}>
+      <div data-field className={`${FIELD} flex h-8 max-w-[200px] items-center justify-between ps-3 pe-2 text-[13px] text-muted-foreground`}>
         Choose
         <ChevronDown className="size-3" />
       </div>
@@ -560,9 +609,11 @@ function OptionsEdit({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestio
             className="min-w-0 flex-1 rounded-md border-0 bg-transparent text-sm leading-5"
           />
           {options.length > 1 ? (
-            <Button variant="ghost" size="icon-xs" aria-label={`Remove ${o || `option ${i + 1}`}`} className="text-muted-foreground" onClick={() => set(options.filter((_, j) => j !== i))}>
-              <X />
-            </Button>
+            <Tip label="Remove option">
+              <Button variant="ghost" size="icon-xs" aria-label={`Remove ${o || `option ${i + 1}`}`} className="text-muted-foreground" onClick={() => set(options.filter((_, j) => j !== i))}>
+                <X />
+              </Button>
+            </Tip>
           ) : null}
         </div>
       ))}
@@ -605,9 +656,12 @@ function EditRow({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestion | 
         Required
       </label>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="More" className="text-muted-foreground" />}>
-          <MoreHorizontal />
-        </DropdownMenuTrigger>
+        <Tooltip>
+          <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="More" className="text-muted-foreground" />} />}>
+            <MoreHorizontal />
+          </TooltipTrigger>
+          <TooltipContent>More</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => onChange(null)}>
             <Trash2 />
@@ -698,35 +752,35 @@ function ResponseTable({ view, got, item, shell }: { view: FormView; got: FormRe
           ))}
         </div>
       ) : null}
-      <div className="overflow-x-auto overflow-y-hidden border-t border-border">
-        <table ref={table} className="w-full min-w-max text-[13px] leading-5">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="w-4 ps-4 pe-0">
+      <div className="border-t border-border">
+        <DataTable ref={table} className="min-w-max leading-5">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-4 pe-0 first:pl-4">
                 <Checkbox aria-label="Select all" checked={all} onCheckedChange={() => setPicked(all ? new Set() : new Set(got.rows.map((_, i) => i)))} />
-              </th>
+              </TableHead>
               {got.columns.map((c, i) => (
-                <th key={c.id} className={`h-8 px-3 text-xs font-medium whitespace-nowrap text-muted-foreground last:pe-4 ${i === got.columns.length - 1 ? "text-end" : "text-start"}`}>
+                <TableHead key={c.id} className={`last:pr-4 ${i === got.columns.length - 1 ? "text-end" : ""}`}>
                   {c.label}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {got.rows.map((r, i) => (
-              <tr key={i} data-picked={picked.has(i) || undefined} className={`border-b border-border ${picked.has(i) ? "bg-(--sel-bg)" : ""}`}>
-                <td className="w-4 ps-4 pe-0">
+              <TableRow key={i} data-picked={picked.has(i) || undefined} className={picked.has(i) ? "bg-(--sel-bg)" : ""}>
+                <TableCell className="w-4 pe-0 first:pl-4">
                   <Checkbox aria-label="Select" checked={picked.has(i)} onCheckedChange={() => toggle(i)} />
-                </td>
+                </TableCell>
                 {r.map((v, j) => (
                   <Cell key={j} last={j === r.length - 1}>
                     {j === r.length - 1 ? when(v) : v}
                   </Cell>
                 ))}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </DataTable>
       </div>
     </div>
   );
@@ -738,7 +792,7 @@ const when = (v: string): string => {
 };
 
 function Cell({ last, children }: { last: boolean; children: ReactNode }) {
-  return <td className={`h-8 max-w-[320px] truncate px-3 whitespace-nowrap ${last ? "pe-4 text-end text-muted-foreground tabular-nums" : ""}`}>{children}</td>;
+  return <TableCell className={`h-8 max-w-[320px] truncate last:pr-4 ${last ? "text-end text-muted-foreground" : ""}`}>{children}</TableCell>;
 }
 
 function BarRow({ label, count, max }: { label: string; count: number; max: number }) {

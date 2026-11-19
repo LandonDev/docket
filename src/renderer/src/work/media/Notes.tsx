@@ -47,8 +47,9 @@ export function Notes({
             } ${waiting ? `bg-(--add-bg) ${on ? "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--success)_50%,transparent)]" : ""}` : on ? "bg-muted" : "hover:bg-foreground/5"}`}
           >
             {timed ? <time className={`text-xs leading-5 tabular-nums ${on ? "text-foreground" : "text-muted-foreground"}`}>{at(n)}</time> : null}
-            {n.kind === "chapter" ? <span /> : <Author note={n} />}
-            <span className={`min-w-0 text-pretty ${n.resolved ? "text-muted-foreground line-through decoration-muted-foreground/60" : ""}`}>
+            {/* A chapter has no author: its title takes the author's column too, so it starts 8px after its time. */}
+            {n.kind === "chapter" ? null : <Author note={n} />}
+            <span className={`min-w-0 text-pretty ${n.kind === "chapter" ? "col-span-2" : ""} ${n.resolved ? "text-muted-foreground line-through decoration-muted-foreground/60" : ""}`}>
               {n.kind === "chapter" ? <span className="font-medium">{n.body}</span> : who.agent ? n.body : <><b className="font-medium text-muted-foreground">{who.name}</b> {n.body}</>}
             </span>
           </button>

@@ -17,13 +17,15 @@ export interface NavState {
   width: number;
   /** The stepper is in the bar, so the kind's tools give it room. */
   reviewing: boolean;
+  /** The file did not open, or waits for its password: no pages are coming, so the bar holds no bone for them. */
+  shut: boolean;
   find: { open: boolean; query: string; hits: FindHit[]; current: number; searching: boolean };
 }
 
 const CLOSED: NavState["find"] = { open: false, query: "", hits: [], current: -1, searching: false };
 
 export class PdfNav {
-  private state: NavState = { page: 1, pages: 0, zoom: "fit", width: 0, reviewing: false, find: CLOSED };
+  private state: NavState = { page: 1, pages: 0, zoom: "fit", width: 0, reviewing: false, shut: false, find: CLOSED };
   private listeners = new Set<() => void>();
   private doc: PdfDoc | null = null;
   private search: AbortController | null = null;
@@ -59,6 +61,9 @@ export class PdfNav {
   }
   measured(width: number): void {
     if (Math.abs(width - this.state.width) >= 1) this.set({ width });
+  }
+  shut(shut: boolean): void {
+    if (shut !== this.state.shut) this.set({ shut });
   }
   review(reviewing: boolean): void {
     if (reviewing !== this.state.reviewing) this.set({ reviewing });

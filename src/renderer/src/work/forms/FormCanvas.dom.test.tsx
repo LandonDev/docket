@@ -209,6 +209,65 @@ describe("the form kind", () => {
     }
   });
 
+  it("holds a bone in the bar while the form loads, and says a failed open on the state line with Retry", async () => {
+    open(view());
+    let fail: (e: Error) => void = () => undefined;
+    formHost.open.mockImplementationOnce(() => new Promise((_, no) => (fail = no)));
+    await found("[data-form-bar-bone]");
+    expect(document.querySelector("[data-form-loading]")).not.toBeNull();
+    await waitFor(() => expect(formHost.open).toHaveBeenCalled());
+    fail(new Error("The host did not answer"));
+    await waitFor(() => expect(screen.getByText("Couldn't open this form")).toBeTruthy());
+    expect(document.querySelector("[data-form-loading]")).toBeNull();
+    expect(document.querySelector("[data-form-bar-bone]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await found("[data-form]");
+    expect(screen.queryByText("Couldn't open this form")).toBeNull();
+  });
+
+  it("keeps his edit when a save fails, says so on the state line, and Retry sends it again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(view());
+      await found("[data-form]");
+      formHost.save.mockRejectedValueOnce(new Error("The host did not answer"));
+      fireEvent.click(document.querySelector('[data-q="name"]')!);
+      const input = await waitFor(() => screen.getByRole("textbox", { name: "Question" }));
+      fireEvent.change(input, { target: { value: "Full name" } });
+      await act(async () => void vi.advanceTimersByTime(600));
+      await waitFor(() => expect(screen.getByText("Not saved")).toBeTruthy());
+      expect((screen.getByRole("textbox", { name: "Question" }) as HTMLInputElement).value).toBe("Full name");
+      // Over to Responses and back: the unsaved edit is still his.
+      fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Questions" }));
+      expect(document.querySelector('[data-q="name"]')?.textContent).toContain("Full name");
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await waitFor(() => expect(formHost.save).toHaveBeenCalledTimes(2));
+      expect(formHost.save.mock.calls[1][1].questions[0].label).toBe("Full name");
+      await waitFor(() => expect(screen.queryByText("Not saved")).toBeNull());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens a question from the keyboard, and a closed form's questions only read", async () => {
+    open(view());
+    await found("[data-form]");
+    const q = document.querySelector<HTMLElement>('[data-q="name"]')!;
+    expect(q.tabIndex).toBe(0);
+    expect(q.getAttribute("role")).toBe("button");
+    fireEvent.keyDown(q, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Question" })).toBeTruthy());
+    cleanup();
+    open(view({ state: "closed", closedAt: 1, link: "https://tempcode.landonhale.com/f/x" }));
+    await found("[data-form-closed]");
+    const closed = document.querySelector<HTMLElement>('[data-q="name"]')!;
+    expect(closed.getAttribute("role")).toBeNull();
+    expect(closed.className).not.toContain("hover:bg-foreground/4");
+    fireEvent.click(closed);
+    expect(screen.queryByRole("textbox", { name: "Question" })).toBeNull();
+  });
+
   it("shows the responses: one summary line, the choice's bars and the table, newest first", async () => {
     open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
     await found("[data-form]");
@@ -217,6 +276,7 @@ describe("the form kind", () => {
     expect(table.textContent).toContain("3 responses, the last");
     expect(screen.getByRole("img", { name: "Game: Valorant 2, Rocket League 1, Super Smash Bros. Ultimate 0" })).toBeTruthy();
     expect([...table.querySelectorAll("tbody tr")].map((r) => r.querySelectorAll("td")[1].textContent)).toEqual(["Marcus Lee", "Ava Thompson", "Jordan Kim"]);
+    expect(table.querySelector('[data-slot="table"]')).not.toBeNull();
   });
 });
 

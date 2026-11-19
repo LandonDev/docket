@@ -328,6 +328,9 @@ const Page = memo(function Page({
   const picture = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
   const [painted, setPainted] = useState(false);
+  // A paint pdf.js refused: the page says so in its place, with Retry.
+  const [failed, setFailed] = useState(false);
+  const [tries, setTries] = useState(0);
   const [scan, setScan] = useState(false);
   const [region, setRegion] = useState<Bbox | null>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -339,9 +342,10 @@ const Page = memo(function Page({
     const job = new AbortController();
     // A zoom repaints after the column settles, not on every step of it.
     const wait = setTimeout(() => {
+      setFailed(false);
       doc.paint(page, host, scale, words.current, job.signal).then(
         () => !job.signal.aborted && setPainted(true),
-        () => undefined,
+        () => !job.signal.aborted && setFailed(true),
       );
     }, painted ? 120 : 0);
     return () => {
@@ -349,7 +353,7 @@ const Page = memo(function Page({
       job.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, page, scale]);
+  }, [doc, page, scale, tries]);
   // What pdf.js holds for the page goes when the page leaves the window.
   useEffect(() => () => doc.release(page), [doc, page]);
   useEffect(() => {
@@ -410,6 +414,19 @@ const Page = memo(function Page({
     >
       <div ref={picture} aria-hidden="true" className="absolute inset-0" />
       {!painted ? <div aria-hidden="true" className="absolute inset-0 bg-(--paper)" /> : null}
+      {failed ? (
+        <div data-pdf-page-failed className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-[13px] leading-5 text-[color-mix(in_srgb,var(--paper-ink)_60%,transparent)]">
+          Couldn't draw this page
+          <Button
+            variant="ghost"
+            size="xs"
+            className="text-(--paper-ink) hover:bg-[color-mix(in_srgb,var(--paper-ink)_6%,transparent)] active:bg-[color-mix(in_srgb,var(--paper-ink)_12%,transparent)]"
+            onClick={() => setTries((n) => n + 1)}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
       <div ref={words} data-pdf-text className="absolute inset-0" />
       {overlay}
       {region ? <span data-pdf-region style={boxStyle(region)} className="pointer-events-none absolute bg-(--sel-bg-paper) outline-1 outline-(--accent)" /> : null}

@@ -168,7 +168,7 @@ export function usePlayer(environmentId: string, audio: { path: string; bytes: n
       a.addEventListener("ended", () => setPlaying(false));
       a.addEventListener("error", () => {
         // A copy that would not play is dropped, so the next Play reads it again.
-        setError("The recording would not play.");
+        setError("Its file would not decode.");
         setPlaying(false);
         if (element.current === a) element.current = null;
         if (url.current) URL.revokeObjectURL(url.current);
@@ -177,7 +177,7 @@ export function usePlayer(environmentId: string, audio: { path: string; bytes: n
       element.current = a;
       return a;
     } catch (err) {
-      if (!abort.signal.aborted) setError(`The recording could not be read: ${err instanceof Error ? err.message : String(err)}`);
+      if (!abort.signal.aborted) setError(`It could not be read: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     } finally {
       if (loadingRef.current === abort) loadingRef.current = null;
@@ -186,11 +186,12 @@ export function usePlayer(environmentId: string, audio: { path: string; bytes: n
   }, [environmentId, path, bytes]);
 
   const start = useCallback(() => {
+    setError(null);
     void ensure().then((a) => {
       if (!a) return;
       a.play().catch((err: unknown) => {
         // A pause before the play settled is not a failure.
-        if (!(err instanceof DOMException && err.name === "AbortError")) setError("The recording would not play.");
+        if (!(err instanceof DOMException && err.name === "AbortError")) setError("It would not start.");
       });
     });
   }, [ensure]);

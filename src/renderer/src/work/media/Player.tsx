@@ -4,6 +4,8 @@ import type { FrameTable, MediaNote, MediaRegion, MediaVersion } from "@shared/c
 import { RowsMenu } from "../../chrome/menuRows";
 import { Pause, Play } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
+import { Tip } from "../../components/tip";
+import { TooltipProvider } from "../../components/ui/tooltip";
 import { chordKey } from "../../lib/keys";
 import { Comment, FullScreen, Volume, VolumeOff } from "../icons";
 import { RegionLayer } from "./parts";
@@ -229,7 +231,7 @@ export function Player({
     <div
       data-media-player
       tabIndex={0}
-      className="focus-ring min-w-0 px-3 pt-3"
+      className="focus-ring @container min-w-0 px-3 pt-3"
       onKeyDown={(e) => {
         if (!table || chordKey(e)) return;
         // A focused control keeps its own keys: Space presses the button, the arrows move in a menu.
@@ -245,7 +247,8 @@ export function Player({
         e.preventDefault();
       }}
     >
-      <div ref={frameBox} className={versions.length > 1 ? "grid grid-cols-2 gap-2" : ""}>
+      {/* Two cuts sit side by side from a 600px player; narrower, one over the other, so neither shrinks to a sliver. */}
+      <div ref={frameBox} data-media-cuts={versions.length > 1 || undefined} className={versions.length > 1 ? "grid gap-2 @[600px]:grid-cols-2" : ""}>
         {versions.map((v, i) => (
           <Screen
             key={v.id}
@@ -345,50 +348,60 @@ export function Player({
         </div>
       </div>
 
-      {/* The transport. */}
-      <div className="-mx-1 flex h-8 items-center gap-0.5">
-        <Button variant="ghost" size="icon-sm" aria-label={paused ? "Play" : "Pause"} disabled={!table} onClick={toggle}>
-          {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
-        </Button>
-        <span className="mx-1 text-[13px] leading-5 whitespace-nowrap tabular-nums">
-          {clock(table ? frameStart(table, frame) - start : 0)} <span className="text-muted-foreground">/ {clock(table ? tableDuration(table) : 0)}</span>
-        </span>
-        <Button variant="ghost" size="icon-xs" aria-label="Comment at this frame" disabled={!table} onClick={() => onComment(frame, track.current ? new DOMRect(track.current.getBoundingClientRect().left + xOf(frame) * track.current.getBoundingClientRect().width, track.current.getBoundingClientRect().top, 0, 24) : null)}>
-          <Comment className="size-3.5" />
-        </Button>
-        <span className="ms-auto flex items-center gap-0.5">
-          <RowsMenu
-            label="Speed"
-            align="end"
-            rows={SPEEDS.map((s) => ({ kind: "item" as const, id: String(s), label: `${s}×`, checked: s === rate }))}
-            onPick={(id) => {
-              const s = Number(id);
-              setRate(s);
-              for (const v of all()) v.playbackRate = s;
-            }}
-            trigger={
-              <Button variant="ghost" size="xs" className="w-10 font-normal text-muted-foreground tabular-nums">
-                {rate}×
+      {/* The transport: its buttons' labels share one hover delay. */}
+      <TooltipProvider>
+        <div className="-mx-1 flex h-8 items-center gap-0.5">
+          <Tip label={paused ? "Play" : "Pause"}>
+            <Button variant="ghost" size="icon-sm" aria-label={paused ? "Play" : "Pause"} disabled={!table} onClick={toggle}>
+              {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
+            </Button>
+          </Tip>
+          <span className="mx-1 text-[13px] leading-5 whitespace-nowrap tabular-nums">
+            {clock(table ? frameStart(table, frame) - start : 0)} <span className="text-muted-foreground">/ {clock(table ? tableDuration(table) : 0)}</span>
+          </span>
+          <Tip label="Comment at this frame">
+            <Button variant="ghost" size="icon-xs" aria-label="Comment at this frame" disabled={!table} onClick={() => onComment(frame, track.current ? new DOMRect(track.current.getBoundingClientRect().left + xOf(frame) * track.current.getBoundingClientRect().width, track.current.getBoundingClientRect().top, 0, 24) : null)}>
+              <Comment className="size-3.5" />
+            </Button>
+          </Tip>
+          <span className="ms-auto flex items-center gap-0.5">
+            <RowsMenu
+              label="Speed"
+              align="end"
+              rows={SPEEDS.map((s) => ({ kind: "item" as const, id: String(s), label: `${s}×`, checked: s === rate }))}
+              onPick={(id) => {
+                const s = Number(id);
+                setRate(s);
+                for (const v of all()) v.playbackRate = s;
+              }}
+              trigger={
+                <Button variant="ghost" size="xs" className="w-10 font-normal text-muted-foreground tabular-nums">
+                  {rate}×
+                </Button>
+              }
+            />
+            <Tip label={muted ? "Sound on" : "Sound off"}>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={muted ? "Sound on" : "Sound off"}
+                className="text-muted-foreground"
+                onClick={() => {
+                  setMuted(!muted);
+                  for (const v of all()) v.muted = !muted;
+                }}
+              >
+                {muted ? <VolumeOff className="size-3.5" /> : <Volume className="size-3.5" />}
               </Button>
-            }
-          />
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={muted ? "Sound on" : "Sound off"}
-            className="text-muted-foreground"
-            onClick={() => {
-              setMuted(!muted);
-              for (const v of all()) v.muted = !muted;
-            }}
-          >
-            {muted ? <VolumeOff className="size-3.5" /> : <Volume className="size-3.5" />}
-          </Button>
-          <Button variant="ghost" size="icon-xs" aria-label="Full screen" className="text-muted-foreground" onClick={() => void frameBox.current?.requestFullscreen?.()}>
-            <FullScreen className="size-3.5" />
-          </Button>
-        </span>
-      </div>
+            </Tip>
+            <Tip label="Full screen">
+              <Button variant="ghost" size="icon-xs" aria-label="Full screen" className="text-muted-foreground" onClick={() => void frameBox.current?.requestFullscreen?.()}>
+                <FullScreen className="size-3.5" />
+              </Button>
+            </Tip>
+          </span>
+        </div>
+      </TooltipProvider>
     </div>
   );
 }

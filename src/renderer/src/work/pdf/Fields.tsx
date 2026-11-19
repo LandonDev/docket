@@ -76,7 +76,7 @@ function FieldBox({ field, current, pageHeight, signature, actions }: { field: P
         <button
           type="button"
           onClick={actions.sign}
-          className="inline-flex h-[22px] items-center gap-1 rounded-sm border border-dashed border-[color-mix(in_srgb,var(--paper-ink)_50%,transparent)] px-2 text-xs font-medium text-(--paper-ink) transition-[background-color,scale] duration-(--dur-fast) ease-(--ease-out) hover:bg-[color-mix(in_srgb,var(--paper-ink)_6%,transparent)] active:scale-[0.96] motion-reduce:active:scale-100"
+          className="inline-flex h-[22px] items-center gap-1 rounded-sm border border-dashed border-[color-mix(in_srgb,var(--paper-ink)_50%,transparent)] px-2 text-xs font-medium text-(--paper-ink) transition-[background-color] duration-(--dur-hover) hover:bg-[color-mix(in_srgb,var(--paper-ink)_6%,transparent)] active:bg-[color-mix(in_srgb,var(--paper-ink)_12%,transparent)] active:transition-none"
         >
           <PenLine className="size-3" />
           Sign

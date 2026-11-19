@@ -15,7 +15,7 @@ import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import type { DashHost } from "./host";
-import { niceMax } from "./DashboardCanvas";
+import { axis, isTimeSeries } from "./DashboardCanvas";
 
 const host = vi.hoisted(() => ({
   current: null as ReturnType<typeof import("../canvas/testkit").fakeHost> | null,
@@ -144,7 +144,7 @@ describe("the dashboard kind", () => {
     open({ ...base, blocks: [...base.blocks, { id: "b4", kind: "text", text: "Rivera Dental pays slowest.", proposed: { by: "agent:env:t1", at: 1 } }] });
     const block = await found('[data-block="b4"]');
     expect(block.className).toContain("bg-(--add-bg)");
-    await waitFor(() => expect(screen.getByText("1/1")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy());
     expect(document.querySelector("[data-dash-asof]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(dashHost.review).toHaveBeenCalledWith({ ids: ["b4"] }, "accept"));
@@ -164,10 +164,62 @@ describe("the dashboard kind", () => {
     open(page({ blocks: [], asOf: null }));
     await waitFor(() => expect(screen.getByText("Ask for a number")).toBeTruthy());
   });
+
+  it("stresses the current bar only on a run of periods", async () => {
+    const base = page();
+    const chart = { ...base.blocks[1], bars: [{ label: "Valorant", value: 4 }, { label: "Marvel Rivals", value: 0 }] } as (typeof base.blocks)[number];
+    open({ ...base, blocks: [base.blocks[0], chart] });
+    const body = await found("[data-dashboard]");
+    expect(body.querySelector('[data-bar="now"]')).toBeNull();
+    cleanup();
+    open(page());
+    const months = await found("[data-dashboard]");
+    expect(months.querySelectorAll('[data-bar="now"]')).toHaveLength(1);
+  });
+
+  it("says a page out of date in the bar, before its as of", async () => {
+    open(page({ stale: true }));
+    const asOf = await found("[data-dash-asof]");
+    expect(asOf.textContent).toMatch(/^Out of dateAs of /);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(document.querySelector("[data-dash-asof]")?.textContent).toMatch(/^As of /));
+  });
+
+  it("holds a bone in the bar while the page loads, and says a failed open on the state line with Retry", async () => {
+    open(page());
+    let fail: (e: Error) => void = () => undefined;
+    dashHost.open.mockImplementationOnce(() => new Promise((_, no) => (fail = no)));
+    await found("[data-dash-bar-bone]");
+    expect(document.querySelector("[data-dashboard-loading]")).not.toBeNull();
+    await waitFor(() => expect(dashHost.open).toHaveBeenCalled());
+    fail(new Error("The sheet is gone"));
+    await waitFor(() => expect(screen.getByText("Couldn't open this dashboard")).toBeTruthy());
+    expect(document.querySelector("[data-dashboard-loading]")).toBeNull();
+    expect(document.querySelector("[data-dash-bar-bone]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await found("[data-dashboard]");
+    expect(screen.queryByText("Couldn't open this dashboard")).toBeNull();
+  });
 });
 
 describe("the chart's axis", () => {
-  it("tops out at a round number over the largest bar", () => {
-    expect([niceMax(12300), niceMax(9800), niceMax(3), niceMax(0)]).toEqual([20000, 10000, 5, 1]);
+  it("steps in three round steps whose top clears the largest bar, whole steps for whole numbers", () => {
+    expect(axis(12300, true)).toEqual({ step: 5000, top: 15000 });
+    expect(axis(9800, true)).toEqual({ step: 5000, top: 15000 });
+    expect(axis(5, true)).toEqual({ step: 2, top: 6 });
+    expect(axis(3, true)).toEqual({ step: 1, top: 3 });
+    expect(axis(2, true)).toEqual({ step: 1, top: 3 });
+    expect(axis(0.6, false).step).toBeCloseTo(0.2);
+    expect(axis(0, true)).toEqual({ step: 1, top: 3 });
+  });
+
+  it("knows a run of periods from categories", () => {
+    expect(isTimeSeries(["Oct", "Nov"])).toBe(true);
+    expect(isTimeSeries(["June", "July", "August"])).toBe(true);
+    expect(isTimeSeries(["Q1 2026", "Q2 2026"])).toBe(true);
+    expect(isTimeSeries(["2025", "2026"])).toBe(true);
+    expect(isTimeSeries(["2026-10", "2026-11"])).toBe(true);
+    expect(isTimeSeries(["Valorant", "Marvel Rivals"])).toBe(false);
+    expect(isTimeSeries(["Nov"])).toBe(false);
   });
 });

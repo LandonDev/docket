@@ -7,6 +7,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
+import { Tip, TruncateTip } from "../../components/tip";
 import { Lifeos, TaskAdd } from "../icons";
 import { dueOf, markRuns, progressLine, speakerName, timeOf, waveBars, type FindHit } from "./model";
 import { SPEEDS, type Player, type Speed } from "./player";
@@ -87,9 +88,11 @@ export function PlayerRow({ meeting, player, span }: { meeting: Pick<Meeting, "d
   const total = timeOf(meeting.durationSec, meeting);
   return (
     <div data-meeting-player className="flex h-10 min-w-0 shrink-0 items-center gap-1 border-b border-border pr-2 pl-1.5">
-      <Button variant="ghost" size="icon-sm" aria-label={player.playing ? "Pause" : "Play"} disabled={!player.playable} onClick={player.toggle}>
-        {player.loading ? <BusyLabel busy label="" /> : player.playing ? <Pause /> : <Play />}
-      </Button>
+      <Tip label={player.playing ? "Pause" : "Play"}>
+        <Button variant="ghost" size="icon-sm" aria-label={player.playing ? "Pause" : "Play"} disabled={!player.playable} onClick={player.toggle}>
+          {player.loading ? <BusyLabel busy label="" /> : player.playing ? <Pause /> : <Play />}
+        </Button>
+      </Tip>
       <span className="ms-0.5 me-2 text-[13px] leading-5 whitespace-nowrap tabular-nums">
         {now} <span className="text-muted-foreground">/ {total}</span>
       </span>
@@ -129,11 +132,20 @@ export function TaskRow({ action, current, doc = false, onPick, at }: { action: 
       }`}
     >
       {waiting ? <TaskAdd aria-label="Waiting for you" className="size-3.5 shrink-0 text-muted-foreground" /> : <Lifeos aria-label="In LifeOS" className="size-3.5 shrink-0 text-muted-foreground" />}
-      <span className={`min-w-0 ${doc ? "" : "truncate font-medium"}`}>
-        {action.text}
-        {doc && due ? `, ${due}` : null}
-        {at}
-      </span>
+      {doc ? (
+        <span className="min-w-0">
+          {action.text}
+          {due ? `, ${due}` : null}
+          {at}
+        </span>
+      ) : (
+        <TruncateTip text={action.text}>
+          <span className="min-w-0 truncate font-medium">
+            {action.text}
+            {at}
+          </span>
+        </TruncateTip>
+      )}
       {!doc && due ? <span className="shrink-0 text-xs text-muted-foreground">{due}</span> : null}
     </div>
   );

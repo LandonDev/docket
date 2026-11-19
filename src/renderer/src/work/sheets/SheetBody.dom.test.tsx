@@ -16,6 +16,7 @@ import { defineChunk } from "../../lib/lazyChunk";
 import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
+import { chartWidth } from "./SheetBody";
 import { EDIT_MAX, LOAD_MAX } from "./host";
 import { EDIT_WAIT, resetSheetSyncs } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, suggestion, workbookOf, type FakeGrid, type FakeSheetHost } from "./testkit";
@@ -38,6 +39,7 @@ vi.mock("../../lib/connection", async (original) => {
 });
 
 import { CanvasSeat } from "../canvas/CanvasSeat";
+import { contextChipsOf, resetContextChips } from "../canvas/chips";
 import { resetCanvasStore } from "../canvas/store";
 
 const ITEM: CanvasItem = canvasItem("s1", { kind: "sheet", title: "Nationals travel budget.xlsx", source: { at: "file", host: "local", path: "/work/budget.xlsx" } });
@@ -70,10 +72,10 @@ function kinds(): Record<string, CanvasKindDef> {
   return { ...CANVAS, sheet: { ...CANVAS.sheet, chunk: defineChunk("test-sheet", () => module) } };
 }
 
-function open(view: SheetView, options: { selection?: string } = {}) {
+function open(view: SheetView, options: { selection?: string; item?: CanvasItem } = {}) {
   sheetHost = fakeSheetHost(view, BOOK);
   grid = fakeGrid(options);
-  host.current = fakeHost([ITEM], host as never);
+  host.current = fakeHost([options.item ?? ITEM], host as never);
   return render(
     <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
       <div data-testid="thread" />
@@ -94,6 +96,7 @@ beforeEach(async () => {
   localStorage.clear();
   resetCanvasStore();
   resetSheetSyncs();
+  resetContextChips();
   await new Promise<void>((done) => openMenus(done));
 });
 afterEach(() => {
@@ -151,7 +154,9 @@ describe("the sheet kind", () => {
 
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(sheetHost.calls).toContainEqual(["review", { which: { ids: ["b", "c"] }, verdict: "accept" }]));
-    await waitFor(() => expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByText("1/1")).toBeTruthy());
+    // One change left: the stepper keeps its verbs and drops the count it could not step through.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Next change" })).toBeNull());
+    expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByRole("button", { name: "Accept" })).toBeTruthy();
   });
 
   it("puts a cell back when its suggestion is rejected, unless something wrote it since", async () => {
@@ -375,5 +380,49 @@ describe("the sheet kind", () => {
     expect(sheetHost.calls.filter((c) => c[0] === "switch")).toHaveLength(1);
     started();
     await waitFor(() => expect(full.querySelector('[data-slot="busy-label"]')?.hasAttribute("data-busy")).toBe(false));
+  });
+
+  it("offers Share only on a sheet a guest link can reach, a LifeOS sheet", async () => {
+    open(sheetView());
+    await gridUp();
+    await screen.findByRole("button", { name: /Agent suggests/ });
+    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+    cleanup();
+    resetSheetSyncs();
+    resetCanvasStore();
+    open(sheetView(), { item: canvasItem("s1", { kind: "sheet", title: "Travel budget", source: { at: "lifeos", table: "sheets", id: "sh1" } }) });
+    expect(await screen.findByRole("button", { name: "Share" })).toBeTruthy();
+  });
+
+  it("says a sheet that did not open once, in the body, with no state line over it", async () => {
+    sheetHost = fakeSheetHost(sheetView({ readOnly: "The workbook is protected" }), BOOK);
+    sheetHost.load = async () => {
+      throw new Error("The workbook is protected");
+    };
+    grid = fakeGrid();
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    expect(await screen.findByText("Couldn't open this sheet")).toBeTruthy();
+    expect(document.querySelector("[data-canvas-state]")).toBeNull();
+    expect(screen.queryByText("Read only")).toBeNull();
+  });
+
+  it("names the range and the file in Ask's chip", async () => {
+    open(sheetView(), { selection: "A1:B5" });
+    await gridUp();
+    const bar = await screen.findByRole("toolbar", { name: "Selection" });
+    fireEvent.click(within(bar).getByRole("button", { name: /^Ask/ }));
+    expect(contextChipsOf("t1")[0]?.label).toBe("A1:B5, Nationals travel budget.xlsx");
+  });
+
+  it("fits a chart to a narrow body, never under 200px, and keeps 380px where there is room", () => {
+    expect(chartWidth(0)).toBe(380);
+    expect(chartWidth(1200)).toBe(380);
+    expect(chartWidth(360)).toBe(296);
+    expect(chartWidth(220)).toBe(200);
   });
 });

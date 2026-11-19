@@ -20,6 +20,7 @@ const host = vi.hoisted(() => ({
   calls: [] as Array<{ method: string; params: Record<string, unknown> }>,
   pushes: [] as Array<(p: unknown) => void>,
   stopped: [] as string[],
+  pictureDown: false,
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -30,6 +31,7 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.browser.state") return host.state;
       if (method === "work.browser.drive") return (host.state = { ...host.state, driver: params.driver as BrowserState["driver"], needs: null });
       if (method === "work.outbox.list") return params.show === "decided" ? { items: [], waiting: 0 } : { items: host.items, waiting: host.items.length };
+      if (method === "work.outbox.get" && host.pictureDown) throw new Error("socket closed");
       if (method === "work.outbox.get") return { ...host.items[0], payload: { ...(host.items[0]!.payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" } } };
       if (method === "work.outbox.send") return { ...host.items[0], state: "sent", decidedAt: Date.now() };
       if (method === "work.outbox.discard") return { ...host.items[0], state: "discarded", decidedAt: Date.now() };
@@ -91,6 +93,7 @@ beforeEach(() => {
   host.calls = [];
   host.pushes = [];
   host.stopped = [];
+  host.pictureDown = false;
 });
 afterEach(cleanup);
 
@@ -127,6 +130,25 @@ describe("the browser's bar", () => {
     expect(host.calls.find((c) => c.method === "work.outbox.send")?.params).toEqual({ ref: { at: "host", id: "h1" } });
   });
 
+  it("who drives sits 8px before its verb, in one group at the bar's end", async () => {
+    render(<Bar {...props()} />);
+    const who = await screen.findByText("The agent is driving");
+    const group = who.parentElement!;
+    expect(group.className).toContain("ms-auto");
+    expect(group.className).toContain("gap-2");
+    expect(group.contains(screen.getByRole("button", { name: "Take over" }))).toBe(true);
+  });
+
+  it("at a held submit, Take over gives way by the pane's width (a container query), never the window's", async () => {
+    host.items = [HELD];
+    const { container } = render(<Bar {...props()} />);
+    await screen.findByRole("button", { name: "Submit Report in Concur" });
+    expect(container.querySelector("[data-slot=browser-bar]")!.className).toContain("@container/browser");
+    const take = container.querySelector("[data-slot=browser-take-over]")!;
+    expect(take.className).toContain("@max-[540px]/browser:hidden");
+    expect(take.className).not.toMatch(/(^|\s)max-\[/);
+  });
+
   it("while he drives at a held submit, offers Hand back beside the primary, never a second Take over", async () => {
     host.items = [HELD];
     host.state = { ...host.state, driver: "owner" };
@@ -146,6 +168,17 @@ describe("the browser's body", () => {
     expect(rows.map((r) => r.textContent)).toEqual(["Hotel$389.20Hilton folio.pdf, page 1", "Mileage$184.20"]);
     await waitFor(() => expect(screen.getByRole("img").getAttribute("src")).toBe("data:image/png;base64,AAAA"));
     expect(p.shell.detail).toHaveBeenCalledWith("Landon's MacBook");
+  });
+
+  it("a picture the host did not send says so with Retry, never that no picture was kept", async () => {
+    host.items = [HELD];
+    host.pictureDown = true;
+    render(<Body {...props()} />);
+    await screen.findByText("The page's picture did not load");
+    expect(screen.queryByText("No picture of this page was kept")).toBeNull();
+    host.pictureDown = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByRole("img").getAttribute("src")).toBe("data:image/png;base64,AAAA"));
   });
 
   it("with nothing held and no window to draw, says so in one line", async () => {

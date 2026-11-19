@@ -138,7 +138,9 @@ describe("the PDF kind", () => {
     await waitFor(() => expect(document.querySelector<HTMLElement>('[data-pdf-field="mail"]')!.className).toContain("outline-1"));
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(pdfHost.calls).toContainEqual(["review", { keys: ["mail"], verdict: "accept" }]));
-    await waitFor(() => expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByText("1/1")).toBeTruthy());
+    // One change left: the stepper keeps its verbs and drops the count it could not step through.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Next change" })).toBeNull());
+    expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByRole("button", { name: "Accept" })).toBeTruthy();
     expect(document.querySelector<HTMLElement>('[data-pdf-field="mail"]')!.className).not.toContain("add-bg-paper");
   });
 
@@ -336,5 +338,80 @@ describe("reading a version", () => {
     await waitFor(() => expect(result.current.doc.phase).toBe("ready"));
     expect(reads).toEqual(["r1", "r2"]);
     expect(result.current.view?.rev).toBe("r2");
+  });
+});
+
+describe("the bar and failures", () => {
+  it("holds a bone in the bar while the file opens, and drops it once the pages land", async () => {
+    pdfHost = fakePdfHost(pdfView());
+    let land: ((doc: ReturnType<typeof fakeDoc>) => void) | null = null;
+    engine = { open: () => new Promise((resolve) => (land = resolve)) };
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    await found("[data-pdf-bar-bone]");
+    await waitFor(() => expect(land).not.toBeNull());
+    act(() => land!(fakeDoc(FILE)));
+    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1 / 14"));
+    expect(document.querySelector("[data-pdf-bar-bone]")).toBeNull();
+  });
+
+  it("says a view the host did not send with Retry, and no bone stays in the bar", async () => {
+    pdfHost = fakePdfHost(pdfView());
+    const open = pdfHost.open;
+    let tries = 0;
+    pdfHost.open = async () => {
+      if (++tries === 1) throw new Error("The host did not answer");
+      return open();
+    };
+    engine = fakeEngine(fakeDoc(FILE));
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    expect(await screen.findByText("The host did not answer")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector("[data-pdf-bar-bone]")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(pages()[0]).toBe(1));
+    expect(tries).toBe(2);
+  });
+
+  it("says a page pdf.js could not draw in its place, and Retry draws it again", async () => {
+    pdfHost = fakePdfHost(pdfView());
+    const doc = fakeDoc(FILE);
+    const paint = doc.paint.bind(doc);
+    let refused = false;
+    doc.paint = async (n, el, scale, text, signal) => {
+      if (n === 1 && !refused) {
+        refused = true;
+        throw new Error("Bad XRef entry");
+      }
+      return paint(n, el, scale, text, signal);
+    };
+    engine = fakeEngine(doc);
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    const page1 = await found('[data-pdf-page="1"]');
+    await waitFor(() => expect(within(page1).getByText("Couldn't draw this page")).toBeTruthy());
+    fireEvent.click(within(page1).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(doc.painted).toContain(1));
+    await waitFor(() => expect(page1.querySelector("[data-pdf-page-failed]")).toBeNull());
+  });
+
+  it("finds in the system's search field, whose ring is the field's own", async () => {
+    await open(pdfView());
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    const field = screen.getByRole("textbox", { name: "Find" }).closest('[data-slot="input-group"]');
+    expect(field?.getAttribute("role")).toBe("search");
+    expect(field?.className).toContain("focus-field");
   });
 });
