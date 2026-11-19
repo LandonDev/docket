@@ -5,7 +5,8 @@ import type { A1Range } from '../sheets/a1'
 import { editsOf } from '../sheets/mutations'
 import type { Which } from '../sheets/suggestions'
 import type { OfficeCell } from '@shared/contract-work-office'
-import { cellOf, EXCEL_MAX_CELLS, excelStore, parseAddress } from './excel'
+import type { SheetCell } from 'work-kit/sheet/source'
+import { cellOf, EXCEL_MAX_CELLS, excelStore, parseAddress, writable } from './excel'
 import { hereOf } from './index'
 
 /**
@@ -33,7 +34,8 @@ export const excelRefOf = (s: CanvasSource): ExcelRef | null =>
 interface Open {
   rev: number
   off: () => void
-  listeners: Set<() => void>
+  /** one per canvas item, by its id: a view read again replaces its own */
+  listeners: Map<string, () => void>
 }
 const open = new Map<string, Open>()
 
@@ -45,23 +47,30 @@ function here(ctx: WorkCtx, ref: ExcelRef) {
 }
 
 /**
- * Starts following the workbook (once per workbook) and calls `onChange` after each change Excel
- * shows. Answers its rev.
+ * Follows the workbook (once per workbook) and calls `onChange` for the canvas item `itemId` after
+ * each change: someone else's, heard on the safety pass, or any write this host makes to it.
+ * Answers its rev.
  */
-export async function follow(ctx: WorkCtx, ref: ExcelRef, onChange: () => void): Promise<number> {
+export function follow(ctx: WorkCtx, ref: ExcelRef, itemId: string, onChange: () => void): number {
   const h = here(ctx, ref)
   let o = open.get(ref.book)
   if (!o) {
-    const made: Open = { rev: 1, off: () => {}, listeners: new Set() }
-    made.off = h.excel.source(ref.book, 'owner').subscribe((c) => {
-      if (c.kind !== 'cells') return
+    const made: Open = { rev: 1, off: () => {}, listeners: new Map() }
+    const bump = () => {
       made.rev++
-      for (const fn of made.listeners) fn()
-    })
+      for (const fn of made.listeners.values()) fn()
+    }
+    const offSource = h.excel.source(ref.book, 'owner').subscribe((c) => c.kind === 'cells' && c.by === 'excel' && bump())
+    const ours = (book: string) => book === ref.book && bump()
+    h.excel.wrote.add(ours)
+    made.off = () => {
+      offSource()
+      h.excel.wrote.delete(ours)
+    }
     open.set(ref.book, made)
     o = made
   }
-  o.listeners.add(onChange)
+  o.listeners.set(itemId, onChange)
   return o.rev
 }
 
@@ -111,29 +120,22 @@ async function read(ctx: WorkCtx, ref: ExcelRef): Promise<string> {
 }
 
 /**
- * The person's edit from the grid, written through Excel. Only cell contents (as for an opened
- * file); a grid behind the workbook gets `conflict` and catches up.
+ * The person's edit from the grid, written through Excel, cell by cell. Only cell contents (as for
+ * an opened file); a grid behind the workbook gets `conflict` with the rev to catch up to.
  */
 export async function edit(ctx: WorkCtx, ref: ExcelRef, baseRev: number, mutations: readonly SheetMutationJson[], by: Principal): Promise<{ rev: number } | { conflict: true; rev: number }> {
   const h = here(ctx, ref)
-  const rev = revOf(ref)
-  if (baseRev !== rev) return { conflict: true, rev }
-  const edits = editsOf(mutations, (id) => id)
-  for (const sheet of new Set(edits.map((e) => e.sheet))) {
-    const mine = edits.filter((e) => e.sheet === sheet).map((e) => ({ ...parseAddress(e.cell), v: (e.formula ?? e.value ?? null) as OfficeCell }))
-    const box: A1Range = {
-      startRow: Math.min(...mine.map((c) => c.startRow)),
-      endRow: Math.max(...mine.map((c) => c.startRow)),
-      startColumn: Math.min(...mine.map((c) => c.startColumn)),
-      endColumn: Math.max(...mine.map((c) => c.startColumn))
-    }
-    const now = await h.excel.read(ref.book, sheet, box)
-    const grid = now.values.map((row, r) => row.map((v, c) => (now.formulas[r][c] || v) as OfficeCell))
-    for (const c of mine) grid[c.startRow - box.startRow][c.startColumn - box.startColumn] = c.v
-    const res = await h.excel.write(ref.book, sheet, box, grid, { base: now.hash, by })
-    if ('conflict' in res) return { conflict: true, rev }
+  if (baseRev !== revOf(ref)) return { conflict: true, rev: revOf(ref) }
+  const cells = editsOf(mutations, (id) => id).map((e) => {
+    const at = parseAddress(e.cell)
+    return { sheet: e.sheet, row: at.startRow, col: at.startColumn, v: (e.formula ?? e.value ?? null) as OfficeCell }
+  })
+  if ((await h.excel.writeCells(ref.book, cells, by)) === 'conflict') {
+    // Excel moved under the edit before the safety pass saw it: the grid reads the workbook again.
+    const o = open.get(ref.book)
+    if (o) o.rev++
+    return { conflict: true, rev: revOf(ref) }
   }
-  // The helper's watchers heard the write as ours and moved the rev.
   return { rev: revOf(ref) }
 }
 
@@ -147,13 +149,10 @@ export async function review(ctx: WorkCtx, ref: ExcelRef, which: Which, verdict:
   const picked = h.suggestions.pick(key, which)
   if (verdict === 'reject') return h.suggestions.mark(key, picked.map((p) => p.id), 'rejected')
   for (const p of picked.filter((x) => x.state === 'pending')) {
-    const at: A1Range = { startRow: p.row, endRow: p.row, startColumn: p.col, endColumn: p.col }
-    const now = await h.excel.read(ref.book, p.sheet, at)
-    const held = cellOf(now.values[0][0], now.formulas[0][0])
-    const same = (held?.f ?? null) === (p.base?.f ?? null) && (held?.f ? true : (held?.v ?? null) === (p.base?.v ?? null))
-    const put = p.proposed === null ? null : ((p.proposed.f || p.proposed.v) ?? null) as OfficeCell
-    const res = same ? await h.excel.write(ref.book, p.sheet, at, [[put]], { base: now.hash, by }) : null
-    h.suggestions.mark(key, [p.id], res && 'ok' in res ? 'accepted' : 'conflict')
+    const same = (held: (SheetCell | null)[]) => (held[0]?.f ?? null) === (p.base?.f ?? null) && (held[0]?.f ? true : (held[0]?.v ?? null) === (p.base?.v ?? null))
+    const v = p.proposed === null ? null : writable(p.proposed.f ? { f: p.proposed.f } : { v: (p.proposed.v ?? null) as OfficeCell })
+    const got = await h.excel.writeCells(ref.book, [{ sheet: p.sheet, row: p.row, col: p.col, v }], by, same)
+    h.suggestions.mark(key, [p.id], got === 'ok' ? 'accepted' : 'conflict')
   }
 }
 

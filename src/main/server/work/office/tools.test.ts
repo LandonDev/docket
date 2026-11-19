@@ -116,6 +116,13 @@ describe('nothing is sent without his press', () => {
     expect(office.log.map((l) => l.verb).filter((v) => ['sendMail', 'createEvent', 'answerEvent'].includes(v))).toEqual([])
   })
 
+  it('a reply is held to the sender of the mail it answers, whatever `to` says, and a grant never fits a mail to nobody', async () => {
+    await run('office_mail_send', { to: ['boss@example.com'], subject: 'x', html: '<p>Yes</p>', replyTo: '42' })
+    expect(held[0].payload).toMatchObject({ to: ['dana@example.com'], subject: 'Re: Budget' })
+    const mail = officeActs({ carrier: () => office }).find((a) => a.kind === 'office.mail.send')!
+    expect(mail.matches!({ domains: ['example.com'] }, OfficeMailSchema.parse({ host: 'env_mac', to: [], subject: 's', html: '' }))).toBe(false)
+  })
+
   it('a draft only leaves a draft, and a hold on his own calendar with nobody invited is made at once', async () => {
     await run('office_mail_draft', { to: ['dana@example.com'], subject: 'Plan', html: '<p>x</p>' })
     await run('office_calendar_create', { subject: 'Focus', start: '2026-11-20T15:00:00Z', end: '2026-11-20T17:00:00Z' })
@@ -132,7 +139,7 @@ describe('nothing is sent without his press', () => {
     expect(mail.words(p)).toEqual({ summary: 'Send to dana@example.com: Plan', verb: 'Send' })
     const actCtx = { host: 'env_mac' } as ActCtx
     await expect(mail.execute(p, actCtx)).resolves.toMatchObject({ summary: 'Sent to dana@example.com: Plan', ref: { outlook: 'sent-1' } })
-    expect(office.sent[0].html).toBe('<table border="1"><tr><td><b>1</b></td></tr></table><a>l</a>')
+    expect(office.sent[0].html).toBe('<table border="1"><tr><td><b>1</b></td></tr></table><a >l</a>')
     await expect(mail.execute({ ...p, host: 'env_box' }, actCtx)).rejects.toThrow('held for another host')
     expect(office.sent).toHaveLength(1)
 
@@ -163,8 +170,14 @@ describe('a thread on a host with no Office', () => {
 })
 
 describe('cleanMailHtml', () => {
+  it('holds against tags rebuilt from their pieces, handlers after a slash and encoded script links', () => {
+    expect(cleanMailHtml('<scr<script>ipt>alert(1)</scr<script>ipt>')).not.toMatch(/<script/i)
+    expect(cleanMailHtml('<img/onerror=alert(1) src=x>')).toBe('<img/ src=x>')
+    expect(cleanMailHtml('<a href="java&#x73;cript:x()">l</a><svg><a xlink:href="javascript:y()">m</a></svg>')).toBe('<a>l</a>')
+  })
+
   it('keeps the look and drops what runs or reaches out', () => {
-    expect(cleanMailHtml('<p style="color:red">a</p><iframe src="x"></iframe><img src="cid:1" onerror="x()">')).toBe('<p style="color:red">a</p><img src="cid:1">')
+    expect(cleanMailHtml('<p style="color:red">a</p><iframe src="x"></iframe><img src="cid:1" onerror="x()">')).toBe('<p style="color:red">a</p><img src="cid:1" >')
   })
 })
 

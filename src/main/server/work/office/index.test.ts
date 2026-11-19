@@ -38,6 +38,13 @@ describe('the office wire', () => {
     await expect(call('work.office.read', { tool: 'office_range_write', args: {} })).rejects.toThrow('work.office.write')
   })
 
+  it("refuses a remote caller a file by path outside what it could name, and lets a URL through", async () => {
+    office.addBook('/etc/Secret.xlsx', { Sheet1: { A1: 1 } })
+    await expect(call('work.office.read', { tool: 'office_range_read', args: { workbook: '/etc/Secret.xlsx', range: 'Sheet1!A1' } })).rejects.toThrow()
+    office.addBook('https://contoso.sharepoint.com/B.xlsx', { Sheet1: { A1: 1 } })
+    await expect(call('work.office.read', { tool: 'office_range_read', args: { workbook: 'https://contoso.sharepoint.com/B.xlsx', range: 'Sheet1!A1' } })).resolves.toMatchObject({ handled: true })
+  })
+
   it('holds a send that came over the link: it waits here for his press', async () => {
     const got = await call('work.office.write', { tool: 'office_mail_send', args: { to: ['d@example.com'], subject: 's', html: 'h' }, asked: true, by: 'agent:env_box:t9' })
     expect(got).toMatchObject({ result: { content: [{ text: expect.stringMatching(/^Held for the owner/) }] } })

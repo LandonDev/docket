@@ -114,6 +114,29 @@ describe("LifeOS's Outlook route", () => {
     expect(db.prepare('SELECT * FROM work_office_journal').all()).toEqual([])
   })
 
+  it('never hands Outlook a row it already journaled, even when LifeOS offers it again', async () => {
+    const r = route()
+    await r.beat()
+    ackFails = 99
+    due = [mail('m1')]
+    await expect(r.pump()).rejects.toThrow('lost the link')
+    due = [mail('m1')]
+    await r.pump().catch(() => undefined)
+    expect(office.sent).toHaveLength(1)
+  })
+
+  it('keeps a send that ended unclearly journaled, to be acked as sent, rather than failing it', async () => {
+    const r = route()
+    await r.beat()
+    office.failNext = { verb: 'sendMail', error: new OfficeError('Microsoft Outlook answered: timed out') }
+    due = [mail('m1')]
+    await expect(r.pump()).rejects.toThrow('timed out')
+    expect(mutations().some(([fn]) => fn === 'outbox:localFailed')).toBe(false)
+    calls = []
+    await r.pump()
+    expect(mutations()[0]).toEqual(['outbox:localSent', { id: 'm1', host: 'env_mac' }])
+  })
+
   it('carries an accepted invitation and a new meeting, and fails what Outlook here does not carry', async () => {
     office.calendar.push({ id: 'uid:abc', subject: 'Standup', start: '2026-11-20T15:00:00.000Z', end: '2026-11-20T15:15:00.000Z', location: '', organizer: 'dana@example.com', attendees: [], response: '' })
     const r = route()

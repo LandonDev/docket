@@ -30,6 +30,8 @@ import type { OfficeCarrier, RangeGrid } from './carrier'
 export const SAFETY_MS = 15_000
 /** The most cells one read or write carries: one Apple Event each. */
 export const EXCEL_MAX_CELLS = 50_000
+/** The writes kept for undo, per workbook. */
+export const UNDO_KEPT = 100
 
 /** The suggestion store's key for a workbook (M27's `SuggestionStore`). */
 export const excelStore = (book: string): string => `excel:${book}`
@@ -54,7 +56,7 @@ const cellsOf = (g: RangeGrid): (SheetCell | null)[][] => g.values.map((row, i) 
 /** The block's hash: work-kit's `hashCells`, rows first. */
 export const gridHash = (g: RangeGrid): string => hashCells(cellsOf(g).flat())
 /** What a cell is written back as: its formula, else its value. */
-const writable = (c: SheetCell | null): OfficeCell => (c === null ? null : c.f ? c.f : (c.v ?? null))
+export const writable = (c: SheetCell | null): OfficeCell => (c === null ? null : c.f ? c.f : (c.v ?? null))
 
 export interface ExcelBlock extends RangeGrid {
   sheet: string
@@ -78,7 +80,11 @@ const sizeOf = (r: A1Range): number => (r.endRow - r.startRow + 1) * (r.endColum
 
 export class ExcelHelper {
   private readonly watched = new Map<string, Watched>()
+  private readonly chains = new Map<string, Promise<unknown>>()
   private timer: ReturnType<typeof setInterval> | null = null
+  private passing = false
+  /** told after each write or undo this helper makes, with the workbook's key */
+  readonly wrote = new Set<(book: string) => void>()
 
   constructor(
     private readonly carrier: OfficeCarrier,
@@ -94,35 +100,88 @@ export class ExcelHelper {
     return { ...grid, sheet, address, hash: gridHash(grid) }
   }
 
+  /** Work on one workbook runs one piece at a time: a write, an undo, a watched block's re-read. */
+  private serial<T>(book: string, fn: () => Promise<T>): Promise<T> {
+    const run = (this.chains.get(book) ?? Promise.resolve()).then(fn, fn)
+    this.chains.set(book, run.catch(() => undefined))
+    return run
+  }
+
   /**
    * Writes a block. With `base`, only while the cells still hash to it; without, over whatever is
-   * there now (read just before). The old contents go to the undo log first.
+   * there now (read just before). What the cells held goes to the undo log before Excel is called.
    */
-  async write(book: string, sheet: string, range: A1Range, grid: OfficeCell[][], o: { base?: string; by: Principal }): Promise<ExcelWrite> {
+  write(book: string, sheet: string, range: A1Range, grid: OfficeCell[][], o: { base?: string; by: Principal }): Promise<ExcelWrite> {
+    return this.serial(book, () => this.writeNow(book, sheet, range, grid, o))
+  }
+
+  private async writeNow(book: string, sheet: string, range: A1Range, grid: OfficeCell[][], o: { base?: string; by: Principal }): Promise<ExcelWrite> {
     const now = await this.read(book, sheet, range)
     if (o.base !== undefined && o.base !== now.hash) return { conflict: true, now }
     const writeId = randomUUID()
-    const after = await this.put(book, sheet, range, grid)
     this.db
       .prepare('INSERT INTO work_office_undo (id, book, sheet, address, before, after_hash, by, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(writeId, book, sheet, now.address, JSON.stringify(cellsOf(now).map((row) => row.map(writable))), after.hash, o.by, this.now())
+      .run(writeId, book, sheet, now.address, JSON.stringify(cellsOf(now).map((row) => row.map(writable))), '', o.by, this.now())
+    this.db.prepare('DELETE FROM work_office_undo WHERE book = ? AND id NOT IN (SELECT id FROM work_office_undo WHERE book = ? ORDER BY at DESC LIMIT ?)').run(book, book, UNDO_KEPT)
+    const after = await this.put(book, sheet, range, grid)
+    this.db.prepare('UPDATE work_office_undo SET after_hash = ? WHERE id = ?').run(after.hash, writeId)
     await this.settle(book, sheet, range, now, after)
     return { ok: true, writeId, hash: after.hash }
   }
 
+  /**
+   * Writes single cells, touching no other: one call when they fill their block, else one per cell
+   * (a block written back whole would turn the cells between into what a read says of them). With
+   * `check`, only while what the cells hold now, in order, passes it. Not all-or-nothing across
+   * sheets or cells: a cell that changed between the check and its own write answers `conflict`
+   * and stops there.
+   */
+  writeCells(book: string, cells: readonly { sheet: string; row: number; col: number; v: OfficeCell }[], by: Principal, check?: (held: (SheetCell | null)[]) => boolean): Promise<'ok' | 'conflict'> {
+    return this.serial(book, async () => {
+      const sheets = [...new Set(cells.map((c) => c.sheet))].map((sheet) => {
+        const mine = cells.filter((c) => c.sheet === sheet)
+        const box: A1Range = { startRow: Math.min(...mine.map((c) => c.row)), endRow: Math.max(...mine.map((c) => c.row)), startColumn: Math.min(...mine.map((c) => c.col)), endColumn: Math.max(...mine.map((c) => c.col)) }
+        return { sheet, mine, box }
+      })
+      const blocks = new Map<string, ExcelBlock>()
+      for (const s of sheets) blocks.set(s.sheet, await this.read(book, s.sheet, s.box))
+      const heldAt = (sheet: string, row: number, col: number) => {
+        const s = sheets.find((x) => x.sheet === sheet)!
+        const b = blocks.get(sheet)!
+        return cellOf(b.values[row - s.box.startRow][col - s.box.startColumn], b.formulas[row - s.box.startRow][col - s.box.startColumn])
+      }
+      if (check && !check(cells.map((c) => heldAt(c.sheet, c.row, c.col)))) return 'conflict'
+      for (const s of sheets) {
+        if (s.mine.length === sizeOf(s.box)) {
+          const grid = Array.from({ length: s.box.endRow - s.box.startRow + 1 }, () => Array<OfficeCell>(s.box.endColumn - s.box.startColumn + 1).fill(null))
+          for (const c of s.mine) grid[c.row - s.box.startRow][c.col - s.box.startColumn] = c.v
+          if ('conflict' in (await this.writeNow(book, s.sheet, s.box, grid, { base: blocks.get(s.sheet)!.hash, by }))) return 'conflict'
+          continue
+        }
+        for (const c of s.mine) {
+          const at: A1Range = { startRow: c.row, endRow: c.row, startColumn: c.col, endColumn: c.col }
+          if ('conflict' in (await this.writeNow(book, s.sheet, at, [[c.v]], { base: hashCells([heldAt(s.sheet, c.row, c.col)]), by }))) return 'conflict'
+        }
+      }
+      return 'ok'
+    })
+  }
+
   /** Puts back what a write replaced, while the cells still hold what it wrote. */
-  async undo(writeId: string): Promise<{ ok: true } | { conflict: true }> {
-    const row = this.db.prepare('SELECT book, sheet, address, before, after_hash FROM work_office_undo WHERE id = ?').get(writeId) as
-      | { book: string; sheet: string; address: string; before: string; after_hash: string }
-      | undefined
-    if (!row) throw new Error('There is no such write to take back.')
-    const range = parseAddress(row.address)
-    const now = await this.read(row.book, row.sheet, range)
-    if (now.hash !== row.after_hash) return { conflict: true }
-    const after = await this.put(row.book, row.sheet, range, JSON.parse(row.before) as OfficeCell[][])
-    this.db.prepare('DELETE FROM work_office_undo WHERE id = ?').run(writeId)
-    await this.settle(row.book, row.sheet, range, now, after)
-    return { ok: true }
+  undo(book: string, writeId: string): Promise<{ ok: true } | { conflict: true }> {
+    return this.serial(book, async () => {
+      const row = this.db.prepare('SELECT sheet, address, before, after_hash FROM work_office_undo WHERE id = ? AND book = ?').get(writeId, book) as
+        | { sheet: string; address: string; before: string; after_hash: string }
+        | undefined
+      if (!row) throw new Error('There is no such write to take back in that workbook.')
+      const range = parseAddress(row.address)
+      const now = await this.read(book, row.sheet, range)
+      if (now.hash !== row.after_hash) return { conflict: true as const }
+      const after = await this.put(book, row.sheet, range, JSON.parse(row.before) as OfficeCell[][])
+      this.db.prepare('DELETE FROM work_office_undo WHERE id = ?').run(writeId)
+      await this.settle(book, row.sheet, range, now, after)
+      return { ok: true as const }
+    })
   }
 
   /** The writes this host made to a workbook and can still take back, newest first. */
@@ -139,8 +198,9 @@ export class ExcelHelper {
   }
 
   /**
-   * Suggestions over cells our write changed no longer hold, and the watched blocks it touched move
-   * to what Excel holds now (their watchers hear it as ours, `by: 'tempcode'`).
+   * Suggestions over cells our write changed no longer hold, the watched blocks it touched move to
+   * what Excel holds now (their watchers hear it as ours, `by: 'tempcode'`), and `wrote` hears the
+   * workbook changed, wherever the write was.
    */
   private async settle(book: string, sheet: string, range: A1Range, before: ExcelBlock, after: ExcelBlock): Promise<void> {
     const touched = new Set<string>()
@@ -150,6 +210,7 @@ export class ExcelHelper {
       for (let j = 0; j < b[i].length; j++) if (JSON.stringify(a[i]?.[j] ?? null) !== JSON.stringify(b[i][j])) touched.add(`${sheet}:${range.startRow + i}:${range.startColumn + j}`)
     if (touched.size) this.suggestions.conflictOn(excelStore(book), touched)
     for (const w of [...this.watched.values()]) if (w.book === book && w.sheet === sheet && overlaps(w.range, range)) await this.refresh(w, false).catch(() => undefined)
+    for (const fn of this.wrote) fn(book)
   }
 
   /**
@@ -162,7 +223,8 @@ export class ExcelHelper {
     if (!w) {
       w = { book, sheet, range, cells: [], hash: '', listeners: new Set() }
       this.watched.set(key, w)
-      void this.refresh(w, false)
+      const first = w
+      void this.serial(book, () => this.refresh(first, false)).catch(() => undefined)
     }
     w.listeners.add(onChange)
     this.timer ??= setInterval(() => void this.pass(), SAFETY_MS)
@@ -180,7 +242,13 @@ export class ExcelHelper {
 
   /** One safety pass over every watched block. Errors (Excel closed, the file gone) wait for the next. */
   async pass(): Promise<void> {
-    for (const w of [...this.watched.values()]) await this.refresh(w, true).catch(() => undefined)
+    if (this.passing) return
+    this.passing = true
+    try {
+      for (const w of [...this.watched.values()]) await this.serial(w.book, () => this.refresh(w, true)).catch(() => undefined)
+    } finally {
+      this.passing = false
+    }
   }
 
   private async refresh(w: Watched, others: boolean): Promise<void> {
@@ -218,31 +286,8 @@ export class ExcelHelper {
         return { range: r, cells: cellsOf(block).map((row, i) => row.map((c, j) => ({ ...(c ?? {}), ...(block.formats[i][j] && block.formats[i][j] !== 'General' ? { z: block.formats[i][j] } : {}) }))), hash: block.hash }
       },
       async write(cells: SheetCellWrite[], baseHash: string) {
-        // One read and one write per sheet: the bounding box of its cells, the rest written back as it is.
-        const sheets = [...new Set(cells.map((c) => c.sheet))].map((sheet) => {
-          const mine = cells.filter((c) => c.sheet === sheet)
-          const box: A1Range = {
-            startRow: Math.min(...mine.map((c) => c.row)),
-            endRow: Math.max(...mine.map((c) => c.row)),
-            startColumn: Math.min(...mine.map((c) => c.column)),
-            endColumn: Math.max(...mine.map((c) => c.column))
-          }
-          return { sheet, mine, box }
-        })
-        const now = new Map<string, ExcelBlock>()
-        for (const s of sheets) now.set(s.sheet, await helper.read(book, s.sheet, s.box))
-        const held = (c: SheetCellWrite) => {
-          const s = sheets.find((x) => x.sheet === c.sheet)!
-          return cellsOf(now.get(c.sheet)!)[c.row - s.box.startRow][c.column - s.box.startColumn]
-        }
-        if (hashCells(cells.map(held)) !== baseHash) return 'conflict'
-        for (const s of sheets) {
-          const block = now.get(s.sheet)!
-          const grid = cellsOf(block).map((row) => row.map(writable))
-          for (const c of s.mine) grid[c.row - s.box.startRow][c.column - s.box.startColumn] = writable(c.cell?.f ? { f: c.cell.f } : c.cell?.v !== undefined && c.cell.v !== null ? { v: c.cell.v } : null)
-          if ('conflict' in (await helper.write(book, s.sheet, s.box, grid, { base: block.hash, by }))) return 'conflict'
-        }
-        return 'ok'
+        const writes = cells.map((c) => ({ sheet: c.sheet, row: c.row, col: c.column, v: writable(c.cell?.f ? { f: c.cell.f } : c.cell?.v !== undefined && c.cell.v !== null ? { v: c.cell.v } : null) }))
+        return helper.writeCells(book, writes, by, (held) => hashCells(held) === baseHash)
       },
       subscribe(onChange) {
         let live = true

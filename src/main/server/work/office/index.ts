@@ -90,6 +90,9 @@ export const office: WorkModule = {
         if (!here) throw new Error(NO_OFFICE)
         const t = officeTool(req.params.tool)
         if (req.method === 'work.office.read' && !t.readOnly) throw new Error(`${t.name} changes things: it goes through work.office.write.`)
+        // A remote caller reaches a file by path only where it could name the file itself (the listener's fence).
+        const key = fileKeyOf(req.params.args)
+        if (by.kind === 'remote' && key !== null && !/^https?:\/\//i.test(key) && !ctx.reaches(by, key)) throw new FenceError(req.method)
         const write = req.method === 'work.office.write' ? req.params : null
         const env: Env = { ctx, ...here, by: peerPrincipal(write?.by, by, ctx.host), sessionId: by.kind === 'model' ? (by.sessionId ?? null) : null, asked: write?.asked ?? false }
         return handled(await runHere(t, req.params.args, env))
@@ -145,8 +148,13 @@ export const office: WorkModule = {
       started = null
     }
   },
-  sessionsRemoved() {},
-  workspaceRemoved() {}
+}
+
+/** The file a tool's arguments name, if any. */
+const fileKeyOf = (args: unknown): string | null => {
+  const a = (args ?? {}) as Record<string, unknown>
+  const key = a.workbook ?? a.document ?? a.deck
+  return typeof key === 'string' ? key : null
 }
 
 /** Who writes, for a call from another host: the thread it named, else that host. */

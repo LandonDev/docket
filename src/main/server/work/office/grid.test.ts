@@ -33,15 +33,25 @@ const set = (r: number, c: number, cell: unknown) => ({ id: SET_RANGE_VALUES, pa
 
 describe('a workbook in Excel, in the sheet canvas', () => {
   it('loads as a snapshot of what Excel holds, sheets named by their tabs', async () => {
-    await follow(ctx, ref, () => {})
+    follow(ctx, ref, 'i1', () => {})
     const data = JSON.parse((await snapshot(ctx, ref, revOf(ref))).toString()) as { sheetOrder: string[]; sheets: Record<string, { cellData: unknown }> }
     expect(data.sheetOrder).toEqual(['Sheet1'])
     expect(data.sheets.Sheet1.cellData).toEqual({ 0: { 0: { v: 'Rent' }, 1: { v: 1200 } }, 1: { 1: { f: '=B1*12' } } })
   })
 
+  it('tells each canvas item once per change, however often its view is read again', async () => {
+    let told = 0
+    for (let i = 0; i < 5; i++) follow(ctx, ref, 'i1', () => told++)
+    await new Promise((r) => setTimeout(r, 0))
+    await hereOf(ctx)!.excel.pass()
+    office.type(BOOK, 'Sheet1', 'B1', 1)
+    await hereOf(ctx)!.excel.pass()
+    expect(told).toBe(1)
+  })
+
   it('hears a change typed in Excel: the rev moves and the canvas is told', async () => {
     let told = 0
-    const rev = await follow(ctx, ref, () => told++)
+    const rev = follow(ctx, ref, 'i1', () => told++)
     await new Promise((r) => setTimeout(r, 0))
     await hereOf(ctx)!.excel.pass()
     office.type(BOOK, 'Sheet1', 'B1', 1250)
@@ -51,12 +61,12 @@ describe('a workbook in Excel, in the sheet canvas', () => {
   })
 
   it('writes the grid\'s cell edits through Excel, and answers conflict to a grid behind the workbook', async () => {
-    const rev = await follow(ctx, ref, () => {})
+    const rev = follow(ctx, ref, 'i1', () => {})
     await new Promise((r) => setTimeout(r, 0))
     await expect(edit(ctx, ref, rev + 5, [set(0, 1, { v: 1 })], 'owner')).resolves.toEqual({ conflict: true, rev })
     const got = await edit(ctx, ref, rev, [set(0, 1, { v: 1300 }), set(2, 0, { f: '=B2/12' })], 'owner')
-    // one write (the block A1:B3), heard once
-    expect(got).toEqual({ rev: rev + 1 })
+    // two cells that do not fill their block: written one by one, each heard
+    expect(got).toEqual({ rev: rev + 2 })
     expect((await office.readRange(BOOK, 'Sheet1', 'A1:B3')).values).toEqual([['Rent', 1300], [null, null], [null, null]])
     expect((await office.readRange(BOOK, 'Sheet1', 'A3')).formulas).toEqual([['=B2/12']])
     expect((await office.readRange(BOOK, 'Sheet1', 'B2')).formulas).toEqual([['=B1*12']])
@@ -75,6 +85,6 @@ describe('a workbook in Excel, in the sheet canvas', () => {
   })
 
   it('refuses a workbook that lives on another host', async () => {
-    await expect(follow(ctx, { ...ref, host: 'env_box' }, () => {})).rejects.toThrow('another host')
+    expect(() => follow(ctx, { ...ref, host: 'env_box' }, 'i1', () => {})).toThrow('another host')
   })
 })

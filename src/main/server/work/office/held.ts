@@ -58,12 +58,26 @@ const list = (xs: string[]): string => (xs.length <= 2 ? xs.join(' and ') : `${x
  * as it is; an agent's or a signature's script, frame, form or handler does not (M22's note).
  */
 export function cleanMailHtml(html: string): string {
-  const tags = 'script|style|iframe|object|embed|form|base|meta|link'
-  return html
-    .replace(new RegExp(`<(${tags})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi'), '')
-    .replace(new RegExp(`<\\/?(${tags})\\b[^>]*>`, 'gi'), '')
-    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s+(href|src)\s*=\s*("\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, '')
+  const tags = 'script|style|iframe|frame|frameset|object|embed|applet|form|base|meta|link|svg|math'
+  const decode = (v: string) =>
+    v
+      .replace(/&#x([0-9a-f]+);?/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/&#(\d+);?/g, (_, d: string) => String.fromCharCode(Number(d)))
+      .replace(/&colon;/gi, ':')
+      .replace(/&tab;|&newline;|[\u0000-\u0020]/gi, '')
+  let out = html
+  // Again until nothing changes: taking one tag out must not join the pieces around it into another.
+  for (let prev = ''; prev !== out; ) {
+    prev = out
+    out = out
+      .replace(new RegExp(`<(${tags})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi'), '')
+      .replace(new RegExp(`<\\/?(${tags})\\b[^>]*>`, 'gi'), '')
+      .replace(/([\s/"'])on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '$1')
+      .replace(/\s(?:xlink:)?(?:href|src|action|formaction|background)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (m: string, v: string) =>
+        /^(javascript|vbscript|data):/i.test(decode(v.replace(/^["']|["']$/g, ''))) ? '' : m
+      )
+  }
+  return out
 }
 
 /** The carrier on this host; tests and the module set it. */
@@ -91,7 +105,7 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     },
     matches(m, p) {
       if (m.account && m.account.toLowerCase() !== (p.account ?? '').toLowerCase()) return false
-      if (!m.recipients?.length && !m.domains?.length) return false
+      if ((!m.recipients?.length && !m.domains?.length) || everyone(p).length === 0) return false
       const people = new Set((m.recipients ?? []).map((r) => r.toLowerCase()))
       const domains = new Set((m.domains ?? []).map((d) => d.toLowerCase().replace(/^@/, '')))
       return everyone(p).every((a) => people.has(a) || domains.has(a.split('@')[1]))

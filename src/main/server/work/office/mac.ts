@@ -29,6 +29,10 @@ function book(xl, key){ var bs = xl.workbooks(); for (var i = 0; i < bs.length; 
 function byKey(list, key){ for (var i = 0; i < list.length; i++) if (list[i].fullName() === key || list[i].name() === key) return list[i]; throw new Error('Nothing open named ' + key + '. (-1728)') }
 function files(list){ return list.map(function(f){ return { key: f.fullName(), name: f.name() } }) }
 function addr(m){ return m && m.address ? m.address : String(m || '') }
+function account(o, address){ var all = [].concat(o.exchangeAccounts(), o.imapAccounts(), o.popAccounts()); var acc = all.filter(function(x){ return String(x.emailAddress()).toLowerCase() === address.toLowerCase() })[0];
+  if (!acc) throw new Error('Outlook has no account ' + address + '. (-1728)'); return acc }
+var ISO = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/
+function out(x){ return x === null ? '' : typeof x === 'string' && ISO.test(x) ? new Date(x) : x }
 `
 
 const js = (body: string): string => `${PRELUDE}\nfunction run(argv){ var a = JSON.parse(argv[0] || '{}'); ${body} }`
@@ -44,7 +48,7 @@ export const SCRIPTS = {
       formulas: f.map(function(row){ return row.map(function(x){ return typeof x === 'string' && x.charAt(0) === '=' ? x : '' }) }),
       formats: z.map(function(row){ return row.map(function(x){ return x == null ? '' : String(x) }) }) })`),
   writeRange: js(`var r = book(app('Microsoft Excel'), a.book).worksheets.byName(a.sheet).ranges.byName(a.address);
-    var g = a.grid.map(function(row){ return row.map(function(x){ return x === null ? '' : x }) });
+    var g = a.grid.map(function(row){ return row.map(out) });
     var one = g.length === 1 && g[0].length === 1;
     if (a.formulas) r.formula2 = one ? String(g[0][0]) : g.map(function(row){ return row.map(String) }); else r.value = one ? g[0][0] : g;
     return 'null'`),
@@ -78,23 +82,25 @@ export const SCRIPTS = {
     else if (a.m.forward) { m = o.forward(o.messages.byId(Number(a.m.forward)), { to: a.m.to.join(','), openingWindow: false }); m.content = a.m.html + String(m.content()) }
     else {
       var props = { subject: a.m.subject, content: a.m.html };
-      if (a.m.account) { var all = [].concat(o.exchangeAccounts(), o.imapAccounts(), o.popAccounts()); var acc = all.filter(function(x){ return String(x.emailAddress()).toLowerCase() === a.m.account.toLowerCase() })[0];
-        if (!acc) throw new Error('Outlook has no account ' + a.m.account + '. (-1728)'); props.account = acc }
+      if (a.m.account) props.account = account(o, a.m.account);
       m = o.OutgoingMessage(props); o.outgoingMessages.push(m) }
     if (!a.m.forward && !a.m.replyTo) a.m.to.forEach(function(x){ m.toRecipients.push(o.ToRecipient({ emailAddress: { address: x } })) });
     a.m.cc.forEach(function(x){ m.ccRecipients.push(o.CcRecipient({ emailAddress: { address: x } })) });
     a.m.bcc.forEach(function(x){ m.bccRecipients.push(o.BccRecipient({ emailAddress: { address: x } })) });
     var id = String(m.id()); if (a.send) o.send(m); return JSON.stringify(id)`),
   events: js(`var o = app('Microsoft Outlook'); var from = new Date(a.from), to = new Date(a.to);
-    var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] })();
-    return JSON.stringify(es.slice(0, 500).map(function(e){ return { id: String(e.id()), subject: String(e.subject()), start: e.startTime().toISOString(), end: e.endTime().toISOString(),
-      location: String(e.location() || ''), organizer: String(e.organizer() || ''), attendees: e.attendees().map(function(x){ return addr(x.emailAddress()) }), response: '' } }))`),
-  createEvent: js(`var o = app('Microsoft Outlook'); var e = o.CalendarEvent({ subject: a.e.subject, startTime: new Date(a.e.start), endTime: new Date(a.e.end), location: a.e.location || '', content: a.e.body || '' });
-    o.calendarEvents.push(e); a.e.attendees.forEach(function(x){ e.requiredAttendees.push(o.RequiredAttendee({ emailAddress: { address: x } })) });
-    if (a.e.attendees.length) o.sendMeeting(e); return JSON.stringify(String(e.id()))`),
+    var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] });
+    var ids = es.id(), subj = es.subject(), st = es.startTime(), en = es.endTime(), loc = es.location(), org = es.organizer(), out = [];
+    for (var i = 0; i < Math.min(ids.length, 500); i++) out.push({ id: String(ids[i]), subject: String(subj[i]), start: st[i].toISOString(), end: en[i].toISOString(), location: String(loc[i] || ''), organizer: String(org[i] || ''),
+      attendees: es[i].attendees().map(function(x){ return addr(x.emailAddress()) }), response: '' });
+    return JSON.stringify(out)`),
+  createEvent: js(`var o = app('Microsoft Outlook'); var acc = a.e.account ? account(o, a.e.account) : null;
+    var e = o.CalendarEvent({ subject: a.e.subject, startTime: new Date(a.e.start), endTime: new Date(a.e.end), location: a.e.location || '', content: a.e.body || '' });
+    (acc ? acc.defaultCalendar.calendarEvents : o.calendarEvents).push(e); a.e.attendees.forEach(function(x){ e.requiredAttendees.push(o.RequiredAttendee({ emailAddress: { address: x } })) });
+    if (a.e.attendees.length) { if (acc) o.sendMeeting(e, { fromAccount: acc }); else o.sendMeeting(e) } return JSON.stringify(String(e.id()))`),
   eventByUid: js(`var o = app('Microsoft Outlook'); var now = Date.now(); var from = new Date(now - 7 * 864e5), to = new Date(now + 183 * 864e5);
-    var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] })();
-    for (var i = 0; i < es.length; i++) { var ics = String(es[i].icalendarData() || ''); if (ics.indexOf('UID:' + a.uid) >= 0) return JSON.stringify(String(es[i].id())) }
+    var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] }); var ids = es.id(), ics = es.icalendarData();
+    for (var i = 0; i < ids.length; i++) if (String(ics[i] || '').replace(/\\r?\\n[ \\t]/g, '').split(/\\r?\\n/).indexOf('UID:' + a.uid) >= 0) return JSON.stringify(String(ids[i]));
     return 'null'`),
   answerEvent: js(`var o = app('Microsoft Outlook'); var e = o.calendarEvents.byId(Number(a.id)); var p = { sendingResponse: true }; if (a.comment) p.comment = a.comment;
     if (a.answer === 'accept') o.acceptMeeting(e, p); else if (a.answer === 'decline') o.declineMeeting(e, p); else o.acceptTentativelyMeeting(e, p); return 'null'`)

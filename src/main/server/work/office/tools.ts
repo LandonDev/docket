@@ -48,8 +48,8 @@ export interface OfficeTool {
 
 const fail = (text: string): WorkToolResult => ({ ...workText(text), isError: true })
 const json = (v: unknown): WorkToolResult => workText(JSON.stringify(v, null, 1))
-/** others can open it: it lives in OneDrive, SharePoint or Teams */
-export const sharedKey = (key: string): boolean => /^https?:\/\//i.test(key)
+/** Others can open it: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from there. */
+export const sharedKey = (key: string): boolean => /^https?:\/\//i.test(key) || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(key)
 const judged = (reason: WriteReason, key: string, env: Env) => judgeWrite(reason, { shared: sharedKey(key), ownerSaid: () => env.asked })
 
 const Reason = WriteReasonSchema.shape
@@ -145,7 +145,7 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     input: { workbook: z.string(), writeId: z.string() },
     readOnly: false,
     async run(a, env) {
-      const res = await env.excel.undo(a.writeId)
+      const res = await env.excel.undo(a.workbook, a.writeId)
       return 'conflict' in res ? fail('Those cells changed since your write: nothing was taken back.') : workText('Taken back.')
     }
   }),
@@ -215,16 +215,21 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   tool({
     name: 'office_mail_send',
     description:
-      "Sends, replies to (`replyTo`) or forwards (`forward`) a mail through Outlook, with its formatting. It is held: it waits in the owner's Outbox, where he can change it, and goes only when he presses Send. The answer says it is waiting.",
+      "Sends, replies to (`replyTo`: it goes to that mail's sender, and `to` is not used) or forwards (`forward`) a mail through Outlook, with its formatting. It is held: it waits in the owner's Outbox, where he can change it, and goes only when he presses Send. The answer says it is waiting.",
     input: { ...MailFields, replyTo: z.string().max(200).optional(), forward: z.string().max(200).optional() },
     readOnly: false,
     async run(a, env) {
       if (a.replyTo && a.forward) return fail('A mail answers one mail or passes one on, not both.')
+      // A reply goes where Outlook sends it, to the sender of the mail it answers: the card and a grant judge that address.
+      const was = a.replyTo || a.forward ? await env.carrier.readMail((a.replyTo ?? a.forward)!) : null
+      const to = a.replyTo && was ? [was.from] : a.to
+      const subject = was ? `${a.replyTo ? 'Re' : 'Fw'}: ${was.subject.replace(/^(re|fw|fwd):\s*/i, '')}` : a.subject
+      if (!to.length) return fail('Name at least one recipient in `to`.')
       const item = env.ctx.held.create({
         kind: 'office.mail.send',
         sessionId: env.sessionId,
         account: a.account,
-        payload: { host: env.ctx.host, ...a, cc: a.cc ?? [], bcc: a.bcc ?? [] }
+        payload: { host: env.ctx.host, ...a, to, subject, cc: a.cc ?? [], bcc: a.bcc ?? [] }
       })
       return heldAnswer(item.state, item.summary)
     }

@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { errorText } from '@shared/work/ids'
 import type { LifeosClient } from '../lifeos/ctx'
-import type { EventAnswer, OfficeCarrier } from './carrier'
+import { OfficeError, type EventAnswer, type OfficeCarrier } from './carrier'
 import { cleanMailHtml } from './held'
 
 /**
@@ -124,6 +124,9 @@ export class OutlookRoute {
   private journal(tbl: 'outbox' | 'calendarOps', id: string, providerId: string | null): void {
     this.deps.db.prepare('INSERT OR REPLACE INTO work_office_journal (tbl, id, provider_id, at) VALUES (?, ?, ?, ?)').run(tbl, id, providerId, this.now)
   }
+  private journaled(tbl: string, id: string): boolean {
+    return !!this.deps.db.prepare('SELECT 1 FROM work_office_journal WHERE tbl = ? AND id = ?').get(tbl, id)
+  }
   private unjournal(tbl: string, id: string): void {
     this.deps.db.prepare('DELETE FROM work_office_journal WHERE tbl = ? AND id = ?').run(tbl, id)
   }
@@ -147,6 +150,8 @@ export class OutlookRoute {
     const m = due.row.message
     if (m.kind !== 'mail' || !('to' in m)) return
     const id = due.row._id
+    // A row still in the journal may have gone: the replay acks it, Outlook never sees it again.
+    if (this.journaled('outbox', id)) return
     if (!(await lifeos().mutation<boolean>('outbox:localClaim', { id, host }))) return
     this.journal('outbox', id, null)
     let sent: { id: string | null }
@@ -160,6 +165,8 @@ export class OutlookRoute {
         html: cleanMailHtml(m.html || plainHtml(m.text))
       })
     } catch (err) {
+      // Only a plain refusal fails the row. A timeout or an unclear end may have sent it: it stays journaled and is acked as sent.
+      if (!refused(err)) throw err
       this.unjournal('outbox', id)
       await lifeos().mutation('outbox:localFailed', { id, host, error: `Outlook on ${host}: ${errorText(err)}` })
       return
@@ -172,6 +179,7 @@ export class OutlookRoute {
   private async carryOp(op: LocalOp): Promise<void> {
     const { lifeos, carrier, host } = this.deps
     const id = op._id
+    if (this.journaled('calendarOps', id)) return
     if (!(await lifeos().mutation<boolean>('calendarOps:localClaim', { id, host }))) return
     const fail = (error: string) => lifeos().mutation('calendarOps:localFailed', { id, host, error })
     const answer = ANSWERS[op.kind]
@@ -220,6 +228,9 @@ export class OutlookRoute {
     return () => timers.forEach(clearInterval)
   }
 }
+
+/** Outlook said no before anything went: not there, not allowed, no such account or mail. */
+const refused = (err: unknown): boolean => err instanceof OfficeError && err.code !== 'failed'
 
 const plainHtml = (text: string): string =>
   `<div>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r?\n/g, '<br>')}</div>`

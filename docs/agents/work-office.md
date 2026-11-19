@@ -71,12 +71,14 @@ One set for Claude, Codex and Muse (architecture §10):
 | `office_slides_read`, `office_slides_replace` | each slide's text; replace text | no; the rule below |
 | `office_mail_list`, `office_mail_read` | Outlook's inbox, sent or drafts | no |
 | `office_mail_draft` | a draft left in Outlook's Drafts; nothing is sent | no |
-| `office_mail_send` | send, reply (`replyTo`), forward (`forward`), HTML body | **yes**: `office.mail.send` |
+| `office_mail_send` | send, reply (`replyTo`: to that mail's sender, read when the act is made, so the card and a grant judge the address Outlook uses), forward (`forward`), HTML body | **yes**: `office.mail.send` |
 | `office_calendar_list` | events by start | no |
 | `office_calendar_create` | with nobody invited, a hold on his own calendar, made at once | with `attendees`, **yes**: `office.calendar.op` |
 | `office_calendar_answer` | accept, decline, tentative | **yes**: `office.calendar.op` |
 
-**The rule for a file others can open.** A file named by a URL is shared.
+**The rule for a file others can open.** A file named by a URL, or one in a
+folder synced from OneDrive or SharePoint (`~/Library/CloudStorage/`, a
+`OneDrive` folder), is shared.
 On a shared file, a change he asked for in so many words is written: the
 tool carries `because: "asked"` and a `quote`, and the host finds the quote
 in his own messages (`ctx.threads.ownerSaid`). Otherwise the change waits
@@ -92,7 +94,9 @@ That host runs the same tool through `work.office.read` (only a tool that
 changes nothing) or `work.office.write`, under its bridge policy for the
 caller (peer.ts: `read` lets only reads through). The calling host checks
 the owner's words and sends the result as `asked`; the far host takes it
-from there.
+from there. A remote caller reaches a file by path only where
+`ctx.reaches` lets it (the listener's fence). A file named by a URL always
+passes.
 
 ## What is held
 
@@ -103,7 +107,8 @@ Outbox runs once, after his press or a grant he made from one of these. A
 send that comes over the peer link is held on the host that has Outlook,
 with no thread (`sessionId: null`), and is pressed there. Each act carries
 its `host` and refuses to run anywhere else. A mail grant fits when the
-account matches and every recipient is named, or sits in a named domain.
+account matches and every recipient is named, or sits in a named domain. It
+never fits a mail with no recipients.
 Calendar acts take no grant. The payload's HTML goes through
 `cleanMailHtml` (no script, style, frame, object, form, base, meta or link
 element, no `on…` handler, no `javascript:` link) before it reaches Outlook.
@@ -127,8 +132,11 @@ connected and Outlook is installed (checked every 5 minutes):
   `cancel` fail with "do it in Outlook".
 - **the journal.** A row is journaled before Outlook is called and cleared
   after LifeOS's ack. Each pass first acks what is still in it: a lost ack
-  becomes a late ack, never a second send. The Purdue PC's sender works the
-  same way.
+  becomes a late ack, never a second send. A row still journaled is never
+  handed to Outlook again, even if LifeOS offers it. Only a plain refusal
+  (not installed, not allowed, not open, no such account) fails a row; a
+  timeout or an unclear end stays journaled and is acked as sent. The Purdue
+  PC's sender works the same way.
 
 ## Excel behind the grid
 
@@ -137,9 +145,18 @@ connected and Outlook is installed (checked every 5 minutes):
 
 - **A write** reads the cells again first (the safety re-read). With a
   `base` that no longer matches, it answers `conflict` and writes nothing.
-  Otherwise it logs what the cells held to `work_office_undo`, writes the
-  block in one call, and reads it back: Excel types what it is given, so its
-  copy is the truth.
+  Otherwise it logs what the cells held to `work_office_undo` (the newest
+  100 per workbook), writes the block in one call, and reads it back: Excel
+  types what it is given, so its copy is the truth. Writes, undos and the
+  safety pass's re-reads run one at a time per workbook, so the pass never
+  takes the helper's own write for someone else's.
+- **Single cells** (`writeCells`, used by the grid, accepted suggestions and
+  `SheetSource.write`) are written alone, or as one block only when they
+  fill it, so the cells between are never written back as a read gave them.
+  A date read from Excel comes back as ISO text and is written back as a
+  date. Across sheets or cells it is not all-or-nothing: a cell that
+  changed between the check and its own write stops there with
+  `conflict`.
 - **Undo** puts the old contents back only while the cells still hash to
   what the write left. Excel's own undo does not cover scripted writes.
 - **The safety pass** (every 15 s while anything is watched) reads each
@@ -150,8 +167,7 @@ connected and Outlook is installed (checked every 5 minutes):
   `shiftOf`) orphans every suggestion on the workbook. The helper's own
   writes reach watchers as `by: 'tempcode'`.
 - `source(book)` is the workbook as work-kit's `SheetSource`, with
-  `formulas: 'store'`. Sheets are named by their tab names. One read and
-  one write per sheet, over the bounding box of the cells.
+  `formulas: 'store'`. Sheets are named by their tab names.
 
 **In the sheet canvas.** `heldOf` (sheets/held.ts) maps a source `{at:
 'microsoft', app: 'excel'}` to `{at: 'excel'}`, and the sheets pillar asks
@@ -160,9 +176,12 @@ connected and Outlook is installed (checked every 5 minutes):
 - `load` gets a Univer snapshot read from Excel. Each sheet's id is its tab
   name, and a big sheet loads only as far as one read reaches (50,000
   cells).
-- Every change Excel shows moves the workbook's `rev`. The canvas is told
-  through `announce`, and `since` answers `reload`: Excel gives cells, not
-  mutations.
+- Someone else's change heard on the safety pass, and every write this host
+  makes to the workbook wherever it lands, moves the workbook's `rev`. Each
+  canvas item is told once (one listener per item) through `announce`, and
+  `since` answers `reload`: Excel gives cells, not mutations. An edit that
+  meets a change the pass has not seen yet moves the rev too, so the grid
+  reloads rather than retrying.
 - `edit` writes the grid's cell contents through the helper and refuses
   formatting and rows or columns, as for an opened package. The view says
   `store: 'package'`, so the canvas treats it the same way, with `reach`
@@ -196,5 +215,7 @@ click per app. Also unproven:
 - Word and PowerPoint, which were not installed;
 - a reply through the route, which does not thread under the original: the
   route sends it as a new mail with its subject;
-- a sheet that grows past the block watched when the canvas opened it,
-  which is not watched further until the canvas opens it again.
+- someone else's change outside the block watched when the workbook was
+  first followed (rows added below it by a co-author): the watch is not
+  widened until Work is turned off and on. The host's own writes move the
+  rev wherever they land.

@@ -143,7 +143,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       name: held.ref.name,
       // In the canvas it is a file whose cell contents save and nothing else, as an opened package.
       store: 'package',
-      rev: await grid.follow(s.ctx, held.ref, () => void import('./index').then((m) => m.announce(s, item))),
+      rev: grid.follow(s.ctx, held.ref, item.id, () => void import('./index').then((m) => m.announce(s, item))),
       shared,
       suggestions: s.suggestions.open(key),
       ...(written ? { written } : {}),

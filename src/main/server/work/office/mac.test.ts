@@ -67,6 +67,9 @@ describe('the Excel scripts', () => {
     const w2: [string, unknown][] = []
     runScript('writeRange', { book: 'Book.xlsx', sheet: 'Sheet1', address: 'A1:B1', grid: [[1, '=A1*2']], formulas: true }, { 'Microsoft Excel': excel(w2, { value: 0, formula2: '', numberFormat: '' }) })
     expect(w2).toEqual([['range', 'A1:B1'], ['formula2', [['1', '=A1*2']]]])
+    const w3: [string, unknown][] = []
+    runScript('writeRange', { book: 'Book.xlsx', sheet: 'Sheet1', address: 'A1', grid: [['2026-11-19T00:00:00.000Z']], formulas: false }, { 'Microsoft Excel': excel(w3, { value: 0, formula2: '', numberFormat: '' }) })
+    expect(w3[1][1]).toBeInstanceOf(Date)
   })
 
   it('refuse a workbook that is not open', () => {

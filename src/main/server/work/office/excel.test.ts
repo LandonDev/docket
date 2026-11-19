@@ -48,13 +48,13 @@ describe('the Excel helper', () => {
     if (!('ok' in got)) throw new Error('conflict')
     expect((await excel.read(BOOK, 'Sheet1', parseAddress('B2:B3'))).formulas).toEqual([[''], ['=B2/4']])
     expect(excel.writes(BOOK)).toMatchObject([{ writeId: got.writeId, sheet: 'Sheet1', address: 'B2:B3', by: 'agent:env_mac:t1' }])
-    await expect(excel.undo(got.writeId)).resolves.toEqual({ ok: true })
+    await expect(excel.undo(BOOK, got.writeId)).resolves.toEqual({ ok: true })
     expect((await excel.read(BOOK, 'Sheet1', parseAddress('B2:B3'))).values).toEqual([[1200], [300]])
 
     const again = await excel.write(BOOK, 'Sheet1', parseAddress('B2'), [[9]], { by: 'owner' })
     if (!('ok' in again)) throw new Error('conflict')
     office.type(BOOK, 'Sheet1', 'B2', 10)
-    await expect(excel.undo(again.writeId)).resolves.toEqual({ conflict: true })
+    await expect(excel.undo(BOOK, again.writeId)).resolves.toEqual({ conflict: true })
     expect((await excel.read(BOOK, 'Sheet1', parseAddress('B2'))).values).toEqual([[10]])
   })
 
