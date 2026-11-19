@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { FormPublishSchema, type FormPublish } from '@shared/contract-work-forms'
+import { FormPublishSchema, FormsRequestSchemas, type FormPublish } from '@shared/contract-work-forms'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { ActKindDef, WorkModule } from '../modules'
 import { announce, dropCopy, formItem, hold, publish, responses, review, rowOf, save, setOpen, settled, viewOf, writeCopy } from './forms'
@@ -25,6 +25,7 @@ export const formPublishKind: ActKindDef<FormPublish, never> = {
   wayBack: () => null
 }
 
+const FORMS_METHODS: ReadonlySet<string> = new Set(FormsRequestSchemas.map((s) => s.shape.method.value))
 const OWNER_ONLY = new Set(['work.forms.save', 'work.forms.review', 'work.forms.mode', 'work.forms.publish', 'work.forms.close'])
 
 export const forms: WorkModule = {
@@ -33,7 +34,8 @@ export const forms: WorkModule = {
     ensureFormsTables(db)
   },
   async handle(req, ctx, by) {
-    if (!req.method.startsWith('work.forms.')) return NOT_HANDLED
+    // A method the contract does not list is the router's to call not built.
+    if (!FORMS_METHODS.has(req.method)) return NOT_HANDLED
     // The canvas's methods are his: a thread's own call goes through the tools, where the hold and the mode apply.
     if (by.kind === 'model' && OWNER_ONLY.has(req.method)) throw new Error('Only the owner changes a form from the canvas.')
     const item = formItem(ctx, (req as { params: { itemId: string } }).params.itemId)

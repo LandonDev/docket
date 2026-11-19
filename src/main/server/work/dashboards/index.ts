@@ -1,3 +1,4 @@
+import { DashboardsRequestSchemas } from '@shared/contract-work-dashboards'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkModule } from '../modules'
 import { announce, dashItem, dashRow, DashStore, ensureDashboardsTables, fenceDash, refresh, removeBlock, review, viewOf } from './dash'
@@ -9,6 +10,7 @@ import { dashboardsTools } from './tools'
  * routine's `dashboard_refresh`. A block an agent adds waits for his Accept.
  */
 
+const DASH_METHODS: ReadonlySet<string> = new Set(DashboardsRequestSchemas.map((s) => s.shape.method.value))
 const OWNER_ONLY = new Set(['work.dashboards.refresh', 'work.dashboards.review', 'work.dashboards.remove'])
 
 export const dashboards: WorkModule = {
@@ -17,7 +19,8 @@ export const dashboards: WorkModule = {
     ensureDashboardsTables(db)
   },
   async handle(req, ctx, by) {
-    if (!req.method.startsWith('work.dashboards.')) return NOT_HANDLED
+    // A method the contract does not list is the router's to call not built.
+    if (!DASH_METHODS.has(req.method)) return NOT_HANDLED
     if (by.kind === 'model' && OWNER_ONLY.has(req.method)) throw new Error('Only the owner changes a dashboard from the canvas.')
     const item = dashItem(ctx, (req as { params: { itemId: string } }).params.itemId)
     // A remote key sees the figures only when it could name every file they are read from.
