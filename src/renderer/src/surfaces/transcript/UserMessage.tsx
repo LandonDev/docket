@@ -6,10 +6,14 @@ import { MorphText } from "../../motion/MorphText";
 import {
   type AnimationEvent,
   useContext,
+  useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import { sentChipsOf, type SentChip } from "../../lib/sentChips";
+import { workCanvasChunk } from "../chunks";
 import { AttachmentChip, openAttachmentImages } from "../../chrome/AttachmentChip";
 import { SecondOpinionCard } from "../../chrome/SecondOpinionCard";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
@@ -95,7 +99,11 @@ export function UserMessageBlock({
   };
   const card = block.secondOpinion;
   const note = block.noteCard;
-  const text = card && card.kind !== "handoff" ? "" : block.text;
+  const full = card && card.kind !== "handoff" ? "" : block.text;
+  // What the message was about went as lines the model reads; here they are chips, and the rest his words.
+  const sent = useMemo(() => sentChipsOf(full), [full]);
+  const text = sent.text;
+  const sessionId = useTranscriptSession();
 
   useLayoutEffect(() => {
     const el = textRef.current;
@@ -129,8 +137,8 @@ export function UserMessageBlock({
         }
         onAnimationEnd={entering == null ? undefined : settleEntrance}
       >
-        {text || block.attachments?.length ? (
-          <CopyMessageButton text={text} attachments={block.attachments ?? []} />
+        {full || block.attachments?.length ? (
+          <CopyMessageButton text={full} attachments={block.attachments ?? []} />
         ) : null}
         {block.attachments?.length ? (
           <div
@@ -148,6 +156,11 @@ export function UserMessageBlock({
                 }
               />
             ))}
+          </div>
+        ) : null}
+        {sent.chips.length > 0 ? (
+          <div className={text || card || note ? "mb-2" : ""}>
+            <SentChipRow chips={sent.chips} sessionId={sessionId} environmentId={environmentId} />
           </div>
         ) : null}
         {note ? (
@@ -209,6 +222,40 @@ function SecondOpinionLine({ card }: { card: SecondOpinionMeta }) {
     <div data-second-opinion="" className="min-w-0">
       <NoticeLine glyph={<HarnessIcon harness={card.to} />} lead="Second opinion" details={[HARNESS_TITLE[card.to], files]} />
     </div>
+  );
+}
+
+const SentChips = workCanvasChunk.surface("SentChips");
+const BONE = "flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground";
+
+/**
+ * The chips a message went with (work/canvas/SentChips.tsx, which opens each
+ * one). Work is not in the first paint: until its chunk lands the row is the
+ * same boxes with the labels alone, so nothing moves when the glyphs come.
+ */
+function SentChipRow({ chips, sessionId, environmentId }: { chips: readonly SentChip[]; sessionId: string | undefined; environmentId: string }) {
+  const [ready, setReady] = useState(() => !!workCanvasChunk.loaded());
+  useEffect(() => {
+    if (ready) return;
+    let live = true;
+    void workCanvasChunk.load().then(
+      () => live && setReady(true),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [ready]);
+  if (ready && sessionId) return <SentChips chips={chips} sessionId={sessionId} environmentId={environmentId} />;
+  return (
+    <ul aria-label="About" className="flex flex-wrap gap-1">
+      {chips.map((chip, index) => (
+        <li key={`${index}:${chip.ref}`} className={BONE}>
+          <span className="size-3 shrink-0" />
+          <span className="min-w-0 truncate">{chip.label}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
