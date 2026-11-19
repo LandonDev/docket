@@ -64,6 +64,9 @@
 @source "../../../node_modules/work-kit/src/lifeos/mail-client.ts";
 @source "../../../node_modules/work-kit/src/lifeos/optimistic.ts";
 @source "../../../node_modules/work-kit/src/lifeos/outlook.ts";
+@source "../../../node_modules/work-kit/src/lifeos/projects-client.ts";
+@source "../../../node_modules/work-kit/src/lifeos/projects.ts";
+@source "../../../node_modules/work-kit/src/lifeos/rank.ts";
 @source "../../../node_modules/work-kit/src/lifeos/tasks.ts";
 @source "../../../node_modules/work-kit/src/lifeos/time.ts";
 @source "../../../node_modules/work-kit/src/lifeos/types.ts";
