@@ -7,6 +7,13 @@
 #   TC_TEST_PAIR_LINK="https://host/pair#XXXXX-XXXXX" TC_TEST_PAIR_NAME="The box" scripts/ios-sim-proof.sh
 #
 # TC_PROOF_SET picks the shots:
+#   work    Milestone 46, against the local server's work seeds (scripts/lib/ios-work-seeds.ts,
+#           pairs with the admin key): Home with the Outbox row and the Work band, the Outbox,
+#           a held mail, its Edit sheet, the mail edited and sent from the phone (the undo
+#           capsule, then the list), a held notice opening its item, Away cycled from the phone
+#           with its note and review, Settings → Work; Home and the Outbox once more in dark.
+#           scripts/ios-sim-proof-local.ts then reads back on the host what went
+#           ($OUT/work-report.txt).
 #   shell   Home, a workspace's project cards, the archived list, Inbox,
 #           Search with results, Settings, Hosts, a thread in its project's
 #           shell and a project card's landing (route project), in light and
@@ -424,6 +431,8 @@ pair() {
 # The Duo set types into the composer (the keyboard shots, the fold run's draft): it pairs with the key that may act.
 # The perf set's typing runs do too.
 if { [ "$SET" = duo ] || [ "$SET" = perf ]; } && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
+# The work set presses Send, Edit and Away and reads Settings → Work: it pairs with the admin key.
+if [ "$SET" = work ] && [ -n "${TC_TEST_PAIR_LINK_ADMIN:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_ADMIN; fi
 if [ -n "${TC_TEST_PAIR_LINK:-}" ]; then
   pair || { echo "ios-sim-proof: the app did not pair" >&2; exit 3; }
   rm -f "$OUT/shots/00-pairing.png" "$OUT/shots/$POSE/00-pairing.png" "$OUT/layout/$POSE/00-pairing.json"
@@ -1036,6 +1045,28 @@ transcript_report() {
     echo "ios-sim-proof: $1 no transcript report"
   fi
 }
+work_set() {
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  shot w01-home-light home "" "" "" 12
+  shot w02-outbox-light outbox
+  shot w03-mail-light outbox-item
+  TC_SHEET=outbox-edit shot w04-edit-light outbox-item
+  # The edit lands four seconds after the item opens, Send four after that; the list holds the capsule for five.
+  TC_ACTION=outbox-edit-send launch_app outbox-item
+  sleep 7; snap w05-mail-edited-light
+  sleep 3; snap w06-undo-capsule-light
+  sleep 8; snap w07-after-send-light
+  shot w08-held-notice-light held-notice
+  TC_SHEET=away shot w09-away-review-light away "" "" "" 14
+  shot w10-home-after-away-light home
+  shot w11-work-settings-light work-settings
+  appearance dark
+  shot w12-home-dark home
+  shot w13-outbox-dark outbox
+  shot w14-mail-dark outbox-item
+}
+
 return_set() {
   appearance light
   TC_TARGET_SEQ=${TC_RETURN_SEQ:-1000} shot "return-0-middle" thread "2,000 rows" chat "" 14
@@ -1575,6 +1606,7 @@ case "$SET" in
   markup) markup_set ;;
   glass) glass_set ;;
   return) return_set ;;
+  work) work_set ;;
   all) shell_set; threads_set; scroll_set; actions_set; computer_set; push_set; host_gone_set ;;
   *) echo "ios-sim-proof: unknown TC_PROOF_SET $SET" >&2; exit 2 ;;
 esac

@@ -309,6 +309,20 @@ struct RootView: View {
             if route == "outbox-item", let entry = OutboxModel.bands(OutboxEntries.of(model.registry.ordered)).first?.entries.first {
                 home.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(entry.item.ref)))
             }
+        case "away":
+            // The work set: Away on and off from the phone, as the host menu's item does; the note follows.
+            try? await client.work.setAway(true)
+            try? await Task.sleep(for: .seconds(1))
+            try? await client.work.setAway(false)
+        case "held-notice":
+            // The work set: a held act's notice, shaped as the host sends it, through the delegate's one route.
+            for _ in 0..<100 where OutboxEntries.of(model.registry.ordered).isEmpty {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard let entry = OutboxModel.bands(OutboxEntries.of(model.registry.ordered)).first?.entries.first,
+                  case .host(let ref) = entry.item.ref else { return }
+            let tc: [AnyHashable: Any] = ["event": "needs_you", "kind": "waiting", "environmentId": entry.environmentId, "threadId": entry.item.sessionId ?? "", "held": ["at": "host", "id": ref.id], "ts": 0]
+            PushDelegate.route(["aps": ["alert": ["title": entry.item.summary]], "tc": tc])
         case "work-settings":
             home.open(.settings)
             home.detailStack.append(Route.workSettings)

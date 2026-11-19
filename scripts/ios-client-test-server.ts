@@ -37,6 +37,7 @@
  *                                 machinery behind it here: macBridge.held, boot-resume, accounts)
  *   POST /batch-log { masterId, lines }  → appends lines to the master's running shell step (a streaming console)
  *   POST /notes { sessionId, text }      → writes a thread's notes.md (the `notes` push follows)
+ *   POST /work-held { rows }   → writes held acts into the hold as it writes them (milestone 46's work set)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
  *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /hold { seconds }      → the host goes down for that long: every remote socket dropped and every
@@ -101,6 +102,10 @@ import {
   computerHeldRows
 } from './lib/ios-seeds'
 import { openDb, Store } from '../src/main/server/db'
+import { DatabaseSync } from 'node:sqlite'
+import { runAddonChild } from '../src/main/server/addons/addonChild'
+import type { AddonWireMessage } from '../src/main/server/addons/addonWire'
+import { wirePair } from '../src/main/server/addons/testWire'
 import { PERF_CHILDREN, PERF_LOAD, PERF_SIBLING, PERF_THREADS, perfThread } from './lib/ios-perf-seeds'
 
 // A proof set pairs some of these codes late: the features set pairs the
@@ -232,7 +237,17 @@ const server = await startServer(dbPath, {
   remotePort: 0,
   assets,
   spawnExecBroker,
-  devices: new MacDevices(fakeMacDevicesDeps(environmentId, { session: (id) => (id === 'ios-resources' ? { title: 'Clean up after the simulator run', status: 'idle' } : null) }))
+  devices: new MacDevices(fakeMacDevicesDeps(environmentId, { session: (id) => (id === 'ios-resources' ? { title: 'Clean up after the simulator run', status: 'idle' } : null) })),
+  // The work set (TC_TEST_ADDONS=1) runs its add-on: the add-on host's child in this process, as its own test runs it.
+  ...(process.env.TC_TEST_ADDONS === '1'
+    ? {
+        spawnAddonHost: () => {
+          const [main, other] = wirePair<AddonWireMessage>()
+          runAddonChild(other, { watchMainMs: 0, exit: () => {} })
+          return { wire: main, kill: () => {}, onExit: () => {} }
+        }
+      }
+    : {})
 })
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
 // No pass of the scheduler until the registry stubs below are in: a pass during the seeds ran the
@@ -2067,6 +2082,30 @@ const control = createServer((req, res) => {
         batchLogLines.push(...lines)
         server.batches.seedRow(withShellLog(row, batchLogLines))
         return answer(200, { lines: batchLogLines.length })
+      }
+      case '/work-held': {
+        // Milestone 46's proof: held acts written into this host's hold as `ctx.held.create` writes them
+        // (no model turn runs here). An add-on call takes its add-on's spec digest from the rule the owner set.
+        const db = new DatabaseSync(dbPath)
+        try {
+          const rows = Array.isArray(body.rows) ? (body.rows as Record<string, unknown>[]) : []
+          const now = Date.now()
+          for (const [i, r] of rows.entries()) {
+            const payload = { ...(r.payload as Record<string, unknown>) }
+            if (r.kind === 'addon.call' && typeof payload.addonId === 'string') {
+              const rule = db.prepare('SELECT spec_digest FROM work_outbox_tool_rules WHERE addon_id = ? LIMIT 1').get(payload.addonId) as { spec_digest?: string } | undefined
+              if (rule?.spec_digest) payload.specDigest = rule.spec_digest
+            }
+            const at = typeof r.createdAt === 'number' ? r.createdAt : now - (rows.length - i) * 60_000
+            db.prepare(
+              `INSERT INTO work_held_acts (id, workspace_id, session_id, sector, kind, origin, why, summary, verb, account, payload, state, run_key, error, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 'ios-proof', 'rule', ?, ?, NULL, ?, ?, ?, ?, ?, ?)`
+            ).run(String(r.id), r.workspaceId == null ? null : String(r.workspaceId), r.sessionId == null ? null : String(r.sessionId), r.sector == null ? null : String(r.sector), String(r.kind), String(r.summary), String(r.verb ?? 'Send'), JSON.stringify(payload), String(r.state ?? 'held'), `ios-proof-${String(r.id)}`, r.error == null ? null : String(r.error), at, at)
+          }
+          return answer(200, { written: rows.length })
+        } finally {
+          db.close()
+        }
       }
       case '/notes': {
         const doc = server.registry.notes.write(String(body.sessionId ?? THREAD_NOTES_FIVE), String(body.text ?? ''))

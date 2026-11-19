@@ -41,8 +41,28 @@ struct OutboxItemScreen: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: refKey) { await load() }
+        #if DEBUG
+        .task { await proofHooks() }
+        #endif
         .accessibilityIdentifier("outbox-item")
     }
+
+    #if DEBUG
+    /// The work set's hooks (scripts/ios-sim-proof.sh `work`): the Edit sheet open for its shot, or an
+    /// edit of the subject through the sheet's own path, then Send, four seconds apart so each is shot.
+    private func proofHooks() async {
+        for _ in 0..<100 where item == nil { try? await Task.sleep(for: .milliseconds(100)) }
+        if TestHooks.sheet == "outbox-edit" { editing = true }
+        guard TestHooks.action == "outbox-edit-send", let client else { return }
+        try? await Task.sleep(for: .seconds(4))
+        guard let current = item else { return }
+        let next = OutboxModel.applyEdits(current.payload, ["arguments.subject": "Ballroom for Saturday, April 10"])
+        guard let edited = try? await client.work.edit(current, payload: next.payload) else { return }
+        fetched = edited
+        try? await Task.sleep(for: .seconds(4))
+        send(edited)
+    }
+    #endif
 
     private func load() async {
         guard let client, let ref = OutboxModel.ref(refKey) else {

@@ -93,7 +93,7 @@ import { SessionScopeSchema, WorkspaceKindSchema } from '../src/shared/work/ids'
 import { WorkSettingsSchema } from '../src/shared/work/scope'
 import { OutboxItemSchema } from '../src/shared/contract-work-outbox'
 import { HeldRefSchema } from '../src/shared/work/acts'
-import { AwayStateSchema } from '../src/shared/away'
+import { AwayDecidedSchema, AwayStateSchema } from '../src/shared/away'
 
 // ── the subset ──────────────────────────────────────────────────────────
 
@@ -435,6 +435,7 @@ export const SUBSET: SubsetEntry[] = [
   // Work on the phone (milestone 46): the Outbox, Results, grants and tool rules, LifeOS's state, Away
   type('HeldRef', HeldRefSchema),
   type('AwayState', AwayStateSchema),
+  type('AwayDecided', AwayDecidedSchema),
   type('OutboxItem', OutboxItemSchema),
   type('WorkResult', W.WorkResultSchema),
   type('OutboxGrant', W.OutboxGrantSchema),

@@ -50,6 +50,7 @@ type ToolDef = { name: string; description: string; inputSchema: Record<string, 
 const obj = (properties: Record<string, unknown> = {}, required: string[] = []): Record<string, unknown> => ({ type: 'object', properties, required })
 const tools: ToolDef[] = [
   { name: 'echo', description: 'Echo the text back unchanged', inputSchema: obj({ text: { type: 'string', description: 'What to echo' } }, ['text']) },
+  { name: 'send_mail', description: 'Send a mail (a stand-in that only records it)', inputSchema: obj({ to: { type: 'string' }, subject: { type: 'string' }, text: { type: 'string' } }, ['to', 'text']) },
   { name: 'read', description: 'Read a value without changing anything', inputSchema: obj({ key: { type: 'string' } }), annotations: { readOnlyHint: true } },
   { name: 'image', description: 'Answer a one-pixel image', inputSchema: obj() },
   { name: 'whoami', description: 'Answer the sha256 prefix of the token this server got', inputSchema: obj() },
@@ -79,6 +80,8 @@ function makeServer(headerValue: () => string | undefined): Server {
     switch (name) {
       case 'echo':
         return text(String(args.text ?? ''))
+      case 'send_mail':
+        return text(`sent to ${String(args.to ?? '')}: ${String(args.subject ?? '')}`)
       case 'read':
         return text(`read ${String(args.key ?? '')}`)
       case 'image':

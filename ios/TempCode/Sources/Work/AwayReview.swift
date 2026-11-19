@@ -73,6 +73,9 @@ struct AwayEndNote: View {
                 .sheet(isPresented: $reviewing, onDismiss: { for client in clients { client.work.reviewedAway() } }) {
                     AwayReviewSheet()
                 }
+                #if DEBUG
+                .task { if TestHooks.sheet == "away" { try? await Task.sleep(for: .seconds(1)); reviewing = true } }
+                #endif
         }
     }
 }

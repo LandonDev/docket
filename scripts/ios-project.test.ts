@@ -18,10 +18,15 @@ describe('ios/TempCode/project.yml', () => {
     expect(listed).toEqual(['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'])
   })
 
-  it('targets iOS 18.0 and the iPhone family', () => {
-    expect(yml).toMatch(/deploymentTarget:\n\s+iOS: "18\.0"/)
-    expect(yml).toContain('IPHONEOS_DEPLOYMENT_TARGET: "18.0"')
+  it('targets iOS 27.0 (one minimum with work-kit\'s LifeKit) and the iPhone family', () => {
+    expect(yml).toMatch(/deploymentTarget:\n\s+iOS: "27\.0"/)
+    expect(yml).toContain('IPHONEOS_DEPLOYMENT_TARGET: "27.0"')
     expect(yml).toContain('TARGETED_DEVICE_FAMILY: "1"')
+  })
+
+  it("builds no x86_64 simulator slice (convex-swift has none) and names the accent asset LifeKit's ink reads", () => {
+    expect(yml).toContain('EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64')
+    expect(yml).toContain('ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor')
   })
 
   it('links the shared tokens to the client package in the Live Activity', () => {
