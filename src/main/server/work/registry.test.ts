@@ -463,3 +463,19 @@ describe('with the Work switch on', () => {
     })
   })
 })
+
+describe('a Work workspace is never linked across hosts (architecture §19)', () => {
+  it('linkCatalog stamps no Work workspace, whoever asks, and unlinkWorkWorkspaces clears one that carries a link', async () => {
+    store.setSetting(WORK_SETTING_KEY, JSON.stringify({ enabled: true }))
+    const purdue = await workWorkspace('purdue')
+    const { workspaceId: code } = await codeWorkspace()
+    registry.linkCatalog({ workspaces: [{ id: purdue.id, linkId: 'wl_peer' }, { id: code, linkId: 'wl_code' }], projects: [] })
+    const linkOf = (id: string): string | null => registry.listWorkspaces().find((w) => w.id === id)?.linkId ?? null
+    expect([linkOf(purdue.id), linkOf(code)]).toEqual([null, 'wl_code'])
+    // a link from before F1, written straight to the store
+    store.setWorkspaceLink(purdue.id, 'wl_old')
+    expect(registry.unlinkWorkWorkspaces()).toBe(1)
+    expect([linkOf(purdue.id), linkOf(code)]).toEqual([null, 'wl_code'])
+    expect(registry.unlinkWorkWorkspaces()).toBe(0)
+  })
+})

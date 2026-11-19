@@ -24,7 +24,15 @@ import { StartOnSchema, type StartOn } from './defaults'
  *   again the oldest per host;
  * - a side with an id gives it to the other; both set and different, the
  *   settings home's (the box's) wins; neither, mint;
- * - a link is never removed by the linker.
+ * - a link is never removed by the linker, but for one kind of row:
+ * - a Work workspace is never linked (F1, architecture §19: a Work workspace
+ *   lives on one host and everything of it lives there; clients merge hosts).
+ *   Two hosts' Work workspaces with the same folder name may be two jobs of
+ *   different sectors, and a link would have one job's threads use the
+ *   other's key. So no Work workspace pairs with anything, Work or code, and
+ *   the linker clears a link id a Work workspace carries
+ *   (SessionRegistry.unlinkWorkWorkspaces). A far Work start finds its
+ *   workspace by sector there, then by folder (remote/crossHostThreads.ts).
  */
 
 export const newWorkspaceLinkId = (): string => `wl_${nanoid(12)}`
@@ -36,7 +44,12 @@ export interface LinkableWorkspace {
   githubRepo?: string | null
   linkId?: string | null
   createdAt: number
+  /** 'work' for a Work workspace, which never pairs (above); absent for a code one */
+  kind?: string | null
 }
+
+/** Whether a workspace may pair with another host's: never a Work workspace (§19). */
+export const pairable = (ws: Pick<LinkableWorkspace, 'kind'>): boolean => ws.kind !== 'work'
 
 export interface LinkableProject {
   id: string
@@ -79,8 +92,8 @@ export interface Pair<T> {
 
 /** The workspace pairs between this host's rows and a peer's. */
 export function matchWorkspaces(local: readonly LinkableWorkspace[], peer: readonly LinkableWorkspace[]): Pair<LinkableWorkspace>[] {
-  const mine = oldestByKey(local, workspaceMatchKey)
-  const theirs = oldestByKey(peer, workspaceMatchKey)
+  const mine = oldestByKey(local.filter(pairable), workspaceMatchKey)
+  const theirs = oldestByKey(peer.filter(pairable), workspaceMatchKey)
   const out: Pair<LinkableWorkspace>[] = []
   for (const [key, l] of mine) {
     const p = theirs.get(key)

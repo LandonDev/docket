@@ -62,6 +62,8 @@ export interface ProjectLinkerDeps {
     listWorkspaces(): WorkspaceMeta[]
     listProjects(): ProjectMeta[]
     linkCatalog(args: CatalogLinkArgs): void
+    /** Clears the link id of every Work workspace that carries one; the count cleared (SessionRegistry). */
+    unlinkWorkWorkspaces?(): number
     onCatalog(listener: (kind: 'workspaces' | 'projects') => void): () => void
   }
   peers: { get(id: string): LinkerLink | undefined; all(): LinkerLink[] }
@@ -210,6 +212,9 @@ export class ProjectLinker {
     if (!link?.connected) return
     try {
       const [peerWs, peerPr] = await Promise.all([link.request<WorkspaceMeta[]>('workspace.list'), link.request<ProjectMeta[]>('project.list')])
+      // A Work workspace is never linked (shared/projectLinks.ts): a link one carries from before is cleared here first.
+      const unlinked = this.deps.registry.unlinkWorkWorkspaces?.() ?? 0
+      if (unlinked) this.log(`${id}: cleared the link of ${unlinked} Work workspace${unlinked === 1 ? '' : 's'}`)
       const localWs = this.deps.registry.listWorkspaces()
       const localPr = this.deps.registry.listProjects()
       const me = this.deps.environmentId

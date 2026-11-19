@@ -181,6 +181,7 @@ import { composeWorkPreambled, WORK_OWNER_NAME_SETTING, workPreamble } from './w
 import {
   newProjectLinkId,
   newWorkspaceLinkId,
+  pairable,
   type CatalogLinkArgs,
   type ProjectLinkFacts,
   type ProjectSettingsBundle
@@ -2315,6 +2316,14 @@ export class SessionRegistry {
   /** One project across hosts (shared/projectLinks.ts): the linker on the
    *  peer holder stamping this host's rows with the ids their copies share.
    *  A row that already carries the id is untouched; an unknown id is skipped. */
+  /** Clears the link id of every Work workspace that carries one (shared/projectLinks.ts): the linker runs it before it pairs. The count cleared. */
+  unlinkWorkWorkspaces(): number {
+    const linked = this.store.listWorkspaces().filter((w) => !pairable(w) && w.linkId)
+    for (const w of linked) this.store.setWorkspaceLink(w.id, null)
+    if (linked.length) this.notifyCatalog('workspaces')
+    return linked.length
+  }
+
   linkCatalog(args: CatalogLinkArgs): void {
     const workspaces = this.store.listWorkspaces()
     const projects = this.store.listProjects()
@@ -2322,7 +2331,8 @@ export class SessionRegistry {
     let pr = false
     for (const { id, linkId } of args.workspaces) {
       const row = workspaces.find((w) => w.id === id)
-      if (!row || row.linkId === linkId) continue
+      // A Work workspace is never linked, whoever asks (shared/projectLinks.ts, architecture §19).
+      if (!row || row.linkId === linkId || !pairable(row)) continue
       this.store.setWorkspaceLink(id, linkId)
       ws = true
     }

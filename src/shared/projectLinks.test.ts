@@ -3,6 +3,7 @@ import {
   decideLink,
   matchProjects,
   matchWorkspaces,
+  pairable,
   newProjectLinkId,
   newWorkspaceLinkId,
   projectMatchKey,
@@ -52,6 +53,13 @@ describe('matchWorkspaces', () => {
       ['m1', 'b1'],
       ['m2', 'b2']
     ])
+  })
+  it('never pairs a Work workspace (architecture §19): not with a Work one of another sector or the same, not with a code one', () => {
+    const local = [ws('m-purdue', '/Users/me/Work/Both', { kind: 'work' }), ws('m-code', '/Users/me/IdeaProjects/Shop')]
+    const peer = [ws('b-life', '/srv/agents/work/Work/Both', { kind: 'work' }), ws('b-shop', '/srv/agents/work/Work/Shop', { kind: 'work' })]
+    expect(matchWorkspaces(local, peer)).toEqual([])
+    expect(pairable({ kind: 'work' })).toBe(false)
+    expect(pairable({})).toBe(true)
   })
   it('takes at most one row per host per key: the oldest', () => {
     const local = [ws('m-new', '/a/temp-code', { createdAt: 5 }), ws('m-old', '/b/temp-code', { createdAt: 2 })]

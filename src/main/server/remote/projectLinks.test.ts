@@ -66,6 +66,11 @@ function catalog(workspaces: WorkspaceMeta[] = [], projects: ProjectMeta[] = [])
         args
       )
     },
+    unlinkWorkWorkspaces() {
+      const linked = workspaces.filter((w) => w.kind === 'work' && w.linkId)
+      for (const w of linked) w.linkId = null
+      return linked.length
+    },
     onCatalog(l: (kind: 'workspaces' | 'projects') => void) {
       listeners.add(l)
       return () => listeners.delete(l)
@@ -169,6 +174,34 @@ describe('ProjectLinker: pairing', () => {
     expect(peer.workspaces.find((w) => w.id === 'new')?.linkId).toBeUndefined()
     expect(peer.projects.find((p) => p.id === 'pold')?.linkId).toBe(local.projects[0].linkId)
     expect(peer.projects.find((p) => p.id === 'pnew')?.linkId).toBeUndefined()
+  })
+})
+
+describe('ProjectLinker: a Work workspace is never linked (architecture §19)', () => {
+  it('pairs no Work workspace by folder name, with another Work workspace of any sector or with a code one', async () => {
+    const { local, peer, link, linker } = setup()
+    local.workspaces.push(ws('wm-purdue', '/Users/l/Work/Both', 1, { kind: 'work', sector: 'purdue' }))
+    peer.workspaces.push(ws('wb-life', '/srv/agents/work/Work/Both', 2, { kind: 'work', sector: 'life' }))
+    local.workspaces.push(ws('wm-same', '/Users/l/Work/Purdue', 3, { kind: 'work', sector: 'purdue' }))
+    peer.workspaces.push(ws('wb-same', '/srv/agents/work/Work/Purdue', 4, { kind: 'work', sector: 'purdue' }))
+    local.workspaces.push(ws('wm-code', '/Users/l/IdeaProjects/Shop', 5))
+    peer.workspaces.push(ws('wb-shop', '/srv/agents/work/Work/Shop', 6, { kind: 'work', sector: 'cosmic' }))
+    await linker.run(BOX)
+    expect([...local.workspaces, ...peer.workspaces].map((w) => w.linkId ?? null)).toEqual([null, null, null, null, null, null])
+    expect(link.methods).toEqual(['workspace.list', 'project.list'])
+    expect(linker.status(BOX)).toEqual({ lastRunAt: 1_000, pairs: { workspaces: 0, projects: 0 } })
+  })
+
+  it('clears a link a Work workspace carries from before, and leaves a code workspace\'s', async () => {
+    const { local, peer, linker } = setup()
+    local.workspaces.push(ws('wm-work', '/Users/l/Work/Both', 1, { kind: 'work', sector: 'purdue', linkId: 'wl_old' }))
+    peer.workspaces.push(ws('wb-work', '/srv/agents/work/Work/Both', 2, { kind: 'work', sector: 'life', linkId: 'wl_old' }))
+    local.workspaces.push(ws('wm-code', '/Users/l/IdeaProjects/Shop', 3, { linkId: 'wl_code' }))
+    peer.workspaces.push(ws('wb-code', '/srv/agents/work/shop', 4, { linkId: 'wl_code' }))
+    await linker.run(BOX)
+    expect(local.workspaces.map((w) => w.linkId ?? null)).toEqual([null, 'wl_code'])
+    // the peer clears its own when its linker runs
+    expect(peer.workspaces.map((w) => w.linkId ?? null)).toEqual(['wl_old', 'wl_code'])
   })
 })
 

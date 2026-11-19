@@ -28,7 +28,14 @@ names the far child).
   different → the settings home's wins) and stamps through
   `registry.linkCatalog` here and `catalog.link` (admin) there. It never
   unlinks and never gives one id to a second row on a host; a wrong link is
-  undone by deleting one copy, not by renaming it. The same run makes the
+  undone by deleting one copy, not by renaming it. One exception (F1,
+  architecture §19): **a Work workspace is never linked**. It pairs with
+  nothing (`pairable`), `linkCatalog` stamps none whoever asks, and each run
+  first clears a link a Work workspace carries from before
+  (`registry.unlinkWorkWorkspaces`): two hosts' Work workspaces of one folder
+  name may be two jobs of different sectors, and a link would let one job's
+  threads use the other's key. A far Work start finds its workspace by sector
+  there (docs/agents/work-scope.md). The same run makes the
   copies still missing, both ways (`makeCopies`): a project with no link id,
   not archived, in a paired workspace whose other copy has no project of
   its name, gets a fresh id and `project.ensureLinked` there with

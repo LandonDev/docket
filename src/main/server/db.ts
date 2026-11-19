@@ -1313,7 +1313,7 @@ export class Store {
   }
 
   /** The id the workspace shares with its copies on other hosts (projectLinks.ts). */
-  setWorkspaceLink(id: string, linkId: string): void {
+  setWorkspaceLink(id: string, linkId: string | null): void {
     this.stmt(`UPDATE workspaces SET link_id = ? WHERE id = ?`).run(linkId, id)
   }
 
