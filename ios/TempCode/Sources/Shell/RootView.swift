@@ -335,6 +335,10 @@ struct RootView: View {
             // The work set: the first Work workspace's house rules.
             guard let workspace = client.workspaces.first(where: { $0.kind == .work }) else { return }
             home.open(.houseRules(environmentId: environmentId, workspaceId: workspace.id))
+        case "work-view":
+            // Milestone 47's work set: the first Work workspace's Mail, Tasks, Agenda or Routines (`TC_TEST_WORK_VIEW`).
+            guard let workspace = client.workspaces.first(where: { $0.kind == .work }) else { return }
+            home.open(.workView(environmentId: environmentId, workspaceId: workspace.id, view: TestHooks.workView ?? "mail"))
         case "work-chats":
             home.open(.workspace(key: HomeSections.workChatsKey))
         case "work-settings":
