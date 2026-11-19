@@ -121,6 +121,24 @@ describe('the google wire', () => {
   })
 })
 
+describe('a document of ours as a Google Doc', () => {
+  it('goes up as Word, converted by Google into a Doc in his Drive', async () => {
+    const path = join(dir, 'Plan.tcdoc')
+    items.set('mine', { id: 'mine', sessionId: 's1', kind: 'document', source: { at: 'file', host: 'env_box', path }, title: 'Plan', state: 'open' } as CanvasItem)
+    const { writeFileSync } = await import('node:fs')
+    writeFileSync(path, '')
+    ctx.db.exec('CREATE TABLE IF NOT EXISTS work_docs_threads (doc TEXT PRIMARY KEY, rows TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, title TEXT)')
+    Object.assign(ctx, {
+      reaches: () => true,
+      service: { internal: async (route: string) => (route === '/internal/formats/export' ? { data: Buffer.from('PK fake docx').toString('base64') } : { rows: [] }) }
+    })
+    const got = await call<{ fileId: string; url: string }>('work.google.upload', { itemId: 'mine', account: ME })
+    expect(fake.files.get(got.fileId)).toMatchObject({ name: 'Plan', mimeType: GOOGLE_MIME.doc })
+    expect(got.url).toContain(got.fileId)
+    expect(results.map((r) => r.kind)).toEqual(['google.doc.upload'])
+  })
+})
+
 describe('the version poll', () => {
   it("tells an open item and fires a routine's trigger on someone else's change, not on ours", async () => {
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'sh1' })
