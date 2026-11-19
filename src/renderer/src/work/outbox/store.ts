@@ -206,35 +206,35 @@ export async function removeGrant(grant: HostGrant): Promise<void> {
 
 /** Several at once, each its own press; answers how many went and the first refusal. */
 /** What a list press leaves for its own look: a reply carries the mail it quotes, which only its detail shows. */
-export const REPLY_NEEDS_A_LOOK = "Open it to send: it quotes the mail it answers, which shows only there";
-/** A computer act's picture of the window shows only in its detail, so it is pressed there. */
-export const ACT_NEEDS_A_LOOK = "Open it to send: the picture of the window it acts on shows only there";
-
-export async function sendMany(items: readonly HostItem[]): Promise<{ sent: number; failed: { item: HostItem; error: string }[] }> {
-  // A LifeOS mail is read whole first; one that quotes the mail it answers waits for its own look (the hold review's finding 28).
-  const quoted = new Set<HostItem>();
+/**
+ * Send several from a list (a group's Send N, or ticked rows). What only its own
+ * detail shows is left for his look, not sent and not a failure: a LifeOS reply
+ * that quotes the mail it answers, and a computer act's picture of the window
+ * (the hold review's findings 28 and 33). A mail whose whole read failed is a
+ * failure, in its own words.
+ */
+export async function sendMany(items: readonly HostItem[]): Promise<{ sent: number; failed: { item: HostItem; error: string }[]; waiting: HostItem[] }> {
+  const waiting = new Set<HostItem>(items.filter((item) => item.kind === "computer.act"));
+  const unread = new Set<HostItem>();
   await Promise.all(
     items
       .filter((item) => item.kind === "mail.send")
       .map(async (item) => {
         const whole = await fetchItem(item.environmentId, item.ref).catch(() => null);
-        if (!whole || (whole.payload as { quote?: string } | null)?.quote) quoted.add(item);
+        if (!whole) unread.add(item);
+        else if ((whole.payload as { quote?: string } | null)?.quote) waiting.add(item);
       }),
   );
-  const outcomes = await Promise.allSettled(
-    items.map((item) =>
-      item.kind === "computer.act"
-        ? Promise.reject(new Error(ACT_NEEDS_A_LOOK))
-        : quoted.has(item)
-          ? Promise.reject(new Error(REPLY_NEEDS_A_LOOK))
-          : registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt }),
-    ),
-  );
+  const pressed = items.filter((item) => !waiting.has(item) && !unread.has(item));
+  const outcomes = await Promise.allSettled(pressed.map((item) => registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt })));
   for (const id of new Set(items.map((item) => item.environmentId))) void loadHost(id);
-  const failed = outcomes.flatMap((o, i) => (o.status === "rejected" ? [{ item: items[i]!, error: errorText(o.reason) }] : []));
-  // A press the host answered with anything but a send (it failed, or another press or device decided it first) is not one.
-  const ended = outcomes.flatMap((o, i) => (o.status === "fulfilled" && !wentOut(o.value) ? [{ item: items[i]!, error: notSentWords(o.value) }] : []));
-  return { sent: items.length - failed.length - ended.length, failed: [...failed, ...ended] };
+  const failed = [
+    ...[...unread].map((item) => ({ item, error: "The mail did not load" })),
+    ...outcomes.flatMap((o, i) => (o.status === "rejected" ? [{ item: pressed[i]!, error: errorText(o.reason) }] : [])),
+    // A press the host answered with anything but a send (it failed, or another press or device decided it first) is not one.
+    ...outcomes.flatMap((o, i) => (o.status === "fulfilled" && !wentOut(o.value) ? [{ item: pressed[i]!, error: notSentWords(o.value) }] : [])),
+  ];
+  return { sent: pressed.length - (failed.length - unread.size), failed, waiting: [...waiting] };
 }
 
 /** Test seam. */

@@ -204,21 +204,32 @@ describe("the Outbox", () => {
 
   it("a group's Send leaves a reply that quotes its mail for its own look, and sends the rest", async () => {
     world.quote = "<p>On Tue, Dana wrote:</p>";
+    const { loadToast } = await import("../../components/ui/toaster");
+    const toast = await loadToast();
+    const error = vi.spyOn(toast, "error");
     try {
       await open();
       await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
       expect(sends()).toEqual([]);
+      // said plainly as waiting on him, never as a failure
+      const { sendMany } = await import("./store");
+      const out = await sendMany(world.items.get("box")!.map((i) => ({ ...i, environmentId: "box" }) as never));
+      expect(out).toMatchObject({ sent: 0, failed: [] });
+      expect(out.waiting).toHaveLength(3);
+      expect(error).not.toHaveBeenCalled();
     } finally {
       world.quote = null;
+      error.mockRestore();
     }
   });
 
   it("a group's Send leaves a computer act for its own look, where its picture shows", async () => {
     const click: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "c3" }, kind: "computer.act", summary: "Click Send in Mail", payload: { title: "Click Send in Mail", app: "Mail", picture: { mimeType: "image/png", width: 16, height: 10 } } };
-    const { sendMany, ACT_NEEDS_A_LOOK } = await import("./store");
+    const { sendMany } = await import("./store");
     const out = await sendMany([{ ...click, environmentId: "mac" } as never]);
     expect(out.sent).toBe(0);
-    expect(out.failed.map((f) => f.error)).toEqual([ACT_NEEDS_A_LOOK]);
+    expect(out.failed).toEqual([]);
+    expect(out.waiting.map((i) => i.ref)).toEqual([click.ref]);
     expect(sends()).toEqual([]);
   });
 

@@ -176,9 +176,11 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   };
 
   const sendSeveral = async (items: readonly HostItem[], where?: string): Promise<void> => {
-    const { sent, failed } = await sendMany(items);
+    const { sent, failed, waiting } = await sendMany(items);
     setTicked(new Set());
-    if (sent) toast(`${pastOf(items[0]?.verb ?? "Send")} ${sent}${where ? ` from ${where}` : ""}`);
+    // What waits for its own look is said plainly, beside what went: never as a failure.
+    const left = waiting.length ? `${waiting.length} ${waiting.length === 1 ? "waits" : "wait"} for you to open ${waiting.length === 1 ? "it" : "them"}` : null;
+    if (sent || left) toast([sent ? `${pastOf(items[0]?.verb ?? "Send")} ${sent}${where ? ` from ${where}` : ""}` : null, left].filter(Boolean).join(". "));
     if (failed.length) toastError(`${failed.length} could not go: ${failed[0]!.error}`);
   };
 
@@ -566,6 +568,8 @@ function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }:
             </p>
           ) : null}
           <ActView item={item} env={item.environmentId} />
+          {/* While the mail is read whole, a bone where its quote may land: Send waits on it. */}
+          {item.kind === "mail.send" && !read && !unread ? <Skeleton data-mail-quote-bone className="h-4 w-2/3 rounded" /> : null}
           {/* What his press approves: the window as the host read it, above the verbs. */}
           {item.kind === "computer.act" ? <KeptPicture item={item} picture={picture} /> : null}
         </div>
