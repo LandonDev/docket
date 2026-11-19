@@ -8,7 +8,7 @@ import { playFor, VIEWER_DEFAULT_PLAYS, type MediaNote, type MediaProbe, type Me
 import type { SessionMeta } from '@shared/events'
 import type { WorkScope } from '@shared/work'
 import { openDb, Store } from '../../db'
-import { setMediaRoots } from '../../media'
+import { setMediaDenied, setMediaRoots } from '../../media'
 import type { SessionRegistry } from '../../sessions'
 import { statePath, Toolchain, type ToolchainState } from '../formats/tools'
 import { runTool } from '../formats/tools'
@@ -17,6 +17,7 @@ import { proxyArgs, proxyFilter, tileLevels, tilesArgs } from './encode'
 import { parsePlaylist } from './prepare'
 import { frameTableOf, parsePacketTimes, parseProbe } from './probe'
 import { frameOf } from './tools'
+import { mediaCacheDir, moveOldMediaCache } from './store'
 
 // Milestone 6 builds the scope; here a Work thread's scope is the test's.
 vi.mock('../scope', () => ({
@@ -348,11 +349,33 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
       const view = await settled(await open(path, 'Secret'))
       expect(view.versions[0]).toMatchObject({ state: 'failed', plays: [] })
       expect(view.versions[0].error).toMatch(/outside the folders this host shows/)
-      expect(existsSync(join(dir, 'attachments', 'work-media', view.versions[0].id, 'original.png'))).toBe(false)
+      expect(existsSync(join(dir, 'work-media', view.versions[0].id, 'original.png'))).toBe(false)
     } finally {
       rmSync(away, { recursive: true, force: true })
     }
   }, 60_000)
+
+  it("keeps what it makes under Work's own media root, and takes no source from there or from a folder the media host denies", async () => {
+    const shown = await settled(await open(join(dir, 'attachments', 'clips', 'a.mp4'), 'Made'))
+    expect(existsSync(join(dir, 'work-media', shown.versions[0].id))).toBe(true)
+    expect(existsSync(join(dir, 'attachments', 'work-media'))).toBe(false)
+    // a file in the pillar's own cache is never a source, though the media host serves the folder
+    const cached = join(dir, 'work-media', 'planted.png')
+    copyFileSync(join(dir, 'attachments', 'clips', 'a.mp4'), cached)
+    const fromCache = await settled(await open(cached, 'Planted'))
+    expect(fromCache.versions[0].error).toMatch(/outside the folders this host shows/)
+    // nor is one under a folder the media host denies (the computer history), inside the roots or not
+    const denied = join(dir, 'computer')
+    mkdirSync(denied, { recursive: true })
+    copyFileSync(join(dir, 'attachments', 'clips', 'a.mp4'), join(denied, 'window.mp4'))
+    setMediaDenied(() => [denied])
+    try {
+      const fromDenied = await settled(await open(join(denied, 'window.mp4'), 'Window'))
+      expect(fromDenied.versions[0].error).toMatch(/outside the folders this host shows/)
+    } finally {
+      setMediaDenied(() => [])
+    }
+  }, 120_000)
 
   it('keeps a failure until the file changes, then starts over', async () => {
     const path = join(dir, 'attachments', 'clips', 'broken.mp4')
@@ -390,4 +413,27 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     expect(still.isError).toBeUndefined()
     expect(still.content.filter((c) => c.type === 'image')).toHaveLength(1)
   }, 60_000)
+})
+
+describe("the cache an earlier build kept under the attachments", () => {
+  it("moves once to Work's own media root, or goes when that root is already there", () => {
+    const data = mkdtempSync(join(tmpdir(), 'tc-media-old-'))
+    try {
+      mkdirSync(join(data, 'attachments', 'work-media', 'v1'), { recursive: true })
+      writeFileSync(join(data, 'attachments', 'work-media', 'v1', 'proxy.mp4'), 'x')
+      moveOldMediaCache(data)
+      expect(readFileSync(join(data, 'work-media', 'v1', 'proxy.mp4'), 'utf8')).toBe('x')
+      expect(existsSync(join(data, 'attachments', 'work-media'))).toBe(false)
+      // a second old cache beside a root already there is dropped, and the root kept
+      mkdirSync(join(data, 'attachments', 'work-media', 'v2'), { recursive: true })
+      moveOldMediaCache(data)
+      expect(existsSync(join(data, 'attachments', 'work-media'))).toBe(false)
+      expect(existsSync(join(data, 'work-media', 'v1', 'proxy.mp4'))).toBe(true)
+      expect(mediaCacheDir(data, 'v1')).toBe(join(data, 'work-media', 'v1'))
+      // nothing to move is nothing
+      expect(() => moveOldMediaCache(data)).not.toThrow()
+    } finally {
+      rmSync(data, { recursive: true, force: true })
+    }
+  })
 })

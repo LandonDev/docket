@@ -2,7 +2,7 @@ import { closeSync, existsSync, realpathSync, mkdirSync, openSync, readdirSync, 
 import { basename, extname, join } from 'node:path'
 import { frameStart, FrameTableSchema, VIEWER_DEFAULT_PLAYS, type FrameTable, type MediaPlay, type MediaProbe, type MediaVersion } from '@shared/contract-work-media'
 import { errorText, type HostId } from '@shared/work'
-import { classifyMedia, fsMedia, insideRealRoots, mediaUrl, serverMediaRoots } from '../../media'
+import { classifyMedia, fsMedia, insideRealRoots, MEDIA_SCRATCH_DIR, mediaServes, mediaUrl, workMediaRoot } from '../../media'
 import type { ConvertJob, ConvertResult, Converter } from '../formats/jobs'
 import { runTool, tailOf } from '../formats/tools'
 import { frameArgs, proxyArgs, stillArgs, tileLevels, tilesArgs, TILE } from './encode'
@@ -331,7 +331,13 @@ export class Preparer {
     return probed
   }
 
-  /** Inside the folders the media host serves from (server/media.ts): every project's and workspace's folder, and userData's attachments. */
+  /**
+   * A file the media host serves (server/media.ts `mediaServes`: under its
+   * roots, outside its denied folders, by the real path), and not one of the
+   * host's own makings: the media host serves this pillar's cache and the
+   * diff view's scratch copies too, but a file there is never a source (a
+   * version whose source sat in its own cache folder would empty it).
+   */
   private shown(path: string): boolean {
     let real: string
     try {
@@ -339,10 +345,7 @@ export class Preparer {
     } catch {
       return false
     }
-    const col = (sql: string): string[] => (this.host.ctx.db.prepare(sql).all() as Array<{ p: string }>).map((r) => r.p)
-    const roots = serverMediaRoots({ projects: col(`SELECT cwd AS p FROM projects`), workspaces: col(`SELECT path AS p FROM workspaces`), attachments: join(this.host.dataDir, 'attachments') })
-    // The pillar's own cache is under the attachments root, but a file there is never a source.
-    return insideRealRoots(real, roots) && !insideRealRoots(real, [join(this.host.dataDir, 'attachments', 'work-media')])
+    return mediaServes(real) && !insideRealRoots(real, [workMediaRoot(this.host.dataDir), MEDIA_SCRATCH_DIR])
   }
 
   private inputOf(v: VersionRow): string {

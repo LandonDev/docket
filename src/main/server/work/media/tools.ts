@@ -16,7 +16,6 @@ import {
   type MediaView
 } from '@shared/contract-work-media'
 import { workText, type WorkToolResult } from '@shared/work'
-import { canvasStoreOf } from '../canvas/store'
 import type { ToolCtx, WorkTool } from '../modules'
 import { agentWrite, liveOf, mediaItem, preparerOf, viewOf } from './view'
 
@@ -36,7 +35,7 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
 /** The thread's own media item: a subagent's items are its root thread's, as the canvas tools have it. */
 function ownItem(ctx: ToolCtx, id: string): string {
   const item = mediaItem(ctx, id)
-  if (item.sessionId !== canvasStoreOf(ctx.db).paneOf(ctx.sessionId)) throw new Error(`this thread has no media item ${id}`)
+  if (item.sessionId !== ctx.canvas.paneOf(ctx.sessionId)) throw new Error(`this thread has no media item ${id}`)
   return item.id
 }
 

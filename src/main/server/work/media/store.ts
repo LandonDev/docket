@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { MediaAnchor, MediaNote, MediaProbe, MediaVersion, MediaWrite } from '@shared/contract-work-media'
 import type { CanvasSource, Principal } from '@shared/work'
+import { workMediaRoot } from '../../media'
 import { registerMoveModule, tableMoveModule } from '../../sessionMove'
 
 /**
@@ -59,11 +61,29 @@ export function ensureMediaTables(db: DatabaseSync): void {
 }
 
 /**
- * Where the host keeps what it made from one version. Under the attachments
- * root, the one userData folder the media host serves from today
- * (server/media.ts): its URLs need no fence of their own.
+ * Where the host keeps what it made from one version: Work's own media root
+ * (`<userData>/work-media`, server/media.ts `workMediaRoot`), which the media
+ * host serves from, so its URLs need no fence of their own.
  */
-export const mediaCacheDir = (dataDir: string, versionId: string): string => join(dataDir, 'attachments', 'work-media', versionId.replace(/[^A-Za-z0-9_-]/g, ''))
+export const mediaCacheDir = (dataDir: string, versionId: string): string => join(workMediaRoot(dataDir), versionId.replace(/[^A-Za-z0-9_-]/g, ''))
+
+/**
+ * The cache an earlier build kept under the attachments root
+ * (`<userData>/attachments/work-media`), moved once to Work's own root, or
+ * dropped when that root is already there: it is all made again where it is
+ * missing. Out of the attachments, the attachments' retention sweep no
+ * longer walks it.
+ */
+export function moveOldMediaCache(dataDir: string): void {
+  const old = join(dataDir, 'attachments', 'work-media')
+  if (!existsSync(old)) return
+  try {
+    if (existsSync(workMediaRoot(dataDir))) rmSync(old, { recursive: true, force: true })
+    else renameSync(old, workMediaRoot(dataDir))
+  } catch (err) {
+    console.error('[work] media: the old cache under attachments did not move:', err)
+  }
+}
 
 type Row = Record<string, string | number | null>
 const json = <T>(s: string | number | null | undefined): T | undefined => (typeof s === 'string' ? (JSON.parse(s) as T) : undefined)

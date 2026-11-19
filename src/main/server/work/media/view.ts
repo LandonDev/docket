@@ -2,11 +2,10 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { MediaNote, MediaView } from '@shared/contract-work-media'
 import { agentPrincipal, type CanvasItem, type Principal } from '@shared/work'
-import { canvasStoreOf } from '../canvas/store'
 import { runnerOf } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
 import { nameOf, Preparer } from './prepare'
-import { MediaStore, type ItemRow } from './store'
+import { MediaStore, moveOldMediaCache, type ItemRow } from './store'
 
 /**
  * One host's media pillar at run time: the store, the preparer and the
@@ -42,9 +41,10 @@ export async function preparerOf(ctx: WorkCtx): Promise<Preparer> {
   const runner = runnerOf(ctx)
   if (!runner) throw new Error('the conversion tools have not started on this host')
   const r = await runner
+  if (!live.preparer) moveOldMediaCache(ctx.dataDir)
   live.preparer ??= new Preparer({
     ctx,
-    dataDir: r.tools.dataDir,
+    dataDir: ctx.dataDir,
     ffprobe: () => r.tools.bin('ffmpeg', 'ffprobe'),
     ffmpeg: () => r.tools.bin('ffmpeg'),
     changed: (itemId) => pushSoon(ctx, itemId),
@@ -55,7 +55,7 @@ export async function preparerOf(ctx: WorkCtx): Promise<Preparer> {
 
 /** The canvas item, if it is a media item; a sentence otherwise. */
 export function mediaItem(ctx: WorkCtx, itemId: string): CanvasItem {
-  const item = canvasStoreOf(ctx.db).get(itemId)
+  const item = ctx.canvas.get(itemId)
   if (!item) throw new Error(`no canvas item ${itemId}`)
   if (item.kind !== 'media') throw new Error(`${item.title} is not an image or a video`)
   return item

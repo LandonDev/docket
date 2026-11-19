@@ -64,9 +64,12 @@ viewer decodes (plays.ts asks its own `<video>`: `h264`, `h264-hi`, `hevc`,
 operate (or this window) starts work, a read-only key sees what is there.
 The host decides (plan.ts):
 
-- **Only from the folders this host shows** (every project's and
-  workspace's folder, and userData's attachments, as server/media.ts
-  serves them): a file anywhere else is refused with a sentence, converted
+- **Only from the folders this host shows**: the media host's own fence,
+  `mediaServes` (server/media.ts: every project's and workspace's folder
+  and userData's attachments, by the real path, outside the folders it
+  denies, the computer history among them), less this pillar's own cache
+  and the diff view's scratch copies, which it serves but which are never
+  a source. A file anywhere else is refused with a sentence, converted
   or not, and never linked or copied in, since the agent can name any path
   and what is made from it is served to other desktops.
 - **The original** where the viewer decodes it, served from where it
@@ -113,10 +116,13 @@ jobs and threads, run at nice 19, and die with Work. A proxy reports its
 progress (`MediaVersion.progress`) from ffmpeg's `-progress` file; the
 canvas shows it with a bar.
 
-What a version made lives in `<userData>/attachments/work-media/<versionId>/`
-(the probe, the frame tables, proxies, tiles, stills), under the one
-userData root the media host already serves, so its URLs need no fence of
-their own. A file that changed on disk (size or time) starts over, noticed
+What a version made lives in `<userData>/work-media/<versionId>/` (the
+probe, the frame tables, proxies, tiles, stills): Work's own media root
+(`workMediaRoot`, F2), which the server lists among the media host's
+roots, so its URLs need no fence of their own, and which is not an
+attachments folder, so the attachments' retention sweep never walks it. A
+cache an earlier build kept under `<userData>/attachments/work-media` is
+moved there once, when the preparer first starts (`moveOldMediaCache`). A file that changed on disk (size or time) starts over, noticed
 on every read of the item. A failure stays until the file changes or the
 person presses Retry on the state line (`retry`); a viewer's reads never
 start it again. Each version's jobs stop with Work, and when its thread is
