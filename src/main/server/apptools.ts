@@ -298,6 +298,17 @@ export function computerMechanicsFor(session: SessionMeta, host: ComputerHost | 
   return renderComputerMechanics({ ...wordsFor(session), search: claude && !eagerComputer(session, host), provenance: provenanceOf(session), held: !claude })
 }
 
+/** The code tools' methods: merge, the plan's completion, a batch's gate and landing rules. A Work thread is listed none of them, by any harness. */
+export const WORK_HIDDEN_METHODS: ReadonlySet<string> = new Set(['app.mergeBranch', 'app.planComplete', 'app.batchGate', 'app.batchRules'])
+
+/** Why a Work thread's app.* call is refused, or null: the code tools are not a Work thread's, whichever harness asks (the bridge lists them none). */
+export function workBridgeRefusal(method: string, params: unknown, get: (sessionId: string) => Pick<SessionMeta, 'scope'> | null | undefined): string | null {
+  if (!WORK_HIDDEN_METHODS.has(method)) return null
+  const { sessionId } = (params ?? {}) as { sessionId?: unknown }
+  const caller = typeof sessionId === 'string' ? get(sessionId) : undefined
+  return caller && sessionScopeOf(caller) === 'work' ? `refused: ${method} is not a Work thread's tool` : null
+}
+
 /** MCP server entry for a codex thread's config override (config.toml
  *  shape: command/args/env). `computerImages`: whether a computer call's
  *  pictures come back as image parts (Muse and codex's measured default) or only as the file's line

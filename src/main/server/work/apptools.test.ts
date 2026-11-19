@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import { WORK_SETTING_KEY } from '@shared/work'
 import { configureAddonScope, visibleAddons, WORK_UNSCOPED, workspaceIdOf } from '../addons/scope'
-import { appToolsMcp, bridgeMcpConfig, setAppAddons, setAppBridge, setAppSkillTools, setAppToolsRegistry, WORK_ADDON_REFUSAL, WORK_SKILL_REFUSAL } from '../apptools'
+import { appToolsMcp, bridgeMcpConfig, workBridgeRefusal, setAppAddons, setAppBridge, setAppSkillTools, setAppToolsRegistry, WORK_ADDON_REFUSAL, WORK_SKILL_REFUSAL } from '../apptools'
 import { openDb, Store } from '../db'
 import { cancelMirrors } from '../mirror'
 import { setCrossHostAgents, setOrchestrationRegistry } from '../orchestration'
@@ -97,6 +97,18 @@ describe('the tools a Work thread is listed', () => {
     const batch = ['batch_gate', 'batch_rules', 'adopt_thread', 'archive_threads']
     expect(batch.filter((n) => names(registry.get(code.id)!).includes(n))).toEqual(batch)
     expect(batch.filter((n) => names(registry.get(work.id)!).includes(n))).toEqual(['adopt_thread', 'archive_threads'])
+  })
+
+  it("the app refuses a Work thread's code-tool calls whichever harness asks, and a code thread's pass on", () => {
+    const get = (id: string): SessionMeta | null => registry.get(id)
+    for (const method of ['app.mergeBranch', 'app.planComplete', 'app.batchGate', 'app.batchRules']) {
+      expect(workBridgeRefusal(method, { sessionId: work.id }, get)).toBe(`refused: ${method} is not a Work thread's tool`)
+      expect(workBridgeRefusal(method, { sessionId: chat.id }, get)).toBe(`refused: ${method} is not a Work thread's tool`)
+      expect(workBridgeRefusal(method, { sessionId: code.id }, get)).toBeNull()
+    }
+    // the rest of a Work thread's tools, and an unknown caller (refused later by its handler), pass on
+    expect(workBridgeRefusal('app.adoptThread', { sessionId: work.id }, get)).toBeNull()
+    expect(workBridgeRefusal('app.mergeBranch', { sessionId: 'nobody' }, get)).toBeNull()
   })
 
   it('a Work thread tells its bridge so; a code thread\'s bridge env is what it was, with its own app token', () => {

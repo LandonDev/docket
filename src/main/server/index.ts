@@ -205,6 +205,7 @@ import {
   appStartThread,
   setAppBridge,
   bridgeCallRefusal,
+  workBridgeRefusal,
   setAppCrossHost,
   setAppSkillTools,
   setAppToolsRegistry,
@@ -2115,6 +2116,9 @@ export async function startServer(
       // An app.* call answers as the thread it names: only with that thread's own bridge token (apptools.ts).
       const notOwn = bridgeCallRefusal(req.method, (raw as { params?: unknown }).params)
       if (notOwn) return sendFrame({ id: req.id, ok: false, error: notOwn })
+      // The code tools are not a Work thread's, whichever harness asks.
+      const notWork = workBridgeRefusal(req.method, (raw as { params?: unknown }).params, (id) => registry.get(id))
+      if (notWork) return sendFrame({ id: req.id, ok: false, error: notWork })
       const startedAt = Date.now()
       const requestKey = `${connection}:${req.id}`
       trackRequest(requestKey, req.method)

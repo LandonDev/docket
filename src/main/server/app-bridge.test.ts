@@ -190,6 +190,22 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     expect(app.requests).toHaveLength(2)
   })
 
+  it('lists a Work thread no code tool and refuses a call to one without asking the app; a code thread lists them all', async () => {
+    const hidden = ['merge_branch', 'plan_complete', 'batch_gate', 'batch_rules']
+    const work = await startBridge((request, ws) => reply(ws, request, 'ok'), { TEMP_CODE_SCOPE: 'work' })
+    const names = (await work.request(1, 'tools/list')).result.tools.map((t) => t.name)
+    expect(names.filter((n) => hidden.includes(n))).toEqual([])
+    expect(names).toContain('adopt_thread')
+    for (const name of hidden) {
+      const refused = await work.request(`call-${name}`, 'tools/call', { name, arguments: {} })
+      expect(refused.result).toEqual({ content: [{ type: 'text', text: `refused: ${name} is not a Work thread's tool` }], isError: true })
+    }
+    expect(work.requests).toEqual([])
+    const code = await startBridge((request, ws) => reply(ws, request, 'ok'))
+    const all = (await code.request(1, 'tools/list')).result.tools.map((t) => t.name)
+    expect(hidden.filter((n) => all.includes(n))).toEqual(hidden)
+  })
+
   it('will not start without its thread and token', async () => {
     const child = spawn(process.execPath, [bridgePath], { env: { ...process.env, TEMP_CODE_PORT: '1', TEMP_CODE_SESSION: 's', TEMP_CODE_APP_TOKEN: '' }, stdio: ['pipe', 'pipe', 'pipe'] })
     const [code] = await once(child, 'exit')

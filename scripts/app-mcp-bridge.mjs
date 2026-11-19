@@ -24,6 +24,9 @@
  *   TEMP_CODE_COMPUTER_TOKEN  enables computer_* tools discovered from the app;
  *                      each call and cancellation carries this thread's token
  *   TEMP_CODE_COMPUTER_IMAGES  'parts' for MCP images, otherwise 'none'
+ *   TEMP_CODE_SCOPE    'work' for a Work thread: the code tools (merge_branch,
+ *                      plan_complete, batch_gate, batch_rules) are not
+ *                      listed, and a call to one is refused here and by the app
  *   TEMP_CODE_WORK_TOKEN  set only for a thread whose Work scope has tools at
  *                      spawn: the Work tools are discovered from the app
  *                      (app.workTools) and each call (app.workCall) and
@@ -49,6 +52,7 @@ const COMPUTER_IMAGES = process.env.TEMP_CODE_COMPUTER_IMAGES === 'parts' ? 'par
 const computerCalls = new Set()
 let computerToolsReady = null
 const WORK_TOKEN = process.env.TEMP_CODE_WORK_TOKEN
+const WORK_SCOPE = process.env.TEMP_CODE_SCOPE === 'work'
 const workCalls = new Set()
 let workToolsReady = null
 
@@ -902,9 +906,13 @@ export const ADDON_CALL_TOOLS = [
   }
 ]
 
-/** The tools this thread lists: the add-on finder only with add-ons in scope, the Mac's only while its bridge is on. */
-export function listedTools(macToken = MAC_TOKEN, addons = ADDONS) {
-  return [...TOOLS, ...ADDON_TOOLS, ...(addons ? ADDON_CALL_TOOLS : []), ...(macToken ? [...MAC_TOOLS, ...MAC_JOB_TOOLS] : [])]
+/** The code tools a Work thread is not listed (apptools.ts WORK_HIDDEN_METHODS on the app's side). */
+export const WORK_HIDDEN = new Set(['merge_branch', 'plan_complete', 'batch_gate', 'batch_rules'])
+
+/** The tools this thread lists: the add-on finder only with add-ons in scope, the Mac's only while its bridge is on, no code tool for a Work thread. */
+export function listedTools(macToken = MAC_TOKEN, addons = ADDONS, work = WORK_SCOPE) {
+  const tools = [...TOOLS, ...ADDON_TOOLS, ...(addons ? ADDON_CALL_TOOLS : []), ...(macToken ? [...MAC_TOOLS, ...MAC_JOB_TOOLS] : [])]
+  return work ? tools.filter((t) => !WORK_HIDDEN.has(t.name)) : tools
 }
 
 /** Fetch the app's schemas once, including a failed attempt; never ask without a token. */
@@ -1032,7 +1040,7 @@ export function clientTimeoutMs(name, args) {
 }
 
 /** Every tool this bridge can list, whatever this thread's tokens: the table undeclared arguments are checked against. */
-const ALL_LISTED = listedTools('any', true)
+const ALL_LISTED = listedTools('any', true, false)
 
 /**
  * Why a call to one of the bridge's own tools is refused, or null: its
@@ -1057,7 +1065,7 @@ export function wireArgs(name, args) {
 }
 
 async function callTool(name, args, id) {
-  const refused = argumentRefusal(name, args)
+  const refused = (WORK_SCOPE && WORK_HIDDEN.has(name) ? `refused: ${name} is not a Work thread's tool` : null) ?? argumentRefusal(name, args)
   if (refused) return { content: [{ type: 'text', text: refused }], isError: true }
   if (name === 'update_plan') return { content: [{ type: 'text', text: 'task list updated' }] }
   if (COMPUTER_TOKEN && name?.startsWith('computer_')) {
