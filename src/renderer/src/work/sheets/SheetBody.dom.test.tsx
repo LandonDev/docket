@@ -361,4 +361,19 @@ describe("the sheet kind", () => {
     fireEvent.click(within(tabs).getByRole("tab", { name: "Excel" }));
     await waitFor(() => expect(sheetHost.calls).toContainEqual(["switch", null]));
   });
+
+  it("spins the full editor's side while the host starts it, and takes one press at a time", async () => {
+    let started = (): void => {};
+    open(sheetView({ reach: { parts: ["pivot tables", "charts"], to: "full" } }));
+    sheetHost.switchWait = new Promise<void>((resolve) => (started = resolve));
+    const tabs = await screen.findByRole("tablist", { name: "Open in" });
+    const full = within(tabs).getByRole("tab", { name: "Full editor" });
+    fireEvent.click(full);
+    await waitFor(() => expect(full.querySelector('[data-slot="busy-label"]')?.hasAttribute("data-busy")).toBe(true));
+    fireEvent.click(within(tabs).getByRole("tab", { name: "TempCode" }));
+    fireEvent.click(full);
+    expect(sheetHost.calls.filter((c) => c[0] === "switch")).toHaveLength(1);
+    started();
+    await waitFor(() => expect(full.querySelector('[data-slot="busy-label"]')?.hasAttribute("data-busy")).toBe(false));
+  });
 });

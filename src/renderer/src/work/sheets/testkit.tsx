@@ -61,6 +61,8 @@ export type FakeSheetHost = SheetHost & {
   conflictNext: boolean;
   /** Set: the switch is refused with it. */
   switchRefusal: string | null;
+  /** a switch the host is still answering (the full editor starting) */
+  switchWait: Promise<void> | null;
   /** Set: open never answers (the loading state). */
   hold: boolean;
 };
@@ -76,6 +78,7 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook): FakeSheet
     ops: [],
     conflictNext: false,
     switchRefusal: null,
+    switchWait: null,
     hold: false,
     land(mutations, by = "person:dana") {
       host.rev++;
@@ -138,6 +141,7 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook): FakeSheet
     },
     async switchApp() {
       host.calls.push(["switch", null]);
+      if (host.switchWait) await host.switchWait;
       if (host.switchRefusal) throw new Error(host.switchRefusal);
     },
     onPush(listener) {

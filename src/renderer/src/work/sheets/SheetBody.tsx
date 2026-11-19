@@ -5,7 +5,7 @@ import { reviewMarks, useGridState, type GridSelection, type SheetHandle } from 
 import { ChartBar, MoreHorizontal, Trash2 } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { RowsMenu } from "../../chrome/menuRows";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
@@ -419,13 +419,20 @@ export function Bar(props: Props) {
 export function TabEnd(props: Props) {
   const sync = syncFor(props);
   const reach = useSheetSync(sync).view?.reach;
+  // The host may start the full editor before it answers: the pressed side spins until then.
+  const [opening, setOpening] = useState(false);
   if (!reach) return null;
   const app = reach.to === "excel" ? "Excel" : "Full editor";
   return (
     <Tabs
       value="tempcode"
       onValueChange={(next) => {
-        if (next === "app") sync.host.switchApp().catch((error: unknown) => sayError(error, `Couldn't open ${app}`));
+        if (next !== "app" || opening) return;
+        setOpening(true);
+        sync.host
+          .switchApp()
+          .catch((error: unknown) => sayError(error, `Couldn't open ${app}`))
+          .finally(() => setOpening(false));
       }}
       className="mx-1 shrink-0 gap-0"
     >
@@ -435,7 +442,7 @@ export function TabEnd(props: Props) {
           TempCode
         </TabsTrigger>
         <TabsTrigger value="app" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
-          {app}
+          <BusyLabel busy={opening} label={app} />
         </TabsTrigger>
       </TabsList>
     </Tabs>
