@@ -22,3 +22,14 @@ describe('gen-rust-computer', () => {
     expect(app).toMatch(/#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\n {4}pub windows: Option<Vec<WindowInfo>>,/)
   })
 })
+
+describe('build-tc-computer-win', () => {
+  it('cross-builds the release exe for x64 MSVC with cargo-xwin, where the Windows pack takes it from', async () => {
+    const { buildCommand, builtExe } = await import('./build-tc-computer-win')
+    expect(buildCommand().args).toEqual(['xwin', 'build', '--release', '--target', 'x86_64-pc-windows-msvc'])
+    expect(builtExe).toMatch(/native\/tc-computer-win\/target\/x86_64-pc-windows-msvc\/release\/tc-computer\.exe$/)
+    const { readFileSync } = await import('node:fs')
+    const yml = readFileSync(new URL('../build/electron-builder.win.yml', import.meta.url), 'utf8')
+    expect(yml).toContain('from: native/tc-computer-win/target/x86_64-pc-windows-msvc/release\n    to: resources/native\n    filter: [tc-computer.exe]')
+  })
+})

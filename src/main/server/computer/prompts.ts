@@ -1,6 +1,6 @@
 import { isMetaModel, type ProviderId } from '@shared/catalog'
 import { CONFIRM_KIND_INFO } from '@shared/computer/policy'
-import type { ToolShape, WordsShape } from '@shared/computer/descriptions'
+import { hostWords, localComputerPlatform, type ComputerPlatform, type ToolShape, type WordsShape } from '@shared/computer/descriptions'
 import type { SessionMeta } from '@shared/events'
 
 /**
@@ -91,13 +91,16 @@ export interface MechanicsOptions {
   provenance: Provenance
   /** the bridge lists computer_result too (Codex and Muse; never Claude's in-process tools) */
   held?: boolean
+  /** the host the tools act on; this host's own by default (a Windows PC reads a PC's words, §29.5) */
+  platform?: ComputerPlatform
 }
 
 /** The section as a thread reads it. */
 export function renderComputerMechanics(o: MechanicsOptions): string {
   const f = WORDS[o.shape]
   const policy = [f.handoff, f.content, f.provenance[o.provenance], f.away, f.offLimits].join(' ')
-  return ['## Computer use', `${f.what[o.tools](o.held === true)}${o.search ? ` ${f.search}` : ''}`, `${f.prefer} ${f.sideEffects}`, f.tiers, f.confirm, policy].join('\n\n')
+  const text = ['## Computer use', `${f.what[o.tools](o.held === true)}${o.search ? ` ${f.search}` : ''}`, `${f.prefer} ${f.sideEffects}`, f.tiers, f.confirm, policy].join('\n\n')
+  return hostWords(text, o.platform ?? localComputerPlatform())
 }
 
 /** Every word shape says every fact (the test reads it). */

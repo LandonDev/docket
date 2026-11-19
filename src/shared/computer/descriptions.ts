@@ -16,6 +16,29 @@ export type WordsShape = (typeof WORDS_SHAPES)[number]
 export const TOOL_SHAPES = ['act', 'per-verb'] as const
 export type ToolShape = (typeof TOOL_SHAPES)[number]
 
+/** The host whose apps the tools act on: a Mac, or a Windows PC (docs/computer-protocol.md §29.5). */
+export type ComputerPlatform = 'mac' | 'windows'
+
+/** The platform of the computer use this process runs itself. */
+export const localComputerPlatform = (platform: string = typeof process === 'object' ? process.platform : 'darwin'): ComputerPlatform =>
+  platform === 'win32' ? 'windows' : 'mac'
+
+/** The Mac's words and a Windows PC's, in the order they are swapped (the longer phrase first). */
+const WINDOWS_WORDS: readonly [RegExp, string][] = [
+  [/\bon a Mac\b/g, 'on a Windows PC'],
+  [/\bMac\b/g, 'PC'],
+  [/\bbundle ids\b/g, 'exe names'],
+  [/\bbundle id\b/g, 'exe name'],
+  [/\bthe Dock\b/g, 'the taskbar'],
+  [/\banother Space\b/g, 'another desktop'],
+  [/\bSpaces\b/g, 'desktops']
+]
+
+/** A text a model reads about the computer tools, in the words of the host they act on; the Mac's text unchanged. */
+export function hostWords(text: string, platform: ComputerPlatform = 'mac'): string {
+  return platform === 'windows' ? WINDOWS_WORDS.reduce((t, [from, to]) => t.replace(from, to), text) : text
+}
+
 /** What tool search matches the deferred computer tools by on Claude (the SDK's `searchHint`). */
 export const COMPUTER_SEARCH_HINT = 'computer use on the Mac: read app windows, click, type and scroll in them'
 

@@ -127,7 +127,19 @@ export const CHAT_APP_BUNDLES: readonly string[] = [
   'com.wearezeta.zclient.mac',
   'chat.rocket',
   'org.zulip.zulip-electron',
-  'keybase.Electron'
+  'keybase.Electron',
+  // Windows, by exe as tc-computer.exe names an app (§29.2)
+  'ms-teams.exe',
+  'teams.exe',
+  'slack.exe',
+  'discord.exe',
+  'whatsapp.exe',
+  'telegram.exe',
+  'signal.exe',
+  'zoom.exe',
+  'outlook.exe',
+  'olk.exe',
+  'thunderbird.exe'
 ]
 /** The same apps by the name the app list shows, for a call that names no bundle, and for a chat page installed as an app of its own. */
 export const CHAT_APP_NAMES: readonly string[] = [
@@ -184,7 +196,15 @@ export const BROWSER_BUNDLES: readonly string[] = [
   'com.vivaldi.Vivaldi',
   'com.operasoftware.Opera',
   // the box's own Chromium (work/browser/box): its service names it so
-  'org.chromium.Chromium'
+  'org.chromium.Chromium',
+  // Windows, by exe (§29.2)
+  'msedge.exe',
+  'chrome.exe',
+  'firefox.exe',
+  'brave.exe',
+  'vivaldi.exe',
+  'opera.exe',
+  'arc.exe'
 ]
 /** A page installed as an app of its own runs in its browser's bundle with this before its id. */
 const WEB_APP_BUNDLE = /^(com\.google\.Chrome|com\.microsoft\.edgemac|com\.brave\.Browser)\.app\./i

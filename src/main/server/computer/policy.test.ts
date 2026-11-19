@@ -8,6 +8,7 @@ import {
   TargetResolver,
   passwordTarget,
   refusedLaunch,
+  refusedLaunchList,
   refusedOpenItem,
   refusedTarget,
   type AppsSource
@@ -120,6 +121,23 @@ describe('refusedTarget', () => {
       expect(refusedTarget({ pid: 9, bundleId }, 'act', 7)).toBe("macOS's password and Touch ID prompts are the person's to answer")
       expect(refusedTarget({ pid: 9, bundleId }, 'read', 7)).toBeNull()
     }
+  })
+
+  it("refuses acts, not reads, on Windows' password and consent prompts, and TempCode's exe (§29.2)", () => {
+    for (const bundleId of ['consent.exe', 'CredentialUIBroker.exe', 'logonui.exe']) {
+      expect(refusedTarget({ pid: 9, bundleId }, 'act', 7)).toBe("Windows' password and consent prompts are the person's to answer")
+      expect(refusedTarget({ pid: 9, bundleId }, 'read', 7)).toBeNull()
+      expect(refusedLaunch(bundleId)).toBe("Windows' password and consent prompts are the person's to answer")
+    }
+    expect(refusedTarget({ pid: 8, bundleId: 'tempcode.exe' }, 'read', 7)).toBe("TempCode's own window is off limits to computer use")
+    expect(refusedLaunch('TempCode.exe')).toBe("TempCode's own window is off limits to computer use")
+    expect(refusedOpenItem('C:\\Users\\me\\Total.txt')).toBeNull()
+    expect(refusedOpenItem('C:/Users/me/Total.txt')).toBeNull()
+  })
+
+  it("sends the Mac's refused bundles to the Mac's service and a PC's exes to the Windows service", () => {
+    expect(refusedLaunchList('darwin')).toEqual([...REFUSED_LAUNCH_BUNDLES])
+    expect(refusedLaunchList('win32')).toEqual(['tempcode.exe', 'consent.exe', 'credentialuibroker.exe', 'logonui.exe'])
   })
 
   it('refuses computer_apps { launch } of a refused app', () => {

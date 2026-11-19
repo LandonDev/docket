@@ -210,6 +210,12 @@ export const FRONT = {
 export const COMPUTER_FEATURES = ['front', 'commit', 'save_as'] as const
 export type ComputerFeature = (typeof COMPUTER_FEATURES)[number]
 
+/**
+ * Where `save_as` may save: absolute or under `~/` on the Mac; on a Windows host also a drive path
+ * (`C:\\Users\\me\\Total.txt`, `C:/…`) or one under `~\\` (§29.4).
+ */
+export const isSaveAsPath = (path: string): boolean => path.startsWith('/') || path.startsWith('~/') || path.startsWith('~\\') || /^[A-Za-z]:[\\/]/.test(path)
+
 /** Bounds of the action parameters (§5.1). */
 export const ACTION_LIMITS = {
   scrollAmountMax: 50,
@@ -594,9 +600,9 @@ export function refineAction(value: { action: ComputerActionName } & Partial<Rec
     ctx.addIssue({ code: 'custom', path: ['text'], message: `paste takes at most ${TYPING.pasteMaxUnits} UTF-16 units` })
   if (CLICK_ACTIONS.includes(value.action) && typeof value.duration === 'number' && value.duration > ACTION_LIMITS.clickDurationMaxSeconds)
     ctx.addIssue({ code: 'custom', path: ['duration'], message: `a click holds its button at most ${ACTION_LIMITS.clickDurationMaxSeconds} s` })
-  if (value.action === 'save_as' && typeof value.path === 'string' && !value.path.startsWith('/') && !value.path.startsWith('~/'))
+  if (value.action === 'save_as' && typeof value.path === 'string' && !isSaveAsPath(value.path))
     ctx.addIssue({ code: 'custom', path: ['path'], message: 'save_as takes an absolute path or one under ~/' })
-  if (value.action === 'save_as' && typeof value.path === 'string' && value.path.endsWith('/'))
+  if (value.action === 'save_as' && typeof value.path === 'string' && /[\\/]$/.test(value.path))
     ctx.addIssue({ code: 'custom', path: ['path'], message: 'save_as needs the file name at the end of path' })
   if (value.action === 'perform' && value.menu !== undefined && value.name !== 'pick')
     ctx.addIssue({ code: 'custom', path: ['menu'], message: 'perform takes menu only with name pick' })

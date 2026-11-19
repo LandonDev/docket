@@ -17,8 +17,13 @@ files:
   # that ships, checked against bun.lock.
   - '!node_modules/@anthropic-ai/claude-agent-sdk-win32-*/**'
   - '!node_modules/node-pty/prebuilds/darwin-*/**'
-  # Mac-only helpers (Mach-O). M42 adds the Windows computer-use service's own line.
+  # Mac-only helpers (Mach-O).
   - '!resources/native/{appshot-helper,tc-computer,tc-computer.stamp}'
+  # The Windows computer-use service (docs/computer-protocol.md §29), cross-built on the box by
+  # scripts/build-tc-computer-win.ts before the pack; binary.ts finds it as resources/native/tc-computer.exe.
+  - from: native/tc-computer-win/target/x86_64-pc-windows-msvc/release
+    to: resources/native
+    filter: [tc-computer.exe]
   # The win32 Claude CLI, staged by scripts/win-stage.ts from the checksum bun.lock holds.
   - from: artifacts/win-stage/node_modules
     to: node_modules

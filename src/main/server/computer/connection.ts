@@ -1,6 +1,7 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { version as appVersion } from '../../../../package.json'
+import { adoptTree } from '../procTree'
 import {
   COMPUTER_FEATURES,
   COMPUTER_METHODS,
@@ -196,7 +197,8 @@ export class ComputerConnection {
   /** Spawn `tc-computer serve` and run `initialize`; a service that refuses or dies first throws. */
   static async start(opts: ComputerConnectionOptions): Promise<ComputerConnection> {
     const spawn = opts.spawn ?? nodeSpawn
-    const child = spawn(opts.bin, ['serve'], { stdio: ['pipe', 'pipe', 'pipe'], env: opts.env ?? process.env })
+    // on Windows the service joins the app's job object, so it ends with the app (procTree.ts)
+    const child = adoptTree(spawn(opts.bin, ['serve'], { stdio: ['pipe', 'pipe', 'pipe'], env: opts.env ?? process.env }))
     const conn = new ComputerConnection(child, opts)
     const spawned = new Promise<void>((resolve, reject) => {
       child.once('spawn', () => resolve())

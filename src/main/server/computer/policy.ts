@@ -22,6 +22,11 @@ import type { ElementBook } from './elements'
 
 /** The installed app's bundle id: no instance reads or acts on any TempCode window. */
 export const TEMPCODE_BUNDLE_ID = 'dev.landon.tempcode'
+/** The same on Windows, where the service names an app by its exe, lower-cased (§29.2). */
+export const TEMPCODE_WINDOWS_EXE = 'tempcode.exe'
+
+/** Windows' password and consent prompts, as the service names their apps. */
+export const WINDOWS_PROMPT_EXES: readonly string[] = ['consent.exe', 'credentialuibroker.exe', 'logonui.exe']
 
 /**
  * macOS's password and Touch ID prompts: the person answers them. Not regular
@@ -35,6 +40,13 @@ export const REFUSED_ACT_BUNDLES: readonly string[] = ['com.apple.SecurityAgent'
 
 /** Every `apps.launch` names these as `refuse`: the service checks the resolved app before it launches or opens anything (§23.2). */
 export const REFUSED_LAUNCH_BUNDLES: readonly string[] = [TEMPCODE_BUNDLE_ID, ...REFUSED_ACT_BUNDLES]
+
+/** The same on a Windows host, by exe (§29.2). */
+export const REFUSED_LAUNCH_EXES: readonly string[] = [TEMPCODE_WINDOWS_EXE, ...WINDOWS_PROMPT_EXES]
+
+/** What `apps.launch` refuses on this host's service: the Mac's bundle ids, or a Windows PC's exes. */
+export const refusedLaunchList = (platform: NodeJS.Platform = process.platform): string[] =>
+  platform === 'win32' ? [...REFUSED_LAUNCH_EXES] : [...REFUSED_LAUNCH_BUNDLES]
 
 export interface PinnedApp {
   pid: number
@@ -111,25 +123,31 @@ export class TargetResolver {
 
 /** Why a call may not touch this app, or null. Reads are refused only for TempCode itself. */
 export function refusedTarget(app: { pid: number; bundleId: string | null }, use: 'read' | 'act', ownPid = process.pid): string | null {
-  if (app.pid === ownPid || app.bundleId === TEMPCODE_BUNDLE_ID) return hostErrorLine('refused_app', 'tempcode')
-  if (use === 'act' && app.bundleId && REFUSED_ACT_BUNDLES.includes(app.bundleId)) return hostErrorLine('refused_app', 'prompts')
+  const id = app.bundleId?.toLowerCase() ?? null
+  if (app.pid === ownPid || app.bundleId === TEMPCODE_BUNDLE_ID || id === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
+  if (use === 'act' && id && (WINDOWS_PROMPT_EXES.includes(id) || REFUSED_ACT_BUNDLES.some((b) => b.toLowerCase() === id))) return hostErrorLine('refused_app', promptsOf(id))
   return null
 }
+
+const promptsOf = (id: string): 'prompts' | 'windows-prompts' => (WINDOWS_PROMPT_EXES.includes(id) ? 'windows-prompts' : 'prompts')
 
 /** computer_apps { launch }: a query naming TempCode or a refused prompt is refused before the service hears it. */
 export function refusedLaunch(query: string): string | null {
   const q = lower(query)
-  if (q === TEMPCODE_BUNDLE_ID || q === 'tempcode') return hostErrorLine('refused_app', 'tempcode')
-  if (REFUSED_ACT_BUNDLES.some((b) => lower(b) === q)) return hostErrorLine('refused_app', 'prompts')
+  if (q === TEMPCODE_BUNDLE_ID || q === 'tempcode' || q === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
+  if (WINDOWS_PROMPT_EXES.includes(q) || REFUSED_ACT_BUNDLES.some((b) => lower(b) === q)) return hostErrorLine('refused_app', promptsOf(q))
   return null
 }
+
+/** `C:\\…` or `C:/…`: an absolute path on a Windows host. */
+const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/
 
 /** Only these open, never the system's default handler for anything else (§23.2). */
 const OPEN_SCHEMES = /^(https?|file):/i
 
 /** computer_apps { open }: an item that is not a web page, a file URL or an absolute path is refused before the card. */
 export function refusedOpenItem(item: string): string | null {
-  if (OPEN_SCHEMES.test(item) || item.startsWith('/')) return null
+  if (OPEN_SCHEMES.test(item) || item.startsWith('/') || WINDOWS_ABSOLUTE.test(item)) return null
   return errorLine({ kind: 'open_refused', message: '', reason: 'scheme' }, { open: [item] })
 }
 

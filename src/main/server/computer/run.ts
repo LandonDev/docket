@@ -37,9 +37,9 @@ import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './ba
 import { ComputerHostError, ComputerRpcError } from './connection'
 import { ElementBook } from './elements'
 import {
-  REFUSED_LAUNCH_BUNDLES,
   passwordTarget,
   refusedLaunch,
+  refusedLaunchList,
   refusedOpenItem,
   refusedTarget,
   type Resolved,
@@ -1077,7 +1077,7 @@ async function runApps(
   const session = t.serviceSession
   const launch = typeof args.launch === 'string' ? args.launch : null
   const open = openOf(args)
-  const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: [...REFUSED_LAUNCH_BUNDLES] }) : null
+  const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: refusedLaunchList() }) : null
   // the launch is the journal's from its answer: a list that fails after it does not unsay it
   if (r) note.launched = { launched: r.launched, opened: open.length > 0 }
   if (r?.front) note.front = r.front
@@ -1130,7 +1130,7 @@ async function pinApp(
     proof?.app ?? query,
     {
       list: async () => (await call('apps.list', {})).apps,
-      launch: (app) => call('apps.launch', { app, session, refuse: [...REFUSED_LAUNCH_BUNDLES] }),
+      launch: (app) => call('apps.launch', { app, session, refuse: refusedLaunchList() }),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms))
     },
     (e) => (e instanceof ComputerRpcError ? (e.data ?? null) : null)

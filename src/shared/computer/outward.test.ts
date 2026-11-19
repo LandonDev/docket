@@ -33,6 +33,7 @@ const MAIL = { bundleId: 'com.apple.mail', name: 'Mail' }
 const TEXTEDIT = { bundleId: 'com.apple.TextEdit', name: 'TextEdit' }
 const CHROME = { bundleId: 'com.google.Chrome', name: 'Google Chrome' }
 const FINDER = { bundleId: 'com.apple.finder', name: 'Finder' }
+const EDGE_WIN = { bundleId: 'msedge.exe', name: 'Microsoft Edge' }
 
 const screen = (text: string, app: Screen['app']): Screen => {
   const s = screenOfObservation(text, app)
@@ -433,6 +434,21 @@ describe('readOutward: Return, typed line breaks and confirm', () => {
     expect(readOutward(steps({ action: 'key', text: 'Return' }), browser('www.linkedin.com/messaging/'))).toMatchObject({ label: 'Send' })
     expect(readOutward(steps({ action: 'key', text: 'Return' }), browser('docs.example.com/notes'))).toBeNull()
     expect(readOutward(steps({ action: 'key', text: 'Return' }), browser('notx.com'))).toBeNull()
+  })
+
+  it("reads Edge on Windows, named by its exe, as a browser: a chat host's Return is held (§29.2)", () => {
+    const edge = (url: string): Screen =>
+      screen(
+        `app "Microsoft Edge" · window "Chat" · 1036×725 · focused [6]
+[1] window "Chat"
+  [2] toolbar "App bar"
+    [3] input "Address and search bar" = ${JSON.stringify(url)}
+  [4] web area "Chat"
+    [6] text area "Message" = "hi" focused caret 2`,
+        EDGE_WIN
+      )
+    expect(readOutward(steps({ action: 'key', text: 'Return' }), edge('app.slack.com/client/T1/C1'))).toMatchObject({ label: 'Send' })
+    expect(readOutward(steps({ action: 'key', text: 'Return' }), edge('docs.example.com/notes'))).toBeNull()
   })
 
   it('holds Return in a field whose own group holds a Submit button, and not in one beside nothing', () => {

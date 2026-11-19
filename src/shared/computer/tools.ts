@@ -8,7 +8,7 @@
  */
 import { z } from 'zod'
 import { PermissionPolicySchema } from '../events'
-import { fieldWords, perVerbDescription, toolDescription, type FieldKey, type ToolShape, type WordsShape } from './descriptions'
+import { fieldWords, hostWords, perVerbDescription, toolDescription, type ComputerPlatform, type FieldKey, type ToolShape, type WordsShape } from './descriptions'
 import { COMPUTER_RESULT_TOOL } from './heldCalls'
 import { parseElementLine, parseKeyCombo } from './observation'
 import { ConfirmSchema } from './policy'
@@ -193,6 +193,14 @@ function toolInputs(w: FieldText) {
 }
 
 const INPUTS = { anthropic: toolInputs(fieldWords('anthropic')), cua: toolInputs(fieldWords('cua')) } as const
+type Inputs = ReturnType<typeof toolInputs>
+
+/** One word shape's field words on a platform: a Windows PC's are made on first use. */
+const platformFields = (shape: WordsShape, platform: ComputerPlatform): FieldText =>
+  platform === 'mac' ? fieldWords(shape) : (Object.fromEntries(Object.entries(fieldWords(shape)).map(([k, v]) => [k, hostWords(v, platform)])) as FieldText)
+const windowsInputs: Partial<Record<WordsShape, Inputs>> = {}
+const inputsFor = (shape: WordsShape, platform: ComputerPlatform): Inputs =>
+  platform === 'mac' ? INPUTS[shape] : (windowsInputs[shape] ??= toolInputs(platformFields(shape, platform)))
 
 export const ComputerAppsInputSchema = INPUTS.anthropic.apps
 export const ComputerObserveInputSchema = INPUTS.anthropic.observe
@@ -215,7 +223,7 @@ export type ComputerResultInput = z.infer<typeof ComputerResultInputSchema>
 /** After computer_apps' description alone on a thread whose calls cross the Mac bridge (computer/bridge.ts, §27.12). */
 export const COMPUTER_BRIDGE_NOTE = " The computer tools act on the user's Mac, where the apps run; this thread runs on another host."
 
-export { COMPUTER_SEARCH_HINT, type ToolShape, type WordsShape } from './descriptions'
+export { COMPUTER_SEARCH_HINT, hostWords, localComputerPlatform, type ComputerPlatform, type ToolShape, type WordsShape } from './descriptions'
 
 /** The anthropic shape's four descriptions. */
 export const COMPUTER_TOOL_DESCRIPTIONS: Readonly<Record<ComputerToolName, string>> = Object.fromEntries(
@@ -236,20 +244,25 @@ const specs = new Map<string, readonly ComputerToolSpec[]>()
  * computer_act's place. `result` adds computer_result last, for the bridge
  * (codex and Muse); Claude's list never has it.
  */
-export function computerToolSpecs(shape: WordsShape = 'anthropic', tools: ToolShape = 'act', opts: { result?: boolean } = {}): readonly ComputerToolSpec[] {
-  const key = `${shape}/${tools}${opts.result ? '/result' : ''}`
+export function computerToolSpecs(
+  shape: WordsShape = 'anthropic',
+  tools: ToolShape = 'act',
+  opts: { result?: boolean; platform?: ComputerPlatform } = {}
+): readonly ComputerToolSpec[] {
+  const platform = opts.platform ?? 'mac'
+  const key = `${shape}/${tools}${opts.result ? '/result' : ''}${platform === 'mac' ? '' : `/${platform}`}`
   const kept = specs.get(key)
   if (kept) return kept
-  const i = INPUTS[shape]
-  const d = (n: ComputerToolName): string => toolDescription(shape, tools, n)
+  const i = inputsFor(shape, platform)
+  const d = (n: ComputerToolName | typeof COMPUTER_RESULT_TOOL): string => hostWords(toolDescription(shape, tools, n), platform)
   const apps = { name: 'computer_apps', description: d('computer_apps'), input: i.apps }
   const observe = { name: 'computer_observe', description: d('computer_observe'), input: i.observe }
   const batch = { name: 'computer_batch', description: d('computer_batch'), input: i.batch }
-  const result = opts.result ? [{ name: COMPUTER_RESULT_TOOL, description: toolDescription(shape, tools, COMPUTER_RESULT_TOOL), input: i.result }] : []
+  const result = opts.result ? [{ name: COMPUTER_RESULT_TOOL, description: d(COMPUTER_RESULT_TOOL), input: i.result }] : []
   const made = Object.freeze(
     tools === 'act'
       ? [apps, observe, { name: 'computer_act', description: d('computer_act'), input: i.act }, batch, ...result]
-      : [apps, observe, batch, ...perVerbTools(shape), ...result]
+      : [apps, observe, batch, ...perVerbTools(shape, platform), ...result]
   )
   specs.set(key, made)
   return made
@@ -281,9 +294,9 @@ export function computerToolJsonSchema(input: z.ZodType): Record<string, unknown
  * required ones required, and `confirm` on every action that sends input.
  * The host runs each as computer_act with its action.
  */
-export function perVerbTools(shape: WordsShape = 'anthropic'): ComputerToolSpec[] {
-  const w = fieldWords(shape)
-  const { target, confirm } = INPUTS[shape]
+export function perVerbTools(shape: WordsShape = 'anthropic', platform: ComputerPlatform = 'mac'): ComputerToolSpec[] {
+  const w = platformFields(shape, platform)
+  const { target, confirm } = inputsFor(shape, platform)
   return COMPUTER_ACTION_NAMES.map((action) => {
     const { required, optional } = ACTION_PARAMS[action]
     const fields: Record<string, z.ZodType> = { ...target }
@@ -293,7 +306,7 @@ export function perVerbTools(shape: WordsShape = 'anthropic'): ComputerToolSpec[
     const input = z
       .object(fields)
       .superRefine((v, ctx) => refineAction({ ...(v as Partial<Record<ActionParam, unknown>>), action }, ctx))
-    return { name: `computer_${action}`, description: perVerbDescription(shape, action), input }
+    return { name: `computer_${action}`, description: hostWords(perVerbDescription(shape, action), platform), input }
   })
 }
 

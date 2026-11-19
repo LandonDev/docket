@@ -29,7 +29,7 @@ export const HOST_ERROR_KINDS = [
   'paused',
   /** the call was given up before it ran, or a pause cancelled it */
   'cancelled',
-  /** TempCode's own window, macOS's password and Touch ID prompts, or an app whose identity could not be checked */
+  /** TempCode's own window, the system's password and consent prompts (macOS's, Windows'), or an app whose identity could not be checked */
   'refused_app'
 ] as const
 export type HostErrorKind = (typeof HOST_ERROR_KINDS)[number]
@@ -38,11 +38,12 @@ export type HostErrorKind = (typeof HOST_ERROR_KINDS)[number]
 export { SESSION_REFUSALS, sessionRefusalWords, type SessionTierRefusal }
 
 /** Why refused_app refused: TempCode itself, the system's prompts, or a launched app the host could not identify. */
-export type RefusedApp = 'tempcode' | 'prompts' | 'unchecked'
+export type RefusedApp = 'tempcode' | 'prompts' | 'windows-prompts' | 'unchecked'
 
 const REFUSED_APP_WORDS: Readonly<Record<RefusedApp, string>> = {
   tempcode: "TempCode's own window is off limits to computer use",
   prompts: "macOS's password and Touch ID prompts are the person's to answer",
+  'windows-prompts': "Windows' password and consent prompts are the person's to answer",
   unchecked: "couldn't check which app this is, so nothing was sent; try the call again"
 }
 

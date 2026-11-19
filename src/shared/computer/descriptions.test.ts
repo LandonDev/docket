@@ -9,6 +9,8 @@ import {
   TOOL_SHAPES,
   WORDS_SHAPES,
   fieldWords,
+  hostWords,
+  localComputerPlatform,
   perVerbDescription,
   toolDescription
 } from './descriptions'
@@ -309,5 +311,33 @@ describe('fewer calls in the words (§27)', () => {
       const pick = perVerbTools(shape).find((t) => t.name === 'computer_perform')!
       expect((computerToolJsonSchema(pick.input) as { properties: Record<string, Json> }).properties.menu.description).toBe(fieldWords(shape).menu)
     }
+  })
+})
+
+describe("a Windows PC's words (§29.5)", () => {
+  const MAC_WORDS = /\bMac\b|\bDock\b|\bSpaces?\b|bundle id/
+  it('every tool, field and per-verb description names the PC, its taskbar and its desktops', () => {
+    for (const shape of WORDS_SHAPES)
+      for (const tools of TOOL_SHAPES) {
+        const specs = computerToolSpecs(shape, tools, { platform: 'windows', result: true })
+        const json = JSON.stringify(specs.map((t) => ({ d: t.description, s: computerToolJsonSchema(t.input) })))
+        expect(json, `${shape}/${tools}`).not.toMatch(MAC_WORDS)
+        const apps = specs.find((t) => t.name === 'computer_apps')!.description
+        expect(apps).toContain("the PC's running apps")
+        expect(apps).toMatch(/exe names?/)
+      }
+    expect(hostWords(COMPUTER_SEARCH_HINT, 'windows')).toBe('computer use on the PC: read app windows, click, type and scroll in them')
+  })
+  it("keep the Mac's words exactly as they were", () => {
+    for (const shape of WORDS_SHAPES)
+      for (const tools of TOOL_SHAPES) expect(computerToolSpecs(shape, tools, { platform: 'mac' })).toBe(computerToolSpecs(shape, tools))
+    expect(computerToolSpecs('anthropic', 'act')[0].description).toContain("the Mac's running apps")
+    expect(hostWords('the Mac in the Dock', 'mac')).toBe('the Mac in the Dock')
+    expect(perVerbTools('anthropic', 'windows').find((t) => t.name === 'computer_perform')!.description).toContain('out of the taskbar too')
+  })
+  it('know the local platform', () => {
+    expect(localComputerPlatform('win32')).toBe('windows')
+    expect(localComputerPlatform('darwin')).toBe('mac')
+    expect(localComputerPlatform('linux')).toBe('mac')
   })
 })

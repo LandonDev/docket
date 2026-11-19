@@ -2,7 +2,16 @@ import { readFile } from 'node:fs/promises'
 import { tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { z } from 'zod'
 import { COMPUTER_ACTION_NAMES } from '@shared/computer/protocol'
-import { COMPUTER_BRIDGE_NOTE, COMPUTER_SEARCH_HINT, COMPUTER_TOOL_NAMES, MAX_IMAGE_PARTS, computerToolJsonSchema, computerToolSpecs } from '@shared/computer/tools'
+import {
+  COMPUTER_BRIDGE_NOTE,
+  COMPUTER_SEARCH_HINT,
+  COMPUTER_TOOL_NAMES,
+  MAX_IMAGE_PARTS,
+  computerToolJsonSchema,
+  computerToolSpecs,
+  hostWords,
+  localComputerPlatform
+} from '@shared/computer/tools'
 import type { AppComputerAnswer } from '@shared/contract-computer'
 import type { SessionMeta } from '@shared/events'
 import { deferredTool } from '../addons/exposure'
@@ -90,7 +99,9 @@ export function computerToolList(
   opts: { bridged?: boolean; result?: boolean } = {}
 ): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
   const { shape, tools } = wordsFor(session)
-  return computerToolSpecs(shape, tools, { result: opts.result }).map((t) => ({
+  // the bridge carries a call to the Mac; otherwise the tools act on this host's own apps
+  const platform = opts.bridged ? 'mac' : localComputerPlatform()
+  return computerToolSpecs(shape, tools, { result: opts.result, platform }).map((t) => ({
     name: t.name,
     description: opts.bridged ? remoteDescription(t.name, t.description) : t.description,
     inputSchema: computerToolJsonSchema(t.input)
@@ -121,7 +132,8 @@ export function computerTools(session: SessionMeta, host: ComputerHost | null = 
   if (!local && !bridge?.offered(session.id)) return []
   const { shape, tools } = wordsFor(session)
   const eager = eagerComputer(session, host, bridge)
-  return computerToolSpecs(shape, tools).map((spec) => {
+  const platform = local ? localComputerPlatform() : 'mac'
+  return computerToolSpecs(shape, tools, { platform }).map((spec) => {
     const def = tool(
       spec.name,
       local ? spec.description : remoteDescription(spec.name, spec.description),
@@ -133,7 +145,7 @@ export function computerTools(session: SessionMeta, host: ComputerHost | null = 
         const outcome = local ? await local.sessions.run(ctx, spec.name, args) : await bridge!.run(ctx, spec.name, args)
         return computerContent(outcome, 'parts')
       },
-      eager ? { alwaysLoad: true } : { searchHint: COMPUTER_SEARCH_HINT }
+      eager ? { alwaysLoad: true } : { searchHint: hostWords(COMPUTER_SEARCH_HINT, platform) }
     )
     return eager ? def : deferredTool(def)
   })
