@@ -2,6 +2,7 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { ConvexHttpClient } from 'convex/browser'
 import { makeFunctionReference } from 'convex/server'
@@ -24,8 +25,11 @@ import { makeFunctionReference } from 'convex/server'
 export const REPO = resolve(import.meta.dir, '..')
 export const LIFEOS = 'https://lifeos.landonhale.com'
 export const LIFEOS_CHECKOUT = process.env.E2E_LIFEOS_CHECKOUT ?? '/srv/agents/work/lifeos'
-/** The box's installed conversion and meeting tools, linked read-only into each run's own work-tools. */
-export const TOOLS = process.env.E2E_WORK_TOOLS ?? '/srv/agents/temp-code-data/work-tools'
+/** The host's installed conversion and meeting tools, linked read-only into each run's own work-tools. */
+export const TOOLS =
+  process.env.E2E_WORK_TOOLS ?? (process.platform === 'darwin' ? join(homedir(), 'Library/Application Support/temp-code/work-tools') : '/srv/agents/temp-code-data/work-tools')
+/** A Python with python-docx, openpyxl and pypdfium2: the toolchain's document venv unless E2E_PYTHON names another. */
+export const PYTHON = process.env.E2E_PYTHON ?? join(TOOLS, 'docling-venv/3.12.16/bin/python3')
 /** Every LifeOS record a job makes starts with this. */
 export const PREFIX = 'E2E-49'
 export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -145,7 +149,9 @@ export class Run {
       ...(process.env.E2E_MODEL_TURN === '1' ? {} : { TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9' })
     }
     const electron = join(REPO, 'node_modules', '.bin', 'electron')
-    this.proc = spawn('xvfb-run', ['-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.'], {
+    // Linux draws into xvfb; a Mac opens a real window (a Mac child runs only after the idle gate).
+    const argv = process.platform === 'linux' ? ['xvfb-run', '-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.'] : [electron, '.']
+    this.proc = spawn(argv[0]!, argv.slice(1), {
       cwd: REPO,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -351,6 +357,7 @@ export class Run {
   /** Kills every process of an earlier run of this job, found by its userData in the environ. */
   private stopStale(): void {
     const marker = `TEMP_CODE_USER_DATA=${this.data}`
+    if (!existsSync('/proc')) return
     for (const pid of readdirSync('/proc').filter((p) => /^\d+$/.test(p))) {
       try {
         if (Number(pid) !== process.pid && readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').includes(marker)) process.kill(Number(pid), 'SIGKILL')

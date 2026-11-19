@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import type { OutboxItem } from '../src/shared/contract-work-outbox'
-import { ownMailbox, PREFIX, Run, sleep, textOf, TOOLS } from './e2e-work-lib'
+import { ownMailbox, PREFIX, PYTHON, Run, sleep, textOf } from './e2e-work-lib'
 
 /**
  * Job 2 (milestone 49): a weekly report from a sheet to a held mail.
@@ -33,7 +33,7 @@ try {
   // The week's sheet, as an Excel file.
   const file = join(run.work, `${PREFIX} week 47.xlsx`)
   execFileSync(
-    join(TOOLS, 'docling-venv/3.12.16/bin/python3'),
+    PYTHON,
     [
       '-I',
       '-c',

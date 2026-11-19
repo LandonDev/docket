@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ImportAnswer } from '../src/shared/contract-work-formats'
-import { PREFIX, REPO, Run, sleep, textOf, TOOLS } from './e2e-work-lib'
+import { PREFIX, PYTHON, REPO, Run, sleep, textOf } from './e2e-work-lib'
 
 /**
  * Job 3 (milestone 49): a document from a .docx, through the agent's
@@ -24,7 +24,7 @@ import { PREFIX, REPO, Run, sleep, textOf, TOOLS } from './e2e-work-lib'
  * fake LifeOS behind the service).
  */
 const run = new Run('document')
-const PY = join(TOOLS, 'docling-venv/3.12.16/bin/python3')
+const PY = PYTHON
 const TITLE = `${PREFIX} supplier agreement`
 try {
   await run.start()
@@ -100,7 +100,12 @@ print("COMMENTS", len(list(d.comments)), " | ".join(c.text for c in d.comments))
   const words = execFileSync(PY, ['-I', '-c', 'import sys, pypdfium2 as p\nd = p.PdfDocument(sys.argv[1])\nprint(len(d), d[0].get_textpage().get_text_range())', pdfPath]).toString()
   run.check("Electron's print window makes the PDF", readFileSync(pdfPath).subarray(0, 5).toString() === '%PDF-' && words.includes('fourteen days'), words.slice(0, 200))
 
-  // The guest's edit: milestone 31's live proof, against this tree's built hosted page.
+  // The guest's edit: milestone 31's live proof, against this tree's built hosted page. E2E_GUEST=0 leaves it out
+  // (a host with no headless Chromium for the proof, such as a Mac child's clone).
+  if (process.env.E2E_GUEST === '0') {
+    run.note('the guest leg is left out (E2E_GUEST=0)')
+    await run.finish()
+  }
   const guestShots = join(run.out, 'guest')
   mkdirSync(guestShots, { recursive: true })
   const guest = spawnSync('bunx', ['vitest', 'run', 'src/main/server/work/guests/live.proof.test.ts'], {
