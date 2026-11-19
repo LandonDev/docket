@@ -189,6 +189,7 @@ export class OutlookRoute {
     const answer = ANSWERS[op.kind]
     if (op.kind !== 'create' && !answer) return void (await fail(`Outlook on ${host} does not carry "${op.kind}" yet: do it in Outlook.`))
     let eventId: string | null = null
+    let carried = false
     try {
       if (answer) {
         if (!op.uid) return void (await fail('The invitation has no calendar UID to find it by in Outlook.'))
@@ -198,6 +199,7 @@ export class OutlookRoute {
       const p = op.payload
       if (op.kind === 'create' && (p.startsAt === undefined || p.endsAt === undefined)) return void (await fail('The event has no start or end.'))
       this.journal('calendarOps', id, eventId)
+      carried = true
       if (answer) await carrier.answerEvent(eventId!, answer, p.comment)
       else
         eventId = await carrier.createEvent({
@@ -210,6 +212,8 @@ export class OutlookRoute {
           attendees: (p.attendees ?? []).map((a) => a.address)
         })
     } catch (err) {
+      // As for mail: once Outlook was asked to send, only a plain refusal fails the op; an unclear end stays journaled and is acked as done.
+      if (carried && !refused(err)) throw err
       this.unjournal('calendarOps', id)
       return void (await fail(`Outlook on ${host}: ${errorText(err)}`))
     }

@@ -50,6 +50,8 @@ public interface ICom {
   // The app's exe from App Paths, or null.
   string AppPath(string exe);
   void Foreground(int hwnd);
+  // Lets go of a COM object now rather than when the collector gets to it.
+  void Release(object o);
 }
 
 public class RealCom : ICom {
@@ -123,6 +125,7 @@ public class RealCom : ICom {
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
+  public void Release(object o) { if (o != null && Marshal.IsComObject(o)) Marshal.FinalReleaseComObject(o); }
   public void Foreground(int hwnd) {
     var h = new IntPtr(hwnd);
     if (IsIconic(h)) ShowWindow(h, 9);
@@ -174,27 +177,58 @@ public class Office {
   object advised;
 
   object App(string app) {
-    object a;
+    object a = null;
     if (attached.TryGetValue(app, out a)) {
-      try { com.Get(a, "Version"); return a; }
+      try { com.Get(a, "Version"); }
       catch (COMException e) {
         // Busy is the app saying "not now", not gone: the caller hears it and tries again.
         if (Busy(e)) throw;
-        attached.Remove(app); if (advised == a) advised = null;
-        if (app == "excel") remoteBooks.Clear();
+        Forget(app);
+        a = null;
       }
     }
-    if (!com.Registered(ProgId(app))) throw new Refusal("not-installed", Named(app) + " is not installed on this PC.");
-    if (!com.Running(Proc(app))) throw new Refusal("not-running", Named(app) + " is not open.");
-    try { a = com.Active(ProgId(app)); }
-    catch (COMException e) {
-      if ((uint)e.ErrorCode == 0x800401E3) throw new Refusal("not-running", Named(app) + " is open but not reachable: it may be starting, or running as administrator while TempCode is not.");
-      throw;
+    if (a == null) {
+      if (!com.Registered(ProgId(app))) throw new Refusal("not-installed", Named(app) + " is not installed on this PC.");
+      if (!com.Running(Proc(app))) throw new Refusal("not-running", Named(app) + " is not open.");
+      try { a = com.Active(ProgId(app)); }
+      catch (COMException e) {
+        if ((uint)e.ErrorCode == 0x800401E3) throw new Refusal("not-running", Named(app) + " is open but not reachable: it may be starting, or running as administrator while TempCode is not.");
+        throw;
+      }
+      attached[app] = a;
     }
-    attached[app] = a;
+    // An app he closed while something held it stays alive, hidden, for its sake: that is not his app any more.
+    if (Closed(app, a)) { Forget(app); throw new Refusal("not-running", Named(app) + " is not open."); }
     if (app == "excel" && watching) Advise(a);
     return a;
   }
+
+  bool Closed(string app, object a) {
+    try {
+      if (app == "outlook") return Convert.ToInt32(com.Get(com.Get(a, "Explorers"), "Count")) == 0 && Convert.ToInt32(com.Get(com.Get(a, "Inspectors"), "Count")) == 0;
+      return !Convert.ToBoolean(com.Get(a, "Visible"));
+    } catch (COMException e) { if (Busy(e)) throw; return false; }
+  }
+
+  void Forget(string app) {
+    object a;
+    if (!attached.TryGetValue(app, out a)) return;
+    attached.Remove(app);
+    if (advised == a) advised = null;
+    if (app == "excel") { foreach (var b in remoteBooks.Values) com.Release(b); remoteBooks.Clear(); }
+    com.Release(a);
+  }
+
+  // After each request: hold no app but the Excel whose events are wanted, so closing an app ends it.
+  public void AfterRequest() {
+    foreach (var app in new List<string>(attached.Keys)) if (!(app == "excel" && watching)) Forget(app);
+    GC.Collect();
+    GC.WaitForPendingFinalizers();
+    GC.Collect();
+  }
+
+  // Busy, or Outlook's guard: never mistaken for "no such thing".
+  static void Keep(COMException e) { if (Busy(e) || (uint)e.ErrorCode == 0x80004004) throw e; }
 
   public static bool Busy(COMException e) { var h = (uint)e.ErrorCode; return h == 0x80010001 || h == 0x8001010A; }
 
@@ -209,8 +243,9 @@ public class Office {
 
   // ---- Excel. A range is one call each way, never one per cell.
   int writing;
-  // Workbooks whose AfterRemoteChange is ours, by FullName, for the Excel attached now.
-  readonly HashSet<string> remoteBooks = new HashSet<string>();
+  // Workbooks whose AfterRemoteChange is ours, by FullName, for the Excel attached now: a book closed
+  // and opened again is a new object, and is advised again.
+  readonly Dictionary<string, object> remoteBooks = new Dictionary<string, object>();
 
   public object Watch(bool on) {
     watching = on;
@@ -237,8 +272,9 @@ public class Office {
   // A co-author's edits raise no SheetChange: Excel merges them and says so, with no range, by the
   // workbook's AfterRemoteChange. Heard for each workbook the helper reaches while listening.
   void AdviseBook(object b, string key) {
-    if (!watching || remoteBooks.Contains(key)) return;
-    remoteBooks.Add(key);
+    object had;
+    if (!watching || (remoteBooks.TryGetValue(key, out had) && ReferenceEquals(had, b))) return;
+    remoteBooks[key] = b;
     try { com.Advise(b, "AfterRemoteChange", new RemoteChangeHandler(() => { if (watching) emit(Obj("event", "remote", "book", key)); })); }
     catch (Exception e) { Console.Error.WriteLine("tc-office: no AfterRemoteChange for " + key + ": " + e.Message); }
   }
@@ -276,7 +312,7 @@ public class Office {
     AdviseBook(b, book);
     object ws;
     try { ws = com.Call(com.Get(b, "Worksheets"), "Item", sheet); }
-    catch (COMException) { throw new Refusal("not-found", book + " has no sheet " + sheet + "."); }
+    catch (COMException e) { Keep(e); throw new Refusal("not-found", book + " has no sheet " + sheet + "."); }
     return com.Get(ws, "Range", address);
   }
 
@@ -368,7 +404,10 @@ public class Office {
   static string FormulaText(object v) {
     if (v == null) return "";
     if (v is bool) return (bool)v ? "TRUE" : "FALSE";
-    if (v is string) return (string)v;
+    var s = v as string;
+    // A date among formulas goes in as its serial, so it stays a date (the cell keeps its format).
+    if (s != null && IsoText.IsMatch(s)) return ((DateTime)Out(s)).ToOADate().ToString("R", CultureInfo.InvariantCulture);
+    if (s != null) return s;
     return Convert.ToString(Convert.ToDouble(v, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
   }
 
@@ -417,21 +456,38 @@ public class Office {
       var replace = (string)edit["replace"];
       if (find.Length == 0) throw new Refusal("failed", "Nothing to find.");
       if (find.Length > 255) throw new Refusal("failed", "Word finds at most 255 characters at a time: find a shorter piece.");
-      // Find, set the found range's text, go on after it: Word's own replace takes at most 255 characters.
-      var r = com.Get(d, "Content");
-      var f = com.Get(r, "Find");
-      com.Set(f, "Text", find);
-      com.Set(f, "MatchCase", true);
-      com.Set(f, "MatchWildcards", false);
-      com.Set(f, "Forward", true);
-      com.Set(f, "Wrap", 0);
-      var n = 0;
-      while (Convert.ToBoolean(com.Call(f, "Execute")) && n < 10000) {
-        com.Set(r, "Text", replace);
-        com.Call(r, "Collapse", 0);
-        n++;
+      // Find sees the final text only: no tracked deletion, his own or ours, is found and "replaced" again.
+      object filter = null, markup = null, view = null;
+      try { filter = com.Get(com.Get(com.Get(d, "ActiveWindow"), "View"), "RevisionsFilter"); markup = com.Get(filter, "Markup"); view = com.Get(filter, "View"); com.Set(filter, "Markup", 0); com.Set(filter, "View", 0); }
+      catch (COMException e) { Keep(e); filter = null; }
+      try {
+        // Find, set the found range's text, go on after it: Word's own replace takes at most 255 characters.
+        var r = com.Get(d, "Content");
+        var f = com.Get(r, "Find");
+        // His last Find dialog's settings stay on Find: every one is set here.
+        com.Call(f, "ClearFormatting");
+        foreach (var flag in new[] { "Format", "MatchWildcards", "MatchWholeWord", "MatchSoundsLike", "MatchAllWordForms", "MatchPrefix", "MatchSuffix", "IgnoreSpace", "IgnorePunct" }) {
+          try { com.Set(f, flag, false); } catch (COMException e) { Keep(e); }
+        }
+        com.Set(f, "MatchCase", true);
+        com.Set(f, "Forward", true);
+        com.Set(f, "Wrap", 0);
+        com.Set(f, "Text", find.Replace("^", "^^"));
+        int n = 0, last = -1, lastStart = -1;
+        while (n < 10000 && Convert.ToBoolean(com.Call(f, "Execute"))) {
+          var start = Convert.ToInt32(com.Get(r, "Start"));
+          // A hit behind the last, or a tracked deletion found where the last one was: nothing more to do.
+          if (start < last || (tracked && replace.Length == 0 && start == lastStart)) break;
+          com.Set(r, "Text", replace);
+          lastStart = start;
+          last = Convert.ToInt32(com.Get(r, "End"));
+          n++;
+          com.Call(r, "SetRange", last, Convert.ToInt32(com.Get(com.Get(d, "Content"), "End")));
+        }
+        return n;
+      } finally {
+        if (filter != null) { com.Set(filter, "Markup", markup); com.Set(filter, "View", view); }
       }
-      return n;
     } finally { com.Set(d, "TrackRevisions", was); }
   }
 
@@ -487,7 +543,7 @@ public class Office {
 
   object Prop(object item, string tag) {
     try { return com.Call(com.Get(item, "PropertyAccessor"), "GetProperty", tag); }
-    catch (COMException e) { if ((uint)e.ErrorCode == 0x80004004) throw; return null; }
+    catch (COMException e) { Keep(e); return null; }
   }
 
   string SmtpOf(object recipient) {
@@ -495,10 +551,10 @@ public class Office {
     if (smtp != "") return smtp;
     try {
       var entry = com.Get(recipient, "AddressEntry");
-      try { var u = com.Call(entry, "GetExchangeUser"); if (u != null) { var p = Lower(com.Get(u, "PrimarySmtpAddress")); if (p != "") return p; } } catch (COMException e) { if ((uint)e.ErrorCode == 0x80004004) throw; }
+      try { var u = com.Call(entry, "GetExchangeUser"); if (u != null) { var p = Lower(com.Get(u, "PrimarySmtpAddress")); if (p != "") return p; } } catch (COMException e) { Keep(e); }
       var a = Lower(com.Get(entry, "Address"));
       if (a.Contains("@")) return a;
-    } catch (COMException e) { if ((uint)e.ErrorCode == 0x80004004) throw; }
+    } catch (COMException e) { Keep(e); }
     return "";
   }
 
@@ -506,7 +562,7 @@ public class Office {
     var smtp = Lower(Prop(item, PR_SENDER_SMTP));
     if (smtp != "") return smtp;
     if (Lower(com.Get(item, "SenderEmailType")) == "smtp") return Lower(com.Get(item, "SenderEmailAddress"));
-    try { var u = com.Call(com.Get(item, "Sender"), "GetExchangeUser"); if (u != null) return Lower(com.Get(u, "PrimarySmtpAddress")); } catch (COMException e) { if ((uint)e.ErrorCode == 0x80004004) throw; }
+    try { var u = com.Call(com.Get(item, "Sender"), "GetExchangeUser"); if (u != null) return Lower(com.Get(u, "PrimarySmtpAddress")); } catch (COMException e) { Keep(e); }
     return "";
   }
 
@@ -565,7 +621,7 @@ public class Office {
 
   object ItemById(object ns, string id) {
     try { return com.Call(ns, "GetItemFromID", id); }
-    catch (COMException e) { if ((uint)e.ErrorCode == 0x80004004) throw; throw new Refusal("not-found", "Outlook has no item " + id + "."); }
+    catch (COMException e) { Keep(e); throw new Refusal("not-found", "Outlook has no item " + id + "."); }
   }
 
   List<object> RecipientsOf(object item, int type) {
@@ -597,8 +653,42 @@ public class Office {
     foreach (var a in all) com.Set(com.Call(com.Get(mail, "Recipients"), "Add", (string)a), "Type", type);
   }
 
+  // Whatever fails before Send was never sent: a refusal (the route fails its row). Only Send itself may end unclear.
+  static Exception Unsent(string what, Exception e) {
+    if (e is Refusal) return e;
+    var c = e as COMException;
+    if (c != null && (Busy(c) || (uint)c.ErrorCode == 0x80004004)) return e;
+    return new Refusal("refused", "Outlook would not make this " + what + ", so nothing was sent: " + e.Message);
+  }
+
+  // Send itself. Busy and the guard turned it away before it ran; anything else may have sent it.
+  void SendNow(object item, string what) {
+    try { com.Call(item, "Send"); }
+    catch (COMException e) {
+      if (Busy(e) || (uint)e.ErrorCode == 0x80004004) throw;
+      throw new Refusal("failed", "Outlook stopped while sending this " + what + " (" + e.Message + "): it may have gone. Look in Sent before sending it again.");
+    }
+  }
+
+  // Before a send, every recipient must be one Outlook knows.
+  void Resolved(object item) {
+    var rs = com.Get(item, "Recipients");
+    if (Convert.ToBoolean(com.Call(rs, "ResolveAll"))) return;
+    var names = new List<string>();
+    foreach (var r in Each(rs)) if (!Convert.ToBoolean(com.Get(r, "Resolved"))) names.Add((string)com.Get(r, "Name"));
+    throw new Refusal("not-found", "Outlook does not know " + string.Join(", ", names.ToArray()) + ", so nothing was sent.");
+  }
+
   // A draft left in Drafts (answers its id), or a mail sent: only ever from a held act's execute, after his press.
   public object Mail(Dictionary<string, object> m, bool send) {
+    object mail;
+    try { mail = MakeMail(m, send); } catch (Exception e) { throw Unsent("mail", e); }
+    if (!send) return com.Get(mail, "EntryID");
+    SendNow(mail, "mail");
+    return null;
+  }
+
+  object MakeMail(Dictionary<string, object> m, bool send) {
     var ns = Ns();
     var app = App("outlook");
     object mail;
@@ -621,10 +711,9 @@ public class Office {
     AddRecipients(mail, m["bcc"], 3);
     var account = m.ContainsKey("account") ? m["account"] as string : null;
     if (!string.IsNullOrEmpty(account)) com.Set(mail, "SendUsingAccount", Account(ns, account));
-    com.Call(com.Get(mail, "Recipients"), "ResolveAll");
-    if (!send) { com.Call(mail, "Save"); return com.Get(mail, "EntryID"); }
-    com.Call(mail, "Send");
-    return null;
+    if (send) Resolved(mail);
+    else { com.Call(com.Get(mail, "Recipients"), "ResolveAll"); com.Call(mail, "Save"); }
+    return mail;
   }
 
   object Calendar(object ns, string account) {
@@ -633,14 +722,14 @@ public class Office {
   }
 
   // Events starting in [from, to): sorted, recurrences expanded, then restricted, in that order.
-  IEnumerable<object> Between(object folder, DateTime from, DateTime to) {
+  IEnumerable<object> Between(object folder, DateTime from, DateTime to, int most = 500) {
     var items = com.Get(folder, "Items");
     com.Call(items, "Sort", "[Start]");
     com.Set(items, "IncludeRecurrences", true);
     var f = "[Start] >= '" + from.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) + "' AND [Start] < '" + to.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) + "'";
     var hits = com.Call(items, "Restrict", f);
     var item = com.Call(hits, "GetFirst");
-    for (var n = 0; item != null && n < 500; n++) {
+    for (var n = 0; item != null && n < most; n++) {
       yield return item;
       item = com.Call(hits, "GetNext");
     }
@@ -664,6 +753,17 @@ public class Office {
 
   // Only from a held act's execute, or a plain hold on his own calendar with nobody invited.
   public object CreateEvent(Dictionary<string, object> e) {
+    var attendees = e["attendees"] as ArrayList;
+    var invites = attendees != null && attendees.Count > 0;
+    object a;
+    try { a = MakeEvent(e, attendees, invites); } catch (Exception x) { throw Unsent("invitation", x); }
+    if (!invites) { com.Call(a, "Save"); return com.Get(a, "EntryID"); }
+    // Sent before it is saved, so an invitation Outlook turns away leaves no meeting behind; Send saves it.
+    SendNow(a, "invitation");
+    try { return com.Get(a, "EntryID"); } catch (COMException) { return null; }
+  }
+
+  object MakeEvent(Dictionary<string, object> e, ArrayList attendees, bool invites) {
     var ns = Ns();
     var items = com.Get(Calendar(ns, e.ContainsKey("account") ? e["account"] as string : null), "Items");
     var a = com.Call(items, "Add", 1);
@@ -672,28 +772,30 @@ public class Office {
     com.Set(a, "End", Parse(e["end"]).ToLocalTime());
     if (e.ContainsKey("location") && e["location"] != null) com.Set(a, "Location", (string)e["location"]);
     if (e.ContainsKey("body") && e["body"] != null) com.Set(a, "Body", (string)e["body"]);
-    var attendees = e["attendees"] as ArrayList;
-    var invites = attendees != null && attendees.Count > 0;
     if (invites) {
       com.Set(a, "MeetingStatus", 1);
       AddRecipients(a, attendees, 1);
-      com.Call(com.Get(a, "Recipients"), "ResolveAll");
+      Resolved(a);
     }
-    com.Call(a, "Save");
-    var id = com.Get(a, "EntryID");
-    if (invites) com.Call(a, "Send");
-    return id;
+    return a;
   }
 
   // The event whose iCalendar UID is `uid`: Outlook's own GlobalAppointmentID in hex, or one carrying a vCal-Uid.
   public object EventByUid(string uid) {
     var ns = Ns();
     var now = DateTime.UtcNow;
-    foreach (var e in Between(com.Call(ns, "GetDefaultFolder", 9), now.AddDays(-7), now.AddDays(183))) {
+    var want = Clean(uid);
+    foreach (var e in Between(com.Call(ns, "GetDefaultFolder", 9), now.AddDays(-7), now.AddDays(183), 20000)) {
       var g = (string)com.Get(e, "GlobalAppointmentID") ?? "";
-      if (string.Equals(g, uid, StringComparison.OrdinalIgnoreCase) || VCalUid(g) == uid) return com.Get(e, "EntryID");
+      if (string.Equals(Clean(g), want, StringComparison.OrdinalIgnoreCase) || VCalUid(g) == uid) return com.Get(e, "EntryID");
     }
     return null;
+  }
+
+  // An occurrence's GlobalObjectId carries its date in bytes 16 to 19; the series' id has zeros there.
+  public static string Clean(string hex) {
+    if (hex.Length < 40 || !System.Text.RegularExpressions.Regex.IsMatch(hex, "^[0-9A-Fa-f]+$")) return hex;
+    return hex.Substring(0, 32) + "00000000" + hex.Substring(40);
   }
 
   // A GlobalObjectId: 40 bytes of header and a size, then "vCal-Uid", 01 00 00 00 and the UID ending in a nul.
@@ -710,13 +812,13 @@ public class Office {
 
   // Only from a held act's execute.
   public object AnswerEvent(string id, string answer, string comment) {
-    var ns = Ns();
-    var e = ItemById(ns, id);
-    var r = com.Call(e, "Respond", answer == "accept" ? 3 : answer == "decline" ? 4 : 2, true);
-    if (r != null) {
-      if (!string.IsNullOrEmpty(comment)) com.Set(r, "Body", comment);
-      com.Call(r, "Send");
-    }
+    object r;
+    try {
+      var e = ItemById(Ns(), id);
+      r = com.Call(e, "Respond", answer == "accept" ? 3 : answer == "decline" ? 4 : 2, true);
+      if (r != null && !string.IsNullOrEmpty(comment)) com.Set(r, "Body", comment);
+    } catch (Exception x) { throw Unsent("answer", x); }
+    if (r != null) SendNow(r, "answer");
     return null;
   }
 
@@ -837,6 +939,8 @@ public static class Program {
     var office = new Office(com, Emit);
     MessageFilter.Register();
     // Calls and Excel's events run on this one STA thread, pumped by the message loop; stdin is read beside it.
+    // An exception that escapes a request ends the helper (TempCode starts another) rather than showing a dialog on his desktop.
+    Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
     var pump = new Control();
     pump.CreateControl();
     if (pump.Handle == IntPtr.Zero) return 1;
@@ -871,7 +975,10 @@ public static class Program {
       value = office.Run(verb, args);
       Emit(Office.Obj("id", id, "ok", true, "value", value));
     } catch (Exception e) {
-      Emit(Office.Obj("id", id, "ok", false, "error", Office.Failure(verb, e)));
+      try { Emit(Office.Obj("id", id, "ok", false, "error", Office.Failure(verb, e))); }
+      catch (Exception) { Environment.Exit(2); }
+    } finally {
+      try { office.AfterRequest(); } catch (Exception x) { Console.Error.WriteLine("tc-office: letting go: " + x.Message); }
     }
   }
 }

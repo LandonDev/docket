@@ -42,7 +42,7 @@ class Fake extends EventEmitter implements HelperProcess {
   }
   kill(): boolean {
     this.killed = true
-    setImmediate(() => this.emit('exit', null))
+    setImmediate(() => this.emit('close', null))
     return true
   }
 }
@@ -122,7 +122,7 @@ describe('the Windows carrier', () => {
   })
 
   it('fails the calls in flight when the helper stops, as an unclear end, and starts a fresh one for the next call', async () => {
-    const { carrier, procs } = make((verb, _a, p) => (verb === 'mail' ? (setImmediate(() => p.emit('exit', 3)), HANG) : ['a@x.com']))
+    const { carrier, procs } = make((verb, _a, p) => (verb === 'mail' ? (setImmediate(() => p.emit('close', 3)), HANG) : ['a@x.com']))
     await expect(carrier.sendMail({ to: ['a@x.com'], cc: [], bcc: [], subject: 's', html: '' })).rejects.toMatchObject({ code: 'failed', message: 'tc-office stopped (3).' })
     await expect(carrier.accounts()).resolves.toEqual(['a@x.com'])
     expect(procs).toHaveLength(2)
@@ -163,7 +163,7 @@ describe('the Windows carrier', () => {
     procs[0].line({ event: 'remote', book: 'https://contoso.sharepoint.com/Plan.xlsx' })
     await vi.waitFor(() => expect(heard.at(-1)).toBe('https://contoso.sharepoint.com/Plan.xlsx||'))
 
-    procs[0].emit('exit', 0)
+    procs[0].emit('close', 0)
     await carrier.workbooks()
     await vi.waitFor(() => expect(procs[1].seen.map((s) => s.verb)).toEqual(['watch', 'workbooks']))
     off()

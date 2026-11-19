@@ -44,7 +44,9 @@ class OEvent { public string Id, Subject = "", Location = "", Organizer = "", Gl
 public class RecordedCom : ICom {
   public static readonly int E_UNKNOWN = unchecked((int)0x80020006), E_BADINDEX = unchecked((int)0x8002000B), E_UNAVAILABLE = unchecked((int)0x800401E3), E_REJECTED = unchecked((int)0x80010001), E_ABORT = unchecked((int)0x80004004);
 
-  readonly Dictionary<string, bool> installed = new Dictionary<string, bool>(), running = new Dictionary<string, bool>();
+  readonly Dictionary<string, bool> installed = new Dictionary<string, bool>(), running = new Dictionary<string, bool>(), visible = new Dictionary<string, bool>();
+  // The next call to this member fails with this HRESULT, once.
+  string failMember; int failCode;
   bool oldExcel, guard;
   int busy;
   readonly List<XBook> books = new List<XBook>();
@@ -76,6 +78,7 @@ public class RecordedCom : ICom {
   void Busy(string what) {
     calls.Add(what);
     if (busy > 0) { busy--; throw Err(E_REJECTED, "Call was rejected by callee. (Exception from HRESULT: 0x80010001 (RPC_E_CALL_REJECTED))"); }
+    if (failMember != null && what.EndsWith("." + failMember)) { failMember = null; throw Err(failCode, "Failed (Exception from HRESULT: 0x" + failCode.ToString("X8") + ")"); }
   }
   public object Get(object o, string name, params object[] args) {
     var x = (Obj)o;
@@ -107,6 +110,7 @@ public class RecordedCom : ICom {
   public void Start(string file, string args) { started.Add(Office.Obj("file", file, "args", args)); }
   public string AppPath(string exe) { return @"C:\Program Files\Microsoft Office\root\Office16\" + exe.ToUpperInvariant(); }
   public void Foreground(int hwnd) { started.Add(Office.Obj("foreground", hwnd)); }
+  public void Release(object o) { }
 
   // ---- A1
   static readonly Regex A1 = new Regex(@"^\$?([A-Z]+)\$?(\d+)(?::\$?([A-Z]+)\$?(\d+))?$");
@@ -189,7 +193,8 @@ public class RecordedCom : ICom {
   Obj RangeObj(XSheet s, int[] b) {
     var r = new Obj("Range");
     int rows = b[2] - b[0] + 1, cols = b[3] - b[1] + 1;
-    r.Prop("Value", () => Block(s, b, c => c == null ? null : c.V))
+    // Excel's Value gives a date-formatted number as a DateTime.
+    r.Prop("Value", () => Block(s, b, c => c == null ? null : c.V is double && c.Z.Contains("yy") ? (object)DateTime.FromOADate((double)c.V) : c.V))
       .Put("Value", v => Fill(s, b, v, (c, x) => { c.F = ""; c.V = x is string && ((string)x).StartsWith("=") ? null : Constant(x); if (x is string && ((string)x).StartsWith("=")) c.F = (string)x; }))
       .Put("Formula", v => Fill(s, b, v, (c, x) => Type(c, Convert.ToString(x, CultureInfo.InvariantCulture) ?? "")))
       .Prop("Formula", () => Block(s, b, FormulaOf))
@@ -254,9 +259,14 @@ public class RecordedCom : ICom {
       .Fn("InsertBefore", a => { var t = (string)a[0]; d.Text = t + d.Text; if (d.Track) d.Tracked.Add("+" + t); return null; })
       // Word keeps the document's last paragraph mark last.
       .Fn("InsertAfter", a => { var t = (string)a[0]; var at = d.Text.EndsWith("\r") ? d.Text.Length - 1 : d.Text.Length; d.Text = d.Text.Substring(0, at) + t + d.Text.Substring(at); if (d.Track) d.Tracked.Add("+" + t); return null; })
-      .Fn("Collapse", a => { if (Convert.ToInt32(a[0]) == 0) span[0] = span[1]; else span[1] = span[0]; return null; });
+      .Fn("Collapse", a => { if (Convert.ToInt32(a[0]) == 0) span[0] = span[1]; else span[1] = span[0]; return null; })
+      .Prop("Start", () => span[0]).Prop("End", () => span[1])
+      .Fn("SetRange", a => { span[0] = Convert.ToInt32(a[0]); span[1] = Convert.ToInt32(a[1]); return null; });
     var find = new Obj("Find"); string text = ""; bool matchCase = false;
-    find.Put("Text", v => text = (string)v).Put("MatchCase", v => matchCase = Convert.ToBoolean(v)).Put("MatchWildcards", v => { }).Put("Forward", v => { }).Put("Wrap", v => { })
+    find.Put("Text", v => text = ((string)v).Replace("^^", "^")).Put("MatchCase", v => matchCase = Convert.ToBoolean(v)).Put("Forward", v => { }).Put("Wrap", v => { })
+      .Fn("ClearFormatting", a => null);
+    foreach (var flag in new[] { "Format", "MatchWildcards", "MatchWholeWord", "MatchSoundsLike", "MatchAllWordForms", "MatchPrefix", "MatchSuffix", "IgnoreSpace", "IgnorePunct" }) find.Put(flag, v => { if (Convert.ToBoolean(v)) throw Err(E_UNKNOWN, "not modelled"); });
+    find
       .Fn("Execute", a => {
         // From the range on to the end of the document (wdFindStop); a hit becomes the range.
         var i = d.Text.IndexOf(text, span[0], matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
@@ -267,12 +277,16 @@ public class RecordedCom : ICom {
     return r;
   }
 
+  // The window's markup and view while a find runs: 0 and 0 is the final text with no markup.
+  int markupNow = 2, viewNow = 0;
+  Obj filter { get { return new Obj("RevisionsFilter").Prop("Markup", () => markupNow).Put("Markup", v => markupNow = Convert.ToInt32(v)).Prop("View", () => viewNow).Put("View", v => viewNow = Convert.ToInt32(v)); } }
+
   Obj DocObj(WDoc d) {
     return new Obj("Document").Prop("FullName", () => d.Key).Prop("Name", () => d.Name)
       .Prop("TrackRevisions", () => d.Track).Put("TrackRevisions", v => d.Track = Convert.ToBoolean(v))
       .Prop("Content", () => WordRange(d, new[] { 0, d.Text.Length }))
       .Fn("Activate", a => { started.Add(Office.Obj("activate", d.Key)); return null; })
-      .Prop("ActiveWindow", () => new Obj("Window").Prop("Hwnd", () => 202));
+      .Prop("ActiveWindow", () => new Obj("Window").Prop("Hwnd", () => 202).Prop("View", () => new Obj("View").Prop("RevisionsFilter", () => filter)));
   }
 
   // ---- PowerPoint
@@ -318,7 +332,7 @@ public class RecordedCom : ICom {
 
   Obj RecipientObj(object[] r) {
     // r: { address, type }
-    return new Obj("Recipient").Prop("Type", () => r[1]).Put("Type", v => r[1] = Convert.ToInt32(v)).Prop("Name", () => r[0])
+    return new Obj("Recipient").Prop("Type", () => r[1]).Prop("Resolved", () => ((string)r[0]).Contains("@")).Put("Type", v => r[1] = Convert.ToInt32(v)).Prop("Name", () => r[0])
       .Prop("PropertyAccessor", () => Accessor(t => t == PR_SMTP ? r[0] : null))
       .Prop("AddressEntry", () => new Obj("AddressEntry").Prop("Address", () => r[0]).Fn("GetExchangeUser", a => null));
   }
@@ -328,7 +342,7 @@ public class RecordedCom : ICom {
       .Fn("Item", a => RecipientObj(list[Convert.ToInt32(a[0]) - 1]))
       .Fn("Add", a => { var r = new object[] { (string)a[0], 1 }; list.Add(r); return RecipientObj(r); })
       .Fn("Remove", a => { list.RemoveAt(Convert.ToInt32(a[0]) - 1); return null; })
-      .Fn("ResolveAll", a => true);
+      .Fn("ResolveAll", a => list.All(r => ((string)r[0]).Contains("@")));
   }
 
   static string Of(List<object[]> rs, int type, string sep) { return string.Join(sep, rs.Where(r => Convert.ToInt32(r[1]) == type).Select(r => (string)r[0]).ToArray()); }
@@ -371,7 +385,8 @@ public class RecordedCom : ICom {
       .Prop("Organizer", () => e.Organizer).Prop("ResponseStatus", () => e.Response).Prop("GlobalAppointmentID", () => e.Global)
       .Put("MeetingStatus", v => e.Meeting = Convert.ToInt32(v)).Prop("Recipients", () => Recipients(e.Recipients))
       .Fn("Save", a => { if (!events.Contains(e)) events.Add(e); return null; })
-      .Fn("Send", a => { sent.Add(Office.Obj("invite", e.Subject, "to", Of(e.Recipients, 1, ";"), "meeting", e.Meeting)); return null; })
+      // Sending an invitation saves the meeting, as Outlook does.
+      .Fn("Send", a => { if (!events.Contains(e)) events.Add(e); sent.Add(Office.Obj("invite", e.Subject, "to", Of(e.Recipients, 1, ";"), "meeting", e.Meeting)); return null; })
       .Fn("Respond", a => {
         var answer = Convert.ToInt32(a[0]); var noUi = a.Length > 1 && Convert.ToBoolean(a[1]);
         var reply = Office.Obj("id", e.Id, "response", answer, "noUi", noUi, "sent", false, "body", "");
@@ -436,17 +451,18 @@ public class RecordedCom : ICom {
 
   // ---- the apps, built afresh from a seed
   void Seed(Dictionary<string, object> s) {
-    foreach (var app in new[] { "excel", "word", "powerpoint", "outlook" }) { installed[app] = true; running[app] = true; }
+    foreach (var app in new[] { "excel", "word", "powerpoint", "outlook" }) { installed[app] = true; running[app] = true; visible[app] = true; }
     var apps = s.ContainsKey("apps") ? (Dictionary<string, object>)s["apps"] : new Dictionary<string, object>();
     foreach (var kv in apps) {
       var a = (Dictionary<string, object>)kv.Value;
       if (a.ContainsKey("installed")) installed[kv.Key] = Convert.ToBoolean(a["installed"]);
       if (a.ContainsKey("running")) running[kv.Key] = Convert.ToBoolean(a["running"]);
+      if (a.ContainsKey("visible")) visible[kv.Key] = Convert.ToBoolean(a["visible"]);
     }
     oldExcel = s.ContainsKey("oldExcel") && Convert.ToBoolean(s["oldExcel"]);
     guard = s.ContainsKey("guard") && Convert.ToBoolean(s["guard"]);
     // The apps stay the same objects across seeds, as a running Office does, and so does an event handler given to Excel.
-    busy = 0;
+    busy = 0; failMember = null;
     books.Clear(); docs.Clear(); decks.Clear(); accounts.Clear(); mail.Clear(); events.Clear(); sent.Clear(); answers.Clear(); started.Clear(); calls.Clear();
     foreach (Dictionary<string, object> b in List(s, "books")) {
       var book = new XBook { Key = (string)b["key"], Name = Leaf((string)b["key"]) };
@@ -484,13 +500,14 @@ public class RecordedCom : ICom {
       events.Add(x);
     }
     if (excel != null) return;
-    excel = new Obj("Excel.Application").Prop("Version", () => oldExcel ? "16.0 (2016)" : "16.0").Prop("Hwnd", () => 101).Put("Visible", v => { })
+    excel = new Obj("Excel.Application").Prop("Version", () => oldExcel ? "16.0 (2016)" : "16.0").Prop("Hwnd", () => 101).Put("Visible", v => { }).Prop("Visible", () => visible["excel"])
       .Prop("Workbooks", () => Collection<XBook>("Workbooks", () => books, BookObj, (b, n) => b.Key == n || b.Name == n));
-    word = new Obj("Word.Application").Prop("Version", () => "16.0").Put("Visible", v => { })
+    word = new Obj("Word.Application").Prop("Version", () => "16.0").Put("Visible", v => { }).Prop("Visible", () => visible["word"])
       .Prop("Documents", () => Collection<WDoc>("Documents", () => docs, DocObj, (d, n) => d.Key == n || d.Name == n));
-    powerpoint = new Obj("PowerPoint.Application").Prop("Version", () => "16.0")
+    powerpoint = new Obj("PowerPoint.Application").Prop("Version", () => "16.0").Prop("Visible", () => visible["powerpoint"] ? -1 : 0)
       .Prop("Presentations", () => Collection<PDeck>("Presentations", () => decks, DeckObj, (p, n) => p.Key == n || p.Name == n));
     outlook = new Obj("Outlook.Application").Prop("Version", () => "16.0.0.0")
+      .Prop("Explorers", () => new Obj("Explorers").Prop("Count", () => visible["outlook"] ? 1 : 0)).Prop("Inspectors", () => new Obj("Inspectors").Prop("Count", () => 0))
       .Fn("GetNamespace", a => Namespace())
       .Fn("CreateItem", a => { if (Convert.ToInt32(a[0]) != 0) throw Err(E_UNKNOWN, "only mail here"); return MailObj(Draft(null)); });
   }
@@ -503,6 +520,7 @@ public class RecordedCom : ICom {
     switch (verb) {
       case "_seed": Seed(a); return null;
       case "_busy": busy = Convert.ToInt32(a["calls"]); return null;
+      case "_fail": failMember = (string)a["member"]; failCode = (int)Convert.ToUInt32((string)a["hresult"], 16); return null;
       case "_type": {
         // Someone typed in Excel: the cell changes and SheetChange fires, as it would for him.
         var book = books.First(b => b.Key == (string)a["book"]);
@@ -522,7 +540,7 @@ public class RecordedCom : ICom {
         return null;
       }
       case "_state":
-        return Office.Obj("sent", sent, "answers", answers, "started", started, "calls", calls,
+        return Office.Obj("sent", sent, "answers", answers, "started", started, "calls", calls, "markup", markupNow,
           "drafts", mail.Where(m => m.Folder == "drafts").Select(m => (object)Office.Obj("id", m.Id, "subject", m.Subject, "html", m.Html, "to", Of(m.Recipients, 1, ";"))).ToList(),
           "docs", docs.Select(d => (object)Office.Obj("key", d.Key, "text", d.Text, "tracked", d.Tracked)).ToList(),
           "decks", decks.Select(p => (object)Office.Obj("key", p.Key, "slides", p.Slides)).ToList(),

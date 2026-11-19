@@ -36,6 +36,7 @@ export function withAddin(desktop: OfficeCarrier | null, hub: () => AddinHub | n
     kind: desktop?.kind ?? 'addin',
     // The desktop app's own change events (Windows) pass through; the add-in's come by the hub.
     ...(desktop?.changes ? { changes: (fn: Parameters<NonNullable<OfficeCarrier['changes']>>[0]) => desktop.changes!(fn) } : {}),
+    ...(desktop?.stop ? { stop: () => desktop.stop!() } : {}),
     async apps() {
       const base: OfficeAppState[] = desktop ? await desktop.apps() : []
       const h = hub()

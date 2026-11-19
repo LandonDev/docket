@@ -161,6 +161,20 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect((await carrier.readRange(MINE, 'Sheet1', 'E1:F1')).formulas).toEqual([['', '=E1+1']])
     })
 
+    it('writes a date among formulas as a date, not as text', async () => {
+      const iso = (await carrier.readRange(MINE, 'Sheet1', 'B2')).values[0][0] as string
+      await carrier.writeRange(MINE, 'Sheet1', 'B2:C2', [[iso, '=B2+1']])
+      const g = await carrier.readRange(MINE, 'Sheet1', 'B2:C2')
+      expect(g.values[0][0]).toBe(iso)
+      expect(g.formulas[0][1]).toBe('=B2+1')
+    })
+
+    it('says an app he closed is not open, though something kept it running hidden', async () => {
+      await carrier.readRange(MINE, 'Sheet1', 'A1')
+      await seed({ apps: { excel: { visible: false } } })
+      await expect(carrier.readRange(MINE, 'Sheet1', 'A1')).rejects.toMatchObject({ code: 'not-running', message: 'Microsoft Excel is not open.' })
+    })
+
     it('reads and writes formulas through Formula where an older Excel has no Formula2', async () => {
       await seed({ oldExcel: true })
       expect((await carrier.readRange(MINE, 'Sheet1', 'C1')).formulas).toEqual([['=A1*2']])
@@ -246,6 +260,14 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       // Word keeps the last paragraph mark last: text put at the end joins the last paragraph.
       expect(docs[1]).toEqual({ key: NOTES, text: 'Mine. More.\r', tracked: [] })
       expect(await carrier.readDocument(BRIEF)).toEqual(['Draft two.', 'Second two.', ''])
+      // Find ran on the final text with no markup, and the window's markup is back as he had it.
+      expect((await state() as State & { markup: number }).markup).toBe(2)
+    })
+
+    it("finds a caret as itself, not as one of Word's special codes", async () => {
+      await seed({ docs: [{ key: NOTES, paragraphs: ['Cost ^2 here.'] }] })
+      expect(await carrier.editDocument(NOTES, { find: '^2', replace: 'squared' }, false)).toBe(1)
+      expect(await carrier.readDocument(NOTES)).toEqual(['Cost squared here.', ''])
     })
 
     it('replaces slide text in place, shape by shape, and skips shapes with no text', async () => {
@@ -295,6 +317,31 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect(sent[0]).toEqual({ account: 'owner@example.com', to: 'dana@example.com', cc: 'lee@example.com', bcc: '', subject: 'Plan', html: '<table border="1"><tr><td><b>1</b></td></tr></table>' })
       expect(sent[1]).toMatchObject({ account: 'owner@purdue.edu', to: 'dana@example.com', subject: 'RE: Budget' })
       expect(sent[1].html).toMatch(/<body><p><i>Yes<\/i><\/p><div class=quote>From: dana@example.com/)
+    })
+
+    it('refuses, with nothing sent, a mail to someone Outlook does not know', async () => {
+      await expect(carrier.sendMail({ to: ['dana@example.com', 'nobody'], cc: [], bcc: [], subject: 's', html: '<p>x</p>' })).rejects.toMatchObject({
+        code: 'not-found',
+        message: 'Outlook does not know nobody, so nothing was sent.'
+      })
+      expect((await state()).sent).toEqual([])
+    })
+
+    it('says busy when Outlook turns Send away, and that it may have gone when Outlook goes away during Send', async () => {
+      const m = { to: ['dana@example.com'], cc: [], bcc: [], subject: 's', html: '<p>x</p>' }
+      await carrier.call('_fail', { member: 'Send', hresult: '0x80010001' })
+      await expect(carrier.sendMail(m)).rejects.toMatchObject({ code: 'busy' })
+      await carrier.call('_fail', { member: 'Send', hresult: '0x800706BA' })
+      await expect(carrier.sendMail(m)).rejects.toMatchObject({ code: 'failed', message: expect.stringContaining('it may have gone. Look in Sent') })
+      await carrier.call('_fail', { member: 'HTMLBody=', hresult: '0x80020009' })
+      await expect(carrier.sendMail(m)).rejects.toMatchObject({ code: 'refused', message: expect.stringContaining('so nothing was sent') })
+      expect((await state()).sent).toEqual([])
+    })
+
+    it('leaves no meeting behind when Outlook refuses to send an invitation', async () => {
+      await carrier.call('_fail', { member: 'Send', hresult: '0x80004004' })
+      await expect(carrier.createEvent({ subject: 'Review', start: '2026-12-01T15:00:00.000Z', end: '2026-12-01T15:30:00.000Z', attendees: ['dana@example.com'] })).rejects.toMatchObject({ code: 'not-allowed' })
+      expect((await state()).events.map((e) => e.subject)).toEqual(['Standup'])
     })
 
     it('a draft only leaves a draft, and a hold on his own calendar with nobody invited is made at once', async () => {

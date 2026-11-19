@@ -131,14 +131,20 @@ export interface OfficeCarrier {
 
   /** A carrier the app itself tells of changes (Windows' Excel): `address` changed on `sheet`, or, with `sheet` '', a co-author's edits were merged somewhere in the book. Returns its off. */
   changes?(fn: (book: string, sheet: string, address: string) => void): () => void
+  /** Let go of what the carrier keeps running (Windows' helper process) when the module stops. */
+  stop?(): void
 }
 
 /** A refusal in words the agent and the screen show as they are. */
 export class OfficeError extends Error {
   constructor(
     message: string,
-    /** `busy`: the app refused the call for now (a dialog open, a cell in edit); nothing was done, and trying again may work */
-    readonly code: 'not-installed' | 'not-running' | 'not-allowed' | 'needs-consent' | 'not-found' | 'busy' | 'failed' = 'failed'
+    /**
+     * `busy`: the app turned the step away for now (a dialog open, a cell in edit); that step was not done, and trying again may work.
+     * `refused`: the app would not make what was asked (a mail, an invitation) before anything was sent.
+     * `failed`: anything else, a send among them that may or may not have gone.
+     */
+    readonly code: 'not-installed' | 'not-running' | 'not-allowed' | 'needs-consent' | 'not-found' | 'busy' | 'refused' | 'failed' = 'failed'
   ) {
     super(message)
   }

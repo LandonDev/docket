@@ -25,7 +25,8 @@ export interface HelperProcess {
   stdout: Readable | null
   stderr?: Readable | null
   kill(signal?: NodeJS.Signals): boolean
-  once(event: 'exit', fn: (code: number | null) => void): unknown
+  /** after it exits and its pipes have closed, so every answer it wrote has been read */
+  once(event: 'close', fn: (code: number | null) => void): unknown
   once(event: 'error', fn: (err: Error) => void): unknown
 }
 
@@ -33,10 +34,13 @@ export interface ComDeps {
   start?: () => Promise<HelperProcess>
   /** a call's answer, at most; the helper is stopped past it (Office sits on a modal dialog) */
   timeoutMs?: number
+  /** the same for a send, which may wait on a prompt in Outlook for him */
+  sendTimeoutMs?: number
   log?: (line: string) => void
 }
 
 export const COM_TIMEOUT_MS = 120_000
+export const SEND_TIMEOUT_MS = 30 * 60_000
 const READY_MS = 30_000
 
 type Frame =
@@ -48,7 +52,13 @@ type Frame =
 
 export type ChangeFn = (book: string, sheet: string, address: string) => void
 
-const CODES = new Set<OfficeError['code']>(['not-installed', 'not-running', 'not-allowed', 'needs-consent', 'not-found', 'busy', 'failed'])
+const CODES = new Set<OfficeError['code']>(['not-installed', 'not-running', 'not-allowed', 'needs-consent', 'not-found', 'busy', 'refused', 'failed'])
+
+/** The verbs that send: a mail, an invitation, an answer. */
+const sends = (verb: string, args: unknown): boolean => {
+  const a = (args ?? {}) as { send?: boolean; e?: { attendees?: unknown[] } }
+  return (verb === 'mail' && a.send === true) || (verb === 'createEvent' && !!a.e?.attendees?.length) || verb === 'answerEvent'
+}
 /** RPC_E_CALL_REJECTED and RPC_E_SERVERCALL_RETRYLATER: the app is busy (a dialog, a cell in edit), past the helper's own retries. */
 const BUSY = /^0x8001(0001|010A)$/i
 
@@ -90,9 +100,11 @@ class Link {
   private conn: Conn | null = null
   private opening: Promise<Conn> | null = null
   private next = 1
+  /** One request at a time, as the helper runs them: a call's time starts when it is sent. */
+  private tail: Promise<unknown> = Promise.resolve()
   readonly listeners = new Set<ChangeFn>()
 
-  constructor(private readonly deps: Required<Pick<ComDeps, 'start' | 'timeoutMs' | 'log'>>) {}
+  constructor(private readonly deps: Required<Pick<ComDeps, 'start' | 'timeoutMs' | 'sendTimeoutMs' | 'log'>>) {}
 
   /** Done with `c`: its calls fail with `err`, and the next call starts a fresh helper. */
   private drop(c: Conn, err: Error): void {
@@ -129,7 +141,8 @@ class Link {
         const timer = setTimeout(() => stop(new OfficeError('tc-office did not start in time.', 'not-installed')), READY_MS)
         proc.once('error', (err) => stop(new OfficeError(`tc-office failed: ${err.message}`, up ? 'failed' : 'not-installed')))
         // A call in flight when it stops may have reached Office: not a plain refusal.
-        proc.once('exit', (code) => stop(new OfficeError(`tc-office stopped (${code ?? 'killed'}).`, up ? 'failed' : 'not-installed')))
+        proc.once('close', (code) => stop(new OfficeError(`tc-office stopped (${code ?? 'killed'}).`, up ? 'failed' : 'not-installed')))
+        proc.stdin?.on('error', (err) => stop(new OfficeError(`tc-office failed: ${err.message}`, up ? 'failed' : 'not-installed')))
         proc.stderr?.setEncoding('utf8').on('data', (d: string) => d.split('\n').filter((l) => l.trim()).forEach((l) => this.deps.log(`office: ${l.trim()}`)))
         proc.stdout!.setEncoding('utf8').on('data', (d: string) => {
           buf += d
@@ -175,26 +188,42 @@ class Link {
   }
 
   private send(c: Conn, verb: string, args: unknown): Promise<unknown> {
+    if (c.dead) return Promise.reject(new OfficeError('tc-office stopped.'))
     const id = this.next++
+    const sending = sends(verb, args)
+    const ms = sending ? this.deps.sendTimeoutMs : this.deps.timeoutMs
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         c.pending.delete(id)
-        reject(new OfficeError(`Office did not answer ${verb} within ${Math.round(this.deps.timeoutMs / 1000)} s: a dialog may be open in it.`))
+        reject(
+          new OfficeError(
+            sending
+              ? `Outlook has not said within ${Math.round(ms / 60_000)} minutes whether it sent this (a prompt may be waiting in Outlook): look in Sent before sending it again.`
+              : `Office did not answer ${verb} within ${Math.round(ms / 1000)} s: a dialog may be open in it.`
+          )
+        )
         // A helper stuck on a modal app answers nothing more: the next call starts a fresh one.
         this.drop(c, new OfficeError(`tc-office was stopped: Office did not answer ${verb}.`))
-      }, this.deps.timeoutMs)
+      }, ms)
       c.pending.set(id, { resolve, reject, timer })
       c.proc.stdin!.write(`${JSON.stringify({ id, verb, args })}\n`)
     })
   }
 
-  async call<T>(verb: string, args: unknown): Promise<T> {
-    return (await this.send(await this.open(), verb, args)) as T
+  /** Runs after every call before it, so its time counts from when the helper takes it up. */
+  private queued<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.tail.then(fn, fn)
+    this.tail = run.catch(() => undefined)
+    return run
+  }
+
+  call<T>(verb: string, args: unknown): Promise<T> {
+    return this.queued(async () => (await this.send(await this.open(), verb, args)) as T)
   }
 
   /** Tell a running helper to start or stop listening; a stopped one is told at its next start. */
   watch(on: boolean): void {
-    if (this.conn && !this.conn.dead) this.send(this.conn, 'watch', { on }).catch(() => undefined)
+    void this.queued(() => (this.conn && !this.conn.dead ? this.send(this.conn, 'watch', { on }) : Promise.resolve())).catch(() => undefined)
   }
 
   stop(): void {
@@ -205,13 +234,13 @@ class Link {
 export interface ComCarrier extends OfficeCarrier {
   /** One request on the helper's wire as it stands: for diagnostics and the rig's tests (their `_` verbs). */
   call<T>(verb: string, args: unknown): Promise<T>
-  /** Stop the helper (Work turned off, tests); the next call starts it again. */
+  /** Stop the helper (the office module's stop, when Work is turned off; tests); the next call starts it again. */
   stop(): void
 }
 
 export function comCarrier(deps: ComDeps = {}): ComCarrier {
   const log = deps.log ?? ((line: string) => console.log(`[office] ${line}`))
-  const link = new Link({ start: deps.start ?? spawnHelper, timeoutMs: deps.timeoutMs ?? COM_TIMEOUT_MS, log })
+  const link = new Link({ start: deps.start ?? spawnHelper, timeoutMs: deps.timeoutMs ?? COM_TIMEOUT_MS, sendTimeoutMs: deps.sendTimeoutMs ?? SEND_TIMEOUT_MS, log })
   /** What the last call to each app found: COM asks no consent, but Outlook's guard may refuse. */
   const allowedSeen = new Map<OfficeApp, OfficeAllowed>()
   const call = async <T>(verb: string, args: unknown, app: OfficeApp = APP_OF[verb] ?? 'outlook'): Promise<T> => {

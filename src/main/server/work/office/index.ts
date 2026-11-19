@@ -160,6 +160,7 @@ export const office: WorkModule = {
       if (timer) clearInterval(timer)
       stopRoute?.()
       here?.excel.stop()
+      here?.carrier.stop?.()
       unfollowAll()
       started = null
     }

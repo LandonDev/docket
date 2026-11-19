@@ -158,6 +158,27 @@ describe("LifeOS's Outlook route", () => {
     ])
   })
 
+  it('keeps an invitation that ended unclear journaled and acks it done, and fails one Outlook refused', async () => {
+    const r = route()
+    await r.beat()
+    const invite = (id: string) => ({ _id: id, kind: 'create', account: 'owner@purdue.example', payload: { title: 'Review', startsAt: Date.UTC(2026, 10, 21, 15), endsAt: Date.UTC(2026, 10, 21, 16), attendees: [{ address: 'dana@example.com' }] } })
+    office.failNext = { verb: 'createEvent', error: new OfficeError('Outlook has not said whether it sent this') }
+    ops = [invite('c4')]
+    await expect(r.pump()).rejects.toThrow('has not said')
+    expect(mutations().some(([fn]) => fn === 'calendarOps:localFailed')).toBe(false)
+    calls = []
+    await r.pump()
+    expect(mutations()[0]).toEqual(['calendarOps:localDone', { id: 'c4', host: 'env_mac' }])
+
+    calls = []
+    office.failNext = { verb: 'createEvent', error: new OfficeError('Outlook does not know dana, so nothing was sent.', 'not-found') }
+    ops = [invite('c5')]
+    await r.pump()
+    expect(mutations().filter(([fn]) => !fn.endsWith('localClaim'))).toEqual([
+      ['calendarOps:localFailed', { id: 'c5', host: 'env_mac', error: 'Outlook on env_mac: Outlook does not know dana, so nothing was sent.' }]
+    ])
+  })
+
   it('drops a journaled mail that another machine has claimed since, and says so once', async () => {
     db.prepare('INSERT INTO work_office_journal (tbl, id, provider_id, at) VALUES (?, ?, ?, ?)').run('outbox', 'gone1', null, 1)
     const logs: string[] = []
