@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ActKindSchema, HeldItemSchema, HeldRefSchema, type ActKind, type ActResult, type HeldItem, type HeldRef } from './work/acts'
+import { ActKindSchema, HeldItemSchema, HeldRefSchema, type ActKind, type ActResult, type HeldItem, type HeldRef, type UndoSpec } from './work/acts'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -103,6 +103,33 @@ export interface ToolRulesCard {
   tools: ToolRuleRow[]
 }
 
+/**
+ * A Result: what a thread changed that lasts (`work_results`), with its way
+ * back. A write on his own files and a send that left both make one; the
+ * thread's right panel lists them, and the return from Away lists the
+ * writes made while he was away.
+ */
+export interface WorkResult {
+  id: string
+  sessionId: string
+  /** the thread whose panel lists it: the root of the writer's tree */
+  rootId: string
+  /** null: a Work Chat */
+  workspaceId: string | null
+  /** the pillar's own word for what it did ("task", "cells", or an act kind for a send) */
+  kind: string
+  /** "Added Dietary needs" */
+  summary: string
+  /** where it was written, in a person's words ("Spring LAN registration") */
+  account: string | null
+  /** JSON: what to open */
+  ref: unknown
+  /** the inverse call; null: it cannot be taken back */
+  undo: UndoSpec | null
+  undoneAt: number | null
+  createdAt: number
+}
+
 const ListParams = z
   .object({
     /** `waiting` (the default): held, live, sending and failed. `decided`: sent, discarded and stale, newest first. */
@@ -136,7 +163,11 @@ export const OutboxRequestSchemas = [
   /** → ToolRulesCard: the owner's answer to the card. A tool left out keeps its rule. */
   request('work.outbox.setRules', z.object({ addonId: z.string(), rules: z.record(z.string(), ToolRuleSchema) })),
   /** → ToolRulesCard: mark a global add-on for Work threads, or take the mark off */
-  request('work.outbox.setForWork', z.object({ addonId: z.string(), forWork: z.boolean() }))
+  request('work.outbox.setForWork', z.object({ addonId: z.string(), forWork: z.boolean() })),
+  /** → { results: WorkResult[] }: a thread's Results (its subagents' with it), or every one since a time (the return from Away), newest first */
+  request('work.outbox.results', z.object({ sessionId: z.string().optional(), since: z.number().int().optional(), limit: z.number().int().min(1).max(500).optional() })),
+  /** → WorkResult: run its way back, once. A second press, or a press on one that cannot be taken back, is refused. */
+  request('work.outbox.undo', z.object({ id: z.string() }))
 ] as const
 
 /**
@@ -144,7 +175,10 @@ export const OutboxRequestSchemas = [
  * item that changed (its payload without a picture). `rules`: how many
  * add-on tools a Work thread can reach have no rule yet.
  */
-export type OutboxPush = { push: 'work.outbox'; waiting: number; unreviewed: number; item?: OutboxItem }
+export type OutboxPush =
+  | { push: 'work.outbox'; waiting: number; unreviewed: number; item?: OutboxItem }
+  /** A Result was made or undone. */
+  | { push: 'work.outbox.result'; result: WorkResult }
 
 export const OUTBOX_CAPS = {
   'work.outbox.list': 'read',
@@ -157,7 +191,9 @@ export const OUTBOX_CAPS = {
   'work.outbox.ungrant': 'admin',
   'work.outbox.rules': 'read',
   'work.outbox.setRules': 'admin',
-  'work.outbox.setForWork': 'admin'
+  'work.outbox.setForWork': 'admin',
+  'work.outbox.results': 'read',
+  'work.outbox.undo': 'approve'
 } satisfies CapsOf<typeof OutboxRequestSchemas>
 export const OUTBOX_RELAY = {} satisfies RelayOf<typeof OutboxRequestSchemas>
 

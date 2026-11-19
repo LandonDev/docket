@@ -4,7 +4,7 @@ import type { OutboxItem, ToolRulesCard } from '@shared/contract-work-outbox'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { outboxHostOf, type OutboxHost } from './ctx'
-import { ensureResults } from './results'
+import { ensureResults, resultsOf } from './results'
 import { rulesCard, setRules } from './rules'
 import { ensureOutboxTables } from './store'
 
@@ -66,6 +66,12 @@ async function withPicture(host: OutboxHost, item: OutboxItem): Promise<OutboxIt
   }
 }
 
+function mustResults(ctx: WorkCtx) {
+  const results = resultsOf(ctx)
+  if (!results) throw new Error('work: results did not start on this host')
+  return results
+}
+
 function hostOf(ctx: WorkCtx): OutboxHost {
   const host = outboxHostOf(ctx)
   if (!host) throw new Error('work: outbox did not start on this host')
@@ -78,7 +84,7 @@ export const outbox: WorkModule = {
     ensureOutboxTables(db)
     ensureResults(db)
   },
-  async handle(req, ctx, by) {
+  async handle(req, ctx, by, signal) {
     if (!req.method.startsWith('work.outbox.')) return NOT_HANDLED
     const host = hostOf(ctx)
     const box = host.outbox
@@ -128,6 +134,12 @@ export const outbox: WorkModule = {
         box.changed(null)
         return handled(rulesCard(host.store, host.addons, row, host.mcpUrl()))
       }
+      // Results (milestone 14, work/outbox/results.ts)
+      case 'work.outbox.results':
+        return handled({ results: mustResults(ctx).list(req.params) })
+      case 'work.outbox.undo':
+        mustBePerson(by, 'approve')
+        return handled(await mustResults(ctx).undo(req.params.id, signal ?? new AbortController().signal))
     }
     return NOT_HANDLED
   },

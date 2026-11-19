@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
-import { NotBuilt, PILLAR_IDS, PILLAR_MILESTONE, workToolNameProblem, type WorkScope } from '@shared/work'
+import { PILLAR_IDS, PILLAR_MILESTONE, workToolNameProblem, type WorkScope } from '@shared/work'
 import { openDb, Store } from '../db'
 import { fenceRequest } from '../remote/fence'
 import type { SessionRegistry } from '../sessions'
@@ -123,22 +123,6 @@ describe('the context', () => {
     // with no roots handed in (a test), a remote key reaches nothing
     expect(work.ctx.reaches(key, join(roots, 'w9.pdf'))).toBe(false)
     expect(work.ctx.reaches({ kind: 'local', caps: [] }, join(roots, 'w9.pdf'))).toBe(true)
-  })
-  it('answers "not built" from every member a later milestone builds, naming that milestone', () => {
-    const { ctx } = work
-    const calls: [string, number, () => unknown][] = [
-      ['ctx.results.add', 14, () => ctx.results.add({ sessionId: 's', kind: 'task', summary: 'Added a task' })]
-    ]
-    for (const [what, milestone, call] of calls) {
-      let caught: unknown
-      try {
-        call()
-      } catch (err) {
-        caught = err
-      }
-      expect(caught, what).toBeInstanceOf(NotBuilt)
-      expect((caught as NotBuilt).message, what).toBe(`not built: ${what} (milestone ${milestone})`)
-    }
   })
 })
 
