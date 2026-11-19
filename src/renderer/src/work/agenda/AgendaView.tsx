@@ -14,7 +14,7 @@ import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/client";
 import { useMinute } from "../tasks/minute";
-import { shared } from "../tasks/store";
+import { shared, useShared } from "../tasks/store";
 import { NewEventDialog } from "./NewEventDialog";
 import type { WorkViewProps } from "../views/registry";
 
@@ -41,7 +41,7 @@ const state = shared<{ view: AgendaView; day: number; adding: number | "now" | n
 const go = (patch: Partial<ReturnType<typeof state.get>>) => state.set({ ...state.get(), ...patch });
 
 export function Head(_props: WorkViewProps) {
-  const { view, day } = state.use();
+  const { view, day } = useShared(state);
   return (
     <>
       {view !== "list" ? (
@@ -69,7 +69,7 @@ export function Head(_props: WorkViewProps) {
 
 export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
-  const { adding } = state.use();
+  const { adding } = useShared(state);
   // Each visit opens on today's list.
   useEffect(() => () => state.set({ view: "list", day: startOfDay(Date.now()), adding: null }), []);
   if (!lifeos.client) return <AgendaSkeleton />;
@@ -89,7 +89,7 @@ const kit: ViewsKit = {
 };
 
 function Agenda({ client, startThread }: { client: AgendaClient; startThread: (about: ContextChip) => void }) {
-  const { view, day } = state.use();
+  const { view, day } = useShared(state);
   const now = useMinute();
   const range = view === "list" ? { from: day, to: addDays(day, DAYS) } : viewRange(view, day, weekStart);
   const { from, to } = range;

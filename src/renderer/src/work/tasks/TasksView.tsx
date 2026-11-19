@@ -16,7 +16,7 @@ import type { WorkViewProps } from "../views/registry";
 import { type Task, type TaskActions, type TasksClient, viewsClients } from "./client";
 import { useMinute } from "./minute";
 import { NewTaskDialog } from "./NewTaskDialog";
-import { shared } from "./store";
+import { shared, useShared } from "./store";
 import { TaskSheet } from "./TaskSheet";
 
 /**
@@ -47,7 +47,7 @@ export function Head(_props: WorkViewProps) {
 
 export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
-  const adding = newTask.use();
+  const adding = useShared(newTask);
   useEffect(() => () => newTask.set(false), []);
   if (!lifeos.client) return <TasksSkeleton />;
   return (
