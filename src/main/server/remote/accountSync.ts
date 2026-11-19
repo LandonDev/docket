@@ -73,14 +73,15 @@ import type { HeadroomSnapshot, HeadroomStore } from '../headroom'
  *    rebuilds the accounts snapshot at once (`refreshNow`), so the gateway
  *    and the routing stop naming the account before the next turn.
  *  - an add-on grant (service `addon`, one profile per add-on) goes only to
- *    the host that holds the add-on's row as its scope's home, whether it is
- *    pulled, pushed to a link or broadcast to a socket that pulled
- *    (`mayReceive`; `addonHome`:
+ *    the host that holds the add-on's row as its scope's home (`addonHome`:
  *    the box for a shared scope), never to a link of no such row, so a grant
  *    of a workspace only this host has never leaves it; to the home an OAuth
  *    grant this host refreshes goes as a handoff, anything else as a copy. A
  *    peer's add-on transfer lands as from an admin when this host has the
  *    add-on's row (`addonKnown`): the synced registry is what vouches for it.
+ *    A pull and a broadcast carry a grant only to a host its row's scope is
+ *    shared with (`mayReceive`, `addonShared`): every host for a global row,
+ *    none for a workspace only this host has.
  */
 
 const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor', 'meta', 'muse-code', 'addon']
@@ -126,6 +127,14 @@ export interface AccountSyncDeps {
    * An add-on grant goes only to that host.
    */
   addonHome?: (addonId: string) => string | null
+  /**
+   * Whether a host may hold the add-on's grant: the row's scope is shared
+   * (index.ts: a global row, or a workspace linked to the other hosts' copies).
+   * A workspace only this host has (a Work workspace above all, which is never
+   * linked) is shared with none. Unset or false: the grant is not sent there by
+   * a pull or a broadcast.
+   */
+  addonShared?: (addonId: string, host: string) => boolean
   /** Whether this host has the add-on's row: its grant may then arrive from a peer as from an admin. */
   addonKnown?: (addonId: string) => boolean
   /** A profile left the vault here (deleteProfile, prune): the add-on host drops its grant. */
@@ -549,13 +558,14 @@ export class AccountSync {
   }
 
   /**
-   * Whether a host may hold a profile's secret: any for a provider's sign-in;
-   * for an add-on grant, only the host that holds the add-on's row as its
-   * scope's home (`addonHome`), so a key never leaves the host its workspace
-   * lives on, whether it is pulled, pushed or broadcast (F1, from M7's review).
+   * Whether a host may hold a profile's secret, by a pull or a broadcast: any
+   * for a provider's sign-in; an add-on grant only where its row's scope is
+   * shared with that host (`addonShared`), so a key of a workspace only this
+   * host has never leaves it, and a global or linked one reaches every host
+   * that shares it (F1, from M7's review).
    */
   private mayReceive(service: ServiceId, name: string, to: string | null): boolean {
-    return service !== 'addon' || (!!to && this.deps.addonHome?.(name) === to)
+    return service !== 'addon' || (!!to && (this.deps.addonShared?.(name, to) ?? false))
   }
 
   // ── this host as a client of its peers ─────────────────────────────────
@@ -687,7 +697,7 @@ export class AccountSync {
     const provider = PROVIDER_OF[service]
     // An add-on grant goes to its row's scope home alone, never to another link.
     const home = service === 'addon' ? (this.deps.addonHome?.(name) ?? undefined) : provider ? this.homes()[provider] : undefined
-    if (!this.mayReceive(service, name, link.id)) return false
+    if (service === 'addon' && home !== link.id) return false
     const wantsHandoff = !p.static && home === link.id && hasRefresh(service, stored)
     if (wantsHandoff && (await this.liveLineage(service, stored))) this.log(`${service} ${name}: the sign-in here, or one that cannot be told apart; access copy only`)
     const handoff = wantsHandoff && !(await this.liveLineage(service, stored))

@@ -175,8 +175,10 @@ describe('add-on grants across hosts', () => {
     expect(pushesOf(lone)).toEqual([])
   })
 
-  it("a grant is pulled by, and broadcast to, its scope's home alone: a Mac-only workspace's key never reaches the box", async () => {
-    const mac = host('env_mac', [], { addonHome: (id) => (id === 'ad_shared' ? 'env_box' : null) })
+  it("a grant is pulled and broadcast only to a host its scope is shared with: a Mac-only workspace's key never reaches the box", async () => {
+    // the box shares global and the linked workspace with the Mac; the Mac-only workspace with nobody
+    const shared: Record<string, string[]> = { ad_local: [], ad_shared: ['env_box'] }
+    const mac = host('env_mac', [], { addonShared: (id, to) => shared[id]?.includes(to) ?? false })
     coreAccounts.saveAddonGrant({ addonId: 'ad_local', nickname: 'local', blob: grant('ad_local', null, { KEY: 'mac-only' }) })
     coreAccounts.saveAddonGrant({ addonId: 'ad_shared', nickname: 'shared', blob: grant('ad_shared', null, { KEY: 'shared' }) })
     const pulled = async (from: string): Promise<string[]> => (await mac.sync.handlePull(from, { service: 'addon' })).transfers.map((t) => t.profile.name)
@@ -196,6 +198,17 @@ describe('add-on grants across hosts', () => {
     await broadcast('addon', 'ad_shared')
     expect(heard).toEqual({ box: ['ad_shared'], other: [], unnamed: [] })
     for (const o of off) o()
+  })
+
+  it("the home's own global grant still reaches every host that shares the scope, pulled and broadcast (the box, whose addonHome is null)", async () => {
+    const box = host('env_box', [], { addonHome: () => null, addonShared: () => true })
+    coreAccounts.saveAddonGrant({ addonId: 'ad_global', nickname: 'global', blob: grant('ad_global', null, { KEY: 'everywhere' }) })
+    expect((await box.sync.handlePull('env_mac', { service: 'addon' })).transfers.map((t) => t.profile.name)).toEqual(['ad_global'])
+    const heard: string[] = []
+    const off = box.sync.subscribe((p) => p.push === 'account' && heard.push(p.transfer.profile.name), 'env_mac')
+    await (box.sync as unknown as { broadcast(service: string, name: string): Promise<void> }).broadcast('addon', 'ad_global')
+    expect(heard).toEqual(['ad_global'])
+    off()
   })
 
   it('a grant registered but with no refresh token goes to the home as an access copy the Mac owns', async () => {

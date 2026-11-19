@@ -151,6 +151,7 @@ import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
 import { userTextByOf } from './userTextBy'
+import { pairable } from '@shared/projectLinks'
 import { readPage } from './htmlRender'
 import { harnessEnv, resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
@@ -743,6 +744,16 @@ export async function startServer(
     headroom,
     addonHome: (id) => addonGrantsRef?.homeOf(id) ?? null,
     addonKnown: (id) => addonStore.get(id) !== null,
+    // A grant is pulled or broadcast only where its row's scope is shared: a global row's with every host, a
+    // workspace's only while the workspace is linked to the other hosts' copies (a Work workspace never is,
+    // shared/projectLinks.ts). A workspace only this host has keeps its keys here.
+    addonShared: (id) => {
+      const row = addonStore.get(id)
+      if (!row) return false
+      if (row.workspaceId === null) return true
+      const ws = registry.listWorkspaces().find((w) => w.id === row.workspaceId)
+      return !!ws?.linkId && pairable(ws)
+    },
     onRemoved: (service, name) => {
       if (service === ADDON_SERVICE) addonGrantsRef?.onRemoved(name)
     },
