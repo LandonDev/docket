@@ -212,9 +212,16 @@ export function Bar(props: Props) {
   return (
     <span data-dash-asof className="ms-auto flex shrink-0 items-center gap-1 tabular-nums">
       <span>As of {dayTime(view.asOf)}</span>
-      <Button variant="ghost" size="icon-xs" aria-label="Refresh" disabled={refreshing} onClick={refresh} className="text-muted-foreground">
-        {refreshing ? <Spinner /> : <RefreshCw />}
-      </Button>
+      {/* While it reads, the spinner takes the button's own 24px place, so nothing beside it moves. */}
+      {refreshing ? (
+        <span role="status" aria-label="Reading the figures" className="flex size-6 items-center justify-center text-muted-foreground">
+          <Spinner className="size-3" />
+        </span>
+      ) : (
+        <Button variant="ghost" size="icon-xs" aria-label="Refresh" onClick={refresh} className="text-muted-foreground">
+          <RefreshCw />
+        </Button>
+      )}
     </span>
   );
 }
