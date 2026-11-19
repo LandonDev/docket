@@ -795,7 +795,17 @@
   the list and its Undo). Its category stays `tc.thread` (Open alone):
   nothing sends from the lock screen. Only a host that posts to Apple
   itself carries `tc.held`; through the hub (`hub.notify`, infra/hub) the
-  notice has no `held` and the tap opens the thread.
+  notice carries `held` too (hub.notify, infra/hub's validation and
+  delivery) once the hub runs that deploy; an older hub drops the field and
+  the tap opens the thread.
+- **The rest of Work on the phone**: `OutboxModel.grantFor` (the
+  desktop's) and `WorkHost.grant` make a grant from a held item's Send
+  menu; `OutboxModel.heldOf` reads the host's "Held as item N: …" answer
+  off a tool row (Thread/ActionGroup.swift hangs `HeldInline` under it);
+  `WorkHost.results(sessionId:)` and `resultsRev` (the `work.outbox.result`
+  push) feed a thread's Results sheet; `createWorkspace` and `newWorkChat`
+  back the band's + and Work Chats' compose. `workspace.create` relays on
+  the link.
 - **Away's end**: `WorkHost` sets `awayEnd` when it sees Away go off live,
   or at an open when the host's stretch ended after the last one reviewed
   on this phone (`work.away.reviewed.<env>` in defaults; a first open

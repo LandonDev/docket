@@ -2362,13 +2362,31 @@ phone does everything the desktop does. What milestone 46 built:
   cannot reach LifeOS says so once above the threads ("Sign in to LifeOS
   on <host> …", or "Can’t reach LifeOS. Retrying…").
 
+- **A grant** is made from a held item's Send: a press and hold on Send
+  opens its menu, "Send and stop holding" › the grant's name (a mail's
+  account and recipients, an add-on call's server and tool); the grant is
+  made, then the item's Send waits its five seconds. Only a key with admin
+  sees the menu; Settings → Work lists the grant with Remove.
+- **New Work workspace**: the "Work" header's + opens a form sheet (Name,
+  Sector with its dot, Host when several have Work); the workspace opens
+  when it lands. **New Work Chat**: Work Chats' compose button opens a
+  sheet with the first message and Start; the thread opens.
+- **The held line in a thread**: under a Work thread's call the host held,
+  one muted line, the Outbox glyph in the glyph column, "Held" and the act.
+  A tap opens it in place: the act's fields and body in a hairline frame
+  (the field radius, no fill: held is not Needs you) with Discard, Edit
+  (the item's detail) and Send. Send waits its five seconds on the line
+  itself ("Sending … Undo"). Once decided the line reads "Was held" and
+  opens nothing.
+- **Results**: a Work thread's menu has Results, a document sheet in two
+  groups, Can undo (each with Undo or the pillar's own words) and Can't
+  undo; an undone row stays, struck through, with "Undone".
+- **Settings → Work**: a tool with no rule reads "Not set" until he picks.
+
 Not yet on the phone, and whose: the workspace screen's four view rows
 (Mail, Tasks, Agenda, Docs), LifeOS's project cards and the Routines
-header (milestone 47, with LifeKit); the transcript's held row that opens
-in place (milestone 47's thread items); a grant made from a held item's
-Send menu; a new Work workspace from the band's +; a new Work Chat from
-Work Chats; the house rules page (milestone 39 has not landed); guest
-links in Settings (milestone 31).
+header (milestone 47, with LifeKit); the house rules page (milestone 39 has
+not landed); guest links in Settings (milestone 31).
 
 ## Visual system
 

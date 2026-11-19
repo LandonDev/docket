@@ -302,8 +302,12 @@ the `work.outbox` and `work.outbox.result` pushes (both now in
 host whose item it is on the link alone (an empty `OUTBOX_RELAY` means
 "carried", which contract-relay.test.ts pins). A held act's notice carries
 the item (`tc.held` in the APNs payload, `held` on `relay.notice`) and
-keeps the Open category. The phone's Send waits five seconds with Undo
-before it reaches the host; nothing has gone while it waits.
+keeps the Open category, through the hub as well once it is deployed
+(infra/hub validates `held` as one of the two ref shapes). The phone's Send
+waits five seconds with Undo before it reaches the host; nothing has gone
+while it waits. The phone also makes a grant from a held item's Send menu
+(`work.outbox.grant`, the desktop's `grantFor`), opens a thread's held call
+in place, and shows a thread's Results with Undo.
 
 ## Not built here
 
