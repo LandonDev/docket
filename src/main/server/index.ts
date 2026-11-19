@@ -2185,8 +2185,10 @@ export async function startServer(
           return sendFrame({ id: req.id, ok: true, result: range })
         }
         if (req.method === 'accounts.pull') {
-          const answer = await accountSync.handlePull(req.params.from, req.params)
-          if (principal.kind === 'remote') unsubscribeAccounts ??= accountSync.subscribe(sendFrame)
+          // The puller is the host the socket registered as, when it did; else the one it names. An add-on grant goes only to its scope's home.
+          const puller = peerCalls.environmentOf(connection) ?? req.params.from
+          const answer = await accountSync.handlePull(puller, req.params)
+          if (principal.kind === 'remote') unsubscribeAccounts ??= accountSync.subscribe(sendFrame, puller)
           return sendFrame({ id: req.id, ok: true, result: answer })
         }
         // The reverse RPC (remote/peerCalls.ts): a Mac's main process registers

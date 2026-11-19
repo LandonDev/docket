@@ -175,6 +175,29 @@ describe('add-on grants across hosts', () => {
     expect(pushesOf(lone)).toEqual([])
   })
 
+  it("a grant is pulled by, and broadcast to, its scope's home alone: a Mac-only workspace's key never reaches the box", async () => {
+    const mac = host('env_mac', [], { addonHome: (id) => (id === 'ad_shared' ? 'env_box' : null) })
+    coreAccounts.saveAddonGrant({ addonId: 'ad_local', nickname: 'local', blob: grant('ad_local', null, { KEY: 'mac-only' }) })
+    coreAccounts.saveAddonGrant({ addonId: 'ad_shared', nickname: 'shared', blob: grant('ad_shared', null, { KEY: 'shared' }) })
+    const pulled = async (from: string): Promise<string[]> => (await mac.sync.handlePull(from, { service: 'addon' })).transfers.map((t) => t.profile.name)
+    expect(await pulled('env_box')).toEqual(['ad_shared'])
+    expect(await pulled('env_other')).toEqual([])
+    expect(await pulled('')).toEqual([])
+    // the names stay listed, so a peer still prunes what it holds; no secret rides with them
+    expect((await mac.sync.handlePull('env_other', { service: 'addon' })).listed!.map((l) => l.name).sort()).toEqual(['ad_local', 'ad_shared'])
+    const heard = { box: [] as string[], other: [] as string[], unnamed: [] as string[] }
+    const off = [
+      mac.sync.subscribe((p) => p.push === 'account' && heard.box.push(p.transfer.profile.name), 'env_box'),
+      mac.sync.subscribe((p) => p.push === 'account' && heard.other.push(p.transfer.profile.name), 'env_other'),
+      mac.sync.subscribe((p) => p.push === 'account' && heard.unnamed.push(p.transfer.profile.name))
+    ]
+    const broadcast = (mac.sync as unknown as { broadcast(service: string, name: string): Promise<void> }).broadcast.bind(mac.sync)
+    await broadcast('addon', 'ad_local')
+    await broadcast('addon', 'ad_shared')
+    expect(heard).toEqual({ box: ['ad_shared'], other: [], unnamed: [] })
+    for (const o of off) o()
+  })
+
   it('a grant registered but with no refresh token goes to the home as an access copy the Mac owns', async () => {
     const box = fakeLink('env_box', 'box')
     boxAnswering(box)

@@ -73,7 +73,9 @@ import type { HeadroomSnapshot, HeadroomStore } from '../headroom'
  *    rebuilds the accounts snapshot at once (`refreshNow`), so the gateway
  *    and the routing stop naming the account before the next turn.
  *  - an add-on grant (service `addon`, one profile per add-on) goes only to
- *    the host that holds the add-on's row as its scope's home (`addonHome`:
+ *    the host that holds the add-on's row as its scope's home, whether it is
+ *    pulled, pushed to a link or broadcast to a socket that pulled
+ *    (`mayReceive`; `addonHome`:
  *    the box for a shared scope), never to a link of no such row, so a grant
  *    of a workspace only this host has never leaves it; to the home an OAuth
  *    grant this host refreshes goes as a handoff, anything else as a copy. A
@@ -158,7 +160,8 @@ export type ReleasedAnswer = { ok: true } | { ok: false; reason: 'unknown-accoun
 type PendingRelease = { handoff: Handoff; to: string; name: string; timer: NodeJS.Timeout }
 
 export class AccountSync {
-  private readonly subscribers = new Set<(push: ServerPush) => void>()
+  /** Sockets that pulled, each with the host it pulled as (accounts.pull's `from`). */
+  private readonly subscribers = new Map<(push: ServerPush) => void, string | null>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly syncing = new Map<string, Promise<void>>()
   private readonly resyncs = new Set<string>()
@@ -316,7 +319,7 @@ export class AccountSync {
             if (p.static || !ownsProfile(p)) continue
             transfers.push(await this.handOut(service, p.name, p.accountId, from))
             this.log(`${service} ${p.name}: handed out to ${from}, waiting for its word`)
-          } else if (p.static || ownsProfile(p)) {
+          } else if ((p.static || ownsProfile(p)) && this.mayReceive(service, p.name, from)) {
             transfers.push(exportAccount(service, p.name, 'access'))
           }
         } catch (err) {
@@ -399,7 +402,7 @@ export class AccountSync {
   }
 
   private async broadcastRemoved(removed: AccountRemoval[]): Promise<void> {
-    for (const send of this.subscribers) {
+    for (const send of this.subscribers.keys()) {
       try {
         send({ push: 'accounts-removed', from: this.me, removed })
       } catch {
@@ -540,9 +543,19 @@ export class AccountSync {
   }
 
   /** A socket that pulled hears every later rotation of what this host owns. */
-  subscribe(send: (push: ServerPush) => void): () => void {
-    this.subscribers.add(send)
+  subscribe(send: (push: ServerPush) => void, from: string | null = null): () => void {
+    this.subscribers.set(send, from)
     return () => this.subscribers.delete(send)
+  }
+
+  /**
+   * Whether a host may hold a profile's secret: any for a provider's sign-in;
+   * for an add-on grant, only the host that holds the add-on's row as its
+   * scope's home (`addonHome`), so a key never leaves the host its workspace
+   * lives on, whether it is pulled, pushed or broadcast (F1, from M7's review).
+   */
+  private mayReceive(service: ServiceId, name: string, to: string | null): boolean {
+    return service !== 'addon' || (!!to && this.deps.addonHome?.(name) === to)
   }
 
   // ── this host as a client of its peers ─────────────────────────────────
@@ -674,7 +687,7 @@ export class AccountSync {
     const provider = PROVIDER_OF[service]
     // An add-on grant goes to its row's scope home alone, never to another link.
     const home = service === 'addon' ? (this.deps.addonHome?.(name) ?? undefined) : provider ? this.homes()[provider] : undefined
-    if (service === 'addon' && home !== link.id) return false
+    if (!this.mayReceive(service, name, link.id)) return false
     const wantsHandoff = !p.static && home === link.id && hasRefresh(service, stored)
     if (wantsHandoff && (await this.liveLineage(service, stored))) this.log(`${service} ${name}: the sign-in here, or one that cannot be told apart; access copy only`)
     const handoff = wantsHandoff && !(await this.liveLineage(service, stored))
@@ -750,7 +763,7 @@ export class AccountSync {
     if (this.subscribers.size > 0) {
       try {
         const transfer = exportAccount(service, name, 'access')
-        for (const send of this.subscribers) send({ push: 'account', from: this.me, transfer })
+        for (const [send, to] of this.subscribers) if (this.mayReceive(service, name, to)) send({ push: 'account', from: this.me, transfer })
       } catch (err) {
         this.log(`${service} ${name}: not pushed (${(err as Error).message})`)
       }

@@ -5252,7 +5252,10 @@ port 58702. The instance log's trace lines name hosts and statuses only.
   lets a sign-in land over a static row and never lets a static copy land over
   a row with one. accountSync sends a grant only to the host that holds its
   add-on's row as the scope's home (`addonHome`), never to a link of a scope
-  only this host has, and lands a peer's grant as from an admin when the row
+  only this host has; since F1 that one rule (`mayReceive`) covers a pull
+  (`handlePull`, by the socket's registered host, else the one it names) and
+  a broadcast to a socket that pulled, not only a push, so a Mac-only
+  workspace's key never reaches the box. It lands a peer's grant as from an admin when the row
   is known here (`addonKnown`, `policyFor`). `AddonGrants`
   (src/main/server/addons/addonGrants.ts) is the add-on host's grant source:
   `read` from the vault fresh; `refresh` on a downstream 401 (the owner forces
