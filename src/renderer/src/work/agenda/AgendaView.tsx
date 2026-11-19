@@ -16,6 +16,7 @@ import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/clie
 import { useMinute } from "../tasks/minute";
 import { shared, useShared } from "../tasks/store";
 import { NewEventDialog } from "./NewEventDialog";
+import "./agenda.css";
 import type { WorkViewProps } from "../views/registry";
 
 /**
@@ -104,7 +105,7 @@ function Agenda({ client, startThread }: { client: AgendaClient; startThread: (a
   if (view !== "list")
     return (
       <ViewsKitProvider kit={kit}>
-        <div className="h-full px-6 pt-2 pb-6">
+        <div className="wk-calendar h-full px-6 pt-2 pb-6">
           {view === "week" ? (
             <AgendaWeek events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onCreate={(at) => go({ adding: at ?? "now" })} />
           ) : (

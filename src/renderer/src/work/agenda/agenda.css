@@ -1,0 +1,11 @@
+/*
+ * work-kit's week and month (LifeOS's own) draw plain `border`s and leave
+ * their colour to the host's base rule; LifeOS gives every border --border.
+ * TempCode has no such rule, so its Agenda gives it to these two views here,
+ * in the base layer, under the utilities: a line that names its colour wins.
+ */
+@layer base {
+  .wk-calendar :where(*, ::before, ::after) {
+    border-color: var(--border);
+  }
+}
