@@ -1,10 +1,12 @@
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import type { ICellData, IWorkbookData } from '@univerjs/core'
 import { importXlsx, type ImportReport } from 'work-kit/sheet/xlsx'
 import type { SheetCellDiff, SheetReach } from '@shared/contract-work-sheets'
 import { rangeCells, READ_MAX_CELLS, type A1Range } from './a1'
 import { patchXlsx, type EditSpec, type Report } from './patch/patch'
 import { diffWorkbooks } from './diff'
+import { graft } from './graft'
+import type { StructuralOp } from './structural'
 import { ironcalc } from './patch/recalc'
 import { readText, readZip } from './patch/zip'
 
@@ -169,6 +171,13 @@ function loadable(bytes: Uint8Array): boolean {
   } catch {
     return false
   }
+}
+
+/** LibreOffice's package with what it drops put back (graft.ts), written to `output`. */
+export function graftPackage(original: string, written: string, output: string, ops: StructuralOp[]): string[] {
+  const g = graft(new Uint8Array(readFileSync(original)), new Uint8Array(readFileSync(written)), ops)
+  writeFileSync(output, g.bytes)
+  return g.notes
 }
 
 export function comparePackages(from: string, to: string, max: number): { cells: SheetCellDiff[]; truncated: boolean } {

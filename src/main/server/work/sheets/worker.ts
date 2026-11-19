@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs'
-import { comparePackages, importPackage, inspect, readWorkbookRange, savePackage } from './jobs'
+import { comparePackages, graftPackage, importPackage, inspect, readWorkbookRange, savePackage } from './jobs'
 import { colName, type A1Range } from './a1'
 import type { WorkerAsk, WorkerAnswer } from './workerClient'
 
@@ -30,6 +30,8 @@ async function run(ask: WorkerAsk): Promise<unknown> {
     }
     case 'compare':
       return comparePackages(ask.from, ask.to, ask.max)
+    case 'graft':
+      return graftPackage(ask.original, ask.written, ask.output, ask.ops)
   }
 }
 

@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { SheetCellDiff, SheetMutationJson, SheetRevision } from '@shared/contract-work-sheets'
 import { cellName, colName, parseA1 } from './a1'
 import type { Inspected, ReadCell } from './jobs'
-import { editsOf, mutationsOf, type CellWrite } from './mutations'
+import { mutationsOf, NotSaved, type CellWrite } from './mutations'
+import { planOf, type Step, type StructuralOp } from './structural'
 import type { EditSpec } from './patch/patch'
 import type { SheetJobs } from './workerClient'
 
@@ -80,7 +81,9 @@ export class PackageStore {
     private ironcalcDir: () => string | null,
     private now: () => number = Date.now,
     /** a change from outside landed: no suggestion over the file is where the agent saw it for sure */
-    private outside: (path: string) => void = () => {}
+    private outside: (path: string) => void = () => {},
+    /** LibreOffice applying structural ops (structural.ts's converter through `ctx.convert`): answers the package it wrote */
+    private structural: ((input: string, ops: StructuralOp[], kind: 'xlsx' | 'xlsm') => Promise<string>) | null = null
   ) {}
 
   private dir(path: string): string {
@@ -176,25 +179,69 @@ export class PackageStore {
    * where the editor saw them and the edit lands; a change from outside or a restore between
    * answers a conflict and writes nothing, and the editor reloads.
    */
-  edit(path: string, baseRev: number, mutations: SheetMutationJson[], by: string, extra: { label?: string; writeId?: string; undo?: SheetMutationJson[] } = {}): Promise<{ rev: number } | { conflict: true; rev: number }> {
+  edit(
+    path: string,
+    baseRev: number,
+    mutations: SheetMutationJson[],
+    by: string,
+    extra: { label?: string; writeId?: string; undo?: SheetMutationJson[] } = {}
+  ): Promise<{ rev: number; moved?: Moved } | { conflict: true; rev: number }> {
     return this.serial(path, async () => {
       const row = this.sync(path)
       if (baseRev > row.rev || (baseRev < row.rev && this.reloadSince(path, baseRev))) return { conflict: true as const, rev: row.rev }
       if (!this.inspected.has(path)) await this.open(path)
-      const edits = editsOf(mutations, this.sheetName(path))
+      const before = new Map(this.inspected.get(path)!.value.sheets.map((s) => [s.id, s.name]))
+      const steps = planOf(mutations, new Map(before))
+      if (!steps.length) return { rev: row.rev }
+      const ops = steps.flatMap((s) => (s.kind === 'structural' ? s.ops : []))
       let rev: number
       try {
-        rev = await this.save(path, row, edits)
+        rev = await this.save(path, row, (target, out) => this.write(target, out, steps))
       } catch (err) {
         if (!(err instanceof ChangedOutside)) throw err
         // Excel saved it while we patched: its save stands as a revision, and this edit goes back to the editor.
         return { conflict: true as const, rev: this.sync(path).rev }
       }
+      const edits = steps.flatMap((s) => (s.kind === 'cells' ? s.edits : []))
+      // After a structural save every grid loads the file again (LibreOffice renumbers sheets): its op carries no mutations.
       this.db
         .prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations, write_id, undo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(path, rev, by, this.now(), extra.label ?? labelOf(edits), JSON.stringify(mutations), extra.writeId ?? null, extra.undo ? JSON.stringify(extra.undo) : null)
-      return { rev }
+        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : labelOf(edits)), ops.length ? 'null' : JSON.stringify(mutations), extra.writeId ?? null, extra.undo && !ops.length ? JSON.stringify(extra.undo) : null)
+      return ops.length ? { rev, moved: { ops, before } } : { rev }
     })
+  }
+
+  /** Writes the edit's steps from `target` into `out`: the patch writer for cells, LibreOffice and the graft for structure. */
+  private async write(target: string, out: string, steps: Step[]): Promise<void> {
+    if (steps.length === 1 && steps[0].kind === 'cells') {
+      await this.jobs.save(target, out, steps[0].edits, this.ironcalcDir())
+      return
+    }
+    if (!this.structural) throw new NotSaved('Rows, columns and sheets cannot be changed in an opened Excel file on this host.')
+    const kind = target.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx'
+    const work = join(this.root, 'work', randomUUID())
+    mkdirSync(work, { recursive: true })
+    try {
+      let at = target
+      for (const [i, step] of steps.entries()) {
+        const next = join(work, `${i}.${kind}`)
+        if (step.kind === 'cells') await this.jobs.save(at, next, step.edits, this.ironcalcDir())
+        else {
+          const written = await this.structural(at, step.ops, kind)
+          try {
+            await this.jobs.graft(at, written, next, step.ops)
+          } finally {
+            rmSync(written, { force: true })
+            // held.ts's job folder for this step, when it is one
+            if (basename(dirname(written)).startsWith('tc-sheet-ops-')) rmSync(dirname(written), { recursive: true, force: true })
+          }
+        }
+        at = next
+      }
+      copyFileSync(at, out)
+    } finally {
+      rmSync(work, { recursive: true, force: true })
+    }
   }
 
   /** Whether a change from outside or a restore landed after `rev`: the cells may have moved. */
@@ -202,20 +249,20 @@ export class PackageStore {
     return !!this.db.prepare("SELECT 1 FROM work_sheets_ops WHERE path = ? AND rev > ? AND (by = 'file' OR mutations = 'null') LIMIT 1").get(path, rev)
   }
 
-  private async save(path: string, row: FileRow, edits: EditSpec[]): Promise<number> {
+  private async save(path: string, row: FileRow, write: (target: string, out: string) => Promise<void>): Promise<number> {
     const rev = row.rev + 1
     // Written beside the file (through a link, beside its target) and moved over it, so a reader never sees half a package.
     const target = realpathSync(path)
     const tmp = join(dirname(target), `.${randomUUID()}.tcsave`)
     try {
-      await this.jobs.save(target, tmp, edits, this.ironcalcDir())
+      await write(target, tmp)
       chmodSync(tmp, statSync(target).mode & 0o7777)
       // A save made outside while we patched (Excel, a sync) is not ours to overwrite.
       if (stampOf(path) !== row.stamp) throw new ChangedOutside()
       renameSync(tmp, target)
     } catch (err) {
       rmSync(tmp, { force: true })
-      if (err instanceof ChangedOutside) throw err
+      if (err instanceof ChangedOutside || err instanceof NotSaved) throw err
       const words = err instanceof Error ? err.message : String(err)
       this.db.prepare('UPDATE work_sheets_files SET save_error = ? WHERE path = ?').run(words, path)
       throw new Error(`The file was not saved: ${words}`)
@@ -340,6 +387,36 @@ export class PackageStore {
 }
 
 class ChangedOutside extends Error {}
+
+/** A structural save, for the pillar to move suggestions: the ops, and each sheet's id and name before them. */
+export interface Moved {
+  ops: StructuralOp[]
+  before: Map<string, string>
+}
+
+/** "Inserted 2 rows", "Renamed Q1" */
+function labelOfOps(ops: readonly StructuralOp[]): string {
+  const op = ops[0]
+  const many = ops.length > 1 ? ' and more' : ''
+  switch (op.op) {
+    case 'insertRows':
+      return `Inserted ${op.count === 1 ? 'a row' : `${op.count} rows`}${many}`
+    case 'removeRows':
+      return `Deleted ${op.count === 1 ? 'a row' : `${op.count} rows`}${many}`
+    case 'insertCols':
+      return `Inserted ${op.count === 1 ? 'a column' : `${op.count} columns`}${many}`
+    case 'removeCols':
+      return `Deleted ${op.count === 1 ? 'a column' : `${op.count} columns`}${many}`
+    case 'reorder':
+      return `Sorted ${op.sheet}${many}`
+    case 'addSheet':
+      return `Added ${op.name}${many}`
+    case 'removeSheet':
+      return `Removed ${op.sheet}${many}`
+    case 'renameSheet':
+      return `Renamed ${op.sheet} to ${op.to}${many}`
+  }
+}
 
 /** "12 cells", "B4" */
 function labelOf(edits: readonly EditSpec[]): string {

@@ -99,7 +99,7 @@ describe('an opened package', () => {
   it('refuses formatting and row inserts in words, and saves nothing', async () => {
     const data = (await store.open(path)).inspected.sheets[0].id
     await expect(store.edit(path, 0, [set(data, 1, 0, { s: { bl: 1 } })], 'owner')).rejects.toThrow(/formatting/)
-    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: PACKAGE_UNIT, subUnitId: data, range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 4 } } }], 'owner')).rejects.toThrow(/rows and columns/)
+    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: PACKAGE_UNIT, subUnitId: data, range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 4 } } }], 'owner')).rejects.toThrow(/Rows, columns and sheets cannot be changed/)
     expect((await store.open(path)).rev).toBe(0)
   })
 

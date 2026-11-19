@@ -2,6 +2,7 @@ import type { SheetCellDiff } from '@shared/contract-work-sheets'
 import type { A1Range } from './a1'
 import type { Inspected, ReadCell, SaveAnswer } from './jobs'
 import type { EditSpec } from './patch/patch'
+import type { StructuralOp } from './structural'
 
 /**
  * Main's side of the sheet worker (worker.ts): the jobs on an opened package,
@@ -14,6 +15,7 @@ export type WorkerAsk = { id: number } & (
   | { op: 'read'; path: string; range: A1Range }
   | { op: 'save'; path: string; output: string; edits: EditSpec[]; ironcalcDir: string | null }
   | { op: 'compare'; from: string; to: string; max: number }
+  | { op: 'graft'; original: string; written: string; output: string; ops: StructuralOp[] }
 )
 export type WorkerAnswer = { id: number; ok: true; value: unknown } | { id: number; ok: false; error: string }
 
@@ -23,6 +25,8 @@ export interface SheetJobs {
   /** writes the patched package to `output`; the caller moves it into place */
   save(path: string, output: string, edits: EditSpec[], ironcalcDir: string | null): Promise<SaveAnswer>
   compare(from: string, to: string, max: number): Promise<{ cells: SheetCellDiff[]; truncated: boolean }>
+  /** writes LibreOffice's package with what it drops put back; answers what was put back */
+  graft(original: string, written: string, output: string, ops: StructuralOp[]): Promise<string[]>
   stop(): void
 }
 
@@ -80,6 +84,7 @@ export function workerJobs(fork: () => Child): SheetJobs {
     read: (path, range) => call({ op: 'read', path, range }),
     save: (path, output, edits, ironcalcDir) => call({ op: 'save', path, output, edits, ironcalcDir }),
     compare: (from, to, max) => call({ op: 'compare', from, to, max }),
+    graft: (original, written, output, ops) => call({ op: 'graft', original, written, output, ops }),
     stop() {
       child?.kill()
       child = null
@@ -89,7 +94,7 @@ export function workerJobs(fork: () => Child): SheetJobs {
 
 /** The same jobs in this process: for tests, and for a host that has no utility processes. */
 export async function localJobs(): Promise<SheetJobs> {
-  const { comparePackages, importPackage, inspect, readWorkbookRange, savePackage } = await import('./jobs')
+  const { comparePackages, graftPackage, importPackage, inspect, readWorkbookRange, savePackage } = await import('./jobs')
   const { colName } = await import('./a1')
   const { writeFileSync } = await import('node:fs')
   return {
@@ -101,6 +106,7 @@ export async function localJobs(): Promise<SheetJobs> {
       return { report }
     },
     compare: async (from, to, max) => comparePackages(from, to, max),
+    graft: async (original, written, output, ops) => graftPackage(original, written, output, ops),
     stop() {}
   }
 }

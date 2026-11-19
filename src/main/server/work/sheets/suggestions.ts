@@ -99,6 +99,11 @@ export class SuggestionStore {
     return which === 'all' ? open : 'ids' in which ? open.filter((s) => which.ids.includes(s.id)) : open.filter((s) => s.changeSet === which.changeSet)
   }
 
+  /** Moves an open suggestion to where its cell went. */
+  move(store: string, id: string, sheet: string, row: number, col: number): void {
+    this.db.prepare(`UPDATE work_sheets_suggestions SET sheet = ?, row = ?, col = ? WHERE store = ? AND id = ? AND state IN ${OPEN}`).run(sheet, row, col, store, id)
+  }
+
   /** Sets the state of these suggestions; accepted and rejected are final. */
   mark(store: string, ids: readonly string[], state: SheetSuggestionState): void {
     const set = this.db.prepare(`UPDATE work_sheets_suggestions SET state = ? WHERE store = ? AND id = ? AND state IN ${OPEN}`)

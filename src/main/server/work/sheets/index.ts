@@ -5,7 +5,8 @@ import { SHEET_COMPARE_MAX, type SheetCellJson, type SheetMutationJson } from '@
 import { handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { afterEdit, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Sheets } from './held'
-import { ensurePackageTables } from './packages'
+import { ensurePackageTables, type Moved } from './packages'
+import { mapCell, STRUCTURAL_CONVERTERS } from './structural'
 import { ensureSuggestionTables, type Which } from './suggestions'
 import { sheetTools, writeAccepted } from './tools'
 
@@ -44,10 +45,31 @@ async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: She
   if (held.at === 'package') {
     // A refusal (NotSaved) is said once over the grid: the edit stays in the grid, and the file keeps what it had.
     const got = await s.packages.edit(held.path, baseRev, mutations, who)
-    if (!('conflict' in got)) afterEdit(s, storeKey(held), mutations)
-    return got
+    if ('conflict' in got) return got
+    if (got.moved) await followRows(s, held.path, got.moved)
+    else afterEdit(s, storeKey(held), mutations)
+    return { rev: got.rev }
   }
   return host(s.ctx, 'apply', { sheet: held.ref, baseRev, mutations, by: who })
+}
+
+/**
+ * After rows, columns or sheets changed in a package, each suggestion waiting over it moves with its
+ * cell (by the sheet's name, since LibreOffice numbers sheets again), or is orphaned when its row,
+ * column or sheet went.
+ */
+async function followRows(s: Sheets, path: string, moved: Moved): Promise<void> {
+  const key = `file:${path}`
+  const open = s.suggestions.open(key)
+  if (!open.length) return
+  const after = (await s.packages.open(path)).inspected.sheets
+  for (const sug of open) {
+    const name = moved.before.get(sug.sheet)
+    const to = name === undefined ? null : mapCell(moved.ops, name, sug.row, sug.col)
+    const id = to && after.find((x) => x.name === to.sheet)?.id
+    if (!to || !id) s.suggestions.mark(key, [sug.id], 'orphaned')
+    else s.suggestions.move(key, sug.id, id, to.row, to.col)
+  }
 }
 
 export const sheets: WorkModule = {
@@ -153,6 +175,7 @@ export const sheets: WorkModule = {
     return NOT_HANDLED
   },
   tools: () => sheetTools,
+  convert: STRUCTURAL_CONVERTERS,
   preamble: () =>
     'A sheet in the canvas is read with `sheet_read` and changed with `sheet_write` or `sheet_suggest`, cells in A1. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a sheet others share, your own idea waits as a suggestion he steps through cell by cell.',
   sessionsRemoved() {},

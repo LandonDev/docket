@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { closeSync, existsSync, openSync, readSync, statSync } from 'node:fs'
+import { closeSync, existsSync, mkdtempSync, openSync, readSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { basename, extname, isAbsolute, join } from 'node:path'
 import type { SheetChart, SheetMutationJson, SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
@@ -80,7 +81,20 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
   const s: Sheets = {
     ctx,
     // A change from outside moves cells we cannot follow: every open suggestion over the file is orphaned.
-    packages: new PackageStore(ctx.db, jobs, join(ctx.dataDir, 'sheets', 'files'), () => tools.dir('ironcalc'), Date.now, (path) => suggestions.orphanAll(`file:${path}`)),
+    packages: new PackageStore(
+      ctx.db,
+      jobs,
+      join(ctx.dataDir, 'sheets', 'files'),
+      () => tools.dir('ironcalc'),
+      Date.now,
+      (path) => suggestions.orphanAll(`file:${path}`),
+      // LibreOffice runs where it is installed: a host without it forwards the job (formats/jobs.ts).
+      async (input, ops, kind) => {
+        const dir = mkdtempSync(join(tmpdir(), 'tc-sheet-ops-'))
+        const done = await ctx.convert({ from: kind, to: `${kind}+ops`, input, output: join(dir, `out.${kind}`), options: { ops } })
+        return done.output
+      }
+    ),
     suggestions,
     jobs
   }

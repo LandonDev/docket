@@ -83,7 +83,7 @@ export interface Report {
 
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 
-function resolve(base: string, target: string): string {
+export function resolve(base: string, target: string): string {
   if (target.startsWith('/')) return target.slice(1)
   const parts = base.split('/').slice(0, -1)
   for (const seg of target.split('/')) {
@@ -92,7 +92,7 @@ function resolve(base: string, target: string): string {
   }
   return parts.join('/')
 }
-const relsPath = (part: string) => {
+export const relsPath = (part: string) => {
   const i = part.lastIndexOf('/')
   return `${part.slice(0, i + 1)}_rels/${part.slice(i + 1)}.rels`
 }
@@ -104,7 +104,7 @@ interface Rel {
   external: boolean
   span: [number, number]
 }
-function readRels(z: Zip, part: string, text?: string): { text: string; rels: Rel[] } {
+export function readRels(z: Zip, part: string, text?: string): { text: string; rels: Rel[] } {
   const p = relsPath(part)
   if (!z.byName.has(p) && text === undefined) return { text: '', rels: [] }
   const t = text ?? readText(z, p)
