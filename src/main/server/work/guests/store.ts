@@ -91,6 +91,11 @@ export class GuestStore {
     return Number(changed) > 0 ? secret : null
   }
 
+  /** A link that was never made: LifeOS did not take its item's `shared`, so nothing of it was ever live. */
+  forget(id: string): void {
+    this.db.prepare(`DELETE FROM ${GUEST_LINKS_TABLE} WHERE id = ?`).run(id)
+  }
+
   /** Answers whether it was live before. */
   revoke(id: string, now = Date.now()): boolean {
     return Number(this.db.prepare(`UPDATE ${GUEST_LINKS_TABLE} SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`).run(now, id).changes) > 0

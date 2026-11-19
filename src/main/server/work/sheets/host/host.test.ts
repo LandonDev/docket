@@ -28,6 +28,9 @@ class MemoryBackend implements SheetBackend {
     const snapRev = Math.max(...this.snaps.keys())
     return { title: 'Budget', shared: this.shared, snapshot: structuredClone(this.snaps.get(snapRev)!), snapRev, rev: this.ops.at(-1)?.rev ?? 0 }
   }
+  async sharedNow() {
+    return this.shared
+  }
   async opsAfter(rev: number) {
     return this.ops.filter((o) => o.rev > rev)
   }
@@ -212,6 +215,34 @@ describe('a .tcsheet', () => {
     hosts.push(again)
     expect((await again.range(ref, 'A2')).cells[0][0]).toEqual({ at: 'A2', v: 42, f: '=A1*21' })
     expect((await again.open(ref)).suggestions).toMatchObject([{ row: 0, col: 0, proposed: { v: 3 }, reason: 'Three is right', state: 'pending' }])
+  })
+})
+
+describe("a sheet's shared, after it was loaded", () => {
+  it('reads afresh on every open: a guest link made since the load is what an agent\'s write is decided by', async () => {
+    const store = new MemoryBackend(budget(), false)
+    const host = hostOf(store)
+    expect((await host.open(REF)).shared).toBe(false)
+    store.shared = true
+    expect((await host.open(REF)).shared).toBe(true)
+    store.shared = false
+    expect((await host.open(REF)).shared).toBe(false)
+  })
+
+  it("asks LifeOS for the row's shared, and fails the open when the row is gone", async () => {
+    let shared = false
+    let gone = false
+    const convex = async (_kind: string, fn: string): Promise<unknown> => {
+      if (fn === 'sheets:get') return gone ? null : { _id: 's1', title: 'Budget', sector: 'cosmic', rev: 0, snapshotRev: 0, shared, snapshotUrl: null }
+      if (fn === 'sheets:ops' || fn === 'sheets:suggestions') return []
+      throw new Error(`unexpected ${fn}`)
+    }
+    const host = hostOf(new LifeosBackend(convex, 's1'))
+    expect((await host.open({ lifeos: 's1' })).shared).toBe(false)
+    shared = true
+    expect((await host.open({ lifeos: 's1' })).shared).toBe(true)
+    gone = true
+    await expect(host.open({ lifeos: 's1' })).rejects.toThrow('There is no such sheet in LifeOS')
   })
 })
 

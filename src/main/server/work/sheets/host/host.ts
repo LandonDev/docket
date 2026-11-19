@@ -227,8 +227,12 @@ export class SheetHost {
 
   // ── what main and the routes ask ─────────────────────────────────
 
+  /** `shared` is read afresh from the store on every open, never kept from the load: an agent's write is decided by it, and a guest link made since the load turns it on. */
   open(ref: SheetRef): Promise<HostAnswer<'open'>> {
-    return this.with(ref, async (o) => ({ title: o.title, rev: o.rev, shared: o.shared, suggestions: (await this.suggestionsOf(o)).map(toSuggestion) }))
+    return this.with(ref, async (o) => {
+      o.shared = await o.backend.sharedNow()
+      return { title: o.title, rev: o.rev, shared: o.shared, suggestions: (await this.suggestionsOf(o)).map(toSuggestion) }
+    })
   }
 
   /** The row's sector (LifeOS), for the route to hold a caller's fence against. */

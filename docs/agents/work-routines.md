@@ -76,7 +76,8 @@ counted from the tree's transcripts; unread), `asked`
   add-on's tool itself (`AddonHost.call`, `sessionId: null`, `work:
   true`), which M10's gate runs only when the owner set the tool to Runs;
   the engine also asks first (`mayRead`) and, if he set it back, reads
-  nothing and says "Waiting: its tool is not set to Runs". The first read
+  nothing and says "Waiting: its tool is not set to Runs". A tool its server
+  no longer lists is not Runs either, whatever rule was set. The first read
   is a baseline; `changed` fires when the answer's hash differs,
   `non-empty` when it has something in it and differs.
 - **file** (`{source, by: 'someone-else'}`): a file on this host is looked

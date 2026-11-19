@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { guestRefusal, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource } from '@shared/contract-work-guests'
 import type { CollabClaims as KitClaims } from 'work-kit/collab-server'
 import type { WorkCtx } from '../modules'
+import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
@@ -13,7 +14,10 @@ import { PASS_PREFIX, type GuestServiceLink } from './wire'
  * docs/agents/work-guests.md): made, revoked, listed, and told to the Work
  * service. Main signs every token (the service holds no key); each live link
  * and each open ticket carries one, re-signed before it runs out, and the
- * service hands it out only after the secret checks. Revoking sends the list
+ * service hands it out only after the secret checks. A link is told to the
+ * service only once LifeOS has marked its item shared, which every write
+ * guard reads: a link whose item LifeOS did not mark is not made, and one
+ * found so after a restart waits out of the list. Revoking sends the list
  * at once without the link: its document sockets close then, its sheet
  * sockets at the next second's check.
  */
@@ -104,7 +108,11 @@ export class GuestRuntime {
     await this.servedHere(o.source)
     await this.itemRow(o.source)
     const { link, secret } = this.store.create(o)
-    await this.setShared(o.source)
+    // The item reads shared to every write guard before a guest can reach it: if LifeOS does not take it, no link is made.
+    if (!(await this.setShared(o.source))) {
+      this.store.forget(link.id)
+      throw new ActNotSent(`LifeOS did not mark ${o.title} as shared, so no guest link was made. Nothing was made.`)
+    }
     await this.sync()
     this.ctx.push({ push: 'work.guests' })
     return { link: this.rowOf(link, {}), url: guestUrl(publicOrigin(this.ctx), link.id, secret) }
@@ -161,14 +169,16 @@ export class GuestRuntime {
     return { url: `${publicOrigin(this.ctx)}/w/open#t=${ticket}`, expiresAt: pass.ticketUntil }
   }
 
-  /** LifeOS's `shared` on the item: on while any link to it is live. */
-  async setShared(source: GuestSource): Promise<void> {
+  /** LifeOS's `shared` on the item: on while any link to it is live. Answers whether LifeOS took it. */
+  async setShared(source: GuestSource): Promise<boolean> {
     const shared = this.store.live().some((l) => sourceKey(l.source) === sourceKey(source))
     try {
       await this.ctx.lifeos.owner().mutation(source.table === 'docs' ? 'docs:setShared' : 'sheets:setShared', { id: source.id, shared })
       this.told.set(sourceKey(source), shared)
+      return true
     } catch (err) {
       this.ctx.log(`guests: ${sourceKey(source)} shared=${shared} was not set: ${String(err)}`)
+      return false
     }
   }
 
@@ -204,6 +214,8 @@ export class GuestRuntime {
     const out: GuestServiceLink[] = []
     const keep = new Set<string>()
     for (const l of this.store.live(now)) {
+      // Not before LifeOS reads its item shared: until then every write guard takes the item for private.
+      if (this.told.get(sourceKey(l.source)) !== true) continue
       const principal = `guest:${l.id}` as const
       // A link that cannot be signed is left out, never left as it was: the service then refuses it.
       const t = await this.sign(l.id, { ...kitItem(l.source), role: l.role, principal, link: l.id }).catch((err: Error) => (this.ctx.log(`guests: ${l.id} was not signed: ${err.message}`), null))
@@ -248,10 +260,12 @@ export class GuestRuntime {
     )
   }
 
-  /** Every 30 s: tokens signed again, and an item whose last link ended clears its `shared` (each item's told once after a start). */
+  /**
+   * Every 30 s: LifeOS told each item's `shared` where it differs from what was last told (every item once after a
+   * start, and again until it takes it), then tokens signed again: a link goes to the service only once its item reads shared.
+   */
   async tick(): Promise<void> {
     const now = Date.now()
-    await this.sync()
     const live = new Set(this.store.live(now).map((l) => sourceKey(l.source)))
     let changed = false
     for (const l of this.store.listed(now)) {
@@ -260,6 +274,7 @@ export class GuestRuntime {
       changed ||= this.told.has(key)
       await this.setShared(l.source)
     }
+    await this.sync()
     if (changed) this.ctx.push({ push: 'work.guests' })
   }
 }

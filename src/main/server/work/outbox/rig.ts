@@ -151,7 +151,7 @@ export class FakeOutboxLifeos implements LifeosClient {
     const row = typeof args.id === 'string' ? this.rows.get(args.id) : undefined
     switch (fn) {
       case 'compose:get':
-        return (row ? { row, ...(this.quotes.has(row._id) ? { quote: this.quotes.get(row._id) } : {}), urls: {} } : null) as T
+        return (row ? { row, ...(this.quotes.has(String(row._id)) ? { quote: this.quotes.get(String(row._id)) } : {}), urls: {} } : null) as T
       case 'compose:send': {
         if (!row) throw new Error('not found')
         if (row.status !== 'draft') throw new Error('This mail is no longer a draft.')

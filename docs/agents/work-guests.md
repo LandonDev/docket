@@ -30,7 +30,11 @@ with a test.
   the lists a week, muted.
 - **Shared.** While any live link names an item, its LifeOS row's `shared`
   is on (`docs:setShared`, `sheets:setShared`); revoking the last link, or
-  its end passing, turns it off within 30 s. Agents' writes to a shared item
+  its end passing, turns it off within 30 s. A link goes live only once
+  LifeOS has taken its item's `shared`: if it does not, the link is not made
+  (the held act fails as not sent), and a live link whose item LifeOS has not
+  marked since a start stays out of what the service is told until a tick
+  marks it. Agents' writes to a shared item
   become suggestions, as for any shared item.
 
 ## The methods and the tools

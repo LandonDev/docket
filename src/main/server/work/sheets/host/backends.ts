@@ -50,6 +50,8 @@ export interface Loaded {
 
 export interface SheetBackend {
   load(): Promise<Loaded>
+  /** whether others can edit it now, read afresh: a guest link made or ended since the load changes it */
+  sharedNow(): Promise<boolean>
   /** every op after `rev`, oldest first */
   opsAfter(rev: number): Promise<Op[]>
   /** appends at `baseRev`; `stale` when someone else appended first */
@@ -123,6 +125,12 @@ export class LifeosBackend implements SheetBackend {
     if (!row) throw new Error('There is no such sheet in LifeOS, or it is outside your sectors.')
     const snapshot = row.snapshotUrl ? ungz(await this.bytes(row.snapshotUrl)) : blankWorkbook(this.id, row.title)
     return { title: row.title, shared: row.shared, sector: row.sector, snapshot, snapRev: row.snapshotUrl ? row.snapshotRev : 0, rev: row.rev }
+  }
+
+  async sharedNow(): Promise<boolean> {
+    const row = (await this.convex('query', 'sheets:get', { id: this.id })) as SheetRow | null
+    if (!row) throw new Error('There is no such sheet in LifeOS, or it is outside your sectors.')
+    return row.shared === true
   }
 
   async opsAfter(rev: number): Promise<Op[]> {
@@ -278,6 +286,9 @@ export class TcsheetBackend implements SheetBackend {
   async load(): Promise<Loaded> {
     const t = this.read()
     return { title: t.meta.title, shared: false, snapshot: ungz(t.snapshots.get(t.meta.snapRev)!), snapRev: t.meta.snapRev, rev: t.meta.rev }
+  }
+  async sharedNow(): Promise<boolean> {
+    return false
   }
   async opsAfter(rev: number): Promise<Op[]> {
     return this.read().ops.filter((o) => o.rev > rev)

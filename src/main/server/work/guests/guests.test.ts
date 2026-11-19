@@ -13,6 +13,7 @@ import { callerKey, cutDue, guestThreads, LIMITS, plainBody, Window } from '../s
 import { servicePaths } from '../service/config'
 import { startWorkService, type RunningService } from '../service/serve'
 import { guestLinkKind, guestsTools } from '.'
+import { ActNotSent } from '../outbox/kinds'
 import { GuestRuntime } from './links'
 import { ensureGuestTables, GuestStore, hashSecret } from './store'
 
@@ -357,6 +358,38 @@ describe('after the review', () => {
     expect((await opened(r, a.id, secret)).status).toBe(200)
     await r.rt.revoke(a.id)
     expect(await r.rt.rekey(a.id)).toBeNull()
+  })
+
+  it("is not made when LifeOS does not mark its item shared: the held act fails as not sent, and nothing was ever live", async () => {
+    const r = await rig()
+    const ctx = (r.rt as unknown as { ctx: WorkCtx }).ctx
+    const sent: string[][] = []
+    const down = { ...ctx, lifeos: { owner: () => ({ ...ctx.lifeos.owner(), mutation: async () => Promise.reject(new Error('LifeOS is down')) }) } } as unknown as WorkCtx
+    const rt = new GuestRuntime(down, () => ({ tokenSigner: () => r.signer, setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
+    const asked = { ...down, item: { sessionId: null }, threads: { resume: async () => {} } }
+    const made = guestLinkKind.execute({ source: doc(), title: 'Run of show', name: 'Dana Lee', role: 'edit', expiresAt: inDays(7) }, asked as never)
+    await expect(made).rejects.toBeInstanceOf(ActNotSent)
+    await expect(rt.create({ source: doc(), title: 'Run of show', name: 'Dana Lee', role: 'edit', expiresAt: inDays(7), bySession: null })).rejects.toThrow('LifeOS did not mark Run of show as shared, so no guest link was made.')
+    expect(rt.store.live()).toEqual([])
+    expect(await rt.list()).toEqual([])
+    expect(sent.flat()).toEqual([])
+  })
+
+  it('after a restart, a live link reaches the service only once LifeOS takes its item\'s shared again', async () => {
+    const r = await rig()
+    const a = await make(r, 'view')
+    const ctx = (r.rt as unknown as { ctx: WorkCtx }).ctx
+    let up = false
+    const flaky = { ...ctx, lifeos: { owner: () => ({ ...ctx.lifeos.owner(), mutation: async (fn: string, args: never) => (up ? ctx.lifeos.owner().mutation(fn, args) : Promise.reject(new Error('LifeOS is down'))) }) } } as unknown as WorkCtx
+    const sent: string[][] = []
+    const rt = new GuestRuntime(flaky, () => ({ tokenSigner: () => r.signer, setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
+    await rt.tick()
+    expect(sent.at(-1)).toEqual([])
+    expect((await opened(r, a.id, a.secret)).status).toBe(403)
+    up = true
+    await rt.tick()
+    expect(sent.at(-1)).toEqual([a.id])
+    expect((await opened(r, a.id, a.secret)).status).toBe(200)
   })
 
   it('the thread that asked is told the link, never its address', async () => {

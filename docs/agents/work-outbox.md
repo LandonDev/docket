@@ -80,7 +80,8 @@ and shown on the card; they decide nothing.
   as it was listed (description and input schema). Point the add-on at
   another server, or let the server redefine the tool, and the rule no
   longer stands (`rules.ts` `stands`); the card says `changed`. A tool that
-  appears later starts Held.
+  appears later starts Held. A tool the server stops listing keeps a Held or
+  Off rule, never Runs: its calls are held, and a watch's refused.
 - The card is data: `work.outbox.rules` answers each add-on a Work thread
   can reach with its tools, their hints, the class the hints suggest
   (`suggestedRule`: Runs only for read-only and neither destructive nor

@@ -149,8 +149,9 @@ cells in A1 (`a1.ts`), at most 10,000 cells a read and 1,000 a write.
   (`ctx.threads.ownerSaid`): written at once;
 - `routine`, in a thread a routine started: written at once on his own
   sheet; on a shared one it waits as suggestions (no grant covers a write);
-- `own`: on a sheet others share (`scope.shared`, or LifeOS's `shared`) it
-  waits as suggestions; on his own sheet it follows the sheet's mode
+- `own`: on a sheet others share (`scope.shared`, or LifeOS's `shared`, which
+  the service's `open` reads afresh from LifeOS on every call, so a guest link
+  made since the sheet was loaded counts) it waits as suggestions; on his own sheet it follows the sheet's mode
   (`writes` by default: written, with the bar's written line and Undo).
 
 A quote he never typed, or `routine` outside a routine, counts as `own` and
