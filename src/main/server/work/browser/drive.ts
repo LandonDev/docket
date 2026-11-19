@@ -37,6 +37,15 @@ const parse = <T>(raw: string | null, fallback: T): T => {
   }
 }
 
+/** A site by its host, so the agent moving from page to page of one site keeps its sources. */
+const siteKey = (url: string): string => {
+  try {
+    return new URL(url).host || url
+  } catch {
+    return url
+  }
+}
+
 export class DriveStore {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -63,10 +72,10 @@ export class DriveStore {
     return next
   }
 
-  /** The agent opens a site: it drives, nothing is asked of him yet, and the last site's sources go. */
+  /** The agent opens a page: nothing is asked of him yet, and another site's sources go. */
   open(sessionId: string, site: { url: string; name: string }, now = Date.now()): BrowserState {
     const was = this.get(sessionId)
-    const same = was.site?.url === site.url
+    const same = !!was.site && siteKey(was.site.url) === siteKey(site.url)
     return this.put({ ...was, site, needs: null, sources: same ? was.sources : [], since: was.driver === 'owner' ? was.since : now })
   }
 

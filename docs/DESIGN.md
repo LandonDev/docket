@@ -837,7 +837,7 @@ is the page, so Escape there closes it).
 
 What is built: the pane's frame (the tab row, the kind's bar, the fold,
 the review stepper, the selection bar and the composer's chip row), and
-the PDF, slides, images and video, and meeting bodies; every other kind's
+the PDF, slides, images and video, meeting and live browser bodies; every other kind's
 body is a "Not built yet" stub. Each kind's own surface below
 (the sheet grid, the document editor, the PDF page and the rest), the
 Outbox, Back from Away, routines, house rules and Settings → Work are the

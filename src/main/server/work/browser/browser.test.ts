@@ -113,8 +113,8 @@ describe('the live browser', () => {
       { field: 'Hotel', source: 'Hilton folio.pdf, page 1' },
       { field: 'Mileage', source: '412 miles at $0.447, from Maps' }
     ])
-    // the same site again keeps them; another drops them
-    await tool('browser_open', { url: 'https://concur.example/report', name: 'Concur', title: 'Report' })
+    // another page of the same site keeps them; another site drops them
+    await tool('browser_open', { url: 'https://concur.example/report/submit', name: 'Concur', title: 'Submit' })
     expect((await state()).sources).toHaveLength(2)
     await tool('browser_open', { url: 'https://arbitersports.com', name: 'Arbiter', title: 'My availability' })
     expect((await state()).sources).toEqual([])
