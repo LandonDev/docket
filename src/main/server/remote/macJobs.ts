@@ -1,10 +1,11 @@
 import { alwaysAsks, hostPath, readRemembers } from './macBridgeRules'
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import { randomBytes } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
-import { basename } from 'node:path'
+import { basename, isAbsolute } from 'node:path'
 import {
   MAC_APPROVAL_WAIT_MS,
   MacRunArgsSchema,
@@ -127,7 +128,7 @@ type NodePty = typeof import('node-pty')
 
 /** A terminal (node-pty, as the app's own terminal uses): what prompts that read /dev/tty need. */
 export const ptySpawnerOf =
-  (pty: NodePty): JobSpawner =>
+  (pty: NodePty, adopt: (child: ChildProcess) => unknown = (child) => adoptTree(child)): JobSpawner =>
   ({ file, args, cwd, env, options }) => {
     // ConPTY takes a whole command line as a string as written: cmd.exe's verbatim line stays whole.
     const p = pty.spawn(file, options?.windowsVerbatimArguments ? args.join(' ') : args, {
@@ -138,6 +139,11 @@ export const ptySpawnerOf =
       env,
       encoding: null
     })
+    // Windows: the terminal's shell joins a Job Object of its own, ended when it exits, as a piped job's does
+    // (procTree.ts adoptTree; nothing elsewhere, where the pty's session group serves).
+    const exited = Object.assign(new EventEmitter(), { pid: p.pid })
+    adopt(exited as unknown as ChildProcess)
+    p.onExit(() => exited.emit('exit'))
     return {
       pid: p.pid,
       pty: true,
@@ -379,7 +385,11 @@ export class MacJobs {
   ): Promise<MacJobStartResult> {
     const args = MacRunArgsSchema.parse(raw)
     if (!args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
-    const cwd = realSpelling(args.cwd ? hostPath(args.cwd, this.deps.home, this.deps.platform) : this.deps.home)
+    const platform = this.deps.platform ?? process.platform
+    // A Mac's job takes an absolute cwd only, as it always has; a Windows host's reads ~\ and drive paths (hostPath).
+    if (platform !== 'win32' && args.cwd !== undefined && !isAbsolute(args.cwd))
+      throw new Error(`paths on the Mac must be absolute: ${args.cwd}`)
+    const cwd = realSpelling(args.cwd ? hostPath(args.cwd, this.deps.home, platform) : this.deps.home)
     if (!existsSync(cwd) || !statSync(cwd).isDirectory())
       throw new Error(`no such folder on the Mac: ${cwd}`)
     if (this.runningCount(env.id, thread.id) >= MAC_JOB_MAX_PER_THREAD) {

@@ -48,7 +48,25 @@ export const WINDOWS_ALWAYS_ASK = [
   'diskpart',
   'format',
   'wmic',
-  'set-executionpolicy'
+  'set-executionpolicy',
+  // PowerShell's own ways to the registry, tasks, services, ACLs and Defender, and hosts that run script text the card cannot show.
+  'set-itemproperty',
+  'new-itemproperty',
+  'remove-itemproperty',
+  'register-scheduledtask',
+  'new-service',
+  'set-service',
+  'set-acl',
+  'add-mppreference',
+  'set-mppreference',
+  'invoke-expression',
+  'iex',
+  'mshta',
+  'rundll32',
+  'regsvr32',
+  'wscript',
+  'cscript',
+  'vaultcmd'
 ] as const
 /** `defaults <verb>` that writes; `defaults read` is fine. */
 const DEFAULTS_WRITES = new Set(['write', 'delete', 'import', 'rename'])
@@ -70,11 +88,10 @@ export const CREDENTIAL_PATHS = [
   '.codex/auth.json',
   'id_rsa',
   'id_ecdsa',
-  'id_ed25519',
-  'Microsoft/Credentials',
-  'Microsoft/Protect',
-  'Microsoft/Vault'
+  'id_ed25519'
 ] as const
+/** Windows' own credential stores, checked on a Windows host on top of CREDENTIAL_PATHS. */
+export const WINDOWS_CREDENTIAL_PATHS = ['Microsoft/Credentials', 'Microsoft/Protect', 'Microsoft/Vault'] as const
 /** Shells and wrappers that run whatever follows them: never offered, never matched, as a 'program'. */
 const NOT_A_PROGRAM = new Set([
   'sh',
@@ -97,12 +114,21 @@ const NOT_A_PROGRAM = new Set([
   'timeout',
   'caffeinate',
   'arch',
-  'script',
+  'script'
+])
+/** On a Windows host, its own shells, launchers and terminals too. */
+const NOT_A_PROGRAM_WIN = new Set([
+  ...NOT_A_PROGRAM,
   'cmd',
   'powershell',
   'pwsh',
   'start',
-  'call'
+  'call',
+  'wsl',
+  'wt',
+  'conhost',
+  'mintty',
+  'git-bash'
 ])
 
 export interface RunSpec {
@@ -113,12 +139,16 @@ export interface RunSpec {
 }
 
 const strip = (word: string): string => word.slice(word.lastIndexOf('/') + 1)
-/** A program's name as Windows reads it: after either slash, case-blind, without .exe and its kin. */
-const stripWin = (word: string): string =>
-  word
+/** A word as cmd.exe and PowerShell read it: their escapes (`r^eg`, ``r`eg``) dropped. */
+const unescapeWin = (word: string): string => word.replace(/[\^`]/g, '')
+/** A program's name as Windows reads it: unescaped, after either slash, case-blind, without .exe and its kin. */
+const stripWin = (raw: string): string => {
+  const word = unescapeWin(raw)
+  return word
     .slice(Math.max(word.lastIndexOf('/'), word.lastIndexOf('\\')) + 1)
     .toLowerCase()
     .replace(/\.(exe|com|cmd|bat|ps1)$/, '')
+}
 const nameOf = (platform: NodeJS.Platform): ((word: string) => string) => (platform === 'win32' ? stripWin : strip)
 
 /**
@@ -189,17 +219,17 @@ export function programOf(
     first = words.find((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w))
   }
   const name = first ? nameOf(platform)(first) : ''
-  if (!name || NOT_A_PROGRAM.has(name)) return null
+  if (!name || (platform === 'win32' ? NOT_A_PROGRAM_WIN : NOT_A_PROGRAM).has(name)) return null
   return name
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const credentialRes = (flags: string) =>
-  CREDENTIAL_PATHS.map(
+const credentialResOf = (names: readonly string[], flags: string) =>
+  names.map(
     (name) => [name, new RegExp(`(^|[^A-Za-z0-9_.-])${escape(name)}(?=$|[^A-Za-z0-9_-])`, flags)] as const
   )
-const CREDENTIAL_RES = credentialRes('')
-const CREDENTIAL_RES_WIN = credentialRes('i')
+const CREDENTIAL_RES = credentialResOf(CREDENTIAL_PATHS, '')
+const CREDENTIAL_RES_WIN = credentialResOf([...CREDENTIAL_PATHS, ...WINDOWS_CREDENTIAL_PATHS], 'i')
 
 /** Home by its real spelling, read on this machine only (a test of another platform's paths keeps it as given). */
 const realHomeOf = (home: string, platform: NodeJS.Platform): string =>
@@ -230,14 +260,34 @@ export function hostPath(path: string, home: string, platform: NodeJS.Platform =
     throw new Error(`paths on this Windows host must be drive paths (C:\\…) or start with ~\\: ${path}`)
   if (!p.isAbsolute(expanded))
     throw new Error(`paths on the Mac must be absolute or start with ~/: ${path}`)
-  return p.resolve(expanded)
+  const resolved = p.resolve(expanded)
+  // Windows opens `APPDAT~1` and `AppData.` as AppData: a spelling the deny lists would not know.
+  if (platform === 'win32' && resolved.split('\\').slice(1).some(oddWindowsName))
+    throw new Error(`refused: a short (8.3) name or a name ending in a dot or space: ${path}`)
+  return resolved
+}
+
+/** A path segment Windows reads as another name: an 8.3 short name (`APPDAT~1`), or one ending in a dot or a space. */
+function oddWindowsName(segment: string): boolean {
+  return /^[^~]{1,6}~\d/.test(segment) || /[. ]$/.test(segment)
+}
+
+/** The flag before the line a shell runs: cmd's /c and /k, bash's -c, PowerShell's -Command and its prefixes, any dash. */
+const SHELL_LINE_FLAG = /^[-/\u2013\u2014\u2015](c|k|co|com|comm|comma|comman|command)$/i
+
+/** cmd.exe or PowerShell making the program from variables (`set p=re & call %p%g`, `r%x%g`): no card could show what runs. */
+function builtFromVariables(names: string[], words: string[]): boolean {
+  const expands = (w: string): boolean => /%[^%\s]+%|![^!\s]+!/.test(w)
+  if (words.some((w) => /[A-Za-z0-9_.]%[^%\s]+%|%[^%\s]+%[A-Za-z0-9_.]|[A-Za-z0-9_]![^!\s]+!|![^!\s]+![A-Za-z0-9_]/.test(w))) return true
+  return (names.includes('call') || names.includes('set')) && words.some(expands)
 }
 
 /** `powershell -EncodedCommand` (any prefix PowerShell takes, and -ec) or an execution policy: what it runs cannot be read off the card. */
 function opaquePowerShell(names: string[], words: string[]): boolean {
   if (!names.some((n) => n === 'powershell' || n === 'pwsh')) return false
   return words.some((w) => {
-    const flag = /^[-/]([A-Za-z]+)$/.exec(w)?.[1]?.toLowerCase()
+    // PowerShell takes an en dash, an em dash or a horizontal bar for the dash, and `-Flag:value`.
+    const flag = /^[-/\u2013\u2014\u2015]+([A-Za-z]+)(?::.*)?$/.exec(w)?.[1]?.toLowerCase()
     if (!flag) return false
     return flag === 'ec' || flag === 'e' || (flag.length >= 2 && ('encodedcommand'.startsWith(flag) || 'executionpolicy'.startsWith(flag)))
   })
@@ -245,17 +295,24 @@ function opaquePowerShell(names: string[], words: string[]): boolean {
 
 /** A recursive delete on Windows: `rm -r` (Git Bash), `rd /s` and `rmdir /s`, `del /s`, `Remove-Item -Recurse` and its aliases. */
 function windowsRecursiveDelete(names: string[], words: string[]): boolean {
-  const lower = words.map((w) => w.toLowerCase())
+  const lower = words.map((w) => w.toLowerCase().replace(/^[\u2013\u2014\u2015]/, '-'))
   if (names.includes('rm') && lower.some((w) => /^-[a-z]*r/.test(w) || w === '--recursive')) return true
-  if (names.some((n) => ['rd', 'rmdir', 'del', 'erase'].includes(n)) && lower.includes('/s')) return true
-  return names.some((n) => ['remove-item', 'ri', 'rm', 'del', 'rmdir', 'rd'].includes(n)) && lower.some((w) => w.length >= 3 && '-recurse'.startsWith(w))
+  // cmd.exe takes switches run together: `/S/Q`.
+  if (names.some((n) => ['rd', 'rmdir', 'del', 'erase'].includes(n)) && lower.some((w) => /^\/[a-z?](\/[a-z?])*$/.test(w) && w.split('/').includes('s'))) return true
+  return names.some((n) => ['remove-item', 'ri', 'rm', 'del', 'erase', 'rmdir', 'rd'].includes(n)) && lower.some((w) => {
+    const flag = w.replace(/:.*$/, '')
+    return flag.length >= 2 && '-recurse'.startsWith(flag)
+  })
 }
 
 /** Whether a word names a whole drive, a top folder or the profile (Windows spellings). */
-function windowsWide(word: string, cwd: string, home: string, realHome: string): boolean {
-  const t = word.replace(/[\\/]\*?$/, '').toLowerCase()
+function windowsWide(word: string, cwd: string, home: string, realHome: string, msys: boolean): boolean {
+  let t = word.replace(/[\\/]\*?$/, '').toLowerCase()
+  // Git Bash spells C:\ as /c (here already \c): only where its rm runs, since cmd.exe's switches look the same.
+  if (msys) t = t.replace(/^\\([a-z])(?=\\|$)/, '$1:')
   if (t === '' || /^[a-z]:$/.test(t) || /^[a-z]:[\\/][^\\/]*$/.test(t)) return true // \, C:\, C:\Users, C:\Windows
-  if (['~', '$home', '%userprofile%', '$env:userprofile', home.toLowerCase(), realHome.toLowerCase()].includes(t)) return true
+  const profile = ['~', '$home', '${home}', '$userprofile', '${userprofile}', '%userprofile%', '%homedrive%%homepath%', '$env:userprofile']
+  if ([...profile, home.toLowerCase(), realHome.toLowerCase()].includes(t)) return true
   return ['.', '*', '..'].includes(t) && coversHome(cwd, realHome, 'win32')
 }
 
@@ -267,20 +324,27 @@ export function alwaysAsks(
 ): string | null {
   const win = platform === 'win32'
   const pieces = spec.argv ?? (spec.command !== undefined ? [spec.command] : [])
-  // On Windows `\` is a path's separator, never an escape; and a quoted line inside a command (`powershell -Command "…"`, `cmd /c "…"`) is read once more.
-  const split = (p: string): string[] => shellWords(win ? p.replace(/\\/g, '/') : p).words
-  const words = pieces.flatMap((p) => [p, ...(win ? split(p).flatMap((w) => [w, ...split(w)]) : split(p))])
+  // On Windows `\` is a path's separator, never an escape, and cmd's `^` and PowerShell's backtick are dropped;
+  // the line a shell is handed (`cmd /c "…"`, `powershell -Command "…"`, `bash -c "…"`) is read once more.
+  const split = (p: string): string[] => shellWords(win ? unescapeWin(p).replace(/\\/g, '/') : p).words
+  const lineOf = (ws: string[]): string[] =>
+    ws.flatMap((w, i) => (i > 0 && SHELL_LINE_FLAG.test(ws[i - 1]) ? [w, ...split(w)] : [w]))
+  const words = pieces.flatMap((p) => [p, ...(win ? lineOf(split(p)) : split(p))])
   const names = words.map(nameOf(platform))
   for (const program of ALWAYS_ASK) if (names.includes(program)) return program
   if (win) {
     for (const program of WINDOWS_ALWAYS_ASK) if (names.includes(program)) return program
     if (opaquePowerShell(names, words)) return 'PowerShell with an encoded command or an execution policy'
+    if (builtFromVariables(names, words)) return 'a command built from variables'
     if (windowsRecursiveDelete(names, words)) {
       const realHome = realHomeOf(home, platform)
-      if (words.some((w) => windowsWide(w.replace(/\//g, '\\'), spec.cwd, home, realHome)))
+      const msys = names.includes('rm')
+      if (words.some((w) => windowsWide(w.replace(/\//g, '\\'), spec.cwd, home, realHome, msys)))
         return 'a recursive delete of a drive, a top folder or the profile'
     }
-    const text = [...pieces, spec.cwd].join('\n').replace(/\\/g, '/')
+    const text = unescapeWin([...pieces, spec.cwd].join('\n')).replace(/\\/g, '/')
+    if (/(^|[^a-z])(hkcu|hklm|hkcr|hku|hkcc):|registry::/i.test(text)) return 'the registry through PowerShell'
+    if (/\/[^/\s~]{1,6}~\d/.test(text)) return 'a short (8.3) path name'
     for (const [name, re] of CREDENTIAL_RES_WIN) if (re.test(text)) return `names a credential path (${name})`
     return null
   }

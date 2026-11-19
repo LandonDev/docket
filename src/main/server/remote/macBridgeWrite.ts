@@ -3,7 +3,7 @@ import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
 import { createHash, randomBytes } from 'node:crypto'
 import { constants, existsSync, realpathSync, statSync } from 'node:fs'
 import { copyFile, link, lstat, mkdir, open, rename, rm } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, posix, resolve, sep, win32 } from 'node:path'
 import {
   MAC_APPROVAL_WAIT_MS,
   MAC_WRITE_MAX_BASE64,
@@ -65,15 +65,16 @@ export function writeLevel(raw: string | null | undefined): WriteLevel {
  * (macOS volumes are case-insensitive by default), by the literal home and
  * its real spelling.
  */
-export function writeDenied(real: string, home: string): boolean {
+export function writeDenied(real: string, home: string, platform: NodeJS.Platform = process.platform): boolean {
+  const p = platform === 'win32' ? win32 : posix
   const path = real.toLowerCase()
-  for (const h of new Set([home, realSpelling(home)])) {
-    const rel = relative(h.toLowerCase(), path)
-    if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue
-    const first = rel.split(sep)[0]
-    if (first.startsWith('.') || first === 'library' || first === 'appdata') return true
+  for (const h of new Set([home, platform === process.platform ? realSpelling(home) : home])) {
+    const rel = p.relative(h.toLowerCase(), path)
+    if (!rel || rel === '..' || rel.startsWith(`..${p.sep}`) || p.isAbsolute(rel)) continue
+    const first = rel.split(p.sep)[0]
+    if (first.startsWith('.') || first === (platform === 'win32' ? 'appdata' : 'library')) return true
   }
-  const base = basename(real)
+  const base = p.basename(real)
   return isSecretPath(base) || isSecretPath(base.toLowerCase())
 }
 
@@ -109,8 +110,15 @@ export function writeVerdict(
 
 /** The real path a write lands at: absolute (or ~/… for this Mac's home), symlinks followed. */
 export function writeTarget(path: string, home: string): string {
-  const real = realSpelling(hostPath(path, home))
-  if (real === sep || dirname(real) === real) throw new Error(`refused: ${real} is not a file`)
+  if (process.platform === 'win32') {
+    const real = realSpelling(hostPath(path, home, 'win32'))
+    if (dirname(real) === real) throw new Error(`refused: ${real} is not a file`)
+    return real
+  }
+  const expanded = path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : path
+  if (!isAbsolute(expanded)) throw new Error(`paths on the Mac must be absolute: ${path}`)
+  const real = realSpelling(resolve(expanded))
+  if (real === sep) throw new Error('refused: / is not a file')
   return real
 }
 

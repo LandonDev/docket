@@ -135,14 +135,32 @@ desktop it is, with that platform's rules. The tool names stay `mac_*`.
   Object (procTree.ts `adoptTree`) and every stop goes through `killTree`: the job, Git Bash's
   console sweep and `taskkill /T /F`. Windows has no gentle signal: TERM and KILL both end the
   tree; INT to a terminal job is its ^C.
-- **The always-ask floor** (`alwaysAsks`): on a Windows host `WINDOWS_ALWAYS_ASK` (`runas`, `reg`,
-  `regedit`, `schtasks`, `sc`, `certutil`, `cmdkey`, `netsh`, `icacls`, `takeown`, `bcdedit`,
-  `vssadmin`, `diskpart`, `format`, `wmic`, `Set-ExecutionPolicy`) joins the Mac's list, by any
-  spelling (`C:\Windows\System32\schtasks.exe`, `CertUtil`); PowerShell with an encoded command
-  or an execution policy asks; a recursive delete (`rm -r`, `rd /s`, `del /s`, `Remove-Item
-  -Recurse`) of a drive, a top folder or the profile asks; credential paths match with either slash
-  in any case. A quoted line inside a command (`powershell -Command "…"`) is read once more. A
-  remembered program is named without `.exe`, case-blind.
+- **The always-ask floor** (`alwaysAsks`): on a Windows host `WINDOWS_ALWAYS_ASK` joins the Mac's
+  list: `runas`, `reg`, `regedit`, `schtasks`, `sc`, `certutil`, `cmdkey`, `netsh`, `icacls`,
+  `takeown`, `bcdedit`, `vssadmin`, `diskpart`, `format`, `wmic`; PowerShell's own ways to the same
+  places (`Set-ExecutionPolicy`, `Set-`/`New-`/`Remove-ItemProperty`, `Register-ScheduledTask`,
+  `New-`/`Set-Service`, `Set-Acl`, `Add-`/`Set-MpPreference`, `Invoke-Expression`/`iex`, and any
+  `HKCU:`, `HKLM:` or `registry::` path); and the hosts that run script text a card cannot show
+  (`mshta`, `rundll32`, `regsvr32`, `wscript`, `cscript`, `vaultcmd`). Names are read by any
+  spelling (`C:\Windows\System32\schtasks.exe`, `CertUtil`), with cmd's `^` and PowerShell's
+  backtick dropped, and the line handed to a shell (`cmd /c "…"`, `powershell -Command "…"`) is read
+  once more. Also asking every time: PowerShell with an encoded command or an execution policy (any
+  dash it takes, `-Flag:value` too); a command built from variables (`set p=re & call %p%g`); a
+  recursive delete (`rm -r`, `rd /s` and `/S/Q`, `del /s`, `Remove-Item -Recurse` and `ri -r`) of a
+  drive (`C:\`, Git Bash's `/c`), a top folder or the profile (`~`, `$USERPROFILE`, `%USERPROFILE%`,
+  …); Windows' credential stores (`WINDOWS_CREDENTIAL_PATHS`) and the Mac's credential names, with
+  either slash in any case; and an 8.3 short path name (`MICROS~1`), which the name lists would not
+  know. A remembered program is named without `.exe`, case-blind, and Windows' shells and launchers
+  (`cmd`, `powershell`, `start`, `wsl`, `wt`, …) are never one. The floor stops mistakes, not an
+  adversary: a script file the card names runs whatever it holds, on the Mac as here. None of the
+  Windows lists reaches a Mac: its floor, deny lists and program rules are as before (the tests hold
+  that).
+- **Spellings Windows reads as another name.** A path given to the bridge with an 8.3 short name
+  (`APPDAT~1`) or a segment ending in a dot or a space is refused (`hostPath`), since Windows opens it
+  as the long name the deny lists know. Full access on Windows asks for `WINDOWS_FULL_DENY_DIRS` in
+  place of the Mac's `~/Library` entries; a write under `~\AppData` always asks.
+- **Terminal jobs** (node-pty, the default for a job) are adopted into a Job Object too, ended when
+  their shell exits.
 - **Not ported, and why it is harmless:** the load watch reads `os.loadavg()`, which is always 0 on
   Windows, so only the caps hold calls there; dev-server forwarding and computer use through the
   bridge are off by default per host, and computer use on Windows is milestones 42 and 43.

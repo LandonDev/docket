@@ -1,6 +1,10 @@
+import type { ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
+import { macDenied } from './macBridge'
 import { alwaysAsks, coversHome, hostPath, programOf, runOffer } from './macBridgeRules'
-import { scrubbedEnv, shellCall } from './macRunner'
+import { writeDenied } from './macBridgeWrite'
+import { ptySpawnerOf } from './macJobs'
+import { scrubbedEnv, shellCall, signalTree } from './macRunner'
 
 // The bridge on a Windows host (docs/agents/windows-host.md "A Windows host linked to the box"),
 // with the platform injected: these run on Linux and macOS too.
@@ -139,5 +143,95 @@ describe('the always-ask floor on Windows', () => {
 
   it('the Mac reads none of the Windows list', () => {
     expect(alwaysAsks({ argv: ['reg', 'add', 'x'], cwd: '/Users/me/src' }, '/Users/me', 'darwin')).toBeNull()
+  })
+})
+
+describe('what the review of milestone 41 found', () => {
+  it('a Mac keeps its own lists: no Windows name, program or folder reaches its floor', () => {
+    expect(alwaysAsks({ command: 'ls Microsoft/Credentials', cwd: '/Users/me' }, '/Users/me', 'darwin')).toBeNull()
+    expect(programOf({ command: 'pwsh -c ls' }, 'darwin')).toBe('pwsh')
+    expect(programOf({ command: 'start' }, 'darwin')).toBe('start')
+    expect(macDenied('/Users/me/AppData/Roaming/Microsoft/Credentials/x', '/Users/me', 'darwin')).toBe(false)
+    expect(macDenied('/Users/me/.ssh/id_ed25519', '/Users/me', 'darwin')).toBe(true)
+    expect(writeDenied('/Users/me/AppData/x', '/Users/me', 'darwin')).toBe(false)
+    expect(writeDenied('/Users/me/Library/x', '/Users/me', 'darwin')).toBe(true)
+  })
+
+  it("full access on Windows still asks for Windows' credential stores and the app's data, in any case", () => {
+    expect(macDenied('C:\\Users\\tc\\AppData\\Roaming\\Microsoft\\Protect\\S-1\\key', HOME, W)).toBe(true)
+    expect(macDenied('c:\\users\\tc\\appdata\\local\\tempcode\\temp-code.db', HOME, W)).toBe(true)
+    expect(macDenied('C:\\Users\\tc\\.ssh\\config', HOME, W)).toBe(true)
+    expect(macDenied('C:\\', HOME, W)).toBe(true)
+    expect(macDenied('C:\\Users\\tc\\src\\app\\a.ts', HOME, W)).toBe(false)
+    expect(writeDenied('C:\\Users\\tc\\AppData\\Roaming\\x', HOME, W)).toBe(true)
+    expect(writeDenied('C:\\Users\\tc\\.gitconfig', HOME, W)).toBe(true)
+    expect(writeDenied('C:\\Users\\tc\\src\\a.ts', HOME, W)).toBe(false)
+  })
+
+  it('refuses the spellings Windows reads as another name: 8.3 short names, a trailing dot or space', () => {
+    for (const bad of ['C:\\Users\\tc\\APPDAT~1\\Local', '~\\AppData.\\Roaming\\x', 'C:\\Users\\tc\\AppData \\x'])
+      expect(() => hostPath(bad, HOME, W), bad).toThrow(/short \(8\.3\) name/)
+    expect(asks({ command: 'cat ~/AppData/Roaming/MICROS~1/CREDEN~1/x' })).toMatch(/8\.3/)
+    expect(asks({ command: 'git log HEAD~1' })).toBeNull()
+  })
+
+  it("cmd's ^ and PowerShell's backtick hide no program, nor does one built from variables", () => {
+    expect(asks({ command: 'cmd /c "r^eg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v x /d evil.exe"' })).toBe('reg')
+    expect(asks({ argv: ['cmd', '/c', 'r^eg add x'] })).toBe('reg')
+    expect(asks({ command: 'powershell -c "r`eg add x"' })).toBe('reg')
+    expect(asks({ command: 'set p=re&& call %p%g add x' })).toMatch(/variables/)
+    expect(asks({ command: 'cmd /c r%x%g add y' })).toMatch(/variables/)
+    expect(asks({ command: 'echo %USERPROFILE%' })).toBeNull()
+  })
+
+  it("asks for PowerShell's registry, tasks, services and Defender, and the script hosts", () => {
+    expect(asks({ command: 'powershell -c "Set-ItemProperty HKCU:\\Software\\Run -Name x -Value y"' })).toBe('set-itemproperty')
+    expect(asks({ command: 'powershell -c "Get-ItemProperty HKLM:\\Software\\x"' })).toMatch(/registry/)
+    expect(asks({ command: 'powershell Register-ScheduledTask -TaskName x' })).toBe('register-scheduledtask')
+    expect(asks({ command: 'powershell -Command "Add-MpPreference -ExclusionPath C:\\"' })).toBe('add-mppreference')
+    for (const host of ['mshta http://x/y.hta', 'rundll32 keymgr.dll,KRShowKeyMgr', 'wscript x.vbs', 'vaultcmd /list', 'powershell iex $x'])
+      expect(asks({ command: host }), host).not.toBeNull()
+  })
+
+  it("asks for Git Bash's and PowerShell's other spellings of a whole drive or the profile", () => {
+    for (const wide of ['rm -rf /c/', 'rm -rf /c/Users', 'rm -rf "$USERPROFILE"', 'rm -rf ${HOME}', 'rd /S/Q C:\\', 'powershell -c "ri -r C:\\Users\\tc"', 'Remove-Item -Recurse:$true C:\\'])
+      expect(asks({ command: wide }), wide).toMatch(/recursive delete/)
+    expect(asks({ command: 'rd /s /q build' })).toBeNull()
+    expect(asks({ command: 'rm -rf /tmp/build' })).toBeNull()
+  })
+
+  it('the encoded command in any dash PowerShell takes; Windows wrappers are never a remembered program; a message word is not a command', () => {
+    expect(asks({ argv: ['powershell', '\u2013EncodedCommand', 'SQBFAFgA'] })).toMatch(/encoded/)
+    expect(asks({ argv: ['powershell', '-EncodedCommand:SQBFAFgA'] })).toMatch(/encoded/)
+    for (const w of ['wsl', 'wt', 'conhost', 'mintty', 'git-bash']) expect(programOf({ argv: [w, 'x'] }, W), w).toBeNull()
+    expect(asks({ command: 'git commit -m "fix reg format"' })).toBeNull()
+  })
+
+  it("a terminal job's shell is adopted into a job that ends when it exits; cmd's verbatim line reaches ConPTY whole", () => {
+    const exits: (() => void)[] = []
+    let seenArgs: unknown = null
+    const pty = {
+      spawn: (_file: string, args: unknown) => {
+        seenArgs = args
+        return { pid: 4242, write: () => {}, onData: () => {}, onExit: (cb: () => void) => void exits.push(cb) }
+      }
+    }
+    const adopted: { pid?: number; exited: boolean }[] = []
+    const spawner = ptySpawnerOf(pty as never, (child: ChildProcess) => {
+      const row = { pid: child.pid, exited: false }
+      adopted.push(row)
+      child.once('exit', () => (row.exited = true))
+    })
+    spawner({ file: 'cmd.exe', args: ['/d', '/s', '/c', '"dir /b"'], cwd: 'C:\\', env: {}, options: { windowsVerbatimArguments: true } })
+    expect(seenArgs).toBe('/d /s /c "dir /b"')
+    expect(adopted).toEqual([{ pid: 4242, exited: false }])
+    for (const cb of exits) cb()
+    expect(adopted[0].exited).toBe(true)
+  })
+
+  it('a stop with no tree to reach falls back to the child itself', () => {
+    const got: string[] = []
+    signalTree({ pid: undefined, kill: (s) => void got.push(s) }, 'SIGTERM')
+    expect(got).toEqual(['SIGTERM'])
   })
 })

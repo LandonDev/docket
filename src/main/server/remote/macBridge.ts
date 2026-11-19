@@ -3,7 +3,7 @@ import { leadDetail } from '@shared/statusWords'
 import { existsSync, statSync } from 'node:fs'
 import { lstat, open, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, posix, resolve, sep, win32 } from 'node:path'
 import type { ClientRequest, ServerPush } from '@shared/contract'
 import {
   heldLine,
@@ -220,8 +220,15 @@ export const FULL_DENY_DIRS = [
   '.aliax',
   'Library/Keychains',
   'Library/Application Support/TempCode',
-  'Library/Application Support/temp-code',
-  // A Windows host's (join spells them with its own separator): Windows' saved credentials and keys, the app's data.
+  'Library/Application Support/temp-code'
+] as const
+/** On a Windows host, in place of the Mac's ~/Library ones: Windows' saved credentials and keys, the app's data. */
+export const WINDOWS_FULL_DENY_DIRS = [
+  '.ssh',
+  '.gnupg',
+  '.aws',
+  '.config/gh',
+  '.aliax',
   'AppData/Roaming/Microsoft/Credentials',
   'AppData/Local/Microsoft/Credentials',
   'AppData/Roaming/Microsoft/Protect',
@@ -231,10 +238,10 @@ export const FULL_DENY_DIRS = [
 export const FULL_DENY_FILES = ['.claude/.credentials.json', '.codex/auth.json'] as const
 
 /** Strict containment on a segment boundary, case-folded (macOS volumes are case-insensitive by default). */
-function underFolded(path: string, root: string): boolean {
+function underFolded(path: string, root: string, platform: NodeJS.Platform = process.platform): boolean {
   const p = path.toLowerCase()
-  const r = root.toLowerCase().replace(/[\\/]+$/, '')
-  return p === r || p.startsWith(r + sep)
+  const r = root.toLowerCase().replace(platform === 'win32' ? /[\\/]+$/ : /\/+$/, '')
+  return p === r || p.startsWith(r + (platform === 'win32' ? win32.sep : posix.sep))
 }
 
 /**
@@ -244,16 +251,18 @@ function underFolded(path: string, root: string): boolean {
  * directory above home ('/', '/Users'), which would show every account's
  * folder. Home itself does not ask.
  */
-export function macDenied(real: string, home: string): boolean {
-  const homes = [...new Set([home, realSpelling(home)])]
+export function macDenied(real: string, home: string, platform: NodeJS.Platform = process.platform): boolean {
+  const here = platform === process.platform
+  const join = (platform === 'win32' ? win32 : posix).join
+  const homes = [...new Set([home, here ? realSpelling(home) : home])]
   for (const h of homes) {
-    if (real !== h && coversHome(real, h)) return true
-    for (const rel of [...FULL_DENY_DIRS, ...FULL_DENY_FILES]) {
+    if (real !== h && coversHome(real, h, platform)) return true
+    for (const rel of [...(platform === 'win32' ? WINDOWS_FULL_DENY_DIRS : FULL_DENY_DIRS), ...FULL_DENY_FILES]) {
       const literal = join(h, rel)
-      if (underFolded(real, literal) || underFolded(real, realSpelling(literal))) return true
+      if (underFolded(real, literal, platform) || (here && underFolded(real, realSpelling(literal), platform))) return true
     }
   }
-  const base = basename(real)
+  const base = (platform === 'win32' ? win32 : posix).basename(real)
   return isSecretPath(base) || isSecretPath(base.toLowerCase())
 }
 
