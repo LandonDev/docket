@@ -96,8 +96,8 @@ describe("the column's LifeOS projects", () => {
 });
 
 describe("WORK_VIEWS", () => {
-  it("is Mail, Tasks, Agenda and Docs in that order, then Routines (milestone 32); each a stub until its pillar lands", async () => {
-    expect(workViewList().map((v) => v.label)).toEqual(["Mail", "Tasks", "Agenda", "Docs", "Routines"]);
+  it("is Mail, Tasks, Agenda, Docs and Files in that order, then Routines (milestone 32); each a stub until its pillar lands", async () => {
+    expect(workViewList().map((v) => v.label)).toEqual(["Mail", "Tasks", "Agenda", "Docs", "Files", "Routines"]);
     for (const view of Object.values(WORK_VIEWS)) {
       expect(view.chunk.name).toBe(`work-${view.id}-view`);
       expect(view.fact({} as WorkspaceMeta)).toBeNull();

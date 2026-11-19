@@ -6,17 +6,18 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { LifeosSession } from "../shell/lifeos";
 import { agendaView } from "../agenda/view";
 import { docsView } from "../docs/view";
+import { filesView } from "../office/view";
 import { mailView } from "../mail/view";
 import { routinesView } from "../routines/view";
 import { tasksView } from "../tasks/view";
 
 /**
  * The rows over a linked Work workspace's projects (architecture §7.3):
- * Mail, Tasks, Agenda and Docs, then Routines (milestone 32). A row opens its view in the main pane under
+ * Mail, Tasks, Agenda, Docs and Files (Teams files, docs/agents/work-files.md), then Routines (milestone 32). A row opens its view in the main pane under
  * the thread strip. One closed list; each pillar fills its own `view.ts`
  * (milestones 23 and 25, and Docs after them) and edits nothing here.
  */
-export type WorkViewId = "mail" | "tasks" | "agenda" | "docs" | "routines";
+export type WorkViewId = "mail" | "tasks" | "agenda" | "docs" | "files" | "routines";
 
 export interface WorkViewProps {
   env: string;
@@ -51,6 +52,7 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
   tasks: tasksView,
   agenda: agendaView,
   docs: docsView,
+  files: filesView,
   routines: routinesView,
 };
 

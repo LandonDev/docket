@@ -12,7 +12,7 @@ import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
-import { registry, useEnvironments } from "../../lib/connection";
+import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
 import { clockTime } from "../../lib/duration";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
@@ -20,6 +20,8 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { ToolchainRow } from "../formats/ToolchainRow";
 import { AddinRow } from "../office/AddinRow";
+import { TeamsCopyRow } from "../office/TeamsCopyRow";
+import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { HouseRules } from "../rules/HouseRules";
 import { linkSector, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
@@ -89,6 +91,11 @@ export function WorkSettingsBody() {
         {hosts.map((host) => (
           <AddinRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Office add-in on ${host.name}` : "Office add-in"} />
         ))}
+        {hosts
+          .filter((host) => isDesktop(host.platform) || host.id === LOCAL_ENVIRONMENT_ID)
+          .map((host) => (
+            <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Teams files on ${host.name}` : "Teams files"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
+          ))}
       </PageSection>
       <GuestLinksSection hosts={hosts.map((h) => h.id)} />
     </>
@@ -333,6 +340,9 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         ) : error ? null : (
           <PageRowsSkeleton rows={Math.max(1, desktops.length)} description control="switch" />
         )}
+        {settings && host && settings.mayUseDesktop.some((id) => id !== workspace.environmentId) ? (
+          <TeamsCopyRow workspace={workspace} hostName={host.name} desktops={settings.mayUseDesktop.filter((id) => id !== workspace.environmentId).map((id) => environments.find((e) => e.id === id)?.name ?? id)} />
+        ) : null}
         {error ? (
           <PageError
             action={
