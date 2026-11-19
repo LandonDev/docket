@@ -10,6 +10,7 @@ import type { SuggestionStore } from '../sheets/suggestions'
 import { eventById, type OfficeCarrier } from './carrier'
 import { cleanMailHtml } from './held'
 import { cellOf, EXCEL_MAX_CELLS, excelStore, type ExcelHelper } from './excel'
+import { librariesOf, libraryOf } from './files/library'
 
 /**
  * The one Office tool set (architecture §10; docs/agents/work-office.md "The
@@ -77,7 +78,9 @@ export async function fileKey(env: Pick<Env, 'carrier'>, kind: 'workbook' | 'doc
 /** A write judged on the file it lands in: found by its key first, and one that cannot be found counts as one others can open. */
 async function judged(reason: WriteReason, kind: 'workbook' | 'document' | 'deck', name: string, env: Env): Promise<{ verdict: ReturnType<typeof judgeWrite>; key: string }> {
   const key = await fileKey(env, kind, name)
-  return { verdict: judgeWrite(reason, { shared: key === null || sharedKey(key), ownerSaid: () => env.asked }), key: key ?? name }
+  // A file in a Teams folder he added himself is others' to open as surely as one under CloudStorage.
+  const teams = key !== null && libraryOf(librariesOf(env.ctx.db, env.ctx.host), key) !== null
+  return { verdict: judgeWrite(reason, { shared: key === null || sharedKey(key) || teams, ownerSaid: () => env.asked }), key: key ?? name }
 }
 
 const Reason = WriteReasonSchema.shape

@@ -369,7 +369,7 @@ describe('ctx.peer: a Work tool on one host calls the same module on another', (
     box.work.ctx.settings.set(workspaceId, { mayUseDesktop: [MAC] })
     const result = await call(box, thread, { range: 'A1:B2' })
     expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual({ wrote: 'A1:B2', on: MAC })
-    expect(seen).toEqual([{ host: MAC, method: 'work.office.rangeWrite', by: { kind: 'remote', caps: ['read', 'operate'] }, params: { range: 'A1:B2' } }])
+    expect(seen).toEqual([{ host: MAC, method: 'work.office.rangeWrite', by: { kind: 'remote', caps: ['read', 'operate'], peer: BOX }, params: { range: 'A1:B2' } }])
     void mac
   })
 

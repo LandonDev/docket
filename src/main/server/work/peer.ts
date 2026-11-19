@@ -79,7 +79,7 @@ export async function servePeerWork(deps: ServePeerDeps, from: string, call: Ext
   const module = deps.modules.find((m) => m.id === call.module)
   const req = (deps.parse ?? contractRequest)(method, call.args)
   if (typeof req === 'string') throw new Error(req)
-  const by: Caller = { kind: 'remote', caps }
+  const by: Caller = { kind: 'remote', caps, peer: from }
   const answer = module?.handle ? await module.handle(req, deps.ctx, by) : { handled: false as const }
   if (!answer.handled) throw new NotBuilt(method, PILLAR_MILESTONE[call.module as PillarId])
   return answer.result

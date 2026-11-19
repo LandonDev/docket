@@ -110,6 +110,8 @@ export interface Caller {
   kind: 'local' | 'remote' | 'model'
   caps: readonly string[]
   sessionId?: string
+  /** a remote call from another host of his, over the host link (`ctx.peer`), under this host's bridge policy for it: the host's id */
+  peer?: string
 }
 
 /**

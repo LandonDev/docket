@@ -15,6 +15,9 @@ import { macCarrier } from './mac'
 import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
+import { filesHandle } from './files/handle'
+import { ensureFilesTables, librariesOf, libraryOf } from './files/library'
+import { teamsTools } from './files/tools'
 
 /**
  * The office pillar's server module (docs/agents/work-office.md): one Office
@@ -84,10 +87,12 @@ export const office: WorkModule = {
     ensureExcelTables(db)
     ensureRouteTables(db)
     ensureAddinTables(db)
+    ensureFilesTables(db)
   },
-  async handle(req, ctx, by) {
+  async handle(req, ctx, by, signal) {
     if (!req.method.startsWith('work.office.')) return NOT_HANDLED
     if (req.method.startsWith('work.office.addin.')) return addinHandle(req, ctx, by)
+    if (req.method.startsWith('work.office.files')) return filesHandle(req, ctx, by, () => hereOf(ctx)?.carrier ?? null, signal)
     const here = hereOf(ctx)
     switch (req.method) {
       case 'work.office.status': {
@@ -101,7 +106,8 @@ export const office: WorkModule = {
         if (req.method === 'work.office.read' && !t.readOnly) throw new Error(`${t.name} changes things: it goes through work.office.write.`)
         // A remote caller reaches a file by path only where it could name the file itself (the listener's fence).
         const key = fileKeyOf(req.params.args)
-        if (by.kind === 'remote' && key !== null && !/^https?:\/\//i.test(key) && !ctx.reaches(by, key)) throw new FenceError(req.method)
+        // Another host of his reaches a file in this host's Teams libraries too (the Teams files' own fence).
+        if (by.kind === 'remote' && key !== null && !/^https?:\/\//i.test(key) && !ctx.reaches(by, key) && !(by.peer && libraryOf(librariesOf(ctx.db, ctx.host), key))) throw new FenceError(req.method)
         const write = req.method === 'work.office.write' ? req.params : null
         const env: Env = { ctx, ...here, by: peerPrincipal(write?.by, by, ctx.host), sessionId: by.kind === 'model' ? (by.sessionId ?? null) : null, asked: write?.asked ?? false }
         return handled(await runHere(t, req.params.args, env))
@@ -118,11 +124,12 @@ export const office: WorkModule = {
     }
     return NOT_HANDLED
   },
-  tools: () => addinTools(hereOf),
+  tools: () => [...addinTools(hereOf), ...teamsTools(() => (started ? (hereOf(started)?.carrier ?? null) : null))],
   acts: officeActs({ carrier: () => (started ? (hereOf(started)?.carrier ?? null) : null) }),
   triggers: [excelChanges(() => started)],
   preamble: () =>
-    'Office files open on the Mac or a Windows PC are reached with the `office_*` tools (`office_files` lists them). A workbook range is read with `office_range_read` and written with `office_range_write`, passing the hash you read as `base`. Mail sends, replies, forwards, invitations and answers to invitations are held for the owner\'s press; say so plainly when you make one.',
+    'Office files open on the Mac or a Windows PC are reached with the `office_*` tools (`office_files` lists them). A workbook range is read with `office_range_read` and written with `office_range_write`, passing the hash you read as `base`. Mail sends, replies, forwards, invitations and answers to invitations are held for the owner\'s press; say so plainly when you make one. ' +
+    'Teams and SharePoint files synced on his Mac are reached with the `teams_*` tools (`teams_libraries` first); `teams_open` shows one to him and answers the key the office tools change it by.',
   start(ctx) {
     started = ctx
     const here = hereOf(ctx)
