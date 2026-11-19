@@ -24,11 +24,14 @@ import {
   AX_WALK,
   COMPUTER_METHODS,
   COMPUTER_PROTOCOL,
+  ESCAPE_WATCH,
   LOCKS,
   OBSERVATION_BUDGET,
   OBSERVATION_TEXT,
+  PREVIEW_STREAM,
   RPC_ERROR,
   SERVICE,
+  SHOT,
   type ComputerMethod
 } from '../src/shared/computer/protocol'
 import {
@@ -294,6 +297,9 @@ export function emitContract(): string {
     ...constants('text', 'Observation text (§4.1, §4.5).', OBSERVATION_TEXT),
     ...constants('budget', 'The size budget (§4.5).', OBSERVATION_BUDGET),
     ...constants('locks', 'The machine-wide locks (§1, §5.3).', LOCKS),
+    ...constants('shot', 'Window screenshots (§6).', SHOT),
+    ...constants('preview', 'The preview stream (§6).', PREVIEW_STREAM),
+    ...constants('escape', "The person's Escape while the session is held (§8).", ESCAPE_WATCH),
     ...constants('rpc_error', 'JSON-RPC error codes.', RPC_ERROR),
     '/// The observation grammar\'s words (observation.ts).',
     'pub mod grammar {',

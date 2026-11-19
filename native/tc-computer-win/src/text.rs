@@ -47,17 +47,19 @@ pub struct RawWindow<H> {
     pub read_ms: i64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct TextOptions {
     pub budget_bytes: usize,
     pub geometry: bool,
     /// a subtree read (`element: i`): values uncut up to the budget
     pub whole_values: bool,
+    /// the session's space for the window (its last screenshot's); none: a default screenshot's
+    pub space: Option<CoordinateSpace>,
 }
 
 impl Default for TextOptions {
     fn default() -> Self {
-        TextOptions { budget_bytes: budget::DEFAULT_BYTES as usize, geometry: false, whole_values: false }
+        TextOptions { budget_bytes: budget::DEFAULT_BYTES as usize, geometry: false, whole_values: false, space: None }
     }
 }
 
@@ -78,11 +80,7 @@ pub struct Rendered {
 /// and pixel count capped as the Mac's are (protocol.ts SHOT), so M43's
 /// captures and these frames agree.
 pub fn space_of(w: f64, h: f64) -> CoordinateSpace {
-    let (w, h) = (w.max(1.0), h.max(1.0));
-    let edge = 1280.0 / w.max(h);
-    let pixels = (3_750_000.0 / (w * h)).sqrt();
-    let scale = 1f64.min(edge).min(pixels);
-    CoordinateSpace { width: ((w * scale).round() as i64).max(1), height: ((h * scale).round() as i64).max(1), scale }
+    crate::capture::geometry(w, h, None)
 }
 
 /// A string as JSON.stringify writes it (serde_json escapes the same set, with lower-case hex).
@@ -264,7 +262,8 @@ pub fn header(app: &str, title: &str, space: &CoordinateSpace, focused: Option<i
 /// The window as text. `with_shot` says whether the observation carries a
 /// picture: the thin word ("see the screenshot") is printed only then.
 pub fn render<H: Clone>(win: &RawWindow<H>, root: &RawNode<H>, book: &mut AppBook<H>, opts: TextOptions, with_shot: bool) -> Rendered {
-    let space = space_of(win.frame.w, win.frame.h);
+    let space = opts.space.clone().unwrap_or_else(|| space_of(win.frame.w, win.frame.h));
+    let budget = opts.budget_bytes;
     let mut walk = Walk { book, opts, origin: (win.frame.x, win.frame.y), scale: space.scale, out: Vec::new(), used: Default::default() };
     walk.visit(root, 0, None, &[]);
     let kept = walk.out;
@@ -293,7 +292,6 @@ pub fn render<H: Clone>(win: &RawWindow<H>, root: &RawNode<H>, book: &mut AppBoo
             at = kept[i].parent;
         }
     }
-    let budget = opts.budget_bytes;
     let fixed = head.len() + others.as_ref().map_or(0, |o| o.len() + 1);
     let reserve = 120; // the truncated line
     let mut used = fixed;

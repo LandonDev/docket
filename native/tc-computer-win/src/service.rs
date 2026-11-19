@@ -337,7 +337,7 @@ impl<D: Desktop> Service<D> {
         let bytes = budget_bytes.unwrap_or(budget::DEFAULT_BYTES).clamp(budget::MIN_BYTES, budget::MAX_BYTES) as usize;
         let mut st = guard(&self.state);
         let book = st.sessions.book(session, raw.pid).ok_or_else(|| fail(ComputerErrorKind::UnknownSession, format!("no session {session}")))?;
-        let r = render(&raw, &raw.root, book, TextOptions { budget_bytes: bytes, geometry, whole_values: subtree }, false);
+        let r = render(&raw, &raw.root, book, TextOptions { budget_bytes: bytes, geometry, whole_values: subtree, space: None }, false);
         if !subtree {
             book.keep_only(&r.seen);
             book.seq += 1;

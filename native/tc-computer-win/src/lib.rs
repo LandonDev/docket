@@ -3,8 +3,11 @@
 //! platform-free and tested on the box with `cargo test`.
 
 pub mod book;
+pub mod capture;
+pub mod clip;
 pub mod desktop;
 pub mod generated;
+pub mod input;
 pub mod locks;
 pub mod platform;
 pub mod server;

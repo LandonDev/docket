@@ -71,6 +71,36 @@ pub mod locks {
     pub const CLIPBOARD_HOLD_MAX_MS: i64 = 2500;
 }
 
+/// Window screenshots (§6).
+pub mod shot {
+    pub const DEFAULT_MAX_EDGE: i64 = 1280;
+    pub const MIN_MAX_EDGE: i64 = 512;
+    pub const MAX_MAX_EDGE: i64 = 2576;
+    pub const MAX_PIXELS: i64 = 3750000;
+    pub const JPEG_QUALITY: f64 = 0.85;
+}
+
+/// The preview stream (§6).
+pub mod preview {
+    pub const DEFAULT_FPS: i64 = 4;
+    pub const MIN_FPS: i64 = 1;
+    pub const MAX_FPS: i64 = 15;
+    pub const DEFAULT_MAX_EDGE: i64 = 960;
+    pub const MIN_MAX_EDGE: i64 = 256;
+    pub const FRAME_MAX_BYTES: i64 = 524288;
+    pub const MAX_UNACKED: i64 = 2;
+    pub const CLICK_CARRY_MS: i64 = 2000;
+}
+
+/// The person's Escape while the session is held (§8).
+pub mod escape {
+    pub const LEASE_MS: i64 = 30000;
+    pub const RENEW_MS: i64 = 10000;
+    pub const MIN_LEASE_MS: i64 = 1000;
+    pub const MAX_LEASE_MS: i64 = 120000;
+    pub const KEYCODE: i64 = 53;
+}
+
 /// JSON-RPC error codes.
 pub mod rpc_error {
     pub const PARSE_ERROR: i64 = -32700;
