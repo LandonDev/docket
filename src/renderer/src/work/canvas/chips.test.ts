@@ -92,6 +92,16 @@ describe("a chip as the model reads it", () => {
     );
   });
 
+  it("names a mention by its noun and reference, its excerpt quoted under it", () => {
+    expect(chipLine({ kind: "held", label: "Reply to Dana", ref: { at: "work", pillar: "outbox", id: "h1" }, excerpt: "Thanks, the 10th works.\nSee you then." })).toBe(
+      "About this held act: Reply to Dana (Work outbox h1)\n> Thanks, the 10th works.\n> See you then.",
+    );
+    expect(chipLine({ kind: "item", label: "Budget", ref: { at: "item", id: "i1" } })).toBe("About this item: Budget (canvas item i1)");
+    expect(chipLine({ kind: "project", label: "Spring LAN", ref: { at: "lifeos", table: "projects", id: "p1" }, excerpt: "  " })).toBe(
+      "About this project: Spring LAN (LifeOS projects p1)",
+    );
+  });
+
   it("goes above the person's words, and stands alone when there are none", () => {
     expect(withContextChips([], "Tighten the morning")).toBe("Tighten the morning");
     expect(withContextChips([task], "")).toBe(chipLine(task));

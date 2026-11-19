@@ -509,6 +509,13 @@ public struct ContextChip: Codable, Hashable, Sendable {
         case mail
         case event
         case selection
+        case project
+        case person
+        case doc
+        case item
+        case held
+        case routine
+        case card
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -518,6 +525,13 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case "mail": self = .mail
             case "event": self = .event
             case "selection": self = .selection
+            case "project": self = .project
+            case "person": self = .person
+            case "doc": self = .doc
+            case "item": self = .item
+            case "held": self = .held
+            case "routine": self = .routine
+            case "card": self = .card
             default: self = .unknown(rawValue)
             }
         }
@@ -528,6 +542,13 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case .mail: "mail"
             case .event: "event"
             case .selection: "selection"
+            case .project: "project"
+            case .person: "person"
+            case .doc: "doc"
+            case .item: "item"
+            case .held: "held"
+            case .routine: "routine"
+            case .card: "card"
             case .unknown(let value): value
             }
         }
@@ -537,6 +558,8 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case tasks
             case mailThreads
             case events
+            case projects
+            case people
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -545,6 +568,8 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case "tasks": self = .tasks
                 case "mailThreads": self = .mailThreads
                 case "events": self = .events
+                case "projects": self = .projects
+                case "people": self = .people
                 default: self = .unknown(rawValue)
                 }
             }
@@ -554,6 +579,8 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case .tasks: "tasks"
                 case .mailThreads: "mailThreads"
                 case .events: "events"
+                case .projects: "projects"
+                case .people: "people"
                 case .unknown(let value): value
                 }
             }
@@ -569,16 +596,126 @@ public struct ContextChip: Codable, Hashable, Sendable {
             self.id = id
         }
     }
+    public struct RefCase2: Codable, Hashable, Sendable {
+        public let at: String
+        public let id: String
+
+        public init(at: String, id: String) {
+            self.at = at
+            self.id = id
+        }
+    }
+    public struct RefCase3: Codable, Hashable, Sendable {
+        public enum Pillar: RawRepresentable, Codable, Hashable, Sendable {
+            case outbox
+            case canvas
+            case lifeos
+            case routines
+            case rules
+            case mail
+            case tasks
+            case agenda
+            case docs
+            case history
+            case formats
+            case sheets
+            case office
+            case google
+            case guests
+            case pdf
+            case slides
+            case media
+            case frameio
+            case meetings
+            case forms
+            case dashboards
+            case browser
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "outbox": self = .outbox
+                case "canvas": self = .canvas
+                case "lifeos": self = .lifeos
+                case "routines": self = .routines
+                case "rules": self = .rules
+                case "mail": self = .mail
+                case "tasks": self = .tasks
+                case "agenda": self = .agenda
+                case "docs": self = .docs
+                case "history": self = .history
+                case "formats": self = .formats
+                case "sheets": self = .sheets
+                case "office": self = .office
+                case "google": self = .google
+                case "guests": self = .guests
+                case "pdf": self = .pdf
+                case "slides": self = .slides
+                case "media": self = .media
+                case "frameio": self = .frameio
+                case "meetings": self = .meetings
+                case "forms": self = .forms
+                case "dashboards": self = .dashboards
+                case "browser": self = .browser
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .outbox: "outbox"
+                case .canvas: "canvas"
+                case .lifeos: "lifeos"
+                case .routines: "routines"
+                case .rules: "rules"
+                case .mail: "mail"
+                case .tasks: "tasks"
+                case .agenda: "agenda"
+                case .docs: "docs"
+                case .history: "history"
+                case .formats: "formats"
+                case .sheets: "sheets"
+                case .office: "office"
+                case .google: "google"
+                case .guests: "guests"
+                case .pdf: "pdf"
+                case .slides: "slides"
+                case .media: "media"
+                case .frameio: "frameio"
+                case .meetings: "meetings"
+                case .forms: "forms"
+                case .dashboards: "dashboards"
+                case .browser: "browser"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let at: String
+        public let pillar: Pillar
+        public let id: String
+
+        public init(at: String, pillar: Pillar, id: String) {
+            self.at = at
+            self.pillar = pillar
+            self.id = id
+        }
+    }
     public enum Ref: Codable, Hashable, Sendable {
         case object(RefCase0)
         case canvasSource(CanvasSource)
+        case object2(RefCase2)
+        case object3(RefCase3)
         /// A shape this build does not know, untouched.
         case unknown(JSONValue)
 
         public init(from decoder: any Decoder) throws {
             let container = try decoder.singleValueContainer()
-            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }
+            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events", "projects", "people"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }
             if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
+            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "item", let value = try? container.decode(RefCase2.self) { self = .object2(value); return }
+            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "work", ["outbox", "canvas", "lifeos", "routines", "rules", "mail", "tasks", "agenda", "docs", "history", "formats", "sheets", "office", "google", "guests", "pdf", "slides", "media", "frameio", "meetings", "forms", "dashboards", "browser"].contains(probe["pillar"]?.stringValue ?? ""), let value = try? container.decode(RefCase3.self) { self = .object3(value); return }
             self = .unknown(try container.decode(JSONValue.self))
         }
 
@@ -587,6 +724,8 @@ public struct ContextChip: Codable, Hashable, Sendable {
             switch self {
             case .object(let value): try container.encode(value)
             case .canvasSource(let value): try container.encode(value)
+            case .object2(let value): try container.encode(value)
+            case .object3(let value): try container.encode(value)
             case .unknown(let value): try container.encode(value)
             }
         }
@@ -596,12 +735,14 @@ public struct ContextChip: Codable, Hashable, Sendable {
     public let label: String
     public let ref: Ref
     public let quote: String?
+    public let excerpt: String?
 
-    public init(kind: Kind, label: String, ref: Ref, quote: String? = nil) {
+    public init(kind: Kind, label: String, ref: Ref, quote: String? = nil, excerpt: String? = nil) {
         self.kind = kind
         self.label = label
         self.ref = ref
         self.quote = quote
+        self.excerpt = excerpt
     }
 }
 

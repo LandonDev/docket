@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { HostId, PillarId } from './ids'
+import { PillarIdSchema, type HostId, type PillarId } from './ids'
 
 /**
  * The canvas pane's wire: the eleven kinds of item, what an item points at,
@@ -98,17 +98,57 @@ export const CanvasItemSchema = z.object({
   updatedAt: z.number().int()
 })
 
-/** What a message or a new thread is about: a task, a mail, an event, or a selection in an item. */
+/**
+ * What a chip can be: a task, a mail, an event or a selection (milestone 25,
+ * Ask), and every kind the composer's `@` offers (F-mentions: a project, a
+ * person, a LifeOS document, a canvas item, a held act, a routine, a
+ * project's card). The phone decodes a kind it does not know.
+ */
+export const CHIP_KINDS = ['task', 'mail', 'event', 'selection', 'project', 'person', 'doc', 'item', 'held', 'routine', 'card'] as const
+export type ChipKind = (typeof CHIP_KINDS)[number]
+/** The LifeOS rows a chip may name directly (a LifeOS document is a `CanvasSource`). */
+export const CHIP_LIFEOS_TABLES = ['tasks', 'mailThreads', 'events', 'projects', 'people'] as const
+
+/** What a message or a new thread is about: a task, a mail, an event, a selection in an item, or anything `@` offers. */
 export interface ContextChip {
-  kind: 'task' | 'mail' | 'event' | 'selection'
+  kind: ChipKind
   label: string
-  ref: { at: 'lifeos'; table: 'tasks' | 'mailThreads' | 'events'; id: string } | CanvasSource
+  ref:
+    | { at: 'lifeos'; table: (typeof CHIP_LIFEOS_TABLES)[number]; id: string }
+    | CanvasSource
+    /** a canvas item by its id (a thread-made item's source names none) */
+    | { at: 'item'; id: string }
+    /** a pillar's own row: a held act (`outbox`), a routine (`routines`) */
+    | { at: 'work'; pillar: PillarId; id: string }
   /** a selection's text */
   quote?: string
+  /** a few words of what the thing says, for the model beside the reference */
+  excerpt?: string
+}
+export const CHIP_EXCERPT_MAX = 600
+/** Each kind in a sentence: "About this held act: …", "Remove the held act". */
+export const CHIP_NOUN: Record<ChipKind, string> = {
+  task: 'task',
+  mail: 'mail',
+  event: 'event',
+  selection: 'selection',
+  project: 'project',
+  person: 'person',
+  doc: 'document',
+  item: 'item',
+  held: 'held act',
+  routine: 'routine',
+  card: 'card'
 }
 export const ContextChipSchema = z.object({
-  kind: z.enum(['task', 'mail', 'event', 'selection']),
+  kind: z.enum(CHIP_KINDS),
   label: z.string().max(500),
-  ref: z.union([z.object({ at: z.literal('lifeos'), table: z.enum(['tasks', 'mailThreads', 'events']), id: z.string() }), CanvasSourceSchema]),
-  quote: z.string().max(20_000).optional()
+  ref: z.union([
+    z.object({ at: z.literal('lifeos'), table: z.enum(CHIP_LIFEOS_TABLES), id: z.string() }),
+    CanvasSourceSchema,
+    z.object({ at: z.literal('item'), id: z.string() }),
+    z.object({ at: z.literal('work'), pillar: PillarIdSchema, id: z.string() })
+  ]),
+  quote: z.string().max(20_000).optional(),
+  excerpt: z.string().max(CHIP_EXCERPT_MAX).optional()
 })

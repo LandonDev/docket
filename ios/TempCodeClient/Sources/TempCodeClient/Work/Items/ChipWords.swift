@@ -5,9 +5,19 @@ import TempCodeContract
 /// and `withContextChips` (src/renderer/src/work/canvas/chips.ts), word for word.
 public enum ChipWords {
     public static func line(_ chip: ContextChip) -> String {
-        let head = "About this \(chip.kind.rawValue): \(chip.label) (\(refWords(chip.ref)))"
-        guard chip.kind == .selection, let quote = chip.quote?.trimmingCharacters(in: .whitespacesAndNewlines), !quote.isEmpty else { return head }
-        return head + "\n" + quote.split(separator: "\n", omittingEmptySubsequences: false).map { "> \($0)" }.joined(separator: "\n")
+        let head = "About this \(noun(chip.kind)): \(chip.label) (\(refWords(chip.ref)))"
+        let under = (chip.kind == .selection ? chip.quote : chip.excerpt)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !under.isEmpty else { return head }
+        return head + "\n" + under.split(separator: "\n", omittingEmptySubsequences: false).map { "> \($0)" }.joined(separator: "\n")
+    }
+
+    /// The desktop's `CHIP_NOUN` (src/shared/work/canvas.ts).
+    private static func noun(_ kind: ContextChip.Kind) -> String {
+        switch kind {
+        case .doc: "document"
+        case .held: "held act"
+        default: kind.rawValue
+        }
     }
 
     /// The message as sent: the chips' lines, then his words; a slash command stays first.
@@ -24,6 +34,8 @@ public enum ChipWords {
         case .canvasSource(.lifeos(let source)): return "LifeOS \(source.table.rawValue) \(source.id)"
         case .canvasSource(.file(let file)): return file.path
         case .canvasSource(let source): return jsonWords(source)
+        case .object2(let item): return "canvas item \(item.id)"
+        case .object3(let row): return "Work \(row.pillar.rawValue) \(row.id)"
         case .unknown(let value): return jsonWords(value)
         }
     }

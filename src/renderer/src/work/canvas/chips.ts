@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { ContextChip } from "@shared/work";
+import { CHIP_NOUN, type ContextChip } from "@shared/work";
 import { chipPort } from "../../lib/contextChips";
 import { sessionStore } from "../../lib/tcserver/store";
 
@@ -65,18 +65,22 @@ export function aboutFor(sessionId: string, created: (id: string) => boolean = (
   return undefined;
 }
 
-/** Where a chip points, in words a model can act on. */
+/** Where a chip points, in words a model can act on with its tools. */
 function refWords(ref: ContextChip["ref"]): string {
   if (ref.at === "lifeos") return `LifeOS ${ref.table} ${ref.id}`;
   if (ref.at === "file") return ref.path;
+  if (ref.at === "item") return `canvas item ${ref.id}`;
+  if (ref.at === "work") return `Work ${ref.pillar} ${ref.id}`;
   return JSON.stringify(ref);
 }
 
-/** One chip as the model reads it: a line of its own, a selection's words quoted under it. */
+const quoted = (text: string): string => text.split("\n").map((line) => `> ${line}`).join("\n");
+
+/** One chip as the model reads it: a line of its own, a selection's words or a mention's excerpt quoted under it. */
 export function chipLine(chip: ContextChip): string {
-  const head = `About this ${chip.kind}: ${chip.label} (${refWords(chip.ref)})`;
-  const quote = chip.kind === "selection" && chip.quote ? chip.quote.trim() : "";
-  return quote ? `${head}\n${quote.split("\n").map((line) => `> ${line}`).join("\n")}` : head;
+  const head = `About this ${CHIP_NOUN[chip.kind] ?? chip.kind}: ${chip.label} (${refWords(chip.ref)})`;
+  const under = (chip.kind === "selection" ? chip.quote : chip.excerpt)?.trim() ?? "";
+  return under ? `${head}\n${quoted(under)}` : head;
 }
 
 /**

@@ -1018,6 +1018,8 @@ function untaggedUnion(
   // Two branches that come out as one Swift case (a string or the literal `'live'`, two tuple
   // shapes that are both `[JSONValue]`) are one case: the first decodes and encodes both.
   .filter((c, i, all) => all.findIndex((d) => d.name === c.name && d.type === c.type) === i)
+  // Two branches of different types under one name (two inline objects) cannot share a case: the later ones take their type's suffix.
+  .map((c, i, all) => (all.findIndex((d) => d.name === c.name) === i ? c : { ...c, name: ident(`${c.name}${c.type.replace(/^.*Case/, '')}`) }))
   const body: Lines = []
   if (nested.length) body.push(...nested, '')
   body.push(

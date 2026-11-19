@@ -29,6 +29,9 @@ import Comment01Icon from "@hugeicons/core-free-icons/Comment01Icon";
 import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
 import FileExportIcon from "@hugeicons/core-free-icons/FileExportIcon";
 import TaskAdd01Icon from "@hugeicons/core-free-icons/TaskAdd01Icon";
+import Briefcase01Icon from "@hugeicons/core-free-icons/Briefcase01Icon";
+import UserIcon from "@hugeicons/core-free-icons/UserIcon";
+import KanbanIcon from "@hugeicons/core-free-icons/KanbanIcon";
 import { wrap } from "../chrome/icons";
 
 /** LifeOS's mark, as the approved prototypes draw it (`b-lifeos`): a ring with a meridian and two parallels. Hugeicons has no LifeOS, so it is drawn here in the same shape Hugeicons gives, and takes the one stroke. */
@@ -76,3 +79,9 @@ export const Download = wrap(Download01Icon, "Download");
 export const Export = wrap(FileExportIcon, "Export");
 /** Share on a document's or a sheet's bar: the prototype kit's `share` (Share08). */
 export const Share = wrap(Share08Icon, "Share");
+/** A LifeOS project. */
+export const Project = wrap(Briefcase01Icon, "Project");
+/** A person in LifeOS. */
+export const Person = wrap(UserIcon, "Person");
+/** A card on a project's board. */
+export const Card = wrap(KanbanIcon, "Card");
