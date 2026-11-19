@@ -1,7 +1,8 @@
 /**
  * Colour arithmetic over index.css's token layer, for the tests that hold
- * the tokens to their contrast and hue rules (statusContrast, typeTint).
- * Parses `#rrggbb` and `oklch(L C H)`; follows `var(--name)` through a theme.
+ * the tokens to their contrast and hue rules (tokenContrast, typeTint).
+ * Parses hex, `oklch()`, `hsl()`, `rgb()`, each with an optional alpha, and
+ * `color-mix(in srgb, A n%, transparent)`; follows `var(--name)` through a theme.
  */
 
 export type Theme = Map<string, string>;
@@ -30,21 +31,93 @@ export function themes(css: string): { dark: Theme; light: Theme } {
   return { dark, light: new Map([...dark, ...declarations(css, "html.theme-light")]) };
 }
 
+/** `value` with every `var(--name)` in it replaced by that name's value in the theme, all the way down. */
 export function resolve(theme: Theme, value: string): string {
-  const v = /^var\((--[\w-]+)\)$/.exec(value.trim());
-  return v ? resolve(theme, theme.get(v[1]) ?? "") : value.trim();
+  return value.trim().replace(/var\((--[\w-]+)\)/g, (_, name: string) => resolve(theme, theme.get(name) ?? ""));
 }
 
 const linear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const gamma = (c: number): number => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055);
 const clamp = (c: number): number => Math.min(1, Math.max(0, c));
 
-/** OKLab of a hex colour, or of an oklch() one. */
-export function oklab(value: string): [number, number, number] {
-  const ok = /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)$/.exec(value);
-  if (ok) {
-    const [L, C, H] = ok.slice(1).map(Number);
-    return [L, C * Math.cos((H * Math.PI) / 180), C * Math.sin((H * Math.PI) / 180)];
+/** sRGB channels (gamma-encoded, 0 to 1) and alpha. */
+export type Rgba = [number, number, number, number];
+
+const number = (part: string, whole = 1): number => (part.endsWith("%") ? parseFloat(part) / 100 : parseFloat(part) / whole);
+
+function oklchToRgb(L: number, C: number, H: number): number[] {
+  const a = C * Math.cos((H * Math.PI) / 180);
+  const b = C * Math.sin((H * Math.PI) / 180);
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ].map((c) => gamma(clamp(c)));
+}
+
+function hslToRgb(h: number, s: number, l: number): number[] {
+  const a = s * Math.min(l, 1 - l);
+  return [0, 8, 4].map((n) => {
+    const k = (n + h / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  });
+}
+
+/** Any colour the token layer writes, as sRGB and alpha. Throws on what it cannot read, so no test passes on a guess. */
+export function rgba(value: string): Rgba {
+  const v = value.trim().toLowerCase();
+  if (v === "transparent") return [0, 0, 0, 0];
+  if (v === "white") return [1, 1, 1, 1];
+  if (v === "black") return [0, 0, 0, 1];
+  const hex = /^#([0-9a-f]{3,8})$/.exec(v);
+  if (hex && [3, 4, 6, 8].includes(hex[1].length)) {
+    const digits = hex[1].length < 6 ? [...hex[1]].map((d) => d + d).join("") : hex[1];
+    const [r, g, b, a = 1] = (digits.match(/../g) ?? []).map((pair) => parseInt(pair, 16) / 255);
+    return [r, g, b, a];
   }
+  const fn = /^(oklch|hsla?|rgba?)\(([^()]*)\)$/.exec(v);
+  if (fn) {
+    const [x, y, z, alpha] = fn[2].split(/[\s,/]+/).filter(Boolean);
+    const a = alpha === undefined ? 1 : number(alpha);
+    if (fn[1] === "oklch") return [...oklchToRgb(number(x), parseFloat(y), parseFloat(z)), a] as Rgba;
+    if (fn[1].startsWith("hsl")) return [...hslToRgb(parseFloat(x), number(y), number(z)), a] as Rgba;
+    return [number(x, 255), number(y, 255), number(z, 255), a];
+  }
+  // A colour thinned toward nothing: its own channels at n% of its alpha.
+  const mix = /^color-mix\(in srgb,\s*(.+?)\s+([\d.]+)%\s*,\s*transparent\s*\)$/.exec(v);
+  if (mix) {
+    const [r, g, b, a] = rgba(mix[1]);
+    return [r, g, b, (a * parseFloat(mix[2])) / 100];
+  }
+  throw new Error(`unparsed colour ${value}`);
+}
+
+/** `top` laid over the grounds under it, nearest first, as an opaque colour. The last ground must be opaque. */
+export function over(top: string, ...grounds: string[]): string {
+  let [r, g, b, a] = rgba(top);
+  for (const ground of grounds) {
+    if (a >= 1) break;
+    const [gr, gg, gb, ga] = rgba(ground);
+    const out = a + ga * (1 - a);
+    [r, g, b] = [r, g, b].map((c, i) => (c * a + [gr, gg, gb][i] * ga * (1 - a)) / (out || 1));
+    a = out;
+  }
+  if (a < 1 - 1e-9) throw new Error(`${top} is not opaque over ${grounds.join(", ") || "nothing"}`);
+  return `rgb(${[r, g, b].map((c) => +(c * 255).toFixed(4)).join(" ")})`;
+}
+
+/** Linear sRGB of an opaque colour. */
+function linearRgb(value: string): number[] {
+  const [r, g, b, a] = rgba(value);
+  if (a < 1) throw new Error(`${value} has no luminance until it is laid over a ground (over)`);
+  return [r, g, b].map(linear);
+}
+
+/** OKLab of an opaque colour. */
+export function oklab(value: string): [number, number, number] {
   const [r, g, b] = linearRgb(value);
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
@@ -56,28 +129,13 @@ export function oklab(value: string): [number, number, number] {
   ];
 }
 
-/** Linear sRGB of a hex or oklch() colour, clamped to the gamut. */
-function linearRgb(value: string): number[] {
-  const hex = /^#([0-9a-f]{6})$/i.exec(value);
-  if (hex) return [0, 2, 4].map((i) => linear(parseInt(hex[1].slice(i, i + 2), 16) / 255));
-  if (!/^oklch\(/.test(value)) throw new Error(`unparsed colour ${value}`);
-  const [L, a, b] = oklab(value);
-  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
-  return [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  ].map(clamp);
-}
-
-/** Relative luminance of a hex or oklch() colour. */
+/** Relative luminance of an opaque colour. */
 export function luminance(value: string): number {
   const [r, g, b] = linearRgb(value);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+/** WCAG contrast of two opaque colours. */
 export function contrast(a: string, b: string): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
