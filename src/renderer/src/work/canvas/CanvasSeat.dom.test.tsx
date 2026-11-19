@@ -21,6 +21,12 @@ const host = vi.hoisted(() => ({
   pushes: new Set<(push: never) => void>(),
   opens: new Set<() => void>(),
 }));
+// Every kind is built now (mail last, milestone 23): the stub test stands mail on the frame's stub body.
+vi.mock("../mail/canvas", async () => {
+  const { defineChunk } = await import("../../lib/lazyChunk");
+  const { Mail } = await import("../icons");
+  return { mailCanvas: { kind: "mail", label: "Mail", icon: Mail, opens: {}, phone: "native", guestable: false, chunk: defineChunk("work-mail-canvas-stub", () => import("./NotBuilt")) } };
+});
 vi.mock("../../lib/connection", async (original) => {
   const link = {
     environmentId: "local",
@@ -75,7 +81,7 @@ describe("a Work thread's canvas", () => {
   });
 
   it("shows two stub items as tabs, the first shown, each saying it is not built", async () => {
-    // Mail is a kind still to be built (milestone 23).
+    // Mail stands on the stub body here (the mock above).
     const { container } = await seat([{ ...DOC, kind: "mail" }, SHEET]);
     const tabs = within(screen.getByRole("tablist", { name: "Open items" })).getAllByRole("tab");
     expect(tabs.map((tab) => tab.textContent)).toEqual(["Run of show", "Travel budget"]);
