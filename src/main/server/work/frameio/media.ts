@@ -10,7 +10,7 @@ import { runnerOf } from '../formats/jobs'
 import { probeFile } from '../media/probe'
 import type { MediaSourceAdapter } from '../media/sources'
 import type { NoteInput } from '../media/store'
-import { itemRow, liveOf as mediaOf, pushSoon } from '../media/view'
+import { liveOf as mediaOf, pushSoon } from '../media/view'
 import type { WorkCtx } from '../modules'
 import type { FioFile, FioLink } from './api'
 import { frameioConfig } from './auth'
@@ -117,8 +117,9 @@ export async function openFile(ctx: WorkCtx, sessionId: string, account: string,
   title = files[files.length - 1]?.name ?? title
   const pane = ctx.canvas.paneOf(sessionId)
   const item = ctx.canvas.open(pane, 'media', { at: 'frameio', account, fileId: files[0].id }, title)
-  itemRow(ctx, item)
   const { store } = mediaOf(ctx)
+  // The first version is named for its own file, not for the item.
+  store.ensureItem(item.id, item.sessionId, { source: item.source, name: files[0].name, by: 'owner' })
   const have = new Set(store.versions(item.id).flatMap((v) => (v.source.at === 'frameio' ? [v.source.fileId] : [])))
   for (const f of files) if (!have.has(f.id)) store.addVersion(item.id, { source: { at: 'frameio', account, fileId: f.id }, name: f.name, by: 'owner' })
   if (!store.item(item.id)?.shared) store.setShared(item.id, true)
