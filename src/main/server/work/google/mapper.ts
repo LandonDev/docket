@@ -106,7 +106,7 @@ function mapTab(
 ) {
   // Document index -> where that UTF-16 unit landed, for comment anchors.
   const spans: { segment: string; start: number; end: number; blockId: string; at: number; len: number }[] = []
-  const suggestion = new Map<string, { kind: SidecarChange['kind']; ranges: TextRange[]; text: string }>()
+  const suggestion = new Map<string, { sid: string; kind: SidecarChange['kind']; ranges: TextRange[]; text: string }>()
   const lists = tab.lists ?? {}
   const objects = tab.inlineObjects ?? {}
   const sections: { columns: number }[] = []
@@ -177,10 +177,11 @@ function mapTab(
       for (const [kind, ids] of kinds)
         for (const sid of (ids ?? []) as string[]) {
           exact = false
-          const s = suggestion.get(sid) ?? { kind, ranges: [], text: '' }
+          const key = `${kind}:${sid}`
+          const s = suggestion.get(key) ?? { sid, kind, ranges: [], text: '' }
           s.ranges.push({ blockId: block.id, from: at, to: at + text.length })
           s.text += text
-          suggestion.set(sid, s)
+          suggestion.set(key, s)
         }
       const t: TextRun = { type: 'text', text, styles }
       runs.push(href ? { type: 'link', href, content: [t] } : t)
@@ -312,7 +313,8 @@ function mapTab(
 
   // Suggestions -> changes. Author and date are on the document's suggestion threads.
   const changes: SidecarChange[] = []
-  for (const [sid, s] of suggestion) {
+  for (const s of suggestion.values()) {
+    const sid = s.sid
     const head = sugMeta.get(sid)?.headPost
     for (const range of s.ranges)
       changes.push({ id: `${tabId || 'b'}:${sid}:${changes.length}`, kind: s.kind, author: head?.author?.displayName || 'Someone', ...(head?.createTime ? { date: head.createTime } : {}), range, text: s.text })
