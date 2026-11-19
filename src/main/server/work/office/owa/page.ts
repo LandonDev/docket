@@ -30,6 +30,8 @@ export interface OwaTransport {
 
 export interface OwaPageOptions {
   endpoint: () => Promise<string>
+  /** makes the carrier's page (the box browser's stage puts a headed one off the captured screen); absent: a plain tab */
+  open?: (url: string) => Promise<string>
   /** marks the browser in use for the length of a call, so it is not stopped under one */
   use?: () => () => void
   url?: string
@@ -124,7 +126,7 @@ export class OwaPage implements OwaTransport {
     }
     const cdp = this.cdp
     if (!this.target) {
-      const { targetId } = await cdp.send<{ targetId: string }>('Target.createTarget', { url: RESERVED_URL })
+      const targetId = this.o.open ? await this.o.open(RESERVED_URL) : (await cdp.send<{ targetId: string }>('Target.createTarget', { url: RESERVED_URL })).targetId
       RESERVED_TARGETS.add(targetId)
       this.target = targetId
       this.sid = (await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true })).sessionId

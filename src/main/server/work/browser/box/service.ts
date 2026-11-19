@@ -45,6 +45,12 @@ export interface BrowserLink {
   endpoint(): Promise<string>
   pid(): number | null
   touch(): void
+  /** The browser runs headed on its private display (stage.ts): each page is its own full-screen window, and nothing here raises one. */
+  headed?(): boolean
+  /** One new page and its target: the stage's own way, so a headed page is a window in its place. Absent: a plain tab. */
+  open?(url: string): Promise<string>
+  /** The browser's windows are in their places (the stage took in the one it started with). */
+  ready?(): Promise<unknown>
 }
 
 class Refused extends Error {
@@ -139,6 +145,8 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
 
 export interface BoxServiceOptions {
   browser: BrowserLink
+  /** told the page a session last used, each time it uses one: what a stream of that thread's pane shows after its session stops */
+  onPage?: (session: string, targetId: string) => void
   /** run on every use of the browser, after its connection is up: the login import's check */
   use?: (cdp: Cdp) => Promise<unknown>
   now?: () => number
@@ -393,9 +401,28 @@ export class BoxComputerService {
           .catch(() => {})
       })
       this.cdp = cdp
+      await this.opts.browser.ready?.()
       return cdp
     })().finally(() => (this.connecting = null))
     return this.connecting
+  }
+
+  /** One new page: the stage's window when the browser is headed, else a tab. */
+  private async newPage(url: string): Promise<string> {
+    if (this.opts.browser.open) return this.opts.browser.open(url)
+    return (await (await this.browser()).send<{ targetId: string }>('Target.createTarget', { url })).targetId
+  }
+
+  /**
+   * A headless tab behind another is never drawn, and keys reach only the tab
+   * in front, so a capture and an act bring theirs forward first. A headed
+   * page is the front tab of its own window and keeps painting when covered:
+   * nothing raises it but the watcher (stage.ts), or an act on one page would
+   * put it over the page he watches.
+   */
+  private async toFront(cdp: Cdp, sid: string): Promise<void> {
+    if (this.opts.browser.headed?.()) return
+    await cdp.send('Page.bringToFront', {}, sid).catch(() => {})
   }
 
   private pid(): number {
@@ -464,7 +491,7 @@ export class BoxComputerService {
   private async pageOf(ref: { id?: number; title?: string } | undefined, session?: string): Promise<Page> {
     let pages = await this.pages()
     if (!pages.length) {
-      await (await this.browser()).send('Target.createTarget', { url: 'about:blank' })
+      await this.newPage('about:blank')
       pages = await this.pages()
     }
     let page: Page | undefined
@@ -473,7 +500,10 @@ export class BoxComputerService {
     else page = this.mainOf(pages, session)
     if (!page) return refuse('window_not_found', 'no such window in the box browser', { candidates: pages.map((p) => p.title) })
     this.mainTarget = page.targetId
-    if (session) this.session(session).main = page.targetId
+    if (session) {
+      this.session(session).main = page.targetId
+      this.opts.onPage?.(session, page.targetId)
+    }
     return page
   }
 
@@ -486,6 +516,12 @@ export class BoxComputerService {
       this.attached.set(page.targetId, sid)
       await Promise.all(['Page.enable', 'DOM.enable', 'Accessibility.enable', 'Runtime.enable'].map((m) => cdp.send(m, {}, sid)))
       await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sid)
+      if (this.opts.browser.headed?.()) {
+        // A covered page still acts focused, so keys and text sent through DevTools land in it; and a file
+        // chooser is never drawn on the display, where it would sit in the picture and wait for nobody.
+        await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sid).catch(() => {})
+        await cdp.send('Page.setInterceptFileChooserDialog', { enabled: true }, sid).catch(() => {})
+      }
     }
     return { cdp, sid }
   }
@@ -570,7 +606,7 @@ export class BoxComputerService {
         await c.send('Page.navigate', { url }, sid)
         window = { id: blank.window, title: blank.title }
       } else {
-        const { targetId } = await cdp.send<{ targetId: string }>('Target.createTarget', { url })
+        const targetId = await this.newPage(url)
         const pages = await this.pages()
         const p = pages.find((x) => x.targetId === targetId)
         if (p && !window) window = { id: p.window, title: p.title }
@@ -710,7 +746,7 @@ export class BoxComputerService {
   private async shot(sessionId: string, page: Page, o: { maxEdge?: number; region?: number[]; format?: 'jpeg' | 'png' }): Promise<Shot> {
     const { cdp, sid } = await this.on(page)
     // A tab behind another is never drawn: its capture would wait for a frame that does not come.
-    await cdp.send('Page.bringToFront', {}, sid).catch(() => {})
+    await this.toFront(cdp, sid)
     const m = await cdp.send<{ cssVisualViewport: { clientWidth: number; clientHeight: number } }>('Page.getLayoutMetrics', {}, sid)
     const vw = Math.round(m.cssVisualViewport.clientWidth)
     const vh = Math.round(m.cssVisualViewport.clientHeight)
@@ -763,7 +799,7 @@ export class BoxComputerService {
     for (const i of named) if (!s.book.nodes.has(i)) refuse('no_such_element', `there is no element ${i}; read the window`, { element: i })
     // Keys and text reach only the tab in front: another's capture may have left this one behind.
     const { cdp: front, sid: frontSid } = await this.on(page)
-    await front.send('Page.bringToFront', {}, frontSid).catch(() => {})
+    await this.toFront(front, frontSid)
     const tier: Tier = q.tiers.includes('process') ? 'process' : (q.tiers[0] ?? 'ax')
     const steps: StepResult[] = []
     let stopped = false

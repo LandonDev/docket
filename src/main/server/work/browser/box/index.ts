@@ -12,7 +12,9 @@ import type { WorkCtx, WorkTool } from '../../modules'
 import { DriveStore } from '../drive'
 import { BoxChromium } from './chromium'
 import { takeImports } from './logins'
-import { BoxComputerService, inProcessSpawn } from './service'
+import { BoxComputerService, closedToAgents, inProcessSpawn } from './service'
+import { BoxStage } from './stage'
+import { videoToolsAt } from './videoSetting'
 
 /**
  * The box's browser for Work threads (docs/agents/work-browser.md "The box's
@@ -27,6 +29,8 @@ export interface BoxBrowserHost {
   /** <dataDir>/work-browser/box: the profile, the import folder and the carrier's marker live here */
   root: string
   browser: BoxChromium
+  /** where a headed browser's windows are and which is on top (stage.ts) */
+  stage: BoxStage
   service: ComputerService
   sessions: ComputerSessions
 }
@@ -62,12 +66,27 @@ export interface BoxRegistry extends ComputerRegistry {
  * profile lives in `work-browser/box/profile`, the service's pictures in
  * `work-browser/box/computer`.
  */
-export function wireBoxBrowser(o: { registry: BoxRegistry; store: SettingsStore; dataDir: string; log?: (line: string) => void }): BoxBrowserHost | null {
+export function wireBoxBrowser(o: { registry: BoxRegistry; store: SettingsStore; dataDir: string; log?: (line: string) => void; videoOn?: () => boolean }): BoxBrowserHost | null {
   const root = join(o.dataDir, 'work-browser', 'box')
   const log = o.log ?? ((line: string) => console.log(`[box browser] ${line}`))
-  const browser = new BoxChromium({ root, log, busy })
+  // Headed for live video when the tools are installed and the setting is on (videoSetting.ts); read at every start of the browser.
+  const browser = new BoxChromium({ root, log, busy, video: () => (o.videoOn?.() === false ? null : videoToolsAt(o.dataDir)) })
   if (browser.unavailable()) return null
-  const make = () => new BoxComputerService({ browser: { endpoint: () => browser.endpoint(), pid: () => browser.pid, touch: () => browser.touch() }, use: (cdp) => takeImports(root, cdp, log), log })
+  const stage = new BoxStage({ endpoint: () => browser.endpoint(), display: () => browser.display }, { closed: closedToAgents, log })
+  browser.onStop(() => stage.close())
+  const make = () =>
+    new BoxComputerService({
+      browser: {
+        endpoint: () => browser.endpoint(),
+        pid: () => browser.pid,
+        touch: () => browser.touch(),
+        headed: () => stage.headed(),
+        open: (url) => stage.open(url),
+        ready: () => stage.ready()
+      },
+      use: (cdp) => takeImports(root, cdp, log),
+      log
+    })
   const service = new ComputerService({
     dataDir: join(root, 'computer'),
     bin: () => 'box-browser',
@@ -84,7 +103,7 @@ export function wireBoxBrowser(o: { registry: BoxRegistry; store: SettingsStore;
   })
   o.registry.onMeta((m) => sessions.onMeta(m))
   o.registry.onRemoved((ids) => void sessions.end(ids))
-  host = { root, browser, service, sessions }
+  host = { root, browser, stage, service, sessions }
   return host
 }
 

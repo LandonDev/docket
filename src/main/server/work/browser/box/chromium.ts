@@ -1,7 +1,9 @@
-import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { execFile, spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import { BoxXDisplay, DISPLAY_HEIGHT, DISPLAY_WIDTH, displayEnv, type BoxDisplay } from './display'
+import type { VideoTools } from './videoSetting'
 
 /**
  * The box's one Chromium (docs/agents/work-browser.md "The box's browser"):
@@ -10,6 +12,11 @@ import { delimiter, join } from 'node:path'
  * under a memory cap, its DevTools bound to 127.0.0.1 alone. The box is
  * shared by every other thread, so there is exactly one, and it is never
  * started as root or with its sandbox off.
+ *
+ * With the video tools installed and `work.browser.video` not off it runs
+ * headed on a private display (display.ts), so the engine can capture what it
+ * draws; else headless, as it did before video. A display that will not start
+ * is not an error: the browser starts headless and the picture is the JPEG one.
  */
 
 export const IDLE_STOP_MS = 10 * 60_000
@@ -39,10 +46,21 @@ export function findChromium(env: NodeJS.ProcessEnv = process.env, exists: (p: s
   return null
 }
 
-/** The flags every launch carries: headless, its own profile, DevTools on loopback, small renderers. */
-export function chromiumArgs(profile: string): string[] {
+/**
+ * The flags every launch carries: its own profile, DevTools on loopback, small
+ * renderers; headless, or headed on the private display:
+ * - a window that is covered keeps painting, so a page under the watched one
+ *   still answers its screencast and its captures
+ * - no offer to restore pages after the browser was killed
+ * - a Chrome for Testing build draws a bar that says so in every window, full
+ *   screen too; `--test-type=gpu` is the one switch that leaves it out (a bare
+ *   `--test-type` does not), so only such a build gets it
+ */
+export function chromiumArgs(profile: string, headed?: { testing: boolean }): string[] {
   return [
-    '--headless=new',
+    ...(headed
+      ? ['--window-position=0,0', '--disable-backgrounding-occluded-windows', '--hide-crash-restore-bubble', ...(headed.testing ? ['--test-type=gpu'] : [])]
+      : ['--headless=new']),
     `--user-data-dir=${profile}`,
     '--remote-debugging-address=127.0.0.1',
     '--remote-debugging-port=0',
@@ -54,10 +72,97 @@ export function chromiumArgs(profile: string): string[] {
     '--disable-sync',
     '--renderer-process-limit=4',
     '--js-flags=--max-old-space-size=512',
-    '--window-size=1280,800',
+    `--window-size=${DISPLAY_WIDTH},${DISPLAY_HEIGHT}`,
     '--lang=en-US',
     'about:blank'
   ]
+}
+
+/** Chromium's "block" for a site permission. */
+const BLOCK = 2
+
+/**
+ * What a headed browser would otherwise put on the screen or keep, turned off
+ * in the profile (headless shows none of it):
+ * - no password is offered to be saved and none is filled, so one he types
+ *   while he drives is never kept for the agent to submit
+ * - no address or card is saved or filled
+ * - every permission a page can ask for is refused without a prompt
+ * - a download lands in the browser's own folder without a dialog
+ * - no sign-in to the browser itself, no translate bubble
+ * - the last exit reads as clean, so nothing offers to restore its pages
+ */
+export function headedPrefs(downloads: string): Record<string, unknown> {
+  return {
+    credentials_enable_service: false,
+    credentials_enable_autosignin: false,
+    profile: {
+      password_manager_leak_detection: false,
+      exit_type: 'Normal',
+      exited_cleanly: true,
+      default_content_setting_values: Object.fromEntries(HEADED_BLOCKED.map((name) => [name, BLOCK]))
+    },
+    autofill: { profile_enabled: false, credit_card_enabled: false },
+    download: { prompt_for_download: false, default_directory: downloads, directory_upgrade: true },
+    signin: { allowed: false, allowed_on_next_startup: false },
+    translate: { enabled: false }
+  }
+}
+/** The permissions a page would raise a prompt for. */
+export const HEADED_BLOCKED = [
+  'notifications',
+  'geolocation',
+  'media_stream_mic',
+  'media_stream_camera',
+  'midi_sysex',
+  'clipboard',
+  'idle_detection',
+  'window_placement',
+  'local_fonts',
+  'usb_guard',
+  'serial_guard',
+  'hid_guard',
+  'bluetooth_guard',
+  'file_system_write_guard',
+  'file_system_read_guard',
+  'automatic_downloads',
+  'sensors',
+  'ar',
+  'vr',
+  'captured_surface_control',
+  'keyboard_lock',
+  'pointer_lock'
+] as const
+
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+/** `over` laid on `base`, object by object: what the profile already holds beside it stays. */
+export function mergePrefs(base: Record<string, unknown>, over: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(over)) out[key] = isObject(value) && isObject(out[key]) ? mergePrefs(out[key] as Record<string, unknown>, value) : value
+  return out
+}
+
+/** Writes the headed browser's preferences into the profile before it starts; a file that is not JSON is replaced. */
+export function writeHeadedPrefs(profile: string, downloads: string): void {
+  const dir = join(profile, 'Default')
+  const file = join(dir, 'Preferences')
+  let kept: Record<string, unknown> = {}
+  try {
+    const read: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    if (isObject(read)) kept = read
+  } catch {
+    // a new profile, or a file cut short by a kill
+  }
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  mkdirSync(downloads, { recursive: true, mode: 0o700 })
+  writeFileSync(file, JSON.stringify(mergePrefs(kept, headedPrefs(downloads))), { mode: 0o600 })
+  // a file that was already there keeps its old mode through the write
+  chmodSync(file, 0o600)
+}
+
+/** True for a Chrome for Testing build, by what the binary says of itself. */
+export function isChromeForTesting(bin: string): Promise<boolean> {
+  return new Promise((resolve) => execFile(bin, ['--version'], { timeout: 10_000 }, (err, stdout) => resolve(!err && /for testing/i.test(stdout))))
 }
 
 /** Resident memory of `pid` and every process under it, in MB, read from /proc. */
@@ -96,6 +201,12 @@ export interface BoxChromiumOptions {
   watchMs?: number
   /** something waits on a page (a held step): the idle stop waits too */
   busy?: () => boolean
+  /** The video tools, when they are installed and the setting is on: the browser then starts headed. Asked at every start. */
+  video?: () => VideoTools | null
+  /** a Chrome for Testing build gets the switch that hides its bar; `isChromeForTesting` by default */
+  testing?: (bin: string) => Promise<boolean>
+  /** the private display a headed browser draws on; a `BoxXDisplay` on the tools by default */
+  makeDisplay?: (tools: VideoTools) => Pick<BoxXDisplay, 'start' | 'stop' | 'env'>
   log?: (line: string) => void
 }
 
@@ -119,6 +230,9 @@ export class BoxChromium {
   private exiting: Promise<void> = Promise.resolve()
   /** moved by every stop: a start that a stop overtook does not go on to launch */
   private generation = 0
+  /** the private display of a headed browser, for exactly as long as that browser runs */
+  private xdisplay: Pick<BoxXDisplay, 'start' | 'stop' | 'env'> | null = null
+  private videoTools: VideoTools | null = null
 
   constructor(private readonly opts: BoxChromiumOptions) {}
 
@@ -130,6 +244,14 @@ export class BoxChromium {
   }
   get running(): boolean {
     return !!this.child && this.child.exitCode === null && this.child.signalCode === null
+  }
+  /** The display a headed browser draws on, while it runs; null for a headless one. */
+  get display(): BoxDisplay | null {
+    return this.running ? (this.xdisplay?.env ?? null) : null
+  }
+  /** The tools the running headed browser was started with. */
+  get tools(): VideoTools | null {
+    return this.display ? this.videoTools : null
   }
   /** Why this host has no browser, or null. */
   unavailable(): string | null {
@@ -171,13 +293,25 @@ export class BoxChromium {
     rmSync(portFile, { force: true })
     // A crash leaves the profile locked to the old pid; nothing else uses this profile, so the lock is ours to clear.
     for (const lock of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) rmSync(join(this.profile, lock), { force: true })
-    const child = (this.opts.spawn ?? nodeSpawn)(bin, chromiumArgs(this.profile), { stdio: 'ignore', detached: true })
+    const pair = await this.startDisplay()
+    if (generation !== this.generation) {
+      await this.stopDisplay()
+      throw new Error('the box browser was stopped as it started')
+    }
+    let args = chromiumArgs(this.profile)
+    if (pair) {
+      writeHeadedPrefs(this.profile, join(this.opts.root, 'downloads'))
+      args = chromiumArgs(this.profile, { testing: await (this.opts.testing ?? isChromeForTesting)(bin) })
+    }
+    // A headed browser is handed its own display and nothing of this process's; a headless one needs none.
+    const child = (this.opts.spawn ?? nodeSpawn)(bin, args, { stdio: 'ignore', detached: true, ...(pair ? { env: displayEnv(pair) } : {}) })
     this.child = child
     child.once('exit', () => {
       if (this.child !== child) return
       this.child = null
       this.ws = null
       this.clear()
+      void this.stopDisplay()
       this.tell('exited')
     })
     const until = Date.now() + START_MS
@@ -198,7 +332,7 @@ export class BoxChromium {
       void this.stop('asked')
       throw new Error('Chromium did not open DevTools in time')
     }
-    this.opts.log?.(`box browser: started (pid ${child.pid})`)
+    this.opts.log?.(`box browser: started ${pair ? `headed on ${pair.DISPLAY}` : 'headless'} (pid ${child.pid})`)
     this.touch()
     const cap = this.opts.capMb ?? MEMORY_CAP_MB
     this.watch = setInterval(() => {
@@ -223,8 +357,10 @@ export class BoxChromium {
     const pid = child.pid
     const main = new Promise<void>((r) => (child.exitCode !== null || child.signalCode !== null ? r() : child.once('exit', () => r())))
     // Its helpers (zygote, renderers) outlive the browser for a moment and still hold the profile: the stop ends when the whole group has.
+    // The display goes after them: it lives exactly as long as the browser does.
     const exited = main.then(async () => {
       for (let i = 0; i < 100 && groupAlive(pid); i++) await new Promise((r) => setTimeout(r, 50))
+      await this.stopDisplay()
     })
     this.exiting = exited
     try {
@@ -242,6 +378,29 @@ export class BoxChromium {
     this.opts.log?.(`box browser: stopped (${why})`)
     this.tell(why)
     return exited
+  }
+
+  /** The private display, when the tools are there and the setting is on. Null means headless: no tools, the setting off, or a display that would not start. */
+  private async startDisplay(): Promise<BoxDisplay | null> {
+    const tools = this.opts.video?.() ?? null
+    if (!tools) return null
+    const xdisplay = this.opts.makeDisplay?.(tools) ?? new BoxXDisplay({ root: this.opts.root, tools, log: this.opts.log })
+    try {
+      const pair = await xdisplay.start()
+      this.xdisplay = xdisplay
+      this.videoTools = tools
+      return pair
+    } catch (err) {
+      this.opts.log?.(`box browser: its display did not start (${(err as Error).message}); it runs headless`)
+      return null
+    }
+  }
+
+  private async stopDisplay(): Promise<void> {
+    const xdisplay = this.xdisplay
+    this.xdisplay = null
+    this.videoTools = null
+    await xdisplay?.stop()
   }
 
   private clear(): void {

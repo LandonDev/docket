@@ -18,7 +18,8 @@ export function owaCarrier(env: NodeJS.ProcessEnv = process.env): OwaCarrier | n
     page: () => {
       const host = boxBrowser()
       if (!host) return null
-      page ??= new OwaPage({ endpoint: () => host.browser.endpoint(), use: useBoxBrowser, ...(env.TEMP_CODE_OWA_URL ? { url: env.TEMP_CODE_OWA_URL } : {}) })
+      // its page is never on the captured screen and never raised: the stage keeps a headed one off it
+      page ??= new OwaPage({ endpoint: () => host.browser.endpoint(), open: (url) => host.stage.open(url, 'carrier'), use: useBoxBrowser, ...(env.TEMP_CODE_OWA_URL ? { url: env.TEMP_CODE_OWA_URL } : {}) })
       return page
     },
     marker: () => {
