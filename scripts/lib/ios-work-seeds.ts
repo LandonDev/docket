@@ -156,8 +156,10 @@ export async function verifyWork(ready: WorkSeedReady): Promise<string[]> {
     lines.push(`${post.state === 'sent' ? 'PASS' : 'FAIL'} the post went after its grant (state ${post.state})`)
     const waiting = await s.call<{ waiting: number }>('work.outbox.list', {})
     lines.push(`INFO ${waiting.waiting} still wait`)
-    const away = await s.call<{ state: { enabled: boolean } }>('away.get', {})
-    lines.push(`${away.state.enabled ? 'FAIL' : 'PASS'} Away is off after the phone's cycle`)
+    // A stretch since the seed (decided.since stamped when Away went on) tells a cycle from a press that never landed.
+    const away = await s.call<{ state: { enabled: boolean; at: number }; decided: { since: number } }>('away.get', {})
+    const cycled = !away.state.enabled && away.decided.since > 0 && away.state.at > away.decided.since
+    lines.push(`${cycled ? 'PASS' : 'FAIL'} Away went on and off from the phone (${away.state.enabled ? 'still on' : away.decided.since > 0 ? 'off' : 'never on'})`)
     return lines
   } finally {
     s.close()
