@@ -151,6 +151,7 @@ struct AwayReviewSheet: View {
                                     Button(row.result.undo?.label ?? "Undo") { Task { await undo(row) } }
                                         .font(.footnote.weight(.medium))
                                         .foregroundStyle(.tint)
+                                        .rowActionHit()
                                         .buttonStyle(.pressable)
                                         .disabled(undoing.contains(row.result.id))
                                 }
@@ -195,9 +196,9 @@ struct AwayReviewSheet: View {
                     .textStep(.title)
                     .lineLimit(1)
                 Spacer(minLength: 8)
+                // The verb says what the item does, muted: the row opens the item, it does not send.
                 Text(entry.item.state == .failed ? "Send Again" : entry.item.verb)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.tint)
+                    .textStep(.meta)
             }
             .frame(minHeight: Layout.rowHeight)
             .contentShape(Rectangle())

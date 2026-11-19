@@ -54,12 +54,13 @@ struct WorkspaceScreen: View {
                         .listRowBackground(Color.clear)
                 }
                 if !screen.chats.isEmpty {
-                    // The Chats entry is chats alone: its title already says so.
-                    if screen.workspace != nil, !screen.projects.isEmpty {
+                    // Under cards or a Work workspace's view rows; the Chats entry is chats alone.
+                    if screen.showsChatsFold {
                         Text("Chats")
                             .textStep(.meta, weight: .semibold)
                             .accessibilityAddTraits(.isHeader)
-                            .listRowInsets(EdgeInsets(top: foldGap - cardGap / 2, leading: Layout.textEdge, bottom: 0, trailing: Layout.textEdge))
+                            // A card carries half the gap below it; a plain row carries none.
+                            .listRowInsets(EdgeInsets(top: screen.projects.isEmpty ? foldGap : foldGap - cardGap / 2, leading: Layout.textEdge, bottom: 0, trailing: Layout.textEdge))
                             .listRowSeparator(.hidden)
                     }
                     ForEach(screen.chats) { row in
@@ -161,7 +162,7 @@ struct WorkspaceScreen: View {
     private var lifeosNote: String? {
         guard let lead, lead.workspace.kind == .work, let status = lead.client.work.lifeos else { return nil }
         switch status.lifeos {
-        case .signedOut, .refused: return "Sign in to LifeOS on \(lead.client.environment.name) to see this job’s mail, tasks and agenda."
+        case .signedOut, .refused: return "Sign in to LifeOS on \(lead.client.environment.name)."
         case .unreachable: return "Can’t reach LifeOS. Retrying…"
         default: return nil
         }

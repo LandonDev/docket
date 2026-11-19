@@ -91,7 +91,7 @@ public enum OutboxModel {
     }
 
     /// Keys that are the host's bookkeeping, never what goes.
-    private nonisolated static let quiet: Set<String> = ["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why"]
+    private nonisolated static let quiet: Set<String> = ["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host"]
     /// Keys whose text is the body: drawn as one plain-text block, not a field.
     private nonisolated static let bodyKeys = ["text", "body", "message", "content"]
     private nonisolated static let labels = ["to": "To", "cc": "Cc", "bcc": "Bcc", "from": "From", "subject": "Subject", "channel": "In", "title": "Title", "app": "App", "window": "Window", "label": "Act"]

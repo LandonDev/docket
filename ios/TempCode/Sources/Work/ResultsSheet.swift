@@ -59,9 +59,10 @@ struct ResultsSheet: View {
                     .textStep(.title)
                     .strikethrough(result.undoneAt != nil, color: .secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text([result.account, HeldTime.of(result.createdAt)].compactMap { $0 }.joined(separator: " · "))
-                    .textStep(.meta)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if let account = result.account { Text(account).textStep(.meta).lineLimit(1) }
+                    Text(HeldTime.of(result.createdAt)).textStep(.stamp)
+                }
             }
             Spacer(minLength: 8)
             if result.undoneAt != nil {
@@ -70,6 +71,7 @@ struct ResultsSheet: View {
                 Button(undo.label ?? "Undo") { Task { await run(result) } }
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.tint)
+                    .rowActionHit()
                     .buttonStyle(.pressable)
                     .disabled(undoing.contains(result.id))
             }

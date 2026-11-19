@@ -184,7 +184,7 @@ struct OutboxItemScreen: View {
                 Button("Edit") { editing = true }
                     .font(.body.weight(.medium))
                     .padding(.horizontal, 6)
-                    .frame(minHeight: 36)
+                    .frame(minHeight: Layout.rowHeight)
                     .buttonBorderShape(.capsule)
                     .tcGlassButton()
                     .accessibilityIdentifier("outbox-edit")
@@ -213,7 +213,7 @@ struct OutboxItemScreen: View {
             }
             .font(.body.weight(.semibold))
             .padding(.horizontal, 10)
-            .frame(minHeight: 36)
+            .frame(minHeight: Layout.rowHeight)
             .buttonBorderShape(.capsule)
             .tcGlassButton(prominent: true)
             .accessibilityIdentifier("outbox-send")
@@ -222,7 +222,7 @@ struct OutboxItemScreen: View {
             Button(title) { send(item) }
                 .font(.body.weight(.semibold))
                 .padding(.horizontal, 10)
-                .frame(minHeight: 36)
+                .frame(minHeight: Layout.rowHeight)
                 .buttonBorderShape(.capsule)
                 .tcGlassButton(prominent: true)
                 .accessibilityIdentifier("outbox-send")

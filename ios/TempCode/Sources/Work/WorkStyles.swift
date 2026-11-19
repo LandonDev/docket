@@ -76,3 +76,10 @@ enum HeldTime {
             : date.formatted(.dateTime.month(.abbreviated).day())
     }
 }
+
+extension View {
+    /// A text action in a row (Undo, Remove): the word keeps its size, the hit area reaches 44 pt.
+    func rowActionHit() -> some View {
+        frame(minWidth: Layout.rowHeight, minHeight: Layout.rowHeight).contentShape(Rectangle())
+    }
+}

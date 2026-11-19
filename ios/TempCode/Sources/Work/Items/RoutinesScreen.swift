@@ -26,7 +26,13 @@ struct RoutinesScreen: View {
                     .listStyle(.plain)
                 }
             } else if let error {
-                ContentUnavailableView("Can’t Read Routines", systemImage: "exclamationmark.triangle", description: Text(error))
+                ContentUnavailableView {
+                    Label("Can’t Read Routines", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Try Again") { self.error = nil; Task { await load() } }
+                }
             } else {
                 ProgressView()
             }
@@ -69,7 +75,8 @@ struct RoutinesScreen: View {
             let changed = try await client.work.canvas.pause(row, row.enabled)
             rows = rows?.map { $0.id == changed.id ? changed : $0 }
         } catch {
-            self.error = ActionError.wrap(error).message
+            // The list is up: a failed swipe is a toast, never the page's read error (which the list hides).
+            FleetToastCenter.shared.post(message: "\(row.enabled ? "Not paused" : "Not resumed"): \(ActionError.wrap(error).message)")
         }
     }
 }

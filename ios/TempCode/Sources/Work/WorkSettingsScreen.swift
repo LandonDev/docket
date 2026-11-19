@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import TempCodeClient
 import TempCodeContract
 
@@ -32,10 +31,10 @@ struct WorkSettingsScreen: View {
 private struct WorkHostSection: View {
     let client: EnvironmentClient
     let named: Bool
-    @State private var grants: [OutboxGrant]?
-    @State private var rules: [ToolRulesCard]?
+    @State private var grants: WorkRead<[OutboxGrant]> = .reading
+    @State private var rules: WorkRead<[ToolRulesCard]> = .reading
     /// This host's guest links; nil while reading, or when another host serves them.
-    @State private var guests: [GuestLinkRow]?
+    @State private var guests: WorkRead<[GuestLinkRow]>?
     /// A new address, shown once after New Address.
     @State private var rekeyed: String?
     @State private var switching = false
@@ -57,24 +56,26 @@ private struct WorkHostSection: View {
         if work.isOn {
             if let guests {
                 Section("Guest links") {
-                    if guests.isEmpty {
-                        Text("None. A link is made from a document’s or a sheet’s Share.").textStep(.meta)
+                    if let failure = guests.failure {
+                        failed(failure)
+                    } else if let links = guests.value {
+                        if links.isEmpty { Text("No guest links").textStep(.meta) }
+                        ForEach(links, id: \.id) { link in guestRow(link, work: work) }
                     }
-                    ForEach(guests, id: \.id) { link in guestRow(link, work: work) }
                 }
-                .alert("New address", isPresented: Binding(get: { rekeyed != nil }, set: { if !$0 { rekeyed = nil } })) {
-                    Button("Copy") { UIPasteboard.general.string = rekeyed; rekeyed = nil }
-                    Button("Done", role: .cancel) { rekeyed = nil }
-                } message: {
-                    Text("Shown once. The address before opens nothing from now on.")
+                // The new address itself, once, with Copy and Share: the guest link sheet's last step.
+                .sheet(isPresented: Binding(get: { rekeyed != nil }, set: { if !$0 { rekeyed = nil } })) {
+                    if let rekeyed { NewAddressSheet(address: rekeyed) }
                 }
-
             }
             Section("Grants") {
-                if let grants {
-                    if grants.isEmpty {
-                        Text("None. A grant is made from a held item’s Send.").textStep(.meta)
-                    }
+                switch grants {
+                case .reading:
+                    ProgressView().frame(maxWidth: .infinity)
+                case .failed(let failure):
+                    failed(failure)
+                case .loaded(let grants):
+                    if grants.isEmpty { Text("No grants").textStep(.meta) }
                     ForEach(grants, id: \.id) { grant in
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -86,15 +87,16 @@ private struct WorkHostSection: View {
                                 Button("Remove") { Task { await remove(grant) } }
                                     .font(.footnote.weight(.medium))
                                     .foregroundStyle(Tint.destructive)
+                                    .rowActionHit()
                                     .buttonStyle(.pressable)
                             }
                         }
                     }
-                } else {
-                    ProgressView().frame(maxWidth: .infinity)
                 }
             }
-            if let rules {
+            if let failure = rules.failure {
+                Section("Tools") { failed(failure) }
+            } else if let rules = rules.value {
                 ForEach(rules.filter { !$0.lifeos }, id: \.addonId) { card in
                     Section(card.name) {
                         ForEach(card.tools, id: \.tool) { row in
@@ -119,16 +121,32 @@ private struct WorkHostSection: View {
         }
     }
 
+    /// A read that did not come back: its reason and Retry, never an empty list.
+    private func failed(_ message: String) -> some View {
+        HStack(spacing: 12) {
+            Text(message).textStep(.meta, tint: Tint.destructiveText)
+            Spacer(minLength: 8)
+            PillButton("Retry") { Task { await load() } }
+        }
+    }
+
     /// A link: who it is for and what, the role and when it ends (or that it ended), and its actions.
     private func guestRow(_ link: GuestLinkRow, work: WorkHost) -> some View {
         let ended = link.revokedAt != nil || Double(link.expiresAt) < Date.now.timeIntervalSince1970 * 1000
         let ends = Date(timeIntervalSince1970: Double(link.expiresAt) / 1000).formatted(.dateTime.month(.abbreviated).day())
         return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(link.name) · \(link.title)").textStep(.title).lineLimit(1)
-                Text(link.revokedAt != nil ? "Revoked" : ended ? "Ended \(ends)" : "\(link.role.rawValue.capitalized), ends \(ends)\(link.open > 0 ? " · open now" : "")")
-                    .textStep(.meta)
-                    .lineLimit(1)
+                // Who, then what, told apart by step; the role and its end, then "open now" in its own weight.
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(link.name).textStep(.title).lineLimit(1).layoutPriority(1)
+                    Text(link.title).textStep(.meta).lineLimit(1)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(link.revokedAt != nil ? "Revoked" : ended ? "Ended \(ends)" : "\(link.role.rawValue.capitalized), ends \(ends)")
+                        .textStep(.meta)
+                        .lineLimit(1)
+                    if !ended, link.open > 0 { Text("Open now").textStep(.meta, weight: .medium) }
+                }
             }
             .opacity(ended ? 0.5 : 1)
             Spacer(minLength: 8)
@@ -156,7 +174,7 @@ private struct WorkHostSection: View {
     private func revoke(_ link: GuestLinkRow) async {
         do {
             try await client.work.revoke(link)
-            guests = try? await client.work.guestLinks()
+            await loadGuests()
         } catch {
             FleetToastCenter.shared.post(message: "Not revoked: \(ActionError.wrap(error).message)")
         }
@@ -164,10 +182,15 @@ private struct WorkHostSection: View {
 
     private func load() async {
         guard client.work.isOn else { return }
-        // Only the host that serves LifeOS's documents keeps links; the others answer "served elsewhere" and show none.
-        guests = try? await client.work.guestLinks()
-        grants = (try? await client.work.grants()) ?? []
-        rules = try? await client.work.rules()
+        await loadGuests()
+        grants = await .of { try await client.work.grants() }
+        rules = await .of { try await client.work.rules() }
+    }
+
+    /// Only the host that serves LifeOS's documents keeps links; the others answer "served elsewhere" and show none.
+    private func loadGuests() async {
+        let read = await WorkRead.of { try await client.work.guestLinks() }
+        guests = read.failure.map(GuestLinksRead.servedElsewhere) == true ? nil : read
     }
 
     private func flip(_ on: Bool) async {
@@ -181,7 +204,10 @@ private struct WorkHostSection: View {
     private func remove(_ grant: OutboxGrant) async {
         do {
             try await client.work.ungrant(grant)
-            grants?.removeAll { $0.id == grant.id }
+            if var left = grants.value {
+                left.removeAll { $0.id == grant.id }
+                grants = .loaded(left)
+            }
         } catch {
             FleetToastCenter.shared.post(message: "Not removed: \(ActionError.wrap(error).message)")
         }
@@ -190,7 +216,10 @@ private struct WorkHostSection: View {
     private func set(_ card: ToolRulesCard, _ tool: String, _ value: String) async {
         do {
             let next = try await client.work.setRule(card, tool: tool, rule: .init(rawValue: value))
-            if let index = rules?.firstIndex(where: { $0.addonId == next.addonId }) { rules?[index] = next }
+            if var cards = rules.value, let index = cards.firstIndex(where: { $0.addonId == next.addonId }) {
+                cards[index] = next
+                rules = .loaded(cards)
+            }
         } catch {
             FleetToastCenter.shared.post(message: "Rule not set: \(ActionError.wrap(error).message)")
         }

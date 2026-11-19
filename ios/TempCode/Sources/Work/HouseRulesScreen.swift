@@ -25,7 +25,13 @@ struct HouseRulesScreen: View {
             if let page, let client {
                 list(page, client: client)
             } else if let error {
-                ContentUnavailableView("Can’t Read House Rules", systemImage: "exclamationmark.triangle", description: Text(error))
+                ContentUnavailableView {
+                    Label("Can’t Read House Rules", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Try Again") { self.error = nil; Task { await load() } }
+                }
             } else {
                 ProgressView()
             }
@@ -58,8 +64,6 @@ struct HouseRulesScreen: View {
                     Toggle("Write in My Voice", isOn: Binding(get: { voice }, set: { on in Task { await setVoice(on, client: client) } }))
                         .disabled(!client.work.canAdmin)
                         .accessibilityIdentifier("rules-voice")
-                } footer: {
-                    Text("Drafts read like the mail you send.")
                 }
             }
             if !proposals.isEmpty {
@@ -99,7 +103,7 @@ struct HouseRulesScreen: View {
             } header: {
                 if !proposals.isEmpty { Text("Rules") }
             } footer: {
-                if page.rules.isEmpty { Text("No house rules yet. A rule is one line every thread here follows.") }
+                if page.rules.isEmpty { Text("No house rules yet.") }
             }
         }
         .listStyle(.insetGrouped)
@@ -123,7 +127,8 @@ struct HouseRulesScreen: View {
             voice = try await client.work.setVoice(workspaceId, on).voice
         } catch {
             voice = was
-            self.error = ActionError.wrap(error).message
+            // The page has loaded: a failure is a toast, never the page's error state (which only a first read shows).
+            FleetToastCenter.shared.post(message: "Voice not changed: \(ActionError.wrap(error).message)")
         }
     }
 
@@ -179,9 +184,13 @@ private struct ProposalRow: View {
             if open {
                 ForEach(proposal.edits, id: \.draftId) { edit in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(edit.to) · \(edit.subject) · \(HeldTime.of(edit.sentAt))")
-                            .textStep(.meta)
-                            .lineLimit(1)
+                        // Who, what and when as three texts told apart by weight and step, never a dotted join.
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(edit.to).textStep(.meta, weight: .medium).lineLimit(1)
+                            Text(edit.subject).textStep(.meta).lineLimit(1)
+                            Spacer(minLength: 8)
+                            Text(HeldTime.of(edit.sentAt)).textStep(.stamp)
+                        }
                         diff(edit.ops.map { (kind: $0.op.rawValue, text: $0.text) })
                             .font(.footnote)
                             .fixedSize(horizontal: false, vertical: true)
@@ -190,22 +199,20 @@ private struct ProposalRow: View {
                 }
             }
             if canWrite {
+                // Pills, not glass: a row is content, and glass never sits on a row.
                 HStack(spacing: 8) {
-                    Button("Add Rule…", action: add)
-                        .buttonBorderShape(.capsule)
-                        .tcGlassButton()
+                    PillButton("Add Rule…", action: add)
                     if proposal.state == .open {
-                        Button("Not Now") { decide(.later) }
-                            .buttonBorderShape(.capsule)
-                            .tcGlassButton()
+                        PillButton("Not Now") { decide(.later) }
                     }
                     Spacer(minLength: 0)
                     Button("Dismiss", role: .destructive) { decide(.dismissed) }
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(.secondary)
+                        .frame(minHeight: Layout.rowHeight)
+                        .contentShape(Rectangle())
                         .buttonStyle(.pressable)
                 }
-                .font(.footnote.weight(.medium))
-                .padding(.top, 4)
             }
         }
         .padding(.vertical, 4)

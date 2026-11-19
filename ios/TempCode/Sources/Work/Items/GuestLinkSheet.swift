@@ -20,13 +20,7 @@ struct GuestLinkSheet: View {
         NavigationStack {
             Form {
                 if let made {
-                    Section {
-                        Text(made).font(.callout.monospaced()).textSelection(.enabled).accessibilityIdentifier("guest-url")
-                        Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = made }
-                        if let url = URL(string: made) { ShareLink("Share", item: url) }
-                    } footer: {
-                        Text("This address shows once.")
-                    }
+                    GuestAddressSection(address: made)
                 } else {
                     Section {
                         TextField("For", text: $draft.name)
@@ -63,7 +57,7 @@ struct GuestLinkSheet: View {
             }
             .onAppear { focused = true }
         }
-        .presentationDetents([.medium, .large])
+        .tcSheet(.form)
     }
 
     private func create() async {
@@ -74,5 +68,43 @@ struct GuestLinkSheet: View {
         } catch {
             self.error = ActionError.wrap(error).message
         }
+    }
+}
+
+/// The address once, with Copy and Share: the end of Make a Guest Link and of
+/// Settings → Work's New Address. The host keeps only its hash.
+struct GuestAddressSection: View {
+    let address: String
+    var footer = "This address shows once."
+
+    var body: some View {
+        Section {
+            Text(address).font(.callout.monospaced()).textSelection(.enabled).accessibilityIdentifier("guest-url")
+            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = address }
+            if let url = URL(string: address) { ShareLink("Share", item: url) }
+        } footer: {
+            Text(footer)
+        }
+    }
+}
+
+/// New Address on a live link (Settings → Work): the new address itself, once.
+struct NewAddressSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let address: String
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                GuestAddressSection(address: address, footer: "This address shows once. The one before opens nothing now.")
+            }
+            .navigationTitle("New Address")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .tcSheet(.form)
+        .accessibilityIdentifier("guest-new-address")
     }
 }

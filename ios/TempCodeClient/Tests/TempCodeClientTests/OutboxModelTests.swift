@@ -32,6 +32,11 @@ import TempCodeContract
         #expect(view.body?.path == ["message", "text"])
     }
 
+    @Test func theHostThatHoldsAnActIsBookkeepingNotAField() {
+        let call: JSONValue = .object(["host": .string("env_Q2gUxM8"), "channel": .string("#events"), "text": .string("Booked.\nSee you there.")])
+        #expect(OutboxModel.payloadView(call).fields.map(\.label) == ["In"])
+    }
+
     @Test func anEditRewritesTheHtmlBesideTheTextAndChecksAddresses() {
         let edited = OutboxModel.applyEdits(mail, ["message.text": "Hi,\n\nIs it free?", "message.to": "Sam Ortiz <sortiz@purdue.edu>, a@b.edu"])
         #expect(edited.error == nil)

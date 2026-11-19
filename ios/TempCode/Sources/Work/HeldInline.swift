@@ -30,31 +30,37 @@ struct HeldInline: View {
         let presses = OutboxPresses.shared
         let pending = entry.map { presses.pending?.id == $0.id } ?? false
         VStack(alignment: .leading, spacing: 6) {
-            Button {
-                guard item != nil, !pending else { return }
-                withAnimation(reduceMotion ? nil : Motion.expand) { open.toggle() }
-            } label: {
-                HStack(spacing: Layout.rowGap) {
-                    Image(systemName: WorkGlyph.outbox)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: Layout.markWidth)
-                    (Text(pending ? "Sending " : item == nil ? "Was held " : "Held ").foregroundStyle(.secondary) + Text(act).foregroundStyle(.primary))
-                        .font(.footnote)
-                        .lineLimit(open ? nil : 1)
-                    Spacer(minLength: 8)
-                    if pending {
-                        Button("Undo") { presses.undo() }
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .buttonStyle(.pressable)
+            // Undo sits beside the line's own button, never inside it, so VoiceOver reaches both.
+            HStack(spacing: Layout.rowGap) {
+                Button {
+                    guard item != nil, !pending else { return }
+                    withAnimation(reduceMotion ? nil : Motion.expand) { open.toggle() }
+                } label: {
+                    HStack(spacing: Layout.rowGap) {
+                        Image(systemName: WorkGlyph.outbox)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: Layout.markWidth)
+                        (Text(pending ? "Sending " : item == nil ? "Was held " : "Held ").foregroundStyle(.secondary) + Text(act).foregroundStyle(.primary))
+                            .font(.footnote)
+                            .lineLimit(open ? nil : 1)
+                        Spacer(minLength: 0)
                     }
+                    .frame(minHeight: 28)
+                    .contentShape(Rectangle())
                 }
-                .frame(minHeight: 28)
-                .contentShape(Rectangle())
+                .buttonStyle(.pressable)
+                .accessibilityHint(item == nil || pending ? "" : open ? "Closes the held act" : "Shows the held act")
+                if pending {
+                    Button("Undo") { presses.undo() }
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tint)
+                        // The line stays 28 pt; the hit area reaches 44 around the word.
+                        .frame(minHeight: 28)
+                        .contentShape(Rectangle().inset(by: -8))
+                        .buttonStyle(.pressable)
+                }
             }
-            .buttonStyle(.pressable)
-            .accessibilityHint(item == nil ? "" : open ? "Closes the held act" : "Shows the held act")
             if open, let item, let entry, !pending {
                 frame(item, entry: entry)
                     .transition(.opacity)
@@ -89,29 +95,27 @@ struct HeldInline: View {
                 }
             }
             if let body = view.body {
+                // The whole body, as it will go: Send is pressed on what was read, never on a cut.
                 Text(body.text)
                     .font(.footnote)
-                    .lineLimit(8)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if client.work.canApprove {
                 HStack(spacing: 8) {
                     Button("Discard", role: .destructive) { confirmDiscard = true }
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(Tint.destructive)
+                        .frame(minHeight: Layout.rowHeight)
+                        .contentShape(Rectangle())
                         .buttonStyle(.pressable)
                     Spacer(minLength: 0)
+                    // Pills, not glass: the opened act is content in the transcript, and glass never sits on content.
                     if OutboxModel.editable(item.kind) {
                         // Edit is the detail's own sheet: the item over the Outbox, as a notice opens it.
-                        Button("Edit") { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
-                            .buttonBorderShape(.capsule)
-                            .tcGlassButton()
+                        PillButton("Edit") { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
                     }
-                    Button(item.state == .failed ? "Send Again" : item.verb) { OutboxPresses.shared.send(entry) }
-                        .fontWeight(.semibold)
-                        .buttonBorderShape(.capsule)
-                        .tcGlassButton(prominent: true)
+                    PillButton(item.state == .failed ? "Send Again" : item.verb, tint: .accentColor) { OutboxPresses.shared.send(entry) }
                 }
-                .font(.footnote)
                 .padding(.top, 2)
             }
         }

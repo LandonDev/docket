@@ -136,16 +136,17 @@ private struct OutboxRow: View {
     var body: some View {
         Button { navigator.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } label: {
             HStack(alignment: .center, spacing: Layout.rowGap) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: WorkGlyph.of(item.kind))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                // The mark column holds one mark: the destructive dot for a failed send, else the kind's glyph.
+                Group {
                     if failed {
                         Circle()
                             .fill(Tint.destructive)
                             .frame(width: Layout.dotSize, height: Layout.dotSize)
-                            .offset(x: 4, y: -2)
                             .accessibilityLabel("Failed")
+                    } else {
+                        Image(systemName: WorkGlyph.of(item.kind))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .frame(width: Layout.glyphWidth + Layout.markWidth)

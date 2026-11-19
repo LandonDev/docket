@@ -44,4 +44,11 @@ import TempCodeContract
         #expect(workChats?.chats.map(\.id) == ["thread:box:work-chat"])
         #expect(HomeSections.workspace(HomeSections.workChatsKey, hosts: [host(workOn: false)])?.chats.isEmpty == true)
     }
+
+    @Test func `a Work workspace heads its chats with the fold under its view rows, a code one with no projects does not`() {
+        let hosts = [host(workOn: true)]
+        #expect(HomeSections.workspace("box:purdue", hosts: hosts)?.showsChatsFold == true)
+        #expect(HomeSections.workspace("box:code", hosts: hosts)?.showsChatsFold == false)
+        #expect(HomeSections.workspace(HomeSections.chatsKey, hosts: hosts)?.showsChatsFold == false)
+    }
 }

@@ -201,3 +201,10 @@ struct HeldSendCheckTests {
         #expect(!HeldSendCheck.matches(pressedSubject: "Arena hold", pressedTo: ["karen@purdue.edu"], subject: "Arena hold", to: ["karen@purdue.edu"], cc: [], bcc: ["someone@else.com"]))
     }
 }
+
+struct MediaNoteByTests {
+    @Test(arguments: [("owner", "You"), ("agent:s_12", "Agent"), ("guest:Dana Lee", "Dana Lee"), ("guest:", "guest:"), ("someone", "someone")])
+    func aCommentNamesWhoLeftIt(by: String, name: String) {
+        #expect(MediaNoteBy.name(by) == name)
+    }
+}

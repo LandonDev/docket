@@ -124,7 +124,10 @@ private struct VideoVersionView: View {
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
                                 .frame(width: 44, alignment: .leading)
-                            Text(note.body).textStep(.title).foregroundStyle(note.state == .suggested ? .secondary : .primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(MediaNoteBy.name(note.by)).textStep(.meta, weight: .medium)
+                                Text(note.body).textStep(.title).foregroundStyle(note.state == .suggested ? .secondary : .primary)
+                            }
                         }
                     }
                     .buttonStyle(.pressable)
@@ -135,14 +138,34 @@ private struct VideoVersionView: View {
                 if notes.isEmpty { Text("No comments").textStep(.meta).foregroundStyle(.secondary) }
             }
             if client.work.canApprove {
-                HStack(spacing: 8) {
-                    TextField("Comment at this frame", text: $comment)
-                        .textFieldStyle(.roundedBorder)
+                // The steer field's shape (AgentDetailScreen): a field on the chrome step and a round send, both 44 pt to touch.
+                let empty = comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Comment at this frame", text: $comment, axis: .vertical)
+                        .font(.body)
+                        .lineLimit(1...4)
                         .focused($focused)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .frame(minHeight: Layout.rowHeight)
+                        .background(Surface.chrome, in: RoundedRectangle.fieldCorner)
+                        .hairlineBorder(RoundedRectangle.fieldCorner)
                         .accessibilityIdentifier("media-comment")
-                    Button("Post") { Task { await post() } }
-                        .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || posting || player == nil)
-                        .accessibilityIdentifier("media-post")
+                    Button { Task { await post() } } label: {
+                        ZStack {
+                            Circle().fill(Color(.label)).opacity(empty || posting ? 0.3 : 1)
+                            Image(systemName: "arrow.up")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(Color(.systemBackground))
+                        }
+                        .frame(width: 28, height: 28)
+                        .frame(width: Layout.rowHeight, height: Layout.rowHeight)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.pressable)
+                    .disabled(empty || posting || player == nil)
+                    .accessibilityLabel("Post")
+                    .accessibilityIdentifier("media-post")
                 }
                 .padding(.horizontal, Layout.textEdge)
                 .padding(.vertical, 8)

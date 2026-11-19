@@ -137,3 +137,16 @@ public struct TileGrid: Equatable, Sendable {
         rows = max(1, Int((Double(self.height) / side).rounded(.up)))
     }
 }
+
+/// Who a media comment is by, as the comment list names it (the desktop's
+/// `authorOf` in work/media/parts.tsx): "owner" is You, a thread is Agent,
+/// and a guest reads as the name after the colon.
+public enum MediaNoteBy {
+    public static func name(_ by: String) -> String {
+        if by == "owner" { return "You" }
+        if by.hasPrefix("agent:") { return "Agent" }
+        guard let colon = by.firstIndex(of: ":") else { return by }
+        let rest = by[by.index(after: colon)...]
+        return rest.isEmpty ? by : String(rest)
+    }
+}

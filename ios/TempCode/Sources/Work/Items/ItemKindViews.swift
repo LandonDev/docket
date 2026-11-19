@@ -216,7 +216,8 @@ private struct DashBlockView: View {
                     HStack(spacing: 8) {
                         Text(bar.label).textStep(.meta).frame(width: 96, alignment: .leading).lineLimit(1)
                         GeometryReader { proxy in
-                            Capsule().fill(Tint.info).frame(width: max(2, proxy.size.width * bar.value / top))
+                            // One series is the neutral (DESIGN.md: chart-neutral, the foreground at 30 %), never a hue.
+                            Capsule().fill(.tertiary).frame(width: max(2, proxy.size.width * bar.value / top))
                         }
                         .frame(height: 8)
                         Text(bar.value.formatted()).textStep(.stamp).monospacedDigit().foregroundStyle(.secondary)
