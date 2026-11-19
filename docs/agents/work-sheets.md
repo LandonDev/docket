@@ -138,3 +138,20 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   guest page that uses the live route (M31), presence on the canvas.
 - Keeping IronCalc's model in memory between saves: each save loads the
   package afresh, which on the 100,000-row file is tens of seconds.
+
+## Known limits
+
+- The `/internal/sheet/<op>` routes main calls sit behind the same secret
+  the LifeOS worker holds, and take `by` and the sheet on trust: the
+  worker is the owner's own process on the box, as M18 already allows it
+  every internal route. A second secret only main holds would close it.
+- `/internal/sheet/write` takes the worker's `because: 'asked'` on trust,
+  as the document route does (M17, M18).
+- An agent's `reason` shows beside its suggestions on a package and a
+  `.tcsheet`; LifeOS has no field for it, so on a LifeOS sheet it is
+  dropped.
+- The round-trip harness runs only with `SHEET_HARNESS=1` on a host with
+  the lab's Python (lxml) and LibreOffice: no gate row runs it.
+- A `.tcsheet` is rewritten whole on every op.
+- work-kit's `was` chip in the formula bar is not struck through on the
+  delete tint as the prototype draws it; work-kit owns it.
