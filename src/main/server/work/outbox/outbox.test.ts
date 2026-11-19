@@ -315,6 +315,37 @@ describe("the owner's press", () => {
     await expect(rig.rpc('work.outbox.edit', { ref: item!.ref, payload: { arguments: {} } })).rejects.toThrow('already decided')
   })
 
+  it("puts back what a kind's carrier fixes for itself when he edits it, so what he edits is what goes", async () => {
+    await rig.close()
+    const z = (await import('zod')).z
+    const sent: unknown[] = []
+    const kind: ActKindDef<{ to: string; text: string }, never> = {
+      kind: 'teams.post',
+      store: 'host',
+      payload: z.object({ to: z.string(), text: z.string() }),
+      words: (p) => ({ summary: `Post in ${p.to}`, verb: 'Post' }),
+      keep: (old, next) => ({ ...next, to: old.to }),
+      execute: async (p) => {
+        sent.push(p)
+        return { summary: `Posted in ${p.to}` }
+      }
+    }
+    const pillar: WorkModule = { id: 'browser', ensure() {}, acts: [kind as unknown as ActKindDef] }
+    rig = await makeRig({ modules: [outboxModule, pillar] })
+    const { WORK_MODULES } = await import('../modules')
+    WORK_MODULES.push(pillar)
+    try {
+      cast(rig)
+      const item = rig.work.ctx.held.create({ kind: 'teams.post', sessionId: 't-work', payload: { to: 'Budget chat', text: 'draft' } })
+      const edited = await rig.rpc<OutboxItem>('work.outbox.edit', { ref: item.ref, payload: { to: 'Everyone', text: 'final' } })
+      expect(edited).toMatchObject({ payload: { to: 'Budget chat', text: 'final' }, summary: 'Post in Budget chat' })
+      await rig.rpc('work.outbox.send', { ref: item.ref })
+      expect(sent).toEqual([{ to: 'Budget chat', text: 'final' }])
+    } finally {
+      WORK_MODULES.splice(WORK_MODULES.indexOf(pillar), 1)
+    }
+  })
+
   it('or his discard: the call never goes, and the thread is told not to send it another way', async () => {
     const slack = await rig.addon('slack', 'ws-purdue')
     await rig.claudeCall('t-work', slack.id, 'echo', { text: 'x' })

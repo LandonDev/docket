@@ -54,7 +54,7 @@ export function EditDialog({ item, onClose }: { item: HostItem; onClose: () => v
               </div>
             );
           })}
-          {view.body ? (
+          {view.body && !view.body.readOnly ? (
             <div className="flex flex-col gap-1.5">
               <label htmlFor={`${id}-body`} className="text-xs font-medium text-muted-foreground">
                 Message
@@ -62,7 +62,7 @@ export function EditDialog({ item, onClose }: { item: HostItem; onClose: () => v
               <Textarea id={`${id}-body`} rows={10} value={values.get(view.body.path.join(".")) ?? view.body.text} onChange={(e) => set(view.body!.path.join("."), e.target.value)} />
             </div>
           ) : null}
-          {!fields.length && !view.body ? <p className="text-[13px] text-muted-foreground">Nothing in this act can be changed here.</p> : null}
+          {!fields.length && (!view.body || view.body.readOnly) ? <p className="text-[13px] text-muted-foreground">Nothing in this act can be changed here.</p> : null}
           <ErrorLine error={error} />
         </ModalBody>
         <DialogFooter onCancel={onClose} confirmLabel="Save" pending={busy} disabled={values.size === 0} />

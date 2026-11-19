@@ -23,9 +23,24 @@ export const OfficeMailSchema = z.object({
   subject: z.string().max(998),
   html: z.string().max(2_000_000),
   replyTo: z.string().max(200).optional(),
-  forward: z.string().max(200).optional()
+  forward: z.string().max(200).optional(),
+  /** What Outlook puts under the body of a reply or a forward: the mail it answers or passes on, named so the Outbox shows it. */
+  outlookAdds: z.string().max(1000).optional()
 })
 export type OfficeMail = z.infer<typeof OfficeMailSchema>
+
+/**
+ * An edit in the Outbox keeps what Outlook fixes for itself: the host it goes
+ * from, the account, and the mail it answers or passes on; a reply's
+ * recipients and the subject of a reply or forward too, since Outlook sets
+ * those from the mail it answers. So what he edits is what goes.
+ */
+export function keepOfficeMail(old: OfficeMail, next: OfficeMail): OfficeMail {
+  const kept: OfficeMail = { ...next, host: old.host, account: old.account, replyTo: old.replyTo, forward: old.forward, outlookAdds: old.outlookAdds }
+  if (old.replyTo || old.forward) kept.subject = old.subject
+  if (old.replyTo) kept.to = old.to
+  return kept
+}
 
 /** What a grant may fix: the account, and every recipient by address or by domain. */
 export const OfficeMailMatcherSchema = z.object({
@@ -110,6 +125,7 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       const domains = new Set((m.domains ?? []).map((d) => d.toLowerCase().replace(/^@/, '')))
       return everyone(p).every((a) => people.has(a) || domains.has(a.split('@')[1]))
     },
+    keep: keepOfficeMail,
     async execute(p, ctx) {
       const sent = await carrierHere(deps, p.host, ctx.host).sendMail({ ...p, html: cleanMailHtml(p.html) })
       const { summary } = mail.words(p)

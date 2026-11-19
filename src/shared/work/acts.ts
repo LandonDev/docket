@@ -118,6 +118,8 @@ export interface ActKindDefOf<P, M, C> {
   /** "Send to Dana Lee: Re: budget", "Send" */
   words(p: P): { summary: string; verb: string }
   matches?(m: M, p: P): boolean
+  /** An edit in the Outbox, with what it may not change put back: the fields the act's carrier fixes for itself, so what he edits is what goes. */
+  keep?(old: P, next: P): P
   /** host-side; once per run key */
   execute(p: P, ctx: C): Promise<ActResult>
   /** null: "Sent mail cannot be taken back" */

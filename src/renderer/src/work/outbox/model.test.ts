@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEdits, awayLine, awaySections, byWorkspace, dayOf, decidedWords, grantFor, grantLine, parseAddresses, pastOf, payloadView } from "./model";
+import { applyEdits, awayLine, awaySections, byWorkspace, dayOf, decidedWords, grantFor, grantLine, htmlWords, parseAddresses, pastOf, payloadView } from "./model";
 
 const MAIL = {
   id: "o1",
@@ -26,7 +26,35 @@ describe("payloadView", () => {
       ["To", "Dana Lee <dlee@purdue.edu>"],
       ["Subject", "Nationals budget, first draft"],
     ]);
-    expect(body).toEqual({ path: ["message", "text"], text: MAIL.message.text });
+    // The html is what goes, so the body reads from it; an edit still goes to the text and rebuilds the html.
+    expect(body).toEqual({ path: ["message", "text"], text: "old" });
+  });
+
+  it("shows an html-only mail's words, links and images, and does not offer them for editing", () => {
+    const office = { host: "env_mac", to: ["dlee@purdue.edu"], cc: [], bcc: [], subject: "Budget", html: '<p>See <a href="https://evil.example/x">the sheet</a></p><img src="https://t.example/p.gif">' };
+    const { fields, body } = payloadView(office);
+    expect(fields.map((f) => f.label)).toEqual(["Host", "To", "Subject"]);
+    expect(body).toEqual({ path: ["html"], text: "See the sheet (https://evil.example/x)\n\n[image: https://t.example/p.gif]", readOnly: true });
+    expect(applyEdits(office, new Map([["html", "changed"]])).payload).toEqual(office);
+  });
+
+  it("shows every key of an add-on call's arguments, the ones the host keeps for itself included", () => {
+    const { fields } = payloadView({ ...CALL, arguments: { id: "C024BE91L", html: "<b>hi</b>", status: "public", text: "hello" } });
+    expect(fields.map((f) => [f.label, f.value])).toEqual([
+      ["Id", "C024BE91L"],
+      ["Html", "<b>hi</b>"],
+      ["Status", "public"],
+      ["Text", "hello"],
+    ]);
+  });
+});
+
+describe("htmlWords", () => {
+  it("keeps every link's target and image's source, and drops what does not show", () => {
+    expect(htmlWords('<style>p{}</style><p>Hi&nbsp;Dana,</p><p>Go <a href="https://a.example">here</a> or <a href="mailto:x@y.z">x@y.z</a>.<br>Thanks</p><script>x()</script>')).toBe(
+      "Hi Dana,\n\nGo here (https://a.example) or x@y.z.\nThanks",
+    );
+    expect(htmlWords('<ul><li>one</li><li>two &amp; three</li></ul><img alt="logo" src=\'/l.png\'>')).toBe("- one\n- two & three\n\n[image logo: /l.png]");
   });
 
   it("opens an add-on call's arguments, not its wrapper", () => {

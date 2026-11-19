@@ -5,7 +5,7 @@ import type { ActCtx, ToolCtx, WorkCtx } from '../modules'
 import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
 import { ensureExcelTables, excelStore, ExcelHelper } from './excel'
 import { FakeOffice } from './fake'
-import { cleanMailHtml, officeActs, OfficeCalendarSchema, OfficeMailSchema } from './held'
+import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeMailSchema, type OfficeMail } from './held'
 import { OFFICE_TOOLS, workTools, type Env } from './tools'
 
 /**
@@ -117,10 +117,22 @@ describe('nothing is sent without his press', () => {
   })
 
   it('a reply is held to the sender of the mail it answers, whatever `to` says, and a grant never fits a mail to nobody', async () => {
-    await run('office_mail_send', { to: ['boss@example.com'], subject: 'x', html: '<p>Yes</p>', replyTo: '42' })
-    expect(held[0].payload).toMatchObject({ to: ['dana@example.com'], subject: 'Re: Budget' })
+    await run('office_mail_send', { to: ['boss@example.com'], subject: 'x', html: '<p>Yes</p><script>x()</script>', replyTo: '42' })
+    expect(held[0].payload).toMatchObject({ to: ['dana@example.com'], subject: 'Re: Budget', html: '<p>Yes</p>' })
+    // What Outlook adds under a reply is named, so the Outbox shows it (milestone 50's hold review, finding 1).
+    expect((held[0].payload as OfficeMail).outlookAdds).toMatch(/^The mail from dana@example\.com, "Budget" \(\d{4}-\d\d-\d\d\), under this one$/)
     const mail = officeActs({ carrier: () => office }).find((a) => a.kind === 'office.mail.send')!
     expect(mail.matches!({ domains: ['example.com'] }, OfficeMailSchema.parse({ host: 'env_mac', to: [], subject: 's', html: '' }))).toBe(false)
+  })
+
+  it('an edit in the Outbox keeps what Outlook fixes: the account, the mail answered, a reply\'s recipients and a reply or forward\'s subject', () => {
+    const reply = OfficeMailSchema.parse({ host: 'env_mac', account: 'me@example.com', to: ['dana@example.com'], subject: 'Re: Budget', html: '<p>Yes</p>', replyTo: '42', outlookAdds: 'x' })
+    const edited = keepOfficeMail(reply, { ...reply, host: 'env_box', account: 'other@example.com', to: ['boss@example.com'], subject: 'Hi', html: '<p>No</p>', cc: ['lee@example.com'], replyTo: undefined, outlookAdds: undefined })
+    expect(edited).toEqual({ ...reply, html: '<p>No</p>', cc: ['lee@example.com'] })
+    const forward = OfficeMailSchema.parse({ host: 'env_mac', to: ['lee@example.com'], subject: 'Fw: Budget', html: '', forward: '42' })
+    expect(keepOfficeMail(forward, { ...forward, to: ['sam@example.com'], subject: 'Hi' })).toMatchObject({ to: ['sam@example.com'], subject: 'Fw: Budget' })
+    const plain = OfficeMailSchema.parse({ host: 'env_mac', to: ['lee@example.com'], subject: 'Plan', html: '' })
+    expect(keepOfficeMail(plain, { ...plain, to: ['sam@example.com'], subject: 'Hi' })).toMatchObject({ to: ['sam@example.com'], subject: 'Hi' })
   })
 
   it('a draft only leaves a draft, and a hold on his own calendar with nobody invited is made at once', async () => {

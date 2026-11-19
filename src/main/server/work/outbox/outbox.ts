@@ -210,7 +210,8 @@ export class Outbox {
     const row = this.store.byRef(ref)
     if (!row) throw new Error(NO_SUCH_ITEM)
     const def = this.def(row.kind)
-    const next = def.payload.parse(KEEPS[row.kind] ? KEEPS[row.kind]!(row.payload, payload) : payload)
+    const parsed = def.payload.parse(KEEPS[row.kind] ? KEEPS[row.kind]!(row.payload, payload) : payload)
+    const next = def.keep ? def.keep(def.payload.parse(row.payload), parsed) : parsed
     const words = def.words(next)
     const edited = this.store.edit(row.id, { payload: next, summary: words.summary, verb: words.verb })
     if (!edited) throw new Error(row.state === 'live' ? 'An act read from a live screen is carried out as it was read; it cannot be changed.' : 'This item was already decided; it cannot be changed.')

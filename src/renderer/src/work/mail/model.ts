@@ -1,4 +1,5 @@
 import type { ContextChip } from "@shared/work";
+import { htmlWords } from "../outbox/model";
 
 /**
  * The mail pillar's pure parts on the screen (docs/agents/work-mail.md):
@@ -38,5 +39,7 @@ export function mailActView(payload: unknown): MailActView {
   }
   rows.push({ label: "Subject", text: typeof m.subject === "string" && m.subject.trim() ? m.subject : "(no subject)" });
   const files = Array.isArray(m.attachments) ? (m.attachments as Array<{ name?: unknown }>).flatMap((a) => (typeof a?.name === "string" ? [a.name] : [])) : [];
-  return { rows, body: typeof m.text === "string" ? m.text.trim() : "", files, proposed: !!p.proposed };
+  // The html is what goes when there is one, so the view reads from it (the hold review's finding 11).
+  const body = typeof m.html === "string" && m.html.trim() ? htmlWords(m.html) : typeof m.text === "string" ? m.text.trim() : "";
+  return { rows, body, files, proposed: !!p.proposed };
 }

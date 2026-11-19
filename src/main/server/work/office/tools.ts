@@ -8,6 +8,7 @@ import type { ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { parseA1, rangeCells } from '../sheets/a1'
 import type { SuggestionStore } from '../sheets/suggestions'
 import type { OfficeCarrier } from './carrier'
+import { cleanMailHtml } from './held'
 import { cellOf, EXCEL_MAX_CELLS, excelStore, type ExcelHelper } from './excel'
 
 /**
@@ -225,11 +226,14 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       const to = a.replyTo && was ? [was.from] : a.to
       const subject = was ? `${a.replyTo ? 'Re' : 'Fw'}: ${was.subject.replace(/^(re|fw|fwd):\s*/i, '')}` : a.subject
       if (!to.length) return fail('Name at least one recipient in `to`.')
+      // Outlook puts the mail it answers or passes on under the body: the Outbox says so (milestone 50's hold review).
+      const outlookAdds = was ? `The mail from ${was.from}, "${was.subject}" (${was.at.slice(0, 10)}), ${a.forward ? 'with its attachments, ' : ''}under this one` : undefined
+      // Held as it goes: the html cleaned now, so the Outbox shows the body Outlook will get.
       const item = env.ctx.held.create({
         kind: 'office.mail.send',
         sessionId: env.sessionId,
         account: a.account,
-        payload: { host: env.ctx.host, ...a, to, subject, cc: a.cc ?? [], bcc: a.bcc ?? [] }
+        payload: { host: env.ctx.host, ...a, html: cleanMailHtml(a.html), to, subject, cc: a.cc ?? [], bcc: a.bcc ?? [], ...(outlookAdds ? { outlookAdds } : {}) }
       })
       return heldAnswer(item.state, item.summary)
     }

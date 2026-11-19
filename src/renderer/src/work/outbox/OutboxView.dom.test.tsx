@@ -93,7 +93,7 @@ const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem
   verb: "Send",
   account: "landon@purdue.edu",
   state: "held",
-  payload: { id, status: "draft", message: { kind: "mail", accountId: "acc", to: [{ name: to, address: `${to.split(" ")[0]!.toLowerCase()}@purdue.edu` }], cc: [], bcc: [], subject, html: "<p>x</p>", text: `Hello ${to},\n\nAbout ${subject}.\n\nLandon` } },
+  payload: { id, status: "draft", message: { kind: "mail", accountId: "acc", to: [{ name: to, address: `${to.split(" ")[0]!.toLowerCase()}@purdue.edu` }], cc: [], bcc: [], subject, html: `<p>Hello ${to},</p><p>About ${subject}.</p><p>Landon</p>`, text: `Hello ${to},\n\nAbout ${subject}.\n\nLandon` } },
   createdAt: 1_000 + Number(id.replace(/\D/g, "")),
   decidedBy: null,
   decidedAt: null,

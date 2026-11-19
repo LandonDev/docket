@@ -96,7 +96,7 @@ describe("a held mail in the Outbox", () => {
       bcc: [{ address: "books@unifyplatforms.com" }],
       subject: "Re: Invoice 1042",
       text: "Hi Marisol,\n\nInvoice 1042 is attached again.",
-      html: "<p>Hi Marisol,</p>",
+      html: "<p>Hi Marisol,</p><p>Invoice 1042 is attached again.</p>",
       attachments: [{ name: "Invoice-1042.pdf" }],
     },
     proposed: { text: "Could you send payment by Friday?" },
@@ -114,6 +114,11 @@ describe("a held mail in the Outbox", () => {
     expect(screen.getByText(/Invoice 1042 is attached again/).textContent).toBe("Hi Marisol,\n\nInvoice 1042 is attached again.");
     expect(screen.getByText("Invoice-1042.pdf")).toBeTruthy();
     expect(screen.getByText("A rewrite waits in the draft beside its thread.")).toBeTruthy();
+  });
+
+  it("reads its words from the html that goes, not a text that says otherwise", () => {
+    const view = mailActView({ message: { ...payload.message, text: "Nothing to see.", html: '<p>Pay <a href="https://pay.example">here</a>.</p>' } });
+    expect(view.body).toBe("Pay here (https://pay.example).");
   });
 
   it("names a mail with no subject and no rewrite plainly", () => {

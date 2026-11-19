@@ -74,7 +74,56 @@ const LABEL: Record<string, string> = { to: "To", cc: "Cc", bcc: "Bcc", from: "F
 const labelOf = (key: string): string => LABEL[key] ?? key.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
 
 export type Field = { key: string; path: string[]; label: string; value: string; edit: "text" | "addresses" | null };
-export type PayloadView = { fields: Field[]; body: { path: string[]; text: string } | null };
+/** The body as it reads; `readOnly` when it is drawn from html with no text beside it to edit. */
+export type PayloadView = { fields: Field[]; body: { path: string[]; text: string; readOnly?: boolean } | null };
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const attr = (tag: string, name: string): string | null => {
+  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
+  return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
+};
+const decode = (s: string): string =>
+  s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, e: string) => {
+    if (e[0] === "#") {
+      const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : whole;
+    }
+    return ENTITIES[e.toLowerCase()] ?? whole;
+  });
+
+/**
+ * An html body as the words a person reads, for a view that must show what
+ * goes: every link keeps its target beside its words and every image its
+ * source, so nothing in the html hides from the preview. Plain text out;
+ * React escapes it.
+ */
+export function htmlWords(html: string): string {
+  const out = html
+    .replace(/<(script|style|head|title)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<a\b[^>]*>([\s\S]*?)<\/a\s*>/gi, (tag, inner: string) => {
+      const href = decode(attr(tag.slice(0, tag.indexOf(">") + 1), "href") ?? "").trim();
+      const words = decode(inner.replace(/<[^>]*>/g, "")).trim();
+      if (!href || href === words || href === `mailto:${words}`) return words || href;
+      return words ? `${words} (${href})` : href;
+    })
+    .replace(/<img\b[^>]*>/gi, (tag) => {
+      const src = decode(attr(tag, "src") ?? "").trim();
+      const alt = decode(attr(tag, "alt") ?? "").trim();
+      return `[image${alt ? ` ${alt}` : ""}${src ? `: ${src}` : ""}]`;
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "\n- ")
+    .replace(/<\/(p|h[1-6]|blockquote|pre|ul|ol|table)\s*>/gi, "\n\n")
+    .replace(/<\/(div|tr)\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "");
+  return decode(out)
+    .split("\n")
+    .map((l) => l.replace(/[ \t]+$/, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 /**
  * The payload as the generic view draws it: each field a person would read,
@@ -86,12 +135,20 @@ export type PayloadView = { fields: Field[]; body: { path: string[]; text: strin
 export function payloadView(payload: unknown): PayloadView {
   const fields: Field[] = [];
   let body: PayloadView["body"] = null;
-  const walk = (value: unknown, path: string[], depth: number) => {
+  // Inside an add-on call's arguments every key is what goes, so none is quiet there (the hold review's finding 10).
+  const walk = (value: unknown, path: string[], depth: number, quiet = true) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
-    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
-      if (QUIET.has(key) || v === undefined || v === null) continue;
+    const obj = value as Record<string, unknown>;
+    // The html is what goes when there is one: the body reads from it, and edits go to the text beside it (the hold review's findings 4 and 11).
+    if (quiet && !body && typeof obj.html === "string" && obj.html.trim()) {
+      const hasText = typeof obj.text === "string";
+      body = { path: [...path, hasText ? "text" : "html"], text: htmlWords(obj.html), ...(hasText ? {} : { readOnly: true }) };
+    }
+    for (const [key, v] of Object.entries(obj)) {
+      if ((quiet && QUIET.has(key)) || v === undefined || v === null) continue;
       const at = [...path, key];
       if (typeof v === "string") {
+        if (quiet && body?.path.join(".") === at.join(".")) continue;
         if (!body && BODY_KEYS.includes(key) && (v.includes("\n") || v.length > 80)) body = { path: at, text: v };
         else if (v.trim()) fields.push({ key, path: at, label: labelOf(key), value: v, edit: "text" });
       } else if (typeof v === "number" || typeof v === "boolean") {
@@ -103,7 +160,7 @@ export function payloadView(payload: unknown): PayloadView {
       } else if (Array.isArray(v)) {
         if (v.length) fields.push({ key, path: at, label: labelOf(key), value: v.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(", "), edit: null });
       } else if (depth < 1 && (key === "message" || key === "arguments" || key === "args")) {
-        walk(v, at, depth + 1);
+        walk(v, at, depth + 1, key === "message");
       } else if (typeof (v as { name?: unknown }).name === "string") {
         // a thing named (an app, a channel): its name
         fields.push({ key, path: at, label: labelOf(key), value: (v as { name: string }).name, edit: null });
@@ -149,7 +206,7 @@ export const htmlOfText = (text: string): string =>
  */
 export function applyEdits(payload: unknown, edits: ReadonlyMap<string, string>, view: PayloadView = payloadView(payload)): { payload: unknown; error: string | null } {
   let next = payload;
-  const editable = [...view.fields.filter((f) => f.edit), ...(view.body ? [{ path: view.body.path, edit: "text" as const, label: "Message" }] : [])];
+  const editable = [...view.fields.filter((f) => f.edit), ...(view.body && !view.body.readOnly ? [{ path: view.body.path, edit: "text" as const, label: "Message" }] : [])];
   for (const field of editable) {
     const key = field.path.join(".");
     const text = edits.get(key);
