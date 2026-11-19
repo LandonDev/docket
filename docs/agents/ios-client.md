@@ -856,9 +856,18 @@
   because the shown LifeOS screen's objects also ride on the shell's split
   (`lifeHostEnvironment`): LifeKitUI's `SplitScreen` nests a
   `NavigationStack` whose destination SwiftUI hoists out of `lifeChrome`.
-  Not seeded there: slides (no soffice to render a deck), history's
-  versions (the Work service runs only under Electron, and the test server
-  is node) and a guest link (only a LifeOS item is hosted). The app's hooks:
+  Milestone 49 added what M47 could not seed. The work set's server runs the
+  Work service in its own process (`TC_TEST_WORK_SERVICE=1`, set by
+  scripts/ios-sim-proof-local.ts for the work set; the seam
+  `serviceSeamsFor`), so history gets a second version (the thread's write
+  through the service's `/internal/docs/write`, `/work-held`'s `docWrites`)
+  and the form is published from the Outbox and answered three times at its
+  link. A deck (w46, its review row with two waiting edits written by
+  `/work-held`'s `slidesOps`) needs LibreOffice.app and a venv with
+  python-pptx named by `TC_PROOF_PPTX_VENV`, linked in as the host's tools
+  (`/work-held`'s `tools`); without them the seeds say NOT RUN. Still not
+  seeded: a guest link and the hosted editor (only a LifeOS item is
+  hosted, and the hosted pages are not built for node). The app's hooks:
   the `work-workspace` and `work-view` routes, `TC_TEST_WORK_VIEW`,
   `TC_TEST_LIFE_FIXTURES` (LifeKit's fixture day), `TC_TEST_ITEM` (the
   Item segment's item by kind or title), `TC_TEST_OPEN=mail-thread`,

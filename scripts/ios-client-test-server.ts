@@ -40,12 +40,17 @@
  *   POST /work-held { rows }   → writes held acts into the hold as it writes them (milestone 46's work set; a row's
  *                                 `outcomeUnknown: true` marks a failed send that may have gone);
  *                                 `forms` and `dashboards` write the rows behind a form's and a dashboard's item, and
- *                                 `tools: { ffmpeg: <dir> }` links that dir's ffmpeg and ffprobe in as the conversion tool (milestone 47)
+ *                                 `tools: { ffmpeg: <dir> }` links that dir's ffmpeg and ffprobe in as the conversion tool (milestone 47);
+ *                                 `tools: { libreoffice, pythonPptx }` link a deck's tools, `slidesOps` writes a deck's pending edits, and
+ *                                 `docWrites` writes a .tcdoc through the Work service as docs_write does (TC_TEST_WORK_SERVICE=1; milestone 49)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
  *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /hold { seconds }      → the host goes down for that long: every remote socket dropped and every
  *                                 upgrade refused until it ends (a draft opened while its host is away)
  *   POST /quit                  → closes everything
+ *
+ * TC_TEST_WORK_SERVICE=1 runs the Work service in this process (the work set: history and a form's answers
+ * call it), as the app's utility process would; its hosted pages are not served.
  *
  * TC_TEST_NO_HARNESS=1 swaps every built-in driver for an idle in-process
  * handle (no CLI is spawned at a create's eager boot or a send), for a run
@@ -73,7 +78,7 @@
  * the unreachable one is refused 503.
  * TC_TEST_NO_RELAY=1 (the work set) seeds none: each would serve this server's Work again.
  */
-import { createServer, Server as HttpServer } from 'node:http'
+import { createServer, request as httpRequest, Server as HttpServer } from 'node:http'
 import { execFileSync, fork, spawn, type Serializable } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -111,6 +116,11 @@ import { runAddonChild } from '../src/main/server/addons/addonChild'
 import type { AddonWireMessage } from '../src/main/server/addons/addonWire'
 import { wirePair } from '../src/main/server/addons/testWire'
 import { heldLine } from '../src/main/server/work/outbox/words'
+import { serviceSeamsFor } from '../src/main/server/work/service/ctx'
+import { servicePaths } from '../src/main/server/work/service/config'
+import { startWorkService, type RunningService } from '../src/main/server/work/service/serve'
+import type { ServiceChild } from '../src/main/server/work/service/supervisor'
+import type { FromService, ToService } from '../src/main/server/work/service/wire'
 import { PERF_CHILDREN, PERF_LOAD, PERF_SIBLING, PERF_THREADS, perfThread } from './lib/ios-perf-seeds'
 
 // A proof set pairs some of these codes late: the features set pairs the
@@ -237,6 +247,41 @@ const spawnExecBroker = brokerEntry
       return { wire: brokerPort(port), kill: () => void child.kill(), onExit: (fn) => void child.once('exit', (code) => fn(code)) }
     }
   : undefined
+// Milestone 49: TC_TEST_WORK_SERVICE=1 runs the Work service in this process (the seam work/service/ctx.test.ts
+// uses), where the app forks it as an Electron utility process, so the pillars that call it (history, a form's
+// answers) answer under node. Its hosted pages are not built here: nothing hosted is served.
+if (process.env.TC_TEST_WORK_SERVICE === '1') {
+  serviceSeamsFor.current = {
+    hostedDir: join(dirname(dbPath), 'hosted'),
+    spawn: (): ServiceChild => {
+      const onMessage: ((m: FromService) => void)[] = []
+      const onExit: ((code: number | null) => void)[] = []
+      const asked = new Map<number, (m: Extract<ToService, { t: 'jwt' }>) => void>()
+      let running: RunningService | null = null
+      let n = 0
+      const emit = (m: FromService): void => queueMicrotask(() => onMessage.forEach((f) => f(m)))
+      return {
+        post(m: ToService) {
+          if (m.t === 'config')
+            startWorkService(m.config, {
+              jwt: () => new Promise((ok, bad) => (asked.set(++n, (a) => (a.jwt ? ok(a.jwt) : bad(new Error(a.error ?? 'no JWT')))), emit({ t: 'jwt?', id: n }))),
+              log: (line) => emit({ t: 'log', line })
+            }).then(
+              (s) => ((running = s), emit({ t: 'ready', port: s.port })),
+              (err: Error) => emit({ t: 'fault', message: err.stack ?? err.message })
+            )
+          else if (m.t === 'jwt') asked.get(m.id)?.(m)
+          else if (m.t === 'links') running?.setLinks(m.links)
+          else if (m.t === 'trusted') running?.setTrusted(m.trusted)
+          else if (m.t === 'stop') void (running?.stop() ?? Promise.resolve()).then(() => (emit({ t: 'stopped' }), onExit.forEach((f) => f(0))))
+        },
+        onMessage: (f) => void onMessage.push(f),
+        onExit: (f) => void onExit.push(f),
+        kill: () => void running?.stop().catch(() => {})
+      }
+    }
+  }
+}
 const server = await startServer(dbPath, {
   claimShim: false,
   remotePort: 0,
@@ -2136,19 +2181,75 @@ const control = createServer((req, res) => {
           }
           // Milestone 47: this machine's own ffmpeg as the host's installed conversion tool (what Settings →
           // Work → Conversion tools would install), linked into <data>/work-tools so the media pillar can probe.
-          const ffmpeg = body.tools && typeof (body.tools as { ffmpeg?: unknown }).ffmpeg === 'string' ? String((body.tools as { ffmpeg: string }).ffmpeg) : null
-          if (ffmpeg) {
-            const tools = join(dirname(dbPath), 'work-tools')
-            const dir = join(tools, 'ffmpeg-host')
+          // Milestone 49: a deck's tools the same way, `libreoffice` (the folder holding LibreOffice.app) and
+          // `pythonPptx` (a venv with python-pptx); each call adds to the tools an earlier one linked.
+          const asked = (body.tools ?? {}) as { ffmpeg?: unknown; libreoffice?: unknown; pythonPptx?: unknown }
+          const toolsDir = join(dirname(dbPath), 'work-tools')
+          const linked: Record<string, unknown> = {}
+          const at = Date.now()
+          const base = { version: 'host', licence: '', licenceNote: '', ok: true, at }
+          if (typeof asked.ffmpeg === 'string') {
+            const dir = join(toolsDir, 'ffmpeg-host')
             mkdirSync(dir, { recursive: true })
             for (const name of ['ffmpeg', 'ffprobe']) {
               rmSync(join(dir, name), { force: true })
-              symlinkSync(join(ffmpeg, name), join(dir, name))
+              symlinkSync(join(asked.ffmpeg, name), join(dir, name))
             }
-            const at = Date.now()
-            const tool = { name: 'ffmpeg', pillar: 'media', version: 'host', licence: 'LGPL', licenceNote: '', ok: true, dir: 'ffmpeg-host', bin: 'ffmpeg', bins: { ffprobe: 'ffprobe' }, at }
-            writeFileSync(join(tools, 'state.json'), JSON.stringify({ platform: `${process.platform}-${process.arch}`, at, tools: { ffmpeg: tool } }))
+            linked.ffmpeg = { ...base, name: 'ffmpeg', pillar: 'media', licence: 'LGPL', dir: 'ffmpeg-host', bin: 'ffmpeg', bins: { ffprobe: 'ffprobe' } }
           }
+          // A folder linked whole, so the program finds its own bundle (soffice) or its venv's pyvenv.cfg (python).
+          const linkDir = (name: string, target: string): void => {
+            mkdirSync(toolsDir, { recursive: true })
+            rmSync(join(toolsDir, name), { force: true })
+            symlinkSync(target, join(toolsDir, name))
+          }
+          if (typeof asked.libreoffice === 'string') {
+            linkDir('libreoffice-host', asked.libreoffice)
+            linked.libreoffice = { ...base, name: 'libreoffice', pillar: 'toolchain', dir: 'libreoffice-host', bin: 'LibreOffice.app/Contents/MacOS/soffice' }
+          }
+          if (typeof asked.pythonPptx === 'string') {
+            linkDir('pptx-host', asked.pythonPptx)
+            linked['python-pptx'] = { ...base, name: 'python-pptx', pillar: 'slides', dir: 'pptx-host', bin: 'bin/python' }
+          }
+          if (Object.keys(linked).length > 0) {
+            const statePath = join(toolsDir, 'state.json')
+            let prior: Record<string, unknown> = {}
+            try {
+              prior = (JSON.parse(readFileSync(statePath, 'utf8')) as { tools?: Record<string, unknown> }).tools ?? {}
+            } catch {
+              prior = {}
+            }
+            writeFileSync(statePath, JSON.stringify({ platform: `${process.platform}-${process.arch}`, at, tools: { ...prior, ...linked } }))
+          }
+          // Milestone 49: edits an agent proposed to a deck, as slides_edit writes them in suggest mode.
+          const slidesOps = Array.isArray(body.slidesOps) ? (body.slidesOps as { itemId: string; sessionId: string; by: string; ops: { slide: number; op: unknown }[] }[]) : []
+          for (const d of slidesOps) {
+            const next = ((db.prepare('SELECT max(seq) AS n FROM work_slides_ops WHERE item_id = ?').get(d.itemId) as { n: number | null }).n ?? 0) + 1
+            for (const [i, o] of d.ops.entries()) {
+              db.prepare('INSERT INTO work_slides_ops (id, item_id, session_id, seq, slide, op, by, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(`${d.itemId}-op${next + i}`, d.itemId, d.sessionId, next + i, o.slide, JSON.stringify(o.op), d.by, now)
+            }
+            db.prepare("INSERT INTO work_slides_items (item_id, session_id, updated_at) VALUES (?, ?, ?) ON CONFLICT (item_id) DO UPDATE SET updated_at = excluded.updated_at").run(d.itemId, d.sessionId, now)
+          }
+          // Milestone 49: a thread's write to a .tcdoc as docs_write makes it (the owner asked), through the Work
+          // service's internal route, so history has a version before it and the live document after.
+          const docWrites = Array.isArray(body.docWrites) ? (body.docWrites as { path: string; markdown: string; principal: string }[]) : []
+          const wrote: unknown[] = []
+          for (const w of docWrites) {
+            const secret = readFileSync(servicePaths(dirname(dbPath)).secretFile, 'utf8').trim()
+            const payload = JSON.stringify({ file: w.path, shared: false, fence: { sectors: 'all' }, markdown: w.markdown, because: 'asked', principal: w.principal })
+            wrote.push(
+              await new Promise((ok, bad) => {
+                const req = httpRequest({ socketPath: servicePaths(dirname(dbPath)).socketPath, path: '/internal/docs/write', method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` } }, (res) => {
+                  const chunks: Buffer[] = []
+                  res.on('data', (c: Buffer) => chunks.push(c))
+                  res.on('end', () => ((res.statusCode ?? 0) < 300 ? ok(JSON.parse(Buffer.concat(chunks).toString() || '{}')) : bad(new Error(`${res.statusCode}: ${Buffer.concat(chunks).toString()}`))))
+                })
+                req.on('error', bad)
+                req.end(payload)
+              })
+            )
+          }
+          if (docWrites.length > 0) return answer(200, { written: rows.length, wrote })
           return answer(200, { written: rows.length })
         } finally {
           db.close()

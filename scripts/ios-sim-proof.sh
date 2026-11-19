@@ -1067,11 +1067,14 @@ work_set() {
 
 # Milestone 47: a Work workspace's Mail, Tasks, Agenda and Routines (LifeKit's fixture day: the test server
 # has no LifeOS), Start Thread from a mail and a task, the voice switch, then the Item segment of the seeded
-# thread for each kind (scripts/lib/ios-work-seeds.ts seedWorkItems). Slides need a rendered deck (soffice)
-# and a guest link a hosted (LifeOS) item; history needs the Work service, which runs only under Electron.
+# thread for each kind (scripts/lib/ios-work-seeds.ts seedWorkItems). Slides need a rendered deck (LibreOffice
+# and python-pptx, TC_PROOF_PPTX_VENV), history and a form's answers the Work service (the server runs it in
+# process, TC_TEST_WORK_SERVICE); a guest link needs a hosted (LifeOS) item.
 work_m47() {
   # Each shot in a subshell: the script runs under sh, where a variable set before a function call outlives it.
   local items="Spring LAN check-in"
+  # Milestone 46's part ends in dark: this part's shots are light.
+  appearance light
   ( shot w21-work-workspace-light work-workspace "" "" "" 12 )
   ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail shot w22-mail-light work-view )
   # The Purdue thread opens three seconds after the list, as a tap would.
@@ -1103,6 +1106,9 @@ work_m47() {
   # A send that failed and may have gone: Check Sent first, on its row and in its detail.
   ( shot w44-outbox-check-sent-light outbox )
   ( shot w45-outbox-check-sent-detail-light outbox-item "" "" m47-unknown )
+  # Milestone 49: a deck with two edits waiting, under its review row, when the seeds could make one
+  # (LibreOffice.app and TC_PROOF_PPTX_VENV, a venv with python-pptx).
+  ( TC_ITEM=slides shot w46-item-slides-review-light thread "$items" item "" 20 )
 }
 
 work_m46() {

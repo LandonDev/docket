@@ -209,7 +209,7 @@ function pdfOf(pages: string[][]): Buffer {
  * submit for the thread. Each kind the test server cannot serve is a line saying so, with its error.
  */
 export async function seedWorkItems(ready: WorkSeedReady & { environmentId: string }, purdue: string): Promise<{ sessionId: string; lines: string[] }> {
-  const { mkdirSync, writeFileSync } = await import('node:fs')
+  const { existsSync, mkdirSync, writeFileSync } = await import('node:fs')
   const { spawnSync } = await import('node:child_process')
   const host = ready.environmentId
   const s = await socket(ready)
@@ -373,6 +373,31 @@ export async function seedWorkItems(ready: WorkSeedReady & { environmentId: stri
     if (form) {
       // His save, through the canvas's own method: the questions go in over the empty row form_create left.
       await probe('form', 'work.forms.save', { itemId: form, rev: 0, body: formBody })
+      // With the Work service in process (TC_TEST_WORK_SERVICE=1): published as his Send in the Outbox does, then
+      // three people answer at its link, so the phone has responses to show.
+      if (process.env.TC_TEST_WORK_SERVICE === '1') {
+        try {
+          await s.call('work.forms.publish', { itemId: form })
+          const { items: held } = await s.call<{ items: { ref: unknown; kind: string; payload?: { itemId?: string } }[] }>('work.outbox.list', {})
+          const act = held.find((i) => i.kind === 'form.publish' && i.payload?.itemId === form)
+          if (!act) throw new Error('no held publish in the Outbox')
+          await s.call('work.outbox.send', { ref: act.ref })
+          const { link } = await s.call<{ link: string | null }>('work.forms.open', { itemId: form })
+          if (!link) throw new Error('the published form has no link')
+          const people = [
+            { q1: 'Ava Chen', q2: 'Valorant', q3: 'Vegetarian' },
+            { q1: 'Marcus Lee', q2: 'Rocket League' },
+            { q1: 'Priya Natarajan', q2: 'Overwatch 2', q3: 'No nuts, please' }
+          ]
+          for (const answers of people) {
+            const r = await fetch(link, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ answers }) })
+            if (r.status !== 201) throw new Error(`an answer was refused: ${r.status} ${await r.text()}`)
+          }
+          lines.push(`OK form: published and answered ${people.length} times`)
+        } catch (err) {
+          lines.push(`FAIL form: publish and answer: ${String(err)}`)
+        }
+      }
       await probe('form', 'work.forms.responses', { itemId: form })
     }
     if (dash) await probe('dashboard', 'work.dashboards.open', { itemId: dash })
@@ -389,7 +414,16 @@ export async function seedWorkItems(ready: WorkSeedReady & { environmentId: stri
       lines.push(`INFO history: could not write a .tcdoc (${String(err)}); opening the path anyway`)
     }
     const history = await open('history', 'LAN poster history', { at: 'file', host, path: tcdoc })
-    if (history) await probe('history', 'work.history.versions', { source: { at: 'file', host, path: tcdoc } })
+    if (history) {
+      await probe('history', 'work.history.versions', { source: { at: 'file', host, path: tcdoc } })
+      // With the Work service in process (TC_TEST_WORK_SERVICE=1), the thread changes the poster as docs_write
+      // would, so the oldest version's compare has a change to show.
+      if (!lines.at(-1)?.startsWith('FAIL')) {
+        const markdown = '# Spring LAN\n\nSaturday, April 10, 8:30 AM to 6:00 PM in the CoRec arena.\n\nBring your own headset and a controller.'
+        const wrote = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows: [], docWrites: [{ path: tcdoc, principal: `agent:${host}:${sessionId}`, markdown }] }) })
+        lines.push(wrote.ok ? 'OK history: the thread wrote a second version' : `FAIL history: the thread's write: ${wrote.status} ${await wrote.text()}`)
+      }
+    }
 
     // A thread with one item: its row under the segment bar holds only the item's More.
     const single = await s.call<{ id: string }>('session.create', { scope: 'work', workspaceId: purdue, threadType: 'chat', provider: 'claude', model: 'claude-opus-5-5', title: SINGLE_THREAD_TITLE })
@@ -399,14 +433,61 @@ export async function seedWorkItems(ready: WorkSeedReady & { environmentId: stri
       lines.push(`NOT RUN single-item thread: ${String(err)}`)
     }
 
-    // Slides need a deck rendered to PDF; this Mac has no LibreOffice (soffice).
-    const soffice = spawnSync('sh', ['-c', 'command -v soffice || ls /Applications/LibreOffice.app/Contents/MacOS/soffice'], { encoding: 'utf8' })
-    if (soffice.status !== 0) lines.push('NOT RUN slides: no soffice on this Mac, so no deck can be rendered')
+    // Slides need a deck rendered to PDF (LibreOffice) and read (python-pptx): the app's own install puts both
+    // under work-tools; here LibreOffice.app's folder and a venv with python-pptx (TC_PROOF_PPTX_VENV) stand in.
+    const office = ['/Applications', `${process.env.HOME}/Applications`].find((d) => existsSync(`${d}/LibreOffice.app/Contents/MacOS/soffice`))
+    const venv = process.env.TC_PROOF_PPTX_VENV
+    if (!office) lines.push('NOT RUN slides: no LibreOffice.app on this Mac, so no deck can be rendered')
+    else if (!venv || !existsSync(`${venv}/bin/python`)) lines.push('NOT RUN slides: TC_PROOF_PPTX_VENV names no venv with python-pptx, so no deck can be read')
+    else {
+      const deckPath = `${dir}/Spring LAN plan.pptx`
+      const made = spawnSync(`${venv}/bin/python`, ['-I', '-c', DECK_SCRIPT, deckPath], { encoding: 'utf8' })
+      if (made.status !== 0) lines.push(`NOT RUN slides: python-pptx could not write the deck: ${made.stderr}`)
+      else {
+        const ids = JSON.parse(made.stdout) as { slide: number; title: number }[]
+        const tools = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows: [], tools: { libreoffice: office, pythonPptx: venv } }) })
+        if (!tools.ok) lines.push(`FAIL /work-held deck tools: ${tools.status}`)
+        const deck = await open('slides', 'Spring LAN plan', { at: 'file', host, path: deckPath })
+        if (deck) {
+          // Two edits the thread proposed and he has not settled: the review row's "2 changes".
+          const ops = [
+            { slide: ids[0].slide, op: { op: 'text', slide: ids[0].slide, shape: ids[0].title, paragraphs: ['Spring LAN 2027'] } },
+            { slide: ids[1].slide, op: { op: 'notes', slide: ids[1].slide, text: 'Say the doors open at 8:30.' } }
+          ]
+          const held = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows: [], slidesOps: [{ itemId: deck, sessionId, by: `agent:${host}:${sessionId}`, ops }] }) })
+          if (!held.ok) lines.push(`FAIL /work-held slidesOps: ${held.status}`)
+          // The first open renders the file and the proposed deck (a cold soffice takes a while).
+          try {
+            const t0 = Date.now()
+            const view = await s.call<{ changes: unknown[]; renderError?: string; renders: { file?: unknown; proposed?: unknown } }>('work.slides.open', { itemId: deck })
+            const secs = Math.round((Date.now() - t0) / 1000)
+            if (view.renderError || !view.renders.file || !view.renders.proposed) lines.push(`FAIL slides: work.slides.open in ${secs} s: ${view.renderError ?? 'a render is missing'}`)
+            else lines.push(`OK slides: both renders made in ${secs} s, ${view.changes.length} changes waiting`)
+          } catch (err) {
+            lines.push(`FAIL slides: work.slides.open: ${String(err)}`)
+          }
+        }
+      }
+    }
     return { sessionId, lines }
   } finally {
     s.close()
   }
 }
+
+/** Writes a three-slide deck with python-pptx at argv[1]; prints each slide's id and its title shape's id. */
+const DECK_SCRIPT = `import json, sys
+from pptx import Presentation
+p = Presentation()
+out = []
+for layout, title, body in [(0, "Spring LAN", "Saturday, April 10 in the CoRec arena"), (1, "Schedule", "Check-in 8:30\\nBrackets 9:00\\nFinals 4:00"), (1, "Seats", "120 seats in six rows\\nOne switch per row")]:
+    s = p.slides.add_slide(p.slide_layouts[layout])
+    s.shapes.title.text = title
+    s.placeholders[1].text = body
+    out.append({"slide": s.slide_id, "title": s.shapes.title.shape_id})
+p.save(sys.argv[1])
+print(json.dumps(out))
+`
 
 /** What the work set's item presses left on the host: the video's comment at its frame. */
 export async function verifyWorkItems(ready: WorkSeedReady, sessionId: string): Promise<string[]> {
