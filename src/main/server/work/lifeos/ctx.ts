@@ -65,6 +65,8 @@ export interface LifeosSeams {
 
 export interface LifeosHost {
   session: LifeosSession
+  /** LifeOS's Convex address, which a screen's own client opens with the JWT it was given */
+  url: string
   keys: SectorKeys
   links: Links
   /** What a screen draws; the pairing code only for a caller that may see it. */
@@ -194,6 +196,7 @@ export function makeLifeosHost(ctx: WorkCtx, deps: WorkPartDeps, seams: LifeosSe
     session,
     keys,
     links,
+    url: address.url,
     status(withCode) {
       const state = session.state()
       const lifeos = state.state === 'pairing' && !withCode ? { state: 'pairing' as const, expiresAt: state.expiresAt } : state
@@ -209,7 +212,7 @@ export function makeLifeosHost(ctx: WorkCtx, deps: WorkPartDeps, seams: LifeosSe
       const list = await session.owner().query<{ key: string }[]>('sectors:list', {})
       return (list ?? []).some((s) => s.key === sector)
     },
-    setSector: (workspaceId, sector) => deps.store.setWorkspaceSector(workspaceId, sector),
+    setSector: (workspaceId, sector) => deps.registry.setWorkspaceSector(workspaceId, sector),
     homeOf: (workspaceId) => deps.storeSync?.homeFor(workspaceId)?.name ?? null
   }
   return host

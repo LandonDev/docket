@@ -164,7 +164,8 @@ describe('METHOD_CAPABILITY', () => {
         'addons.grant.clear',
         'addons.grant.refresh',
         // The Work switch on this host (contract-work.ts): a settings write.
-        'work.set'
+        'work.set',
+        'work.workspace.set'
       ].sort()
     )
   })

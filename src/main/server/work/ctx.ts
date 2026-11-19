@@ -364,6 +364,11 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
       return want.length === got.length && timingSafeEqual(want, got)
     }
   }
+  const knownWorkspace = (id: string): WorkspaceMeta => {
+    const workspace = deps.registry.listWorkspaces().find((w) => w.id === id)
+    if (!workspace) throw new Error(`unknown workspace: ${id}`)
+    return workspace
+  }
   /** A bridge call's thread: its token must be its own. */
   const bridgeSession = (params: { sessionId?: unknown; token?: unknown } | undefined): SessionMeta => {
     if (typeof params?.sessionId !== 'string' || typeof params.token !== 'string' || !tools.checkToken(params.sessionId, params.token))
@@ -386,6 +391,29 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           return handled(settings.get())
         case 'work.set':
           return handled(settings.set({ enabled: req.params.enabled }) satisfies WorkSettings)
+        case 'work.workspace.get':
+          return handled(settings.workspace(knownWorkspace(req.params.workspaceId).id))
+        case 'work.workspace.set': {
+          if (!settings.enabled()) throw new Error('Work is off on this host')
+          const { workspaceId, patch } = req.params
+          knownWorkspace(workspaceId)
+          // null clears a model back to the Work default; absent keeps what is set.
+          const { model, reasoning, ...rest } = patch
+          settings.setWorkspace(workspaceId, {
+            ...rest,
+            ...(model !== undefined ? { model: model ?? undefined } : {}),
+            ...(reasoning !== undefined ? { reasoning: reasoning ?? undefined } : {})
+          })
+          return handled(settings.workspace(workspaceId))
+        }
+        case 'work.project.open': {
+          if (!settings.enabled()) throw new Error('Work is off on this host')
+          const { workspaceId, lifeosProjectId, name } = req.params
+          const workspace = knownWorkspace(workspaceId)
+          if (workspace.kind !== 'work' || !workspace.sector) throw new Error(`${workspace.name} is not a Work workspace linked to LifeOS`)
+          const mine = deps.registry.listProjects().find((p) => p.workspaceId === workspaceId && p.lifeosProjectId === lifeosProjectId)
+          return handled(mine ?? (await deps.registry.createProject(workspaceId, name, 'local', { lifeosProjectId })))
+        }
         case 'app.workTools':
           return handled({ tools: tools.listing(bridgeSession(req.params)) })
         case 'app.workCall': {

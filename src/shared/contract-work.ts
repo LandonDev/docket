@@ -43,6 +43,18 @@ export const WorkCoreRequestSchemas = [
   z.object({ id: z.string(), method: z.literal('work.get'), params: z.object({}).optional() }),
   /** → WorkSettings: sets it, on this host alone; a client writes it to every host it is linked to */
   request('work.set', z.object({ enabled: z.boolean() })),
+  /** → WorkspaceWorkSettings: a workspace's own Work settings (`workspaces.work_settings`) */
+  request('work.workspace.get', z.object({ workspaceId: z.string() })),
+  /** → WorkspaceWorkSettings: changes them on the workspace's host; what the patch leaves out stays */
+  request(
+    'work.workspace.set',
+    z.object({
+      workspaceId: z.string(),
+      patch: z.object({ mayUseDesktop: z.array(z.string()).optional(), model: z.string().nullable().optional(), reasoning: z.string().nullable().optional(), voice: z.boolean().optional() })
+    })
+  ),
+  /** → ProjectMeta: the project that holds a Work workspace's threads about one LifeOS project, made at the first ask */
+  request('work.project.open', z.object({ workspaceId: z.string(), lifeosProjectId: z.string().min(1), name: z.string().min(1).max(200) })),
   // The codex and Muse bridge (scripts/app-mcp-bridge.mjs): `token` is the
   // thread's own, so one thread's bridge never lists or calls as another.
   /** → AppWorkToolsAnswer: the Work tools of the thread's scope, as the bridge lists them */
@@ -59,6 +71,9 @@ export type WorkSettingsPush = { push: 'work'; settings: WorkSettings }
 export const WORK_CORE_CAPS = {
   'work.get': 'read',
   'work.set': 'admin',
+  'work.workspace.get': 'read',
+  'work.workspace.set': 'admin',
+  'work.project.open': 'operate',
   'app.workTools': 'local',
   'app.workCall': 'local',
   'app.workCancel': 'local'

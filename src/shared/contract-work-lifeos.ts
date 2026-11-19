@@ -55,8 +55,8 @@ export interface LifeosStatus {
   keys: LifeosKeyState[]
 }
 
-/** What `work.lifeos.jwt` answers: a JWT while connected, else the state that stopped it. */
-export type LifeosJwtAnswer = { ok: true; jwt: string; expiresAt: number } | { ok: false; state: Exclude<LifeosStateName, 'connected'> }
+/** What `work.lifeos.jwt` answers: a JWT while connected, with the Convex address it is good for; else the state that stopped it. */
+export type LifeosJwtAnswer = { ok: true; jwt: string; expiresAt: number; url: string } | { ok: false; state: Exclude<LifeosStateName, 'connected'> }
 
 export const LifeosRequestSchemas = [
   /** → LifeosStatus; a pairing's code only to a caller with admin */

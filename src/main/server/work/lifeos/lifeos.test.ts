@@ -36,6 +36,8 @@ let rows: Map<string, AddonRow>
 let marks: Map<string, 'lifeos' | null>
 let grants: Map<string, Record<string, string>>
 let homes: Map<string, string>
+/** The registry's `workspaces` pushes a link sent. */
+let sectorPushes: string[] = []
 let catalog: ((kind: 'workspaces' | 'projects') => void)[]
 /** everything that left the host: pushes, answers, log lines */
 let wire: string[]
@@ -54,6 +56,10 @@ function boot(): Work {
   const registry = {
     get: () => null,
     listWorkspaces: () => store.listWorkspaces(),
+    setWorkspaceSector: (id: string, sector: string | null) => {
+      store.setWorkspaceSector(id, sector)
+      sectorPushes.push(`${id}:${sector}`)
+    },
     onCatalog: (fn: (kind: 'workspaces' | 'projects') => void) => {
       catalog.push(fn)
       return () => {}
@@ -279,6 +285,8 @@ describe('the JWT for a screen', () => {
     const a = await call<LifeosJwtAnswer>('work.lifeos.jwt', { sector: 'purdue' }, approveKey)
     const b = await call<LifeosJwtAnswer>('work.lifeos.jwt', { sector: 'purdue' }, approveKey)
     expect(a.ok && b.ok && a.jwt === b.jwt).toBe(true)
+    // A screen opens its own Convex client on the address the JWT is good for.
+    expect(a.ok && a.url).toBe(URL)
     expect(fake.jwts.length).toBe(before + 1)
     expect(fake.jwts.at(-1)?.sectors).toEqual(['purdue'])
     expect(await work.ctx.lifeos.jwt()).not.toBe(a.ok ? a.jwt : '')
@@ -326,8 +334,11 @@ describe('sector keys', () => {
     const ws = workspace('ws_code')
     await signedIn()
     await until(() => grants.size === 1)
+    sectorPushes = []
     await call('work.lifeos.link', { workspaceId: ws.id, sector: 'cosmic' })
     expect(store.listWorkspaces().find((w) => w.id === ws.id)?.sector).toBe('cosmic')
+    // The sector reaches every client through the registry's workspaces push.
+    expect(sectorPushes).toEqual([`${ws.id}:cosmic`])
     const first = fake.liveBots().find((b) => b.sectors.join() === 'cosmic')!
     expect(first).toBeTruthy()
     await call('work.lifeos.link', { workspaceId: ws.id, sector: 'hypixel' })

@@ -22,16 +22,25 @@ describe("Work's contract", () => {
   it('mounts every pillar once, in order', () => {
     expect(Object.keys(WORK_PILLAR_CONTRACTS)).toEqual([...PILLAR_IDS])
   })
-  it("adds the core's five methods and each pillar's own, and nothing else, to the contract", () => {
+  it("adds the core's eight methods and each pillar's own, and nothing else, to the contract", () => {
     const pillarMethods = PILLAR_IDS.flatMap((id) => WORK_PILLAR_CONTRACTS[id].requests.map(methodOf))
-    const core = ['app.workCall', 'app.workCancel', 'app.workTools', 'work.get', 'work.set']
+    const core = ['app.workCall', 'app.workCancel', 'app.workTools', 'work.get', 'work.project.open', 'work.set', 'work.workspace.get', 'work.workspace.set']
     expect(WorkRequestSchemas.map(methodOf).sort()).toEqual([...core, ...pillarMethods].sort())
     // every Work method the contract speaks came through this mount, and no method is declared twice
     expect(all.filter(isWorkMethod).sort()).toEqual([...core, ...pillarMethods].sort())
     expect(new Set(all).size).toBe(all.length)
   })
-  it('the switch is read by any key and set only by an admin; the bridge methods never leave the loopback', () => {
-    expect(WORK_CORE_CAPS).toEqual({ 'work.get': 'read', 'work.set': 'admin', 'app.workTools': 'local', 'app.workCall': 'local', 'app.workCancel': 'local' })
+  it('the switch and a workspace\'s settings are read by any key and set only by an admin, a project opened by operate; the bridge methods never leave the loopback', () => {
+    expect(WORK_CORE_CAPS).toEqual({
+      'work.get': 'read',
+      'work.set': 'admin',
+      'work.workspace.get': 'read',
+      'work.workspace.set': 'admin',
+      'work.project.open': 'operate',
+      'app.workTools': 'local',
+      'app.workCall': 'local',
+      'app.workCancel': 'local'
+    })
     expect(requiredCapability({ method: 'work.get' })).toBe('read')
     expect(requiredCapability({ method: 'work.set' })).toBe('admin')
     for (const method of ['app.workTools', 'app.workCall', 'app.workCancel'] as const) {
@@ -82,6 +91,9 @@ describe("Work's contract", () => {
     expect(ClientRequestSchema.safeParse({ id: '1', method: 'work.get' }).success).toBe(true)
     expect(ClientRequestSchema.safeParse({ id: '1', method: 'work.set', params: { enabled: true } }).success).toBe(true)
     expect(ClientRequestSchema.safeParse({ id: '1', method: 'work.set', params: {} }).success).toBe(false)
+    expect(ClientRequestSchema.safeParse({ id: '1', method: 'work.workspace.set', params: { workspaceId: 'w', patch: { mayUseDesktop: ['mac'], model: null } } }).success).toBe(true)
+    expect(ClientRequestSchema.safeParse({ id: '1', method: 'work.workspace.set', params: { workspaceId: 'w' } }).success).toBe(false)
+    expect(ClientRequestSchema.safeParse({ id: '1', method: 'work.project.open', params: { workspaceId: 'w', lifeosProjectId: '', name: 'x' } }).success).toBe(false)
     expect(ClientRequestSchema.safeParse({ id: '1', method: 'app.workCall', params: { sessionId: 's', token: 't', call: 3, tool: 'x', args: {} } }).success).toBe(true)
     expect(ClientRequestSchema.safeParse({ id: '1', method: 'app.workTools', params: { sessionId: 's' } }).success).toBe(false)
     expect(ClientRequestSchema.safeParse({ id: '1', method: 'app.workCancel', params: { sessionId: 's', token: 't', call: 'c1' } }).success).toBe(true)

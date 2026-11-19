@@ -41,7 +41,7 @@ export const lifeos: WorkModule = {
         const sector = req.params?.sector
         try {
           const { jwt, expiresAt } = await host.session.jwt(sector ? [sector] : undefined)
-          return handled({ ok: true, jwt, expiresAt } satisfies LifeosJwtAnswer)
+          return handled({ ok: true, jwt, expiresAt, url: host.url } satisfies LifeosJwtAnswer)
         } catch (err) {
           if (err instanceof LifeosUnavailable) return handled({ ok: false, state: err.state } satisfies LifeosJwtAnswer)
           throw err

@@ -2236,7 +2236,7 @@ export class SessionRegistry {
     workspaceId: string,
     name: string,
     mode: ProjectMode,
-    opts: { branch?: string; baseRef?: string; linkId?: string } = {}
+    opts: { branch?: string; baseRef?: string; linkId?: string; lifeosProjectId?: string } = {}
   ): Promise<ProjectMeta> {
     const ws = this.store.listWorkspaces().find((w) => w.id === workspaceId)
     if (!ws) throw new Error(`unknown workspace: ${workspaceId}`)
@@ -2259,6 +2259,8 @@ export class SessionRegistry {
       cwd,
       archived: false,
       ...(opts.linkId ? { linkId: opts.linkId } : {}),
+      // A Work workspace's project mirrors one of LifeOS's (work.project.open).
+      ...(opts.lifeosProjectId ? { lifeosProjectId: opts.lifeosProjectId } : {}),
       createdAt: Date.now()
     }
     this.store.insertProject(meta)
@@ -2270,6 +2272,12 @@ export class SessionRegistry {
 
   listProjects(): ProjectMeta[] {
     return this.store.listProjects()
+  }
+
+  /** A workspace's LifeOS sector (work.lifeos.link), told to every client in the `workspaces` push. */
+  setWorkspaceSector(workspaceId: string, sector: string | null): void {
+    this.store.setWorkspaceSector(workspaceId, sector)
+    this.notifyCatalog('workspaces')
   }
 
   getProject(projectId: string): ProjectMeta | null {
