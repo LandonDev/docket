@@ -2411,9 +2411,10 @@ What milestone 47 added (approved pages `phone-life.html` and
   (28 pt, radius 8, the fill, the kind's glyph and its label) above his
   words, Cancel and Start. Nothing runs until Start; the thread opens.
 - **Item | Chat**: a Work thread with an open item is two segments, the
-  item's name (cut to fit) and Chat. Under the bar one row names the item
-  (a menu when there are several) and holds its More (Make a Guest Link
-  for a document or sheet, Close).
+  item's name (cut to fit) and Chat. Under the bar one row holds the
+  item's More (Make a Guest Link for a document or sheet, Close); with
+  several items the row leads with the shown one's name as a menu to
+  switch. One item's name shows once, in the segment.
 - **The hosted editor**: a LifeOS document or sheet loads `/w/open` in a
   web view at full width with no inset; the page draws its own loading
   and its own review. It never raises the keyboard before his first
@@ -2425,7 +2426,9 @@ What milestone 47 added (approved pages `phone-life.html` and
   render with the filmstrip under it and, while changes wait, the review
   row (44 pt: how many, Reject, Accept as the one tinted button); a video
   over its comments by time, a comment field that pins to the frame
-  shown; a picture from its tiles; a meeting's transcript (who, when, the
+  shown (a long one from the host's HLS proxy, a short one from its proxy
+or original; a key without admin sees "This file opens on the computer."
+for a short one); a picture from its tiles, or whole at phone size; a meeting's transcript (who, when, the
   words); the browser's driver ("You are driving" or "The agent is
   driving") with Take Over or Hand Back, and an act it holds as the one
   prominent glass button, which opens the held detail; a form's responses

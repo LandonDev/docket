@@ -878,9 +878,15 @@
   for a PDF, slides, media, meeting, browser, form, dashboard, history and
   a held mail, and a sentence for a file document or sheet (those open on
   the computer that has them). `ChunkedRead` reads a PDF or a deck's render
-  in frames of one `rev`; `MediaPick` plays the fMP4 proxy (its segments
-  fetched and joined into one file) or draws a picture from its tiles
-  (`TileGrid`); the frame arithmetic is mediaFrames.ts's.
+  in frames of one `rev`; `MediaPick` plays the fMP4 HLS proxy (its
+  segments fetched and written to one file) or draws a picture from its
+  tiles (`TileGrid`). The host cuts HLS only past ten minutes and tiles
+  only past 40 megapixels, so with a key that has admin the phone also
+  asks for the original where iOS decodes it (`h264`, `hevc`) and reads
+  the proxy, the original or a picture by its media token (`media.read`,
+  2 MB ranges, `MediaFiles` writing a `.part` file then moving it into
+  place); without admin such a file says it opens on the computer. The
+  frame arithmetic is mediaFrames.ts's.
 - **The Item segment** (ThreadFrame.swift `segments(for:hasItems:)`): a
   Work thread that is its transcript alone and has an open item is Item
   and Chat; a thread with a hero of its own keeps it. The bar shows the
@@ -891,7 +897,11 @@
   (`LifeTokenSource`: `work.lifeos.jwt {sector}`, kept until five minutes
   before it ends, asked again on a refusal). It is the screens'
   `LifeActions`: `holdsSends` (the draft LifeOS saved, read back with
-  `compose:get`, goes to `work.mail.send` with what it says as `seen`),
+  `compose:get`, goes to `work.mail.send` with what it says as `seen`,
+  and only while it still has the subject and recipients the composer
+  pressed on, `HeldSendCheck`: work-kit's `LifeHeldSend` carries no words,
+  so a change to the body alone between the save and the press is not
+  caught yet),
   `startsThreads` (a sheet with the item as its chip; `startThread` sends
   `session.create` with `about` and the chip's line above his words,
   `ChipWords`, the desktop's `chipLine`). The screens keep LifeOS's own
