@@ -20,6 +20,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { ToolchainRow } from "../formats/ToolchainRow";
 import { AddinRow } from "../office/AddinRow";
+import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { HouseRules } from "../rules/HouseRules";
 import { linkSector, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
@@ -27,9 +28,9 @@ import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 /**
  * Settings → Work while Work is on (prototype settings.html, "One Work
  * page"): LifeOS's sign-in per host, the model Work threads start on, and
- * where Work runs. A Work workspace's own page holds what is its own. Grants
- * and guest links join this page with the Outbox (milestone 14) and guest
- * links (milestone 31).
+ * where Work runs, and every guest link (milestone 31). A Work workspace's
+ * own page holds what is its own. Grants join this page with the Outbox
+ * (milestone 14).
  */
 
 /** What a host's LifeOS state reads as, in one line. */
@@ -89,6 +90,7 @@ export function WorkSettingsBody() {
           <AddinRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Office add-in on ${host.name}` : "Office add-in"} />
         ))}
       </PageSection>
+      <GuestLinksSection hosts={hosts.map((h) => h.id)} />
     </>
   );
 }

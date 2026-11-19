@@ -17,6 +17,7 @@ import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
 import { chartBars, chartFrom, chartTicks, sheetChanges, tickText, type ChartBar as Bars } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
+import { ShareButton } from "../guests/Share";
 
 /**
  * The sheet kind (docs/agents/work-sheets.md; the approved page is
@@ -404,10 +405,11 @@ export function SheetSkeleton() {
   );
 }
 
-/** While the sheet loads the bar holds one bone where the mode will be; after, the pane's own parts fill it. */
+/** While the sheet loads the bar holds one bone where the mode will be; after, the pane's own parts fill it, and Share (milestone 31). */
 export function Bar(props: Props) {
   const { view, book, failed } = useSheetSync(syncFor(props));
-  if (failed || (view && book)) return null;
+  if (failed) return null;
+  if (view && book) return <ShareButton env={props.env} source={props.source} title={props.item.title} />;
   return <Skeleton className="h-3 w-30" />;
 }
 

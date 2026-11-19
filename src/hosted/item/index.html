@@ -4,9 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
-    <!-- A stub of a hosted page (docs/agents/work.md): it loads nothing and
-         runs nothing. Its milestone replaces it; electron.vite.config.ts
-         already builds this entry into out/hosted. -->
+    <!-- The owner's hosted editor is not this page: the Work service serves
+         /w/open from the guest page (src/hosted/guest), which reads its own
+         address (service/routes/item.ts, docs/agents/work-guests.md). This
+         entry loads and runs nothing. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
     <title>TempCode</title>
     <style>
@@ -21,6 +22,6 @@
     </style>
   </head>
   <body>
-    <p>Not built: the hosted editor (milestone 31).</p>
+    <p>Nothing to open here.</p>
   </body>
 </html>

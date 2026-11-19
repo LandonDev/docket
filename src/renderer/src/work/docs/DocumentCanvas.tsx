@@ -28,6 +28,7 @@ import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { docHost, servedBy, type DocHost } from "./host";
 import { decided, reviewOf } from "./review";
 import { docThreads, type DocThreads } from "./threads";
+import { ShareButton } from "../guests/Share";
 
 /**
  * The document kind's body (docs/agents/work-docs.md; the approved
@@ -174,6 +175,11 @@ function TitleField({ text, rename }: { text: string; rename(title: string): Pro
       style={TITLE_STYLE}
     />
   );
+}
+
+/** The document's own tools on the kind's bar: Share (milestone 31). */
+export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
+  return <ShareButton env={env} source={source} title={item.title} />;
 }
 
 /** A Word, OpenDocument or RTF file becomes a `.tcdoc` first (work/formats, milestone 21); the rest open as they are. */
