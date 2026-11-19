@@ -58,7 +58,16 @@ it and who owns each folder.
 - **A script bundle** that imports work-kit with `--packages=external` needs
   `--alias:work-kit=./node_modules/work-kit/src`, as aliax-core does; a subpath
   maps to the same path under `src` (`work-kit/lifeos` is `src/lifeos/index.ts`).
-- `overrides` holds `yjs` at 13.6.31, the one Yjs the shared editor runs on.
+- `overrides` holds `yjs` at 13.6.31, `prosemirror-model` at 1.25.13 and
+  `@tiptap/pm` at 3.34.0: the one Yjs and the one ProseMirror the shared editor
+  (`work-kit/editor`, BlockNote 0.57.0) runs on. The two ProseMirror versions are
+  what BlockNote 0.57.0's ranges resolve to; move them only with BlockNote.
+- **The editor's peers are not installed yet.** work-kit's `y-prosemirror` and
+  `y-protocols` are optional peers, so nothing here pulls `y-prosemirror` in. The
+  first code that imports `work-kit/editor` adds `y-prosemirror` 1.3.7 and
+  `y-protocols` 1.0.7 to `devDependencies` (exact, as work-kit names them), or the
+  import does not resolve. Proven with them present: `tsconfig.web.json` compiles
+  an import of `work-kit/editor` and `work-kit/collab`, and esbuild bundles it.
 
 Imports are by subpath; there is no root export: `work-kit/ui/<name>`
 (`work-kit/ui/cn` for the kit's `cn`),
