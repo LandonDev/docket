@@ -100,11 +100,12 @@ function cellOfApi(c: { userEnteredValue?: Record<string, unknown>; effectiveVal
   return v === null ? null : { v: v as SheetCell['v'] }
 }
 
-export function gridOf(json: GoogleSheetJson): { grid: Grid; order: string[]; sizes: Map<string, { rows: number; columns: number }> } {
+export function gridOf(json: GoogleSheetJson): { grid: Grid; order: string[]; sizes: Map<string, { rows: number; columns: number }>; capped: boolean } {
   const grid: Grid = new Map()
   const order: string[] = []
   const sizes = new Map<string, { rows: number; columns: number }>()
   let budget = GOOGLE_MAX_CELLS
+  let capped = false
   for (const s of json.sheets ?? []) {
     const title: string = s.properties?.title ?? 'Sheet'
     order.push(title)
@@ -118,7 +119,11 @@ export function gridOf(json: GoogleSheetJson): { grid: Grid; order: string[]; si
       ;(d.rowData ?? []).forEach((row: { values?: unknown[] }, dr: number) =>
         (row.values ?? []).forEach((v, dc) => {
           const cell = cellOfApi(v as never)
-          if (!cell || budget <= 0) return
+          if (!cell) return
+          if (budget <= 0) {
+            capped = true
+            return
+          }
           budget--
           cells.set(cellName(r0 + dr, c0 + dc), cell)
           rows = Math.max(rows, r0 + dr + 1)
@@ -128,7 +133,7 @@ export function gridOf(json: GoogleSheetJson): { grid: Grid; order: string[]; si
     }
     sizes.set(title, { rows, columns })
   }
-  return { grid, order, sizes }
+  return { grid, order, sizes, capped }
 }
 
 async function read(ctx: WorkCtx, ref: GoogleSheetRef): Promise<{ data: Buffer; grid: Grid; order: string[] }> {
@@ -180,7 +185,9 @@ interface CellWrite {
  */
 async function compareAndWrite(ctx: WorkCtx, ref: GoogleSheetRef, cells: readonly CellWrite[]): Promise<{ written: number; moved: CellWrite[] }> {
   const api = googleOf(ctx).api(ref.account)
-  const { grid } = gridOf(await api.sheet(ref.fileId))
+  const { grid, capped } = gridOf(await api.sheet(ref.fileId))
+  // Past the cap some cells were never read, so a compare there would pass over what they hold.
+  if (capped) throw new Error(`${ref.name} holds more than ${GOOGLE_MAX_CELLS.toLocaleString('en-US')} cells: change it in Google.`)
   const moved = cells.filter((c) => !same(grid.get(c.sheet)?.get(cellName(c.row, c.col)) ?? null, c.base))
   if (moved.length) return { written: 0, moved }
   if (!cells.length) return { written: 0, moved: [] }
@@ -230,15 +237,18 @@ export async function review(ctx: WorkCtx, ref: GoogleSheetRef, which: Which, ve
   }
   const pending = picked.filter((p) => p.state === 'pending')
   const cells = pending.map((p) => ({ sheet: p.sheet, row: p.row, col: p.col, base: p.base as SheetCell | null, value: p.proposed as SheetCell | null, id: p.id }))
-  let got = await compareAndWrite(ctx, ref, cells)
+  const idsOf = (xs: CellWrite[]) => xs.map((c) => (c as (typeof cells)[number]).id)
   // The cells that moved wait as conflicts; the rest still go together, as one batch.
+  const moved = new Set<string>()
+  let got = await compareAndWrite(ctx, ref, cells)
+  for (const id of idsOf(got.moved)) moved.add(id)
   if (got.moved.length) {
-    const moved = new Set(got.moved.map((c) => (c as (typeof cells)[number]).id))
-    store.mark(key, [...moved], 'conflict')
-    got = { ...(await compareAndWrite(ctx, ref, cells.filter((c) => !moved.has(c.id)))), moved: got.moved }
+    got = await compareAndWrite(ctx, ref, cells.filter((c) => !moved.has(c.id)))
+    for (const id of idsOf(got.moved)) moved.add(id)
   }
-  const moved = new Set(got.moved.map((c) => (c as (typeof cells)[number]).id))
-  store.mark(key, cells.filter((c) => !moved.has(c.id)).map((c) => c.id), 'accepted')
+  store.mark(key, [...moved], 'conflict')
+  // Accepted only once Google has them; if Google moved again under the second write, the rest stay waiting.
+  if (!got.moved.length) store.mark(key, cells.filter((c) => !moved.has(c.id)).map((c) => c.id), 'accepted')
   return { written: got.written, conflicts: moved.size }
 }
 

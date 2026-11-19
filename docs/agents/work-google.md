@@ -39,7 +39,8 @@ thread's canvas by its kind: a Doc as `document`, a Sheet as `sheet`, a deck
 as `slides`, each with the source `{at: 'google', account, fileId, mime}`.
 
 The screen: **Open from Google…** in the canvas's ⋯, a dialog with one
-choice (the account; `PickDialog.tsx`), as Export is. Accounts come from
+choice (the account; `PickDialog.tsx`), as Export is. It closes as the
+Picker opens; a failure is a toast. Accounts come from
 LifeOS's `calendarOps:accounts` rows; only those whose grant has
 `drive.file` (`files: true`) are offered.
 
@@ -57,20 +58,32 @@ research's mapper, its three fixtures as `mapper.test.ts`). Comments land in
 minutes) and kept as data URLs up to 4 MB. Later tabs follow the first under
 a heading of their title. The mirror is kept while the Doc's Drive version
 has not moved, and while his edits wait to be written (the row is then
-`behind`); otherwise a new mirror is read and the old one removed.
+`behind`); otherwise a new mirror is read and the old one removed. Drive is
+asked only when the item opens (`work.docs.open`) or on Read again; every
+other docs call takes the mirror there is, and opens and writes of one file
+run one at a time. A thread may not name a mirror's path to the doc tools.
+Comments made on the mirror stay in TempCode: they are not sent to Google,
+and a fresh read replaces them with Google's.
 
 **Writing to Google** (`write.ts`, `work.google.write`, his only, never a
 thread's): the mirror's blocks (`/internal/google/blocks` on the Work
 service) are compared with what was last read (`DocBase`); the Doc is read
 again; each changed paragraph is found there by the words it had, nearest
-its old place, and only the differing words are deleted and inserted. New
+its old place (two equally near: refused, never guessed), and only the
+differing words are deleted and inserted, a surrogate pair kept whole. New
 text paragraphs go after the paragraph they follow, with their heading or
-normal style; removed ones are deleted. All of it is one `batchUpdate` with
+normal style and no bullet, and only after a paragraph Google still holds as
+it was; removed paragraphs side by side go as one range, and when the run
+ends the Doc the paragraph left last keeps its own style. All of it is one `batchUpdate` with
 `writeControl.requiredRevisionId` of the revision just read; a revision
 conflict reads again once. Not written, and said one line each: a paragraph
 whose words changed in Google since, one holding a chip, footnote, soft break
-or waiting suggestion, a table, a picture, a block of another kind. After a
-write the base is matched again to the Doc as Google has it.
+or waiting suggestion, a change of formatting alone, a table, a picture, a
+block of another kind. After a write (or a failed one, whose answer may have
+been lost) the base is matched again to the Doc as Google has it; a refused
+paragraph keeps its old base, so it stays counted as his and is never
+dropped by a later read. The base's hashes are taken from the mirror as the
+Work service reads it back, so an untouched table compares equal.
 
 **An agent's edits** are always Google suggestions: `google_doc_suggest`
 sends `{find, replace}` pairs (each `find` must stand once in a plain
@@ -78,7 +91,8 @@ paragraph) as one `batchUpdate` with `writeMode: SUGGEST`. The docs tools
 refuse a Google item and name the google tools.
 
 The screen: a Google Doc's ⋯ holds **Write to Google**, **Read again from
-Google** and **Open in Google** before Export (`docMore.ts`). The open item
+Google**, **Drop unwritten edits** (while there are some) and **Open in
+Google** before Export (`docMore.ts`). The open item
 asks `work.google.watch` once a minute; when Google moved, one toast says so.
 
 ## Sheets
@@ -90,7 +104,9 @@ ids are tab names), at most 200,000 cells. Every write is compared first:
 the cells are read again and if any holds something other than what the
 grid or the agent saw, nothing goes (`conflict`). What passes goes as one
 `values:batchUpdate`, `USER_ENTERED` (text that looks like a formula is
-written as text). An agent's cells are suggestions in
+written as text). The Sheets API has no conditional write, so a change
+landing between the compare and the write is not caught. A spreadsheet past
+the cell cap refuses writes. An agent's cells are suggestions in
 `work_sheets_suggestions` under `google:<fileId>` (`google_sheet_suggest`);
 an accepted set is written as one update, a cell changed since stays a
 conflict. `googleSource` is the spreadsheet as work-kit's `SheetSource`
@@ -122,7 +138,8 @@ file no item has open.
 `share.google` (`held.ts`): letting a person into a file as reader,
 commenter or writer, made by `google_share` and run only after his press or
 a grant (matcher: account, people by address or domain, `upTo` a role). Its
-way back is `google_unshare`. Making a document of ours a Google Doc
+way back is `google_unshare`, which takes back only a share recorded for
+the asking thread's tree (`work_google_shares`). Making a document of ours a Google Doc
 (`work.google.upload`: our Word export uploaded with conversion, its
 suggestions arriving as Google's) is his and lands in his own Drive, so it
 is not held.

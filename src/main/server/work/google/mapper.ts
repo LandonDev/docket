@@ -30,6 +30,8 @@ export interface DocParagraph {
   text: string
   /** the block's words are the paragraph's, index for index */
   exact: boolean
+  /** its named style (`NORMAL_TEXT`, `HEADING_2`, …) */
+  style: string
 }
 
 export interface MappedDoc {
@@ -140,7 +142,7 @@ function mapTab(
   }
 
   /** One paragraph -> one block, plus images and breaks split out after it. */
-  const paragraph = (p: J, segment: string, inCell: boolean, range: { start: number; end: number } | null): { block: Block; extra: Block[] } => {
+  const paragraph = (p: J, segment: string, inCell: boolean, range: { start: number; end: number } | null): { block: Block; extra: Block[]; placed: DocParagraph | null } => {
     const block: Block = { id: id(), type: 'paragraph', props: {}, content: [], children: [] }
     const extra: Block[] = []
     const ps = p.paragraphStyle ?? {}
@@ -238,8 +240,8 @@ function mapTab(
     // Links leave the document as the import allows them: the web, mail and phone only.
     const safe = runs.map((r): Inline => (r.type === 'link' && !/^(?:https?:\/\/|mailto:|tel:)/i.test(r.href) ? { type: 'text', text: r.content.map((c) => c.text).join(''), styles: r.content[0]?.styles ?? {} } : r))
     runs.splice(0, runs.length, ...safe)
-    if (range && segment === 'body' && !inCell) paragraphs.push({ blockId: block.id, tabId, start: range.start, end: range.end, text: runs.map(runText).join(''), exact })
-    return { block, extra }
+    const placed = range && segment === 'body' && !inCell ? { blockId: block.id, tabId, start: range.start, end: range.end, text: runs.map(runText).join(''), exact, style: ps.namedStyleType ?? 'NORMAL_TEXT' } : null
+    return { block, extra, placed }
   }
 
   const table = (t: J, segment: string): Block => {
@@ -290,9 +292,13 @@ function mapTab(
     }
     els.forEach((el, i) => {
       if (el.paragraph) {
-        const { block, extra } = paragraph(el.paragraph, segment, false, body ? { start: el.startIndex ?? 0, end: el.endIndex ?? 0 } : null)
+        const { block, extra, placed } = paragraph(el.paragraph, segment, false, body ? { start: el.startIndex ?? 0, end: el.endIndex ?? 0 } : null)
         const empty = !(block.content as Inline[]).length && block.type === 'paragraph'
-        if (!(empty && extra.length)) place(block, el.paragraph.bullet ? (el.paragraph.bullet.nestingLevel ?? 0) : null)
+        // A paragraph holding only a picture or a break has no block of its own: it is not a place a write reaches.
+        if (!(empty && extra.length)) {
+          place(block, el.paragraph.bullet ? (el.paragraph.bullet.nestingLevel ?? 0) : null)
+          if (placed) paragraphs.push(placed)
+        }
         for (const x of extra) place(x, null)
       } else if (el.table) place(table(el.table, segment), null)
       else if (el.sectionBreak) {

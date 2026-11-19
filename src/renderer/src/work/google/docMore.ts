@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GoogleFileState, GoogleWritten } from "@shared/contract-work-google";
 import type { CanvasItem } from "@shared/work";
-import { ExternalLink, RefreshCw } from "../../chrome/icons";
+import { ExternalLink, RefreshCw, X } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
@@ -10,8 +10,8 @@ import { Export } from "../icons";
 
 /**
  * A Google Doc in the document canvas (docs/agents/work-google.md "Docs"):
- * its own verbs for the pane's ⋯ (Write to Google, Read again, Open in
- * Google) and the minute's check that keeps the Drive version poll running
+ * its own verbs for the pane's ⋯ (Write to Google, Read again, Drop
+ * unwritten edits while there are some, Open in Google) and the minute's check that keeps the Drive version poll running
  * while it is open. When Google moves, one toast says so; the Doc is read
  * again only when he asks. `reopen` makes the canvas open the new mirror.
  */
@@ -57,6 +57,9 @@ export function useGoogleDoc(env: string, item: Pick<CanvasItem, "id" | "title" 
     };
   }, [env, google, item.id, item.title]);
 
+  // Only the address changes the rows: the minute's check does not rebuild them.
+  const url = state?.url ?? null;
+  const unsent = (state?.unsent ?? 0) > 0;
   return useMemo(() => {
     if (!google) return [];
     const link = registry.linkOf(env);
@@ -81,7 +84,23 @@ export function useGoogleDoc(env: string, item: Pick<CanvasItem, "id" | "title" 
           reopen();
         },
       },
-      ...(state?.url ? [{ id: "google-open", label: "Open in Google", icon: ExternalLink, run: () => openUrl(state.url!) }] : []),
+      // Only while he has edits Google lacks: drops them and reads the Doc as Google has it.
+      ...(unsent
+        ? [
+            {
+              id: "google-drop",
+              label: "Drop unwritten edits",
+              icon: X,
+              async run() {
+                const fresh = await link.request<GoogleFileState>("work.google.reload", { itemId: item.id, discard: true });
+                said.current = false;
+                setState(fresh);
+                reopen();
+              },
+            },
+          ]
+        : []),
+      ...(url ? [{ id: "google-open", label: "Open in Google", icon: ExternalLink, run: () => openUrl(url) }] : []),
     ];
-  }, [env, google, item.id, state, reopen]);
+  }, [env, google, item.id, url, unsent, reopen]);
 }

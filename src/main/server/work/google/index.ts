@@ -3,7 +3,7 @@ import { handled, NOT_HANDLED, type CanvasItem, type CanvasKind } from '@shared/
 import { errorText } from '@shared/work/ids'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { GOOGLE_MIME } from './client'
-import { docMirror, unsentEdits, writeDoc, type GoogleSource } from './docs'
+import { rereadDoc, unsentEdits, writeDoc, type GoogleSource } from './docs'
 import { ensureGoogleTables, googleOf } from './google'
 import { bump, unfollowAll } from './grid'
 import { googleShare } from './held'
@@ -125,9 +125,7 @@ export const google: WorkModule = {
         else if (row?.mirror) {
           const state = await stateOf(ctx, item)
           if (state.unsent && !req.params.discard) throw new Error(`${state.unsent} of your edits are not in Google yet: write them first, or read again and drop them.`)
-          // The next open reads the Doc anew.
-          g.files.update(item.source.account, item.source.fileId, { version: null, behind: null })
-          await docMirror(ctx, g, item.source)
+          await rereadDoc(ctx, g, item.source)
         }
         await tell(ctx, item)
         return handled(await stateOf(ctx, item))

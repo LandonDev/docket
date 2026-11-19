@@ -6,28 +6,34 @@ import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
 import { Skeleton } from "../../components/ui/skeleton";
 import { registry } from "../../lib/connection";
+import { sayError } from "../canvas/frame";
 
 /**
  * Open from Google (docs/agents/work-google.md "Picking a file"): a dialog
  * with one choice, the account, as Export is. Choose files shows Google's
  * Picker in the browser on this computer; what he picks opens in the
- * thread's canvas on the thread's host. The last account chosen is offered
- * next time.
+ * thread's canvas on the thread's host. The dialog closes as the Picker
+ * opens; a failure is a toast. The last account chosen is offered next time.
  */
 
 const LAST = "work.google.account";
 const PICK_WAIT_MS = 5.5 * 60_000;
 
 export function PickDialog({ env, sessionId, onClose }: { env: string; sessionId: string; onClose(): void }) {
-  const [pending, setPending] = useState(false);
   return (
-    <Modal onClose={onClose} title="Open from Google" busy={pending}>
-      <Body env={env} sessionId={sessionId} onClose={onClose} pending={pending} setPending={setPending} />
+    <Modal onClose={onClose} title="Open from Google">
+      <Body env={env} sessionId={sessionId} onClose={onClose} />
     </Modal>
   );
 }
 
-function Body({ env, sessionId, onClose, pending, setPending }: { env: string; sessionId: string; onClose(): void; pending: boolean; setPending(p: boolean): void }) {
+/** Google's Picker in this computer's browser, then each picked file opened on the thread's host; a failure is said once, as a toast. */
+async function pickAndOpen(env: string, sessionId: string, account: string): Promise<void> {
+  const { files } = await registry.linkOf(registry.primaryEnvironmentId).request<{ files: GooglePicked[] }>("work.google.pick", { account }, { timeoutMs: PICK_WAIT_MS });
+  for (const f of files) await registry.linkOf(env).request<{ itemId: string }>("work.google.open", { sessionId, account, fileId: f.fileId });
+}
+
+function Body({ env, sessionId, onClose }: { env: string; sessionId: string; onClose(): void }) {
   const close = useModalClose();
   const [accounts, setAccounts] = useState<GoogleAccounts | null>(null);
   const [account, setAccount] = useState("");
@@ -55,27 +61,22 @@ function Body({ env, sessionId, onClose, pending, setPending }: { env: string; s
   const ready = accounts?.accounts.filter((a) => a.files) ?? [];
   const blocked = accounts && !accounts.picker ? "This computer does not know LifeOS's Google client yet." : accounts && !ready.length ? "No Google account has allowed Drive files yet. Reconnect one in LifeOS." : null;
 
-  const run = async (): Promise<void> => {
-    setError(null);
-    setPending(true);
-    try {
-      const { files } = await registry.linkOf(registry.primaryEnvironmentId).request<{ files: GooglePicked[] }>("work.google.pick", { account }, { timeoutMs: PICK_WAIT_MS });
-      localStorage.setItem(LAST, account);
-      for (const f of files) await registry.linkOf(env).request<{ itemId: string }>("work.google.open", { sessionId, account, fileId: f.fileId });
-      setPending(false);
-      if (close) close(() => {});
-      else onClose();
-    } catch (err) {
-      setPending(false);
-      setError(err instanceof Error && err.message ? err.message : "Nothing was opened");
-    }
+  // The dialog goes as the Picker comes up: the choosing happens in the browser, and nothing here waits on it.
+  const run = (): void => {
+    localStorage.setItem(LAST, account);
+    const then = () => {
+      onClose();
+      void pickAndOpen(env, sessionId, account).catch((err: unknown) => sayError(err, "Nothing was opened"));
+    };
+    if (close) close(then);
+    else then();
   };
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        void run();
+        run();
       }}
     >
       <ModalBody>
@@ -90,7 +91,7 @@ function Body({ env, sessionId, onClose, pending, setPending }: { env: string; s
         )}
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel="Choose files" busyLabel="Waiting for Google…" pending={pending} disabled={!account || !!blocked} />
+      <DialogFooter onCancel={onClose} confirmLabel="Choose files" disabled={!account || !!blocked} />
     </form>
   );
 }

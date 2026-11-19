@@ -159,11 +159,17 @@ export const GOOGLE_TOOLS: WorkTool[] = [
   }),
   tool({
     name: 'google_unshare',
-    description: 'Takes someone back out of a Google file: the way back of a share the owner allowed.',
+    description: 'Takes someone back out of a Google file: the way back of a share the owner allowed this thread.',
     input: { account: z.string().max(320), fileId: z.string().max(200), permissionId: z.string().max(200) },
     readOnly: false,
     async run(a, ctx) {
+      // Only a share his press let through for this thread's tree: never anyone else's access.
+      const row = ctx.db.prepare('SELECT session_id FROM work_google_shares WHERE account = ? AND file_id = ? AND permission_id = ?').get(a.account.toLowerCase(), a.fileId, a.permissionId) as
+        | { session_id: string | null }
+        | undefined
+      if (!row?.session_id || ctx.canvas.paneOf(row.session_id) !== ctx.canvas.paneOf(ctx.sessionId)) return fail('That share was not made for this thread.')
       await googleOf(ctx).api(a.account).unshare(a.fileId, a.permissionId)
+      ctx.db.prepare('DELETE FROM work_google_shares WHERE account = ? AND file_id = ? AND permission_id = ?').run(a.account.toLowerCase(), a.fileId, a.permissionId)
       return workText('They no longer have access.')
     }
   })

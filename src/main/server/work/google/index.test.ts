@@ -187,11 +187,13 @@ describe('the google tools', () => {
     expect(held).toEqual([expect.objectContaining({ kind: 'share.google' })])
     expect(fake.files.get('sh1')!.permissions).toEqual([])
     const payload = googleShare.payload.parse(held[0].payload)
-    const done = await googleShare.execute(payload, ctx as never)
+    const done = await googleShare.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)
     expect(fake.files.get('sh1')!.permissions).toEqual([{ id: expect.any(String), emailAddress: 'dana@example.com', role: 'commenter' }])
     const back = googleShare.wayBack!(done)!
     expect(text(await run(back.verb, back.args))).toContain('no longer')
     expect(fake.files.get('sh1')!.permissions).toEqual([])
+    // Only a share his press let through for this thread's tree.
+    expect((await run('google_unshare', { account: ME, fileId: 'sh1', permissionId: 'anyoneWithLink' })).isError).toBe(true)
     expect(googleShare.matches!({ domains: ['example.com'], upTo: 'reader' }, payload)).toBe(false)
     expect(googleShare.matches!({ domains: ['example.com'], upTo: 'commenter' }, payload)).toBe(true)
   })

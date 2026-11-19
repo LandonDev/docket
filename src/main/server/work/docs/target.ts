@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { basename } from 'node:path'
+import { basename, join, relative, isAbsolute } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
 import type { CanvasSource } from '@shared/work'
 import { FenceError } from '../../remote/fence'
@@ -40,16 +40,24 @@ export async function targetOf(ctx: WorkCtx, by: Caller, method: string, source:
     if (source.host !== ctx.host && !existsSync(source.path)) throw new Error('that document is on another host; open it there')
     if (!ctx.reaches(by, source.path)) throw new FenceError(method)
     const path = canonicalPath(source.path)
+    // A Google Doc's mirror is reached only through its item: a thread naming the file would write past Google's suggestions.
+    if (by.kind === 'model' && ctx.dataDir && isInside(path, join(ctx.dataDir, 'google'))) throw new Error('That file is a Google Doc: read it with google_doc_read and change it with google_doc_suggest.')
     return { at: 'file', doc: fileDocName(path), path, source: { at: 'file', host: ctx.host, path } }
   }
   // A Google Doc opens on its mirror, read from Google when it moved (work/google/docs.ts).
   if (source.at === 'google') {
     const { docMirror } = await import('../google/docs')
     const { googleOf } = await import('../google/google')
-    const path = await docMirror(ctx, googleOf(ctx), source)
+    // Google is asked whether the Doc moved only when the item opens; every other call takes the mirror there is.
+    const path = await docMirror(ctx, googleOf(ctx), source, method === 'work.docs.open')
     return { at: 'file', doc: fileDocName(path), path, source: { at: 'file', host: ctx.host, path } }
   }
   throw new Error('a document is a LifeOS document, a .tcdoc or a Google Doc')
+}
+
+const isInside = (path: string, dir: string): boolean => {
+  const r = relative(dir, path)
+  return r !== '' && !r.startsWith('..') && !isAbsolute(r)
 }
 
 /** The row LifeOS keeps for a document, or null for a file. */

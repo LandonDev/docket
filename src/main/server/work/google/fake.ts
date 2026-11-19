@@ -78,7 +78,7 @@ export class FakeGoogle {
   addDoc(owner: string, id: string, name: string, paragraphs: [string, string][], opts: { picked?: boolean; comments?: unknown[]; commentAnchors?: Record<string, unknown> } = {}): void {
     const f = this.file(id, name, GOOGLE_MIME.doc, owner)
     if (opts.picked === false) f.reach.clear()
-    f.doc = { chars: paragraphs.flatMap(([style, text]) => [...[...text].map((c) => ({ c })), { c: '\n', style }]), rev: 1, comments: opts.comments ?? [], commentAnchors: opts.commentAnchors ?? {}, suggestions: [] }
+    f.doc = { chars: paragraphs.flatMap(([style, text]) => [...text.split('').map((c) => ({ c })), { c: '\n', style }]), rev: 1, comments: opts.comments ?? [], commentAnchors: opts.commentAnchors ?? {}, suggestions: [] }
   }
 
   addSheet(owner: string, id: string, name: string, tabs: FakeSheet['tabs']): void {
@@ -92,7 +92,7 @@ export class FakeGoogle {
   /** Someone else changes a Doc in Google: text inserted at a document index. */
   editDoc(id: string, index: number, text: string): void {
     const d = this.files.get(id)!
-    d.doc!.chars.splice(index - 1, 0, ...[...text].map((c) => ({ c })))
+    d.doc!.chars.splice(index - 1, 0, ...text.split('').map((c) => ({ c })))
     this.bump(d)
   }
 
@@ -190,7 +190,7 @@ export class FakeGoogle {
       const raw = Buffer.from(init!.body as Uint8Array).toString('latin1')
       const meta = JSON.parse(raw.match(/\r\n\r\n(\{.*?\})\r\n/)![1]) as { name: string; mimeType: string }
       const f = this.file(`up${++this.n}`, meta.name, meta.mimeType, account)
-      if (meta.mimeType === GOOGLE_MIME.doc) f.doc = { chars: [...'Uploaded\n'].map((c) => ({ c, ...(c === '\n' ? { style: 'NORMAL_TEXT' } : {}) })), rev: 1, comments: [], commentAnchors: {}, suggestions: [] }
+      if (meta.mimeType === GOOGLE_MIME.doc) f.doc = { chars: 'Uploaded\n'.split('').map((c) => ({ c, ...(c === '\n' ? { style: 'NORMAL_TEXT' } : {}) })), rev: 1, comments: [], commentAnchors: {}, suggestions: [] }
       return reply(200, { id: f.id, name: f.name, mimeType: f.mimeType, version: '1', webViewLink: `https://docs.google.com/open?id=${f.id}` })
     }
     if (url.host === 'docs.googleapis.com' && (m = path.match(/^\/v1\/documents\/([^/:]+)(:batchUpdate)?$/))) {
@@ -276,7 +276,7 @@ export class FakeGoogle {
         const at = (a.location as { index: number }).index
         if (at < 1 || at > work.length) return reply(400, { error: { message: `Index ${at} must be less than the end index of the referenced segment, ${work.length + 1}.` } })
         const style = work.slice(at - 1).find((c) => c.c === '\n')?.style ?? 'NORMAL_TEXT'
-        work.splice(at - 1, 0, ...[...(a.text as string)].map((c) => ({ c, ...(sid ? { ins: sid } : {}), ...(c === '\n' ? { style } : {}) })))
+        work.splice(at - 1, 0, ...(a.text as string).split('').map((c) => ({ c, ...(sid ? { ins: sid } : {}), ...(c === '\n' ? { style } : {}) })))
       } else if (kind === 'deleteContentRange') {
         const { startIndex, endIndex } = a.range as { startIndex: number; endIndex: number }
         if (startIndex < 1 || endIndex > work.length || endIndex <= startIndex) return reply(400, { error: { message: `Invalid deletion range ${startIndex}-${endIndex}.` } })
@@ -291,6 +291,8 @@ export class FakeGoogle {
         const first = newlineFrom(startIndex - 1)
         const last = newlineFrom(Math.max(startIndex, endIndex - 1) - 1)
         for (let j = first; j >= 0 && j <= last; j++) if (work[j].c === '\n') work[j] = { ...work[j], style }
+      } else if (kind === 'deleteParagraphBullets') {
+        // The fake keeps no bullets.
       } else return reply(400, { error: { message: `fake docs has no ${kind}` } })
     }
     d.chars = work

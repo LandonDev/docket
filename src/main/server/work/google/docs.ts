@@ -8,7 +8,7 @@ import type { WorkCtx } from '../modules'
 import { ensureThreadTables } from '../docs/threads'
 import { GoogleError, GOOGLE_MIME, type GoogleApi } from './client'
 import { mapGoogleDoc } from './mapper'
-import { baseOf, planSuggest, planWrite, rebase, type DocBase } from './write'
+import { baseOf, planSuggest, planWrite, rebase, unsentCount, type BaseParagraph, type DocBase } from './write'
 import type { Google } from './google'
 
 /**
@@ -50,12 +50,39 @@ async function keepImages(blocks: Block[], fetchImage: typeof fetch, drop: (k: s
   }
 }
 
+/** One open or write at a time per file: a second waits for the first, so two never read or write past each other. */
+const locks = new Map<string, Promise<unknown>>()
+function locked<T>(source: GoogleSource, run: () => Promise<T>): Promise<T> {
+  const key = `${source.account.toLowerCase()}/${source.fileId}`
+  const next = (locks.get(key) ?? Promise.resolve()).then(run, run)
+  const kept = next.catch(() => {})
+  locks.set(key, kept)
+  void kept.then(() => locks.get(key) === kept && locks.delete(key))
+  return next
+}
+
 /**
- * The mirror an opened Doc's item reads: the one already made while the Doc has not moved in Google,
- * or while his edits wait to be written (the item then says Google moved); else a new one, read now.
+ * The mirror an opened Doc's item reads. `fresh` (opening the item, or Read again) asks Drive whether
+ * the Doc moved: the mirror is kept while it has not, or while his edits wait to be written (the item
+ * then says Google moved); else a new one is read now. Any other call takes the mirror there is.
  */
-export async function docMirror(ctx: WorkCtx, g: Google, source: GoogleSource): Promise<string> {
+export function docMirror(ctx: WorkCtx, g: Google, source: GoogleSource, fresh = true): Promise<string> {
   if (source.mime !== GOOGLE_MIME.doc) throw new Error('That Google file is not a Doc.')
+  return locked(source, () => mirrorNow(ctx, g, source, fresh))
+}
+
+/** Reads the Doc anew whatever the mirror holds: Read again, after he chose to drop what was not written. */
+export function rereadDoc(ctx: WorkCtx, g: Google, source: GoogleSource): Promise<string> {
+  return locked(source, async () => {
+    const api = g.api(source.account)
+    const file = await api.file(source.fileId)
+    return importDoc(ctx, g, api, source, file.name, file.version, g.files.get(source.account, source.fileId)?.mirror ?? null)
+  })
+}
+
+async function mirrorNow(ctx: WorkCtx, g: Google, source: GoogleSource, fresh: boolean): Promise<string> {
+  const known = g.files.get(source.account, source.fileId)
+  if (!fresh && known?.mirror && existsSync(known.mirror)) return known.mirror
   const api = g.api(source.account)
   const file = await api.file(source.fileId)
   const row = g.files.get(source.account, source.fileId)
@@ -81,7 +108,9 @@ async function importDoc(ctx: WorkCtx, g: Google, api: GoogleApi, source: Google
   const made = await writeImportedTcdoc(path, mapped.imported, { principal: 'owner' })
   ensureThreadTables(ctx.db)
   ctx.db.prepare('INSERT OR REPLACE INTO work_docs_threads (doc, rows) VALUES (?, ?)').run(fileDocName(path), JSON.stringify(made.threads))
-  g.files.put({ account: source.account, fileId: source.fileId, kind: 'doc', name, version, mirror: path, base: baseOf(mapped.imported.blocks, mapped.paragraphs), behind: null })
+  // The hashes are taken from the mirror as the Work service reads it back, so an untouched block compares equal.
+  const served = await g.blocksOf(ctx, path).catch(() => null)
+  g.files.put({ account: source.account, fileId: source.fileId, kind: 'doc', name, version, mirror: path, base: baseOf(mapped.imported.blocks, mapped.paragraphs, served), behind: null })
   if (old && old !== path) {
     rmSync(old, { force: true })
     ctx.db.prepare('DELETE FROM work_docs_threads WHERE doc = ?').run(fileDocName(old))
@@ -92,16 +121,7 @@ async function importDoc(ctx: WorkCtx, g: Google, api: GoogleApi, source: Google
 
 /** How many blocks his edits changed, added or removed since the mirror last matched Google. */
 export async function unsentEdits(ctx: WorkCtx, g: Google, mirror: string, base: DocBase | null): Promise<number> {
-  if (!base) return 0
-  const blocks = [...everyBlock(await g.blocksOf(ctx, mirror))]
-  const seen = new Set(blocks.map((b) => b.id))
-  let n = 0
-  for (const b of blocks) {
-    const p = base.paragraphs[b.id]
-    if (p ? p.text !== (Array.isArray(b.content) ? plain(b.content) : '') : !(b.id in base.others)) n++
-  }
-  for (const id of Object.keys(base.paragraphs)) if (!seen.has(id)) n++
-  return n
+  return base ? unsentCount(base, await g.blocksOf(ctx, mirror)) : 0
 }
 
 export interface DocWritten {
@@ -113,12 +133,16 @@ export interface DocWritten {
 }
 
 /** His edits in the mirror, written to Google in one `batchUpdate` against the revision just read. */
-export async function writeDoc(ctx: WorkCtx, g: Google, source: GoogleSource): Promise<DocWritten> {
-  const row = g.files.get(source.account, source.fileId)
-  if (!row?.mirror || !row.base) throw new Error('Open the Doc first.')
+export function writeDoc(ctx: WorkCtx, g: Google, source: GoogleSource): Promise<DocWritten> {
+  return locked(source, () => writeNow(ctx, g, source))
+}
+
+async function writeNow(ctx: WorkCtx, g: Google, source: GoogleSource): Promise<DocWritten> {
   const api = g.api(source.account)
-  const current = await g.blocksOf(ctx, row.mirror)
   for (let attempt = 0; ; attempt++) {
+    const row = g.files.get(source.account, source.fileId)
+    if (!row?.mirror || !row.base) throw new Error('Open the Doc first.')
+    const current = await g.blocksOf(ctx, row.mirror)
     const fresh = await api.doc(source.fileId)
     if (!fresh.revisionId) throw new GoogleError('Google lets this account read the Doc but not change it.', 'refused')
     const plan = planWrite(row.base, current, mapGoogleDoc(fresh).paragraphs)
@@ -129,18 +153,29 @@ export async function writeDoc(ctx: WorkCtx, g: Google, source: GoogleSource): P
     }
     const refused = plan.refused.map((r) => `${said(r.blockId)}: ${r.why}`)
     if (!plan.requests.length) return { changed: 0, added: 0, removed: 0, refused }
+    // A paragraph the write leaves keeps its old base: it stays his, and is never taken for Google's.
+    const kept: Record<string, BaseParagraph> = {}
+    for (const r of plan.refused) if (row.base.paragraphs[r.blockId]) kept[r.blockId] = row.base.paragraphs[r.blockId]
     try {
       await api.docUpdate(source.fileId, plan.requests, { requiredRevisionId: fresh.revisionId })
     } catch (err) {
       // Someone wrote between the read and the write: read again, once.
       if (err instanceof GoogleError && err.code === 'conflict' && attempt === 0) continue
+      // The write may have landed with its answer lost: match the base to Google before anything is written again.
+      await settle(g, source, current, kept).catch(() => {})
       throw err
     }
-    const after = await api.doc(source.fileId)
-    const version = (await api.file(source.fileId)).version
-    g.files.update(source.account, source.fileId, { base: rebase(current, mapGoogleDoc(after).paragraphs), version, ours: version, behind: null })
+    await settle(g, source, current, kept)
     return { changed: plan.changed, added: plan.added, removed: plan.removed, refused }
   }
+}
+
+/** The base after a write, matched to the Doc as Google has it now; its version is this host's own. */
+async function settle(g: Google, source: GoogleSource, current: Block[], kept: Record<string, BaseParagraph>): Promise<void> {
+  const api = g.api(source.account)
+  const version = (await api.file(source.fileId)).version
+  const after = await api.doc(source.fileId)
+  g.files.update(source.account, source.fileId, { base: rebase(current, mapGoogleDoc(after).paragraphs, kept), version, ours: version, behind: null })
 }
 
 /** An agent's edits, as Google suggestions he accepts or rejects in Google or here. */

@@ -49,6 +49,9 @@ export const googleShare: ActKindDef<GoogleShare, GoogleShareMatcher> = {
   },
   async execute(p, ctx) {
     const got = await googleOf(ctx).api(p.account).share(p.fileId, p.email, p.role, p.notify)
+    ctx.db
+      .prepare('INSERT OR REPLACE INTO work_google_shares (account, file_id, permission_id, session_id) VALUES (?, ?, ?, ?)')
+      .run(p.account.toLowerCase(), p.fileId, got.id, ctx.item.sessionId)
     return { summary: `Shared ${p.name} with ${p.email} (${ROLE_WORDS[p.role]})`, ref: { account: p.account, fileId: p.fileId, permissionId: got.id } }
   },
   wayBack(r) {

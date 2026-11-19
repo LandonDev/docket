@@ -24,6 +24,14 @@ export function ensureGoogleTables(db: DatabaseSync): void {
     base TEXT,
     PRIMARY KEY (account, file_id)
   )`)
+  // The shares his press let through, by the thread that asked: only that thread's tree may take one back.
+  db.exec(`CREATE TABLE IF NOT EXISTS work_google_shares (
+    account TEXT NOT NULL,
+    file_id TEXT NOT NULL,
+    permission_id TEXT NOT NULL,
+    session_id TEXT,
+    PRIMARY KEY (account, file_id, permission_id)
+  )`)
 }
 
 export interface FileRow {

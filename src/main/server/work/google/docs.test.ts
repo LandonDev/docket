@@ -92,7 +92,7 @@ describe('a Google Doc in the document canvas', () => {
     fake.editDoc('doc1', 35, 'very ')
     const done = await writeDoc(ctx, googleOf(ctx), src)
     expect(done.changed).toBe(0)
-    expect(done.refused).toEqual(['“Budget is fine.”: its words changed in Google since it was read'])
+    expect(done.refused).toEqual(['“Budget is fine.”: its words changed in Google since it was read, or stand twice there'])
     expect(fake.docText('doc1')).toContain('Budget is very tight.')
   })
 
@@ -122,6 +122,23 @@ describe('a Google Doc in the document canvas', () => {
     fake.editDoc('doc1', 1, 'Q3 ')
     expect(await docMirror(ctx, googleOf(ctx), src)).toBe(mirror)
     expect(googleOf(ctx).files.get(ME, 'doc1')?.behind).toBe('2')
+  })
+
+  it('writes once when he presses Write twice at once', async () => {
+    await docMirror(ctx, googleOf(ctx), src)
+    live = await fresh()
+    live.splice(1, 0, { id: 'new1', type: 'paragraph', props: {}, content: [{ type: 'text', text: 'Added', styles: {} }], children: [] })
+    const [a, b] = await Promise.all([writeDoc(ctx, googleOf(ctx), src), writeDoc(ctx, googleOf(ctx), src)])
+    expect(a.added + b.added).toBe(1)
+    expect(fake.docText('doc1').match(/Added/g)).toHaveLength(1)
+  })
+
+  it("refuses a thread the mirror by its path: a Google Doc is changed only by suggestion", async () => {
+    const mirror = await docMirror(ctx, googleOf(ctx), src)
+    const { targetOf } = await import('../docs/target')
+    const t = { ...ctx, reaches: () => true } as unknown as WorkCtx
+    await expect(targetOf(t, { kind: 'model', caps: [], sessionId: 's1' }, 'doc', { at: 'file', host: 'env_box', path: mirror })).rejects.toThrow('google_doc_suggest')
+    await expect(targetOf(t, { kind: 'local', caps: [] }, 'work.formats.export', { at: 'file', host: 'env_box', path: mirror })).resolves.toMatchObject({ at: 'file' })
   })
 
   it('keeps no token: the database holds no access token, and the route is asked again after a 401', async () => {
