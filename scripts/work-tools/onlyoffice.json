@@ -1,0 +1,119 @@
+{
+  "pillar": "sheets",
+  "tools": [
+    {
+      "name": "onlyoffice",
+      "version": "10.0.0",
+      "licence": "AGPL-3.0-only",
+      "licenceNote": "ONLYOFFICE Docs Community 10.0.0 (Ascensio System SIA), AGPLv3 with the additional terms in its LICENSE.txt: notices kept, no trademark use. The vendor's .deb unpacked unmodified with no root; the probe runs the vendor's own postinst steps (fonts, themes, the JS cache, api.js from its template). It runs only on the box, as a separate docservice process the full editor starts, reached through the Work service's /w/full route; never linked, bundled, shipped in the app, or served to a guest (architecture \u00a712.1).",
+      "homepage": "https://github.com/ONLYOFFICE/DocumentServer",
+      "platforms": {
+        "linux-x64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://github.com/ONLYOFFICE/DocumentServer/releases/download/v10.0.0/onlyoffice-documentserver_amd64.deb",
+              "sha256": "c841776e56f4987d38516f5718d7b87b89263436178a03a4bee29fd748a11c20",
+              "size": 557621524,
+              "raw": true
+            }
+          ],
+          "bin": "var/www/onlyoffice/documentserver/server/DocService/docservice",
+          "bins": {
+            "x2t": "var/www/onlyoffice/documentserver/server/FileConverter/bin/x2t"
+          }
+        }
+      },
+      "probe": {
+        "write": {
+          "probe.csv": "a,b\n1,2\n"
+        },
+        "steps": [
+          {
+            "run": [
+              "dpkg-deb",
+              "-x",
+              "{dir}/onlyoffice-documentserver_amd64.deb",
+              "{dir}"
+            ],
+            "timeoutMs": 900000
+          },
+          {
+            "run": [
+              "rm",
+              "-f",
+              "{dir}/onlyoffice-documentserver_amd64.deb"
+            ]
+          },
+          {
+            "run": [
+              "mkdir",
+              "-p",
+              "{dir}/var/www/onlyoffice/Data/custom-fonts",
+              "{dir}/var/www/onlyoffice/documentserver/fonts"
+            ]
+          },
+          {
+            "run": [
+              "{dir}/var/www/onlyoffice/documentserver/server/tools/allfontsgen",
+              "--input={dir}/var/www/onlyoffice/documentserver/core-fonts",
+              "--input={dir}/var/www/onlyoffice/Data/custom-fonts",
+              "--allfonts-web={dir}/var/www/onlyoffice/documentserver/sdkjs/common/AllFonts.js",
+              "--allfonts={dir}/var/www/onlyoffice/documentserver/server/FileConverter/bin/AllFonts.js",
+              "--images={dir}/var/www/onlyoffice/documentserver/sdkjs/common/Images",
+              "--selection={dir}/var/www/onlyoffice/documentserver/server/FileConverter/bin/font_selection.bin",
+              "--output-web={dir}/var/www/onlyoffice/documentserver/fonts",
+              "--use-system=true",
+              "--use-system-user-fonts=false"
+            ],
+            "env": {
+              "LD_LIBRARY_PATH": "{dir}/var/www/onlyoffice/documentserver/server/FileConverter/bin"
+            },
+            "timeoutMs": 600000
+          },
+          {
+            "run": [
+              "{dir}/var/www/onlyoffice/documentserver/server/tools/allthemesgen",
+              "--converter-dir={dir}/var/www/onlyoffice/documentserver/server/FileConverter/bin",
+              "--src={dir}/var/www/onlyoffice/documentserver/sdkjs/slide/themes",
+              "--output={dir}/var/www/onlyoffice/documentserver/sdkjs/common/Images"
+            ],
+            "env": {
+              "LD_LIBRARY_PATH": "{dir}/var/www/onlyoffice/documentserver/server/FileConverter/bin"
+            },
+            "timeoutMs": 600000
+          },
+          {
+            "run": [
+              "{bin:x2t}",
+              "-create-js-cache"
+            ],
+            "env": {
+              "LD_LIBRARY_PATH": "{dir}/var/www/onlyoffice/documentserver/server/FileConverter/bin"
+            },
+            "timeoutMs": 600000
+          },
+          {
+            "run": [
+              "cp",
+              "{dir}/var/www/onlyoffice/documentserver/web-apps/apps/api/documents/api.js.tpl",
+              "{dir}/var/www/onlyoffice/documentserver/web-apps/apps/api/documents/api.js"
+            ]
+          },
+          {
+            "run": [
+              "{bin:x2t}",
+              "{tmp}/probe.csv",
+              "{tmp}/probe.xlsx"
+            ],
+            "env": {
+              "LD_LIBRARY_PATH": "{dir}/var/www/onlyoffice/documentserver/server/FileConverter/bin"
+            },
+            "expectFile": "{tmp}/probe.xlsx",
+            "timeoutMs": 120000
+          }
+        ]
+      }
+    }
+  ]
+}
