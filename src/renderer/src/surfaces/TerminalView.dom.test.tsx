@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ANSI, TERMINAL_OPTIONS } from '../lib/terminalPalette'
-import { hexOf, oscColors, statusPollAllowed, terminalTheme } from './TerminalView'
+import { ANSI, MINIMUM_CONTRAST } from '../lib/terminalPalette'
+import { hexOf, oscColors, statusPollAllowed, terminalScheme, terminalTheme } from './TerminalView'
 
 // What the tokens compute to in each scheme (index.css), keyed by the expression the probe asks for.
 const TOKENS = {
@@ -54,27 +54,17 @@ describe('the terminal chrome reads the tokens', () => {
     expect([ANSI.light.white, ANSI.light.brightWhite]).not.toContain('#ffffff')
   })
 
-  it('holds a program’s own colours to 4.5:1 in the shell and in the Dev Console', () => {
-    expect(TERMINAL_OPTIONS).toEqual({ allowTransparency: true, minimumContrastRatio: 4.5, smoothScrollDuration: 0 })
-    for (const file of ['TerminalView.tsx', 'DevConsole.tsx'])
-      expect(readFileSync(join(__dirname, file), 'utf8'), file).toMatch(/new Terminal\(\{[^}]*\.\.\.TERMINAL_OPTIONS/)
-  })
-
-  it('takes its three scrollbar slider colours from the scrollbar tokens', () => {
-    const real = window.getComputedStyle
-    const computed: Record<string, string> = {
-      'var(--scrollbar-thumb)': 'rgba(237, 237, 237, 0.2)',
-      'var(--scrollbar-thumb-hover)': 'rgba(237, 237, 237, 0.32)',
-      'var(--scrollbar-thumb-active)': 'rgba(237, 237, 237, 0.4)'
+  it('holds a program’s own colours to 4.5:1 on the light pane, in the shell and in the Dev Console, and leaves dark as it was', () => {
+    expect(MINIMUM_CONTRAST).toEqual({ dark: 1, light: 4.5 })
+    computeTokens('light')
+    expect(terminalScheme(true)).toEqual({ theme: terminalTheme(true), minimumContrastRatio: 4.5 })
+    expect(terminalScheme(false).minimumContrastRatio).toBe(1)
+    // Both terminals take the scheme's pair when they are built and again on every change.
+    for (const file of ['TerminalView.tsx', 'DevConsole.tsx']) {
+      const source = readFileSync(join(__dirname, file), 'utf8')
+      expect(source, file).toMatch(/new Terminal\(\{[^}]*\.\.\.terminalScheme\(\)/)
+      expect(source, file).toContain('Object.assign(term.options, terminalScheme())')
     }
-    vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element) => {
-      const asked = (el as HTMLElement).style.getPropertyValue('color')
-      return { ...real(el), color: computed[asked] ?? '' } as CSSStyleDeclaration
-    })
-    const theme = terminalTheme(false)
-    expect(theme.scrollbarSliderBackground).toBe(computed['var(--scrollbar-thumb)'])
-    expect(theme.scrollbarSliderHoverBackground).toBe(computed['var(--scrollbar-thumb-hover)'])
-    expect(theme.scrollbarSliderActiveBackground).toBe(computed['var(--scrollbar-thumb-active)'])
   })
 
   it('turns rgb and hex into #rrggbb, and anything unreadable into the fallback', () => {

@@ -40,15 +40,19 @@ describe("FilePreview", () => {
     }
   });
 
-  it("steps a context line back by ink, never by opacity: muted throughout, a comment faint", () => {
+  it("steps a context line back through the theme's tokens: dimmed by one, its keywords inked by the other, a comment faint", () => {
     const withContext: ToolPreview = { ...preview, lines: [...preview.lines, { number: 4, kind: "context", text: "export const kept = 3;" }, { number: 5, kind: "add", text: "// why" }] };
     const { container } = render(<FilePreview preview={withContext} status="accepted" cwd="/repo" />);
-    const code = (text: string) => [...container.querySelectorAll("span")].find((span) => span.textContent === text && !span.children.length)!;
-    // A context line draws no keyword in foreground: the changed lines are the ones that speak.
-    expect(code("export const kept = 3;").className).toBe("text-muted-foreground");
-    expect(code("// the app").className).toBe("text-faint-foreground");
-    expect(code("// why").className).toBe("text-faint-foreground");
-    expect(container.querySelector('[class*="opacity-"]')).toBeNull();
+    const leaf = (text: string) => [...container.querySelectorAll("span")].filter((span) => span.textContent === text && !span.children.length);
+    // No fixed opacity and no fixed ink: light makes the dim 1 and the keyword muted, dark keeps 0.7 and foreground.
+    const [changed, context] = leaf("export");
+    expect(changed.className).toBe("text-foreground");
+    expect(context.className).toBe("text-[var(--diff-context-strong,var(--foreground))]");
+    expect(context.parentElement!.className).toBe("text-muted-foreground opacity-(--diff-context-dim)");
+    expect(changed.parentElement!.className.trim()).toBe("text-muted-foreground");
+    expect(leaf("// the app")[0].className).toBe("text-faint-foreground opacity-(--diff-context-dim)");
+    expect(leaf("// why")[0].className.trim()).toBe("text-faint-foreground");
+    expect(container.innerHTML).not.toContain("opacity-70");
   });
 
   it("draws no left bar on a line", () => {

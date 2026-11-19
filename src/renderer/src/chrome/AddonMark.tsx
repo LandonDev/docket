@@ -1,10 +1,10 @@
 import { useColorScheme } from "../hooks/useColorScheme";
-import { brandInk, brandOf, POPOVER_LUMINANCE } from "../lib/addonBrand";
+import { brandInk, brandOf, MARK_SURFACE } from "../lib/addonBrand";
 import type { SlashCommand } from "../lib/tcserver/types";
 import { Blocks, Plug, SlashSquare, Terminal } from "./icons";
 
 /** A command's mark: the brand for a known product, else its source glyph.
- *  A brand's colour shows only where it is seen on the menu in this theme
+ *  On the light menu a brand's colour shows only where it is seen
  *  (`brandInk`); otherwise the mark takes the foreground. */
 export function AddonMark({
   command,
@@ -31,11 +31,11 @@ export function AddonMark({
         className={`shrink-0 object-contain ${brand.lightOnClear ? "" : className}`}
       />
     );
-    // A picture keeps its own colours: a light mark gets the black it was drawn for, in both themes.
-    return brand.lightOnClear ? <span data-slot="addon-mark-tile" className={`inline-flex shrink-0 overflow-hidden rounded-sm bg-matte ${className}`}>{img}</span> : img;
+    // A picture keeps its own colours: on the light menu a light mark gets the black it was drawn for.
+    return brand.lightOnClear ? <span data-slot="addon-mark-tile" className={`inline-flex shrink-0 overflow-hidden rounded-sm bg-(--mark-tile) ${className}`}>{img}</span> : img;
   }
   if (brand) {
-    const ink = colored ? brandInk(brand.hex, POPOVER_LUMINANCE[scheme]) : null;
+    const ink = colored ? brandInk(brand.hex, MARK_SURFACE[scheme]) : null;
     return (
       <svg
         viewBox="0 0 24 24"

@@ -10,7 +10,6 @@ import { Counts } from "../chrome/rail/changeRows";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { useMemo, useState } from "react";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
-import { highlightCode } from "../chrome/FilePreview";
 import { basename } from "../lib/fs";
 import type { GithubPrDiff } from "../lib/githubTasks";
 import {
@@ -24,6 +23,54 @@ import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 import { cn } from "../lib/cn";
 
 const MAX_DISPLAY_LINES = 2000;
+
+const KEYWORDS = new Set([
+  "import",
+  "export",
+  "from",
+  "type",
+  "interface",
+  "const",
+  "let",
+  "var",
+  "function",
+  "return",
+  "if",
+  "else",
+  "for",
+  "while",
+  "switch",
+  "case",
+  "class",
+  "struct",
+  "enum",
+  "extends",
+  "implements",
+  "new",
+  "async",
+  "await",
+  "try",
+  "catch",
+  "throw",
+  "true",
+  "false",
+  "null",
+  "undefined",
+  "this",
+  "in",
+  "of",
+  "as",
+  "is",
+  "void",
+  "public",
+  "private",
+  "protected",
+  "static",
+  "default",
+  "package",
+  "def",
+  "func",
+]);
 
 type Props = {
   diff: GithubPrDiff;
@@ -205,8 +252,62 @@ function DiffLineRow({ line }: { line: PrDiffLine }) {
         {mark}
       </span>
       <span className="whitespace-pre pr-3 font-mono text-xs leading-5">
-        {highlightCode(line.text, line.kind === "context")}
+        {highlight(line.text, line.kind === "context")}
       </span>
     </div>
+  );
+}
+
+/** A pull request's code. In light it reads as the transcript's diff does:
+ *  keywords in foreground, the rest muted, a context line muted throughout.
+ *  Dark keeps the look it had, keywords green, type names amber and context
+ *  dimmed, until the owner asks for the change there; the tokens carry both
+ *  (index.css "Held in dark"). */
+function highlight(text: string, dimmed: boolean) {
+  const dim = dimmed ? "opacity-(--diff-context-dim)" : "";
+  const trimmed = text.trimStart();
+  if (
+    trimmed.startsWith("//") ||
+    trimmed.startsWith("///") ||
+    trimmed.startsWith("#")
+  ) {
+    return <span className={`text-muted-foreground ${dim}`}>{text}</span>;
+  }
+
+  const parts: { text: string; color: string }[] = [];
+  const regex = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text))) {
+    if (match.index > last) {
+      parts.push({ text: text.slice(last, match.index), color: "" });
+    }
+    const token = match[1];
+    const color = KEYWORDS.has(token)
+      ? dimmed
+        ? "text-[var(--diff-context-strong,var(--pr-code-keyword))]"
+        : "text-(--pr-code-keyword)"
+      : /^[A-Z]/.test(token)
+        ? dimmed
+          ? "text-[var(--diff-context-strong,var(--pr-code-type))]"
+          : "text-(--pr-code-type)"
+        : "";
+    parts.push({ text: token, color });
+    last = match.index + token.length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), color: "" });
+
+  return (
+    <span className={`text-muted-foreground ${dim}`}>
+      {parts.map((part, index) =>
+        part.color ? (
+          <span key={index} className={part.color}>
+            {part.text}
+          </span>
+        ) : (
+          <span key={index}>{part.text}</span>
+        ),
+      )}
+    </span>
   );
 }

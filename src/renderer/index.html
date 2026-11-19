@@ -18,13 +18,14 @@
     <title>TempCode</title>
     <script src="./boot.js"></script>
     <style>
-      /* The splash's two colours are `background` and `foreground` of each
-         theme, copied from src/renderer/src/index.css, which has not loaded
-         yet (src/renderer/src/splash.test.ts holds them equal). boot.js sets
-         `theme-light` before this paints. */
+      /* The splash paints before src/renderer/src/index.css loads, so its
+         colours are written here. Light's are that file's `background` and
+         `foreground` (src/renderer/src/splash.test.ts holds them equal);
+         dark's are held as they were. boot.js sets `theme-light` before this
+         paints. */
       :root {
-        --boot-background: oklch(0.195 0.003 270);
-        --boot-foreground: oklch(0.93 0.003 270);
+        --boot-background: hsl(240 0% 9%);
+        --boot-foreground: #ffffff;
       }
 
       html.theme-light {

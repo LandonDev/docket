@@ -24,7 +24,7 @@ vi.mock("@xterm/xterm", () => ({
 }));
 vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
 vi.mock("../lib/terminalLayout", () => ({ fitTerminal: () => {} }));
-vi.mock("./TerminalView", () => ({ monoFont: () => "mono", terminalTheme: () => ({}) }));
+vi.mock("./TerminalView", () => ({ monoFont: () => "mono", terminalScheme: () => ({ theme: {}, minimumContrastRatio: 1 }) }));
 vi.mock("../lib/connection/registry", () => ({ registry: { linkOf: () => ({ request: h.request, onPush: () => () => {} }) } }));
 
 import { DevConsole } from "./DevConsole";

@@ -209,18 +209,19 @@ export function highlightCode(text: string, dimmed: boolean): ReactElement {
 
 /** Code tints are neutral by weight, so green and red mean only added and
  *  removed lines: keywords in foreground, the rest muted, comments faint. A
- *  context line (`dimmed`) is muted throughout, its comments faint: it steps
- *  back by ink, never by opacity, which falls under 3:1 on white. */
+ *  context line (`dimmed`) steps back by the theme's own means, which the
+ *  tokens carry: in light by ink (its keywords muted too), since an opacity
+ *  falls under 3:1 on white; in dark by the dim it always had. */
 function tokenizeLine(text: string, dimmed: boolean): ReactElement {
+  const dim = dimmed ? "opacity-(--diff-context-dim)" : "";
   const trimmed = text.trimStart();
   if (
     trimmed.startsWith("//") ||
     trimmed.startsWith("///") ||
     trimmed.startsWith("#")
   ) {
-    return <span className="text-faint-foreground">{text}</span>;
+    return <span className={`text-faint-foreground ${dim}`}>{text}</span>;
   }
-  if (dimmed) return <span className="text-muted-foreground">{text}</span>;
 
   const parts: { text: string; keyword: boolean }[] = [];
   const regex = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
@@ -236,11 +237,12 @@ function tokenizeLine(text: string, dimmed: boolean): ReactElement {
   }
   if (last < text.length) parts.push({ text: text.slice(last), keyword: false });
 
+  const strong = dimmed ? "text-[var(--diff-context-strong,var(--foreground))]" : "text-foreground";
   return (
-    <span className="text-muted-foreground">
+    <span className={`text-muted-foreground ${dim}`}>
       {parts.map((part, index) =>
         part.keyword ? (
-          <span key={index} className="text-foreground">
+          <span key={index} className={strong}>
             {part.text}
           </span>
         ) : (

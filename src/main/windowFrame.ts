@@ -25,8 +25,8 @@ export const CAPTION_HEIGHT = 40
 export const CAPTION_WIDTH = 138
 
 const CLEAR = '#00000000'
-/** `foreground` in each theme, as main needs plain colours (windowFrame.test.ts holds them equal to index.css). */
-export const SYMBOL = { dark: '#e7e8ea', light: '#13161c' }
+/** The caption glyphs' ink, as main needs plain colours: light's is the app's `foreground` (windowFrame.test.ts holds it equal to index.css); dark's is held as it was. */
+export const SYMBOL = { dark: '#fafafa', light: '#13161c' }
 
 /** The caption buttons' colours alone: a clear strip, so the page's own bar shows through, and glyphs in the theme's ink. No height, so a theme change keeps the zoom's. */
 export function captionInk(dark: boolean): Pick<TitleBarOverlayOptions, 'color' | 'symbolColor'> {

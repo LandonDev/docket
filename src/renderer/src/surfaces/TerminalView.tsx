@@ -17,7 +17,7 @@ import {
   type TerminalMetaPatch,
 } from "../lib/terminalTab";
 import { isLightScheme, SCHEME_CHANGE_EVENT } from "../lib/appearance";
-import { ANSI, TERMINAL_FALLBACK, TERMINAL_OPTIONS } from "../lib/terminalPalette";
+import { ANSI, MINIMUM_CONTRAST, TERMINAL_FALLBACK } from "../lib/terminalPalette";
 import {
   applyTerminalChrome,
   fitTerminal,
@@ -67,7 +67,7 @@ export function terminalTheme(light: boolean) {
   const ground = hexOf(cssColor("var(--color-background)", fallback.background), fallback.background);
   return {
     // The pane paints the ground. xterm is told its colour at zero alpha, so reverse video and
-    // the contrast floor (TERMINAL_OPTIONS) work from the colour on screen, not from black.
+    // the contrast floor (MINIMUM_CONTRAST) work from the colour on screen, not from black.
     background: `${ground}00`,
     foreground,
     cursor: cssColor("var(--color-accent)", fallback.accent),
@@ -79,6 +79,12 @@ export function terminalTheme(light: boolean) {
     ...terminalScrollbar(),
     ...(light ? ANSI.light : ANSI.dark),
   };
+}
+
+/** What a terminal takes from the scheme, at birth and on every change: its
+ *  colours, and the floor a program's own colours are held to. */
+export function terminalScheme(light = isLightScheme()) {
+  return { theme: terminalTheme(light), minimumContrastRatio: MINIMUM_CONTRAST[light ? "light" : "dark"] };
 }
 
 export function monoFont(): string {
@@ -164,8 +170,9 @@ function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
       lineHeight: 1,
       letterSpacing: 0,
       scrollback: 5000,
-      ...TERMINAL_OPTIONS,
-      theme: terminalTheme(isLightScheme()),
+      allowTransparency: true,
+      smoothScrollDuration: 0,
+      ...terminalScheme(),
       macOptionIsMeta: IS_MAC,
     });
     term.open(host);
@@ -247,7 +254,7 @@ function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
     );
 
     const onSchemeChange = () => {
-      term.options.theme = terminalTheme(isLightScheme());
+      Object.assign(term.options, terminalScheme());
     };
     window.addEventListener(SCHEME_CHANGE_EVENT, onSchemeChange);
 

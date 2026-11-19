@@ -81,10 +81,10 @@ light one is built is "The light theme".
 | `muted-foreground` | text that supports it | oklch 0.68 | oklch(0.46 0.014 264) |
 | `faint-foreground` | text that may be missed: a line number, ghost text, a done task, a diff's context | oklch(0.56 0.006 270) | oklch(0.58 0.012 264) |
 | `primary` / `primary-foreground` | the one primary button per surface, a checked box, a switch on | near-white / near-black | oklch(0.21 0.012 264) / white |
-| `accent` / `accent-foreground` | focus rings, a selection's edge, the rare call to action | blue 62% / near-black | hsl(214 88% 44%) / white |
+| `accent` / `accent-foreground` | focus rings, a selection's edge, the rare call to action | blue 62% / white | hsl(214 88% 44%) / white |
 | `link` | a link's words, in prose, a document, a form | `#7dd3fc` | hsl(214 90% 38%) |
 | `warning` | the person is needed; the context meter from 85% full | amber | `#92450a` |
-| `destructive` / `destructive-foreground` | failed, delete; the label on a solid red button | red / near-black | `#b91c1c` / white |
+| `destructive` / `destructive-foreground` | failed, delete; the label on a solid red button | red / white | `#b91c1c` / white |
 | `success` | lines added, passed | green | `#046c4e` |
 | `info` | the one informational tint | blue | `#1d4ed8` |
 
@@ -163,14 +163,31 @@ distances):
 | mark | `accent` as a ring, the type tints, `chart-1..4`, the three `chart-neutral` steps, a glyph in a status colour | 3:1 | the surfaces it is drawn on |
 | edge | `border`; `input` | 1.15:1; 1.4:1 | `background`, `sidebar`, `card`; `background`, `card` |
 | wash | `foreground` over each canvas tint laid on `background` and `card` | 4.5:1 | the mixed colour |
-| code | every ink of the editor's two syntax themes, CodeMirror's two tables and the terminal's sixteen colours per theme | 4.5:1 (a comment and a line number 3:1) | the editor's and the terminal's ground |
+| code | every ink of the editor's two syntax themes, CodeMirror's two tables and the terminal's sixteen colours per theme; a completion kind's name; the letter on a kind's badge | 4.5:1 (a comment and a line number 3:1) | the editor's and the terminal's ground; the popover and the highlighted row; the badge's fill |
 
 Named exceptions, each recorded in the test with its measured ratio so a
 change to one is seen: the eight presence hues and their label inks (the
 shared editor's, one value in both themes), the six sector dots (LifeOS's,
 never the only cue: the sector's name is beside each), the runner's
-coin and star, and a field's border on the rail (1.37:1 in dark, a hair
-under its floor: dark moved only where a label on a solid fill failed).
+coin and star, and a field's border on the rail (1.37:1 in dark).
+
+**Dark is held.** The owner works in dark while light is built, so dark
+keeps every value it had, and no commit changes how it looks. Where the
+contract finds a dark pair under its floor, the test records it
+(`HELD_IN_DARK`) and leaves it: white on dark's accent (2.88:1) and on its
+red (2.77:1), the neutral chart's two quieter steps (2.42:1 and 1.85:1),
+the white letter on seven of Monaco's completion badges, and the
+terminal's black and bright black. Looks that light changes and dark
+keeps are tokens with a value per theme, grouped in index.css under "Held
+in dark": a diff's context line (dimmed in dark, stepped back by ink in
+light), the Inbox diff's code (green keywords and amber type names in
+dark, the transcript's two inks in light), a slide's ground (the bare
+canvas in dark, `stage` with a 16px inset in light), a raster add-on
+mark's tile, and Monaco's completion list (IDEA's row and badge fills in
+dark, the muted row and darker fills in light). A brand mark's colour
+is judged only on the light menu, and the terminal holds a program's
+colours to 4.5:1 only on the light pane. Each is his to change in dark:
+`docs/agents/appearance.md` lists what to flip.
 
 What draws with its own theme takes it from the tokens or carries a table
 per theme, and follows a change live:
@@ -178,8 +195,8 @@ per theme, and follows a change live:
 | Surface | Source | On a change |
 | --- | --- | --- |
 | Monaco | Darcula and IntelliJ Light (`lib/intellijTheme.ts`), the chrome read from the tokens (`surfaces/monaco/theme.ts`), the completion kinds from `--editor-*`, a value per theme | re-themed in place |
-| CodeMirror | `surfaces/editorChrome.ts`: the tokens, and a highlight table per theme | compartment reconfigured |
-| The terminal and Dev Console | `surfaces/TerminalView.tsx`: sixteen colours per theme, the pane's own ground as xterm's background, `minimumContrastRatio` 4.5 | theme assigned |
+| CodeMirror | `surfaces/editorChrome.ts`: the tokens, and a highlight table per theme (`lib/editorPalette.ts`) | compartment reconfigured |
+| The terminal and Dev Console | `lib/terminalPalette.ts` and `surfaces/TerminalView.tsx`: sixteen colours per theme, the pane's own ground as xterm's background, `minimumContrastRatio` 4.5 on the light pane | theme and floor assigned |
 | Transcript code | two inks (`foreground`, `muted-foreground`) by CSS variable; Mermaid's own light and dark | CSS; Mermaid redraws |
 | The sheet (Univer) | the tokens, read on the grid's container (work-kit `sheet/grid/theme.ts`) | repainted |
 | The document (BlockNote) | the tokens through work-kit's `--bn-*` map, the scheme passed as a prop | prop |
@@ -269,9 +286,9 @@ both themes, unless the table gives two values.
 | `wave` | a recording's wave; the part played is `foreground` | `muted-foreground` 55% |
 | `run-dot` | a routine's planned run in the week grid | `foreground` 55% |
 | `stage` | the ground under a picture: an image, a PDF's sheets, a slide | `sidebar` |
-| `chart-neutral` | a form's answer bars | `foreground` 44% dark, 54% light |
-| `chart-neutral-rest` | a dashboard's bars beside the current one, which is `foreground` | `foreground` 38% dark, 48% light |
-| `chart-neutral-stale` | that current bar while the figures are stale | `foreground` 55% dark, 65% light |
+| `chart-neutral` | a form's answer bars | `foreground` 30% dark, 54% light |
+| `chart-neutral-rest` | a dashboard's bars beside the current one, which is `foreground` | `foreground` 22% dark, 48% light |
+| `chart-neutral-stale` | that current bar while the figures are stale | `foreground` 40% dark, 65% light |
 
 A comment is never amber: amber means the person is needed. A change
 never takes a bar or an edge; it is the tint alone. The current change

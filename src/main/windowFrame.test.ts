@@ -49,8 +49,8 @@ describe('the window frame per platform', () => {
   it('the caption glyphs take the ink of the theme they sit on', () => {
     expect(captionOverlay(true).symbolColor).toBe(SYMBOL.dark)
     expect(captionOverlay(false).symbolColor).toBe(SYMBOL.light)
-    // The ink is the app's own `foreground`, so the glyphs match the title bar's text.
-    expect(SYMBOL).toEqual({ dark: tokenHex('dark', '--foreground'), light: tokenHex('light', '--foreground') })
+    // Light's ink is the app's own `foreground`, so the glyphs match the title bar's text; dark's is held as it was.
+    expect(SYMBOL).toEqual({ dark: '#fafafa', light: tokenHex('light', '--foreground') })
     expect(frameOptions('win32', { ...look, dark: false }).titleBarOverlay).toEqual(captionOverlay(false))
   })
 

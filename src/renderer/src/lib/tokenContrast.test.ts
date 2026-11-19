@@ -96,8 +96,7 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
  */
 const SYNTAX = { dark: { intellij: DARCULA, codemirror: HIGHLIGHT_INKS.dark, ansi: ANSI.dark }, light: { intellij: LIGHT, codemirror: HIGHLIGHT_INKS.light, ansi: ANSI.light } };
 const QUIET_INKS = new Set(["comment", "docComment"]);
-// A program's black on a dark pane: under the floor by value, lifted by xterm as it draws
-// (TERMINAL_OPTIONS.minimumContrastRatio, held by TerminalView.dom.test.tsx).
+// A program's black on the dark pane, as every dark terminal draws it: dark's table is held as it was.
 const ANSI_LIFTED = { dark: { black: 1.16, brightBlack: 3.84 }, light: {} } as Record<"dark" | "light", Record<string, number>>;
 const KIND_NAMES = ["--editor-type-name", "--editor-constant-name", "--editor-keyword-name"];
 const KIND_BADGES = ["text", "class", "interface", "enum", "method", "field", "variable", "keyword"].map((kind) => `--editor-symbol-${kind}`);
@@ -108,10 +107,32 @@ function codePairs(name: "dark" | "light"): { label: string; ink: string; on: st
     ...Object.entries(intellij).filter(([key]) => key !== "bg").map(([key, ink]) => ({ label: `intellij ${key}`, ink, on: "--background", floor: QUIET_INKS.has(key) ? 3 : 4.5 })),
     ...Object.entries(codemirror).map(([key, ink]) => ({ label: `codemirror ${key}`, ink, on: "--background", floor: QUIET_INKS.has(key) ? 3 : 4.5 })),
     ...Object.entries(ansi).filter(([key]) => !(key in ANSI_LIFTED[name])).map(([key, ink]) => ({ label: `ansi ${key}`, ink, on: "--background", floor: 4.5 })),
-    ...KIND_NAMES.flatMap((ink) => ["--popover", "--muted"].map((on) => ({ label: ink, ink, on, floor: 4.5 }))),
+    // Light's highlighted row is `muted`; dark's is IDEA's own fill, held as it was (surfaces/monaco/theme.ts).
+    ...KIND_NAMES.flatMap((ink) => (name === "light" ? ["--popover", "--muted"] : ["--popover"]).map((on) => ({ label: ink, ink, on, floor: 4.5 }))),
     ...KIND_BADGES.map((on) => ({ label: "a badge's letter", ink: "--editor-symbol-foreground", on, floor: 4.5 })),
-  ];
+  ].filter((p) => !(name === "dark" && held(p)));
 }
+
+/**
+ * Held in dark. The owner works in the dark theme while the light one is
+ * built, so dark keeps every value it had: where the contract finds a dark
+ * pair under its floor, the pair is recorded here at its measured ratio and
+ * left alone. Each is a change for him to ask for, never one to make for
+ * him (docs/agents/appearance.md "Dark is held").
+ */
+const HELD_IN_DARK: (Pair & { ratio: number })[] = [
+  // White on the lighter fills dark uses for the accent and for red.
+  { ink: "--accent-foreground", on: "--accent", ratio: 2.88 },
+  { ink: "--destructive-foreground", on: "--destructive", ratio: 2.77 },
+  // The neutral chart's two quieter steps, as marks.
+  { ink: "--chart-neutral", on: "--background", ratio: 2.42 },
+  { ink: "--chart-neutral", on: "--card", ratio: 2.44 },
+  { ink: "--chart-neutral-rest", on: "--background", ratio: 1.85 },
+  { ink: "--chart-neutral-rest", on: "--card", ratio: 1.89 },
+  // The white letter on IDEA's completion badges.
+  ...Object.entries({ class: 3.87, interface: 3.32, enum: 4, method: 4.36, field: 2.97, variable: 3.25, keyword: 4.42 }).map(([kind, ratio]) => ({ ink: "--editor-symbol-foreground", on: `--editor-symbol-${kind}`, ratio })),
+];
+const held = (p: { ink: string; on: string }): boolean => HELD_IN_DARK.some((h) => h.ink === p.ink && h.on === p.on);
 
 /**
  * Named exceptions: colours that are someone else's or a picture's, one
@@ -132,8 +153,7 @@ const EXCEPTIONS: (Pair & { dark: number; light: number })[] = [
   ...Object.entries(SECTORS).map(([sector, [dark, light]]) => ({ ink: `--sector-${sector}`, on: "--sidebar", dark, light })),
   { ink: "--composer-coin", on: "--card", dark: 9.28, light: 1.71 },
   { ink: "--composer-star", on: "--card", dark: 13.04, light: 1.22 },
-  // A field's border on the rail in dark is a hair under the field edge's 1.4:1. Dark moves only
-  // where a label on a solid fill failed, so this one is recorded, not retuned.
+  // A field's border on the rail in dark is a hair under the field edge's 1.4:1: dark is held as it was.
   { ink: "--input", on: "--sidebar", dark: 1.37, light: 1.46 },
 ];
 
@@ -141,7 +161,7 @@ describe("the contrast contract", () => {
   for (const [name, theme] of THEMES) {
     for (const tier of TIERS) {
       it(`${tier.name}: ${tier.floor}:1 in the ${name} theme`, () => {
-        const measured = tier.pairs.map((p) => ({ ...p, ratio: ratio(theme, p.ink, p.on, p.base) }));
+        const measured = tier.pairs.filter((p) => !(name === "dark" && held(p))).map((p) => ({ ...p, ratio: ratio(theme, p.ink, p.on, p.base) }));
         if (process.env.TOKEN_CONTRAST_PRINT) {
           const low = measured.reduce((a, b) => (b.ratio < a.ratio ? b : a));
           console.log(`${name} ${tier.name}: lowest ${low.ink} on ${low.on} ${low.ratio.toFixed(2)}`);
@@ -153,7 +173,7 @@ describe("the contrast contract", () => {
 
     it(`code: every syntax ink, ANSI colour, kind name and badge letter in the ${name} theme`, () => {
       const measured = codePairs(name).map((p) => ({ ...p, ratio: ratio(theme, p.ink, p.on) }));
-      expect(measured.length).toBeGreaterThan(45);
+      expect(measured.length).toBeGreaterThan(35);
       if (process.env.TOKEN_CONTRAST_PRINT) {
         const low = measured.reduce((a, b) => (b.ratio / b.floor < a.ratio / a.floor ? b : a));
         console.log(`${name} code: lowest ${low.label} on ${low.on} ${low.ratio.toFixed(2)} (floor ${low.floor})`);
@@ -168,6 +188,17 @@ describe("the contrast contract", () => {
       expect(measured).toEqual(EXCEPTIONS.map((e) => `${e.ink} on ${e.on}: ${e[name].toFixed(2)}`));
     });
   }
+
+  it("holds dark as it was: each pair under its floor there is recorded at its ratio, and none of them has moved", () => {
+    const [, dark] = THEMES.find(([name]) => name === "dark")!;
+    expect(HELD_IN_DARK.map((h) => `${h.ink} on ${h.on}: ${ratio(dark, h.ink, h.on).toFixed(2)}`)).toEqual(HELD_IN_DARK.map((h) => `${h.ink} on ${h.on}: ${h.ratio.toFixed(2)}`));
+    // A held pair is one a tier checks: a stale entry here would hide nothing and say nothing.
+    const checked = [...TIERS.flatMap((tier) => tier.pairs), ...KIND_BADGES.map((on) => ({ ink: "--editor-symbol-foreground", on }))];
+    for (const h of HELD_IN_DARK) expect(checked.some((p) => p.ink === h.ink && p.on === h.on), `${h.ink} on ${h.on}`).toBe(true);
+    // And light holds none of them back: every one passes there.
+    const [, light] = THEMES.find(([name]) => name === "light")!;
+    for (const h of HELD_IN_DARK) expect(ratio(light, h.ink, h.on), `${h.ink} on ${h.on} in light`).toBeGreaterThanOrEqual(h.ink.startsWith("--chart") ? 3 : 4.5);
+  });
 
   it("reads the tokens it checks", () => {
     const [, light] = THEMES.find(([name]) => name === "light")!;

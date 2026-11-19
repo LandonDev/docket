@@ -3,9 +3,8 @@
  * theme"), apart from xterm so the contrast contract can read them
  * (lib/tokenContrast.test.ts). Each of light's reaches 4.5:1 on white, the
  * two whites as grays: a program that prints "white" on a light pane still
- * prints something. Dark's black and bright black sit under that on purpose
- * (a program's black on a dark pane); xterm lifts whatever a program prints
- * to `minimumContrastRatio` as it draws.
+ * prints something. Dark's table is held as it was, its black and bright
+ * black under that as on every dark terminal.
  */
 export const ANSI = {
   dark: {
@@ -52,5 +51,7 @@ export const TERMINAL_FALLBACK = {
   light: { foreground: "#13161c", background: "#ffffff", accent: "#0d63d3" },
 } as const;
 
-/** What every terminal is built with: a pane that shows through, and text a program colours held to 4.5:1 on it. */
-export const TERMINAL_OPTIONS = { allowTransparency: true, minimumContrastRatio: 4.5, smoothScrollDuration: 0 } as const;
+/** The floor xterm holds a program's own colours to as it draws (its
+ *  `minimumContrastRatio`): 4.5:1 on the light pane, where a program written
+ *  for a dark terminal prints pale colours; none in dark, held as it was. */
+export const MINIMUM_CONTRAST = { dark: 1, light: 4.5 } as const;

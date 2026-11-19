@@ -6,8 +6,7 @@ import type { ServerPush } from "@server/shared/contract";
 import { registry } from "../lib/connection/registry";
 import { isLightScheme, SCHEME_CHANGE_EVENT } from "../lib/appearance";
 import { fitTerminal } from "../lib/terminalLayout";
-import { TERMINAL_OPTIONS } from "../lib/terminalPalette";
-import { monoFont, terminalTheme } from "./TerminalView";
+import { monoFont, terminalScheme } from "./TerminalView";
 import "@xterm/xterm/css/xterm.css";
 
 /** How often an agent's server's log is read again. */
@@ -52,8 +51,9 @@ export function DevConsole({ source, active }: { source: DevConsoleSource; activ
       fontSize: 13,
       lineHeight: 1,
       scrollback: 10_000,
-      ...TERMINAL_OPTIONS,
-      theme: terminalTheme(isLightScheme()),
+      allowTransparency: true,
+      smoothScrollDuration: 0,
+      ...terminalScheme(),
     });
     term.open(host);
     termRef.current = term;
@@ -69,7 +69,7 @@ export function DevConsole({ source, active }: { source: DevConsoleSource; activ
     // ⌘C with a selection goes to the copy event above.
     term.attachCustomKeyEventHandler((e) => !(modOrCtrl(e) && e.key.toLowerCase() === "c" && term.hasSelection()));
 
-    const onScheme = () => (term.options.theme = terminalTheme(isLightScheme()));
+    const onScheme = () => void Object.assign(term.options, terminalScheme());
     window.addEventListener(SCHEME_CHANGE_EVENT, onScheme);
 
     let raf = 0;
