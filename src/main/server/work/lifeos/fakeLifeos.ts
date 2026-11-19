@@ -41,6 +41,16 @@ export class FakeLifeos implements LifeosTransport {
   identities = [{ name: 'Landon Hale', isDefault: true }]
   /** a mutation of this name fails as if the function did not exist (a LifeOS from before milestone 4) */
   missing = new Set<string>()
+  /** LifeOS's projects as `projects:list` answers them, a sector at a time */
+  projects: { _id: string; name: string; status: string; sector: string }[] = []
+  /** the live queries open now, each run again when what it reads changes */
+  private readonly watchers = new Set<{ fn: string; rerun: () => void }>()
+
+  /** Changes LifeOS's projects and tells every live `projects:list`, as Convex does. */
+  setProjects(next: { _id: string; name: string; status: string; sector: string }[]): void {
+    this.projects = next
+    for (const w of [...this.watchers]) if (w.fn === 'projects:list') w.rerun()
+  }
 
   /** A device token LifeOS knows, as `auth:mint` makes one. */
   device(): string {
@@ -130,6 +140,8 @@ export class FakeLifeos implements LifeosTransport {
         case 'auth:revoke':
           for (const s of this.sessions.values()) if (s.id === args.id) s.revoked = true
           return null as T
+        case 'projects:list':
+          return this.projects.filter((p) => !args.sector || p.sector === args.sector) as T
         case 'workLinks:link': {
           const entity = args.entity as { table: string; id: string }
           const task = this.tasks.get(entity.id)
@@ -154,10 +166,17 @@ export class FakeLifeos implements LifeosTransport {
       action: (fn, args = {}) => run(fn, args),
       watch: (fn, args, on, onError) => {
         let stopped = false
-        void run(fn, args)
-          .then((v) => !stopped && on(v as never))
-          .catch((err) => !stopped && onError(err as Error))
-        return () => void (stopped = true)
+        const rerun = (): void =>
+          void run(fn, args)
+            .then((v) => !stopped && on(v as never))
+            .catch((err) => !stopped && onError(err as Error))
+        const watcher = { fn, rerun }
+        this.watchers.add(watcher)
+        rerun()
+        return () => {
+          stopped = true
+          this.watchers.delete(watcher)
+        }
       },
       live: () => conn.live && this.reachable,
       close: () => {

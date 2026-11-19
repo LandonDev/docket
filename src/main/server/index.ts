@@ -221,6 +221,8 @@ import {
 } from './apptools'
 import { loadWork } from './work/load'
 import { isWorkMethod } from '@shared/work/wire'
+import { workspaceKindOf } from '@shared/work/ids'
+import { workProjectRefusal, type WorkProjectFacts } from './workProjectGate'
 import type { Caller as WorkCaller } from './work/modules'
 import { SkillMaterializer, configureMaterializedSkills } from './skills/materialize'
 import { SkillPointers, configureSkillPointers } from './skills/pointers'
@@ -317,6 +319,15 @@ function requireWorkspacePath(path: string | undefined): string {
 /** Who a socket's request is from, as Work's modules read it (work/modules.ts `Caller`). */
 function workCaller(principal: Principal): WorkCaller {
   return principal.kind === 'local' ? { kind: 'local', caps: CAPABILITIES } : { kind: 'remote', caps: principal.caps }
+}
+
+/** Which rows are Work's, for the gate that keeps code settings off a Work project (workProjectGate.ts). */
+function workFactsOf(registry: SessionRegistry): WorkProjectFacts {
+  const workWorkspace = (workspaceId: string): boolean => {
+    const workspace = registry.listWorkspaces().find((w) => w.id === workspaceId)
+    return !!workspace && workspaceKindOf(workspace) === 'work'
+  }
+  return { workWorkspace, workProject: (projectId) => workWorkspace(registry.getProject(projectId)?.workspaceId ?? '') }
 }
 
 /** The session an app.* call claims to be from — must actually exist. */
@@ -516,6 +527,7 @@ export async function startServer(
     }
   })
   const registry = new SessionRegistry(store)
+  const workProjectFacts = workFactsOf(registry)
   // The threads people are looking at (session.focus), widened to their
   // subagents and a focused master's batch: their requests and pushes go first.
   const focus = new FocusSet({ parentOf: (id) => registry.parentOf(id), masterOf: (id) => registry.masterOf(id) })
@@ -2343,6 +2355,9 @@ export async function startServer(
         if (lin.handled) return sendFrame({ id: req.id, ok: true, result: lin.result })
         const gh = await handleGithubInbox(req, githubInbox)
         if (gh.handled) return sendFrame({ id: req.id, ok: true, result: gh.result })
+        // A Work project has no code settings (workProjectGate.ts): each of their handlers below refuses one here, by the row's kind.
+        const notForWork = workProjectRefusal(req, workProjectFacts)
+        if (notForWork) throw new Error(notForWork)
         switch (req.method) {
           case 'catalog.get':
             if (req.params?.refresh) {

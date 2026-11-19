@@ -43,6 +43,7 @@ import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type Pus
 import { heldPart } from './outbox/ctx'
 import { resultsPart } from './outbox/results'
 import { peerPart } from './peer'
+import { lifeosProjectIn, mirrorsPart } from './projects/mirrors'
 import { ensureWorkTables } from './schema'
 import { scopePart } from './scope'
 import { routinesHostPart } from './routines/host'
@@ -171,7 +172,9 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
     part('formats/jobs.ts', ['convert'], () => convertPart(ctx, deps)),
     part('service/ctx.ts', ['service'], () => servicePart(ctx, deps)),
     // Not a member: the host handles the routines engine needs and the context does not carry (milestone 32).
-    part('routines/host.ts', [], () => (routinesHostPart(deps), {}))
+    part('routines/host.ts', [], () => (routinesHostPart(deps), {})),
+    // Not a member: the mirrors of LifeOS's projects follow LifeOS while Work is on.
+    part('projects/mirrors.ts', [], () => (mirrorsPart(ctx, deps), {}))
   )
   return { ctx, admission }
 }
@@ -416,7 +419,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
         }
         case 'work.project.open': {
           if (!settings.enabled()) throw new Error('Work is off on this host')
-          const { workspaceId, lifeosProjectId, name } = req.params
+          const { workspaceId, lifeosProjectId } = req.params
           const workspace = knownWorkspace(workspaceId)
           if (workspace.kind !== 'work' || !workspace.sector) throw new Error(`${workspace.name} is not a Work workspace linked to LifeOS`)
           const mine = deps.registry.listProjects().find((p) => p.workspaceId === workspaceId && p.lifeosProjectId === lifeosProjectId)
@@ -425,7 +428,10 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           const key = `${workspaceId}\0${lifeosProjectId}`
           let making = openingProjects.get(key)
           if (!making) {
-            making = deps.registry.createProject(workspaceId, name, 'local', { lifeosProjectId }).finally(() => openingProjects.delete(key))
+            // LifeOS is asked, as the owner: the project must be one of this workspace's sector, and the mirror takes the name it has there, never a client's.
+            making = lifeosProjectIn(ctx, workspace, lifeosProjectId)
+              .then((project) => deps.registry.createProject(workspaceId, project.name, 'local', { lifeosProjectId }))
+              .finally(() => openingProjects.delete(key))
             openingProjects.set(key, making)
           }
           return handled(await making)

@@ -53,8 +53,8 @@ export const WorkCoreRequestSchemas = [
       patch: z.object({ mayUseDesktop: z.array(z.string()).optional(), model: z.string().nullable().optional(), reasoning: z.string().nullable().optional(), voice: z.boolean().optional() })
     })
   ),
-  /** → ProjectMeta: the project that holds a Work workspace's threads about one LifeOS project, made at the first ask */
-  request('work.project.open', z.object({ workspaceId: z.string(), lifeosProjectId: z.string().min(1), name: z.string().min(1).max(200) })),
+  /** → ProjectMeta: the project that holds a Work workspace's threads about one LifeOS project, made at the first ask. The host asks LifeOS for the project and its name; `name` is what an older client still sends, and is not read. */
+  request('work.project.open', z.object({ workspaceId: z.string(), lifeosProjectId: z.string().min(1), name: z.string().max(200).optional() })),
   // The codex and Muse bridge (scripts/app-mcp-bridge.mjs): `token` is the
   // thread's own, so one thread's bridge never lists or calls as another.
   /** → AppWorkToolsAnswer: the Work tools of the thread's scope, as the bridge lists them */
