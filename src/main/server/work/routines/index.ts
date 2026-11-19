@@ -15,6 +15,7 @@ import { RoutinesEngine, triggerWords, type EngineDeps } from './engine'
 import { routinesHost, type RoutinesHost } from './host'
 import { knownZone, nextAt } from './schedule'
 import { ensureRoutineTables, type Cursor } from './store'
+import { routineMentions } from './mentions'
 
 /**
  * The routines pillar (docs/agents/work-routines.md): the scheduler and its
@@ -237,6 +238,7 @@ function tools(): WorkTool[] {
 
 export const routines: WorkModule = {
   id: 'routines',
+  mentions: routineMentions,
   ensure: ensureRoutineTables,
   handle,
   tools,

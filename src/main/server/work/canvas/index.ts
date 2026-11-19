@@ -1,12 +1,13 @@
 import { handled, NOT_HANDLED, type CanvasItem } from '@shared/work'
-import type { WorkModule } from '../modules'
+import { WORK_MODULES, type WorkModule } from '../modules'
+import { canvasMentions, searchMentions } from './mentions'
 import { ensureMovedTable, retryMoved } from './move'
 import { canvasStoreOf, ensureCanvasTables, fencedItem } from './store'
 import { canvasTools } from './tools'
 
 /**
  * The canvas pillar's server module (docs/agents/work-canvas.md "The
- * store"): `work_canvas_items`, the four `work.canvas.*` methods, the two
+ * store"): `work_canvas_items`, the `work.canvas.*` methods (`mentions` asks every pillar's `@` kinds), the two
  * tools, and what a deleted thread leaves. It reaches the store the part
  * made (canvas/ctx.ts) through `ctx.db`.
  */
@@ -34,10 +35,17 @@ export const canvas: WorkModule = {
         return handled(null)
       case 'work.canvas.reorder':
         return handled({ items: store.reorder(req.params.sessionId, req.params.order).map(shown) })
+      case 'work.canvas.mentions': {
+        const { sessionId, draft, text, kinds } = req.params
+        // The thread's scope is the fence: a thread with no reach (an unlinked code thread) is offered nothing.
+        const reach = ctx.mentionReach(sessionId, draft)
+        return handled(reach ? await searchMentions(ctx, reach, text, { modules: WORK_MODULES, kinds }) : { hits: [], failed: [] })
+      }
     }
     return NOT_HANDLED
   },
   tools: () => canvasTools,
+  mentions: canvasMentions,
   sessionsRemoved(ids, ctx) {
     canvasStoreOf(ctx.db).removeSessions(ids)
     const gone = ctx.db.prepare(`DELETE FROM work_canvas_moved WHERE session_id = ?`)

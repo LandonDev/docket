@@ -120,7 +120,7 @@ export interface WorkAdmission {
   /** A `session.create` that asks for Work (`scope: 'work'`) or carries `about`: throws to refuse. The router calls it for no other create; the scope itself is stamped where the row is made. */
   admitSession(params: CreateSessionParams, by: Caller): void
 }
-export type ScopePart = (ctx: WorkCtx, deps: WorkPartDeps) => Pick<WorkCtx, 'scopeOf'> & WorkAdmission
+export type ScopePart = (ctx: WorkCtx, deps: WorkPartDeps) => Pick<WorkCtx, 'scopeOf' | 'mentionReach'> & WorkAdmission
 
 /**
  * The context, with each member from the file of the milestone that owns
@@ -158,10 +158,10 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
       return Object.fromEntries(keys.map((key) => [key, failing(why)])) as T
     }
   }
-  const { scopeOf, ...admission } = part('scope.ts', ['scopeOf', 'createWorkspace', 'admitSession'], () => scopePart(ctx, deps))
+  const { scopeOf, mentionReach, ...admission } = part('scope.ts', ['scopeOf', 'mentionReach', 'createWorkspace', 'admitSession'], () => scopePart(ctx, deps))
   Object.assign(
     ctx,
-    { scopeOf },
+    { scopeOf, mentionReach },
     part('threads.ts', ['threads'], () => threadsPart(ctx, deps)),
     part('peer.ts', ['peer'], () => peerPart(ctx, deps)),
     part('lifeos/ctx.ts', ['lifeos', 'links'], () => lifeosPart(ctx, deps)),

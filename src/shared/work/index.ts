@@ -5,6 +5,7 @@
  */
 export * from './ids'
 export * from './canvas'
+export * from './mentions'
 export * from './acts'
 export * from './triggers'
 export * from './scope'

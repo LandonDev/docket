@@ -10,8 +10,11 @@ import type {
   CanvasKind,
   CanvasSource,
   ContextChip,
+  ChipKind,
   Handled,
   HeldItem,
+  MentionHit,
+  MentionReach,
   HostId,
   PillarId,
   SectorKey,
@@ -76,6 +79,8 @@ export interface WorkModule {
   outward?(addon: AddonRow, tool: string, args: unknown): Verdict | null
   triggers?: TriggerSource[]
   convert?: Converter[]
+  /** The kinds of thing the composer's `@` finds in this pillar (work-canvas.md "Mentions"): each searches only within `reach`. */
+  mentions?: MentionSource[]
   /** Joined, in module order, after the preamble's fixed head. */
   preamble?(scope: WorkScope): string | null
   /** Pollers and subscriptions. Never called while Work is off; its return stops them. */
@@ -84,6 +89,20 @@ export interface WorkModule {
   sessionsRemoved?(sessionIds: string[], ctx: WorkCtx): void
   /** A workspace was deleted: drop what the module kept for it. Called Work on or off. */
   workspaceRemoved?(workspaceId: string, ctx: WorkCtx): void
+}
+
+/**
+ * One kind `@` offers (work-canvas.md "Mentions"). A pillar lists its own on
+ * its module's `mentions`; `work.canvas.mentions` asks every one in module
+ * order. `search` answers at most `MENTION_PER_KIND` hits, newest or best
+ * first, and never one outside `reach`: the sector, the workspace and the
+ * thread it names are the fence.
+ */
+export interface MentionSource {
+  kind: ChipKind
+  /** read from LifeOS: the only kinds a code thread of a linked workspace is offered, and none while LifeOS is not connected */
+  lifeos?: boolean
+  search(text: string, reach: MentionReach, ctx: WorkCtx): Promise<MentionHit[]>
 }
 
 /** Who asked: a person at this host, a remote key, or a thread's own call through the bridge. */
@@ -122,6 +141,8 @@ export interface WorkCtx {
   reaches(by: Caller, path: string): boolean
   /** milestone 6; null for a code thread */
   scopeOf(sessionId: string): WorkScope | null
+  /** F-mentions, in work/scope.ts: what `@` may offer the thread, or a draft by where it will be made; null: nothing */
+  mentionReach(sessionId: string, draft?: { projectId?: string | null; workspaceId?: string | null; work?: boolean }): MentionReach | null
   settings: {
     workspace(id: string): WorkspaceWorkSettings
     set(id: string, patch: Partial<WorkspaceWorkSettings>): void

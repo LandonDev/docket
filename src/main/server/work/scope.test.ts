@@ -5,6 +5,7 @@ import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import { WORK_HOME } from '@shared/work'
 import {
+  mentionReachOf,
   sameScope,
   stampScope,
   WORK_OFF,
@@ -32,8 +33,9 @@ const ws = (id: string, over: Partial<WorkspaceMeta> = {}): WorkspaceMeta => ({ 
 const purdue = ws('purdue', { kind: 'work', sector: 'purdue', linkId: 'link-purdue' })
 const cosmic = ws('cosmic', { kind: 'work', sector: 'cosmic' })
 const repo = ws('repo', { git: true })
+const linked = ws('linked', { git: true, sector: 'cosmic' })
 const project = (id: string, workspaceId: string): ProjectMeta => ({ id, name: id, workspaceId, cwd: `/w/${workspaceId}/${id}` }) as ProjectMeta
-const projects = [project('p-purdue', 'purdue'), project('p-cosmic', 'cosmic'), project('p-repo', 'repo')]
+const projects = [project('p-purdue', 'purdue'), project('p-cosmic', 'cosmic'), project('p-repo', 'repo'), project('p-linked', 'linked')]
 const session = (id: string, over: Partial<SessionMeta> = {}): SessionMeta => ({ id, parentId: null, projectId: null, workspaceId: null, threadType: 'chat', ...over }) as SessionMeta
 const sessions = [
   session('work-purdue', { scope: 'work', workspaceId: 'purdue' }),
@@ -44,10 +46,11 @@ const sessions = [
   session('orphan', { scope: 'work', workspaceId: 'repo' }),
   session('gone', { scope: 'work', workspaceId: 'deleted' }),
   session('code', { projectId: 'p-repo' }),
-  session('code-chat')
+  session('code-chat'),
+  session('code-linked', { projectId: 'p-linked' })
 ]
 const facts: ScopeFacts = {
-  workspaces: () => [purdue, cosmic, repo],
+  workspaces: () => [purdue, cosmic, repo, linked],
   project: (id) => projects.find((p) => p.id === id) ?? null,
   session: (id) => sessions.find((s) => s.id === id) ?? null
 }
@@ -222,5 +225,27 @@ describe('the rule is the host\'s own, not a pillar', () => {
   it('the app tools reach it through orchestration.ts and load nothing else under work/', () => {
     const apptools = readFileSync(resolve(import.meta.dirname, '..', 'apptools.ts'), 'utf8')
     expect([...apptools.matchAll(/^import (?!type )[^\n]*? from '(\.\/work\/[^']+)'/gm)].map((m) => m[1])).toEqual(['./work/toolInput'])
+  })
+})
+
+describe("what the composer's @ may offer a thread", () => {
+  it('is its Work workspace and that sector, a Work Chat every sector, a linked code thread its sector alone', () => {
+    expect(mentionReachOf(facts, by('work-purdue-project'))).toEqual({ work: true, workspaceId: 'purdue', sectors: ['purdue'], sessionId: 'work-purdue-project' })
+    expect(mentionReachOf(facts, by('work-chat'))).toEqual({ work: true, workspaceId: null, sectors: 'all', sessionId: 'work-chat' })
+    expect(mentionReachOf(facts, by('code-linked'))).toEqual({ work: false, workspaceId: 'linked', sectors: ['cosmic'], sessionId: 'code-linked' })
+  })
+
+  it('is nothing for an unlinked code thread, a loose chat or a Work thread with no Work home', () => {
+    for (const id of ['code', 'code-chat', 'orphan', 'gone']) expect(mentionReachOf(facts, by(id))).toBeNull()
+  })
+
+  it('reads a draft by where it will be made, and its row once it exists', () => {
+    expect(mentionReachOf(facts, null, { projectId: 'p-cosmic' })).toMatchObject({ work: true, workspaceId: 'cosmic', sectors: ['cosmic'], sessionId: null })
+    expect(mentionReachOf(facts, null, { work: true })).toMatchObject({ work: true, sectors: 'all' })
+    expect(mentionReachOf(facts, null, { workspaceId: 'linked' })).toMatchObject({ work: false, sectors: ['cosmic'] })
+    expect(mentionReachOf(facts, null, {})).toBeNull()
+    expect(mentionReachOf(facts, null, { projectId: 'p-repo', work: true })).toBeNull()
+    // A row that exists wins over what a draft claims.
+    expect(mentionReachOf(facts, by('code'), { work: true })).toBeNull()
   })
 })

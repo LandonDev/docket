@@ -132,6 +132,11 @@ export class CanvasStore {
     return this.items(this.db.prepare(`SELECT * FROM work_canvas_items WHERE session_id = ? AND state = 'open' ORDER BY position, created_at`).all(sessionId) as unknown as Row[])
   }
 
+  /** A workspace's items, open and closed, last touched first: what `@` searches. */
+  ofWorkspace(workspaceId: string, limit = 200): CanvasItem[] {
+    return this.items(this.db.prepare(`SELECT * FROM work_canvas_items WHERE workspace_id = ? ORDER BY updated_at DESC LIMIT ?`).all(workspaceId, limit) as unknown as Row[])
+  }
+
   get(itemId: string): CanvasItem | null {
     const row = this.db.prepare(`SELECT * FROM work_canvas_items WHERE id = ?`).get(itemId) as Row | undefined
     return row ? this.item(row) : null

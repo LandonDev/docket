@@ -5,6 +5,7 @@ import { lifeosHostOf } from './ctx'
 import { ensureKeysTable } from './keys'
 import { ensureLinksTable } from './links'
 import { LifeosUnavailable } from './session'
+import { lifeosMentions } from './mentions'
 
 /**
  * The lifeos pillar's server module (docs/agents/work-lifeos.md): its two
@@ -13,6 +14,7 @@ import { LifeosUnavailable } from './session'
  */
 export const lifeos: WorkModule = {
   id: 'lifeos',
+  mentions: lifeosMentions,
   ensure(db) {
     ensureKeysTable(db)
     ensureLinksTable(db)

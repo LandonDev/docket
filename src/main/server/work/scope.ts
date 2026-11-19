@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { CATALOG, type ProviderId } from '@shared/catalog'
 import type { ProjectMeta, ThreadType, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
-import { NotBuilt, SectorKeySchema, parseWorkSettings, sessionScopeOf, workspaceKindOf, WORK_HOME, WORK_SETTING_KEY, type CanvasSource, type WorkScope } from '@shared/work'
+import { NotBuilt, SectorKeySchema, parseWorkSettings, sessionScopeOf, workspaceKindOf, WORK_HOME, WORK_SETTING_KEY, type CanvasSource, type MentionReach, type WorkScope } from '@shared/work'
 import { configureAddonScope } from '../addons/scope'
 import { workRoot } from '../workRoot'
 import type { ScopePart } from './ctx'
@@ -154,6 +154,27 @@ export function workAddonScope(facts: ScopeFacts, session: SessionMeta): string 
   return home === 'chat' ? WORK_HOME : home === 'orphan' ? WORK_ORPHAN : home.id
 }
 
+/**
+ * What the composer's `@` may offer a thread (work-canvas.md "Mentions"),
+ * from its row, or for a draft from where it will be made (its project or
+ * workspace, `work` for a Work Chat), by the rule `stampScope` will stamp:
+ * a Work workspace's thread reads its sector and its workspace's things; a
+ * Work Chat every sector and nothing of a workspace; a code thread only its
+ * linked workspace's sector, and only LifeOS's things. An unlinked code
+ * thread, and a Work thread with no Work home, are offered nothing.
+ */
+export function mentionReachOf(facts: ScopeFacts, session: SessionMeta | null, draft?: { projectId?: string | null; workspaceId?: string | null; work?: boolean }): MentionReach | null {
+  const where = session ?? { projectId: draft?.projectId ?? null, workspaceId: draft?.workspaceId ?? null }
+  const workspace = workspaceOfSession(facts, where)
+  const work = session ? sessionScopeOf(session) === 'work' : workspace ? workspaceKindOf(workspace) === 'work' : !!draft?.work
+  const sessionId = session?.id ?? null
+  if (!work) return workspace?.sector ? { work: false, workspaceId: workspace.id, sectors: [workspace.sector], sessionId } : null
+  const home = workHomeOfSession(facts, where)
+  if (home === 'orphan') return null
+  if (home === 'chat') return { work: true, workspaceId: null, sectors: 'all', sessionId }
+  return { work: true, workspaceId: home.id, sectors: home.sector ? [home.sector] : [], sessionId }
+}
+
 /** A thread's Work workspace as another host can match it (contract-crosshost.ts `WorkHome`); all null for a Work Chat. */
 export const workHomeOf = (workspace: WorkspaceMeta | null): { sector: string | null; workspaceLinkId: string | null; workspaceName: string | null; workspacePath: string | null } => ({
   sector: workspace?.sector ?? null,
@@ -282,6 +303,7 @@ export const scopePart: ScopePart = (ctx, deps) => {
   })
   return {
     scopeOf: (sessionId) => workScopeOf(facts, deps.registry.get(sessionId), here),
+    mentionReach: (sessionId, draft) => mentionReachOf(facts, deps.registry.get(sessionId) ?? null, draft),
     async createWorkspace(params) {
       if (!ctx.enabled()) throw new WorkRefused(WORK_OFF)
       const sector = params.sector ? SectorKeySchema.parse(params.sector) : null

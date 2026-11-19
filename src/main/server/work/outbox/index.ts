@@ -7,6 +7,7 @@ import { outboxHostOf, type OutboxHost } from './ctx'
 import { ensureResults, resultsOf } from './results'
 import { rulesCard, setRules } from './rules'
 import { ensureOutboxTables } from './store'
+import { outboxMentions } from './mentions'
 
 /**
  * The outbox pillar's server module (docs/agents/work-outbox.md): the
@@ -80,6 +81,7 @@ function hostOf(ctx: WorkCtx): OutboxHost {
 
 export const outbox: WorkModule = {
   id: 'outbox',
+  mentions: outboxMentions,
   ensure(db) {
     ensureOutboxTables(db)
     ensureResults(db)
