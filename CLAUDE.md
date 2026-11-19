@@ -181,7 +181,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **Skills** — one store, materialized per host and provider
   (src/main/server/skills/); Codex and Muse get a pointer to a skill named in a
   message, never its body (slash.ts). [docs/agents/skills.md](docs/agents/skills.md)
-- **Computer use** — the `tc-computer` Swift service, the `computer_*` tools,
+- **Computer use** — the `tc-computer` Swift service (on Windows the Rust `tc-computer.exe` over UI Automation, native/tc-computer-win, §29), the `computer_*` tools,
   confirmations, the session tier and the Mac bridge gate (src/main/server/computer/,
   docs/computer-protocol.md §17.8, §18; bridge timing, held calls and proof wrapper ordering);
   the journal of each call's steps and pictures (computer/history.ts, §17.9) behind the
