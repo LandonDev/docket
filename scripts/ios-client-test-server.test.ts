@@ -52,6 +52,8 @@ describe('the work set', () => {
     expect(source).toContain("const relayed = process.env.TC_TEST_NO_RELAY === '1' ? [] : relaySeed")
     expect(source).toMatch(/hosts: relayed\n/)
     const local = readFileSync(resolve(import.meta.dirname, 'ios-sim-proof-local.ts'), 'utf8')
-    expect(local).toContain("TC_PROOF_SET === 'work' ? { TC_TEST_ADDONS: '1', TC_TEST_NO_RELAY: '1' }")
+    // The work set's server: add-ons in process, no relayed hosts, its own userData and Work root (workEnv).
+    expect(local).toContain("TC_PROOF_SET === 'work' ? workEnv() : {}")
+    expect(local).toMatch(/function workEnv\(\)[\s\S]*TC_TEST_ADDONS: '1', TC_TEST_NO_RELAY: '1'[\s\S]*TEMP_CODE_USER_DATA: data, TEMP_CODE_WORK_ROOT: root/)
   })
 })
