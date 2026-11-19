@@ -11,29 +11,15 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
+import { bundleNodeScript } from './lib/bundle-node-script'
 
 const repo = resolve(import.meta.dir, '..')
 const out = resolve(repo, 'scripts/.out/ios-client-test-server.mjs')
 
-const bundle = spawnSync(
-  resolve(repo, 'node_modules/.bin/esbuild'),
-  [
-    'scripts/ios-client-test-server.ts',
-    '--bundle',
-    '--platform=node',
-    '--format=esm',
-    '--packages=external',
-    '--alias:@shared=./src/shared',
-    '--alias:aliax-core=./node_modules/aliax-core/src',
-    '--alias:electron=./scripts/electron-shim.mjs',
-    `--outfile=${out}`,
-    '--log-level=warning'
-  ],
-  { cwd: repo, stdio: 'inherit', env: process.env }
-)
-if (bundle.error || bundle.status !== 0) {
-  console.error(`esbuild failed: ${bundle.error?.message ?? `exit ${bundle.status}`}`)
-  process.exit(bundle.status ?? 1)
+const bundleError = await bundleNodeScript(repo, 'scripts/ios-client-test-server.ts', out, { server: true })
+if (bundleError) {
+  console.error(bundleError)
+  process.exit(1)
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: process.env })

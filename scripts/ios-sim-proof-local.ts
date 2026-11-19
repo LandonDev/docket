@@ -9,21 +9,22 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { bundleNodeScript } from './lib/bundle-node-script'
 import { seedWork, verifyWork, type WorkSeedReady } from './lib/ios-work-seeds'
 
 const repo = resolve(import.meta.dir, '..')
 const out = resolve(repo, 'scripts/.out/ios-client-test-server.mjs')
-const bundle = spawnSync(resolve(repo, 'node_modules/.bin/esbuild'), ['scripts/ios-client-test-server.ts', '--bundle', '--platform=node', '--format=esm', '--packages=external', '--alias:@shared=./src/shared', '--alias:aliax-core=./node_modules/aliax-core/src', '--alias:electron=./scripts/electron-shim.mjs', `--outfile=${out}`, '--log-level=warning'], { cwd: repo, stdio: 'inherit' })
-if (bundle.error || bundle.status !== 0) {
-  console.error(`esbuild failed: ${bundle.error?.message ?? `exit ${bundle.status}`}`)
-  process.exit(bundle.status ?? 1)
+const bundleError = await bundleNodeScript(repo, 'scripts/ios-client-test-server.ts', out, { server: true })
+if (bundleError) {
+  console.error(bundleError)
+  process.exit(1)
 }
 // The server's helper children run from a process of their own (scripts/lib/ios-test-exec-broker.ts).
 const broker = resolve(repo, 'scripts/.out/ios-test-exec-broker.mjs')
-const brokerBundle = spawnSync(resolve(repo, 'node_modules/.bin/esbuild'), ['scripts/lib/ios-test-exec-broker.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${broker}`, '--log-level=warning'], { cwd: repo, stdio: 'inherit' })
-if (brokerBundle.error || brokerBundle.status !== 0) {
-  console.error(`esbuild failed: ${brokerBundle.error?.message ?? `exit ${brokerBundle.status}`}`)
-  process.exit(brokerBundle.status ?? 1)
+const brokerError = await bundleNodeScript(repo, 'scripts/lib/ios-test-exec-broker.ts', broker)
+if (brokerError) {
+  console.error(brokerError)
+  process.exit(1)
 }
 
 // The perf set reads what its fixtures and the control panel write: 16,000 seeded rows more, and no CLI behind any thread.

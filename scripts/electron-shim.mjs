@@ -11,3 +11,9 @@ export const nativeImage = {
     getSize: () => ({ width: 0, height: 0 })
   })
 }
+// The sheet worker's utility process (work/sheets/spawnWorker.ts): no headless script forks one.
+export const utilityProcess = {
+  fork: () => {
+    throw new Error('utilityProcess is not available under node')
+  }
+}
