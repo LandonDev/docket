@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 import { dirname, join } from 'node:path'
 import type { SheetCellDiff, SheetMutationJson, SheetRevision } from '@shared/contract-work-sheets'
@@ -78,7 +78,9 @@ export class PackageStore {
     private jobs: SheetJobs,
     private root: string,
     private ironcalcDir: () => string | null,
-    private now: () => number = Date.now
+    private now: () => number = Date.now,
+    /** a change from outside landed: no suggestion over the file is where the agent saw it for sure */
+    private outside: (path: string) => void = () => {}
   ) {}
 
   private dir(path: string): string {
@@ -120,6 +122,7 @@ export class PackageStore {
     this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, rev, 'file', this.now(), 'Changed outside TempCode', '[]')
     this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ? WHERE path = ?').run(rev, stamp, path)
     this.prune(path)
+    this.outside(path)
     return this.row(path)!
   }
 
@@ -168,16 +171,25 @@ export class PackageStore {
   }
 
   /**
-   * Saves edits into the package as one revision. `baseRev` is the revision the editor stood on:
-   * an older one answers a conflict and writes nothing.
+   * Saves edits into the package as one revision. `baseRev` is the revision the editor stood on.
+   * Edits that came between were cell writes (a package takes nothing else), so the cells are
+   * where the editor saw them and the edit lands; a change from outside or a restore between
+   * answers a conflict and writes nothing, and the editor reloads.
    */
   edit(path: string, baseRev: number, mutations: SheetMutationJson[], by: string, extra: { label?: string; writeId?: string; undo?: SheetMutationJson[] } = {}): Promise<{ rev: number } | { conflict: true; rev: number }> {
     return this.serial(path, async () => {
       const row = this.sync(path)
-      if (baseRev !== row.rev) return { conflict: true as const, rev: row.rev }
+      if (baseRev > row.rev || (baseRev < row.rev && this.reloadSince(path, baseRev))) return { conflict: true as const, rev: row.rev }
       if (!this.inspected.has(path)) await this.open(path)
       const edits = editsOf(mutations, this.sheetName(path))
-      const rev = await this.save(path, row, edits)
+      let rev: number
+      try {
+        rev = await this.save(path, row, edits)
+      } catch (err) {
+        if (!(err instanceof ChangedOutside)) throw err
+        // Excel saved it while we patched: its save stands as a revision, and this edit goes back to the editor.
+        return { conflict: true as const, rev: this.sync(path).rev }
+      }
       this.db
         .prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations, write_id, undo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
         .run(path, rev, by, this.now(), extra.label ?? labelOf(edits), JSON.stringify(mutations), extra.writeId ?? null, extra.undo ? JSON.stringify(extra.undo) : null)
@@ -185,15 +197,25 @@ export class PackageStore {
     })
   }
 
+  /** Whether a change from outside or a restore landed after `rev`: the cells may have moved. */
+  private reloadSince(path: string, rev: number): boolean {
+    return !!this.db.prepare("SELECT 1 FROM work_sheets_ops WHERE path = ? AND rev > ? AND (by = 'file' OR mutations = 'null') LIMIT 1").get(path, rev)
+  }
+
   private async save(path: string, row: FileRow, edits: EditSpec[]): Promise<number> {
     const rev = row.rev + 1
-    // Written beside the file and moved over it, so a reader never sees half a package.
-    const tmp = join(dirname(path), `.${randomUUID()}.tcsave`)
+    // Written beside the file (through a link, beside its target) and moved over it, so a reader never sees half a package.
+    const target = realpathSync(path)
+    const tmp = join(dirname(target), `.${randomUUID()}.tcsave`)
     try {
-      await this.jobs.save(path, tmp, edits, this.ironcalcDir())
-      renameSync(tmp, path)
+      await this.jobs.save(target, tmp, edits, this.ironcalcDir())
+      chmodSync(tmp, statSync(target).mode & 0o7777)
+      // A save made outside while we patched (Excel, a sync) is not ours to overwrite.
+      if (stampOf(path) !== row.stamp) throw new ChangedOutside()
+      renameSync(tmp, target)
     } catch (err) {
       rmSync(tmp, { force: true })
+      if (err instanceof ChangedOutside) throw err
       const words = err instanceof Error ? err.message : String(err)
       this.db.prepare('UPDATE work_sheets_files SET save_error = ? WHERE path = ?').run(words, path)
       throw new Error(`The file was not saved: ${words}`)
@@ -279,9 +301,15 @@ export class PackageStore {
       const row = this.sync(path)
       const copy = this.copyOf(path, rev)
       if (!existsSync(copy)) throw new Error('That version of the file is no longer kept.')
-      const tmp = join(dirname(path), `.${randomUUID()}.tcsave`)
+      const target = realpathSync(path)
+      const tmp = join(dirname(target), `.${randomUUID()}.tcsave`)
       copyFileSync(copy, tmp)
-      renameSync(tmp, path)
+      chmodSync(tmp, statSync(target).mode & 0o7777)
+      if (stampOf(path) !== row.stamp) {
+        rmSync(tmp, { force: true })
+        throw new Error('The file changed outside TempCode just now: open it again and restore.')
+      }
+      renameSync(tmp, target)
       const next = row.rev + 1
       copyFileSync(path, this.copyOf(path, next))
       const at = new Date(this.history(path).find((h) => h.rev === rev)?.at ?? this.now())
@@ -310,6 +338,8 @@ export class PackageStore {
     this.inspected.delete(path)
   }
 }
+
+class ChangedOutside extends Error {}
 
 /** "12 cells", "B4" */
 function labelOf(edits: readonly EditSpec[]): string {

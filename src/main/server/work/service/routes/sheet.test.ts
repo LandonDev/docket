@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { WebSocket, WebSocketServer } from 'ws'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner } from 'work-kit/collab-server'
-import { moveThrough, refusal } from '../../sheets/host/live'
+import { guestCells, moveThrough, refusal } from '../../sheets/host/live'
 import type { ServiceLink } from '../wire'
 import type { RouteCtx } from './route'
 import { sheetRoute } from './sheet'
@@ -101,7 +101,7 @@ describe('the live sheet route', () => {
     expect(await b.next()).toEqual({ t: 'ack', id: 3, rev: 3 })
 
     // A guest may not do what is not on the list; a revoked link closes within a second.
-    b.ws.send(JSON.stringify({ t: 'ops', id: 4, baseRev: 3, mutations: [{ id: 'sheet.mutation.set-worksheet-name', params: { name: 'x' } }] }))
+    b.ws.send(JSON.stringify({ t: 'ops', id: 4, baseRev: 3, mutations: [{ id: 'sheet.mutation.set-worksheet-name', params: { subUnitId: 'sheet1', name: 'x' } }] }))
     expect(await b.next()).toMatchObject({ t: 'refused', id: 4, reason: 'a guest cannot set worksheet name' })
     links.set('L1', { ...links.get('L1')!, revokedAt: Date.now() })
     expect(await b.closed).toBe(4403)
@@ -115,9 +115,14 @@ describe('the live sheet route', () => {
     expect(await d.closed).toBe(4401)
   })
 
-  it('a view link writes nothing', () => {
+  it('a view link writes nothing; a guest inserts at most 1,000 rows at once, and keeps to values and formats', () => {
     expect(refusal([setCell(0, 0, 1)], 'view', true)).toBe('this link can view, not edit')
     expect(refusal([setCell(0, 0, 1), insertRow(1)], 'edit', true)).toBeNull()
+    const huge = { id: 'sheet.mutation.insert-row', params: { unitId: 's1', subUnitId: 'sheet1', range: { startRow: 0, endRow: 1_999_999, startColumn: 0, endColumn: 25 } } }
+    expect(refusal([huge], 'edit', true)).toMatch(/at most 1000 rows/)
+    const rich = { id: 'sheet.mutation.set-range-values', params: { unitId: 's1', subUnitId: 'sheet1', cellValue: { 0: { 0: { v: 1, p: { body: {} }, custom: { x: 1 } } } } } }
+    expect(guestCells([rich])[0].params).toMatchObject({ cellValue: { 0: { 0: { v: 1 } } } })
+    expect((guestCells([rich])[0].params as { cellValue: Record<string, Record<string, object>> }).cellValue[0][0]).toEqual({ v: 1 })
   })
 
   it('a stale structural edit cannot be moved: the client reloads', () => {

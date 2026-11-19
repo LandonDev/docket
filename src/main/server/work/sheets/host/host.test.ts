@@ -135,11 +135,33 @@ describe('the sheet host', () => {
     expect((await host.open(REF)).suggestions).toEqual([])
   })
 
-  it('answers a conflict to an edit made on an older revision', async () => {
+  it('moves an edit made on an older revision through the row insert it missed; a stale insert answers a conflict', async () => {
+    const store = new MemoryBackend(budget())
+    const host = hostOf(store)
+    await host.apply(REF, 0, [insertRow('book', 0)], 'owner')
+    expect(await host.apply(REF, 0, [setCell(2, 1, { v: 2 })], 'guest:L')).toEqual({ rev: 2 })
+    expect((await host.range(REF, 'B4')).cells[0][0].v).toBe(2)
+    expect(await host.apply(REF, 0, [insertRow('book', 3)], 'owner')).toEqual({ conflict: true, rev: 2 })
+    expect(await host.since(REF, 0)).toMatchObject({ rev: 2, ops: [{ rev: 1, by: 'owner' }, { rev: 2, by: 'guest:L' }] })
+  })
+
+  it('refuses an op the engine cannot apply and never stores it, so the sheet still opens', async () => {
+    const store = new MemoryBackend(budget())
+    const host = hostOf(store)
+    await expect(host.apply(REF, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: 'book' } }], 'guest:L')).rejects.toThrow(/could not be applied/)
+    await expect(host.apply(REF, 0, [{ id: 'nobody.mutation.at-all', params: {} }], 'owner')).rejects.toThrow(/could not be applied/)
+    expect(store.ops).toEqual([])
+    expect((await host.range(REF, 'B5')).cells[0][0].v).toBe(1560)
+    expect((await hostOf(store).range(REF, 'B5')).cells[0][0].v).toBe(1560)
+  })
+
+  it('hands the workbook over in frames at its revision', async () => {
     const host = hostOf(new MemoryBackend(budget()))
-    await host.apply(REF, 0, [setCell(1, 1, { v: 1 })], 'owner')
-    expect(await host.apply(REF, 0, [setCell(2, 1, { v: 2 })], 'owner')).toEqual({ conflict: true, rev: 1 })
-    expect(await host.since(REF, 0)).toMatchObject({ rev: 1, ops: [{ rev: 1, by: 'owner' }] })
+    const a = await host.snapshot(REF, 0, 0, 100)
+    const b = await host.snapshot(REF, 0, 100, a.size)
+    const json = Buffer.concat([Buffer.from(a.data, 'base64'), Buffer.from(b.data, 'base64')]).toString('utf8')
+    expect(JSON.parse(json).sheets.sheet1.cellData[1][1].v).toBe(1200)
+    await expect(host.snapshot(REF, 3, 0, 100)).rejects.toThrow(/moved on/)
   })
 
   it('lists history, compares two revisions and restores one', async () => {
@@ -231,6 +253,8 @@ describe('a LifeOS sheet', () => {
     expect(calls.find(([fn]) => fn === 'sheets:suggest')?.[1]).toMatchObject({ sheetId: 's1', by: 'agent:h:t1', origin: { host: 'h', threadId: 't1' } })
     expect(await host.apply({ lifeos: 's1' }, 1, [insertRow('s1', 0)], 'owner')).toEqual({ rev: 2 })
     expect(rows[0]).toMatchObject({ row: 3, state: 'pending' })
-    expect(await host.apply({ lifeos: 's1' }, 1, [setCell(0, 0, { v: 'x' })], 'owner')).toEqual({ conflict: true, rev: 2 })
+    // Made before the insert it missed: moved down one row with it.
+    expect(await host.apply({ lifeos: 's1' }, 1, [setCell(0, 0, { v: 'x' })], 'owner')).toEqual({ rev: 3 })
+    expect((await host.range({ lifeos: 's1' }, 'A2')).cells[0][0].v).toBe('x')
   })
 })

@@ -2,7 +2,7 @@ import type { WebSocket } from 'ws'
 import { createCollabVerifier, type VerifiedClaims } from 'work-kit/collab-server'
 import type { SheetMutationJson } from '@shared/contract-work-sheets'
 import { refKey } from '../../sheets/host/host'
-import { moveThrough, refusal } from '../../sheets/host/live'
+import { guestCells, refusal } from '../../sheets/host/live'
 import { hostOf } from './internalSheet'
 import { refuseUpgrade, type PublicRoute, type RouteCtx } from './route'
 
@@ -27,6 +27,9 @@ import { refuseUpgrade, type PublicRoute, type RouteCtx } from './route'
 const SHEET = /^\/w\/sheet\/([A-Za-z0-9]{1,64})$/
 const HELLO_MS = 10_000
 const MAX_MESSAGE = 4 * 1024 * 1024
+const MAX_BUFFERED = 16 * 1024 * 1024
+/** Messages waiting on one socket's lane; past this the client is sending faster than ops can land. */
+const MAX_WAITING = 32
 
 /** The sockets on each sheet, by the host's key for it; ops land through the host whoever wrote them. */
 const rooms = new Map<string, Set<WebSocket>>()
@@ -39,7 +42,11 @@ function listen(ctx: RouteCtx): void {
     const room = rooms.get(c.key)
     if (!room) return
     const msg = JSON.stringify({ t: 'ops', rev: c.rev, by: c.by, mutations: c.mutations })
-    for (const ws of room) ws.send(msg)
+    for (const ws of room) {
+      // A client that does not read is let go rather than held in the service's memory.
+      if (ws.bufferedAmount > MAX_BUFFERED) ws.terminate()
+      else ws.send(msg)
+    }
   })
 }
 
@@ -73,6 +80,7 @@ export const sheetRoute: PublicRoute = {
     ctx.wss.handleUpgrade(req, socket, head, (ws) => {
       let claims: VerifiedClaims | null = null
       let lane = Promise.resolve()
+      let waiting = 0
       const close = (code: number, reason: string): void => {
         ws.close(code, reason)
       }
@@ -96,6 +104,7 @@ export const sheetRoute: PublicRoute = {
         } catch {
           return close(1007, 'not JSON')
         }
+        if (++waiting > MAX_WAITING) return close(1008, 'too many messages at once')
         lane = lane.then(async () => {
           if (!claims) {
             if (msg.t !== 'hello' || typeof msg.token !== 'string') return close(4401, 'say hello with a token first')
@@ -109,7 +118,8 @@ export const sheetRoute: PublicRoute = {
               return close(4401, err instanceof Error ? err.message.slice(0, 100) : 'the token was refused')
             }
             clearTimeout(hello)
-            const state = await host.snapshot(ref)
+            const state = await host.snapshotJson(ref)
+            if (ws.readyState !== ws.OPEN) return
             if (!rooms.has(key)) rooms.set(key, new Set())
             rooms.get(key)!.add(ws)
             ws.send(JSON.stringify({ t: 'state', rev: state.rev, snapshot: state.json }))
@@ -120,19 +130,17 @@ export const sheetRoute: PublicRoute = {
           const mutations = msg.mutations as SheetMutationJson[]
           const why = refusal(mutations, claims.role, claims.principal.startsWith('guest:'))
           if (why || typeof msg.baseRev !== 'number') return ws.send(JSON.stringify({ t: 'refused', id, reason: why ?? 'baseRev is missing' }))
-          let base = msg.baseRev
-          let ops = mutations
-          for (let tries = 0; tries < 3; tries++) {
-            const got = await host.apply(ref, base, ops, claims.principal)
-            if (!('conflict' in got)) return ws.send(JSON.stringify({ t: 'ack', id, rev: got.rev }))
-            const since = await host.since(ref, base)
-            const moved = 'reload' in since ? null : moveThrough(ops, since.ops.flatMap((o) => o.mutations))
-            if (!moved) return ws.send(JSON.stringify({ t: 'refused', id, reason: 'the sheet changed under that edit: reload and make it again' }))
-            ops = moved
-            base = since.rev
+          // The host moves an edit made on an older revision through the rows and columns it missed.
+          let got: Awaited<ReturnType<typeof host.apply>>
+          try {
+            got = await host.apply(ref, msg.baseRev, claims.principal.startsWith('guest:') ? guestCells(mutations) : mutations, claims.principal)
+          } catch (err) {
+            // An op the engine cannot apply is refused and never stored (host.ts commit).
+            return ws.send(JSON.stringify({ t: 'refused', id, reason: err instanceof Error ? err.message.slice(0, 300) : 'refused' }))
           }
-          ws.send(JSON.stringify({ t: 'refused', id, reason: 'the sheet is busy: try again' }))
-        }).catch((err: Error) => {
+          if ('conflict' in got) return ws.send(JSON.stringify({ t: 'refused', id, reason: 'the sheet changed under that edit: reload and make it again' }))
+          ws.send(JSON.stringify({ t: 'ack', id, rev: got.rev }))
+        }).finally(() => waiting--).catch((err: Error) => {
           ctx.log(`[sheet] ${sheetId}: ${err.message}`)
           close(1011, 'the sheet could not be served')
         })

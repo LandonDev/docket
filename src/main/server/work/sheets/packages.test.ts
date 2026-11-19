@@ -56,12 +56,44 @@ describe('an opened package', () => {
     expect(valueAt(store.fileAt(path, 1), 'Data', 1, 0)).toBe(100)
   })
 
-  it('answers a conflict to an edit made on an older revision, and writes nothing', async () => {
+  it('takes an edit made on an older revision when only cell edits came between, and answers a conflict across a change from outside', async () => {
     const data = (await store.open(path)).inspected.sheets[0].id
     await store.edit(path, 0, [set(data, 1, 0, { v: 2 })], 'owner')
+    expect(await store.edit(path, 0, [set(data, 2, 0, { v: 3 })], 'owner')).toEqual({ rev: 2 })
+    writeFileSync(path, readFileSync(path))
+    utimesSync(path, new Date(), new Date(Date.now() + 9_000))
     const before = readFileSync(path)
-    expect(await store.edit(path, 0, [set(data, 2, 0, { v: 3 })], 'owner')).toEqual({ conflict: true, rev: 1 })
+    expect(await store.edit(path, 2, [set(data, 3, 0, { v: 4 })], 'owner')).toEqual({ conflict: true, rev: 3 })
     expect(readFileSync(path).equals(before)).toBe(true)
+  })
+
+  it('never overwrites a save made outside while it patched: that save stands as a revision, and the edit answers a conflict', async () => {
+    const jobs = await localJobs()
+    const db = new DatabaseSync(':memory:')
+    ensurePackageTables(db)
+    const outside: string[] = []
+    const racing = new PackageStore(
+      db,
+      {
+        ...jobs,
+        async save(p, out, edits, dir) {
+          const got = await jobs.save(p, out, edits, dir)
+          // Excel saves while the worker patches.
+          writeFileSync(path, readFileSync(join(CORPUS, 'formats.xlsx')))
+          utimesSync(path, new Date(), new Date(Date.now() + 7_000))
+          return got
+        }
+      },
+      join(scratch, `${n}-race`),
+      () => null,
+      Date.now,
+      (p) => outside.push(p)
+    )
+    const data = (await racing.open(path)).inspected.sheets[0].id
+    expect(await racing.edit(path, 0, [set(data, 1, 0, { v: 100 })], 'owner')).toEqual({ conflict: true, rev: 1 })
+    expect(readFileSync(path).equals(readFileSync(join(CORPUS, 'formats.xlsx')))).toBe(true)
+    expect(racing.history(path)[0]).toMatchObject({ rev: 1, by: 'file' })
+    expect(outside).toEqual([path])
   })
 
   it('refuses formatting and row inserts in words, and saves nothing', async () => {

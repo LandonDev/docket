@@ -20,7 +20,7 @@ export type Which = { ids: string[] } | { changeSet: string } | 'all'
 
 export type HostAsk =
   | { op: 'open'; sheet: SheetRef }
-  | { op: 'snapshot'; sheet: SheetRef }
+  | { op: 'snapshot'; sheet: SheetRef; rev: number; offset: number; length: number }
   | { op: 'since'; sheet: SheetRef; rev: number }
   | { op: 'apply'; sheet: SheetRef; baseRev: number; mutations: SheetMutationJson[]; by: string }
   | { op: 'range'; sheet: SheetRef; range: string }
@@ -33,8 +33,8 @@ export type HostAsk =
 
 interface Answers {
   open: { title: string; rev: number; shared: boolean; suggestions: SheetSuggestion[]; missing?: boolean }
-  /** the workbook as Univer's JSON at `rev` */
-  snapshot: { rev: number; json: string }
+  /** a frame of the workbook as Univer's JSON at `rev`, base64 */
+  snapshot: { rev: number; data: string; size: number }
   since: { rev: number; ops: { rev: number; by: string; mutations: SheetMutationJson[] }[] } | { rev: number; reload: true }
   apply: { rev: number } | { conflict: true; rev: number }
   range: { sheet: string; cells: { at: string; v?: string | number | boolean; f?: string }[][] }

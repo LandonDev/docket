@@ -93,15 +93,16 @@ export class SuggestionStore {
     return cells.length
   }
 
-  /** Marks the decision and answers the cells decided, in sheet order. Accepting a conflicted or orphaned cell is refused. */
-  decide(store: string, which: Which, verdict: 'accept' | 'reject'): SheetSuggestion[] {
+  /** The open suggestions `which` names. */
+  pick(store: string, which: Which): SheetSuggestion[] {
     const open = this.open(store)
-    const picked = which === 'all' ? open : 'ids' in which ? open.filter((s) => which.ids.includes(s.id)) : open.filter((s) => s.changeSet === which.changeSet)
-    const taken = verdict === 'accept' ? picked.filter((s) => s.state === 'pending') : picked
-    if (verdict === 'accept' && 'ids' in (which as object) && taken.length < picked.length) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
-    const set = this.db.prepare('UPDATE work_sheets_suggestions SET state = ? WHERE store = ? AND id = ?')
-    for (const s of taken) set.run(verdict === 'accept' ? 'accepted' : 'rejected', store, s.id)
-    return taken
+    return which === 'all' ? open : 'ids' in which ? open.filter((s) => which.ids.includes(s.id)) : open.filter((s) => s.changeSet === which.changeSet)
+  }
+
+  /** Sets the state of these suggestions; accepted and rejected are final. */
+  mark(store: string, ids: readonly string[], state: SheetSuggestionState): void {
+    const set = this.db.prepare(`UPDATE work_sheets_suggestions SET state = ? WHERE store = ? AND id = ? AND state IN ${OPEN}`)
+    for (const id of ids) set.run(state, store, id)
   }
 
   /** The owner or another writer changed these cells (`sheet:row:col`): a pending suggestion there no longer holds. */

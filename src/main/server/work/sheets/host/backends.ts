@@ -173,7 +173,8 @@ export class LifeosBackend implements SheetBackend {
   }
 
   async suggestions(): Promise<StoredSuggestion[]> {
-    const rows = (await this.convex('query', 'sheets:suggestions', { sheetId: this.id })) as {
+    // One query per open state: decided rows stay in LifeOS for good, and a query takes 5,000 at most.
+    type Row = {
       _id: string
       changeSetId: string
       by: string
@@ -183,7 +184,9 @@ export class LifeosBackend implements SheetBackend {
       base: string | null
       proposed: string | null
       state: SheetSuggestionState
-    }[]
+    }
+    const rows: Row[] = []
+    for (const state of ['pending', 'conflict', 'orphaned'] as const) rows.push(...((await this.convex('query', 'sheets:suggestions', { sheetId: this.id, state })) as Row[]))
     return rows.map((r) => ({ id: r._id, changeSet: r.changeSetId, by: r.by, sheet: r.sheet, row: r.row, col: r.col, base: cellOf(r.base), proposed: cellOf(r.proposed), state: r.state }))
   }
 
@@ -249,7 +252,12 @@ function readTcsheet(path: string): Tcsheet {
   return { meta: json('meta.json'), snapshots, ops: json('ops.json'), suggestions: json('suggestions.json') }
 }
 
+/** How many snapshots a .tcsheet keeps beside the first: compare replays from the nearest. */
+const KEEP_SNAPSHOTS = 4
+
 export class TcsheetBackend implements SheetBackend {
+  /** The file as last read or written: the service is its one writer, so it is read once. */
+  private held: Tcsheet | null = null
   constructor(readonly path: string) {}
 
   static create(path: string, title: string): void {
@@ -258,8 +266,13 @@ export class TcsheetBackend implements SheetBackend {
   }
 
   private read(): Tcsheet {
+    if (this.held) return this.held
     if (!existsSync(this.path)) throw new Error(`There is no file at ${this.path}.`)
-    return readTcsheet(this.path)
+    return (this.held = readTcsheet(this.path))
+  }
+  private write(t: Tcsheet): void {
+    writeTcsheet(this.path, t)
+    this.held = t
   }
 
   async load(): Promise<Loaded> {
@@ -274,14 +287,16 @@ export class TcsheetBackend implements SheetBackend {
     if (t.meta.rev !== baseRev) return { stale: t.meta.rev }
     const at = Date.now()
     for (const op of ops) t.ops.push({ rev: ++t.meta.rev, by: op.by, at, mutations: op.mutations })
-    writeTcsheet(this.path, t)
+    this.write(t)
     return { rev: t.meta.rev }
   }
   async cutSnapshot(rev: number, data: IWorkbookData): Promise<void> {
     const t = this.read()
     t.snapshots.set(rev, gz(data))
     t.meta.snapRev = rev
-    writeTcsheet(this.path, t)
+    const old = [...t.snapshots.keys()].filter((r) => r > 0).sort((a, b) => b - a).slice(KEEP_SNAPSHOTS)
+    for (const r of old) t.snapshots.delete(r)
+    this.write(t)
   }
   async snapshotAt(rev: number): Promise<{ rev: number; data: IWorkbookData }> {
     const t = this.read()
@@ -294,7 +309,7 @@ export class TcsheetBackend implements SheetBackend {
   async addSuggestions(changeSet: string, by: string, reason: string | undefined, cells: Omit<StoredSuggestion, 'id' | 'changeSet' | 'by' | 'reason' | 'state'>[]): Promise<void> {
     const t = this.read()
     for (const c of cells) t.suggestions.push({ ...c, id: `${changeSet}:${c.sheet}:${c.row}:${c.col}`, changeSet, by, ...(reason ? { reason } : {}), state: 'pending' })
-    writeTcsheet(this.path, t)
+    this.write(t)
   }
   async setSuggestions(updates: SuggestionUpdate[]): Promise<void> {
     if (!updates.length) return
@@ -305,6 +320,6 @@ export class TcsheetBackend implements SheetBackend {
     }
     // decided cells leave the file
     t.suggestions = t.suggestions.filter((s) => s.state !== 'accepted' && s.state !== 'rejected')
-    writeTcsheet(this.path, t)
+    this.write(t)
   }
 }

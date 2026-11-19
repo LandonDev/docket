@@ -52,8 +52,6 @@ export interface Sheets {
   packages: PackageStore
   suggestions: SuggestionStore
   jobs: SheetJobs
-  /** the snapshot of a service-held sheet as last loaded, by store and rev, for loads by range */
-  snapshots: Map<string, { rev: number; bytes: Buffer }>
 }
 
 const made = new WeakMap<WorkCtx['db'], Sheets>()
@@ -72,12 +70,13 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
       ? (await import('./spawnWorker')).appJobs()
       : await (await import('./workerClient')).localJobs()
   const tools = new Toolchain(ctx.dataDir)
+  const suggestions = new SuggestionStore(ctx.db)
   const s: Sheets = {
     ctx,
-    packages: new PackageStore(ctx.db, jobs, join(ctx.dataDir, 'sheets', 'files'), () => tools.dir('ironcalc')),
-    suggestions: new SuggestionStore(ctx.db),
-    jobs,
-    snapshots: new Map()
+    // A change from outside moves cells we cannot follow: every open suggestion over the file is orphaned.
+    packages: new PackageStore(ctx.db, jobs, join(ctx.dataDir, 'sheets', 'files'), () => tools.dir('ironcalc'), Date.now, (path) => suggestions.orphanAll(`file:${path}`)),
+    suggestions,
+    jobs
   }
   made.set(ctx.db, s)
   return s

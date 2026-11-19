@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -108,14 +108,15 @@ describe('a package in the canvas', () => {
     expect(Buffer.concat([Buffer.from(a.data, 'base64'), Buffer.from(b.data, 'base64')]).equals(readFileSync(path))).toBe(true)
   })
 
-  it('saves the owner\'s edit, pushes the new rev, and answers a stale one with a conflict', async () => {
+  it('saves the owner\'s edit, pushes the new rev, and takes an edit made one revision behind', async () => {
     const view = await call<SheetView>('work.sheets.open', { itemId })
     const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]
     const m = { id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: sheet, cellValue: { 1: { 0: { v: 42 } } } } }
     expect(await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [m] })).toEqual({ rev: 1 })
     expect(valueAt('Data', 1, 0)).toBe(42)
     expect(pushes.some((p) => p.push === 'work.sheets' && p.itemId === itemId && p.rev === 1)).toBe(true)
-    expect(await call('work.sheets.edit', { itemId, baseRev: 0, mutations: [m] })).toEqual({ conflict: true, rev: 1 })
+    // Only cell edits came between, so the cells are where the editor saw them.
+    expect(await call('work.sheets.edit', { itemId, baseRev: 0, mutations: [m] })).toEqual({ rev: 2 })
   })
 
   it('reads cells for an agent, with formulas', async () => {
@@ -171,6 +172,31 @@ describe('a package in the canvas', () => {
     view = await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'reject' })
     expect(view.suggestions).toEqual([])
     expect(valueAt('Data', 2, 0)).toBe(99)
+  })
+
+  it('accepts all over a package; a change from outside orphans what waits; a cell changed since is not written', async () => {
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'A2', v: 5 }, { at: 'A3', v: 6 }] })
+    let view = await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(view.suggestions).toEqual([])
+    expect([valueAt('Data', 1, 0), valueAt('Data', 2, 0)]).toEqual([5, 6])
+
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'A4', v: 8 }] })
+    // He types over A4 in the canvas: accepting it now would write over his edit.
+    const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]
+    view = await call<SheetView>('work.sheets.open', { itemId })
+    await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [{ id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: sheet, cellValue: { 3: { 0: { v: 77 } } } } }] })
+    view = await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(view.suggestions.map((s) => s.state)).toEqual(['conflict'])
+    expect(valueAt('Data', 3, 0)).toBe(77)
+    await call('work.sheets.review', { itemId, which: 'all', verdict: 'reject' })
+
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'A5', v: 9 }] })
+    // Excel saves the file with rows inserted: no cell is where the agent saw it for sure.
+    copyFileSync(join(CORPUS, 'formats.xlsx'), path)
+    utimesSync(path, new Date(), new Date(Date.now() + 5_000))
+    view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view.suggestions.map((s) => s.state)).toEqual(['orphaned'])
+    await expect(call('work.sheets.review', { itemId, which: { ids: [view.suggestions[0].id] }, verdict: 'accept' })).rejects.toThrow(/changed since/)
   })
 
   it('lists history and compares two revisions', async () => {

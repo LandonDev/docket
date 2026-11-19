@@ -1,12 +1,12 @@
 import { spawn } from 'node:child_process'
 import { mkdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { SHEET_COMPARE_MAX, type SheetMutationJson } from '@shared/contract-work-sheets'
-import { handled, NOT_HANDLED, type CanvasItem } from '@shared/work'
+import { SHEET_COMPARE_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
+import { handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { afterEdit, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Sheets } from './held'
 import { ensurePackageTables } from './packages'
-import { ensureSuggestionTables } from './suggestions'
+import { ensureSuggestionTables, type Which } from './suggestions'
 import { sheetTools, writeAccepted } from './tools'
 
 /**
@@ -63,17 +63,8 @@ export const sheets: WorkModule = {
         const held = heldOf(item!)
         const { rev, offset, length } = req.params
         if (held.at === 'package') return handled({ ...readRange(s.packages.fileAt(held.path, rev), offset, length), rev, format: 'xlsx' as const })
-        const key = storeKey(held)
-        let snap = s.snapshots.get(key)
-        if (!snap || snap.rev !== rev || offset === 0) {
-          const got = await host(ctx, 'snapshot', { sheet: held.ref })
-          if (got.rev !== rev) throw new Error('The sheet moved on since it was opened: open it again.')
-          snap = { rev, bytes: Buffer.from(got.json, 'utf8') }
-          s.snapshots.set(key, snap)
-        }
-        const part = snap.bytes.subarray(offset, offset + length)
-        if (offset + part.length >= snap.bytes.length) s.snapshots.delete(key)
-        return handled({ data: part.toString('base64'), size: snap.bytes.length, rev, format: 'snapshot' as const })
+        const got = await host(ctx, 'snapshot', { sheet: held.ref, rev, offset, length })
+        return handled({ data: got.data, size: got.size, rev, format: 'snapshot' as const })
       }
       case 'work.sheets.since': {
         const held = heldOf(item!)
@@ -87,10 +78,8 @@ export const sheets: WorkModule = {
       case 'work.sheets.review': {
         const held = heldOf(item!)
         const key = storeKey(held)
-        if (held.at === 'package') {
-          const decided = s.suggestions.decide(key, req.params.which, req.params.verdict)
-          if (req.params.verdict === 'accept' && decided.length) await writeAccepted(s, held.path, decided, principalOf(ctx, by))
-        } else await host(ctx, 'review', { sheet: held.ref, which: req.params.which, verdict: req.params.verdict })
+        if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
+        else await host(ctx, 'review', { sheet: held.ref, which: req.params.which, verdict: req.params.verdict })
         await announce(s, item!)
         return handled(await viewOf(s, item!))
       }
@@ -149,6 +138,29 @@ export const sheets: WorkModule = {
   sessionsRemoved() {},
   workspaceRemoved() {}
 }
+
+/**
+ * Takes or drops suggestions over a package. An accepted cell is written only while it still holds
+ * what the agent saw (a cell changed since, here or in Excel, turns `conflict`), and is marked
+ * accepted only once the file has it: a save that fails leaves it waiting.
+ */
+async function reviewPackage(s: Sheets, path: string, key: string, which: Which, verdict: 'accept' | 'reject', by: Principal): Promise<void> {
+  const picked = s.suggestions.pick(key, which)
+  if (verdict === 'reject') return s.suggestions.mark(key, picked.map((p) => p.id), 'rejected')
+  const one = which !== 'all' && 'ids' in which
+  const pending = picked.filter((p) => p.state === 'pending')
+  const now = await s.packages.cellsAt(path, pending)
+  const stale = pending.filter((p, i) => !sameCell(now[i].cell, p.base))
+  s.suggestions.mark(key, stale.map((p) => p.id), 'conflict')
+  const ok = pending.filter((p) => !stale.includes(p))
+  if (ok.length) {
+    await writeAccepted(s, path, ok, by)
+    s.suggestions.mark(key, ok.map((p) => p.id), 'accepted')
+  }
+  if (one && ok.length < picked.length) throw new Error('That cell changed since the agent saw it: reject it, or edit the cell yourself.')
+}
+
+const sameCell = (a: SheetCellJson | null, b: SheetCellJson | null): boolean => (a?.f ?? null) === (b?.f ?? null) && (a?.f ? true : (a?.v ?? null) === (b?.v ?? null))
 
 /** A new sheet in a thread's canvas: a LifeOS sheet when its workspace has a sector, else a `.tcsheet` among this host's files. */
 export async function createSheet(s: Sheets, sessionId: string, title: string): Promise<CanvasItem> {

@@ -7,6 +7,7 @@ import type { Principal } from '@shared/work/ids'
 import { colName, parseA1, rangeCells, READ_MAX_CELLS } from '../a1'
 import { diffWorkbooks } from '../diff'
 import { mutationsOf, SET_RANGE_VALUES, STRUCTURAL } from '../mutations'
+import { moveThrough } from './live'
 import { SNAPSHOT_EVERY, type Op, type SheetBackend, type StoredSuggestion } from './backends'
 import type { A1Cell, HostAnswer, SheetRef, Which } from './wire'
 
@@ -85,15 +86,41 @@ export class SheetHost {
     return l
   }
 
+  /** Forgets a sheet's engine; the next call loads it again from the store. */
+  private drop(o: Open): void {
+    if (this.sheets.get(o.key) && this.loaded.get(o.key) === o) {
+      this.sheets.delete(o.key)
+      this.loaded.delete(o.key)
+    }
+    o.engine.dispose()
+  }
+
+  /** Engines not asked for in this long are let go: the service holds what is being worked on. */
+  static IDLE_MS = 10 * 60_000
+  private used = new Map<string, number>()
+  private loaded = new Map<string, Open>()
+  private sweep(now: number): void {
+    for (const [key, at] of this.used) {
+      if (now - at < SheetHost.IDLE_MS) continue
+      const o = this.loaded.get(key)
+      this.used.delete(key)
+      // Only from its own lane, so no call is using it.
+      if (o) void this.lane(key).run(async () => this.used.has(key) || this.drop(o))
+    }
+  }
+
   /** Runs `fn` on the sheet, in its lane, with the engine caught up to the store. */
   private with<T>(ref: SheetRef, fn: (o: Open) => Promise<T>): Promise<T> {
     const key = refKey(ref)
+    const now = Date.now()
+    this.sweep(now)
+    this.used.set(key, now)
     return this.lane(key).run(async () => {
       let p = this.sheets.get(key)
       if (!p) {
         p = this.load(ref)
         this.sheets.set(key, p)
-        p.catch(() => this.sheets.delete(key))
+        p.then((o) => this.loaded.set(key, o)).catch(() => this.sheets.delete(key))
       }
       const o = await p
       // Another writer of the same store (the worker's direct LifeOS calls never append ops, but a second service would): catch up.
@@ -148,19 +175,33 @@ export class SheetHost {
    */
   private async commit(o: Open, baseRev: number, ops: { by: string; mutations: SheetMutationJson[] }[]): Promise<{ rev: number } | { conflict: true; rev: number }> {
     if (baseRev !== o.rev) return { conflict: true, rev: o.rev }
-    const got = await o.backend.append(baseRev, ops)
-    if ('stale' in got) {
-      this.replay(o, await o.backend.opsAfter(o.rev))
-      return { conflict: true, rev: o.rev }
-    }
     const all = ops.flatMap((op) => op.mutations)
-    let at = baseRev
-    for (const op of ops) for (const fn of this.listeners) fn({ key: o.key, rev: ++at, by: op.by, mutations: op.mutations })
     const open = await this.suggestionsOf(o)
     // Names as the formulas being moved wrote them: the sheets before these mutations.
     const names = new Map(o.engine.workbook.getSheets().map((s) => [s.getSheetName(), s.getSheetId()]))
-    this.applyTo(o.engine, o.unitId, all)
+    // Into the engine first: an op it cannot apply is never stored, so it can never stop the sheet
+    // from loading. The engine then holds an op the store may refuse, so any failure from here on
+    // drops it, and the next call loads the sheet again from the store.
+    try {
+      this.applyTo(o.engine, o.unitId, all)
+    } catch (err) {
+      this.drop(o)
+      throw new Error(`That change could not be applied: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    let got: { rev: number } | { stale: number }
+    try {
+      got = await o.backend.append(baseRev, ops)
+    } catch (err) {
+      this.drop(o)
+      throw err
+    }
+    if ('stale' in got) {
+      this.drop(o)
+      return { conflict: true, rev: got.stale }
+    }
     o.rev = got.rev
+    let at = baseRev
+    for (const op of ops) for (const fn of this.listeners) fn({ key: o.key, rev: ++at, by: op.by, mutations: op.mutations })
     if (open.length) {
       const cells: SuggestionCell[] = open.map((s) => ({ id: s.id, changeSet: s.changeSet, sheet: s.sheet, row: s.row, column: s.col, base: s.base as ICellData | null, proposed: s.proposed as ICellData | null, state: s.state }))
       const moved = rebase(cells, all, (sheet, row, col) => this.cell(o, sheet, row, col), formulaLexer(), { sheetId: (name) => names.get(name) })
@@ -195,10 +236,30 @@ export class SheetHost {
     return this.with(ref, async (o) => o.sector)
   }
 
-  snapshot(ref: SheetRef): Promise<HostAnswer<'snapshot'>> {
+  /** The workbook as Univer's JSON at the newest op, whole: what the live route sends on hello. */
+  snapshotJson(ref: SheetRef): Promise<{ rev: number; json: string }> {
     return this.with(ref, async (o) => {
       await o.engine.settled()
       return { rev: o.rev, json: JSON.stringify(o.engine.workbook.save()) }
+    })
+  }
+
+  /** The serialized workbook by sheet and rev, so a large one is handed over in frames, not one answer. */
+  private serialized = new Map<string, { rev: number; bytes: Buffer }>()
+
+  /** Bytes `offset` to `offset + length` of the workbook's JSON at the newest op; `rev` must be it. */
+  snapshot(ref: SheetRef, rev: number, offset: number, length: number): Promise<HostAnswer<'snapshot'>> {
+    return this.with(ref, async (o) => {
+      if (rev !== o.rev) throw new Error('The sheet moved on since it was opened: open it again.')
+      let s = this.serialized.get(o.key)
+      if (!s || s.rev !== o.rev) {
+        await o.engine.settled()
+        s = { rev: o.rev, bytes: Buffer.from(JSON.stringify(o.engine.workbook.save()), 'utf8') }
+        this.serialized.set(o.key, s)
+      }
+      const part = s.bytes.subarray(offset, offset + length)
+      if (offset + part.length >= s.bytes.length) this.serialized.delete(o.key)
+      return { rev: o.rev, data: part.toString('base64'), size: s.bytes.length }
     })
   }
 
@@ -210,8 +271,22 @@ export class SheetHost {
     })
   }
 
+  /**
+   * The owner's or a client's edit, made on the workbook at `baseRev`. One made on an older
+   * revision is moved through the ops it missed (rows and columns inserted or deleted before it);
+   * one that cannot be moved answers a conflict, and the editor reloads.
+   */
   apply(ref: SheetRef, baseRev: number, mutations: SheetMutationJson[], by: string): Promise<HostAnswer<'apply'>> {
-    return this.with(ref, (o) => this.commit(o, baseRev, [{ by, mutations }]))
+    return this.with(ref, async (o) => {
+      if (baseRev > o.rev) return { conflict: true as const, rev: o.rev }
+      let ops = mutations
+      if (baseRev < o.rev) {
+        const moved = moveThrough(mutations, (await o.backend.opsAfter(baseRev)).flatMap((op) => op.mutations))
+        if (!moved) return { conflict: true as const, rev: o.rev }
+        ops = moved
+      }
+      return this.commit(o, o.rev, [{ by, mutations: ops }])
+    })
   }
 
   range(ref: SheetRef, range: string): Promise<HostAnswer<'range'>> {
@@ -323,6 +398,8 @@ export class SheetHost {
   close(): void {
     for (const p of this.sheets.values()) void p.then((o) => o.engine.dispose()).catch(() => {})
     this.sheets.clear()
+    this.loaded.clear()
+    this.used.clear()
   }
 }
 

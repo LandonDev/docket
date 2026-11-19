@@ -40,14 +40,26 @@ interface Target {
   shared: boolean
 }
 
-function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Target {
+/**
+ * The sheet a call names, and whether others can edit it: a LifeOS sheet's own `shared` (the
+ * service reads it), or what the scope says of the source (a guest link, a Microsoft or Google file).
+ */
+async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Promise<Target> {
+  let item: CanvasItem | null = null
+  let held: Held
+  let source: CanvasItem['source']
   if (a.item) {
-    const item = ctx.canvas.get(a.item)
+    item = ctx.canvas.get(a.item)
     if (!item || item.kind !== 'sheet' || item.sessionId !== ctx.canvas.paneOf(ctx.sessionId)) throw new Error(`This thread has no sheet ${a.item} in its canvas.`)
-    return { held: heldOf(item), item, shared: ctx.scope.shared(item.source) }
+    held = heldOf(item)
+    source = item.source
+  } else {
+    if (!a.file) throw new Error('Pass `item` (a sheet open in the canvas) or `file` (an absolute path).')
+    held = heldOfPath(a.file)
+    source = { at: 'file', host: ctx.host, path: a.file }
   }
-  if (!a.file) throw new Error('Pass `item` (a sheet open in the canvas) or `file` (an absolute path).')
-  return { held: heldOfPath(a.file), item: null, shared: ctx.scope.shared({ at: 'file', host: ctx.host, path: a.file }) }
+  const stored = held.at === 'service' ? (await host(ctx, 'open', { sheet: held.ref })).shared : false
+  return { held, item, shared: stored || ctx.scope.shared(source) }
 }
 
 function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {
@@ -112,7 +124,7 @@ export const sheetTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; range: string }
       try {
-        const t = targetOf(ctx, a)
+        const t = await targetOf(ctx, a)
         const s = await sheetsOf(ctx)
         const got = t.held.at === 'package' ? await s.packages.read(t.held.path, a.range) : await host(ctx, 'range', { sheet: t.held.ref, range: a.range })
         const lines = got.cells.map((row) => row.map(show).filter(Boolean).join('  |  ')).filter(Boolean)
@@ -139,7 +151,7 @@ export const sheetTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; cells: A1Cell[]; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
       try {
-        const t = targetOf(ctx, a)
+        const t = await targetOf(ctx, a)
         const s = await sheetsOf(ctx)
         const key = storeKey(t.held)
         const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
@@ -175,7 +187,7 @@ export const sheetTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; cells: A1Cell[]; reason?: string }
       try {
-        const t = targetOf(ctx, a)
+        const t = await targetOf(ctx, a)
         const s = await sheetsOf(ctx)
         const count = await suggest(s, t, a.cells, agentPrincipal(ctx.host, ctx.sessionId), a.reason)
         await announceItem(s, t.item)

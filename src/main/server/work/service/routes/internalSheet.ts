@@ -118,7 +118,7 @@ const which = (v: unknown): Which => {
 /** Main's calls: one route per op of sheets/host/wire.ts. */
 const OPS: Record<HostAsk['op'], (body: Record<string, unknown>, ctx: RouteCtx) => Promise<unknown>> = {
   open: (b, ctx) => hostOf(ctx).open(refOf(b, ctx)),
-  snapshot: (b, ctx) => hostOf(ctx).snapshot(refOf(b, ctx)),
+  snapshot: (b, ctx) => hostOf(ctx).snapshot(refOf(b, ctx), num(b, 'rev'), num(b, 'offset'), Math.min(Math.max(num(b, 'length'), 1), 4 * 1024 * 1024)),
   since: (b, ctx) => hostOf(ctx).since(refOf(b, ctx), num(b, 'rev')),
   apply: (b, ctx) => {
     if (!Array.isArray(b.mutations) || !b.mutations.length) throw new RouteError(400, 'mutations is missing')
