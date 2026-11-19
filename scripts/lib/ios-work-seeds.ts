@@ -75,6 +75,10 @@ export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ pu
       await sleep(500)
     }
     await s.call('work.outbox.setRules', { addonId: addon.id, rules: { send_mail: 'held', echo: 'held' } })
+    // House rules (milestone 39): two rules, the second turned off.
+    await s.call('work.rules.add', { workspaceId: purdue.id, text: 'Sign every mail “Landon”, never “Landon Johnson”.' })
+    const off = await s.call<{ id: string }>('work.rules.add', { workspaceId: purdue.id, text: 'Put the date first in a subject line.' })
+    await s.call('work.rules.edit', { id: off.id, on: false })
     const now = Date.now()
     const rows = [
       {

@@ -27,6 +27,8 @@ public enum Route: Hashable, Codable, Sendable {
     case outboxItem(environmentId: String, ref: String)
     /// Settings → Work: the switch, LifeOS, grants and tool rules, per host.
     case workSettings
+    /// A Work workspace's house rules and their proposals (milestone 39's wire).
+    case houseRules(environmentId: String, workspaceId: String)
 }
 
 /// The three tabs.

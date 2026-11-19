@@ -16,7 +16,7 @@ public enum ShellPaths {
         switch route {
         case .workspace, .archivedThreads, .archivedProjects, .outbox:
             return .sidebar
-        case .project, .thread, .settings, .hosts, .outboxItem, .workSettings:
+        case .project, .thread, .settings, .hosts, .outboxItem, .workSettings, .houseRules:
             return .detail
         }
     }

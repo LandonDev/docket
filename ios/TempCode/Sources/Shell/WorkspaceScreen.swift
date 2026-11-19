@@ -32,6 +32,16 @@ struct WorkspaceScreen: View {
                     .listRowInsets(Layout.rowInsets)
                     .listRowSeparator(.hidden)
             }
+            // A Work workspace's house rules: one row that opens the page (milestone 39's wire).
+            if let lead, lead.workspace.kind == .work {
+                NavigationLink(value: Route.houseRules(environmentId: lead.client.environment.id, workspaceId: lead.workspace.id)) {
+                    Label("House Rules", systemImage: "list.bullet.rectangle")
+                        .textStep(.title)
+                        .frame(minHeight: Layout.rowHeight)
+                }
+                .listRowInsets(Layout.rowInsets)
+                .accessibilityIdentifier("house-rules-row")
+            }
             if let screen {
                 ForEach(screen.projects) { card in
                     ProjectCardView(card: card, selected: pose.isSplit && card.holdsShown, cues: cues, slots: slots, newThread: presenter.compose)

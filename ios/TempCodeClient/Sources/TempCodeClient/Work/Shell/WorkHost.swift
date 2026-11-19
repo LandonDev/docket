@@ -44,6 +44,8 @@ public final class WorkHost {
     public private(set) var away: AwaySnapshot?
     /// Moves on each `work.outbox.result` push: a Results list on screen reads again.
     public private(set) var resultsRev = 0
+    /// Moves on each `work.rules` push, per workspace: its rules page reads again.
+    public private(set) var rulesRev: [String: Int] = [:]
     /// Set when this host's Away ended and nobody has reviewed it here yet.
     public private(set) var awayEnd: AwayEnd?
 
@@ -114,6 +116,8 @@ public final class WorkHost {
             lifeos = value.status
         case .workOutboxResult:
             resultsRev += 1
+        case .workRules(let value):
+            rulesRev[value.workspaceId, default: 0] += 1
         case .away(let value):
             take(AwaySnapshot(state: value.state, decided: value.decided), live: true)
         default:
@@ -233,6 +237,36 @@ public final class WorkHost {
     /// A Work Chat: a Work thread in no workspace, started with its first message.
     public func newWorkChat(firstMessage: String) async throws -> SessionMeta {
         try await socket.request(Methods.SessionCreate.self, .init(workspaceId: .clear, threadType: .set(.chat), firstMessage: firstMessage, scope: .work))
+    }
+
+    // MARK: - house rules (milestone 39)
+
+    public func rules(_ workspaceId: String) async throws -> Methods.WorkRulesList.Output {
+        try await socket.request(Methods.WorkRulesList.self, .init(workspaceId: workspaceId))
+    }
+
+    @discardableResult
+    public func addRule(_ workspaceId: String, text: String, proposalId: String? = nil) async throws -> HouseRule {
+        try await socket.request(Methods.WorkRulesAdd.self, .init(workspaceId: workspaceId, text: text, proposalId: proposalId))
+    }
+
+    @discardableResult
+    public func editRule(_ id: String, text: String? = nil, on: Bool? = nil) async throws -> HouseRule {
+        try await socket.request(Methods.WorkRulesEdit.self, .init(id: id, text: text, on: on))
+    }
+
+    /// `reopen`: Undo after an add from a proposal puts the proposal back.
+    public func removeRule(_ id: String, reopen: Bool = false) async throws {
+        _ = try await socket.request(Methods.WorkRulesRemove.self, .init(id: id, reopen: reopen ? true : nil))
+    }
+
+    public func orderRules(_ workspaceId: String, ids: [String]) async throws {
+        _ = try await socket.request(Methods.WorkRulesOrder.self, .init(workspaceId: workspaceId, ids: ids))
+    }
+
+    @discardableResult
+    public func decide(_ proposalId: String, to: Methods.WorkRulesDecide.Params.To) async throws -> RuleProposal {
+        try await socket.request(Methods.WorkRulesDecide.self, .init(id: proposalId, to: to))
     }
 
     // MARK: - Settings → Work

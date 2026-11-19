@@ -5155,3 +5155,156 @@ public struct AwaySnapshot: Codable, Hashable, Sendable {
         self.decided = decided
     }
 }
+
+public struct HouseRule: Codable, Hashable, Sendable {
+    public let id: String
+    public let workspaceId: String
+    public let text: String
+    public let on: Bool
+    public let proposalId: String?
+    public let createdAt: Int
+    public let updatedAt: Int
+
+    public init(id: String, workspaceId: String, text: String, on: Bool, proposalId: String?, createdAt: Int, updatedAt: Int) {
+        self.id = id
+        self.workspaceId = workspaceId
+        self.text = text
+        self.on = on
+        self.proposalId = proposalId
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, workspaceId, text, on, proposalId, createdAt, updatedAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(text, forKey: .text)
+        try container.encode(on, forKey: .on)
+        try container.encode(proposalId, forKey: .proposalId)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
+public struct RuleProposal: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case open
+        case later
+        case dismissed
+        case added
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "open": self = .open
+            case "later": self = .later
+            case "dismissed": self = .dismissed
+            case "added": self = .added
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .open: "open"
+            case .later: "later"
+            case .dismissed: "dismissed"
+            case .added: "added"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Edit: Codable, Hashable, Sendable {
+        public struct Op: Codable, Hashable, Sendable {
+            public enum Op: RawRepresentable, Codable, Hashable, Sendable {
+                case kept
+                case removed
+                case added
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "=": self = .kept
+                    case "-": self = .removed
+                    case "+": self = .added
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .kept: "="
+                    case .removed: "-"
+                    case .added: "+"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let op: Op
+            public let text: String
+
+            public init(op: Op, text: String) {
+                self.op = op
+                self.text = text
+            }
+        }
+
+        public let draftId: String
+        public let to: String
+        public let subject: String
+        public let sentAt: Int
+        public let ops: [Op]
+
+        public init(draftId: String, to: String, subject: String, sentAt: Int, ops: [Op]) {
+            self.draftId = draftId
+            self.to = to
+            self.subject = subject
+            self.sentAt = sentAt
+            self.ops = ops
+        }
+    }
+
+    public let id: String
+    public let workspaceId: String
+    public let text: String
+    public let line: String
+    public let state: State
+    public let ruleId: String?
+    public let edits: [Edit]
+    public let updatedAt: Int
+
+    public init(id: String, workspaceId: String, text: String, line: String, state: State, ruleId: String?, edits: [Edit], updatedAt: Int) {
+        self.id = id
+        self.workspaceId = workspaceId
+        self.text = text
+        self.line = line
+        self.state = state
+        self.ruleId = ruleId
+        self.edits = edits
+        self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, workspaceId, text, line, state, ruleId, edits, updatedAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(text, forKey: .text)
+        try container.encode(line, forKey: .line)
+        try container.encode(state, forKey: .state)
+        try container.encode(ruleId, forKey: .ruleId)
+        try container.encode(edits, forKey: .edits)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
+}

@@ -2717,6 +2717,191 @@ public enum Methods {
         public typealias Output = LifeosStatus
     }
 
+    public enum WorkRulesList: ContractMethod {
+        public static let name = "work.rules.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+
+            public init(workspaceId: String) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let rules: [HouseRule]
+            public let proposals: [RuleProposal]
+
+            public init(rules: [HouseRule], proposals: [RuleProposal]) {
+                self.rules = rules
+                self.proposals = proposals
+            }
+        }
+    }
+
+    public enum WorkRulesVoice: ContractMethod {
+        public static let name = "work.rules.voice"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+
+            public init(workspaceId: String) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let on: Bool
+            public let count: Int?
+            public let since: Int?
+            public let from: [String]
+            public let error: String?
+
+            public init(on: Bool, count: Int?, since: Int?, from: [String], error: String? = nil) {
+                self.on = on
+                self.count = count
+                self.since = since
+                self.from = from
+                self.error = error
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case on, count, since, from, error
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(on, forKey: .on)
+                try container.encode(count, forKey: .count)
+                try container.encode(since, forKey: .since)
+                try container.encode(from, forKey: .from)
+                try container.encodeIfPresent(error, forKey: .error)
+            }
+        }
+    }
+
+    public enum WorkRulesAdd: ContractMethod {
+        public static let name = "work.rules.add"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let text: String
+            public let proposalId: String?
+
+            public init(workspaceId: String, text: String, proposalId: String? = nil) {
+                self.workspaceId = workspaceId
+                self.text = text
+                self.proposalId = proposalId
+            }
+        }
+
+        public typealias Output = HouseRule
+    }
+
+    public enum WorkRulesEdit: ContractMethod {
+        public static let name = "work.rules.edit"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let id: String
+            public let text: String?
+            public let on: Bool?
+
+            public init(id: String, text: String? = nil, on: Bool? = nil) {
+                self.id = id
+                self.text = text
+                self.on = on
+            }
+        }
+
+        public typealias Output = HouseRule
+    }
+
+    public enum WorkRulesRemove: ContractMethod {
+        public static let name = "work.rules.remove"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let id: String
+            public let reopen: Bool?
+
+            public init(id: String, reopen: Bool? = nil) {
+                self.id = id
+                self.reopen = reopen
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let removed: Bool
+
+            public init(removed: Bool) {
+                self.removed = removed
+            }
+        }
+    }
+
+    public enum WorkRulesOrder: ContractMethod {
+        public static let name = "work.rules.order"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let ids: [String]
+
+            public init(workspaceId: String, ids: [String]) {
+                self.workspaceId = workspaceId
+                self.ids = ids
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let ok: Bool
+
+            public init(ok: Bool) {
+                self.ok = ok
+            }
+        }
+    }
+
+    public enum WorkRulesDecide: ContractMethod {
+        public static let name = "work.rules.decide"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum To: RawRepresentable, Codable, Hashable, Sendable {
+                case open
+                case later
+                case dismissed
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "open": self = .open
+                    case "later": self = .later
+                    case "dismissed": self = .dismissed
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .open: "open"
+                    case .later: "later"
+                    case .dismissed: "dismissed"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let id: String
+            public let to: To
+
+            public init(id: String, to: To) {
+                self.id = id
+                self.to = to
+            }
+        }
+
+        public typealias Output = RuleProposal
+    }
+
     public enum AwayGet: ContractMethod {
         public static let name = "away.get"
 

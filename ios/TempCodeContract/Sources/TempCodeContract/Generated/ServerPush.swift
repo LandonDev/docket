@@ -253,6 +253,14 @@ public struct AwayPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkRulesPush: Codable, Hashable, Sendable {
+    public let workspaceId: String
+
+    public init(workspaceId: String) {
+        self.workspaceId = workspaceId
+    }
+}
+
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
     case resync(ResyncPush)
@@ -279,6 +287,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case workOutboxResult(WorkOutboxResultPush)
     case workLifeos(WorkLifeosPush)
     case away(AwayPush)
+    case workRules(WorkRulesPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -314,6 +323,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "work.outbox.result": self = .workOutboxResult(try WorkOutboxResultPush(from: decoder))
         case "work.lifeos": self = .workLifeos(try WorkLifeosPush(from: decoder))
         case "away": self = .away(try AwayPush(from: decoder))
+        case "work.rules": self = .workRules(try WorkRulesPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -345,6 +355,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .workOutboxResult(let value): try Self.encode(tag: "work.outbox.result", value, to: encoder)
         case .workLifeos(let value): try Self.encode(tag: "work.lifeos", value, to: encoder)
         case .away(let value): try Self.encode(tag: "away", value, to: encoder)
+        case .workRules(let value): try Self.encode(tag: "work.rules", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

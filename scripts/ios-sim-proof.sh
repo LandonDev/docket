@@ -1066,6 +1066,7 @@ work_set() {
   TC_SHEET=results shot w16-results-light thread "Venue for the spring LAN"
   TC_SHEET=new-work shot w17-new-work-workspace-light home
   TC_SHEET=new-work-chat shot w18-new-work-chat-light work-chats
+  shot w20-house-rules-light house-rules
   TC_ACTION=outbox-grant-send launch_app outbox-item
   sleep 6; snap w19-grant-capsule-light
   sleep 8

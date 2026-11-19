@@ -7,6 +7,7 @@ import { ActKindSchema, HeldRefSchema } from './work/acts'
 import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
+import type { DraftEdit, EditOp, HouseRule, RuleProposal, RulesPage, VoiceFacts } from './contract-work-rules'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
 import { ComputerHistoryCallSchema, ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS } from './contract-computer'
@@ -1177,6 +1178,33 @@ export const WorkOutboxResultPushSchema = push('work.outbox.result', { result: W
 export const WorkLifeosPushSchema = push('work.lifeos', { status: LifeosStatusSchema })
 /** Away from computer: the state and the stretch's tally, on each change. */
 export const AwayPushSchema = push('away', { state: AwayStateSchema, decided: AwayDecidedSchema })
+
+// ── house rules (contract-work-rules.ts, milestone 39) on the phone ──
+export const HouseRuleSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  text: z.string(),
+  on: z.boolean(),
+  proposalId: z.string().nullable(),
+  createdAt: z.number().int(),
+  updatedAt: z.number().int()
+})
+export const EditOpSchema = z.object({ op: z.enum(['=', '-', '+']), text: z.string() })
+export const DraftEditSchema = z.object({ draftId: z.string(), to: z.string(), subject: z.string(), sentAt: z.number().int(), ops: z.array(EditOpSchema) })
+export const RuleProposalSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  text: z.string(),
+  line: z.string(),
+  state: z.enum(['open', 'later', 'dismissed', 'added']),
+  ruleId: z.string().nullable(),
+  edits: z.array(DraftEditSchema),
+  updatedAt: z.number().int()
+})
+export const RulesPageSchema = z.object({ rules: z.array(HouseRuleSchema), proposals: z.array(RuleProposalSchema) })
+export const VoiceFactsSchema = z.object({ on: z.boolean(), count: z.number().int().nullable(), since: z.number().int().nullable(), from: z.array(z.string()), error: z.string().optional() })
+/** A workspace's rules or proposals changed: a page on screen reads again. */
+export const WorkRulesPushSchema = push('work.rules', { workspaceId: z.string() })
 /** Computer use (contract-computer.ts): the desktop's; not in RemotePushSchema, since the phone does not speak it. */
 export const ComputerPushSchema = push('computer', {
   service: ComputerServiceStateSchema,
@@ -1246,7 +1274,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkOutboxPushSchema,
   WorkOutboxResultPushSchema,
   WorkLifeosPushSchema,
-  AwayPushSchema
+  AwayPushSchema,
+  WorkRulesPushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -1360,6 +1389,13 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof WorkOutboxResultPushSchema, PushOf<'work.outbox.result'>>>,
   Expect<Mirror<typeof WorkLifeosPushSchema, PushOf<'work.lifeos'>>>,
   Expect<Mirror<typeof AwayPushSchema, PushOf<'away'>>>,
+  Expect<Mirror<typeof WorkRulesPushSchema, PushOf<'work.rules'>>>,
+  Expect<Mirror<typeof HouseRuleSchema, HouseRule>>,
+  Expect<Mirror<typeof EditOpSchema, EditOp>>,
+  Expect<Mirror<typeof DraftEditSchema, DraftEdit>>,
+  Expect<Mirror<typeof RuleProposalSchema, RuleProposal>>,
+  Expect<Mirror<typeof RulesPageSchema, RulesPage>>,
+  Expect<Mirror<typeof VoiceFactsSchema, VoiceFacts>>,
   Expect<Mirror<typeof WorkResultSchema, WorkResult>>,
   Expect<Mirror<typeof OutboxGrantSchema, OutboxGrant>>,
   Expect<Mirror<typeof OutboxItemSchema, OutboxItem>>,

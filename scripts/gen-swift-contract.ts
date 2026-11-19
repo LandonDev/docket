@@ -457,6 +457,16 @@ export const SUBSET: SubsetEntry[] = [
   method('work.outbox.results', z.object({ results: z.array(W.WorkResultSchema) })),
   method('work.outbox.undo', W.WorkResultSchema),
   method('work.lifeos.status', W.LifeosStatusSchema),
+  // house rules (milestone 39): the phone's rules page
+  type('HouseRule', W.HouseRuleSchema),
+  type('RuleProposal', W.RuleProposalSchema),
+  method('work.rules.list', W.RulesPageSchema),
+  method('work.rules.voice', W.VoiceFactsSchema),
+  method('work.rules.add', W.HouseRuleSchema),
+  method('work.rules.edit', W.HouseRuleSchema),
+  method('work.rules.remove', z.object({ removed: z.boolean() })),
+  method('work.rules.order', z.object({ ok: z.literal(true) })),
+  method('work.rules.decide', W.RuleProposalSchema),
   method('away.get', W.AwaySnapshotSchema),
   method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state }))
 ]
@@ -465,6 +475,10 @@ export const SUBSET: SubsetEntry[] = [
 const CASE_NAMES: Record<string, string> = {
   '5h': 'fiveHours',
   '': 'none',
+  // a word diff's runs (house rules' evidence)
+  '=': 'kept',
+  '-': 'removed',
+  '+': 'added',
   SUCCESS: 'success',
   FAILURE: 'failure',
   PENDING: 'pending',
