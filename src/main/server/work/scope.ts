@@ -100,8 +100,9 @@ export function workScopeOf(facts: ScopeFacts, session: SessionMeta | null | und
 /**
  * Whether other people can see an item, as far as its source alone says: a
  * file that lives in Microsoft or Google is shared. A LifeOS document or
- * sheet, and a file with a guest link, are known to their pillars only
- * (docs, sheets, guests); until those land this answers false for them.
+ * sheet is shared while its LifeOS row says so (a guest link sets it,
+ * guests/links.ts `setShared`), which the docs and sheets pillars read from
+ * the row beside this answer; a guest link is made only to those.
  */
 export function sharedBySource(source: CanvasSource): boolean {
   return source.at === 'microsoft' || source.at === 'google'
