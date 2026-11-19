@@ -58,7 +58,7 @@ subagent's browser shows in its root's pane.
   from, by the field's label; a field named again takes the newer source.
 - `teams_reply {chat, text}`: holds a `teams.post`. Refused (`TEAMS_UNAVAILABLE`)
   on a host with no Teams carrier, before anything is held: the box, and
-  any host until the carrier is wired (below).
+  any host without computer use (below).
 
 ## Teams
 
@@ -69,7 +69,7 @@ picture of the posted message, which is kept at
 `<dataDir>/work-browser/teams/<row id>.<ext>` (`postedPicturePath`). The
 result's `ref` is `{ chat, picture: { mimeType, width, height } }`: the path
 follows from the row and never leaves the host, a read key's list included.
-Serving the bytes to Sent is milestone 14's. A
+Nothing serves the bytes to Sent yet. A
 carrier that posted nothing throws `ActStale` (the item reads stale); any
 other throw reads failed, "may or may not have gone". A host that lost its
 carrier between the hold and the press reads stale.
@@ -148,7 +148,8 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   run on computer sessions of the box's own (`wireBoxBrowser`, made by
   index.ts on a Linux host whose computer use is not local). Work threads
   get them only where the box has a Chromium. They refuse to act while he
-  drives (`BOX_OWNER_DRIVES`; the Mac's computer use has no such gate yet).
+  drives (`BOX_OWNER_DRIVES`, as the Mac's computer use refuses with
+  `OWNER_DRIVES`, above).
 - **What the service refuses**, so a step runs only as the hold read it
   (§28.4): a click on a control something else covers, a click into a
   frame not read yet or a plugin, a step by menu
@@ -201,13 +202,13 @@ code threads too.
 
 - Holding a box thread's act on the Mac (a Mac-side row the box presses
   over the peer link): a box thread's computer act on the Mac is refused,
-  not held (milestone 10). Yours, milestone 41.
+  not held (milestone 10).
 - The phone's `work.browser.drive` stops nothing: the stop is the desktop's.
   A computer call still running on the phone's Take over finishes; the gate
   below refuses the next one.
 - The Mac locked: the canvas shows no "As it was at" line for a locked Mac.
 - `teams.post`'s own Outbox view: it uses the generic one (`act.ts`,
-  `chunk: null`); Sent's picture is milestone 14's to draw.
+  `chunk: null`); Sent draws no picture of the post.
 
 ## Proofs
 

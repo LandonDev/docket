@@ -191,9 +191,10 @@ host) from `job.from` into `job.to` (formats by extension) and resolves to
   The Work page (milestone 8) mounts it with the host's link.
 
 **Not yet:** the box reaching a Mac-only tool. The box cannot dial a Mac;
-that direction goes over `peer.call`, which `ctx.peer` (milestone 6) builds.
-Until then the box forwards only over links it made itself (none today), and
-every base tool is on the box anyway.
+that direction goes over `peer.call` (`ctx.peer`, built in milestone 6),
+which the job runner does not use: it forwards only over links this host
+made itself (`deps.peers`; the box has none), and every base tool is on the
+box anyway.
 
 Tests: `scripts/work-tools/installer.test.ts` (a fake download server;
 the debs and dmg paths ran only for real, on the box and the Mac),

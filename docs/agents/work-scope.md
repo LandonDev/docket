@@ -463,8 +463,9 @@ The text is, in order (work/preamble.ts):
 
    A child's first paragraph says another of the owner's Work threads
    started it and its task is the owner's work passed on. With
-   `settings['work.ownerName']` set, the owner is named; nothing sets it
-   yet.
+   `settings['work.ownerName']` set, the owner is named; when it is empty,
+   the LifeOS connection sets it from his default mail identity
+   (work/lifeos/ctx.ts).
 2. **Each module's part**, in module order (`WorkModule.preamble(scope)`,
    joined by `modulePreambles`; work/threads.ts hands them to the
    registry). A module that throws is left out and logged; the head never

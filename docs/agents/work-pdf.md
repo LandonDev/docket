@@ -43,7 +43,7 @@ The wire is `src/shared/contract-work-pdf.ts`: `Bbox`, `PdfField`,
   with a path ref). A thread-made item (`{ at: 'thread' }`) keeps its file
   as `file.pdf` in its own folder. A file the item places on another
   host, and that is not here, is refused, as is a Google or a Microsoft
-  web file (their milestones are 28 and 30).
+  web file (opening a PDF from either is not built; pdf/file.ts says so).
 - Reads come from copies the host keeps per version of the file, at
   `canvas/<thread>/<item>/kept-<rev>.pdf`: the version shown and the one
   before it. Only `work.pdf.open` (and a thread's `pdf_extract` or
@@ -237,11 +237,12 @@ reading: `## Page N`, each block a paragraph, each table a markdown table
 where it sits among them. With `cite`, each passage and each table is
 followed by its citation code.
 
-**The seam for milestone 21.** That milestone owns "PDF to edit" and its
-quality path (Docling for scans, columns and hard tables). It should not
-register `pdf→extract` or `pdf→png`. Its Docling job writes this same
-`PdfExtract`, and `pdf_extract` gains a `mode` to pick it. PyMuPDF and
-pymupdf4llm are AGPL and are never imported here.
+**Milestone 21's import is its own path.** "PDF to edit" (`pdf → md`,
+formats/pdfIn.ts, [work-formats.md](work-formats.md)) runs pymupdf4llm and
+then Docling for scans, columns and hard tables, and writes markdown, not a
+`PdfExtract`; it registers neither `pdf→extract` nor `pdf→png`, and
+`pdf_extract` has no Docling mode. PyMuPDF and pymupdf4llm are AGPL and are
+never imported here.
 
 ## The tools
 

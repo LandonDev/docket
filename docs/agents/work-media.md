@@ -2,8 +2,8 @@
 
 Milestone 34 of the Work plan. The `media` canvas kind opens an image or a
 video beside a Work thread, plays it frame-accurately, and keeps notes on
-it keyed by frame. It works on files; Frame.io plugs in later (milestone
-48) through a source adapter. [work.md](work.md) says how a pillar is
+it keyed by frame. It works on files, and on Frame.io (milestone 48)
+through a source adapter. [work.md](work.md) says how a pillar is
 mounted, [work-canvas.md](work-canvas.md) how a kind sits in the pane, and
 [work-formats.md](work-formats.md) how its ffmpeg jobs run. The look is
 docs/DESIGN.md "The canvas pane", "Images and video".
@@ -18,7 +18,7 @@ docs/DESIGN.md "The canvas pane", "Images and video".
 | Probing, what plays, the ffmpeg command lines | `probe.ts`, `plan.ts`, `encode.ts` |
 | Making what the viewer needs, the cache | `prepare.ts` |
 | The view, pushes, the agent's writes | `view.ts` |
-| Milestone 48's seam | `sources.ts` |
+| The source adapters (Frame.io's) | `sources.ts` |
 | The kind | `src/renderer/src/work/media/canvas.ts` |
 | The body and the bar | `MediaCanvas.tsx`, `Player.tsx`, `Picture.tsx`, `Notes.tsx`, `parts.tsx` |
 | Frame-accurate seeks, the HLS feeder, what this viewer decodes, the store | `seek.ts`, `segments.ts`, `plays.ts`, `store.ts` |
@@ -213,17 +213,18 @@ frame and shows its region.
   done while a proxy or a conversion is made; the pane's state line, with
   Retry, when a version fails, over the empty stage.
 
-## For Frame.io (milestone 48)
+## Frame.io (milestone 48)
 
-- Register a `MediaSourceAdapter` (`sources.ts`) for `at: 'frameio'` from
-  the Frame.io module's `start`: `resolve` gives a version's rendition as
-  a `MediaPlay` with its frame table (Frame.io serves its own renditions,
-  so the host makes no proxy), `notes` gives the service's comments with
-  `external` set. The kind already claims `{ at: 'frameio' }` sources.
-- Set `work_media_items.shared` (`MediaStore.setShared`) for a Frame.io
-  item: the agent's notes then wait for the person, and the mode shows
-  "Agent suggests" with no switch. Posting one is a held `frameio.post` in
-  the thread, never a canvas button.
+- The Frame.io module registers a `MediaSourceAdapter` (`sources.ts`;
+  `frameioMedia` in work/frameio/media.ts) for `at: 'frameio'` from its
+  `start`: `resolve` gives a version's rendition as a `MediaPlay` with its
+  frame table (Frame.io serves its own renditions, so the host makes no
+  proxy), and the service's comments come in as notes with `external` set
+  ([work-frameio.md](work-frameio.md)).
+- A Frame.io item is shared (`resolve` answers `shared: true`, kept in
+  `work_media_items.shared`): the agent's notes wait for the person, and
+  the mode shows "Agent suggests" with no switch. Posting one is a held
+  `frameio.post` in the thread, never a canvas button.
 - A note's `anchor` is Frame.io's shape already: `frame` (check whether
   V4 counts from 0 or 1), `durationFrames`, `shapes` in 0 to 1 from the top
   left (`width` is a share of the height; Frame.io's `size` is pixels),

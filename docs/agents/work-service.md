@@ -1,8 +1,8 @@
 # The Work service
 
 The Work service is the utility process that serves live editing: documents
-and sheets now (sheets: [work-sheets.md](work-sheets.md)), published forms
-([work-forms.md](work-forms.md)), and guest links, the Office add-in and the full editor as their milestones land. Milestone 18 built it; the contract is architecture
+and sheets (sheets: [work-sheets.md](work-sheets.md)), published forms
+([work-forms.md](work-forms.md)), guest links, the Office add-in and the full editor. Milestone 18 built it; the contract is architecture
 §8.1 to §8.3 and §19 (`.temp-code/plans/work-architecture.md`).
 
 ## The process
@@ -58,7 +58,8 @@ a hash of the path; the secret stays in userData.
 
 `work/service/routes/index.ts` is the closed list. The public listener
 answers these paths and nothing else (404); `/internal/*` is not among them.
-Each later milestone fills its own file and edits no other; a stub answers
+Each milestone filled its own file and edited no other; every route is
+built. A route still to come is a `stubRoute` (route.ts): it answers
 `not built: <what> (milestone N)` with 501, and refuses a socket.
 
 | Route | File | Milestone |

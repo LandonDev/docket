@@ -10,11 +10,10 @@ is docs/DESIGN.md "The canvas pane"; the plan's contracts are
 **What is built:** the frame (tab row, the kind's bar, the fold, the one
 review stepper, the selection bar with Ask, the composer's chip row, a
 kind's own rows in More), the store with its methods, push, tools and move
-hook, and both registries. The PDF, slides, images and video, meeting,
-sheet, history, form and dashboard kinds have their bodies (work-pdf.md,
-work-slides.md, work-media.md, work-meetings.md, work-sheets.md,
-work-history.md, work-forms.md, work-dashboards.md); every other kind's body
-says "Not built yet" until its pillar's milestone builds it. The history
+hook, and both registries. All eleven kinds have their bodies, each
+described in its pillar's file (work-mail.md, work-docs.md, work-sheets.md,
+work-pdf.md, work-slides.md, work-media.md, work-browser.md,
+work-history.md, work-meetings.md, work-forms.md, work-dashboards.md). The history
 kind was seen in a running isolated instance (milestone 19's live run), and
 the form and dashboard kinds in milestone 36's.
 
@@ -69,7 +68,8 @@ own `opens`.
 kind, in `work/<pillar>/act.ts` for the pillar `ACT_PILLAR` names.
 `chunk: null` means the Outbox's generic view (the summary and the payload
 as text); a pillar gives a kind its own by pointing `chunk` at a module
-that exports `View`. The Outbox that draws them is not built.
+that exports `View`. The Outbox draws them (work/acts/ActView.tsx,
+[work-outbox.md](work-outbox.md)).
 
 ## Registering a kind
 
@@ -234,9 +234,9 @@ until the composer sends:
 - A draft's first chip also rides `session.create` as `about` (`aboutFor`,
   read by `ensureCreated`, kept until the thread exists so a create tried
   again still says it), which the host answers through
-  `work.admitSession` and, once the LifeOS link is built, links in LifeOS.
+  `work.admitSession` and links in LifeOS (`ctx.links.link`, work-lifeos.md).
 - Ask's key is ⌘L (Ctrl+L off macOS), live while a kind feeds a selection.
-  It is not listed in Settings yet.
+  Settings → Keybindings lists it in the Work group while Work is on.
 
 The sent bubble shows the chip's line as text; a drawn chip in the bubble
 is not built.
@@ -284,7 +284,7 @@ A row whose `kind` or `source` no longer parses is left out of every list and lo
 - Only a Work thread has items: an open for a code thread throws `not a Work thread: <id>`, and one for a thread that does not exist `unknown thread: <id>`. A close, reorder or reopen of an item or thread that does not exist throws a plain sentence too.
 - A thread holds at most 32 open items (`CANVAS_OPEN_MAX`); the 33rd open throws. Opening an item that is already open is no new tab.
 - An item whose source is `{ at: 'thread' }` owns `<userData>/canvas/<sessionId>/<itemId>/` (`canvasItemDir`), made with mode 0700 when it opens and kept when it closes. `canvasDirOf` is the thread's whole folder. Both refuse an id outside `[A-Za-z0-9_-]`.
-- No method relays to another host (`CANVAS_RELAY` is empty). The path fence reads the file a `source` names, so a remote key cannot open `/etc/passwd` as `{ at: 'file' }`.
+- Every method is carried on a relayed lane to the host the lane names (`CANVAS_RELAY` is empty: work.md "The relay"). The path fence reads the file a `source` names, so a remote key cannot open `/etc/passwd` as `{ at: 'file' }`.
 
 ### The push
 

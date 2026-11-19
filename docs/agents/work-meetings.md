@@ -229,10 +229,9 @@ says why on the pane's state line with Try again: no sector ("This thread's
 workspace is not linked to a LifeOS sector …"), LifeOS not connected, or
 LifeOS's own refusal.
 
-**`ctx.scopeOf` and `ctx.lifeos` are stubs until milestones 6 and 7.** Until
-then every accept answers a failure sentence; meetings.test.ts proves the
-filing against fakes of both. `LIFEOS_CREATE_TASK` is the one place that
-names LifeOS's function, for milestone 7 to confirm.
+meetings.test.ts proves the filing against fakes of `ctx.scopeOf` and
+`ctx.lifeos`. `LIFEOS_CREATE_TASK` is the one place that names LifeOS's
+function.
 
 ## Voices
 

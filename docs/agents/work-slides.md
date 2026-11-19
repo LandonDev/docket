@@ -22,7 +22,9 @@ drops it. Agents suggest; the owner accepts.
   (pdf/file.ts), or `deck.pptx` in the item's own folder for a deck a thread
   made. A file that is not a zip is refused. A deck in PowerPoint on the web
   (a Microsoft source with a URL) and a Google file are refused with a
-  sentence: milestones 28 and 30 open those.
+  sentence: a Google deck opens in Google, and the google tools read it and
+  revise a copy ([work-google.md](work-google.md)); opening one from
+  PowerPoint on the web is not built.
 - **Renders.** Each version of a deck is kept under
   `canvas/<thread>/<item>/render/<key>.{json,pdf}`: the outline and the PDF.
   The file's key is the sha256 of its bytes. The proposed deck's key is the
@@ -294,16 +296,16 @@ How it works:
   stage show each slide's title on a blank.
 - **PowerPoint.** For a deck that lives in PowerPoint (`hosted`), the tab
   row has the TempCode and PowerPoint switch, where the sheet's Excel
-  switch goes. The PowerPoint side is milestones 28 and 29; until then it
-  says "Not built yet", and the bar says how many suggestions wait in
-  TempCode, with Review to go back to them.
+  switch goes. The PowerPoint side of the switch is not built (the
+  Office milestones, 28 and 29, put Excel behind the grid only): it says "Not built yet", and the bar says
+  how many suggestions wait in TempCode, with Review to go back to them.
 
 Where it differs from the prototype: the prototype draws its slides in
 HTML, so it tints the changed words in place and strikes the removed ones.
 A real slide is a picture, so the changed shapes are tinted on it and the
 words before and after are listed under the stage. The grid and the
 outline (the prototype's other variations) and someone else's presence in
-the deck (it needs real co-authoring, milestones 28 and 29) are not built.
+the deck (it needs real co-authoring) are not built.
 
 Proven in a real browser: a 12-slide deck written by `writeNewDeck` and
 drawn to PDF by LibreOffice 26.8.3 paints in the strip and on the stage

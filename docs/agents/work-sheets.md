@@ -153,8 +153,8 @@ cells in A1 (`a1.ts`), at most 10,000 cells a read and 1,000 a write.
   (`writes` by default: written, with the bar's written line and Undo).
 
 A quote he never typed, or `routine` outside a routine, counts as `own` and
-the answer says so. Suggestions over a package (and later Excel and
-Google) are rows of `work_sheets_suggestions` with the mode and the written
+the answer says so. Suggestions over a package, an Excel workbook or
+a Google sheet are rows of `work_sheets_suggestions` with the mode and the written
 line in `work_sheets_prefs`; a LifeOS sheet's are LifeOS rows; a
 `.tcsheet`'s are in the file. An owner's edit over a pending cell makes it a
 conflict. Accepting writes the proposed cells as his own edit.
@@ -288,8 +288,7 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   rows or columns) in one.
 - The model writer leaves out conditional formats, validations, defined
   names, notes and our charts.
-- Excel behind the grid (M28), the
-  guest page that uses the live route (M31), presence on the canvas.
+- Presence on the canvas.
 - Keeping IronCalc's model in memory between saves: each save loads the
   package afresh, which on the 100,000-row file is tens of seconds.
 

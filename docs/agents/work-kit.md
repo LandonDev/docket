@@ -3,7 +3,7 @@
 `LandonDev/work-kit` (private) holds the code TempCode, LifeOS and both phone
 apps share: one npm package of TypeScript source at its root, with subpath
 exports and no build step, and one SwiftPM package beside it (`Package.swift`,
-products `LifeKit` and `LifeKitUI`). Its README is the rule book: how to add a
+products `LifeKitCore`, `LifeKit` and `LifeKitUI`). Its README is the rule book: how to add a
 folder, when to bump `WORK_KIT_API`, what a host must add. The box keeps a clone
 at /srv/agents/work/work-kit. The Work plan's architecture §2 says what goes in
 it and who owns each folder.
@@ -62,12 +62,10 @@ it and who owns each folder.
   `@tiptap/pm` at 3.34.0: the one Yjs and the one ProseMirror the shared editor
   (`work-kit/editor`, BlockNote 0.57.0) runs on. The two ProseMirror versions are
   what BlockNote 0.57.0's ranges resolve to; move them only with BlockNote.
-- **The editor's peers are not installed yet.** work-kit's `y-prosemirror` and
-  `y-protocols` are optional peers, so nothing here pulls `y-prosemirror` in. The
-  first code that imports `work-kit/editor` adds `y-prosemirror` 1.3.7 and
-  `y-protocols` 1.0.7 to `devDependencies` (exact, as work-kit names them), or the
-  import does not resolve. Proven with them present: `tsconfig.web.json` compiles
-  an import of `work-kit/editor` and `work-kit/collab`, and esbuild bundles it.
+- **The editor's peers.** work-kit's `y-prosemirror` and `y-protocols` are
+  optional peers, so this repo names them itself: `y-prosemirror` 1.3.7 and
+  `y-protocols` 1.0.7 in `devDependencies` (exact, as work-kit names them), or an
+  import of `work-kit/editor` does not resolve.
 
 Imports are by subpath; there is no root export: `work-kit/ui/<name>`
 (`work-kit/ui/cn` for the kit's `cn`),
@@ -78,7 +76,7 @@ Imports are by subpath; there is no root export: `work-kit/ui/<name>`
 
 scripts/workKitPin.test.ts checks the pin's form and commit against bun.lock,
 the interface version this tree was built for (`WORK_KIT_API` 1), the Swift
-revision in ios/TempCode/project.yml once the phone app pins one, the builder
+revision in ios/TempCode/project.yml, the builder
 rule, the exclude, that `work-kit-sources.css` is what the generator writes
 for today's imports, and a render of `KitProbe` from
 `work-kit/ui/kit-probe`, compiles index.css with Tailwind scanning only its

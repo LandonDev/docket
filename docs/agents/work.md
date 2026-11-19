@@ -6,17 +6,16 @@ press. The plan is `.temp-code/plans/project.md` and its contracts are
 `.temp-code/plans/work-architecture.md`; section numbers (§) below point
 there.
 
-**What exists today is the frame, and what a Work thread is.** The switch,
+**This file is the frame, and what a Work thread is.** The switch,
 the core columns, the shared types, the module list, the context the modules
-share, one stub per pillar in every closed list, the tool mount and the two
+share, one entry per pillar in every closed list, the tool mount and the two
 build entries; and on that, Work workspaces, Work Chats and Work threads on
 the server, with their fence and their preamble
 ([work-scope.md](work-scope.md)); the hold on what a Work thread does that
 leaves the machine ([work-outbox.md](work-outbox.md)); and the screens that
 make them visible: the rail's Work heading and Work Chats, the Work column
-with its four views, linking a workspace to a sector, and Settings → Work
-("The screens" below). A pillar's method is refused by name until the
-milestone that builds it lands. A pillar's own account goes in
+with its five views, linking a workspace to a sector, and Settings → Work
+("The screens" below). Every pillar is built; each has its own account in
 `docs/agents/work-<pillar>.md`.
 
 ## The switch
@@ -242,7 +241,7 @@ edits none of these.
 | Canvas kinds | `CANVAS` (src/renderer/src/work/canvas/registry.ts) | `src/renderer/src/work/<pillar>/canvas.ts` |
 | Act views | `ACT_VIEWS` (src/renderer/src/work/acts/registry.ts) | `src/renderer/src/work/<pillar>/act.ts` |
 | Build | `MAIN_INPUTS.workService` and `hostedPages()` (electron.vite.config.ts) | none |
-| Phone wire | the Work rows of `SUBSET` (scripts/gen-swift-contract.ts) | none until the phone's Work screens are built |
+| Phone wire | the Work rows of `SUBSET` (scripts/gen-swift-contract.ts) | none: the phone's Work methods and pushes are rows there |
 
 Pillar ids, in mount order: `outbox, canvas, lifeos, routines, rules, mail,
 tasks, agenda, docs, history, formats, sheets, office, google, guests, pdf,
@@ -369,8 +368,7 @@ once (work/ctx.ts `buildWorkCtx`). `db`, `host`, `dataDir`, `enabled`,
   test that hands in no `remoteFence`, a remote key reaches nothing.
 
 Every other member comes from a file its milestone
-owns, a stub that throws `NotBuilt` until then; its owner fills that file
-and edits nothing else:
+owns (each is built now); its owner fills that file and edits nothing else:
 
 | Member | File | Milestone |
 |---|---|---|
@@ -378,7 +376,7 @@ and edits nothing else:
 | `threads` | work/threads.ts (built) | 6 |
 | `peer` | work/peer.ts (built) | 6 |
 | `lifeos`, `links` | work/lifeos/ctx.ts (built: [work-lifeos.md](work-lifeos.md)) | 7 |
-| `canvas` | work/canvas/ctx.ts | 9 |
+| `canvas` | work/canvas/ctx.ts (built: [work-canvas.md](work-canvas.md)) | 9 |
 | `held` | work/outbox/ctx.ts (built: [work-outbox.md](work-outbox.md)) | 10 |
 | `results` | work/outbox/results.ts (and `ensureResults`, which the outbox module's `ensure` calls) | 14 |
 | `convert` | work/formats/jobs.ts (built: [work-formats.md](work-formats.md)) | 15 |
@@ -471,7 +469,9 @@ input that is not a `z.object` is left out and logged.
   closed list: `index`, `item`, `guest`, `form`. The Work service serves
   them at `/w/hosted/`; `index` is its own plain page, `form` is a published
   form's page (milestone 36, [work-forms.md](work-forms.md), served at
-  `/f/<publicId>`), and `item` and `guest` are stubs until milestone 31.
+  `/f/<publicId>`), `guest` is a guest's page and the owner's `/w/open`
+  (milestone 31, [work-guests.md](work-guests.md)), and `item` is a plain
+  page that loads nothing.
   `tsconfig.web.json` includes `src/hosted`.
 
 ## How a pillar registers
@@ -547,7 +547,7 @@ need in its landing note and a foundation follow-up makes the change.
   refusals).
 - `src/main/server/db-work.test.ts`, `addonStore.test.ts`: the columns.
 - `src/main/workBuild.test.ts`: the two build entries; it builds the hosted
-  pages from their stubs.
+  pages.
 - Scope, the fence and the preamble: the list in
   [work-scope.md](work-scope.md) "Proofs", `fence.proof.test.ts` (the real
   CLIs) first among them.

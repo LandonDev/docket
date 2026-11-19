@@ -37,7 +37,8 @@ Cut when:
 | `idle` | ten minutes with no change after edits (`IDLE_MS`), and when the last connection leaves a changed document |
 | `before-restore`, `restore` | around a restore; `restore` names `restoredFrom` |
 | `named` | `work.history.cut` (the owner names one) |
-| `import`, `guest-end` | not cut yet: M21 (import) and M31 (a guest's session) cut them |
+| `guest-end` | what an edit link's guest wrote, cut by the guest route (service/routes/guests.ts, M31) |
+| `import` | not cut yet: no import cuts one |
 
 Nothing changed since the last version, no new one (except a forced cut).
 Any version rebuilds exactly with `Y.createDocFromSnapshot` (eleven proven
@@ -99,8 +100,8 @@ main's verdict ([work-docs.md](work-docs.md) "The tools").
   **Reject** drops rows the same way, or the whole branch.
 - Several branches stay pending at once and do not touch each other: each
   merges into the live document on its own.
-- A row is a whole block. Accepting one inline change inside a block is
-  M20's first step.
+- A row is a whole block; its pieces (above) are how one inline change
+  inside it is taken.
 
 ## Compaction
 

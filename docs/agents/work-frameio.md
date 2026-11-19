@@ -233,10 +233,6 @@ When the owner signs in, before trusting any frame:
   `work.frameio.signIn`/`finish` on the wire.
 - No screen of its own to browse Frame.io: an agent browses and opens with
   the tools. The held post shows in the Outbox's generic view.
-- The routines engine takes the first `on: 'file'` source of any pillar
-  (`keepArmed` in `routines/engine.ts`); Frame.io's is the only one today.
-  When Google or Excel registers one, the engine must pick by
-  `trigger.source.at`.
 - A rendition is downloaded whole before it plays; a long 4K cut takes as
   long as its download.
 - `comment.deleted` cannot be read back, so every open item of the account

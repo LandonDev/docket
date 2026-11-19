@@ -150,4 +150,4 @@ is not held.
 redirect and the Drive, Docs, Sheets and Slides calls above, keeping
 `drive.file` (a token reaches only picked or made files) and Docs' indexes
 (a Doc held as characters with their suggestions). Tests: `mapper.test.ts`,
-`docs.test.ts`, `grid.test.ts`, `index.test.ts`.
+`docs.test.ts`, `grid.test.ts`, `index.test.ts`, `write.test.ts`.

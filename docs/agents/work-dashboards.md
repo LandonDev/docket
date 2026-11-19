@@ -80,7 +80,8 @@ mode shows "Agent suggests" and cannot be switched.
 `work.dashboards.{open, refresh, review, remove}` and the `work.dashboards`
 push (`src/shared/contract-work-dashboards.ts`). All but `open` are the
 owner's. A remote key sees a dashboard only when it could name every file
-the page reads itself (`fenceDash`); none is relayed.
+the page reads itself (`fenceDash`). Each is carried on a relayed lane
+(`DASHBOARDS_RELAY` is empty: work.md "The relay").
 
 ## Known limits
 

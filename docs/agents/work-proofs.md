@@ -351,7 +351,7 @@ marks a step only he can take; the rest a later thread can run.
   to one Mac child at a time and the little usage left; the Mac was idle
   and unlocked during the Mac leg, so a child can run it.
   Steps: a Mac child after five idle minutes (the memory's idle gate) runs
-  `bun scripts/e2e-computer.ts` and `TC_MAC_RIG=1` hold tests; or the owner
+  `bun scripts/e2e-computer.ts`; or the owner
   asks a Work thread on the Mac to fill a test form and presses its Send.
 - **LifeOS desktop's approve-a-sign-in sheet** (milestones 2, 7, 8). Why:
   it ships with the next LifeOS desktop release; every proof signed in by a

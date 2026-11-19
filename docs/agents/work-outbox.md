@@ -135,8 +135,9 @@ host does with it:
   (`lifeos:outbox:<id>`) is unique, which makes the decision the only one.
 - **Sent** means LifeOS took it. If LifeOS's own lane then fails, the item
   comes back `failed`.
-- `calendar.op` is registered against the architecture's function names
-  and answers `not built … (milestone 24)` until LifeOS has them.
+- `calendar.op` goes through LifeOS's `calendarOps` the same way
+  ([work-agenda.md](work-agenda.md)); a LifeOS deployment without them
+  answers `not built … (milestone 24)`.
 
 ## The press, grants, and who may decide
 
@@ -320,8 +321,8 @@ in place, and shows a thread's Results with Undo.
 
 ## Not built here
 
-Each pillar's own view of its acts (mail is M23's, the calendar M25's):
-until then they show in the generic view. The held line opens the Outbox
+A view of its own for every act kind: mail, the calendar and a guest link
+have one, every other kind shows in the generic view. The held line opens the Outbox
 but does not select its item. A box thread's computer act
 held on a Mac and pressed from the box. A held row moving with its thread
 to another host: it stays on the host that held it. A card skipped for a

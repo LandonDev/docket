@@ -74,13 +74,12 @@ starts the app unseen. The one exception is `open`, the switch (`open -a
 "Microsoft Excel" <path>`, or `ms-excel:ofe|u|<url>`).
 
 macOS charges osascript's Apple Events to TempCode, so the Automation prompt
-reads "TempCode wants to control Microsoft Excel", once per app. **TempCode
-cannot get that prompt yet.** The packaged app has no
-`NSAppleEventsUsageDescription` and no
-`com.apple.security.automation.apple-events` entitlement. Under the hardened
-runtime, macOS refuses its Apple Events (-1743) without asking. Adding both
-in the build config is a need for the master (M28.md). Until then every
-Office call from the installed app answers "TempCode may not control …".
+reads "TempCode wants to control Microsoft Excel", once per app. The
+packaged app carries `NSAppleEventsUsageDescription` (electron-builder.yml)
+and the `com.apple.security.automation.apple-events` entitlement
+(build/entitlements.mac.plist): without them, under the hardened runtime,
+macOS refuses its Apple Events (-1743) without asking, and every Office call
+answers "TempCode may not control …".
 
 `apps()` reports each app as installed, running and allowed. macOS will not
 say whether an app is allowed without asking, so `allowed` is what the last
@@ -494,8 +493,7 @@ plan's landed/M29.md. Also unproven for the add-in: Office.js's real
 answers (the stub follows the docs), the pane's CSP and framing on Office on
 the web, the public address (the tunnel's rule is the owner's step), Word
 and PowerPoint, and Office on the web inside our window. The test is written out
-in M28.md, "The live test". It needs the build change above and his one
-click per app. Also unproven:
+in M28.md, "The live test". It needs his one click per app. Also unproven:
 
 - new Outlook's answer to the legacy dictionary;
 - Word and PowerPoint, which were not installed;

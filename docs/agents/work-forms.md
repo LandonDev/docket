@@ -125,8 +125,8 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
 
 `work.forms.{open, save, review, mode, publish, close, responses}` and the
 `work.forms` push (`src/shared/contract-work-forms.ts`). Every method but
-`open` and `responses` is the owner's: a thread's call is refused. None is
-relayed.
+`open` and `responses` is the owner's: a thread's call is refused. Each is
+carried on a relayed lane (`FORMS_RELAY` is empty: work.md "The relay").
 
 ## Known limits
 

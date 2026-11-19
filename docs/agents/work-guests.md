@@ -42,6 +42,7 @@ with a test.
 | `work.guests.list {}` | read | every listed link, live first, with when the service last saw each opened and how many sockets it holds |
 | `work.guests.forItem {source}` | read | one item's links, for its Share popover |
 | `work.guests.create {source, title, name, role, expiresAt}` | approve | his own link; answers `{link, url}`, the only time the address exists |
+| `work.guests.rekey {linkId}` | approve | a new address for a live link, shown once; the one before opens nothing from then on |
 | `work.guests.revoke {linkId}` | operate | at once |
 | `work.guests.ticket {source, title}` | operate | the owner's hosted editor (below) |
 
@@ -49,8 +50,8 @@ A thread's call to any but the two reads is refused: an agent asks with
 `guest_link {docId | sheetId, name, role, days}`, which checks the item is in
 the thread's sector and holds a `share.guestLink` act (no matcher, so no
 grant fits and Away releases none). His Create link in the Outbox makes the
-link and resumes the thread with the address (it may then draft a mail with
-it, held as every mail is). The act's Result's way back is Revoke link:
+link and resumes the thread with the link's id, never its address: he sends
+the address himself, copied from Settings → Work → Guest links. The act's Result's way back is Revoke link:
 `guest_link_revoke {linkId}`, which revokes only a link the same thread
 tree asked for. The preamble tells Work threads that sending one of his
 documents means sending such a link.
@@ -139,7 +140,8 @@ open is a new pass. Make a Guest Link in the item's More calls
 - **The held request** in the Outbox (`ShareActView.tsx`): To, For, Can, Ends.
 - **Guest links** in Settings → Work (`GuestLinksSection.tsx`): every link on
   every Work host, live first: who, the role and item, until when, and "in
-  it now", "opened …" or "not opened yet"; Revoke. Ended ones muted.
+  it now", "opened …" or "not opened yet"; Copy new address
+  (`work.guests.rekey`) and Revoke. Ended ones muted.
 
 ## Proofs
 

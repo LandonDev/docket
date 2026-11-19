@@ -89,8 +89,8 @@ place for a LifeOS document). What it tells the pane:
   document's in LifeOS.
 - **Ask** (the editor's selection bar and ⌘L) puts the selection in the
   thread's composer as a chip.
-- **History** is the pane's (`history: true`). There is no Share yet: it
-  would list nobody, and a guest link is M31's.
+- **History** is the pane's (`history: true`). **Share** on the bar is the
+  guests pillar's (`ShareButton`, [work-guests.md](work-guests.md)).
 
 ## The Docs view
 

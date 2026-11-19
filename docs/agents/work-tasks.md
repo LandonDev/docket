@@ -4,11 +4,11 @@ A linked Work workspace's Tasks view, and Done as the owner accepting a thread's
 
 ## The view
 
-`src/renderer/src/work/tasks/TasksView.tsx`, registered by `tasks/view.ts` as a lazy chunk. It reads the sector's open tasks through work-kit's shared task client (`createLifeosViewsClients` in `work-kit/lifeos`, made in `tasks/client.ts`) on the workspace's LifeOS session, which is narrowed to its sector. The groups are LifeOS's own (`groupTasks` from `work-kit/lifeos/tasks`): the first of Today leads with Start thread, Done and Snooze; then Today, This week, Later and Waiting. A row's due time gives way to Start on hover; its menu leads with Start thread.
+`src/renderer/src/work/tasks/TasksView.tsx`, registered by `tasks/view.ts` as a lazy chunk. It reads the sector's open tasks through work-kit's shared task client (`createLifeosViewsClients` in `work-kit/lifeos`, made in `tasks/client.ts`) on the workspace's LifeOS session, which is narrowed to its sector. The groups are LifeOS's own (`groupTasks` from `work-kit/lifeos/tasks`): the first of Today leads with Start thread, Done and Snooze; then Today, This week, Later and Waiting. A row's due time gives way to Start on hover; its menu leads with Start thread. Open shows the task in full in a sheet (`TaskSheet.tsx`, `tasks:get`); New task in the header makes one (`NewTaskDialog.tsx`, `tasks:create`). The column's Tasks row shows the open count (`useOpenCount`, tasks/facts.ts).
 
 Start thread is `startThread(chip)` with `{kind: 'task', label, ref: {at: 'lifeos', table: 'tasks', id}}`: a new thread's composer with the chip in it, and nothing runs until he sends. The first send carries `about`, and the host links the thread to the task (`ctx.links.link`).
 
-The renderer names only the pure work-kit modules (`work-kit/lifeos`, `work-kit/lifeos/tasks`, `work-kit/views/lib/*`); the client types come off the maker in `tasks/client.ts`. Naming `work-kit/views` anywhere in renderer source, a comment included, brings its Kobra components into `work-kit-sources.css`.
+The Tasks view names only the pure work-kit modules (`work-kit/lifeos`, `work-kit/lifeos/tasks`, `work-kit/views/lib/*`); the client types come off the maker in `tasks/client.ts`. Naming `work-kit/views` in renderer source, a comment included, brings its Kobra components into `work-kit-sources.css`; the Agenda does, for its Week and Month.
 
 ## `work.tasks.done {taskId}` (approve)
 
