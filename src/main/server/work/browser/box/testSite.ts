@@ -28,6 +28,7 @@ export const SITE_PAGES: Record<string, string> = {
      <form action="/done" method="post"><button type="submit">Submit expense</button></form>
      <script>const q = new URLSearchParams(location.search); document.getElementById('summary').textContent = q.get('name') + ' — ' + q.get('amount')</script>`
   ),
+  '/chat': page('Team chat', '<form action="/sent" method="post"><textarea name="m" aria-label="Message"></textarea><button type="submit">Send</button></form>'),
   '/done': page('Expense submitted', '<h1>Submitted</h1><p>Your expense was submitted.</p>')
 }
 

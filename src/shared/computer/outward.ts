@@ -182,7 +182,9 @@ export const BROWSER_BUNDLES: readonly string[] = [
   'com.brave.Browser',
   'org.mozilla.firefox',
   'com.vivaldi.Vivaldi',
-  'com.operasoftware.Opera'
+  'com.operasoftware.Opera',
+  // the box's own Chromium (work/browser/box): its service names it so
+  'org.chromium.Chromium'
 ]
 /** A page installed as an app of its own runs in its browser's bundle with this before its id. */
 const WEB_APP_BUNDLE = /^(com\.google\.Chrome|com\.microsoft\.edgemac|com\.brave\.Browser)\.app\./i

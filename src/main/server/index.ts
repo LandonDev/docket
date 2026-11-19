@@ -1457,6 +1457,12 @@ export async function startServer(
     resources.endComputer = (envId, thread, id) => bridge.end(envId, thread, id)
     computerBridge = bridge
   }
+  // The box's own browser for Work threads, on its own computer sessions (work/browser/box); loaded apart, as all of Work is.
+  if (computerWhy && process.platform === 'linux')
+    void import('./work/browser/box').then(
+      (m) => m.wireBoxBrowser({ registry, store, dataDir: options.dataDir ?? dirname(dbPath) }),
+      (err) => console.log(`[box browser] did not load: ${String(err)}`)
+    )
   computerBridgeHooks.current = computerBridge
   computerBridgeHooks.tokens = computerBridge ? computerBridgeTokens : null
   const computerRpc = new ComputerRpc(computer, () => computerWhy, computerBridge ? { bridge: computerBridge, tokens: computerBridgeTokens } : null, {

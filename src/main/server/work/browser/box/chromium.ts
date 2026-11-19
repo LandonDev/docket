@@ -94,6 +94,8 @@ export interface BoxChromiumOptions {
   rssMb?: (pid: number) => number
   /** how often the cap is checked */
   watchMs?: number
+  /** something waits on a page (a held step): the idle stop waits too */
+  busy?: () => boolean
   log?: (line: string) => void
 }
 
@@ -109,6 +111,9 @@ export class BoxChromium {
 
   get profile(): string {
     return join(this.opts.root, 'profile')
+  }
+  get pid(): number | null {
+    return this.running ? (this.child?.pid ?? null) : null
   }
   get running(): boolean {
     return !!this.child && this.child.exitCode === null && this.child.signalCode === null
@@ -130,7 +135,7 @@ export class BoxChromium {
   /** Use: the idle stop waits ten minutes from now. */
   touch(): void {
     if (this.idle) clearTimeout(this.idle)
-    this.idle = setTimeout(() => this.stop('idle'), this.opts.idleMs ?? IDLE_STOP_MS)
+    this.idle = setTimeout(() => (this.opts.busy?.() ? this.touch() : this.stop('idle')), this.opts.idleMs ?? IDLE_STOP_MS)
     this.idle.unref?.()
   }
 

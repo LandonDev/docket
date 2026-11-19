@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline'
 import type { PassThrough } from 'node:stream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseObservation } from '@shared/computer/observation'
-import { COMPUTER_PROTOCOL, resultFrameSchema, RpcErrorResponseSchema, type ComputerMethod, type Observation } from '@shared/computer/protocol'
+import { COMPUTER_PROTOCOL, resultFrameSchema, RpcErrorResponseSchema, type ComputerMethod, type ComputerResult, type Observation } from '@shared/computer/protocol'
 import { BoxChromium, findChromium } from './chromium'
 import { BoxComputerService, inProcessSpawn } from './service'
 import { serveTestSite, type TestSite } from './testSite'
@@ -41,7 +41,7 @@ d('the box computer service speaks the wire', () => {
   const ok = async <M extends ComputerMethod>(method: M, params: Record<string, unknown> = {}) => {
     const f = await call(method, params)
     expect(f.error, JSON.stringify(f.error)).toBeUndefined()
-    return resultFrameSchema(method).parse(f).result
+    return (resultFrameSchema(method).parse(f) as { result: ComputerResult<M> }).result
   }
   /** a refusal, its frame held to the error schema, answering its kind */
   const no = async (method: string, params: Record<string, unknown> = {}) => {
