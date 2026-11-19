@@ -4,6 +4,7 @@ import type { CollabClaims as KitClaims } from 'work-kit/collab-server'
 import type { WorkCtx } from '../modules'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { serviceOf, ServedElsewhere } from '../service/ctx'
+import type { ServiceSupervisor } from '../service/supervisor'
 import { GuestStore, hashSecret, isLive, sourceKey, type StoredLink } from './store'
 import { PASS_PREFIX, type GuestServiceLink } from './wire'
 
@@ -56,10 +57,15 @@ interface Pass {
 export class GuestRuntime {
   private readonly passes = new Map<string, Pass>()
   private readonly tokens = new Map<string, { token: string; exp: number; signer: unknown }>()
-  private lastTick = Date.now()
+  /** what LifeOS was last told of each item's `shared` */
+  private readonly told = new Map<string, boolean>()
   readonly store: GuestStore
 
-  constructor(private readonly ctx: WorkCtx) {
+  constructor(
+    private readonly ctx: WorkCtx,
+    /** the host's Work service; a test hands in its own */
+    private readonly service: () => Pick<ServiceSupervisor, 'tokenSigner' | 'setLinks'> | undefined = () => serviceOf(ctx)
+  ) {
     this.store = new GuestStore(ctx.db)
   }
 
@@ -150,13 +156,14 @@ export class GuestRuntime {
     const shared = this.store.live().some((l) => sourceKey(l.source) === sourceKey(source))
     try {
       await this.ctx.lifeos.owner().mutation(source.table === 'docs' ? 'docs:setShared' : 'sheets:setShared', { id: source.id, shared })
+      this.told.set(sourceKey(source), shared)
     } catch (err) {
       this.ctx.log(`guests: ${sourceKey(source)} shared=${shared} was not set: ${String(err)}`)
     }
   }
 
   private async sign(key: string, claims: KitClaims): Promise<{ token: string; exp: number } | null> {
-    const signer = serviceOf(this.ctx)?.tokenSigner()
+    const signer = this.service()?.tokenSigner()
     if (!signer) return null
     const held = this.tokens.get(key)
     if (held && held.signer === signer && held.exp - Date.now() > RESIGN_MS) return held
@@ -168,7 +175,7 @@ export class GuestRuntime {
 
   /** Tells the service every live link and open ticket, each with a token it may hand out. */
   async sync(): Promise<void> {
-    const supervisor = serviceOf(this.ctx)
+    const supervisor = this.service()
     if (!supervisor) return
     const now = Date.now()
     const owner = this.ownerName()
@@ -210,15 +217,19 @@ export class GuestRuntime {
     supervisor.setLinks(out)
   }
 
-  /** Every 30 s: tokens signed again, and links that ended since the last look clear their item's `shared`. */
+  /** Every 30 s: tokens signed again, and an item whose last link ended clears its `shared` (each item's told once after a start). */
   async tick(): Promise<void> {
     const now = Date.now()
-    const ended = this.store.endedBetween(this.lastTick, now)
-    this.lastTick = now
     await this.sync()
-    const items = new Map(ended.map((l) => [sourceKey(l.source), l.source]))
-    for (const source of items.values()) await this.setShared(source)
-    if (ended.length) this.ctx.push({ push: 'work.guests' })
+    const live = new Set(this.store.live(now).map((l) => sourceKey(l.source)))
+    let changed = false
+    for (const l of this.store.listed(now)) {
+      const key = sourceKey(l.source)
+      if (this.told.get(key) === live.has(key)) continue
+      changed ||= this.told.has(key)
+      await this.setShared(l.source)
+    }
+    if (changed) this.ctx.push({ push: 'work.guests' })
   }
 }
 

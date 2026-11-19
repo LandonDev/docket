@@ -53,7 +53,7 @@ export interface FakeConvex {
   versions: FakeVersion[]
   branches: FakeBranch[]
   files: Map<string, Uint8Array>
-  threads: { docId: string; body: string; quote?: string; author?: string; threadId: string }[]
+  threads: { docId: string; body: string; quote?: string; author?: string; threadId: string; replies?: { body: string; author?: string; commentId: string }[] }[]
   calls: string[]
   /** while true, every docs:store fails as a down backend would */
   failStores: boolean
@@ -125,6 +125,26 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
         const threadId = `th${++n}`
         threads.push({ ...(args as { docId: string; body: string; quote?: string; author?: string }), threadId })
         return json(200, ok({ threadId, commentId: `c${n}` }))
+      }
+      // A thread and its comments in M17's `docs.threads` shape (milestone 31's guest routes read and answer them).
+      case 'docs:threads':
+        return json(
+          200,
+          ok(
+            threads
+              .filter((t) => t.docId === args.docId)
+              .map((t) => ({
+                thread: { _id: t.threadId, quote: t.quote, resolved: false, at: 1, editedAt: 1 },
+                comments: [{ _id: `${t.threadId}c`, author: t.author, body: t.body, at: 1, editedAt: 1 }, ...(t.replies ?? []).map((r) => ({ _id: r.commentId, author: r.author, body: r.body, at: 2, editedAt: 2 }))]
+              }))
+          )
+        )
+      case 'docs:addComment': {
+        const t = threads.find((x) => x.threadId === args.threadId)
+        if (!t) return json(200, fail('not found'))
+        const commentId = `c${++n}`
+        ;(t.replies ??= []).push({ body: args.body as string, author: args.author as string | undefined, commentId })
+        return json(200, ok({ commentId }))
       }
       case 'docs:remove':
         docs.delete(args.id as string)

@@ -94,8 +94,8 @@ export class GuestStore {
     const since = now - GUEST_KEEP_MS
     return (
       this.db
-        .prepare(`SELECT * FROM ${GUEST_LINKS_TABLE} WHERE (revoked_at IS NULL AND expires_at > ?) OR MAX(COALESCE(revoked_at, 0), MIN(expires_at, ?)) > ? ORDER BY created_at DESC`)
-        .all(since, now, since) as Raw[]
+        .prepare(`SELECT * FROM ${GUEST_LINKS_TABLE} WHERE (revoked_at IS NULL AND expires_at > ?) OR MIN(COALESCE(revoked_at, expires_at), expires_at) > ? ORDER BY created_at DESC`)
+        .all(now, since) as Raw[]
     ).map(rowOf)
   }
 
@@ -105,11 +105,6 @@ export class GuestStore {
 
   forSource(source: GuestSource, now = Date.now()): StoredLink[] {
     return this.listed(now).filter((l) => sourceKey(l.source) === sourceKey(source))
-  }
-
-  /** Links that ended between `after` and `now`: their items may need `shared` cleared. */
-  endedBetween(after: number, now: number): StoredLink[] {
-    return (this.db.prepare(`SELECT * FROM ${GUEST_LINKS_TABLE} WHERE revoked_at IS NULL AND expires_at > ? AND expires_at <= ?`).all(after, now) as Raw[]).map(rowOf)
   }
 
   name(id: string): string | null {
