@@ -85,11 +85,12 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const { env } = props;
   const pane = paneOf(props);
   const fetched = useBrowser(env, pane);
-  const { state, held, live, error } = props.data ?? fetched;
+  const { state, held, entry, live, error } = props.data ?? fetched;
   const face = barFaceOf(state, held);
-  // While a submit waits the body draws the held page's kept picture, a live window or not: his press approves what he has
-  // seen, so the primary waits until that picture has drawn (or none was kept), and stays off while it comes or failed.
-  const still = face.face === "held" && !props.picture ? face.item.ref : null;
+  // While a submit waits and the agent drives, the body draws the held page's kept picture, a live window or not: his press
+  // approves what he has seen, so the primary waits until that picture has drawn (or none was kept), and stays off while it
+  // comes or failed. Once he has taken over a window this desktop draws, he sees it live, and the still and its wait give way.
+  const still = face.face === "held" && !(face.owner && entry) && !props.picture ? face.item.ref : null;
   const picture = useHeldPicture(env, still);
   const seen = !still || pictureShown(picture);
   const [busy, press] = usePress();
@@ -203,8 +204,10 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const waiting = held && (held.state === "held" || held.state === "live") ? held : null;
-  // A waiting submit shows the page it kept, never the live window's placeholder, so the stream rests until it is decided.
-  const stream = useLiveStream(entry, !waiting, box, measure);
+  // A waiting submit shows the page it kept, never the live window's placeholder, so the stream rests until it is decided;
+  // once he takes over he drives the live window, so the body draws it (browser.html "You took over").
+  const still = waiting && !(state?.driver === "owner" && entry) ? waiting : null;
+  const stream = useLiveStream(entry, !still, box, measure);
 
   // Where it runs, said once after the page's title: the Mac a box thread drives, else the thread's own host (none for this one).
   const where = entry?.row.macName ?? live.find((e) => e.row.macName)?.row.macName ?? hostName(env);
@@ -226,8 +229,8 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
       {/* The page fills the body inside its inset (browser.html), at any width of canvas. */}
       <div className="flex w-full flex-col gap-3">
         {error && !props.picture ? null : props.picture ??
-          (waiting ? (
-            <StillView env={env} held={waiting} />
+          (still ? (
+            <StillView env={env} held={still} />
           ) : entry ? (
             <LiveView stream={stream} box={box} label={liveLabel(entry)} />
           ) : state ? (

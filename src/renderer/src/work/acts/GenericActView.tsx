@@ -1,5 +1,5 @@
 import { cn } from "../../lib/cn";
-import { payloadView } from "../outbox/model";
+import { payloadView, type Field } from "../outbox/model";
 import type { ActViewProps } from "./registry";
 
 /**
@@ -8,8 +8,13 @@ import type { ActViewProps } from "./registry";
  * exactly as it will go. A kind's own view (`work/<pillar>/act.ts`) takes its
  * place once the pillar lands.
  */
+/** A computer act's tool word ("left_click") under a title that already says what the click does: left out of its rows. */
+export const actFields = (kind: string, fields: Field[]): Field[] => (kind === "computer.act" ? fields.filter((f) => f.path.join(".") !== "args.action") : fields);
+
 export function GenericActView({ item }: ActViewProps) {
-  const { fields, body } = payloadView(item.payload);
+  const view = payloadView(item.payload);
+  const body = view.body;
+  const fields = actFields(item.kind, view.fields);
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
       {fields.length ? (

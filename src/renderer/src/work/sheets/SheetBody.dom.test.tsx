@@ -457,6 +457,51 @@ describe("the sheet kind", () => {
     expect(screen.queryByText("Read only")).toBeNull();
   });
 
+  it("Retry after the grid's own code failed to load fetches it again, and the grid then opens", async () => {
+    sheetHost = fakeSheetHost(sheetView(), BOOK);
+    grid = fakeGrid();
+    let tries = 0;
+    grid.prepare = async () => {
+      tries += 1;
+      if (tries === 1) throw new Error("The grid did not load");
+    };
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    expect(await screen.findByText("Couldn't open this sheet")).toBeTruthy();
+    const opens = sheetHost.calls.filter((c) => c[0] === "open").length;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await gridUp();
+    expect(tries).toBe(2);
+    expect(cell("A2").textContent).toBe("Flights");
+    // The host's open had not failed, so it is not asked again.
+    expect(sheetHost.calls.filter((c) => c[0] === "open").length).toBe(opens);
+  });
+
+  it("a grid that still cannot load keeps the failure with Retry", async () => {
+    sheetHost = fakeSheetHost(sheetView(), BOOK);
+    grid = fakeGrid();
+    let tries = 0;
+    grid.prepare = async () => {
+      tries += 1;
+      throw new Error("The grid did not load");
+    };
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    expect(await screen.findByText("Couldn't open this sheet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(tries).toBe(2));
+    expect(await screen.findByText("Couldn't open this sheet")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("names the range and the file in Ask's chip", async () => {
     open(sheetView(), { selection: "A1:B5" });
     await gridUp();

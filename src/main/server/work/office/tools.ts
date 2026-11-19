@@ -49,9 +49,35 @@ export interface OfficeTool {
 
 const fail = (text: string): WorkToolResult => ({ ...workText(text), isError: true })
 const json = (v: unknown): WorkToolResult => workText(JSON.stringify(v, null, 1))
-/** Others can open it: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from there. */
-export const sharedKey = (key: string): boolean => /^https?:\/\//i.test(key) || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(key)
-const judged = (reason: WriteReason, key: string, env: Env) => judgeWrite(reason, { shared: sharedKey(key), ownerSaid: () => env.asked })
+/** Others can open it: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from there, on a Mac or under Windows. */
+export const sharedKey = (key: string): boolean => {
+  const k = key.replace(/\\/g, '/')
+  return /^https?:\/\//i.test(k) || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(k)
+}
+
+/**
+ * The open file a write names, as the carrier keys it: its key (either separator), else the one open file of that
+ * name, since a carrier also takes a bare name. Null when none or several answer to it, or the app cannot be asked.
+ */
+export async function fileKey(env: Pick<Env, 'carrier'>, kind: 'workbook' | 'document' | 'deck', name: string): Promise<string | null> {
+  let open: { key: string; name: string }[]
+  try {
+    open = kind === 'workbook' ? await env.carrier.workbooks() : kind === 'document' ? await env.carrier.documents() : await env.carrier.presentations()
+  } catch {
+    return null
+  }
+  const slash = (s: string): string => s.replace(/\\/g, '/')
+  const byKey = open.filter((f) => f.key === name || slash(f.key) === slash(name))
+  if (byKey.length === 1) return byKey[0]!.key
+  const byName = open.filter((f) => f.name === name)
+  return byName.length === 1 ? byName[0]!.key : null
+}
+
+/** A write judged on the file it lands in: found by its key first, and one that cannot be found counts as one others can open. */
+async function judged(reason: WriteReason, kind: 'workbook' | 'document' | 'deck', name: string, env: Env): Promise<{ verdict: ReturnType<typeof judgeWrite>; key: string }> {
+  const key = await fileKey(env, kind, name)
+  return { verdict: judgeWrite(reason, { shared: key === null || sharedKey(key), ownerSaid: () => env.asked }), key: key ?? name }
+}
 
 const Reason = WriteReasonSchema.shape
 const Addresses = z.array(z.string().max(320)).max(100)
@@ -116,11 +142,12 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       const cols = range.endColumn - range.startColumn + 1
       if (a.values.length !== rows || a.values.some((r) => r.length !== cols)) return fail(`${a.range} is ${rows} by ${cols}: pass that many rows of that many cells.`)
       if (rangeCells(range) > EXCEL_MAX_CELLS) return fail(`Write at most ${EXCEL_MAX_CELLS.toLocaleString('en-US')} cells a call.`)
-      if (judged(a, a.workbook, env) === 'suggest') {
-        const now = await env.excel.read(a.workbook, sheet, range)
+      const { verdict, key: workbook } = await judged(a, 'workbook', a.workbook, env)
+      if (verdict === 'suggest') {
+        const now = await env.excel.read(workbook, sheet, range)
         if (a.base !== undefined && a.base !== now.hash) return json({ conflict: true, now: now.values })
         const n = env.suggestions.add(
-          excelStore(a.workbook),
+          excelStore(workbook),
           randomUUID(),
           env.by,
           a.because === 'own' ? undefined : 'his words were not found in this thread',
@@ -136,7 +163,7 @@ export const OFFICE_TOOLS: OfficeTool[] = [
         )
         return workText(`Others can open this workbook, so nothing was written: ${n} cell${n === 1 ? ' waits' : 's wait'} as suggestions for the owner to take or leave.`)
       }
-      const res = await env.excel.write(a.workbook, sheet, range, a.values as OfficeCell[][], { base: a.base, by: env.by })
+      const res = await env.excel.write(workbook, sheet, range, a.values as OfficeCell[][], { base: a.base, by: env.by })
       return 'conflict' in res ? json({ conflict: true, now: res.now.values }) : json({ written: a.range, writeId: res.writeId, hash: res.hash })
     }
   }),
@@ -166,8 +193,9 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     async run(a, env) {
       const edit = a.insert !== undefined ? { insert: a.insert, at: a.at ?? 'end' } : a.find !== undefined && a.replace !== undefined ? { find: a.find, replace: a.replace } : null
       if (!edit) return fail('Pass `insert` (with `at`), or `find` and `replace`.')
-      const tracked = judged(a, a.document, env) === 'suggest'
-      const n = await env.carrier.editDocument(a.document, edit, tracked)
+      const { verdict, key } = await judged(a, 'document', a.document, env)
+      const tracked = verdict === 'suggest'
+      const n = await env.carrier.editDocument(key, edit, tracked)
       return workText(`${n === 0 ? 'Nothing matched.' : `Changed ${n} place${n === 1 ? '' : 's'}`}${n && tracked ? ', as tracked changes for the owner to accept.' : n ? '.' : ''}`)
     }
   }),
@@ -184,8 +212,9 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     input: { deck: z.string(), find: z.string().min(1).max(1_000), replace: z.string().max(1_000), ...Reason },
     readOnly: false,
     async run(a, env) {
-      if (judged(a, a.deck, env) === 'suggest') return fail('Others can open this deck and he did not ask for this change in so many words: nothing was changed. Say it in your reply instead.')
-      const n = await env.carrier.replaceSlideText(a.deck, a.find, a.replace)
+      const { verdict, key } = await judged(a, 'deck', a.deck, env)
+      if (verdict === 'suggest') return fail('Others can open this deck and he did not ask for this change in so many words: nothing was changed. Say it in your reply instead.')
+      const n = await env.carrier.replaceSlideText(key, a.find, a.replace)
       return workText(n ? `Changed ${n} text box${n === 1 ? '' : 'es'}.` : 'Nothing matched.')
     }
   }),

@@ -46,12 +46,12 @@ const PROPOSED = fakeDoc(Array.from({ length: 13 }, (_, i) => ({ size: WIDE, run
 let deckHost: ReturnType<typeof fakeDeckHost>;
 let item: CanvasItem;
 
-function kinds(): Record<string, CanvasKindDef> {
+function kinds(width = 800): Record<string, CanvasKindDef> {
   // Each render a doc of its own: the file's 12 slides, the proposed deck's 13.
   let opened = 0;
   const engine = fakeEngine(() => (opened++ === 0 ? DECK : PROPOSED));
   const module = import("./SlidesCanvas").then((m) => ({
-    Body: (props: CanvasBodyProps) => <m.Body {...(props as CanvasBodyProps<undefined>)} host={deckHost} engine={engine} width={800} height={700} />,
+    Body: (props: CanvasBodyProps) => <m.Body {...(props as CanvasBodyProps<undefined>)} host={deckHost} engine={engine} width={width} height={700} />,
     Bar: m.Bar as never,
     TabEnd: m.TabEnd as never,
   }));
@@ -59,14 +59,14 @@ function kinds(): Record<string, CanvasKindDef> {
 }
 
 let n = 0;
-function open(view: DeckView, opened?: () => Promise<DeckView>) {
+function open(view: DeckView, opened?: () => Promise<DeckView>, width?: number) {
   // Each test its own item, so the deck's per-item store starts fresh.
   item = canvasItem(`deck${++n}`, { kind: "slides", title: "Sponsor deck.pptx", source: { at: "file", host: "local", path: "/work/deck.pptx" } });
   deckHost = fakeDeckHost({ ...view, itemId: item.id });
   if (opened) deckHost.open = opened;
   host.current = fakeHost([item], host as never);
   return render(
-    <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+    <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds(width) as never}>
       <div />
     </CanvasSeat>,
   );
@@ -130,11 +130,52 @@ describe("the slides kind", () => {
     expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
   });
 
+  it("is one Tab stop, the slide on the stage, and the arrows down the strip, Home and End move the focus and the stage", async () => {
+    open(deckView({ slides: Array.from({ length: 5 }, (_, i) => slide(i + 1)) }));
+    await found("[data-slides-stage]");
+    const strip = screen.getByRole("listbox", { name: "Slides" });
+    expect(strip.getAttribute("aria-orientation")).toBe("vertical");
+    expect(thumbs().map((t) => t.tabIndex)).toEqual([0, -1, -1, -1, -1]);
+    thumbs()[0].focus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    await waitFor(() => expect(thumbs()[1].getAttribute("aria-selected")).toBe("true"));
+    expect(document.activeElement).toBe(thumbs()[1]);
+    expect(thumbs().map((t) => t.tabIndex)).toEqual([-1, 0, -1, -1, -1]);
+    await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 2"));
+    // Across the strip does nothing in the vertical form.
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    expect(thumbs()[1].getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    await waitFor(() => expect(thumbs()[4].getAttribute("aria-selected")).toBe("true"));
+    expect(document.activeElement).toBe(thumbs()[4]);
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(thumbs()[4].getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    await waitFor(() => expect(thumbs()[0].getAttribute("aria-selected")).toBe("true"));
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+    expect(thumbs()[0].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("in a narrow canvas the strip runs across, so Left and Right move along it", async () => {
+    open(deckView({ slides: Array.from({ length: 3 }, (_, i) => slide(i + 1)) }), undefined, 360);
+    await found("[data-slides-stage]");
+    expect(screen.getByRole("listbox", { name: "Slides" }).getAttribute("aria-orientation")).toBe("horizontal");
+    thumbs()[0].focus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(thumbs()[0].getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    await waitFor(() => expect(thumbs()[1].getAttribute("aria-selected")).toBe("true"));
+    expect(document.activeElement).toBe(thumbs()[1]);
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    await waitFor(() => expect(thumbs()[0].getAttribute("aria-selected")).toBe("true"));
+  });
+
   it("shows an agent's revision as changed slides, a move where it lands and where it leaves, stepped from the bar", async () => {
     open(revised());
     const bar = await screen.findByRole("toolbar", { name: "Review changes" });
     // The stage starts on slide 1, which no change touches.
-    expect(within(bar).getByText("0/5")).toBeTruthy();
+    // No change in hand: the count alone (the frame's stepper, round 5).
+    expect(within(bar).getByText("5")).toBeTruthy();
     expect(thumbs().filter((t) => t.dataset.tint === "add")).toHaveLength(5);
     const ghost = thumbs().find((t) => t.dataset.slide === "ghost:6")!;
     expect(ghost.dataset.tint).toBe("del");
@@ -151,7 +192,8 @@ describe("the slides kind", () => {
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: ["c6"], verdict: "accept" }]));
     await waitFor(() => expect(thumbs().some((t) => t.dataset.slide === "ghost:6")).toBe(false));
-    expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByText(/\/4$/)).toBeTruthy();
+    // Four left: "n/4" with a change in hand, the count alone with none.
+    expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByText(/^(\d+\/)?4$/)).toBeTruthy();
   });
 
   it("puts a shape's words in Ask's chip when he picks it on the stage", async () => {

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { TruncateTip } from "../../components/tip";
+import { useTruncated } from "../../components/tip";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { ItemSkeleton } from "./ItemBones";
 import { StatusMark } from "../../components/ui/status";
 import type { Chunk } from "../../lib/lazyChunk";
@@ -37,6 +39,23 @@ export function detailWords(detail: string): string {
   return detail;
 }
 
+/** The state line's detail, cut to its room: while cut it takes the focus too, so the keyboard can bring up the whole of it in the same tip the pointer does. */
+function Detail({ text }: { text: string }) {
+  const { ref, cut } = useTruncated(text);
+  const span = (
+    <span ref={ref} tabIndex={cut ? 0 : undefined} className="focus-ring block truncate rounded-sm">
+      {text}
+    </span>
+  );
+  if (!cut) return span;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={span} />
+      <TooltipContent>{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. A cut detail shows whole on hover. */
 function StateLine({ line }: { line: StatusLine }) {
   const [running, setRunning] = useState(false);
@@ -48,11 +67,7 @@ function StateLine({ line }: { line: StatusLine }) {
         state={line.tone === "failed" ? "failed" : "waiting"}
         word={line.word}
         detail={
-          detail ? (
-            <TruncateTip text={detail}>
-              <span className="block truncate">{detail}</span>
-            </TruncateTip>
-          ) : null
+          detail ? <Detail text={detail} /> : null
         }
         className="min-w-0 flex-1"
       />
@@ -103,7 +118,12 @@ export function CanvasPane({
   return (
     <div data-canvas-pane data-kind={item.kind} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {/* History is for an item that has opened: not while the kind's code loads, nor while the kind says it is opening or could not open. */}
-      <KindBar feeds={feeds} tools={Bar ? <Bar {...props} /> : undefined} onHistory={def.history && module && feeds.ready !== false ? shell.openHistory : undefined} />
+      {/* While the kind's code loads, the bar holds a bone where its tools will be, so the body does not drop 32px when the code lands. */}
+      <KindBar
+        feeds={feeds}
+        tools={Bar ? <Bar {...props} /> : module ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />}
+        onHistory={def.history && module && feeds.ready !== false ? shell.openHistory : undefined}
+      />
       {feeds.status ? <StateLine line={feeds.status} /> : null}
       <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
         <Body {...props} />

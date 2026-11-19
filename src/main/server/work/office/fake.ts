@@ -22,6 +22,9 @@ export interface FakeBook {
 
 const at = (r: number, c: number): string => `${r},${c}`
 
+/** A file by its key, or by its name alone, as the Mac carrier's scripts find one (mac.ts `byKey`, `book`). */
+const byKeyOrName = <T>(files: Map<string, T>, key: string): T | undefined => files.get(key) ?? [...files].find(([k]) => k.split(/[\\/]/).pop() === key)?.[1]
+
 export class FakeOffice implements OfficeCarrier {
   readonly kind = 'fake' as const
   readonly log: { verb: string; args: unknown[] }[] = []
@@ -80,7 +83,7 @@ export class FakeOffice implements OfficeCarrier {
   }
 
   private sheetOf(key: string, sheet: string): Map<string, FakeCell> {
-    const book = this.books.get(key)
+    const book = byKeyOrName(this.books, key)
     if (!book) throw new OfficeError(`No open workbook ${key}.`, 'not-found')
     const s = book.sheets.get(sheet)
     if (!s) throw new OfficeError(`${book.name} has no sheet ${sheet}.`, 'not-found')
@@ -163,7 +166,7 @@ export class FakeOffice implements OfficeCarrier {
   }
 
   private docOf(doc: string) {
-    const d = this.docs.get(doc)
+    const d = byKeyOrName(this.docs, doc)
     if (!d) throw new OfficeError(`Nothing open named ${doc}.`, 'not-found')
     return d
   }
@@ -175,14 +178,14 @@ export class FakeOffice implements OfficeCarrier {
 
   async readSlides(pres: string) {
     this.seen('readSlides', pres)
-    const d = this.decks.get(pres)
+    const d = byKeyOrName(this.decks, pres)
     if (!d) throw new OfficeError(`Nothing open named ${pres}.`, 'not-found')
     return d.map((texts, i) => ({ index: i + 1, texts: [...texts] }))
   }
 
   async replaceSlideText(pres: string, find: string, replace: string) {
     this.seen('replaceSlideText', pres, find, replace)
-    const d = this.decks.get(pres)
+    const d = byKeyOrName(this.decks, pres)
     if (!d) throw new OfficeError(`Nothing open named ${pres}.`, 'not-found')
     let n = 0
     for (const slide of d)

@@ -452,6 +452,7 @@ function Chart({ bars, format, stale, title }: { bars: { label: string; value: n
   // Where a value sits, in percent up from the plot's foot; zero is the bars' base, so a negative bar hangs below it.
   const at = (v: number): number => ((v - bottom) / span) * 100;
   const now = isTimeSeries(bars.map((b) => b.label)) ? bars.length - 1 : -1;
+  const columns = `repeat(${bars.length}, minmax(0, 1fr))`;
   return (
     <div role="img" aria-label={`${title}: ${bars.map((b) => `${b.label} ${tick(b.value, format)}`).join(", ")}`} className="grid h-[168px] grid-cols-[40px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_20px]">
       <div className="relative text-xs text-muted-foreground tabular-nums">
@@ -462,7 +463,8 @@ function Chart({ bars, format, stale, title }: { bars: { label: string; value: n
         ))}
       </div>
       <TooltipProvider>
-        <div className={`relative flex justify-around ${bottom === 0 ? "border-b border-border" : ""}`}>
+        {/* One column per bar, its label under it in the same column: a label never runs into its neighbour's. */}
+        <div className={`relative grid justify-items-center ${bottom === 0 ? "border-b border-border" : ""}`} style={{ gridTemplateColumns: columns }}>
           {ticks.map((t) =>
             t === bottom && bottom === 0 ? null : (
               <i key={t} aria-hidden data-zero={t === 0 || undefined} className={`absolute inset-x-0 h-0 border-t border-border ${t === 0 ? "" : "border-dashed"}`} style={{ bottom: `${at(t)}%` }} />
@@ -482,11 +484,13 @@ function Chart({ bars, format, stale, title }: { bars: { label: string; value: n
           ))}
         </div>
       </TooltipProvider>
-      <div className="col-start-2 flex justify-around text-xs leading-5 text-muted-foreground">
+      <div data-chart-labels className="col-start-2 grid text-xs leading-5 text-muted-foreground" style={{ gridTemplateColumns: columns }}>
         {bars.map((b, i) => (
-          <span key={`${b.label}${i}`} className={`flex w-0 justify-center whitespace-nowrap ${i === now ? "font-medium text-foreground" : ""}`}>
-            {b.label}
-          </span>
+          <TruncateTip key={`${b.label}${i}`} text={b.label}>
+            <span data-chart-label className={`min-w-0 truncate px-0.5 text-center ${i === now ? "font-medium text-foreground" : ""}`}>
+              {b.label}
+            </span>
+          </TruncateTip>
         ))}
       </div>
     </div>

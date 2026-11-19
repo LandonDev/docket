@@ -46,11 +46,22 @@ vi.mock("./seek", () => ({
   stepFrame: async () => seeks.step,
   watchFrames: () => () => undefined,
 }));
+// The proxy's feeder, recorded: jsdom has no Media Source. Each feed keeps what it would tell the player of a failed segment.
+const feeds = vi.hoisted(() => [] as Array<{ onError?: (err: unknown) => void; destroyed: boolean }>);
+vi.mock("./segments", async (original) => ({
+  ...(await original<typeof import("./segments")>()),
+  attachSegments: (_video: unknown, _source: unknown, _bytes: unknown, onError?: (err: unknown) => void) => {
+    const feed = { onError, destroyed: false };
+    feeds.push(feed);
+    return { update: () => undefined, destroy: () => void (feed.destroyed = true) };
+  },
+}));
 
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { dayTime } from "../../lib/duration";
 import { Bar, Body, selectionChip } from "./MediaCanvas";
 import { levelFor, scaleOf } from "./Picture";
+import { FEED_FAILED } from "./Player";
 import { resetMediaStore } from "./store";
 
 const table: FrameTable = { kind: "cfr", start: 0, rate: { num: 24, den: 1 }, count: 3216 };
@@ -183,6 +194,30 @@ describe("the media canvas", () => {
     expect(loads).toBeGreaterThan(0);
     await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
     expect(plays).toHaveLength(2);
+  });
+
+  it("says a proxy segment that failed after Play on the state line, and Retry builds the feed again where it stood", async () => {
+    feeds.length = 0;
+    const plays: number[] = [];
+    HTMLMediaElement.prototype.load = () => undefined;
+    HTMLMediaElement.prototype.play = async () => void plays.push(Date.now());
+    const HLS: MediaVersion = { ...V3, plays: [{ via: "hls", init: "init", segments: [{ start: 0, duration: 4 }], ended: true, mime: 'video/mp4; codecs="avc1.640028"', table, why: "long" }] };
+    const { shell } = await mount({ versions: [HLS] });
+    await waitFor(() => expect(feeds).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(plays).toHaveLength(1));
+    // The picture plays, then a segment does not come: the feed stops, and the state line says why.
+    act(() => feeds[0]!.onError?.(new Error("socket closed")));
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't play this video", detail: FEED_FAILED })));
+    const line = shell.statusLine.mock.lastCall![0] as { action: { label: string; run(): Promise<void> } };
+    expect(line.action.label).toBe("Retry");
+    await act(() => line.action.run());
+    // A new feed in the old one's place, and the video plays again from there.
+    await waitFor(() => expect(feeds).toHaveLength(2));
+    expect(feeds[0]!.destroyed).toBe(true);
+    expect(feeds[1]!.destroyed).toBe(false);
+    await waitFor(() => expect(plays).toHaveLength(2));
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
   });
 
   it("takes a Pause that cut a starting Play for no refusal", async () => {

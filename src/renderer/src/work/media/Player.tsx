@@ -43,8 +43,18 @@ const tableOf = (v: MediaVersion): FrameTable | null => {
   return play && "table" in play ? play.table : null;
 };
 
-/** Points a `<video>` at a version: the file's URL, or the HLS proxy through Media Source. */
-function useSource(video: HTMLVideoElement | null, version: MediaVersion, actions: MediaActions): void {
+/** What the state line says of a proxy segment that did not come: the host's words for it are transport, not his. */
+export const FEED_FAILED = "Part of the video did not load";
+
+const playsHls = (v: MediaVersion): boolean => shownPlay(v)?.via === "hls";
+
+/**
+ * Points a `<video>` at a version: the file's URL, or the HLS proxy through Media Source. A segment that fails stops the
+ * feed, and `onFeedError` hears of it; a new `round` builds the feed again from nothing (a MediaSource attaches once).
+ */
+function useSource(video: HTMLVideoElement | null, version: MediaVersion, actions: MediaActions, round: number, onFeedError: (err: unknown) => void): void {
+  const failed = useRef(onFeedError);
+  failed.current = onFeedError;
   const play = shownPlay(version);
   const feed = useRef<SegmentFeed | null>(null);
   const hls = play?.via === "hls" ? play : null;
@@ -60,14 +70,19 @@ function useSource(video: HTMLVideoElement | null, version: MediaVersion, action
   const init = hls?.init ?? null;
   useEffect(() => {
     if (!video || !init || !hls) return;
-    feed.current = attachSegments(video, { init, segments: hls.segments, ended: hls.ended, mime: hls.mime }, async (i) => Uint8Array.from(atob(await actions.segment(version.id, i)), (c) => c.charCodeAt(0)).buffer);
+    feed.current = attachSegments(
+      video,
+      { init, segments: hls.segments, ended: hls.ended, mime: hls.mime },
+      async (i) => Uint8Array.from(atob(await actions.segment(version.id, i)), (c) => c.charCodeAt(0)).buffer,
+      (err) => failed.current(err),
+    );
     return () => {
       feed.current?.destroy();
       feed.current = null;
     };
-    // The feed is made once per version; later lists reach it through update().
+    // The feed is made once per version and round; later lists reach it through update().
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [video, init, version.id]);
+  }, [video, init, version.id, round]);
   useEffect(() => {
     if (hls) feed.current?.update(hls.segments, hls.ended);
   }, [hls]);
@@ -142,8 +157,15 @@ export function Player({
   const total = table ? frameCount(table) : 0;
   const start = table ? frameStart(table, 0) : 0;
 
-  useSource(primary, versions[0], actions);
-  useSource(second, versions[1] ?? versions[0], actions);
+  // A proxy segment that failed after Play stalls the picture with no refusal: it is said on the same state line, and
+  // Retry (`play`) builds the feed again, where the video stood.
+  const [feedRound, setFeedRound] = useState(0);
+  const resumeAt = useRef<number | null>(null);
+  const failedRef = useRef(onPlayFailed);
+  failedRef.current = onPlayFailed;
+  const feedFailed = useCallback(() => failedRef.current?.(FEED_FAILED), []);
+  useSource(primary, versions[0], actions, feedRound, feedFailed);
+  useSource(second, versions[1] ?? versions[0], actions, feedRound, feedFailed);
 
   const all = (): HTMLVideoElement[] => videos.current.filter((v): v is HTMLVideoElement => !!v);
   // One ref per screen for the element's life: a new callback each render would detach and attach it every time.
@@ -182,6 +204,12 @@ export function Player({
     seek,
     play: () => {
       const vs = all();
+      if (versions.some(playsHls)) {
+        // The feeds are built again first; the effect below plays once they are in place.
+        resumeAt.current = vs[0]?.currentTime ?? 0;
+        setFeedRound((n) => n + 1);
+        return;
+      }
       for (const v of vs) v.load();
       playAll(vs);
     },
@@ -190,6 +218,21 @@ export function Player({
       return r ? new DOMRect(r.left + xOf(n) * r.width, r.top, 0, r.height) : null;
     },
   }));
+
+  // After Retry's new feeds are attached (the source effects above run first): back to where the video stood, and play.
+  useEffect(() => {
+    const t = resumeAt.current;
+    if (t === null) return;
+    resumeAt.current = null;
+    const vs = all();
+    vs.forEach((v, i) => {
+      if (!playsHls(versions[i] ?? versions[0])) v.load();
+      v.currentTime = t;
+    });
+    playAll(vs);
+    // only a new round resumes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedRound]);
 
   // The clock: the frame on screen, from the first version's frame callbacks.
   useEffect(() => {

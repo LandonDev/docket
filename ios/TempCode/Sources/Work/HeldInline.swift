@@ -86,7 +86,7 @@ struct HeldInline: View {
 
     /// The act as it will go, in a hairline frame (radius 12, no fill), and its three buttons.
     private func frame(_ item: OutboxItem, entry: OutboxModel.Entry) -> some View {
-        let view = OutboxModel.payloadView(item.payload)
+        let view = OutboxModel.actView(item)
         return VStack(alignment: .leading, spacing: 8) {
             ForEach(view.fields) { field in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {

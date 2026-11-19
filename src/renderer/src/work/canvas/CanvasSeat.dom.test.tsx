@@ -498,6 +498,59 @@ describe("the frame a kind drives through its shell", () => {
     expect(history()).not.toBeNull();
   });
 
+  it("with no change in hand, prints the count alone; Next takes the first change, unless the kind cannot show it from there", async () => {
+    const { shell } = await driven();
+    const adapter = review({ index: -1, count: 3 });
+    act(() => shell.review(adapter));
+    const stepper = screen.getByRole("toolbar", { name: "Review changes" });
+    expect(within(stepper).queryByText(/\//)).toBeNull();
+    expect(within(stepper).getByText("3")).toBeTruthy();
+    expect(within(stepper).getByRole("button", { name: "Previous change" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(within(stepper).getByRole("button", { name: "Next change" }));
+    expect(adapter.step).toHaveBeenCalledWith(0);
+    // A form on its Responses: stepping shows nothing there, so Next is not lit.
+    act(() => shell.review(review({ index: -1, count: 3, enter: false })));
+    expect(within(stepper).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(true);
+    expect(within(stepper).getByText("3")).toBeTruthy();
+  });
+
+  it("holds the bar's place with a bone while a kind's code loads, so the body does not drop when it lands", async () => {
+    const { defineChunk } = await import("../../lib/lazyChunk");
+    let land: (module: unknown) => void = () => {};
+    const chunk = defineChunk("test-kind-late", () => new Promise((resolve) => (land = resolve)));
+    const kinds = drivenKinds(() => {}, { bar: true });
+    const view = await seat([DOC, SHEET], { ...kinds, document: { ...kinds.document, chunk: chunk as never } });
+    const bar = () => view.container.querySelector<HTMLElement>("[data-canvas-bar]");
+    expect(bar()?.querySelector("[data-bar-bone]")).not.toBeNull();
+    // The kind's own bar takes its place.
+    await act(async () => land({ Body: () => <p>The body</p>, Bar: () => <span data-testid="kind-tools">Zoom</span> }));
+    await waitFor(() => expect(bar()?.querySelector("[data-testid='kind-tools']")).not.toBeNull());
+    expect(bar()!.querySelector("[data-bar-bone]")).toBeNull();
+  });
+
+  it("lets the keyboard reach a cut state detail and its whole words, and leaves a whole one out of the tab order", async () => {
+    const { shell, container } = await driven();
+    const cut = { value: false };
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return cut.value && this.classList.contains("truncate") ? 400 : 0;
+    });
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => 100);
+    try {
+      act(() => shell.statusLine({ tone: "failed", word: "Couldn't open this document", detail: "short" }));
+      const whole = within(container.querySelector<HTMLElement>("[data-canvas-state]")!).getByText("short");
+      expect(whole.hasAttribute("tabindex")).toBe(false);
+      act(() => shell.statusLine(null));
+      cut.value = true;
+      act(() => shell.statusLine({ tone: "failed", word: "Couldn't open this document", detail: "The host refused the read: the file moved while it was being opened" }));
+      const detail = within(container.querySelector<HTMLElement>("[data-canvas-state]")!).getByText(/The host refused/);
+      expect(detail.getAttribute("tabindex")).toBe("0");
+      expect(detail.className).toContain("focus-ring");
+    } finally {
+      scroll.mockRestore();
+      client.mockRestore();
+    }
+  });
+
   async function historyIn(narrow: boolean) {
     // The tooltips wake only once no control holds the focus and no press is held (an earlier test's composer and tab press may).
     (document.activeElement as HTMLElement | null)?.blur();

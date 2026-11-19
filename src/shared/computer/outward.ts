@@ -711,7 +711,19 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
   let pointerName: string | null = pointer && 'named' in pointer ? pointer.named : null
   /** where the focus is as the call goes on; `undefined` once a step moved it somewhere nobody can tell */
   let focus: number | null | undefined = screen?.focused ?? null
-  const focusOr = (a: ComputerAction): number | null => a.element ?? (a.named !== undefined || focus === undefined ? null : focus)
+  /**
+   * Where a key, a typed text or a `confirm` goes: the element the step names; every element its name may find, as
+   * the service resolves it when the step runs (a focusable Send included), or nobody knows where when it finds none;
+   * else the focus, null when nobody knows it.
+   */
+  const keyTargets = (a: ComputerAction): (number | null)[] => {
+    if (a.element !== undefined) return [a.element]
+    if (a.named !== undefined) {
+      const hits = screen ? namedElements(screen, a.named) : []
+      return hits.length ? hits : [null]
+    }
+    return [focus === undefined ? null : focus]
+  }
   /** an earlier step of this call put text somewhere: a Send the read shows disabled may be live by now */
   let typed = false
   for (const [step, a] of steps.entries()) {
@@ -759,8 +771,10 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
       if (hit) return { step, why: byPoint || targetless ? 'position' : 'control', label: cap(hit.verb), on: say(hit.element) }
       // `confirm` on a field commits it as Return does.
       if (a.action === 'perform' && a.name === 'confirm') {
-        const sent = returnSends(screen, focusOr(a), { typed })
-        if (sent) return { step, why: 'key', ...sent }
+        for (const to of keyTargets(a)) {
+          const sent = returnSends(screen, to, { typed })
+          if (sent) return { step, why: 'key', ...sent }
+        }
       }
       if (CLICKS.includes(a.action)) {
         pointerOn = lands ?? null
@@ -776,36 +790,39 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
       }
       if (combo) {
         if (mailChord(screen, combo.modifiers, combo.key)) return { step, why: 'chord', label: 'Send', on: `${a.text} in ${screen.app.name}` }
-        // The key goes to the element the step names, else to the focus; a target by name is nobody's to resolve here.
-        const to = focusOr(a)
+        // The key goes to the element the step names (by its name, to any element that bears it), else to the focus.
         const chord = combo.modifiers.includes('super') || combo.modifiers.includes('ctrl')
-        const onText = to !== null && TEXT_ROLES.includes(screen.elements.get(to)?.role ?? '')
-        // Shift or Option with Return is a new line in a message box, never a send.
-        const newLine = !chord && combo.modifiers.length > 0 && onText
-        if (combo.key === 'Return' && !newLine) {
-          const sent = returnSends(screen, to, { chord, typed })
-          if (sent) return { step, why: chord ? 'chord' : 'key', label: sent.label, on: `${chord ? a.text : 'Return'} in ${sent.on}` }
-        }
-        if (combo.key === 'space' && combo.modifiers.length === 0 && !onText) {
-          const sent = returnSends(screen, to, { typed })
-          if (sent) return { step, why: 'key', label: sent.label, on: `Space in ${sent.on}` }
+        for (const to of keyTargets(a)) {
+          const onText = to !== null && TEXT_ROLES.includes(screen.elements.get(to)?.role ?? '')
+          // Shift or Option with Return is a new line in a message box, never a send.
+          const newLine = !chord && combo.modifiers.length > 0 && onText
+          if (combo.key === 'Return' && !newLine) {
+            const sent = returnSends(screen, to, { chord, typed })
+            if (sent) return { step, why: chord ? 'chord' : 'key', label: sent.label, on: `${chord ? a.text : 'Return'} in ${sent.on}` }
+          }
+          if (combo.key === 'space' && combo.modifiers.length === 0 && !onText) {
+            const sent = returnSends(screen, to, { typed })
+            if (sent) return { step, why: 'key', label: sent.label, on: `Space in ${sent.on}` }
+          }
         }
       }
     }
     if (screen && a.action === 'type') {
-      const to = focusOr(a)
-      const onText = to !== null && TEXT_ROLES.includes(screen.elements.get(to)?.role ?? '')
-      // A typed line break is Return; a typed space presses a control the focus is known to be on.
-      if (/[\r\n]/.test(a.text ?? '') || (/ /.test(a.text ?? '') && to !== null && !onText && !CONTAINER_ROLES.includes(screen.elements.get(to)?.role ?? ''))) {
-        const sent = returnSends(screen, to, { typed: true, text: true })
-        if (sent) return { step, why: 'typed', label: sent.label, on: `${/[\r\n]/.test(a.text ?? '') ? 'a line break' : 'a space'} typed in ${sent.on}` }
+      for (const to of keyTargets(a)) {
+        const onText = to !== null && TEXT_ROLES.includes(screen.elements.get(to)?.role ?? '')
+        // A typed line break is Return; a typed space presses a control the focus is known to be on.
+        if (/[\r\n]/.test(a.text ?? '') || (/ /.test(a.text ?? '') && to !== null && !onText && !CONTAINER_ROLES.includes(screen.elements.get(to)?.role ?? ''))) {
+          const sent = returnSends(screen, to, { typed: true, text: true })
+          if (sent) return { step, why: 'typed', label: sent.label, on: `${/[\r\n]/.test(a.text ?? '') ? 'a line break' : 'a space'} typed in ${sent.on}` }
+        }
       }
     }
     if (a.action === 'type' || a.action === 'paste' || a.action === 'set_value') typed = true
     // Where the focus is after this step.
     if (FOCUSES.includes(a.action)) {
       if (a.element !== undefined) focus = a.element
-      else if (a.named !== undefined || a.menu !== undefined) focus = undefined
+      else if (a.named !== undefined) focus = (screen ? namedTarget(screen, a.named) : null) ?? undefined
+      else if (a.menu !== undefined) focus = undefined
       else if (a.coordinate !== undefined && CLICKS.includes(a.action)) focus = (screen ? elementAt(screen, a.coordinate) : null) ?? undefined
     }
     if (a.action === 'key' || a.action === 'hold_key') {
@@ -834,7 +851,7 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
 export function needsFreshRead(steps: readonly ComputerAction[], pointer: PointerAt = null): boolean {
   if (landsByPosition(steps, pointer)) return true
   return steps.some((a, step) => {
-    if (namedClick(a)) return true
+    if (namedClick(a) || namedKeys(a)) return true
     if (targetlessClick(a)) {
       const at = pointerAfter(steps.slice(0, step), pointer)
       return !!at && 'named' in at
@@ -913,6 +930,17 @@ function placeOf(screen: Screen, index: number): { sig: string; ordinal: number;
   return { sig, ordinal: same.indexOf(index), count: same.length }
 }
 
+/** A key or typed text sent to an element found by its name. */
+const namedKeys = (a: ComputerAction): boolean => ['key', 'hold_key', 'type'].includes(a.action) && a.named !== undefined && a.element === undefined
+
+/**
+ * Whether a key or typed text names an element its name finds none of, or several, on the screen: the service would
+ * resolve it on its own and the host cannot judge where it goes. In a thread the hold applies to it is refused.
+ */
+export function namedKeysUnplaced(steps: readonly ComputerAction[], screen: Screen): boolean {
+  return steps.some((a) => namedKeys(a) && namedTarget(screen, a.named!) === null)
+}
+
 const targetlessClick = (a: ComputerAction): boolean => CLICKS.includes(a.action) && a.element === undefined && a.coordinate === undefined && a.named === undefined && a.menu === undefined
 /** A click or a press by name: the name is found again when the step runs. */
 const namedClick = (a: ComputerAction): boolean => (CLICKS.includes(a.action) || a.action === 'perform') && a.named !== undefined && a.element === undefined && a.coordinate === undefined
@@ -938,10 +966,10 @@ export function heldTargets(steps: readonly ComputerAction[], screen: Screen, po
       if (!place) return null
       out.push({ step, param: 'point', ...place })
     }
-    // A click by name, or with no target where the pointer is, finds its element when it runs: it must find the one he
-    // was shown (a "paperplane" still inside "Send to Dana"). With no pointer known the click could land anywhere.
-    if (namedClick(a) || targetlessClick(a)) {
-      const index = namedClick(a) ? namedTarget(screen, a.named!) : pointedAt(screen, pointerAfter(steps.slice(0, step), pointer))
+    // A click or a key by name, or a click with no target where the pointer is, finds its element when it runs: it must
+    // find the one he was shown (a "paperplane" still inside "Send to Dana"). With no pointer known the click could land anywhere.
+    if (namedClick(a) || namedKeys(a) || targetlessClick(a)) {
+      const index = namedClick(a) || namedKeys(a) ? namedTarget(screen, a.named!) : pointedAt(screen, pointerAfter(steps.slice(0, step), pointer))
       const place = index !== null ? placeOf(screen, index) : null
       if (!place) return null
       out.push({ step, param: 'point', ...place })
@@ -1024,7 +1052,7 @@ export function restage(steps: readonly ComputerAction[], targets: readonly Held
       if (screen.focused !== index) return null
     } else if (t.param === 'point') {
       if (targetlessClick(step)) pointed.push([t.step, index])
-      else if (namedClick(step)) {
+      else if (namedClick(step) || namedKeys(step)) {
         if (namedTarget(screen, step.named!) !== index) return null
       } else if (!step.coordinate || elementAt(screen, step.coordinate) !== index) return null
     } else step[t.param] = index

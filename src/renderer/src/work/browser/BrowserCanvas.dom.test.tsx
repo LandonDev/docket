@@ -284,6 +284,40 @@ describe("a held submit's primary waits on the page he approves", () => {
     await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
   });
 
+  it("once he takes over a window live here, the body draws that window, not the still, and the primary needs no picture", async () => {
+    host.pictureGate = new Promise(() => undefined);
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    host.items = [HELD];
+    const { container } = render(<Pane />);
+    await screen.findByRole("button", { name: "Submit Report in Concur" });
+    expect(container.querySelector("[data-face=live]")).toBeNull();
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Take over" }));
+    await waitFor(() => expect(host.calls.some((c) => c.method === "work.browser.drive")).toBe(true));
+    act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
+    await screen.findByRole("button", { name: "Hand back" });
+    await waitFor(() => expect(container.querySelector("[data-face=live]")).toBeTruthy());
+    expect(screen.queryByText("The page's picture did not load")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+    await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
+    // Hand back: the agent drives again, and the still and its wait come back.
+    fireEvent.click(screen.getByRole("button", { name: "Hand back" }));
+    await waitFor(() => expect(host.state.driver).toBe("agent"));
+    act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
+    await waitFor(() => expect(container.querySelector("[data-face=live]")).toBeNull());
+    expect(submit().hasAttribute("disabled")).toBe(true);
+  });
+
+  it("where no window can be drawn here, taking over keeps the still and its wait", async () => {
+    host.pictureGate = new Promise(() => undefined);
+    host.state = { ...host.state, driver: "owner" };
+    host.items = [HELD];
+    const { container } = render(<Pane />);
+    await screen.findByRole("button", { name: "Hand back" });
+    await waitFor(() => expect(container.querySelector("[data-slot=skeleton]")).toBeTruthy());
+    expect(submit().hasAttribute("disabled")).toBe(true);
+  });
+
   it("an act that kept no picture has nothing to wait on", async () => {
     host.picture = "none";
     host.items = [HELD];

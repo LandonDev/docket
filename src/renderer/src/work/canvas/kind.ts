@@ -106,6 +106,8 @@ export interface ReviewAdapter {
   count: number;
   /** Moves to a change; the kind scrolls it into view and outlines it. */
   step(to: number): void;
+  /** Whether Next steps into the changes from none (`index` -1) and shows the first: absent, it does (a deck's slide, a document's caret). False where stepping from none shows nothing (a form's Responses), so Next is not lit there. */
+  enter?: boolean;
   accept(which: number | { group: string } | "all"): Promise<void>;
   reject(which: number | { group: string } | "all"): Promise<void>;
 }

@@ -211,13 +211,28 @@ private struct DashBlockView: View {
         case .chart(let chart):
             VStack(alignment: .leading, spacing: 6) {
                 Text(chart.title).textStep(.title, weight: .semibold)
-                let top = max(1, chart.bars.map(\.value).max() ?? 1)
+                let values = chart.bars.map(\.value)
+                let zero = ChartBars.zero(values)
                 ForEach(Array(chart.bars.enumerated()), id: \.offset) { _, bar in
                     HStack(spacing: 8) {
                         Text(bar.label).textStep(.meta).frame(width: 96, alignment: .leading).lineLimit(1)
                         GeometryReader { proxy in
-                            // One series is the neutral (DESIGN.md: chart-neutral, the foreground at 30 %), never a hue.
-                            Capsule().fill(.tertiary).frame(width: max(2, proxy.size.width * bar.value / top))
+                            let span = ChartBars.bar(bar.value, in: values)
+                            let width = bar.value == 0 ? 0 : max(2, proxy.size.width * span.length)
+                            ZStack(alignment: .leading) {
+                                // With a negative value the zero line shows, one hairline through every row, and a
+                                // loss runs left of it.
+                                if zero > 0 {
+                                    Hairline(axis: .vertical)
+                                        .frame(height: 14)
+                                        .offset(x: proxy.size.width * zero)
+                                }
+                                // One series is the neutral (DESIGN.md: chart-neutral, the foreground at 30 %), never a hue.
+                                Capsule().fill(.tertiary)
+                                    .frame(width: width, height: 8)
+                                    .offset(x: bar.value < 0 ? proxy.size.width * zero - width : proxy.size.width * zero)
+                            }
+                            .frame(height: 8)
                         }
                         .frame(height: 8)
                         Text(bar.value.formatted()).textStep(.stamp).monospacedDigit().foregroundStyle(.secondary)

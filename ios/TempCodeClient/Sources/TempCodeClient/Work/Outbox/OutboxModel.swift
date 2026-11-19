@@ -25,11 +25,12 @@ public enum OutboxModel {
     }
 
     /// What a list or a card never sends, only opens: what its own detail alone shows. A LifeOS
-    /// mail may be a reply that quotes the mail it answers, which only its whole read carries; a
+    /// mail may be a reply that quotes the mail it answers, which only its whole read carries; an
+    /// Outlook mail's body is its html, which the list and the pushes leave out; a
     /// computer act's kept picture of the window is in its whole read alone (the desktop's
     /// `sendMany` leaves both for their own look).
     public nonisolated static func sendsFromDetailOnly(_ kind: OutboxItem.Kind) -> Bool {
-        kind == .mailSend || kind == .computerAct
+        kind == .mailSend || kind == .officeMailSend || kind == .computerAct
     }
 
     /// A computer act's kept picture in a whole read: none was kept, kept with its bytes, or
@@ -146,6 +147,8 @@ public enum OutboxModel {
         public struct Body: Sendable, Hashable {
             public var path: [String]
             public var text: String
+            /// An html with no text beside it (Outlook's mail): shown as words, never edited here.
+            public var readOnly = false
             public var id: String { path.joined(separator: ".") }
         }
 
@@ -222,6 +225,13 @@ public enum OutboxModel {
         var view = PayloadView(fields: [])
         func walk(_ value: JSONValue, _ path: [String], _ depth: Int) {
             guard case .object(let object) = value else { return }
+            // The html is what goes when there is one: the body reads from it (links with their targets,
+            // images named), and an edit goes to the text beside it; with none beside it, it is read only
+            // (the desktop's payloadView, the hold review's findings 4 and 11).
+            if view.body == nil, case .string(let html)? = object["html"], !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let hasText: Bool = if case .string? = object["text"] { true } else { false }
+                view.body = .init(path: path + [hasText ? "text" : "html"], text: HtmlWords.of(html), readOnly: !hasText)
+            }
             for (key, v) in ordered(object) {
                 if quiet.contains(key) { continue }
                 let at = path + [key]
@@ -229,6 +239,7 @@ public enum OutboxModel {
                 case .null:
                     continue
                 case .string(let s):
+                    if view.body?.path == at { continue }
                     if view.body == nil, bodyKeys.contains(key), s.contains("\n") || s.count > 80 {
                         view.body = .init(path: at, text: s)
                     } else if !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -320,7 +331,7 @@ public enum OutboxModel {
     public nonisolated static func applyEdits(_ payload: JSONValue?, _ edits: [String: String]) -> (payload: JSONValue?, error: String?) {
         let view = payloadView(payload)
         var editable: [(path: [String], label: String, edit: Field.Edit)] = view.fields.compactMap { f in f.edit.map { (f.path, f.label, $0) } }
-        if let body = view.body { editable.append((body.path, "Message", .text)) }
+        if let body = view.body, !body.readOnly { editable.append((body.path, "Message", .text)) }
         var next = payload
         for field in editable {
             guard let text = edits[field.path.joined(separator: ".")] else { continue }

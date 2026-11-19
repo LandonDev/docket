@@ -210,9 +210,16 @@ function bufferSink(source: MediaSource, buffer: SourceBuffer): Sink {
  * Plays `source` in `video` through a MediaSource. `bytes(i)` asks the host
  * for segment `i` (or the init segment) as bytes (`work.media.segment`): the
  * app's content policy lets the renderer fetch no file URL, so nothing here
- * fetches one.
+ * fetches one. A segment that fails stops the feed where it is; `onError`
+ * hears of it, so the player can say why the picture stalled and build the
+ * feed again.
  */
-export function attachSegments(video: HTMLVideoElement, source: SegmentSource, bytes: (i: number | "init", signal: AbortSignal) => Promise<ArrayBuffer>): SegmentFeed {
+export function attachSegments(
+  video: HTMLVideoElement,
+  source: SegmentSource,
+  bytes: (i: number | "init", signal: AbortSignal) => Promise<ArrayBuffer>,
+  onError?: (err: unknown) => void,
+): SegmentFeed {
   const media = new MediaSource();
   const objectUrl = URL.createObjectURL(media);
   let queue: Queue | null = null;
@@ -231,7 +238,10 @@ export function attachSegments(video: HTMLVideoElement, source: SegmentSource, b
         // The queue speaks in keys; the host is asked for bytes by them.
         segmentUrl: async (i) => String(i),
         fetch: (key, signal) => bytes(key === "init" ? "init" : Number(key), signal),
-        onError: (err) => console.error("[media] segments:", err)
+        onError: (err) => {
+          console.error("[media] segments:", err);
+          onError?.(err);
+        }
       });
       queue.pump();
     },

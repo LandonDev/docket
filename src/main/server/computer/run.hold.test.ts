@@ -621,6 +621,17 @@ describe('the attacker under full access', () => {
     expect(acts(h)).toBe(0)
   })
 
+  it('holds a space typed into Send found by its name, and refuses a key to a name the window does not hold', async () => {
+    useHold()
+    const { h } = await thread('work')
+    expect((await h.run('computer_act', { app: 'TextEdit', action: 'type', named: 'Send', text: ' ' })).isError).toBe(false)
+    expect(held).toHaveLength(1)
+    expect(held[0]).toMatchObject({ why: 'screen', label: 'Send' })
+    expect(await h.run('computer_act', { app: 'TextEdit', action: 'type', named: 'Nowhere', text: 'hi' })).toMatchObject({ isError: true, body: HELD_UNPLACED })
+    expect(held).toHaveLength(1)
+    expect(acts(h)).toBe(0)
+  })
+
   it('holds a mouse down after an earlier call left the pointer on Send', async () => {
     useHold()
     const { h } = await thread('work')

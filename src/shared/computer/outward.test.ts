@@ -8,6 +8,7 @@ import {
   clicksBlind,
   heldTargets,
   landsByPosition,
+  namedKeysUnplaced,
   needsFreshRead,
   outwardVerb,
   pointerAfter,
@@ -1207,5 +1208,42 @@ describe('clicksBlind', () => {
     expect(clicksBlind(steps({ action: 'mouse_move', element: 3 }, { action: 'left_click' }))).toBe(false)
     expect(clicksBlind(steps({ action: 'left_click', menu: 'Edit > Select All' }, { action: 'left_click' }), { element: 3 })).toBe(true)
     expect(clicksBlind(steps({ action: 'left_click', element: 3 }, { action: 'key', text: 'Return' }))).toBe(false)
+  })
+})
+
+describe('readOutward: keys and typed text by name', () => {
+  const GMAIL = `app "Google Chrome" · window "Gmail" · 1280×800 · focused [4]
+[1] window "Gmail"
+  [2] input "Address and search bar" = "mail.google.com/mail/u/0/#inbox"
+  [3] web area "Gmail"
+    [4] text area "Message Body" = "Hi Dana" focused caret 7
+    [5] button "Send"`
+  const gmail = screen(GMAIL, CHROME)
+
+  it('holds a line break or a space typed into a focusable Send found by its name, as the service focuses it', () => {
+    expect(readOutward(steps({ action: 'type', named: 'Send', text: '\n' }), gmail)).toMatchObject({ step: 0, why: 'typed', label: 'Send', on: 'a line break typed in button "Send"' })
+    expect(readOutward(steps({ action: 'type', named: 'send', text: ' ' }), gmail)).toMatchObject({ why: 'typed', label: 'Send' })
+    expect(readOutward(steps({ action: 'perform', name: 'confirm', named: 'Send' }), gmail)).toMatchObject({ why: 'control', label: 'Send' })
+    // a line break into the mail's own body by its name is a new line there
+    expect(readOutward(steps({ action: 'type', named: 'Message Body', text: '\n' }), gmail)).toBeNull()
+  })
+
+  it('carries the focus to the element a name found: Space after it presses that Send', () => {
+    expect(readOutward(steps({ action: 'type', named: 'Send', text: 'x' }, { action: 'key', text: 'space' }), gmail)).toMatchObject({ step: 1, why: 'key', label: 'Send' })
+  })
+
+  it('finds a key or a typed text whose name finds no one element, and binds one that does', () => {
+    expect(namedKeysUnplaced(steps({ action: 'type', named: 'Reply', text: 'x' }), gmail)).toBe(true)
+    expect(namedKeysUnplaced(steps({ action: 'key', named: 'Send', text: 'Return' }), screen(`${GMAIL}\n    [6] button "Send"`, CHROME))).toBe(true)
+    expect(namedKeysUnplaced(steps({ action: 'type', named: 'Message Body', text: 'x' }), gmail)).toBe(false)
+    expect(namedKeysUnplaced(steps({ action: 'left_click', named: 'Reply' }), gmail)).toBe(false)
+    expect(needsFreshRead(steps({ action: 'type', named: 'Message Body', text: 'x' }))).toBe(true)
+    const s = steps({ action: 'type', named: 'Send', text: '\n' })
+    const targets = heldTargets(s, gmail)!
+    expect(targets).toEqual([{ step: 0, param: 'point', sig: 'button:Send < web area:Gmail < window:Gmail', ordinal: 0, count: 1 }])
+    expect(restage(s, targets, screenMark(gmail), screen(GMAIL.replace('button "Send"', 'button "Send later"'), CHROME))).toBeNull()
+    // a second Send elsewhere: the name no longer finds the one he was shown
+    expect(restage(s, targets, screenMark(gmail), screen(`${GMAIL}\n    [6] toolbar\n      [7] button "Send"`, CHROME))).toBeNull()
+    expect(restage(s, targets, screenMark(gmail), gmail)).toEqual(s)
   })
 })

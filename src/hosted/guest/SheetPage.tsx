@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { SheetCanvas, type SheetHandle } from "work-kit/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import { StatusMark } from "@renderer/components/ui/status";
 import type { Opened, Session } from "./session";
 
 /**
@@ -8,7 +9,9 @@ import type { Opened, Session } from "./session";
  * sheet socket (docs/agents/work-sheets.md "Live editing"). An edit link's
  * cell edits go as ops from the revision the grid stands at; everyone's ops
  * come back, and a refused one reloads the workbook. A view link is the grid
- * read only. The service holds a guest to values, formats and rows.
+ * read only. The service holds a guest to values, formats and rows. A refused
+ * edit says so on one line over the grid ("Edit not saved" and the service's
+ * reason) while the sheet as it is reloads; the next edit it takes clears it.
  */
 
 type Mutation = { id: string; params: Record<string, unknown> };
@@ -18,6 +21,7 @@ const EDIT_WAIT = 150;
 
 export function SheetPage({ session, opened, onGone, onDown }: { session: Session; opened: Opened; onGone(): void; onDown(): void }) {
   const [book, setBook] = useState<{ snapshot: Record<string, unknown>; key: number } | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
   const handle = useRef<SheetHandle | null>(null);
   const live = useRef<{ ws: WebSocket | null; rev: number; pending: Mutation[]; sent: string[]; unit: string; inflight: boolean; timer: ReturnType<typeof setTimeout> | null; n: number }>({ ws: null, rev: -1, pending: [], sent: [], unit: "", inflight: false, timer: null, n: 0 });
 
@@ -52,11 +56,13 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
           if (at < 0 && !(msg.by === opened.me && opened.me.startsWith("guest:"))) handle.current?.apply(msg.mutations as never);
           l.rev = Math.max(l.rev, msg.rev);
         } else if (msg.t === "ack") {
+          setRefused(null);
           l.rev = Math.max(l.rev, msg.rev);
           l.inflight = false;
           flush();
         } else if (msg.t === "refused") {
-          // The grid has an edit the sheet did not take: the sheet as it is replaces it.
+          // The grid has an edit the sheet did not take: the sheet as it is replaces it, and the line says why the typed value went.
+          setRefused(msg.reason || "The sheet did not take it");
           l.rev = -1;
           ws.close(1000);
         }
@@ -91,24 +97,31 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
 
   if (!book) return <SheetBones />;
   return (
-    <SheetCanvas
-      key={book.key}
-      snapshot={book.snapshot as never}
-      readOnly={opened.role !== "edit"}
-      onReady={(h) => {
-        handle.current = h;
-        if (!h || opened.role !== "edit") return;
-        h.onMutation((m) => {
-          const l = live.current;
-          // The sheet's own mutations only: the grid's cell editor runs a document of its own, and its steps are not the sheet's.
-          const p = (m as unknown as Mutation).params as { unitId?: unknown };
-          if (!m.id.startsWith("sheet.mutation.") || p?.unitId !== l.unit) return;
-          l.pending.push(plainCells(m as unknown as Mutation));
-          l.timer ??= setTimeout(flush, EDIT_WAIT);
-        });
-      }}
-      className="min-h-0 flex-1"
-    />
+    <>
+      {refused ? (
+        <div role="alert" data-sheet-refused="" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
+          <StatusMark state="failed" word="Edit not saved" detail={refused} className="min-w-0 flex-1" />
+        </div>
+      ) : null}
+      <SheetCanvas
+        key={book.key}
+        snapshot={book.snapshot as never}
+        readOnly={opened.role !== "edit"}
+        onReady={(h) => {
+          handle.current = h;
+          if (!h || opened.role !== "edit") return;
+          h.onMutation((m) => {
+            const l = live.current;
+            // The sheet's own mutations only: the grid's cell editor runs a document of its own, and its steps are not the sheet's.
+            const p = (m as unknown as Mutation).params as { unitId?: unknown };
+            if (!m.id.startsWith("sheet.mutation.") || p?.unitId !== l.unit) return;
+            l.pending.push(plainCells(m as unknown as Mutation));
+            l.timer ??= setTimeout(flush, EDIT_WAIT);
+          });
+        }}
+        className="min-h-0 flex-1"
+      />
+    </>
   );
 }
 

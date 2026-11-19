@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardView, DashFrom } from "@shared/contract-work-dashboards";
 import type { CanvasItem } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { defineChunk } from "../../lib/lazyChunk";
 import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
@@ -267,6 +268,44 @@ describe("the dashboard kind, round two", () => {
     const sub = [...body.querySelectorAll('[data-figure="f1"] span')].find((el) => el.textContent === "4 invoices")!;
     expect(sub.className).toContain("truncate");
     expect(sub.className).not.toContain("whitespace-nowrap");
+  });
+});
+
+describe("the dashboard kind, round five", () => {
+  it("gives each category label its bar's column, truncates it, and says a cut label whole on hover", async () => {
+    const base = page();
+    const chart = { ...base.blocks[1], bars: [{ label: "Valorant", value: 4 }, { label: "Marvel Rivals Spring Invitational", value: 2 }] } as (typeof base.blocks)[number];
+    const width = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "Marvel Rivals Spring Invitational" ? 200 : 0;
+    });
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(60);
+    try {
+      await act(async () => {
+        warmTooltips();
+        await tooltipChunk.load();
+      });
+      open({ ...base, blocks: [base.blocks[0], chart] });
+      const body = await found("[data-dashboard]");
+      const plot = body.querySelector<HTMLElement>('[role="img"]')!;
+      const labels = plot.querySelector<HTMLElement>("[data-chart-labels]")!;
+      // The labels' row and the bars' row share one column per bar.
+      expect(labels.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
+      expect(plot.querySelector<HTMLElement>(".justify-items-center")!.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
+      const each = [...labels.querySelectorAll<HTMLElement>("[data-chart-label]")];
+      expect(each.map((l) => l.textContent)).toEqual(["Valorant", "Marvel Rivals Spring Invitational"]);
+      for (const l of each) {
+        expect(l.className).toContain("truncate");
+        expect(l.className).toContain("min-w-0");
+        expect(l.className).not.toContain("whitespace-nowrap");
+        expect(l.className.split(" ")).not.toContain("w-0");
+      }
+      // The cut label takes its tooltip; the whole one mounts none.
+      await waitFor(() => expect(each[1].getAttribute("data-slot")).toBe("tooltip-trigger"));
+      expect(each[0].getAttribute("data-slot")).not.toBe("tooltip-trigger");
+    } finally {
+      width.mockRestore();
+      client.mockRestore();
+    }
   });
 });
 

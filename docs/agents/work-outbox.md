@@ -192,11 +192,14 @@ a typed line break in a chat's message box, in a composer, in a field beside
 a submit, or in a sheet whose default may send; Command or Control with
 Return where that sends; Space or Return on such a control; and any call the
 model flagged. The host reads the window afresh, with frames, when a step
-lands by position, goes to the focus, clicks by a name (the Mac finds the
-name on the live window), or names an element its book lacks.
+lands by position, goes to the focus, clicks, types or presses a key by a
+name (the Mac finds the name on the live window), or names an element its
+book lacks. A key or typed text by name is judged on every element the
+name finds (a line break typed "into" a focusable Send is held), and one
+whose name finds none, or several, is refused (`HELD_UNPLACED`).
 If that read fails the call is refused (`HELD_UNREAD`): nothing is judged
 against an old book or an empty screen. A call is kept only when every
-step's target can be placed on the read (a click by name finds one element;
+step's target can be placed on the read (a click or key by name finds one element;
 a click with no target has a known pointer); else it is refused
 (`HELD_UNPLACED`), so a press never runs a bare index, point or name on
 whatever took its place. A click with no target while the pointer is

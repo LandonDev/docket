@@ -97,7 +97,7 @@ struct OutboxItemScreen: View {
     }
 
     private func content(_ item: OutboxItem, client: EnvironmentClient) -> some View {
-        let view = OutboxModel.payloadView(item.payload)
+        let view = OutboxModel.actView(item)
         let place = client.workPlace(item.workspaceId)
         let waits = OutboxModel.waits(item.state)
         return ScrollView {
@@ -156,6 +156,17 @@ struct OutboxItemScreen: View {
                         .padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // While a mail is read whole (an Outlook body, a LifeOS reply's quote), one muted bone holds
+                // the place it lands, so a dim Send has a reason on screen.
+                if whole == nil, wholeError == nil, item.kind == .mailSend || item.kind == .officeMailSend {
+                    Text("The mail is still being read")
+                        .textStep(.meta)
+                        .redacted(reason: .placeholder)
+                        .padding(.horizontal, Layout.textEdge)
+                        .padding(.vertical, 16)
+                        .accessibilityLabel("Reading the mail")
+                        .accessibilityIdentifier("outbox-whole-reading")
+                }
                 // What LifeOS puts under a reply goes too: in its place, muted, as a mail client quotes.
                 if let quote = view.quote {
                     Text(quote)
@@ -181,7 +192,7 @@ struct OutboxItemScreen: View {
         }
         .tcBottomBar {
             if waits, client.work.canApprove {
-                bar(item, client: client, editable: OutboxModel.editable(item.kind) && !view.fields.filter({ $0.edit != nil }).isEmpty || view.body != nil && OutboxModel.editable(item.kind),
+                bar(item, client: client, editable: OutboxModel.editable(item.kind) && (!view.fields.filter({ $0.edit != nil }).isEmpty || view.body?.readOnly == false),
                     ready: OutboxModel.detailReady(item.kind, whole: whole) && pictureDraws(whole))
             }
         }
@@ -345,7 +356,7 @@ private struct OutboxEditSheet: View {
                             .autocorrectionDisabled(field.edit == .addresses)
                     }
                 }
-                if let body = view.body {
+                if let body = view.body, !body.readOnly {
                     Section("Message") {
                         TextEditor(text: binding(body.id, body.text))
                             .frame(minHeight: 220)

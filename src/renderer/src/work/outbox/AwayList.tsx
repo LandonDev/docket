@@ -34,8 +34,13 @@ export type AwayReport = {
   unread: string[];
 };
 
-/** A host's writes since the stretch began, sends left out; rejects when the host does not answer. */
-const writesOf = async (environmentId: string, since: number): Promise<HostResult[]> => (await resultsSince(environmentId, since)).filter((r) => !isSend(r));
+/**
+ * A host's writes during the stretch, sends left out; rejects when the host
+ * does not answer. Cut at `until`, the moment he came back, so a Retry later
+ * never lists a write made after he returned as one made while he was away.
+ */
+const writesOf = async (environmentId: string, since: number, until: number): Promise<HostResult[]> =>
+  (await resultsSince(environmentId, since)).filter((r) => !isSend(r) && r.createdAt <= until);
 
 /** The toast when the only thing to say is a read that failed. */
 export const UNREAD_LINE = "What was written while you were away did not all load";
@@ -59,7 +64,7 @@ export async function gatherAway(hosts: readonly AwayHost[], now = Date.now()): 
       if (!workSwitch.hosts().has(h.environmentId)) return [];
       const [, written] = await Promise.all([
         loadHost(h.environmentId),
-        since > 0 ? writesOf(h.environmentId, since).catch(() => (unread.push(h.environmentId), [] as HostResult[])) : Promise.resolve([] as HostResult[]),
+        since > 0 ? writesOf(h.environmentId, since, now).catch(() => (unread.push(h.environmentId), [] as HostResult[])) : Promise.resolve([] as HostResult[]),
       ]);
       return written;
     }),
@@ -106,7 +111,7 @@ export function AwayReturnWork({
   const [rereading, setRereading] = useState(false);
   const reread = async (): Promise<void> => {
     setRereading(true);
-    const answers = await Promise.allSettled(writes.unread.map((env) => writesOf(env, report.since)));
+    const answers = await Promise.allSettled(writes.unread.map((env) => writesOf(env, report.since, report.until)));
     setWrites((was) => ({
       written: [...was.written, ...answers.flatMap((a) => (a.status === "fulfilled" ? a.value : []))],
       unread: was.unread.filter((_, i) => answers[i]!.status === "rejected"),

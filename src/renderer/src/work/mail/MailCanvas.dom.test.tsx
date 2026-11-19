@@ -90,14 +90,14 @@ describe("the mail canvas with LifeOS unreachable", () => {
     await expect(Promise.resolve(run())).resolves.toBeUndefined();
   });
 
-  it("draws nothing under a session that will not come by itself, and the sign-in while one is being made", () => {
-    lifeos.state = "off";
-    const off = body();
-    expect(off.container.innerHTML).toBe("");
-    off.unmount();
-    lifeos.state = "pairing";
-    body();
-    expect(screen.getByText("Sign in to LifeOS")).toBeTruthy();
+  it("offers the sign-in for a host whose LifeOS is off, signed out or being paired, never an empty body", () => {
+    for (const state of ["off", "signed-out", "pairing", "refused"]) {
+      lifeos.state = state;
+      const view = body();
+      expect(screen.getByText("Sign in to LifeOS"), state).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Sign in" }), state).toBeTruthy();
+      view.unmount();
+    }
   });
 
   it("with no copy read, draws nothing under the line rather than loading forever", () => {

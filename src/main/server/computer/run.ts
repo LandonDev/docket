@@ -30,7 +30,7 @@ import { CONFIRM_KIND_INFO, type ConfirmNeed } from '@shared/computer/policy'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayVerdict } from '@shared/away'
-import { clicksBlind, heldTargets, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
+import { clicksBlind, heldTargets, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './batchPlan'
@@ -819,6 +819,8 @@ async function runChecked(
           if (!now) return refusal(HELD_UNREAD)
           screen = now
         }
+        // A key or text to an element by a name the window does not hold once, as the service picks it: nobody can say where it goes.
+        if (acting && screen && namedKeysUnplaced(steps, screen)) return refusal(HELD_UNPLACED)
         const read = acting ? readOutward(steps, screen, pointer) : null
         if (read || flag) {
           // Kept for the owner's press: nothing of the call runs.

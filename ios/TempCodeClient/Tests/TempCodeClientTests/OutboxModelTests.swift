@@ -52,6 +52,71 @@ import TempCodeContract
         #expect(!view.fields.contains { $0.key == "toolDigest" })
     }
 
+    private let us = Locale(identifier: "en_US")
+    private let utc = TimeZone(identifier: "UTC")!
+    /// Friday, November 20, 2026, 2:00 PM UTC, in milliseconds as the host keeps it.
+    private let friday2pm = 1_795_183_200_000.0
+
+    @Test func aLifeosCalendarActReadsAsTheActWithItsBoundEventNeverItsRow() {
+        let row: JSONValue = .object([
+            "id": .string("op_1"), "kind": .string("accept"), "account": .string("landon@purdue.edu"), "calendarId": .string("landon@purdue.edu"),
+            "eventId": .string("ev_1"), "eventTitle": .string("Esports budget"), "eventStartsAt": .number(friday2pm), "eventEndsAt": .number(friday2pm + 1_800_000),
+            "eventLocation": .string("Room 210"), "editedAt": .number(1_763_000_000_000), "plain": .bool(true), "route": .string("x"), "sector": .string("purdue"),
+        ])
+        let fields = OutboxModel.calendarFields(kind: .calendarOp, payload: row, locale: us, timeZone: utc) ?? []
+        #expect(fields.map(\.label) == ["Event", "When", "Where", "Reply", "Calendar"])
+        #expect(fields[1].value.hasPrefix("Fri, Nov 20, 2:00 to 2:30"))
+        #expect(fields[1].value.hasSuffix("PM"))
+        #expect(fields.map(\.value).contains("Room 210"))
+        #expect(!fields.contains { $0.value.contains("1763") || $0.value.contains("{") })
+
+        let create: JSONValue = .object(["kind": .string("create"), "account": .string("a@b.edu"), "calendarId": .string("team"),
+                                         "payload": .object(["title": .string("Scrim"), "startsAt": .number(friday2pm), "attendees": .array([.object(["name": .string("Dana Lee"), "address": .string("dlee@purdue.edu")])])])])
+        let made = OutboxModel.calendarFields(kind: .calendarOp, payload: create, locale: us, timeZone: utc) ?? []
+        #expect(made.map(\.label) == ["Event", "When", "Invites", "Calendar"])
+        #expect(made[2].value == "Dana Lee <dlee@purdue.edu>")
+        #expect(made[3].value == "team, a@b.edu")
+        #expect(OutboxModel.calendarFields(kind: .mailSend, payload: create) == nil)
+    }
+
+    @Test func anOutlookCalendarActReadsItsInviteAndItsAnswer() {
+        let invite: JSONValue = .object(["host": .string("env_1"), "op": .string("create"), "event": .object([
+            "subject": .string("Sync"), "start": .string("2026-11-20T14:00:00Z"), "end": .string("2026-11-20T15:30:00.000Z"),
+            "location": .string("Teams"), "attendees": .array([.string("a@b.edu")]), "body": .string("<p>Agenda &amp; notes</p>"),
+        ])])
+        let made = OutboxModel.calendarFields(kind: .officeCalendarOp, payload: invite, locale: us, timeZone: utc) ?? []
+        #expect(made.map(\.label) == ["Event", "When", "Where", "Invites", "Details"])
+        #expect(made[1].value.hasPrefix("Fri, Nov 20, 2:00 to 3:30"))
+        #expect(made[4].value == "Agenda & notes")
+
+        let answer: JSONValue = .object(["op": .string("answer"), "id": .string("x"), "subject": .string("Board"), "start": .string("2026-11-20T09:00:00-05:00"),
+                                         "organizer": .string("boss@purdue.edu"), "answer": .string("tentative"), "comment": .string("Running late")])
+        let reply = OutboxModel.calendarFields(kind: .officeCalendarOp, payload: answer, locale: us, timeZone: utc) ?? []
+        #expect(reply.map(\.label) == ["Event", "When", "From", "Reply", "Note"])
+        #expect(reply[1].value.hasPrefix("Fri, Nov 20, 2:00"))
+        #expect(reply[3].value == "Maybe")
+    }
+
+    @Test func whenWordsSayADayPeriodOnceAndADayItemAsItsDay() {
+        #expect(OutboxModel.whenWords(friday2pm, nil, allDay: true, locale: us, timeZone: utc) == "Fri, Nov 20")
+        let morning = OutboxModel.whenWords(friday2pm - 4 * 3_600_000, friday2pm + 3_600_000, locale: us, timeZone: utc)
+        #expect(morning.hasPrefix("Fri, Nov 20, 10:00"))
+        #expect(morning.contains("AM to 3:00"))
+    }
+
+    @Test func anOutlookMailsBodyIsItsHtmlAsReadOnlyWords() {
+        let office: JSONValue = .object(["host": .string("env_1"), "to": .array([.string("dlee@purdue.edu")]), "subject": .string("Ballroom"),
+                                         "html": .string("<p>See <a href=\"https://rooms.purdue.edu\">rooms</a></p><img src=\"https://x/logo.png\" alt=\"Logo\">")])
+        let view = OutboxModel.payloadView(office)
+        #expect(view.body?.text == "See rooms (https://rooms.purdue.edu)\n\n[image Logo: https://x/logo.png]")
+        #expect(view.body?.readOnly == true)
+        #expect(view.body?.path == ["html"])
+        // The edit leaves a read-only body alone.
+        #expect(OutboxModel.applyEdits(office, ["html": "Hi"]).payload == office)
+        // A LifeOS mail's text beside its html stays the body he edits.
+        #expect(OutboxModel.payloadView(mail).body?.readOnly == false)
+    }
+
     @Test func aRepliesQuoteIsMutedWordsUnderTheBodyNeverAnEditableField() {
         var payload = mail
         if case .object(var o) = payload {
@@ -67,7 +132,7 @@ import TempCodeContract
     @Test func aListOrACardOpensWhatOnlyItsDetailShows() {
         #expect(OutboxModel.sendsFromDetailOnly(.mailSend))
         #expect(OutboxModel.sendsFromDetailOnly(.computerAct))
-        #expect(!OutboxModel.sendsFromDetailOnly(.officeMailSend))
+        #expect(OutboxModel.sendsFromDetailOnly(.officeMailSend))
         #expect(!OutboxModel.sendsFromDetailOnly(.addonCall))
     }
 

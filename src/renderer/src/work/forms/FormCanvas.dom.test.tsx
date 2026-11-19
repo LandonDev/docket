@@ -295,11 +295,9 @@ describe("the form kind, round two", () => {
     const tabs = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>("[data-narrow-hide]")!;
     expect(tabs).not.toBeNull();
     expect(tabs.className).toContain("@max-[560px]/bar:hidden");
-    // With the switch gone from a narrow bar, the stepper still takes him to the change: the Questions half is where it lands.
-    fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
-    await waitFor(() => expect(document.querySelector("[data-q]")).toBeNull());
+    // On Questions the stepper steps through the changes on screen.
     fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Next change" })));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Questions" }).getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(screen.getByText("2/2")).toBeTruthy());
     expect(document.querySelector('[data-q="shirt"]')).not.toBeNull();
     cleanup();
     open(view());
@@ -309,23 +307,31 @@ describe("the form kind, round two", () => {
     expect(calm.className).not.toContain("@max-[560px]/bar:hidden");
   });
 
-  it("keeps the switch on Responses while changes wait, and decides nothing until the change is shown", async () => {
+  it("on Responses with changes waiting draws no stepper, only one compact Questions control that brings the stepper back", async () => {
     const by = "agent:env:t1" as const;
     open(view({ suggestions: [{ id: "s1", op: "change", question: { ...BODY.questions[1], options: ["Valorant", "Marvel Rivals"] }, by, at: 1 }] }));
     await found("[data-form]");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy());
     fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
     await waitFor(() => expect(document.querySelector("[data-q]")).toBeNull());
-    // On Responses the switch is his way back to the change, so even a narrow bar keeps it whole.
-    const tabs = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>('[class*="shrink-0"]')!;
-    expect(tabs.hasAttribute("data-narrow-hide")).toBe(false);
-    expect(tabs.className).not.toContain("@max-[560px]/bar:hidden");
-    // No change is on screen, so Reject and Accept wait; one change still gets a step to bring it into view.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true));
-    expect(screen.getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Next change" }));
+    // No change is on screen: no stepper, no "0/1", no verbs waiting on nothing.
+    await waitFor(() => expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull());
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+    expect(screen.queryByText("0/1")).toBeNull();
+    // The switch gives way whole in a narrow bar, and the one compact control shows only there: never both.
+    const tabs = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>("[data-narrow-hide]")!;
+    expect(tabs.className).toContain("@max-[560px]/bar:hidden");
+    const controls = document.querySelectorAll<HTMLElement>("[data-form-to-questions]");
+    expect(controls).toHaveLength(1);
+    expect(controls[0].className).toContain("hidden");
+    expect(controls[0].className).toContain("@max-[560px]/bar:inline-flex");
+    expect(controls[0].className).toContain("shrink-0");
+    expect(controls[0].textContent).toBe("Questions1");
+    fireEvent.click(controls[0]);
     await waitFor(() => expect(screen.getByRole("tab", { name: "Questions" }).getAttribute("aria-selected")).toBe("true"));
+    expect(document.querySelector("[data-form-to-questions]")).toBeNull();
+    // The change is on screen again, and so is the stepper that decides it.
     await waitFor(() => expect(screen.getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
-    expect(formHost.review).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(formHost.review).toHaveBeenCalledWith({ ids: ["s1"] }, "accept"));
   });

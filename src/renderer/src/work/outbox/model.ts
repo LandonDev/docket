@@ -65,12 +65,12 @@ const isAddress = (v: unknown): v is Address => !!v && typeof v === "object" && 
 const isAddressList = (v: unknown): v is Address[] => Array.isArray(v) && v.length > 0 && v.every(isAddress);
 export const addressWords = (list: readonly Address[]): string => list.map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(", ");
 
-/** Keys that are the host's bookkeeping, never what goes. */
-const QUIET = new Set(["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why"]);
+/** Keys that are the host's bookkeeping, never what goes: `host` is the id of the host that holds an Outlook act, which the detail's place line already names. */
+const QUIET = new Set(["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host"]);
 /** Keys whose text is the body: drawn as one plain-text block, not a field. */
 const BODY_KEYS = ["text", "body", "message", "content"];
 
-const LABEL: Record<string, string> = { to: "To", cc: "Cc", bcc: "Bcc", from: "From", subject: "Subject", channel: "In", title: "Title", app: "App", window: "Window", label: "Act" };
+const LABEL: Record<string, string> = { to: "To", cc: "Cc", bcc: "Bcc", from: "From", subject: "Subject", channel: "In", title: "Title", app: "App", window: "Window", label: "Act", url: "URL" };
 const labelOf = (key: string): string => LABEL[key] ?? key.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
 
 export type Field = { key: string; path: string[]; label: string; value: string; edit: "text" | "addresses" | null };

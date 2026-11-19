@@ -297,7 +297,11 @@ One set for Claude, Codex and Muse (architecture §10):
 
 **The rule for a file others can open.** A file named by a URL, or one in a
 folder synced from OneDrive or SharePoint (`~/Library/CloudStorage/`, a
-`OneDrive` folder), is shared.
+`OneDrive` folder, with either slash, so a Windows path counts), is shared.
+The name a write gives is first found among the open files as the carrier
+keys them (by key, else the one open file of that name, since a carrier
+takes a bare name too), and the write goes to that key; a name no open
+file answers to, or two do, counts as shared (`fileKey`, tools.ts).
 On a shared file, a change he asked for in so many words is written: the
 tool carries `because: "asked"` and a `quote`, and the host finds the quote
 in his own messages (`ctx.threads.ownerSaid`). Otherwise the change waits

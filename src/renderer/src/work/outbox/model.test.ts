@@ -33,9 +33,14 @@ describe("payloadView", () => {
   it("shows an html-only mail's words, links and images, and does not offer them for editing", () => {
     const office = { host: "env_mac", to: ["dlee@purdue.edu"], cc: [], bcc: [], subject: "Budget", html: '<p>See <a href="https://evil.example/x">the sheet</a></p><img src="https://t.example/p.gif">' };
     const { fields, body } = payloadView(office);
-    expect(fields.map((f) => f.label)).toEqual(["Host", "To", "Subject"]);
+    // The holding host's id is bookkeeping: never a field he approves.
+    expect(fields.map((f) => f.label)).toEqual(["To", "Subject"]);
     expect(body).toEqual({ path: ["html"], text: "See the sheet (https://evil.example/x)\n\n[image: https://t.example/p.gif]", readOnly: true });
     expect(applyEdits(office, new Map([["html", "changed"]])).payload).toEqual(office);
+  });
+
+  it("labels a url URL", () => {
+    expect(payloadView({ url: "https://example.com" }).fields.map((f) => f.label)).toEqual(["URL"]);
   });
 
   it("shows every key of an add-on call's arguments, the ones the host keeps for itself included", () => {

@@ -38,6 +38,7 @@ const host = vi.hoisted(() => ({
   restore: { mode: "direct" } as Record<string, unknown>,
   failBranches: false,
   failRestore: false,
+  failVersions: false,
   toasts: [] as string[],
 }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -51,7 +52,10 @@ vi.mock("../../lib/connection", async (original) => {
       if (!method.startsWith("work.history.")) return host.current!.link.request(method, params);
       host.calls.push({ method, params });
       const names = { owner: "You", "agent:env_box:t1": "Venue for the spring LAN" };
-      if (method === "work.history.versions") return { versions: VERSIONS, shared: false, names };
+      if (method === "work.history.versions") {
+        if (host.failVersions) throw new Error("The box did not answer");
+        return { versions: VERSIONS, shared: false, names };
+      }
       if (method === "work.history.compare") {
         const diff = diffBlocks(OLD, NEW);
         for (const row of diff.rows) row.by = [AGENT];
@@ -98,6 +102,7 @@ beforeEach(async () => {
   host.restore = { mode: "direct" };
   host.failBranches = false;
   host.failRestore = false;
+  host.failVersions = false;
   host.toasts = [];
   await new Promise<void>((done) => openMenus(done));
 });
@@ -237,5 +242,15 @@ describe("the history canvas", () => {
     expect(layoutOf(undefined, 900)).toBe("sxs");
     // A body not yet measured keeps the choice.
     expect(layoutOf({ layout: "sxs" }, 0)).toBe("sxs");
+  });
+
+  it("says versions that did not load on a compare's state line with Retry, when the diff itself came", async () => {
+    host.failVersions = true;
+    const { container } = await seat({ view: "compare", from: "v1", to: "v2" });
+    await waitFor(() => expect(container.querySelector("[data-row]")).toBeTruthy());
+    await waitFor(() => expect(container.querySelector("[data-canvas-state='failed']")?.textContent).toContain("The versions did not load"));
+    host.failVersions = false;
+    fireEvent.click(within(container.querySelector("[data-canvas-state]") as HTMLElement).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(container.querySelector("[data-canvas-state]")).toBeNull());
   });
 });

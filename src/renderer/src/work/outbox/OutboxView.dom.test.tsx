@@ -87,7 +87,7 @@ vi.mock("../../lib/connection", async (original) => {
 vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { canEdit, OutboxView } from "./OutboxView";
+import { batchVerb, canEdit, OutboxView } from "./OutboxView";
 import { resetOutboxStore } from "./store";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({
@@ -333,6 +333,12 @@ describe("the Outbox", () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { proposed: true } as Partial<OutboxItem>)]);
     await open();
     expect(screen.queryByText("An agent's rewrite waits in this draft; what shows is what goes.")).toBeNull();
+  });
+
+  it("says a mixed batch went as Sent N, never in its first item's verb", () => {
+    expect(batchVerb([{ verb: "Post" }, { verb: "Send" }])).toBe("Sent");
+    expect(batchVerb([{ verb: "Post" }, { verb: "Post" }])).toBe("Posted");
+    expect(batchVerb([{ verb: "Send" }])).toBe("Sent");
   });
 
   it("offers Edit only where something can change", async () => {

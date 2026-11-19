@@ -17,9 +17,13 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 function message(root: HTMLElement, title: string, line?: string, action?: { label: string; run: () => void }): void {
+  // Focus inside the form (Send was just pressed) moves to the heading that replaces it, so a keyboard or a screen reader hears what happened.
+  const hadFocus = root.contains(document.activeElement)
   root.replaceChildren()
   const box = el('div', 'fm-msg')
-  box.append(el('h1', undefined, title))
+  const heading = el('h1', undefined, title)
+  heading.tabIndex = -1
+  box.append(heading)
   if (line) box.append(el('p', 'fm-desc', line))
   if (action) {
     const foot = el('div', 'fm-foot')
@@ -31,6 +35,7 @@ function message(root: HTMLElement, title: string, line?: string, action?: { lab
   }
   root.append(box)
   root.removeAttribute('aria-busy')
+  if (hadFocus) heading.focus()
 }
 
 function field(q: FormQuestion, i: number): HTMLElement {

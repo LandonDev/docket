@@ -208,3 +208,20 @@ struct MediaNoteByTests {
         #expect(MediaNoteBy.name(by) == name)
     }
 }
+
+struct ChartBarsTests {
+    @Test func `a negative value runs the other way from a zero line`() {
+        let values = [-50.0, 150, 0]
+        #expect(ChartBars.zero(values) == 0.25)
+        #expect(ChartBars.bar(-50, in: values) == .init(start: 0, length: 0.25))
+        #expect(ChartBars.bar(150, in: values) == .init(start: 0.25, length: 0.75))
+        #expect(ChartBars.bar(0, in: values).length == 0)
+    }
+
+    @Test func `with nothing negative zero is the start, with nothing at all no bar draws`() {
+        #expect(ChartBars.zero([2, 4]) == 0)
+        #expect(ChartBars.bar(2, in: [2, 4]) == .init(start: 0, length: 0.5))
+        #expect(ChartBars.zero([-3, -1]) == 1)
+        #expect(ChartBars.bar(0, in: [0, 0]) == .init(start: 0, length: 0))
+    }
+}

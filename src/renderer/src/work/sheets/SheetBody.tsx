@@ -55,6 +55,8 @@ export function Body(props: Props) {
   const state = useSheetSync(sync);
   const { view, book } = state;
   const [prepared, setPrepared] = useState<true | string | null>(null);
+  // Each try at the grid's own code: Retry after a failed load fetches it again.
+  const [tries, setTries] = useState(0);
   const [handle, setHandle] = useState<SheetHandle | null>(null);
   const [selection, setSelection] = useState<GridSelection | null>(null);
   const pointer = useRef<{ x: number; y: number } | null>(null);
@@ -63,6 +65,7 @@ export function Body(props: Props) {
   useEffect(() => sync.start(), [sync]);
   useEffect(() => {
     let live = true;
+    setPrepared(null);
     grid.prepare().then(
       () => live && setPrepared(true),
       (error: unknown) => live && setPrepared(error instanceof Error && error.message ? error.message : "The grid did not load"),
@@ -70,7 +73,7 @@ export function Body(props: Props) {
     return () => {
       live = false;
     };
-  }, [grid]);
+  }, [grid, tries]);
   useEffect(() => (handle ? sync.attach(grid.link(handle)) : undefined), [sync, grid, handle]);
 
   const changes = useMemo(() => sheetChanges(view?.suggestions ?? [], book?.workbook.sheetOrder), [view?.suggestions, book]);
@@ -101,7 +104,12 @@ export function Body(props: Props) {
   const was = selection ? sync.was(selection.sheet, selection.row, selection.column) : undefined;
 
   // A sheet that did not open says so once, in the body: the bar keeps no line about it.
-  if (failed) return <EmptyState title="Couldn't open this sheet" line={failed} action={{ label: "Retry", onClick: () => void sync.open() }} />;
+  // Retry tries again what failed: the grid's own code (fetched afresh), the host's open, or both.
+  const retry = (): void => {
+    if (typeof prepared === "string") setTries((n) => n + 1);
+    if (state.failed) void sync.open();
+  };
+  if (failed) return <EmptyState title="Couldn't open this sheet" line={failed} action={{ label: "Retry", onClick: retry }} />;
   if (!view || !book || prepared !== true) return <SheetSkeleton />;
   const Canvas = grid.Canvas;
   return (

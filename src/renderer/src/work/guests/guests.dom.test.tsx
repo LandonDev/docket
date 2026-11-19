@@ -11,7 +11,7 @@ import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEdit
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>() }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -29,7 +29,11 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.guests.forItem" || method === "work.guests.list") return calls.links;
       if (method === "work.guests.create")
         return { link: { ...LINK, name: params.name, role: params.role, expiresAt: params.expiresAt }, url: "https://tempcode.landonhale.com/g/abc#k=secret" };
-      if (method === "work.guests.revoke") return { ok: true };
+      if (method === "work.guests.revoke") {
+        if (calls.revokeGate) await calls.revokeGate;
+        if (calls.revokeRefusal) throw new Error(calls.revokeRefusal);
+        return { ok: true };
+      }
       if (method === "work.guests.rekey") return { url: "https://tempcode.landonhale.com/g/new#k=secret" };
       throw new Error(`unexpected ${method}`);
     },
@@ -63,6 +67,8 @@ afterEach(() => {
   calls.list.length = 0;
   calls.links = [];
   calls.down.clear();
+  calls.revokeGate = null;
+  calls.revokeRefusal = null;
 });
 
 describe("Share", () => {
@@ -127,6 +133,25 @@ describe("the held request and the audit list", () => {
     render(<View item={item} env="box" />);
     for (const words of ["Nationals travel budget", "Dana Lee", "Edit"]) expect(screen.getByText(words)).toBeTruthy();
     expect(screen.getByText(/Dec 18/)).toBeTruthy();
+  });
+
+  it("keeps a row with a busy Revoke until the host confirms, and a refusal visible with the row still there", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.links = [LINK];
+    let open: () => void = () => {};
+    calls.revokeGate = new Promise((r) => (open = r));
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByText("Sam Ortiz");
+    fireEvent.click(screen.getByRole("button", { name: "Revoke Sam Ortiz's link" }));
+    // Pending: the row and its busy Revoke stay; "Only you can open this" waits for the host.
+    expect(screen.getByText("Sam Ortiz")).toBeTruthy();
+    expect(screen.queryByText("Only you can open this")).toBeNull();
+    expect(screen.getByRole("button", { name: "Revoke Sam Ortiz's link" }).querySelector("[data-busy]")).toBeTruthy();
+    calls.revokeRefusal = "The link was already opened elsewhere";
+    await act(async () => open());
+    await waitFor(() => expect(screen.getByText("The link was already opened elsewhere")).toBeTruthy());
+    expect(screen.getByText("Sam Ortiz")).toBeTruthy();
   });
 
   it("lists every link, live first, a revoked one muted with no Revoke", async () => {

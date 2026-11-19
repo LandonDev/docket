@@ -7,7 +7,7 @@ import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
@@ -59,6 +59,9 @@ function Share({ env, target, title }: { env: string; target: GuestSource; title
 function ItemLinks({ env, source, onNew }: { env: string; source: GuestSource; onNew(): void }) {
   const [rows, setRows] = useState<GuestLinkRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A revoke's own refusal: kept apart from the list's read, so a reload never wipes it.
+  const [refused, setRefused] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [home, setHome] = useState(env);
   const load = useCallback(() => {
     setError(null);
@@ -71,13 +74,17 @@ function ItemLinks({ env, source, onNew }: { env: string; source: GuestSource; o
     );
   }, [env, source]);
   useEffect(load, [load]);
+  // The row stays, its Revoke busy, until the host confirms; refused, it stays and says why.
   const revoke = async (id: string): Promise<void> => {
-    setRows((now) => now?.filter((l) => l.id !== id) ?? null);
+    setRevoking(id);
+    setRefused(null);
     try {
       await guestsCall(home, "work.guests.revoke", { linkId: id });
+      setRows((now) => now?.filter((l) => l.id !== id) ?? null);
     } catch (err) {
-      setError(errorText(err));
-      load();
+      setRefused(errorText(err));
+    } finally {
+      setRevoking(null);
     }
   };
   return (
@@ -94,17 +101,22 @@ function ItemLinks({ env, source, onNew }: { env: string; source: GuestSource; o
           <span className="min-w-0 flex-1 truncate">{l.name}</span>
           {/* Revoke takes the facts' place on hover (docs/DESIGN.md "Hover reveal"). */}
           <span className="relative flex shrink-0 items-center justify-end">
-            <span className={cn("text-xs text-muted-foreground tabular-nums", yields("row"))}>
+            <span className={cn("text-xs text-muted-foreground tabular-nums", revoking === l.id ? "opacity-0" : yields("row"))}>
               {ROLE_WORDS[l.role]}, {shortDay(l.expiresAt)}
             </span>
-            <span className={cn("absolute end-0", reveal("row", { row: true, overlay: true }))}>
-              <Button variant="ghost" size="xs" aria-label={`Revoke ${l.name}'s link`} onClick={() => void revoke(l.id)}>
-                Revoke
+            <span className={cn("absolute end-0", revoking === l.id ? "opacity-100" : reveal("row", { row: true, overlay: true }))}>
+              <Button variant="ghost" size="xs" aria-label={`Revoke ${l.name}'s link`} disabled={revoking !== null} onClick={() => void revoke(l.id)}>
+                <BusyLabel busy={revoking === l.id} label="Revoke" />
               </Button>
             </span>
           </span>
         </div>
       ))}
+      {refused ? (
+        <div className="flex min-h-9 items-center px-2">
+          <ErrorLine error={refused} />
+        </div>
+      ) : null}
       {error ? (
         <div className="flex min-h-9 items-center gap-2 px-2">
           <div className="min-w-0 flex-1">

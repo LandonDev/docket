@@ -224,10 +224,9 @@ function Stepper({ review }: { review: ReviewAdapter }) {
           <Step label="Previous change" disabled={busy || index <= 0} className={NARROW_HIDE} onClick={() => review.step(index - 1)}>
             <ChevronLeft />
           </Step>
-          <span className="min-w-6 shrink-0 text-center text-foreground tabular-nums select-none">
-            {index + 1}/{count}
-          </span>
-          <Step label="Next change" disabled={busy || index >= count - 1} className={NARROW_HIDE} onClick={() => review.step(index + 1)}>
+          {/* With no change in hand, the count alone, never "0/3"; Next takes the first change unless the kind says it cannot show it from here. */}
+          <span className="min-w-6 shrink-0 text-center text-foreground tabular-nums select-none">{none ? count : `${index + 1}/${count}`}</span>
+          <Step label="Next change" disabled={busy || (none && review.enter === false) || index >= count - 1} className={NARROW_HIDE} onClick={() => review.step(index + 1)}>
             <ChevronRight />
           </Step>
         </>

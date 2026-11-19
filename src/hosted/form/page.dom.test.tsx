@@ -60,6 +60,8 @@ describe('the form page', () => {
     type('select', 'M')
     submit()
     await vi.waitFor(() => expect(root.textContent).toContain('Your answer was sent.'))
+    // Focus follows the swap: the confirmation's heading, not a control that is gone.
+    expect(document.activeElement).toBe(root.querySelector('h1'))
     const [url, init] = fetcher.mock.calls[1]
     expect(url).toBe('/f/abcdefghijklmnop')
     expect(JSON.parse(String(init!.body))).toEqual({ answers: { n: 'Ava', g: 'Valorant', z: 'M' } })

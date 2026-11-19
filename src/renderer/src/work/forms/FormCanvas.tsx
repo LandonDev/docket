@@ -165,33 +165,23 @@ function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: Fo
   }, [shell, host, store, mode, published]);
 
   const suggestions = view?.suggestions;
+  const shown = half === "questions";
   useEffect(() => {
-    if (!suggestions?.length) return shell.review(null);
+    // A change is a question: while Responses shows none is on screen, so the frame draws no stepper (no "0/N", no verbs
+    // waiting on nothing) and the bar's Questions control is the way back to them (`Bar`).
+    if (!suggestions?.length || !shown) return shell.review(null);
     const ids = (w: number | { group: string } | "all"): { ids: string[] } | "all" => (typeof w === "number" ? { ids: [suggestions[w]?.id].filter(Boolean) } : "all");
-    // A change is a question: while Responses shows, none is on screen, so the stepper holds no current change and
-    // Reject and Accept wait until a step (or the switch) brings the Questions half, and the change, into view.
-    const shown = half === "questions";
-    const index = shown ? Math.min(current, suggestions.length - 1) : -1;
-    // A verb on a change he cannot see shows it first and decides nothing.
-    const show = (): Promise<void> => {
-      store.set({ half: "questions" });
-      return Promise.resolve();
-    };
     const review: ReviewAdapter = {
       groups: [{ id: "form", label: "Questions", by: suggestions[0].by, count: suggestions.length }],
-      index,
+      index: Math.min(current, suggestions.length - 1),
       count: suggestions.length,
-      // A change is a question, so stepping to one shows the Questions half (the switch gives way to the stepper in a narrow bar).
-      step: (to) => {
-        setCurrent(to);
-        store.set({ half: "questions" });
-      },
-      accept: (w) => (shown || typeof w !== "number" ? run(host.review(ids(w), "accept"), store, "Couldn't accept the change") : show()),
-      reject: (w) => (shown || typeof w !== "number" ? run(host.review(ids(w), "reject"), store, "Couldn't reject the change") : show()),
+      step: setCurrent,
+      accept: (w) => run(host.review(ids(w), "accept"), store, "Couldn't accept the change"),
+      reject: (w) => run(host.review(ids(w), "reject"), store, "Couldn't reject the change"),
     };
     shell.review(review);
     return () => shell.review(null);
-  }, [shell, host, store, suggestions, half, current, setCurrent]);
+  }, [shell, host, store, suggestions, shown, current, setCurrent]);
 
   const written = view?.written;
   const waiting = suggestions?.length ?? 0;
@@ -222,27 +212,35 @@ export function Bar(props: Props) {
     store.set({ publishing: true });
     void run(host.publish(), store, "Couldn't publish the form").finally(() => store.set({ publishing: false }));
   };
-  // While changes wait on the Questions half the stepper needs the room; on Responses the switch is his way back to them, so it stays.
-  const stepping = view.suggestions.length > 0 && half === "questions";
+  // While changes wait the switch gives way whole in a narrow bar: on Questions to the stepper, on Responses to one compact
+  // Questions control that leads back to them. Never both: the control shows only where the switch has gone.
+  const waiting = view.suggestions.length;
+  const away = waiting > 0 && half === "responses";
   return (
     <>
-      {/* Whole or gone: a narrow bar drops the switch rather than cut it, and only while the change it would lead to is on screen. */}
       <Tabs
         value={half}
         onValueChange={(next) => store.set({ half: next as Half })}
-        data-narrow-hide={stepping || undefined}
-        className={`mx-1 shrink-0 gap-0 ${stepping ? "@max-[560px]/bar:hidden" : ""}`}
+        data-narrow-hide={waiting > 0 || undefined}
+        className={`mx-1 shrink-0 gap-0 ${waiting ? "@max-[560px]/bar:hidden" : ""}`}
       >
         <TabsList aria-label="Half" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
           <TabsIndicator />
           <TabsTrigger value="questions" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
             Questions
+            {away ? <Waiting n={waiting} /> : null}
           </TabsTrigger>
           <TabsTrigger value="responses" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
             Responses
           </TabsTrigger>
         </TabsList>
       </Tabs>
+      {away ? (
+        <Button variant="ghost" size="xs" data-form-to-questions className="hidden shrink-0 @max-[560px]/bar:inline-flex" onClick={() => store.set({ half: "questions" })}>
+          Questions
+          <Waiting n={waiting} />
+        </Button>
+      ) : null}
       {view.suggestions.length ? null : view.state === "draft" ? (
         <Button size="xs" className="ms-auto" disabled={publishing} onClick={publish}>
           <BusyLabel busy={publishing} label="Publish" />
@@ -252,6 +250,11 @@ export function Bar(props: Props) {
       ) : null}
     </>
   );
+}
+
+/** How many changes wait on the Questions half, said beside its name while Responses shows and the stepper is gone. */
+function Waiting({ n }: { n: number }) {
+  return <span className="text-muted-foreground tabular-nums">{n}</span>;
 }
 
 function LiveLink({ link, close }: { link: string; close(): Promise<void> }) {

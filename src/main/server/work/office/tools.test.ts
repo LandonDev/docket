@@ -6,7 +6,7 @@ import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
 import { ensureExcelTables, excelStore, ExcelHelper } from './excel'
 import { FakeOffice } from './fake'
 import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeMailSchema, type OfficeMail } from './held'
-import { OFFICE_TOOLS, workTools, type Env } from './tools'
+import { OFFICE_TOOLS, sharedKey, workTools, type Env } from './tools'
 
 /**
  * The tool set over a fake Office: what is written, what waits as a
@@ -93,6 +93,37 @@ describe('writes, by the rule for files others can open', () => {
     expect(office.docs.get('https://contoso.sharepoint.com/Brief.docx')).toEqual({ paragraphs: ['Draft two.'], tracked: [JSON.stringify({ find: 'one', replace: 'two' })] })
   })
 
+  it('judges a file named by its bare name, or by a Windows path, as the file the carrier opens: a shared one is not written plainly', async () => {
+    const CLOUD = '/Users/owner/Library/CloudStorage/OneDrive-Contoso/Budget.docx'
+    office.docs.set(CLOUD, { paragraphs: ['Draft one.'], tracked: [] })
+    await run('office_doc_edit', { document: 'Budget.docx', find: 'one', replace: 'two', because: 'own' })
+    expect(office.docs.get(CLOUD)).toEqual({ paragraphs: ['Draft two.'], tracked: [JSON.stringify({ find: 'one', replace: 'two' })] })
+
+    const BOOK = '/Users/owner/Library/CloudStorage/OneDrive-Contoso/Plan 2.xlsx'
+    office.addBook(BOOK, { Sheet1: { B1: 100 } })
+    expect(text(await run('office_range_write', { workbook: 'Plan 2.xlsx', range: 'Sheet1!B1', values: [[120]], because: 'own' }))).toContain('1 cell waits as suggestions')
+    expect((await office.readRange(BOOK, 'Sheet1', 'B1')).values).toEqual([[100]])
+    expect(suggestions.open(excelStore(BOOK))).toHaveLength(1)
+
+    office.decks.set('/Users/owner/OneDrive - Contoso/Pitch.pptx', [['Q1 plan']])
+    expect(await run('office_slides_replace', { deck: 'Pitch.pptx', find: 'Q1', replace: 'Q2', because: 'own' })).toMatchObject({ isError: true })
+    expect(office.decks.get('/Users/owner/OneDrive - Contoso/Pitch.pptx')).toEqual([['Q1 plan']])
+
+    expect(sharedKey('C:\\Users\\owner\\OneDrive - Company\\Budget.docx')).toBe(true)
+    expect(sharedKey('C:\\Users\\owner\\Documents\\Budget.docx')).toBe(false)
+  })
+
+  it('counts a name no open file answers to, or two do, as shared', async () => {
+    office.addBook('/Users/owner/Documents/Twin.xlsx', { Sheet1: { A1: 1 } })
+    office.addBook('/Users/owner/Desktop/Twin.xlsx', { Sheet1: { A1: 1 } })
+    expect(text(await run('office_range_write', { workbook: 'Twin.xlsx', range: 'Sheet1!A1', values: [[2]], because: 'own' }))).toContain('waits as suggestions')
+    expect((await office.readRange('/Users/owner/Documents/Twin.xlsx', 'Sheet1', 'A1')).values).toEqual([[1]])
+    expect((await office.readRange('/Users/owner/Desktop/Twin.xlsx', 'Sheet1', 'A1')).values).toEqual([[1]])
+    // his own file by its bare name is his: written at once
+    expect(text(await run('office_range_write', { workbook: 'Mine.xlsx', range: 'Sheet1!A1', values: [[3]], because: 'own' }))).toContain('writeId')
+    expect((await office.readRange(MINE, 'Sheet1', 'A1')).values).toEqual([[3]])
+  })
+
   it('refuses a range with no sheet and a block of the wrong size, in words', async () => {
     expect(text(await run('office_range_read', { workbook: MINE, range: 'A1' }))).toContain("Name the sheet")
     expect(await run('office_range_write', { workbook: MINE, range: 'Sheet1!A1:B1', values: [[1]], because: 'own' })).toMatchObject({ isError: true })
@@ -160,7 +191,10 @@ describe('nothing is sent without his press', () => {
     const actCtx = { host: 'env_mac' } as ActCtx
     await expect(mail.execute(p, actCtx)).resolves.toMatchObject({ summary: 'Sent to dana@example.com: Plan', ref: { outlook: 'sent-1' } })
     expect(office.sent[0].html).toBe('<table border="1"><tr><td><b>1</b></td></tr></table><a >l</a>')
-    expect(cleanMailHtml('<img src="https://a.test/1.png" srcset="https://b.test/2.png 2x">')).toBe('<img src="https://a.test/1.png">')
+    expect(cleanMailHtml('<img src="https://a.test/1.png" srcset="https://b.test/2.png 2x">')).toBe('<img src="https://a.test/1.png" >')
+    // however the attribute is set off from the one before it
+    expect(cleanMailHtml('<img src="https://a.test/1.png"/srcset="https://b.test/2.png 2x">')).not.toContain('b.test')
+    expect(cleanMailHtml('<img src="https://a.test/1.png"srcset="https://b.test/2.png 2x">')).not.toContain('b.test')
     await expect(mail.execute({ ...p, host: 'env_box' }, actCtx)).rejects.toThrow('held for another host')
     expect(office.sent).toHaveLength(1)
 

@@ -208,6 +208,8 @@ private struct OutboxRow: View {
             guard let at = item.summary.range(of: ": ") else { return nil }
             return String(item.summary[at.upperBound...])
         }
+        // A calendar act's line is when it lands, never the first text in its row (an account).
+        if let when = OutboxModel.calendarWhen(kind: item.kind, payload: item.payload) { return when }
         let view = OutboxModel.payloadView(item.payload)
         let shown = view.fields.first { ["subject", "title", "channel"].contains($0.key) } ?? view.fields.first { $0.edit == .text }
         return shown?.value ?? view.body.map { $0.text.split(separator: "\n").first.map(String.init) ?? "" }

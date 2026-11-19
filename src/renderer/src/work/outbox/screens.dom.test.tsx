@@ -141,6 +141,20 @@ describe("the return from Away", () => {
     expect(within(written).queryByRole("alert")).toBeNull();
   });
 
+  it("lists only the writes made while he was away: Retry after his return leaves later ones out", async () => {
+    world.writesDown = true;
+    const found = await gatherAway([{ environmentId: "box", decided: { since: 1_500, threads: [] } }], 3_000);
+    render(<AwayReturnWork report={found!.report} onClose={() => undefined} onOpenSession={() => undefined} onOpenOutbox={() => undefined} />);
+    const dialog = await screen.findByRole("dialog");
+    const written = within(dialog).getByRole("region", { name: "Written on your files" });
+    world.writesDown = false;
+    // Written after he came back (until 3,000): not his Away's.
+    world.results = [...world.results, result("r9", "Added After hours", true, { createdAt: 4_000 })];
+    await act(async () => fireEvent.click(within(written).getByRole("button", { name: "Retry" })));
+    await waitFor(() => expect(within(written).getByText("Added Dietary needs")).toBeTruthy());
+    expect(within(written).queryByText("Added After hours")).toBeNull();
+  });
+
   it("still toasts when a failed read of the writes was all there was to say", async () => {
     world.items = [];
     world.writesDown = true;

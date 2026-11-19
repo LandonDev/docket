@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { Bbox } from "@shared/contract-work-pdf";
 import type { DeckShape, DeckSlide, DeckView, SlideChange } from "@shared/contract-work-slides";
 import { Button } from "../../components/ui/button";
@@ -213,6 +213,22 @@ function Strip({ view, current, narrow, docOf, pictures, onPick }: { view: DeckV
   useEffect(() => {
     list.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [current]);
+  // One Tab stop, as a listbox is: the slide on the stage takes it (the first while none is), and the arrows along the
+  // strip, Home and End move the focus and the stage together.
+  const stop = view.slides.some((slide) => slide.key === current) ? current : (view.slides[0]?.key ?? null);
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const keys = view.slides.map((slide) => slide.key);
+    const at = keys.indexOf((event.target as HTMLElement).dataset.slide ?? stop ?? "");
+    const back = narrow ? "ArrowLeft" : "ArrowUp";
+    const on = narrow ? "ArrowRight" : "ArrowDown";
+    const to = event.key === back ? at - 1 : event.key === on ? at + 1 : event.key === "Home" ? 0 : event.key === "End" ? keys.length - 1 : null;
+    if (to === null) return;
+    event.preventDefault();
+    const key = keys[Math.max(0, Math.min(keys.length - 1, to))];
+    if (!key) return;
+    if (key !== current) onPick(key);
+    list.current?.querySelector<HTMLElement>(`[data-slide="${CSS.escape(key)}"]`)?.focus();
+  };
   return (
     <div
       ref={list}
@@ -220,6 +236,7 @@ function Strip({ view, current, narrow, docOf, pictures, onPick }: { view: DeckV
       role="listbox"
       aria-label="Slides"
       aria-orientation={narrow ? "horizontal" : "vertical"}
+      onKeyDown={onKeyDown}
       className={
         narrow
           ? "flex shrink-0 gap-1 overflow-x-auto overflow-y-hidden overscroll-contain border-t border-border bg-sidebar p-2"
@@ -239,6 +256,7 @@ function Strip({ view, current, narrow, docOf, pictures, onPick }: { view: DeckV
               aria-label={`${slide.number === null ? "Removed" : `Slide ${slide.number}`}: ${slide.title || "Untitled"}`}
               data-slide={slide.key}
               data-tint={slide.tint ?? undefined}
+              tabIndex={slide.key === stop ? 0 : -1}
               onClick={() => onPick(slide.key)}
               className="group/th relative flex shrink-0 items-start gap-1 rounded-md text-start"
             >

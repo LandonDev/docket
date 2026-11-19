@@ -306,9 +306,16 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
       : [],
     width,
   );
+  // The diff's failure first; a diff drawn without its versions (no pickers, no names) says that on the same line.
   useEffect(() => {
-    shell.statusLine(compare.error ? { tone: "failed", word: "The compare did not load", detail: compare.error, action: { label: "Retry", run: compare.retry } } : null);
-  }, [shell, compare.error, compare.retry]);
+    shell.statusLine(
+      compare.error
+        ? { tone: "failed", word: "The compare did not load", detail: compare.error, action: { label: "Retry", run: compare.retry } }
+        : versions.error
+          ? { tone: "failed", word: "The versions did not load", detail: versions.error, action: { label: "Retry", run: versions.retry } }
+          : null,
+    );
+  }, [shell, compare.error, compare.retry, versions.error, versions.retry]);
   useEffect(() => bringIntoView(ref.current, current), [ref, current, layout, compare.value]);
   useEffect(() => {
     if (state?.shown !== layout) setState({ ...state, shown: layout });

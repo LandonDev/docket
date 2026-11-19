@@ -58,6 +58,11 @@ export function canEdit(item: Pick<HostItem, "payload" | "state" | "kind">): boo
   const view = payloadView(item.payload);
   return view.fields.some((f) => f.edit !== null) || (view.body !== null && !view.body.readOnly);
 }
+/** A list press's past verb: the acts' own when they share one ("Posted 2"), else "Sent", as the list's Send N says; never the first item's alone. */
+export function batchVerb(items: readonly Pick<HostItem, "verb">[]): string {
+  const verbs = new Set(items.map((i) => i.verb));
+  return verbs.size === 1 ? pastOf([...verbs][0]!) : "Sent";
+}
 /** Where he looks to see whether a send that may have gone went. */
 const checkWords = (item: HostItem): string => (item.kind === "mail.send" || item.kind === "office.mail.send" ? "Check Sent first" : "Check whether it went first");
 /** "Send to Dana Lee: Re: budget" → the act and what it is about. */
@@ -186,7 +191,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     setTicked(new Set());
     // What waits for its own look is said plainly, beside what went: never as a failure.
     const left = waiting.length ? `${waiting.length} ${waiting.length === 1 ? "waits" : "wait"} for you to open ${waiting.length === 1 ? "it" : "them"}` : null;
-    if (sent || left) toast([sent ? `${pastOf(items[0]?.verb ?? "Send")} ${sent}${where ? ` from ${where}` : ""}` : null, left].filter(Boolean).join(". "));
+    if (sent || left) toast([sent ? `${batchVerb(items)} ${sent}${where ? ` from ${where}` : ""}` : null, left].filter(Boolean).join(". "));
     if (failed.length) toastError(`${failed.length} could not go: ${failed[0]!.error}`);
   };
 

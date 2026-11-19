@@ -14,12 +14,13 @@ import { Evidence } from "./Evidence";
  * field, the sentence a thread is told. From a proposal it opens on the
  * proposed sentence with the edits it came from under it, 14px; Add rule
  * settles the proposal. Only his press writes a rule. An existing rule's
- * dialog also moves it up or down the list, the same reorder the grip makes,
- * so the order is not the pointer's alone; a move is written at once.
+ * dialog also moves it up or down the list, so the order is not the pointer's
+ * alone. A move stays in the dialog until Save, which writes it with the same
+ * reorder the grip makes; Cancel leaves the order as it was.
  */
 
-/** Where the rule sits, and the moves the list allows from there; a move resolves once the host has the new order. */
-export type RuleMoves = { at: number; of: number; move(by: -1 | 1): Promise<void> };
+/** The list's order as the dialog opened on it, and how Save writes a new one (rejects when the host refuses it). */
+export type RuleMoves = { ids: readonly string[]; save(order: string[]): Promise<void> };
 
 export type RuleDialogOf = { kind: "new" } | { kind: "rule"; rule: HouseRule } | { kind: "proposal"; proposal: RuleProposal };
 
@@ -66,17 +67,24 @@ function Body({
   onAdded?: (rule: HouseRule) => void;
   moves: RuleMoves | null;
 }) {
-  const [moving, setMoving] = useState<-1 | 1 | null>(null);
-  const move = (by: -1 | 1): void => {
-    if (!moves) return;
-    setMoving(by);
-    void moves.move(by).finally(() => setMoving(null));
-  };
+  // The order as the dialog has it: moved here, written only with Save.
+  const [order, setOrder] = useState<string[]>(() => [...(moves?.ids ?? [])]);
+  const ruleId = of.kind === "rule" ? of.rule.id : null;
+  const at = ruleId ? order.indexOf(ruleId) : -1;
+  const reordered = !!moves && order.join("\n") !== moves.ids.join("\n");
+  const move = (by: -1 | 1): void =>
+    setOrder((was) => {
+      const next = [...was];
+      const to = at + by;
+      if (at < 0 || to < 0 || to >= next.length) return was;
+      [next[at], next[to]] = [next[to]!, next[at]!];
+      return next;
+    });
   const close = useModalClose();
   const [text, setText] = useState(of.kind === "rule" ? of.rule.text : of.kind === "proposal" ? of.proposal.text : "");
   const [error, setError] = useState<string | null>(null);
   const trimmed = text.trim();
-  const unchanged = of.kind === "rule" && trimmed === of.rule.text;
+  const unchanged = of.kind === "rule" && trimmed === of.rule.text && !reordered;
 
   const run = async (what: "save" | "delete", work: () => Promise<unknown>): Promise<void> => {
     setPending(what);
@@ -95,8 +103,10 @@ function Body({
     event.preventDefault();
     if (!trimmed || pending || unchanged) return;
     void run("save", async () => {
-      if (of.kind === "rule") await editRule(env, of.rule.id, { text: trimmed });
-      else {
+      if (of.kind === "rule") {
+        if (trimmed !== of.rule.text) await editRule(env, of.rule.id, { text: trimmed });
+        if (reordered) await moves!.save(order);
+      } else {
         // Awaited first: `onAdded?.(await addRule(…))` skips the write when no callback is given.
         const rule = await addRule(env, workspaceId, trimmed, of.kind === "proposal" ? of.proposal.id : undefined);
         onAdded?.(rule);
@@ -122,14 +132,14 @@ function Body({
             }}
           />
         </Field>
-        {of.kind === "rule" && moves && moves.of > 1 ? (
-          <FieldRow label="Order" description={`${moves.at + 1} of ${moves.of}`}>
+        {at >= 0 && order.length > 1 ? (
+          <FieldRow label="Order" description={`${at + 1} of ${order.length}`}>
             <div role="group" className="flex items-center gap-1">
-              <Button type="button" variant="ghost" size="sm" disabled={moving !== null || moves.at === 0} onClick={() => move(-1)}>
-                <BusyLabel busy={moving === -1} label="Move up" />
+              <Button type="button" variant="ghost" size="sm" disabled={pending !== null || at === 0} onClick={() => move(-1)}>
+                Move up
               </Button>
-              <Button type="button" variant="ghost" size="sm" disabled={moving !== null || moves.at === moves.of - 1} onClick={() => move(1)}>
-                <BusyLabel busy={moving === 1} label="Move down" />
+              <Button type="button" variant="ghost" size="sm" disabled={pending !== null || at === order.length - 1} onClick={() => move(1)}>
+                Move down
               </Button>
             </div>
           </FieldRow>

@@ -157,7 +157,7 @@ describe("the rule dialog", () => {
 });
 
 describe("the order, without a pointer", () => {
-  it("moves a rule up and down from its edit dialog through the same reorder call", async () => {
+  it("moves a rule in its edit dialog and writes the order with Save, through the same reorder call", async () => {
     state.rules = [rule("r1", "First"), rule("r2", "Second"), rule("r3", "Third")];
     render(<HouseRules workspace={WORKSPACE} />);
     await settle();
@@ -165,13 +165,29 @@ describe("the order, without a pointer", () => {
     await settle();
     expect(screen.getByText("2 of 3")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Move up" }));
-    await settle();
-    expect(calls.find((c) => c.method === "work.rules.order")?.params).toEqual({ workspaceId: "ws", ids: ["r2", "r1", "r3"] });
+    // Moved in the dialog only: nothing written yet.
     expect(screen.getByText("1 of 3")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Move up" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Move down" }));
+    expect(calls.some((c) => c.method === "work.rules.order")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await settle();
-    expect(calls.filter((c) => c.method === "work.rules.order").at(-1)?.params).toEqual({ workspaceId: "ws", ids: ["r1", "r2", "r3"] });
+    expect(calls.find((c) => c.method === "work.rules.order")?.params).toEqual({ workspaceId: "ws", ids: ["r2", "r1", "r3"] });
+    // The text did not change, so only the order went.
+    expect(calls.some((c) => c.method === "work.rules.edit")).toBe(false);
+  });
+
+  it("Cancel leaves the order as it was", async () => {
+    state.rules = [rule("r1", "First"), rule("r2", "Second")];
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Edit rule: Second" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Move up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await settle();
+    expect(calls.some((c) => c.method === "work.rules.order")).toBe(false);
+    const order = [...document.querySelectorAll("[data-rule]")].map((r) => r.getAttribute("data-rule"));
+    expect(order).toEqual(["r1", "r2"]);
   });
 });
 

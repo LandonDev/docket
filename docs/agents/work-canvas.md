@@ -166,6 +166,13 @@ What a kind should know:
 - A kind's loading view uses `ItemBones` / `ItemSkeleton`
   (work/canvas/ItemBones.tsx), the pane's own fallback shape, so nothing
   moves when the chunk lands; a failed load shows its failure, never bones.
+- The stepper prints "2/6" with a change in hand, and the count alone ("6")
+  with none (`index` -1), never "0/6". Next then takes the first change,
+  unless the adapter says `enter: false` (stepping from there shows nothing,
+  as on a form's Responses), when it is not lit.
+- While a kind's code loads, the bar holds a 12px bone in its tools slot
+  (`data-bar-bone`), the document's own, so the body does not drop 32px
+  when the code lands.
 - The bar is drawn only while the kind has something in it. Its order is
   fixed: people, the mode, the kind's `Bar`, History (drawn by the pane for
   a def with `history: true`), then the stepper or the written line.

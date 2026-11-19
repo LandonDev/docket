@@ -15,7 +15,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceSettings } from "../shell/actions";
 import { addRule, decideProposal, editRule, orderRules, removeRule, useRulesPage, useVoice } from "./data";
 import { Evidence, fromEdits } from "./Evidence";
-import { RuleDialog, type RuleDialogOf } from "./RuleDialog";
+import { RuleDialog, type RuleDialogOf, type RuleMoves } from "./RuleDialog";
 
 /**
  * A Work workspace's house rules, on its settings page
@@ -51,23 +51,13 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
   const [dialog, setDialog] = useState<RuleDialogOf | null>(null);
   const page = load.status === "ready" ? load.value : null;
 
-  // The edit dialog's Move up and Move down: the grip's reorder, kept in step with the list.
-  const ruleId = dialog?.kind === "rule" ? dialog.rule.id : null;
-  const at = page && ruleId ? page.rules.findIndex((r) => r.id === ruleId) : -1;
-  const moves =
-    page && at >= 0
-      ? {
-          at,
-          of: page.rules.length,
-          move: (by: -1 | 1) => {
-            const order = page.rules.map((r) => r.id);
-            const to = at + by;
-            if (to < 0 || to >= order.length) return Promise.resolve();
-            [order[at], order[to]] = [order[to]!, order[at]!];
-            return reorder(env, workspace.id, page, put, order);
-          },
-        }
-      : null;
+  // The edit dialog's Move up and Move down, written with its Save through the grip's reorder; a refusal stays in the dialog.
+  const moves: RuleMoves | null = page
+    ? {
+        ids: page.rules.map((r) => r.id),
+        save: (order) => reorder(env, workspace.id, page, put, order, true),
+      }
+    : null;
 
   const added = (rule: HouseRule): void =>
     void loadToast().then((toast) =>
@@ -101,14 +91,19 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
   );
 }
 
-/** The new order on screen at once, then on the host; refused, the old order comes back and a toast says so. */
-function reorder(env: string, workspaceId: string, page: RulesPage, put: (p: RulesPage) => void, order: string[]): Promise<void> {
+/**
+ * The new order on screen at once, then on the host; refused, the old order
+ * comes back and a toast says so (the grip), or the refusal goes to the
+ * caller (`rethrow`: the dialog's Save, whose own line says it).
+ */
+function reorder(env: string, workspaceId: string, page: RulesPage, put: (p: RulesPage) => void, order: string[], rethrow = false): Promise<void> {
   const byId = new Map(page.rules.map((r) => [r.id, r]));
   put({ ...page, rules: order.map((id) => byId.get(id)!) });
   return orderRules(env, workspaceId, order).then(
     () => undefined,
     (err: unknown) => {
       put(page);
+      if (rethrow) throw err;
       failed("The new order was not kept")(err);
     },
   );
