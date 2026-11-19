@@ -17,7 +17,7 @@ registers.
 | a file `.tcsheet` | the Work service, `sheets/host/` | the same, in one zip on this host's disk |
 | a file `.csv` | the Work service, as a `.tcsheet` read from it once (`csvSheetPath`: `<userData>/sheets/csv/<hash>.tcsheet`) | its own op log; Save as CSV writes it back over the .csv, Export as Excel beside it |
 | a workbook in Excel (`{at: 'microsoft', app: 'excel'}`) | Excel, through the office pillar's helper (`office/grid.ts`, [work-office.md](work-office.md) "Excel behind the grid") | written through Excel, cell contents only; the view says `store: 'package'` |
-| Google | not here: milestone 30 implements `SheetSource` | — |
+| a Google spreadsheet (`{at: 'google'}`) | Google, through the google pillar (`google/grid.ts`, [work-google.md](work-google.md) "Sheets") | each write compared, then one `values:batchUpdate`; the view says `store: 'package'`; the switch opens it in Google |
 
 `held.ts` maps an item to its store (`heldOf`) and the key its
 suggestions, mode and charts are kept under (`storeKey`: `file:<path>`,
@@ -288,7 +288,7 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   rows or columns) in one.
 - The model writer leaves out conditional formats, validations, defined
   names, notes and our charts.
-- Excel behind the grid (M28), Google (M30), the
+- Excel behind the grid (M28), the
   guest page that uses the live route (M31), presence on the canvas.
 - Keeping IronCalc's model in memory between saves: each save loads the
   package afresh, which on the 100,000-row file is tens of seconds.

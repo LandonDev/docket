@@ -896,7 +896,11 @@ thread; nothing answers inside the canvas.
   behind or go with it). A file dragged over a document's surface draws a
   `muted` wash 12px inside it with a hairline and one 13px muted line
   ("Drop to open as a document"), then the spinner and the file's name
-  while it opens (work/formats/Import.tsx).
+  while it opens (work/formats/Import.tsx). Open from Google… is a row of
+  the frame's ⋯, above Close; its dialog is Export's shape with one choice,
+  the account, and Choose files shows Google's Picker in the browser. A
+  Google Doc's own verbs (Write to Google, Read again from Google, Open in
+  Google) come first in its ⋯; that Google moved is said once, in a toast.
 
 The kinds, each a hand-made body built from components/ui:
 
