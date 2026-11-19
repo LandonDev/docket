@@ -117,7 +117,7 @@ describe('FENCED_PARAMS', () => {
     expect(fencedPaths(req('fs.statFiles', { paths: ['/a', '/b'] }))).toEqual(['/a', '/b'])
     expect(fencedPaths(req('fs.copyPath', { from: '/a', destParent: '/b' }))).toEqual(['/a', '/b'])
     expect(fencedPaths(req('fs.createPath', { parent: '/r', name: '../x', isDir: false }))).toEqual(['/r', resolve('/x')])
-    expect(fencedPaths(req('fs.renamePath', { path: '/r/a', name: 'b' }))).toEqual(['/r/a', '/r/b'])
+    expect(fencedPaths(req('fs.renamePath', { path: '/r/a', name: 'b' }))).toEqual(['/r/a', resolve('/r/b')])
     expect(fencedPaths(req('git.log', { cwd: '/r' }))).toEqual(['/r'])
     expect(fencedPaths(req('git.clone', { url: 'https://x/y', parent: '/p' }))).toEqual(['/p'])
     expect(fencedPaths(req('search.project', { options: { cwd: '/r', query: 'q' } }))).toEqual(['/r'])
