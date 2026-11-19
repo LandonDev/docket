@@ -22,7 +22,7 @@ const PAGE = ["--background", "--card"];
 const EDGE_GROUNDS = ["--background", "--sidebar", "--card"];
 
 /** A token's value in a theme; a literal colour (a palette table's ink) is itself. */
-const value = (theme: Theme, token: string): string => (token.startsWith("--") ? resolve(theme, `var(${token})`) : token);
+const value = (theme: Theme, token: string): string => resolve(theme, token.startsWith("--") ? `var(${token})` : token);
 /** `ink` on `ground`: either may be thin, and is then laid over what is under it (`ground`, then `base`). */
 function ratio(theme: Theme, ink: string, ground: string, base = "--background"): number {
   const under = over(value(theme, ground), value(theme, base));
@@ -80,6 +80,8 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
     pairs: [
       ...["--add-bg", "--add-bg-soft", "--del-bg", "--sel-bg", "--diff-gap", "--find-hit", "--comment", "--comment-hot"].flatMap((on) => PAGE.map((base) => ({ ink: "--foreground", on, base }))),
       ...["--add-bg-paper", "--del-bg-paper", "--sel-bg-paper", "--find-bg-paper", "--find-bg-paper-current"].map((on) => ({ ink: "--paper-ink", on, base: "--paper" })),
+      // The skill label on its own wash, on the title bar (`bg-skill/15 text-skill`).
+      { ink: "--color-skill", on: "color-mix(in srgb, var(--color-skill) 15%, transparent)", base: "--sidebar" },
     ],
   },
 ];
@@ -173,6 +175,6 @@ describe("the contrast contract", () => {
     expect(luminance(value(light, "--background"))).toBeCloseTo(1, 3);
     // A thin edge is measured as drawn, over its ground, never as its own colour.
     expect(ratio(light, "--border", "--background")).toBeLessThan(2);
-    for (const tier of TIERS) for (const p of tier.pairs) for (const [, theme] of THEMES) expect(theme.has(p.ink) && theme.has(p.on), `${p.ink} on ${p.on}`).toBe(true);
+    for (const tier of TIERS) for (const p of tier.pairs) for (const [, theme] of THEMES) expect(theme.has(p.ink) && (theme.has(p.on) || !p.on.startsWith("--")), `${p.ink} on ${p.on}`).toBe(true);
   });
 });

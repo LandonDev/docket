@@ -620,7 +620,8 @@ html {
 }
 
 html.theme-light {
-  --color-skill: #8a6a0b;
+  /* Dark enough to read on its own 15% wash (the title bar's Development label). */
+  --color-skill: #7a5a00;
   --color-mention: #0270a8;
   --color-markdown-heading: #be185d;
   /* Text as often as fills: each reaches 4.5:1 on every surface, the

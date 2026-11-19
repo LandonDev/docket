@@ -40,6 +40,17 @@ describe("FilePreview", () => {
     }
   });
 
+  it("steps a context line back by ink, never by opacity: muted throughout, a comment faint", () => {
+    const withContext: ToolPreview = { ...preview, lines: [...preview.lines, { number: 4, kind: "context", text: "export const kept = 3;" }, { number: 5, kind: "add", text: "// why" }] };
+    const { container } = render(<FilePreview preview={withContext} status="accepted" cwd="/repo" />);
+    const code = (text: string) => [...container.querySelectorAll("span")].find((span) => span.textContent === text && !span.children.length)!;
+    // A context line draws no keyword in foreground: the changed lines are the ones that speak.
+    expect(code("export const kept = 3;").className).toBe("text-muted-foreground");
+    expect(code("// the app").className).toBe("text-faint-foreground");
+    expect(code("// why").className).toBe("text-faint-foreground");
+    expect(container.querySelector('[class*="opacity-"]')).toBeNull();
+  });
+
   it("draws no left bar on a line", () => {
     const { container } = render(<FilePreview preview={preview} status="accepted" cwd="/repo" />);
     expect(container.querySelector(".w-0\\.5")).toBeNull();

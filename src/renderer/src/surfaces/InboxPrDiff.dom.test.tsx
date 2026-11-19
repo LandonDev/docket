@@ -13,6 +13,21 @@ describe("InboxPrDiff", () => {
     expect(screen.getByText("Too large to show in full; the files appear without their diffs.")).toBeTruthy();
   });
 
+  it("draws code in the transcript's inks: keywords in foreground, context muted, no status colour inside the code", () => {
+    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,3 +1,3 @@\n const Kept = 1;\n-const Old = 1;\n+export const New = 2;";
+    const diff = { additions: 1, deletions: 1, files: [{ path: "src/a.ts", additions: 1, deletions: 1, status: "modified" }], patch, truncated: false } as unknown as GithubPrDiff;
+    const { container } = render(<InboxPrDiff diff={diff} />);
+    const code = [...container.querySelectorAll<HTMLElement>("span.whitespace-pre")];
+    expect(code.map((line) => line.textContent)).toEqual(["const Kept = 1;", "const Old = 1;", "export const New = 2;"]);
+    for (const line of code) {
+      expect(line.querySelector(".text-success, .text-warning, .text-destructive")).toBeNull();
+      expect(line.querySelector('[class*="opacity-"]')).toBeNull();
+    }
+    expect(code[0].firstElementChild!.className).toBe("text-muted-foreground");
+    expect(code[0].querySelector(".text-foreground")).toBeNull();
+    expect([...code[2].querySelectorAll(".text-foreground")].map((span) => span.textContent)).toEqual(["export", "const"]);
+  });
+
   it("turns one chevron with its file instead of swapping glyphs", () => {
     const diff = { additions: 1, deletions: 0, files: [{ path: "src/a.ts", additions: 1, deletions: 0, status: "modified" }], patch: "", truncated: false } as unknown as GithubPrDiff;
     const { container } = render(<InboxPrDiff diff={diff} />);
