@@ -207,7 +207,7 @@ describe("the meeting canvas", () => {
     expect(bar === null || bar.matches(":has([data-canvas-tools]:empty)")).toBe(true);
     // and More holds the frame's rows alone
     fireEvent.click(screen.getByRole("button", { name: "More" }));
-    expect((await screen.findAllByRole("menuitem")).map((row) => row.textContent)).toEqual(["Close"]);
+    expect((await screen.findAllByRole("menuitem")).map((row) => row.textContent)).toEqual(["Open from Google…", "Close"]);
   });
 
   it("offers Export transcript first in More once there is a transcript, and saves the turns as text", async () => {
