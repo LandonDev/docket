@@ -2205,8 +2205,8 @@ and `outbox.test.ts` run the hold of §19.3 over it.
 
 ## 29. The Windows service: UI Automation
 
-Work milestone 42 (the reader and the invisible tier); milestone 43 adds
-input and capture. `tc-computer.exe`, a Rust binary in
+Work milestones 42 (the reader and the invisible tier) and 43 (input and
+capture). `tc-computer.exe`, a Rust binary in
 `native/tc-computer-win/`, answers this wire on a Windows host as the Swift
 service does on the Mac. The host code is the same: binary.ts finds
 `resources/native/tc-computer.exe` and lets computer use run on win32, and
@@ -2244,16 +2244,24 @@ app's job object and ends with it.
   (5 s, else the step fails `app_busy`), reads shared after a running or
   queued action; the machine-wide `clipboard.lock` and `session.lock` under
   `%LOCALAPPDATA%\Temp\tc-computer\`, never a `TMP` a caller set (Rust's
-  `File::try_lock`, a fresh handle per try). M42 posts no input, so only
-  `hold-lock` takes them yet.
+  `File::try_lock`, a fresh handle per try). A paste holds the clipboard
+  lock (2 s to take it, else `clipboard_busy`); a session step holds the
+  session lock (2 s, else `session_unavailable { reason: 'in-use' }`).
 - Answers as on the Mac: both permissions are granted (Windows has no TCC);
   one display entry per monitor in physical pixels at scale 1 (the process
   is per-monitor DPI aware, so a pixel is a point here); `features: []`.
-  `escape.watch`, `input.probe` (`keyWindow: 'none'`, nothing tried) and
-  `input.restoreSession` answer at once; `clipboard.state` never changes;
-  `capture.screenshot` and `capture.stream.start` answer `capture_failed`
-  until milestone 43. `apps/changed` (`launched`, `terminated`,
-  `activated`) comes from a poll of the app list every second.
+  `input.probe` answers `keyWindow: 'none'` with nothing tried (posted
+  messages reach a background window's controls whatever has the focus,
+  so there is no key window to learn). `apps/changed` (`launched`,
+  `terminated`, `activated`) comes from a poll of the app list every
+  second. The clipboard watch polls Windows' clipboard sequence number
+  every 250 ms (`clipboard.state`'s `changeCount`); a change the service did
+  not make is the person's copy, and the watch's start counts as one, as
+  §5.3 says. The person watch is a pair of low-level hooks (keyboard and
+  pointer) on a thread of their own with its message loop; their events go
+  to the service on another thread, so a slow writer never holds the hooks
+  past Windows' timeout. Every event the service sends carries
+  `dwExtraInfo = 0x74636370` and is never the person's.
 
 ### 29.2 Apps and windows
 
@@ -2271,9 +2279,17 @@ app's job object and ends with it.
   pixels; `main` the front-most window that is not minimized; `space` is
   `other` for a window on another virtual desktop. `window.title` matches
   exactly, then as a substring.
-- `apps.launch` launches nothing yet (milestone 43): a running app answers
-  `{ pid, launched: false }`, anything else `app_not_found`, so the host's
-  resolver still falls back to a prefix; `open` answers `open_refused`.
+- `apps.launch`: a running app answers `{ pid, launched: false }`, opening
+  `open` in it when given (the items as the exe's arguments); else the exe
+  by name (`charmap` or `charmap.exe`, through App Paths and PATH, as the
+  Run box resolves it) is started by `ShellExecuteEx` shown without
+  activation, and its window is waited for up to 10 s by exe name (a
+  launcher hands its work to the app's own process). An app that takes the
+  front anyway is sent back behind the person's window and the result says
+  `front: { raised: true, restored }`. `refuse` is checked against the exe
+  name; `open` refuses programs and scripts (`.exe`, `.bat`, `.cmd`,
+  `.ps1`, `.lnk`, `.msi` and the rest) as `open_refused { reason:
+  'executable' }`. A name Windows cannot start is `app_not_found`.
 - The policy (computer/policy.ts) refuses acts, never reads, on Windows'
   own prompts: `consent.exe` (the elevation prompt, on the secure desktop,
   out of any service's reach anyway), `credentialuibroker.exe` (the
@@ -2326,9 +2342,11 @@ app's job object and ends with it.
   range lines or `more below` summaries; the budget's cut ends with
   `(truncated …)` and keeps the focused element's path. `element: <i>`
   answers a `subtree` with values uncut. The space is the window's pixels,
-  scaled as a screenshot would be (`SHOT`'s long edge and pixel cap); the
-  header's thin word is printed only with a picture, so never until
-  milestone 43.
+  scaled as a screenshot would be (`SHOT`'s long edge and pixel cap, each
+  side floored), or the session's own space for the window once a
+  screenshot set it. `screenshot: 'always'` attaches a picture to every
+  read, `auto` to a thin one; the header's thin word is printed only when a
+  picture came (a failed one is `shotError` and drops the word).
 - The smart wait reads the window again until its text holds still for
   `quietMs`, from `minMs`, at most `maxMs` (`quiet` or `max`; never
   `busy`). A step's `effect` is `changed` when the closing read differs from
@@ -2337,14 +2355,19 @@ app's job object and ends with it.
 
 ### 29.4 Actions
 
-Only the `ax` tier, on an element, with no coordinate, modifier or
-duration; the result says `tier: 'ax'`. Nothing moves the pointer, posts a
-key or brings a window forward (the proof checks the pointer and the front
-app before and after).
+Every step goes to the `ax` tier first when it is an `ax` form (§29.4.1);
+a click or typing the element takes no other way goes on to the first
+allowed event tier that can express it (§29.4.2). `set_value`, `perform`
+and `select_text` are `ax` only.
+
+#### 29.4.1 The `ax` tier
+
+On an element, with no coordinate, modifier or duration; the result says
+`tier: 'ax'`.
 
 - `left_click` and `perform press`: Invoke, else Toggle, else select the
   item, else expand or collapse it, else the legacy default action; else
-  `action_unsupported`.
+  the next tier.
 - `perform`: `toggle`, `expand`, `collapse`, `increment` and `decrement`
   (RangeValue by its small change), `scroll up|down|left|right` (Scroll by
   a page), `select`; `raise` needs the session tier.
@@ -2352,19 +2375,108 @@ app before and after).
   Value pattern but a window of its own (Notepad's RichEdit), `WM_SETTEXT`;
   RangeValue for a number. The value is read back for up to 300 ms
   (Chromium updates its tree after the write) and a different one is
-  `value_not_taken`. Chromium moves its own focus to the field it filled,
-  inside its window; the front app does not change.
+  `value_not_taken`.
 - `select_text`: the Text pattern's range, found in the document's text
   (`text` with `prefix` and `suffix`, or `range`), selected, or the caret
   put before or after it.
 - `type` into an element with no text: as `set_value` (`via: 'ax-value'`);
-  into one that holds text, `action_unsupported` until key input.
-- `wait` runs the smart wait; `cursor_position` answers `X=0, Y=0`. Every
-  pointer, key, scroll, paste and capture verb answers `action_unsupported`
-  ("milestone 43").
-- `save_as` and `computer_apps { open }` take Windows paths (`C:\…`, `C:/…`,
-  `~\…`) in the zod (`isSaveAsPath`, `refusedOpenItem`); the service does
-  not run `save_as` yet.
+  into one that holds text, the next tier.
+- Seen in the rig (M43): after `set_value` and `select_text` in Notepad
+  and `set_value` in Edge, Windows reported that app as the active one,
+  though the pointer did not move. The service asks for no activation;
+  milestone 42's run had seen no change. This is the next owner's to
+  settle.
+
+#### 29.4.2 The event tiers
+
+| Tier | On Windows | Expresses |
+|---|---|---|
+| `process` | window messages posted to the control under the point (`ChildWindowFromPointEx` down to the deepest visible, enabled child; client coordinates) or, for keys, to the element's own control, else the window thread's focus when it lies in the window, else the window | every pointer verb with no `alt` or `super` held (`shift` and `ctrl` ride the message's key flags); `key` with no modifier; `type` (`WM_CHAR` per UTF-16 unit, a line break as Return, a tab as Tab); `paste` (`WM_PASTE`, which classic and RichEdit controls take and Chromium does not) |
+| `front` | the same posts, with the window brought forward for the step and the person's front window put back after it | as `process` |
+| `session` | real input by `SendInput`: the window brought forward, the real pointer moved, keys to the focused element (UI Automation's SetFocus first for a step that names one) | every pointer and key verb, modifiers included; `paste` as Ctrl+V |
+
+- **Why no modifiers on posted keys**: an app reads its modifiers from the
+  keyboard's state, which a posted message never sets, so `ctrl+s` at
+  `process` would arrive as `s`. Such a step answers `needs_tier { needed:
+  'session' }` without acting. `hold_key` needs the session tier too.
+- **Bringing a window forward**: a process in the background may not take
+  the front (the foreground lock). The service joins the front thread's
+  input (`AttachThreadInput`) and, when that is not enough, taps Alt as its
+  own input, then `SetForegroundWindow`, and waits up to 300 ms for it.
+  Refused: `session_unavailable { reason: 'activation-refused' }`.
+- **The session tier** is refused while the screen is locked or the input
+  desktop is not the person's (`OpenInputDesktop` named other than
+  `Default`: the lock screen, a UAC prompt) as `session_unavailable {
+  reason: 'locked' }`, and while another session holds the session lock.
+  `SendInput` refused (an administrator's window has the input, or the
+  secure desktop) is `session_unavailable { reason: 'secure' }`; whatever
+  the step left down (the left button, Shift, Ctrl, Alt, the Windows key)
+  is let go. Each step says what it changed (`step.session`: the front app
+  and the pointer before and after); `input.restoreSession` puts back what
+  the first session step since the last restore found.
+- **The person** stops a session step: any key or pointer event the
+  service did not send, seen by the hooks while the step runs (between its
+  events, after the last, and through a `hold_key`'s whole hold), fails it
+  `interrupted { by: 'person' }` with its `session` change and sends
+  `session/interrupted`. Escape, while `escape.watch`'s lease runs, sends
+  `escape/pressed`.
+- **Typing**: `type` runs `ax-value` into an empty field at the `ax` tier;
+  else keys at the event tier, in runs of at most 20 UTF-16 units never cut
+  inside a cluster, for text of 2,000 units or less; else `paste`. At the
+  session tier a character the keyboard layout types with Shift alone goes
+  as that key (Caps Lock minded) and anything else as a Unicode packet: in
+  the rig WinUI's Notepad once turned a run of Unicode packets into dots.
+- **Paste** (§5.3 on Windows): the clipboard lock, the person's copy held
+  off (`pasteQuietMs`), every clipboard format saved (memory formats; a
+  bitmap or palette Windows made from a DIB is left to Windows to make
+  again; a metafile or an owner-drawn format is `clipboard_busy`, nothing
+  written), the text written as `CF_UNICODETEXT` and, for `markdown` and
+  `html`, as `HTML Format` too (markdown rendered by the service: headings,
+  paragraphs, lists, fenced code, bold, italic, code, links); the paste;
+  500 ms for the app to read it; the saved formats put back only while the
+  sequence number is still the service's (`restored`), else
+  `kept-person-copy`. A plain-text app such as Notepad takes the plain
+  text, which for markdown is its source.
+- **The pointer**: points are the session space's (§6), mapped to the
+  screen at the pixel's centre; an element's point is the centre of its
+  frame, clipped to the window. `left_click_drag` presses, moves in ten
+  steps and releases; `scroll` is one wheel message (or `SendInput` wheel
+  event) of 120 per click at the point, else the window's centre.
+  `left_mouse_down` keeps the button for its session and app at its tier
+  until `left_mouse_up`, `session.close`, `shutdown`, or 30 s; a pointer
+  step at another tier meanwhile is `needs_tier { needed: <the held tier> }`.
+- **The agent cursor** is per session and app: the last point a pointer
+  step used, in the session's space; `cursor_position` reads it and a
+  click with no target uses it.
+- `save_as` and `computer_apps { open }` take Windows paths (`C:\…`,
+  `C:/…`, `~\…`) in the zod (`isSaveAsPath`, `refusedOpenItem`); the
+  service does not run `save_as`, `menu` or `named` yet.
+
+#### 29.4.3 Capture
+
+- A window's pixels come from `PrintWindow` with full content (a covered
+  window draws whole; Chromium's and WinUI's DirectComposition content
+  too), cropped to the DWM frame, so a shot's pixel `(0, 0)` is the frame's
+  top-left as on the Mac. A minimized window is `window_minimized`.
+- Size, format and files are §6's: one scale floored on both sides, never
+  up; a named format as named, else JPEG 0.85 and PNG kept when a flat
+  picture's is no larger; `<dataDir>\shots\<session>\<nnnn>-<action>`,
+  numbered above the highest there and never replaced. WIC encodes
+  (24-bit BGR). `blank` reads the colour channels only (PrintWindow's alpha
+  is not the window's).
+- `screenshot` (the action and `capture.screenshot`) sets the session's
+  space for the window; `zoom` crops the region of the session's space at
+  full resolution and never changes it.
+- **The preview stream**: a thread per stream grabs at `fps`, fits the
+  picture to `maxEdge`, and sends `capture/frame` only for new pixels (a
+  fingerprint of every second pixel of every second row and the size), at
+  most two unacked, a newer frame taking the held one's place; a frame
+  unacked for 5 s pauses capture until the next ack. JPEG at 0.85, 0.7,
+  then 0.55 to stay under 380 KiB, dropped with a log line past that.
+  Frames carry the agent cursor in their own pixels. A click-class step
+  sends `capture/click` to each of its session's streams on the window.
+  `capture/streamEnded` says `stopped` or `window-closed`. Not built: the
+  click carried to a stream that starts within 2 s of it (`clickCarryMs`).
 
 ### 29.5 The words
 
@@ -2372,9 +2484,20 @@ Where the tools act on a Windows PC (computer use local to a win32 host),
 every description, field, per-verb text, the search hint and
 COMPUTER_MECHANICS say PC, taskbar, desktops and exe names for Mac, Dock,
 Spaces and bundle ids (`hostWords` in descriptions.ts; `computerToolSpecs`
-takes `platform`). A thread whose calls cross the Mac bridge reads the
-Mac's words; the Mac's text is unchanged. Error lines and the confirmations
-policy still name the Mac in places (`errorWords.ts`).
+takes `platform`); its off-limits line names Windows' password, consent and
+sign-in prompts, the TextEdit example goes, `defaults` reads `reg`, and the
+key example `super+c` reads `ctrl+c` (on Windows `super` is the Windows
+key, as X11 has it). Every error line (`errorLine`, `ErrorContext.platform`,
+this host's own by default) and the held-step and session-refusal lines
+(scheduleRules.ts) read the same way. A thread whose calls cross the bridge
+reads the far host's words: a PC's where the peer's build says `win32`
+(`ComputerBridge.platform`), the Mac's otherwise; the Mac's text is
+unchanged.
+
+On the desktop, a Windows PC's own app draws its computer sessions' live
+window and reads their journal as a Mac's does (`drawsSessions` in
+computerSessions.ts), so the browser canvas shows a Windows thread's page;
+host-name text calls this machine "this PC" there (`thisDesktopInLine`).
 
 ### 29.6 Build and proof
 
@@ -2393,8 +2516,24 @@ policy still name the Mac in places (`errorWords.ts`).
   `resultFrameSchema` or `RpcErrorResponseSchema`, checks the refusals,
   puts every observation through `parseObservation` and
   `formatObservation`, sets values in Notepad and Edge, selects text, and
-  checks that the pointer and the front app did not move. Its record is
-  `.temp-code/plans/landed/M42/`.
+  checks that the pointer did not move. Milestone 43's part drives Notepad
+  and Edge at the process tier (keys, typing with a line break, a click on
+  a page's button, a wheel scroll, a drag) with the pointer and the front
+  app unmoved, pastes with the person's copy given back, matches each
+  window's PNG shot against QEMU's own screen at the window's frame (mean
+  difference under 4 levels, under 2% of pixels off by more than 32),
+  zooms, streams with acks and a click mark, stops a session step on a
+  hardware key sent over QMP, tells Escape while watched, puts the session's
+  pointer and front app back, and launches Character Map. Its helpers are
+  scripts/lib/winComputerRig.ts. The records are
+  `.temp-code/plans/landed/M42/` and `M43/`.
+- `TC_WIN_RIG=1 NODE_ENV=test bunx vitest run
+  src/main/server/computer/winRig.hold.test.ts` proves the hold on a
+  Windows host: the host's ComputerService speaks to the service in the rig
+  through the tunnel (`rigSpawn`, which copies each shot back to the box),
+  and a Work thread's flagged click on Edge's "Submit expense" becomes a
+  live `computer.act` in the real Outbox that Away keeps and his press
+  submits once. Without the variable it is skipped.
 
 ## The unattended proof modes
 

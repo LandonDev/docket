@@ -187,7 +187,7 @@ Seen in the rig on 2026-11-19, as the standard user, never elevated (`bun script
   installer's own progress window runs for six to eight minutes, then starts 1.0.N, which answers
   its version with no pending update and no failure and has cleared its attempt record.
 
-Not seen: Snap Layouts on hovering maximise (the rig has no pointer input yet, milestone 43); a
+Not seen: Snap Layouts on hovering maximise (milestone 43's pointer input can drive it, not yet tried); a
 real thread or a warm harness across the update (milestone 13); the real product's name
 (`TempCode`; the test builds are `TempCodeE2E`, the folder rule is the same); the zip.
 
