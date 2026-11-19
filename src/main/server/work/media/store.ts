@@ -226,6 +226,8 @@ export class MediaStore {
 
   /** The notes one direct write made: what its Undo takes back. */
   removeWrite(itemId: string, writeId: string): number {
+    const made = (this.db.prepare(`SELECT id FROM work_media_notes WHERE item_id = ? AND write_id = ?`).all(itemId, writeId) as Row[]).map((r) => String(r.id))
+    for (const id of made) this.db.prepare(`DELETE FROM work_media_notes WHERE parent_id = ?`).run(id)
     const r = this.db.prepare(`DELETE FROM work_media_notes WHERE item_id = ? AND write_id = ?`).run(itemId, writeId)
     this.bump(itemId)
     return Number(r.changes)
@@ -242,7 +244,7 @@ export class MediaStore {
 }
 
 /** A version as the wire shows it before the host has looked at the file. */
-export const versionWire = (v: VersionRow, rest: Pick<MediaVersion, 'state'> & Partial<MediaVersion>): MediaVersion => ({
+export const versionWire = (v: VersionRow, rest: Pick<MediaVersion, 'state' | 'plays'> & Partial<MediaVersion>): MediaVersion => ({
   id: v.id,
   n: v.n,
   name: v.name,

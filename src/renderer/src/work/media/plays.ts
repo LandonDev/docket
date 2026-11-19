@@ -1,4 +1,4 @@
-import { VIEWER_DEFAULT_PLAYS } from "@shared/contract-work-media";
+import { playFor, VIEWER_DEFAULT_PLAYS, type MediaPlay, type MediaVersion } from "@shared/contract-work-media";
 
 /**
  * What this viewer's `<video>` decodes, asked of the element itself, so the
@@ -26,3 +26,6 @@ export function viewerPlays(): string[] {
   if (plays.length === 0) plays = [...VIEWER_DEFAULT_PLAYS];
   return plays;
 }
+
+/** What this viewer shows of a version: the original where it decodes it, else the host's proxy or picture. */
+export const shownPlay = (v: Pick<MediaVersion, "plays" | "probe">): MediaPlay | null => playFor(v, viewerPlays());

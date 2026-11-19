@@ -51,7 +51,8 @@ function versionOf(view: MediaView, n?: number): MediaVersion {
 export function frameOf(table: FrameTable, at: string | number, timecode?: string, rate?: { num: number; den: number }): number {
   if (typeof at === 'number') return Math.max(0, Math.min(frameCount(table) - 1, Math.round(at)))
   const s = at.trim()
-  if (/^\d{1,2}:\d{2}:\d{2}[:;.,]\d{2,3}$/.test(s) && rate) {
+  // A timecode has four fields, its frames after `:` or `;`; `0:00:41.50` is seconds.
+  if (/^\d{1,2}:\d{2}:\d{2}[:;]\d{2,3}$/.test(s) && rate) {
     const n = timecodeFrames(s, rate)
     const base = timecode ? (timecodeFrames(timecode, rate) ?? 0) : 0
     if (n === null) throw new Error(`${at} is not a timecode`)
@@ -83,7 +84,7 @@ async function infoText(ctx: ToolCtx, itemId: string): Promise<string> {
         ? [`${p.codec} ${p.width}×${p.height}`, p.durationS ? clock(p.durationS) : null, p.rate ? `${(p.rate.num / p.rate.den).toFixed(3).replace(/\.?0+$/, '')} fps` : null, p.frames ? `${p.frames} frames (0 to ${p.frames - 1})` : null, p.vfr ? 'variable rate' : null, p.timecode ? `starts at ${p.timecode}` : null]
         : [`${p.codec} ${p.width}×${p.height}`]
       : []
-    const shown = v.play ? (v.play.via === 'original' || v.play.via === 'image' ? 'shown as it is' : `shown from a ${v.play.via === 'hls' ? 'HLS ' : ''}proxy`) : v.state
+    const shown = v.state === 'ready' || v.state === 'preparing' ? (v.plays.some((x) => x.via === 'proxy' || x.via === 'hls') ? 'a proxy is made for viewers that cannot decode it' : v.plays.some((x) => x.via === 'image' && x.converted) ? 'converted to JPEG for viewers' : 'shown as it is') : v.state
     lines.push(`v${v.n} ${v.name}: ${[...facts.filter(Boolean), shown].join(', ')}${v.error ? `. Failed: ${v.error}` : ''}`)
   }
   const notes = view.notes.filter((n) => !n.parentId)
@@ -102,10 +103,9 @@ async function readVersion(ctx: ToolCtx, id: string, n?: number) {
   const rows = liveOf(ctx).store.versions(id)
   const row = n === undefined ? rows[rows.length - 1] : rows.find((v) => v.n === n)
   if (!row) throw new Error(n === undefined ? 'the item has no version yet' : `there is no v${n}`)
-  p.peek(row)
-  await p.settled(row.id)
+  // Only the probe: a proxy being made for a viewer is no reason to keep the agent waiting.
+  await p.ready(row, ctx.signal)
   const v = versionOf(await viewOf(ctx, id), row.n)
-  if (v.state === 'failed') throw new Error(v.error ?? 'the file could not be read')
   return { p, row, v, table: p.table(row.id) }
 }
 
@@ -123,10 +123,7 @@ export const mediaTools: WorkTool[] = [
       try {
         const id = ownItem(ctx, (args as { item: string }).item)
         const p = await preparerOf(ctx)
-        for (const v of liveOf(ctx).store.versions(id)) {
-          p.peek(v)
-          await p.settled(v.id)
-        }
+        for (const v of liveOf(ctx).store.versions(id)) await p.ready(v, ctx.signal).catch((err: unknown) => (ctx.signal.aborted ? Promise.reject(err) : undefined))
         return workText(await infoText(ctx, id))
       } catch (err) {
         return fail(message(err))
@@ -144,14 +141,14 @@ export const mediaTools: WorkTool[] = [
       try {
         const { p, row: vrow, v, table } = await readVersion(ctx, ownItem(ctx, a.item), a.version)
         if (!table) {
-          const data = await p.still(vrow, null)
+          const data = await p.still(vrow, null, ctx.signal)
           return { content: [{ type: 'text', text: `v${v.n} ${v.name}` }, { type: 'image', data: data.toString('base64'), mimeType: 'image/jpeg' }] }
         }
         const total = frameCount(table)
         const frames = a.at?.length ? a.at.map((m) => frameOf(table, m, v.probe?.timecode, v.probe?.rate)) : Array.from({ length: a.count ?? 6 }, (_, i) => Math.min(total - 1, Math.floor(((i + 0.5) * total) / (a.count ?? 6))))
         const content: WorkToolResult['content'] = []
         for (const f of frames) {
-          const data = await p.still(vrow, f)
+          const data = await p.still(vrow, f, ctx.signal)
           content.push({ type: 'text', text: `v${v.n} ${momentOf(v, f, table)}` }, { type: 'image', data: data.toString('base64'), mimeType: 'image/jpeg' })
         }
         return { content }
@@ -212,7 +209,7 @@ export const mediaTools: WorkTool[] = [
         const id = ownItem(ctx, a.item)
         if (!isAbsolute(a.file) || !existsSync(a.file)) throw new Error(`there is no file at ${a.file}`)
         const v = liveOf(ctx).store.addVersion(id, { source: { at: 'file', host: ctx.host, path: a.file }, name: basename(a.file), by: `agent:${ctx.host}:${ctx.sessionId}` })
-        ;(await preparerOf(ctx)).peek(v)
+        ;(await preparerOf(ctx)).view(v)
         return workText(`Added v${v.n} ${v.name}.`)
       } catch (err) {
         return fail(message(err))

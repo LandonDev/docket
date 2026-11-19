@@ -110,8 +110,16 @@ export function stillArgs(o: { input: string; output: string; threads: number; m
   return ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-threads', String(o.threads), '-i', o.input, '-frames:v', '1', ...(fit.length ? ['-vf', fit.join(',')] : []), '-q:v', '2', '-f', 'image2', o.output]
 }
 
-/** One frame of a video as a JPEG, sought to the frame's centre (accurate: ffmpeg decodes from the keyframe before it). */
+/**
+ * One frame of a video as a JPEG. `at` is half a frame before the frame's
+ * start, counted from the stream's start. ffmpeg seeks the input to a
+ * point well before it (an MPEG-TS seek lands on the next keyframe after
+ * its point, so a seek near the frame overshoots it), then takes the first
+ * frame at or after `at` by its own time.
+ */
+export const FRAME_SEEK_LEAD_S = 12
 export function frameArgs(o: { input: string; output: string; at: number; maxSide: number }): string[] {
+  const coarse = Math.max(0, o.at - FRAME_SEEK_LEAD_S)
   return [
     '-hide_banner',
     '-nostdin',
@@ -121,13 +129,13 @@ export function frameArgs(o: { input: string; output: string; at: number; maxSid
     '-threads',
     '2',
     '-ss',
-    o.at.toFixed(6),
+    coarse.toFixed(6),
     '-i',
     o.input,
+    '-vf',
+    `select='gte(t\\,${(o.at - coarse).toFixed(6)})',scale='min(${o.maxSide},iw)':'min(${o.maxSide},ih)':force_original_aspect_ratio=decrease`,
     '-frames:v',
     '1',
-    '-vf',
-    `scale='min(${o.maxSide},iw)':'min(${o.maxSide},ih)':force_original_aspect_ratio=decrease`,
     '-q:v',
     '3',
     '-f',

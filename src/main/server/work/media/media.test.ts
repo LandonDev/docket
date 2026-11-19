@@ -1,10 +1,10 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
-import type { MediaNote, MediaProbe, MediaView } from '@shared/contract-work-media'
+import { playFor, VIEWER_DEFAULT_PLAYS, type MediaNote, type MediaProbe, type MediaView } from '@shared/contract-work-media'
 import type { SessionMeta } from '@shared/events'
 import type { WorkScope } from '@shared/work'
 import { openDb, Store } from '../../db'
@@ -132,6 +132,8 @@ describe('probing', () => {
     expect(frameOf(t, '12s')).toBe(288)
     expect(frameOf(t, '01:00:41:12', '01:00:00:00', t.rate)).toBe(996)
     expect(frameOf(t, 99999)).toBe(3215)
+    // Seconds with decimals are seconds, never a timecode's frames.
+    expect(frameOf(t, '0:00:41.50', '01:00:00:00', t.rate)).toBe(996)
     expect(() => frameOf(t, 'soon')).toThrow('is not a time')
   })
 })
@@ -214,8 +216,10 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     expect(view.kind).toBe('video')
     const v = view.versions[0]
     expect(v).toMatchObject({ n: 1, name: 'a.mp4', state: 'ready', probe: { codec: 'h264', frames: 48 } })
-    expect(v.play).toMatchObject({ via: 'original', mime: 'video/mp4', table: { kind: 'cfr', count: 48, rate: { num: 24, den: 1 } } })
-    expect(v.play?.via === 'original' && v.play.url).toMatch(/^tempcode-asset:\/\/file\/[a-f0-9]{32}\/a\.mp4/)
+    const play = playFor(v, VIEWER_DEFAULT_PLAYS)
+    expect(play).toMatchObject({ via: 'original', mime: 'video/mp4', table: { kind: 'cfr', count: 48, rate: { num: 24, den: 1 } } })
+    expect(play?.via === 'original' && play.url).toMatch(/^tempcode-asset:\/\/file\/[a-f0-9]{32}\/a\.mp4/)
+    expect(v.plays.map((p) => p.via)).toEqual(['original'])
   }, 60_000)
 
   it('makes a frame-for-frame H.264 proxy of a 4K ProRes clip the viewer cannot decode', async () => {
@@ -223,21 +227,25 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     const view = await settled(await open(path, 'B'))
     const v = view.versions[0]
     expect(v.probe).toMatchObject({ codec: 'prores', width: 3840, height: 2160, frames: 24 })
-    expect(v.play).toMatchObject({ via: 'proxy', why: 'This viewer does not play ProRes', table: { kind: 'cfr', count: 24 } })
-    // A viewer that says it plays ProRes gets the original.
+    expect(playFor(v, VIEWER_DEFAULT_PLAYS)).toMatchObject({ via: 'proxy', why: 'This viewer does not play ProRes', table: { kind: 'cfr', count: 24 } })
+    // A viewer that says it plays ProRes takes the original, and the proxy stays for the others: two viewers never flip it.
     const mac = await settled(view.itemId, ['h264', 'prores'])
-    expect(mac.versions[0].play?.via).toBe('original')
+    expect(mac.versions[0].plays.map((p) => p.via)).toEqual(['original', 'proxy'])
+    expect(playFor(mac.versions[0], ['h264', 'prores'])?.via).toBe('original')
+    expect(playFor(mac.versions[0], VIEWER_DEFAULT_PLAYS)?.via).toBe('proxy')
   }, 120_000)
 
   it('cuts a long clip into an HLS proxy whose segments are minted when asked for', async () => {
     const path = await make('c.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=25:d=9', '-c:v', 'prores_ks', '-profile:v', '0'])
     const view = await settled(await open(path, 'C'))
-    const play = view.versions[0].play
+    const play = playFor(view.versions[0], VIEWER_DEFAULT_PLAYS)
     expect(play).toMatchObject({ via: 'hls', ended: true, table: { count: 225 } })
     if (play?.via !== 'hls') throw new Error('not hls')
     expect(play.segments.length).toBeGreaterThanOrEqual(2)
-    const { url } = await call<{ url: string }>('work.media.segment', { itemId: view.itemId, versionId: view.versions[0].id, index: 1 })
-    expect(url).toMatch(/^tempcode-asset:\/\/file\/[a-f0-9]{32}\/seg00001\.m4s/)
+    // The segments are on the fMP4's own timeline, which starts where its table does.
+    expect(play.segments[0].start).toBeCloseTo(play.table.kind === 'cfr' ? play.table.start : 0)
+    const { data } = await call<{ data: string }>('work.media.segment', { itemId: view.itemId, versionId: view.versions[0].id, index: 1 })
+    expect(Buffer.from(data, 'base64').subarray(4, 8).toString('latin1')).toMatch(/styp|moof/)
   }, 120_000)
 
   it('keeps a note at its frame, and an agent\'s note waits for the person in Suggests', async () => {
@@ -297,11 +305,67 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     expect(view.notes.every((n) => n.anchor.versionId === view.versions[0].id)).toBe(true)
   }, 60_000)
 
+  /** The mean luma of a still, from ffmpeg itself: the clips below light frame n at 5n. */
+  const luma = async (jpeg: Buffer): Promise<number> => {
+    const at = join(dir, `still-${Math.random().toString(36).slice(2)}.jpg`)
+    writeFileSync(at, jpeg)
+    const r = await runTool(ffmpeg(), ['-v', 'error', '-i', at, '-vf', 'scale=1:1:flags=area,format=gray', '-f', 'rawvideo', '-'], { timeoutMs: 30_000 })
+    return r.out.charCodeAt(0)
+  }
+
+  it('shows the agent frame n itself, also from a stream whose timeline starts late', async () => {
+    const mp4 = await make('luma.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x64:r=24:d=2,format=gray,geq=lum='min(255\\,5*N)'", '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24'])
+    const ts = await make('luma.ts', ['-i', mp4, '-c', 'copy', '-f', 'mpegts'])
+    for (const path of [mp4, ts]) {
+      const itemId = await open(path, `Luma ${path.slice(-2)}`)
+      await settled(itemId)
+      const frames = await tool('media_frames', { item: itemId, at: [0, 10, 25] })
+      const shots = frames.content.filter((c): c is { type: 'image'; data: string; mimeType: string } => c.type === 'image')
+      expect(shots).toHaveLength(3)
+      const seen = await Promise.all(shots.map((c) => luma(Buffer.from(c.data, 'base64'))))
+      for (const [i, n] of [0, 10, 25].entries()) expect(Math.abs(seen[i] - 5 * n), `${path} frame ${n}`).toBeLessThan(3)
+    }
+  }, 120_000)
+
+  it('keeps every frame of a long clip in its table, past what a child\'s output keeps', async () => {
+    // 130,000 packets: about 1.3 MB of times, past the runner's megabyte.
+    const path = await make('long.mp4', ['-f', 'lavfi', '-i', 'color=c=gray:s=16x16:r=1000:d=130', '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '1000'])
+    const view = await settled(await open(path, 'Long'))
+    expect(view.versions[0].probe?.frames).toBe(130_000)
+  }, 120_000)
+
+  it('refuses a picture outside the folders this host shows, and never links it in', async () => {
+    const away = mkdtempSync(join(tmpdir(), 'tc-media-away-'))
+    try {
+      const path = join(away, 'secret.png')
+      const r = await runTool(ffmpeg(), ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=32x32', '-frames:v', '1', path], { timeoutMs: 30_000 })
+      expect(r.code).toBe(0)
+      const view = await settled(await open(path, 'Secret'))
+      expect(view.versions[0]).toMatchObject({ state: 'failed', plays: [] })
+      expect(view.versions[0].error).toMatch(/outside the folders this host shows/)
+      expect(existsSync(join(dir, 'attachments', 'work-media', view.versions[0].id, 'original.png'))).toBe(false)
+    } finally {
+      rmSync(away, { recursive: true, force: true })
+    }
+  }, 60_000)
+
+  it('keeps a failure until the file changes, then starts over', async () => {
+    const path = join(dir, 'clips', 'broken.mp4')
+    writeFileSync(path, 'not a video')
+    const itemId = await open(path, 'Broken')
+    expect((await settled(itemId)).versions[0].state).toBe('failed')
+    // Asked again, it does not start again: a viewer's every read would re-run it.
+    expect((await call<MediaView>('work.media.view', { itemId, plays: ['h264'] })).versions[0].state).toBe('failed')
+    copyFileSync(join(dir, 'clips', 'a.mp4'), path)
+    const now = await settled(itemId)
+    expect(now.versions[0]).toMatchObject({ state: 'ready', probe: { frames: 48 } })
+  }, 60_000)
+
   it('cuts a picture past 40 megapixels into tiles', async () => {
     const path = await make('big.jpg', ['-f', 'lavfi', '-i', 'testsrc2=s=8192x5120', '-frames:v', '1', '-q:v', '4'])
     const view = await settled(await open(path, 'Big'))
     expect(view.kind).toBe('image')
-    const play = view.versions[0].play
+    const play = playFor(view.versions[0], VIEWER_DEFAULT_PLAYS)
     expect(play).toMatchObject({ via: 'tiles', width: 8192, height: 5120, tile: 512, levels: 14, minLevel: 9 })
     const { data } = await call<{ data: string }>('work.media.tile', { itemId: view.itemId, versionId: view.versions[0].id, level: 13, x: 15, y: 9 })
     expect(Buffer.from(data, 'base64').subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]))
@@ -315,7 +379,7 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     const view = await settled(itemId)
     expect(view.kind).toBe('image')
     expect(view.versions[0].probe).toMatchObject({ codec: 'hevc', width: 4032, height: 3024 })
-    expect(view.versions[0].play).toMatchObject({ via: 'image', converted: 'HEIC', width: 3024, height: 4032 })
+    expect(playFor(view.versions[0], VIEWER_DEFAULT_PLAYS)).toMatchObject({ via: 'image', converted: 'HEIC', width: 3024, height: 4032 })
     // The agent sees the same picture, small: a grid takes no filter, so the still is cut from the host's JPEG.
     const still = await tool('media_frames', { item: itemId })
     expect(still.isError).toBeUndefined()

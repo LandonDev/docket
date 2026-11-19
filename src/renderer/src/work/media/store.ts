@@ -18,6 +18,8 @@ const EMPTY: MediaEntry = { view: null, error: null };
 const entries = new Map<string, MediaEntry>();
 const listeners = new Map<string, Set<() => void>>();
 const asked = new Set<string>();
+/** The host each item was asked of: a socket that comes back asks again only for its own items. */
+const envs = new Map<string, string>();
 
 function put(itemId: string, patch: Partial<MediaEntry>): void {
   const prev = entries.get(itemId) ?? EMPTY;
@@ -33,10 +35,11 @@ export function applyMediaView(view: MediaView): void {
   put(view.itemId, { view, error: null });
 }
 
-export async function loadMedia(env: string, itemId: string): Promise<void> {
+export async function loadMedia(env: string, itemId: string, o: { retry?: boolean } = {}): Promise<void> {
   asked.add(itemId);
+  envs.set(itemId, env);
   try {
-    applyMediaView(await registry.linkOf(env).request<MediaView>("work.media.view", { itemId, plays: viewerPlays() }));
+    applyMediaView(await registry.linkOf(env).request<MediaView>("work.media.view", { itemId, plays: viewerPlays(), ...(o.retry ? { retry: true } : {}) }));
   } catch (err) {
     put(itemId, { error: err instanceof Error ? err.message : String(err) });
   }
@@ -54,6 +57,7 @@ export function useMedia(env: string, itemId: string): MediaEntry {
     () => entries.get(itemId) ?? EMPTY,
   );
   useEffect(() => {
+    envs.set(itemId, env);
     if (!asked.has(itemId)) void loadMedia(env, itemId);
   }, [env, itemId]);
   return entry;
@@ -71,7 +75,8 @@ export const mediaActions = (env: string, itemId: string) => ({
   decide: (which: string, accept: boolean) => andApply(call<MediaView>(env, "work.media.decide", { itemId, which, accept })),
   mode: (mode: MediaView["mode"]) => andApply(call<MediaView>(env, "work.media.mode", { itemId, mode })),
   undo: (writeId: string) => andApply(call<MediaView>(env, "work.media.undo", { itemId, writeId })),
-  segment: async (versionId: string, index: number) => (await call<{ url: string }>(env, "work.media.segment", { itemId, versionId, index })).url,
+  /** One HLS segment's bytes, as base64. */
+  segment: async (versionId: string, index: number) => (await call<{ data: string }>(env, "work.media.segment", { itemId, versionId, index })).data,
   tile: async (versionId: string, level: number, x: number, y: number) => (await call<{ data: string }>(env, "work.media.tile", { itemId, versionId, level, x, y })).data,
 });
 export type MediaActions = ReturnType<typeof mediaActions>;
@@ -85,6 +90,7 @@ export function markMediaAsked(itemId: string): void {
 export function resetMediaStore(): void {
   entries.clear();
   asked.clear();
+  envs.clear();
 }
 
 registry.onLink((link, event) => {
@@ -94,6 +100,6 @@ registry.onLink((link, event) => {
   });
   // A socket that came back may have missed a push: the items on screen ask again.
   link.onOpen(() => {
-    for (const itemId of listeners.keys()) if (listeners.get(itemId)?.size) void loadMedia(link.environmentId, itemId);
+    for (const [itemId, env] of envs) if (env === link.environmentId && listeners.get(itemId)?.size) void loadMedia(env, itemId);
   });
 });

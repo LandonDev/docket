@@ -101,8 +101,8 @@ export function clock(seconds: number): string {
 
 /** Drop-frame counting drops two labels a minute at 29.97 (four at 59.94), except every tenth minute. */
 const dropsOf = (rate: FrameRate): number => {
-  const fps = rate.num / rate.den
-  return rate.den === 1001 && Math.abs(fps * 1001 - Math.round(fps) * 1000) < 1 ? Math.round(fps / 15) : 0
+  const nominal = Math.round(rate.num / rate.den)
+  return rate.den === 1001 && rate.num === nominal * 1000 && (nominal === 30 || nominal === 60) ? nominal / 15 : 0
 }
 
 /** A start timecode's frame count (`00:00:58;00`, `;` or `.` before the frames meaning drop-frame); null when it does not parse. */
@@ -221,7 +221,13 @@ export interface MediaVersion {
   /** 0 to 1 while a proxy is made */
   progress?: number
   probe?: MediaProbe
-  play?: MediaPlay
+  /**
+   * What the host has for this version, each viewer taking the first it can
+   * decode (`playFor`): the original, and a proxy once a viewer that cannot
+   * decode the original asked; a picture or its tiles; a review service's
+   * renditions. Empty while nothing is ready.
+   */
+  plays: MediaPlay[]
 }
 
 // ── notes ────────────────────────────────────────────────────────────
@@ -323,9 +329,22 @@ export interface MediaView {
  */
 export const VIEWER_DEFAULT_PLAYS = ['h264', 'h264-hi', 'vp9', 'av1'] as const
 
+/** A viewer's name for a probe's codec, as `plays` lists it. */
+export function playKey(p: Pick<MediaProbe, 'codec' | 'pixFmt' | 'bitDepth'>): string {
+  if (p.codec === 'h264') return (p.bitDepth ?? 8) > 8 || (!!p.pixFmt && !/^yuvj?420p$/.test(p.pixFmt)) ? 'h264-hi' : 'h264'
+  return p.codec
+}
+
+/** What one viewer shows of a version: the original where it decodes it (and it is not interlaced), else the proxy, else a picture. Null: nothing it can show yet. */
+export function playFor(v: Pick<MediaVersion, 'plays' | 'probe'>, plays: readonly string[]): MediaPlay | null {
+  const original = v.plays.find((p) => p.via === 'original')
+  if (original && (!v.probe || (!v.probe.interlaced && plays.includes(playKey(v.probe))))) return original
+  return v.plays.find((p) => p.via === 'proxy' || p.via === 'hls') ?? v.plays.find((p) => p.via === 'image' || p.via === 'tiles') ?? null
+}
+
 export const MediaRequestSchemas = [
-  /** → MediaView: the item's versions, notes and mode; the first read probes the file and starts what it needs (a proxy, a conversion, tiles) */
-  request('work.media.view', z.object({ itemId: z.string(), plays: z.array(z.string().max(16)).max(20).optional() })),
+  /** → MediaView: the item's versions, notes and mode. With `plays` (a key that may operate, or this window), it also starts what that viewer needs: a probe, a proxy, a conversion, tiles; `retry` starts a version that failed again. */
+  request('work.media.view', z.object({ itemId: z.string(), plays: z.array(z.string().max(16)).max(20).optional(), retry: z.boolean().optional() })),
   /** → MediaNote: the person's note at a frame, a stretch or a region */
   request('work.media.note', z.object({ itemId: z.string(), kind: z.enum(['comment', 'chapter']).optional(), anchor: MediaAnchorSchema, body: z.string().max(40_000), parentId: z.string().optional() })),
   /** → MediaNote: a note's words, or whether it is resolved */
@@ -340,7 +359,7 @@ export const MediaRequestSchemas = [
   request('work.media.undo', z.object({ itemId: z.string(), writeId: z.string() })),
   /** → MediaView: another file as the item's next version */
   request('work.media.version', z.object({ itemId: z.string(), source: CanvasSourceSchema })),
-  /** → { url }: one segment of a version's HLS proxy, minted when it is wanted */
+  /** → { data }: one segment of a version's HLS proxy as base64, asked for as the player needs it */
   request('work.media.segment', z.object({ itemId: z.string(), versionId: z.string(), index: z.number().int().nonnegative() })),
   /** → { data }: one Deep Zoom tile as base64 JPEG; level 0 is 1×1 px, the last the full picture */
   request('work.media.tile', z.object({ itemId: z.string(), versionId: z.string(), level: z.number().int().nonnegative().max(40), x: z.number().int().nonnegative(), y: z.number().int().nonnegative() }))

@@ -28,17 +28,24 @@ export const media: WorkModule = {
       return handled(await viewOf(ctx, itemId))
     }
     switch (req.method) {
-      case 'work.media.view':
-        return handled(await viewOf(ctx, req.params.itemId, req.params.plays ?? undefined))
+      case 'work.media.view': {
+        // Only a caller who may operate starts work on the host: a read-only key sees what is there.
+        const start = by.kind === 'local' || by.caps.includes('operate')
+        return handled(await viewOf(ctx, req.params.itemId, { plays: req.params.plays, start, retry: start && req.params.retry }))
+      }
       case 'work.media.note': {
         const { itemId, kind, anchor, body, parentId } = req.params
         itemRow(ctx, mediaItem(ctx, itemId))
+        if (parentId && store.note(parentId)?.itemId !== itemId) throw new Error('a reply answers a note on the same item')
         const note = store.addNote(itemId, { kind, anchor, body, by: ownerOrAgent(ctx, by.kind === 'model' ? by.sessionId : undefined), ...(parentId ? { parentId } : {}) })
         pushSoon(ctx, itemId)
         return handled(note)
       }
       case 'work.media.edit': {
         const { noteId, body, resolved } = req.params
+        const was = store.note(noteId)
+        if (!was) throw new Error(`no note ${noteId}`)
+        mediaItem(ctx, was.itemId)
         const note = store.editNote(noteId, { ...(body !== undefined ? { body } : {}), ...(resolved !== undefined ? { resolved } : {}) })
         pushSoon(ctx, note.itemId)
         return handled(note)
@@ -46,6 +53,7 @@ export const media: WorkModule = {
       case 'work.media.remove': {
         const note = store.note(req.params.noteId)
         if (note) {
+          mediaItem(ctx, note.itemId)
           store.removeNote(note.id)
           pushSoon(ctx, note.itemId)
         }
@@ -82,13 +90,15 @@ export const media: WorkModule = {
       case 'work.media.segment': {
         const { itemId, versionId, index } = req.params
         mediaItem(ctx, itemId)
-        const url = (await preparerOf(ctx)).segmentUrl(versionId, index)
-        if (!url) throw new Error(`segment ${index} is not there yet`)
-        return handled({ url })
+        if (liveOf(ctx).store.version(versionId)?.itemId !== itemId) throw new Error(`no version ${versionId} of this item`)
+        const data = (await preparerOf(ctx)).segment(versionId, index)
+        if (!data) throw new Error(`segment ${index} is not there yet`)
+        return handled({ data: data.toString('base64') })
       }
       case 'work.media.tile': {
         const { itemId, versionId, level, x, y } = req.params
         mediaItem(ctx, itemId)
+        if (liveOf(ctx).store.version(versionId)?.itemId !== itemId) throw new Error(`no version ${versionId} of this item`)
         const data = (await preparerOf(ctx)).tile(versionId, level, x, y)
         if (!data) throw new Error('no such tile')
         return handled({ data: data.toString('base64') })

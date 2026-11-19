@@ -54,15 +54,26 @@ Electron 39.
 
 ## What plays
 
-`work.media.view { itemId, plays }` names what the asking viewer decodes
-(plays.ts asks its own `<video>`: `h264`, `h264-hi`, `hevc`, `vp9`, `av1`,
-`prores`). The host decides per version (plan.ts):
+A version keeps everything the host has for it side by side
+(`MediaVersion.plays`: the original, and the proxy once some viewer needed
+it), and each viewer takes the first it can decode (`playFor`, contract),
+so a Mac that plays HEVC and a box desktop that does not never flip each
+other's player. `work.media.view { itemId, plays }` names what the asking
+viewer decodes (plays.ts asks its own `<video>`: `h264`, `h264-hi`, `hevc`,
+`vp9`, `av1`, `prores`), and starts what it lacks; only a caller that may
+operate (or this window) starts work, a read-only key sees what is there.
+The host decides (plan.ts):
 
-- **The original** where the viewer decodes it. A file outside the folders
-  the media host serves is hard-linked into the version's cache first; if
-  that cannot be done, it gets a proxy.
-- **An H.264 proxy** otherwise (ProRes, DNxHR, HEVC off the Mac, H.264 at
-  10 bits on a viewer that says no, anything interlaced): High 8-bit
+- **The original** where the viewer decodes it, served from where it
+  lies. A picture or a video the media host would serve as it is, lying
+  outside the folders it shows (the projects, the workspaces, the
+  attachments), is refused with a sentence and never linked or copied in:
+  the agent can name any path, and the media host serves other desktops.
+  A video ffprobe reads that the media host would not serve as it is (MXF,
+  AVI, MTS) is shown from a proxy.
+- **An H.264 proxy** for a viewer that cannot decode it (ProRes, DNxHR,
+  HEVC off the Mac, H.264 at 10 bits on a viewer that says no, anything
+  interlaced): High 8-bit
   4:2:0, at most 1920 on the long side, CRF 23 capped at 10 Mb/s, a
   keyframe a second, AAC 192k, and `-fps_mode passthrough`. The host then
   probes the proxy and refuses it unless its frame count equals the
@@ -71,8 +82,10 @@ Electron 39.
   4 s fMP4 segments, written as they are made, so it plays before it is
   done. Electron 39 has no HLS of its own: `attachSegments` (segments.ts)
   feeds Media Source, keeping 30 s ahead of the playhead and dropping what
-  is 30 s behind. `work.media.segment` mints a segment's URL only when it
-  is asked for, so a long proxy never fills the media host's token table.
+  is 30 s behind. `work.media.segment` answers a segment's bytes when the
+  player asks for it (a URL each would crowd the media host's token
+  table on a long proxy); the segments' times are on the fMP4's own
+  timeline.
   **The HLS proxy has its own table**: its fMP4 starts two frames late (the
   encoder's B-frame delay, with no edit list), so the host probes the
   playlist for it, and while it is still being written uses the
@@ -99,7 +112,12 @@ canvas shows it with a bar.
 What a version made lives in `<userData>/attachments/work-media/<versionId>/`
 (the probe, the frame tables, proxies, tiles, stills), under the one
 userData root the media host already serves, so its URLs need no fence of
-their own. A file that changed on disk (size or time) starts over.
+their own. A file that changed on disk (size or time) starts over, noticed
+on every read of the item. A failure stays until the file changes or the
+person presses Retry on the state line (`retry`); a viewer's reads never
+start it again. Each version's jobs stop with Work, and when its thread is
+deleted. ffprobe writes the packet times to a file (`-o`): a long video's
+list is megabytes, past what a child's captured output keeps.
 
 ## The store
 
@@ -119,7 +137,7 @@ The first version is the file the canvas item names, made on first sight.
 
 | Method | Capability | Does |
 |---|---|---|
-| `work.media.view {itemId, plays?}` | read | the `MediaView`; with `plays`, starts what that viewer needs |
+| `work.media.view {itemId, plays?, retry?}` | read | the `MediaView`; for a caller that may operate, starts what that viewer needs, and a failed version again with `retry` |
 | `work.media.note {itemId, anchor, body, kind?, parentId?}` | operate | the person's note |
 | `work.media.edit {noteId, body?, resolved?}` | operate | |
 | `work.media.remove {noteId}` | operate | a note and its replies |
@@ -127,13 +145,20 @@ The first version is the file the canvas item names, made on first sight.
 | `work.media.mode {itemId, mode}` | operate | what the agent does to the item |
 | `work.media.undo {itemId, writeId}` | operate | takes back the agent's last direct write |
 | `work.media.version {itemId, source}` | operate | another file as the next version |
-| `work.media.segment {itemId, versionId, index}` | read | `{ url }` of one HLS segment |
+| `work.media.segment {itemId, versionId, index}` | read | `{ data }`: one HLS segment, base64 |
 | `work.media.tile {itemId, versionId, level, x, y}` | read | `{ data }`: one tile, base64 JPEG |
 
 The push is `{ push: 'work.media', itemId, view }` to sockets holding
 `read`, at most twice a second per item.
 
 ## The agent's tools
+
+The tools wait only for the probe, never for a proxy being made, and stop
+with the call's signal. A still is taken from the original: ffmpeg seeks
+well before the frame (an MPEG-TS seek lands on the keyframe after its
+point) and takes the first frame at or after half a frame before its
+start, so the agent sees frame n itself, from a file whose timeline starts
+late too.
 
 `media_info` (facts, versions, every note with frame and time),
 `media_frames` (up to 8 stills by frame or time, or spread over the clip;
@@ -162,15 +187,17 @@ frame and shows its region.
   The bar's own control after Ask is Comment, which opens the comment
   field at the selection.
 - **Keys** on the player: Space or K plays; the arrows (or , and .) step
-  a frame, Shift a second; Home and End.
+  a frame, Shift a second; Home and End. A focused button or menu keeps
+  its own keys.
 - **Versions**: the bar's History menu lists them; picking another plays
   it beside the shown one on one transport, kept on the same frame index,
-  with two pickers and a close in the bar in place of the mode.
+  with two pickers and a close in the bar in place of the mode. A compare
+  takes no region.
 - **An image** fits the stage (`--stage`) inside a 24px inset; the bar
   holds its size, its bytes and zoom (Fit, 25% to 400%).
 - **States**: bones while the host reads the file; a bar with the share
-  done while a proxy or a conversion is made; the pane's state line when a
-  version fails.
+  done while a proxy or a conversion is made; the pane's state line, with
+  Retry, when a version fails, over the empty stage.
 
 ## For Frame.io (milestone 48)
 
@@ -196,8 +223,11 @@ frame and shows its region.
   probing, the agent's moments; then the pillar end to end on the
   toolchain's real ffmpeg (found through `TEMP_CODE_WORK_TOOLS_DATA`, the
   box's userData or the Mac's): an H.264 original, a 4K ProRes proxy frame
-  for frame, an HLS proxy and its segments, notes at their frames, the
-  agent's writes and suggestions, stills, versions, tiles, and an Apple
+  for frame beside the original for a viewer that plays it, an HLS proxy
+  and its segments, notes at their frames, the agent's writes and
+  suggestions, stills of frame n from MP4 and MPEG-TS, a 130,000-frame
+  table, a file outside the shown folders refused, a failure kept until
+  the file changes, versions, tiles, and an Apple
   HEIC (`fixtures/*.heic`, written by ImageIO on the Mac: a 512 px tile
   grid, one with `irot`).
 - `src/main/server/work/media/frameAccuracy.test.ts`: the research's

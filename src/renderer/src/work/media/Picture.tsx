@@ -113,7 +113,9 @@ function Tiles({ versionId, play, scale, shown, actions }: { versionId: string; 
   const y1 = Math.min(rows - 1, Math.floor((shown.top - 24 + shown.height) / t));
   const wanted: Array<[number, number]> = [];
   if (level !== null) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) wanted.push([x, y]);
-  const key = (x: number, y: number): string => `${versionId}/${level}/${x}_${y}`;
+  // The preview's URL carries the file's time: a picture written again never shows its old tiles.
+  const key = (x: number, y: number): string => `${versionId}/${play.preview}/${level}/${x}_${y}`;
+  const missing = wanted.filter(([x, y]) => !tileUrls.has(key(x, y))).length;
   useEffect(() => {
     let live = true;
     for (const [x, y] of wanted) {
@@ -139,7 +141,7 @@ function Tiles({ versionId, play, scale, shown, actions }: { versionId: string; 
     };
     // The tiles in view are the dependency; their list is rebuilt each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [versionId, level, x0, y0, x1, y1]);
+  }, [versionId, play.preview, level, x0, y0, x1, y1, missing]);
   return (
     <>
       <img src={play.preview} alt="" draggable={false} className="absolute inset-0 size-full select-none" />

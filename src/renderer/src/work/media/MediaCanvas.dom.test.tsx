@@ -57,7 +57,7 @@ const V3: MediaVersion = {
   addedBy: "owner",
   state: "ready",
   probe: { kind: "video", container: "mov,mp4", size: 1, mtimeMs: 1, width: 1920, height: 1080, rotation: 0, codec: "h264", rate: { num: 24, den: 1 }, durationS: 134, frames: 3216 },
-  play: { via: "original", url: "tempcode-asset://file/x/trailer.mp4", mime: "video/mp4", table },
+  plays: [{ via: "original", url: "tempcode-asset://file/x/trailer.mp4", mime: "video/mp4", table }],
 };
 const ITEM: CanvasItem = { id: "item1", sessionId: "t1", workspaceId: "w1", kind: "media", title: "Skyblock trailer v3", source: V3.source, state: "open", position: 0, rev: 0, createdAt: 1, updatedAt: 1 };
 const agentNote = (id: string, frame: number): MediaNote => ({ id, itemId: "item1", kind: "comment", anchor: { versionId: "v3", frame }, body: `note at ${frame}`, by: "agent:local:t1", state: "suggested", resolved: false, createdAt: frame, updatedAt: frame });
@@ -138,10 +138,22 @@ describe("the media canvas", () => {
     expect(host.calls.find((c) => c.method === "work.media.mode")?.params).toEqual({ itemId: "item1", mode: "suggests" });
   });
 
+  it("shows a version that failed by the pane's state line alone, with Retry asking the host to start it again", async () => {
+    host.view = { itemId: "item1", kind: "video", versions: [{ ...V3, state: "failed", error: "ffprobe could not read it", plays: [] }], notes: [], mode: "writes", shared: false, rev: 1 };
+    const shell = fakeShell();
+    render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={shell} />);
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "trailer v3.mp4 could not be shown", detail: "ffprobe could not read it" })));
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(document.body.textContent).not.toContain("Making a copy");
+    const line = shell.statusLine.mock.lastCall![0] as { action: { run(): Promise<void> } };
+    await act(() => line.action.run());
+    expect(host.calls.filter((c) => c.method === "work.media.view").at(-1)?.params).toMatchObject({ itemId: "item1", retry: true });
+  });
+
   it("hands Ask a stretch as the thread reads it, with its exact frames", () => {
     const chip = selectionChip({ title: "Skyblock trailer v3", source: ITEM.source, version: V3, table, stretch: { from: 2112, to: 2304 } });
     expect(chip).toEqual({ kind: "selection", label: "1:28 to 1:36, Skyblock trailer v3", ref: ITEM.source, quote: "v3, frames 2112 to 2304 (00:01:28:00 to 00:01:36:00)" });
-    const region = selectionChip({ title: "LAN poster draft", source: ITEM.source, version: { ...V3, play: undefined }, table: null, region: { x: 0.27, y: 0.12, w: 0.31, h: 0.53 } });
+    const region = selectionChip({ title: "LAN poster draft", source: ITEM.source, version: { ...V3, plays: [] }, table: null, region: { x: 0.27, y: 0.12, w: 0.31, h: 0.53 } });
     expect(region.label).toBe("Region of LAN poster draft");
     expect(region.quote).toContain("x 0.27, y 0.12, w 0.31, h 0.53");
   });

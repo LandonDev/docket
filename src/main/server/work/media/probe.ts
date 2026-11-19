@@ -1,4 +1,6 @@
-import { statSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { FrameRate, FrameTable, MediaProbe } from '@shared/contract-work-media'
 import { runTool, tailOf } from '../formats/tools'
 
@@ -15,8 +17,8 @@ export const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 
 const STILL_CODECS = new Set(['png', 'mjpeg', 'gif', 'webp', 'bmp', 'tiff', 'jpegls', 'jpeg2000'])
 
 export const probeArgs = (path: string): string[] => ['-v', 'error', '-show_format', '-show_streams', '-show_stream_groups', '-of', 'json', path]
-/** Every packet time of the first video stream, in decode order (sorted after). */
-export const packetArgs = (path: string): string[] => ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', path]
+/** Every packet time of the first video stream, in decode order (sorted after), written to `out`: a long video's list is megabytes, past what a child's captured output keeps. */
+export const packetArgs = (path: string, out: string): string[] => ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', '-o', out, path]
 
 const rateOf = (s: unknown): FrameRate | undefined => {
   const m = typeof s === 'string' ? /^(\d+)\/(\d+)$/.exec(s) : null
@@ -136,8 +138,16 @@ export async function probeFile(ffprobe: string, path: string, signal?: AbortSig
   const json = JSON.parse(r.out.slice(r.out.indexOf('{'))) as ProbeJson
   const probe = parseProbe(json, { size: st.size, mtimeMs: st.mtimeMs, ext })
   if (probe.kind === 'image') return { probe }
-  const p = await runTool(ffprobe, packetArgs(path), { timeoutMs: 10 * 60_000, signal, gentle: true })
-  if (p.code !== 0) throw new Error(`ffprobe could not list its frames: ${tailOf(p.out)}`)
-  const table = frameTableOf(parsePacketTimes(p.out), probe)
+  const dir = mkdtempSync(join(tmpdir(), 'tc-media-probe-'))
+  let times: number[]
+  try {
+    const list = join(dir, 'packets.csv')
+    const p = await runTool(ffprobe, packetArgs(path, list), { timeoutMs: 10 * 60_000, signal, gentle: true })
+    if (p.code !== 0) throw new Error(`ffprobe could not list its frames: ${tailOf(p.out)}`)
+    times = parsePacketTimes(readFileSync(list, 'utf8'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+  const table = frameTableOf(times, probe)
   return { probe: { ...probe, frames: table.kind === 'cfr' ? table.count : table.times.length, ...(table.kind === 'vfr' ? { vfr: true } : {}) }, table }
 }

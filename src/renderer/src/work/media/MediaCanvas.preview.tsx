@@ -35,7 +35,7 @@ function version(id: string, n: number, name: string, seconds: number, day: numb
     addedBy: "owner",
     state: "ready",
     probe: { kind: "video", container: "mov,mp4", size: 412_000_000, mtimeMs: 0, width: 1920, height: 1080, rotation: 0, codec: "h264", rate: { num: 24, den: 1 }, durationS: seconds, frames: at(seconds) },
-    play: { via: "original", url: "", mime: "video/mp4", table: table(seconds) },
+    plays: [{ via: "original", url: "", mime: "video/mp4", table: table(seconds) }],
   };
 }
 
@@ -99,13 +99,13 @@ function viewFor(moment: MediaMoment, itemId: string): MediaView | null {
       ...base,
       kind: "image",
       shared: true,
-      versions: [{ id: "p1", n: 1, name: "LAN poster draft.png", source: file("/work/LAN poster draft.png"), addedAt: 0, addedBy: "owner", state: "ready", probe: { kind: "image", container: "png_pipe", size: 2_400_000, mtimeMs: 0, width: 1080, height: 1350, rotation: 0, codec: "png" }, play: { via: "image", url: POSTER, width: 1080, height: 1350 } }],
+      versions: [{ id: "p1", n: 1, name: "LAN poster draft.png", source: file("/work/LAN poster draft.png"), addedAt: 0, addedBy: "owner", state: "ready", probe: { kind: "image", container: "png_pipe", size: 2_400_000, mtimeMs: 0, width: 1080, height: 1350, rotation: 0, codec: "png" }, plays: [{ via: "image", url: POSTER, width: 1080, height: 1350 }] }],
       notes: [],
     };
   // preparing: a ProRes master the viewer cannot decode, its proxy under way.
   return {
     ...base,
-    versions: [{ ...version("m1", 1, "Trailer master.mov", 134, 16), state: "preparing", progress: 0.34, probe: { ...v3.probe!, codec: "prores", pixFmt: "yuv422p10le", width: 3840, height: 2160 }, play: undefined }],
+    versions: [{ ...version("m1", 1, "Trailer master.mov", 134, 16), state: "preparing", progress: 0.34, probe: { ...v3.probe!, codec: "prores", pixFmt: "yuv422p10le", width: 3840, height: 2160 }, plays: [] }],
     notes: [],
   };
 }

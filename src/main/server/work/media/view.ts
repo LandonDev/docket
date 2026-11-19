@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { MediaNote, MediaView } from '@shared/contract-work-media'
 import { agentPrincipal, type CanvasItem, type Principal } from '@shared/work'
@@ -66,14 +67,14 @@ export function itemRow(ctx: WorkCtx, item: CanvasItem): ItemRow {
   return liveOf(ctx).store.ensureItem(item.id, item.sessionId, { source: item.source, name, by: 'owner' })
 }
 
-/** Everything the canvas shows of the item. `plays`: what the asking viewer decodes, which starts the work it needs; absent, nothing new starts. */
-export async function viewOf(ctx: WorkCtx, itemId: string, plays?: readonly string[]): Promise<MediaView> {
+/** Everything the canvas shows of the item. `start`: begin what the asking viewer (`plays`) needs; else only a version never read is probed. */
+export async function viewOf(ctx: WorkCtx, itemId: string, o: { plays?: readonly string[]; start?: boolean; retry?: boolean } = {}): Promise<MediaView> {
   const item = mediaItem(ctx, itemId)
   const row = itemRow(ctx, item)
   const { store } = liveOf(ctx)
   const preparer = await preparerOf(ctx)
-  const versions = store.versions(item.id).map((v) => (plays ? preparer.view(v, plays) : preparer.peek(v)))
-  const kind = versions.some((v) => v.probe?.kind === 'video') ? 'video' : versions.every((v) => v.probe?.kind === 'image') ? 'image' : guessKind(item)
+  const versions = store.versions(item.id).map((v) => preparer.view(v, o))
+  const kind = versions.some((v) => v.probe?.kind === 'video') ? 'video' : versions.length && versions.every((v) => v.probe?.kind === 'image') ? 'image' : guessKind(item)
   return {
     itemId: item.id,
     kind,
@@ -112,7 +113,7 @@ export function agentWrite(ctx: WorkCtx, itemId: string, sessionId: string, note
   const row = itemRow(ctx, item)
   const { store } = liveOf(ctx)
   const suggested = row.shared || row.mode === 'suggests'
-  const writeId = suggested ? undefined : `w-${Date.now().toString(36)}`
+  const writeId = suggested ? undefined : randomUUID()
   const by = agentPrincipal(ctx.host, sessionId)
   const made = notes.map((n) => store.addNote(item.id, { ...n, by, state: suggested ? 'suggested' : 'kept', ...(writeId ? { writeId } : {}) }))
   if (writeId) store.setLastWrite(item.id, { id: writeId, text: what, at: Date.now() })

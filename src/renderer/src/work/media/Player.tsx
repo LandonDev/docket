@@ -7,6 +7,7 @@ import { Comment, FullScreen, Volume, VolumeOff } from "../icons";
 import { RegionLayer } from "./parts";
 import { seekToFrame, stepFrame, watchFrames } from "./seek";
 import { attachSegments, type SegmentFeed } from "./segments";
+import { shownPlay } from "./plays";
 import type { MediaActions } from "./store";
 
 /**
@@ -31,11 +32,14 @@ export interface Stretch {
 
 const SPEEDS = [0.5, 1, 1.5, 2];
 
-const tableOf = (v: MediaVersion): FrameTable | null => (v.play && "table" in v.play ? v.play.table : null);
+const tableOf = (v: MediaVersion): FrameTable | null => {
+  const play = shownPlay(v);
+  return play && "table" in play ? play.table : null;
+};
 
 /** Points a `<video>` at a version: the file's URL, or the HLS proxy through Media Source. */
 function useSource(video: HTMLVideoElement | null, version: MediaVersion, actions: MediaActions): void {
-  const play = version.play;
+  const play = shownPlay(version);
   const feed = useRef<SegmentFeed | null>(null);
   const hls = play?.via === "hls" ? play : null;
   const url = play && (play.via === "original" || play.via === "proxy") ? play.url : null;
@@ -50,7 +54,13 @@ function useSource(video: HTMLVideoElement | null, version: MediaVersion, action
   const init = hls?.init ?? null;
   useEffect(() => {
     if (!video || !init || !hls) return;
-    feed.current = attachSegments(video, { init, segments: hls.segments, ended: hls.ended, mime: hls.mime }, (i) => actions.segment(version.id, i));
+    feed.current = attachSegments(video, { init, segments: hls.segments, ended: hls.ended, mime: hls.mime }, async (i) => {
+      // The host answers a segment's bytes; the feeder fetches a URL, so they ride a blob URL it is done with in a minute.
+      const bytes = Uint8Array.from(atob(await actions.segment(version.id, i)), (c) => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "video/mp4" }));
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return url;
+    });
     return () => {
       feed.current?.destroy();
       feed.current = null;
@@ -63,7 +73,7 @@ function useSource(video: HTMLVideoElement | null, version: MediaVersion, action
   }, [hls]);
 }
 
-function Screen({ version, label, videoRef, region, selecting, onRegion, onClick }: { version: MediaVersion; label?: string; videoRef(el: HTMLVideoElement | null): void; region: MediaRegion | null; selecting: boolean; onRegion(r: MediaRegion, rect: DOMRect): void; onClick(): void }) {
+function Screen({ version, label, videoRef, region, selecting, onRegion, onClick }: { version: MediaVersion; label?: string; videoRef(el: HTMLVideoElement | null): void; region: MediaRegion | null; selecting: boolean; onRegion?(r: MediaRegion, rect: DOMRect): void; onClick(): void }) {
   const p = version.probe;
   const turned = p?.rotation === 90 || p?.rotation === 270;
   const ratio = p && p.width && p.height ? (turned ? p.height / p.width : p.width / p.height) : 16 / 9;
@@ -133,6 +143,21 @@ export function Player({
   useSource(second, versions[1] ?? versions[0], actions);
 
   const all = (): HTMLVideoElement[] => videos.current.filter((v): v is HTMLVideoElement => !!v);
+  // One ref per screen for the element's life: a new callback each render would detach and attach it every time.
+  const live = useRef({ muted, rate });
+  live.current = { muted, rate };
+  const attach = (i: number, el: HTMLVideoElement | null): void => {
+    videos.current[i] = el;
+    if (!el) return;
+    el.muted = live.current.muted;
+    el.playbackRate = live.current.rate;
+    if (i === 0) {
+      el.onplay = () => setPaused(false);
+      el.onpause = () => setPaused(true);
+    }
+  };
+  const refFirst = useCallback((el: HTMLVideoElement | null) => (attach(0, el), setPrimary(el)), []);
+  const refSecond = useCallback((el: HTMLVideoElement | null) => (attach(1, el), setSecond(el)), []);
 
   const seek = useCallback(
     async (n: number): Promise<void> => {
@@ -211,6 +236,8 @@ export function Player({
       className="min-w-0 px-3 pt-3 outline-none"
       onKeyDown={(e) => {
         if (!table || e.metaKey || e.ctrlKey || e.altKey) return;
+        // A focused control keeps its own keys: Space presses the button, the arrows move in a menu.
+        if (e.target !== e.currentTarget && (e.target as HTMLElement).closest("button, input, textarea, [role=menu], [role=menuitem]")) return;
         const step = e.shiftKey ? Math.max(1, Math.round(tableFps(table))) : 1;
         if (e.key === " " || e.key === "k") toggle();
         else if (e.key === "ArrowLeft" || e.key === ",") stepBy(-step);
@@ -228,25 +255,18 @@ export function Player({
             key={v.id}
             version={v}
             label={labels?.[i]}
-            videoRef={(el) => {
-              videos.current[i] = el;
-              if (i === 0) setPrimary(el);
-              else setSecond(el);
-              if (el) {
-                el.muted = muted;
-                el.playbackRate = rate;
-                if (i === 0) {
-                  el.onplay = () => setPaused(false);
-                  el.onpause = () => setPaused(true);
-                }
-              }
-            }}
+            videoRef={i === 0 ? refFirst : refSecond}
             region={i === 0 ? region : null}
             selecting={selecting}
-            onRegion={(r, rect) => {
-              for (const v of all()) v.pause();
-              onRegion(r, rect, frame);
-            }}
+            // A compare takes no region: which cut it was drawn on would be lost on the chip.
+            onRegion={
+              versions.length > 1
+                ? undefined
+                : (r, rect) => {
+                    for (const v of all()) v.pause();
+                    onRegion(r, rect, frame);
+                  }
+            }
             onClick={toggle}
           />
         ))}
@@ -266,8 +286,8 @@ export function Player({
           if (e.button !== 0 || !total) return;
           e.currentTarget.setPointerCapture(e.pointerId);
           const n = frameFromX(e.clientX);
-          drag.current = { anchor: e.shiftKey ? frame : n, shift: e.shiftKey };
-          if (e.shiftKey) onStretch({ from: Math.min(frame, n), to: Math.max(frame, n) }, null);
+          drag.current = { anchor: n, shift: e.shiftKey };
+          if (e.shiftKey) onStretch({ from: n, to: n }, null);
           else {
             onStretch(null, null);
             void seek(n);
@@ -288,42 +308,45 @@ export function Player({
           const s = { from: Math.min(d.anchor, n), to: Math.max(d.anchor, n) };
           onStretch(s.to > s.from ? s : null, s.to > s.from ? stretchRect(s) : null);
         }}
+        onPointerCancel={() => (drag.current = null)}
+        onLostPointerCapture={() => (drag.current = null)}
       >
-        {chapterStarts.length ? (
-          <div className="relative flex h-1 flex-1 gap-0.5">
-            {chapterStarts.map((from, i) => {
-              const to = chapterStarts[i + 1] ?? total;
-              const fill = frame >= to ? 100 : frame > from ? ((frame - from) / Math.max(1, to - from)) * 100 : 0;
-              return (
-                <span key={from} className="relative h-full min-w-0 overflow-hidden rounded-[2px] bg-(--track)" style={{ flex: `0 1 ${((to - from) / Math.max(1, total)) * 100}%` }}>
-                  <span className="absolute inset-y-0 start-0 bg-foreground" style={{ width: `${fill}%` }} />
-                </span>
-              );
-            })}
-            <span aria-hidden className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground shadow-[0_0_0_2px_var(--background)]" style={{ left: `${p}%` }} />
-          </div>
-        ) : (
-          <div className="relative h-1 flex-1 rounded-[2px] bg-(--track)">
-            <span className="absolute inset-y-0 start-0 rounded-[2px] bg-foreground" style={{ width: `${p}%` }} />
-            {ticks.map((n) => (
-              <i
-                key={n.id}
-                aria-hidden
-                className={`absolute bottom-[9px] h-1.5 w-0.5 -translate-x-1/2 rounded-[1px] ${n.state === "suggested" ? "bg-success" : n.id === current || n.anchor.frame === frame ? "bg-foreground" : "bg-muted-foreground"}`}
-                style={{ left: `${xOf(n.anchor.frame!) * 100}%` }}
-              />
-            ))}
-            {stretch ? (
-              <span
-                data-media-stretch
-                aria-hidden
-                className="absolute -inset-y-1.5 rounded-[3px] bg-(--sel-bg) before:absolute before:inset-y-0.5 before:start-0 before:w-0.5 before:rounded-[1px] before:bg-foreground after:absolute after:inset-y-0.5 after:end-0 after:w-0.5 after:rounded-[1px] after:bg-foreground"
-                style={{ left: `${xOf(stretch.from) * 100}%`, width: `${(xOf(stretch.to) - xOf(stretch.from)) * 100}%` }}
-              />
-            ) : null}
-            <span aria-hidden className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground shadow-[0_0_0_2px_var(--background)]" style={{ left: `${p}%` }} />
-          </div>
-        )}
+        <div className="relative h-1 flex-1">
+          {chapterStarts.length ? (
+            <div className="absolute inset-0 flex gap-0.5">
+              {chapterStarts.map((from, i) => {
+                const to = chapterStarts[i + 1] ?? total;
+                const fill = frame >= to ? 100 : frame > from ? ((frame - from) / Math.max(1, to - from)) * 100 : 0;
+                return (
+                  <span key={from} className="relative h-full min-w-0 overflow-hidden rounded-[2px] bg-(--track)" style={{ flex: `0 1 ${((to - from) / Math.max(1, total)) * 100}%` }}>
+                    <span className="absolute inset-y-0 start-0 bg-foreground" style={{ width: `${fill}%` }} />
+                  </span>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="absolute inset-0 rounded-[2px] bg-(--track)">
+              <span className="absolute inset-y-0 start-0 rounded-[2px] bg-foreground" style={{ width: `${p}%` }} />
+            </div>
+          )}
+          {ticks.map((n) => (
+            <i
+              key={n.id}
+              aria-hidden
+              className={`absolute bottom-[9px] h-1.5 w-0.5 -translate-x-1/2 rounded-[1px] ${n.state === "suggested" ? "bg-success" : n.id === current || n.anchor.frame === frame ? "bg-foreground" : "bg-muted-foreground"}`}
+              style={{ left: `${xOf(n.anchor.frame!) * 100}%` }}
+            />
+          ))}
+          {stretch ? (
+            <span
+              data-media-stretch
+              aria-hidden
+              className="absolute -inset-y-1.5 rounded-[3px] bg-(--sel-bg) before:absolute before:inset-y-0.5 before:start-0 before:w-0.5 before:rounded-[1px] before:bg-foreground after:absolute after:inset-y-0.5 after:end-0 after:w-0.5 after:rounded-[1px] after:bg-foreground"
+              style={{ left: `${xOf(stretch.from) * 100}%`, width: `${(xOf(stretch.to) - xOf(stretch.from)) * 100}%` }}
+            />
+          ) : null}
+          <span aria-hidden className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground shadow-[0_0_0_2px_var(--background)]" style={{ left: `${p}%` }} />
+        </div>
       </div>
 
       {/* The transport. */}

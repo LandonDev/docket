@@ -12,7 +12,8 @@ import { Notes, NotesSkeleton } from "./Notes";
 import { CommentPopover } from "./parts";
 import { Picture, type Zoom } from "./Picture";
 import { Player, PlayerSkeleton, type PlayerHandle, type Stretch } from "./Player";
-import { mediaActions, useMedia, type MediaActions } from "./store";
+import { shownPlay } from "./plays";
+import { loadMedia, mediaActions, useMedia, type MediaActions } from "./store";
 
 /**
  * The media kind's body and bar (docs/agents/work-media.md, "The canvas"):
@@ -34,7 +35,10 @@ export interface MediaState {
 const ZOOMS = [0.25, 0.5, 1, 2, 4];
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|heic|heif|bmp|tiff?|psd|svg)$/i;
 
-const tableOf = (v: MediaVersion | undefined): FrameTable | null => (v?.play && "table" in v.play ? v.play.table : null);
+const tableOf = (v: MediaVersion | undefined): FrameTable | null => {
+  const play = v ? shownPlay(v) : null;
+  return play && "table" in play ? play.table : null;
+};
 const timeOf = (t: FrameTable, n: number): string => clock(frameStart(t, n) - frameStart(t, 0));
 const short = (at: number): string => new Date(at).toLocaleDateString([], { month: "short", day: "numeric" });
 const regionWords = (r: MediaRegion): string => `x ${r.x.toFixed(2)}, y ${r.y.toFixed(2)}, w ${r.w.toFixed(2)}, h ${r.h.toFixed(2)}`;
@@ -123,8 +127,14 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   }, [shell, view?.lastWrite, actions]);
   useEffect(() => {
     const failed = shown?.state === "failed" ? shown : (view?.versions ?? []).find((v) => v.state === "failed" && v.id === other?.id);
-    shell.statusLine(failed ? { tone: "failed", word: `${failed.name} could not be shown`, detail: failed.error } : error ? { tone: "failed", word: "The host did not answer", detail: error } : null);
-  }, [shell, shown, other, view?.versions, error]);
+    shell.statusLine(
+      failed
+        ? { tone: "failed", word: `${failed.name} could not be shown`, detail: failed.error, action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
+        : error
+          ? { tone: "failed", word: "The host did not answer", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
+          : null,
+    );
+  }, [shell, shown, other, view?.versions, error, env, item.id]);
   useEffect(
     () => () => {
       shell.mode(null);
@@ -148,8 +158,9 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
 
   if (!view || !shown) return <Loading kind={IMAGE_EXT.test(item.source.at === "file" ? item.source.path : item.title) ? "image" : "video"} />;
 
-  const isImage = shown.probe?.kind === "image" || shown.play?.via === "image" || shown.play?.via === "tiles";
-  if (!shown.play) return <Loading kind={isImage ? "image" : "video"} version={shown} />;
+  const play = shownPlay(shown);
+  const isImage = shown.probe?.kind === "image" || play?.via === "image" || play?.via === "tiles";
+  if (!play) return <Loading kind={isImage ? "image" : "video"} version={shown} />;
 
   const selectRegion = (r: MediaRegion, rect: DOMRect, at?: number): void => {
     setRegion({ region: r, frame: at });
@@ -159,13 +170,13 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
     shell.selection({ chip, rect, tools: commentButton({ versionId: shown.id, ...(at !== undefined ? { frame: at } : {}), region: r }, rect, chip.label) });
   };
 
-  if (shown.play.via === "image" || shown.play.via === "tiles") {
+  if (play.via === "image" || play.via === "tiles") {
     return (
       <div data-media-body className="flex size-full min-h-0 flex-col">
         <div className="min-h-0 flex-1">
           <Picture
             versionId={shown.id}
-            play={shown.play}
+            play={play}
             zoom={state?.zoom ?? "fit"}
             actions={actions}
             region={region?.region ?? currentNote?.anchor.region ?? null}
@@ -218,11 +229,12 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
 
 /** While the host reads the file or makes what this viewer needs: the player's bones, and what is under way. */
 function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVersion }) {
-  const word = !version || version.state === "probing" ? undefined : version.probe?.kind === "image" ? `Converting ${version.name}` : "Making a copy this viewer can play";
+  // A failure is the pane's state line alone: the body keeps its bones, with nothing under way.
+  const word = !version || version.state === "probing" || version.state === "failed" ? undefined : version.probe?.kind === "image" ? `Converting ${version.name}` : "Making a copy this viewer can play";
   if (kind === "image")
     return (
       <div data-media-loading className="grid size-full place-items-center bg-(--stage)">
-        {word ? <Preparing word={word} progress={version?.progress} /> : <Skeleton className="aspect-[4/5] w-[40%] rounded-[4px]" />}
+        {word ? <Preparing word={word} progress={version?.progress} /> : version?.state === "failed" ? null : <Skeleton className="aspect-[4/5] w-[40%] rounded-[4px]" />}
       </div>
     );
   return (
@@ -232,7 +244,7 @@ function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVe
         <div className="px-3 pt-1">
           <Preparing word={word} progress={version?.progress} />
         </div>
-      ) : (
+      ) : version?.state === "failed" ? null : (
         <NotesSkeleton />
       )}
     </div>
@@ -288,7 +300,8 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
     );
   }
 
-  if (shown.play?.via === "image" || shown.play?.via === "tiles") {
+  const play = shownPlay(shown);
+  if (play?.via === "image" || play?.via === "tiles") {
     const zoom = state?.zoom ?? "fit";
     const step = (dir: 1 | -1): void => {
       const now = zoom === "fit" ? 1 : zoom;
@@ -299,7 +312,7 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
     return (
       <>
         <span className="flex min-w-0 gap-2 truncate tabular-nums">
-          {shown.play.width ? <span>{`${shown.play.width} × ${shown.play.height}`}</span> : null}
+          {play.width ? <span>{`${play.width} × ${play.height}`}</span> : null}
           {p ? <span>{p.size >= 1e6 ? `${(p.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(p.size / 1e3))} KB`}</span> : null}
         </span>
         <Button variant="ghost" size="icon-xs" aria-label="Zoom out" className="text-muted-foreground" onClick={() => step(-1)}>

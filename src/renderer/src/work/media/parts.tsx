@@ -55,7 +55,8 @@ export function RegionLayer({
   shown: MediaRegion | null;
   shapes?: MediaShape[];
   selecting: boolean;
-  onRegion(region: MediaRegion, rect: DOMRect): void;
+  /** Absent: a drag takes nothing, and a press is a click. */
+  onRegion?(region: MediaRegion, rect: DOMRect): void;
   onClick?(): void;
   children?: ReactNode;
 }) {
@@ -88,7 +89,7 @@ export function RegionLayer({
         const r = { x: Math.min(drag.x0, p.x), y: Math.min(drag.y0, p.y), w: Math.abs(p.x - drag.x0), h: Math.abs(p.y - drag.y0) };
         setDrag(null);
         const el = box.current!.getBoundingClientRect();
-        if (r.w * el.width < 6 && r.h * el.height < 6) return onClick?.();
+        if (!onRegion || (r.w * el.width < 6 && r.h * el.height < 6)) return onClick?.();
         onRegion(r, new DOMRect(el.left + r.x * el.width, el.top + r.y * el.height, r.w * el.width, r.h * el.height));
       }}
       onPointerCancel={() => setDrag(null)}

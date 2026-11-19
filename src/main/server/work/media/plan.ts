@@ -1,4 +1,6 @@
-import { VIEWER_DEFAULT_PLAYS, type MediaProbe } from '@shared/contract-work-media'
+import { playKey, VIEWER_DEFAULT_PLAYS, type MediaProbe } from '@shared/contract-work-media'
+
+export { playKey }
 
 /**
  * How a version is shown, decided from its probe and what the viewer says it
@@ -12,16 +14,6 @@ import { VIEWER_DEFAULT_PLAYS, type MediaProbe } from '@shared/contract-work-med
 export const HLS_OVER_S = 10 * 60
 /** Past this a picture is cut into tiles: Chromium took 2 s to decode a 240 MP JPEG to 2048 px. */
 export const TILES_OVER_MP = 40
-
-/** The viewer's name for a probe's codec (`plays` in the contract). */
-export function playKey(p: Pick<MediaProbe, 'codec' | 'pixFmt' | 'bitDepth'>): string {
-  if (p.codec === 'h264') {
-    const sub = p.pixFmt && !/^yuv(j)?420p$/.test(p.pixFmt)
-    return (p.bitDepth ?? 8) > 8 || sub ? 'h264-hi' : 'h264'
-  }
-  if (p.codec === 'dnxhd') return 'dnxhd'
-  return p.codec
-}
 
 export type VideoPlan = { via: 'original' } | { via: 'proxy' | 'hls'; why: string }
 export type ImagePlan = { via: 'image' } | { via: 'convert'; why: string } | { via: 'tiles'; why: string }
