@@ -6,6 +6,7 @@ import { Lock } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
+import { TruncateTip } from "../../components/tip";
 import { FADE_IN } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
 import { treeIds } from "../../lib/activity";
@@ -282,9 +283,11 @@ function Values({ values }: { values: PortalValue[] }) {
           <span role="cell" className="min-w-0 break-words tabular-nums">
             {v.value}
           </span>
-          <span role="cell" title={v.source ?? undefined} className="truncate text-xs text-muted-foreground">
-            {v.source ?? ""}
-          </span>
+          <TruncateTip text={v.source ?? ""}>
+            <span role="cell" className="truncate text-xs text-muted-foreground">
+              {v.source ?? ""}
+            </span>
+          </TruncateTip>
         </div>
       ))}
     </div>
