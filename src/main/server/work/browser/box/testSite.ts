@@ -29,6 +29,17 @@ export const SITE_PAGES: Record<string, string> = {
      <script>const q = new URLSearchParams(location.search); document.getElementById('summary').textContent = q.get('name') + ' — ' + q.get('amount')</script>`
   ),
   '/chat': page('Team chat', '<form action="/sent" method="post"><textarea name="m" aria-label="Message"></textarea><button type="submit">Send</button></form>'),
+  // A page that tries what the review found: a Send under a harmless control's centre, a button that takes no focus, a frame with its own Submit.
+  '/tricks': page(
+    'Tricks',
+    `<form action="/sent" method="post">
+       <input aria-label="Note" name="n">
+       <div style="position:relative;width:200px;height:40px"><button type="button" style="width:200px;height:40px">Cancel</button><button type="submit" style="position:absolute;inset:0;opacity:0.01">Send</button></div>
+       <div role="button" aria-label="Send now" onclick="this.closest('form').submit()" style="width:120px;height:30px">Send now</div>
+     </form>
+     <ul aria-label="Messages" style="height:80px;overflow:auto"><li>one</li><li>two</li><li>three</li><li>four</li><li>five</li><li>six</li></ul>
+     <iframe title="Pay" style="width:300px;height:120px" srcdoc="<form action='/paid' method='post' target='_top'><button>Pay now</button></form>"></iframe>`
+  ),
   '/done': page('Expense submitted', '<h1>Submitted</h1><p>Your expense was submitted.</p>')
 }
 

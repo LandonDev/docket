@@ -158,9 +158,11 @@ export interface Item {
 /** The one response message of an answer; a refusal throws its words. */
 export function messageOf(answer: unknown): Message {
   const m = (answer as { Body?: { ResponseMessages?: { Items?: Message[] } } })?.Body?.ResponseMessages?.Items?.[0]
-  if (!m) throw new EwsError('Outlook on the web gave no answer', 'NoAnswer')
-  if (m.ResponseClass !== 'Success') throw new EwsError(m.MessageText || m.ResponseCode || 'Outlook on the web refused', m.ResponseCode ?? 'Error')
-  return m
+  if (!m) throw new EwsError('Outlook on the web gave no answer it could read', 'NoAnswer')
+  // A warning did what was asked, with a note; only an error is a refusal.
+  if (m.ResponseClass === 'Success' || m.ResponseClass === 'Warning') return m
+  if (m.ResponseClass !== 'Error') throw new EwsError(`Outlook on the web answered "${m.ResponseClass ?? 'nothing'}"`, 'NoAnswer')
+  throw new EwsError(m.MessageText || m.ResponseCode || 'Outlook on the web refused', m.ResponseCode ?? 'Error')
 }
 
 const address = (m: Mailbox | undefined): string => m?.EmailAddress ?? m?.Name ?? ''

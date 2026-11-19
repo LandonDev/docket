@@ -2117,12 +2117,17 @@ grammar (`ax.ts`, `formatObservation`, so `parseObservation` takes every
 text back). Roles map to §4.1's words; layout roles drop and their children
 rise; a text node that repeats its parent's name drops; an `<input
 type=password>` (found in the DOM, since Chromium calls it `textbox`) is
-`password` and never shows a value. Above the page, as Chrome on the Mac
+`password` and never shows a value; an embedded frame is a `group` by its
+title, its contents unread. Above the page, as Chrome on the Mac
 reads, the observation draws the window and an address bar: `[i] window
 "<title>"`, `[j] input "Address and search bar" = "<url>"`, then the page's
 `web area`. The hold reads a page's site from that bar (outward.ts
 `pageHost`); typing into it and Return navigates, under the same rule as
-`open`.
+`open`. The address bar takes text, Return, BackSpace and Escape; any other
+key while it has the focus answers `focus_moved` (reason `browser-field`),
+since it would reach the page the hold read as unfocused. Pages of his
+mailbox (`AGENT_CLOSED_HOSTS`: Outlook on the web) never open and are never
+read or acted on (`open_refused`): his mail goes through the Office tools.
 
 What differs from the Mac's reader: every `auto` read answers `full` (no
 diffs); no range lines, no `more below` summaries and no clip by the visible
@@ -2138,14 +2143,29 @@ away answers `stale_element` with reason `gone`.
 Input goes into the page by DevTools (`Input.dispatchMouseEvent`,
 `dispatchKeyEvent`, `insertText`): the `process` tier when the call allows
 it, else the first tier it names. It never moves a person's pointer or
-keyboard; the box has none. Clicks land on an element's box centre after
-`DOM.scrollIntoViewIfNeeded`; `named` finds the element of that name in a
-fresh read, a control first; `type` inserts each line and presses Return
-between lines; `set_value` sets the value through the element's own setter
-and fires `input` and `change`; `perform` takes `press`, `confirm`, `show
-menu` and `scroll to visible`; `screenshot` and `zoom` capture the page.
-`menu`, `select_text` and `save_as` answer `action_unsupported`; every
-step's `effect` is `unknown`. The smart wait (§7) waits for the document to
+keyboard; the box has none. Every step is carried out exactly as the hold
+reads it (§19.3, outward.ts):
+
+- a click lands on an element's box centre after
+  `DOM.scrollIntoViewIfNeeded`, and only if the element itself (or a node
+  inside it) is what lies there (`DOM.getNodeForLocation`); a control laid
+  over it answers `action_unsupported`. A point inside an embedded frame,
+  which the read does not show, answers `action_unsupported` too;
+- the pointer moves exactly as `pointerAfter` reads it: clicks, presses,
+  moves, drags and a scroll with a target move it; a step with no target
+  lands where it was;
+- `named` finds a control of that name in a fresh read, never a text or an
+  image inside one;
+- `type` inserts each line and presses Return between lines; `paste`
+  inserts the whole text and presses nothing; a key step with `element`
+  focuses it first; focus is never given by a click, so an element that
+  cannot take focus answers `action_unsupported`; `expectFocus` is checked
+  before a call's first key (`focus_moved`);
+- `set_value` sets the value through the element's own setter and fires
+  `input` and `change`; `perform` takes `press`, `confirm`, `show menu` and
+  `scroll to visible`; `screenshot` and `zoom` capture the page;
+- `menu` (there is no menu bar), `select_text` and `save_as` answer
+  `action_unsupported`. Every step's `effect` is `unknown`. The smart wait (§7) waits for the document to
 be complete and its address and element count to hold still for `quietMs`.
 
 ### 28.5 What it does not serve

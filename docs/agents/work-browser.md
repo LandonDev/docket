@@ -149,6 +149,14 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   index.ts on a Linux host whose computer use is not local). Work threads
   get them only where the box has a Chromium. They refuse to act while he
   drives (`BOX_OWNER_DRIVES`; the Mac's computer use has no such gate yet).
+- **What the service refuses**, so a step runs only as the hold read it
+  (§28.4): a click on a control something else covers, a click into an
+  embedded frame (a frame shows as a group by its title), a step by menu
+  path, typing into something that takes no focus (never a click in its
+  place), keys from the address bar into the page, and every page of his
+  mailbox (`AGENT_CLOSED_HOSTS`: the imported sign-in serves every tab, and
+  Outlook on the web acts on bare keys no hold reads). While he drives any
+  page, no thread acts in the browser.
 - **The hold** is run.ts's, unchanged: the host reads a Work thread's step
   on the screen (`readOutward`, with `org.chromium.Chromium` in
   `BROWSER_BUNDLES` so a mail or chat page's Return counts), keeps it as a
@@ -178,6 +186,12 @@ The box never sees a password. Two ways in:
   `ssh -L 9333:127.0.0.1:$(ssh box head -1 /srv/agents/temp-code-data/work-browser/box/profile/DevToolsActivePort) box`,
   then chrome://inspect, Configure, `localhost:9333`, and Inspect on the page:
   its screencast takes his clicks and typing. Then he hands back.
+
+The profile and its folder are the box's `agents` user's alone (0700), but
+DevTools on 127.0.0.1 has no key of its own: any process of that user, a
+code thread's shell among them, could drive the browser while it runs. That
+is the unfenced shell the owner accepted for Work threads, and it reaches
+code threads too.
 
 ## Not built here
 

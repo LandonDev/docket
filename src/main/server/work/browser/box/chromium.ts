@@ -108,6 +108,8 @@ export class BoxChromium {
   private readonly stopped = new Set<(why: string) => void>()
   /** the last browser's exit: a new one never opens the profile while the old one still writes it */
   private exiting: Promise<void> = Promise.resolve()
+  /** moved by every stop: a start that a stop overtook does not go on to launch */
+  private generation = 0
 
   constructor(private readonly opts: BoxChromiumOptions) {}
 
@@ -150,8 +152,12 @@ export class BoxChromium {
   private async start(): Promise<string> {
     const bin = (this.opts.bin ?? findChromium)()
     if (!bin) throw new Error('no Chromium on this host')
+    const generation = this.generation
     await this.exiting
-    mkdirSync(this.profile, { recursive: true })
+    if (generation !== this.generation) throw new Error('the box browser was stopped as it started')
+    // His sessions live here: no other user of the box reads them.
+    mkdirSync(this.opts.root, { recursive: true, mode: 0o700 })
+    mkdirSync(this.profile, { recursive: true, mode: 0o700 })
     const portFile = join(this.profile, 'DevToolsActivePort')
     rmSync(portFile, { force: true })
     // A crash leaves the profile locked to the old pid; nothing else uses this profile, so the lock is ours to clear.
@@ -184,6 +190,7 @@ export class BoxChromium {
       throw new Error('Chromium did not open DevTools in time')
     }
     this.opts.log?.(`box browser: started (pid ${child.pid})`)
+    this.touch()
     const cap = this.opts.capMb ?? MEMORY_CAP_MB
     this.watch = setInterval(() => {
       const mb = this.child?.pid ? (this.opts.rssMb ?? treeRssMb)(this.child.pid) : 0
@@ -198,6 +205,7 @@ export class BoxChromium {
 
   /** Stops the whole browser, its renderers with it; resolves when it has exited. */
   stop(why: 'idle' | 'memory' | 'asked' = 'asked'): Promise<void> {
+    this.generation++
     const child = this.child
     this.child = null
     this.ws = null

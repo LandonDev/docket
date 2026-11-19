@@ -85,7 +85,10 @@ const ROLES: Readonly<Record<string, string>> = {
   InputTime: 'date',
   ColorWell: 'color well',
   meter: 'level',
-  scrollbar: 'scroll area'
+  scrollbar: 'scroll area',
+  // an embedded frame shows as a group by its title: its contents are not read, so the model knows to open its page instead
+  Iframe: 'group',
+  IframePresentational: 'group'
 }
 
 /** Elements keep their index while they exist, and a number is never given twice (§4.2): one book per session × app. */

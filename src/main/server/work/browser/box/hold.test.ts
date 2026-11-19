@@ -120,6 +120,66 @@ d('the hold on the box browser', () => {
     expect(site.posts).not.toContain('/sent')
   }, 60_000)
 
+  describe('steps the service carries out exactly as the hold read them', () => {
+    const t = 'w3'
+    let text = ''
+    const fresh = async () => {
+      await run(t, 'computer_apps', { launch: 'Chromium', open: [site.url + '/tricks'] })
+      text = (await run(t, 'computer_observe', { app: 'Chromium' })).body!
+    }
+
+    it('pastes a line break as text: nothing is sent', async () => {
+      metas.set(t, { id: t, permission: 'auto', scope: 'work' } as Partial<SessionMeta>)
+      await fresh()
+      const before = held.length
+      const r = await run(t, 'computer_act', { app: 'Chromium', action: 'paste', element: idOf(text, /input "Note"/), text: 'ok\n' })
+      expect(r.isError, r.body ?? '').toBe(false)
+      expect(held.length).toBe(before)
+      await new Promise((r) => setTimeout(r, 300))
+      expect(site.posts).not.toContain('/sent')
+    }, 60_000)
+
+    it('refuses a menu step, a key into a control that takes no focus, and typing that would have clicked', async () => {
+      await fresh()
+      const menu = await run(t, 'computer_act', { app: 'Chromium', action: 'left_click', menu: 'View > Zoom' })
+      expect(menu.steps.join('\n')).toMatch(/no menu bar/)
+      const div = idOf(text, /button "Send now"/)
+      // the hold reads typing as text; the service never clicks a control that takes no focus in its place
+      const typed = await run(t, 'computer_act', { app: 'Chromium', action: 'type', element: div, text: 'x' })
+      expect(typed.steps.join('\n')).toMatch(/can't take keyboard focus/)
+      await new Promise((r) => setTimeout(r, 300))
+      expect(site.posts).not.toContain('/sent')
+    }, 60_000)
+
+    it("refuses a click on a control another lies over, and a click into a frame it cannot read", async () => {
+      await fresh()
+      const cancel = idOf(text, /button "Cancel"/)
+      const r = await run(t, 'computer_act', { app: 'Chromium', action: 'left_click', element: cancel })
+      // the read may show the overlaid Send itself, which the hold would keep; either way nothing is sent
+      expect(r.steps.join('\n')).toMatch(/something else covers/)
+      const frames = await run(t, 'computer_observe', { app: 'Chromium', mode: 'full' })
+      // the frame shows as a group by its title; a click on it lands inside, which the read never showed
+      const into = await run(t, 'computer_act', { app: 'Chromium', action: 'left_click', element: idOf(frames.body!, /group "Pay"/) })
+      await new Promise((r) => setTimeout(r, 300))
+      expect(site.posts).not.toContain('/paid')
+      expect(site.posts).not.toContain('/sent')
+      // "Pay" is itself an outward word, so the hold keeps it; were it not, the service would refuse to click into the frame (service.test.ts)
+      expect(into.steps.join('\n') + (into.body ?? '')).toMatch(/embedded frame|^held:/)
+    }, 60_000)
+
+    it('keeps keys from the address bar out of the page, and his mailbox closed', async () => {
+      await fresh()
+      await run(t, 'computer_act', { app: 'Chromium', action: 'left_click', element: idOf(text, /input "Note"/) })
+      const address = idOf(text, /input "Address and search bar"/)
+      await run(t, 'computer_act', { app: 'Chromium', action: 'left_click', element: address })
+      const chord = await run(t, 'computer_act', { app: 'Chromium', action: 'key', text: 'ctrl+Return' })
+      expect(chord.steps.join('\n')).toMatch(/failed: (the keys would go to \[\d+\], not the page|.*focus)/)
+      const mailbox = await run(t, 'computer_apps', { launch: 'Chromium', open: ['https://outlook.office.com/mail/'] })
+      expect(`${mailbox.body}`).toMatch(/open refused/)
+      expect(site.posts).not.toContain('/sent')
+    }, 60_000)
+  })
+
   it("runs a code thread's submit: the hold is Work's", async () => {
     metas.set('c1', { id: 'c1', permission: 'auto' } as Partial<SessionMeta>)
     await run('c1', 'computer_apps', { launch: 'Chromium', open: [site.url + '/review?name=a&amount=1'] })
@@ -145,9 +205,10 @@ describe('the box browser tools', () => {
     expect(tools.map((t) => t.name)).toEqual(['box_browser_open', 'box_browser_observe', 'box_browser_act', 'box_browser_batch'])
     const db = new DatabaseSync(':memory:')
     ensureBrowserTables(db)
-    new DriveStore(db).drive('pane', 'owner')
+    new DriveStore(db).drive('other-pane', 'owner')
     const ctx = { db, sessionId: 'w1', signal: new AbortController().signal, canvas: { paneOf: () => 'pane' } } as never
     const act = tools.find((t) => t.name === 'box_browser_act')!
+    // he drives another thread's page of the one browser: no thread acts in it
     const r = await act.run({ app: 'Chromium', action: 'left_click', element: 3 }, ctx)
     expect(r).toMatchObject({ isError: true, content: [{ type: 'text', text: BOX_OWNER_DRIVES }] })
     await tools.find((t) => t.name === 'box_browser_observe')!.run({ app: 'Chromium' }, ctx)

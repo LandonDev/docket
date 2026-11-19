@@ -65,8 +65,8 @@ export class OwaCarrier implements OfficeCarrier {
       return read(await page.call(req.action, req.body))
     } catch (err) {
       if (err instanceof OfficeError && err.code === 'needs-consent') this.remember(null)
-      // Exchange answered with a refusal: nothing went, so the route fails the row rather than keep it as maybe sent.
-      if (err instanceof ews.EwsError) throw new OfficeError(`Outlook on the web: ${err.message}`, err.code === 'ErrorItemNotFound' ? 'not-found' : 'not-allowed')
+      // Exchange answered with an error: nothing went, so the route fails the row. An answer it could not read may have sent: `failed`, kept as maybe sent.
+      if (err instanceof ews.EwsError) throw new OfficeError(`Outlook on the web: ${err.message}`, err.code === 'NoAnswer' ? 'failed' : err.code === 'ErrorItemNotFound' ? 'not-found' : 'not-allowed')
       throw err
     }
   }

@@ -70,14 +70,35 @@ interface SessionState {
   /** the address bar: focused, and what was typed into it */
   address: { focused: boolean; draft: string | null; page: string | null }
   shots: number
-  /** the named elements of the last read, controls first: what a `named` target finds */
+  /** the controls of the last read by name: what a `named` target finds */
   names: { name: string; index: number }[]
+  /** the page this session last used: its main window */
+  main: string | null
 }
 
 const SAFE_URL = /^(https?:\/\/|about:blank$)/i
 
 /** Pages the host keeps for itself (the Outlook on the web carrier's tab): no thread sees or drives them. */
 export const RESERVED_TARGETS = new Set<string>()
+/** The address a reserved tab is made at, so no thread takes it in the moment before it is listed. */
+export const RESERVED_URL = 'about:blank#tc-reserved'
+
+/**
+ * His mailbox is reached through the Office tools, never driven: the
+ * imported sign-in serves every tab, and Outlook on the web acts on bare
+ * keys (Delete, E) that no hold can read as outward.
+ */
+export const AGENT_CLOSED_HOSTS = ['outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'outlook.cloud.microsoft']
+export function closedToAgents(url: string): boolean {
+  let host = ''
+  try {
+    host = new URL(url).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  return AGENT_CLOSED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
+}
+const CLOSED = 'his mailbox is not driven in the browser: use the office_* tools for his mail and calendar'
 
 export const MODIFIER_BITS: Record<Modifier, number> = { alt: 1, ctrl: 2, super: 4, shift: 8 }
 
@@ -265,7 +286,7 @@ export class BoxComputerService {
       case 'capture.screenshot': {
         const q = params as ComputerParams<'capture.screenshot'>
         this.appOf(q.app)
-        const page = await this.pageOf(q.window)
+        const page = await this.pageOf(q.window, q.session)
         return (await this.shot(q.session, page, { maxEdge: q.maxEdge, region: q.region, format: q.format })) as ComputerResult<M>
       }
     }
@@ -312,7 +333,7 @@ export class BoxComputerService {
   private async pages(): Promise<Page[]> {
     const cdp = await this.browser()
     const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string; url: string }[] }>('Target.getTargets')
-    const pages = targetInfos.filter((t) => t.type === 'page' && !RESERVED_TARGETS.has(t.targetId))
+    const pages = targetInfos.filter((t) => t.type === 'page' && !RESERVED_TARGETS.has(t.targetId) && t.url !== RESERVED_URL)
     for (const id of [...this.windows.keys()]) if (!pages.some((t) => t.targetId === id)) this.forgetPage(id)
     return pages.map((t) => {
       if (!this.windows.has(t.targetId)) this.windows.set(t.targetId, this.nextWindow++)
@@ -352,8 +373,9 @@ export class BoxComputerService {
     }
   }
 
-  private mainOf(pages: Page[]): Page | undefined {
-    return pages.find((p) => p.targetId === this.mainTarget) ?? pages[0]
+  private mainOf(pages: Page[], session?: string): Page | undefined {
+    const mine = session ? this.sessions.get(session)?.main : null
+    return pages.find((p) => p.targetId === mine) ?? pages.find((p) => p.targetId === this.mainTarget) ?? pages[0]
   }
 
   /** Only the box's Chromium answers, by its name, its bundle id, a prefix of its name or its pid. */
@@ -367,7 +389,7 @@ export class BoxComputerService {
     if (!q || !(names.includes(q) || BOX_BROWSER_APP.name.toLowerCase().startsWith(q))) refuse('app_not_found', `the box has one app, its browser: "${BOX_BROWSER_APP.name}"`, { candidates: [BOX_BROWSER_APP.name] })
   }
 
-  private async pageOf(ref: { id?: number; title?: string } | undefined): Promise<Page> {
+  private async pageOf(ref: { id?: number; title?: string } | undefined, session?: string): Promise<Page> {
     let pages = await this.pages()
     if (!pages.length) {
       await (await this.browser()).send('Target.createTarget', { url: 'about:blank' })
@@ -376,9 +398,10 @@ export class BoxComputerService {
     let page: Page | undefined
     if (ref?.id !== undefined) page = pages.find((p) => p.window === ref.id)
     else if (ref?.title !== undefined) page = pages.find((p) => p.title === ref.title) ?? pages.find((p) => p.title.includes(ref.title!))
-    else page = this.mainOf(pages)
+    else page = this.mainOf(pages, session)
     if (!page) return refuse('window_not_found', 'no such window in the box browser', { candidates: pages.map((p) => p.title) })
     this.mainTarget = page.targetId
+    if (session) this.session(session).main = page.targetId
     return page
   }
 
@@ -397,7 +420,7 @@ export class BoxComputerService {
   private session(id: string): SessionState {
     let s = this.sessions.get(id)
     if (!s) {
-      s = { book: new IndexBook(), seq: 0, pointer: null, address: { focused: false, draft: null, page: null }, shots: 0, names: [] }
+      s = { book: new IndexBook(), seq: 0, pointer: null, address: { focused: false, draft: null, page: null }, shots: 0, names: [], main: null }
       this.sessions.set(id, s)
     }
     return s
@@ -410,7 +433,8 @@ export class BoxComputerService {
     const launched = !this.opts.browser.pid()
     const open = q.open ?? []
     const bad = open.find((u) => !SAFE_URL.test(u))
-    if (bad) refuse('open_refused', 'the box browser opens only http and https pages')
+    if (bad) refuse('open_refused', 'the box browser opens only http and https pages', { reason: 'scheme' })
+    if (open.some(closedToAgents)) refuse('open_refused', CLOSED)
     const cdp = await this.browser()
     let window: { id: number; title: string } | undefined
     for (const url of open) {
@@ -426,7 +450,10 @@ export class BoxComputerService {
         if (p && !window) window = { id: p.window, title: p.title }
       }
     }
-    if (window) this.mainTarget = [...this.windows].find(([, w]) => w === window!.id)?.[0] ?? this.mainTarget
+    if (window) {
+      this.mainTarget = [...this.windows].find(([, w]) => w === window!.id)?.[0] ?? this.mainTarget
+      if (q.session) this.session(q.session).main = this.mainTarget
+    }
     return { pid: this.pid(), launched, ...(window ? { window } : {}) }
   }
 
@@ -458,8 +485,8 @@ export class BoxComputerService {
     }
     if (!subtree) tree = withChrome(tree, s.book, page.targetId, facts.title, facts.url, addressHere)
     if (!subtree) {
-      const named = tree.kept.filter((k) => k.line.name).map((k) => ({ name: k.line.name!.toLowerCase(), index: k.line.index, control: hasRoleDefault(k.line.role) }))
-      s.names = [...named.filter((n) => n.control), ...named.filter((n) => !n.control)]
+      // Only a control is a `named` target: a name inside one (an icon's label in a Send button) would act on a control the hold never judged by that name.
+      s.names = tree.kept.filter((k) => k.line.name && hasRoleDefault(k.line.role) && !['window', 'web area'].includes(k.line.role)).map((k) => ({ name: k.line.name!.toLowerCase(), index: k.line.index }))
     }
     const width = Math.max(1, Math.round(metrics.cssVisualViewport.clientWidth))
     const height = Math.max(1, Math.round(metrics.cssVisualViewport.clientHeight))
@@ -523,7 +550,8 @@ export class BoxComputerService {
   private async stateGet(q: ComputerParams<'state.get'>, signal: AbortSignal): Promise<Observation> {
     this.appOf(q.app)
     this.checkEpoch(q.epoch, q.element !== undefined ? [q.element] : [])
-    const page = await this.pageOf(q.window)
+    const page = await this.pageOf(q.window, q.session)
+    if (closedToAgents(page.url)) refuse('open_refused', CLOSED)
     if (q.wait) await this.settle(page, q.wait, signal)
     return this.read(q.session, page, { ...(q.element !== undefined ? { root: q.element } : {}), geometry: q.geometry === true, screenshot: q.screenshot ?? 'auto', maxEdge: q.maxEdge, budget: q.budget?.bytes, full: true })
   }
@@ -605,7 +633,8 @@ export class BoxComputerService {
     this.appOf(q.app)
     const named = actions.flatMap((a) => [a.element, a.start_element].filter((e): e is number => e !== undefined))
     this.checkEpoch(q.epoch, named)
-    const page = await this.pageOf(q.window)
+    const page = await this.pageOf(q.window, q.session)
+    if (closedToAgents(page.url)) refuse('open_refused', CLOSED)
     const s = this.session(q.session)
     for (const i of named) if (!s.book.nodes.has(i)) refuse('no_such_element', `there is no element ${i}; read the window`, { element: i })
     const tier: Tier = q.tiers.includes('process') ? 'process' : (q.tiers[0] ?? 'ax')
@@ -622,6 +651,8 @@ export class BoxComputerService {
         continue
       }
       try {
+        // The focus the host judged the call's keys by must be where they go (§25.9).
+        if (index === 0 && q.expectFocus !== undefined && actions.some(sendsKeys)) await this.checkFocus(s, page, q.expectFocus)
         const extra = await this.step(q.session, page, a, signal)
         const input = ['ax', 'process', 'session'].includes(tier) && !['screenshot', 'zoom', 'cursor_position', 'wait'].includes(a.action)
         steps.push({ index, action: a.action, status: 'ok', tier: input ? tier : null, effect: 'unknown', ...extra })
@@ -637,7 +668,7 @@ export class BoxComputerService {
     if (observe.mode === 'none') return { steps, waited, closing: {} }
     if (signal.aborted) return { steps, waited, closing: { observationError: { kind: 'cancelled', message: 'cancelled' } } }
     try {
-      const now = await this.pageOf(undefined)
+      const now = await this.pageOf(undefined, q.session)
       const observation = await this.read(q.session, now, { geometry: observe.geometry === true, screenshot: observe.screenshot ?? 'auto', maxEdge: observe.maxEdge, budget: observe.budget?.bytes, full: true })
       return { steps, waited, closing: { observation } }
     } catch (err) {
@@ -663,6 +694,52 @@ export class BoxComputerService {
     }
   }
 
+  /**
+   * What a click at this point would land on must be what the hold judged:
+   * the element itself (or something inside it), never a control laid over
+   * its centre; and never the inside of an embedded frame, whose controls
+   * the box's read does not show.
+   */
+  private async landsOn(cdp: Cdp, sid: string, [x, y]: [number, number], backend: number | null, index?: number): Promise<void> {
+    let hit: { backendNodeId: number; frameId?: string }
+    try {
+      hit = await cdp.send<{ backendNodeId: number; frameId?: string }>('DOM.getNodeForLocation', { x, y, includeUserAgentShadowDOM: false, ignorePointerEventsNone: true }, sid)
+    } catch {
+      return refuse('out_of_bounds', 'nothing on the page is at that point')
+    }
+    const [{ node }, { frameTree }] = await Promise.all([
+      cdp.send<{ node: { nodeName: string } }>('DOM.describeNode', { backendNodeId: hit.backendNodeId }, sid),
+      cdp.send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree', {}, sid)
+    ])
+    // The hit test reaches into a frame drawn in the page's own process: a node of any frame but the page's is one the read never showed.
+    if ((hit.frameId !== undefined && hit.frameId !== frameTree.frame.id) || ['IFRAME', 'FRAME', 'OBJECT', 'EMBED'].includes(node.nodeName))
+      refuse('action_unsupported', "that point is inside an embedded frame, which the box browser does not read; open the frame's page itself or act on what it does read")
+    if (backend === null) return
+    const [{ object: target }, { object: under }] = await Promise.all([
+      cdp.send<{ object: { objectId: string } }>('DOM.resolveNode', { backendNodeId: backend }, sid),
+      cdp.send<{ object: { objectId: string } }>('DOM.resolveNode', { backendNodeId: hit.backendNodeId }, sid)
+    ])
+    const r = await cdp.send<{ result: { value?: boolean } }>(
+      'Runtime.callFunctionOn',
+      { objectId: target.objectId, functionDeclaration: 'function (n) { for (let x = n; x; x = x.parentNode || x.host) if (x === this) return true; return false }', arguments: [{ objectId: under.objectId }], returnByValue: true },
+      sid
+    )
+    if (r.result.value !== true) refuse('action_unsupported', `something else covers ${index !== undefined ? `[${index}]` : 'that element'} at its centre; read the window again`, index !== undefined ? { element: index } : {})
+  }
+
+  /** The focus is still on the element the host judged a call's keys by, or nothing runs. */
+  private async checkFocus(s: SessionState, page: Page, expect: number): Promise<void> {
+    if (s.address.focused && s.address.page === page.targetId) {
+      if (s.book.nodes.get(expect)?.key !== `${page.targetId}:address`) refuse('focus_moved', 'the focus is in the address bar now; read the window again', { element: expect })
+      return
+    }
+    const { cdp, sid } = await this.on(page)
+    const want = s.book.nodes.get(expect)?.backend
+    const { result } = await cdp.send<{ result: { objectId?: string } }>('Runtime.evaluate', { expression: 'document.activeElement' }, sid)
+    const now = result.objectId ? (await cdp.send<{ node: { backendNodeId: number } }>('DOM.describeNode', { objectId: result.objectId }, sid)).node.backendNodeId : null
+    if (want === undefined || want === null || now !== want) refuse('focus_moved', 'the focus moved since the window was read; read it again', { element: expect })
+  }
+
   /** A target by its words (§27.9): the first element of the last read whose name is that, a control first. */
   private namedIndex(s: SessionState, named: string): number {
     const want = named.trim().toLowerCase()
@@ -672,8 +749,11 @@ export class BoxComputerService {
 
   private async step(sessionId: string, page: Page, a: ComputerAction, signal: AbortSignal): Promise<Partial<Extract<StepResult, { status: 'ok' }>>> {
     const s = this.session(sessionId)
+    // The box browser has no menu bar: a step by menu path would act wherever the pointer was, which the hold never read.
+    if (a.menu !== undefined) return refuse('action_unsupported', 'the box browser has no menu bar; act on the page')
     const { cdp, sid } = await this.on(page)
     const isAddress = (i: number | undefined) => i !== undefined && s.book.nodes.get(i)?.key === `${page.targetId}:address`
+    const inAddress = () => s.address.focused && s.address.page === page.targetId
     let element = a.element
     let resolved: number | undefined
     if (a.named !== undefined) {
@@ -681,11 +761,19 @@ export class BoxComputerService {
       element = resolved = this.namedIndex(s, a.named)
     }
     const mods = a.text && ['left_click', 'right_click', 'middle_click', 'double_click', 'triple_click', 'scroll', 'left_click_drag'].includes(a.action) ? bits(parseModifiers(a.text)) : 0
+    /** Where a pointer step lands, checked to be what the hold judged. A step with no target lands where the last one left the pointer, as the hold reads it (outward.ts `pointerAfter`). */
     const at = async (): Promise<[number, number]> => {
-      if (element !== undefined) return this.pointOf(s, page, element)
-      if (a.coordinate) return [a.coordinate[0]!, a.coordinate[1]!]
-      if (s.pointer) return s.pointer
-      return refuse('out_of_bounds', 'name an element or a point')
+      let p: [number, number]
+      let backend: number | null = null
+      if (element !== undefined) {
+        p = await this.pointOf(s, page, element)
+        backend = s.book.nodes.get(element)?.backend ?? null
+        if (isAddress(element) || backend === null) return p
+      } else if (a.coordinate) p = [a.coordinate[0]!, a.coordinate[1]!]
+      else if (s.pointer) p = s.pointer
+      else return refuse('out_of_bounds', 'name an element or a point')
+      await this.landsOn(cdp, sid, p, backend, element)
+      return p
     }
     const mouse = (type: string, [x, y]: [number, number], more: Record<string, unknown> = {}) => cdp.send('Input.dispatchMouseEvent', { type, x, y, modifiers: mods, ...more }, sid)
     const click = async (button: 'left' | 'right' | 'middle', count: number) => {
@@ -703,7 +791,14 @@ export class BoxComputerService {
       }
     }
     const key = async (name: string, modifiers: Modifier[]) => {
-      if (s.address.focused && s.address.page === page.targetId && name === 'Return' && !modifiers.length) return this.navigate(s, page)
+      // The address bar takes Return, BackSpace and Escape; any other key would reach the page, which the hold judged as not focused.
+      if (inAddress()) {
+        if (!modifiers.length && name === 'Return') return this.navigate(s, page)
+        if (!modifiers.length && name === 'BackSpace') return void (s.address.draft = (s.address.draft ?? '').slice(0, -1))
+        if (!modifiers.length && name === 'Escape') return void (s.address = { focused: false, draft: null, page: null })
+        const bar = s.book.indexOf(`${page.targetId}:address`, null)
+        return refuse('focus_moved', 'the address bar has the focus; that key would not reach the page', { reason: 'browser-field', element: bar })
+      }
       const k = keyOf(name)
       const m = bits(modifiers)
       const text = m & (MODIFIER_BITS.ctrl | MODIFIER_BITS.super | MODIFIER_BITS.alt) ? undefined : k.text
@@ -718,11 +813,12 @@ export class BoxComputerService {
       s.address.focused = false
       const node = s.book.nodes.get(i)
       if (node?.backend == null) return refuse('stale_element', `element ${i} is gone`, { element: i, reason: 'gone' })
-      await cdp.send('DOM.focus', { backendNodeId: node.backend }, sid).catch(() => click('left', 1))
+      // Never a click in its place: a click on a control that takes no focus is one the hold never judged.
+      await cdp.send('DOM.focus', { backendNodeId: node.backend }, sid).catch(() => refuse('action_unsupported', `[${i}] can't take keyboard focus; click it instead`, { element: i }))
     }
     const type = async (text: string) => {
       if (element !== undefined) await focusOn(element)
-      if (s.address.focused && s.address.page === page.targetId) {
+      if (inAddress()) {
         const [line, ...rest] = text.split('\n')
         s.address.draft = (s.address.draft ?? '') + line
         if (rest.length) await this.navigate(s, page)
@@ -733,6 +829,12 @@ export class BoxComputerService {
         if (part) await cdp.send('Input.insertText', { text: part }, sid)
         if (i < parts.length - 1) await key('Return', [])
       }
+    }
+    /** A paste puts the text in whole and presses nothing, as the hold reads `paste`. */
+    const paste = async (text: string) => {
+      if (element !== undefined) await focusOn(element)
+      if (inAddress()) return void (s.address.draft = (s.address.draft ?? '') + text.replace(/[\r\n]+/g, ' '))
+      if (text) await cdp.send('Input.insertText', { text }, sid)
     }
     switch (a.action) {
       case 'left_click':
@@ -774,16 +876,20 @@ export class BoxComputerService {
         break
       }
       case 'scroll': {
-        const p = element !== undefined || a.coordinate ? await at() : ([640, 400] as [number, number])
+        const targeted = element !== undefined || !!a.coordinate
+        const p = targeted ? await at() : ([640, 400] as [number, number])
+        if (targeted) s.pointer = p
         const n = (a.scroll_amount ?? 3) * 100
         const d = a.scroll_direction ?? 'down'
         await mouse('mouseWheel', p, { deltaX: d === 'left' ? -n : d === 'right' ? n : 0, deltaY: d === 'up' ? -n : d === 'down' ? n : 0 })
         break
       }
       case 'type':
-      case 'paste':
         await type(a.text ?? '')
-        return { input: { via: a.action === 'paste' ? 'ax-insert' : 'keys' }, ...(resolved ? { resolved } : {}) }
+        return { input: { via: 'keys' }, ...(resolved ? { resolved } : {}) }
+      case 'paste':
+        await paste(a.text ?? '')
+        return { input: { via: 'ax-insert' }, ...(resolved ? { resolved } : {}) }
       case 'key':
       case 'hold_key': {
         let combo
@@ -792,6 +898,8 @@ export class BoxComputerService {
         } catch (err) {
           return refuse('invalid_key', (err as Error).message)
         }
+        // A key step's element takes the focus first; the key goes there and nowhere else.
+        if (element !== undefined) await focusOn(element)
         const times = a.action === 'key' ? (a.repeat ?? 1) : 1
         for (let i = 0; i < times; i++) await key(combo.key, combo.modifiers)
         if (a.action === 'hold_key') await sleep((a.duration ?? 0) * 1000, signal)
@@ -854,6 +962,7 @@ export class BoxComputerService {
     if (!draft) return
     const url = /^[a-z][a-z0-9+.-]*:/i.test(draft) ? draft : `https://${draft}`
     if (!SAFE_URL.test(url)) refuse('open_refused', 'the box browser opens only http and https pages')
+    if (closedToAgents(url)) refuse('open_refused', CLOSED)
     const { cdp, sid } = await this.on(page)
     await cdp.send('Page.navigate', { url }, sid)
   }
@@ -872,6 +981,8 @@ const attr = (n: DomNode, name: string): string | undefined => {
   for (let i = 0; i < a.length; i += 2) if (a[i] === name) return a[i + 1]
   return undefined
 }
+/** A step that sends keys to wherever the focus is. */
+const sendsKeys = (a: ComputerAction): boolean => ['type', 'paste', 'key', 'hold_key'].includes(a.action) || (a.action === 'perform' && a.name === 'confirm')
 const bits = (mods: readonly Modifier[]): number => mods.reduce((n, m) => n | MODIFIER_BITS[m], 0)
 
 /**

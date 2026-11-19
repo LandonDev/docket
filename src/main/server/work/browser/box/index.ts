@@ -32,8 +32,10 @@ export interface BoxBrowserHost {
 }
 
 let host: BoxBrowserHost | null = null
-/** threads with a held step waiting on a page of the box browser: it is not stopped for idleness while one waits */
-const waiting = new Map<string, number>()
+/** held steps waiting on a page of the box browser, by thread, each with when it was held: it is not stopped for idleness while one waits */
+const waiting = new Map<string, number[]>()
+/** calls in flight that use the browser outside the computer sessions (the Outlook on the web carrier's) */
+let inUse = 0
 const WAIT_MAX_MS = 24 * 3_600_000
 /** while a page asks for him or he drives, he may be signing in there: the browser stays up, for at most two hours */
 const ASKED_MAX_MS = 2 * 3_600_000
@@ -42,7 +44,7 @@ let started: WorkCtx | null = null
 /** Something waits on a page of the box browser: a held step, or him. */
 function busy(): boolean {
   const now = Date.now()
-  if ([...waiting.values()].some((at) => now - at < WAIT_MAX_MS)) return true
+  if (inUse > 0 || [...waiting.values()].flat().some((at) => now - at < WAIT_MAX_MS)) return true
   return !!started?.db
     .prepare("SELECT 1 FROM work_browser_drive WHERE (driver = 'owner' OR needs IS NOT NULL) AND since > ? LIMIT 1")
     .get(now - ASKED_MAX_MS)
@@ -97,12 +99,30 @@ export const setBoxBrowser = (h: BoxBrowserHost | null): void => {
 export function startBoxBrowser(ctx: WorkCtx): () => void {
   started = ctx
   const off = ctx.held.onDecided((item) => {
-    if (item.kind === 'computer.act' && item.sessionId) waiting.delete(item.sessionId)
+    if (item.kind !== 'computer.act' || !item.sessionId) return
+    const left = (waiting.get(item.sessionId) ?? []).slice(1)
+    if (left.length) waiting.set(item.sessionId, left)
+    else waiting.delete(item.sessionId)
   })
   return () => {
     off()
     started = null
     host?.browser.stop()
+  }
+}
+
+const ownerDrives = (db: WorkCtx['db']): boolean => !!db.prepare("SELECT 1 FROM work_browser_drive WHERE driver = 'owner' LIMIT 1").get()
+
+/** Use of the browser outside the computer sessions: it stays up, and its idle clock restarts, until the returned `done`. */
+export function useBoxBrowser(): () => void {
+  inUse++
+  host?.browser.touch()
+  let done = false
+  return () => {
+    if (done) return
+    done = true
+    inUse--
+    host?.browser.touch()
   }
 }
 
@@ -116,7 +136,7 @@ const NAMES: Record<ComputerToolName, string> = {
 }
 
 const LEAD =
-  "The box's own browser, Chromium, which runs on this host whatever Mac is awake: its app is \"Chromium\", each of its pages a window, and its address bar takes a web address and Return. Call browser_open first so the owner sees it beside the thread. A submit, a send or the like on its final screen is held for his press on its own: drive up to it and stop. Never type a password: call browser_needs_you. Below, \"the Mac\" and \"computer_*\" mean this browser and these box_browser_* tools.\n\n"
+  "The box's own browser, Chromium, which runs on this host whatever Mac is awake: its app is \"Chromium\", each of its pages a window, and its address bar takes a web address and Return. Call browser_open first so the owner sees it beside the thread. A submit, a send or the like on its final screen is held for his press on its own: drive up to it and stop. Never type a password: call browser_needs_you. His mailbox (Outlook on the web) does not open here: use the office_* tools for his mail and calendar. A page inside an embedded frame shows as a group by its title and is not read: open its own page instead. Below, \"the Mac\" and \"computer_*\" mean this browser and these box_browser_* tools.\n\n"
 
 /** The four computer tools, renamed for the box browser and run on its sessions. Listed only where the box has one. */
 export function boxBrowserTools(): WorkTool[] {
@@ -130,10 +150,11 @@ export function boxBrowserTools(): WorkTool[] {
       const h = host
       if (!h) return { ...workText('refused: the box browser is not on this host'), isError: true }
       const pane = ctx.canvas.paneOf(ctx.sessionId)
-      if (spec.name !== 'computer_observe' && new DriveStore(ctx.db).get(pane).driver === 'owner') return { ...workText(BOX_OWNER_DRIVES), isError: true }
+      // One browser for every thread: while he drives any page of it, no thread acts in it.
+      if (spec.name !== 'computer_observe' && (new DriveStore(ctx.db).get(pane).driver === 'owner' || ownerDrives(ctx.db))) return { ...workText(BOX_OWNER_DRIVES), isError: true }
       const outcome = await h.sessions.run({ threadId: ctx.sessionId, signal: ctx.signal }, spec.name, args)
       // A step kept for his press: the page it waits on stays until he decides.
-      if (!outcome.isError && !outcome.steps.length && (spec.name === 'computer_act' || spec.name === 'computer_batch')) waiting.set(ctx.sessionId, Date.now())
+      if (!outcome.isError && !outcome.steps.length && (spec.name === 'computer_act' || spec.name === 'computer_batch')) waiting.set(ctx.sessionId, [...(waiting.get(ctx.sessionId) ?? []), Date.now()])
       return computerContent(outcome, 'parts')
     }
   }))

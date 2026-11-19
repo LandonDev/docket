@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
-import { boxBrowser } from '../../browser/box'
+import { boxBrowser, useBoxBrowser } from '../../browser/box'
 import { findChromium } from '../../browser/box/chromium'
 import { OwaCarrier } from './carrier'
 import { OwaPage } from './page'
@@ -18,7 +18,7 @@ export function owaCarrier(env: NodeJS.ProcessEnv = process.env): OwaCarrier | n
     page: () => {
       const host = boxBrowser()
       if (!host) return null
-      page ??= new OwaPage({ endpoint: () => host.browser.endpoint(), ...(env.TEMP_CODE_OWA_URL ? { url: env.TEMP_CODE_OWA_URL } : {}) })
+      page ??= new OwaPage({ endpoint: () => host.browser.endpoint(), use: useBoxBrowser, ...(env.TEMP_CODE_OWA_URL ? { url: env.TEMP_CODE_OWA_URL } : {}) })
       return page
     },
     marker: () => {

@@ -166,6 +166,19 @@ d('the box computer service speaks the wire', () => {
     expect(bad.steps[1]!.status === 'failed' && bad.steps[1]!.error.kind).toBe('open_refused')
   })
 
+  it('lands a click only on what the read showed: never under a covering control, never inside a frame', async () => {
+    await ok('apps.launch', { app: 'Chromium', open: [site.url + '/tricks'], session: 's1' })
+    const read = await ok('state.get', { session: 's1', app: { app: 'Chromium' }, geometry: true, wait: { minMs: 0, quietMs: 150, maxMs: 3000, busyMaxMs: 3000 } })
+    const frame = /\[\d+\] group "Pay"[^@]*@(\d+),(\d+) (\d+)×(\d+)/.exec(read.text)
+    expect(frame, read.text).toBeTruthy()
+    const run = (action: Record<string, unknown>) => ok('action.run', { session: 's1', app: { app: 'Chromium' }, epoch, tiers: ['process'], action, observe: { mode: 'none' } })
+    const into = await run({ action: 'left_click', coordinate: [Number(frame![1]) + 20, Number(frame![2]) + 20] })
+    expect(into.step).toMatchObject({ status: 'failed', error: { kind: 'action_unsupported', message: expect.stringMatching(/embedded frame/) } })
+    const covered = await run({ action: 'left_click', element: lineOf(read.text, /button "Cancel"/) })
+    expect(covered.step).toMatchObject({ status: 'failed', error: { kind: 'action_unsupported', message: expect.stringMatching(/something else covers/) } })
+    expect(site.posts).toEqual([])
+  })
+
   it('refuses stale and unknown elements before anything runs', async () => {
     expect((await no('action.run', { session: 's1', app: { app: 'Chromium' }, epoch: 'old', tiers: ['process'], action: { action: 'left_click', element: 3 } })).data).toMatchObject({ kind: 'stale_element', reason: 'service-restarted' })
     expect((await no('action.run', { session: 's1', app: { app: 'Chromium' }, epoch, tiers: ['process'], action: { action: 'left_click', element: 99_999 } })).data?.kind).toBe('no_such_element')
@@ -176,10 +189,11 @@ d('the box computer service speaks the wire', () => {
     expect(Math.max(shot.width, shot.height)).toBeLessThanOrEqual(640)
     // the page was navigated since: its old elements are gone, and say so
     const old = lineOf(obs.text, /button "Next"/)
-    expect((await no('state.get', { session: 's1', app: { app: 'Chromium' }, element: old, epoch })).data).toMatchObject({ kind: 'stale_element', reason: 'gone' })
-    const now = await ok('state.get', { session: 's1', app: { app: 'Chromium' } })
+    expect((await no('state.get', { session: 's1', app: { app: 'Chromium' }, window: { title: 'Expense portal' }, element: old, epoch })).data).toMatchObject({ kind: 'stale_element', reason: 'gone' })
+    const portal = { title: 'Expense portal' }
+    const now = await ok('state.get', { session: 's1', app: { app: 'Chromium' }, window: portal })
     const form = lineOf(now.text, /button "Next"/)
-    const sub = await ok('state.get', { session: 's1', app: { app: 'Chromium' }, element: form, epoch })
+    const sub = await ok('state.get', { session: 's1', app: { app: 'Chromium' }, window: portal, element: form, epoch })
     expect(sub.kind).toBe('subtree')
     await ok('session.close', { session: 's1' })
     await ok('capture.stream.stop', { stream: 'x' })

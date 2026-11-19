@@ -62,6 +62,14 @@ describe('the box browser', () => {
     await b.stop()
   }, 30_000)
 
+  it.runIf(!!bin && process.platform === 'linux')('never launches after a stop that overtook its start', async () => {
+    const b = new BoxChromium({ root: tmp(), bin: () => bin })
+    const starting = b.endpoint()
+    void b.stop()
+    await expect(starting).rejects.toThrow(/stopped as it started/)
+    expect(b.running).toBe(false)
+  }, 30_000)
+
   it.runIf(!!bin && process.platform === 'linux')('is stopped when it passes its memory cap', async () => {
     const b = new BoxChromium({ root: tmp(), bin: () => bin, capMb: 10, rssMb: () => 11, watchMs: 50 })
     const stopped = new Promise<string>((r) => b.onStop(r))

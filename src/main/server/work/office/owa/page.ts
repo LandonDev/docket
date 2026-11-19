@@ -1,6 +1,6 @@
 import { OfficeError } from '../carrier'
 import { Cdp } from '../../browser/box/cdp'
-import { RESERVED_TARGETS } from '../../browser/box/service'
+import { RESERVED_TARGETS, RESERVED_URL } from '../../browser/box/service'
 
 /**
  * The carrier's own tab of Outlook on the web in the box's browser
@@ -25,6 +25,8 @@ export interface OwaTransport {
 
 export interface OwaPageOptions {
   endpoint: () => Promise<string>
+  /** marks the browser in use for the length of a call, so it is not stopped under one */
+  use?: () => () => void
   url?: string
   /** how long the page has to load and make its first call */
   waitMs?: number
@@ -45,15 +47,33 @@ export class OwaPage implements OwaTransport {
   }
 
   async call<T>(action: string, body: unknown): Promise<T> {
+    const done = this.o.use?.()
+    try {
+      return await this.attempt<T>(action, body)
+    } finally {
+      done?.()
+    }
+  }
+
+  private async attempt<T>(action: string, body: unknown): Promise<T> {
     for (let attempt = 0; ; attempt++) {
-      await this.open()
+      // Anything that fails before the request goes out is a plain refusal: nothing was sent, and the route fails the row.
+      try {
+        await this.open()
+      } catch (err) {
+        if (err instanceof OfficeError) throw err
+        throw new OfficeError(`Outlook on the web could not be opened on the box: ${(err as Error).message}`, 'not-running')
+      }
       const r = await this.fetch(action, body)
-      // His token ran out or the session ended: the page signs in again by itself if it can.
-      if ((r.status === 401 || r.status === 440) && attempt === 0) {
-        await this.reload()
+      // His token ran out, the session ended, or the page left Outlook: it is opened again once, and signs in again by itself if it can.
+      const lost = r.status === -1 || r.status === 401 || r.status === 440
+      if (lost && attempt === 0) {
+        await this.reload().catch((err) => {
+          throw err instanceof OfficeError ? err : new OfficeError(`Outlook on the web could not be opened on the box: ${(err as Error).message}`, 'not-running')
+        })
         continue
       }
-      if (r.status === 401 || r.status === 440) throw new OfficeError(NEEDS_SIGN_IN, 'needs-consent')
+      if (lost) throw new OfficeError(NEEDS_SIGN_IN, 'needs-consent')
       if (r.status < 200 || r.status >= 300) throw new OfficeError(`Outlook on the web answered ${r.status} to ${action}`, 'failed')
       try {
         return JSON.parse(r.text) as T
@@ -97,7 +117,7 @@ export class OwaPage implements OwaTransport {
     }
     const cdp = this.cdp
     if (!this.target) {
-      const { targetId } = await cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' })
+      const { targetId } = await cdp.send<{ targetId: string }>('Target.createTarget', { url: RESERVED_URL })
       RESERVED_TARGETS.add(targetId)
       this.target = targetId
       this.sid = (await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true })).sessionId
@@ -129,7 +149,7 @@ export class OwaPage implements OwaTransport {
       this.headers = { 'x-owa-canary': canary }
       return
     }
-    throw new OfficeError(host ? `Outlook on the web did not finish opening on the box (${host})` : NEEDS_SIGN_IN, host ? 'failed' : 'needs-consent')
+    throw new OfficeError(host ? `Outlook on the web did not finish opening on the box (${host})` : NEEDS_SIGN_IN, host ? 'not-running' : 'needs-consent')
   }
 
   private async eval<T>(expression: string): Promise<T> {
@@ -138,9 +158,15 @@ export class OwaPage implements OwaTransport {
     return r.result.value as T
   }
 
+  /**
+   * One call from inside the page, to Outlook's own origin only: a page that
+   * moved to a sign-in host (or anywhere else) answers -1 and nothing is
+   * sent, so his mail and its signing headers never go to another host.
+   */
   private fetch(action: string, body: unknown): Promise<{ status: number; text: string }> {
+    const origin = new URL(this.url).origin
     const headers = { ...this.headers, action, 'content-type': 'application/json; charset=utf-8' }
-    const call = `(async () => { const r = await fetch('/owa/service.svc?action=' + ${JSON.stringify(encodeURIComponent(action))} + '&app=Mail', { method: 'POST', credentials: 'include', headers: ${JSON.stringify(headers)}, body: ${JSON.stringify(JSON.stringify(body))} }); return { status: r.status, text: await r.text() } })()`
+    const call = `(async () => { if (location.origin !== ${JSON.stringify(origin)}) return { status: -1, text: '' }; const r = await fetch(${JSON.stringify(`${origin}/owa/service.svc?action=${encodeURIComponent(action)}&app=Mail`)}, { method: 'POST', credentials: 'include', headers: ${JSON.stringify(headers)}, body: ${JSON.stringify(JSON.stringify(body))} }); return { status: r.status, text: await r.text() } })()`
     return this.eval<{ status: number; text: string }>(call)
   }
 }

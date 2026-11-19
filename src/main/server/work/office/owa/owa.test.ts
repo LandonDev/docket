@@ -30,6 +30,17 @@ describe("Outlook on the web's requests", () => {
     expect((ews.answerEvent('E1', 'tentative').body as { Body: { Items: unknown[] } }).Body.Items[0]).toMatchObject({ __type: 'TentativelyAcceptItem:#Exchange', ReferenceItemId: { Id: 'E1' } })
     expect(() => ews.messageOf({ Body: { ResponseMessages: { Items: [{ ResponseClass: 'Error', ResponseCode: 'ErrorItemNotFound', MessageText: 'gone' }] } } })).toThrow('gone')
     expect(ews.accountOf({ SessionSettings: { UserEmailAddress: ' Dana@X.com ' } })).toBe('dana@x.com')
+    // a warning did what was asked; an answer of no known shape may have sent, and is not a refusal
+    expect(ews.messageOf({ Body: { ResponseMessages: { Items: [{ ResponseClass: 'Warning', Items: [] }] } } })).toMatchObject({ ResponseClass: 'Warning' })
+    expect(() => ews.messageOf({ Body: {} })).toThrow(expect.objectContaining({ code: 'NoAnswer' }))
+  })
+
+  it('refuses before anything is sent when the browser cannot be reached, so the route fails the row', async () => {
+    const page = new OwaPage({ endpoint: async () => { throw new Error('no Chromium on this host') } })
+    await expect(page.call('CreateItem', {})).rejects.toMatchObject({ code: 'not-running' })
+    const carrier = new OwaCarrier({ page: () => ({ call: async <T,>() => ({ Body: { odd: true } }) as T, close: () => {} }), marker: () => null, running: () => true, hasSignIn: () => false })
+    // an answer of no known shape after the request went out is "maybe sent", never a refusal
+    await expect(carrier.answerEvent('E1', 'accept')).rejects.toMatchObject({ code: 'failed' })
   })
 })
 
@@ -122,6 +133,20 @@ d('the Outlook on the web carrier, against a page in Outlook\'s shapes', () => {
     await carrier.answerEvent('inv-1', 'accept')
     expect(owa.events.find((e) => e.id === 'inv-1')!.response).toBe('Accept')
     expect((await carrier.events(at(-day), at(2 * day))).find((e) => e.id === 'inv-1')).toMatchObject({ response: 'accepted', organizer: 'boss@contoso.com' })
+  }, 30_000)
+
+  it('never sends from a page that left Outlook: it opens Outlook again first', async () => {
+    const { Cdp } = await import('../../browser/box/cdp')
+    const cdp = await Cdp.open(await browser.endpoint())
+    const [tab] = [...RESERVED_TARGETS]
+    const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId: tab, flatten: true })
+    // the same stand-in under another origin: a page anywhere but Outlook's own
+    await cdp.send('Page.navigate', { url: owa.url.replace('127.0.0.1', 'localhost') }, sessionId)
+    await new Promise((r) => setTimeout(r, 500))
+    cdp.close()
+    const before = owa.calls.length
+    await carrier.listMail({ folder: 'sent', limit: 1 })
+    expect(owa.calls.slice(before).filter((c) => c.action === 'FindItem')).toEqual([{ action: 'FindItem', signed: true }])
   }, 30_000)
 
   it('opens the page again when its session ends, and signs with the new token', async () => {
