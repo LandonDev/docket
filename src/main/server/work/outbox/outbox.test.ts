@@ -218,6 +218,8 @@ describe("the owner's press", () => {
     expect(rig.whispers[0]).toMatchObject({ sessionId: 't-work' })
     expect(rig.whispers[0]!.text).toMatch(/^Held item 1 \(.*\) could not be carried out: .*Do not try another way to do it\.$/)
     expect((await rig.waiting())[0]).toMatchObject({ state: 'failed' })
+    // and the rail's failed mark counts it
+    expect(rig.host.outbox.failed()).toBe(1)
   })
 
   it('that failed with no word of how it ended may have gone: a plain press is refused and only Send again sends it', async () => {
@@ -736,7 +738,7 @@ describe('the rules card and the push', () => {
     rig.work.pushes.onPush((p) => void mine.push(p), approveKey)
     await rig.rpc('work.outbox.discard', { ref: (await rig.waiting())[0]!.ref })
     expect(seen).toEqual([])
-    expect(mine).toMatchObject([{ push: 'work.outbox', waiting: 0, item: { state: 'discarded' } }])
+    expect(mine).toMatchObject([{ push: 'work.outbox', waiting: 0, failed: 0, item: { state: 'discarded' } }])
   })
 
   it("a deleted thread's and a deleted workspace's waiting acts can no longer go, and stay in the log", async () => {

@@ -4,7 +4,7 @@ import { registry, type Environment, type EnvironmentStatus, type Link } from ".
 import type { ServerPush, WorkspaceMeta } from "../lib/tcserver/types";
 import { sessionStore } from "../lib/tcserver/store";
 import { workspaceStore } from "../lib/tcserver/workspaces";
-import { setWorkOn, workSwitch } from "../lib/workSwitch";
+import { setOutboxFailed, setOutboxWaiting, setWorkOn, workSwitch } from "../lib/workSwitch";
 import { mountProbe } from "../test/renderProbe";
 import { ProjectRail } from "./ProjectRail";
 import { SettingsNav } from "./SettingsRail";
@@ -67,7 +67,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function mountRail(workspaces: WorkspaceMeta[]) {
+async function mountRail(workspaces: WorkspaceMeta[], extra: { onOpenOutbox?: () => void } = {}) {
   vi.spyOn(registry, "environmentsSnapshot").mockReturnValue([LOCAL]);
   vi.spyOn(registry, "statuses").mockReturnValue(new Map([["local", open]]));
   vi.spyOn(registry, "statusOf").mockReturnValue(open);
@@ -84,6 +84,7 @@ async function mountRail(workspaces: WorkspaceMeta[]) {
       onOpenWorkChats={() => {}}
       onOpenNotes={() => {}}
       onOpenAccountsPage={() => {}}
+      {...extra}
     />,
   );
   await probe.act(flush);
@@ -133,6 +134,23 @@ describe("the rail with Work on", () => {
     // With no Work workspace yet, the heading's own row adds the first: "Add workspace…" under Work, fitting the 200px rail, named in full for a screen reader.
     expect(names).toContain("Add workspace…");
     expect(root.querySelector('nav button[aria-label="Add Work workspace…"]')).toBeTruthy();
+  });
+});
+
+describe("the rail's Outbox row", () => {
+  it("shows the waiting count, and the failed mark in its place while a send failed", async () => {
+    setWorkOn("local", true);
+    const root = await mountRail([CODE], { onOpenOutbox: () => {} });
+    const row = () => [...root.querySelectorAll("nav button")].find((b) => b.textContent?.includes("Outbox"))!;
+    await probe.act(async () => setOutboxWaiting(3));
+    expect(row().textContent).toContain("3");
+    await probe.act(async () => setOutboxFailed(1));
+    expect(row().textContent).not.toContain("3");
+    expect(row().querySelector('[data-status="failed"], [data-state="failed"]')).toBeTruthy();
+    await probe.act(async () => {
+      setOutboxFailed(0);
+      setOutboxWaiting(0);
+    });
   });
 });
 

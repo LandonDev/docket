@@ -218,11 +218,13 @@ public struct WorkPush: Codable, Hashable, Sendable {
 public struct WorkOutboxPush: Codable, Hashable, Sendable {
     public let waiting: Int
     public let unreviewed: Int
+    public let failed: Int?
     public let item: OutboxItem?
 
-    public init(waiting: Int, unreviewed: Int, item: OutboxItem? = nil) {
+    public init(waiting: Int, unreviewed: Int, failed: Int? = nil, item: OutboxItem? = nil) {
         self.waiting = waiting
         self.unreviewed = unreviewed
+        self.failed = failed
         self.item = item
     }
 }

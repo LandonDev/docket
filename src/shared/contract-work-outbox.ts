@@ -179,7 +179,7 @@ export const OutboxRequestSchemas = [
  * add-on tools a Work thread can reach have no rule yet.
  */
 export type OutboxPush =
-  | { push: 'work.outbox'; waiting: number; unreviewed: number; item?: OutboxItem }
+  | { push: 'work.outbox'; waiting: number; unreviewed: number; failed?: number; item?: OutboxItem }
   /** A Result was made or undone. */
   | { push: 'work.outbox.result'; result: WorkResult }
 

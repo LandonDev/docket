@@ -87,7 +87,7 @@ import {
 } from "../lib/tcserver/workspaces";
 import { RailHeading, RailRow } from "./RailRow";
 import { SectorDot, WorkspaceGlyph, workspaceLook } from "./WorkspaceGlyph";
-import { isWorkMenuAction, useOutboxWaiting, useWorkOn, WORK_ADD_MENU, workRailPort } from "../lib/workSwitch";
+import { isWorkMenuAction, useOutboxFailed, useOutboxWaiting, useWorkOn, WORK_ADD_MENU, workRailPort } from "../lib/workSwitch";
 import { diffWords, useWorkspaceMarks, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
 import type { WorkspaceMark } from "../lib/sidebarRows";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
@@ -504,6 +504,7 @@ export function ProjectRail({
       .then(() => projectMenu.current?.({ x: box.left, y: box.bottom + 4, id: WORK_ADD_MENU }));
   };
   const outboxWaiting = useOutboxWaiting();
+  const outboxFailed = useOutboxFailed();
   const inboxUnseen = useInboxUnseen();
   const topIds = railTopRows({
     chats: onOpenChats !== undefined,
@@ -541,8 +542,8 @@ export function ProjectRail({
           />
         );
       case "outbox":
-        // Plain muted count: held is not "needs you" (docs/DESIGN.md "Held is not Needs you").
-        return <RailRow key={id} icon={Outbox} label="Outbox" trailing={outboxWaiting || null} selected={outboxActive} onClick={onOpenOutbox} intent={workOutboxChunk.intent} />;
+        // Plain muted count: held is not "needs you" (docs/DESIGN.md "Held is not Needs you"); a failed send takes the failed mark in its place.
+        return <RailRow key={id} icon={Outbox} label="Outbox" trailing={outboxFailed > 0 ? <StatusMark state="failed" word={false} /> : outboxWaiting || null} selected={outboxActive} onClick={onOpenOutbox} intent={workOutboxChunk.intent} />;
       case "workChats":
         return (
           <RailRow

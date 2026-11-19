@@ -1189,7 +1189,7 @@ export const OutboxListSchema = z.object({ items: z.array(OutboxItemSchema), wai
 export const LifeosStatusSchema = z.object({ lifeos: LifeosStateSchema, keys: z.array(LifeosKeyStateSchema) })
 export const AwaySnapshotSchema = z.object({ state: AwayStateSchema, decided: AwayDecidedSchema })
 /** Something in the Outbox changed: how many wait, and the item that changed (no picture). To keys that can approve. */
-export const WorkOutboxPushSchema = push('work.outbox', { waiting: z.number().int(), unreviewed: z.number().int(), item: OutboxItemSchema.optional() })
+export const WorkOutboxPushSchema = push('work.outbox', { waiting: z.number().int(), unreviewed: z.number().int(), failed: z.number().int().optional(), item: OutboxItemSchema.optional() })
 /** A Result was made or undone. */
 export const WorkOutboxResultPushSchema = push('work.outbox.result', { result: WorkResultSchema })
 /** This host's LifeOS sign-in and its sector keys. */

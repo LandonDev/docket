@@ -339,6 +339,12 @@ export class HeldStore {
   }
 
   /** How many rows wait on the owner. */
+  /** Held rows whose send failed and that wait on him again: the rail's failed mark. */
+  failed(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS c FROM ${HELD_TABLE} WHERE state = ?`).get('failed') as { c: number }
+    return Number(row.c)
+  }
+
   waiting(): number {
     const row = this.db.prepare(`SELECT COUNT(*) AS c FROM ${HELD_TABLE} WHERE state IN (${marks(['held', 'live', 'failed'])})`).get('held', 'live', 'failed') as { c: number }
     return Number(row.c)

@@ -304,6 +304,11 @@ export class Outbox {
     return this.store.waiting() + this.undecided().length
   }
 
+  /** Of those waiting, the ones whose send failed: here, and LifeOS's own that came back failed. */
+  failed(): number {
+    return this.store.failed() + this.undecided().filter((item) => item.state === 'failed').length
+  }
+
   /** LifeOS-held items with no decision recorded here. One whose send failed here is listed from its row. */
   private undecided(): OutboxItem[] {
     return (this.lifeos?.items() ?? []).filter((item) => !this.store.byRef(item.ref))

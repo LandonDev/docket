@@ -151,10 +151,11 @@ export const outbox: WorkModule = {
     return host.outbox.onChange((item) => {
       const waiting = host.outbox.waiting()
       const unreviewed = unreviewedCount(host)
-      const key = JSON.stringify([waiting, unreviewed, item?.ref ?? null, item?.state ?? null, item?.updatedAt ?? null])
+      const failed = host.outbox.failed()
+      const key = JSON.stringify([waiting, unreviewed, failed, item?.ref ?? null, item?.state ?? null, item?.updatedAt ?? null])
       if (key === last) return
       last = key
-      ctx.push({ push: 'work.outbox', waiting, unreviewed, ...(item ? { item: light(item) } : {}) }, { need: 'approve' })
+      ctx.push({ push: 'work.outbox', waiting, unreviewed, failed, ...(item ? { item: light(item) } : {}) }, { need: 'approve' })
     })
   },
   preamble(scope) {

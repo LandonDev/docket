@@ -32,6 +32,7 @@ function remembered(): Set<string> {
 
 let on = remembered();
 let outboxWaiting = 0;
+let outboxFailed = 0;
 const listeners = new Set<Listener>();
 const links = new Map<string, () => void>();
 
@@ -108,6 +109,7 @@ export const workSwitch = {
     links.clear();
     on = new Set();
     outboxWaiting = 0;
+    outboxFailed = 0;
     lifeosProjects.clear();
     openView = null;
     for (const listener of listeners) listener();
@@ -130,6 +132,18 @@ export function setOutboxWaiting(count: number): void {
   if (count === outboxWaiting) return;
   outboxWaiting = count;
   for (const listener of listeners) listener();
+}
+
+/** Of those waiting, how many failed to send: the rail's Outbox row then shows the failed mark in place of its count. */
+export function setOutboxFailed(count: number): void {
+  if (count === outboxFailed) return;
+  outboxFailed = count;
+  for (const listener of listeners) listener();
+}
+
+export function useOutboxFailed(): number {
+  const read = (): number => outboxFailed;
+  return useSyncExternalStore(workSwitch.subscribe, read, read);
 }
 
 export function useOutboxWaiting(): number {

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
 import type { HeldRef } from "@shared/work";
 import { registry } from "../../lib/connection";
-import { setOutboxWaiting, workSwitch } from "../../lib/workSwitch";
+import { setOutboxFailed, setOutboxWaiting, workSwitch } from "../../lib/workSwitch";
 import { applyResult, reloadResults, resetResults } from "./results";
 
 /**
@@ -26,6 +26,8 @@ type HostState = {
   sent: HostItem[];
   grants: HostGrant[];
   count: number;
+  /** of `count`, the sends that failed */
+  failed: number;
   loaded: boolean;
   error: string | null;
 };
@@ -44,13 +46,19 @@ export type OutboxView = {
   errors: { environmentId: string; error: string }[];
 };
 
-const emptyHost = (): HostState => ({ waiting: [], sent: [], grants: [], count: 0, loaded: false, error: null });
+const emptyHost = (): HostState => ({ waiting: [], sent: [], grants: [], count: 0, failed: 0, loaded: false, error: null });
 
 function changed(): void {
   snapshot = null;
   let count = 0;
-  for (const [id, state] of hosts) if (workSwitch.hosts().has(id)) count += state.count;
+  let failed = 0;
+  for (const [id, state] of hosts)
+    if (workSwitch.hosts().has(id)) {
+      count += state.count;
+      failed += state.failed;
+    }
   setOutboxWaiting(count);
+  setOutboxFailed(failed);
   for (const listener of listeners) listener();
 }
 
@@ -93,6 +101,7 @@ export function loadHost(environmentId: string): Promise<void> {
         sent: tag(environmentId, decided.items.filter((item) => item.state === "sent")),
         grants: tag(environmentId, grants.grants),
         count: waiting.waiting,
+        failed: waiting.items.filter((item) => item.state === "failed").length,
         loaded: true,
         error: null,
       });
@@ -225,7 +234,7 @@ registry.onLink((link, event) => {
   link.onPush((push) => {
     if (push.push === "work.outbox") {
       const state = hosts.get(link.environmentId) ?? emptyHost();
-      hosts.set(link.environmentId, { ...state, count: push.waiting });
+      hosts.set(link.environmentId, { ...state, count: push.waiting, failed: push.failed ?? state.failed });
       changed();
       // Something moved: an open page asks again; with none open the count is enough, and the page loads when it opens.
       if (listeners.size > 0) void loadHost(link.environmentId);
