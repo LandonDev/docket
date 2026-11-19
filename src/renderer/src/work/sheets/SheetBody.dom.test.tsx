@@ -391,7 +391,22 @@ describe("the sheet kind", () => {
     resetSheetSyncs();
     resetCanvasStore();
     open(sheetView(), { item: canvasItem("s1", { kind: "sheet", title: "Travel budget", source: { at: "lifeos", table: "sheets", id: "sh1" } }) });
-    expect(await screen.findByRole("button", { name: "Share" })).toBeTruthy();
+    const share = await screen.findByRole("button", { name: "Share" });
+    // Whole or gone: under the narrow bar it hides as one piece rather than being cut mid-word.
+    const whole = share.closest("[data-narrow-hide]");
+    expect(whole?.className).toContain("@max-[560px]/bar:hidden");
+  });
+
+  it("says a read-only file (an .xlsb) in the needs tone, not as a failure", async () => {
+    open(sheetView({ readOnly: "Saved as .xlsb, which opens read only" }));
+    await gridUp();
+    const line = await waitFor(() => {
+      const found = document.querySelector("[data-canvas-state]");
+      if (!found) throw new Error("no state line");
+      return found;
+    });
+    expect(line.getAttribute("data-canvas-state")).toBe("needs");
+    expect(line.textContent).toContain("Read only");
   });
 
   it("says a sheet that did not open once, in the body, with no state line over it", async () => {

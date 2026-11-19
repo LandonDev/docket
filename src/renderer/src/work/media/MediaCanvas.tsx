@@ -300,7 +300,9 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
         onPick={pick}
         trigger={
           <Button variant="ghost" size="xs" className="font-normal text-muted-foreground">
-            v{v.n}, {short(v.addedAt)}
+            v{v.n}
+            {/* Whole or gone: in the narrow bar a picker keeps its version and drops its day. */}
+            <span data-narrow-hide className="-ms-1 @max-[560px]/bar:hidden">, {short(v.addedAt)}</span>
             <ChevronDown />
           </Button>
         }
@@ -331,7 +333,8 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
     const p = shown.probe;
     return (
       <>
-        <span className="flex min-w-0 gap-2 truncate tabular-nums">
+        {/* The picture's facts go whole in the narrow bar, so the zoom keeps its room. */}
+        <span data-narrow-hide className="flex min-w-0 gap-2 truncate tabular-nums @max-[560px]/bar:hidden">
           {play.width ? <span>{`${play.width} × ${play.height}`}</span> : null}
           {p ? <span>{p.size >= 1e6 ? `${(p.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(p.size / 1e3))} KB`}</span> : null}
         </span>
@@ -370,9 +373,9 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
       rows={versionRows(shown.id)}
       onPick={(id) => (id === shown.id ? undefined : set({ compare: id }))}
       trigger={
-        <Button variant="ghost" size="xs" className="ms-auto">
+        <Button variant="ghost" size="xs" aria-label="History" className="ms-auto">
           <History />
-          History
+          <span data-narrow-hide className="@max-[560px]/bar:hidden">History</span>
         </Button>
       }
     />

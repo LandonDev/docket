@@ -384,7 +384,7 @@ export function NothingYet({ uploading, onChoose }: { uploading: boolean; onChoo
   );
 }
 
-/** Could not transcribe: the reason in his words, and Try again. The player above it still plays. */
+/** Could not transcribe: the reason in his words, and Retry. The player above it still plays. */
 export function Failed({ meeting, onRetry, title }: { meeting: Pick<Meeting, "from" | "error">; onRetry(): Promise<void>; title?: string }) {
   const [trying, setTrying] = useState(false);
   return (
@@ -403,7 +403,7 @@ export function Failed({ meeting, onRetry, title }: { meeting: Pick<Meeting, "fr
               void onRetry().finally(() => setTrying(false));
             }}
           >
-            <BusyLabel busy={trying} label="Try again" />
+            <BusyLabel busy={trying} label="Retry" />
           </Button>
         </AlertDescription>
       </Alert>

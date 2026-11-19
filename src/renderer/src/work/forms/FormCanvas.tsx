@@ -4,12 +4,15 @@ import { Check, ChevronDown, CircleDot, Copy, FileText, MoreHorizontal, Plus, Te
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { Input, INPUT_FIELD_CLASS } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Switch } from "../../components/ui/switch";
+import { Textarea } from "../../components/ui/textarea";
 import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
-import { Tip } from "../../components/tip";
+import { Tip, TruncateTip } from "../../components/tip";
+import { cn } from "../../lib/cn";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
@@ -43,12 +46,16 @@ interface Slot {
   edits: FormBody | null;
   /** Why the last save failed, while his edits wait unsaved. */
   saveError: string | null;
+  /** Why Responses could not be read, while nothing of them is shown; said on the state line. */
+  responsesError: string | null;
+  /** Bumped by Retry to read the responses again. */
+  responsesAttempt: number;
 }
 class FormStore {
   private slot: Slot;
   private readonly listeners = new Set<() => void>();
   constructor(half: Half) {
-    this.slot = { view: null, error: null, half, publishing: false, edits: null, saveError: null };
+    this.slot = { view: null, error: null, half, publishing: false, edits: null, saveError: null, responsesError: null, responsesAttempt: 0 };
   }
   get = (): Slot => this.slot;
   set = (patch: Partial<Slot>): void => {
@@ -106,6 +113,7 @@ export function Body(props: Props) {
   const [current, setCurrent] = useState(0);
   useFeeds(shell, host, store, view, current, setCurrent);
   const saveError = slot.saveError;
+  const responsesError = half === "responses" ? slot.responsesError : null;
   useEffect(() => {
     const retryOpen = (): void => {
       store.set({ error: null });
@@ -113,9 +121,16 @@ export function Body(props: Props) {
     };
     if (error) shell.statusLine({ tone: "failed", word: "Couldn't open this form", detail: error, action: { label: "Retry", run: retryOpen } });
     else if (saveError) shell.statusLine({ tone: "failed", word: "Not saved", detail: saveError, action: { label: "Retry", run: () => saverOf(store, host).retry() } });
+    else if (responsesError)
+      shell.statusLine({
+        tone: "failed",
+        word: "Couldn't read the responses",
+        detail: responsesError,
+        action: { label: "Retry", run: () => store.set({ responsesError: null, responsesAttempt: store.get().responsesAttempt + 1 }) },
+      });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
-  }, [shell, host, store, error, saveError]);
+  }, [shell, host, store, error, saveError, responsesError]);
 
   if (error) return null;
   if (!view) return <FormSkeleton />;
@@ -125,7 +140,7 @@ export function Body(props: Props) {
       {half === "questions" ? (
         <Questions key={view.itemId} view={view} host={host} store={store} current={view.suggestions.length ? current : -1} onStep={setCurrent} />
       ) : (
-        <Responses view={view} host={host} item={props.item} shell={shell} />
+        <Responses view={view} host={host} store={store} item={props.item} shell={shell} />
       )}
     </div>
   );
@@ -158,7 +173,11 @@ function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: Fo
       groups: [{ id: "form", label: "Questions", by: suggestions[0].by, count: suggestions.length }],
       index,
       count: suggestions.length,
-      step: (to) => setCurrent(to),
+      // A change is a question, so stepping to one shows the Questions half (the switch gives way to the stepper in a narrow bar).
+      step: (to) => {
+        setCurrent(to);
+        store.set({ half: "questions" });
+      },
       accept: (w) => run(host.review(ids(w), "accept"), store, "Couldn't accept the change"),
       reject: (w) => run(host.review(ids(w), "reject"), store, "Couldn't reject the change"),
     };
@@ -195,9 +214,16 @@ export function Bar(props: Props) {
     store.set({ publishing: true });
     void run(host.publish(), store, "Couldn't publish the form").finally(() => store.set({ publishing: false }));
   };
+  const stepping = view.suggestions.length > 0;
   return (
     <>
-      <Tabs value={half} onValueChange={(next) => store.set({ half: next as Half })} className="mx-1 shrink-0 gap-0">
+      {/* Whole or gone: while changes wait the stepper needs the room, so a narrow bar drops the switch rather than cut it. */}
+      <Tabs
+        value={half}
+        onValueChange={(next) => store.set({ half: next as Half })}
+        data-narrow-hide={stepping || undefined}
+        className={`mx-1 shrink-0 gap-0 ${stepping ? "@max-[560px]/bar:hidden" : ""}`}
+      >
         <TabsList aria-label="Half" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
           <TabsIndicator />
           <TabsTrigger value="questions" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
@@ -233,16 +259,23 @@ function LiveLink({ link, close }: { link: string; close(): Promise<void> }) {
       () => sayError(null, "Couldn't copy the link"),
     );
   const shown = link.replace(/^https?:\/\//, "");
+  // Under 600px of bar the address and its glyph give way to a worded Copy link (form.html's narrow bar), so nothing is cut.
   return (
     <span data-form-link className="ms-auto flex min-w-0 items-center gap-1">
-      <a href={link} target="_blank" rel="noreferrer" className="min-w-0 truncate text-xs text-accent underline-offset-3 hover:underline">
-        {shown}
-      </a>
+      <TruncateTip text={shown}>
+        <a href={link} target="_blank" rel="noreferrer" className="min-w-0 truncate text-xs text-accent underline-offset-3 hover:underline @max-[600px]/bar:hidden">
+          {shown}
+        </a>
+      </TruncateTip>
       <Tip label={copied ? "Copied" : "Copy link"}>
-        <Button variant="ghost" size="icon-xs" aria-label={copied ? "Copied" : "Copy link"} onClick={copy} className="text-muted-foreground">
+        <Button variant="ghost" size="icon-xs" aria-label={copied ? "Copied" : "Copy link"} onClick={copy} className="text-muted-foreground @max-[600px]/bar:hidden">
           {copied ? <Check /> : <Copy />}
         </Button>
       </Tip>
+      <Button data-form-copy-word variant="ghost" size="xs" onClick={copy} className="hidden @max-[600px]/bar:inline-flex">
+        {copied ? <Check /> : <Copy />}
+        {copied ? "Copied" : "Copy link"}
+      </Button>
       <Button
         variant="ghost"
         size="xs"
@@ -458,13 +491,19 @@ function TextField({
   placeholder?: string;
 }) {
   if (!editable) return value ? <div className={`${className} whitespace-pre-line`}>{value}</div> : null;
-  const shared = `block w-full resize-none rounded-md border-0 bg-transparent placeholder:text-muted-foreground/70 ${className}`;
+  // The design system's fields, borderless at rest so the words stand where they read; the ring shows where the caret is.
+  const shared = cn(IN_PLACE, "-my-px h-auto resize-none py-0", className);
   return multiline ? (
-    <textarea aria-label={label} rows={1} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={`${shared} field-sizing-content`} />
+    <Textarea aria-label={label} rows={1} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={cn(shared, "min-h-0")} />
   ) : (
-    <input aria-label={label} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={shared} />
+    <Input aria-label={label} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={shared} />
   );
 }
+
+/** A field edited where its words stand: the system's Input or Textarea with no border at rest, its focus ring on focus. */
+const IN_PLACE = "rounded-md border-transparent";
+/** A 20px line's field, its box 4px out each side of the line (and 10px out at the start) so the words do not move when it opens. */
+const IN_LINE = `${IN_PLACE} -mx-2.5 -my-1 h-7 w-[calc(100%+20px)] px-2.5 py-0`;
 
 const TYPE_ICONS = { short: TextCursor, long: FileText, choice: CircleDot, dropdown: ChevronDown, section: CaseSensitive } as const;
 
@@ -528,13 +567,7 @@ function QuestionBlock({
       className={`focus-ring rounded-xl p-3 transition-[background-color] duration-(--dur-hover) ${tint} ${outline}`}
     >
       {editing ? (
-        <input
-          aria-label="Question"
-          autoFocus
-          value={q.label}
-          onChange={(e) => onChange({ ...q, label: e.target.value })}
-          className="block w-full rounded-md border-0 bg-transparent text-sm leading-5 font-medium"
-        />
+        <Input aria-label="Question" autoFocus value={q.label} onChange={(e) => onChange({ ...q, label: e.target.value })} className={`${IN_LINE} block text-sm leading-5 font-medium`} />
       ) : (
         <div className="text-sm leading-5 font-medium">
           {label}
@@ -550,12 +583,12 @@ function QuestionBlock({
 function SectionEdit({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestion | null): void }) {
   return (
     <div className="flex items-center gap-2">
-      <input
+      <Input
         aria-label="Section"
         autoFocus
         value={q.label}
         onChange={(e) => onChange({ ...q, label: e.target.value })}
-        className="block min-w-0 flex-1 rounded-md border-0 bg-transparent text-base leading-6 font-semibold tracking-[-0.01em]"
+        className={`${IN_PLACE} -ms-2.5 h-auto min-w-0 flex-1 px-2.5 py-0 text-base leading-6 font-semibold tracking-[-0.01em]`}
       />
       <Tip label="Delete section">
         <Button variant="ghost" size="icon-xs" aria-label="Delete section" className="text-muted-foreground" onClick={() => onChange(null)}>
@@ -566,17 +599,17 @@ function SectionEdit({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestio
   );
 }
 
-/** The answer's box; each type sets its own height and width, so none overrides another's. */
-const FIELD = "mt-2 rounded-lg border border-input bg-background";
+/** The answer's box as the filler sees it, drawn on the system field's own look; each type sets its own height and width. */
+const FIELD = cn(INPUT_FIELD_CLASS, "mt-2 block bg-background");
 
 /** The answer's place as the filler sees it; a choice's options, editable in place while he edits the question. */
 function Field({ q, was, editing, onChange }: { q: FormQuestion; was?: FormQuestion; editing: boolean; onChange(q: FormQuestion): void }) {
-  if (q.type === "short") return <div data-field className={`${FIELD} h-8 max-w-[360px]`} />;
-  if (q.type === "long") return <div data-field className={`${FIELD} h-[72px]`} />;
+  if (q.type === "short") return <div data-field className={cn(FIELD, "h-8 max-w-[360px]")} />;
+  if (q.type === "long") return <div data-field className={cn(FIELD, "h-[72px]")} />;
   if (editing) return <OptionsEdit q={q} onChange={onChange} />;
   if (q.type === "dropdown")
     return (
-      <div data-field className={`${FIELD} flex h-8 max-w-[200px] items-center justify-between ps-3 pe-2 text-[13px] text-muted-foreground`}>
+      <div data-field className={cn(FIELD, "flex h-8 max-w-[200px] items-center justify-between py-0 ps-3 pe-2 text-muted-foreground")}>
         Choose
         <ChevronDown className="size-3" />
       </div>
@@ -602,11 +635,11 @@ function OptionsEdit({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestio
       {options.map((o, i) => (
         <div key={i} className="flex min-h-7 items-center gap-2">
           <i aria-hidden className={`size-3.5 shrink-0 ring-[1.5px] ring-foreground/40 ring-inset ${q.type === "choice" ? "rounded-full" : "rounded-sm"}`} />
-          <input
+          <Input
             aria-label={`Option ${i + 1}`}
             value={o}
             onChange={(e) => set(options.map((x, j) => (j === i ? e.target.value : x)))}
-            className="min-w-0 flex-1 rounded-md border-0 bg-transparent text-sm leading-5"
+            className={`${IN_PLACE} -ms-2.5 h-7 min-w-0 flex-1 px-2.5 py-0 text-sm leading-5`}
           />
           {options.length > 1 ? (
             <Tip label="Remove option">
@@ -677,10 +710,12 @@ function EditRow({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestion | 
 
 const POLL_MS = 10_000;
 
-function useResponses(host: FormHost, live: boolean): FormResponses | null | "failed" {
+function useResponses(host: FormHost, live: boolean, attempt: number): FormResponses | null | "failed" {
   const [got, setGot] = useState<FormResponses | null | "failed">(null);
   useEffect(() => {
     if (!live) return;
+    // A Retry starts from the bones again, not from the failure it answers.
+    setGot((was) => (was === "failed" ? null : was));
     let on = true;
     let rev: number | undefined;
     const load = (): void =>
@@ -699,14 +734,20 @@ function useResponses(host: FormHost, live: boolean): FormResponses | null | "fa
       on = false;
       clearInterval(t);
     };
-  }, [host, live]);
+  }, [host, live, attempt]);
   return got;
 }
 
-function Responses({ view, host, item, shell }: { view: FormView; host: FormHost; item: Props["item"]; shell: CanvasShell }) {
-  const got = useResponses(host, view.state !== "draft");
+function Responses({ view, host, store, item, shell }: { view: FormView; host: FormHost; store: FormStore; item: Props["item"]; shell: CanvasShell }) {
+  const got = useResponses(host, view.state !== "draft", useSlot(store).responsesAttempt);
+  // A read that failed with nothing shown is said once, on the state line with Retry (the body's status effect); a later failed poll keeps the last answers.
+  const failed = got === "failed";
+  useEffect(() => {
+    store.set({ responsesError: failed ? "The sheet they are written to did not answer." : null });
+    return () => store.set({ responsesError: null });
+  }, [store, failed]);
   if (view.state === "draft") return <EmptyState title="No responses yet" />;
-  if (got === "failed") return <EmptyState title="Couldn't read the responses" line="The sheet they are written to did not answer." />;
+  if (failed) return null;
   if (!got) return <ResponsesSkeleton />;
   if (!got.count) return <EmptyState title="No responses yet" line={view.publishedAt ? `Published ${dayTime(view.publishedAt)}` : undefined} />;
   return <ResponseTable view={view} got={got} item={item} shell={shell} />;

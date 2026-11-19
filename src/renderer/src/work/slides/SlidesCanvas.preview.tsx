@@ -41,7 +41,7 @@ function revised(hosted: boolean): DeckView {
     hosted,
     slides,
     changes: [
-      change("slide-2", 2, { label: title(2), edits: [{ where: "Title 1", before: "Why sponsor us", after: "Why sponsor Spring LAN" }] }),
+      change("slide-2", 2, { label: title(2), edits: [{ where: "Title", before: "Why sponsor us", after: "Why sponsor Spring LAN" }] }),
       change("slide-3", 3, { label: title(3) }),
       change("slide-6", 6, { kind: "moved", label: title(6) }),
       change("slide-4", 4, { label: title(4) }),

@@ -40,10 +40,13 @@ export interface Browser {
   entry: ComputerEntry | null;
   /** every live session of the pane's tree on its host, drawable here or not: Take over stops them all */
   live: ComputerEntry[];
+  /** why the first read of who drives failed, while nothing has been read */
+  error?: string | null;
+  retry?(): void;
 }
 
 function useBrowser(env: string, pane: string): Browser {
-  const state = useBrowserState(env, pane);
+  const { state, error, retry } = useBrowserState(env, pane);
   const acts = useHeldActs(env, pane);
   const metas = useSessionMetas();
   const treeKey = [...treeIds(pane, metas)].sort().join("\n");
@@ -52,7 +55,7 @@ function useBrowser(env: string, pane: string): Browser {
   const held = useMemo(() => heldSubmitOf(acts, tree, state?.site ? state.since : 0), [acts, tree, state?.site, state?.since]);
   const live = useComputerEntries(tree, env);
   const entries = useMemo(() => drawable(section.entries), [section.entries]);
-  return { state, held, entry: entries[0] ?? null, live };
+  return { state, held, entry: entries[0] ?? null, live, error, retry };
 }
 
 /** A press: one at a time (a second click before the re-render too), its failure said once in the thread's toast stack. */
@@ -83,7 +86,7 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const { env } = props;
   const pane = paneOf(props);
   const fetched = useBrowser(env, pane);
-  const { state, held, live } = props.data ?? fetched;
+  const { state, held, live, error } = props.data ?? fetched;
   const face = barFaceOf(state, held);
   const [busy, press] = usePress();
   const takeOver = (): void =>
@@ -94,7 +97,10 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
     });
   const handBack = (): void => press("back", () => setDriver(env, pane, "agent"));
   const host = siteHost(state);
-  // Its own container, the free room in the bar: a verb the pane cannot hold gives way by the pane's width, not the window's.
+  // A first read that failed is the state line's alone: the bar holds no bone that would never fill.
+  if (error) return null;
+  // Its own container, the free room in the bar: a verb the pane cannot hold gives way by the pane's width, not the window's,
+  // and who drives goes whole before its verb would be cut (the verb already says it).
   return (
     <span data-slot="browser-bar" className="@container/browser flex min-w-0 flex-1 items-center gap-2">
       {face.face === "loading" ? (
@@ -131,7 +137,7 @@ function FaceEnd({
     case "agent":
       return (
         <span className="ms-auto flex shrink-0 items-center gap-2">
-          <span className="whitespace-nowrap">The agent is driving</span>
+          <span data-narrow-hide className="whitespace-nowrap @max-[320px]/browser:hidden">The agent is driving</span>
           <Button variant="secondary" size="xs" disabled={!!busy} onClick={takeOver}>
             <BusyLabel busy={busy === "take"} label="Take over" />
           </Button>
@@ -149,14 +155,14 @@ function FaceEnd({
     case "owner":
       return (
         <span className="ms-auto flex shrink-0 items-center gap-2">
-          <span className="whitespace-nowrap text-foreground">You are driving</span>
+          <span data-narrow-hide className="whitespace-nowrap text-foreground @max-[320px]/browser:hidden">You are driving</span>
           <Button variant="secondary" size="xs" disabled={!!busy} onClick={handBack}>
             <BusyLabel busy={busy === "back"} label="Hand back" />
           </Button>
         </span>
       );
     case "done":
-      return <span className="ms-auto shrink-0 whitespace-nowrap">{face.words}</span>;
+      return <span className="ms-auto min-w-0 truncate">{face.words}</span>;
     case "held": {
       const ref = face.item.ref;
       return (
@@ -186,7 +192,7 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
   const { env, shell } = props;
   const pane = paneOf(props);
   const fetched = useBrowser(env, pane);
-  const { state, held, entry, live } = props.data ?? fetched;
+  const { state, held, entry, live, error, retry } = props.data ?? fetched;
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const stream = useLiveStream(entry, true, box, measure);
@@ -198,13 +204,20 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
     return () => shell.detail(null);
   }, [shell, where]);
 
+  // A first read that failed says so on the one state line, with Retry; the body under it draws nothing that pretends to load.
+  useEffect(() => {
+    shell.statusLine(error ? { tone: "failed", word: "Couldn't open this browser", detail: error, action: retry ? { label: "Retry", run: retry } : undefined } : null);
+    return () => shell.statusLine(null);
+  }, [shell, error, retry]);
+
   const waiting = held && (held.state === "held" || held.state === "live") ? held : null;
   const values = useMemo<PortalValue[]>(() => (waiting ? portalValues((waiting.payload as HeldSubmitPayload).mark ?? "", state?.sources ?? []) : []), [waiting, state?.sources]);
 
   return (
     <div ref={measure} data-slot="browser-view" className="flex h-full min-h-0 flex-col gap-3 overflow-x-hidden overflow-y-auto p-3">
-      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
-        {props.picture ??
+      {/* The page fills the body inside its inset (browser.html), at any width of canvas. */}
+      <div className="flex w-full flex-col gap-3">
+        {error && !props.picture ? null : props.picture ??
           (entry ? (
             <LiveView stream={stream} box={box} label={liveLabel(entry)} />
           ) : state ? (
@@ -275,12 +288,13 @@ function StillView({ env, held }: { env: string; held: OutboxItem | null }) {
 /** The page's values at its final screen, each beside where it came from. */
 function Values({ values }: { values: PortalValue[] }) {
   return (
-    <div data-slot="browser-values" role="table" aria-label="What the page holds" className="flex flex-col">
+    // Under 480px of its own width the source goes under its label and value, whole, rather than a sliver beside them.
+    <div data-slot="browser-values" role="table" aria-label="What the page holds" className="@container/values flex flex-col">
       {values.map((v, i) => (
         <div
           key={`${v.label}-${i}`}
           role="row"
-          className="grid min-h-7 grid-cols-[112px_minmax(80px,max-content)_minmax(0,1fr)] items-center gap-x-3 border-t border-border py-1 text-[13px] leading-5 first:border-t-0"
+          className="grid min-h-7 grid-cols-[112px_minmax(0,1fr)] items-center gap-x-3 @[480px]/values:grid-cols-[112px_minmax(80px,max-content)_minmax(0,1fr)] border-t border-border py-1 text-[13px] leading-5 first:border-t-0"
         >
           <span role="cell" className="truncate font-medium">
             {v.label}
@@ -289,7 +303,7 @@ function Values({ values }: { values: PortalValue[] }) {
             {v.value}
           </span>
           <TruncateTip text={v.source ?? ""}>
-            <span role="cell" className="truncate text-xs text-muted-foreground">
+            <span role="cell" data-value-source className="col-span-2 truncate text-xs text-muted-foreground @[480px]/values:col-span-1">
               {v.source ?? ""}
             </span>
           </TruncateTip>

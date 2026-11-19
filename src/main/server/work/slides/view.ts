@@ -226,20 +226,57 @@ const chartText = (c: NonNullable<ShapeInfo['chart']>): string =>
   c.series.map((s) => `${s.name}: ${c.categories.map((cat, i) => `${cat} ${s.values[i] ?? '–'}`).join(', ')}`).join('\n')
 const deckShape = (s: ShapeInfo): DeckShape => ({ id: s.id, name: s.name, bbox: bboxOf(s), text: shapeText(s) })
 
+/** A part of a slide in the person's words, by what it is ("Title", "Text"), never PowerPoint's shape name ("Title 1"). */
+const ROLE_WORDS: Record<string, string> = {
+  title: 'Title',
+  subtitle: 'Subtitle',
+  body: 'Text',
+  date: 'Date',
+  number: 'Slide number',
+  footer: 'Footer',
+  header: 'Header',
+  picture: 'Picture',
+  chart: 'Chart',
+  table: 'Table',
+  diagram: 'Diagram',
+  media: 'Media'
+}
+const KIND_WORDS: Record<ShapeInfo['kind'], string> = { text: 'Text', table: 'Table', chart: 'Chart', picture: 'Picture', other: 'Shape' }
+const roleOf = (s: ShapeInfo): string => (s.placeholder ? (ROLE_WORDS[s.placeholder] ?? KIND_WORDS[s.kind]) : KIND_WORDS[s.kind])
+
+/** Each shape's label on its slide: its role, numbered in the slide's order only where the slide has more than one of it ("Text 1", "Text 2"). */
+export function partNames(shapes: readonly ShapeInfo[]): Map<number, string> {
+  const roles = shapes.map(roleOf)
+  const counts = new Map<string, number>()
+  for (const role of roles) counts.set(role, (counts.get(role) ?? 0) + 1)
+  const seen = new Map<string, number>()
+  return new Map(
+    shapes.map((s, i) => {
+      const role = roles[i]
+      if ((counts.get(role) ?? 0) < 2) return [s.id, role]
+      const n = (seen.get(role) ?? 0) + 1
+      seen.set(role, n)
+      return [s.id, `${role} ${n}`]
+    })
+  )
+}
+
 /** What the words were and are on one slide, shape by shape, cell by cell, then the notes. */
 export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefined): { edits: SlideChange['edits']; boxes: Bbox[] } {
   const edits: SlideChange['edits'] = []
   const boxes: Bbox[] = []
   const was = new Map((before?.shapes ?? []).map((s) => [s.id, s]))
+  const names = partNames(after?.shapes ?? [])
   for (const s of after?.shapes ?? []) {
     const old = was.get(s.id)
+    const where = names.get(s.id) ?? roleOf(s)
     let moved = false
     if (s.cells) {
       s.cells.forEach((row, r) =>
         row.forEach((cell, c) => {
           const prev = old?.cells?.[r]?.[c] ?? ''
           if (prev !== cell) {
-            edits.push({ where: `${s.name}, row ${r + 1}, column ${c + 1}`, before: prev, after: cell })
+            edits.push({ where: `${where}, row ${r + 1}, column ${c + 1}`, before: prev, after: cell })
             moved = true
           }
         })
@@ -247,11 +284,11 @@ export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefi
     } else if (s.chart || old?.chart) {
       const [a, b] = [old?.chart ? chartText(old.chart) : '', s.chart ? chartText(s.chart) : '']
       if (a !== b) {
-        edits.push({ where: s.name, before: a, after: b })
+        edits.push({ where, before: a, after: b })
         moved = true
       }
     } else if ((old?.text ?? '') !== s.text) {
-      edits.push({ where: s.name, before: old?.text ?? '', after: s.text })
+      edits.push({ where, before: old?.text ?? '', after: s.text })
       moved = true
     }
     if (moved && s.bbox) boxes.push(s.bbox)

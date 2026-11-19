@@ -280,6 +280,74 @@ describe("the form kind", () => {
   });
 });
 
+describe("the form kind, round two", () => {
+  it("drops the switch whole in a narrow bar only while changes wait, and stepping to a change shows the questions", async () => {
+    const by = "agent:env:t1" as const;
+    open(
+      view({
+        suggestions: [
+          { id: "s1", op: "change", question: { ...BODY.questions[1], options: ["Valorant", "Marvel Rivals"] }, by, at: 1 },
+          { id: "s2", op: "add", question: { id: "shirt", label: "T-shirt size", type: "dropdown", required: false, options: ["S", "M"] }, after: "diet", by, at: 1 },
+        ],
+      }),
+    );
+    await found("[data-form]");
+    const tabs = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>("[data-narrow-hide]")!;
+    expect(tabs).not.toBeNull();
+    expect(tabs.className).toContain("@max-[560px]/bar:hidden");
+    // With the switch gone from a narrow bar, the stepper still takes him to the change: the Questions half is where it lands.
+    fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
+    await waitFor(() => expect(document.querySelector("[data-q]")).toBeNull());
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Next change" })));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Questions" }).getAttribute("aria-selected")).toBe("true"));
+    expect(document.querySelector('[data-q="shirt"]')).not.toBeNull();
+    cleanup();
+    open(view());
+    await found("[data-form]");
+    const calm = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>('[class*="shrink-0"]')!;
+    expect(calm.hasAttribute("data-narrow-hide")).toBe(false);
+    expect(calm.className).not.toContain("@max-[560px]/bar:hidden");
+  });
+
+  it("gives the live link a worded Copy link for a narrow bar in place of the address and its glyph", async () => {
+    open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
+    const link = await found("[data-form-link]");
+    expect(link.querySelector("a")?.className).toContain("@max-[600px]/bar:hidden");
+    expect(link.querySelector('[aria-label="Copy link"]')?.className).toContain("@max-[600px]/bar:hidden");
+    const word = link.querySelector<HTMLElement>("[data-form-copy-word]")!;
+    expect(word.className).toContain("hidden @max-[600px]/bar:inline-flex");
+    expect(word.textContent).toBe("Copy link");
+  });
+
+  it("edits a question in the design system's fields", async () => {
+    open(view());
+    await found("[data-form]");
+    expect(screen.getByRole("textbox", { name: "Title" }).getAttribute("data-slot")).toBe("input");
+    expect(screen.getByRole("textbox", { name: "Description" }).getAttribute("data-slot")).toBe("textarea");
+    fireEvent.click(document.querySelector('[data-q="game"]')!);
+    expect((await waitFor(() => screen.getByRole("textbox", { name: "Question" }))).getAttribute("data-slot")).toBe("input");
+    expect(screen.getByRole("textbox", { name: "Option 1" }).getAttribute("data-slot")).toBe("input");
+  });
+
+  it("says responses that fail to read on the state line with Retry, not as none", async () => {
+    open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
+    await found("[data-form]");
+    formHost.responses.mockRejectedValueOnce(new Error("not connected"));
+    fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
+    await waitFor(() => expect(screen.getByText("Couldn't read the responses")).toBeTruthy());
+    expect(screen.queryByText("No responses yet")).toBeNull();
+    expect(document.querySelector("[data-form-responses]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await found("[data-form-responses]");
+    expect(screen.queryByText("Couldn't read the responses")).toBeNull();
+    // Back on Questions the line is gone: it was Responses' to say.
+    formHost.responses.mockRejectedValue(new Error("not connected"));
+    fireEvent.click(screen.getByRole("tab", { name: "Questions" }));
+    expect(screen.queryByText("Couldn't read the responses")).toBeNull();
+    formHost.responses.mockReset();
+  });
+});
+
 describe("what the form canvas shows", () => {
   it("lays waiting changes over the questions where they land", () => {
     const shown = shownQuestions(BODY, [

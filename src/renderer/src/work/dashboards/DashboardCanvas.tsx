@@ -7,7 +7,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { TooltipProvider } from "../../components/ui/tooltip";
-import { Tip } from "../../components/tip";
+import { Tip, TruncateTip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
@@ -30,9 +30,11 @@ interface Slot {
   view: DashboardView | null;
   error: string | null;
   refreshing: boolean;
+  /** A read after the first one failed: the figures shown may be old, so the page says it is out of date until a read answers. */
+  missed: boolean;
 }
 class DashStore {
-  private slot: Slot = { view: null, error: null, refreshing: false };
+  private slot: Slot = { view: null, error: null, refreshing: false, missed: false };
   private readonly listeners = new Set<() => void>();
   get = (): Slot => this.slot;
   set = (patch: Partial<Slot>): void => {
@@ -69,7 +71,7 @@ export function Body(props: Props) {
   const { item, shell } = props;
   const host = hostFor(props);
   const store = storeOf(item.id);
-  const { view, error } = useSlot(store);
+  const { view, error, missed } = useSlot(store);
 
   // A failed first read is said once, on the state line with Retry; Retry reads again.
   const [attempt, setAttempt] = useState(0);
@@ -77,11 +79,16 @@ export function Body(props: Props) {
     let live = true;
     const load = (): void =>
       void host.open().then(
-        (v) => live && store.set({ view: v, error: null }),
-        (e: unknown) => live && !store.get().view && store.set({ error: e instanceof Error ? e.message : "The dashboard did not load." }),
+        (v) => live && store.set({ view: v, error: null, missed: false }),
+        (e: unknown) => {
+          if (!live) return;
+          // After the first read a failure keeps the figures but marks them out of date, never drops it in silence.
+          if (store.get().view) store.set({ missed: true });
+          else store.set({ error: e instanceof Error ? e.message : "The dashboard did not load." });
+        },
       );
     load();
-    const off = host.watch((v) => store.set({ view: v }));
+    const off = host.watch((v) => store.set({ view: v, missed: false }));
     const t = setInterval(load, STALE_POLL_MS);
     return () => {
       live = false;
@@ -102,14 +109,15 @@ export function Body(props: Props) {
   if (!view.blocks.length) return <EmptyState title="Ask for a number" />;
   const proposed = view.blocks.filter((b) => b.proposed);
   const currentId = proposed[Math.min(current, proposed.length - 1)]?.id;
+  const stale = view.stale || missed;
   return (
-    <div data-dashboard data-stale={view.stale || undefined} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+    <div data-dashboard data-stale={stale || undefined} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
       <div className="@container mx-auto max-w-[672px] px-6 pt-6 pb-12">
         {groups(view.blocks).map((g) =>
           g.kind === "figures" ? (
-            <Figures key={g.blocks[0].id} blocks={g.blocks} stale={view.stale} current={currentId} open={(f) => void host.openSheet(f.sheet, f.sheetTitle).catch((e: unknown) => sayError(e, "Couldn't open the sheet"))} />
+            <Figures key={g.blocks[0].id} blocks={g.blocks} stale={stale} current={currentId} open={(f) => void host.openSheet(f.sheet, f.sheetTitle).catch((e: unknown) => sayError(e, "Couldn't open the sheet"))} />
           ) : (
-            <Section key={g.block.id} block={g.block} stale={view.stale} current={g.block.id === currentId} />
+            <Section key={g.block.id} block={g.block} stale={stale} current={g.block.id === currentId} />
           ),
         )}
       </div>
@@ -223,7 +231,7 @@ function sheetsOf(blocks: Block[]): { sheet: DashSheet; sheetTitle: string }[] {
 export function Bar(props: Props) {
   const host = hostFor(props);
   const store = storeOf(props.item.id);
-  const { view, error, refreshing } = useSlot(store);
+  const { view, error, refreshing, missed } = useSlot(store);
   if (!view) return error ? null : <Skeleton data-dash-bar-bone className="h-3 w-30" />;
   if (!view.asOf || view.blocks.some((b) => b.proposed)) return null;
   const refresh = (): void => {
@@ -231,14 +239,17 @@ export function Bar(props: Props) {
     void host
       .refresh()
       .then(
-        (v) => store.set({ view: v }),
-        (e: unknown) => sayError(e, "Couldn't read the figures"),
+        (v) => store.set({ view: v, missed: false }),
+        (e: unknown) => {
+          store.set({ missed: true });
+          sayError(e, "Couldn't read the figures");
+        },
       )
       .finally(() => store.set({ refreshing: false }));
   };
   return (
     <span data-dash-asof className="ms-auto flex shrink-0 items-center gap-1 tabular-nums">
-      {view.stale ? <span className="font-medium text-foreground">Out of date</span> : null}
+      {view.stale || missed ? <span className="font-medium text-foreground">Out of date</span> : null}
       <span>As of {dayTime(view.asOf)}</span>
       {/* While it reads, the spinner takes the button's own 24px place, so nothing beside it moves. */}
       {refreshing ? (
@@ -272,7 +283,7 @@ function Figures({ blocks, stale, current, open }: { blocks: Extract<Block, { ki
         <div
           key={row[0].f.id}
           data-block={i === 0 ? blocks[0].id : undefined}
-          className={`grid grid-cols-3 gap-x-6 border-b border-border pb-4 @max-[520px]:gap-x-3 ${i === 0 ? "mt-8 first:mt-0 [h2+&]:mt-4" : "mt-6"} ${proposed ? `${PROPOSED} pt-3` : ""} ${row.some((x) => x.block === current) ? CURRENT : ""}`}
+          className={`grid grid-cols-3 gap-x-6 gap-y-4 border-b border-border pb-4 @max-[480px]:grid-cols-2 @max-[480px]:gap-x-3 @max-[280px]:grid-cols-1 ${i === 0 ? "mt-8 first:mt-0 [h2+&]:mt-4" : "mt-6"} ${proposed ? `${PROPOSED} pt-3` : ""} ${row.some((x) => x.block === current) ? CURRENT : ""}`}
         >
           {row.map(({ f }) => (
             <Figure key={f.id} f={f} stale={stale} open={open} />
@@ -304,7 +315,11 @@ function Figure({ f, stale, open }: { f: DashFigure; stale: boolean; open(from: 
           <Source f={f} open={open} />
         </PopoverContent>
       </Popover>
-      {f.sub ? <span className="text-xs whitespace-nowrap text-muted-foreground">{f.sub}</span> : null}
+      {f.sub ? (
+        <TruncateTip text={f.sub}>
+          <span className="max-w-full truncate text-xs text-muted-foreground">{f.sub}</span>
+        </TruncateTip>
+      ) : null}
     </div>
   );
 }

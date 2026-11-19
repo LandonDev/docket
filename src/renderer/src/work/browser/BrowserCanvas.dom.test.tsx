@@ -21,6 +21,7 @@ const host = vi.hoisted(() => ({
   pushes: [] as Array<(p: unknown) => void>,
   stopped: [] as string[],
   pictureDown: false,
+  stateDown: false,
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -28,6 +29,7 @@ vi.mock("../../lib/connection", async (original) => {
     connected: true,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       host.calls.push({ method, params });
+      if (method === "work.browser.state" && host.stateDown) throw new Error("not connected");
       if (method === "work.browser.state") return host.state;
       if (method === "work.browser.drive") return (host.state = { ...host.state, driver: params.driver as BrowserState["driver"], needs: null });
       if (method === "work.outbox.list") return params.show === "decided" ? { items: [], waiting: 0 } : { items: host.items, waiting: host.items.length };
@@ -94,6 +96,7 @@ beforeEach(() => {
   host.pushes = [];
   host.stopped = [];
   host.pictureDown = false;
+  host.stateDown = false;
 });
 afterEach(cleanup);
 
@@ -149,6 +152,21 @@ describe("the browser's bar", () => {
     expect(take.className).not.toMatch(/(^|\s)max-\[/);
   });
 
+  it("who drives goes whole under a narrow bar, before its verb is cut; the verb stays", async () => {
+    const { container } = render(<Bar {...props()} />);
+    const who = await screen.findByText("The agent is driving");
+    expect(who.hasAttribute("data-narrow-hide")).toBe(true);
+    expect(who.className).toContain("@max-[320px]/browser:hidden");
+    expect(container.querySelector("[data-slot=browser-bar]")!.contains(screen.getByRole("button", { name: "Take over" }))).toBe(true);
+  });
+
+  it("a first read that failed draws no bone in the bar that would never fill", async () => {
+    host.stateDown = true;
+    const { container } = render(<Bar {...props()} />);
+    await waitFor(() => expect(container.querySelector("[data-slot=browser-bar]")).toBeNull());
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
   it("while he drives at a held submit, offers Hand back beside the primary, never a second Take over", async () => {
     host.items = [HELD];
     host.state = { ...host.state, driver: "owner" };
@@ -179,6 +197,39 @@ describe("the browser's body", () => {
     host.pictureDown = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.getByRole("img").getAttribute("src")).toBe("data:image/png;base64,AAAA"));
+  });
+
+  it("a first read that failed says so on the state line with Retry, and the body stops loading; Retry reads again", async () => {
+    host.stateDown = true;
+    const p = props();
+    const { container } = render(<Body {...p} />);
+    await waitFor(() => expect(p.shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't open this browser", detail: "not connected" })));
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    const line = vi.mocked(p.shell.statusLine).mock.lastCall![0]!;
+    expect(line.action?.label).toBe("Retry");
+    host.stateDown = false;
+    act(() => void line.action!.run());
+    await screen.findByText("The agent is not driving the browser now");
+    expect(p.shell.statusLine).toHaveBeenLastCalledWith(null);
+  });
+
+  it("the page fills the body inside its inset, with no cap on its width", async () => {
+    const { container } = render(<Body {...props()} />);
+    await screen.findByText("The agent is not driving the browser now");
+    expect(container.innerHTML).not.toContain("max-w-[720px]");
+  });
+
+  it("under 480px of its own width a value's source goes under its label and value", async () => {
+    host.items = [HELD];
+    const { container } = render(<Body {...props()} />);
+    await screen.findAllByRole("row");
+    expect(container.querySelector("[data-slot=browser-values]")!.className).toContain("@container/values");
+    const row = screen.getAllByRole("row")[0]!;
+    expect(row.className).toContain("grid-cols-[112px_minmax(0,1fr)]");
+    expect(row.className).toContain("@[480px]/values:grid-cols-[112px_minmax(80px,max-content)_minmax(0,1fr)]");
+    const source = container.querySelector("[data-value-source]")!;
+    expect(source.className).toContain("col-span-2");
+    expect(source.className).toContain("@[480px]/values:col-span-1");
   });
 
   it("with nothing held and no window to draw, says so in one line", async () => {

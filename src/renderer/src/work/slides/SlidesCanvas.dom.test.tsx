@@ -178,7 +178,10 @@ describe("the slides kind", () => {
     expect(tabs.className).toContain("relative");
     expect(tabs.className).toContain("group-data-[orientation=horizontal]/tabs:h-6");
     fireEvent.click(within(tabs).getByRole("tab", { name: "PowerPoint" }));
-    expect(await screen.findByText("5 suggestions wait in TempCode")).toBeTruthy();
+    const waiting = await screen.findByText("5 suggestions wait in TempCode");
+    // In a narrow bar the sentence goes whole and Review stays, never a sentence cut mid-word.
+    expect(waiting.hasAttribute("data-narrow-hide")).toBe(true);
+    expect(waiting.className).toContain("@max-[560px]/bar:hidden");
     expect(screen.getByText("Not built yet")).toBeTruthy();
     expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Review" }));

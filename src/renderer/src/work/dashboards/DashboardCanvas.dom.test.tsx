@@ -5,7 +5,7 @@
  * the bar, a figure opening where it came from, a proposed block stepped
  * from the bar, the stale page, an empty one and a read that failed.
  */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardView, DashFrom } from "@shared/contract-work-dashboards";
 import type { CanvasItem } from "@shared/work";
@@ -199,6 +199,47 @@ describe("the dashboard kind", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await found("[data-dashboard]");
     expect(screen.queryByText("Couldn't open this dashboard")).toBeNull();
+  });
+});
+
+describe("the dashboard kind, round two", () => {
+  it("marks the page out of date when a read after the first fails, until a read answers", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(page());
+      const body = await found("[data-dashboard]");
+      expect(body.hasAttribute("data-stale")).toBe(false);
+      dashHost.open.mockRejectedValueOnce(new Error("not connected"));
+      await act(async () => void vi.advanceTimersByTime(30_000));
+      await waitFor(() => expect(document.querySelector("[data-dash-asof]")?.textContent).toMatch(/^Out of dateAs of /));
+      expect(document.querySelector("[data-dashboard]")?.getAttribute("data-stale")).toBe("true");
+      // The figures stay, and no state line takes the place of the page.
+      expect(document.querySelectorAll("[data-figure]")).toHaveLength(3);
+      expect(screen.queryByText("Couldn't open this dashboard")).toBeNull();
+      await act(async () => void vi.advanceTimersByTime(30_000));
+      await waitFor(() => expect(document.querySelector("[data-dash-asof]")?.textContent).toMatch(/^As of /));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks the page out of date when Refresh fails", async () => {
+    open(page());
+    await found("[data-dash-asof]");
+    dashHost.refresh.mockRejectedValueOnce(new Error("not connected"));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(document.querySelector("[data-dash-asof]")?.textContent).toMatch(/^Out of dateAs of /));
+  });
+
+  it("lays figures two up, then one, in a narrow page, and lets a figure's line truncate", async () => {
+    open(page());
+    const body = await found("[data-dashboard]");
+    const row = body.querySelector("[data-figure]")!.parentElement!;
+    expect(row.className).toContain("@max-[480px]:grid-cols-2");
+    expect(row.className).toContain("@max-[280px]:grid-cols-1");
+    const sub = [...body.querySelectorAll('[data-figure="f1"] span')].find((el) => el.textContent === "4 invoices")!;
+    expect(sub.className).toContain("truncate");
+    expect(sub.className).not.toContain("whitespace-nowrap");
   });
 });
 

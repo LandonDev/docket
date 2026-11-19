@@ -101,7 +101,7 @@ describe("the PDF kind", () => {
     const { doc } = await open(pdfView());
     // Each part arrives on its own beat (the column, the bar once the kind's chunk is in, the mode once the file opens): wait for each.
     await waitFor(() => expect(pages()[0]).toBe(1));
-    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1 / 14"));
+    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1/14"));
     await waitFor(() => expect(doc.painted).toContain(1));
     await waitFor(() => expect(document.querySelector('[data-pdf-page="1"]')?.textContent).toContain("Page 1"));
     expect(await screen.findByRole("button", { name: /Agent suggests/ })).toBeTruthy();
@@ -114,7 +114,7 @@ describe("the PDF kind", () => {
     await open(pdfView());
     await waitFor(() => expect(document.querySelector("[data-pdf-pager]")).not.toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("2 / 14"));
+    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("2/14"));
     const column = document.querySelector<HTMLElement>("[data-pdf-column]")!;
     expect(column.scrollTop).toBeGreaterThan(0);
   });
@@ -220,7 +220,9 @@ describe("the PDF kind", () => {
   it("says once when the file moved, and shows the copy kept from before", async () => {
     await open(pdfView({ missing: { asOf: Date.UTC(2026, 10, 16, 14) } }));
     const line = await found('[data-canvas-state="needs"]');
-    expect(line.textContent).toContain("Ballroom contract.pdf moved");
+    // The tab already names the file: the line says only that it moved.
+    expect(line.textContent).toContain("Moved");
+    expect(line.textContent).not.toContain("Ballroom contract.pdf");
     expect(line.textContent).toContain("Read only, as of");
     expect(screen.queryByRole("button", { name: /Agent suggests/ })).toBeNull();
     await waitFor(() => expect(pages()[0]).toBe(1));
@@ -264,10 +266,10 @@ describe("a long file", () => {
       </CanvasSeat>,
     );
     const rail = await found("[data-pdf-rail]");
-    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1 / 300"));
+    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1/300"));
     expect(rail.querySelectorAll("button").length).toBeLessThan(40);
     fireEvent.click(within(rail).getByRole("button", { name: "Page 3" }));
-    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("3 / 300"));
+    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("3/300"));
     expect(pages().length).toBeLessThan(12);
   });
 });
@@ -355,7 +357,7 @@ describe("the bar and failures", () => {
     await found("[data-pdf-bar-bone]");
     await waitFor(() => expect(land).not.toBeNull());
     act(() => land!(fakeDoc(FILE)));
-    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1 / 14"));
+    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1/14"));
     expect(document.querySelector("[data-pdf-bar-bone]")).toBeNull();
   });
 

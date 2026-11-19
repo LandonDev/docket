@@ -130,6 +130,30 @@ describe("the meeting canvas", () => {
     expect(within(container.querySelector("[data-canvas-bar]") as HTMLElement).getByText("1/3")).toBeTruthy();
   });
 
+  it("the Notes and Transcript switch is the form's 24px switch, and goes whole under the narrow bar", async () => {
+    const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
+    const notes = await screen.findByRole("tab", { name: "Notes" });
+    const list = screen.getByRole("tablist", { name: "Show" });
+    expect(list.className).toContain("relative");
+    expect(list.className).toContain("p-0.5");
+    expect(list.className).toContain("group-data-[orientation=horizontal]/tabs:h-6");
+    // The pill glides under the triggers, which lift nothing of their own.
+    for (const tab of [notes, screen.getByRole("tab", { name: "Transcript" })]) expect(tab.className).toContain("group-data-[variant=default]/tabs-list:data-active:bg-transparent");
+    const root = container.querySelector("[data-canvas-bar] [data-narrow-hide]") as HTMLElement;
+    expect(root.contains(list)).toBe(true);
+    expect(root.className).toContain("shrink-0");
+    expect(root.className).toContain("@max-[560px]/bar:hidden");
+  });
+
+  it("an open Find can narrow but keeps its field whole", async () => {
+    const { container } = await seat(sampleMeeting());
+    await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+    const field = (await screen.findByRole("textbox", { name: "Find in the transcript" })).closest("[data-slot=input-group]")!;
+    expect(field.className).toContain("min-w-24");
+    expect(field.className).toContain("shrink");
+  });
+
   it("tasks wait at their turn, tinted; the stepper steps through them and Accept files the current one", async () => {
     host.decide = (params) => {
       const ids = params.actionIds as string[];
@@ -153,14 +177,14 @@ describe("the meeting canvas", () => {
     expect(within(bar).getByText("1/2")).toBeTruthy();
   });
 
-  it("a task LifeOS would not take stays waiting, and the state line says why with Try again", async () => {
+  it("a task LifeOS would not take stays waiting, and the state line says why with Retry", async () => {
     host.decide = () => ({ meeting: host.meeting, failed: [{ id: "a1", error: "LifeOS is not connected on this host." }] });
     const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
     const bar = await waitFor(() => container.querySelector("[data-canvas-bar]") as HTMLElement);
     await waitFor(() => expect(within(bar).getByText("1/3")).toBeTruthy());
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("LifeOS is not connected on this host."));
-    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it("Find marks every hit, steps the current one, and says how many", async () => {
@@ -196,7 +220,7 @@ describe("the meeting canvas", () => {
     await waitFor(() => expect(container.querySelector("[data-meeting-failed]")).toBeTruthy());
     expect(container.querySelector("[data-meeting-failed]")!.textContent).toContain("Could not transcribeIt stopped when tempcode-box restarted. The recording is fine.");
     expect(container.querySelector("[data-meeting-player]")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(host.calls.filter((c) => c.method === "work.meetings.start")).toHaveLength(2));
   });
 
@@ -386,12 +410,12 @@ describe("the meeting canvas", () => {
     expect(time(container)).toBe("16:03 / 42:10");
   });
 
-  it("a start the host never answered says so in the transcript's place, and Try again asks again", async () => {
+  it("a start the host never answered says so in the transcript's place, and Retry asks again", async () => {
     host.refuseStart = true;
     const { container } = await seat(null);
     await waitFor(() => expect(container.querySelector("[data-meeting-failed]")?.textContent).toContain("Could not open the recordingsocket closed"));
     host.refuseStart = false;
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(container.querySelector("[data-meeting=transcribing]")).toBeTruthy());
   });
 

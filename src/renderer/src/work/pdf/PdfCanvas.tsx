@@ -165,7 +165,7 @@ function useFeeds(
 
   useEffect(() => {
     if (!view) return shell.statusLine(null);
-    if (view.missing) shell.statusLine({ tone: "needs", word: `${view.name} moved`, detail: `Read only, as of ${dayTime(view.missing.asOf)}` });
+    if (view.missing) shell.statusLine({ tone: "needs", word: "Moved", detail: `Read only, as of ${dayTime(view.missing.asOf)}` });
     else if (view.xfaOnly) shell.statusLine({ tone: "failed", word: "This form can't be filled here", detail: "Its fields are XFA, which only Adobe's apps fill" });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
@@ -296,7 +296,7 @@ function Pager({ nav, page, pages, arrows }: { nav: PdfNav; page: number; pages:
         </Tip>
       ) : null}
       <span data-pdf-pager className="min-w-[52px] text-center text-foreground tabular-nums">
-        {page} / {pages}
+        {page}/{pages}
       </span>
       {arrows ? (
         <Tip label="Next page">

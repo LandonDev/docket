@@ -17,6 +17,7 @@ import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
 import { chartBars, chartFrom, chartTicks, sheetChanges, tickText, type ChartBar as Bars } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
+import { guestSource } from "../guests/api";
 import { ShareButton } from "../guests/Share";
 
 /**
@@ -161,7 +162,7 @@ function useFeeds(
   const store = view?.store;
   useEffect(() => {
     if (missing) shell.statusLine({ tone: "needs", word: `${name} moved`, detail: "Read only" });
-    else if (readOnly !== undefined) shell.statusLine({ tone: "failed", word: "Read only", detail: readOnly });
+    else if (readOnly !== undefined) shell.statusLine({ tone: "needs", word: "Read only", detail: readOnly });
     else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() } });
     else if (dropped) shell.statusLine({ tone: "failed", word: "Not saved", detail: "Formatting and moved cells stay out of an opened Excel file", action: { label: "Reload", run: () => sync.retry() } });
     else shell.statusLine(null);
@@ -436,8 +437,13 @@ export function SheetSkeleton() {
 export function Bar(props: Props) {
   const { view, book, failed } = useSheetSync(syncFor(props));
   if (failed) return null;
-  // ShareButton draws nothing for a source no guest link can reach (a file): only a LifeOS sheet shares.
-  if (view && book) return <ShareButton env={props.env} source={props.source} title={props.item.title} />;
+  // Only a LifeOS sheet shares; Share is whole or gone, hidden in the narrow bar before it could be cut.
+  if (view && book)
+    return guestSource(props.source) ? (
+      <span data-narrow-hide className="flex shrink-0 @max-[560px]/bar:hidden">
+        <ShareButton env={props.env} source={props.source} title={props.item.title} />
+      </span>
+    ) : null;
   return <Skeleton className="h-3 w-30" />;
 }
 

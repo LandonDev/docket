@@ -511,8 +511,11 @@ export function Bar({ item }: CanvasBodyProps<SlidesState>) {
   if (side !== "powerpoint" || pending === 0) return null;
   return (
     <>
-      <span className="min-w-0 truncate">{pending === 1 ? "1 suggestion waits in TempCode" : `${pending} suggestions wait in TempCode`}</span>
-      <Button variant="ghost" size="xs" onClick={() => store.set({ side: "tempcode" })}>
+      {/* Whole or gone: the narrow bar keeps Review alone rather than a cut sentence. */}
+      <span data-narrow-hide className="min-w-0 truncate @max-[560px]/bar:hidden">
+        {pending === 1 ? "1 suggestion waits in TempCode" : `${pending} suggestions wait in TempCode`}
+      </span>
+      <Button variant="ghost" size="xs" className="shrink-0" onClick={() => store.set({ side: "tempcode" })}>
         Review
       </Button>
     </>

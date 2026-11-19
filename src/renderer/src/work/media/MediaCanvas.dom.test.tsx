@@ -7,7 +7,7 @@
  * they should. jsdom has no decoder, so the seeks are recorded (seek.ts
  * has its own tests, and frameAccuracy.test.ts runs them in Chromium).
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FrameTable, MediaNote, MediaVersion, MediaView } from "@shared/contract-work-media";
 import type { CanvasItem } from "@shared/work";
@@ -200,6 +200,23 @@ describe("the media canvas", () => {
     expect(cuts.className).toContain("@[600px]:grid-cols-2");
     expect(cuts.className.split(" ")).not.toContain("grid-cols-2");
     expect(cuts.closest("[data-media-player]")!.className).toContain("@container");
+  });
+
+  it("keeps every bar tool whole in a narrow bar: History's word and a picker's day go, the glyph and the version stay", async () => {
+    const V2: MediaVersion = { ...V3, id: "v2", n: 2, name: "trailer v2.mp4", addedAt: 0 };
+    await mount({ versions: [V2, V3] });
+    render(<Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    const word = within(screen.getByRole("button", { name: "History" })).getByText("History");
+    expect(word.hasAttribute("data-narrow-hide")).toBe(true);
+    expect(word.className).toContain("@max-[560px]/bar:hidden");
+    cleanup();
+    render(<Bar item={ITEM} source={ITEM.source} env="local" state={{ compare: "v2" }} setState={() => undefined} shell={fakeShell()} />);
+    const pickers = screen.getAllByRole("button").filter((b) => /^v\d/.test(b.textContent ?? ""));
+    expect(pickers).toHaveLength(2);
+    for (const picker of pickers) {
+      const day = picker.querySelector("[data-narrow-hide]");
+      expect(day?.className).toContain("@max-[560px]/bar:hidden");
+    }
   });
 
   it("starts a chapter's title 8px after its time, with no empty author column", async () => {

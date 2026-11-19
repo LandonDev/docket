@@ -300,7 +300,7 @@ describe('the module, on a fake deck tool', () => {
       ['slide-10260', 'added', 'Added']
     ])
     expect(view.changes[0].edits).toEqual([
-      { where: 'Body 2', before: 'About Two', after: 'New words' },
+      { where: 'Text', before: 'About Two', after: 'New words' },
       { where: 'Notes', before: '', after: 'Say it' }
     ])
     expect(view.changes[0].by).toBe('agent:env_test:t1')
@@ -707,7 +707,7 @@ describe.skipIf(!DATA)('a real deck, through python-pptx and LibreOffice', () =>
     expect(r.isError).toBeFalsy()
     const after = (pushes.at(-1) as { view: DeckView }).view
     expect(after.renders.proposed).toMatchObject({ pages: 12 })
-    expect(after.changes).toEqual([expect.objectContaining({ kind: 'changed', slideId: third.id, edits: [{ where: body.name, before: body.text, after: 'Changed' }] })])
+    expect(after.changes).toEqual([expect.objectContaining({ kind: 'changed', slideId: third.id, edits: [{ where: 'Text', before: body.text, after: 'Changed' }] })])
     expect(after.slides[2]).toMatchObject({ tint: 'add', from: 'proposed', changed: [body.bbox] })
     expect(existsSync(path)).toBe(true)
     // A picture of the changed slide, from the proposed render.

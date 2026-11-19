@@ -6,7 +6,7 @@ import { Button } from "../../components/ui/button";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tip } from "../../components/tip";
-import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { uploadAttachment } from "../../lib/attachmentUpload";
 import { dayTime } from "../../lib/duration";
 import { sayError } from "../canvas/frame";
@@ -90,7 +90,7 @@ function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, curr
   useEffect(() => {
     const failed = fileError;
     if (unreadError && retry) shell.statusLine({ tone: "failed", word: "The host did not answer", detail: unreadError, action: { label: "Retry", run: retry } });
-    else if (failed) shell.statusLine({ tone: "failed", word: "Not filed in LifeOS", detail: failed.error, action: { label: "Try again", run: () => decide(failed.ids, "accept") } });
+    else if (failed) shell.statusLine({ tone: "failed", word: "Not filed in LifeOS", detail: failed.error, action: { label: "Retry", run: () => decide(failed.ids, "accept") } });
     else shell.statusLine(playError && replay ? { tone: "failed", word: "The recording did not play", detail: playError, action: { label: "Retry", run: replay } } : null);
     return () => shell.statusLine(null);
   }, [shell, fileError, decide, unreadError, retry, playError, replay]);
@@ -240,7 +240,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   };
 
   if (startError && needsFile) {
-    // The host never answered the start: say so, with Try again, in the transcript's place.
+    // The host never answered the start: say so, with Retry, in the transcript's place.
     const retry = (): Promise<void> => {
       setStartError(null);
       return startMeeting(env, item.id).then(
@@ -328,12 +328,19 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
   return (
     <>
       {notes && !view.find ? (
-        <Tabs value={view.tab} onValueChange={(tab) => setState({ ...view, tab: tab as MeetingState["tab"] })}>
-          <TabsList aria-label="Show" className="group-data-[orientation=horizontal]/tabs:h-6">
-            <TabsTrigger value="notes" className="px-2 text-xs">
+        // The form's 24px switch, whole or not at all: under the narrow bar it goes, and Find stays.
+        <Tabs
+          value={view.tab}
+          onValueChange={(tab) => setState({ ...view, tab: tab as MeetingState["tab"] })}
+          data-narrow-hide
+          className="mx-1 shrink-0 gap-0 @max-[560px]/bar:hidden"
+        >
+          <TabsList aria-label="Show" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
+            <TabsIndicator />
+            <TabsTrigger value="notes" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
               Notes
             </TabsTrigger>
-            <TabsTrigger value="transcript" className="px-2 text-xs">
+            <TabsTrigger value="transcript" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
               Transcript
             </TabsTrigger>
           </TabsList>
@@ -341,7 +348,7 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
       ) : null}
       {stepping ? null : view.find ? (
         <div data-meeting-find className="ms-auto flex min-w-0 items-center gap-1">
-          <InputGroup className="h-6 w-56 rounded-md px-2 [&_svg:not([class*='size-'])]:size-3" leading={<Search />}>
+          <InputGroup className="h-6 w-56 min-w-24 shrink rounded-md px-2 [&_svg:not([class*='size-'])]:size-3" leading={<Search />}>
             <GroupInput
               ref={input}
               autoFocus
