@@ -80,6 +80,14 @@ def apply(doc, op):
         if sh.isProtected():
             raise RuntimeError("protected: " + op["sheet"])
         at, n = int(op["at"]), int(op["count"])
+        if kind in ("insertRows", "insertCols"):
+            # As Excel: an insert that would push cells off the end of the sheet is refused.
+            cur = sh.createCursor()
+            cur.gotoEndOfUsedArea(False)
+            end = cur.RangeAddress.EndRow if kind == "insertRows" else cur.RangeAddress.EndColumn
+            limit = (sh.Rows.Count if kind == "insertRows" else sh.Columns.Count) - 1
+            if end + n > limit:
+                raise RuntimeError("full: " + op["sheet"])
         if kind == "insertRows":
             sh.Rows.insertByIndex(at, n)
         elif kind == "removeRows":
@@ -127,7 +135,9 @@ def main():
     ops = json.load(open(ops_path))
     proc, desktop = start(profile)
     try:
-        doc = desktop.loadComponentFromURL(uno.systemPathToFileUrl(os.path.abspath(src)), "_blank", 0, props(Hidden=True))
+        # Read-only, as the research lab loaded every file: a full 1,048,576-row sheet loads no other way.
+        # The document still takes edits; it is stored elsewhere, never over its source.
+        doc = desktop.loadComponentFromURL(uno.systemPathToFileUrl(os.path.abspath(src)), "_blank", 0, props(Hidden=True, ReadOnly=True))
         if doc is None:
             raise RuntimeError("LibreOffice could not open the file")
         for op in ops:

@@ -316,6 +316,11 @@ export const STRUCTURAL_CONVERTERS: Converter[] = (['xlsx', 'xlsm'] as const).ma
     if (r.code !== 0 || !existsSync(out)) {
       const said = r.out.trim().split('\n').pop() ?? ''
       const sheet = /^protected: (.*)$/.exec(said)?.[1]
+      const full = /^full: (.*)$/.exec(said)?.[1]
+      if (full)
+        throw new NotSaved(
+          `There is no room in ${full}: its last rows or columns hold cells that would be pushed off the sheet.`
+        )
       throw new NotSaved(
         sheet
           ? `${sheet} is protected: unprotect it in Excel to insert or delete rows and columns there.`

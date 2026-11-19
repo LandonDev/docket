@@ -1,7 +1,10 @@
 """Open a workbook in headless LibreOffice, optionally set one cell, recalculate
 everything, and dump every non-empty cell's value per sheet.
 
-    $LO/program/python lo_dump.py <in.xlsx> <out.json> [--edit SHEET A1 VALUE] [--csv DIR]
+    $LO/program/python lo_dump.py <in.xlsx> <out.json> [--edit SHEET A1 VALUE] [--insert-row SHEET ROW0 | --insert-col SHEET COL0] [--csv DIR]
+
+--insert-row (--insert-col) inserts one row (column) before ROW0 (COL0), zero-based, on SHEET first: the oracle for a structural edit
+(milestone 27; the lab's script did not have it).
 
 out.json: {"sheets": {name: {A1: [kind, value, shown]}}, "openMs", "calcMs"}
 kind is n (number), s (text) or e (error). `shown` is the formatted string; it
@@ -71,10 +74,18 @@ def main():
         edit = a[i + 1:i + 4]
     if "--csv" in a:
         csvdir = a[a.index("--csv") + 1]
+    insert = None
+    for flag in ("--insert-row", "--insert-col"):
+        if flag in a:
+            i = a.index(flag)
+            insert = (a[i + 1], int(a[i + 2]), flag)
     with Office() as office:
         t0 = time.time()
-        doc = office.load(src)
+        doc = office.load(src)  # read-only (lo_uno.load)
         t1 = time.time()
+        if insert:
+            sh = doc.Sheets.getByName(insert[0])
+            (sh.Rows if insert[2] == "--insert-row" else sh.Columns).insertByIndex(insert[1], 1)
         if edit:
             set_cell(doc, *edit)
         doc.calculateAll()

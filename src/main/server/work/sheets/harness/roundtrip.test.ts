@@ -3,9 +3,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, test } from 'vitest'
-import { patchXlsx, type EditSpec } from '../patch/patch'
+import { graft } from '../graft'
+import { patchXlsx, workbookMap, type EditSpec } from '../patch/patch'
 import { ironcalc } from '../patch/recalc'
-import { colName } from '../patch/xml'
+import { colName, colNum } from '../patch/xml'
+import type { StructuralOp } from '../structural'
+import { libreOffice } from '../testing'
+import { readText, readZip } from '../patch/zip'
 
 /**
  * The sheet research's round-trip harness as a test (reports/nJLC5WoplSWf §2, lab/scripts/runner.py):
@@ -19,11 +23,16 @@ import { colName } from '../patch/xml'
  */
 const LAB = '/srv/agents/work/temp-code/.temp-code/reports/nJLC5WoplSWf/lab'
 const PYTHON = process.env.SHEET_HARNESS_PYTHON ?? '/tmp/sheetlab/tools/py/bin/python'
-const LOPY = process.env.SHEETLAB_LOPY ?? '/tmp/sheetlab/tools/lo/opt/libreoffice26.8/program/python'
+const LOPY =
+  process.env.SHEETLAB_LOPY ?? '/tmp/sheetlab/tools/lo/opt/libreoffice26.8/program/python'
 const IRONCALC = process.env.IRONCALC_DIR ?? '/srv/agents/temp-code-data/work-tools/ironcalc/0.9.1'
 const BIG = process.env.SHEET_CORPUS_BIG ?? join(LAB, 'corpus')
 /** LibreOffice's verdict on an unchanged file, cached by its hash: the lab's cache when it is there. */
-const REF = process.env.SHEETLAB_REF ?? (existsSync(join(LAB, 'results/_reference')) ? join(LAB, 'results/_reference') : join(tmpdir(), 'sheet-harness-ref'))
+const REF =
+  process.env.SHEETLAB_REF ??
+  (existsSync(join(LAB, 'results/_reference'))
+    ? join(LAB, 'results/_reference')
+    : join(tmpdir(), 'sheet-harness-ref'))
 const HERE = __dirname
 const on = process.env.SHEET_HARNESS === '1'
 
@@ -32,19 +41,33 @@ interface Entry {
   edit: { sheet: string; cell: string; value: string }
   large: boolean
 }
-const manifest = JSON.parse(readFileSync(join(HERE, 'corpus/manifest.json'), 'utf8')) as { files: Entry[] }
+const manifest = JSON.parse(readFileSync(join(HERE, 'corpus/manifest.json'), 'utf8')) as {
+  files: Entry[]
+}
 const pathOf = (e: Entry): string => (e.large ? join(BIG, e.file) : join(HERE, 'corpus', e.file))
 const scratch = mkdtempSync(join(tmpdir(), 'sheet-harness-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
 
 function python<T>(script: string, args: string[], timeoutMs: number): T {
-  const p = spawnSync(PYTHON, ['-I', join(HERE, script), ...args], { encoding: 'utf8', timeout: timeoutMs, env: { ...process.env, SHEETLAB_LOPY: LOPY, SHEETLAB_REF: REF } })
-  if (p.status !== 0) throw new Error(`${script} failed: ${(p.stderr || p.stdout || String(p.error)).slice(-1500)}`)
+  const p = spawnSync(PYTHON, ['-I', join(HERE, script), ...args], {
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    env: { ...process.env, SHEETLAB_LOPY: LOPY, SHEETLAB_REF: REF }
+  })
+  if (p.status !== 0)
+    throw new Error(`${script} failed: ${(p.stderr || p.stdout || String(p.error)).slice(-1500)}`)
   return JSON.parse(p.stdout.trim().split('\n').pop()!) as T
 }
 
-async function patched(input: string, edits: EditSpec[], name: string): Promise<{ out: string; report: Awaited<ReturnType<typeof patchXlsx>>['report'] }> {
-  const { bytes, report } = await patchXlsx(new Uint8Array(readFileSync(input)), edits, { inputPath: input, recalc: (path, e, keys) => ironcalc(IRONCALC, path, e, keys) })
+async function patched(
+  input: string,
+  edits: EditSpec[],
+  name: string
+): Promise<{ out: string; report: Awaited<ReturnType<typeof patchXlsx>>['report'] }> {
+  const { bytes, report } = await patchXlsx(new Uint8Array(readFileSync(input)), edits, {
+    inputPath: input,
+    recalc: (path, e, keys) => ironcalc(IRONCALC, path, e, keys)
+  })
   const out = join(scratch, name)
   writeFileSync(out, bytes)
   return { out, report }
@@ -60,8 +83,18 @@ describe.skipIf(!on)('the patch writer on the research corpus', () => {
       async () => {
         const { out, report } = await patched(pathOf(entry), [entry.edit], entry.file)
         expect(report.recalc.ok).toBe(true)
-        const got = python<{ L: number; C: number; V: number; bad: string[]; stale: number }>('check.py', [pathOf(entry), out, entry.edit.sheet, entry.edit.cell, String(entry.edit.value)], 40 * 60_000)
-        expect({ file: entry.file, L: got.L, C: got.C, V: got.V, bad: got.bad }).toEqual({ file: entry.file, L: 0, C: 0, V: 0, bad: [] })
+        const got = python<{ L: number; C: number; V: number; bad: string[]; stale: number }>(
+          'check.py',
+          [pathOf(entry), out, entry.edit.sheet, entry.edit.cell, String(entry.edit.value)],
+          40 * 60_000
+        )
+        expect({ file: entry.file, L: got.L, C: got.C, V: got.V, bad: got.bad }).toEqual({
+          file: entry.file,
+          L: 0,
+          C: 0,
+          V: 0,
+          bad: []
+        })
       },
       45 * 60_000
     )
@@ -71,7 +104,13 @@ describe.skipIf(!on)('the patch writer on the research corpus', () => {
     async () => {
       const entry = manifest.files.find((f) => f.file === 'big_100k.xlsx')!
       const edits: EditSpec[] = []
-      for (let r = 2; r <= 101; r++) for (let c = 1; c <= 10; c++) edits.push({ sheet: entry.edit.sheet, cell: `${colName(c)}${r}`, value: c >= 9 ? `t${r}` : r + c / 10 })
+      for (let r = 2; r <= 101; r++)
+        for (let c = 1; c <= 10; c++)
+          edits.push({
+            sheet: entry.edit.sheet,
+            cell: `${colName(c)}${r}`,
+            value: c >= 9 ? `t${r}` : r + c / 10
+          })
       const { out, report } = await patched(pathOf(entry), edits, 'batch_100k.xlsx')
       expect(report.recalc.ok).toBe(true)
       expect(report.edits).toBe(1000)
@@ -92,4 +131,116 @@ describe.skipIf(!on)('the patch writer on the research corpus', () => {
     },
     50 * 60_000
   )
+
+  /**
+   * Structural edits (milestone 27): LibreOffice applies them, graft.ts puts back what it drops.
+   * Two runs per file, on the edit's sheet (or the first unprotected one; a protected sheet refuses):
+   * - a row inserted and deleted again at the edit's row, then the manifest's cell edit through the
+   *   patch writer: everything the lab's checkers count is judged against the original as for a cell
+   *   edit, and nothing may be lost (L0) or read wrong on reopen (V0); what LibreOffice writes
+   *   differently is reported as changed (C), never as lost;
+   * - a row inserted at the edit's row: every value, recalculated by LibreOffice, equals LibreOffice
+   *   inserting the same row into the original, and no feature counted by number is lost.
+   */
+  /** The sheet the structural edit goes on, and whether its rows are full (then columns are inserted: Excel and LibreOffice both refuse a row). */
+  const placeOf = (entry: Entry): { sheet: string; full: boolean } => {
+    const z = readZip(new Uint8Array(readFileSync(pathOf(entry))))
+    const sheets = workbookMap(z).sheets.filter((x) => x.kind === 'worksheet')
+    const xml = (name: string) => readText(z, sheets.find((x) => x.name === name)!.part)
+    const open = (name: string) =>
+      !/<(?:\w+:)?sheetProtection[^>]*\bsheet="(1|true)"/.test(xml(name))
+    const sheet = open(entry.edit.sheet) ? entry.edit.sheet : sheets.find((x) => open(x.name))!.name
+    return {
+      sheet,
+      full: /<(?:\w+:)?dimension ref="[A-Z]+\d+:[A-Z]+1048576"/.test(xml(sheet).slice(0, 2000))
+    }
+  }
+  const rowOf = (cell: string): number => Number(/\d+/.exec(cell)![0]) - 1
+  const colOf = (cell: string): number => colNum(/[A-Z]+/.exec(cell)![0]) - 1
+  const lines = (
+    entry: Entry
+  ): {
+    sheet: string
+    full: boolean
+    at: number
+    insert: StructuralOp['op']
+    remove: StructuralOp['op']
+  } => {
+    const p = placeOf(entry)
+    return p.full
+      ? { ...p, at: colOf(entry.edit.cell), insert: 'insertCols', remove: 'removeCols' }
+      : { ...p, at: rowOf(entry.edit.cell), insert: 'insertRows', remove: 'removeRows' }
+  }
+  async function structural(input: string, ops: StructuralOp[], name: string): Promise<string> {
+    const kind = input.endsWith('.xlsm') ? 'xlsm' : 'xlsx'
+    const written = await libreOffice(input, ops, kind)
+    const out = join(scratch, name)
+    writeFileSync(
+      out,
+      graft(new Uint8Array(readFileSync(input)), new Uint8Array(readFileSync(written)), ops).bytes
+    )
+    return out
+  }
+  for (const entry of manifest.files) {
+    test(
+      `${entry.file}: a row (or, on a full sheet, a column) inserted and deleted through LibreOffice, then the cell edit: nothing lost or wrong`,
+      async () => {
+        const { sheet, at, insert, remove } = lines(entry)
+        const mid = await structural(
+          pathOf(entry),
+          [
+            { op: insert, sheet, at, count: 1 } as StructuralOp,
+            { op: remove, sheet, at, count: 1 } as StructuralOp
+          ],
+          `s1-${entry.file}`
+        )
+        const { out } = await patched(mid, [entry.edit], `s1e-${entry.file}`)
+        const got = python<{ L: number; C: number; V: number; bad: string[] }>(
+          'check.py',
+          [pathOf(entry), out, entry.edit.sheet, entry.edit.cell, String(entry.edit.value)],
+          40 * 60_000
+        )
+        structuralScores.push(`${entry.file} L${got.L} C${got.C} V${got.V}`)
+        expect({ file: entry.file, L: got.L, V: got.V }).toEqual({ file: entry.file, L: 0, V: 0 })
+      },
+      45 * 60_000
+    )
+    test(
+      `${entry.file}: a row (on a full sheet a column, a row refused) inserted through LibreOffice reads as LibreOffice's own insert`,
+      async () => {
+        const { sheet, at, insert, full } = lines(entry)
+        if (full)
+          await expect(
+            structural(
+              pathOf(entry),
+              [{ op: 'insertRows', sheet, at: 1, count: 1 }],
+              `s0-${entry.file}`
+            )
+          ).rejects.toThrow(/no room/)
+        const out = await structural(
+          pathOf(entry),
+          [{ op: insert, sheet, at, count: 1 } as StructuralOp],
+          `s2-${entry.file}`
+        )
+        const got = python<{ V: number; examples: string[]; lost: string[] }>(
+          'check_structural.py',
+          [pathOf(entry), out, sheet, String(at), ...(full ? ['col'] : [])],
+          40 * 60_000
+        )
+        expect({ file: entry.file, V: got.V, examples: got.examples, lost: got.lost }).toEqual({
+          file: entry.file,
+          V: 0,
+          examples: [],
+          lost: []
+        })
+      },
+      45 * 60_000
+    )
+  }
+  afterAll(() => {
+    if (structuralScores.length)
+      console.log(`structural, inserted and deleted: ${structuralScores.join(', ')}`)
+  })
 })
+
+const structuralScores: string[] = []

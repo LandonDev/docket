@@ -15,6 +15,7 @@ registers.
 | a file `.xlsx` or `.xlsm` ("a package") | main, `src/main/server/work/sheets/packages.ts` | the package stays the truth: each edit is patched into it (the patch writer) as a revision |
 | a LifeOS sheet (`{at: 'lifeos', table: 'sheets'}`) | the Work service, `sheets/host/` | a Univer snapshot and an op log in LifeOS (`sheets`, `sheetOps`, `sheetSnapshots`, `sheetSuggestionCells`; M17) |
 | a file `.tcsheet` | the Work service, `sheets/host/` | the same, in one zip on this host's disk |
+| a file `.csv` | the Work service, as a `.tcsheet` read from it once (`csvSheetPath`: `<userData>/sheets/csv/<hash>.tcsheet`) | its own op log; Save as CSV writes it back over the .csv, Export as Excel beside it |
 | a workbook in Excel (`{at: 'microsoft', app: 'excel'}`) | Excel, through the office pillar's helper (`office/grid.ts`, [work-office.md](work-office.md) "Excel behind the grid") | written through Excel, cell contents only; the view says `store: 'package'` |
 | Google | not here: milestone 30 implements `SheetSource` | — |
 
@@ -50,10 +51,58 @@ sector and LifeOS is connected, else a `.tcsheet` under
   opened is kept for good and the newest 30 after it. A change on disk we did
   not make is a revision of its own (`by: 'file'`), and the grids reload.
   Restore puts a kept copy back byte for byte as a new revision.
-- **What a package saves**: cell contents only. A format, a row or column
-  insert or delete, a fill and rich text are refused with a sentence the
-  canvas shows once (`NotSaved`, mutations.ts). Structural edits saved
-  through LibreOffice (architecture §9.1) are not built.
+- **What a package saves**: cell contents (the patch writer, fills
+  included: the canvas sends each filled cell's formula text) and
+  structural edits (below). Formatting, moved cells and rich text are not
+  saved: the canvas keeps them out and says so once (`forPackage`,
+  sync.ts); the host refuses them with a sentence (`NotSaved`).
+
+## Structural edits
+
+Rows and columns inserted or deleted, a sort, sheets added, removed or
+renamed, saved into an opened package (architecture §9.1; the sheet report
+§8 item 7):
+
+- `planOf` (structural.ts) turns an edit's mutations into steps in the
+  order they came: structural ops for LibreOffice, cell writes for the patch
+  writer. Sheet names follow renames, additions and removals; a cell that
+  carries only a style rides a structural edit (LibreOffice formats an
+  inserted row like its neighbour, as the grid does).
+- LibreOffice runs as a conversion job (`xlsx → xlsx+ops`, `xlsm →
+  xlsm+ops`, `STRUCTURAL_CONVERTERS`), with its own Python and the UNO
+  script in structuralScript.ts, where LibreOffice is installed; a host
+  without it forwards the job. It loads the file read-only (a full
+  1,048,576-row sheet loads no other way), applies the ops, recalculates and
+  stores the same kind. A sort is applied as the grid made it: each target
+  row takes its source row's cells, formats and formula text. A protected
+  sheet, and an insert that would push cells off the sheet, are refused in
+  words, as Excel refuses them.
+- `graft` (graft.ts) then puts back what LibreOffice drops, measured on the
+  corpus: the macro project byte for byte; workbook parts it does not know
+  (dynamic-array and in-cell picture metadata, rich values) with the cells'
+  `cm` and `vm` marks, each moved with its cell (`mapCell`); chartsheets
+  (LibreOffice makes each a worksheet holding the chart) with the chart's
+  ranges moved.
+- The revision's op carries no mutations: LibreOffice numbers sheets again,
+  so every grid loads the file again. Suggestions waiting over the file move
+  with their cells, by sheet name, or are orphaned.
+- What LibreOffice writes differently from Excel (formula text spelled
+  another way, style records merged, a table's calculated column, a split
+  pane's size, an external link's path) the harness reports as changed; it
+  loses nothing the harness counts. After a structural save, cell edits go
+  back to the patch writer on LibreOffice's package.
+
+## Writing a sheet out
+
+`work.sheets.export {itemId, format, sheet?}` (writer.ts, the model
+writer): a LifeOS sheet, a `.tcsheet` or a sheet read from a .csv as a new
+.xlsx (values, formulas with their last values, fonts, fills, borders,
+number formats, alignment and wrap, merges, column widths and row heights,
+frozen panes, hidden sheets; `fullCalcOnLoad` set), or one sheet as .csv
+(RFC 4180, a formula's last value). A sheet read from a .csv saves back over
+it and exports beside it; a package gives a .csv of one sheet beside itself
+(it is its own .xlsx); anything else lands in the item's own folder. The
+canvas puts these in More.
 
 ## Sheets the service holds
 
@@ -131,10 +180,10 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
 
 ## Not built
 
-- Structural edits saved into a package through LibreOffice; formats saved
-  into a package.
-- `work.sheets.export` (the model writer that writes a LifeOS sheet or a
-  `.tcsheet` out as .xlsx): answers "not built".
+- Formatting saved into a package, and moving cells (drag a range, move
+  rows or columns) in one.
+- The model writer leaves out conditional formats, validations, defined
+  names, notes and our charts.
 - The full editor (M40), Excel behind the grid (M28), Google (M30), the
   guest page that uses the live route (M31), presence on the canvas.
 - Keeping IronCalc's model in memory between saves: each save loads the

@@ -4,18 +4,14 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, describe, expect, it } from 'vitest'
 import { importXlsx } from 'work-kit/sheet/xlsx'
-import { runTool, type Toolchain } from '../formats/tools'
 import { moveChartRef } from './graft'
 import { NotSaved, SET_RANGE_VALUES } from './mutations'
 import { ensurePackageTables, PackageStore } from './packages'
-import { mapCell, planOf, STRUCTURAL_CONVERTERS, type StructuralOp } from './structural'
+import { mapCell, planOf, type StructuralOp } from './structural'
+import { libreOffice, SOFFICE } from './testing'
 import { localJobs } from './workerClient'
 
 const CORPUS = join(__dirname, 'harness/corpus')
-/** LibreOffice as the toolchain installs it; the cases that run it skip where it is not. */
-const SOFFICE =
-  process.env.SHEET_SOFFICE ??
-  '/srv/agents/temp-code-data/work-tools/libreoffice/26.8.3/opt/libreoffice26.8/program/soffice'
 const office = existsSync(SOFFICE)
 const scratch = mkdtempSync(join(tmpdir(), 'sheets-structural-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
@@ -31,31 +27,6 @@ const names = () =>
     ['sheet1', 'Data'],
     ['sheet2', 'Calc']
   ])
-
-/** The converter, run in this process as the job runner runs it. */
-export async function libreOffice(
-  input: string,
-  ops: StructuralOp[],
-  kind: 'xlsx' | 'xlsm'
-): Promise<string> {
-  const dir = mkdtempSync(join(scratch, 'job-'))
-  const tmp = join(dir, 'tmp')
-  mkdirSync(tmp)
-  const output = join(dir, `out.${kind}`)
-  const c = STRUCTURAL_CONVERTERS.find((x) => x.from === kind)!
-  await c.run(
-    { from: kind, to: `${kind}+ops`, input, output, options: { ops } },
-    {
-      tools: { bin: () => SOFFICE } as unknown as Toolchain,
-      threads: 1,
-      slot: 0,
-      tmp,
-      signal: new AbortController().signal,
-      run: (cmd, args, o) => runTool(cmd, args, o)
-    }
-  )
-  return output
-}
 
 describe('planning a structural edit', () => {
   it("turns the grid's mutations into LibreOffice steps and patch-writer steps, in order, following names", () => {
