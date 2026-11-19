@@ -1,5 +1,5 @@
 import type { Failure, FailureKind, LimitWindow } from '@shared/events'
-import type { ProviderId } from '@shared/catalog'
+import { modelInfo, type ProviderId } from '@shared/catalog'
 import { isRoutedProvider, routedProviderOf, SIGN_IN_NAME, type RoutedProvider } from '@shared/accounts'
 import { CONTEXT_THRASH_SUMMARY, fallbackFailure, TURN_ENDED_SUMMARY } from '@shared/failureFallback'
 import { CLI_THRASH, parseContextThrashRow } from '@shared/contextThrash'
@@ -268,7 +268,7 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext, room: bo
         summary: `${model} is not available on this host`,
         cause:
           ctx.provider === 'codex'
-            ? 'The installed Codex CLI is older than the model needs (0.162.1 or newer), or the provider refused the model.'
+            ? `The installed Codex CLI is older than the model needs (${(ctx.model && modelInfo('codex', ctx.model)?.minCodexVersion) || '0.162.1'} or newer), or the provider refused the model.`
             : 'The provider refused the model, or the catalog here does not offer it.'
       }
     case 'network': {

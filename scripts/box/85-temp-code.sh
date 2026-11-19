@@ -8,7 +8,7 @@ source "$(dirname "$0")/lib.sh"
 AGENTS_HOME=/srv/agents/home
 CHECKOUT=/srv/agents/temp-code
 DATA=/srv/agents/temp-code-data
-MIN_CODEX=0.162.1
+MIN_CODEX=0.170.0
 AGENTS_PATH="$AGENTS_HOME/.local/bin:$AGENTS_HOME/.npm-global/bin:$AGENTS_HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin"
 as_agents() { runuser -u agents -- env HOME="$AGENTS_HOME" PATH="$AGENTS_PATH" "$@"; }
 version_ge() { [[ $(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1) == "$2" ]]; }

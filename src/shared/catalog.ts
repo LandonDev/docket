@@ -184,20 +184,26 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
     // with a 400, so the default must be a model every CLI can run; the
     // 6.0/6.1 Sol rows carry minCodexVersion (0.162.1 is the oldest CLI
     // verified to run them) and are hidden on an older install.
-    // GPT-6.2 IDs come from the official model docs (2026-11-17); no CLI
-    // minimum or context size is asserted without a live harness probe.
+    // GPT-6.2 IDs come from the official model docs (2026-11-17). The
+    // provider lists them by client version: 0.163 and 0.164 get no 6.2
+    // rows and are refused, 0.170.0 runs gpt-6.2-sol (probed 2026-11-19 on
+    // the box); no context size is asserted without a live harness probe.
     models: [
       {
         id: 'gpt-6.2-sol',
         label: 'GPT-6.2 Sol',
         reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         defaultReasoning: 'medium'
+     ,
+        minCodexVersion: '0.170.0'
       },
       {
         id: 'gpt-6.2-astra',
         label: 'GPT-6.2 Astra',
         reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         defaultReasoning: 'medium'
+     ,
+        minCodexVersion: '0.170.0'
       },
       {
         id: 'gpt-6.1-sol',

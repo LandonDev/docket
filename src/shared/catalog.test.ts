@@ -56,7 +56,8 @@ describe.each(['gpt-6.2-sol', 'gpt-6.2-astra'])('%s', (id) => {
     expect(resolveModel('codex', id)).toEqual({ provider: 'codex', model: id })
     expect(model.speedTiers).toBeUndefined()
     expect(model.context).toBeUndefined()
-    expect(model.minCodexVersion).toBeUndefined()
+    // 0.163 and 0.164 are refused the 6.2 rows; 0.170.0 runs them.
+    expect(model.minCodexVersion).toBe('0.170.0')
   })
 })
 
