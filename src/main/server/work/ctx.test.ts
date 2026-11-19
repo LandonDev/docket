@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -188,5 +189,29 @@ describe('the router, as the stubs ship', () => {
     expect(work.tools.of({ id: 's', scope: 'code' })).toBeNull()
     await expect(work.handle(req('app.workTools', { sessionId: 's', token: 'guess' }), LOCAL_PRINCIPAL)).rejects.toThrow("forbidden: not this thread's Work token")
     await expect(work.handle(req('app.workTools', { sessionId: 's', token: work.tools.tokenFor('s') }), LOCAL_PRINCIPAL)).rejects.toThrow('unknown thread: s')
+  })
+  it("takes a proof's seed for a thread's Work token on an isolated instance only", () => {
+    const seed = 'ab'.repeat(32)
+    const want = createHmac('sha256', Buffer.from(seed, 'hex')).update('t1').digest('base64url')
+    const startSeeded = (env: Record<string, string | undefined>) => {
+      const was = { data: process.env.TEMP_CODE_USER_DATA, seed: process.env.TEMP_CODE_WORK_TOKEN_SEED }
+      Object.assign(process.env, { TEMP_CODE_WORK_TOKEN_SEED: seed })
+      if (env.TEMP_CODE_USER_DATA) process.env.TEMP_CODE_USER_DATA = env.TEMP_CODE_USER_DATA
+      else delete process.env.TEMP_CODE_USER_DATA
+      try {
+        return startWork({ db, store: new Store(db), registry: { get: () => null } as unknown as SessionRegistry, environmentId: 'env_test', dataDir: dir, log: () => {} })
+      } finally {
+        for (const [key, value] of [['TEMP_CODE_USER_DATA', was.data], ['TEMP_CODE_WORK_TOKEN_SEED', was.seed]] as const) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+      }
+    }
+    const isolated = startSeeded({ TEMP_CODE_USER_DATA: dir })
+    expect(isolated.tools.tokenFor('t1')).toBe(want)
+    isolated.close()
+    const installed = startSeeded({})
+    expect(installed.tools.tokenFor('t1')).not.toBe(want)
+    installed.close()
   })
 })

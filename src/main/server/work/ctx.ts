@@ -320,7 +320,10 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   const offWorkspace = deps.registry.onWorkspaceDeleted?.((id) => tell('did not clear a deleted workspace', (m) => m.workspaceRemoved?.(id, ctx)))
 
   // ── tools ───────────────────────────────────────────────────────────
-  const secret = randomBytes(32)
+  // An isolated instance (TEMP_CODE_USER_DATA) may take its key from TEMP_CODE_WORK_TOKEN_SEED, so a proof script can
+  // call a thread's tools as its bridge does (as macTools.ts's seeds let it for the Mac's and the bridge's tokens).
+  const seed = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_WORK_TOKEN_SEED : undefined
+  const secret = seed && /^[0-9a-f]{64,}$/i.test(seed) ? Buffer.from(seed, 'hex') : randomBytes(32)
   const tokenFor = (sessionId: string): string => createHmac('sha256', secret).update(sessionId).digest('base64url')
   const tools: WorkToolMount = {
     of(session) {
