@@ -31,6 +31,12 @@ describe('an add-on call held for one definition of its tool', () => {
     await expect(kind.execute(held, {} as never)).resolves.toMatchObject({ summary: 'Post with Slack' })
     listed = { ...listed, inputSchema: { type: 'object', properties: { to: { type: 'string' } } } }
     await expect(kind.execute(held, {} as never)).rejects.toThrow(ActStale)
+    // nor once the server stops listing it, nor when it was held with no definition to compare
+    listed = { name: 'other', exposed: 'other', description: '', inputSchema: { type: 'object' } }
+    await expect(kind.execute(held, {} as never)).rejects.toThrow('no longer lists this tool')
+    listed = { name: 'post', exposed: 'post', description: 'Posts a message in a channel.', inputSchema: { type: 'object' } }
+    await expect(kind.execute({ ...held, toolDigest: undefined }, {} as never)).rejects.toThrow(ActStale)
+    expect(kind.matches!({ addonId: 'ad1', tool: 'post', specDigest: held.specDigest }, { ...held, toolDigest: undefined })).toBe(false)
     expect(ran).toHaveLength(1)
   })
 })

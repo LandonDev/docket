@@ -46,6 +46,13 @@ describe("payloadView", () => {
       ["Status", "public"],
       ["Text", "hello"],
     ]);
+    const nested = payloadView({ ...CALL, arguments: { options: { name: "standard", publish: true }, to: { address: "a@b.c", bcc: "x@y.z" }, note: null, tags: [] } });
+    expect(nested.fields.map((f) => [f.label, f.value])).toEqual([
+      ["Options", '{"name":"standard","publish":true}'],
+      ["To", '{"address":"a@b.c","bcc":"x@y.z"}'],
+      ["Note", "null"],
+      ["Tags", "[]"],
+    ]);
   });
 });
 
@@ -54,6 +61,7 @@ describe("htmlWords", () => {
     expect(htmlWords('<style>p{}</style><p>Hi&nbsp;Dana,</p><p>Go <a href="https://a.example">here</a> or <a href="mailto:x@y.z">x@y.z</a>.<br>Thanks</p><script>x()</script>')).toBe(
       "Hi Dana,\n\nGo here (https://a.example) or x@y.z.\nThanks",
     );
+    expect(htmlWords('<a href="https://x.example"><img src="https://t.example/p.gif"></a>')).toBe("[image: https://t.example/p.gif] (https://x.example)");
     expect(htmlWords('<ul><li>one</li><li>two &amp; three</li></ul><img alt="logo" src=\'/l.png\'>')).toBe("- one\n- two & three\n\n[image logo: /l.png]");
   });
 

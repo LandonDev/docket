@@ -557,6 +557,9 @@ describe('the LifeOS add-on', () => {
     // a subagent's draft names the thread at the top; a routine's run is the row's, never an argument's
     expect((await decide('t-sub', 'draft_mail', {})).args?.origin).toEqual(stamp)
     expect((await decide('t-run', 'draft_mail', { origin: { ...forged, routineRunId: 'run-1' } })).args?.origin).toEqual({ ...stamp, threadId: 't-run', routineRunId: 'run-9' })
+    // a thread whose line this host cannot follow is stamped an unknown run, so its LifeOS draft takes no grant either
+    rig.thread('t-far', { scope: 'work', workspaceId: 'ws-purdue', parentId: 'thread-on-the-mac' } as Partial<SessionMeta>)
+    expect((await decide('t-far', 'draft_mail', {})).args?.origin).toMatchObject({ routineRunId: ROUTINE_UNKNOWN })
     // a tool that takes no origin gets none, and a forged one is dropped
     expect((await decide('t-work', 'list_tasks', { origin: forged })).args).toEqual({})
     // a code thread of a linked workspace is stamped as itself too

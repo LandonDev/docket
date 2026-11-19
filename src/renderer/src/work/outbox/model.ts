@@ -101,16 +101,16 @@ export function htmlWords(html: string): string {
   const out = html
     .replace(/<(script|style|head|title)\b[\s\S]*?<\/\1\s*>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<img\b[^>]*>/gi, (tag) => {
+      const src = decode(attr(tag, "src") ?? "").trim();
+      const alt = decode(attr(tag, "alt") ?? "").trim();
+      return `[image${alt ? ` ${alt}` : ""}${src ? `: ${src}` : ""}]`;
+    })
     .replace(/<a\b[^>]*>([\s\S]*?)<\/a\s*>/gi, (tag, inner: string) => {
       const href = decode(attr(tag.slice(0, tag.indexOf(">") + 1), "href") ?? "").trim();
       const words = decode(inner.replace(/<[^>]*>/g, "")).trim();
       if (!href || href === words || href === `mailto:${words}`) return words || href;
       return words ? `${words} (${href})` : href;
-    })
-    .replace(/<img\b[^>]*>/gi, (tag) => {
-      const src = decode(attr(tag, "src") ?? "").trim();
-      const alt = decode(attr(tag, "alt") ?? "").trim();
-      return `[image${alt ? ` ${alt}` : ""}${src ? `: ${src}` : ""}]`;
     })
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<li\b[^>]*>/gi, "\n- ")
@@ -145,8 +145,14 @@ export function payloadView(payload: unknown): PayloadView {
       body = { path: [...path, hasText ? "text" : "html"], text: htmlWords(obj.html), ...(hasText ? {} : { readOnly: true }) };
     }
     for (const [key, v] of Object.entries(obj)) {
-      if ((quiet && QUIET.has(key)) || v === undefined || v === null) continue;
+      if ((quiet && QUIET.has(key)) || v === undefined) continue;
       const at = [...path, key];
+      // An add-on call's arguments are shown whole: no shortcut hides a key, a null or an empty value (the hold re-review's finding 18).
+      if (!quiet && (v === null || typeof v === "object")) {
+        fields.push({ key, path: at, label: labelOf(key), value: JSON.stringify(v), edit: null });
+        continue;
+      }
+      if (v === null) continue;
       if (typeof v === "string") {
         if (quiet && body?.path.join(".") === at.join(".")) continue;
         if (!body && BODY_KEYS.includes(key) && (v.includes("\n") || v.length > 80)) body = { path: at, text: v };

@@ -97,10 +97,6 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
     }
     return null
   }
-  const knownRunOf = (sessionId: string): string | null => {
-    const run = routineRunOf(sessionId)
-    return run === ROUTINE_UNKNOWN ? null : run
-  }
 
   // What a stop left behind: a row that was being sent is never sent again by the host, and a live act's screen went with the process.
   try {
@@ -148,12 +144,13 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
   // ── the catch on every add-on call ──────────────────────────────────
   const addons: RuleAddons | null = deps.addons ?? null
   if (addons && deps.addonHost) {
+    // An unknown run is stamped as it is, so a LifeOS draft from such a thread takes no grant either (milestone 50's hold re-review, 13).
     const origin = (sessionId: string): LifeosOrigin | null => {
       const root = deps.registry.get(rootOf(sessionId))
       if (!root) return null
       const scope = ctx.scopeOf(root.id)
       const workspaceId = scope?.workspaceId ?? (root.projectId ? deps.registry.getProject(root.projectId)?.workspaceId : null) ?? root.workspaceId ?? null
-      return { app: 'tempcode', threadId: root.id, host: ctx.host, ...(workspaceId ? { workspaceId } : {}), ...(knownRunOf(sessionId) ? { routineRunId: knownRunOf(sessionId)! } : {}) }
+      return { app: 'tempcode', threadId: root.id, host: ctx.host, ...(workspaceId ? { workspaceId } : {}), ...(routineRunOf(sessionId) ? { routineRunId: routineRunOf(sessionId)! } : {}) }
     }
     const gate = makeAddonGate({ outbox, store, addons, sessions: deps.registry, mcpUrl, isWorkScope, originOf: origin, modules: () => WORK_MODULES, log: ctx.log })
     const door = deps.addonHost.setGate(gate)

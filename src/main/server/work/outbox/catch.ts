@@ -212,7 +212,7 @@ export function addonCallKind(deps: { addons: RuleAddons; ungated(addonId: strin
       // A grant is for one server: without the digest of the server it was made for, it fits nothing.
       if (m.addonId !== p.addonId || m.tool !== p.tool || !m.specDigest || m.specDigest !== p.specDigest) return false
       // And for the tool as he saw it listed: a server that redefines it makes the grant fit no call of it (milestone 50's hold review, finding 8).
-      if ((m.toolDigest ?? null) !== (p.toolDigest ?? null)) return false
+      if (!m.toolDigest || m.toolDigest !== p.toolDigest) return false
       if (!m.arguments) return true
       const fixed = m.arguments
       if (!Object.keys(p.arguments).every((key) => key in fixed || m.free?.includes(key))) return false
@@ -224,7 +224,9 @@ export function addonCallKind(deps: { addons: RuleAddons; ungated(addonId: strin
       if (specDigest(row.spec) !== p.specDigest) throw new ActStale('the add-on was changed since this call was held, so it now reaches another server')
       if (!row.enabled) throw new ActNotSent(`${row.name} is turned off`)
       const listed = deps.addons.tools(p.addonId)?.tools.find((t) => t.name === p.tool)
-      if (p.toolDigest && listed && toolDigest(listed) !== p.toolDigest) throw new ActStale('the add-on changed what this tool does since this call was held')
+      // The tool as he saw it, or nothing: a call held without its definition, or whose tool the server no longer lists, does not run (milestone 50's hold re-review, 15).
+      if (!listed) throw new ActStale('the add-on no longer lists this tool')
+      if (!p.toolDigest || toolDigest(listed) !== p.toolDigest) throw new ActStale('the add-on changed what this tool does since this call was held')
       const result = await deps.ungated(p.addonId, p.tool, p.arguments)
       const text = textOf({ summary: '', ref: result })
       if (result.isError) throw new Error(text?.trim() || `${row.name} answered with an error`)
