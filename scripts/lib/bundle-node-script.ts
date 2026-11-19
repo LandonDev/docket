@@ -1,7 +1,8 @@
 /**
  * Bundles a headless script for plain node the way the iOS proofs run the server:
  * packages external, @shared and aliax-core from source, electron through
- * scripts/electron-shim.mjs. A `?modulePath` import (electron-vite's own, the
+ * scripts/electron-shim.mjs, and the TypeScript-source packages bundled in as
+ * electron.vite.config.ts does (node cannot strip types under node_modules). A `?modulePath` import (electron-vite's own, the
  * sheet worker's) becomes its source path: nothing headless forks a utility process.
  */
 import { build, type Plugin } from 'esbuild'
@@ -12,6 +13,15 @@ const modulePath: Plugin = {
   setup(b) {
     b.onResolve({ filter: /\?modulePath$/ }, (args) => ({ path: resolve(args.resolveDir, args.path.replace(/\?modulePath$/, '')), namespace: 'module-path' }))
     b.onLoad({ filter: /.*/, namespace: 'module-path' }, (args) => ({ contents: `export default ${JSON.stringify(args.path)}`, loader: 'js' }))
+  }
+}
+
+// Every other package stays external, as `packages: 'external'` would leave it.
+const bundled = /^(@shared|aliax-core|electron|work-kit|@muse-code\/sdk)(\/|$)/
+const externalPackages: Plugin = {
+  name: 'external-packages',
+  setup(b) {
+    b.onResolve({ filter: /^[^./]/ }, (args) => (bundled.test(args.path) ? undefined : { path: args.path, external: true }))
   }
 }
 
@@ -28,9 +38,8 @@ export async function bundleNodeScript(repo: string, entry: string, outfile: str
       logLevel: 'warning',
       ...(opts.server
         ? {
-            packages: 'external',
             alias: { '@shared': './src/shared', 'aliax-core': './node_modules/aliax-core/src', electron: './scripts/electron-shim.mjs' },
-            plugins: [modulePath]
+            plugins: [modulePath, externalPackages]
           }
         : {})
     })
