@@ -12,13 +12,18 @@ import { calendarWords, CalendarOpPayloadSchema } from '../outbox/lifeosHeld'
  * made it, once.
  */
 
+/** The row that holds when this host first watched: acts made before it are not this module's to record. */
+const SINCE = '~since'
+
 /** Plain acts already recorded: LifeOS lists an act again on every change. */
 export function ensureAgenda(db: DatabaseSync): void {
   db.exec('CREATE TABLE IF NOT EXISTS work_agenda_results (op_id TEXT PRIMARY KEY, at INTEGER NOT NULL)')
+  db.prepare('INSERT OR IGNORE INTO work_agenda_results (op_id, at) VALUES (?, ?)').run(SINCE, Date.now())
 }
 
 interface OpRow {
   _id: string
+  _creationTime?: number
   plain?: boolean
   status?: string
   origin?: { host?: string; threadId?: string }
@@ -30,8 +35,11 @@ export function recordPlain(ctx: WorkCtx, rows: readonly OpRow[]): string[] {
   const done: string[] = []
   const known = ctx.db.prepare('SELECT 1 FROM work_agenda_results WHERE op_id = ?')
   const mark = ctx.db.prepare('INSERT OR IGNORE INTO work_agenda_results (op_id, at) VALUES (?, ?)')
+  const since = (ctx.db.prepare('SELECT at FROM work_agenda_results WHERE op_id = ?').get(SINCE) as { at: number } | undefined)?.at ?? 0
   for (const row of rows) {
-    if (row.plain !== true || row.status === 'failed') continue
+    // Only once it went: a plain hold sits queued until Google takes it, and a queued one may yet fail.
+    if (row.plain !== true || row.status !== 'done') continue
+    if (typeof row._creationTime === 'number' && row._creationTime < since) continue
     const threadId = row.origin?.threadId
     // Only this host's own threads, and only one it still has: a Result belongs to a thread here.
     if (row.origin?.host !== ctx.host || !threadId || !ctx.scopeOf(threadId)) continue

@@ -2,7 +2,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { WorkCtx } from '../modules'
-import { calendarGrantFits, calendarWords, type CalendarOpPayload } from '../outbox/lifeosHeld'
+import { opFields } from '../../../../renderer/src/work/agenda/calendarAct'
+import { CalendarFieldsSchema, CalendarOpMatcherSchema, calendarGrantFits, calendarWords, type CalendarOpPayload } from '../outbox/lifeosHeld'
 import { cast, makeRig, type Rig } from '../outbox/rig'
 import { ensureAgenda, recordPlain } from './index'
 
@@ -71,7 +72,7 @@ describe('a held calendar act', () => {
     expect(sends()).toEqual([])
   })
 
-  it("is edited through calendarOps.save, keeping its kind, event and account", async () => {
+  it("is edited through calendarOps.save, keeping its kind and event", async () => {
     const id = rig.lifeos.calendarOp({ kind: 'propose', eventId: 'ev_1', payload: { comment: 'Could we move it?' } })
     rig.lifeos.fire()
     await settled()
@@ -79,18 +80,32 @@ describe('a held calendar act', () => {
     const payload = { ...(item!.payload as CalendarOpPayload), kind: 'cancel', payload: { comment: 'Thursday works better', proposedStart: 5 } }
     const after = await rig.rpc<OutboxItem>('work.outbox.edit', { ref: item!.ref, payload })
     const save = rig.lifeos.calls.find((c) => c.fn === 'calendarOps:save')
-    expect(save?.args).toEqual({ id, kind: 'propose', eventId: 'ev_1', account: 'landon@purdue.edu', payload: { comment: 'Thursday works better', proposedStart: 5 } })
+    expect(save?.args).toEqual({ id, kind: 'propose', eventId: 'ev_1', payload: { comment: 'Thursday works better', proposedStart: 5 } })
     expect(after.summary).toBe('Propose a new time for "Big Ten league call"')
   })
 
-  it('takes a grant only for its kind, its account and the people it names', () => {
-    const invite = (addresses: string[]): CalendarOpPayload => ({ id: 'op', kind: 'create', account: 'landon@purdue.edu', payload: { title: 'Scrim', attendees: addresses.map((address) => ({ address })) } })
-    const m = { kind: 'create' as const, account: 'landon@purdue.edu', attendees: ['sam@purdue.edu'] }
+  it('takes a grant only for its kind, its account, its calendar and the people it names', () => {
+    const invite = (addresses: string[], over: Partial<CalendarOpPayload> = {}): CalendarOpPayload => ({ id: 'op', kind: 'create', account: 'landon@purdue.edu', calendarId: 'landon@purdue.edu', payload: { title: 'Scrim', attendees: addresses.map((address) => ({ address })) }, ...over })
+    const m = { kind: 'create' as const, account: 'landon@purdue.edu', calendarId: 'landon@purdue.edu', attendees: ['sam@purdue.edu'] }
     expect(calendarGrantFits(m, invite(['Sam@Purdue.edu']))).toBe(true)
     expect(calendarGrantFits(m, invite(['sam@purdue.edu', 'dana@purdue.edu']))).toBe(false)
+    // an event that invites nobody is no invite: it fits no invite grant
+    expect(calendarGrantFits(m, invite([]))).toBe(false)
+    // the same account's team calendar, which others see, is not the calendar the grant was made on
+    expect(calendarGrantFits(m, invite(['sam@purdue.edu'], { calendarId: 'esports-team@group.calendar.google.com' }))).toBe(false)
     expect(calendarGrantFits({ ...m, account: 'other@gmail.com' }, invite(['sam@purdue.edu']))).toBe(false)
-    expect(calendarGrantFits({ ...m, kind: 'cancel' }, invite(['sam@purdue.edu']))).toBe(false)
-    expect(calendarGrantFits({ kind: 'accept', account: 'landon@purdue.edu' }, { id: 'op', kind: 'accept', account: 'landon@purdue.edu' })).toBe(true)
+    const accept = { kind: 'accept' as const, account: 'landon@purdue.edu', calendarId: null }
+    expect(calendarGrantFits(accept, { id: 'op', kind: 'accept', account: 'landon@purdue.edu' })).toBe(true)
+    expect(calendarGrantFits(accept, { id: 'op', kind: 'accept', account: 'landon@purdue.edu', payload: { series: true } })).toBe(false)
+    // a change, a cancel or a proposal is always his press: no grant can be made for one
+    for (const kind of ['update', 'cancel', 'propose']) expect(CalendarOpMatcherSchema.safeParse({ kind, account: 'a', calendarId: null }).success).toBe(false)
+  })
+
+  it('shows every field it will send', () => {
+    const fields: Record<string, unknown> = { title: 'T', startsAt: 1, endsAt: 2, allDay: false, location: 'L', notes: 'N', attendees: [{ address: 'a@b.c' }], uninvite: ['d@e.f'], comment: 'C', proposedStart: 3, proposedEnd: 4, series: true }
+    expect(Object.keys(fields).sort()).toEqual(Object.keys(CalendarFieldsSchema.shape).sort())
+    const shown = opFields({ id: 'op', kind: 'propose', account: 'a@b.c', calendarId: 'team@group', payload: fields as never }, null).map((f) => f.label)
+    expect(shown).toEqual(['Event', 'When', 'Instead', 'Where', 'Invites', 'Uninvites', 'Applies to', 'Note', 'Details', 'Calendar'])
   })
 
   it('reads in his words for every kind', () => {
@@ -110,20 +125,22 @@ describe('a plain hold', () => {
     ensureAgenda(db)
     return { db, host: 'env_box', scopeOf: (id: string) => (id === 't-work' ? ({ workspaceId: 'ws', sector: 'purdue' } as never) : null), results: { add: (r: unknown) => void added.push(r) } } as unknown as WorkCtx
   }
-  const op = (over: Record<string, unknown> = {}) => ({ _id: 'op_1', kind: 'create', plain: true, status: 'queued', account: 'landon@purdue.edu', payload: { title: 'Focus' }, origin: { host: 'env_box', threadId: 't-work' }, ...over })
+  const op = (over: Record<string, unknown> = {}) => ({ _id: 'op_1', _creationTime: Date.now() + 1000, kind: 'create', plain: true, status: 'done', account: 'landon@purdue.edu', payload: { title: 'Focus' }, origin: { host: 'env_box', threadId: 't-work' }, ...over })
 
   it("is a Result of this host's thread, recorded once", () => {
     const added: unknown[] = []
     const ctx = ctxWith(added)
+    // queued is not gone yet: nothing until Google took it
+    expect(recordPlain(ctx, [op({ status: 'queued' })])).toEqual([])
     expect(recordPlain(ctx, [op()])).toEqual(['op_1'])
-    expect(recordPlain(ctx, [op({ status: 'done' })])).toEqual([])
+    expect(recordPlain(ctx, [op()])).toEqual([])
     expect(added).toEqual([{ sessionId: 't-work', kind: 'calendar.op', summary: 'Added "Focus" to the calendar', account: 'landon@purdue.edu', ref: { at: 'lifeos', table: 'calendarOps', id: 'op_1' } }])
   })
 
   it("is not recorded for a held act, another host's thread, a thread gone, or one that failed", () => {
     const added: unknown[] = []
     const ctx = ctxWith(added)
-    recordPlain(ctx, [op({ _id: 'a', plain: undefined, status: 'draft' }), op({ _id: 'b', origin: { host: 'env_mac', threadId: 't-work' } }), op({ _id: 'c', origin: { host: 'env_box', threadId: 't-gone' } }), op({ _id: 'd', status: 'failed' })])
+    recordPlain(ctx, [op({ _id: 'a', plain: undefined, status: 'draft' }), op({ _id: 'b', origin: { host: 'env_mac', threadId: 't-work' } }), op({ _id: 'c', origin: { host: 'env_box', threadId: 't-gone' } }), op({ _id: 'd', status: 'failed' }), op({ _id: 'e', _creationTime: 1 })])
     expect(added).toEqual([])
   })
 })

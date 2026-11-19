@@ -19,9 +19,13 @@ interface LinkRow {
 /** Done on a task, as the owner: with the newest of this host's threads that worked it, else plainly. */
 export async function taskDone(ctx: WorkCtx, taskId: string): Promise<TasksDone> {
   const owner = ctx.lifeos.owner()
-  const links = await owner.query<LinkRow[]>('workLinks:byEntity', { entity: { table: 'tasks', id: taskId } })
-  // A link another host made, or one to a thread this host no longer has, names no work accepted here.
-  const link = [...links].reverse().find((l) => l.host === ctx.host && ctx.scopeOf(l.threadId) !== null) ?? null
+  const [links, detail] = await Promise.all([
+    owner.query<LinkRow[]>('workLinks:byEntity', { entity: { table: 'tasks', id: taskId } }),
+    owner.query<{ task: { sector: string } } | null>('tasks:get', { id: taskId })
+  ])
+  const sector = detail?.task.sector
+  // A link another host made, to a thread this host no longer has, or to a thread of another sector names no work accepted here.
+  const link = [...links].reverse().find((l) => l.host === ctx.host && sector !== undefined && ctx.scopeOf(l.threadId)?.sector === sector) ?? null
   const args = link
     ? { id: taskId, reason: `Accepted the work of "${link.title}"`.slice(0, 300), threadLink: { host: link.host, threadId: link.threadId, title: link.title } }
     : { id: taskId }

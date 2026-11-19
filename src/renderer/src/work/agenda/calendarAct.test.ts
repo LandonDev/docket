@@ -49,9 +49,9 @@ describe("the day list", () => {
 
 describe("a calendar act's grant", () => {
   it("answers invitations on one account, or invites the named people; a change takes none", () => {
-    expect(grantFor({ kind: "calendar.op", payload: { id: "op", kind: "accept", account: "a@b.c" } })).toEqual({ matcher: { kind: "accept", account: "a@b.c" }, label: "Accept invitations on a@b.c" });
+    expect(grantFor({ kind: "calendar.op", payload: { id: "op", kind: "accept", account: "a@b.c" } })).toEqual({ matcher: { kind: "accept", account: "a@b.c", calendarId: null }, label: "Accept invitations on a@b.c" });
     expect(grantFor({ kind: "calendar.op", payload: { id: "op", kind: "create", account: "a@b.c", payload: { attendees: [{ address: "Sam@Purdue.edu", name: "Sam" }] } } })).toEqual({
-      matcher: { kind: "create", account: "a@b.c", attendees: ["sam@purdue.edu"] },
+      matcher: { kind: "create", account: "a@b.c", calendarId: null, attendees: ["sam@purdue.edu"] },
       label: "Invites to Sam on a@b.c",
     });
     expect(grantFor({ kind: "calendar.op", payload: { id: "op", kind: "update", account: "a@b.c" } })).toBeNull();

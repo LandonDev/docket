@@ -143,8 +143,10 @@ const TaskRow = memo(function TaskRow({
   onStart: (task: Task) => void;
 }) {
   const [ticked, setTicked] = useState(false);
-  const done = useRef(() => actions.complete(task));
-  done.current = () => actions.complete(task);
+  // A Done that failed (its toast says so) puts the row back as it was.
+  const complete = () => void Promise.resolve(actions.complete(task)).then((r) => r === undefined && setTicked(false));
+  const done = useRef(complete);
+  done.current = complete;
   useEffect(() => {
     if (!ticked) return;
     const timer = window.setTimeout(() => done.current(), HOLD_MS);

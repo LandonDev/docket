@@ -118,6 +118,7 @@ export const CalendarOpPayloadSchema = z.looseObject({
   account: z.string().optional(),
   eventId: z.string().optional(),
   calendarId: z.string().optional(),
+  route: z.string().optional(),
   sector: z.string().optional(),
   plain: z.boolean().optional(),
   editedAt: z.number().optional(),
@@ -126,12 +127,16 @@ export const CalendarOpPayloadSchema = z.looseObject({
 })
 export type CalendarOpPayload = z.infer<typeof CalendarOpPayloadSchema>
 
-/** A grant for calendar acts: one kind on one account, and for an invite, only these people. */
+/** The kinds a grant may take: an invitation's answer, or an invite. A change to or cancel of an event is always his press. */
+export const GRANTABLE_CALENDAR_KINDS = ['create', 'accept', 'decline', 'tentative'] as const
+
+/** A grant for calendar acts: one kind on one account's one calendar, and for an invite, only these people. */
 export const CalendarOpMatcherSchema = z
   .object({
-    kind: z.enum(CALENDAR_OP_KINDS),
+    kind: z.enum(GRANTABLE_CALENDAR_KINDS),
     account: z.string().max(320).nullable(),
-    attendees: z.array(z.string().max(320)).max(50).optional()
+    calendarId: z.string().max(500).nullable(),
+    attendees: z.array(z.string().max(320)).min(1).max(50).optional()
   })
   .strict()
 export type CalendarOpMatcher = z.infer<typeof CalendarOpMatcherSchema>
@@ -140,9 +145,15 @@ const addressesOf = (p: CalendarOpPayload): string[] => (p.payload?.attendees ??
 
 /** A grant fits an act of its kind on its account that invites no one the grant does not name. */
 export function calendarGrantFits(m: CalendarOpMatcher, p: CalendarOpPayload): boolean {
-  if (m.kind !== p.kind || m.account !== (p.account ?? null)) return false
+  if (m.kind !== p.kind || m.account !== (p.account ?? null) || m.calendarId !== (p.calendarId ?? null)) return false
+  // A grant that writes nothing but answers or invites: a change of an existing event's fields never fits one.
+  const changes = p.payload ?? {}
+  if (changes.uninvite?.length || changes.series) return false
+  const invited = addressesOf(p)
+  if (m.kind !== 'create') return invited.length === 0
+  // An invite grant names its people: an event that invites nobody, or anyone else, is his press.
   const named = new Set((m.attendees ?? []).map((a) => a.trim().toLowerCase()))
-  return addressesOf(p).every((a) => named.has(a))
+  return invited.length > 0 && invited.every((a) => named.has(a))
 }
 
 const quoted = (title: string): string => `"${title.replace(/\s+/g, ' ').trim().slice(0, 120)}"`
@@ -313,16 +324,20 @@ export class LifeosHeldItems implements LifeosHeld {
     const next = CalendarFieldsSchema.parse({ ...row.payload, ...fields })
     const owner = this.deps.ctx.lifeos.owner()
     // A new Google event names its calendar by the source that syncs it; an Outlook one by its account.
-    let sourceId: string | undefined
-    if (row.kind === 'create' && row.calendarId) {
-      const sources = await owner.query<{ _id: string; kind: string; channel?: string }[]>(LIFEOS_HELD_FNS.sources, {})
-      sourceId = sources.find((s) => s.kind === 'gcal' && s.channel === row.calendarId)?._id
-    }
+    let target: { sourceId: string } | { account: string } | Record<string, never> = {}
+    if (row.kind === 'create' && row.route !== 'local') {
+      // The source of this account's calendar, never another account's that shares it: an edit must not move the event.
+      const sources = await owner.query<{ _id: string; kind: string; channel?: string; account?: string }[]>(LIFEOS_HELD_FNS.sources, {})
+      const own = sources.find((s) => s.kind === 'gcal' && s.channel === row.calendarId && s.account?.toLowerCase() === row.account?.toLowerCase())
+      if (!own) throw new Error('LifeOS no longer syncs the calendar this event goes on; discard it and ask again.')
+      target = { sourceId: own._id }
+    } else if (row.route === 'local' && row.account) target = { account: row.account }
+    // A Google act on an event takes its calendar from the event; an Outlook one keeps the account it was going through.
     await owner.mutation(LIFEOS_HELD_FNS.calendarSave, {
       id: ref.id,
       kind: row.kind,
       ...(row.eventId ? { eventId: row.eventId } : {}),
-      ...(sourceId ? { sourceId } : row.account ? { account: row.account } : {}),
+      ...target,
       payload: next
     })
     const after = await this.read(ref)

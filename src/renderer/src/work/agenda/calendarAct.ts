@@ -10,6 +10,7 @@ export interface CalendarOp {
   id: string;
   kind?: CalendarOpKind;
   account?: string;
+  calendarId?: string;
   eventId?: string;
   eventTitle?: string;
   payload?: {
@@ -18,10 +19,13 @@ export interface CalendarOp {
     endsAt?: number;
     allDay?: boolean;
     location?: string;
+    notes?: string;
     attendees?: { address: string; name?: string }[];
+    uninvite?: string[];
     comment?: string;
     proposedStart?: number;
     proposedEnd?: number;
+    series?: boolean;
   };
 }
 
@@ -53,7 +57,11 @@ export function whenWords(startsAt: number, endsAt: number | undefined, allDay =
   return `${day.format(startsAt)}, ${samePeriod ? startBare : start} to ${end}`;
 }
 
-/** The act's fields as a person reads them; the event (for a reply or change) fills what the act leaves out. */
+/**
+ * The act's fields as a person reads them; the event (for a reply or change) fills what the act
+ * leaves out. Everything that goes is shown: the server's `CalendarFieldsSchema` keys each have a
+ * row here (agenda.test.ts holds it).
+ */
 export function opFields(op: CalendarOp, event: DayEvent | null): { label: string; value: string }[] {
   const p = op.payload ?? {};
   const rows: { label: string; value: string }[] = [];
@@ -65,10 +73,15 @@ export function opFields(op: CalendarOp, event: DayEvent | null): { label: strin
   const where = p.location ?? event?.location;
   if (where) rows.push({ label: "Where", value: where });
   if (p.attendees?.length) rows.push({ label: "Invites", value: p.attendees.map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(", ") });
+  if (p.uninvite?.length) rows.push({ label: "Uninvites", value: p.uninvite.join(", ") });
+  if (p.series) rows.push({ label: "Applies to", value: "Every occurrence" });
   const reply = op.kind ? REPLY[op.kind] : undefined;
   if (reply) rows.push({ label: "Reply", value: reply });
   if (p.comment) rows.push({ label: "Note", value: p.comment });
-  if (op.account) rows.push({ label: "Calendar", value: op.account });
+  if (p.notes) rows.push({ label: "Details", value: p.notes });
+  // An account's own calendar is named by its address; another (a shared or team one) by its id.
+  const calendar = op.calendarId && op.calendarId !== op.account ? `${op.calendarId}, ${op.account ?? ""}`.replace(/, $/, "") : op.account;
+  if (calendar) rows.push({ label: "Calendar", value: calendar });
   return rows;
 }
 
