@@ -607,6 +607,20 @@ describe('the attacker under full access', () => {
     expect(acts(h)).toBe(1)
   })
 
+  it('reads the window afresh before judging a click by name: an icon that appeared inside a Send since the read is held', async () => {
+    useHold()
+    // only the host's own fresh reads hold the new Send and its icon; the book the thread read has neither
+    const { h } = await thread('work', 'auto', { send: false, unseen: '[48] button "Send to Dana"\n    [49] image "paperplane"' })
+    const before = h.requests().length
+    const o = await h.run('computer_act', { app: 'TextEdit', action: 'left_click', named: 'paperplane' })
+    expect(o.isError).toBe(false)
+    expect(h.requests()[before]).toMatchObject({ method: 'state.get', params: { mode: 'full', geometry: true } })
+    expect(held).toHaveLength(1)
+    expect(held[0]).toMatchObject({ why: 'screen', label: 'Send' })
+    expect(held[0].targets).toEqual([expect.objectContaining({ param: 'point', sig: expect.stringMatching(/^image:paperplane < button:Send to Dana < /) })])
+    expect(acts(h)).toBe(0)
+  })
+
   it('holds a mouse down after an earlier call left the pointer on Send', async () => {
     useHold()
     const { h } = await thread('work')

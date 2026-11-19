@@ -42,7 +42,7 @@ interface Rig {
   pushes: WorkPush[]
   subs: { fn: string; args: { sector: string; after: number }; on: (v: unknown) => void; off: boolean }[]
   lifeosUp: { value: boolean }
-  readAnswer: { text: string; runs: boolean }
+  readAnswer: { text: string; runs: boolean; gone?: boolean }
   files: Map<string, string>
   /** a thread's status changed, as the registry would say */
   settle(sessionId: string, status: SessionMeta['status']): void
@@ -82,7 +82,7 @@ function makeRig(): Rig {
   let n = 0
   const host: RoutinesHost = {
     workspace: (id) => ({ id, name: id, sector: id === 'ws-purdue' ? 'purdue' : id === 'ws-cosmic' ? 'cosmic' : null }) as never,
-    addon: (_ws, name) => ({ id: `addon-${name}`, name }) as never,
+    addon: (_ws, name) => (rig.readAnswer.gone ? null : ({ id: `addon-${name}`, name } as never)),
     mayRead: () => rig.readAnswer.runs,
     read: async (addonId, tool, args) => {
       rig.read.push(`${addonId}/${tool} ${JSON.stringify(args)}`)
@@ -418,6 +418,15 @@ describe('a watch', () => {
     await tickAt(at(16, '09:00'))
     expect(rig.read).toEqual([])
     expect(rig.engine.store.get(id)!.lastWords).toBe('Waiting: its tool is not set to Runs')
+  })
+
+  it('ends, reading nothing, once its add-on is no longer in its workspace', async () => {
+    const id = watch()
+    rig.readAnswer.gone = true
+    await tickAt(at(16, '09:00'))
+    expect(rig.read).toEqual([])
+    expect(rig.engine.store.get(id)!.lastWords).toBe('Its add-on is no longer in this workspace')
+    expect(rig.engine.row(rig.engine.store.get(id)!)).toMatchObject({ ended: true, enabled: false })
   })
 
   it('"non-empty" fires on the first answer with something in it', async () => {

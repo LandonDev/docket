@@ -84,6 +84,28 @@ describe('watch_create', () => {
   })
 })
 
+describe('a watch on a global add-on', () => {
+  it('reads nothing once the add-on is no longer For Work: the gate refuses the host\'s call, and the watch ends', async () => {
+    const outlook = await rig.addon('outlook', null, { forWork: true })
+    await rig.rpc('work.outbox.setRules', { addonId: outlook.id, rules: { read: 'runs' } })
+    expect((await call('t-work', 'watch_create', { name: 'Reply from events booking', addon: 'outlook', tool: 'read', arguments: { key: 'events' }, everyMinutes: 10 })).isError).toBeFalsy()
+    await routinesEngine(rig.work.ctx).tick()
+    await routinesEngine(rig.work.ctx).drain()
+    expect(rig.downstream).toHaveLength(1)
+
+    rig.addons.setWorkMarks(outlook.id, { forWork: false })
+    // the host's own Work call is judged by the Work gate, and outside Work no rule of his stands
+    const direct = await routinesHost()!.read(outlook.id, 'read', { key: 'events' })
+    expect(direct.isError).toBe(true)
+    expect(routinesHost()!.mayRead(outlook.id, 'read')).toBe(false)
+    clock.now += 11 * 60_000
+    await routinesEngine(rig.work.ctx).tick()
+    await routinesEngine(rig.work.ctx).drain()
+    expect(rig.downstream).toHaveLength(1)
+    expect((await list())[0]).toMatchObject({ ended: true, lastWords: 'Its add-on is no longer in this workspace' })
+  })
+})
+
 describe('a routine', () => {
   it('is never made by a thread: a proposal runs nothing until his click, and a thread cannot save, start or change one', async () => {
     const proposed = await call('t-work', 'routine_propose', { name: 'Morning sweep', prompt: 'Read Purdue mail and tell me what needs me.', days: ['mon', 'tue', 'wed', 'thu', 'fri'], at: '07:00' })

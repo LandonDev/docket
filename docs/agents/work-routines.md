@@ -77,7 +77,9 @@ counted from the tree's transcripts; unread), `asked`
   true`), which M10's gate runs only when the owner set the tool to Runs;
   the engine also asks first (`mayRead`) and, if he set it back, reads
   nothing and says "Waiting: its tool is not set to Runs". A tool its server
-  no longer lists is not Runs either, whatever rule was set. The first read
+  no longer lists is not Runs either, whatever rule was set. A watch whose
+  add-on has left its workspace's reach (a global one no longer For Work,
+  or removed) ends: "Its add-on is no longer in this workspace". The first read
   is a baseline; `changed` fires when the answer's hash differs,
   `non-empty` when it has something in it and differs.
 - **file** (`{source, by: 'someone-else'}`): a file on this host is looked

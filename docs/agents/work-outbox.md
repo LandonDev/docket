@@ -90,7 +90,9 @@ and shown on the card; they decide nothing.
 - A pillar's `outward(addon, tool, args)` may hold or refuse what he let
   run. It can never run what he holds.
 - The host's own call with no thread behind it (a watch) runs a Work
-  add-on's tool only when its rule is Runs.
+  add-on's tool only when its rule is Runs. A call made for Work (`work:
+  true`) on an add-on no Work thread reaches now (a global one no longer
+  For Work) is refused: no rule of his stands outside Work.
 - In a Work thread the bridge's `addon_call` asks its card only in `safe`
   and only for a call that will run: a held call asks no card first.
 
@@ -190,7 +192,8 @@ a typed line break in a chat's message box, in a composer, in a field beside
 a submit, or in a sheet whose default may send; Command or Control with
 Return where that sends; Space or Return on such a control; and any call the
 model flagged. The host reads the window afresh, with frames, when a step
-lands by position, goes to the focus, or names an element its book lacks.
+lands by position, goes to the focus, clicks by a name (the Mac finds the
+name on the live window), or names an element its book lacks.
 If that read fails the call is refused (`HELD_UNREAD`): nothing is judged
 against an old book or an empty screen. A call is kept only when every
 step's target can be placed on the read (a click by name finds one element;

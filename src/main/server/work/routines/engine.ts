@@ -455,6 +455,12 @@ export class RoutinesEngine {
   private async read(r: Routine, t: Extract<Trigger, { on: 'read' }>): Promise<void> {
     const host = this.deps.host
     const now = this.now()
+    // Its add-on left the workspace's reach since the watch was made (a global one no longer For Work, or removed): it ends.
+    if (!host.addon(r.workspaceId, t.addon)) {
+      this.store.end(r.id, 'Its add-on is no longer in this workspace')
+      this.changed(r)
+      return
+    }
     // The owner may have set the tool back since the watch was made: a watch never reads with a tool that would be held.
     if (!host.mayRead(t.addon, t.tool)) {
       this.store.setLastWords(r.id, 'Waiting: its tool is not set to Runs')

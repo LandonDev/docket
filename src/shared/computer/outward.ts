@@ -825,13 +825,20 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
 
 /**
  * Whether the host needs the window read afresh, with frames, to judge a
- * call: a step lands by position, or a key, a typed line break or a
- * `confirm` goes to wherever the focus is now. The thread's book says where
- * the focus was at its last read, and a person or the app may have moved it.
+ * call: a step lands by position, a click finds its element by a name, or a
+ * key, a typed line break or a `confirm` goes to wherever the focus is now.
+ * The thread's book says where the focus was, and what bore a name, at its
+ * last read; a person or the app may have changed both, and the service
+ * resolves a name on the window as it is when the step runs.
  */
 export function needsFreshRead(steps: readonly ComputerAction[], pointer: PointerAt = null): boolean {
   if (landsByPosition(steps, pointer)) return true
-  return steps.some((a) => {
+  return steps.some((a, step) => {
+    if (namedClick(a)) return true
+    if (targetlessClick(a)) {
+      const at = pointerAfter(steps.slice(0, step), pointer)
+      return !!at && 'named' in at
+    }
     if (a.element !== undefined) return false
     if (a.action === 'perform') return a.name === 'confirm'
     if (a.action === 'type') return /[\r\n ]/.test(a.text ?? '')

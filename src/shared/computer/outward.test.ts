@@ -680,7 +680,14 @@ describe('needsFreshRead', () => {
   it('needs no fresh read for keys and text that cannot send', () => {
     expect(needsFreshRead(steps({ action: 'key', text: 'Tab' }, { action: 'type', text: 'word' }))).toBe(false)
     expect(needsFreshRead(steps({ action: 'key', text: 'not a key' }))).toBe(false)
-    expect(needsFreshRead(steps({ action: 'left_click', named: 'Send' }))).toBe(false)
+  })
+
+  it('asks for a fresh read for a click by name, or where the pointer was put by name: the service finds the name on the live window', () => {
+    expect(needsFreshRead(steps({ action: 'left_click', named: 'paperplane' }))).toBe(true)
+    expect(needsFreshRead(steps({ action: 'perform', name: 'press', named: 'Send' }))).toBe(true)
+    expect(needsFreshRead(steps({ action: 'left_click' }), { named: 'paperplane' })).toBe(true)
+    expect(needsFreshRead(steps({ action: 'mouse_move', named: 'paperplane' }, { action: 'left_click' }))).toBe(true)
+    expect(needsFreshRead(steps({ action: 'left_click' }), { element: 4 })).toBe(false)
   })
 })
 

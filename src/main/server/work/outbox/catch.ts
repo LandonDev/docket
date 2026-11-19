@@ -127,7 +127,10 @@ export function makeAddonGate(deps: CatchDeps): AddonGate {
     // The app's own LifeOS row, pointed at LifeOS: never held, whoever calls, and every thread's drafts are stamped.
     if (isLifeosRow(deps.addons, call.row, deps.mcpUrl())) return { ...run, lifeos: true }
     const host = call.sessionId === null
-    if (host ? !worksRow(call.row) : !workCaller(call)) return run
+    // The host's own call for Work (a watch) on a row no Work thread reaches now, a global add-on no longer For Work:
+    // outside Work's scope no rule of his stands, and with nobody to hold it for it is refused.
+    if (host && call.work && !worksRow(call.row)) return { verdict: 'hold', why: 'rule', lifeos: false }
+    if (!call.work && (host ? !worksRow(call.row) : !workCaller(call))) return run
     const rule = standingRule(deps.store, deps.addons, call.row, call.tool)
     let verdict: Verdict = !rule ? 'hold' : rule.rule === 'runs' ? 'run' : rule.rule === 'off' ? 'refuse' : 'hold'
     let why: HeldWhy = rule ? 'rule' : 'unreviewed'
