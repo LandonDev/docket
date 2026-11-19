@@ -131,6 +131,12 @@ export async function skillList(deps: SkillToolDeps, caller: SessionMeta): Promi
   return JSON.stringify(rows)
 }
 
+/** Mark executable each file the replaced row held as executable at the same path (a folder read on Windows says none is). */
+export function keepExecBits(next: StoredFile[], before: readonly StoredFile[]): void {
+  const was = new Set(before.filter((f) => f.executable).map((f) => f.path))
+  for (const f of next) if (was.has(f.path)) f.executable = true
+}
+
 /** skill_write: one skill whole, from text files or a folder on this host. */
 export async function skillWrite(deps: SkillToolDeps, caller: SessionMeta, args: SkillWriteArgs, call: SkillCall = {}): Promise<string> {
   if ((args.files === undefined) === (args.dir === undefined)) return args.files ? 'refused: pass files or dir, not both' : 'refused: pass files or dir'
@@ -153,6 +159,8 @@ export async function skillWrite(deps: SkillToolDeps, caller: SessionMeta, args:
   if (problem) return `refused: ${problem}`
   const harnesses = harnessesFrom(args.harnesses)
   const existing = deps.skills.byName(scope.workspaceId, args.name)
+  // Windows keeps no execute bit: a folder read there keeps each replaced file's.
+  if (args.dir !== undefined && existing && process.platform === 'win32') keepExecBits(next, deps.skills.files(existing.id))
   const digest = skillDigest(next)
   if (existing && existing.digest === digest && encodeHarnesses(existing.harnesses) === encodeHarnesses(harnesses)) return `unchanged: ${args.name} v${existing.version}`
   const bytes = next.reduce((n, f) => n + f.bytes.length, 0)

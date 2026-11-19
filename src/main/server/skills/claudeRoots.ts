@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 import { RESERVED_SKILL_NAME } from '@shared/skills'
 import { SCOPE_DIR } from './materialize'
 import { scopeKeyOf, type ScopeKey, type SkillPointers } from './pointers'
+import { COPY_STAMPS, copiedNames, JUNCTIONS, linkTargetOf, swapDirLink, syncCopy } from './links'
 
 /**
  * Claude Code reads the skills store, and only the store (CLAUDE.md "Skills:
@@ -38,6 +39,11 @@ import { scopeKeyOf, type ScopeKey, type SkillPointers } from './pointers'
  * settings.json (their plugins, hooks and env), no plugins/, agents/ or
  * commands/. The list is what is linked, so an entry the person's dir gains
  * later is not in a Work root until someone adds it here.
+ *
+ * On Windows (`copies`) a directory link is a junction and a file "link" is a
+ * copy kept in step both ways (links.ts syncCopy): a standard user may make
+ * neither a file symlink nor a directory one, and the CLI replaces its files
+ * by rename, which would part a hard link from the person's file.
  */
 
 export const CLAUDE_ROOTS = 'claude-config'
@@ -80,6 +86,8 @@ export interface ClaudeRootDeps {
   personDir?: string
   personJson?: string
   log?: (line: string) => void
+  /** Junctions and file copies in place of symlinks (win32). */
+  copies?: boolean
 }
 
 const defaultLog = (line: string): void => console.log(`[skills] ${line}`)
@@ -100,15 +108,29 @@ function readLink(path: string): string | null {
   }
 }
 
-/** `path` is a link to `target`, made or re-pointed; a real entry in its place is left alone (false). */
-function linkTo(path: string, target: string): boolean {
+/**
+ * `path` is a link to `target`, made or re-pointed; a real entry in its place
+ * is left alone (false). With `copies` a directory's link is a junction and a
+ * file's is a copy kept in step (true while it is one).
+ */
+function linkTo(path: string, target: string, copies = JUNCTIONS): boolean {
   const st = lstatOrNull(path)
+  if (copies && !isDir(target) && !st?.isSymbolicLink()) {
+    if (st && !st.isFile()) return false
+    syncCopy(path, target)
+    return true
+  }
   if (st && !st.isSymbolicLink()) return false
-  if (st && readLink(path) === target) return true
+  if (st && linkTargetOf(readLink(path)) === target) return true
   const tmp = `${path}.lnk-${process.pid}`
   rmSync(tmp, { force: true })
-  symlinkSync(target, tmp)
-  renameSync(tmp, path)
+  if (copies) {
+    symlinkSync(target, tmp, 'junction')
+    swapDirLink(tmp, path, true)
+  } else {
+    symlinkSync(target, tmp)
+    renameSync(tmp, path)
+  }
   return true
 }
 
@@ -117,40 +139,47 @@ export function ensureClaudeRoot(deps: ClaudeRootDeps): string {
   const personDir = deps.personDir ?? personClaudeDir()
   const personJson = deps.personJson ?? personClaudeJson()
   const log = deps.log ?? defaultLog
+  const copies = deps.copies ?? JUNCTIONS
   const dir = join(deps.root, CLAUDE_ROOTS, deps.scope)
   mkdirSync(dir, { recursive: true })
   // Transcripts and memory always land in the person's dir: its projects/ is made first when missing.
   mkdirSync(join(personDir, 'projects'), { recursive: true })
 
-  // .claude.json: the person's. A regular file here means the CLI replaced the link by a rename.
+  // .claude.json: the person's. A regular file here means the CLI replaced the link by a rename (a copy is one by design).
   const json = join(dir, CLAUDE_JSON)
   const jst = lstatOrNull(json)
-  if (jst && !jst.isSymbolicLink()) {
+  if (!copies && jst && !jst.isSymbolicLink()) {
     renameSync(json, `${json}.diverged`)
     log(`${json} was a file of its own (the CLI replaced the link); set aside as ${CLAUDE_JSON}.diverged and linked again`)
   }
-  linkTo(json, personJson)
+  linkTo(json, personJson, copies)
 
   // Every other entry of the person's dir, linked by its name.
   const theirs = new Set<string>()
   for (const name of readdirSync(personDir)) {
-    if (name === 'skills' || name === CLAUDE_JSON) continue
+    if (name === 'skills' || name === CLAUDE_JSON || name === COPY_STAMPS) continue
     theirs.add(name)
-    linkTo(join(dir, name), join(personDir, name))
+    linkTo(join(dir, name), join(personDir, name), copies)
   }
   // A link to an entry the person's dir no longer has goes; what the CLI made here stays.
+  const copied = new Set(copies ? copiedNames(dir) : [])
   for (const name of readdirSync(dir)) {
-    if (name === 'skills' || name === CLAUDE_JSON || theirs.has(name)) continue
+    if (name === 'skills' || name === CLAUDE_JSON || name === COPY_STAMPS || theirs.has(name)) continue
     const path = join(dir, name)
     if (LEFTOVER_RE.test(name) && lstatOrNull(path)?.isSymbolicLink()) {
       rmSync(path, { force: true })
       continue
     }
-    const target = lstatOrNull(path)?.isSymbolicLink() ? readLink(path) : null
+    if (copied.has(name)) {
+      // A copy of a file the person's dir no longer has: syncCopy removes it once it was in step, else copies it back.
+      syncCopy(path, join(personDir, name))
+      continue
+    }
+    const target = lstatOrNull(path)?.isSymbolicLink() ? linkTargetOf(readLink(path)) : null
     if (target !== null && target === join(personDir, name)) rmSync(path, { force: true })
   }
 
-  relinkClaudeSkills(dir, deps.pointer, personDir, log)
+  relinkClaudeSkills(dir, deps.pointer, personDir, log, copies)
   return dir
 }
 
@@ -163,22 +192,24 @@ export function ensureClaudeRoot(deps: ClaudeRootDeps): string {
 export function ensureClaudeWorkRoot(deps: ClaudeRootDeps): string {
   const personDir = deps.personDir ?? personClaudeDir()
   const log = deps.log ?? defaultLog
+  const copies = deps.copies ?? JUNCTIONS
   const dir = join(deps.root, CLAUDE_WORK_ROOTS, deps.scope)
   mkdirSync(dir, { recursive: true })
   mkdirSync(join(personDir, 'projects'), { recursive: true })
   for (const name of CLAUDE_WORK_LINKS) {
     const path = join(dir, name)
-    // The person's standing instructions are the person's file, never one written in its place here.
-    if (name === 'CLAUDE.md' && lstatOrNull(path) && !lstatOrNull(path)!.isSymbolicLink()) {
+    // The person's standing instructions are the person's file, never one written in its place here (a copy in step is theirs).
+    if (name === 'CLAUDE.md' && lstatOrNull(path) && !lstatOrNull(path)!.isSymbolicLink() && !(copies && copiedNames(dir).includes(name))) {
       rmSync(path, { recursive: true, force: true })
       log(`${path} was a file of its own; removed and linked to the person's`)
     }
     if (lstatOrNull(join(personDir, name))) {
-      if (!linkTo(path, join(personDir, name))) log(`${path} is a file of its own, not the person's ${name}`)
+      if (!linkTo(path, join(personDir, name), copies)) log(`${path} is a file of its own, not the person's ${name}`)
     } else if (lstatOrNull(path)?.isSymbolicLink()) rmSync(path, { force: true })
+    else if (copies && copiedNames(dir).includes(name)) syncCopy(path, join(personDir, name))
   }
   for (const name of readdirSync(dir)) {
-    if (name === 'skills' || CLAUDE_WORK_LINKS.includes(name)) continue
+    if (name === 'skills' || name === COPY_STAMPS || CLAUDE_WORK_LINKS.includes(name)) continue
     const path = join(dir, name)
     if (CLAUDE_WORK_DROP.includes(name)) {
       rmSync(path, { recursive: true, force: true })
@@ -204,7 +235,7 @@ export function ensureClaudeWorkRoot(deps: ClaudeRootDeps): string {
     rmSync(settings, { recursive: true, force: true })
     writeFileSync(settings, want)
   }
-  relinkClaudeSkills(dir, deps.pointer, personDir, log)
+  relinkClaudeSkills(dir, deps.pointer, personDir, log, copies)
   // Only the store's skills: a folder written into skills/ by hand is not one.
   for (const name of readdirSync(join(dir, 'skills'))) {
     const path = join(dir, 'skills', name)
@@ -222,7 +253,7 @@ const syncedSaid = new Set<string>()
  * skill added or removed needs this), plus the person's synced bucket. A
  * scope with no root yet is left alone: its first spawn makes it.
  */
-export function relinkClaudeSkills(rootDir: string, pointer: string, personDir = personClaudeDir(), log: (line: string) => void = defaultLog): void {
+export function relinkClaudeSkills(rootDir: string, pointer: string, personDir = personClaudeDir(), log: (line: string) => void = defaultLog, copies = JUNCTIONS): void {
   if (!existsSync(rootDir)) return
   const skillsDir = join(rootDir, 'skills')
   const st = lstatOrNull(skillsDir)
@@ -245,7 +276,7 @@ export function relinkClaudeSkills(rootDir: string, pointer: string, personDir =
   }
   const synced = join(personDir, 'skills', SYNCED_SKILLS)
   if (isDir(synced)) wanted.set(SYNCED_SKILLS, synced)
-  for (const [name, target] of wanted) linkTo(join(skillsDir, name), target)
+  for (const [name, target] of wanted) linkTo(join(skillsDir, name), target, copies)
   for (const name of readdirSync(skillsDir)) {
     if (wanted.has(name)) continue
     const path = join(skillsDir, name)

@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, relative, sep } from 'node:path'
 import { isSharedMuseEntry, museAccountDirName } from '@shared/museSettings'
+import { copiedNames, JUNCTIONS, linkEntry, linkTargetOf, renameRetry, syncCopy } from './skills/links'
 import { scopeKeyOf, type ScopeKey, type SkillPointers } from './skills/pointers'
 
 /**
@@ -126,7 +127,7 @@ function writeAuth(museDir: string, blob: string): void {
   if (!same) {
     const tmp = `${path}.${process.pid}.tmp`
     writeFileSync(tmp, text, { mode: 0o600 })
-    renameSync(tmp, path)
+    renameRetry(tmp, path)
   }
   writeSeed(museDir, sha256(text))
 }
@@ -145,6 +146,11 @@ function writeSeed(museDir: string, digest: string): void {
 function linkOwnAuth(museDir: string, userDir: string): void {
   const path = join(museDir, AUTH)
   const target = join(userDir, AUTH)
+  // Windows: a copy kept in step both ways (skills/links.ts syncCopy), the CLI's rotations copied back.
+  if (JUNCTIONS) {
+    syncCopy(path, target)
+    return
+  }
   const st = lstatOrNull(path)
   if (!existsSync(target)) {
     if (st?.isSymbolicLink()) unlinkSync(path)
@@ -176,13 +182,19 @@ function linkShared(museDir: string, userDir: string, storeSkills: string | null
   for (const [name, target] of wanted) {
     const link = join(museDir, name)
     const st = lstatOrNull(link)
-    if (st?.isSymbolicLink() && readlinkSync(link) === target) continue
+    if (st?.isSymbolicLink() && linkTargetOf(readlinkSync(link)) === target) continue
+    // Windows: a shared file is a copy in step, synced in place.
+    if (JUNCTIONS && st?.isFile() && !statSync(target, { throwIfNoEntry: false })?.isDirectory()) {
+      syncCopy(link, target)
+      continue
+    }
     if (st) rmSync(link, { recursive: true, force: true })
-    symlinkSync(target, link)
+    linkEntry(target, link)
   }
+  const copied = new Set(JUNCTIONS ? copiedNames(museDir) : [])
   for (const name of readdirSync(museDir)) {
     if (!isSharedMuseEntry(name) || name === SEED || wanted.has(name)) continue
-    if (lstatOrNull(join(museDir, name))?.isSymbolicLink()) unlinkSync(join(museDir, name))
+    if (lstatOrNull(join(museDir, name))?.isSymbolicLink() || copied.has(name)) rmSync(join(museDir, name), { force: true })
   }
 }
 
@@ -338,7 +350,7 @@ export function museWorkDirs(threadId: string, account: string | null, scope: Sc
   else linkOwnAuth(museDir, deps.userConfigDir ?? userMuseConfigDir())
   // 'wx': made new, so a link planted since the sweep fails the spawn rather than take the write.
   writeFileSync(join(museDir, 'settings.json'), MUSE_WORK_SETTINGS, { flag: 'wx', mode: 0o600 })
-  if (skillsPointer !== null) symlinkSync(join(skillsPointer, 'skills'), join(museDir, 'skills'))
+  if (skillsPointer !== null) linkEntry(join(skillsPointer, 'skills'), join(museDir, 'skills'))
   const dataDir = realDir(work, 'data')
   const dataMuse = realDir(work, 'data', 'muse')
   for (const name of MUSE_WORK_DATA_DROP) rmSync(join(dataMuse, name), { recursive: true, force: true })

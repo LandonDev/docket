@@ -10,7 +10,7 @@ import type { ApprovalRequest } from '../drivers/types'
 import { AddonStore } from '../addonStore'
 import { SkillStore } from '../skillStore'
 import { storeRpc } from '../storeRpc'
-import { skillChanges, skillList, skillRemove, skillWrite, type SkillToolDeps } from './tools'
+import { keepExecBits, skillChanges, skillList, skillRemove, skillWrite, type SkillToolDeps } from './tools'
 
 const LOCAL: Principal = { kind: 'local' }
 const md = (name: string, body = ''): string => `---\nname: ${name}\ndescription: Use ${name}.\n---\n${body}`
@@ -250,5 +250,18 @@ describe('the caller\'s own limit (scopeRefusal)', () => {
     expect(await skillRemove(fenced, root, { name: 'x' })).toBe('refused: not here')
     expect(asked).toEqual([[root.id, null], [root.id, 'w1']])
     expect(calls).toEqual([])
+  })
+})
+
+describe('keepExecBits', () => {
+  it("marks executable each file the replaced row held as executable, as a folder read on Windows cannot say", () => {
+    const b = (path: string, executable: boolean) => ({ path, bytes: new Uint8Array(), executable })
+    const next = [b('SKILL.md', false), b('run.sh', false), b('new.sh', false)]
+    keepExecBits(next, [b('run.sh', true), b('SKILL.md', false), b('gone.sh', true)])
+    expect(next.map((f) => [f.path, f.executable])).toEqual([
+      ['SKILL.md', false],
+      ['run.sh', true],
+      ['new.sh', false]
+    ])
   })
 })

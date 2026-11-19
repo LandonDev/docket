@@ -197,3 +197,53 @@ function lstatOrNull(path: string): boolean {
     return false
   }
 }
+
+describe('the owned Claude root with copies (Windows)', () => {
+  /** A generation and a pointer to it as Windows makes them: a junction. */
+  function junctionAt(scope: ScopeKey, skills: string[]): string {
+    const genDir = join(root, 'claude', 'gen@1')
+    for (const s of skills) {
+      mkdirSync(join(genDir, 'skills', s), { recursive: true })
+      writeFileSync(join(genDir, 'skills', s, 'SKILL.md'), `---\nname: ${s}\n---\n`)
+    }
+    mkdirSync(join(root, 'claude', 'scope'), { recursive: true })
+    const pointer = join(root, 'claude', 'scope', scope)
+    symlinkSync(genDir, pointer, 'junction')
+    return pointer
+  }
+  const ensureCopies = (pointer: string): string =>
+    ensureClaudeRoot({ root, scope: 'global', pointer, personDir: person, personJson, log: (l) => logs.push(l), copies: true })
+
+  it("joins the person's directories by junction and copies their files, the store's skills by junction", () => {
+    const dir = ensureCopies(junctionAt('global', ['alpha']))
+    expect(lstatSync(join(dir, 'commands')).isSymbolicLink()).toBe(true)
+    expect(readlinkSync(join(dir, 'commands')).replace(/[\\/]+$/, '')).toBe(join(person, 'commands'))
+    expect(lstatSync(join(dir, 'projects')).isSymbolicLink()).toBe(true)
+    for (const file of ['settings.json', 'CLAUDE.md', '.claude.json']) expect(lstatSync(join(dir, file)).isFile()).toBe(true)
+    expect(readFileSync(join(dir, '.claude.json'), 'utf8')).toBe('{"projects":{}}')
+    expect(lstatSync(join(dir, 'skills', 'alpha')).isSymbolicLink()).toBe(true)
+    expect(logs.filter((l) => l.includes('diverged'))).toEqual([])
+  })
+
+  it('copies back a file the CLI rewrote at the next spawn, and leaves what the CLI made for itself', () => {
+    const pointer = junctionAt('global', [])
+    const dir = ensureCopies(pointer)
+    writeFileSync(join(dir, '.claude.json.tmp'), '{"projects":{"x":{}}}')
+    rmSync(join(dir, '.claude.json'))
+    // the CLI's rename, a moment later
+    writeFileSync(join(dir, '.claude.json'), readFileSync(join(dir, '.claude.json.tmp')))
+    rmSync(join(dir, '.claude.json.tmp'))
+    mkdirSync(join(dir, 'sessions'))
+    ensureCopies(pointer)
+    expect(readFileSync(personJson, 'utf8')).toBe('{"projects":{"x":{}}}')
+    expect(existsSync(join(dir, 'sessions'))).toBe(true)
+  })
+
+  it("drops the copy of a file the person's dir no longer has", () => {
+    const pointer = junctionAt('global', [])
+    const dir = ensureCopies(pointer)
+    rmSync(join(person, 'CLAUDE.md'))
+    ensureCopies(pointer)
+    expect(existsSync(join(dir, 'CLAUDE.md'))).toBe(false)
+  })
+})

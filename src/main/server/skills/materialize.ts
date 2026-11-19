@@ -541,14 +541,23 @@ function readManifest(dir: string): GenerationManifest | null {
   }
 }
 
-/** `from`'s tree at `to`: a folder for each folder, a hard link for each file, a copy where the file system refuses a link. */
-function linkTree(from: string, to: string): void {
+/**
+ * `from`'s tree at `to`: a folder for each folder, a hard link for each file, a
+ * copy where the file system refuses a link. On Windows always a copy: a file
+ * there cannot be removed while any of its names is open, so a hard link would
+ * let a running skill script hold the store's own file.
+ */
+function linkTree(from: string, to: string, copies = JUNCTIONS): void {
   mkdirSync(to, { recursive: true })
   for (const entry of readdirSync(from, { withFileTypes: true })) {
     const src = join(from, entry.name)
     const dst = join(to, entry.name)
     if (entry.isDirectory()) {
-      linkTree(src, dst)
+      linkTree(src, dst, copies)
+      continue
+    }
+    if (copies) {
+      copyFileSync(src, dst)
       continue
     }
     try {
