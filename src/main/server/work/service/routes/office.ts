@@ -56,7 +56,7 @@ const relayOf = (ctx: RouteCtx): Relay => {
 }
 
 const toHost = (r: Relay, msg: unknown): void => {
-  if (r.host?.readyState === r.host?.OPEN) r.host!.send(JSON.stringify(msg))
+  if (r.host && r.host.readyState === r.host.OPEN) r.host.send(JSON.stringify(msg))
 }
 
 /** Main's side: one link at a time; a new one replaces the old. */

@@ -23,11 +23,21 @@ export const addinHub = (): AddinHub | null => hub
 
 const RETRY_MS = [1000, 2000, 5000, 10_000, 30_000]
 
+/** The relay's address on this host and the secret it asks of main; null while the service is not up. */
+const serviceTarget = (ctx: WorkCtx): { url: string; secret: string } | null => {
+  const secret = serviceOf(ctx)?.internalSecret()
+  try {
+    return secret ? { url: ctx.service.url('/w/office/host'), secret } : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Starts the link to this host's Work service relay and keeps it up while Work runs. A
  * change an add-in reports goes to `heard` (the Excel helper's re-read of that range).
  */
-export function startAddin(ctx: WorkCtx, heard: (book: string, sheet: string, address: string) => void): () => void {
+export function startAddin(ctx: WorkCtx, heard: (book: string, sheet: string, address: string) => void, target = () => serviceTarget(ctx)): () => void {
   const keys = (keysOf = new AddinKeys(ctx.db))
   const h = (hub = new AddinHub({ keys, heard, log: ctx.log }))
   let stopped = false
@@ -41,15 +51,9 @@ export function startAddin(ctx: WorkCtx, heard: (book: string, sheet: string, ad
   }
   function connect(): void {
     if (stopped) return
-    const secret = serviceOf(ctx)?.internalSecret()
-    let url: string
-    try {
-      url = ctx.service.url('/w/office/host')
-    } catch {
-      return later()
-    }
-    if (!secret) return later()
-    const sock = (ws = new WebSocket(url, { headers: { Authorization: `Bearer ${secret}` }, maxPayload: 8 * 1024 * 1024 }))
+    const t = target()
+    if (!t) return later()
+    const sock = (ws = new WebSocket(t.url, { headers: { Authorization: `Bearer ${t.secret}` }, maxPayload: 8 * 1024 * 1024 }))
     sock.on('open', () => {
       tries = 0
       h.attach({ send: (text) => sock.readyState === sock.OPEN && sock.send(text) })

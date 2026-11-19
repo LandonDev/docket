@@ -173,8 +173,8 @@ describe('the two listeners', () => {
   it('every later route answers "not built" with its milestone, over HTTP and as a socket; anything else is not found', async () => {
     const r = await rig()
     const probes: Record<string, string> = { 27: '/w/sheet/s1', 31: '/g/abc', 29: '/w/office', 36: '/f/f1', 40: '/w/full/t/x' }
-    // Built: 18's documents and pages, 27's live sheets (routes/sheet.test.ts), 36's forms (forms/forms.test.ts).
-    for (const route of PUBLIC_ROUTES.filter((x) => x.milestone !== 18 && x.milestone !== 27 && x.milestone !== 36)) {
+    // Built: 18's documents and pages, 27's live sheets (routes/sheet.test.ts), 29's add-in relay (office/addin/addin.test.ts), 36's forms (forms/forms.test.ts).
+    for (const route of PUBLIC_ROUTES.filter((x) => x.milestone !== 18 && x.milestone !== 27 && x.milestone !== 29 && x.milestone !== 36)) {
       const path = probes[route.milestone] ?? (route.milestone === 31 ? '/w/open' : '')
       const paths = route.milestone === 31 ? ['/g/abc', '/w/open'] : [path]
       for (const p of paths) {

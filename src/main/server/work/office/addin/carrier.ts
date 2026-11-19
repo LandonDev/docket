@@ -90,14 +90,14 @@ export function withAddin(desktop: OfficeCarrier | null, hub: () => AddinHub | n
     },
 
     accounts: () => (desktop ? desktop.accounts() : Promise.resolve([])),
-    listMail: (q) => noDesktop('outlook').listMail(q),
-    readMail: (id) => noDesktop('outlook').readMail(id),
-    draftMail: (m) => noDesktop('outlook').draftMail(m),
-    sendMail: (m) => noDesktop('outlook').sendMail(m),
-    events: (from, to) => noDesktop('outlook').events(from, to),
-    createEvent: (e) => noDesktop('outlook').createEvent(e),
-    answerEvent: (id, answer, comment) => noDesktop('outlook').answerEvent(id, answer, comment),
-    eventByUid: (uid) => noDesktop('outlook').eventByUid(uid),
+    listMail: async (q) => noDesktop('outlook').listMail(q),
+    readMail: async (id) => noDesktop('outlook').readMail(id),
+    draftMail: async (m) => noDesktop('outlook').draftMail(m),
+    sendMail: async (m) => noDesktop('outlook').sendMail(m),
+    events: async (from, to) => noDesktop('outlook').events(from, to),
+    createEvent: async (e) => noDesktop('outlook').createEvent(e),
+    answerEvent: async (id, answer, comment) => noDesktop('outlook').answerEvent(id, answer, comment),
+    eventByUid: async (uid) => noDesktop('outlook').eventByUid(uid),
 
     async open(app, ref) {
       const installed = desktop ? (await desktop.apps().catch(() => [])).find((a) => a.app === app)?.installed : false
