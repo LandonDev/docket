@@ -82,7 +82,7 @@ light one is built is "The light theme".
 | `faint-foreground` | text that may be missed: a line number, ghost text, a done task, a diff's context | oklch(0.56 0.006 270) | oklch(0.58 0.012 264) |
 | `primary` / `primary-foreground` | the one primary button per surface, a checked box, a switch on | near-white / near-black | oklch(0.21 0.012 264) / white |
 | `accent` / `accent-foreground` | focus rings, a selection's edge, the rare call to action | blue 62% / white | hsl(214 88% 44%) / white |
-| `link` | a link's words, in prose, a document, a form | `#7dd3fc` | hsl(214 90% 38%) |
+| `link` | a link's words, in prose, a document, a form | `accent` | hsl(214 90% 38%) |
 | `warning` | the person is needed; the context meter from 85% full | amber | `#92450a` |
 | `destructive` / `destructive-foreground` | failed, delete; the label on a solid red button | red / white | `#b91c1c` / white |
 | `success` | lines added, passed | green | `#046c4e` |
@@ -181,13 +181,21 @@ terminal's black and bright black. Looks that light changes and dark
 keeps are tokens with a value per theme, grouped in index.css under "Held
 in dark": a diff's context line (dimmed in dark, stepped back by ink in
 light), the Inbox diff's code (green keywords and amber type names in
-dark, the transcript's two inks in light), a slide's ground (the bare
-canvas in dark, `stage` with a 16px inset in light), a raster add-on
+dark, the transcript's two inks in light), a link (the accent in dark; an
+agent page's link keeps its sky blue there as `link-color`), an alert's
+description and a search hit's line (`near-foreground`: foreground at 80%
+in dark), struck words and a command's strings and flags
+(`soft-foreground`: foreground at 70% in dark), a slide's ground (the bare canvas in dark, `stage` with a 16px
+inset in light), a raster add-on
 mark's tile, and Monaco's completion list (IDEA's row and badge fills in
 dark, the muted row and darker fills in light). A brand mark's colour
 is judged only on the light menu, and the terminal holds a program's
 colours to 4.5:1 only on the light pane. Each is his to change in dark:
-`docs/agents/appearance.md` lists what to flip.
+`docs/agents/appearance.md` lists what to flip. One thing did move in
+dark, by a few levels of gray and no more: text that was an opacity of
+`foreground` under 70% (a done task, a line number in a markdown file, a
+completion's detail) is now `muted-foreground` or `faint-foreground`, the
+nearest of the three inks.
 
 What draws with its own theme takes it from the tokens or carries a table
 per theme, and follows a change live:
@@ -275,7 +283,7 @@ both themes, unless the table gives two values.
 | --- | --- | --- |
 | `add-bg` | a change waiting on the person: added words, a filled cell, a suggested task | `success` 14% |
 | `add-bg-soft` | a sheet's cells just after the agent wrote them | `success` 8% |
-| `del-bg` | words or cells a change would remove (struck through, in `muted-foreground`) | `destructive` 12% |
+| `del-bg` | words or cells a change would remove (struck through, in `soft-foreground`) | `destructive` 12% |
 | `sel-bg` | a selection the person made that an Ask or a comment will take; the current find hit, with the accent line | `accent` 22% |
 | `diff-gap` | the blank that holds a missing side's place in a compare | `foreground` 4% |
 | `border-strong` | a sheet's frozen-pane line | `foreground` 24% |

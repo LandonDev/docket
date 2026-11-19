@@ -237,7 +237,7 @@ describe('htmlRenderTheme', () => {
       background: '--background',
       foreground: '--foreground',
       accent: '--accent',
-      link: '--link',
+      link: '--link-color',
       success: '--thread-success',
       warning: '--thread-warning',
       danger: '--thread-danger',

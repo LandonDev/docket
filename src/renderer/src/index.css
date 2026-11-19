@@ -83,7 +83,7 @@
   --accent: hsl(211 92% 62%);
   --accent-foreground: #ffffff;
   --ring: var(--accent);
-  --link: #7dd3fc;
+  --link: var(--accent);
   --destructive: var(--thread-danger);
   --destructive-foreground: #ffffff;
   --success: var(--thread-success);
@@ -213,6 +213,15 @@
      colour); the Inbox's diff colours keywords and type names here and uses
      the transcript's two inks in light; a slide sits straight on the canvas
      here and on the stage ground, 16px in, in light. */
+  /* A link is the accent here, as it was, and its own darker blue in light;
+     an agent's HTML page keeps the sky blue its links had (`link-color`).
+     An alert's description and a search hit's line are foreground at 80%
+     here and foreground in light; struck words in a compare and a command's
+     strings and flags are foreground at 70% here and muted-foreground in
+     light. */
+  --link-color: #7dd3fc;
+  --near-foreground: color-mix(in srgb, var(--foreground) 80%, transparent);
+  --soft-foreground: color-mix(in srgb, var(--foreground) 70%, transparent);
   --diff-context-dim: 0.7;
   --diff-context-strong: initial;
   --pr-code-keyword: var(--success);
@@ -306,6 +315,9 @@ html.theme-light {
   --editor-symbol-field: #a35c98;
   --editor-symbol-variable: #2c7f8b;
   --editor-symbol-keyword: #757575;
+  --link-color: var(--link);
+  --near-foreground: var(--foreground);
+  --soft-foreground: var(--muted-foreground);
   --diff-context-dim: 1;
   --diff-context-strong: var(--muted-foreground);
   --pr-code-keyword: var(--foreground);

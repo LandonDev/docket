@@ -648,7 +648,7 @@ function Field({ q, was, editing, onChange }: { q: FormQuestion; was?: FormQuest
       {options.map((o) => (
         <div key={`${o.text}${o.mark ?? ""}`} className="flex min-h-7 items-start gap-2 py-1 text-sm leading-5">
           <i aria-hidden className="mt-[3px] size-3.5 shrink-0 rounded-full ring-[1.5px] ring-foreground/40 ring-inset" />
-          <span className={o.mark === "add" ? "bg-(--add-bg) px-0.5" : o.mark === "del" ? "bg-(--del-bg) px-0.5 text-muted-foreground line-through" : "px-0.5"}>{o.text}</span>
+          <span className={o.mark === "add" ? "bg-(--add-bg) px-0.5" : o.mark === "del" ? "bg-(--del-bg) px-0.5 text-(--soft-foreground) line-through" : "px-0.5"}>{o.text}</span>
         </div>
       ))}
     </div>

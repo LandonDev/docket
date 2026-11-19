@@ -94,9 +94,10 @@ export function readPalette(dark: boolean): Record<string, string> {
   // Content over base, for the fills and edges editorChrome.ts draws on the CodeMirror pane.
   const mix = (pct: number) =>
     cssToHex(`color-mix(in srgb, ${content} ${pct}%, ${base})`)?.slice(0, 7) ?? content;
-  // Line numbers and ghost text may be missed; the active line's number and inlay hints support the code.
-  const faint = solid("--faint-foreground", mix(38));
-  const muted = solid("--muted-foreground", mix(60));
+  // Line numbers and ghost text may be missed; the active line's number and inlay hints support
+  // the code. Light takes the two ink tokens; dark keeps the mixes it had.
+  const faint = dark ? mix(38) : solid("--faint-foreground", mix(38));
+  const muted = dark ? mix(60) : solid("--muted-foreground", mix(60));
   const hairline = mix(7);
   const borderStrong = mix(16);
   const popover = mix(4);

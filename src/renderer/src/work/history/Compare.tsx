@@ -22,7 +22,7 @@ type Side = "both" | "left" | "right";
 const CUR = "rounded-[2px] outline-1 outline-offset-2 outline-[color-mix(in_srgb,var(--foreground)_40%,transparent)]";
 const INS = "rounded-[2px] bg-(--add-bg) box-decoration-clone";
 // Removed words keep 70% of the ink, so they read on the tint in both themes.
-const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-muted-foreground line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
+const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-(--soft-foreground) line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
 
 function styled(run: Pick<DiffRun, "styles" | "href" | "kind">, text: ReactNode, key: number): ReactNode {
   if (run.kind) return <sup key={key} className="text-muted-foreground">*</sup>;

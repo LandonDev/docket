@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import type { DevPortLog, DevRun, DevRunPush } from "@server/shared/contract-devservers";
 import type { ServerPush } from "@server/shared/contract";
 import { registry } from "../lib/connection/registry";
-import { isLightScheme, SCHEME_CHANGE_EVENT } from "../lib/appearance";
+import { SCHEME_CHANGE_EVENT } from "../lib/appearance";
 import { fitTerminal } from "../lib/terminalLayout";
 import { monoFont, terminalScheme } from "./TerminalView";
 import "@xterm/xterm/css/xterm.css";

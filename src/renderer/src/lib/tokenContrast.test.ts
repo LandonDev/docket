@@ -43,6 +43,9 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
         ["--foreground", "--muted-foreground", "--link", "--thread-success", "--thread-warning", "--thread-danger", "--thread-info"],
         SURFACES,
       ),
+      // An alert's description and a search hit's line (foreground at 80% in dark, held; foreground in light).
+      // Struck words in a compare and a command's strings and flags (foreground at 70% in dark, held).
+      ...pairs(["--near-foreground", "--soft-foreground"], PAGE),
       // Ink the composer and the markdown source draw, on the grounds they are typed on.
       ...pairs(["--color-skill", "--color-mention", "--color-markdown-heading"], [...PAGE, "--popover"]),
       { ink: "--primary-foreground", on: "--primary" },

@@ -37,7 +37,7 @@ function readTheme(appearance: HtmlRenderAppearance): HtmlRenderTheme {
     background: read("--background", fallback.background),
     foreground: read("--foreground", fallback.foreground),
     accent: read("--color-accent", fallback.accent),
-    link: read("--link", fallback.link),
+    link: read("--link-color", fallback.link),
     success: read("--thread-success", fallback.success),
     warning: read("--thread-warning", fallback.warning),
     danger: read("--thread-danger", fallback.danger),
