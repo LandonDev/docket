@@ -3032,11 +3032,13 @@ public enum Methods {
             public let id: String
             public let sendAt: Int?
             public let seen: Seen
+            public let waited: Bool?
 
-            public init(id: String, sendAt: Int? = nil, seen: Seen) {
+            public init(id: String, sendAt: Int? = nil, seen: Seen, waited: Bool? = nil) {
                 self.id = id
                 self.sendAt = sendAt
                 self.seen = seen
+                self.waited = waited
             }
         }
 

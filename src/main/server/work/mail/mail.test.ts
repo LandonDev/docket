@@ -106,6 +106,50 @@ describe('Send from TempCode', () => {
     expect(sends()).toHaveLength(1)
   })
 
+  it("tells LifeOS a held draft is due at once only when his press already waited in the window", async () => {
+    // The composer's waited press: the hold sends it, and LifeOS need not queue it again.
+    const waited = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Now.' })
+    rig.lifeos.fire()
+    await settled()
+    expect(await rig.rpc('work.mail.send', { id: waited, seen: seenOf(waited), waited: true })).toEqual({ id: waited, via: 'hold' })
+    expect(sends().at(-1)!.args).toMatchObject({ id: waited, cause: 'press', immediate: true })
+
+    // The same hold, pressed from the Outbox page: no mark, so LifeOS queues it with its own Undo.
+    const paged = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Later.' })
+    rig.lifeos.fire()
+    await settled()
+    const { items } = await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', {})
+    const item = items.find((i) => i.ref.at === 'lifeos' && i.ref.id === paged)!
+    await rig.rpc('work.outbox.send', { ref: item.ref, rev: item.updatedAt })
+    expect(sends().at(-1)!.args).toMatchObject({ id: paged, cause: 'press' })
+    expect(sends().at(-1)!.args).not.toHaveProperty('immediate')
+
+    // A press that did not wait, through the composer's own road: no immediate either.
+    const plain = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Plain.' })
+    rig.lifeos.fire()
+    await settled()
+    await rig.rpc('work.mail.send', { id: plain, seen: seenOf(plain) })
+    expect(sends().at(-1)!.args).not.toHaveProperty('immediate')
+  })
+
+  it('never carries a waited mark over to his own mail or to a later send', async () => {
+    const own = rig.lifeos.draft({ subject: 'Lunch' })
+    delete (rig.lifeos.rows.get(own)! as { origin?: unknown }).origin
+    // `waited` means nothing for his own mail, which keeps LifeOS's queue.
+    expect(await rig.rpc('work.mail.send', { id: own, seen: seenOf(own), waited: true })).toEqual({ id: own, via: 'owner' })
+    expect(sends().at(-1)!.args).not.toHaveProperty('immediate')
+    // A waited press the hold refused leaves no mark behind for the next send of that draft.
+    const held = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Held.' })
+    rig.lifeos.fire()
+    await settled()
+    const seen = seenOf(held)
+    ;(rig.lifeos.rows.get(held)! as { message: { text: string } }).message.text = 'Changed after the press.'
+    await expect(rig.rpc('work.mail.send', { id: held, seen, waited: true })).rejects.toThrow()
+    await rig.rpc('work.mail.send', { id: held, seen: seenOf(held) })
+    expect(sends().at(-1)!.args).toMatchObject({ id: held })
+    expect(sends().at(-1)!.args).not.toHaveProperty('immediate')
+  })
+
   it('goes as his own compose.send for mail he wrote himself, cleaned, at the time he chose', async () => {
     const id = rig.lifeos.draft({ subject: 'Lunch' })
     const row = rig.lifeos.rows.get(id)! as { origin?: unknown; message: { html: string } }

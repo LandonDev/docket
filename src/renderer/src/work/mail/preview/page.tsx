@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { MailClientProvider, MailKitProvider, opening, type ComposeState } from "work-kit/mail";
+import { MailClientProvider, MailKitProvider, MailSettings, opening, type ComposeState } from "work-kit/mail";
 import { corpusOutbox, corpusSignatures, corpusThreads, createFixtureMailClient, generateThreads } from "work-kit/mail/fixtures";
 import { Toaster } from "../../../components/ui/toaster";
 import { applyThemePreference, saveThemePreference } from "../../../lib/appearance";
@@ -63,9 +63,15 @@ createRoot(document.getElementById("root")!).render(
   <>
     <MailClientProvider client={client}>
       <MailKitProvider kit={tempcodeMailKit}>
-        <div className="h-screen bg-background text-foreground">
-          <MailScreen id={ID} onOpenTask={() => {}} />
-        </div>
+        {params.get("page") === "settings" ? (
+          <div data-mail-kit className="tc-mail h-screen overflow-x-hidden overflow-y-auto bg-background p-6 text-foreground">
+            <MailSettings />
+          </div>
+        ) : (
+          <div className="h-screen bg-background text-foreground">
+            <MailScreen id={ID} onOpenTask={() => {}} />
+          </div>
+        )}
       </MailKitProvider>
     </MailClientProvider>
     <Toaster />

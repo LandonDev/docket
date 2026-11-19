@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { fenced } from './assets'
 import { mimeFor } from './server/remote/ui'
+import { lifeosAddress, withLifeosConnect } from '@shared/pagePolicy'
 
 /**
  * `tempcode-app://renderer/` serves the built renderer (out/renderer) in the
@@ -44,6 +45,10 @@ export async function handleAppRequest(request: Request): Promise<Response> {
   if (!path) return new Response('not found', { status: 404 })
   try {
     const file = await net.fetch(pathToFileURL(path).toString())
+    // The page itself: its policy lets it fetch from the LifeOS this host talks to (pagePolicy.ts).
+    if (file.ok && /[\\/]index\.html$/.test(path)) {
+      return new Response(withLifeosConnect(await file.text(), lifeosAddress().url), { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+    }
     const mime = mimeFor(path)
     if (!mime || !file.ok) return file
     return new Response(file.body, { status: file.status, headers: { 'Content-Type': mime } })

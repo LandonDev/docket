@@ -3,6 +3,7 @@ import type { OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, NotBuilt, type HeldRef } from '@shared/work'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { outgoingHtml } from '../mail/outgoing'
+import { takeWaited } from '../mail/waited'
 import { ActStale } from './kinds'
 import { shownEvent, type LifeosHeld, type Outbox } from './outbox'
 import { INTERRUPTED } from './store'
@@ -546,7 +547,12 @@ export const mailSendKind: ActKindDef<MailSendPayload, MailSendMatcher> = {
     if (!now?.row) throw new ActStale('LifeOS no longer has this mail')
     if (now.row.status === 'failed') await owner.mutation(LIFEOS_HELD_FNS.mailRetry, { id: p.id })
     // The outgoing rules clean the HTML first: Outlook takes it as it is, and a draft can carry a raw signature.
-    else if (now.row.status === 'draft') await owner.mutation(LIFEOS_HELD_FNS.mailSend, { id: p.id, message: { ...p.message, html: outgoingHtml(p.message.html) }, cause })
+    else if (now.row.status === 'draft') {
+      // Due at once only for his own press that already waited out the undo time in the window (work/mail/waited.ts);
+      // a grant never is, and LifeOS refuses `immediate` with `cause: 'grant'` besides.
+      const immediate = takeWaited(p.id) && cause === 'press'
+      await owner.mutation(LIFEOS_HELD_FNS.mailSend, { id: p.id, message: { ...p.message, html: outgoingHtml(p.message.html) }, cause, ...(immediate ? { immediate: true } : {}) })
+    }
     else if (!['queued', 'sending', 'sent'].includes(now.row.status)) throw new ActStale(`LifeOS holds this mail as ${now.row.status}`)
     // Already queued, sending or sent: it went by another hand (LifeOS's own app); nothing is sent twice.
     return { summary: mailWords(p).summary.replace(/^Send to/, 'Sent to'), ref: { at: 'lifeos', table: 'outbox', id: p.id } }

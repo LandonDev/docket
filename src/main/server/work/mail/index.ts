@@ -4,6 +4,7 @@ import type { OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, handled, NOT_HANDLED } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
 import { outgoingHtml } from './outgoing'
+import { markWaited, takeWaited } from './waited'
 
 /**
  * The mail pillar's server module (docs/agents/work-mail.md): the press
@@ -77,7 +78,7 @@ function mustApprove(by: Caller): void {
  * his own mail and goes as his `compose.send`. The HTML is cleaned by the
  * outgoing rules on both roads (the hold's `mail.send` cleans its own).
  */
-export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailSeen, sendAt?: number): Promise<MailSendAnswer> {
+export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailSeen, sendAt?: number, waited = false): Promise<MailSendAnswer> {
   mustApprove(by)
   const owner = ctx.lifeos.owner()
   const got = await owner.query<{ row: MailRow } | null>('compose:get', { id })
@@ -91,7 +92,16 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
     const outbox = WORK_MODULES.find((m) => m.id === 'outbox')
     if (!outbox?.handle) throw new Error('the Outbox is not running on this host')
     const rev = Math.round(row.editedAt ?? row._creationTime)
-    const answer = await outbox.handle({ id: 'mail', method: 'work.outbox.send', params: { ref: { at: 'lifeos', table: 'outbox', id }, rev } } as never, ctx, by)
+    // His press already waited out the undo time in the window: this one send may skip LifeOS's
+    // own queue. The mark is this module's alone to set, for this draft and this call only; the
+    // Outbox page, a grant and the phone send through the same hold and never carry it.
+    if (waited) markWaited(id)
+    let answer
+    try {
+      answer = await outbox.handle({ id: 'mail', method: 'work.outbox.send', params: { ref: { at: 'lifeos', table: 'outbox', id }, rev } } as never, ctx, by)
+    } finally {
+      takeWaited(id)
+    }
     if (!answer.handled) throw new Error('the Outbox did not take the send')
     // The hold settles a failed send, or a press another press beat, as a row and not a throw: say what became of it.
     const item = answer.result as OutboxItem
@@ -145,7 +155,7 @@ export const mail: WorkModule = {
   ensure: ensureMailTables,
   async handle(req, ctx, by) {
     if (req.method !== 'work.mail.send') return NOT_HANDLED
-    return handled(await sendMail(ctx, by, req.params.id, req.params.seen, req.params.sendAt))
+    return handled(await sendMail(ctx, by, req.params.id, req.params.seen, req.params.sendAt, req.params.waited === true))
   },
   start(ctx) {
     return ctx.lifeos.subscribe<MailRow[]>('outboxHeld:held', { host: ctx.host }, (rows) => openDrafts(ctx, rows ?? []))

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { lifeosAddress, withLifeosConnect } from '@shared/pagePolicy'
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
@@ -158,7 +159,8 @@ export function createUiHandler(options: UiOptions): UiHandler {
       return true
     }
     if (isDocument) {
-      const html = rewriteCsp(readFileSync(indexPath, 'utf8'), ctx.host, ctx.proto)
+      // The page may fetch from this host and, for Mail's bodies and pictures, from the LifeOS it talks to.
+      const html = withLifeosConnect(rewriteCsp(readFileSync(indexPath, 'utf8'), ctx.host, ctx.proto), lifeosAddress().url)
       send(res, 200, html, 'text/html; charset=utf-8', { 'Cache-Control': 'no-store' })
       return true
     }

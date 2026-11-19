@@ -29,7 +29,7 @@ export function sendThroughHost(env: string, actions: OutboxActions): OutboxActi
       // Everything that goes, so the host refuses a row changed in any of it after this save: the HTML and the files too.
       const attachments = [...(m.attachments ?? []).map((f) => ({ id: f.storageId, name: f.name })), ...(m.forwardParts ?? []).map((f) => ({ id: `part:${f.partId}`, name: f.name }))];
       const seen: MailSeen = { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text, html: m.html ?? "", attachments };
-      const answer = await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen, ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}) });
+      const answer = await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen, ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}), ...(args.waited ? { waited: true } : {}) });
       if (answer.via === "hold") heldSends.add(id);
       return id;
     },

@@ -1,4 +1,5 @@
 import { resolve } from 'path'
+import { lifeosAddress, withLifeosConnect } from './src/shared/pagePolicy'
 import { execFileSync, spawn } from 'child_process'
 import { mkdirSync, statSync, writeFileSync } from 'fs'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
@@ -244,7 +245,10 @@ export default defineConfig({
       react({ babel: { plugins: [reactCompiler] } }),
       tailwindcss(),
       bundleMap(),
-      hostedPages()
+      hostedPages(),
+      // The dev server's page gets LifeOS in its policy as the packaged page does at run time
+      // (src/shared/pagePolicy.ts); a build leaves index.html as written, for the scheme handler.
+      { name: 'lifeos-connect', apply: 'serve' as const, transformIndexHtml: (html: string) => withLifeosConnect(html, lifeosAddress(process.env).url) }
     ]
   }
 })

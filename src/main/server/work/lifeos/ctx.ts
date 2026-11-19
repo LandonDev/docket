@@ -40,17 +40,10 @@ export interface WorkLink {
   at: number
 }
 
-/** The real LifeOS: the box's self-hosted Convex and its MCP worker. An isolated instance may point elsewhere. */
-export const LIFEOS_URL = 'https://lifeos.landonhale.com'
-export const LIFEOS_MCP_URL = 'https://lifeos-mcp.landonhale.com/mcp'
-export function lifeosAddress(env: NodeJS.ProcessEnv = process.env): { url: string; mcpUrl: string } {
-  // Another LifeOS only for an isolated instance: the installed app always talks to the owner's own.
-  const isolated = !!env.TEMP_CODE_USER_DATA
-  return {
-    url: (isolated && env.TEMP_CODE_LIFEOS_URL) || LIFEOS_URL,
-    mcpUrl: (isolated && env.TEMP_CODE_LIFEOS_MCP_URL) || LIFEOS_MCP_URL
-  }
-}
+// The real LifeOS, and the rule for which one an isolated instance talks to, live with the page
+// policy (src/shared/pagePolicy.ts): whatever serves the renderer writes the same address into it.
+import { lifeosAddress } from '@shared/pagePolicy'
+export { LIFEOS_MCP_URL, LIFEOS_URL, lifeosAddress } from '@shared/pagePolicy'
 
 /** Seams a test passes in place of the real LifeOS and vault. */
 export interface LifeosSeams {

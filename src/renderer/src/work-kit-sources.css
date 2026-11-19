@@ -116,6 +116,7 @@
 @source "../../../node_modules/work-kit/src/mail/message-body.tsx";
 @source "../../../node_modules/work-kit/src/mail/proof/index.ts";
 @source "../../../node_modules/work-kit/src/mail/reading-pane.tsx";
+@source "../../../node_modules/work-kit/src/mail/settings.tsx";
 @source "../../../node_modules/work-kit/src/mail/thread-list.tsx";
 @source "../../../node_modules/work-kit/src/mail/types.ts";
 @source "../../../node_modules/work-kit/src/mail/use-pictures.ts";

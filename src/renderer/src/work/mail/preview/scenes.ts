@@ -57,6 +57,9 @@ export const SCENES: Scene[] = [
   { name: "reply", set: then(opened("c-invoice"), press("[data-mail-pane] button.mail-reply-row")), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
   { name: "new-mail", set: async (page) => void (await page.eval(`window.__mail.compose({ open: { kind: "new" }, full: true })`)), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
   { name: "held-draft", set: async (page) => void (await page.eval(`window.__mail.compose({ open: { kind: "row", id: "c-held" }, full: true })`)), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
+  { name: "settings", query: "page=settings", ready: `document.querySelector("h2")?.textContent === "Mail" && document.querySelectorAll("h3").length === 4` },
+  { name: "settings-signature", query: "page=settings", set: press("section:nth-of-type(3) button.group\\/row"), ready: `document.querySelector("[role=dialog] .tiptap")` },
+  { name: "settings-account", query: "page=settings", set: press("section:nth-of-type(4) button.group\\/row"), ready: `document.querySelector("[role=dialog]")` },
   { name: "list", ready: `document.querySelectorAll("[data-mail-list] li").length > 5` },
   { name: "loading", query: "late=1" },
 ];
@@ -71,7 +74,7 @@ export async function shoot(browser: Chromium, url: string, scene: Scene, dir: s
     for (const [width, height] of SIZES) {
       const page = await browser.page(width, height);
       await page.goto(`${url}?theme=${theme}${scene.query ? `&${scene.query}` : ""}`);
-      if (scene.name !== "loading") await page.until(`document.querySelector("[data-mail-list] li")`, "the list");
+      if (scene.name !== "loading" && !scene.query?.includes("page=")) await page.until(`document.querySelector("[data-mail-list] li")`, "the list");
       await scene.set?.(page);
       if (scene.ready) await page.until(scene.ready, `${scene.name} to settle`);
       // Pictures land a turn after their frame; a shot waits for them.

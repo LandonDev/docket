@@ -39,9 +39,11 @@ export const MailRequestSchemas = [
   /**
    * → { id, via }: sends the `outbox` row as LifeOS holds it now, only if it still says what the
    * composer saved (`seen`: who it goes to, the subject and the words). `sendAt` schedules the
-   * owner's own mail; a held draft goes now or not at all.
+   * owner's own mail; a held draft goes now or not at all. `waited`: the window already waited
+   * out the undo time for this held draft (the composer's toast, with Undo), so LifeOS need not
+   * queue it a second time. It means nothing for his own mail, which keeps LifeOS's queue.
    */
-  request('work.mail.send', z.object({ id: z.string().min(1).max(64), sendAt: z.number().int().positive().optional(), seen: MailSeenSchema }))
+  request('work.mail.send', z.object({ id: z.string().min(1).max(64), sendAt: z.number().int().positive().optional(), seen: MailSeenSchema, waited: z.boolean().optional() }))
 ] as const
 
 /** How a send went: through the hold (a thread's draft) or as the owner's own mail. */
