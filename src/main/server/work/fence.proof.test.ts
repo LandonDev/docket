@@ -39,10 +39,8 @@ const { WORK_STANDING_RULE } = await import('./preamble')
  * a scratch folder.
  *
  * A harness whose CLI is not installed is skipped with a line saying so;
- * `TEMP_CODE_REQUIRE_FENCE_PROOF=1` makes that a failure. Muse Code is not
- * offered for Work threads (work/scope.ts `WORK_PROVIDERS`), so it has no
- * fenced case here; its sources and the fence it would need are written up
- * in the milestone's landing note.
+ * `TEMP_CODE_REQUIRE_FENCE_PROOF=1` makes that a failure. Muse Code's
+ * proof is its sibling, fence-muse.proof.test.ts.
  */
 
 const REQUIRED = process.env.TEMP_CODE_REQUIRE_FENCE_PROOF === '1'
