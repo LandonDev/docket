@@ -155,6 +155,8 @@ export function rigSpawn(port: number, guestDataDir: string, hostDataDir: string
       sock?.destroy()
       return true
     }
+    // the connection starts once its child says it spawned
+    void ready.then(() => child.emit('spawn'), (e: Error) => child.emit('error', e))
     return child
   }) as unknown as typeof spawn
 }
