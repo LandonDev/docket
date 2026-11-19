@@ -37,7 +37,8 @@
  *                                 machinery behind it here: macBridge.held, boot-resume, accounts)
  *   POST /batch-log { masterId, lines }  → appends lines to the master's running shell step (a streaming console)
  *   POST /notes { sessionId, text }      → writes a thread's notes.md (the `notes` push follows)
- *   POST /work-held { rows }   → writes held acts into the hold as it writes them (milestone 46's work set)
+ *   POST /work-held { rows }   → writes held acts into the hold as it writes them (milestone 46's work set);
+ *                                 `forms` and `dashboards` write the rows behind a form's and a dashboard's item (milestone 47)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
  *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /hold { seconds }      → the host goes down for that long: every remote socket dropped and every
@@ -2120,6 +2121,16 @@ const control = createServer((req, res) => {
             db.prepare('INSERT INTO work_results (id, session_id, root_id, workspace_id, kind, summary, account, ref, undo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)').run(
               String(r.id), String(r.sessionId), String(r.sessionId), r.workspaceId == null ? null : String(r.workspaceId), String(r.kind ?? 'cells'), String(r.summary), r.account == null ? null : String(r.account), r.undo == null ? null : JSON.stringify(r.undo), now - 5 * 60_000
             )
+          }
+          // Milestone 47: a form's and a dashboard's row behind their canvas items, as `form_create` and
+          // `dashboard_create` write them (a model tool each; no model turn runs here).
+          const forms = Array.isArray(body.forms) ? (body.forms as { itemId: string; sessionId: string; body: unknown }[]) : []
+          for (const f of forms) {
+            db.prepare(`INSERT OR REPLACE INTO work_forms (item_id, session_id, rev, body, updated_at) VALUES (?, ?, 0, ?, ?)`).run(f.itemId, f.sessionId, JSON.stringify(f.body), now)
+          }
+          const dashboards = Array.isArray(body.dashboards) ? (body.dashboards as { itemId: string; sessionId: string; title: string; blocks: unknown[] }[]) : []
+          for (const d of dashboards) {
+            db.prepare(`INSERT OR REPLACE INTO work_dashboards (item_id, session_id, rev, title, blocks, as_of, updated_at) VALUES (?, ?, 1, ?, ?, NULL, ?)`).run(d.itemId, d.sessionId, d.title, JSON.stringify(d.blocks), now)
           }
           return answer(200, { written: rows.length })
         } finally {

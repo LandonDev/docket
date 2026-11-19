@@ -14,6 +14,13 @@
 #           place in its thread, the thread's Results, New Workspace and New Work Chat sheets, a
 #           grant made from the post's Send menu, Away cycled from the phone with its note and
 #           review, Settings → Work with the grant; Home and the Outbox once more in dark.
+#           Then milestone 47 (w21 on): the Work workspace's screen with Mail, Tasks, Agenda and
+#           Routines (TC_TEST_ROUTE=work-workspace), Mail on LifeKit's fixture day with a thread open,
+#           Start Thread from it and the thread it starts, Tasks and its Start Thread, Agenda, Routines,
+#           the voice switch, and the Item segment of "Spring LAN check-in" for each kind seedWorkItems
+#           opens (TC_TEST_ITEM picks it): the PDF, the video with a comment posted at a frame, the
+#           picture, the meeting, the browser with its held submit and that act opened, the form, the
+#           dashboard and history. TC_WORK_ONLY=m47 shoots that part alone.
 #           scripts/ios-sim-proof-local.ts then reads back on the host what went
 #           ($OUT/work-report.txt).
 #   shell   Home, a workspace's project cards, the archived list, Inbox,
@@ -398,6 +405,9 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_STREAM_SECONDS="${TC_STREAM_SECONDS:-}" \
   SIMCTL_CHILD_TC_TEST_GROUP_GLIDE="${TC_GROUP_GLIDE:-}" \
   SIMCTL_CHILD_TC_TEST_PERF="${TC_PERF_RUN:-}" \
+  SIMCTL_CHILD_TC_TEST_WORK_VIEW="${TC_WORK_VIEW:-}" \
+  SIMCTL_CHILD_TC_TEST_LIFE_FIXTURES="${TC_LIFE_FIXTURES:-}" \
+  SIMCTL_CHILD_TC_TEST_ITEM="${TC_ITEM:-}" \
   SIMCTL_CHILD_TC_TEST_CONTROL_URL="${TC_PERF_RUN:+${TC_TEST_CONTROL_URL:-}}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
 }
@@ -1050,6 +1060,41 @@ transcript_report() {
 work_set() {
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  # TC_WORK_ONLY=m47 shoots milestone 47's part alone (a hand run while its screens change).
+  [ "${TC_WORK_ONLY:-}" = m47 ] || work_m46
+  work_m47
+}
+
+# Milestone 47: a Work workspace's Mail, Tasks, Agenda and Routines (LifeKit's fixture day: the test server
+# has no LifeOS), Start Thread from a mail and a task, the voice switch, then the Item segment of the seeded
+# thread for each kind (scripts/lib/ios-work-seeds.ts seedWorkItems). Slides need a rendered deck (soffice)
+# and a guest link a hosted (LifeOS) item; history needs the Work service, which runs only under Electron.
+work_m47() {
+  local items="Spring LAN check-in"
+  shot w21-work-workspace-light work-workspace "" "" "" 12
+  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail shot w22-mail-thread-light work-view "" "" mail-thread
+  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail TC_SHEET=start-thread-mail shot w23-mail-start-thread-light work-view "" "" mail-thread
+  # The sheet fills its words and presses Start three seconds after it shows; the new thread opens.
+  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail TC_SHEET=start-thread-mail TC_ACTION=start-thread launch_app work-view "" "" mail-thread
+  sleep 7; snap w24-mail-start-thread-filled-light
+  sleep 8; snap w25-mail-started-thread-light
+  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=tasks shot w26-tasks-light work-view
+  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=tasks TC_SHEET=start-thread-task shot w27-tasks-start-thread-light work-view
+  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=agenda shot w28-agenda-light work-view
+  TC_WORK_VIEW=routines shot w29-routines-light work-view
+  shot w30-house-rules-voice-light house-rules
+  TC_ITEM=pdf shot w31-item-pdf-light thread "$items" item
+  TC_ITEM="LAN promo" TC_ACTION="media-comment:Logo flickers here" shot w32-item-video-comment-light thread "$items" item "" 20
+  TC_ITEM="Arena seating" shot w33-item-picture-light thread "$items" item "" 14
+  TC_ITEM=meeting shot w34-item-meeting-light thread "$items" item
+  TC_ITEM=browser shot w35-item-browser-light thread "$items" item
+  TC_ITEM=browser shot w36-item-browser-held-opened-light thread "$items" item browser-held 14
+  TC_ITEM=form shot w37-item-form-light thread "$items" item
+  TC_ITEM=dashboard shot w38-item-dashboard-light thread "$items" item
+  TC_ITEM=history shot w39-item-history-light thread "$items" item compare
+}
+
+work_m46() {
   shot w01-home-light home "" "" "" 12
   shot w02-outbox-light outbox
   shot w03-mail-light outbox-item

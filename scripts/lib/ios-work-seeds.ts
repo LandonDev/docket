@@ -165,3 +165,199 @@ export async function verifyWork(ready: WorkSeedReady): Promise<string[]> {
     s.close()
   }
 }
+
+/** Milestone 47's Work thread: every canvas kind the phone draws, open in one thread (TC_TEST_SEGMENT=item). */
+export const ITEMS_THREAD_TITLE = 'Spring LAN check-in'
+/** The comment the work set posts at a frame of the video, read back by `verifyWorkItems`. */
+export const MEDIA_COMMENT = 'Logo flickers here'
+
+/** A small PDF of `pages` pages, each with a heading and a line, written by hand (no PDF library here). */
+function pdfOf(pages: string[][]): Buffer {
+  const objects: string[] = []
+  const add = (body: string): number => objects.push(body)
+  const catalog = add('')
+  const tree = add('')
+  const font = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+  const kids: number[] = []
+  const esc = (t: string) => t.replace(/[\\()]/g, (c) => `\\${c}`)
+  for (const lines of pages) {
+    const text = lines.map((l, i) => `BT /F1 ${i === 0 ? 28 : 14} Tf 72 ${720 - i * 40} Td (${esc(l)}) Tj ET`).join('\n')
+    const content = add(`<< /Length ${Buffer.byteLength(text)} >>\nstream\n${text}\nendstream`)
+    kids.push(add(`<< /Type /Page /Parent ${tree} 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${font} 0 R >> >> /Contents ${content} 0 R >>`))
+  }
+  objects[catalog - 1] = `<< /Type /Catalog /Pages ${tree} 0 R >>`
+  objects[tree - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`
+  let out = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((body, i) => {
+    offsets.push(Buffer.byteLength(out))
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xref = Buffer.byteLength(out)
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`
+  out += `trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(out)
+}
+
+/**
+ * Opens one item of every kind in a new Purdue Work thread through `work.canvas.open`, as the desktop's
+ * canvas does, writes the rows a model tool would make behind a form and a dashboard, and holds a browser
+ * submit for the thread. Each kind the test server cannot serve is a line saying so, with its error.
+ */
+export async function seedWorkItems(ready: WorkSeedReady & { environmentId: string }, purdue: string): Promise<{ sessionId: string; lines: string[] }> {
+  const { mkdirSync, writeFileSync } = await import('node:fs')
+  const { spawnSync } = await import('node:child_process')
+  const host = ready.environmentId
+  const s = await socket(ready)
+  const lines: string[] = []
+  try {
+    // The files go in the workspace's own folder: a key names paths only inside the app-managed roots.
+    const workspaces = await s.call<{ id: string; path: string }[]>('workspace.list', {})
+    const dir = `${workspaces.find((w) => w.id === purdue)!.path}/Spring LAN`
+    mkdirSync(dir, { recursive: true })
+    const thread = await s.call<{ id: string }>('session.create', { scope: 'work', workspaceId: purdue, threadType: 'chat', provider: 'claude', model: 'claude-opus-5-5', title: ITEMS_THREAD_TITLE })
+    const sessionId = thread.id
+    const open = async (kind: string, title: string, source: unknown): Promise<string | null> => {
+      try {
+        const item = await s.call<{ id: string }>('work.canvas.open', { sessionId, kind, title, source })
+        return item.id
+      } catch (err) {
+        lines.push(`NOT RUN ${kind} "${title}": ${String(err)}`)
+        return null
+      }
+    }
+    const probe = async (kind: string, method: string, params: unknown): Promise<void> => {
+      try {
+        await s.call(method, params)
+        lines.push(`OK ${kind}: ${method} answered`)
+      } catch (err) {
+        lines.push(`FAIL ${kind}: ${method}: ${String(err)}`)
+      }
+    }
+
+    const pdfPath = `${dir}/Spring LAN floor plan.pdf`
+    writeFileSync(pdfPath, pdfOf([
+      ['Spring LAN floor plan', 'Arena A: 120 seats in six rows.'],
+      ['Power', 'Two 30 A runs on the east wall.'],
+      ['Network', 'One switch per row, uplink at the stage.'],
+      ['Check-in', 'Badges at the south doors from 8:30 AM.']
+    ]))
+    const pdf = await open('pdf', 'Spring LAN floor plan', { at: 'file', host, path: pdfPath })
+    if (pdf) await probe('pdf', 'work.pdf.open', { itemId: pdf })
+
+    const ffmpeg = (args: string[]) => spawnSync('ffmpeg', ['-y', '-loglevel', 'error', ...args], { encoding: 'utf8' })
+    const mp4 = `${dir}/LAN promo.mp4`
+    const made = ffmpeg(['-f', 'lavfi', '-i', 'testsrc=duration=6:size=1280x720:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', mp4])
+    if (made.status !== 0) lines.push(`NOT RUN media video: ffmpeg failed: ${made.stderr}`)
+    else {
+      const video = await open('media', 'LAN promo', { at: 'file', host, path: mp4 })
+      if (video) await probe('media video', 'work.media.view', { itemId: video, plays: ['hls', 'tiles'] })
+    }
+    const png = `${dir}/Arena seating.png`
+    const shot = ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=2400x1600', '-frames:v', '1', png])
+    if (shot.status !== 0) lines.push(`NOT RUN media picture: ffmpeg failed: ${shot.stderr}`)
+    else {
+      const picture = await open('media', 'Arena seating', { at: 'file', host, path: png })
+      if (picture) await probe('media picture', 'work.media.view', { itemId: picture, plays: ['hls', 'tiles'] })
+    }
+
+    const browser = await open('browser', 'Arena booking', { at: 'browser', host, sessionId })
+    if (browser) await probe('browser', 'work.browser.state', { sessionId })
+
+    const vtt = `${dir}/LAN staff sync.vtt`
+    writeFileSync(vtt, [
+      'WEBVTT', '',
+      '00:00:01.000 --> 00:00:06.000', '<v Karen Mills>We have the arena from 9 to 6 on the tenth.</v>', '',
+      '00:00:06.500 --> 00:00:12.000', '<v Landon Hale>Good. Check-in opens at 8:30, badges at the south doors.</v>', '',
+      '00:00:12.500 --> 00:00:18.000', '<v Tom Reyes>I will bring two more switches for the back rows.</v>', '',
+      '00:00:18.500 --> 00:00:24.000', '<v Karen Mills>Then we are set. I will send the booking form today.</v>', ''
+    ].join('\n'))
+    const meeting = await open('meeting', 'LAN staff sync', { at: 'file', host, path: vtt })
+    if (meeting) await probe('meeting', 'work.meetings.start', { itemId: meeting })
+
+    const form = await open('form', 'Spring LAN sign-up', { at: 'thread' })
+    const dash = await open('dashboard', 'Spring LAN numbers', { at: 'thread' })
+    const formBody = {
+      title: 'Spring LAN sign-up',
+      description: 'Saturday, April 10 in the CoRec arena.',
+      questions: [
+        { id: 'q1', label: 'Your name', type: 'short', required: true },
+        { id: 'q2', label: 'Game', type: 'choice', required: true, options: ['Valorant', 'Rocket League', 'Overwatch 2'] },
+        { id: 'q3', label: 'Dietary needs', type: 'long', required: false }
+      ]
+    }
+    const by = { kind: 'agent', host, sessionId }
+    const blocks = [
+      { id: 'b1', kind: 'heading', text: 'Sign-ups' },
+      {
+        id: 'b2', kind: 'figures', figures: [
+          { id: 'f1', label: 'Players', sub: 'of 120 seats', format: 'number', from: { service: 'Sign-up sheet', counts: 'Rows with a name' }, value: '96' },
+          { id: 'f2', label: 'Budget left', format: 'money', from: { service: 'Budget sheet', counts: 'Budget less spent' }, value: '$214' }
+        ]
+      },
+      { id: 'b3', kind: 'text', text: 'Valorant fills first; Rocket League has room.' },
+      { id: 'b4', kind: 'chart', title: 'Sign-ups by week', format: 'number', from: { sheet: { at: 'file', host, path: `${dir}/signups.tcsheet` }, sheetTitle: 'Sign-ups', range: 'B2:B5', counts: 'New names each week', labels: 'A2:A5' }, bars: [{ label: 'W1', value: 18 }, { label: 'W2', value: 31 }, { label: 'W3', value: 22 }, { label: 'W4', value: 25 }] },
+      { id: 'b5', kind: 'table', title: 'By game', from: { sheet: { at: 'file', host, path: `${dir}/signups.tcsheet` }, sheetTitle: 'Sign-ups', range: 'D1:E4', counts: 'Players per game' }, head: ['Game', 'Players'], rows: [['Valorant', '40'], ['Rocket League', '24'], ['Overwatch 2', '32']], numeric: [false, true], proposed: { by, reason: 'Shows where the seats went', at: Date.now() } }
+    ]
+    const res = await fetch(`${ready.controlUrl}/work-held`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        rows: [{
+          id: 'm47-browser-submit', workspaceId: purdue, sessionId, sector: 'purdue', kind: 'computer.act', verb: 'Submit',
+          summary: 'Submit the arena booking form', createdAt: Date.now() - 2 * 60_000,
+          payload: { app: { name: 'Chromium', bundleId: 'org.chromium.Chromium' }, action: 'left_click', element: 'button "Submit booking"', url: 'https://recwell.purdue.edu/book' }
+        }],
+        forms: form ? [{ itemId: form, sessionId, body: { ...formBody, questions: [] } }] : [],
+        dashboards: dash ? [{ itemId: dash, sessionId, title: 'Spring LAN numbers', blocks }] : []
+      })
+    })
+    if (!res.ok) lines.push(`FAIL /work-held for the M47 rows: ${res.status} ${await res.text()}`)
+    if (form) {
+      // His save, through the canvas's own method: the questions go in over the empty row form_create left.
+      await probe('form', 'work.forms.save', { itemId: form, rev: 0, body: formBody })
+      await probe('form', 'work.forms.responses', { itemId: form })
+    }
+    if (dash) await probe('dashboard', 'work.dashboards.open', { itemId: dash })
+
+    // History keeps versions of a document: a .tcdoc on this host.
+    const tcdoc = `${dir}/LAN poster.tcdoc`
+    try {
+      // work-kit has no exports map; the server reaches it through its path alias, this script by file.
+      const kit = resolve(import.meta.dir, '../../node_modules/work-kit/src/formats')
+      const { readMarkdown } = (await import(`${kit}/markdown/index.ts`)) as { readMarkdown: (text: string) => unknown }
+      const { writeImportedTcdoc } = (await import(`${kit}/tcdoc/index.ts`)) as { writeImportedTcdoc: (path: string, imported: unknown) => Promise<unknown> }
+      await writeImportedTcdoc(tcdoc, readMarkdown('# Spring LAN\n\nSaturday, April 10, 9:00 AM to 6:00 PM in the CoRec arena.\n\nBring your own headset.'))
+    } catch (err) {
+      lines.push(`INFO history: could not write a .tcdoc (${String(err)}); opening the path anyway`)
+    }
+    const history = await open('history', 'LAN poster history', { at: 'file', host, path: tcdoc })
+    if (history) await probe('history', 'work.history.versions', { source: { at: 'file', host, path: tcdoc } })
+
+    // Slides need a deck rendered to PDF; this Mac has no LibreOffice (soffice).
+    const soffice = spawnSync('sh', ['-c', 'command -v soffice || ls /Applications/LibreOffice.app/Contents/MacOS/soffice'], { encoding: 'utf8' })
+    if (soffice.status !== 0) lines.push('NOT RUN slides: no soffice on this Mac, so no deck can be rendered')
+    return { sessionId, lines }
+  } finally {
+    s.close()
+  }
+}
+
+/** What the work set's item presses left on the host: the video's comment at its frame. */
+export async function verifyWorkItems(ready: WorkSeedReady, sessionId: string): Promise<string[]> {
+  const s = await socket(ready)
+  try {
+    const lines: string[] = []
+    const { items } = await s.call<{ items: { id: string; kind: string; title: string }[] }>('work.canvas.list', { sessionId })
+    lines.push(`INFO ${items.length} items open in "${ITEMS_THREAD_TITLE}": ${items.map((i) => `${i.kind} "${i.title}"`).join(', ')}`)
+    const video = items.find((i) => i.kind === 'media' && i.title === 'LAN promo')
+    if (video) {
+      const view = await s.call<{ notes?: { kind: string; body: string; anchor: { versionId: string; frame?: number } }[] }>('work.media.view', { itemId: video.id, plays: ['hls', 'tiles'] })
+      const note = (view.notes ?? []).find((n) => n.kind === 'comment' && n.body === MEDIA_COMMENT)
+      lines.push(`${note ? 'PASS' : 'FAIL'} the video's comment from the phone is on the host${note ? ` at anchor.frame ${note.anchor.frame} of version ${note.anchor.versionId}` : ''}`)
+    }
+    return lines
+  } finally {
+    s.close()
+  }
+}

@@ -834,6 +834,26 @@
   its add-ons in process with `TC_TEST_ADDONS=1`, and `POST /work-held`
   writes held acts as the hold does), shoots the screens and reads back on
   the host what the phone's presses did (`work-report.txt`).
+  Milestone 47's part (w21 on; `TC_WORK_ONLY=m47` alone): `seedWorkItems`
+  opens one item of each kind in a third Purdue thread, "Spring LAN
+  check-in", through `work.canvas.open` (a PDF, a video and a picture made
+  with ffmpeg, the browser, a meeting from a WebVTT transcript, a form, a
+  dashboard, a `.tcdoc`'s history), writes the rows `form_create` and
+  `dashboard_create` would make (`/work-held`'s `forms` and `dashboards`),
+  and holds a browser submit for the thread. The work set's server is an
+  isolated instance (`TEMP_CODE_USER_DATA` and `TEMP_CODE_WORK_ROOT` under
+  the proof folder): without them its Work workspaces land in `~/work` and
+  its Work service would take the installed app's port. Its files go in
+  the Purdue workspace's folder, the only place the path fence lets a key
+  name. Not seeded there: slides (no soffice to render a deck), history's
+  versions (the Work service runs only under Electron, and the test server
+  is node) and a guest link (only a LifeOS item is hosted). The app's hooks:
+  the `work-workspace` and `work-view` routes, `TC_TEST_WORK_VIEW`,
+  `TC_TEST_LIFE_FIXTURES` (LifeKit's fixture day), `TC_TEST_ITEM` (the
+  Item segment's item by kind or title), `TC_TEST_OPEN=mail-thread`,
+  `TC_TEST_SHEET=start-thread-mail|start-thread-task`,
+  `TC_TEST_ACTION=start-thread` and `media-comment:<words>`,
+  `TC_TEST_OPEN=browser-held` and `compare`.
 
 ## A Work thread's items and LifeOS's screens (milestone 47)
 
