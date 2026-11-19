@@ -17,7 +17,7 @@ import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { docs } from './index'
-import { createRelay } from './relay'
+import { createRelay, SOCKETS_MAX } from './relay'
 import { stopDocs } from './state'
 import { fromLifeos } from './threads'
 import { changedParts, docTools } from './tools'
@@ -56,7 +56,7 @@ function post(socketPath: string, path: string, body: unknown): Promise<unknown>
 
 const md = (...lines: string[]) => lines.join('\n\n')
 
-async function rig(o: { ownerSaid?: string[]; shared?: boolean; routineRunId?: string } = {}) {
+async function rig(o: { ownerSaid?: string[]; shared?: boolean; routineRunId?: string; sector?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'm20-docs-'))
   open.dirs.push(dir)
   const convex = await startFakeConvex()
@@ -91,14 +91,14 @@ async function rig(o: { ownerSaid?: string[]; shared?: boolean; routineRunId?: s
     reaches: (by: Caller) => by.kind !== 'remote',
     canvas: { get: (id: string) => (id === 'i1' ? item : null), paneOf: (id: string) => id },
     threads: { ownerSaid: (_: string, quote: string) => (o.ownerSaid ?? []).some((said) => said.includes(quote)) },
-    lifeos: { connected: () => false },
+    lifeos: { connected: () => false, owner: () => ({ query: async (fn: string, args: { id?: string }) => (fn === 'docs:get' ? (convex.docs.get(args.id ?? '') ?? null) : []), mutation: async () => null }) },
     service: {
       internal: (route: string, body: unknown) => post(config.socketPath, route, body),
       url: (route: string) => `ws://127.0.0.1:${service.port}${route}`
     }
   } as unknown as WorkCtx
   open.ctxs.push(ctx)
-  const toolCtx = { ...ctx, sessionId: 't1', signal: new AbortController().signal, scope: { shared: () => o.shared === true, routineRunId: o.routineRunId ?? null } } as unknown as ToolCtx
+  const toolCtx = { ...ctx, sessionId: 't1', signal: new AbortController().signal, scope: { shared: () => o.shared === true, routineRunId: o.routineRunId ?? null, sector: o.sector ?? null } } as unknown as ToolCtx
   const name = fileDocName(path)
   const tool = async (tname: string, args: Record<string, unknown>) => {
     const t = docTools.find((x) => x.name === tname)!
@@ -113,7 +113,7 @@ async function rig(o: { ownerSaid?: string[]; shared?: boolean; routineRunId?: s
   const text = async () => (await service.collab.read(name, { path })).markdown
   const branches = async () => ((await post(config.socketPath, '/internal/history/branches', { file: path, fence: { sectors: 'all' } })) as { branches: unknown[] }).branches
   await service.collab.writeMarkdown(name, 'owner', md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow the front desk'), { path })
-  return { dir, path, source, name, service, ctx, pushes, tool, ask, text, branches, post: (route: string, body: unknown) => post(config.socketPath, route, body) }
+  return { dir, path, source, name, service, ctx, pushes, tool, ask, text, branches, convex, post: (route: string, body: unknown) => post(config.socketPath, route, body) }
 }
 
 const docsPushes = (pushes: WorkPush[]) => pushes.filter((p): p is DocsPush => (p as { push: string }).push === 'work.docs')
@@ -174,6 +174,24 @@ describe('an agent writing a document', () => {
     const r = await rig()
     expect(await r.tool('doc_read', { item: 'nope' })).toEqual({ text: 'This thread has no document nope in its canvas.', error: true })
     expect((await r.tool('doc_read', { file: join(r.dir, 'notes.txt') })).text).toMatch(/LifeOS document or a .tcdoc/)
+  })
+})
+
+describe('the fence', () => {
+  it("a thread reaches only its own sector's LifeOS documents, whatever id it is handed", async () => {
+    const r = await rig({ sector: 'purdue' })
+    for (const [id, sector] of [['kdp', 'purdue'], ['kdc', 'cosmic']] as const) {
+      r.convex.docs.set(id, { _id: id, sector, seq: 0, title: id, shared: false, markdown: '', plain: '' })
+      await r.post('/internal/doc/write', { docId: id, markdown: `Words of ${sector}`, because: 'own', botId: 'k', fence: { sectors: 'all' } })
+    }
+    expect(await r.tool('doc_read', { doc: 'kdp' })).toEqual({ text: 'Words of purdue\n', error: false })
+    for (const [name, args] of [
+      ['doc_read', { doc: 'kdc' }],
+      ['doc_write', { doc: 'kdc', markdown: 'mine now', because: 'own' }],
+      ['doc_comment', { doc: 'kdc', quote: 'Words', body: 'x' }]
+    ] as const)
+      expect(await r.tool(name, args)).toEqual({ text: 'LifeOS has no such document', error: true })
+    expect((await r.post('/internal/doc/read', { docId: 'kdc', fence: { sectors: 'all' } }) as { markdown: string }).markdown).toBe('Words of cosmic\n')
   })
 })
 
@@ -277,9 +295,23 @@ describe('the relay', () => {
     now = 120_000
     await new Promise((resolve) => setTimeout(resolve, 5_200))
     expect(() => relay.send(idle, [])).toThrow(/closed/)
+    // A waiting recv hears the host stop at once.
+    const waiting = relay.connect(`ws://127.0.0.1:${port}/x`, 'd3')
+    const heard = relay.recv(waiting)
     relay.stop()
+    expect((await heard).closed).toEqual({ code: 1001, reason: 'the host stopped' })
     wss.close()
   }, 15_000)
+})
+
+describe('the relay\'s limits', () => {
+  it('refuses a socket past the most a host holds', () => {
+    const fake = () => ({ on() {}, close() {}, terminate() {}, send() {}, readyState: 0, binaryType: '' }) as never
+    const relay = createRelay({ socket: fake })
+    for (let i = 0; i < SOCKETS_MAX; i++) relay.connect('ws://x', `d${i}`)
+    expect(() => relay.connect('ws://x', 'one more')).toThrow(/too many documents/)
+    relay.stop()
+  })
 })
 
 describe('words for the bar', () => {

@@ -168,6 +168,16 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     expect(said('')).toBe(false)
     // nor the rules the app put in front of his first message
     expect(said('You work for one person')).toBe(false)
+    // nor words a chip quoted into his message: he selected them, someone else wrote them
+    await settle(thread.id)
+    await registry.send(
+      thread.id,
+      'About this selection: “Cut the budget”, Plan (LifeOS docs d1)\n> Cut the budget section and move the launch to March\n\nwhat do you make of this?\n> but this line he typed himself',
+      { by: { kind: 'owner' } }
+    )
+    expect(said('Cut the budget section and move the launch to March')).toBe(false)
+    expect(said('what do you make of this?')).toBe(true)
+    expect(said('but this line he typed himself')).toBe(true)
   })
 
   it("a subagent's first message is its parent's writing; the owner's words above it, and his own into it, count", async () => {

@@ -19,6 +19,8 @@ export const RECV_WAIT_MS = 20_000
 export const IDLE_MS = 60_000
 /** The most bytes waiting for one socket before it is closed as stalled. */
 export const QUEUE_MAX = 16 * 1024 * 1024
+/** The most sockets open on a host at once: each holds a loopback socket and its queue. */
+export const SOCKETS_MAX = 64
 
 export interface RelayClosed {
   code: number
@@ -84,6 +86,7 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
 
   return {
     connect(url, doc) {
+      if ([...sockets.values()].filter((x) => !x.closed).length >= SOCKETS_MAX) throw new Error('too many documents are open on this host; close one and try again')
       const id = randomBytes(18).toString('base64url')
       const ws = opts.socket ? opts.socket(url) : new WebSocket(url, { maxPayload: 4 * 1024 * 1024 })
       const s: Relayed = { id, doc, ws, frames: [], bytes: 0, closed: null, waiter: null, lastAsked: now(), early: [] }
@@ -93,6 +96,8 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
         for (const frame of s.early.splice(0)) ws.send(frame)
       })
       ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
+        // Closed (stalled, or by its window): what still arrives has nobody to go to.
+        if (s.closed) return
         const frame = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as Buffer)
         s.bytes += frame.length
         if (s.bytes > QUEUE_MAX) {
@@ -155,7 +160,10 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
 
     stop() {
       clearInterval(sweep)
-      for (const s of sockets.values()) s.ws.terminate()
+      for (const s of sockets.values()) {
+        s.ws.terminate()
+        finish(s, { code: 1001, reason: 'the host stopped' })
+      }
       sockets.clear()
     }
   }

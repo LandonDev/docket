@@ -46,7 +46,8 @@ service's frames down. So a far window (the Mac's app on a box thread)
 edits a box document with no route to the service's port, before and
 after the owner applies the tunnel rule, and nothing of one window's
 socket reaches another's link. A socket nobody asks after for a minute is
-closed; one that stops reading past 16 MiB is closed with 4503. A token is
+closed; one that stops reading past 16 MiB is closed with 4503; a host
+holds at most 64 at once. A token is
 asked with `work.docs.token` (edit for this host's window and an operate
 key, view for a read key), always as the owner.
 
@@ -117,9 +118,16 @@ makes the thread, then marks the first place the words stand (a table's
 cell included); words that are not there make no thread.
 
 The LifeOS worker's own write route (`/internal/doc/write`, M17's
-`update_project_doc`) cannot see the thread's words, so a bot key's
-`asked` or `routine` counts as its own idea there: on a shared document it
-waits as suggestions.
+`update_project_doc`) cannot see the thread's words, so any `asked` or
+`routine` it carries counts as its caller's own idea there: on a shared
+document it waits as suggestions.
+
+Two more holds. A thread reaches only its workspace's sector: a LifeOS
+document of another sector answers "LifeOS has no such document", and the
+service is told the thread's sectors, not "all" (a Work Chat reaches every
+sector). And the words Ask quotes into a message (a chip's head and its
+`> ` lines) are not the owner's words: `ownerSaid` reads only what he typed
+(`typedWords`, work/threads.ts).
 
 ## LifeOS desktop
 

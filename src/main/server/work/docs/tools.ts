@@ -28,7 +28,10 @@ const target = {
 
 type TargetArgs = { item?: string; doc?: string; file?: string }
 
-async function resolve(ctx: ToolCtx, a: TargetArgs): Promise<{ t: DocTarget; shared: boolean }> {
+/** The sectors a thread may reach: its workspace's one, or every sector for a Work Chat (which reads through its own key). */
+const sectorsOf = (ctx: ToolCtx): string[] | 'all' => (ctx.scope.sector ? [ctx.scope.sector] : 'all')
+
+async function resolve(ctx: ToolCtx, a: TargetArgs): Promise<{ t: DocTarget; shared: boolean; fence: string[] | 'all' }> {
   let source: CanvasSource
   if (a.item) {
     const item = ctx.canvas.get(a.item)
@@ -39,7 +42,10 @@ async function resolve(ctx: ToolCtx, a: TargetArgs): Promise<{ t: DocTarget; sha
   else throw new Error('Pass `item` (a document open in the canvas), `doc` (a LifeOS document id) or `file` (a .tcdoc path).')
   const t = await targetOf(ctx, { kind: 'model', caps: [], sessionId: ctx.sessionId }, 'doc', source)
   const row = await lifeosRow(ctx, t)
-  return { t, shared: !!row?.shared || ctx.scope.shared(t.source) }
+  const fence = sectorsOf(ctx)
+  // A document of another sector is not this thread's to see, whatever id it was handed.
+  if (row && fence !== 'all' && !fence.includes(row.sector)) throw new Error('LifeOS has no such document')
+  return { t, shared: !!row?.shared || ctx.scope.shared(t.source), fence }
 }
 
 function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {
@@ -69,14 +75,14 @@ export function changedParts(before: string, after: string): { count: number; un
 const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
 
 async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 'asked' | 'routine' | 'own'; quote?: string; suggest?: boolean }): Promise<WorkToolResult> {
-  const { t, shared } = await resolve(ctx, a)
+  const { t, shared, fence } = await resolve(ctx, a)
   const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
   const routine = a.because === 'routine' && !!ctx.scope.routineRunId
   const verdict = asked ? 'asked' : routine ? 'routine' : 'own'
   const suggest = a.suggest === true || (verdict === 'own' && (shared || modeOf(ctx, t.doc) === 'suggests'))
-  const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared))) as { markdown: string }).markdown
+  const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown
   const principal = agentPrincipal(ctx.host, ctx.sessionId)
-  const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared), markdown: a.markdown, because: verdict, suggest, principal })) as ServiceWrite
+  const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared, fence), markdown: a.markdown, because: verdict, suggest, principal })) as ServiceWrite
   const note =
     a.because === 'asked' && !asked
       ? " The quote was not found among the owner's words in this thread, so this counts as your own idea."
@@ -104,8 +110,8 @@ export const docTools: WorkTool[] = [
     readOnly: true,
     run: async (args, ctx) => {
       try {
-        const { t, shared } = await resolve(ctx, args as TargetArgs)
-        const got = (await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared))) as { markdown: string }
+        const { t, shared, fence } = await resolve(ctx, args as TargetArgs)
+        const got = (await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }
         const { readThreads } = await import('./threads')
         const open = (await readThreads(ctx, t)).filter((r) => !r.thread.resolved && r.thread.deletedAt === null)
         const threads = open.map((r) => `- on “${r.thread.quote ?? ''}”: ${r.comments.filter((c) => c.deletedAt === null).map((c) => plainBody(c.body)).join(' / ')}`)
@@ -157,12 +163,12 @@ export const docTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as TargetArgs & { quote: string; body: string }
       try {
-        const { t, shared } = await resolve(ctx, a)
+        const { t, shared, fence } = await resolve(ctx, a)
         const principal = agentPrincipal(ctx.host, ctx.sessionId)
         const made = (await changeThread(ctx, t, { op: 'create', body: commentBody(a.body), quote: a.quote }, principal)) as { thread?: { publicId: string } }
         const threadId = made.thread?.publicId
         if (!threadId) throw new Error('the comment was not made')
-        const { marked } = (await ctx.service.internal('/internal/docs/mark', { ...serviceTarget(t, shared), quote: a.quote, threadId, principal })) as { marked: boolean }
+        const { marked } = (await ctx.service.internal('/internal/docs/mark', { ...serviceTarget(t, shared, fence), quote: a.quote, threadId, principal })) as { marked: boolean }
         if (!marked) {
           await changeThread(ctx, t, { op: 'deleteThread', threadId }, principal)
           return fail('Those words are not in the document. Quote them exactly as they stand.')

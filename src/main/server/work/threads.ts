@@ -65,11 +65,34 @@ export function ownerMessages(words: OwnerWords, sessionId: string): string[] {
   )
 }
 
+/** A chip's head as the composer writes it into a message (renderer work/canvas/chips.ts `chipLine`). */
+const CHIP_HEAD = /^About this (task|mail|event|selection): /
+
+/**
+ * What the owner typed in a message, without the chips Ask put in it: a chip's head line and the
+ * `> ` lines of the selection quoted under it are words of a mail, a task or the document itself,
+ * which he selected and did not write. A `> ` line he typed himself, not under a chip, stays.
+ */
+export function typedWords(text: string): string {
+  const kept: string[] = []
+  let inChip = false
+  for (const line of text.split('\n')) {
+    if (CHIP_HEAD.test(line)) {
+      inChip = true
+      continue
+    }
+    if (inChip && line.startsWith('> ')) continue
+    inChip = false
+    kept.push(line)
+  }
+  return kept.join('\n')
+}
+
 /** Whether the owner typed `quote` in the thread: found whole in one of the owner's messages, letter case and spacing aside. */
 export function ownerSaid(words: OwnerWords, sessionId: string, quote: string): boolean {
   const want = plain(quote)
   if (want.length < OWNER_QUOTE_MIN) return false
-  return ownerMessages(words, sessionId).some((text) => plain(text).includes(want))
+  return ownerMessages(words, sessionId).some((text) => plain(typedWords(text)).includes(want))
 }
 
 export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {

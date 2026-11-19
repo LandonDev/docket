@@ -54,9 +54,13 @@ export async function lifeosRow(ctx: WorkCtx, t: DocTarget): Promise<LifeosDocRo
 /** Its title: LifeOS's, or the file's name without `.tcdoc`. */
 export const titleOf = (t: DocTarget, row: LifeosDocRow | null): string => row?.title ?? basename(t.at === 'file' ? t.path : t.doc).replace(/\.tcdoc$/i, '')
 
-/** What the Work service is told a target is: a LifeOS id, or a resolved path with whether others share it. */
-export const serviceTarget = (t: DocTarget, shared: boolean): Record<string, unknown> =>
-  t.at === 'lifeos' ? { docId: t.docId, fence: { sectors: 'all' } } : { file: t.path, shared, fence: { sectors: 'all' } }
+/**
+ * What the Work service is told a target is: a LifeOS id under the caller's sectors (the service holds
+ * the row to them again, `docIn`), or a resolved path with whether others share it. A file is the
+ * host's own, read unfenced once main's path fence let it through.
+ */
+export const serviceTarget = (t: DocTarget, shared: boolean, sectors: readonly string[] | 'all' = 'all'): Record<string, unknown> =>
+  t.at === 'lifeos' ? { docId: t.docId, fence: { sectors } } : { file: t.path, shared, fence: { sectors: 'all' } }
 
 /** A file document's path, for a push only callers who could name it receive. */
 export const pathOf = (t: DocTarget): string | undefined => (t.at === 'file' ? t.path : undefined)

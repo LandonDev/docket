@@ -91,8 +91,8 @@ export const internalDocRoutes: InternalRoute[] = [
       const principal = principalOf(body)
       const row = await docIn(ctx, docId, fenceOf(body))
       // "asked" must be the owner's words, found in his thread (§6.7), and "routine" a routine's grant: only main
-      // can check either, and its agents write through /internal/docs/write (work/docs). A bot key's word for
-      // them is not a verdict, so on a shared document its write waits as suggestions like any idea of its own.
+      // can check either, and its agents write through /internal/docs/write (work/docs). This route's caller's
+      // word for them (a bot key, or an origin it names) is not a verdict, so on a shared document its write waits as suggestions.
       // Direct and one version, or, for an agent's own idea on a shared document, into its branch (§8.4, milestone 19).
       const done = await ctx.history.write(docId, principal, markdown, { because: 'own', shared: !!row.shared })
       return done.mode === 'branch' ? done : { mode: 'direct', ...(done.versionId ? { versionId: done.versionId } : {}) }
