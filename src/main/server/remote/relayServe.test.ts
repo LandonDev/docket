@@ -356,6 +356,12 @@ describe('RelayServer', () => {
     expect(held.map((r) => (r.params as { notice: { choices?: string } }).notice.choices)).toEqual(['run-skip', 'run-skip'])
     expect(RelayNoticeSchema.parse((held[0].params as { notice: unknown }).notice)).toMatchObject({ choices: 'run-skip' })
     expect(RelayNoticeSchema.safeParse({ ...(held[0].params as { notice: object }).notice, choices: 'later' }).success).toBe(false)
+    // A held act keeps its item on the way through the box, so the phone's tap opens it in the Outbox.
+    relayed.server.onNotice({ ...notice, kind: 'waiting', requestId: undefined, held: { at: 'host', id: 'h9' } })
+    await tick()
+    const outbox = relayed.requests.filter((r) => r.method === 'relay.notice').slice(6)
+    expect(outbox.map((r) => (r.params as { notice: { held?: unknown } }).notice.held)).toEqual([{ at: 'host', id: 'h9' }, { at: 'host', id: 'h9' }])
+    expect(RelayNoticeSchema.parse((outbox[0].params as { notice: unknown }).notice)).toMatchObject({ held: { at: 'host', id: 'h9' } })
   })
 
   it('onPeerPush serves relay.* pushes and leaves every other push alone', async () => {

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { HeldRefSchema } from './work/acts'
 import type { ClientRequest } from './contract'
 import { WORK_NOT_CARRIED, WORK_RELAY } from './contract-work'
 import type { BuildFacts } from './deployDrift'
@@ -252,6 +253,7 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
  *  - host.deployStatus, host.deploy, host.log: the box's own deploy trigger means nothing under another host's id.
  *  - macBridge.activity, macBridge.stop: the box's view of the calls its threads make into the Mac; under the
  *    Mac's id they would answer what the Mac serves instead, and Stop would act on the wrong side of the bridge.
+ *  - away.get, away.set: Away is kept in step between linked hosts by their own peer leg; the box's answer stands for both.
  */
 export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = [
   'host.deployStatus',
@@ -259,6 +261,9 @@ export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = [
   'host.log',
   'macBridge.activity',
   'macBridge.stop',
+  // Away is one state the hosts keep in step themselves (remote/awaySync.ts): the phone reads and sets it on each lane's own host.
+  'away.get',
+  'away.set',
   // Work methods whose rows are this host's own (a pillar's relay row says `'never'`, contract-work.ts)
   ...WORK_NOT_CARRIED
 ]
@@ -338,7 +343,9 @@ export const RelayNoticeSchema = z.object({
   /** The host's own name: the phone adds it to the subtitle when several hosts are paired. */
   hostName: z.string().max(120).optional(),
   /** A window on the host shows the thread to its person now: the box tells its webhooks, not the phone. */
-  onScreen: z.literal(true).optional()
+  onScreen: z.literal(true).optional(),
+  /** An act held for the owner's press: the phone's tap opens this item in the Outbox (never a Send of its own). */
+  held: HeldRefSchema.optional()
 })
 export type RelayNotice = z.infer<typeof RelayNoticeSchema>
 export const RelayRequestSchemas = [

@@ -4308,3 +4308,850 @@ public struct EnsureLinkedResult: Codable, Hashable, Sendable {
         try container.encode(note, forKey: .note)
     }
 }
+
+public enum HeldRef: Codable, Hashable, Sendable {
+    public struct Case0: Codable, Hashable, Sendable {
+        public let id: String
+
+        public init(id: String) {
+            self.id = id
+        }
+    }
+    public struct Case1: Codable, Hashable, Sendable {
+        public enum Table: RawRepresentable, Codable, Hashable, Sendable {
+            case outbox
+            case calendarOps
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "outbox": self = .outbox
+                case "calendarOps": self = .calendarOps
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .outbox: "outbox"
+                case .calendarOps: "calendarOps"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let table: Table
+        public let id: String
+
+        public init(table: Table, id: String) {
+            self.table = table
+            self.id = id
+        }
+    }
+
+    case host(Case0)
+    case lifeos(Case1)
+    /// A `at` this build does not know: the whole object, untouched.
+    case unknown(JSONValue)
+
+    private enum Tag: String, CodingKey {
+        case at
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .at)
+        switch tag {
+        case "host": self = .host(try Case0(from: decoder))
+        case "lifeos": self = .lifeos(try Case1(from: decoder))
+        default: self = .unknown(try JSONValue(from: decoder))
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .host(let value): try Self.encode(tag: "host", value, to: encoder)
+        case .lifeos(let value): try Self.encode(tag: "lifeos", value, to: encoder)
+        case .unknown(let value): try value.encode(to: encoder)
+        }
+    }
+
+    private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: Tag.self)
+        try container.encode(tag, forKey: .at)
+        try value.encode(to: encoder)
+    }
+}
+
+public struct AwayState: Codable, Hashable, Sendable {
+    public let enabled: Bool
+    public let at: Double
+    public let by: String
+
+    public init(enabled: Bool, at: Double, by: String) {
+        self.enabled = enabled
+        self.at = at
+        self.by = by
+    }
+}
+
+public struct OutboxItem: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case mailSend
+        case calendarOp
+        case teamsPost
+        case officeMailSend
+        case officeCalendarOp
+        case shareGuestLink
+        case shareGoogle
+        case formPublish
+        case frameioPost
+        case portalSubmit
+        case computerAct
+        case addonCall
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "mail.send": self = .mailSend
+            case "calendar.op": self = .calendarOp
+            case "teams.post": self = .teamsPost
+            case "office.mail.send": self = .officeMailSend
+            case "office.calendar.op": self = .officeCalendarOp
+            case "share.guestLink": self = .shareGuestLink
+            case "share.google": self = .shareGoogle
+            case "form.publish": self = .formPublish
+            case "frameio.post": self = .frameioPost
+            case "portal.submit": self = .portalSubmit
+            case "computer.act": self = .computerAct
+            case "addon.call": self = .addonCall
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .mailSend: "mail.send"
+            case .calendarOp: "calendar.op"
+            case .teamsPost: "teams.post"
+            case .officeMailSend: "office.mail.send"
+            case .officeCalendarOp: "office.calendar.op"
+            case .shareGuestLink: "share.guestLink"
+            case .shareGoogle: "share.google"
+            case .formPublish: "form.publish"
+            case .frameioPost: "frameio.post"
+            case .portalSubmit: "portal.submit"
+            case .computerAct: "computer.act"
+            case .addonCall: "addon.call"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case held
+        case live
+        case sending
+        case sent
+        case failed
+        case discarded
+        case stale
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "held": self = .held
+            case "live": self = .live
+            case "sending": self = .sending
+            case "sent": self = .sent
+            case "failed": self = .failed
+            case "discarded": self = .discarded
+            case "stale": self = .stale
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .held: "held"
+            case .live: "live"
+            case .sending: "sending"
+            case .sent: "sent"
+            case .failed: "failed"
+            case .discarded: "discarded"
+            case .stale: "stale"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum Why: RawRepresentable, Codable, Hashable, Sendable {
+        case rule
+        case unreviewed
+        case screen
+        case flag
+        case lifeos
+        case pillar
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "rule": self = .rule
+            case "unreviewed": self = .unreviewed
+            case "screen": self = .screen
+            case "flag": self = .flag
+            case "lifeos": self = .lifeos
+            case "pillar": self = .pillar
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .rule: "rule"
+            case .unreviewed: "unreviewed"
+            case .screen: "screen"
+            case .flag: "flag"
+            case .lifeos: "lifeos"
+            case .pillar: "pillar"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Result: Codable, Hashable, Sendable {
+        public let summary: String
+        public let ref: JSONValue?
+
+        public init(summary: String, ref: JSONValue? = nil) {
+            self.summary = summary
+            self.ref = ref
+        }
+    }
+
+    public let ref: HeldRef
+    public let kind: Kind
+    public let workspaceId: String?
+    public let sessionId: String?
+    public let sector: String?
+    public let summary: String
+    public let verb: String
+    public let account: String?
+    public let state: State
+    public let payload: JSONValue?
+    public let createdAt: Int
+    public let decidedBy: String?
+    public let decidedAt: Int?
+    public let n: Int?
+    public let why: Why
+    public let grantId: String?
+    public let error: String?
+    public let result: Result?
+    public let routineRunId: String?
+    public let proposed: Bool?
+    public let updatedAt: Int
+
+    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, updatedAt: Int) {
+        self.ref = ref
+        self.kind = kind
+        self.workspaceId = workspaceId
+        self.sessionId = sessionId
+        self.sector = sector
+        self.summary = summary
+        self.verb = verb
+        self.account = account
+        self.state = state
+        self.payload = payload
+        self.createdAt = createdAt
+        self.decidedBy = decidedBy
+        self.decidedAt = decidedAt
+        self.n = n
+        self.why = why
+        self.grantId = grantId
+        self.error = error
+        self.result = result
+        self.routineRunId = routineRunId
+        self.proposed = proposed
+        self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, updatedAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(ref, forKey: .ref)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(sector, forKey: .sector)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(verb, forKey: .verb)
+        try container.encode(account, forKey: .account)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(payload, forKey: .payload)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(decidedBy, forKey: .decidedBy)
+        try container.encode(decidedAt, forKey: .decidedAt)
+        try container.encode(n, forKey: .n)
+        try container.encode(why, forKey: .why)
+        try container.encode(grantId, forKey: .grantId)
+        try container.encode(error, forKey: .error)
+        try container.encode(result, forKey: .result)
+        try container.encode(routineRunId, forKey: .routineRunId)
+        try container.encodeIfPresent(proposed, forKey: .proposed)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
+public struct WorkResult: Codable, Hashable, Sendable {
+    public struct Undo: Codable, Hashable, Sendable {
+        public enum Pillar: RawRepresentable, Codable, Hashable, Sendable {
+            case outbox
+            case canvas
+            case lifeos
+            case routines
+            case rules
+            case mail
+            case tasks
+            case agenda
+            case docs
+            case history
+            case formats
+            case sheets
+            case office
+            case google
+            case guests
+            case pdf
+            case slides
+            case media
+            case frameio
+            case meetings
+            case forms
+            case dashboards
+            case browser
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "outbox": self = .outbox
+                case "canvas": self = .canvas
+                case "lifeos": self = .lifeos
+                case "routines": self = .routines
+                case "rules": self = .rules
+                case "mail": self = .mail
+                case "tasks": self = .tasks
+                case "agenda": self = .agenda
+                case "docs": self = .docs
+                case "history": self = .history
+                case "formats": self = .formats
+                case "sheets": self = .sheets
+                case "office": self = .office
+                case "google": self = .google
+                case "guests": self = .guests
+                case "pdf": self = .pdf
+                case "slides": self = .slides
+                case "media": self = .media
+                case "frameio": self = .frameio
+                case "meetings": self = .meetings
+                case "forms": self = .forms
+                case "dashboards": self = .dashboards
+                case "browser": self = .browser
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .outbox: "outbox"
+                case .canvas: "canvas"
+                case .lifeos: "lifeos"
+                case .routines: "routines"
+                case .rules: "rules"
+                case .mail: "mail"
+                case .tasks: "tasks"
+                case .agenda: "agenda"
+                case .docs: "docs"
+                case .history: "history"
+                case .formats: "formats"
+                case .sheets: "sheets"
+                case .office: "office"
+                case .google: "google"
+                case .guests: "guests"
+                case .pdf: "pdf"
+                case .slides: "slides"
+                case .media: "media"
+                case .frameio: "frameio"
+                case .meetings: "meetings"
+                case .forms: "forms"
+                case .dashboards: "dashboards"
+                case .browser: "browser"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let pillar: Pillar
+        public let verb: String
+        public let args: JSONValue?
+        public let label: String?
+
+        public init(pillar: Pillar, verb: String, args: JSONValue? = nil, label: String? = nil) {
+            self.pillar = pillar
+            self.verb = verb
+            self.args = args
+            self.label = label
+        }
+    }
+
+    public let id: String
+    public let sessionId: String
+    public let rootId: String
+    public let workspaceId: String?
+    public let kind: String
+    public let summary: String
+    public let account: String?
+    public let ref: JSONValue?
+    public let undo: Undo?
+    public let undoneAt: Int?
+    public let createdAt: Int
+
+    public init(id: String, sessionId: String, rootId: String, workspaceId: String?, kind: String, summary: String, account: String?, ref: JSONValue? = nil, undo: Undo?, undoneAt: Int?, createdAt: Int) {
+        self.id = id
+        self.sessionId = sessionId
+        self.rootId = rootId
+        self.workspaceId = workspaceId
+        self.kind = kind
+        self.summary = summary
+        self.account = account
+        self.ref = ref
+        self.undo = undo
+        self.undoneAt = undoneAt
+        self.createdAt = createdAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, sessionId, rootId, workspaceId, kind, summary, account, ref, undo, undoneAt, createdAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(rootId, forKey: .rootId)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(account, forKey: .account)
+        try container.encodeIfPresent(ref, forKey: .ref)
+        try container.encode(undo, forKey: .undo)
+        try container.encode(undoneAt, forKey: .undoneAt)
+        try container.encode(createdAt, forKey: .createdAt)
+    }
+}
+
+public struct OutboxGrant: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case mailSend
+        case calendarOp
+        case teamsPost
+        case officeMailSend
+        case officeCalendarOp
+        case shareGuestLink
+        case shareGoogle
+        case formPublish
+        case frameioPost
+        case portalSubmit
+        case computerAct
+        case addonCall
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "mail.send": self = .mailSend
+            case "calendar.op": self = .calendarOp
+            case "teams.post": self = .teamsPost
+            case "office.mail.send": self = .officeMailSend
+            case "office.calendar.op": self = .officeCalendarOp
+            case "share.guestLink": self = .shareGuestLink
+            case "share.google": self = .shareGoogle
+            case "form.publish": self = .formPublish
+            case "frameio.post": self = .frameioPost
+            case "portal.submit": self = .portalSubmit
+            case "computer.act": self = .computerAct
+            case "addon.call": self = .addonCall
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .mailSend: "mail.send"
+            case .calendarOp: "calendar.op"
+            case .teamsPost: "teams.post"
+            case .officeMailSend: "office.mail.send"
+            case .officeCalendarOp: "office.calendar.op"
+            case .shareGuestLink: "share.guestLink"
+            case .shareGoogle: "share.google"
+            case .formPublish: "form.publish"
+            case .frameioPost: "frameio.post"
+            case .portalSubmit: "portal.submit"
+            case .computerAct: "computer.act"
+            case .addonCall: "addon.call"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let workspaceId: String
+    public let kind: Kind
+    public let matcher: JSONValue?
+    public let label: String
+    public let madeFrom: HeldRef
+    public let routineId: String?
+    public let createdAt: Int
+    public let removedAt: Int?
+
+    public init(id: String, workspaceId: String, kind: Kind, matcher: JSONValue? = nil, label: String, madeFrom: HeldRef, routineId: String?, createdAt: Int, removedAt: Int?) {
+        self.id = id
+        self.workspaceId = workspaceId
+        self.kind = kind
+        self.matcher = matcher
+        self.label = label
+        self.madeFrom = madeFrom
+        self.routineId = routineId
+        self.createdAt = createdAt
+        self.removedAt = removedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, workspaceId, kind, matcher, label, madeFrom, routineId, createdAt, removedAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(matcher, forKey: .matcher)
+        try container.encode(label, forKey: .label)
+        try container.encode(madeFrom, forKey: .madeFrom)
+        try container.encode(routineId, forKey: .routineId)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(removedAt, forKey: .removedAt)
+    }
+}
+
+public struct ToolRulesCard: Codable, Hashable, Sendable {
+    public struct Tool: Codable, Hashable, Sendable {
+        public struct Hints: Codable, Hashable, Sendable {
+            public let readOnly: Bool?
+            public let destructive: Bool?
+            public let openWorld: Bool?
+            public let idempotent: Bool?
+            public let title: String?
+
+            public init(readOnly: Bool? = nil, destructive: Bool? = nil, openWorld: Bool? = nil, idempotent: Bool? = nil, title: String? = nil) {
+                self.readOnly = readOnly
+                self.destructive = destructive
+                self.openWorld = openWorld
+                self.idempotent = idempotent
+                self.title = title
+            }
+        }
+        public enum Suggested: RawRepresentable, Codable, Hashable, Sendable {
+            case runs
+            case held
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "runs": self = .runs
+                case "held": self = .held
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .runs: "runs"
+                case .held: "held"
+                case .unknown(let value): value
+                }
+            }
+        }
+        public enum Rule: RawRepresentable, Codable, Hashable, Sendable {
+            case runs
+            case held
+            case off
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "runs": self = .runs
+                case "held": self = .held
+                case "off": self = .off
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .runs: "runs"
+                case .held: "held"
+                case .off: "off"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let tool: String
+        public let words: String
+        public let description: String
+        public let hints: Hints
+        public let suggested: Suggested
+        public let rule: Rule?
+        public let changed: Bool
+
+        public init(tool: String, words: String, description: String, hints: Hints, suggested: Suggested, rule: Rule?, changed: Bool) {
+            self.tool = tool
+            self.words = words
+            self.description = description
+            self.hints = hints
+            self.suggested = suggested
+            self.rule = rule
+            self.changed = changed
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case tool, words, description, hints, suggested, rule, changed
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(tool, forKey: .tool)
+            try container.encode(words, forKey: .words)
+            try container.encode(description, forKey: .description)
+            try container.encode(hints, forKey: .hints)
+            try container.encode(suggested, forKey: .suggested)
+            try container.encode(rule, forKey: .rule)
+            try container.encode(changed, forKey: .changed)
+        }
+    }
+
+    public let addonId: String
+    public let name: String
+    public let workspaceId: String?
+    public let forWork: Bool
+    public let lifeos: Bool
+    public let unreviewed: Int
+    public let tools: [Tool]
+
+    public init(addonId: String, name: String, workspaceId: String?, forWork: Bool, lifeos: Bool, unreviewed: Int, tools: [Tool]) {
+        self.addonId = addonId
+        self.name = name
+        self.workspaceId = workspaceId
+        self.forWork = forWork
+        self.lifeos = lifeos
+        self.unreviewed = unreviewed
+        self.tools = tools
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case addonId, name, workspaceId, forWork, lifeos, unreviewed, tools
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(addonId, forKey: .addonId)
+        try container.encode(name, forKey: .name)
+        try container.encode(workspaceId, forKey: .workspaceId)
+        try container.encode(forWork, forKey: .forWork)
+        try container.encode(lifeos, forKey: .lifeos)
+        try container.encode(unreviewed, forKey: .unreviewed)
+        try container.encode(tools, forKey: .tools)
+    }
+}
+
+public struct LifeosStatus: Codable, Hashable, Sendable {
+    public enum Lifeos: Codable, Hashable, Sendable {
+        public struct Case0: Codable, Hashable, Sendable {
+            public init() {}
+        }
+        public struct Case1: Codable, Hashable, Sendable {
+            public init() {}
+        }
+        public struct Case2: Codable, Hashable, Sendable {
+            public let code: String?
+            public let expiresAt: Double
+
+            public init(code: String? = nil, expiresAt: Double) {
+                self.code = code
+                self.expiresAt = expiresAt
+            }
+        }
+        public struct Case3: Codable, Hashable, Sendable {
+            public init() {}
+        }
+        public struct Case4: Codable, Hashable, Sendable {
+            public let ownerId: String
+            public let since: Double
+
+            public init(ownerId: String, since: Double) {
+                self.ownerId = ownerId
+                self.since = since
+            }
+        }
+        public struct Case5: Codable, Hashable, Sendable {
+            public let since: Double
+            public let error: String
+
+            public init(since: Double, error: String) {
+                self.since = since
+                self.error = error
+            }
+        }
+        public struct Case6: Codable, Hashable, Sendable {
+            public let error: String
+
+            public init(error: String) {
+                self.error = error
+            }
+        }
+
+        case off(Case0)
+        case signedOut(Case1)
+        case pairing(Case2)
+        case connecting(Case3)
+        case connected(Case4)
+        case unreachable(Case5)
+        case refused(Case6)
+        /// A `state` this build does not know: the whole object, untouched.
+        case unknown(JSONValue)
+
+        private enum Tag: String, CodingKey {
+            case state
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .state)
+            switch tag {
+            case "off": self = .off(try Case0(from: decoder))
+            case "signed-out": self = .signedOut(try Case1(from: decoder))
+            case "pairing": self = .pairing(try Case2(from: decoder))
+            case "connecting": self = .connecting(try Case3(from: decoder))
+            case "connected": self = .connected(try Case4(from: decoder))
+            case "unreachable": self = .unreachable(try Case5(from: decoder))
+            case "refused": self = .refused(try Case6(from: decoder))
+            default: self = .unknown(try JSONValue(from: decoder))
+            }
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            switch self {
+            case .off(let value): try Self.encode(tag: "off", value, to: encoder)
+            case .signedOut(let value): try Self.encode(tag: "signed-out", value, to: encoder)
+            case .pairing(let value): try Self.encode(tag: "pairing", value, to: encoder)
+            case .connecting(let value): try Self.encode(tag: "connecting", value, to: encoder)
+            case .connected(let value): try Self.encode(tag: "connected", value, to: encoder)
+            case .unreachable(let value): try Self.encode(tag: "unreachable", value, to: encoder)
+            case .refused(let value): try Self.encode(tag: "refused", value, to: encoder)
+            case .unknown(let value): try value.encode(to: encoder)
+            }
+        }
+
+        private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: Tag.self)
+            try container.encode(tag, forKey: .state)
+            try value.encode(to: encoder)
+        }
+    }
+    public struct Key: Codable, Hashable, Sendable {
+        public enum State: RawRepresentable, Codable, Hashable, Sendable {
+            case ready
+            case waiting
+            case elsewhere
+            case failed
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "ready": self = .ready
+                case "waiting": self = .waiting
+                case "elsewhere": self = .elsewhere
+                case "failed": self = .failed
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .ready: "ready"
+                case .waiting: "waiting"
+                case .elsewhere: "elsewhere"
+                case .failed: "failed"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let workspaceId: String
+        public let sectors: [String]
+        public let state: State
+        public let addonId: String?
+        public let error: String?
+
+        public init(workspaceId: String, sectors: [String], state: State, addonId: String? = nil, error: String? = nil) {
+            self.workspaceId = workspaceId
+            self.sectors = sectors
+            self.state = state
+            self.addonId = addonId
+            self.error = error
+        }
+    }
+
+    public let lifeos: Lifeos
+    public let keys: [Key]
+
+    public init(lifeos: Lifeos, keys: [Key]) {
+        self.lifeos = lifeos
+        self.keys = keys
+    }
+}
+
+public struct AwaySnapshot: Codable, Hashable, Sendable {
+    public struct Decided: Codable, Hashable, Sendable {
+        public struct Thread: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let count: Int
+
+            public init(sessionId: String, count: Int) {
+                self.sessionId = sessionId
+                self.count = count
+            }
+        }
+
+        public let since: Double
+        public let threads: [Thread]
+
+        public init(since: Double, threads: [Thread]) {
+            self.since = since
+            self.threads = threads
+        }
+    }
+
+    public let state: AwayState
+    public let decided: Decided
+
+    public init(state: AwayState, decided: Decided) {
+        self.state = state
+        self.decided = decided
+    }
+}

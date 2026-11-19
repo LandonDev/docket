@@ -73,6 +73,13 @@ describe('the rules the fixtures rest on', () => {
     expect(category({ kind: 'waiting', choices: 'run-skip' })).toBe('tc.thread')
     expect((notificationPayload({ ...base, threadId: 't', kind: 'approval', choices: 'run-skip' }) as { tc: Record<string, unknown> }).tc).not.toHaveProperty('choices')
   })
+  it('a held act carries its item as tc.held and keeps the Open category: no Send from the lock screen', () => {
+    const held = { at: 'lifeos' as const, table: 'outbox' as const, id: 'ob_1' }
+    const payload = notificationPayload({ ...base, event: 'needs_you', threadId: 't', kind: 'waiting', held }) as { aps: Record<string, unknown>; tc: Record<string, unknown> }
+    expect(payload.tc.held).toEqual(held)
+    expect(payload.aps.category).toBe('tc.thread')
+    expect(notificationPayload(base) as { tc: object }).not.toHaveProperty('tc.held')
+  })
   it('a stopped end ranks with waiting and failed; a working update does not', () => {
     const score = (phase: ApnsActivityUpdate['state']['phase'], event: 'update' | 'end' = 'end') =>
       (activityPayload({ threadId: 't', event, state: { phase, since: 1, ts: 2 }, ts: 2 }, 2_000) as { aps: Record<string, number> }).aps['relevance-score']

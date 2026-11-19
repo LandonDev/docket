@@ -2414,4 +2414,296 @@ public enum Methods {
 
         public typealias Output = WorkSettings
     }
+
+    public enum WorkOutboxList: ContractMethod {
+        public static let name = "work.outbox.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Show: RawRepresentable, Codable, Hashable, Sendable {
+                case waiting
+                case decided
+                case all
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "waiting": self = .waiting
+                    case "decided": self = .decided
+                    case "all": self = .all
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .waiting: "waiting"
+                    case .decided: "decided"
+                    case .all: "all"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let show: Show?
+            public let workspaceId: String?
+            public let sessionId: String?
+            public let limit: Int?
+
+            public init(show: Show? = nil, workspaceId: String? = nil, sessionId: String? = nil, limit: Int? = nil) {
+                self.show = show
+                self.workspaceId = workspaceId
+                self.sessionId = sessionId
+                self.limit = limit
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let items: [OutboxItem]
+            public let waiting: Int
+
+            public init(items: [OutboxItem], waiting: Int) {
+                self.items = items
+                self.waiting = waiting
+            }
+        }
+    }
+
+    public enum WorkOutboxGet: ContractMethod {
+        public static let name = "work.outbox.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let ref: HeldRef
+
+            public init(ref: HeldRef) {
+                self.ref = ref
+            }
+        }
+
+        public typealias Output = OutboxItem
+    }
+
+    public enum WorkOutboxSend: ContractMethod {
+        public static let name = "work.outbox.send"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let ref: HeldRef
+            public let rev: Int?
+
+            public init(ref: HeldRef, rev: Int? = nil) {
+                self.ref = ref
+                self.rev = rev
+            }
+        }
+
+        public typealias Output = OutboxItem
+    }
+
+    public enum WorkOutboxDiscard: ContractMethod {
+        public static let name = "work.outbox.discard"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let ref: HeldRef
+
+            public init(ref: HeldRef) {
+                self.ref = ref
+            }
+        }
+
+        public typealias Output = OutboxItem
+    }
+
+    public enum WorkOutboxEdit: ContractMethod {
+        public static let name = "work.outbox.edit"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let ref: HeldRef
+            public let payload: JSONValue?
+
+            public init(ref: HeldRef, payload: JSONValue? = nil) {
+                self.ref = ref
+                self.payload = payload
+            }
+        }
+
+        public typealias Output = OutboxItem
+    }
+
+    public enum WorkOutboxGrants: ContractMethod {
+        public static let name = "work.outbox.grants"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String?
+            public let all: Bool?
+
+            public init(workspaceId: String? = nil, all: Bool? = nil) {
+                self.workspaceId = workspaceId
+                self.all = all
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let grants: [OutboxGrant]
+
+            public init(grants: [OutboxGrant]) {
+                self.grants = grants
+            }
+        }
+    }
+
+    public enum WorkOutboxUngrant: ContractMethod {
+        public static let name = "work.outbox.ungrant"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let id: String
+
+            public init(id: String) {
+                self.id = id
+            }
+        }
+
+        public typealias Output = OutboxGrant
+    }
+
+    public enum WorkOutboxRules: ContractMethod {
+        public static let name = "work.outbox.rules"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let addonId: String?
+            public let workspaceId: String?
+
+            public init(addonId: String? = nil, workspaceId: String? = nil) {
+                self.addonId = addonId
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let addons: [ToolRulesCard]
+
+            public init(addons: [ToolRulesCard]) {
+                self.addons = addons
+            }
+        }
+    }
+
+    public enum WorkOutboxSetRules: ContractMethod {
+        public static let name = "work.outbox.setRules"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Rule: RawRepresentable, Codable, Hashable, Sendable {
+                case runs
+                case held
+                case off
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "runs": self = .runs
+                    case "held": self = .held
+                    case "off": self = .off
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .runs: "runs"
+                    case .held: "held"
+                    case .off: "off"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let addonId: String
+            public let rules: [String: Rule]
+
+            public init(addonId: String, rules: [String: Rule]) {
+                self.addonId = addonId
+                self.rules = rules
+            }
+        }
+
+        public typealias Output = ToolRulesCard
+    }
+
+    public enum WorkOutboxResults: ContractMethod {
+        public static let name = "work.outbox.results"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String?
+            public let since: Int?
+            public let limit: Int?
+
+            public init(sessionId: String? = nil, since: Int? = nil, limit: Int? = nil) {
+                self.sessionId = sessionId
+                self.since = since
+                self.limit = limit
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let results: [WorkResult]
+
+            public init(results: [WorkResult]) {
+                self.results = results
+            }
+        }
+    }
+
+    public enum WorkOutboxUndo: ContractMethod {
+        public static let name = "work.outbox.undo"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let id: String
+
+            public init(id: String) {
+                self.id = id
+            }
+        }
+
+        public typealias Output = WorkResult
+    }
+
+    public enum WorkLifeosStatus: ContractMethod {
+        public static let name = "work.lifeos.status"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = LifeosStatus
+    }
+
+    public enum AwayGet: ContractMethod {
+        public static let name = "away.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = AwaySnapshot
+    }
+
+    public enum AwaySet: ContractMethod {
+        public static let name = "away.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let enabled: Bool
+
+            public init(enabled: Bool) {
+                self.enabled = enabled
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let state: AwayState
+
+            public init(state: AwayState) {
+                self.state = state
+            }
+        }
+    }
 }

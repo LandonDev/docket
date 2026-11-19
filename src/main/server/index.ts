@@ -3708,7 +3708,7 @@ export async function startServer(
   // A host with the key posts every notice to its phones itself.
   if (apns)
     notifier.onNotice((n) =>
-      n.onScreen ? undefined : pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, choices: n.choices, hostName: n.hostName, ts: n.ts }).then(() => undefined)
+      n.onScreen ? undefined : pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, choices: n.choices, hostName: n.hostName, held: n.held, ts: n.ts }).then(() => undefined)
     )
   // Threads with a Live Activity on a phone: every change of what the card
   // shows goes out as a liveactivity push (coalesced for the task line), and

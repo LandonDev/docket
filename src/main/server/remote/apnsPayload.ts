@@ -1,4 +1,5 @@
 import type { HubActivityState, HubNoticeKind } from '../hub'
+import type { HeldRef } from '../../../shared/work/acts'
 
 /**
  * The APNs payloads, as infra/hub/src/delivery.ts builds them: one shape
@@ -30,6 +31,8 @@ export interface ApnsNotice {
   choices?: 'run-skip'
   /** The host's name: `tc.host`, which the phone's service extension adds to the subtitle when several hosts are paired. */
   hostName?: string
+  /** An act held for the owner's press: `tc.held`, the item the phone's tap opens. Its category stays Open alone: nothing sends from the lock screen. */
+  held?: HeldRef
   ts: number
 }
 
@@ -92,6 +95,7 @@ export function notificationPayload(notice: ApnsNotice): unknown {
       ...(notice.kind === undefined ? {} : { kind: notice.kind }),
       ...(notice.requestId === undefined ? {} : { requestId: notice.requestId }),
       ...(notice.hostName === undefined ? {} : { host: notice.hostName }),
+      ...(notice.held === undefined ? {} : { held: notice.held }),
       ts: notice.ts
     }
   }

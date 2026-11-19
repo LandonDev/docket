@@ -101,8 +101,11 @@ describe('the subset', () => {
     const methods = files['Methods.swift']
     expect(methods).toContain('"work.get"')
     expect(methods).toContain('"work.set"')
-    // The switch's push is not the phone's yet: adding a case would break the client's exhaustive switch.
-    expect(pushNames).not.toContain('work')
+    // Milestone 46: the phone reads the switch, the Outbox, Results, LifeOS's state and Away as they change.
+    expect(pushNames).toEqual(expect.arrayContaining(['work', 'work.outbox', 'work.outbox.result', 'work.lifeos', 'away']))
+    for (const m of ['work.outbox.list', 'work.outbox.send', 'work.outbox.edit', 'work.outbox.discard', 'work.outbox.results', 'work.outbox.undo', 'work.lifeos.status', 'away.get', 'away.set'])
+      expect(methods).toContain(`"${m}"`)
+    expect(files['Types.swift']).toContain('public enum HeldRef')
   })
   it("tries a union's literal-pinned object branch only for the values it lists, so a known shape after it wins", () => {
     // A chip's ref is a task, mail or event (`{at: 'lifeos', table: 'tasks' | …}`) or a CanvasSource. The enum

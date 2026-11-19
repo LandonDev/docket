@@ -116,6 +116,14 @@ describe('RELAY_METHODS', () => {
   })
 })
 
+describe('the Outbox through the relay (milestone 46)', () => {
+  it("carries every Outbox method to the host whose item it is, on the link alone: a held act on the Mac is pressed from the phone through the box", () => {
+    for (const m of ['work.outbox.list', 'work.outbox.get', 'work.outbox.send', 'work.outbox.edit', 'work.outbox.discard', 'work.outbox.results', 'work.outbox.undo', 'work.outbox.grants', 'work.outbox.ungrant', 'work.outbox.rules', 'work.outbox.setRules', 'work.lifeos.status'] as const)
+      expect(RELAY_METHODS[m], m).toBe('link')
+    expect(RELAY_NOT_CARRIED).toEqual(expect.arrayContaining(['away.get', 'away.set']))
+  })
+})
+
 describe('read marks through the relay', () => {
   it('a Mac thread read on the phone is marked on the Mac', () => {
     expect(RELAY_METHODS['session.markRead']).toBe('link')

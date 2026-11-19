@@ -356,7 +356,8 @@ export class RelayServer {
       ...(notice.choices ? { choices: notice.choices } : {}),
       ...(notice.hostName ? { hostName: notice.hostName } : {}),
       // A thread its person is looking at on this Mac: the box's webhooks still hear, its phones do not.
-      ...(notice.onScreen ? { onScreen: true as const } : {})
+      ...(notice.onScreen ? { onScreen: true as const } : {}),
+      ...(notice.held ? { held: notice.held } : {})
     }
     for (const envId of this.heartbeats.keys()) {
       const request = this.deps.link(envId)

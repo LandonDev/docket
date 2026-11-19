@@ -207,6 +207,72 @@ public struct PresencePush: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkPush: Codable, Hashable, Sendable {
+    public let settings: WorkSettings
+
+    public init(settings: WorkSettings) {
+        self.settings = settings
+    }
+}
+
+public struct WorkOutboxPush: Codable, Hashable, Sendable {
+    public let waiting: Int
+    public let unreviewed: Int
+    public let item: OutboxItem?
+
+    public init(waiting: Int, unreviewed: Int, item: OutboxItem? = nil) {
+        self.waiting = waiting
+        self.unreviewed = unreviewed
+        self.item = item
+    }
+}
+
+public struct WorkOutboxResultPush: Codable, Hashable, Sendable {
+    public let result: WorkResult
+
+    public init(result: WorkResult) {
+        self.result = result
+    }
+}
+
+public struct WorkLifeosPush: Codable, Hashable, Sendable {
+    public let status: LifeosStatus
+
+    public init(status: LifeosStatus) {
+        self.status = status
+    }
+}
+
+public struct AwayPush: Codable, Hashable, Sendable {
+    public struct Decided: Codable, Hashable, Sendable {
+        public struct Thread: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let count: Int
+
+            public init(sessionId: String, count: Int) {
+                self.sessionId = sessionId
+                self.count = count
+            }
+        }
+
+        public let since: Double
+        public let threads: [Thread]
+
+        public init(since: Double, threads: [Thread]) {
+            self.since = since
+            self.threads = threads
+        }
+    }
+
+    public let state: AwayState
+    public let decided: Decided
+
+    public init(state: AwayState, decided: Decided) {
+        self.state = state
+        self.decided = decided
+    }
+}
+
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
     case resync(ResyncPush)
@@ -228,6 +294,11 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case hostLog(HostLogPush)
     case macBridgeHeld(MacBridgeHeldPush)
     case presence(PresencePush)
+    case work(WorkPush)
+    case workOutbox(WorkOutboxPush)
+    case workOutboxResult(WorkOutboxResultPush)
+    case workLifeos(WorkLifeosPush)
+    case away(AwayPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -258,6 +329,11 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "host-log": self = .hostLog(try HostLogPush(from: decoder))
         case "macBridge.held": self = .macBridgeHeld(try MacBridgeHeldPush(from: decoder))
         case "presence": self = .presence(try PresencePush(from: decoder))
+        case "work": self = .work(try WorkPush(from: decoder))
+        case "work.outbox": self = .workOutbox(try WorkOutboxPush(from: decoder))
+        case "work.outbox.result": self = .workOutboxResult(try WorkOutboxResultPush(from: decoder))
+        case "work.lifeos": self = .workLifeos(try WorkLifeosPush(from: decoder))
+        case "away": self = .away(try AwayPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -284,6 +360,11 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .hostLog(let value): try Self.encode(tag: "host-log", value, to: encoder)
         case .macBridgeHeld(let value): try Self.encode(tag: "macBridge.held", value, to: encoder)
         case .presence(let value): try Self.encode(tag: "presence", value, to: encoder)
+        case .work(let value): try Self.encode(tag: "work", value, to: encoder)
+        case .workOutbox(let value): try Self.encode(tag: "work.outbox", value, to: encoder)
+        case .workOutboxResult(let value): try Self.encode(tag: "work.outbox.result", value, to: encoder)
+        case .workLifeos(let value): try Self.encode(tag: "work.lifeos", value, to: encoder)
+        case .away(let value): try Self.encode(tag: "away", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

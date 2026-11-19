@@ -2,6 +2,11 @@ import { z } from 'zod'
 import { StartOnSchema } from './defaults'
 import { SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
 import { WorkSettingsSchema } from './work/scope'
+import { PillarIdSchema } from './work/ids'
+import { ActKindSchema, HeldRefSchema } from './work/acts'
+import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
+import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStatus } from './contract-work-lifeos'
+import { AwayDecidedSchema, AwayStateSchema } from './away'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
 import { ComputerHistoryCallSchema, ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS } from './contract-computer'
@@ -1114,8 +1119,64 @@ export const HostLogPushSchema = push('host-log', {
   status: HostJobStatusSchema
 })
 export const MacBridgeHeldPushSchema = push('macBridge.held', { sessionId: z.string(), held: z.number().int() })
-/** Work (contract-work.ts): the switch's state on the host, to every client. Not in RemotePushSchema yet: the phone keeps it as unknown until its Work screens read it, and a pillar's pushes join the subset the same way. */
+/** Work (contract-work.ts): the switch's state on the host, to every client. The phone reads it (milestone 46), and a pillar's pushes join the subset the same way. */
 export const WorkPushSchema = push('work', { settings: WorkSettingsSchema })
+
+// ── Work on the phone (milestone 46): the Outbox, Results, LifeOS's state and Away ──
+export const UndoSpecSchema = z.object({ pillar: PillarIdSchema, verb: z.string(), args: z.unknown(), label: z.string().optional() })
+export const WorkResultSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  rootId: z.string(),
+  workspaceId: z.string().nullable(),
+  kind: z.string(),
+  summary: z.string(),
+  account: z.string().nullable(),
+  ref: z.unknown(),
+  undo: UndoSpecSchema.nullable(),
+  undoneAt: z.number().int().nullable(),
+  createdAt: z.number().int()
+})
+export const OutboxGrantSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  kind: ActKindSchema,
+  matcher: z.unknown(),
+  label: z.string(),
+  madeFrom: HeldRefSchema,
+  routineId: z.string().nullable(),
+  createdAt: z.number().int(),
+  removedAt: z.number().int().nullable()
+})
+export const ToolRuleRowSchema = z.object({
+  tool: z.string(),
+  words: z.string(),
+  description: z.string(),
+  hints: ToolHintsSchema,
+  suggested: z.enum(['runs', 'held']),
+  rule: ToolRuleSchema.nullable(),
+  changed: z.boolean()
+})
+export const ToolRulesCardSchema = z.object({
+  addonId: z.string(),
+  name: z.string(),
+  workspaceId: z.string().nullable(),
+  forWork: z.boolean(),
+  lifeos: z.boolean(),
+  unreviewed: z.number().int(),
+  tools: z.array(ToolRuleRowSchema)
+})
+export const OutboxListSchema = z.object({ items: z.array(OutboxItemSchema), waiting: z.number().int() })
+export const LifeosStatusSchema = z.object({ lifeos: LifeosStateSchema, keys: z.array(LifeosKeyStateSchema) })
+export const AwaySnapshotSchema = z.object({ state: AwayStateSchema, decided: AwayDecidedSchema })
+/** Something in the Outbox changed: how many wait, and the item that changed (no picture). To keys that can approve. */
+export const WorkOutboxPushSchema = push('work.outbox', { waiting: z.number().int(), unreviewed: z.number().int(), item: OutboxItemSchema.optional() })
+/** A Result was made or undone. */
+export const WorkOutboxResultPushSchema = push('work.outbox.result', { result: WorkResultSchema })
+/** This host's LifeOS sign-in and its sector keys. */
+export const WorkLifeosPushSchema = push('work.lifeos', { status: LifeosStatusSchema })
+/** Away from computer: the state and the stretch's tally, on each change. */
+export const AwayPushSchema = push('away', { state: AwayStateSchema, decided: AwayDecidedSchema })
 /** Computer use (contract-computer.ts): the desktop's; not in RemotePushSchema, since the phone does not speak it. */
 export const ComputerPushSchema = push('computer', {
   service: ComputerServiceStateSchema,
@@ -1180,7 +1241,12 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   HostDevicesPushSchema,
   HostLogPushSchema,
   MacBridgeHeldPushSchema,
-  PresencePushSchema
+  PresencePushSchema,
+  WorkPushSchema,
+  WorkOutboxPushSchema,
+  WorkOutboxResultPushSchema,
+  WorkLifeosPushSchema,
+  AwayPushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -1290,6 +1356,15 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof HostLogPushSchema, PushOf<'host-log'>>>,
   Expect<Mirror<typeof MacBridgeHeldPushSchema, PushOf<'macBridge.held'>>>,
   Expect<Mirror<typeof WorkPushSchema, PushOf<'work'>>>,
+  Expect<Mirror<typeof WorkOutboxPushSchema, PushOf<'work.outbox'>>>,
+  Expect<Mirror<typeof WorkOutboxResultPushSchema, PushOf<'work.outbox.result'>>>,
+  Expect<Mirror<typeof WorkLifeosPushSchema, PushOf<'work.lifeos'>>>,
+  Expect<Mirror<typeof AwayPushSchema, PushOf<'away'>>>,
+  Expect<Mirror<typeof WorkResultSchema, WorkResult>>,
+  Expect<Mirror<typeof OutboxGrantSchema, OutboxGrant>>,
+  Expect<Mirror<typeof OutboxItemSchema, OutboxItem>>,
+  Expect<Mirror<typeof ToolRulesCardSchema, ToolRulesCard>>,
+  Expect<Mirror<typeof LifeosStatusSchema, LifeosStatus>>,
   Expect<Mirror<typeof ComputerPushSchema, PushOf<'computer'>>>,
   Expect<Mirror<typeof ComputerFramePushSchema, PushOf<'computer-frame'>>>,
   Expect<Mirror<typeof ComputerClickPushSchema, PushOf<'computer-click'>>>,

@@ -91,6 +91,9 @@ import * as W from '../src/shared/wireSchemas'
 import { CanvasSourceSchema, ContextChipSchema } from '../src/shared/work/canvas'
 import { SessionScopeSchema, WorkspaceKindSchema } from '../src/shared/work/ids'
 import { WorkSettingsSchema } from '../src/shared/work/scope'
+import { OutboxItemSchema } from '../src/shared/contract-work-outbox'
+import { HeldRefSchema } from '../src/shared/work/acts'
+import { AwayStateSchema } from '../src/shared/away'
 
 // ── the subset ──────────────────────────────────────────────────────────
 
@@ -428,7 +431,30 @@ export const SUBSET: SubsetEntry[] = [
   method('macBridge.stop', W.OkSchema),
   // Work: the switch on a host (Settings → Work on the phone writes it to every host it is linked to)
   method('work.get', WorkSettingsSchema),
-  method('work.set', WorkSettingsSchema)
+  method('work.set', WorkSettingsSchema),
+  // Work on the phone (milestone 46): the Outbox, Results, grants and tool rules, LifeOS's state, Away
+  type('HeldRef', HeldRefSchema),
+  type('AwayState', AwayStateSchema),
+  type('OutboxItem', OutboxItemSchema),
+  type('WorkResult', W.WorkResultSchema),
+  type('OutboxGrant', W.OutboxGrantSchema),
+  type('ToolRulesCard', W.ToolRulesCardSchema),
+  type('LifeosStatus', W.LifeosStatusSchema),
+  type('AwaySnapshot', W.AwaySnapshotSchema),
+  method('work.outbox.list', W.OutboxListSchema),
+  method('work.outbox.get', OutboxItemSchema),
+  method('work.outbox.send', OutboxItemSchema),
+  method('work.outbox.discard', OutboxItemSchema),
+  method('work.outbox.edit', OutboxItemSchema),
+  method('work.outbox.grants', z.object({ grants: z.array(W.OutboxGrantSchema) })),
+  method('work.outbox.ungrant', W.OutboxGrantSchema),
+  method('work.outbox.rules', z.object({ addons: z.array(W.ToolRulesCardSchema) })),
+  method('work.outbox.setRules', W.ToolRulesCardSchema),
+  method('work.outbox.results', z.object({ results: z.array(W.WorkResultSchema) })),
+  method('work.outbox.undo', W.WorkResultSchema),
+  method('work.lifeos.status', W.LifeosStatusSchema),
+  method('away.get', W.AwaySnapshotSchema),
+  method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state }))
 ]
 
 /** Enum values that need an explicit Swift case name. */
