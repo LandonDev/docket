@@ -35,7 +35,11 @@ look.
 - **Stale**: `work.dashboards.open` asks each source sheet for its rev; if
   one moved since the page was read (or cannot be asked), the view says
   `stale` and the canvas dims the figures and the current bar
-  (`chart-neutral-stale`). The canvas asks again every 30 s while shown.
+  (`chart-neutral-stale`), and the bar says "Out of date" before "As of".
+  The canvas asks again every 30 s while shown.
+- A chart's axis takes three round steps (whole steps for counts); only a
+  time series stresses its last bar as current. Each bar has a Tip with its
+  label and value.
   Stale never changes a number: Refresh does.
 - **Refreshed by a routine**: a routine's thread calls `dashboard_refresh`,
   which reads the page again (and takes new values for figures from a
