@@ -289,7 +289,7 @@ and edits nothing else:
 | `held` | work/outbox/ctx.ts | 10 |
 | `results` | work/outbox/results.ts (and `ensureResults`, which the outbox module's `ensure` calls) | 14 |
 | `convert` | work/formats/jobs.ts (built: [work-formats.md](work-formats.md)) | 15 |
-| `service` | work/service/ctx.ts | 18 |
+| `service` | work/service/ctx.ts (built: [work-service.md](work-service.md)) | 18 |
 
 A part is a function `(ctx, deps) => members`. `deps` (`WorkDeps`) is what
 index.ts hands over: the database, the store, the session registry, this
@@ -363,14 +363,16 @@ input that is not a `z.object` is left out and logged.
 ## The build entries
 
 - `out/main/workService.js`, from `src/main/workServiceProcess.ts`: the Work
-  service's utility process, beside the gateway and the add-on host. A stub
-  that says so and exits; nothing forks it yet.
+  service's utility process, beside the gateway and the add-on host. Forked
+  while Work is on ([work-service.md](work-service.md)).
 - `out/hosted/`, from `src/hosted/`: the pages the Work service serves to a
   browser that is not the app. Their own Vite build (`hostedBuildConfig`),
   run when the renderer's bundle closes, with its own root, chunks and base
   (`/w/hosted/`), so nothing of the app's window reaches a guest's page and
   no hosted module enters the window's first paint. `HOSTED_PAGES` is the
-  closed list: `index`, `item`, `guest`, `form`, each a stub page.
+  closed list: `index`, `item`, `guest`, `form`. The Work service serves
+  them at `/w/hosted/`; `index` is its own plain page, the other three are
+  stubs until milestones 31 and 36.
   `tsconfig.web.json` includes `src/hosted`.
 
 ## How a pillar registers

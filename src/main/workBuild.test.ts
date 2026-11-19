@@ -22,18 +22,17 @@ describe('the Work service entry', () => {
     const main = (config as { main: { build: { rollupOptions: { input: unknown } } } }).main
     expect(main.build.rollupOptions.input).toBe(MAIN_INPUTS)
   })
-  it('bundles from the stub into workService.js', async () => {
+  it('bundles into workService.js', async () => {
     // The entry alone, through the bundler the app's build uses, in the shape electron-vite gives the main bundle (CommonJS, `<entry>.js`).
     const dir = join(out, 'main')
     await viteBuild({ configFile: false, logLevel: 'warn', build: { ssr: true, outDir: dir, emptyOutDir: true, rollupOptions: { input: { workService: MAIN_INPUTS.workService }, output: { format: 'cjs', entryFileNames: '[name].js' } } } })
     expect(readdirSync(dir)).toEqual(['workService.js'])
-    expect(readFileSync(join(dir, 'workService.js'), 'utf8')).toContain('not built: the Work service (milestone 18)')
+    expect(readFileSync(join(dir, 'workService.js'), 'utf8')).toContain('the Work service runs only as a utility process')
   }, 120_000)
-  it('is a stub that says so and serves nothing', () => {
+  it('is the service itself (milestone 18): what it may import is held by work/service/boundary.test.ts', () => {
     const source = readFileSync(MAIN_INPUTS.workService, 'utf8')
-    expect(source).toContain("console.error('not built: the Work service (milestone 18)')")
-    expect(source).toContain('process.exit(1)')
-    expect(source).not.toMatch(/\bimport\b/)
+    expect(source).toContain("from './server/work/service/serve'")
+    expect(source).not.toContain('not built')
   })
 })
 
@@ -55,7 +54,7 @@ describe('the hosted pages', () => {
     expect(plugin.apply).toBe('build')
     await (plugin.closeBundle as () => Promise<void>).call({})
     expect(readdirSync(join(out, 'hosted')).sort()).toEqual(['form', 'guest', 'index.html', 'item'])
-    const pages = { 'index.html': 18, 'item/index.html': 31, 'guest/index.html': 31, 'form/index.html': 36 }
+    const pages = { 'item/index.html': 31, 'guest/index.html': 31, 'form/index.html': 36 }
     for (const [page, milestone] of Object.entries(pages)) {
       const html = readFileSync(join(out, 'hosted', page), 'utf8')
       expect(html, page).toContain(`(milestone ${milestone})`)
@@ -63,5 +62,10 @@ describe('the hosted pages', () => {
       expect(html, page).not.toContain('<script')
       expect(html, page).toContain("default-src 'none'")
     }
+    // The index is the service's own (milestone 18): a plain page that runs nothing.
+    const index = readFileSync(join(out, 'hosted', 'index.html'), 'utf8')
+    expect(index).not.toContain('<script')
+    expect(index).not.toContain('Not built')
+    expect(index).toContain("default-src 'none'")
   }, 120_000)
 })

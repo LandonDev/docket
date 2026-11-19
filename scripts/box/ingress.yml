@@ -1,4 +1,13 @@
 ingress:
+  # The Work service's public routes (docs/agents/work-service.md): live
+  # documents, the hosted pages, and later guest links and forms. The
+  # installed host's port only (TEMP_CODE_WORK_PORT, 7695). Must stay before
+  # the remote listener's rule, which would take every path of the hostname.
+  # Written by milestone 18; applying it to the live tunnel is the owner's
+  # step (scripts/box/apply.sh --from 60 --through 60).
+  - hostname: tempcode.landonhale.com
+    path: ^/(g|w|f)/
+    service: http://127.0.0.1:7695
   - hostname: tempcode.landonhale.com
     service: http://127.0.0.1:7677
   - service: http_status:404

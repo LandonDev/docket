@@ -134,6 +134,11 @@ to `127.0.0.1:20241`. The connector opens outbound connections; UFW needs no
 extra inbound rule. Until thread C starts the listener, HTTPS returns the
 expected Cloudflare 502.
 
+The Work service's public routes ride the same hostname: a rule before it
+sends paths matching `^/(g|w|f)/` to the installed host's Work port, 7695
+(docs/agents/work-service.md). The rule is in `scripts/box/ingress.yml` and
+reaches the box with the next apply.
+
 To add a production hostname:
 
 1. Add a hostname and its loopback origin to `scripts/box/ingress.yml`, before
