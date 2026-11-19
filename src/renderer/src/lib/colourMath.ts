@@ -1,7 +1,7 @@
 /**
  * Colour arithmetic over index.css's token layer, for the tests that hold
  * the tokens to their contrast and hue rules (tokenContrast, typeTint).
- * Parses hex, `oklch()`, `hsl()`, `rgb()`, each with an optional alpha, and
+ * Parses hex and the oklch, hsl and rgb functions, each with an optional alpha, and
  * `color-mix(in srgb, A n%, transparent)`; follows `var(--name)` through a theme.
  */
 
@@ -41,7 +41,9 @@ const gamma = (c: number): number => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** 
 const clamp = (c: number): number => Math.min(1, Math.max(0, c));
 
 /** sRGB channels (gamma-encoded, 0 to 1) and alpha. */
-export type Rgba = [number, number, number, number];
+export type Channels = [number, number, number, number];
+/** A colour as CSS writes it, or one already read. */
+export type Colour = string | Channels;
 
 const number = (part: string, whole = 1): number => (part.endsWith("%") ? parseFloat(part) / 100 : parseFloat(part) / whole);
 
@@ -67,7 +69,8 @@ function hslToRgb(h: number, s: number, l: number): number[] {
 }
 
 /** Any colour the token layer writes, as sRGB and alpha. Throws on what it cannot read, so no test passes on a guess. */
-export function rgba(value: string): Rgba {
+export function channels(value: Colour): Channels {
+  if (typeof value !== "string") return value;
   const v = value.trim().toLowerCase();
   if (v === "transparent") return [0, 0, 0, 0];
   if (v === "white") return [1, 1, 1, 1];
@@ -82,42 +85,42 @@ export function rgba(value: string): Rgba {
   if (fn) {
     const [x, y, z, alpha] = fn[2].split(/[\s,/]+/).filter(Boolean);
     const a = alpha === undefined ? 1 : number(alpha);
-    if (fn[1] === "oklch") return [...oklchToRgb(number(x), parseFloat(y), parseFloat(z)), a] as Rgba;
-    if (fn[1].startsWith("hsl")) return [...hslToRgb(parseFloat(x), number(y), number(z)), a] as Rgba;
+    if (fn[1] === "oklch") return [...oklchToRgb(number(x), parseFloat(y), parseFloat(z)), a] as Channels;
+    if (fn[1].startsWith("hsl")) return [...hslToRgb(parseFloat(x), number(y), number(z)), a] as Channels;
     return [number(x, 255), number(y, 255), number(z, 255), a];
   }
   // A colour thinned toward nothing: its own channels at n% of its alpha.
   const mix = /^color-mix\(in srgb,\s*(.+?)\s+([\d.]+)%\s*,\s*transparent\s*\)$/.exec(v);
   if (mix) {
-    const [r, g, b, a] = rgba(mix[1]);
+    const [r, g, b, a] = channels(mix[1]);
     return [r, g, b, (a * parseFloat(mix[2])) / 100];
   }
   throw new Error(`unparsed colour ${value}`);
 }
 
 /** `top` laid over the grounds under it, nearest first, as an opaque colour. The last ground must be opaque. */
-export function over(top: string, ...grounds: string[]): string {
-  let [r, g, b, a] = rgba(top);
+export function over(top: Colour, ...grounds: Colour[]): Channels {
+  let [r, g, b, a] = channels(top);
   for (const ground of grounds) {
     if (a >= 1) break;
-    const [gr, gg, gb, ga] = rgba(ground);
+    const [gr, gg, gb, ga] = channels(ground);
     const out = a + ga * (1 - a);
     [r, g, b] = [r, g, b].map((c, i) => (c * a + [gr, gg, gb][i] * ga * (1 - a)) / (out || 1));
     a = out;
   }
-  if (a < 1 - 1e-9) throw new Error(`${top} is not opaque over ${grounds.join(", ") || "nothing"}`);
-  return `rgb(${[r, g, b].map((c) => +(c * 255).toFixed(4)).join(" ")})`;
+  if (a < 1 - 1e-9) throw new Error(`${String(top)} is not opaque over ${grounds.join(", ") || "nothing"}`);
+  return [r, g, b, 1];
 }
 
 /** Linear sRGB of an opaque colour. */
-function linearRgb(value: string): number[] {
-  const [r, g, b, a] = rgba(value);
-  if (a < 1) throw new Error(`${value} has no luminance until it is laid over a ground (over)`);
+function linearRgb(value: Colour): number[] {
+  const [r, g, b, a] = channels(value);
+  if (a < 1) throw new Error(`${String(value)} has no luminance until it is laid over a ground (over)`);
   return [r, g, b].map(linear);
 }
 
 /** OKLab of an opaque colour. */
-export function oklab(value: string): [number, number, number] {
+export function oklab(value: Colour): [number, number, number] {
   const [r, g, b] = linearRgb(value);
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
@@ -130,25 +133,25 @@ export function oklab(value: string): [number, number, number] {
 }
 
 /** Relative luminance of an opaque colour. */
-export function luminance(value: string): number {
+export function luminance(value: Colour): number {
   const [r, g, b] = linearRgb(value);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 /** WCAG contrast of two opaque colours. */
-export function contrast(a: string, b: string): number {
+export function contrast(a: Colour, b: Colour): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 }
 
 /** OKLCH hue in degrees, 0 to 360. */
-export function hue(value: string): number {
+export function hue(value: Colour): number {
   const [, a, b] = oklab(value);
   return ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
 }
 
 /** The shorter way round the hue circle between two colours, in degrees. */
-export function hueDistance(x: string, y: string): number {
+export function hueDistance(x: Colour, y: Colour): number {
   const d = Math.abs(hue(x) - hue(y));
   return Math.min(d, 360 - d);
 }

@@ -126,7 +126,7 @@ function MarkdownLink({
   const anchor = (
     <a
       href={href}
-      className={`text-accent underline-offset-2 hover:underline ${className ?? ""}`}
+      className={`text-link underline-offset-2 hover:underline ${className ?? ""}`}
       {...props}
       onClick={(event) => {
         onClick?.(event);

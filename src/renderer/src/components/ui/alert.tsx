@@ -39,7 +39,7 @@ function AlertTitle({ className, ...props }: ComponentProps<"div">) {
 }
 
 function AlertDescription({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="alert-description" className={cn("col-start-2 text-[13px] leading-5 text-foreground/80 [&_a]:underline [&_a]:underline-offset-3 [&_p:not(:last-child)]:mb-3", className)} {...props} />;
+  return <div data-slot="alert-description" className={cn("col-start-2 text-[13px] leading-5 text-foreground [&_a]:underline [&_a]:underline-offset-3 [&_p:not(:last-child)]:mb-3", className)} {...props} />;
 }
 
 function AlertAction({ className, ...props }: ComponentProps<"div">) {

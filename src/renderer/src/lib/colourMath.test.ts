@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contrast, hue, luminance, oklab, over, resolve, rgba } from "./colourMath";
+import { channels as rgba, contrast, hue, luminance, oklab, over, resolve } from "./colourMath";
 
 const near = (got: number[], want: number[], digits = 3): void => got.forEach((c, i) => expect(c, `channel ${i}`).toBeCloseTo(want[i], digits));
 

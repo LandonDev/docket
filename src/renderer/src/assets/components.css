@@ -511,7 +511,6 @@
   --task-draw: var(--dur-slow);
   --task-draw-lead: var(--dur-fast);
   --task-check-len: 9.9;
-  --task-done: color-mix(in oklab, var(--foreground) 45%, transparent);
 }
 
 .task-mark {

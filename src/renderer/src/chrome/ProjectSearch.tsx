@@ -250,7 +250,7 @@ export function ProjectSearch({
                       <span className="w-7 shrink-0 text-right font-mono text-xs leading-5 text-muted-foreground tabular-nums">
                         {match.line}
                       </span>
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs leading-5 text-foreground/80">
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs leading-5 text-foreground">
                         <MatchText
                           text={match.preview.trimEnd()}
                           query={trimmed}

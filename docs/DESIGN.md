@@ -258,7 +258,7 @@ both themes, unless the table gives two values.
 | --- | --- | --- |
 | `add-bg` | a change waiting on the person: added words, a filled cell, a suggested task | `success` 14% |
 | `add-bg-soft` | a sheet's cells just after the agent wrote them | `success` 8% |
-| `del-bg` | words or cells a change would remove (struck through, `foreground` ink at 70%) | `destructive` 12% |
+| `del-bg` | words or cells a change would remove (struck through, in `muted-foreground`) | `destructive` 12% |
 | `sel-bg` | a selection the person made that an Ask or a comment will take; the current find hit, with the accent line | `accent` 22% |
 | `diff-gap` | the blank that holds a missing side's place in a compare | `foreground` 4% |
 | `border-strong` | a sheet's frozen-pane line | `foreground` 24% |

@@ -485,7 +485,7 @@ export function DocumentFrame({
           <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className="mb-4">
             {open.role === "edit" && open.source.at === "lifeos" ? <TitleField text={open.title} rename={doc.host.rename} /> : <Title text={open.title} />}
           </div>
-          <div className="[--link:var(--accent)]" style={{ paddingLeft: GUTTER, paddingRight: margin ? MARGIN : 0 }}>
+          <div style={{ paddingLeft: GUTTER, paddingRight: margin ? MARGIN : 0 }}>
             <DocumentEditor
               documentName={open.doc}
               editable={open.role === "edit"}

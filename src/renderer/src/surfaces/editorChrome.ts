@@ -42,7 +42,7 @@ function editorThemeStyles(dark: boolean) {
     },
     ".cm-gutters": {
       backgroundColor: "transparent",
-      color: "color-mix(in srgb, var(--foreground) 38%, transparent)",
+      color: "var(--faint-foreground)",
       borderRight:
         "1px solid color-mix(in srgb, var(--foreground) 7%, transparent)",
       paddingLeft: "4px",
@@ -57,17 +57,17 @@ function editorThemeStyles(dark: boolean) {
     ".cm-foldGutter .cm-gutterElement": {
       padding: "0 2px",
       cursor: "pointer",
-      color: "color-mix(in srgb, var(--foreground) 45%, transparent)",
+      color: "var(--faint-foreground)",
     },
     ".cm-foldPlaceholder": {
-      color: "color-mix(in srgb, var(--foreground) 40%, transparent)",
+      color: "var(--faint-foreground)",
     },
     ".cm-activeLine": {
       backgroundColor: "color-mix(in srgb, var(--foreground) 10%, transparent)",
     },
     ".cm-activeLineGutter": {
       backgroundColor: "color-mix(in srgb, var(--foreground) 10%, transparent)",
-      color: "color-mix(in srgb, var(--foreground) 70%, transparent)",
+      color: "var(--muted-foreground)",
     },
     ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection":
       {
@@ -119,7 +119,7 @@ function editorThemeStyles(dark: boolean) {
       color: "var(--foreground)",
     },
     ".cm-completionDetail": {
-      color: "color-mix(in srgb, var(--foreground) 50%, transparent)",
+      color: "var(--muted-foreground)",
       fontStyle: "normal",
       marginLeft: "8px",
     },

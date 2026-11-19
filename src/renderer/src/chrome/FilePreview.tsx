@@ -217,7 +217,7 @@ function tokenizeLine(text: string, dimmed: boolean): ReactElement {
     trimmed.startsWith("///") ||
     trimmed.startsWith("#")
   ) {
-    return <span className={`text-muted-foreground/60 ${dim}`}>{text}</span>;
+    return <span className={`text-faint-foreground ${dim}`}>{text}</span>;
   }
 
   const parts: { text: string; keyword: boolean }[] = [];

@@ -10,9 +10,9 @@ import { OmittedNote, ToolOutputLines, useRowBodies } from "../ToolDetails";
 /** Ink only: colour in the transcript means a status, so the command has none. */
 const TONE: Record<ShellTone, string> = {
   command: "text-foreground",
-  string: "text-foreground/70",
+  string: "text-muted-foreground",
   operator: "text-muted-foreground",
-  flag: "text-foreground/70",
+  flag: "text-muted-foreground",
   text: "text-foreground",
 };
 

@@ -91,11 +91,12 @@ export function readPalette(dark: boolean): Record<string, string> {
   const accent = solid("--color-accent", "#4c9aff");
   const withAlpha = (hex: string, alpha: number) =>
     hex.slice(0, 7) + Math.round(alpha * 255).toString(16).padStart(2, "0");
-  // Content over base at the alphas editorChrome.ts uses for the CodeMirror pane.
+  // Content over base, for the fills and edges editorChrome.ts draws on the CodeMirror pane.
   const mix = (pct: number) =>
     cssToHex(`color-mix(in srgb, ${content} ${pct}%, ${base})`)?.slice(0, 7) ?? content;
-  const faint = mix(38);
-  const muted = mix(60);
+  // Line numbers and ghost text may be missed; the active line's number and inlay hints support the code.
+  const faint = solid("--faint-foreground", mix(38));
+  const muted = solid("--muted-foreground", mix(60));
   const hairline = mix(7);
   const borderStrong = mix(16);
   const popover = mix(4);

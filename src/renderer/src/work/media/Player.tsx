@@ -110,7 +110,7 @@ function Screen({ version, label, videoRef, region, selecting, onRegion, onClick
       {label ? <div className="mb-1 text-xs text-muted-foreground">{label}</div> : null}
       <div
         data-media-frame
-        className="relative mx-auto w-full overflow-hidden rounded-lg bg-black outline-1 -outline-offset-1 outline-(--image-outline)"
+        className="relative mx-auto w-full overflow-hidden rounded-lg bg-matte outline-1 -outline-offset-1 outline-(--image-outline)"
         style={{ aspectRatio: String(ratio), maxWidth: `calc(58vh * ${ratio})` }}
       >
         <video ref={videoRef} playsInline preload="auto" className="absolute inset-0 size-full object-contain" />

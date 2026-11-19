@@ -35,7 +35,7 @@ const item = (id: string, kind: CanvasKind, title: string, position: number, ses
 });
 
 const ins = "rounded-sm bg-(--add-bg)";
-const del = "rounded-sm bg-(--del-bg) text-foreground/70 line-through decoration-destructive/70";
+const del = "rounded-sm bg-(--del-bg) text-muted-foreground line-through decoration-destructive/70";
 
 /** The prototype's run of show, with the agent's three changes tinted in place. */
 function RunOfShow({ plain, ask }: { plain: boolean; ask: boolean }) {

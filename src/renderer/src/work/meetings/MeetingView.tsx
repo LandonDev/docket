@@ -309,7 +309,7 @@ export function MinuteLink({ at, meeting, onPlay }: { at: number | null; meeting
         event.stopPropagation();
         onPlay(at);
       }}
-      className="ms-1.5 h-auto p-0 align-baseline text-[13px] leading-6 font-normal text-accent tabular-nums underline-offset-3"
+      className="ms-1.5 h-auto p-0 align-baseline text-[13px] leading-6 font-normal text-link tabular-nums underline-offset-3"
     >
       {timeOf(at, meeting)}
     </Button>

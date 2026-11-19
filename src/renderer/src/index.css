@@ -761,7 +761,7 @@ input,
   padding: 0.15em 0 0.15em 0.75em;
   border-left: 2px solid
     color-mix(in srgb, var(--foreground) 16%, transparent);
-  color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  color: var(--muted-foreground);
 }
 
 .workspace-surface[aria-hidden="true"] {
@@ -811,12 +811,8 @@ html.is-resizing * {
 }
 
 .markdown-source-field::placeholder {
-  color: color-mix(in srgb, var(--foreground) 35%, transparent);
-  -webkit-text-fill-color: color-mix(
-    in srgb,
-    var(--foreground) 35%,
-    transparent
-  );
+  color: var(--faint-foreground);
+  -webkit-text-fill-color: var(--faint-foreground);
 }
 
 .scrollbar-none::-webkit-scrollbar {
@@ -1034,7 +1030,7 @@ header[data-tauri-drag-region] button {
   text-overflow: ellipsis;
   white-space: pre;
   opacity: 1 !important;
-  color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  color: var(--muted-foreground);
 }
 .monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .right {
   flex: 0 0 auto !important;
@@ -1045,7 +1041,7 @@ header[data-tauri-drag-region] button {
   font-size: 100% !important;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--foreground) 50%, transparent) !important;
+  color: var(--muted-foreground) !important;
   margin-right: 6px;
 }
 /* Kind-coloured names. */
@@ -1053,12 +1049,6 @@ header[data-tauri-drag-region] button {
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-interface) .monaco-icon-label,
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-struct) .monaco-icon-label,
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum) .monaco-icon-label {
-  color: var(--editor-type-name);
-}
-.theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-class) .monaco-icon-label,
-.theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-interface) .monaco-icon-label,
-.theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-struct) .monaco-icon-label,
-.theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum) .monaco-icon-label {
   color: var(--editor-type-name);
 }
 .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-constant) .monaco-icon-label,
@@ -1125,7 +1115,7 @@ header[data-tauri-drag-region] button {
 .monaco-editor .suggest-widget .suggest-status-bar {
   font-size: 10.5px;
   padding: 2px 10px;
-  color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  color: var(--muted-foreground);
   background: color-mix(in srgb, var(--foreground) 4%, var(--background));
   border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
 }
@@ -1153,10 +1143,10 @@ header[data-tauri-drag-region] button {
 }
 .monaco-editor .codelens-decoration,
 .monaco-editor .codelens-decoration a {
-  color: color-mix(in srgb, var(--foreground) 40%, transparent) !important;
+  color: var(--faint-foreground) !important;
 }
 .monaco-editor .codelens-decoration a:hover {
-  color: color-mix(in srgb, var(--foreground) 70%, transparent) !important;
+  color: var(--muted-foreground) !important;
 }
 /* Parameter info (⌘P) and the usages / hierarchy popup. */
 .monaco-editor .tc-param-info,
@@ -1188,7 +1178,7 @@ header[data-tauri-drag-region] button {
 }
 .monaco-editor .tc-param-info-empty,
 .monaco-editor .tc-param-info-dimmed {
-  color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  color: var(--faint-foreground);
 }
 .monaco-editor .tc-param-info-empty {
   font-style: italic;
@@ -1215,7 +1205,7 @@ header[data-tauri-drag-region] button {
 .monaco-editor .tc-usages-count,
 .monaco-editor .tc-usages-line,
 .monaco-editor .tc-usages-footer {
-  color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  color: var(--faint-foreground);
 }
 .monaco-editor .tc-usages-count {
   margin-left: auto;
@@ -1234,7 +1224,7 @@ header[data-tauri-drag-region] button {
   white-space: pre;
 }
 .monaco-editor .tc-usages-file {
-  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  color: var(--muted-foreground);
 }
 .monaco-editor .tc-usages-selected {
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);

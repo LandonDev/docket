@@ -177,7 +177,7 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
 
 const INS = "rounded-[2px] bg-(--add-bg) box-decoration-clone";
 // Removed words keep 70% of the ink, so they read on the tint in both themes.
-const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-foreground/70 line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
+const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-muted-foreground line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
 
 /** Words taken out struck, words put in washed; taken words then new ones read as two, a space's width apart, as Compare draws them. */
 export function Runs({ ops }: { ops: InlineOp[] }) {

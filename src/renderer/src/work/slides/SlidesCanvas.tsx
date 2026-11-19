@@ -472,7 +472,7 @@ const NOTES_WHERE = "Notes";
 function Diff({ before, after }: { before: string; after: string }) {
   return (
     <>
-      {before ? <span className="rounded-sm bg-(--del-bg) text-foreground/70 line-through decoration-destructive/70">{before}</span> : null}
+      {before ? <span className="rounded-sm bg-(--del-bg) text-muted-foreground line-through decoration-destructive/70">{before}</span> : null}
       {before && after ? " " : null}
       {after ? <span className="rounded-sm bg-(--add-bg)">{after}</span> : null}
     </>
