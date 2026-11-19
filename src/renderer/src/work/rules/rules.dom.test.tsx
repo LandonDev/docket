@@ -156,6 +156,25 @@ describe("the rule dialog", () => {
   });
 });
 
+describe("the order, without a pointer", () => {
+  it("moves a rule up and down from its edit dialog through the same reorder call", async () => {
+    state.rules = [rule("r1", "First"), rule("r2", "Second"), rule("r3", "Third")];
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Edit rule: Second" }));
+    await settle();
+    expect(screen.getByText("2 of 3")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Move up" }));
+    await settle();
+    expect(calls.find((c) => c.method === "work.rules.order")?.params).toEqual({ workspaceId: "ws", ids: ["r2", "r1", "r3"] });
+    expect(screen.getByText("1 of 3")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Move up" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Move down" }));
+    await settle();
+    expect(calls.filter((c) => c.method === "work.rules.order").at(-1)?.params).toEqual({ workspaceId: "ws", ids: ["r1", "r2", "r3"] });
+  });
+});
+
 describe("the line under a sent mail", () => {
   it("names the habit, opens to the edits, and Not now leaves it for the rules page", async () => {
     render(<RuleLine env="box" draftId="d3" />);

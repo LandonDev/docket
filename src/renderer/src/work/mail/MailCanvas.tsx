@@ -13,7 +13,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { openWorkSettings } from "../shell/open";
-import { useLifeosSession, watchLifeos } from "../shell/lifeos";
+import { reopenLifeos, sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor, tempcodeMailKit } from "./kit";
 import { proposalDiff, type Proposal } from "./proposal";
@@ -38,13 +38,16 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   const lifeos = useLifeosSession(env, sector);
   const unreachable = lifeos.state === "unreachable";
   useEffect(() => {
-    shell.statusLine(unreachable ? { tone: "failed", word: "LifeOS did not answer", detail: "The draft is kept there", action: { label: "Retry", run: () => watchLifeos(env) } } : null);
-  }, [shell, unreachable, env]);
+    // Retry asks the host's status afresh and, once it says connected, this sector's session again: watching a host already
+    // watched starts nothing. A retry that fails leaves the line as it is; the spinner stopping is the answer.
+    const retry = (): Promise<void> => reopenLifeos(env, sector).catch(() => undefined);
+    shell.statusLine(unreachable ? { tone: "failed", word: "LifeOS did not answer", detail: "The draft is kept there", action: { label: "Retry", run: retry } } : null);
+  }, [shell, unreachable, env, sector]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
-  if (lifeos.state === "signed-out" || lifeos.state === "refused") return <EmptyState title="Sign in to LifeOS" action={{ label: "Sign in", onClick: openWorkSettings }} />;
+  if (lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title="Sign in to LifeOS" action={{ label: "Sign in", onClick: openWorkSettings }} />;
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
   if (!lifeos.client) {
-    if (!unreachable) return <SurfaceSkeleton kind="column" label="Loading the mail" />;
+    if (sessionWaits(lifeos)) return <SurfaceSkeleton kind="column" label="Loading the mail" />;
     const kept = lastRead.get(source.id);
     return kept ? <Letter draft={kept} /> : null;
   }

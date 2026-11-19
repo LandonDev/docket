@@ -159,7 +159,7 @@ function Lead({
   const thread = useTaskThread(useThread, task._id);
   return (
     <div className="flex flex-col gap-1 px-3">
-      {/* No mark beside the title (the owner's rule): the thread's state shows on its row and in Open thread. */}
+      {/* No mark beside the title (the owner's rule): the thread's state leads Open thread, as canvas.html's peek leads its line. */}
       <h1 className="min-w-0 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{task.title}</h1>
       {meta || task.dueAt !== undefined ? (
         <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
@@ -168,6 +168,12 @@ function Lead({
         </p>
       ) : null}
       <div className="mt-3 flex items-center gap-2">
+        {thread && marksAtRest(thread.state) ? (
+          // Beside the button, not on its fill: the mark's tone must read on the page.
+          <span data-lead-thread={thread.state} className="flex size-4 shrink-0 items-center justify-center">
+            <StatusMark state={thread.state} word={false} />
+          </span>
+        ) : null}
         {thread ? (
           <Button size="sm" onClick={() => openThread(thread)}>
             Open thread

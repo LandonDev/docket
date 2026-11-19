@@ -95,6 +95,9 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   const [stretch, setStretch] = useState<Stretch | null>(null);
   const [region, setRegion] = useState<{ region: MediaRegion; frame?: number } | null>(null);
   const [comment, setComment] = useState<{ anchor: MediaAnchor; rect: DOMRect | null; about: string } | null>(null);
+  // A Play the element refused, kept for the version it was refused on: another version starts clear.
+  const [refused, setRefused] = useState<{ id: string; reason: string } | null>(null);
+  const playError = refused && refused.id === shown?.id ? refused.reason : null;
 
   const notes = useMemo(
     () => (view?.notes ?? []).filter((n) => n.anchor.versionId === shown?.id && !n.parentId).sort((a, b) => (a.anchor.frame ?? 0) - (b.anchor.frame ?? 0) || a.createdAt - b.createdAt),
@@ -135,9 +138,17 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
         ? { tone: "failed", word: `${failed.name} could not be shown`, detail: unshowable(failed), action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
         : error
           ? { tone: "failed", word: "Couldn't open this file", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
-          : null,
+          : playError
+            ? {
+                tone: "failed",
+                word: "Couldn't play this video",
+                detail: playError,
+                // A fresh view first, in case the address it plays from has lapsed; then the element loads and plays again.
+                action: { label: "Retry", run: () => loadMedia(env, item.id).then(() => player.current?.play()) },
+              }
+            : null,
     );
-  }, [shell, shown, other, view?.versions, error, env, item.id]);
+  }, [shell, shown, other, view?.versions, error, playError, env, item.id]);
   useEffect(
     () => () => {
       shell.mode(null);
@@ -225,6 +236,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
         }}
         onRegion={(r, rect, at) => selectRegion(r, rect, at)}
         onComment={(at, rect) => openComment({ versionId: shown.id, frame: at }, rect, table ? `At ${timeOf(table, at)}` : "")}
+        onPlayFailed={(reason) => setRefused(reason === null ? null : { id: shown.id, reason })}
       />
       {other ? null : <Notes notes={notes} table={table} current={current} playing={frame} onPick={pick} />}
       <CommentPopover rect={comment?.rect ?? null} about={comment?.about ?? ""} onSave={(body) => actions.note(comment!.anchor, body)} onClose={() => setComment(null)} />

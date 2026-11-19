@@ -154,7 +154,12 @@ What a kind should know:
   for the one amber case, a source that needs the person to sign in),
   `written({ text, undo? })` (what the agent last wrote directly, in the
   stepper's place), `detail` (one fact after a lone item's name: where a
-  browser runs). The calls: `openHistory()` opens a `history` item on the
+  browser runs), `ready(open)` (whether the item has opened: History, which
+  the pane draws for a `history: true` def, waits for the kind's chunk and
+  is held back while the kind says false, so a loading or failed item is
+  never a bar holding History alone; a kind that never says is drawn as
+  opened. The document says it; a Word file being imported says false).
+  The calls: `openHistory()` opens a `history` item on the
   same source; `ask(chip)` puts a chip in the thread's composer, unfolding
   the thread first, as the selection bar's Ask does; `held(ref)` opens a held act where held acts are shown
   (`onOpenHeld` in work/canvas/held.ts, which the Outbox registers).

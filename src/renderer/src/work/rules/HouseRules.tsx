@@ -51,6 +51,24 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
   const [dialog, setDialog] = useState<RuleDialogOf | null>(null);
   const page = load.status === "ready" ? load.value : null;
 
+  // The edit dialog's Move up and Move down: the grip's reorder, kept in step with the list.
+  const ruleId = dialog?.kind === "rule" ? dialog.rule.id : null;
+  const at = page && ruleId ? page.rules.findIndex((r) => r.id === ruleId) : -1;
+  const moves =
+    page && at >= 0
+      ? {
+          at,
+          of: page.rules.length,
+          move: (by: -1 | 1) => {
+            const order = page.rules.map((r) => r.id);
+            const to = at + by;
+            if (to < 0 || to >= order.length) return Promise.resolve();
+            [order[at], order[to]] = [order[to]!, order[at]!];
+            return reorder(env, workspace.id, page, put, order);
+          },
+        }
+      : null;
+
   const added = (rule: HouseRule): void =>
     void loadToast().then((toast) =>
       toast(`Added to ${workspace.name}'s rules`, { action: { label: "Undo", onClick: () => void removeRule(env, rule.id, true).catch(failed("Undo did not go through")) } }),
@@ -78,8 +96,21 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
         </PageSection>
       ) : null}
       {workspace.sector ? <Voice workspace={workspace} /> : null}
-      {dialog ? <RuleDialog env={env} workspaceId={workspace.id} of={dialog} onClose={() => setDialog(null)} onAdded={dialog.kind === "proposal" ? added : undefined} /> : null}
+      {dialog ? <RuleDialog env={env} workspaceId={workspace.id} of={dialog} onClose={() => setDialog(null)} onAdded={dialog.kind === "proposal" ? added : undefined} moves={moves} /> : null}
     </>
+  );
+}
+
+/** The new order on screen at once, then on the host; refused, the old order comes back and a toast says so. */
+function reorder(env: string, workspaceId: string, page: RulesPage, put: (p: RulesPage) => void, order: string[]): Promise<void> {
+  const byId = new Map(page.rules.map((r) => [r.id, r]));
+  put({ ...page, rules: order.map((id) => byId.get(id)!) });
+  return orderRules(env, workspaceId, order).then(
+    () => undefined,
+    (err: unknown) => {
+      put(page);
+      failed("The new order was not kept")(err);
+    },
   );
 }
 
@@ -88,19 +119,7 @@ function RuleList({ env, workspaceId, page, put, onOpen }: { env: string; worksp
   const q = find.trim();
   const shown = useMemo(() => (q ? page.rules.filter((r) => r.text.toLowerCase().includes(q.toLowerCase())) : page.rules), [page.rules, q]);
   const ids = useMemo(() => page.rules.map((r) => r.id), [page.rules]);
-  const sortable = useSortable(
-    ids,
-    (order) => {
-      const was = page;
-      const byId = new Map(page.rules.map((r) => [r.id, r]));
-      put({ ...page, rules: order.map((id) => byId.get(id)!) });
-      void orderRules(env, workspaceId, order).catch((err: unknown) => {
-        put(was);
-        failed("The new order was not kept")(err);
-      });
-    },
-    "y",
-  );
+  const sortable = useSortable(ids, (order) => void reorder(env, workspaceId, page, put, order), "y");
   const flip = async (rule: HouseRule, on: boolean): Promise<boolean> => {
     try {
       await editRule(env, rule.id, { on });

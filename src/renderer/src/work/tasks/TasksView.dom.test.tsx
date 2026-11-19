@@ -72,10 +72,19 @@ describe("the Tasks view", () => {
     fireEvent.click(within(row).getByRole("button", { name: "Open thread" }));
     expect(opened).toEqual(["th1"]);
     expect(startThread).not.toHaveBeenCalled();
+    // The lead (Book the ballroom) leads its Open thread with the thread's mark too.
+    expect(document.querySelector("[data-lead-thread]")).toBeNull();
     // A link to a thread this window does not know keeps Start.
     const waiting = screen.getByRole("button", { name: "Open Approve the scrim schedule" }).closest("[role=listitem]") as HTMLElement;
     expect(within(waiting).getByRole("button", { name: "Start" })).toBeTruthy();
     workOpenPort.set(null);
+  });
+
+  it("leads the lead task's Open thread with its thread's mark", () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} useThread={(id) => (id === "t1" ? "th1" : null)} />);
+    const mark = document.querySelector("[data-lead-thread=working]") as HTMLElement;
+    expect(mark).toBeTruthy();
+    expect(mark.nextElementSibling?.textContent).toBe("Open thread");
   });
 
   it("names the newest open link's thread, and none once its links are done", () => {

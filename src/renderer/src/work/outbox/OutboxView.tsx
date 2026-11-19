@@ -43,6 +43,12 @@ const pressable = (item: HostItem): boolean => item.state === "held" || item.sta
 /** What a plain Send may take, alone or with others: a send that may have gone waits for his own "Send again". */
 const sendable = (item: HostItem): boolean => pressable(item) && !item.outcomeUnknown;
 /**
+ * What a list press (a group's Send N, a tick) may take: a computer act is
+ * sent only from its own detail, where its kept picture shows, so it is left
+ * out of the count and takes no tick (sendMany leaves one too, as a backstop).
+ */
+export const batchable = (item: HostItem): boolean => sendable(item) && item.kind !== "computer.act";
+/**
  * Whether Edit has anything to offer: a field a person may change, or a body
  * not drawn from html alone. An act read from a live screen is carried out as
  * it was read, so the host refuses any change to it.
@@ -153,7 +159,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     if (selected === null && first !== null) setSelected(first);
   }, [selected, first]);
   // Ticks hold only items still waiting.
-  const tickedItems = outbox.waiting.filter((item) => ticked.has(keyOf(item)) && sendable(item));
+  const tickedItems = outbox.waiting.filter((item) => ticked.has(keyOf(item)) && batchable(item));
   const tick = (item: HostItem, on: boolean) =>
     setTicked((prev) => {
       const next = new Set(prev);
@@ -330,7 +336,7 @@ function WaitingList({
     <div className="flex flex-col p-1">
       {byWorkspace(items).map((group) => {
         const name = nameOf(group.items[0]!.environmentId, group.workspaceId);
-        const ready = group.items.filter(sendable);
+        const ready = group.items.filter(batchable);
         return (
           <section key={group.key} aria-label={name}>
             <GroupHead sector={group.sector} name={name} busy={busy === group.key}>
@@ -371,10 +377,10 @@ function WaitingList({
                       </span>
                     </ItemButton>
                     {/* The glyph column: the kind's glyph, which gives way to the tick on hover, and to every tick while any row is ticked. */}
-                    <span className={cn("pointer-events-none absolute start-2 top-2.5 grid size-4 place-items-center", sendable(item) && (ticking ? "opacity-0" : yields("row")))}>
+                    <span className={cn("pointer-events-none absolute start-2 top-2.5 grid size-4 place-items-center", batchable(item) && (ticking ? "opacity-0" : yields("row")))}>
                       {item.state === "failed" ? <StatusMark state="failed" word={false} /> : item.state === "sending" ? <StatusMark state="working" word={false} /> : <KindGlyph kind={item.kind} />}
                     </span>
-                    {sendable(item) ? (
+                    {batchable(item) ? (
                       <span className={cn("absolute start-2 top-2.5 grid size-4 place-items-center", !ticking && reveal("row", { row: true, overlay: true }))}>
                         <Checkbox aria-label={`Tick ${act}`} checked={ticked.has(keyOf(item))} onCheckedChange={(on) => onTick(item, on)} />
                       </span>

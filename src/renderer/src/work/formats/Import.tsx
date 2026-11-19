@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ImportAnswer } from "@shared/contract-work-formats";
 import type { AnyEditor } from "work-kit/editor";
 import { Spinner } from "../../components/ui/spinner";
@@ -44,6 +44,8 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
   const said = useRef(false);
+  // The item is replaced by the document it becomes; until then it has no versions to show.
+  useLayoutEffect(() => shell.ready?.(false), [shell]);
   useEffect(() => {
     let live = true;
     setFailed(false);

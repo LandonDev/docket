@@ -73,6 +73,8 @@ export interface CanvasShell {
   statusLine(line: StatusLine | null): void;
   /** What the agent last wrote directly, in the stepper's place: "Changed 6 cells, 2:04 PM", with Undo. */
   written(line: WrittenLine | null): void;
+  /** Whether the item has opened. A kind that says false (still opening, or it could not open) has no History in its bar until it says true; one that never says is drawn as opened. Optional only so a stand-in shell written before it still types. */
+  ready?(ready: boolean): void;
   /** One muted fact after the item's name while it is the only item (where a browser runs). */
   detail(text: string | null): void;
   /** Opens this item's versions beside it, as a `history` item on the same source. */

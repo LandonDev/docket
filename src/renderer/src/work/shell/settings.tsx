@@ -275,17 +275,23 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   const status = useLifeosStatus(workspace?.environmentId);
   const [settings, setSettings] = useState<WorkspaceWorkSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Retry on a failed read asks again; a refused switch keeps its own line with no Retry (the switch is the retry).
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!workspace) return;
     let live = true;
     workspaceSettings(workspace).then(
-      (value) => live && setSettings(value),
+      (value) => {
+        if (!live) return;
+        setSettings(value);
+        setError(null);
+      },
       (err: unknown) => live && setError(errorText(err)),
     );
     return () => {
       live = false;
     };
-  }, [workspace?.id, workspace?.environmentId]);
+  }, [workspace?.id, workspace?.environmentId, attempt]);
   if (!workspace) return null;
   const host = environments.find((e) => e.id === workspace.environmentId);
   const desktops = environments.filter((e) => isDesktop(e.platform));
@@ -327,7 +333,26 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         ) : error ? null : (
           <PageRowsSkeleton rows={Math.max(1, desktops.length)} description control="switch" />
         )}
-        {error ? <PageError>{error}</PageError> : null}
+        {error ? (
+          <PageError
+            action={
+              settings ? undefined : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setError(null);
+                    setAttempt((n) => n + 1);
+                  }}
+                >
+                  Retry
+                </Button>
+              )
+            }
+          >
+            {error}
+          </PageError>
+        ) : null}
       </PageSection>
       <HouseRules workspace={workspace} />
       <ThreadDefaultsEditor workspaceId={workspace.id} />

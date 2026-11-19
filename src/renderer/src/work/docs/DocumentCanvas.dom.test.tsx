@@ -27,16 +27,19 @@ const FILE = { at: "file", host: "box", path: "/w/Run of show.tcdoc" } as const;
 const ITEM = { id: "d1", sessionId: "t1", kind: "document", title: "Run of show", source: FILE } as CanvasItem;
 
 describe("the document's body", () => {
-  it("draws its bones with the item's name while it opens, and nothing under the state line once it cannot", async () => {
+  it("draws its bones with the item's name while it opens, and nothing under the state line once it cannot; it tells the frame it has not opened, so History waits", async () => {
     const lines: (StatusLine | null)[] = [];
-    const shell = { statusLine: (line: StatusLine | null) => void lines.push(line), more: () => {} } as unknown as CanvasShell;
+    const ready: boolean[] = [];
+    const shell = { statusLine: (line: StatusLine | null) => void lines.push(line), ready: (r: boolean) => void ready.push(r), more: () => {} } as unknown as CanvasShell;
     const { container } = render(<Body item={ITEM} source={FILE} env="box" state={undefined} setState={() => {}} shell={shell} />);
     expect(screen.getByRole("heading", { name: "Run of show" })).toBeTruthy();
     expect(container.querySelectorAll("[data-slot=skeleton]").length).toBe(3);
+    expect(ready).toEqual([false]);
     await act(async () => opening.fail(new Error("That file is not there any more")));
     await waitFor(() => expect(lines.at(-1)).toMatchObject({ tone: "failed", word: "Couldn't open this document", detail: "That file is not there any more", action: { label: "Retry" } }));
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
     expect(container.querySelector("[aria-busy]")).toBeNull();
+    expect(ready.at(-1)).toBe(false);
   });
 });
 
@@ -53,25 +56,41 @@ describe("the document's title", () => {
     await waitFor(() => expect(toasts).toEqual(["LifeOS did not answer"]));
     expect(field.value).toBe("Run of show");
   });
+
+  it("takes the one focus ring, inset into the gutter so the words keep the text's edge", () => {
+    render(<TitleField text="Run of show" rename={vi.fn(async () => {})} />);
+    const field = screen.getByRole("textbox", { name: "Title" });
+    for (const c of ["focus-ring", "-mx-1.5", "px-1.5", "rounded-md"]) expect(field.className.split(" ")).toContain(c);
+  });
 });
 
 describe("the document's bar", () => {
   const LIFEOS = { at: "lifeos", table: "docs", id: "kd1" } as const;
   const bar = (source: CanvasItem["source"]) => <Bar item={{ ...ITEM, source }} source={source} env="box" state={undefined} setState={() => {}} shell={{} as CanvasShell} />;
 
-  it("draws Share only on a LifeOS document, which a guest link can reach, once it has opened", () => {
+  it("holds the bar's place with a bone while it opens, then draws Share only on a LifeOS document, which a guest link can reach", () => {
     const { container, unmount } = render(bar(FILE));
-    act(() => markOpen(ITEM.id, true));
+    // Before the body has said, and while it opens: the bone.
+    expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    act(() => markOpen(ITEM.id, "open"));
     expect(container.innerHTML).toBe("");
     unmount();
-    act(() => markOpen(ITEM.id, false));
+    act(() => markOpen(ITEM.id, "opening"));
     const view = render(bar(LIFEOS));
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
-    act(() => markOpen(ITEM.id, true));
+    expect(view.container.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    act(() => markOpen(ITEM.id, "open"));
     // Led by its glyph, as the bar's other tools are.
     expect(screen.getByRole("button", { name: "Share" }).querySelector("svg")).not.toBeNull();
-    act(() => markOpen(ITEM.id, false));
+    act(() => markOpen(ITEM.id, "failed"));
     expect(view.container.innerHTML).toBe("");
+    act(() => markOpen(ITEM.id, null));
+  });
+
+  it("draws nothing for a Word file, which becomes a document of its own", () => {
+    const word = { at: "file", host: "box", path: "/w/Plan.docx" } as const;
+    const { container } = render(bar(word));
+    expect(container.innerHTML).toBe("");
   });
 
   it("offers no Share on a document that did not open", async () => {
@@ -87,6 +106,8 @@ describe("the document's bar", () => {
     await act(async () => opening.fail(new Error("not connected")));
     await waitFor(() => expect(lines.at(-1)).toMatchObject({ word: "Couldn't open this document" }));
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+    // Nor a bone: the bar has nothing, so it goes, and the failure is the tab row and the state line.
+    expect(document.querySelector("[data-slot=skeleton]")).toBeNull();
   });
 });
 

@@ -15,10 +15,12 @@ export interface Feeds {
   written: WrittenLine | null;
   detail: string | null;
   more: readonly MoreEntry[] | null;
+  /** The kind said whether the item has opened; null while it has not said. */
+  ready: boolean | null;
 }
 
 const NO_PEOPLE: readonly Presence[] = [];
-export const NO_FEEDS: Feeds = { review: null, selection: null, presence: NO_PEOPLE, mode: null, status: null, written: null, detail: null, more: null };
+export const NO_FEEDS: Feeds = { review: null, selection: null, presence: NO_PEOPLE, mode: null, status: null, written: null, detail: null, more: null, ready: null };
 
 /** An error a person should see once, in the thread's toast stack. */
 export function sayError(error: unknown, fallback: string): void {
@@ -55,6 +57,7 @@ export function useFrame(environmentId: string, sessionId: string, item: CanvasI
       statusLine: feed("status"),
       written: feed("written"),
       detail: feed("detail"),
+      ready: feed("ready"),
       more: (entries) => feed("more")(entries && entries.length > 0 ? entries : null),
       openHistory: () => {
         if (!source || !title || kind === "history") return;

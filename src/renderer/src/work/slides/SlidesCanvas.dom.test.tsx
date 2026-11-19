@@ -202,6 +202,25 @@ describe("the slides kind", () => {
     expect(thumbs()[2].textContent).toContain("Slide 3");
   });
 
+  it("says a slide pdf.js could not draw in the stage's place, with Retry that draws it again", async () => {
+    const paint = DECK.paint;
+    let refuse = true;
+    DECK.paint = (...args) => (refuse ? Promise.reject(new Error("worker gone")) : paint(...args));
+    try {
+      open(deckView());
+      const failed = await found("[data-slides-stage] [data-slide-failed]");
+      expect(failed.textContent).toContain("Couldn't draw this slide");
+      // A thumbnail that fails stays a blank: the stage alone says so.
+      expect(document.querySelectorAll("[data-slide-failed]")).toHaveLength(1);
+      refuse = false;
+      fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
+      await waitFor(() => expect(document.querySelector("[data-slides-stage] [data-slide-failed]")).toBeNull());
+      await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 1"));
+    } finally {
+      DECK.paint = paint;
+    }
+  });
+
   it("says why with the host's reason alone, not the line's own word twice", async () => {
     open(deckView({ renders: { file: null, proposed: null }, renderError: "There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches." }));
     const line = await found('[data-canvas-state="failed"]');

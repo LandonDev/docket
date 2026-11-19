@@ -72,6 +72,8 @@ describe("Share", () => {
     render(<ShareButton env="mac" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("Sam Ortiz");
+    // A list's avatar: 24px, as Settings' list draws it.
+    expect(document.querySelector("[data-avatar]")!.getAttribute("data-avatar")).toBe("list");
     // Asked of the Mac, answered by the box.
     expect(calls.list.map((c) => `${c.env}:${c.method}`)).toEqual(["mac:work.guests.forItem", "box:work.guests.forItem"]);
     fireEvent.click(screen.getByRole("button", { name: "Revoke Sam Ortiz's link" }));

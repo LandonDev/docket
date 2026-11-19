@@ -25,6 +25,8 @@ import type { MediaActions } from "./store";
 
 export interface PlayerHandle {
   seek(frame: number): Promise<void>;
+  /** Plays again after a refused Play: the elements load their source afresh first. */
+  play(): void;
   /** Where a moment sits on screen: the scrubber's x at that frame, for a popover to point at. */
   rectAt(frame: number): DOMRect | null;
 }
@@ -105,6 +107,7 @@ export function Player({
   onStretch,
   onRegion,
   onComment,
+  onPlayFailed,
 }: {
   ref?: Ref<PlayerHandle>;
   /** One version, or two for a compare: the first drives the clock. */
@@ -123,6 +126,8 @@ export function Player({
   onStretch(stretch: Stretch | null, rect: DOMRect | null): void;
   onRegion(region: MediaRegion, rect: DOMRect, frame: number): void;
   onComment(frame: number, rect: DOMRect | null): void;
+  /** A Play the element refused, in words, and null once one plays: the kind's state line says it, with Retry. */
+  onPlayFailed?(reason: string | null): void;
 }) {
   const videos = useRef<(HTMLVideoElement | null)[]>([]);
   const [primary, setPrimary] = useState<HTMLVideoElement | null>(null);
@@ -175,6 +180,11 @@ export function Player({
   const xOf = (n: number): number => (total > 1 ? n / (total - 1) : 0);
   useImperativeHandle(ref, () => ({
     seek,
+    play: () => {
+      const vs = all();
+      for (const v of vs) v.load();
+      playAll(vs);
+    },
     rectAt: (n) => {
       const r = track.current?.getBoundingClientRect();
       return r ? new DOMRect(r.left + xOf(n) * r.width, r.top, 0, r.height) : null;
@@ -206,10 +216,23 @@ export function Player({
     });
   };
 
+  /** Plays every screen; a refusal is said once (a Pause that cut a starting Play is no refusal). */
+  const playAll = (vs: HTMLVideoElement[]): void => {
+    void Promise.all(vs.map((v) => v.play())).then(
+      () => onPlayFailed?.(null),
+      (error: unknown) => {
+        // A DOMException, which is not always an Error where it is made: read its name and message as they are.
+        const { name, message } = (error ?? {}) as { name?: unknown; message?: unknown };
+        if (name === "AbortError") return;
+        onPlayFailed?.(typeof message === "string" && message ? message : "The video did not play");
+      },
+    );
+  };
+
   const toggle = (): void => {
     const vs = all();
     if (!vs.length) return;
-    if (vs[0].paused) for (const v of vs) void v.play().catch(() => undefined);
+    if (vs[0].paused) playAll(vs);
     else for (const v of vs) v.pause();
   };
 

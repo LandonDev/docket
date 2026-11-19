@@ -111,7 +111,7 @@ export function Body(props: Props) {
   }, [half, state?.half, setState]);
 
   const [current, setCurrent] = useState(0);
-  useFeeds(shell, host, store, view, current, setCurrent);
+  useFeeds(shell, host, store, view, half, current, setCurrent);
   const saveError = slot.saveError;
   const responsesError = half === "responses" ? slot.responsesError : null;
   useEffect(() => {
@@ -153,7 +153,7 @@ const run = (work: Promise<FormView>, store: FormStore, fallback: string): Promi
   );
 
 /** What the body tells the pane: the mode, the stepper over waiting changes, the line after a direct write, More's own rows. */
-function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: FormView | null, current: number, setCurrent: (n: number) => void): void {
+function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: FormView | null, half: Half, current: number, setCurrent: (n: number) => void): void {
   const mode = view?.mode;
   const published = view ? view.state !== "draft" : false;
   useEffect(() => {
@@ -168,7 +168,15 @@ function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: Fo
   useEffect(() => {
     if (!suggestions?.length) return shell.review(null);
     const ids = (w: number | { group: string } | "all"): { ids: string[] } | "all" => (typeof w === "number" ? { ids: [suggestions[w]?.id].filter(Boolean) } : "all");
-    const index = Math.min(current, suggestions.length - 1);
+    // A change is a question: while Responses shows, none is on screen, so the stepper holds no current change and
+    // Reject and Accept wait until a step (or the switch) brings the Questions half, and the change, into view.
+    const shown = half === "questions";
+    const index = shown ? Math.min(current, suggestions.length - 1) : -1;
+    // A verb on a change he cannot see shows it first and decides nothing.
+    const show = (): Promise<void> => {
+      store.set({ half: "questions" });
+      return Promise.resolve();
+    };
     const review: ReviewAdapter = {
       groups: [{ id: "form", label: "Questions", by: suggestions[0].by, count: suggestions.length }],
       index,
@@ -178,12 +186,12 @@ function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: Fo
         setCurrent(to);
         store.set({ half: "questions" });
       },
-      accept: (w) => run(host.review(ids(w), "accept"), store, "Couldn't accept the change"),
-      reject: (w) => run(host.review(ids(w), "reject"), store, "Couldn't reject the change"),
+      accept: (w) => (shown || typeof w !== "number" ? run(host.review(ids(w), "accept"), store, "Couldn't accept the change") : show()),
+      reject: (w) => (shown || typeof w !== "number" ? run(host.review(ids(w), "reject"), store, "Couldn't reject the change") : show()),
     };
     shell.review(review);
     return () => shell.review(null);
-  }, [shell, host, store, suggestions, current, setCurrent]);
+  }, [shell, host, store, suggestions, half, current, setCurrent]);
 
   const written = view?.written;
   const waiting = suggestions?.length ?? 0;
@@ -214,10 +222,11 @@ export function Bar(props: Props) {
     store.set({ publishing: true });
     void run(host.publish(), store, "Couldn't publish the form").finally(() => store.set({ publishing: false }));
   };
-  const stepping = view.suggestions.length > 0;
+  // While changes wait on the Questions half the stepper needs the room; on Responses the switch is his way back to them, so it stays.
+  const stepping = view.suggestions.length > 0 && half === "questions";
   return (
     <>
-      {/* Whole or gone: while changes wait the stepper needs the room, so a narrow bar drops the switch rather than cut it. */}
+      {/* Whole or gone: a narrow bar drops the switch rather than cut it, and only while the change it would lead to is on screen. */}
       <Tabs
         value={half}
         onValueChange={(next) => store.set({ half: next as Half })}

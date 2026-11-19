@@ -15,7 +15,7 @@ import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import type { DashHost } from "./host";
-import { axis, isTimeSeries } from "./DashboardCanvas";
+import { axis, isTimeSeries, signedAxis } from "./DashboardCanvas";
 
 const host = vi.hoisted(() => ({
   current: null as ReturnType<typeof import("../canvas/testkit").fakeHost> | null,
@@ -231,6 +231,33 @@ describe("the dashboard kind, round two", () => {
     await waitFor(() => expect(document.querySelector("[data-dash-asof]")?.textContent).toMatch(/^Out of dateAs of /));
   });
 
+  it("draws a negative bar below zero on a signed axis, and says its amount with the minus sign", async () => {
+    const base = page();
+    const mixed = { ...base.blocks[1], title: "Net by month", bars: [{ label: "Oct", value: 10400 }, { label: "Nov", value: -2000 }] } as (typeof base.blocks)[number];
+    open({ ...base, blocks: [mixed] });
+    const body = await found("[data-dashboard]");
+    const chart = body.querySelector<HTMLElement>('[role="img"]')!;
+    // The compact form may keep a ".0" by the runtime's ICU; the sign is what is under test.
+    const words = (s: string | null): string => (s ?? "").replace(/\.0(?=K|,|$)/g, "");
+    expect(words(chart.getAttribute("aria-label"))).toBe("Net by month: Oct $10.4K, Nov \u2212$2K");
+    expect([...chart.querySelectorAll("[data-tick]")].map((t) => words(t.textContent))).toEqual(["\u2212$5K", "$0", "$5K", "$10K", "$15K"]);
+    // Zero sits a quarter up the plot: the rise starts there, the fall hangs from it.
+    const [up, down] = [...chart.querySelectorAll<HTMLElement>("i[data-bar]")];
+    expect(up.style.bottom).toBe("25%");
+    expect(down.dataset.sign).toBe("negative");
+    expect(down.className).toContain("rounded-b-[3px]");
+    expect(parseFloat(down.style.bottom) + parseFloat(down.style.height)).toBeCloseTo(25);
+    expect(parseFloat(down.style.height)).toBeCloseTo(10);
+    expect(chart.querySelector("[data-zero]")).not.toBeNull();
+    cleanup();
+    const loss = { ...base.blocks[1], title: "Refunds", bars: [{ label: "Valorant", value: -300 }, { label: "Marvel Rivals", value: -1200 }] } as (typeof base.blocks)[number];
+    open({ ...base, blocks: [loss] });
+    const all = (await found("[data-dashboard]")).querySelector<HTMLElement>('[role="img"]')!;
+    expect([...all.querySelectorAll("[data-tick]")].map((t) => words(t.textContent))).toEqual(["\u2212$1.5K", "\u2212$1K", "\u2212$500", "$0"]);
+    for (const bar of all.querySelectorAll<HTMLElement>("i[data-bar]")) expect(bar.dataset.sign).toBe("negative");
+    expect(all.querySelectorAll("i[data-bar]")[1]!.getAttribute("style")).toContain("height: 80%");
+  });
+
   it("lays figures two up, then one, in a narrow page, and lets a figure's line truncate", async () => {
     open(page());
     const body = await found("[data-dashboard]");
@@ -252,6 +279,13 @@ describe("the chart's axis", () => {
     expect(axis(2, true)).toEqual({ step: 1, top: 3 });
     expect(axis(0.6, false).step).toBeCloseTo(0.2);
     expect(axis(0, true)).toEqual({ step: 1, top: 3 });
+  });
+
+  it("keeps zero on a signed axis, with round steps on both sides", () => {
+    expect(signedAxis(0, 12300, true)).toEqual({ step: 5000, top: 15000, bottom: 0, ticks: [0, 5000, 10000, 15000] });
+    expect(signedAxis(-2000, 12300, true)).toEqual({ step: 5000, top: 15000, bottom: -5000, ticks: [-5000, 0, 5000, 10000, 15000] });
+    expect(signedAxis(-1200, -300, true)).toEqual({ step: 500, top: 0, bottom: -1500, ticks: [-1500, -1000, -500, 0] });
+    expect(signedAxis(-0.5, 0.4, false).ticks).toEqual([-0.5, 0, 0.5]);
   });
 
   it("knows a run of periods from categories", () => {

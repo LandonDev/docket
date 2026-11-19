@@ -119,4 +119,23 @@ describe('the form page', () => {
     expect(css).toMatch(/\.fm-send:not\(:disabled\):active \{\s*background: color-mix/)
     expect(css).toContain('--dur-hover: 60ms')
   })
+
+  it('ties a refused answer to its error: aria-invalid and aria-describedby on the control, both gone once it is answered', async () => {
+    await mount(root, '/f/abcdefghijklmnop', async () => json(200, FORM))
+    submit()
+    const name = root.querySelector<HTMLInputElement>('#q0')!
+    expect(name.getAttribute('aria-invalid')).toBe('true')
+    expect(name.getAttribute('aria-describedby')).toBe('q0-err')
+    expect(document.getElementById('q0-err')!.textContent).toBe('This question needs an answer.')
+    expect(document.activeElement).toBe(name)
+    name.value = 'Ava'
+    name.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(name.hasAttribute('aria-invalid')).toBe(false)
+    expect(name.hasAttribute('aria-describedby')).toBe(false)
+    expect(document.getElementById('q0-err')!.hidden).toBe(true)
+    // A choice's radios carry it too.
+    submit()
+    const radios = [...root.querySelectorAll<HTMLInputElement>('.fm-q[data-q="g"] input')]
+    expect(radios.every((r) => r.getAttribute('aria-describedby') === 'q2-err')).toBe(true)
+  })
 })

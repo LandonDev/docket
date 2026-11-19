@@ -17,7 +17,7 @@ import { CANVAS } from "./registry";
 import { SelectionTools } from "./SelectionBar";
 import { applyCanvasPush, setFolded } from "./store";
 
-export type PreviewMoment = "three" | "one" | "folded" | "loading" | "unreachable" | "written" | "stub";
+export type PreviewMoment = "three" | "one" | "folded" | "loading" | "unreachable" | "written" | "failed";
 
 const source: CanvasSource = { at: "lifeos", table: "docs", id: "doc-1" };
 const item = (id: string, kind: CanvasKind, title: string, position: number, sessionId: string): CanvasItem => ({
@@ -120,7 +120,8 @@ const never = new Promise<never>(() => undefined);
 void workCanvasChunk.load();
 
 function kindsFor(moment: PreviewMoment): Record<CanvasKind, CanvasKindDef> {
-  if (moment === "stub") return CANVAS;
+  // The real document kind, with no host to open it on: the tab row and the state line, as every failed open draws.
+  if (moment === "failed") return CANVAS;
   const Body = bodyFor(moment);
   const chunk = defineChunk(`preview-${moment}`, () => (moment === "loading" ? never : Promise.resolve({ Body })));
   // Already landed, so the first render draws the body (a static page never sees the second).

@@ -30,24 +30,38 @@ export type AwayReport = {
   decided: AwayDecidedRow[];
   /** writes made while he was away (`work_results` since Away began), sends left out: they are in Sent */
   written: HostResult[];
+  /** hosts whose writes did not come back: a partial read, said with one Retry, never an empty list */
+  unread: string[];
 };
+
+/** A host's writes since the stretch began, sends left out; rejects when the host does not answer. */
+const writesOf = async (environmentId: string, since: number): Promise<HostResult[]> => (await resultsSince(environmentId, since)).filter((r) => !isSend(r));
+
+/** The toast when the only thing to say is a read that failed. */
+export const UNREAD_LINE = "What was written while you were away did not all load";
 
 const isSend = (r: HostResult): boolean => !!(r.ref as { held?: unknown } | null)?.held;
 
 /**
  * Each host's part of the return (docs/agents/work-outbox.md, "Back from
  * Away"): its Outbox read afresh, and its writes since its own stretch
- * began. A host that does not answer is left out of the list, not waited on.
+ * began. A host whose writes do not come back is named in `unread`, so the
+ * list says the read was partial and offers Retry, and the toast still comes
+ * when that was all there was to read.
  */
 export async function gatherAway(hosts: readonly AwayHost[], now = Date.now()): Promise<{ report: AwayReport; line: string } | null> {
   // One stretch for every host: the latest start any of them reports. A peer that missed the flip still holds an
   // older stretch's start (or 0), and its writes from before this one are not "while you were away".
   const since = Math.max(0, ...hosts.map((h) => h.decided.since));
+  const unread: string[] = [];
   const parts = await Promise.all(
     hosts.map(async (h) => {
       if (!workSwitch.hosts().has(h.environmentId)) return [];
-      const [, written] = await Promise.all([loadHost(h.environmentId), since > 0 ? resultsSince(h.environmentId, since).catch(() => [] as HostResult[]) : Promise.resolve([] as HostResult[])]);
-      return written.filter((r) => !isSend(r));
+      const [, written] = await Promise.all([
+        loadHost(h.environmentId),
+        since > 0 ? writesOf(h.environmentId, since).catch(() => (unread.push(h.environmentId), [] as HostResult[])) : Promise.resolve([] as HostResult[]),
+      ]);
+      return written;
     }),
   );
   const waiting = outboxNow().waiting;
@@ -55,9 +69,9 @@ export async function gatherAway(hosts: readonly AwayHost[], now = Date.now()): 
   const held = waiting.length - failed;
   const decided = hosts.flatMap((h) => h.decided.threads.filter((t) => t.count > 0).map((t) => ({ environmentId: h.environmentId, sessionId: t.sessionId, count: t.count })));
   const counts: AwayCounts = { held, failed, decided: decided.reduce((n, d) => n + d.count, 0), written: parts.flat().length };
-  const line = awayLine(counts);
+  const line = awayLine(counts) ?? (unread.length ? UNREAD_LINE : null);
   if (!line) return null;
-  return { report: { since: since || now, until: now, held, failed, decided, written: parts.flat() }, line };
+  return { report: { since: since || now, until: now, held, failed, decided, written: parts.flat(), unread }, line };
 }
 
 const toastError = (err: unknown) => void loadToast().then((t) => t.error(err instanceof Error ? err.message : String(err)));
@@ -68,8 +82,9 @@ const toastError = (err: unknown) => void loadToast().then((t) => t.error(err in
  * order he must act. Held is each workspace and how many wait there, Failed
  * each act that did not go and why; neither is sent from here, so a send that
  * may have gone keeps the Outbox's own guard. Decided is each thread with its
- * count and Open, Written each write with its way back. Held and failed are
- * read live from the Outbox; Open the Outbox sits at the footer's start.
+ * count and Open, Written each write with its way back; a host whose writes
+ * did not load is one red line under Written with one Retry. Held and failed
+ * are read live from the Outbox; Open the Outbox sits at the footer's start.
  */
 export function AwayReturnWork({
   report,
@@ -87,10 +102,23 @@ export function AwayReturnWork({
   const environments = useEnvironments();
   const held = outbox.waiting.filter((i) => i.state !== "failed");
   const failed = outbox.waiting.filter((i) => i.state === "failed");
-  const counts: AwayCounts = { held: held.length, failed: failed.length, decided: report.decided.length, written: report.written.length };
+  const [writes, setWrites] = useState<{ written: HostResult[]; unread: string[] }>({ written: report.written, unread: report.unread });
+  const [rereading, setRereading] = useState(false);
+  const reread = async (): Promise<void> => {
+    setRereading(true);
+    const answers = await Promise.allSettled(writes.unread.map((env) => writesOf(env, report.since)));
+    setWrites((was) => ({
+      written: [...was.written, ...answers.flatMap((a) => (a.status === "fulfilled" ? a.value : []))],
+      unread: was.unread.filter((_, i) => answers[i]!.status === "rejected"),
+    }));
+    setRereading(false);
+  };
+  // Written shows while a host's writes are missing too: its red line and Retry live there.
+  const counts: AwayCounts = { held: held.length, failed: failed.length, decided: report.decided.length, written: writes.written.length || writes.unread.length };
   const nameOf = (environmentId: string, workspaceId: string | null) =>
     !workspaceId || workspaceId === WORK_CHATS_KEY ? "Work Chats" : (workspaces.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name ?? "A Work workspace");
   const hostOf = (environmentId: string) => (environments.length > 1 ? environments.find((e) => e.id === environmentId)?.name : undefined);
+  const hostName = (environmentId: string) => environments.find((e) => e.id === environmentId)?.name ?? "A host";
   return (
     <Modal onClose={onClose} title="While you were away" description={spanWords(report.since, report.until)}>
       <ModalBody className="gap-4">
@@ -121,7 +149,24 @@ export function AwayReturnWork({
                         </Button>
                       </Row>
                     ))
-                  : report.written.map((r) => <WrittenRow key={r.id} row={r} />)}
+                  : (
+                      <>
+                        {writes.written.map((r) => (
+                          <WrittenRow key={r.id} row={r} />
+                        ))}
+                        {writes.unread.length ? (
+                          <div role="alert" data-away-unread="" className="flex min-h-10 items-center gap-3 border-t border-border py-1.5 first-of-type:border-t-0">
+                            <StatusMark state="failed" word={false} />
+                            <span className="min-w-0 flex-1 text-xs leading-4 text-destructive">
+                              {writes.unread.length === 1 ? `${hostName(writes.unread[0]!)} did not answer` : `${writes.unread.length} hosts did not answer`}
+                            </span>
+                            <Button variant="ghost" size="xs" disabled={rereading} onClick={() => void reread()}>
+                              <BusyLabel busy={rereading} label="Retry" />
+                            </Button>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
           </section>
         ))}
       </ModalBody>

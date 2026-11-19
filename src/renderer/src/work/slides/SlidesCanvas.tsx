@@ -282,11 +282,15 @@ function useInView(ref: { current: Element | null }, margin = "200px"): boolean 
 /**
  * A slide at a width: the render's page, or while it comes (or with no
  * render) its title on a blank. A thumbnail paints only near the view, after
- * the stage, and lets pdf.js free the page when it leaves.
+ * the stage, and lets pdf.js free the page when it leaves. A paint pdf.js
+ * refuses on the stage says so in the slide's place, with Retry, as a PDF's
+ * page does; a thumbnail stays a blank.
  */
 const Picture = memo(function Picture({ doc, page, width, ghost = false, title, thumb = false, onPainted }: { doc: PdfDoc | null; page: number; width: number; ghost?: boolean; title: string; thumb?: boolean; onPainted?(host: HTMLElement): void }) {
   const host = useRef<HTMLSpanElement>(null);
   const [painted, setPainted] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [tries, setTries] = useState(0);
   const near = useInView(host);
   const size = doc?.size(page);
   const aspect = size ? size.width / size.height : 16 / 9;
@@ -296,13 +300,14 @@ const Picture = memo(function Picture({ doc, page, width, ghost = false, title, 
     const job = new AbortController();
     const scale = width / (doc.size(page).width * CSS_PER_POINT);
     const paint = (): void => {
+      setFailed(false);
       doc.paint(page, el, scale, null, job.signal).then(
         () => {
           if (job.signal.aborted) return;
           setPainted(true);
           onPainted?.(el);
         },
-        () => undefined,
+        () => !job.signal.aborted && !thumb && setFailed(true),
       );
     };
     // The stage asks first: a thumbnail waits a beat, so the one worker draws the big slide before the strip.
@@ -312,13 +317,21 @@ const Picture = memo(function Picture({ doc, page, width, ghost = false, title, 
       job.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, page, width, thumb && near]);
+  }, [doc, page, width, thumb && near, tries]);
   useEffect(() => (doc && thumb && !near ? doc.release(page) : undefined), [doc, page, thumb, near]);
   useEffect(() => () => doc?.release(page), [doc, page]);
   return (
     <span className={`relative block overflow-hidden rounded-[3px] bg-muted outline-1 -outline-offset-1 outline-(--image-outline) ${ghost ? "opacity-45" : ""}`} style={{ width, height: Math.round(width / aspect) }}>
       <span ref={host} aria-hidden="true" className="absolute inset-0" />
-      {!painted ? <span className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{doc ? "" : title}</span> : null}
+      {!painted && !failed ? <span className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{doc ? "" : title}</span> : null}
+      {failed ? (
+        <span data-slide-failed className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-[13px] leading-5 text-muted-foreground">
+          Couldn't draw this slide
+          <Button variant="ghost" size="xs" className="text-foreground" onClick={() => setTries((n) => n + 1)}>
+            Retry
+          </Button>
+        </span>
+      ) : null}
     </span>
   );
 });

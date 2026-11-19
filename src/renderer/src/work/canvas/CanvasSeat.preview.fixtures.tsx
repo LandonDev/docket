@@ -6,5 +6,5 @@ export default [
   { name: "The agent wrote directly", props: { moment: "written" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "LifeOS unreachable", props: { moment: "unreachable" } },
-  { name: "A kind that is not built", props: { moment: "stub" } },
+  { name: "Couldn't open", props: { moment: "failed" } },
 ];

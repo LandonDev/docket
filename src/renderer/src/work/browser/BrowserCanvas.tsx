@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { BrowserState } from "@shared/contract-work-browser";
 import type { OutboxItem } from "@shared/contract-work-outbox";
-import type { HeldRef } from "@shared/work";
 import { Lock } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -19,7 +18,7 @@ import { ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, streamSize, useLiveStr
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { barFaceOf, heldSubmitOf, portalValues, siteHost, type BarFace, type HeldSubmitPayload, type PortalValue } from "./portal";
-import { discardHeld, heldPicture, setDriver, submitHeld, useBrowserState, useHeldActs } from "./store";
+import { discardHeld, pictureShown, setDriver, submitHeld, useBrowserState, useHeldActs, useHeldPicture } from "./store";
 
 /**
  * The live browser (docs/agents/work-browser.md "The canvas"; the approved
@@ -86,8 +85,13 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const { env } = props;
   const pane = paneOf(props);
   const fetched = useBrowser(env, pane);
-  const { state, held, live, error } = props.data ?? fetched;
+  const { state, held, entry, live, error } = props.data ?? fetched;
   const face = barFaceOf(state, held);
+  // Where no window is live the body draws the held page's kept picture: his press approves what he has seen, so the
+  // primary waits until that picture has drawn (or none was kept), and stays off while it comes or failed.
+  const still = face.face === "held" && !entry && !props.picture ? face.item.ref : null;
+  const picture = useHeldPicture(env, still);
+  const seen = !still || pictureShown(picture);
   const [busy, press] = usePress();
   const takeOver = (): void =>
     press("take", async () => {
@@ -111,7 +115,7 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
           <span className="truncate">{host}</span>
         </span>
       ) : null}
-      <FaceEnd face={face} env={env} busy={busy} press={press} takeOver={takeOver} handBack={handBack} />
+      <FaceEnd face={face} env={env} busy={busy} seen={seen} press={press} takeOver={takeOver} handBack={handBack} />
     </span>
   );
 }
@@ -120,6 +124,7 @@ function FaceEnd({
   face,
   env,
   busy,
+  seen,
   press,
   takeOver,
   handBack,
@@ -127,6 +132,8 @@ function FaceEnd({
   face: BarFace;
   env: string;
   busy: string | null;
+  /** the page his press approves is on screen */
+  seen: boolean;
   press: (which: string, run: () => Promise<unknown>) => void;
   takeOver(): void;
   handBack(): void;
@@ -179,7 +186,7 @@ function FaceEnd({
           <Button variant="ghost" size="xs" disabled={!!busy} onClick={() => press("discard", () => discardHeld(env, ref))}>
             <BusyLabel busy={busy === "discard"} label="Discard" />
           </Button>
-          <Button size="xs" disabled={!!busy} onClick={() => press("submit", () => submitHeld(env, ref))}>
+          <Button size="xs" disabled={!!busy || !seen} onClick={() => press("submit", () => submitHeld(env, ref))}>
             <BusyLabel busy={busy === "submit"} label={face.act} />
           </Button>
         </span>
@@ -257,32 +264,27 @@ function LiveView({ stream, box, label }: { stream: ReturnType<typeof useLiveStr
   );
 }
 
-/** Where the window cannot be drawn live (the box, the browser /ui): the held page's picture, or one line. */
+/** Where the window cannot be drawn live (the box, the browser /ui): the held page's picture, or one line. The bar's primary waits on the same read. */
 function StillView({ env, held }: { env: string; held: OutboxItem | null }) {
-  // Read by the ref's key: a push that rewrites the same item fetches nothing again.
-  const key = held ? JSON.stringify(held.ref) : null;
-  // undefined while it comes; null when the host kept none; "failed" when the host did not answer, which is not the same thing.
-  const [src, setSrc] = useState<string | null | undefined | "failed">(undefined);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    if (!key) return setSrc(null);
-    let live = true;
-    setSrc(undefined);
-    heldPicture(env, JSON.parse(key) as HeldRef).then(
-      (s) => live && setSrc(s),
-      () => live && setSrc("failed"),
-    );
-    return () => {
-      live = false;
-    };
-  }, [env, key, attempt]);
-  if (!key) return <ViewportLine words="The agent is not driving the browser now" />;
-  const picture = held?.payload as HeldSubmitPayload | null;
-  const shape = picture?.picture ? `${picture.picture.width} / ${picture.picture.height}` : "16 / 10";
+  const picture = useHeldPicture(env, held?.ref ?? null);
+  const { src } = picture;
+  if (!held) return <ViewportLine words="The agent is not driving the browser now" />;
+  const payload = held.payload as HeldSubmitPayload | null;
+  const shape = payload?.picture ? `${payload.picture.width} / ${payload.picture.height}` : "16 / 10";
   if (src === undefined) return <Skeleton className="w-full rounded-lg" style={{ aspectRatio: shape }} />;
-  if (src === "failed") return <ViewportLine words="The page's picture did not load" onRetry={() => setAttempt((n) => n + 1)} />;
+  if (src === "failed") return <ViewportLine words="The page's picture did not load" onRetry={picture.retry} />;
   if (!src) return <ViewportLine words="No picture of this page was kept" />;
-  return <img src={src} alt={held?.summary ?? ""} draggable={false} className={cn(pictureClass(true), "h-auto")} style={{ aspectRatio: shape }} />;
+  return (
+    <img
+      src={src}
+      alt={held.summary}
+      draggable={false}
+      onLoad={picture.onLoad}
+      onError={picture.onError}
+      className={cn(pictureClass(true), "h-auto")}
+      style={{ aspectRatio: shape }}
+    />
+  );
 }
 
 /** The page's values at its final screen, each beside where it came from. */

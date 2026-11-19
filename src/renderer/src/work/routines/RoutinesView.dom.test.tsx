@@ -106,7 +106,12 @@ describe("the Routines view", () => {
     const detail = document.querySelector("[data-routine-detail]") as HTMLElement;
     expect(list.className).not.toContain("@max-[40rem]/routines:hidden");
     expect(detail.className).toContain("@max-[40rem]/routines:hidden");
-    fireEvent.click(screen.getByRole("option", { name: /Morning brief/ }));
+    // A plain list of buttons, the picked one current: no listbox that answers no arrow keys.
+    expect(screen.queryByRole("listbox")).toBeNull();
+    const pick = screen.getByRole("button", { name: /Morning brief/ });
+    expect(pick.getAttribute("aria-current")).toBe("true");
+    expect(pick.closest("li")).toBeTruthy();
+    fireEvent.click(pick);
     expect(list.className).toContain("@max-[40rem]/routines:hidden");
     expect((document.querySelector("[data-routine-detail]") as HTMLElement).className).not.toContain("@max-[40rem]/routines:hidden");
     fireEvent.click(screen.getByRole("button", { name: "Routines" }));

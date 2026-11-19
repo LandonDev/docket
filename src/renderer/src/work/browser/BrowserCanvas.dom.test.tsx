@@ -22,6 +22,10 @@ const host = vi.hoisted(() => ({
   stopped: [] as string[],
   pictureDown: false,
   stateDown: false,
+  /** what the act kept: its bytes, no picture at all, or a picture whose bytes did not come */
+  picture: "bytes" as "bytes" | "none" | "empty",
+  /** while set, the picture's read waits on it */
+  pictureGate: null as Promise<void> | null,
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -33,8 +37,12 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.browser.state") return host.state;
       if (method === "work.browser.drive") return (host.state = { ...host.state, driver: params.driver as BrowserState["driver"], needs: null });
       if (method === "work.outbox.list") return params.show === "decided" ? { items: [], waiting: 0 } : { items: host.items, waiting: host.items.length };
+      if (method === "work.outbox.get" && host.pictureGate) await host.pictureGate;
       if (method === "work.outbox.get" && host.pictureDown) throw new Error("socket closed");
-      if (method === "work.outbox.get") return { ...host.items[0], payload: { ...(host.items[0]!.payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" } } };
+      if (method === "work.outbox.get") {
+        const picture = host.picture === "none" ? null : { mimeType: "image/png", width: 16, height: 10, ...(host.picture === "bytes" ? { data: "AAAA" } : {}) };
+        return { ...host.items[0], payload: { ...(host.items[0]!.payload as object), picture } };
+      }
       if (method === "work.outbox.send") return { ...host.items[0], state: "sent", decidedAt: Date.now() };
       if (method === "work.outbox.discard") return { ...host.items[0], state: "discarded", decidedAt: Date.now() };
       throw new Error(`unexpected ${method}`);
@@ -87,7 +95,8 @@ const HELD = {
 
 const shell = (): CanvasShell => ({ review: vi.fn(), selection: vi.fn(), presence: vi.fn(), mode: vi.fn(), statusLine: vi.fn(), written: vi.fn(), detail: vi.fn(), openHistory: vi.fn(), held: vi.fn() });
 const props = () => ({ item: ITEM, source: ITEM.source, env: "local", state: undefined, setState: () => undefined, shell: shell() });
-const methods = () => host.calls.map((c) => c.method).filter((m) => m !== "work.browser.state" && m !== "work.outbox.list");
+/** The presses: the reads (who drives, the held acts, the held picture) left out. */
+const methods = () => host.calls.map((c) => c.method).filter((m) => m !== "work.browser.state" && m !== "work.outbox.list" && m !== "work.outbox.get");
 
 beforeEach(() => {
   host.state = { sessionId: "t1", driver: "agent", needs: null, site: { url: "https://us2.concursolutions.com/report", name: "Concur" }, sources: [{ field: "Hotel", source: "Hilton folio.pdf, page 1" }], since: 100 };
@@ -97,6 +106,8 @@ beforeEach(() => {
   host.stopped = [];
   host.pictureDown = false;
   host.stateDown = false;
+  host.picture = "bytes";
+  host.pictureGate = null;
 });
 afterEach(cleanup);
 
@@ -123,8 +134,10 @@ describe("the browser's bar", () => {
 
   it("a held submit ends the bar in the one primary named for it, which presses it once", async () => {
     host.items = [HELD];
-    render(<Bar {...props()} />);
+    render(<Pane />);
     const submit = await screen.findByRole("button", { name: "Submit Report in Concur" });
+    fireEvent.load(await screen.findByRole("img"));
+    await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(false));
     expect(submit.getAttribute("data-variant")).toBe("default");
     expect(screen.getByRole("button", { name: "Discard" }).getAttribute("data-variant")).toBe("ghost");
     fireEvent.click(submit);
@@ -174,6 +187,77 @@ describe("the browser's bar", () => {
     await screen.findByRole("button", { name: "Submit Report in Concur" });
     expect(screen.getByRole("button", { name: "Hand back" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+  });
+});
+
+/** The bar over the body, as the pane draws them: the two share the held page's picture. */
+function Pane() {
+  const p = props();
+  return (
+    <>
+      <Bar {...p} />
+      <Body {...p} />
+    </>
+  );
+}
+
+describe("a held submit's primary waits on the page he approves", () => {
+  const submit = () => screen.getByRole("button", { name: "Submit Report in Concur" });
+
+  it("is off while the kept picture comes, and on once it has drawn; Discard stays on", async () => {
+    let open!: () => void;
+    host.pictureGate = new Promise((resolve) => (open = resolve));
+    host.items = [HELD];
+    const { container } = render(<Pane />);
+    await screen.findByRole("button", { name: "Submit Report in Concur" });
+    await waitFor(() => expect(container.querySelector("[data-slot=skeleton]")).toBeTruthy());
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Discard" }).hasAttribute("disabled")).toBe(false);
+    open();
+    const img = await screen.findByRole("img");
+    // The bytes came but the image has not drawn yet: still off.
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    fireEvent.load(img);
+    await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
+    // One read serves the bar and the body.
+    expect(host.calls.filter((c) => c.method === "work.outbox.get")).toHaveLength(1);
+  });
+
+  it("is off while the picture's read failed, and on after Retry draws it", async () => {
+    host.pictureDown = true;
+    host.items = [HELD];
+    render(<Pane />);
+    await screen.findByText("The page's picture did not load");
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    host.pictureDown = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.load(await screen.findByRole("img"));
+    await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
+  });
+
+  it("a picture the act kept whose bytes did not come is a failure with Retry, and the primary stays off", async () => {
+    host.picture = "empty";
+    host.items = [HELD];
+    render(<Pane />);
+    await screen.findByText("The page's picture did not load");
+    expect(screen.queryByText("No picture of this page was kept")).toBeNull();
+    expect(submit().hasAttribute("disabled")).toBe(true);
+  });
+
+  it("an image that fails to draw is a failure too", async () => {
+    host.items = [HELD];
+    render(<Pane />);
+    fireEvent.error(await screen.findByRole("img"));
+    await screen.findByText("The page's picture did not load");
+    expect(submit().hasAttribute("disabled")).toBe(true);
+  });
+
+  it("an act that kept no picture has nothing to wait on", async () => {
+    host.picture = "none";
+    host.items = [HELD];
+    render(<Pane />);
+    await screen.findByText("No picture of this page was kept");
+    await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
   });
 });
 

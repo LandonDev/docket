@@ -397,6 +397,37 @@ describe("the sheet kind", () => {
     expect(whole?.className).toContain("@max-[560px]/bar:hidden");
   });
 
+  it("offers Share in More only once the narrow bar hides it, and opens the same popover from there", async () => {
+    const seen: Array<(entries: unknown[]) => void> = [];
+    const kept = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(fn: (entries: unknown[]) => void) {
+        seen.push(fn);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as never;
+    try {
+      open(sheetView(), { item: canvasItem("s1", { kind: "sheet", title: "Travel budget", source: { at: "lifeos", table: "sheets", id: "sh1" } }) });
+      await gridUp();
+      const share = await screen.findByRole("button", { name: "Share" });
+      fireEvent.click(await screen.findByRole("button", { name: "More" }));
+      await screen.findByRole("menuitem", { name: "Chart" });
+      expect(screen.queryByRole("menuitem", { name: "Share" })).toBeNull();
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      // The bar's narrow form hides Share whole; the bar says so as it resizes.
+      (share.closest("[data-narrow-hide]") as HTMLElement).style.display = "none";
+      act(() => seen.forEach((fn) => fn([{ contentRect: { width: 400 } }])));
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Share" }));
+      await waitFor(() => expect(document.querySelector("[data-share-anchor] button")?.getAttribute("aria-expanded")).toBe("true"));
+      expect(await screen.findByRole("button", { name: "New guest link…" })).toBeTruthy();
+    } finally {
+      globalThis.ResizeObserver = kept;
+    }
+  });
+
   it("says a read-only file (an .xlsb) in the needs tone, not as a failure", async () => {
     open(sheetView({ readOnly: "Saved as .xlsb, which opens read only" }));
     await gridUp();

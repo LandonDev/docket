@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { BrowserDriver, BrowserState } from "@shared/contract-work-browser";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 import type { HeldRef } from "@shared/work";
@@ -110,9 +110,99 @@ export function discardHeld(env: string, ref: HeldRef): Promise<OutboxItem> {
   return registry.linkOf(env).request<OutboxItem>("work.outbox.discard", { ref });
 }
 
-/** The held page's picture, for a desktop that cannot draw the live window (the box, the browser /ui). */
+/** The held page's picture, for a desktop that cannot draw the live window (the box, the browser /ui): null when none was kept. */
 export async function heldPicture(env: string, ref: HeldRef): Promise<string | null> {
   const item = await registry.linkOf(env).request<OutboxItem>("work.outbox.get", { ref });
   const picture = (item.payload as { picture?: { mimeType: string; data?: string } | null } | null)?.picture;
-  return picture?.data ? `data:${picture.mimeType};base64,${picture.data}` : null;
+  if (!picture) return null;
+  // A picture the act kept whose bytes did not come is a failure, never "none kept" (the Outbox's rule).
+  if (!picture.data) throw new Error("The picture's bytes did not come");
+  return `data:${picture.mimeType};base64,${picture.data}`;
 }
+
+/** The held page's picture as the body draws it: undefined while it comes, "failed" when the read or the drawing failed, null when none was kept. */
+export interface HeldPictureRead {
+  src: string | null | undefined | "failed";
+  /** the image has drawn */
+  loaded: boolean;
+}
+
+export interface HeldPicture extends HeldPictureRead {
+  retry(): void;
+  onLoad(): void;
+  onError(): void;
+}
+
+/**
+ * One read of a held page's picture, by host and act, shared by the body that
+ * draws it and the bar whose primary waits on it: his press approves what he
+ * has seen, so the verb stays off while the picture comes or failed.
+ */
+const pictures = new Map<string, { read: HeldPictureRead; subs: Set<() => void>; reading: boolean }>();
+const NONE: HeldPictureRead = { src: null, loaded: false };
+
+function pictureEntry(key: string) {
+  let entry = pictures.get(key);
+  if (!entry) pictures.set(key, (entry = { read: { src: undefined, loaded: false }, subs: new Set(), reading: false }));
+  return entry;
+}
+
+function setPicture(key: string, read: HeldPictureRead): void {
+  const entry = pictures.get(key);
+  if (!entry) return;
+  entry.read = read;
+  entry.subs.forEach((fn) => fn());
+}
+
+function readPicture(key: string): void {
+  const entry = pictures.get(key);
+  if (!entry || entry.reading || entry.read.src !== undefined) return;
+  entry.reading = true;
+  const [env, ref] = key.split("\n") as [string, string];
+  heldPicture(env, JSON.parse(ref) as HeldRef).then(
+    (src) => {
+      entry.reading = false;
+      setPicture(key, { src, loaded: false });
+    },
+    () => {
+      entry.reading = false;
+      setPicture(key, { src: "failed", loaded: false });
+    },
+  );
+}
+
+export function useHeldPicture(env: string, ref: HeldRef | null): HeldPicture {
+  // Read by the ref's key: a push that rewrites the same item fetches nothing again.
+  const key = ref ? `${env}\n${JSON.stringify(ref)}` : null;
+  const subscribe = useCallback(
+    (fn: () => void) => {
+      if (!key) return () => undefined;
+      const entry = pictureEntry(key);
+      entry.subs.add(fn);
+      readPicture(key);
+      return () => {
+        entry.subs.delete(fn);
+        // The last reader gone, the next one reads it afresh.
+        if (!entry.subs.size && pictures.get(key) === entry) pictures.delete(key);
+      };
+    },
+    [key],
+  );
+  const read = useSyncExternalStore(subscribe, () => (key ? (pictures.get(key)?.read ?? PENDING) : NONE));
+  const retry = useCallback(() => {
+    if (!key) return;
+    setPicture(key, { src: undefined, loaded: false });
+    readPicture(key);
+  }, [key]);
+  const onLoad = useCallback(() => {
+    const was = key ? pictures.get(key)?.read : undefined;
+    if (key && was && typeof was.src === "string" && was.src !== "failed" && !was.loaded) setPicture(key, { src: was.src, loaded: true });
+  }, [key]);
+  const onError = useCallback(() => key && setPicture(key, { src: "failed", loaded: false }), [key]);
+  return { ...read, retry, onLoad, onError };
+}
+
+const PENDING: HeldPictureRead = { src: undefined, loaded: false };
+
+/** Whether what his press approves is on screen: the kept picture has drawn, or none was kept. */
+export const pictureShown = (p: HeldPictureRead): boolean => p.src === null || (typeof p.src === "string" && p.src !== "failed" && p.loaded);

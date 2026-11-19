@@ -483,6 +483,21 @@ describe("the frame a kind drives through its shell", () => {
     }
   });
 
+  it("holds History back while the kind says its item has not opened, so a loading or failed item has no bar for it alone", async () => {
+    let shell: CanvasShell | null = null;
+    const kinds = drivenKinds((s) => (shell = s));
+    const view = await seat([DOC, SHEET], { ...kinds, document: { ...kinds.document, history: true } });
+    await waitFor(() => expect(shell).not.toBeNull());
+    const history = () => view.container.querySelector("[data-canvas-bar] button[aria-label='History']");
+    // A kind that never says is drawn as opened.
+    expect(history()).not.toBeNull();
+    act(() => shell!.ready?.(false));
+    expect(history()).toBeNull();
+    expect(view.container.querySelector("[data-canvas-bar]")).toBeNull();
+    act(() => shell!.ready?.(true));
+    expect(history()).not.toBeNull();
+  });
+
   async function historyIn(narrow: boolean) {
     // The tooltips wake only once no control holds the focus and no press is held (an earlier test's composer and tab press may).
     (document.activeElement as HTMLElement | null)?.blur();

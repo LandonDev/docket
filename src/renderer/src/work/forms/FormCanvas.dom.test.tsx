@@ -309,6 +309,27 @@ describe("the form kind, round two", () => {
     expect(calm.className).not.toContain("@max-[560px]/bar:hidden");
   });
 
+  it("keeps the switch on Responses while changes wait, and decides nothing until the change is shown", async () => {
+    const by = "agent:env:t1" as const;
+    open(view({ suggestions: [{ id: "s1", op: "change", question: { ...BODY.questions[1], options: ["Valorant", "Marvel Rivals"] }, by, at: 1 }] }));
+    await found("[data-form]");
+    fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
+    await waitFor(() => expect(document.querySelector("[data-q]")).toBeNull());
+    // On Responses the switch is his way back to the change, so even a narrow bar keeps it whole.
+    const tabs = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>('[class*="shrink-0"]')!;
+    expect(tabs.hasAttribute("data-narrow-hide")).toBe(false);
+    expect(tabs.className).not.toContain("@max-[560px]/bar:hidden");
+    // No change is on screen, so Reject and Accept wait; one change still gets a step to bring it into view.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true));
+    expect(screen.getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Next change" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Questions" }).getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+    expect(formHost.review).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(formHost.review).toHaveBeenCalledWith({ ids: ["s1"] }, "accept"));
+  });
+
   it("gives the live link a worded Copy link for a narrow bar in place of the address and its glyph", async () => {
     open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
     const link = await found("[data-form-link]");

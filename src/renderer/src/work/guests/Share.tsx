@@ -90,7 +90,7 @@ function ItemLinks({ env, source, onNew }: { env: string; source: GuestSource; o
       {rows?.length === 0 ? <p className="flex h-9 items-center px-2 text-[13px] text-muted-foreground">Only you can open this</p> : null}
       {rows?.map((l) => (
         <div key={l.id} className="group/row flex h-9 min-w-0 items-center gap-2 rounded-lg px-2 text-[13px] hover:bg-foreground/5">
-          <Avatar name={l.name} />
+          <Avatar name={l.name} size="list" />
           <span className="min-w-0 flex-1 truncate">{l.name}</span>
           {/* Revoke takes the facts' place on hover (docs/DESIGN.md "Hover reveal"). */}
           <span className="relative flex shrink-0 items-center justify-end">

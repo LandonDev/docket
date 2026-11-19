@@ -13,11 +13,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, StatusLine } from "../canvas/kind";
 
-const lifeos = vi.hoisted(() => ({ state: "unreachable" as string, doc: null as unknown, proposed: null as unknown }));
-vi.mock("../shell/lifeos", () => ({
-  useLifeosSession: (environmentId: string, sector: unknown) => ({ environmentId, sector, client: lifeos.state === "connected" ? { url: "https://lifeos.test" } : null, state: lifeos.state }),
-  watchLifeos: vi.fn(),
-}));
+const lifeos = vi.hoisted(() => ({ state: "unreachable" as string, doc: null as unknown, proposed: null as unknown, reopen: null as unknown as ReturnType<typeof vi.fn> }));
+vi.mock("../shell/lifeos", async (original) => {
+  lifeos.reopen = vi.fn(async () => undefined);
+  return {
+    ...(await original<typeof import("../shell/lifeos")>()),
+    useLifeosSession: (environmentId: string, sector: unknown) => ({ environmentId, sector, client: lifeos.state === "connected" ? { url: "https://lifeos.test" } : null, state: lifeos.state }),
+    reopenLifeos: (...args: unknown[]) => lifeos.reopen(...args),
+  };
+});
 // A connected LifeOS, as far as the canvas reads it: the draft, the rewrite waiting in it, and the mailbox as a stand-in.
 vi.mock("convex/react", () => ({
   ConvexProvider: ({ children }: { children: unknown }) => children,
@@ -74,6 +78,26 @@ describe("the mail canvas with LifeOS unreachable", () => {
     expect(container.querySelector("[aria-busy], [data-slot=skeleton]")).toBeNull();
     // Read only: nothing to type in.
     expect(container.querySelector("input, textarea, [contenteditable=true]")).toBeNull();
+  });
+
+  it("retries the host's status and this sector's session, not a watch the host already has; a retry that fails leaves the line", async () => {
+    lifeos.state = "unreachable";
+    const { lines } = body();
+    const run = lines.at(-1)!.action!.run;
+    await run();
+    expect(lifeos.reopen).toHaveBeenCalledWith("box", "unify");
+    lifeos.reopen.mockRejectedValueOnce(new Error("The host is not connected"));
+    await expect(Promise.resolve(run())).resolves.toBeUndefined();
+  });
+
+  it("draws nothing under a session that will not come by itself, and the sign-in while one is being made", () => {
+    lifeos.state = "off";
+    const off = body();
+    expect(off.container.innerHTML).toBe("");
+    off.unmount();
+    lifeos.state = "pairing";
+    body();
+    expect(screen.getByText("Sign in to LifeOS")).toBeTruthy();
   });
 
   it("with no copy read, draws nothing under the line rather than loading forever", () => {

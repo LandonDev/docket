@@ -102,7 +102,8 @@ export function CanvasPane({
   const Bar = module?.Bar;
   return (
     <div data-canvas-pane data-kind={item.kind} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <KindBar feeds={feeds} tools={Bar ? <Bar {...props} /> : undefined} onHistory={def.history ? shell.openHistory : undefined} />
+      {/* History is for an item that has opened: not while the kind's code loads, nor while the kind says it is opening or could not open. */}
+      <KindBar feeds={feeds} tools={Bar ? <Bar {...props} /> : undefined} onHistory={def.history && module && feeds.ready !== false ? shell.openHistory : undefined} />
       {feeds.status ? <StateLine line={feeds.status} /> : null}
       <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
         <Body {...props} />

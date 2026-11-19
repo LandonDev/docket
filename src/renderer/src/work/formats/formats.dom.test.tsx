@@ -93,7 +93,8 @@ describe("Export", () => {
 
 const shell = () => {
   const lines: unknown[] = [];
-  return { lines, shell: { statusLine: (l: unknown) => void lines.push(l) } as unknown as CanvasShell };
+  const ready: boolean[] = [];
+  return { lines, ready, shell: { statusLine: (l: unknown) => void lines.push(l), ready: (r: boolean) => void ready.push(r) } as unknown as CanvasShell };
 };
 
 describe("Import", () => {
@@ -113,6 +114,8 @@ describe("Import", () => {
     const s = shell();
     const { container } = render(<ImportBody item={{ id: "i9", sessionId: "t1" } as CanvasItem} source={{ at: "file", host: "env_box", path: "/w/Gone.docx" }} env="env_box" state={undefined} setState={() => {}} shell={s.shell} />);
     expect(container.querySelector("[data-canvas-skeleton]")).not.toBeNull();
+    // It becomes another item: no History for it meanwhile.
+    expect(s.ready).toEqual([false]);
     await act(async () => fail(new Error("that file is not there any more")));
     await waitFor(() => expect(s.lines.at(-1)).toMatchObject({ tone: "failed", word: "Couldn't open this document", detail: "that file is not there any more", action: { label: "Retry" } }));
     expect(container.querySelector("[data-canvas-skeleton]")).toBeNull();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { SheetChart, SheetView } from "@shared/contract-work-sheets";
 import { reviewMarks, useGridState, type GridSelection, type SheetHandle } from "work-kit/sheet";
@@ -11,7 +11,7 @@ import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from ".
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
-import { Export } from "../icons";
+import { Export, Share } from "../icons";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
@@ -240,6 +240,9 @@ function useSelectionFeed(
 
   const wide = !!range && range.endColumn > range.startColumn && !locked && !!handle;
   const store = sync.state.view?.store;
+  // Share in More only while the bar's Share has given way, so it is never offered twice.
+  const way = shareWayOf(sync);
+  const shareGone = useSyncExternalStore(way.subscribe, way.gone, way.gone) && !!guestSource(source);
   // The sheet in hand, by its tab name: the one a CSV takes.
   const activeName = useCallback((): string | undefined => {
     if (!handle) return undefined;
@@ -268,9 +271,10 @@ function useSelectionFeed(
       ...(store
         ? [{ id: "export-csv", label: store === "csv" ? "Save as CSV" : "Export sheet as CSV", icon: Export, run: () => saveAs(sync.host, "csv", activeName()) }]
         : []),
+      ...(shareGone ? [{ id: "share", label: "Share", icon: Share, run: () => way.ask() }] : []),
     ]);
     return () => shell.more?.(null);
-  }, [shell, sync, wide, handle, grid, act, store, activeName]);
+  }, [shell, sync, wide, handle, grid, act, store, activeName, shareGone, way]);
 }
 
 const letters = (column: number): string => {
@@ -433,18 +437,86 @@ export function SheetSkeleton() {
   );
 }
 
+/**
+ * Per sheet: whether the bar's Share has given way (the narrow bar hides it whole), and More's ask to open it then.
+ * The bar says the first; More reads it and offers Share only then, and its ask opens the same popover from the bar.
+ */
+class ShareWay {
+  private hidden = false;
+  private asks = 0;
+  private listeners = new Set<() => void>();
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+  gone = (): boolean => this.hidden;
+  asked = (): number => this.asks;
+  set(hidden: boolean): void {
+    if (hidden === this.hidden) return;
+    this.hidden = hidden;
+    this.listeners.forEach((listener) => listener());
+  }
+  ask(): void {
+    this.asks += 1;
+    this.listeners.forEach((listener) => listener());
+  }
+}
+const shareWays = new WeakMap<SheetSync, ShareWay>();
+function shareWayOf(sync: SheetSync): ShareWay {
+  let way = shareWays.get(sync);
+  if (!way) shareWays.set(sync, (way = new ShareWay()));
+  return way;
+}
+
 /** While the sheet loads the bar holds one bone where the mode will be; after, the pane's own parts fill it, and Share on a LifeOS sheet (milestone 31). */
 export function Bar(props: Props) {
-  const { view, book, failed } = useSheetSync(syncFor(props));
+  const sync = syncFor(props);
+  const { view, book, failed } = useSheetSync(sync);
   if (failed) return null;
   // Only a LifeOS sheet shares; Share is whole or gone, hidden in the narrow bar before it could be cut.
-  if (view && book)
-    return guestSource(props.source) ? (
-      <span data-narrow-hide className="flex shrink-0 @max-[560px]/bar:hidden">
-        <ShareButton env={props.env} source={props.source} title={props.item.title} />
-      </span>
-    ) : null;
+  if (view && book) return guestSource(props.source) ? <BarShare {...props} way={shareWayOf(sync)} /> : null;
   return <Skeleton className="h-3 w-30" />;
+}
+
+/**
+ * Share in the bar, and its way back once the narrow bar hides it: the bar tells More it has gone, and More's Share
+ * opens the same popover from an unseen trigger at the bar's end, where the bar's Share stood.
+ */
+function BarShare(props: Props & { way: ShareWay }) {
+  const { way } = props;
+  const whole = useRef<HTMLSpanElement>(null);
+  const unseen = useRef<HTMLSpanElement>(null);
+  const asked = useSyncExternalStore(way.subscribe, way.asked, way.asked);
+  useLayoutEffect(() => {
+    const el = whole.current;
+    if (!el) return;
+    const check = (): void => way.set(getComputedStyle(el).display === "none");
+    check();
+    if (typeof ResizeObserver === "undefined") return () => way.set(false);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      way.set(false);
+    };
+  }, [way]);
+  // Each ask mounts the unseen trigger afresh and presses it, so the popover opens anchored at the bar's end.
+  useEffect(() => {
+    if (asked > 0) unseen.current?.querySelector("button")?.click();
+  }, [asked]);
+  const share = <ShareButton env={props.env} source={props.source} title={props.item.title} />;
+  return (
+    <>
+      <span ref={whole} data-narrow-hide className="flex shrink-0 @max-[560px]/bar:hidden">
+        {share}
+      </span>
+      {asked > 0 ? (
+        <span key={asked} ref={unseen} data-share-anchor className="invisible ms-auto flex w-0 shrink-0 overflow-hidden">
+          {share}
+        </span>
+      ) : null}
+    </>
+  );
 }
 
 /**

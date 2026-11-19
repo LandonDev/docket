@@ -386,10 +386,12 @@ function Section({ block, stale, current }: { block: Block; stale: boolean; curr
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
 const plain = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
-const tick = (v: number, format: DashFormat): string => (format === "money" ? money.format(v) : format === "percent" ? `${plain.format(v)}%` : plain.format(v));
+/** A number's sign as the typeset minus, before any currency sign ("−$5K", never "$-5K"). */
+const signed = (v: number, unsigned: (n: number) => string): string => (v < 0 ? `\u2212${unsigned(-v)}` : unsigned(v));
+const tick = (v: number, format: DashFormat): string => signed(v, (n) => (format === "money" ? money.format(n) : format === "percent" ? `${plain.format(n)}%` : plain.format(n)));
 
 const full = (v: number, format: DashFormat): string =>
-  format === "money" ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : format === "percent" ? `${v.toLocaleString("en-US")}%` : v.toLocaleString("en-US");
+  signed(v, (n) => (format === "money" ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : format === "percent" ? `${n.toLocaleString("en-US")}%` : n.toLocaleString("en-US")));
 
 /**
  * The axis: three round steps (1, 2 or 5 times a power of ten) whose top
@@ -403,6 +405,31 @@ export function axis(max: number, whole: boolean): { step: number; top: number }
   let step = [1, 2, 5, 10].map((m) => m * p).find((m) => m >= need * (1 - 1e-9)) ?? 10 * p;
   if (whole) step = Math.max(1, Math.round(step));
   return { step, top: 3 * step };
+}
+
+/**
+ * The axis over signed bars: zero always on it, round steps on both sides.
+ * All at or above zero is `axis`; all below is its mirror; a mix takes one
+ * round step from the whole span (about three of them), each end rounded out
+ * to a whole step. The ticks run from the bottom to the top.
+ */
+export function signedAxis(min: number, max: number, whole: boolean): { step: number; top: number; bottom: number; ticks: number[] } {
+  let step: number;
+  let top = 0;
+  let bottom = 0;
+  if (min >= 0) ({ step, top } = axis(max, whole));
+  else if (max <= 0) {
+    const mirror = axis(-min, whole);
+    step = mirror.step;
+    bottom = -mirror.top;
+  } else {
+    step = axis(max - min, whole).step;
+    top = Math.ceil(max / step - 1e-9) * step;
+    bottom = -Math.ceil(-min / step - 1e-9) * step;
+  }
+  const ticks: number[] = [];
+  for (let i = 0; i <= Math.round((top - bottom) / step); i++) ticks.push(Number((bottom + i * step).toPrecision(12)) || 0);
+  return { step, top, bottom, ticks };
 }
 
 const MONTH = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(\s+'?\d{2,4})?$/i;
@@ -419,31 +446,39 @@ export function isTimeSeries(labels: string[]): boolean {
 /** One series of plain bars on the neutral, no legend; on a run of periods the current (last) bar in foreground, the rest a muted step of it. Each bar names its value on hover. */
 function Chart({ bars, format, stale, title }: { bars: { label: string; value: number }[]; format: DashFormat; stale: boolean; title: string }) {
   if (!bars.length) return <p className="text-[13px] text-muted-foreground">Nothing to draw yet.</p>;
-  const { step, top } = axis(Math.max(...bars.map((b) => b.value)), bars.every((b) => Number.isInteger(b.value)));
-  const ticks = [0, step, 2 * step, top];
+  const values = bars.map((b) => b.value);
+  const { top, bottom, ticks } = signedAxis(Math.min(...values), Math.max(...values), values.every((v) => Number.isInteger(v)));
+  const span = top - bottom;
+  // Where a value sits, in percent up from the plot's foot; zero is the bars' base, so a negative bar hangs below it.
+  const at = (v: number): number => ((v - bottom) / span) * 100;
   const now = isTimeSeries(bars.map((b) => b.label)) ? bars.length - 1 : -1;
   return (
     <div role="img" aria-label={`${title}: ${bars.map((b) => `${b.label} ${tick(b.value, format)}`).join(", ")}`} className="grid h-[168px] grid-cols-[40px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_20px]">
       <div className="relative text-xs text-muted-foreground tabular-nums">
         {ticks.map((t) => (
-          <span key={t} className="absolute right-2 translate-y-1/2" style={{ bottom: `${(t / top) * 100}%` }}>
+          <span key={t} data-tick={t} className="absolute right-2 translate-y-1/2" style={{ bottom: `${at(t)}%` }}>
             {tick(t, format)}
           </span>
         ))}
       </div>
       <TooltipProvider>
-        <div className="relative flex items-end justify-around border-b border-border">
-          {ticks.slice(1).map((t) => (
-            <i key={t} aria-hidden className="absolute inset-x-0 h-0 border-t border-dashed border-border" style={{ bottom: `${(t / top) * 100}%` }} />
-          ))}
+        <div className={`relative flex justify-around ${bottom === 0 ? "border-b border-border" : ""}`}>
+          {ticks.map((t) =>
+            t === bottom && bottom === 0 ? null : (
+              <i key={t} aria-hidden data-zero={t === 0 || undefined} className={`absolute inset-x-0 h-0 border-t border-border ${t === 0 ? "" : "border-dashed"}`} style={{ bottom: `${at(t)}%` }} />
+            ),
+          )}
           {bars.map((b, i) => (
-            <Tip key={`${b.label}${i}`} label={`${b.label}, ${full(b.value, format)}`}>
-              <i
-                data-bar={i === now ? "now" : ""}
-                className={`relative z-1 w-[min(32px,56%)] rounded-t-[3px] ${i === now ? (stale ? "bg-(--chart-neutral-stale)" : "bg-foreground") : "bg-(--chart-neutral-rest)"}`}
-                style={{ height: `${(Math.max(0, b.value) / top) * 100}%` }}
-              />
-            </Tip>
+            <span key={`${b.label}${i}`} className="relative z-1 h-full w-[min(32px,56%)]">
+              <Tip label={`${b.label}, ${full(b.value, format)}`}>
+                <i
+                  data-bar={i === now ? "now" : ""}
+                  data-sign={b.value < 0 ? "negative" : undefined}
+                  className={`absolute inset-x-0 ${b.value < 0 ? "rounded-b-[3px]" : "rounded-t-[3px]"} ${i === now ? (stale ? "bg-(--chart-neutral-stale)" : "bg-foreground") : "bg-(--chart-neutral-rest)"}`}
+                  style={{ bottom: `${at(Math.min(0, b.value))}%`, height: `${(Math.abs(b.value) / span) * 100}%` }}
+                />
+              </Tip>
+            </span>
           ))}
         </div>
       </TooltipProvider>

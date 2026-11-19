@@ -233,6 +233,16 @@ describe("the Outbox", () => {
     expect(sends()).toEqual([]);
   });
 
+  it("leaves a computer act out of its group's count and gives it no tick: it is sent from its own detail", async () => {
+    const click: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "c4" }, workspaceId: "ws1", kind: "computer.act", summary: "Click Send in Mail", payload: { title: "Click Send in Mail", app: "Mail" } };
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget"), mail("o2", "Sam Ortiz", "Scrims"), { ...click }]);
+    await open();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send 2" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Send 3" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Tick Click Send in Mail" })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" })).toBeTruthy();
+  });
+
   it("a send that may have gone offers no plain Send: a line to check Sent, his own Send again, and no group or tick takes it", async () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "failed", error: "Outlook did not answer in time", outcomeUnknown: true }), mail("o2", "Sam Ortiz", "Scrims"), mail("o3", "Events booking", "Ballroom")]);
     await open();

@@ -162,6 +162,39 @@ describe("the media canvas", () => {
     expect(host.calls.filter((c) => c.method === "work.media.view").at(-1)?.params).toMatchObject({ itemId: "item1", retry: true });
   });
 
+  it("says a Play the video refused on the state line, with Retry that reads the view again and plays", async () => {
+    let refuse = true;
+    const plays: number[] = [];
+    let loads = 0;
+    HTMLMediaElement.prototype.load = () => void loads++;
+    HTMLMediaElement.prototype.play = async () => {
+      plays.push(Date.now());
+      if (refuse) throw new DOMException("The element has no supported sources.", "NotSupportedError");
+    };
+    const { shell } = await mount();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't play this video", detail: "The element has no supported sources." })));
+    refuse = false;
+    const viewsBefore = host.calls.filter((c) => c.method === "work.media.view").length;
+    const line = shell.statusLine.mock.lastCall![0] as { action: { label: string; run(): Promise<void> } };
+    expect(line.action.label).toBe("Retry");
+    await act(() => line.action.run());
+    expect(host.calls.filter((c) => c.method === "work.media.view").length).toBe(viewsBefore + 1);
+    expect(loads).toBeGreaterThan(0);
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
+    expect(plays).toHaveLength(2);
+  });
+
+  it("takes a Pause that cut a starting Play for no refusal", async () => {
+    HTMLMediaElement.prototype.play = async () => {
+      throw new DOMException("The play() request was interrupted by a call to pause().", "AbortError");
+    };
+    const { shell } = await mount();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    await act(async () => await Promise.resolve());
+    expect(shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ word: "Couldn't play this video" }));
+  });
+
   it("draws a host that did not answer as the empty stage under the state line, with no bones in the body or the bar", async () => {
     host.viewFails = "The host did not answer";
     host.view = { itemId: "item1", kind: "video", versions: [V3], notes: [], mode: "writes", shared: false, rev: 1 };

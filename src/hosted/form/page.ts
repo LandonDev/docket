@@ -118,9 +118,19 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
   foot.append(button, said)
   form.append(foot)
 
+  // A question's error is its controls' too: each is marked invalid and names the error line, so a screen reader says why on focus.
+  const controlsOf = (wrap: Element): HTMLElement[] => [...wrap.querySelectorAll<HTMLElement>('input, textarea, select')]
+  const clearQuestion = (wrap: Element): void => {
+    const p = wrap.querySelector<HTMLElement>('.fm-err')
+    if (p) p.hidden = true
+    wrap.removeAttribute('aria-invalid')
+    for (const c of controlsOf(wrap)) {
+      c.removeAttribute('aria-invalid')
+      c.removeAttribute('aria-describedby')
+    }
+  }
   const showError = (questionId: string | undefined, text: string): void => {
-    for (const p of form.querySelectorAll<HTMLElement>('.fm-q .fm-err')) p.hidden = true
-    for (const q of form.querySelectorAll<HTMLElement>('.fm-q')) q.removeAttribute('aria-invalid')
+    for (const q of form.querySelectorAll<HTMLElement>('.fm-q')) clearQuestion(q)
     said.hidden = true
     const wrap = questionId ? form.querySelector<HTMLElement>(`.fm-q[data-q="${CSS.escape(questionId)}"]`) : null
     const p = wrap?.querySelector<HTMLElement>('.fm-err')
@@ -128,12 +138,24 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
       p.textContent = text
       p.hidden = false
       wrap.setAttribute('aria-invalid', 'true')
-      wrap.querySelector<HTMLElement>('input, textarea, select')?.focus()
+      for (const c of controlsOf(wrap)) {
+        c.setAttribute('aria-invalid', 'true')
+        c.setAttribute('aria-describedby', p.id)
+      }
+      controlsOf(wrap)[0]?.focus()
     } else {
       said.textContent = text
       said.hidden = false
     }
   }
+
+  // Answering a refused question clears its error with it.
+  const answered = (e: Event): void => {
+    const wrap = (e.target as Element | null)?.closest('.fm-q[aria-invalid="true"]')
+    if (wrap) clearQuestion(wrap)
+  }
+  form.addEventListener('input', answered)
+  form.addEventListener('change', answered)
 
   form.addEventListener('submit', (e) => {
     e.preventDefault()

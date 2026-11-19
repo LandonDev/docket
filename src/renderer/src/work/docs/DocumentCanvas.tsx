@@ -14,6 +14,7 @@ import {
   type EditorAdapters,
   type ReviewChange,
 } from "work-kit/editor";
+import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
@@ -162,36 +163,48 @@ export function TitleField({ text, rename }: { text: string; rename(title: strin
           requestAnimationFrame(() => (event.target as HTMLInputElement).blur());
         }
       }}
-      className="w-full truncate bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
+      // The one focus ring, inside a 6px inset that hangs into the gutter, so the words stay on the text's edge.
+      className="focus-ring -mx-1.5 w-full truncate rounded-md bg-transparent px-1.5 text-foreground outline-none placeholder:text-muted-foreground"
       style={TITLE_STYLE}
     />
   );
 }
 
-/** The items whose document is open now: the bar's Share waits for it, so a document that did not open offers none. */
-const openNow = new Set<string>();
+/** Where each item's document is: opening, open or failed. The bar's Share waits for open; its bone holds the bar's place while opening. */
+type OpenState = "opening" | "open" | "failed";
+const openStates = new Map<string, OpenState>();
 const openWatchers = new Set<() => void>();
 
-export function markOpen(itemId: string, open: boolean): void {
-  if (openNow.has(itemId) === open) return;
-  if (open) openNow.add(itemId);
-  else openNow.delete(itemId);
+export function markOpen(itemId: string, state: OpenState | null): void {
+  if ((openStates.get(itemId) ?? null) === state) return;
+  if (state) openStates.set(itemId, state);
+  else openStates.delete(itemId);
   for (const watcher of openWatchers) watcher();
 }
 
-function useOpenNow(itemId: string): boolean {
+function useOpenState(itemId: string): OpenState {
   return useSyncExternalStore(
     (watcher) => {
       openWatchers.add(watcher);
       return () => openWatchers.delete(watcher);
     },
-    () => openNow.has(itemId),
+    // The bar mounts with the body, before the body has said: that is opening.
+    () => openStates.get(itemId) ?? "opening",
   );
 }
 
-/** The document's own tools on the kind's bar: Share (milestone 31), only on what can be shared, once it has opened. */
+/**
+ * The document's own tools on the kind's bar: Share (milestone 31), only on
+ * what can be shared, once it has opened. While it opens, a bone holds the
+ * bar's place, so the mode and Share arrive without the body moving; a
+ * document that could not open draws nothing, and the bar goes. A Word file
+ * that becomes a document draws nothing: the item it becomes has the bar.
+ */
 export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
-  return useOpenNow(item.id) ? <ShareButton env={env} source={source} title={item.title} /> : null;
+  const state = useOpenState(item.id);
+  if (importsFirst(source) || state === "failed") return null;
+  if (state === "opening") return <Skeleton aria-hidden className="h-3 w-30" />;
+  return <ShareButton env={env} source={source} title={item.title} />;
 }
 
 /** A Word, OpenDocument or RTF file becomes a `.tcdoc` first (work/formats, milestone 21); the rest open as they are. */
@@ -208,10 +221,13 @@ function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<
   useEffect(() => {
     shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Couldn't open this document", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);
-  useEffect(() => {
-    markOpen(item.id, !!opened && "open" in opened);
-    return () => markOpen(item.id, false);
-  }, [item.id, opened]);
+  // Before paint, so History and the bone never show for a frame they should not.
+  useLayoutEffect(() => {
+    const now: OpenState = opened === null ? "opening" : "open" in opened ? "open" : "failed";
+    markOpen(item.id, now);
+    shell.ready?.(now === "open");
+  }, [item.id, opened, shell]);
+  useEffect(() => () => markOpen(item.id, null), [item.id]);
   // A failed open is said once, on the state line with Retry; the body under it stays empty rather than pulse.
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>

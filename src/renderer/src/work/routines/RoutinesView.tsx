@@ -139,8 +139,8 @@ export function View({ env, workspace }: WorkViewProps) {
         <EmptyState title="No routines yet" />
       ) : (
         <div className="@container/routines flex h-full min-h-0">
-          <div
-            role="listbox"
+          {/* A list of buttons, the picked one marked current: Tab moves through them, as a listbox's arrows would not. */}
+          <ul
             aria-label="Routines"
             data-routine-list=""
             className={cn(
@@ -149,9 +149,11 @@ export function View({ env, workspace }: WorkViewProps) {
             )}
           >
             {rows.map((r) => (
-              <RoutineItem key={r.id} row={r} current={r.id === current?.id} onPick={() => setPicked(r.id)} />
+              <li key={r.id} className="flex flex-col">
+                <RoutineItem row={r} current={r.id === current?.id} onPick={() => setPicked(r.id)} />
+              </li>
             ))}
-          </div>
+          </ul>
           {current ? (
             <Detail key={current.id} env={env} row={current} tick={tick} narrowShown={narrowDetail} onBack={() => setPicked(null)} onEdit={() => setForm({ row: current })} />
           ) : null}
@@ -165,7 +167,7 @@ export function View({ env, workspace }: WorkViewProps) {
 function RoutineItem({ row, current, onPick }: { row: RoutineRow; current: boolean; onPick: () => void }) {
   const mark = rowMark(row);
   return (
-    <ItemButton role="option" aria-selected={current} aria-current={current} onClick={onPick} className="flex-col items-stretch gap-0.5 px-2 py-1.5">
+    <ItemButton aria-current={current ? "true" : undefined} onClick={onPick} className={cn("flex-col items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5")}>
       <span className="flex min-w-0 items-baseline gap-2 text-[13px]">
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.name}</span>
         {mark ? <StatusMark state={mark} word={false} className="shrink-0" /> : null}
