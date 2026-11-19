@@ -202,13 +202,15 @@ place (Settings, Inbox, Outbox, Search, Notes, Accounts, Stats) keeps that
 place's theme, so a glance at one never changes the window. Each window
 has its own place and so its own theme.
 
-A change of theme is one cross-fade of the whole window, `--dur-base` on
+A change of theme is one dissolve of the whole window, `--dur-fast` on
 `--ease-out`, opacity only, made by a view transition wrapped round the
 change itself, so no frame shows the old place in the new theme. Element
-transitions are off while it runs (`html.theme-switching`). Reduced motion
-jumps. The window's native backing colour and its first paint at launch
-take the theme the window last wore (`appearance:scheme`, kept with the
-window's geometry), so nothing flashes dark behind a light window.
+transitions are off while it runs (`html.theme-switching`): a colour never
+animates on its own, which smears. The dissolve takes no input: a click or
+a key during it lands on the new place. Reduced motion jumps. The window's
+native backing colour and its first paint at launch take the theme the
+window last wore (`appearance:scheme`, kept with the window's geometry), so
+nothing flashes dark behind a light window.
 
 ### Type tints
 
