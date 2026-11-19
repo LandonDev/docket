@@ -226,6 +226,56 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(screen.queryByText("Couldn't save")).toBeNull());
   });
 
+  it("sends an opened Excel file cell contents only, says once that the rest stays out, and never resends a refused batch", async () => {
+    open(sheetView({ store: "package", rev: 3 }));
+    await gridUp();
+    const bold: SheetMutationJson = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { s: { bl: 1 } } } } } };
+    const fill: SheetMutationJson = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 2: { 4: { si: "f1" } } } } };
+    const row: SheetMutationJson = { id: "sheet.mutation.insert-row", params: { unitId: "book", subUnitId: "budget" } };
+    const autoHeight: SheetMutationJson = { id: "sheet.mutation.set-worksheet-row-auto-height", params: {} };
+    act(() => {
+      grid.edit(bold);
+      grid.edit(row);
+      grid.edit(fill);
+      grid.edit(autoHeight);
+      grid.edit(set(1, 1, 15));
+    });
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[0]).toEqual({ baseRev: 3, mutations: [set(1, 1, 15)] });
+    expect(await screen.findByText("Not saved")).toBeTruthy();
+    expect(screen.getAllByText("Not saved")).toHaveLength(1);
+
+    // A refused batch is said with Reload and dropped: the next edit goes alone.
+    const edit = sheetHost.edit;
+    sheetHost.edit = async () => {
+      throw new Error("That edit is not cell contents");
+    };
+    act(() => grid.edit(set(2, 1, 9)));
+    expect(await screen.findByText("Couldn't save")).toBeTruthy();
+    sheetHost.edit = async (baseRev, mutations) => {
+      sheetHost.calls.push(["edit", { baseRev, mutations }]);
+      return edit(baseRev, mutations);
+    };
+    const before = edits().length;
+    act(() => grid.edit(set(3, 1, 4)));
+    await waitFor(() => expect(edits().length).toBeGreaterThan(before), { timeout: EDIT_WAIT * 10 });
+    expect(edits().at(-1)!.mutations).toEqual([set(3, 1, 4)]);
+  });
+
+  it("sends what waits before a reload loads the file again", async () => {
+    open(sheetView({ store: "tcsheet", rev: 3 }));
+    await gridUp();
+    sheetHost.since = async () => ({ rev: 9, reload: true as const });
+    act(() => grid.edit(set(1, 1, 15)));
+    act(() => sheetHost.push({ rev: 9 }));
+    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "load" && (c[1] as { rev: number }).rev === 9)).toBe(true));
+    const sent = sheetHost.calls.findIndex((c) => c[0] === "edit");
+    const reload = sheetHost.calls.findIndex((c) => c[0] === "load" && (c[1] as { rev: number }).rev === 9);
+    expect(sent).toBeGreaterThan(-1);
+    expect(sent).toBeLessThan(reload);
+    expect(edits()[0].mutations).toEqual([set(1, 1, 15)]);
+  });
+
   it("names the grid's own workbook in an op it brings in", async () => {
     open(sheetView({ rev: 3 }));
     await gridUp();

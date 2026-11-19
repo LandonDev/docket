@@ -33,6 +33,8 @@ export interface SheetSyncState {
   book: { workbook: Workbook; key: number } | null;
   /** the person's edits did not reach the host */
   sendError: string | null;
+  /** an opened Excel file was given formatting or a row or column change, which it does not keep */
+  dropped: boolean;
   /** the change the stepper is on */
   current: number;
   /** goes up whenever a cell changes, for what reads the grid (a chart) */
@@ -48,6 +50,28 @@ const CLEAR = { v: null, t: null, f: null, si: null, p: null, s: null, custom: n
 /** How long edits gather before they are sent. */
 export const EDIT_WAIT = 150;
 const CONFLICT_TRIES = 5;
+/** Univer's own bookkeeping after an edit: nothing a file keeps, so never sent and never said. */
+const BOOKKEEPING = new Set(["sheet.mutation.set-worksheet-row-auto-height", "sheet.mutation.set-worksheet-row-is-auto-height"]);
+
+/**
+ * Whether an opened Excel file keeps this mutation: cell contents only, a
+ * set-range-values whose every cell is cleared or carries a value or a
+ * formula. Formatting, a row or column inserted or deleted, a fill (a
+ * shared formula's follower, `si` with no `f`) and rich text it refuses.
+ */
+export function isContent(mutation: SheetMutationJson): boolean {
+  if (mutation.id !== SET_RANGE_VALUES) return false;
+  const cells = (mutation.params as { cellValue?: Record<string, Record<string, Record<string, unknown> | null>> } | null)?.cellValue;
+  if (!cells) return false;
+  for (const row of Object.values(cells))
+    for (const cell of Object.values(row)) {
+      if (cell === null) continue;
+      if (!("v" in cell) && !("f" in cell)) return false;
+      if (cell.si != null && cell.f == null) return false;
+      if (cell.p != null) return false;
+    }
+  return true;
+}
 
 /** An op as this grid names its workbook: the host's unit id and the grid's can differ. */
 const inUnit = (mutation: SheetMutationJson, unitId: string): SheetMutationJson =>
@@ -64,7 +88,7 @@ interface Laid {
 }
 
 export class SheetSync {
-  state: SheetSyncState = { view: null, failed: null, book: null, sendError: null, current: 0, tick: 0 };
+  state: SheetSyncState = { view: null, failed: null, book: null, sendError: null, dropped: false, current: 0, tick: 0 };
   /** the op the grid stands at */
   rev = 0;
   private readonly mine = new Set<number>();
@@ -149,6 +173,7 @@ export class SheetSync {
     this.mine.clear();
     this.queue = [];
     this.detach();
+    if (this.state.dropped) this.set({ dropped: false });
     this.set({ book: { workbook, key: ++this.books } });
   }
 
@@ -168,6 +193,11 @@ export class SheetSync {
     this.detach();
     this.grid = grid;
     const off = grid.onMutation((mutation) => {
+      if (BOOKKEEPING.has(mutation.id)) return;
+      if (this.state.view?.store === "package" && !isContent(mutation)) {
+        if (!this.state.dropped) this.set({ dropped: true });
+        return;
+      }
       this.queue.push(mutation);
       this.set({ tick: this.state.tick + 1 });
       if (this.queue.length >= EDIT_MAX) this.flush();
@@ -212,7 +242,7 @@ export class SheetSync {
    * view is read again to see whether the host's save still fails.
    */
   retry(): void {
-    this.set({ sendError: null });
+    this.set({ sendError: null, dropped: false });
     if (this.state.view?.store === "package") {
       this.queue = [];
       this.run(() => this.open());
@@ -242,9 +272,13 @@ export class SheetSync {
       }
       if (this.state.sendError) this.set({ sendError: null });
     } catch (error) {
-      this.queue.unshift(...batch);
+      // An opened Excel file refuses a batch for good: it is not sent again, and the edits after it go on. Reload makes the grid the file again.
+      if (this.state.view?.store !== "package") {
+        this.queue.unshift(...batch);
+        this.set({ sendError: message(error, "The host did not answer") });
+        return;
+      }
       this.set({ sendError: message(error, "The host did not answer") });
-      return;
     }
     if (this.queue.length > 0) await this.send();
   }
@@ -259,6 +293,10 @@ export class SheetSync {
     this.behind = false;
     const answer = await this.host.since(this.rev);
     if ("reload" in answer) {
+      // What waits goes first: the host moves an edit through what it missed.
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+      await this.send();
       await this.load(answer.rev);
       return;
     }

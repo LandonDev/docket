@@ -83,7 +83,7 @@ export function Body(props: Props) {
   }, [handle, change]);
   const act = useCallback((work: Promise<SheetView>, fallback: string): Promise<void> => work.then((next) => sync.view(next), (error: unknown) => sayError(error, fallback)), [sync]);
 
-  useFeeds(shell, sync, view, state.sendError, changes, current, handle, locked, act);
+  useFeeds(shell, sync, view, state.sendError, state.dropped, changes, current, handle, locked, act);
   useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act);
 
   // The cell in hand, when a suggestion is laid in it: what the value replaces. Read on every render, which each laying causes.
@@ -127,6 +127,7 @@ function useFeeds(
   sync: SheetSync,
   view: SheetView | null,
   sendError: string | null,
+  dropped: boolean,
   changes: ReturnType<typeof sheetChanges>,
   current: number,
   handle: SheetHandle | null,
@@ -152,9 +153,10 @@ function useFeeds(
     if (missing) shell.statusLine({ tone: "needs", word: `${name} moved`, detail: "Read only" });
     else if (readOnly !== undefined) shell.statusLine({ tone: "failed", word: "Read only", detail: readOnly });
     else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() } });
+    else if (dropped) shell.statusLine({ tone: "failed", word: "Not saved", detail: "Formatting and row or column changes stay out of an opened Excel file", action: { label: "Reload", run: () => sync.retry() } });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
-  }, [shell, sync, name, missing, readOnly, saveError, store]);
+  }, [shell, sync, name, missing, readOnly, saveError, dropped, store]);
 
   const written = view?.written;
   const count = changes.changes.length;
