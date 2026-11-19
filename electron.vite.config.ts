@@ -118,7 +118,8 @@ export const MAIN_INPUTS = {
   statsWorker: resolve('src/main/aliax/stats/statsWorker.ts'),
   execBroker: resolve('src/main/execBrokerProcess.ts'),
   addonHost: resolve('src/main/addonHostProcess.ts'),
-  workService: resolve('src/main/workServiceProcess.ts')
+  workService: resolve('src/main/workServiceProcess.ts'),
+  sheetWorker: resolve('src/main/server/work/sheets/worker.ts')
 }
 
 /** The hosted pages (src/hosted): what the Work service serves to a browser
@@ -190,6 +191,9 @@ export default defineConfig({
     // workService.js is the Work service's utility process (docs/agents/work.md):
     // live documents and sheets, guest links and the hosted pages are served
     // there, never in main. A stub until Work's service is built.
+    // sheetWorker.js is the sheet worker's utility process (work/sheets/spawnWorker.ts
+    // forks it, found beside the main bundle at run time): an opened workbook is
+    // read, patched and recalculated there, and IronCalc's native code loads only there.
     build: {
       rollupOptions: {
         input: MAIN_INPUTS

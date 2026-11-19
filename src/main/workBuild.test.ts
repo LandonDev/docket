@@ -16,7 +16,7 @@ afterAll(() => rmSync(out, { recursive: true, force: true }))
 
 describe('the Work service entry', () => {
   it('is an input of the main bundle, beside the gateway and the add-on host, and its file exists', () => {
-    expect(Object.keys(MAIN_INPUTS)).toEqual(['index', 'boot', 'gateway', 'statsWorker', 'execBroker', 'addonHost', 'workService'])
+    expect(Object.keys(MAIN_INPUTS)).toEqual(['index', 'boot', 'gateway', 'statsWorker', 'execBroker', 'addonHost', 'workService', 'sheetWorker'])
     expect(MAIN_INPUTS.workService).toBe(resolve('src/main/workServiceProcess.ts'))
     for (const file of Object.values(MAIN_INPUTS)) expect(existsSync(file), file).toBe(true)
     const main = (config as { main: { build: { rollupOptions: { input: unknown } } } }).main
@@ -28,6 +28,16 @@ describe('the Work service entry', () => {
     await viteBuild({ configFile: false, logLevel: 'warn', build: { ssr: true, outDir: dir, emptyOutDir: true, rollupOptions: { input: { workService: MAIN_INPUTS.workService }, output: { format: 'cjs', entryFileNames: '[name].js' } } } })
     expect(readdirSync(dir)).toEqual(['workService.js'])
     expect(readFileSync(join(dir, 'workService.js'), 'utf8')).toContain('the Work service runs only as a utility process')
+  }, 120_000)
+  it('builds the sheet worker as its own entry, which the server finds at run time (no bundler-specific import)', async () => {
+    expect(MAIN_INPUTS.sheetWorker).toBe(resolve('src/main/server/work/sheets/worker.ts'))
+    const dir = join(out, 'sheet')
+    await viteBuild({ configFile: false, logLevel: 'warn', resolve: { alias: { '@shared': resolve('src/shared') } }, build: { ssr: true, outDir: dir, emptyOutDir: true, rollupOptions: { external: (id) => !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('@shared') && !id.includes('/src/'), input: { sheetWorker: MAIN_INPUTS.sheetWorker }, output: { format: 'cjs', entryFileNames: '[name].js' } } } })
+    expect(readdirSync(dir)).toContain('sheetWorker.js')
+    expect(readFileSync(join(dir, 'sheetWorker.js'), 'utf8')).toContain('the sheet worker runs only as a utility process')
+    const spawn = readFileSync(resolve('src/main/server/work/sheets/spawnWorker.ts'), 'utf8')
+    expect(spawn).toContain("'sheetWorker.js'")
+    expect(spawn).not.toMatch(/\?(modulePath|worker|url|raw|asset)['"]/)
   }, 120_000)
   it('is the service itself (milestone 18): what it may import is held by work/service/boundary.test.ts', () => {
     const source = readFileSync(MAIN_INPUTS.workService, 'utf8')

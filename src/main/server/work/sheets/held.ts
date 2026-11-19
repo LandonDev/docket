@@ -88,11 +88,11 @@ export const setJobs = (fn: (() => Promise<SheetJobs>) | null): void => {
 export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
   const hit = made.get(ctx.db)
   if (hit) return hit
-  const jobs = jobsFor
-    ? await jobsFor()
-    : process.versions.electron
-      ? (await import('./spawnWorker')).appJobs()
-      : await (await import('./workerClient')).localJobs()
+  // The built app forks the sheet worker; a test, or a proof that bundled the server itself, runs the jobs in this process.
+  const jobs =
+    (jobsFor ? await jobsFor() : null) ??
+    (process.versions.electron ? (await import('./spawnWorker')).appJobs() : null) ??
+    (await (await import('./workerClient')).localJobs())
   const tools = new Toolchain(ctx.dataDir)
   const suggestions = new SuggestionStore(ctx.db)
   const s: Sheets = {
