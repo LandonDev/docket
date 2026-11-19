@@ -10,9 +10,10 @@ import {
   type RoutineRun
 } from '@shared/contract-work-routines'
 import { errorText, type Trigger, type TriggerSource } from '@shared/work'
+import type { SessionMeta } from '@shared/events'
 import type { AddonCallResult } from '../../addons/addonWire'
 import type { WorkCtx } from '../modules'
-import type { RoutinesHost } from './host'
+import { BUSY, type RoutinesHost } from './host'
 import { dueCount, nextAt } from './schedule'
 import { RoutineStore, type Cursor, type Routine } from './store'
 
@@ -43,8 +44,12 @@ import { RoutineStore, type Cursor, type Routine } from './store'
 export const TICK_MS = 30_000
 /** How often a file on this host is looked at. */
 export const FILE_EVERY_MS = 60_000
-/** What of a watched read a woken thread is told. */
+/** What of a watched read a woken thread is told, or a run starts with. */
 const NOTICE_MAX = 4000
+/** How long a watch's read may take before the host gives up on it. */
+export const READ_TIMEOUT_MS = 60_000
+
+const cut = (text: string): string => (text.length > NOTICE_MAX ? `${text.slice(0, NOTICE_MAX)}…` : text)
 
 export const LIFEOS_SINCE = 'lifeosEvents:since'
 
@@ -157,6 +162,7 @@ const eventsCause = (events: readonly LifeosEvent[]): string => {
 interface Feed {
   sector: string
   after: number
+  gen: number
   off: () => void
 }
 
@@ -167,6 +173,14 @@ export class RoutinesEngine {
   /** other pillars' triggers armed for routines, by routine id */
   private armed = new Map<string, { spec: string; off: () => void }>()
   private stopped = false
+  /** reads in flight, by routine id: the next tick skips a routine whose read has not answered */
+  private reading = new Set<string>()
+  /** what a pass set going and did not wait for: a test waits on it (`drain`) */
+  private pending = new Set<Promise<unknown>>()
+  /** threads seen working, so a run is not taken for settled before its thread began */
+  private seenBusy = new Set<string>()
+  /** each feed's own token: a subscription that answers inside its own call replaces the feed by token, never by cursor */
+  private feedGen = 0
 
   constructor(private readonly deps: EngineDeps) {
     this.store = new RoutineStore(deps.ctx.db)
@@ -192,7 +206,7 @@ export class RoutinesEngine {
   /** Starts the tick and the settle watch; returns the stop. `interval: false` leaves ticking to the caller (a test). */
   start(o: { interval?: boolean } = {}): () => void {
     this.stopped = false
-    const offMeta = this.deps.host.onMeta((s) => this.sessionChanged(s.id))
+    const offMeta = this.deps.host.onMeta((s) => this.metaChanged(s))
     this.recover()
     const timer = o.interval === false ? null : setInterval(() => void this.tick(), TICK_MS)
     timer?.unref?.()
@@ -208,15 +222,32 @@ export class RoutinesEngine {
     }
   }
 
-  /** At boot: a run cut off before its thread existed failed; one whose thread settled while the host was down settles now. */
+  /**
+   * At boot: a run cut off before its thread existed failed, unless the
+   * thread was made before the stop; one whose thread settled while the host
+   * was down settles now. A thread left `stopped` stays its run's: the boot
+   * resumer or the owner may finish it, and a firing due meanwhile folds in.
+   */
   recover(): void {
     for (const run of this.store.unsettled()) {
-      if (run.state === 'starting' || !run.sessionId) {
+      const sessionId = run.sessionId ?? this.deps.host.threadOfRun(run.id)
+      if (!sessionId) {
         this.store.settle(run.id, 'failed', 'Failed: the host stopped before its thread started')
         continue
       }
-      this.sessionChanged(run.sessionId)
+      if (!run.sessionId) this.store.started(run.id, sessionId)
+      this.sessionChanged(sessionId, true)
     }
+  }
+
+  /** What a pass set going: resolves once it is all done. For a test. */
+  async drain(): Promise<void> {
+    while (this.pending.size) await Promise.all([...this.pending])
+  }
+
+  private track(p: Promise<unknown>): void {
+    const done = p.catch((err) => this.ctx.log(`routines: ${errorText(err)}`)).finally(() => this.pending.delete(done))
+    this.pending.add(done)
   }
 
   /** One pass: ends what is over, fires what is due, keeps the LifeOS feeds and other pillars' triggers in step. Never two at once. */
@@ -226,10 +257,10 @@ export class RoutinesEngine {
     return this.ticking
   }
 
+  /** Nothing slow is awaited here: a read or a thread's start runs on its own, so one slow add-on never holds back another routine's time. */
   private async pass(): Promise<void> {
     if (this.stopped) return
     const now = this.now()
-    const work: Promise<unknown>[] = []
     for (const r of this.store.active()) {
       if (r.untilAt !== null && r.untilAt <= now) {
         this.store.end(r.id, 'Ended')
@@ -242,11 +273,12 @@ export class RoutinesEngine {
         const s = parseSchedule(t.rrule)
         if (!s) continue
         const due = dueCount(s, t.tz, r.nextAt, now)
-        work.push(this.fire(r, triggerWords(t), Math.max(0, due - 1), { nextAt: nextAt(s, t.tz, now) }))
+        this.track(this.fire(r, triggerWords(t), Math.max(0, due - 1), { nextAt: nextAt(s, t.tz, now) }))
       } else if (t.on === 'read') {
-        if (r.nextAt !== null && r.nextAt > now) continue
+        if ((r.nextAt !== null && r.nextAt > now) || this.reading.has(r.id)) continue
         this.store.setNext(r.id, now + t.everySec * 1000)
-        work.push(this.read(r, t))
+        this.reading.add(r.id)
+        this.track(this.read(r, t).finally(() => this.reading.delete(r.id)))
       } else if (t.on === 'file' && t.source.at === 'file') {
         if (r.nextAt !== null && r.nextAt > now) continue
         this.store.setNext(r.id, now + FILE_EVERY_MS)
@@ -255,7 +287,6 @@ export class RoutinesEngine {
     }
     this.keepFeeds()
     this.keepArmed()
-    await Promise.all(work)
   }
 
   // ── firing ────────────────────────────────────────────────────────────
@@ -263,14 +294,27 @@ export class RoutinesEngine {
   /**
    * One firing. `nextAt` is the schedule's next due time, written with the
    * run's row. A routine whose last run still works takes no second one:
-   * the firing folds into the run in flight.
+   * the firing folds into the run in flight, and what it heard (a mail, a
+   * read's answer) is told to that run's thread so nothing is lost. A run
+   * whose thread failed or is gone while it waited is closed first.
+   * The routine is read afresh: one paused, changed or removed since the
+   * pass looked fires nothing. `force` (Run now) fires a paused one.
    */
-  async fire(r: Routine, cause: string, folded = 0, o: { nextAt?: number | null; detail?: string } = {}): Promise<RoutineRun | null> {
+  async fire(seen: Routine, cause: string, folded = 0, o: { nextAt?: number | null; detail?: string; force?: boolean } = {}): Promise<RoutineRun | null> {
+    const r = this.store.get(seen.id)
+    if (!r || r.proposed || r.ended || (!r.enabled && !o.force) || JSON.stringify(r.trigger) !== JSON.stringify(seen.trigger)) return null
     const now = this.now()
-    const flying = this.store.inFlight(r.id)
+    let flying = this.store.inFlight(r.id)
+    if (flying?.sessionId) {
+      const status = this.deps.host.session(flying.sessionId)?.status
+      if (!status || status === 'error' || status === 'stopped') {
+        this.store.settle(flying.id, 'failed', status ? 'Failed' : 'Failed: its thread was deleted')
+        flying = null
+      }
+    }
     if (flying) {
-      this.store.addFolded(flying.id, folded + 1)
-      if (o.nextAt !== undefined) this.store.setNext(r.id, o.nextAt)
+      this.store.addFolded(flying.id, folded + 1, o.nextAt !== undefined ? { routineId: r.id, nextAt: o.nextAt } : undefined)
+      if (o.detail && flying.sessionId) await this.ctx.threads.resume(flying.sessionId, `More for this run of “${r.name}”: ${cause}.\n${cut(o.detail)}`).catch(() => {})
       return null
     }
     if (r.resumeSessionId) return this.wake(r, cause, o)
@@ -278,7 +322,7 @@ export class RoutinesEngine {
     if (r.once) this.store.end(r.id, 'Ran once')
     this.changed(r)
     try {
-      const text = `${r.prompt}\n\n---\nStarted by the routine “${r.name}”: ${cause}${folded ? ` (${folded + 1} times due since the last run; this one run covers them)` : ''}.${o.detail ? `\n${o.detail}` : ''}`
+      const text = `${r.prompt}\n\n---\nStarted by the routine “${r.name}”: ${cause}${folded ? ` (${folded + 1} times due since the last run; this one run covers them)` : ''}.${o.detail ? `\n${cut(o.detail)}` : ''}`
       const sessionId = await this.ctx.threads.start({
         workspaceId: r.workspaceId,
         ...(r.projectId ? { projectId: r.projectId } : {}),
@@ -310,7 +354,7 @@ export class RoutinesEngine {
     const run = this.store.newRun(r.id, now, cause, 0, 'fired', { sessionId, summary: 'Woke its thread', ...(o.nextAt !== undefined ? { nextAt: o.nextAt } : {}) })
     if (r.once || r.untilAt === null) this.store.end(r.id, 'Fired')
     this.changed(r)
-    const detail = o.detail ? `\n\n${o.detail.length > NOTICE_MAX ? `${o.detail.slice(0, NOTICE_MAX)}…` : o.detail}` : ''
+    const detail = o.detail ? `\n\n${cut(o.detail)}` : ''
     try {
       await this.ctx.threads.resume(sessionId, `Your watch “${r.name}” fired: ${cause}.${detail}`)
     } catch (err) {
@@ -322,23 +366,41 @@ export class RoutinesEngine {
 
   /** Run now, whatever the trigger. */
   runNow(r: Routine): Promise<RoutineRun | null> {
-    return this.fire(r, 'Run now')
+    return this.fire(r, 'Run now', 0, { force: true })
   }
 
   // ── settling ──────────────────────────────────────────────────────────
 
-  /** A run's thread changed: when it has settled, so has the run. Quiet runs are marked read; the rest unread. */
-  private sessionChanged(sessionId: string): void {
+  /** Any thread changed: its own run, or the run of the thread at the top of its tree (a subagent settling may settle the run). */
+  private metaChanged(s: Pick<SessionMeta, 'id' | 'status' | 'routineRunId' | 'parentId'>): void {
+    if (BUSY.has(s.status ?? '')) this.seenBusy.add(s.id)
+    let top: Pick<SessionMeta, 'id' | 'routineRunId' | 'parentId'> | null = s
+    for (let hops = 0; top && !top.routineRunId && top.parentId && hops < 32; hops++) top = this.deps.host.session(top.parentId)
+    this.sessionChanged(top?.routineRunId ? top.id : s.id)
+  }
+
+  /**
+   * A run's thread changed: when it and every thread under it have settled,
+   * so has the run. Quiet runs are marked read; the rest unread. A thread
+   * left `stopped` (the host went down under it) is not settled: the boot
+   * resumer or the owner may finish it. `booting`: seen at boot, when an
+   * idle thread has finished while the host was down.
+   */
+  private sessionChanged(sessionId: string, booting = false): void {
     const s = this.deps.host.session(sessionId)
     const runId = s?.routineRunId
     if (!s || !runId) {
       if (!s) this.goneThread(sessionId)
       return
     }
+    if (BUSY.has(s.status)) this.seenBusy.add(sessionId)
     const run = this.store.run(runId)
     if (!run || run.state !== 'running' || run.sessionId !== sessionId) return
     const r = this.store.get(run.routineId)
     if (s.status === 'idle' || s.status === 'done') {
+      // An idle thread that never worked has not begun; one whose subagents still work has not ended.
+      if ((!booting && !this.seenBusy.has(sessionId)) || this.deps.host.busyBelow(sessionId)) return
+      this.seenBusy.delete(sessionId)
       const held = this.deps.host.heldIn(sessionId)
       if (held > 0) {
         this.store.settle(run.id, 'held', `Held ${held}`)
@@ -350,7 +412,8 @@ export class RoutinesEngine {
     } else if (s.status === 'waiting') {
       this.store.settle(run.id, 'asked', 'Waiting on you')
       this.deps.host.markUnread(sessionId)
-    } else if (s.status === 'error' || s.status === 'stopped') {
+    } else if (s.status === 'error') {
+      this.seenBusy.delete(sessionId)
       this.store.settle(run.id, 'failed', 'Failed')
       this.deps.host.markUnread(sessionId)
     } else return
@@ -376,7 +439,7 @@ export class RoutinesEngine {
     }
     let text: string
     try {
-      const result = await host.read(t.addon, t.tool, (t.args ?? {}) as Record<string, unknown>)
+      const result = await host.read(t.addon, t.tool, (t.args ?? {}) as Record<string, unknown>, AbortSignal.timeout(READ_TIMEOUT_MS))
       text = resultText(result)
       if ((result as { isError?: boolean }).isError) throw new Error(text || 'the tool answered with an error')
     } catch (err) {
@@ -384,11 +447,14 @@ export class RoutinesEngine {
       this.changed(r)
       return
     }
+    // The owner may have paused, changed or removed it while the read ran: then this answer is not its.
+    const now2 = this.store.get(r.id)
+    if (!now2 || !now2.enabled || now2.ended || JSON.stringify(now2.trigger) !== JSON.stringify(r.trigger)) return
     const hash = sha(text)
     const before = r.cursor.hash
     const fire = t.fire === 'changed' ? before !== undefined && hash !== before : !emptyAnswer(text) && hash !== before
     this.store.setCursor(r.id, { ...r.cursor, hash, readAt: now }, fire ? undefined : null)
-    if (fire) await this.fire(r, t.fire === 'changed' ? 'What it reads changed' : 'It found something', 0, { detail: text })
+    if (fire) await this.fire(now2, t.fire === 'changed' ? 'What it reads changed' : 'It found something', 0, { detail: text })
     else this.changed(r)
   }
 
@@ -417,7 +483,7 @@ export class RoutinesEngine {
     const cursor: Cursor = { ...r.cursor, key, hash, readAt: now }
     const theirs = r.cursor.hash !== undefined && hash !== r.cursor.hash && !ownWrites.has(`${path}\n${hash}`)
     this.store.setCursor(r.id, cursor, theirs ? undefined : null)
-    if (theirs) void this.fire(r, `${basename(path)} changed`, 0, { detail: `The file: ${path}` })
+    if (theirs) this.track(this.fire(r, `${basename(path)} changed`, 0, { detail: `The file: ${path}` }))
   }
 
   /** Places this pillar does not watch (Google, Excel, Frame.io): their pillar's trigger, armed while the routine is active. */
@@ -442,7 +508,7 @@ export class RoutinesEngine {
         continue
       }
       try {
-        const off = source.arm(r.trigger, (cause) => void this.fire(this.store.get(id) ?? r, cause), r.cursor)
+        const off = source.arm(r.trigger, (cause) => this.track(this.fire(r, cause)), r.cursor)
         this.armed.set(id, { spec: JSON.stringify(r.trigger), off })
       } catch (err) {
         this.store.setLastWords(id, `Waiting: ${errorText(err)}`)
@@ -482,39 +548,38 @@ export class RoutinesEngine {
       const feed = this.feeds.get(ws)
       if (feed && feed.sector === sector) continue
       feed?.off()
+      this.feeds.delete(ws)
       this.follow(ws, sector, after)
     }
   }
 
   private follow(ws: string, sector: string, after: number): void {
-    let off: () => void = () => {}
+    const feed: Feed = { sector, after, gen: ++this.feedGen, off: () => {} }
+    // In place before the call: a subscription may answer inside it.
+    this.feeds.set(ws, feed)
     try {
-      off = this.ctx.lifeos.subscribe<{ events: LifeosEvent[]; next: number } | null>(LIFEOS_SINCE, { sector, after }, (page) => this.took(ws, sector, after, page))
+      feed.off = this.ctx.lifeos.subscribe<{ events: LifeosEvent[]; next: number } | null>(LIFEOS_SINCE, { sector, after }, (page) => this.took(ws, feed.gen, page))
     } catch (err) {
+      if (this.feeds.get(ws) === feed) this.feeds.delete(ws)
       this.ctx.log(`routines: no LifeOS feed for ${ws}: ${errorText(err)}`)
       return
     }
-    // A subscription may answer at once, inside the call: `took` then replaced this feed already.
-    const now = this.feeds.get(ws)
-    if (now && now.after > after) {
-      off()
-      return
-    }
-    this.feeds.set(ws, { sector, after, off })
+    // It answered inside the call and a newer feed took its place: close this one now that its off exists.
+    if (this.feeds.get(ws) !== feed) feed.off()
   }
 
   /** One page of a workspace's events: each routine fires once for what it hears past its own cursor, then every cursor moves to `next`. */
-  private took(ws: string, sector: string, after: number, page: { events: LifeosEvent[]; next: number } | null): void {
-    if (this.stopped || !page || page.next <= after) return
+  private took(ws: string, gen: number, page: { events: LifeosEvent[]; next: number } | null): void {
     const feed = this.feeds.get(ws)
-    if (feed && feed.after !== after) return
+    if (this.stopped || !page || !feed || feed.gen !== gen || page.next <= feed.after) return
+    const sector = feed.sector
     for (const r of this.store.list(ws)) {
       if (!r.enabled || r.proposed || r.ended || !heardKinds(r.trigger)) continue
       const mine = page.events.filter((e) => e.sector === sector && e.at > (r.cursor.after ?? r.createdAt) && heard(r, e))
       this.store.setCursor(r.id, { ...r.cursor, after: Math.max(page.next, r.cursor.after ?? 0) })
-      if (mine.length) void this.fire(r, eventsCause(mine), 0, { detail: `What it heard: ${mine.map((e) => `${e.kind} ${e.ref.table}/${e.ref.id}`).join(', ')}` })
+      if (mine.length) this.track(this.fire(r, eventsCause(mine), 0, { detail: `What it heard: ${mine.map((e) => `${e.kind} ${e.ref.table}/${e.ref.id}`).join(', ')}` }))
     }
-    feed?.off()
+    feed.off()
     this.feeds.delete(ws)
     this.follow(ws, sector, page.next)
   }

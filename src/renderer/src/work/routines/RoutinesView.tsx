@@ -49,11 +49,15 @@ function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, num
   useEffect(() => {
     const link = registry.linkOf(env);
     let live = true;
-    const fetch = () =>
-      link.request<{ routines: RoutineRow[] }>("work.routines.list", { workspaceId }).then(
-        (r) => live && setState({ status: "ready", value: r.routines }),
-        (err: unknown) => live && setState({ status: "error", error: refusalWords(err) || "The host did not answer" }),
+    // Several pushes ask in a row: only the newest answer is shown.
+    let asked = 0;
+    const fetch = () => {
+      const mine = ++asked;
+      return link.request<{ routines: RoutineRow[] }>("work.routines.list", { workspaceId }).then(
+        (r) => live && mine === asked && setState({ status: "ready", value: r.routines }),
+        (err: unknown) => live && mine === asked && setState({ status: "error", error: refusalWords(err) || "The host did not answer" }),
       );
+    };
     void fetch();
     const off = link.onPush((push) => {
       if (push.push === "work.routines" && push.workspaceId === workspaceId) {

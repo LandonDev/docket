@@ -36,7 +36,10 @@ beforeEach(async () => {
       onMeta: () => () => {},
       markRead: () => {},
       markUnread: () => {},
-      heldIn: () => 0
+      heldIn: () => 0,
+      busyBelow: () => false,
+      threadOfRun: () => null,
+      readOnly: (addon, tool) => routinesHost()!.readOnly(addon, tool)
     } satisfies RoutinesHost
   }
   rig = await makeRig({ modules: [outboxModule, routines] })
@@ -63,6 +66,7 @@ describe('watch_create', () => {
 
     // the first read is the host's own call through the gate: it reaches the server with the fixed arguments
     await routinesEngine(rig.work.ctx).tick()
+    await routinesEngine(rig.work.ctx).drain()
     expect(rig.downstream).toEqual([{ addonId: outlook.id, tool: 'read', arguments: { key: 'events' } }])
     expect(rig.woke).toEqual([])
 
@@ -70,6 +74,7 @@ describe('watch_create', () => {
     await rig.rpc('work.outbox.setRules', { addonId: outlook.id, rules: { read: 'held' } })
     clock.now += 11 * 60_000
     await routinesEngine(rig.work.ctx).tick()
+    await routinesEngine(rig.work.ctx).drain()
     expect(rig.downstream).toHaveLength(1)
     expect((await list())[0]!.lastWords).toBe('Waiting: its tool is not set to Runs')
     const direct = await routinesHost()!.read(outlook.id, 'read', { key: 'events' })

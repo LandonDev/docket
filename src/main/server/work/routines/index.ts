@@ -24,6 +24,8 @@ import { ensureRoutineTables, type Cursor } from './store'
 
 /** A thread may keep this many watches going at once. */
 export const WATCHES_PER_THREAD = 10
+/** The longest a thread's watch may run. */
+export const WATCH_DAYS_MAX = 30
 
 /** Test seams: the host's handles and the clock. Set before `start`, cleared after. */
 export const routinesSeams: { current: { host: RoutinesHost; now?: () => number; interval?: boolean } | null } = { current: null }
@@ -117,6 +119,8 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Ret
       // Resumed, a schedule starts again from now: the times it was paused through are not owed.
       const s = r.trigger.on === 'schedule' ? parseSchedule(r.trigger.rrule) : null
       store.setEnabled(r.id, resume, resume && s && r.trigger.on === 'schedule' ? nextAt(s, r.trigger.tz, now) : undefined)
+      // Nor are the LifeOS events it was paused through.
+      if (resume && r.cursor.after !== undefined) store.setCursor(r.id, { ...r.cursor, after: Math.max(r.cursor.after, now) })
       ctx.push({ push: 'work.routines', workspaceId: r.workspaceId, id: r.id })
       return handled(e.row(store.get(r.id)!))
     }
@@ -179,6 +183,9 @@ function tools(): WorkTool[] {
         if (live.length >= WATCHES_PER_THREAD) return { ...workText(`This thread already keeps ${live.length} watches; let one end first.`), isError: true }
         const until = a.until ? Date.parse(`${a.until}T23:59:59`) : NaN
         if (a.until && (!Number.isFinite(until) || until <= now)) return { ...workText(`until: ${a.until} is not a day still to come`), isError: true }
+        if (a.until && until > now + WATCH_DAYS_MAX * 86_400_000) return { ...workText(`until: a watch lasts at most ${WATCH_DAYS_MAX} days`), isError: true }
+        const addon = host.addon(workspaceId, a.addon)
+        if (addon && !host.readOnly(addon.id, a.tool)) return { ...workText(`${addon.name}'s ${a.tool} is not a read: a watch reads only with a tool its server calls read-only`), isError: true }
         try {
           const t = checked({ on: 'read', addon: a.addon, tool: a.tool, args: a.arguments ?? {}, fire: a.fire ?? 'changed', everySec: (a.everyMinutes ?? 15) * 60 }, workspaceId, host, now)
           const ends: RoutineEnds = a.until ? { kind: 'day', at: until } : { kind: 'once' }

@@ -27,7 +27,16 @@ export interface RoutinesHost {
   markUnread(sessionId: string): void
   /** What a run's thread and its subagents left for the owner: acts held by the host, and drafts made in LifeOS. */
   heldIn(sessionId: string): number
+  /** Whether a thread below this one still works: its run has not settled while a subagent runs. */
+  busyBelow(sessionId: string): boolean
+  /** The thread a run made, if it was made before the host stopped. */
+  threadOfRun(runId: string): string | null
+  /** Whether the add-on's server calls this tool read-only (its listing or its hints): only such a tool may be watched by a thread. */
+  readOnly(addonId: string, tool: string): boolean
 }
+
+/** Statuses of a thread that still works or waits to. */
+export const BUSY = new Set(['starting', 'running', 'queued', 'watching', 'waiting'])
 
 let current: RoutinesHost | null = null
 
@@ -39,6 +48,8 @@ const DRAFT_TOOLS = /(^|__|")(draft_mail|update_mail_draft|draft_calendar_op)("|
 
 export function routinesHostPart(deps: WorkPartDeps): void {
   const { registry, store, db } = deps
+  const treeOf = (sessionId: string): string[] =>
+    (db.prepare(`WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT s.id FROM sessions s JOIN tree t ON s.parent_id = t.id) SELECT id FROM tree`).all(sessionId) as { id: string }[]).map((r) => r.id)
   current = {
     workspace: (id) => store.listWorkspaces().find((w) => w.id === id) ?? null,
     addon(workspaceId, idOrName) {
@@ -57,13 +68,7 @@ export function routinesHostPart(deps: WorkPartDeps): void {
     markRead: (id) => registry.markRead([{ sessionId: id }]),
     markUnread: (id) => registry.markUnread([id]),
     heldIn(sessionId) {
-      const tree = (
-        db
-          .prepare(
-            `WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT s.id FROM sessions s JOIN tree t ON s.parent_id = t.id) SELECT id FROM tree`
-          )
-          .all(sessionId) as { id: string }[]
-      ).map((r) => r.id)
+      const tree = treeOf(sessionId)
       let held = 0
       try {
         const marks = tree.map(() => '?').join(',')
@@ -79,6 +84,13 @@ export function routinesHostPart(deps: WorkPartDeps): void {
         }
       }
       return held
+    },
+    busyBelow: (sessionId) => treeOf(sessionId).some((id) => id !== sessionId && BUSY.has(registry.get(id)?.status ?? '')),
+    threadOfRun: (runId) => (db.prepare(`SELECT id FROM sessions WHERE routine_run_id = ? LIMIT 1`).get(runId) as { id: string } | undefined)?.id ?? null,
+    readOnly(addonId, tool) {
+      const listed = deps.addons?.tools(addonId)?.tools.find((t) => t.name === tool)
+      const hints = deps.addons?.toolHints(addonId)[tool]
+      return (listed?.readOnly === true || hints?.readOnly === true) && hints?.destructive !== true
     }
   }
 }

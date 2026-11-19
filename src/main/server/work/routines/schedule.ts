@@ -36,11 +36,12 @@ function wall(tz: string, at: number): number {
   return Date.UTC(p.year!, p.month! - 1, p.day!, p.hour! % 24, p.minute!, p.second!)
 }
 
-/** The instant the wall clock of `tz` reads `local` (a wall time written as UTC). A time a clock change skips lands just after it. */
+/** The instant the wall clock of `tz` reads `local` (a wall time written as UTC). A time a clock change skips lands an hour later, just past the gap. */
 function instant(tz: string, local: number): number {
-  let at = local - (wall(tz, local) - local)
-  at = local - (wall(tz, at) - at)
-  return at
+  const a = local - (wall(tz, local) - local)
+  const b = local - (wall(tz, a) - a)
+  for (const at of [b, a]) if (wall(tz, at) === local) return at
+  return Math.max(a, b)
 }
 
 /** The first time the schedule fires strictly after `after`. */

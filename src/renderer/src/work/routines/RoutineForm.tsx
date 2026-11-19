@@ -81,6 +81,12 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const patch = (next: Partial<RoutineForm>) => setForm((cur) => ({ ...cur, ...next }));
+  // A trigger he did not touch is saved as it was, whatever the form can show of it (an agent's every 5 minutes, Mon, Wed and Fri).
+  const [touched, setTouched] = useState(false);
+  const patchTrigger = (next: Partial<RoutineForm>) => {
+    setTouched(true);
+    patch(next);
+  };
   const tools = useRunsTools(env, workspaceId);
   const repeat = form.days.startsWith("m");
   const finish = (then: () => void) => (close ? close(then) : then());
@@ -88,7 +94,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
   const save = () => {
     const name = form.name.trim();
     if (!name || !form.prompt.trim()) return setError(name ? "Say what it does" : "Give it a name");
-    const trigger = triggerOf(form, env, Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+    const trigger = row && !touched ? row.trigger : triggerOf(form, env, Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
     if (typeof trigger === "string") return setError(trigger);
     const ends = endsOf(form);
     if (typeof ends === "string") return setError(ends);
@@ -142,22 +148,22 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
         </Field>
         <div className="flex flex-col gap-3">
           <FieldRow label="Starts">
-            <ChoiceToggle label="Starts" value={form.starts} options={STARTS} onChange={(starts) => patch({ starts })} />
+            <ChoiceToggle label="Starts" value={form.starts} options={STARTS} onChange={(starts) => patchTrigger({ starts })} />
           </FieldRow>
           {form.starts === "sched" ? (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Days">
-                <ChoiceSelect label="Days" value={form.days} options={DAY_CHOICES} onChange={(days) => patch({ days })} />
+                <ChoiceSelect label="Days" value={form.days} options={DAY_CHOICES} onChange={(days) => patchTrigger({ days })} />
               </Field>
               {repeat ? null : (
                 <Field label="At">
-                  <Input type="time" value={form.at} onChange={(e) => patch({ at: e.target.value })} />
+                  <Input type="time" value={form.at} onChange={(e) => patchTrigger({ at: e.target.value })} />
                 </Field>
               )}
             </div>
           ) : form.starts === "event" ? (
             <Field label="When">
-              <ChoiceSelect label="When" value={form.event} options={EVENT_CHOICES} onChange={(event) => patch({ event })} />
+              <ChoiceSelect label="When" value={form.event} options={EVENT_CHOICES} onChange={(event) => patchTrigger({ event })} />
             </Field>
           ) : form.starts === "read" ? (
             tools !== null && tools.length === 0 ? (
@@ -166,20 +172,20 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
               <>
                 <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-3">
                   <Field label="Read">
-                    <ChoiceSelect label="Read" value={form.tool} options={[{ value: "", label: tools === null ? "Loading…" : "Pick a tool" }, ...(tools ?? [])]} onChange={(tool) => patch({ tool })} />
+                    <ChoiceSelect label="Read" value={form.tool} options={[{ value: "", label: tools === null ? "Loading…" : "Pick a tool" }, ...(tools ?? [])]} onChange={(tool) => patchTrigger({ tool })} />
                   </Field>
                   <Field label="Every">
-                    <ChoiceSelect label="Every" value={form.every} options={EVERY_CHOICES} onChange={(every) => patch({ every })} />
+                    <ChoiceSelect label="Every" value={form.every} options={EVERY_CHOICES} onChange={(every) => patchTrigger({ every })} />
                   </Field>
                 </div>
                 <Field label="With" hint="The tool's arguments, fixed now">
-                  <Input value={form.args} onChange={(e) => patch({ args: e.target.value })} spellCheck={false} autoComplete="off" className={MONO} />
+                  <Input value={form.args} onChange={(e) => patchTrigger({ args: e.target.value })} spellCheck={false} autoComplete="off" className={MONO} />
                 </Field>
               </>
             )
           ) : (
             <Field label="File" hint="When someone else changes it">
-              <Input value={form.path} onChange={(e) => patch({ path: e.target.value })} placeholder="/Users/…/Travel budget.xlsx" spellCheck={false} autoComplete="off" className={MONO} />
+              <Input value={form.path} onChange={(e) => patchTrigger({ path: e.target.value })} placeholder="/Users/…/Travel budget.xlsx" spellCheck={false} autoComplete="off" className={MONO} />
             </Field>
           )}
         </div>

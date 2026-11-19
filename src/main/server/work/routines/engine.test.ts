@@ -79,7 +79,10 @@ function makeRig(): Rig {
     onMeta: (fn) => (metaFns.add(fn), () => metaFns.delete(fn)),
     markRead: (id) => void rig.marks.read.push(id),
     markUnread: (id) => void rig.marks.unread.push(id),
-    heldIn: (id) => rig.held.get(id) ?? 0
+    heldIn: (id) => rig.held.get(id) ?? 0,
+    busyBelow: (id) => [...sessions.values()].some((t) => t.parentId === id && ['running', 'starting', 'queued', 'waiting', 'watching'].includes(t.status)),
+    threadOfRun: (runId) => [...sessions.values()].find((t) => t.routineRunId === runId)?.id ?? null,
+    readOnly: () => true
   }
   const make = (): RoutinesEngine => {
     const deps: EngineDeps = {
@@ -163,6 +166,7 @@ afterEach(() => rig.stop())
 const tickAt = async (t: number): Promise<void> => {
   rig.clock.now = t
   await rig.engine.tick()
+  await rig.engine.drain()
 }
 const runs = (id: string): RoutineRun[] => rig.engine.store.runs(id)
 
@@ -229,20 +233,54 @@ describe('a weekday routine on a fake clock', () => {
     expect(rig.started).toHaveLength(2)
   })
 
-  it('loses no schedule when the host is killed mid-run', async () => {
+  it('loses no schedule when the host is killed mid-run, and leaves a stopped run to the resumer', async () => {
     const id = rig.add({ trigger: WEEKDAYS_7AM })
     await tickAt(at(16, '07:00'))
     expect(runs(id)[0]!.state).toBe('running')
-    // killed while the run's thread works; it comes back stopped
+    // killed while the run's thread works; it comes back stopped, which the boot resumer may finish
     rig.sessions.set('t1', { ...rig.sessions.get('t1')!, status: 'stopped' })
     rig.restart()
-    expect(runs(id)[0]).toMatchObject({ state: 'failed', summary: 'Failed' })
-    expect(rig.marks.unread).toEqual(['t1'])
+    expect(runs(id)[0]!.state).toBe('running')
     expect(rig.engine.store.get(id)!.nextAt).toBe(at(17, '07:00'))
-    await tickAt(at(16, '12:00'))
-    expect(rig.started).toHaveLength(1)
+    // resumed, it works and finishes: the run is its, and quiet
+    rig.settle('t1', 'running')
+    rig.settle('t1', 'idle')
+    expect(runs(id)[0]).toMatchObject({ state: 'quiet' })
     await tickAt(at(17, '07:00'))
     expect(rig.started).toHaveLength(2)
+    // never resumed: at the next due time the stopped run is closed as failed and a fresh one starts
+    rig.sessions.set('t2', { ...rig.sessions.get('t2')!, status: 'stopped' })
+    rig.restart()
+    await tickAt(at(18, '07:00'))
+    expect(runs(id).map((r) => r.state)).toEqual(['running', 'failed', 'quiet'])
+    expect(rig.started).toHaveLength(3)
+  })
+
+  it('settles a run only once its thread has worked and every subagent is done', async () => {
+    const id = rig.add({ trigger: WEEKDAYS_7AM })
+    await tickAt(at(16, '07:00'))
+    // a thread that comes back idle before it ever worked has not begun
+    rig.engine['seenBusy'].clear()
+    rig.settle('t1', 'idle')
+    expect(runs(id)[0]!.state).toBe('running')
+    rig.settle('t1', 'running')
+    rig.sessions.set('t1-sub', { id: 't1-sub', parentId: 't1', status: 'running' } as unknown as SessionMeta)
+    rig.settle('t1', 'idle')
+    expect(runs(id)[0]!.state).toBe('running')
+    rig.held.set('t1', 1)
+    rig.settle('t1-sub', 'idle')
+    expect(runs(id)[0]).toMatchObject({ state: 'held', summary: 'Held 1' })
+  })
+
+  it('a routine paused while its firing was on its way fires nothing', async () => {
+    const id = rig.add({ trigger: WEEKDAYS_7AM })
+    const seen = rig.engine.store.get(id)!
+    rig.engine.store.setEnabled(id, false)
+    expect(await rig.engine.fire(seen, 'Weekdays at 7:00 AM')).toBeNull()
+    expect(await rig.engine.runNow(rig.engine.store.get(id)!)).toMatchObject({ cause: 'Run now' })
+    rig.engine.store.remove(id)
+    expect(await rig.engine.fire(seen, 'Weekdays at 7:00 AM')).toBeNull()
+    expect(rig.started).toHaveLength(1)
   })
 
   it('a kill before the run had its thread leaves a failed run and the next due time, never a second firing', async () => {

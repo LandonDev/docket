@@ -335,8 +335,18 @@ export class RoutineStore {
     return (this.db.prepare(`SELECT * FROM ${RUNS_TABLE} WHERE state IN ('starting', 'running')`).all() as Row[]).map(runOf)
   }
 
-  addFolded(runId: string, n: number): void {
-    this.db.prepare(`UPDATE ${RUNS_TABLE} SET folded = folded + ? WHERE id = ?`).run(n, runId)
+  /** A firing folded into the run in flight, with the routine's next due time, in one step. */
+  addFolded(runId: string, n: number, next?: { routineId: string; nextAt: number | null }): void {
+    this.db.exec('SAVEPOINT routine_fold')
+    try {
+      this.db.prepare(`UPDATE ${RUNS_TABLE} SET folded = folded + ? WHERE id = ?`).run(n, runId)
+      if (next) this.db.prepare(`UPDATE ${ROUTINES_TABLE} SET next_at = ? WHERE id = ?`).run(next.nextAt, next.routineId)
+      this.db.exec('RELEASE routine_fold')
+    } catch (err) {
+      this.db.exec('ROLLBACK TO routine_fold')
+      this.db.exec('RELEASE routine_fold')
+      throw err
+    }
   }
 
   started(runId: string, sessionId: string): void {
