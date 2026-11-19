@@ -111,7 +111,10 @@ Settings → Work.
   in `setLifeosProjects`, and `withLifeosCards` (lib/workspaceSessions.ts)
   adds a `lifeos:<id>` card for each one no project mirrors yet; its first
   pick or New thread calls `work.project.open`, which makes the project
-  (`projects.lifeos_project_id`). A view row opens `WorkViewSurface` over
+  (`projects.lifeos_project_id`) in the card's place. The cards keep
+  LifeOS's order (its `order`, then name) whatever is picked, made or
+  worked in; a project of the workspace that mirrors none of them follows,
+  newest first (`railOrder` in the same file). A view row opens `WorkViewSurface` over
   the thread panes under the strip; picking a thread or the row again
   closes it.
 - **A view registers** in `src/renderer/src/work/views/registry.ts`: the

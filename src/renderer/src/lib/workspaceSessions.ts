@@ -316,6 +316,20 @@ export function childRows(
 const newestFirst = (a: ThreadRow, b: ThreadRow) => b.updatedAt - a.updatedAt;
 const latestFirst = (a: ProjectGroup, b: ProjectGroup) => b.latest - a.latest;
 
+/** LifeOS's projects first, in the order they are handed (LifeOS's, withLifeosCards), however their threads move; any other project after them, newest first. */
+function railOrder(given: readonly ProjectMeta[]): (a: ProjectGroup, b: ProjectGroup) => number {
+  const at = new Map(given.map((p, i) => [p.id, i]));
+  const rank = (g: ProjectGroup): number => (g.project.lifeosProjectId ? (at.get(g.project.id) ?? -1) : -1);
+  return (a, b) => {
+    const x = rank(a);
+    const y = rank(b);
+    if (x < 0 && y < 0) return latestFirst(a, b);
+    if (x < 0) return 1;
+    if (y < 0) return -1;
+    return x - y;
+  };
+}
+
 /** Whether a workspace id is in a list's scope: one id, the home (null),
  *  or a workspace's copies on several hosts. */
 export function scopeTest(scope: string | null | readonly string[]): (workspaceId: string | null | undefined) => boolean {
@@ -414,13 +428,14 @@ export function groupWorkspaceSessions(
   const last = cache?.last;
   const keep = <T>(fresh: T[], old: T[] | undefined): T[] =>
     old && sameList(old, fresh) ? old : fresh;
+  const order = railOrder(here);
   const out: WorkspaceSessionGroups = {
     projects: keep(
-      groups.filter((g) => !g.project.archived).sort(latestFirst),
+      groups.filter((g) => !g.project.archived).sort(order),
       last?.projects,
     ),
     archived: keep(
-      groups.filter((g) => g.project.archived).sort(latestFirst),
+      groups.filter((g) => g.project.archived).sort(order),
       last?.archived,
     ),
     chats: keep(chats, last?.chats),
@@ -438,10 +453,12 @@ export function groupWorkspaceSessions(
 
 /**
  * A linked Work workspace's projects are LifeOS's, shown live (the owner's
- * rule): each LifeOS project that has no project here yet gets a card of its
- * own, named as LifeOS names it, whose id says so (`lifeos:<id>`); its first
- * thread makes the project (`work.project.open`). A project that already
- * mirrors one keeps its card. Any other workspace's list is the one given.
+ * rule) and in LifeOS's order, which a pick or a thread never changes: each
+ * LifeOS project that has no project here yet gets a card of its own, named
+ * as LifeOS names it, whose id says so (`lifeos:<id>`); its first thread
+ * makes the project (`work.project.open`), which takes the card's place. A
+ * project that already mirrors one keeps its card. The rest follow as given.
+ * Any other workspace's list is the one given.
  */
 export function withLifeosCards(
   projects: readonly ProjectMeta[],
@@ -449,11 +466,11 @@ export function withLifeosCards(
   lifeos: readonly { id: string; name: string }[],
 ): readonly ProjectMeta[] {
   if (!workspace || workspace.kind !== "work" || lifeos.length === 0) return projects;
-  const mirrored = new Set(projects.filter((p) => p.workspaceId === workspace.id && p.lifeosProjectId).map((p) => p.lifeosProjectId));
-  const cards = lifeos
-    .filter((row) => !mirrored.has(row.id))
-    .map(
-      (row): ProjectMeta => ({
+  const mirrors = new Map<string, ProjectMeta>();
+  for (const p of projects) if (p.workspaceId === workspace.id && p.lifeosProjectId && !mirrors.has(p.lifeosProjectId)) mirrors.set(p.lifeosProjectId, p);
+  const listed = lifeos.map(
+    (row): ProjectMeta =>
+      mirrors.get(row.id) ?? {
         id: `lifeos:${row.id}`,
         workspaceId: workspace.id,
         name: row.name,
@@ -464,7 +481,8 @@ export function withLifeosCards(
         createdAt: 0,
         lifeosProjectId: row.id,
         environmentId: workspace.environmentId,
-      }),
-    );
-  return cards.length ? [...projects, ...cards] : projects;
+      },
+  );
+  const shown = new Set(listed);
+  return [...listed, ...projects.filter((p) => !shown.has(p))];
 }

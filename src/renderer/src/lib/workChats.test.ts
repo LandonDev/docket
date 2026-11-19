@@ -86,7 +86,34 @@ describe("a linked Work workspace's projects", () => {
       ["lifeos:lp2", "Nationals travel"],
     ]);
     const groups = groupWorkspaceSessions([], shown, catalog.workspaces, WORK.id, {});
-    expect(groups.projects.map((g) => g.project.id).sort()).toEqual(["lifeos:lp2", "p1"]);
+    expect(groups.projects.map((g) => g.project.id)).toEqual(["p1", "lifeos:lp2"]);
+  });
+
+  it("keep LifeOS's order as each card is opened, picked again and gets threads", () => {
+    const rows = [
+      { id: "la", name: "Alpha" },
+      { id: "lb", name: "Bravo" },
+      { id: "lc", name: "Charlie" },
+    ];
+    // A plain project of the workspace, busy lately: it sits after LifeOS's.
+    const plain = { ...mirror, id: "plain", name: "Scratch", lifeosProjectId: undefined, createdAt: 900 } as ProjectMeta;
+    let projects: ProjectMeta[] = [plain];
+    let metas: SessionMeta[] = [meta("s-plain", { projectId: "plain", workspaceId: WORK.id, updatedAt: 950 })];
+    let now = 1_000;
+    const names = () => groupWorkspaceSessions(metas, withLifeosCards(projects, WORK, rows), catalog.workspaces, WORK.id, {}).projects.map((g) => g.project.name);
+    const want = ["Alpha", "Bravo", "Charlie", "Scratch"];
+    expect(names()).toEqual(want);
+    // Click each card, last first: its project is made (newest of all) and its thread is the newest.
+    for (const row of [...rows].reverse()) {
+      now += 10;
+      const made = { ...mirror, id: `p-${row.id}`, name: row.name, lifeosProjectId: row.id, createdAt: now } as ProjectMeta;
+      projects = [made, ...projects];
+      metas = [...metas, meta(`s-${row.id}`, { projectId: made.id, workspaceId: WORK.id, updatedAt: now })];
+      expect(names()).toEqual(want);
+    }
+    // Picking one again and working in it moves nothing either.
+    metas = [...metas, meta("s-again", { projectId: "p-lb", workspaceId: WORK.id, updatedAt: now + 100 })];
+    expect(names()).toEqual(want);
   });
 
   it("leave a code workspace and an unlinked one as they were", () => {
