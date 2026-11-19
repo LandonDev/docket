@@ -3,6 +3,8 @@ import { useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { StatusMark } from "../../components/ui/status";
+import { Outbox } from "../../chrome/icons";
+import { shell } from "../../stores/shell";
 import type { ApprovalDecision } from "../../lib/harness";
 import { cn } from "../../lib/cn";
 import { type Block } from "../../lib/session";
@@ -22,6 +24,40 @@ export function decidedLine(approval: Approval): string {
   if (approval.decided === "allow") return runSkip ? "Ran now" : "Allowed";
   if (runSkip) return approval.auto ? "Skipped automatically" : "Skipped";
   return approval.auto ? "Denied automatically" : "Denied";
+}
+
+/** A Work thread's call the host held for the owner's press ("Held as item 12: Send to Dana Lee: Re: budget. It waits…",
+ *  work/outbox/words.ts): the act in his words; null for any other result. */
+export function heldOf(block: Pick<Block, "tool" | "approval">): { n: number; act: string } | null {
+  const text = block.tool?.detail;
+  // Only a call the hold answers (an add-on's tool, the bridge's addon_call, a computer step): a shell echoing the words draws nothing.
+  if (!text || block.approval || !/^(mcp__|addon_call$|computer_)/.test(block.tool?.name ?? "")) return null;
+  const match = /Held as item (\d+): ([\s\S]+?)\. It waits for the owner's press\./.exec(text);
+  return match ? { n: Number(match[1]), act: match[2]!.trim() } : null;
+}
+
+/**
+ * The held line under a Work thread's call (docs/DESIGN.md "Held is not
+ * Needs you"): the Outbox glyph in the row's glyph column, "Held" then the
+ * act in his words, muted; it opens the Outbox. Never amber, never a card:
+ * the turn went on.
+ */
+function HeldLine({ act }: { act: string }) {
+  return (
+    <button
+      type="button"
+      data-slot="held"
+      onClick={() => shell.openOutbox()}
+      className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 text-left font-sans text-[13px] leading-5 text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground"
+    >
+      <span className="flex w-3.5 shrink-0 justify-center">
+        <Outbox className="size-3.5" />
+      </span>
+      <span className="min-w-0 truncate">
+        Held <span className="text-foreground">{act}</span>
+      </span>
+    </button>
+  );
 }
 
 /**
@@ -50,7 +86,10 @@ export function ApprovalCard({
   // Seen waiting on this mount: only then is the verdict news worth a fade.
   const sawWaiting = useRef(!!approval && !approval.decided);
   const [sent, setSent] = useState<ApprovalDecision | null>(null);
-  if (!approval) return null;
+  if (!approval) {
+    const held = heldOf(block);
+    return held ? <HeldLine act={held.act} /> : null;
+  }
   const decide = (decision: ApprovalDecision) => {
     if (sent) return;
     setSent(decision);

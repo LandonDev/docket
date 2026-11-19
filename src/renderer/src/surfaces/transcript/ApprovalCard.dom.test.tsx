@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Block } from "../../lib/session";
 import { approvalDetailOf } from "../../lib/approvalDetail";
-import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalCard, heldOf } from "./ApprovalCard";
+import { shellStore } from "../../stores/shell";
 import { ApprovalControls } from "./Approval";
 
 const approval = (name: string, input: unknown, decided?: "allow" | "deny", auto?: boolean): Block => ({
@@ -168,6 +169,27 @@ describe("ApprovalCard", () => {
 
   it("ApprovalControls is the same component, for A8's rows until they switch", () => {
     expect(ApprovalControls).toBe(ApprovalCard);
+  });
+});
+
+describe("the held line", () => {
+  const held = (detail: string): Block => ({ id: "h", role: "tool", text: "", tool: { name: "mcp__slack__post", detail, status: "completed" } }) as Block;
+  const line = "Held as item 12: Send to Dana Lee: Re: budget. It waits for the owner's press. This is a finished step, not a failure.";
+
+  it("reads the act out of the host's answer, and nothing out of any other", () => {
+    expect(heldOf(held(line))).toEqual({ n: 12, act: "Send to Dana Lee: Re: budget" });
+    expect(heldOf(held(JSON.stringify([{ type: "text", text: line }])))).toEqual({ n: 12, act: "Send to Dana Lee: Re: budget" });
+    expect(heldOf(held("posted"))).toBeNull();
+    // a shell echoing the words draws nothing
+    expect(heldOf({ tool: { name: "Bash", detail: line } } as Block)).toBeNull();
+  });
+
+  it("says Held then the act, muted, never amber, and opens the Outbox", () => {
+    const { container } = render(<ApprovalCard block={held(line)} />);
+    expect(container.textContent).toBe("Held Send to Dana Lee: Re: budget");
+    expect(container.querySelector('[data-state="waiting"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button"));
+    expect(shellStore.getState().outboxViewOpen).toBe(true);
   });
 });
 

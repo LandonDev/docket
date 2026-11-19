@@ -32,6 +32,8 @@ export type ShellState = {
   /** The query the search view opens with (Find in project: `type:file `); null keeps its own. */
   searchSeed: string | null;
   inboxViewOpen: boolean;
+  /** Work's Outbox (work/outbox), on the Inbox's frame. */
+  outboxViewOpen: boolean;
   notesViewOpen: boolean;
   /** The Aliax page covering the board, if one is open. */
   accountsPage: AliaxPageId | null;
@@ -56,6 +58,7 @@ export function initialShellState(
     searchViewFocusToken: 0,
     searchSeed: null,
     inboxViewOpen: false,
+    outboxViewOpen: false,
     notesViewOpen: false,
     accountsPage: null,
     settingsOpen: false,
@@ -81,6 +84,7 @@ export function patch(state: ShellState, changes: Partial<ShellState>): ShellSta
 const VIEWS_CLOSED = {
   searchViewOpen: false,
   inboxViewOpen: false,
+  outboxViewOpen: false,
   notesViewOpen: false,
   accountsPage: null,
 } as const;
@@ -118,6 +122,7 @@ export function openSearchView(state: ShellState): ShellState {
     filePickerOpen: false,
     settingsOpen: false,
     inboxViewOpen: false,
+    outboxViewOpen: false,
     notesViewOpen: false,
     accountsPage: null,
     searchViewOpen: true,
@@ -132,9 +137,15 @@ export function openInbox(state: ShellState): ShellState {
     settingsOpen: false,
     searchViewOpen: false,
     notesViewOpen: false,
+    outboxViewOpen: false,
     accountsPage: null,
     inboxViewOpen: true,
   });
+}
+
+/** Work's Outbox covers the board, as the Inbox does. */
+export function openOutbox(state: ShellState): ShellState {
+  return patch(state, { ...VIEWS_CLOSED, filePickerOpen: false, settingsOpen: false, outboxViewOpen: true });
 }
 
 export function openNotes(state: ShellState): ShellState {
@@ -143,6 +154,7 @@ export function openNotes(state: ShellState): ShellState {
     settingsOpen: false,
     searchViewOpen: false,
     inboxViewOpen: false,
+    outboxViewOpen: false,
     accountsPage: null,
     notesViewOpen: true,
   });
@@ -176,6 +188,7 @@ export function leaveTopOverlay(state: ShellState): ShellState {
   if (state.settingsOpen) return { ...state, settingsOpen: false };
   if (state.searchViewOpen) return { ...state, searchViewOpen: false };
   if (state.inboxViewOpen) return { ...state, inboxViewOpen: false };
+  if (state.outboxViewOpen) return { ...state, outboxViewOpen: false };
   if (state.notesViewOpen) return { ...state, notesViewOpen: false };
   if (state.accountsPage) return { ...state, accountsPage: null };
   return state;
@@ -192,7 +205,7 @@ export function useShell<T>(selector: (state: ShellState) => T): T {
 /** True while a full-screen view covers the board. */
 export function anyViewOpen(state: ShellState): boolean {
   return (
-    state.searchViewOpen || state.inboxViewOpen || state.notesViewOpen || state.accountsPage !== null
+    state.searchViewOpen || state.inboxViewOpen || state.outboxViewOpen || state.notesViewOpen || state.accountsPage !== null
   );
 }
 
@@ -223,6 +236,11 @@ export const shell = {
     update(openInbox);
   },
   closeInbox: () => update((s) => patch(s, { inboxViewOpen: false })),
+  openOutbox: () => {
+    perfMark("page-switch", "outbox");
+    update(openOutbox);
+  },
+  closeOutbox: () => update((s) => patch(s, { outboxViewOpen: false })),
   openNotes: () => {
     update(openNotes);
   },

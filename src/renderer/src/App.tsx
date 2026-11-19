@@ -292,7 +292,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, awayReturnChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workShellChunk } from "./surfaces/chunks";
+import { aliaxChunk, awayReturnChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workShellChunk } from "./surfaces/chunks";
 import { openWorkView, useWorkOn, useWorkView, workHome, workOpenPort, workStartPort } from "./lib/workSwitch";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
@@ -312,6 +312,7 @@ const NewWorkspaceDialog = dialogsChunk.surface("NewWorkspaceDialog");
 const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
 const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" lines={3} label="Loading notes" />);
+const OutboxView = workOutboxChunk.surface("OutboxView", <SurfaceSkeleton kind="page" label="Loading the Outbox" />);
 const WorkViewSurface = workShellChunk.surface("WorkViewSurface", <SurfaceSkeleton kind="page" label="Loading" />);
 const WorkRailHost = workShellChunk.surface("WorkRailHost");
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
@@ -451,8 +452,13 @@ export default function App() {
   const searchViewFocusToken = useShell((s) => s.searchViewFocusToken);
   const searchSeed = useShell((s) => s.searchSeed);
   const inboxViewOpen = useShell((s) => s.inboxViewOpen);
+  const outboxViewOpen = useShell((s) => s.outboxViewOpen);
   const workViewShown = useWorkView() !== null;
   const workOn = useWorkOn();
+  // Work turned off on every host: its Outbox page goes with it.
+  useEffect(() => {
+    if (!workOn && outboxViewOpen) shell.closeOutbox();
+  }, [workOn, outboxViewOpen]);
   const notesViewOpen = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
   const settingsOpen = useShell((s) => s.settingsOpen);
@@ -526,7 +532,7 @@ export default function App() {
   const titleProjectId = titleSession && !titleDock ? titleSession.projectId : selectedProjectId;
   const titleProject = (titleProjectId && projects.find((project) => project.id === titleProjectId)?.name) || null;
   const titleText = windowTitle({
-    page: settingsOpen ? "settings" : accountsPage ?? (notesViewOpen ? "notes" : inboxViewOpen ? "inbox" : searchViewOpen ? "search" : null),
+    page: settingsOpen ? "settings" : accountsPage ?? (notesViewOpen ? "notes" : inboxViewOpen ? "inbox" : outboxViewOpen ? "outbox" : searchViewOpen ? "search" : null),
     pane:
       titleDock || titleFile?.terminal
         ? { kind: "terminal" }
@@ -2995,6 +3001,7 @@ export default function App() {
   const onLeaveSearch = shell.closeSearchView;
   const onOpenInbox = shell.openInbox;
   const onLeaveInbox = shell.closeInbox;
+  const onOpenOutbox = shell.openOutbox;
   const onOpenNotes = shell.openNotes;
   const onLeaveNotes = shell.closeNotes;
   // The Aliax pages read window.aliax, which only the desktop window has.
@@ -3424,6 +3431,7 @@ export default function App() {
         onNewTerminal={desktopOnly(onNewTerminal)}
         onSearch={onOpenSearch}
         onOpenInbox={onOpenInbox}
+        onOpenOutbox={onOpenOutbox}
         onOpenNotes={onOpenNotes}
         onOpenAccountsPage={onOpenAccountsPage}
         onOpenChats={onOpenChats}
@@ -3434,9 +3442,9 @@ export default function App() {
 
       <div className="body-glass relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div
-          className={boardClass(searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage)}
-          aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage}
-          inert={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage || undefined}
+          className={boardClass(searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || notesViewOpen || !!accountsPage)}
+          aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || notesViewOpen || !!accountsPage}
+          inert={searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || notesViewOpen || !!accountsPage || undefined}
         >
         {isWebMode() && !IS_MAC ? (
           <MenuBar
@@ -3588,6 +3596,9 @@ export default function App() {
             onToggleSidebar={onToggleSidebar}
             onStart={onStartInboxItem}
           />
+        ) : null}
+        {outboxViewOpen && workOn ? (
+          <OutboxView besideRail={projectRailOpen} onClose={shell.closeOutbox} onToggleSidebar={onToggleSidebar} onOpenSession={onOpenApprovalSession} />
         ) : null}
         {notesViewOpen ? (
           <NotesView

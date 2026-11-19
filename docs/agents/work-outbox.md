@@ -2,8 +2,9 @@
 
 The owner's rule is "the press is his": agents draft, and nothing an agent
 does leaves the machine until he presses Send. This file is the server half
-of that rule (milestone 10 of the Work plan). The Outbox screens, Results
-and the return from Away are milestone 14's and are not built.
+of that rule (milestone 10 of the Work plan), Results, and the screens over
+it: the Outbox, a Work thread's Results and the return from Away
+(milestone 14; "Results" and "The screens" below).
 [work.md](work.md) says how the `outbox` pillar is mounted;
 `.temp-code/plans/work-architecture.md` §6 is the design.
 
@@ -218,15 +219,96 @@ the quote in the owner's own messages (`ctx.threads.ownerSaid`); `routine`
 only when a grant of that run's routine covers it. A pillar's write tool
 calls it.
 
+## Results
+
+`ctx.results` (`work/outbox/results.ts`, the table `work_results`, made in
+the outbox module's `ensure`) is what a Work thread changed that lasts,
+with its way back. A pillar's write on his own files calls
+`ctx.results.add({sessionId, kind, summary, account?, ref?, undo?})`, where
+`undo` is `{pillar, verb, args, label?}`: a tool of that pillar (`verb` or
+`<pillar>_<verb>`), run as the thread that wrote. A send that left makes a
+row by itself (the outbox's `onDecided`), with its kind's `wayBack(result)`
+as its undo and `ref: {held, open?}`; a mail has none ("Sent mail cannot be
+taken back"). A row is listed under the root of its thread's tree
+(`root_id`), so a subagent's writes are its root's.
+
+| Method | Needs | |
+|---|---|---|
+| `work.outbox.results({sessionId?, since?, limit?})` | read | a thread's, or every one since a time (the return from Away), newest first |
+| `work.outbox.undo({id})` | approve | runs the way back once: claimed by one `UPDATE` before the call; a call that fails gives the claim back; a thread is refused |
+
+Both push `work.outbox.result` (to keys with read) when a row is made or
+undone. The names sit under `work.outbox.*` because the router hands a
+pillar only its own prefix.
+
+## The screens
+
+One lazy chunk, `work-outbox` (`src/renderer/src/work/outbox/`), nothing of
+it in the first paint. `store.ts` keeps one list per host with Work on,
+merged as the rail merges threads, from `work.outbox.list` (waiting and
+decided) and `work.outbox.grants`; the work-shell chunk imports it so the
+rail's count follows the `work.outbox` push from boot. No screen reads
+LifeOS's `outbox`; every press goes to the host that holds the item, and a
+LifeOS item's Send carries `rev` = its `updatedAt` as shown.
+
+- **The rail's Outbox row** (M8's) shows whenever a host has Work on, with
+  the plain muted count; it opens the Outbox page (`shell.openOutbox`,
+  `outboxViewOpen` in stores/shell.ts, a page like the Inbox).
+- **The Outbox** (`OutboxView.tsx`) on the Inbox frame: Waiting and Sent
+  tabs over the list; Waiting grouped by workspace (sector dot, name, and
+  "Send N" when more than one can go), each row the act and what it is
+  about, its kind's glyph giving way to a tick on hover; ticked rows send
+  together. The detail is who, where and when, the act's name, then its
+  payload exactly as it goes (`work/acts/ActView.tsx`: the kind's own view
+  from `ACT_VIEWS`, else `GenericActView`, its fields and its body as
+  plain text), over one bar: Discard, Edit, and a split Send whose menu
+  makes the grant ("Send and stop holding" › the grant's name;
+  `grantFor` in model.ts: a mail fixes its account and every recipient, an
+  add-on call its server and tool, a computer act takes none). Sent groups
+  what left by day; its detail says who pressed and when ("Sent by you at
+  9:31 AM", "by the grant …", "from another device") and offers the
+  Result's way back, or says it cannot be taken back. Grants is a sheet:
+  each standing grant by workspace with Remove, no confirm. Held is never
+  amber; only a failed send takes the red mark.
+- **Edit** (`EditDialog.tsx`) changes each field a person reads and the
+  body; a mail's html is rebuilt from the edited text, so what goes is what
+  was shown. The host keeps the account, the server and the thread.
+- **Results** (`ResultsSection.tsx`) is a right-panel section of a Work
+  root thread (`results` in lib/rightPanel.ts, the outbox glyph), listed
+  only while it has a row: "Can undo" and "Can't undo", each row with its
+  way back.
+- **The held line** (`heldOf` and `HeldLine` in
+  surfaces/transcript/ApprovalCard.tsx): under a call whose answer is "Held
+  as item N: …", one muted line, the Outbox glyph, "Held" then the act; it
+  opens the Outbox.
+- **Back from Away** (`AwayList.tsx`, mounted by chrome/AwayReturn.tsx):
+  while a host has Work on, Away turning off gathers each host's tally for
+  three seconds, then reads each Work host's Outbox and its writes since
+  that host's stretch began (`work.outbox.results {since}`, sends left
+  out). One toast ("Held 7, decided 4 without you, 2 failed") that stays
+  until pressed; Review opens one dialog in the order he must act: Held
+  (by workspace, each with its verb, Send N per workspace), Failed (Send
+  again), Decided without you (each thread and its count, Open), Written
+  on your files (Undo). With Work off the return is what it was.
+
 ## Not built here
 
-The Outbox screens and Results (milestone 14). A box thread's computer act
+Each pillar's own view of its acts (mail is M23's, the calendar M25's):
+until then they show in the generic view. The held line opens the Outbox
+but does not select its item. A box thread's computer act
 held on a Mac and pressed from the box. A held row moving with its thread
 to another host: it stays on the host that held it. A card skipped for a
 Claude thread's add-on call that will be held (in `safe` it asks, then
 holds).
 
 ## Proofs
+
+The screens: `work/outbox/{model.test.ts, OutboxView.dom.test.tsx,
+screens.dom.test.tsx}`, `surfaces/transcript/ApprovalCard.dom.test.tsx`
+("the held line"), `chrome/AwayReturn.dom.test.tsx`, `lib/rightPanel.test.ts`.
+Results on the host: `work/outbox/results.test.ts`.
+
+The hold:
 
 `work/outbox/{store,outbox,lifeosHeld}.test.ts` (the rig in `rig.ts` runs
 the real add-on host with a real child and the fake MCP server, and reads

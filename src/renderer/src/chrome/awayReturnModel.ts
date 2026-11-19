@@ -33,7 +33,12 @@ export function decidedThreadsOf(tallies: ReadonlyMap<string, AwayDecided>): Awa
  * one list, handed to `show` each time it holds a thread. The state at a
  * link's open is no push, so a boot never shows anything.
  */
-export function createAwayReturn(show: (threads: AwayDecidedThread[]) => void, now: () => number = Date.now): AwayPushListener {
+export function createAwayReturn(
+  show: (threads: AwayDecidedThread[], tallies: ReadonlyMap<string, AwayDecided>) => void,
+  now: () => number = Date.now,
+  /** True: show even with no thread that decided (Work's return also lists what was held and written). */
+  always: () => boolean = () => false,
+): AwayPushListener {
   let until = -Infinity;
   let tallies = new Map<string, AwayDecided>();
   return (environmentId, before, after) => {
@@ -46,6 +51,6 @@ export function createAwayReturn(show: (threads: AwayDecidedThread[]) => void, n
     if (now() > until || after.state.enabled) return;
     tallies.set(environmentId, after.decided);
     const threads = decidedThreadsOf(tallies);
-    if (threads.length > 0) show(threads);
+    if (threads.length > 0 || always()) show(threads, tallies);
   };
 }

@@ -94,6 +94,10 @@ export const workCanvasChunk = defineChunk("work-canvas", () => import("../work/
  *  Work workspace's page, the LifeOS session. Asked for only once a host has Work on, or on Settings → Work. */
 export const workShellChunk = defineChunk("work-shell", () => import("../work/shell"));
 
+/** Work's Outbox page, a Work thread's Results section and the return from Away (work/outbox). Asked for only by the
+ *  rail's Outbox row, a Work thread's panel, or Away turning off while a host has Work on. */
+export const workOutboxChunk = defineChunk("work-outbox", () => import("../work/outbox"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -127,5 +131,6 @@ export const allChunks = {
   workCanvasChunk,
   failureCardChunk,
   workShellChunk,
+  workOutboxChunk,
   messageQueueChunk,
 };

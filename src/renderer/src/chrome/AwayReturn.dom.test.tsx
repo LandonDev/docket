@@ -60,13 +60,13 @@ describe("createAwayReturn", () => {
     const show = vi.fn();
     const push = createAwayReturn(show, () => now);
     push("local", snap(true, 1), snap(false, 2, [{ sessionId: "a", count: 2 }, { sessionId: "z", count: 0 }]));
-    expect(show).toHaveBeenLastCalledWith([{ environmentId: "local", sessionId: "a", count: 2 }]);
+    expect(show).toHaveBeenLastCalledWith([{ environmentId: "local", sessionId: "a", count: 2 }], expect.any(Map));
     now += 1_000;
     push("env_box", snap(true, 1), snap(false, 2, [{ sessionId: "b", count: 1 }]));
     expect(show).toHaveBeenLastCalledWith([
       { environmentId: "local", sessionId: "a", count: 2 },
       { environmentId: "env_box", sessionId: "b", count: 1 },
-    ]);
+    ], expect.any(Map));
     now += AWAY_RETURN_GATHER_MS;
     push("env_box", snap(false, 2), snap(false, 2, [{ sessionId: "b", count: 5 }]));
     expect(show).toHaveBeenCalledTimes(2);
@@ -78,6 +78,13 @@ describe("createAwayReturn", () => {
     push("local", snap(true, 1), snap(false, 2));
     push("local", snap(false, 2), snap(true, 3, [{ sessionId: "a", count: 1 }]));
     expect(show).not.toHaveBeenCalled();
+  });
+
+  it("with Work on, hands on every host's tally even when no thread decided: Work's list has held and written too", () => {
+    const show = vi.fn();
+    const push = createAwayReturn(show, () => 0, () => true);
+    push("local", snap(true, 1), snap(false, 2));
+    expect(show).toHaveBeenCalledWith([], new Map([["local", { since: expect.any(Number), threads: [] }]]));
   });
 });
 

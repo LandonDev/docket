@@ -17,14 +17,15 @@ import { useSyncExternalStore } from "react";
  * names a pane or a shown thread and lands on the right one (`paneOf`).
  */
 
-export type Section = "activity" | "agents" | "computer" | "changes" | "notes" | "files" | "build" | "debug";
+export type Section = "activity" | "agents" | "computer" | "results" | "changes" | "notes" | "files" | "build" | "debug";
 
-export const SECTIONS: readonly Section[] = ["agents", "activity", "computer", "changes", "notes", "files", "build", "debug"];
+export const SECTIONS: readonly Section[] = ["agents", "activity", "computer", "results", "changes", "notes", "files", "build", "debug"];
 
 export const SECTION_LABEL: Record<Section, string> = {
   activity: "Activity",
   agents: "Agents",
   computer: "Computer",
+  results: "Results",
   changes: "Changes",
   notes: "Notes",
   files: "Files",
@@ -86,6 +87,8 @@ export type PanelFacts = {
   computer: boolean;
   /** A session this desktop can draw is live in the thread's tree. */
   computerLive: boolean;
+  /** A Work thread's Results (work/outbox): what its tree sent and wrote that lasts. 0 for a code thread. */
+  results: number;
   /** A dev build, or the debug setting on: the Debug section is listed. */
   debug: boolean;
 };
@@ -102,6 +105,7 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   if (facts.agents > 0) sections.push("agents");
   if (activity) sections.push("activity");
   if (facts.computer) sections.push("computer");
+  if (facts.results > 0) sections.push("results");
   if (facts.checkout) sections.push("changes");
   if (facts.notes) sections.push("notes");
   if (facts.checkout) sections.push("files");
@@ -117,9 +121,11 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
         ? "activity"
         : facts.checkout
           ? "changes"
-          : facts.notes
-            ? "notes"
-            : null;
+          : facts.results > 0
+            ? "results"
+            : facts.notes
+              ? "notes"
+              : null;
   return { sections, defaultSection: defaultSection ?? sections[0] ?? null };
 }
 

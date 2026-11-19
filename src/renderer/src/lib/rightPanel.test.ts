@@ -23,10 +23,16 @@ const quiet: PanelFacts = {
   activity: 0,
   computer: false,
   computerLive: false,
+  results: 0,
   debug: false,
 };
 
 describe("sectionsFor", () => {
+  it("a Work thread with Results lists them after Computer, and opens on them before its notes", () => {
+    expect(sectionsFor({ ...quiet, results: 2 })).toEqual({ sections: ["results", "notes"], defaultSection: "results" });
+    expect(sectionsFor({ ...quiet, results: 2, activity: 1 }).defaultSection).toBe("activity");
+    expect(sectionsFor({ ...quiet, results: 0 }).sections).toEqual(["notes"]);
+  });
   it("a subagent has no panel", () => {
     expect(sectionsFor({ ...quiet, root: false })).toEqual({ sections: [], defaultSection: null });
   });

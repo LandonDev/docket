@@ -101,7 +101,7 @@ import type { GitDiffStats } from "../lib/fs";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
-import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workShellChunk } from "../surfaces/chunks";
+import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workOutboxChunk, workShellChunk } from "../surfaces/chunks";
 
 /** The Customize dialog loads with the click (its menu warms it). */
 const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
@@ -212,12 +212,13 @@ export function ProjectRail({
 }: Props) {
   const searchActive = useShell((s) => s.searchViewOpen);
   const inboxActive = useShell((s) => s.inboxViewOpen);
+  const outboxActive = useShell((s) => s.outboxViewOpen);
   const notesActive = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
   const settingsOpen = useShell((s) => s.settingsOpen);
   const settingsSection = useShell((s) => s.settingsSection);
   /** A full-window view covers the list: no workspace row is selected. */
-  const overlayOpen = searchActive || inboxActive || notesActive || !!accountsPage;
+  const overlayOpen = searchActive || inboxActive || outboxActive || notesActive || !!accountsPage;
   const resize = useDragResize({
     min: PROJECT_RAIL_WIDTH_MIN,
     max: () =>
@@ -509,7 +510,8 @@ export function ProjectRail({
     notes: onOpenNotes !== undefined,
     aliax: onOpenAccountsPage !== undefined,
     workChats: workOn && onOpenWorkChats !== undefined,
-    outbox: workOn && outboxWaiting > 0,
+    // Always while Work is on: Sent and the grants are reached from it with nothing waiting.
+    outbox: workOn && onOpenOutbox !== undefined,
   });
   const topRow = (id: RailTopRowId) => {
     switch (id) {
@@ -540,7 +542,7 @@ export function ProjectRail({
         );
       case "outbox":
         // Plain muted count: held is not "needs you" (docs/DESIGN.md "Held is not Needs you").
-        return <RailRow key={id} icon={Outbox} label="Outbox" trailing={outboxWaiting} onClick={onOpenOutbox} />;
+        return <RailRow key={id} icon={Outbox} label="Outbox" trailing={outboxWaiting || null} selected={outboxActive} onClick={onOpenOutbox} intent={workOutboxChunk.intent} />;
       case "workChats":
         return (
           <RailRow

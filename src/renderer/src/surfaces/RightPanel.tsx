@@ -4,7 +4,7 @@ import { cn } from "@renderer/lib/cn";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "@renderer/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { Kbd } from "@renderer/components/ui/kbd";
-import { Activity, Bug, Folder, GitCompare, Hammer, SquareMousePointer, StickyNote, Users, X, type IconComponent } from "../chrome/icons";
+import { Activity, Bug, Folder, GitCompare, Hammer, Outbox, SquareMousePointer, StickyNote, Users, X, type IconComponent } from "../chrome/icons";
 import { BuildPanel } from "../chrome/rail/BuildPanel";
 import { ChangesPanel } from "../chrome/rail/ChangesPanel";
 import { FileTree } from "../chrome/FileTree";
@@ -35,7 +35,8 @@ import { useAgents } from "../lib/threads/agents";
 import { useActivity } from "../lib/activity";
 import { useComputerSection } from "../lib/computerSection";
 import { ActivitySection } from "./threads/ActivitySection";
-import { computerChunk } from "./chunks";
+import { computerChunk, workOutboxChunk } from "./chunks";
+import { useResults } from "../work/outbox/results";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
 import { SessionActionsContext } from "./threadChat";
@@ -45,6 +46,8 @@ import { shortcutFor } from "../lib/settings";
 // The Computer section (the window live or as it was, and the thread's steps) loads with its first use; the
 // title bar's cue and this header's segment warm it on hover.
 const ComputerSection = computerChunk.surface("ComputerSection", <LoadingLine label="Loading the steps" />);
+// A Work thread's Results (work/outbox) ride the Outbox's chunk.
+const ResultsSection = workOutboxChunk.surface("ResultsSection", <LoadingLine label="Loading the results" />);
 // The Debug section drives the editor chunk's DAP session; it loads with it.
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
 // Listed for a dev build, and for any thread that asked for it ("Debug this file").
@@ -58,6 +61,7 @@ const SECTION_ICON: Record<Section, IconComponent> = {
   activity: Activity,
   agents: Users,
   computer: SquareMousePointer,
+  results: Outbox,
   changes: GitCompare,
   notes: StickyNote,
   files: Folder,
@@ -286,6 +290,8 @@ function usePanelFacts(session: Session, state: PanelState, inPane: boolean): Pa
   const workspace = project?.cwd ? undefined : looseWorkspace(session, workspaces);
   const activity = useActivity(session.id).rows;
   const computer = useComputerSection(session.id);
+  // Only a Work thread has Results; a code thread never asks.
+  const results = useResults(session.environmentId, session.id, session.scope === "work" && !session.parentId).rows.length;
   const facts = useMemo<PanelFacts>(
     () => ({
       root: !session.parentId || inPane,
@@ -300,9 +306,10 @@ function usePanelFacts(session: Session, state: PanelState, inPane: boolean): Pa
       // must not open on another section and jump back when the steps land.
       computer: computer.exists || (state.section === "computer" && computer.loading),
       computerLive: computer.live,
+      results,
       debug: DEBUG_SECTION || state.debug,
     }),
-    [session, project, workspace, agents.length, activity.length, computer.exists, computer.loading, computer.live, state.section, state.debug, inPane],
+    [session, project, workspace, agents.length, activity.length, computer.exists, computer.loading, computer.live, results, state.section, state.debug, inPane],
   );
   return { facts, project, workspace };
 }
@@ -347,6 +354,8 @@ function SectionBody({
       // keyed by the thread: a pane that moves to another thread (a master's board, child to child) starts the
       // section afresh, so nothing of the last thread's pin, scroll or landing carries over
       return <ComputerSection key={session.id} threadId={session.id} />;
+    case "results":
+      return <ResultsSection key={session.id} environmentId={session.environmentId} sessionId={session.id} />;
     case "notes":
       return <NotesBody session={session} />;
     case "changes":
