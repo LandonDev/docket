@@ -164,6 +164,9 @@ desktop it is, with that platform's rules. The tool names stay `mac_*`.
 - **Not ported, and why it is harmless:** the load watch reads `os.loadavg()`, which is always 0 on
   Windows, so only the caps hold calls there; dev-server forwarding and computer use through the
   bridge are off by default per host, and computer use on Windows is milestones 42 and 43.
+- **What the person sees there.** The window calls its own host This PC, and a card reads "box wants
+  to run on this PC" (`thisDesktopName` in renderer/lib/native.ts); the cards, prompts and settings
+  are the Mac bridge's own.
 - **What it is not.** A Windows host never offers to publish (`macPublishOffers`) and refuses
   `host.deployStatus` and `host.deploy` (`DEPLOY_NOT_ON_WINDOWS`), so its Deploy row never shows;
   its drift mark's kind is `pc` (shared/deployDrift.ts), which updates from the feed once the Mac
