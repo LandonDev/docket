@@ -37,7 +37,7 @@ export function TeamsCopyRow({ workspace, hostName, desktops }: { workspace: Pic
     }
   };
   return (
-    <PageRow title={title} description={read.value.on ? undefined : `They stay on ${desktops.join(", ")}`} error={error ?? undefined}>
+    <PageRow title={title} description={read.value.on ? "Copies go with their thread" : `Files open in their app on ${desktops.join(", ")}`} error={error ?? undefined}>
       <SettingSwitch label={title} on={read.value.on} onChange={set} />
     </PageRow>
   );

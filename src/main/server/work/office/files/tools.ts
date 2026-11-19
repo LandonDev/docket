@@ -1,6 +1,6 @@
-import { join, relative } from 'node:path'
+import { basename, join, relative } from 'node:path'
 import { z } from 'zod'
-import { TEAMS_FILE_KINDS, teamsAppOf, teamsCanvasOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
+import { TEAMS_FILE_KINDS, teamsAppOf, teamsCanvasOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
 import type { ClientRequest } from '@shared/contract'
 import { workText, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
@@ -145,22 +145,24 @@ export function teamsTools(carrier: () => OfficeCarrier | null): WorkTool[] {
       async run(a, ctx) {
         const library = await libraryFor(ctx, carrier, a.library)
         const source = sourceIn(library, a.file)
-        const { entry } = (await on(ctx, carrier, library.host, 'filesFetch', { source })) as { entry: TeamsEntry }
-        const app = teamsAppOf(entry.kind, entry.name)
-        const appLine = app ? `It is open in ${APP_NAME[app]}${library.host === ctx.host ? '' : ` on ${library.host}`}; its key for the office tools is ${JSON.stringify(entry.path)}.` : ''
-        if (library.host === ctx.host || (ctx.scope.workspaceId && copyAllowed(ctx.db, ctx.scope.workspaceId))) {
-          const copy = library.host === ctx.host ? null : await copyIn(ctx, ctx.sessionId, source, ctx.signal)
-          const at = teamsCanvasOf(copy ? { ...copy.entry, kind: entry.kind } : entry, ctx.host, !!copy)
-          if (app) await on(ctx, carrier, library.host, 'filesOpen', { source })
+        const name = basename(source.path)
+        const app = teamsAppOf(teamsKindOf(name), name)
+        const appLine = app ? `It is open in ${APP_NAME[app]}${library.host === ctx.host ? '' : ` on ${library.host}`}; its key for the office tools is ${JSON.stringify(source.path)}.` : ''
+        const here = library.host === ctx.host
+        if (here || (ctx.scope.workspaceId && copyAllowed(ctx.db, ctx.scope.workspaceId))) {
+          // The canvas reads the file's bytes: here OneDrive downloads it first; a copy is made of the downloaded file.
+          const entry = here ? ((await on(ctx, carrier, library.host, 'filesFetch', { source })) as { entry: TeamsEntry }).entry : (await copyIn(ctx, ctx.sessionId, source, ctx.signal)).entry
+          const at = teamsCanvasOf({ ...entry, kind: teamsKindOf(name) }, ctx.host, !here)
+          if (app || !at) await on(ctx, carrier, library.host, 'filesOpen', { source })
           if (at) {
-            const item = ctx.canvas.open(ctx.canvas.paneOf(ctx.sessionId), at.kind, at.source, entry.name)
-            return workText([`Opened ${entry.name} in the canvas (${item.id})${copy ? ', from a copy on this host' : ''}.`, appLine].filter(Boolean).join(' '))
+            const item = ctx.canvas.open(ctx.canvas.paneOf(ctx.sessionId), at.kind, at.source, name)
+            return workText([`Opened ${name} in the canvas (${item.id})${here ? '' : ', from a copy on this host: a change goes to the original through the office tools'}.`, appLine].filter(Boolean).join(' '))
           }
-          if (!app) await on(ctx, carrier, library.host, 'filesOpen', { source })
-          return workText(app ? appLine : `Opened ${entry.name} in its app.`)
+          return workText(app ? appLine : `Opened ${name} in its app.`)
         }
+        // Its app downloads the file itself: nothing is fetched for it here.
         await on(ctx, carrier, library.host, 'filesOpen', { source })
-        return workText(`${app ? appLine : `Opened ${entry.name} in its app on ${library.host}.`} It stays on that host: this workspace does not copy Teams files, so it does not open in this thread's canvas.`)
+        return workText(`${app ? appLine : `Opened ${name} in its app on ${library.host}.`} It stays on that host: this workspace does not copy Teams files, so it does not open in this thread's canvas.`)
       }
     })
   ]

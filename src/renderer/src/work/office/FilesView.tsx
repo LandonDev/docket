@@ -21,7 +21,7 @@ import type { WireSessionMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { workOpenPort } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { Cloud, Doc, File, Media, Pdf, Slides, Table, Video, Volume } from "../icons";
-import { workspaceSettings } from "../shell/actions";
+import { linkIdOfHost, localHostId, workspaceSettings } from "../shell/actions";
 import type { WorkViewProps } from "../views/registry";
 import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, type ShownLibrary } from "./files";
 
@@ -101,8 +101,10 @@ function useReach(workspace: WorkspaceMeta, attempt: number): Reach | { error: s
     let live = true;
     setReach(null);
     void (async () => {
-      const settings = await workspaceSettings(workspace).catch(() => null);
-      const hosts = [...new Set([workspace.environmentId, ...(settings?.mayUseDesktop ?? [])])].filter((id) => registry.has(id));
+      const [settings, local] = await Promise.all([workspaceSettings(workspace).catch(() => null), localHostId()]);
+      // The workspace's desktops are host ids; the window reaches each through its link ("local" for this machine).
+      const desktops = (settings?.mayUseDesktop ?? []).map((id) => linkIdOfHost(id, local)).filter((id): id is string => id !== null);
+      const hosts = [...new Set([workspace.environmentId, ...desktops])].filter((id) => registry.has(id));
       const answers = await Promise.allSettled(hosts.map((env) => registry.linkOf(env).request<{ libraries: TeamsLibrary[] }>("work.office.filesLibraries", {})));
       const copy = await registry
         .linkOf(workspace.environmentId)
@@ -279,7 +281,8 @@ function Results(props: ViewProps & { query: string }) {
   );
 }
 
-type Busy = { path: string; word: string } | null;
+type Busy = { key: string; word: string } | null;
+const rowKey = (library: ShownLibrary, entry: TeamsEntry): string => `${library.env}\u0000${entry.path}`;
 
 function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownLibrary }[]; places?: boolean }) {
   const { rows, places, workspace } = props;
@@ -289,10 +292,10 @@ function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownL
     <div role="list">
       {rows.map(({ entry, library }) => {
         const Glyph = GLYPH[entry.kind];
-        const mine = busy?.path === entry.path;
+        const mine = busy?.key === rowKey(library, entry);
         const folder = entry.kind === "folder";
         return (
-          <div key={entry.path} role="listitem" className="group/row relative">
+          <div key={rowKey(library, entry)} role="listitem" className="group/row relative">
             <ItemButton
               size="xs"
               className={`${ROW} pe-10`}
@@ -352,13 +355,13 @@ function useOpener({ workspace, reach }: ViewProps, setBusy: (busy: Busy) => voi
   /** The file as it is once its bytes are here: OneDrive downloads one it keeps in the cloud. */
   const fetched = async (entry: TeamsEntry, library: ShownLibrary): Promise<TeamsEntry> => {
     if (entry.local) return entry;
-    setBusy({ path: entry.path, word: "Downloading…" });
+    setBusy({ key: rowKey(library, entry), word: "Downloading…" });
     return (await registry.linkOf(library.env).request<{ entry: TeamsEntry }>("work.office.filesFetch", { source: source(library, entry) })).entry;
   };
   const app = async (entry: TeamsEntry, library: ShownLibrary): Promise<void> => {
     try {
-      await fetched(entry, library);
-      setBusy({ path: entry.path, word: "Opening…" });
+      // Its app downloads the file itself.
+      setBusy({ key: rowKey(library, entry), word: "Opening…" });
       await registry.linkOf(library.env).request("work.office.filesOpen", { source: source(library, entry) });
     } catch (err) {
       failed(`${entry.name} did not open`, err);
@@ -369,22 +372,29 @@ function useOpener({ workspace, reach }: ViewProps, setBusy: (busy: Busy) => voi
   const open = async (entry: TeamsEntry, library: ShownLibrary): Promise<void> => {
     const way = openWay(entry, library, workspace.environmentId, reach.copy);
     if (way === "app") return app(entry, library);
+    let sessionId: string | null = null;
+    const ws = registry.linkOf(workspace.environmentId);
     try {
-      const here = await fetched(entry, library);
-      setBusy({ path: entry.path, word: "Opening…" });
-      const sessionId = await newThread(workspace, entry.name);
-      const ws = registry.linkOf(workspace.environmentId);
-      let at = teamsCanvasOf(here, library.host)!;
-      if (way === "copy") {
-        const copy = await ws.request<{ source: { at: "file"; host: string; path: string } }>("work.office.filesCopy", { sessionId, source: source(library, here) });
-        at = teamsCanvasOf({ ...here, path: copy.source.path }, copy.source.host, true)!;
-      } else if (at.source.at === "microsoft") {
+      let at: NonNullable<ReturnType<typeof teamsCanvasOf>>;
+      if (way === "canvas") {
+        // Everything that can fail runs before the thread is made, so a failed open leaves no thread behind.
+        const here = await fetched(entry, library);
+        setBusy({ key: rowKey(library, entry), word: "Opening…" });
+        at = teamsCanvasOf(here, library.host)!;
         // Excel, Word or PowerPoint stands behind the item: the file opens there too.
-        await registry.linkOf(library.env).request("work.office.filesOpen", { source: source(library, here) });
+        if (at.source.at === "microsoft") await registry.linkOf(library.env).request("work.office.filesOpen", { source: source(library, here) });
+        sessionId = await newThread(workspace, entry.name);
+      } else {
+        // A copy lands in its thread's folder, so the thread comes first, and goes again if the copy fails.
+        setBusy({ key: rowKey(library, entry), word: entry.local ? "Opening…" : "Downloading…" });
+        sessionId = await newThread(workspace, entry.name);
+        const copy = await ws.request<{ source: { at: "file"; host: string; path: string } }>("work.office.filesCopy", { sessionId, source: source(library, entry) });
+        at = teamsCanvasOf({ ...entry, path: copy.source.path }, copy.source.host, true)!;
       }
       await ws.request<{ item: CanvasItem }>("work.canvas.open", { sessionId, kind: at.kind, source: at.source, title: entry.name });
       workOpenPort.get()?.(sessionId);
     } catch (err) {
+      if (sessionId && way === "copy") void ws.request("session.delete", { sessionId }).catch(() => {});
       failed(`${entry.name} did not open`, err);
     } finally {
       setBusy(null);

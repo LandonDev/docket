@@ -9,6 +9,7 @@ import type { WorkViewProps } from "../views/registry";
 const calls: { env: string; method: string; params: unknown }[] = [];
 let copyOn = false;
 let noLibs = false;
+let copyFails = false;
 let fetchGate: Promise<void> = Promise.resolve();
 const opened: string[] = [];
 const T = "/c/S/Purdue Esports - Documents";
@@ -20,20 +21,23 @@ const answer = (env: string, method: string, params: unknown): Promise<unknown> 
   calls.push({ env, method, params });
   switch (method) {
     case "work.office.filesLibraries":
-      return Promise.resolve({ libraries: env === "mac" && !noLibs ? [LIB] : [], roots: [], off: [] });
+      return Promise.resolve({ libraries: env === "local" && !noLibs ? [LIB] : [], roots: [], off: [] });
     case "work.office.filesCopyGet":
       return Promise.resolve({ on: copyOn });
     case "work.office.filesList":
       return Promise.resolve({ entries: ENTRIES });
     case "work.office.filesSearch":
-      return Promise.resolve({ entries: env === "mac" ? [entry("Budget.xlsx")] : [], more: false });
+      return Promise.resolve({ entries: env === "local" ? [entry("Budget.xlsx")] : [], more: false });
     case "work.office.filesFetch":
       return fetchGate.then(() => ({ entry: { ...(params as { source: { path: string } }) && entry("Report.pdf") } }));
     case "work.office.filesOpen":
       return Promise.resolve({ opened: true });
     case "session.create":
       return Promise.resolve({ id: "t1", title: (params as { title: string }).title });
+    case "session.delete":
+      return Promise.resolve({});
     case "work.office.filesCopy":
+      if (copyFails) return Promise.reject(new Error("over 48 MB"));
       return Promise.resolve({ source: { at: "file", host: "env_box", path: "/box/attachments/teams-files/t1/Report.pdf" } });
     case "work.canvas.open":
       return Promise.resolve({ item: { id: "i1" } });
@@ -42,13 +46,20 @@ const answer = (env: string, method: string, params: unknown): Promise<unknown> 
 };
 
 vi.mock("../../lib/connection", () => ({
+  LOCAL_ENVIRONMENT_ID: "local",
   registry: {
-    has: () => true,
-    environment: (id: string) => ({ id, name: id === "mac" ? "This Mac" : "The box" }),
+    has: (id: string) => id === "local" || id === "box",
+    link: (id: string) => (id === "local" ? {} : undefined),
+    environment: (id: string) => ({ id, name: id === "local" ? "This Mac" : "The box" }),
     linkOf: (env: string) => ({ environmentId: env, request: (method: string, params: unknown) => answer(env, method, params) }),
   },
 }));
-vi.mock("../shell/actions", () => ({ workspaceSettings: () => Promise.resolve({ mayUseDesktop: ["mac"] }) }));
+// The workspace's desktops are host ids: this Mac is env_mac on every host and "local" in its own window.
+vi.mock("../shell/actions", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  workspaceSettings: () => Promise.resolve({ mayUseDesktop: ["env_mac"] }),
+  localHostId: () => Promise.resolve("env_mac"),
+}));
 vi.mock("../../lib/tcserver/store", () => ({ sessionStore: { adopt: vi.fn() } }));
 vi.mock("../../lib/macBridge", () => ({ bridgeNewThread: () => Promise.resolve() }));
 vi.mock("../../lib/workSwitch", () => ({ workOpenPort: { get: () => (id: string) => opened.push(id) } }));
@@ -63,6 +74,7 @@ beforeEach(() => {
   opened.length = 0;
   copyOn = false;
   noLibs = false;
+  copyFails = false;
   fetchGate = Promise.resolve();
 });
 afterEach(cleanup);
@@ -75,7 +87,7 @@ const openGeneral = async (p: WorkViewProps) => {
 
 describe("the Files view", () => {
   it("lists a team's channels, then a folder with who and whether a file is downloaded", async () => {
-    await openGeneral(props("mac"));
+    await openGeneral(props("local"));
     expect(screen.getByRole("button", { name: "Purdue Esports" })).toBeTruthy();
     expect(screen.getByText("General", { selector: "[aria-current]" })).toBeTruthy();
     expect(screen.getByText("Pat Lee")).toBeTruthy();
@@ -86,7 +98,7 @@ describe("the Files view", () => {
   it("downloads a cloud-only file in its row, then opens it in a new thread's canvas on its own host", async () => {
     let release!: () => void;
     fetchGate = new Promise((done) => (release = done));
-    await openGeneral(props("mac"));
+    await openGeneral(props("local"));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /^Report\.pdf/ })));
     expect(screen.getByText("Downloading…")).toBeTruthy();
     await act(async () => release());
@@ -98,7 +110,7 @@ describe("the Files view", () => {
   it("from a workspace on another host with no copy allowed, opens the file in its app where it lies", async () => {
     await openGeneral(props("box"));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /^Budget\.xlsx/ })));
-    expect(calls.filter((c) => c.method === "work.office.filesOpen").map((c) => c.env)).toEqual(["mac"]);
+    expect(calls.filter((c) => c.method === "work.office.filesOpen").map((c) => c.env)).toEqual(["local"]);
     expect(calls.some((c) => c.method === "session.create" || c.method === "work.office.filesCopy")).toBe(false);
   });
 
@@ -110,8 +122,17 @@ describe("the Files view", () => {
     expect(calls.at(-1)!.params).toMatchObject({ kind: "pdf", source: { at: "file", host: "env_box", path: "/box/attachments/teams-files/t1/Report.pdf" } });
   });
 
+  it("takes a thread made for a copy back out when the copy fails", async () => {
+    copyOn = true;
+    copyFails = true;
+    await openGeneral(props("box"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /^Report\.pdf/ })));
+    expect(calls.map((c) => c.method).slice(-3)).toEqual(["session.create", "work.office.filesCopy", "session.delete"]);
+    expect(opened).toEqual([]);
+  });
+
   it("searches every library from the header", async () => {
-    const p = props("mac");
+    const p = props("local");
     await act(async () => void render(<><Head {...p} /><View {...p} /></>));
     await act(async () => fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "budget" } }));
     expect(await screen.findByText("Purdue Esports/General", {}, { timeout: 2000 })).toBeTruthy();

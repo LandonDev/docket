@@ -24,7 +24,7 @@ import { TeamsCopyRow } from "../office/TeamsCopyRow";
 import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { HouseRules } from "../rules/HouseRules";
-import { linkSector, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
+import { hostIdOfLink, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
 /**
@@ -284,6 +284,8 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   const [error, setError] = useState<string | null>(null);
   // Retry on a failed read asks again; a refused switch keeps its own line with no Retry (the switch is the retry).
   const [attempt, setAttempt] = useState(0);
+  const [localHost, setLocalHost] = useState<string | null>(null);
+  useEffect(() => void localHostId().then(setLocalHost), []);
   useEffect(() => {
     if (!workspace) return;
     let live = true;
@@ -303,9 +305,14 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   const host = environments.find((e) => e.id === workspace.environmentId);
   const desktops = environments.filter((e) => isDesktop(e.platform));
   const key = keyLine(status?.keys.find((k) => k.workspaceId === workspace.id));
-  const allow = async (desktop: string, next: boolean): Promise<boolean> => {
+  /** The desktops it may use other than its own host: where a Teams file lies that a copy would bring here. */
+  const otherDesktops = (list: readonly string[]): string[] => list.filter((id) => id !== workspace.environmentId && id !== hostIdOfLink(workspace.environmentId, localHost));
+  // The list holds host ids; this machine's link is "local" in the window, its host id on every host.
+  const allow = async (link: string, next: boolean): Promise<boolean> => {
     if (!settings) return false;
-    const list = next ? [...new Set([...settings.mayUseDesktop, desktop])] : settings.mayUseDesktop.filter((id) => id !== desktop);
+    const desktop = hostIdOfLink(link, localHost);
+    const kept = settings.mayUseDesktop.filter((id) => id !== desktop && id !== link);
+    const list = next ? [...kept, desktop] : kept;
     try {
       setSettings(await setWorkspaceSettings(workspace, { mayUseDesktop: list }));
       setError(null);
@@ -334,14 +341,14 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         {settings ? (
           desktops.map((desktop) => (
             <PageRow key={desktop.id} title={`Computer use on ${desktop.name}`}>
-              <SettingSwitch label={`Computer use on ${desktop.name}`} on={settings.mayUseDesktop.includes(desktop.id)} onChange={(next) => allow(desktop.id, next)} />
+              <SettingSwitch label={`Computer use on ${desktop.name}`} on={settings.mayUseDesktop.includes(hostIdOfLink(desktop.id, localHost)) || settings.mayUseDesktop.includes(desktop.id)} onChange={(next) => allow(desktop.id, next)} />
             </PageRow>
           ))
         ) : error ? null : (
           <PageRowsSkeleton rows={Math.max(1, desktops.length)} description control="switch" />
         )}
-        {settings && host && settings.mayUseDesktop.some((id) => id !== workspace.environmentId) ? (
-          <TeamsCopyRow workspace={workspace} hostName={host.name} desktops={settings.mayUseDesktop.filter((id) => id !== workspace.environmentId).map((id) => environments.find((e) => e.id === id)?.name ?? id)} />
+        {settings && host && otherDesktops(settings.mayUseDesktop).length ? (
+          <TeamsCopyRow workspace={workspace} hostName={host.name} desktops={otherDesktops(settings.mayUseDesktop).map((id) => environments.find((e) => e.id === (linkIdOfHost(id, localHost) ?? id))?.name ?? id)} />
         ) : null}
         {error ? (
           <PageError

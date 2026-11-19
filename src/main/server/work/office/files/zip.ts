@@ -59,7 +59,8 @@ export function zipEntries(file: string, names: readonly string[] | ((name: stri
       if (head.length < 30 || head.readUInt32LE(0) !== LOCAL) continue
       const data = readAt(fd, local + 30 + head.readUInt16LE(26) + head.readUInt16LE(28), packed)
       try {
-        const bytes = method === 0 ? data : method === 8 ? inflateRawSync(data) : null
+        // The size an entry declares is the maker's word: inflating stops at `max` whatever it says.
+        const bytes = method === 0 ? data : method === 8 ? inflateRawSync(data, { maxOutputLength: max }) : null
         if (bytes) out.set(name, bytes.toString('utf8'))
       } catch {
         // A damaged entry is one we could not read.

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
 import { handled, NOT_HANDLED, type CanvasSource, type Handled } from '@shared/work'
@@ -49,7 +50,17 @@ export async function openInApp(carrier: OfficeCarrier | null, entry: Pick<Teams
 }
 
 /** Where a copy he allowed lands: the thread's own corner of this host's attachments (a root a remote key reaches). */
-export const copyDirOf = (dataDir: string, sessionId: string): string => join(macBridgeLandingRoot(dataDir), 'teams-files', sessionId.replace(/[^A-Za-z0-9_-]/g, '_'))
+const copiesRoot = (dataDir: string): string => join(macBridgeLandingRoot(dataDir), 'teams-files')
+const safe = (id: string): string => id.replace(/[^A-Za-z0-9_-]/g, '_')
+export const copyDirOf = (dataDir: string, sessionId: string): string => join(copiesRoot(dataDir), safe(sessionId))
+
+/** Drops the copies of the threads given, or of every thread whose workspace `inWorkspace` names. */
+export function dropCopies(ctx: Pick<WorkCtx, 'dataDir' | 'scopeOf'>, which: { sessions: string[] } | { workspaceId: string }): void {
+  const root = copiesRoot(ctx.dataDir)
+  if (!existsSync(root)) return
+  const dirs = 'sessions' in which ? which.sessions.map(safe) : readdirSync(root).filter((dir) => ctx.scopeOf(dir)?.workspaceId === which.workspaceId)
+  for (const dir of dirs) rmSync(join(root, dir), { recursive: true, force: true })
+}
 
 /** Copies a file from another host into the thread's attachments here, when its workspace allows it. */
 export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal): Promise<{ source: CanvasSource; entry: TeamsEntry }> {
@@ -58,7 +69,8 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
   if (!scope.workspaceId || !copyAllowed(ctx.db, scope.workspaceId)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
   if (source.at !== 'file' || source.host === ctx.host) throw new Error('A copy comes from a file on another host.')
   const got = (await ctx.peer.call({ scope, signal }, source.host).call('office', 'filesRead', { source, as: 'bytes' })) as { name: string; data: string }
-  const dir = copyDirOf(ctx.dataDir, sessionId)
+  // One folder per source file, so two files of one name in a thread never share a copy.
+  const dir = join(copyDirOf(ctx.dataDir, sessionId), createHash('sha1').update(`${source.host}\u0000${source.path}`).digest('hex').slice(0, 12))
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const path = join(dir, basename(got.name))
   writeFileSync(path, Buffer.from(got.data, 'base64'), { mode: 0o600 })
@@ -82,7 +94,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       if (p.library && !libs.length) throw new Error('No such library on this host.')
       // A remote key searches only what it could name itself.
       const fenced = by.kind === 'remote' && !by.peer ? libs.filter((l) => ctx.reaches(by, l.path)) : libs
-      return handled(searchLibraries(fenced, p.query as string, p.kind as never))
+      return handled(await searchLibraries(fenced, p.query as string, p.kind as never))
     }
     case 'work.office.filesFetch': {
       const { library, path } = admitted(ctx, by, m, p.source as CanvasSource)
@@ -91,8 +103,11 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     case 'work.office.filesRead': {
       const { path } = admitted(ctx, by, m, p.source as CanvasSource)
       if (p.as === 'bytes') {
-        await fetchFile('', path, signal)
+        // Bytes leave this host only for another host of his making a copy its workspace allows (it checks its own switch).
+        if (!by.peer) throw new Error('A file\'s bytes go only to another host of his, for a copy he allowed.')
+        // The size is known before the download: a file too big to copy is never fetched for it.
         if (statSync(path).size > BYTES_MAX) throw new Error(`${basename(path)} is over ${BYTES_MAX / 1024 / 1024} MB: open it in its app.`)
+        await fetchFile('', path, signal)
         return handled({ name: basename(path), data: readFileSync(path).toString('base64') })
       }
       return handled({ name: basename(path), ...(await readText(path)) })
@@ -109,6 +124,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
     case 'work.office.filesCopySet':
       setCopyAllowed(ctx.db, p.workspaceId as string, p.on as boolean)
+      // Turned off, the copies its threads hold go too.
+      if (!p.on) dropCopies(ctx, { workspaceId: p.workspaceId as string })
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
     case 'work.office.filesCopy': {
       const scope = ctx.scopeOf(p.sessionId as string)

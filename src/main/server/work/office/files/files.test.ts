@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -286,9 +286,15 @@ describe('the tools', () => {
     const libs = JSON.parse(text(await tools().teams_libraries!.run({}, ctx))) as { id: string; team: string }[]
     const esports = libs.find((l) => l.team === 'Purdue Esports')!.id
     await tools().teams_open!.run({ library: esports, file: 'General/Plan.docx' }, ctx)
-    const copy = join(copyDirOf(ctx.dataDir, 's1'), 'Plan.docx')
+    expect(canvas).toEqual([{ kind: 'document', source: { at: 'file', host: 'env_box', path: expect.stringContaining(copyDirOf(ctx.dataDir, 's1')) }, title: 'Plan.docx' }])
+    const copy = (canvas[0]!.source as { path: string }).path
     expect(readFileSync(copy)).toEqual(readFileSync(join(team, 'General', 'Plan.docx')))
-    expect(canvas).toEqual([{ kind: 'document', source: { at: 'file', host: 'env_box', path: copy }, title: 'Plan.docx' }])
+    // Turned off, the copies its threads hold go too; a deleted thread's go with it.
+    await module.handle!({ id: '1', method: 'work.office.filesCopySet', params: { workspaceId: 'w1', on: false } } as unknown as ClientRequest, ctx, window)
+    expect(existsSync(copy)).toBe(false)
+    mkdirSync(copyDirOf(ctx.dataDir, 's2'), { recursive: true })
+    module.sessionsRemoved!(['s2'], ctx)
+    expect(existsSync(copyDirOf(ctx.dataDir, 's2'))).toBe(false)
   })
 
   it("opens a file in the canvas of a thread on the file's own host", async () => {
@@ -298,6 +304,49 @@ describe('the tools', () => {
     const esports = libs.find((l) => l.team === 'Purdue Esports')!.id
     await tools().teams_open!.run({ library: esports, file: 'General/Cloud only.pdf' }, ctx)
     expect(canvas).toEqual([{ kind: 'pdf', source: { at: 'file', host: 'env_mac', path: join(team, 'General', 'Cloud only.pdf') }, title: 'Cloud only.pdf' }])
+  })
+})
+
+describe('from the review', () => {
+  it('leaves a consumer OneDrive out, and lists a folder added through a link once, by its real path', async () => {
+    mkdirSync(join(cloud, 'OneDrive-Personal'), { recursive: true })
+    symlinkSync(team, join(base, 'Esports link'))
+    await call('work.office.filesSetRoots', { roots: [{ folder: join(base, 'Esports link'), web: 'https://p.sharepoint.com/e' }] })
+    const { libraries } = (await call('work.office.filesLibraries', {})) as { libraries: TeamsLibrary[] }
+    expect(libraries.map((l) => l.team)).toEqual(['My files', 'Purdue Esports', 'RecWell'])
+    expect(libraries.find((l) => l.team === 'Purdue Esports')).toMatchObject({ path: realpathSync(team), web: 'https://p.sharepoint.com/e' })
+  })
+
+  it('gives bytes only to another host of his, and refuses a file too big before it downloads', async () => {
+    await expect(call('work.office.filesRead', { ...file(join(team, 'General', 'notes.txt')), as: 'bytes' })).rejects.toThrow('another host')
+    const peer: Caller = { kind: 'remote', caps: ['read'], peer: 'env_box' }
+    await expect(call('work.office.filesRead', { ...file(join(team, 'General', 'notes.txt')), as: 'bytes' }, peer)).resolves.toMatchObject({ name: 'notes.txt' })
+    const big = join(team, 'General', 'Recording.mp4')
+    writeFileSync(big, '')
+    truncateSync(big, 60 * 1024 * 1024)
+    await expect(call('work.office.filesRead', { ...file(big), as: 'bytes' }, peer)).rejects.toThrow('over 48 MB')
+    expect(isLocal(statSync(big))).toBe(false)
+  })
+
+  it('reads only the head of a long text file', async () => {
+    writeFileSync(join(team, 'General', 'big.log'), 'x'.repeat(1_000_000))
+    const got = (await call('work.office.filesRead', file(join(team, 'General', 'big.log')))) as { text: string; truncated: boolean }
+    expect(got.text.length).toBe(200_000)
+    expect(got.truncated).toBe(true)
+  })
+
+  it('stops inflating an entry at the most it may be, whatever size the zip claims', () => {
+    const path = join(base, 'bomb.docx')
+    const bytes = zip({ 'docProps/core.xml': 'a'.repeat(2_000_000) })
+    // The maker says the entry is ten bytes; it inflates to two million.
+    bytes.writeUInt32LE(10, bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])) + 24)
+    writeFileSync(path, bytes)
+    expect(zipEntries(path, ['docProps/core.xml'], 1024).size).toBe(0)
+  })
+
+  it('lets a name that starts with two dots through the fence', async () => {
+    writeFileSync(join(team, '..notes'), 'ok')
+    await expect(call('work.office.filesRead', file(join(team, '..notes')))).rejects.toThrow('no text')
   })
 })
 

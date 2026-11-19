@@ -73,6 +73,10 @@ const LONG_WRITES: Readonly<Record<string, number>> = {
   "remote.environments.add": LONG_TIMEOUT_MS,
   // The box may start ONLYOFFICE before it answers the full editor's page.
   "work.sheets.switch": LONG_TIMEOUT_MS,
+  // OneDrive downloads a cloud-only Teams file (up to ten minutes on the host); a copy carries one over the host link.
+  "work.office.filesFetch": 660_000,
+  "work.office.filesCopy": LONG_TIMEOUT_MS,
+  "work.office.filesSearch": LONG_TIMEOUT_MS,
 };
 
 /** The deadline a method gets by default: by its name, so an unknown method gets the read's 30 s. */

@@ -15,7 +15,7 @@ import { macCarrier } from './mac'
 import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
-import { filesHandle } from './files/handle'
+import { dropCopies, filesHandle } from './files/handle'
 import { ensureFilesTables, librariesOf, libraryOf } from './files/library'
 import { teamsTools } from './files/tools'
 
@@ -123,6 +123,10 @@ export const office: WorkModule = {
       }
     }
     return NOT_HANDLED
+  },
+  // A deleted thread's copies of Teams files go with it.
+  sessionsRemoved(ids, ctx) {
+    dropCopies(ctx, { sessions: ids })
   },
   tools: () => [...addinTools(hereOf), ...teamsTools(() => (started ? (hereOf(started)?.carrier ?? null) : null))],
   acts: officeActs({ carrier: () => (started ? (hereOf(started)?.carrier ?? null) : null) }),

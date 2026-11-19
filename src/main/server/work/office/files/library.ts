@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { createReadStream, readdirSync, realpathSync, statSync, type Stats } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, relative, resolve, sep } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -92,7 +92,8 @@ function found(host: string): TeamsLibrary[] {
         const channels = library === null || TEAM_LIBRARIES.test(library)
         out.push({ id: libraryId(host, path), host, path, team, library: channels ? null : library, tenant: shared[1]!, kind: channels ? 'channels' : 'library', channels: channels ? dirsIn(path) : [], web: null, found: true })
       }
-    } else if (mine) {
+    } else if (mine && mine[1] !== 'Personal') {
+      // A consumer OneDrive (`OneDrive-Personal`) is no Teams file; his work OneDrive holds the shortcuts he adds to My files.
       const path = join(base, top)
       out.push({ id: libraryId(host, path), host, path, team: 'My files', library: null, tenant: mine[1]!, kind: 'mine', channels: [], web: null, found: true })
     }
@@ -100,14 +101,25 @@ function found(host: string): TeamsLibrary[] {
   return out
 }
 
-/** Every library on this host, his edits laid over what was found, by team then library. */
+/**
+ * Every library on this host, his edits laid over what was found, by team then library. Each is
+ * named by its real path (a folder he added through a link, as an older OneDrive's `~/<Tenant>` is,
+ * lands on the library it points to), so every entry's path starts with its library's.
+ */
 export function librariesOf(db: DatabaseSync, host: string): TeamsLibrary[] {
-  const roots = rootsOf(db)
+  const roots = rootsOf(db).map((r) => ({ ...r, folder: real(r.folder) ?? r.folder }))
   const edit = new Map(roots.map((r) => [r.folder, r]))
-  const libs = found(host).filter((l) => !edit.get(l.path)?.off)
-  const known = new Set(libs.map((l) => l.path))
+  const libs: TeamsLibrary[] = []
+  const known = new Set<string>()
+  for (const l of found(host)) {
+    const path = real(l.path)
+    if (!path || known.has(path) || edit.get(path)?.off) continue
+    known.add(path)
+    libs.push({ ...l, id: libraryId(host, path), path })
+  }
   for (const r of roots) {
-    if (r.off || known.has(r.folder)) continue
+    if (r.off || known.has(r.folder) || !real(r.folder)) continue
+    known.add(r.folder)
     const { team, library } = splitLibraryName(basename(r.folder))
     libs.push({ id: libraryId(host, r.folder), host, path: r.folder, team, library, tenant: null, kind: 'folder', channels: [], web: null, found: false })
   }
@@ -127,7 +139,7 @@ const real = (path: string): string | null => {
 }
 const within = (path: string, dir: string): boolean => {
   const r = relative(dir, path)
-  return r === '' || (!r.startsWith('..') && !r.startsWith(sep) && !/^[a-zA-Z]:/.test(r))
+  return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !r.startsWith(sep) && !/^[a-zA-Z]:/.test(r))
 }
 
 /**
@@ -184,24 +196,32 @@ export function listFolder(library: TeamsLibrary, dir: string): TeamsEntry[] {
 
 export const SEARCH_MAX = 200
 const SEARCH_DIRS = 20_000
+const SEARCH_HITS = 1_000
+const SEARCH_MS = 15_000
 
-/** Files and folders whose names hold every word of `query`, newest first; `more`: the walk stopped before the end. */
-export function searchLibraries(libs: readonly TeamsLibrary[], query: string, kind?: TeamsFileKind): { entries: TeamsEntry[]; more: boolean } {
+/**
+ * Files and folders whose names hold every word of `query`, newest first; `more`: the walk stopped
+ * before the end (20,000 folders, 1,000 names or 15 seconds). It reads names only and yields between
+ * folders, so a walk over a library OneDrive has not listed yet never holds the host; only the hits
+ * shown are looked at closer.
+ */
+export async function searchLibraries(libs: readonly TeamsLibrary[], query: string, kind?: TeamsFileKind, now = Date.now): Promise<{ entries: TeamsEntry[]; more: boolean }> {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-  const hits: TeamsEntry[] = []
+  const hits: { library: string; path: string }[] = []
+  const until = now() + SEARCH_MS
   let dirs = 0
   let more = false
-  for (const library of libs) {
+  walk: for (const library of libs) {
     const queue = [library.path]
     while (queue.length) {
-      if (++dirs > SEARCH_DIRS) {
+      if (++dirs > SEARCH_DIRS || hits.length >= SEARCH_HITS || now() > until) {
         more = true
-        break
+        break walk
       }
       const dir = queue.shift()!
       let items
       try {
-        items = readdirSync(dir, { withFileTypes: true })
+        items = await readdir(dir, { withFileTypes: true })
       } catch {
         continue
       }
@@ -212,16 +232,20 @@ export function searchLibraries(libs: readonly TeamsLibrary[], query: string, ki
         const name = d.name.toLowerCase()
         if (!words.every((w) => name.includes(w))) continue
         if (kind && (d.isDirectory() ? 'folder' : teamsKindOf(d.name)) !== kind) continue
-        try {
-          hits.push(entryOf(library.id, path))
-        } catch {
-          continue
-        }
+        hits.push({ library: library.id, path })
       }
     }
   }
-  hits.sort((a, b) => b.modified - a.modified)
-  return { entries: hits.slice(0, SEARCH_MAX), more: more || hits.length > SEARCH_MAX }
+  const stated: { hit: { library: string; path: string }; s: Stats }[] = []
+  for (const hit of hits) {
+    try {
+      stated.push({ hit, s: await stat(hit.path) })
+    } catch {
+      continue
+    }
+  }
+  stated.sort((a, b) => b.s.mtimeMs - a.s.mtimeMs)
+  return { entries: stated.slice(0, SEARCH_MAX).map(({ hit, s }) => entryOf(hit.library, hit.path, s)), more: more || stated.length > SEARCH_MAX }
 }
 
 export const FETCH_MS = 10 * 60_000
@@ -230,6 +254,7 @@ export const FETCH_MS = 10 * 60_000
 export async function fetchFile(library: string, path: string, signal?: AbortSignal): Promise<TeamsEntry> {
   const before = statSync(path)
   if (before.isDirectory()) throw new Error('That is a folder.')
+  if (signal?.aborted) throw new Error('cancelled')
   if (!isLocal(before)) {
     await new Promise<void>((done, fail) => {
       const stream = createReadStream(path, { highWaterMark: 1024 * 1024 })
@@ -245,6 +270,8 @@ export async function fetchFile(library: string, path: string, signal?: AbortSig
 }
 
 export const TEXT_MAX = 200_000
+/** The most a Word file or deck may be for its text to be read (checked before it downloads). */
+const OFFICE_TEXT_MAX = 256 * 1024 * 1024
 const decodeXml = (s: string): string =>
   s.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-f]+);/gi, (m, e: string) => {
     const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" }
@@ -269,9 +296,19 @@ export async function readText(path: string): Promise<{ text: string; truncated:
   const kind = teamsKindOf(path)
   const cut = (text: string) => ({ text: text.slice(0, TEXT_MAX), truncated: text.length > TEXT_MAX })
   if (kind === 'text' || /\.csv$/i.test(path)) {
-    await fetchFile('', path)
-    return cut((await readFile(path, 'utf8')).replace(/^﻿/, ''))
+    // Only the head is read: a log or a CSV may run to gigabytes, and OneDrive downloads what is read.
+    const file = await open(path, 'r')
+    try {
+      const buf = Buffer.alloc(TEXT_MAX * 4)
+      const { bytesRead } = await file.read(buf, 0, buf.length, 0)
+      const text = buf.subarray(0, bytesRead).toString('utf8').replace(/^\uFEFF/, '')
+      const { size } = await file.stat()
+      return { text: text.slice(0, TEXT_MAX), truncated: text.length > TEXT_MAX || size > bytesRead }
+    } finally {
+      await file.close()
+    }
   }
+  if (statSync(path).size > OFFICE_TEXT_MAX) throw new Error(`${basename(path)} is too big to read here: open it in its app.`)
   if (/\.(docx|docm)$/i.test(path)) {
     await fetchFile('', path)
     const xml = zipEntries(path, ['word/document.xml'], 64 * 1024 * 1024).get('word/document.xml')

@@ -1,7 +1,7 @@
 import type { ProjectMeta, WorkspaceMeta as WireWorkspaceMeta } from "@shared/domain";
 import type { SectorKey, WorkspaceWorkSettings } from "@shared/work";
 import type { LifeosStatus } from "@shared/contract-work-lifeos";
-import { registry } from "../../lib/connection";
+import { LOCAL_ENVIRONMENT_ID, registry } from "../../lib/connection";
 import type { Environment } from "../../lib/connection/types";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
@@ -51,6 +51,23 @@ export async function openLifeosProject(workspace: Pick<WorkspaceMeta, "id" | "e
   await workspaceStore.refresh(link);
   return { ...project, environmentId: workspace.environmentId };
 }
+
+let localHost: Promise<string | null> | null = null;
+/** This machine's own host id: the window names it "local", a host names it by its id (`mayUseDesktop` holds host ids). */
+export function localHostId(): Promise<string | null> {
+  const link = registry.link(LOCAL_ENVIRONMENT_ID);
+  if (!link) return Promise.resolve(null);
+  localHost ??= link.request<{ environmentId: string }>("remote.status", {}).then(
+    (status) => status.environmentId,
+    () => ((localHost = null), null),
+  );
+  return localHost;
+}
+
+/** A host id as the window's link names it ("local" for this machine), or null for a host it has no link to. */
+export const linkIdOfHost = (hostId: string, local: string | null): string | null => (registry.has(hostId) ? hostId : hostId === local ? LOCAL_ENVIRONMENT_ID : null);
+/** A link's host id: this machine's own, else the link's. */
+export const hostIdOfLink = (linkId: string, local: string | null): string => (linkId === LOCAL_ENVIRONMENT_ID && local ? local : linkId);
 
 export function workspaceSettings(workspace: Pick<WorkspaceMeta, "id" | "environmentId">): Promise<WorkspaceWorkSettings> {
   return registry.linkOf(workspace.environmentId).request<WorkspaceWorkSettings>("work.workspace.get", { workspaceId: workspace.id });

@@ -18,8 +18,11 @@ Add shortcut to My files) under `~/Library/CloudStorage`:
   folders are the channels (`kind: 'channels'`); any other library is
   `kind: 'library'`. The last " - " parts the team from the library.
 
-Other folders under CloudStorage (Dropbox, Google Drive, iCloud) are not
-Teams files. His own edits to the list are rows of `work_office_files`
+Other folders under CloudStorage (Dropbox, Google Drive, iCloud, a consumer
+`OneDrive-Personal`) are not Teams files. His work OneDrive is, since the
+shortcuts he adds to My files land there. Every library is named by its real
+path, so a folder added through a link (an older OneDrive's `~/<Tenant>/`)
+is the library it points to, listed once. His own edits to the list are rows of `work_office_files`
 (`roots`: a folder added, `kind: 'folder'`; a found one turned off; a folder's
 web address), so a library he keeps somewhere else (an older OneDrive's
 `~/<Tenant>/`) counts too.
@@ -37,7 +40,14 @@ What the disk says, and how it is read (`office/files/library.ts`):
   never from a cloud-only one, and cached by path, time and size. Other files
   have no who: the synced folder does not carry SharePoint's "Modified by".
 - **Text.** A Word file's paragraphs (`word/document.xml`), a deck's slides in
-  order, a text or CSV file as it is, cut at 200,000 characters. A workbook is
+  order (256 MB at most, checked before it downloads), a text or CSV file's
+  head (only the first 800 KB is read), cut at 200,000 characters. The zip
+  reader inflates an entry no further than its limit, whatever size the file
+  claims for it.
+- **Search** reads names only and yields between folders (async), stopping at
+  20,000 folders, 1,000 names or 15 seconds (`more`); only the 200 shown are
+  looked at closer, so a walk over a library OneDrive has not listed yet never
+  holds the host. A workbook is
   read through Excel (`office_range_read`), a PDF in the canvas.
 
 ## Where the files live (the Purdue rule)
@@ -51,10 +61,20 @@ to the Mac and back. Nothing is mirrored anywhere.
 `work_office_files` as `copy:<workspaceId>` on the workspace's own host) is
 **off by default**. Off, a file on another host than the workspace's opens in
 its app on that host and never in a thread's canvas here. On, opening such a
-file copies it (48 MB at most) into the thread's own folder of this host's
-attachments (`<userData>/attachments/teams-files/<sessionId>/`, a root a
-remote key reaches) and opens the copy; a change to the real file still goes
-through the Office tools on the host that has it.
+file copies it (48 MB at most, checked before it downloads) into the thread's
+own folder of this host's attachments
+(`<userData>/attachments/teams-files/<sessionId>/<hash of its source>/`, a
+root a remote key reaches) and opens the copy, a snapshot: a change to the
+real file still goes through the Office tools on the host that has it. A
+thread's copies are deleted with the thread (the module's `sessionsRemoved`),
+and all of a workspace's when he turns the switch off.
+
+The switch is the workspace host's; the file's host gives a file's bytes
+(`filesRead {as: 'bytes'}`) only to another host of his over the host link,
+never to a window or a remote key. Reading a file's **text** into a thread
+(`teams_read`, `office_range_read`) is a read on request, not a copy: that
+text is in the thread's transcript on the thread's host, whatever the switch
+says.
 
 ## The fence
 
@@ -100,6 +120,21 @@ Word file as a document (imported first, as every Word file is), a deck as
 slides, a PDF as a pdf, a picture or video as media; a CSV, text or other file
 opens in its app.
 
+## Host ids
+
+A workspace's desktops (`mayUseDesktop`) are host ids, as `ctx.peer` and the
+tools read them. The window names its own machine `local`, so it translates
+both ways (`hostIdOfLink`, `linkIdOfHost` in work/shell/actions.ts, over
+`localHostId()`, the local host's `remote.status`): the Computer use switch
+writes the host id (before this, a Mac's window wrote `local` for itself), and
+the Files view reaches each desktop through its link. Each library the view
+holds carries both: `host` (the host's id) and `env` (the link it came from).
+
+The renderer's deadlines (lib/connection/transport.ts `LONG_WRITES`):
+`filesFetch` 11 minutes, `filesCopy` and `filesSearch` 2 minutes. A thread's
+call to another host is held to the link's 120 seconds, so `teams_open`
+downloads nothing for a file it only opens in its app there.
+
 ## The tools
 
 `office/files/tools.ts`, mounted with the office tools. A thread reaches the
@@ -134,8 +169,10 @@ workspace's host and each desktop it may use (`filesLibraries`) and shows:
 Opening a file (`openWay`): a cloud-only file shows Downloading… in its row
 first, then Opening…. On the workspace's own host it opens in a new thread of
 the workspace, titled for the file, in that thread's canvas (and an Office
-file in its app, which stands behind the item); with the copy he allowed, from
-the copy; otherwise in its app where it lies. A failure is one toast.
+file in its app, which stands behind the item), the thread made only once
+everything else worked; with the copy he allowed, from the copy, and a thread
+whose copy failed is deleted again; otherwise in its app where it lies, which
+downloads it itself. A failure is one toast.
 
 ## Settings
 
