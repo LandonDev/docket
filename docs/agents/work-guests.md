@@ -123,6 +123,12 @@ the pass (eight hours, in memory: a restart of main or the service ends
 it). The item opens on its own route (`/w/doc/<id>`, `/w/sheet/<id>`) with
 the owner's token; the ticket leaves the address once used.
 
+The phone (milestone 47) asks a ticket each time it shows a LifeOS document
+or sheet in a thread's Item segment and loads the address in a WKWebView
+with a store of its own that keeps nothing (`.nonPersistent()`), so each
+open is a new pass. Make a Guest Link in the item's More calls
+`work.guests.create` (approve) and shows the address once.
+
 ## The screens
 
 - **Share** on a document's and a sheet's bar (`guests/Share.tsx`, mounted

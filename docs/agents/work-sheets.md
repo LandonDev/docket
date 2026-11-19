@@ -326,3 +326,8 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   included.
 - On a phone the page loads the desktop editor, cramped: Community's mobile
   editor is view-only, so the config asks for the desktop one.
+  Milestone 47 ran the grid in real WebKit (macOS WKWebView and the iOS 27
+  simulator; .temp-code/plans/landed/M47/webkit/): it paints, takes edits
+  and recalculates as in Chromium, so a sheet on the phone is editable.
+  Univer focuses its hidden input on load, which raises the keyboard; the
+  phone's web view blurs any focus before his first touch.
