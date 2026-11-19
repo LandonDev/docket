@@ -49,12 +49,13 @@ describe('the hosted pages', () => {
     const renderer = (config as { renderer: { plugins: { name?: string }[] } }).renderer
     expect(renderer.plugins.flat().map((p) => p?.name)).toContain('temp-code-hosted-pages')
   })
-  it('build from the stubs: one page per entry, each saying which milestone builds it, none loading a script', async () => {
+  it('build one page per entry: the stubs say which milestone builds them and load no script; a built page loads its own from the shared assets', async () => {
     const plugin = hostedPages(join(out, 'hosted'))
     expect(plugin.apply).toBe('build')
     await (plugin.closeBundle as () => Promise<void>).call({})
-    expect(readdirSync(join(out, 'hosted')).sort()).toEqual(['form', 'guest', 'index.html', 'item'])
-    const pages = { 'item/index.html': 31, 'guest/index.html': 31, 'form/index.html': 36 }
+    // `assets` is Vite's one folder for every page's scripts and styles, served under HOSTED_BASE on the page's own origin.
+    expect(readdirSync(join(out, 'hosted')).sort()).toEqual(['assets', 'form', 'guest', 'index.html', 'item'])
+    const pages = { 'item/index.html': 31, 'guest/index.html': 31 }
     for (const [page, milestone] of Object.entries(pages)) {
       const html = readFileSync(join(out, 'hosted', page), 'utf8')
       expect(html, page).toContain(`(milestone ${milestone})`)
@@ -62,6 +63,14 @@ describe('the hosted pages', () => {
       expect(html, page).not.toContain('<script')
       expect(html, page).toContain("default-src 'none'")
     }
+    // The form page (milestone 36) is built: its script and stylesheet only, from the assets, under a CSP of its own origin.
+    const form = readFileSync(join(out, 'hosted', 'form', 'index.html'), 'utf8')
+    const loads = [...form.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1])
+    expect(loads.length).toBeGreaterThanOrEqual(2)
+    for (const url of loads) expect(url.startsWith(`${HOSTED_BASE}assets/`), url).toBe(true)
+    for (const url of loads) expect(existsSync(join(out, 'hosted', url.slice(HOSTED_BASE.length))), url).toBe(true)
+    expect(form).toContain("script-src 'self'")
+    expect(form).not.toContain('Not built')
     // The index is the service's own (milestone 18): a plain page that runs nothing.
     const index = readFileSync(join(out, 'hosted', 'index.html'), 'utf8')
     expect(index).not.toContain('<script')

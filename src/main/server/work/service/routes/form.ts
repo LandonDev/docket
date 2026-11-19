@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, readFileSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import { FORM_ANSWER_MAX, FORM_PUBLIC_ID, type PublicForm, type PublishedForm } from '@shared/contract-work-forms'
+import type { PublicForm, PublishedForm } from '@shared/contract-work-forms'
 import type { A1Cell } from '../../sheets/host/wire'
 import { HOSTED_CSP } from './hosted'
 import { hostOf } from './internalSheet'
@@ -23,6 +23,11 @@ import { BASE_HEADERS, sendText, type PublicRoute, type RouteCtx } from './route
  * row count.
  */
 
+// The service tree takes only types from @shared: a value would bring the contract (and zod) into its bundle.
+/** A public id as `newPublicId` makes them (forms/store.ts): 12 random bytes, base64url. */
+const PUBLIC_ID = /^[A-Za-z0-9_-]{16}$/
+/** The longest answer the page takes: a short answer, then a long one. */
+export const ANSWER_MAX = { short: 500, long: 5000 } as const
 const BODY_MAX = 64 * 1024
 /** Answers one caller may send one form in ten minutes, and every caller together. */
 const PER_CALLER = 10
@@ -95,7 +100,7 @@ export function checkAnswers(form: Pick<PublicForm, 'questions'>, raw: unknown):
       if (q.required) return { error: 'This question needs an answer.', question: q.id }
       continue
     }
-    if (text.length > (q.type === 'long' ? FORM_ANSWER_MAX.long : FORM_ANSWER_MAX.short)) return { error: 'This answer is too long.', question: q.id }
+    if (text.length > (q.type === 'long' ? ANSWER_MAX.long : ANSWER_MAX.short)) return { error: 'This answer is too long.', question: q.id }
     if ((q.type === 'choice' || q.type === 'dropdown') && !q.options?.includes(text)) return { error: 'Pick one of the answers.', question: q.id }
     ok[q.id] = text
   }
@@ -165,7 +170,7 @@ export const formRoute: PublicRoute = {
   async http(req, res, ctx, m) {
     const parts = /^\/([^/]+)(\/form)?$/.exec(m[1] ?? '')
     const id = parts?.[1] ?? ''
-    const form = FORM_PUBLIC_ID.test(id) ? readForm(ctx, id) : null
+    const form = PUBLIC_ID.test(id) ? readForm(ctx, id) : null
     if (!form) return sendText(res, 404, 'There is no form here.')
     const method = req.method ?? 'GET'
     if (parts?.[2]) {

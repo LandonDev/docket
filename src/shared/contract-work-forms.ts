@@ -24,9 +24,6 @@ export type FormQuestionType = (typeof FORM_QUESTION_TYPES)[number]
 
 export const FORM_QUESTIONS_MAX = 100
 export const FORM_OPTIONS_MAX = 50
-/** The longest answer the public page takes: a short answer, then a long one. */
-export const FORM_ANSWER_MAX = { short: 500, long: 5000 } as const
-
 const qid = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/)
 export const FormQuestionSchema = z.object({
   id: qid,
@@ -110,7 +107,6 @@ export interface PublishedForm extends PublicForm {
   columns: string[]
 }
 
-export const FORM_PUBLIC_ID = /^[A-Za-z0-9_-]{16}$/
 /** The responses sheet's column A, filled on every answer. */
 export const FORM_SUBMITTED = 'Submitted'
 
