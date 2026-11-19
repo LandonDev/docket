@@ -214,3 +214,6 @@ struct ItemLoad<Value, Content: View>: View {
         }
     }
 }
+
+/// The guest link sheet is keyed by the item it shares.
+extension CanvasItem: @retroactive Identifiable {}

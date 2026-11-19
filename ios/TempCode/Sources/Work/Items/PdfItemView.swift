@@ -40,7 +40,7 @@ struct SlidesItemView: View {
         ItemLoad(read: { try await load() }) { loaded, reload in
             VStack(spacing: 0) {
                 if !loaded.deck.changes.isEmpty, client.work.canApprove {
-                    ReviewRow(words: loaded.deck.changes.count == 1 ? "1 change" : "\(loaded.deck.changes.count) changes", busy: deciding) { accept in
+                    DeckReviewRow(words: loaded.deck.changes.count == 1 ? "1 change" : "\(loaded.deck.changes.count) changes", busy: deciding) { accept in
                         Task { await decide(accept, reload: reload) }
                     }
                     Divider()
@@ -57,10 +57,11 @@ struct SlidesItemView: View {
     private func load() async throws -> Loaded {
         let deck = try await client.work.canvas.deck(item.id)
         let proposed = deck.renders.proposed != nil && !deck.changes.isEmpty
-        guard let render = proposed ? deck.renders.proposed : deck.renders.file else {
+        // The two renders are distinct generated types; only the size is read.
+        guard let size = proposed ? deck.renders.proposed?.size : deck.renders.file?.size else {
             throw DeckError.notRendered(deck.renderError ?? "The deck has not been drawn yet.")
         }
-        return Loaded(deck: deck, data: try await client.work.canvas.deckData(item.id, proposed: proposed, size: Int(render.size)))
+        return Loaded(deck: deck, data: try await client.work.canvas.deckData(item.id, proposed: proposed, size: Int(size)))
     }
 
     private func decide(_ accept: Bool, reload: () -> Void) async {
@@ -85,7 +86,7 @@ struct SlidesItemView: View {
 }
 
 /// The review row under the segment bar (44 pt): what waits, Reject, and Accept as the one tinted button.
-struct ReviewRow: View {
+struct DeckReviewRow: View {
     let words: String
     var busy = false
     let decide: (_ accept: Bool) -> Void
