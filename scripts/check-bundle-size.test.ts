@@ -54,4 +54,34 @@ describe('checkBundle', () => {
   it('passes a clean bundle', () => {
     expect(checkBundle(map, 4096, []).ok).toBe(true)
   })
+
+  const withModule = (id: string): BundleMap => ({
+    chunks: { 'assets/index-a.js': { type: 'chunk', entry: true, bytes: 1024, imports: ['assets/shared-b.js'], dynamicImports: ['assets/work-canvas-c.js'], modules: {} }, 'assets/shared-b.js': { type: 'chunk', entry: false, bytes: 10, imports: [], dynamicImports: [], modules: { [id]: 10 } } },
+  })
+
+  it('fails when a lazy surface is in the first paint', () => {
+    const verdict = checkBundle(withModule('/repo/src/renderer/src/surfaces/SettingsView.tsx'), 4096, [])
+    expect(verdict.ok).toBe(false)
+    expect(verdict.leaked).toEqual(['src/renderer/src/surfaces/SettingsView.tsx (in assets/shared-b.js)'])
+  })
+
+  it('fails when anything of Work is in the first paint', () => {
+    for (const id of [
+      '/repo/src/renderer/src/work/canvas/CanvasPane.tsx',
+      '/repo/src/shared/work/canvas.ts',
+      '/repo/src/shared/contract-work.ts',
+      '/repo/src/shared/contract-work-mail.ts',
+      '/repo/node_modules/work-kit/src/ui/button.tsx',
+    ]) {
+      const verdict = checkBundle(withModule(id), 4096, [])
+      expect(verdict.ok, id).toBe(false)
+      expect(verdict.leaked[0], id).toContain(id.slice('/repo/'.length))
+    }
+  })
+
+  it('lets Work ride a lazy chunk', () => {
+    const map = withModule('/repo/src/renderer/src/lib/session.ts')
+    map.chunks['assets/work-canvas-c.js'] = { type: 'chunk', entry: false, bytes: 10, imports: [], dynamicImports: [], modules: { '/repo/src/renderer/src/work/canvas/CanvasPane.tsx': 10 } }
+    expect(checkBundle(map, 4096, []).ok).toBe(true)
+  })
 })

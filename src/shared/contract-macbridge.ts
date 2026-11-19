@@ -4,7 +4,8 @@ import type { PublishCallParams } from './contract-publish'
 import { MAC_RUN_BACKGROUND, type MacPeerMethod } from './contract-macjobs'
 import type { CrossHostCallParams } from './contract-crosshost'
 import type { HostDevicesCallParams } from './contract-hostdevices'
-import { MacPresenceSchema, type RelayCallParams } from './contract-relay'
+import type { RelayCallParams } from './contract-relay'
+import { MacPresenceSchema } from './macPresence'
 import { ordinal } from './statusWords'
 
 // The Mac bridge (docs/box.md "The Mac bridge: what a box thread may touch

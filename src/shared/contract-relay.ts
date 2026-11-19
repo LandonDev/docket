@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { ClientRequest } from './contract'
 import { WORK_NOT_CARRIED, WORK_RELAY } from './contract-work'
 import type { BuildFacts } from './deployDrift'
+import { MacPresenceSchema, PowerStateSchema, ScreenStateSchema, type MacPresence, type PowerState, type ScreenState } from './macPresence'
 
 /**
  * The relay (docs/box.md "The relay: the phone and the API reach the Mac
@@ -36,21 +37,9 @@ export const RELAY_HEARTBEAT_MS = 60_000
 /** The box keeps the last picture of this many hosts. */
 export const RELAY_HOSTS_MAX = 16
 
-export const ScreenStateSchema = z.enum(['unlocked', 'locked', 'unknown'])
-export const PowerStateSchema = z.enum(['awake', 'asleep', 'unknown'])
-export type ScreenState = z.infer<typeof ScreenStateSchema>
-export type PowerState = z.infer<typeof PowerStateSchema>
-
-/** What a host reports of itself (src/main/presence.ts). */
-export const MacPresenceSchema = z.object({
-  screen: ScreenStateSchema,
-  power: PowerStateSchema,
-  /** When this picture was taken on the host (its clock). */
-  at: z.number().int(),
-  /** The screen saver is up and leaving it needs no password (src/shared/screenState.ts): `screen` reads unlocked, and screen work dismisses it first. Absent from an older host. */
-  saver: z.boolean().optional()
-})
-export type MacPresence = z.infer<typeof MacPresenceSchema>
+// A host's own picture of its screen and power lives in macPresence.ts, apart
+// from this file's method table: the renderer's first paint reads it.
+export { MacPresenceSchema, PowerStateSchema, ScreenStateSchema, type MacPresence, type PowerState, type ScreenState }
 
 /** One host reachable through the relay, as the box sees it (wireSchemas.ts HostPresenceSchema pins it). */
 export interface HostPresence {

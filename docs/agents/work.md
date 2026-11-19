@@ -33,6 +33,30 @@ own account goes in `docs/agents/work-<pillar>.md`.
   mounted and on as with no Work at all (work/claude-driver.test.ts,
   work/harnesses.test.ts).
 
+## The first paint
+
+Nothing of Work is in the renderer's first paint, switch on or off: no
+module under `src/renderer/src/work/`, none of `src/shared/work/`, no
+`src/shared/contract-work*.ts`, nothing of `work-kit`. Two guards hold it,
+from one list (`WORK_NEVER_IN_ENTRY`, scripts/check-bundle-size.ts):
+
+- `bun run check:bundle` judges the built entry chunk (the release gate);
+- `scripts/entryGraph.test.ts` walks the entry's static imports in the
+  source (scripts/entry-graph.ts), so a thread that never builds still
+  hears of it, with the import chain that let it in. `bun
+  scripts/entry-graph.ts <part of a path>` prints a chain by hand.
+
+So a module the first paint loads (the rail, the transcript, the composer,
+the thread header, and everything they import) takes Work's types with
+`import type`, reads a row by its own field (`workspace.kind === 'work'`,
+`session.scope === 'work'`) and reaches a Work screen through a lazy chunk
+(surfaces/chunks.ts). The shared files are zod schemas; one value import of
+`@shared/work` from the first paint would carry all of them. The contract
+mount grows with every pillar, which is why the relay's method table
+(`contract-relay.ts`, which spreads `WORK_RELAY`) must stay out too: a
+host's presence schemas live in `src/shared/macPresence.ts` so the Mac
+bridge's contract, which the first paint does read, does not import it.
+
 ## The core columns
 
 All defaulted, so the build before them still reads and writes the database

@@ -77,7 +77,7 @@
   selectChunk: the composer's
   permission, thread type and model setting pickers and every ChoiceSelect
   (asking for the chunk as it mounts) draw a cold trigger of the same
-  classes, size and width until it lands, components/lazy-select.tsx; only the dialog is in the first paint). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
+  classes, size and width until it lands, components/lazy-select.tsx; only the dialog is in the first paint). It also fails when anything of Work is in the entry (`WORK_NEVER_IN_ENTRY`: `src/renderer/src/work/`, `src/shared/work/`, `src/shared/contract-work*`, `work-kit`; docs/agents/work.md "The first paint"), and `scripts/entryGraph.test.ts` holds both lists on the source with no build (scripts/entry-graph.ts walks the entry's static imports that survive the build and names the chain to a module that broke the rule). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows.
   `/ui` serves the chunks
   as immutable module scripts behind the cookie (remote/ui.ts).
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)

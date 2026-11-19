@@ -7,7 +7,11 @@
  *      parses before the rail paints) stays under BUDGET_BYTES;
  *   2. none of the lazy surfaces (surfaces/chunks.ts) is in that closure — a
  *      static import from the main chunk would silently fold a chunk back in
- *      long before the budget noticed;
+ *      long before the budget noticed; and nothing of Work is (`WORK_NEVER_IN_ENTRY`):
+ *      with the Work switch off the app is the code app, so its first paint
+ *      carries no Work screen, no Work wire type's schema and no part of the
+ *      Work contract. scripts/entryGraph.test.ts holds the same two lists on
+ *      the source, with no build;
  *   3. no chunk renders a string tag that is not an HTML or SVG element (or a
  *      custom element): the React Compiler inlines a lowercase component
  *      alias into the JSX tag (`jsx("current")`), which mounts an empty DOM
@@ -104,6 +108,20 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/aliax/pages.tsx'
 ]
 
+/**
+ * Work stays out of the first paint whole (docs/agents/work.md "The first
+ * paint"): any module whose id holds one of these. The renderer's Work
+ * screens are lazy chunks; `src/shared/work` and the contract mount are
+ * zod schemas a first-paint module needs only as types (`import type`), and
+ * a row is read by its own field (`session.scope === 'work'`).
+ */
+export const WORK_NEVER_IN_ENTRY = ['src/renderer/src/work/', 'src/shared/work/', 'src/shared/contract-work', 'node_modules/work-kit/']
+
+/** The rule a module in the first paint breaks, or null: a lazy surface's own module, or anything of Work. */
+export function entryLeak(id: string): string | null {
+  return NEVER_IN_ENTRY.find((suffix) => id.endsWith(suffix)) ?? WORK_NEVER_IN_ENTRY.find((part) => id.includes(part)) ?? null
+}
+
 /** Every HTML and SVG element name, lower-cased (SVG is matched case-insensitively,
  *  so `foreignObject` and `linearGradient` pass). */
 export const KNOWN_TAGS = new Set(
@@ -160,8 +178,8 @@ export function checkBundle(map = loadBundleMap(), budget = BUDGET_BYTES, assets
     const row = map.chunks[file]
     if (row.type !== 'chunk') continue
     for (const id of Object.keys(row.modules)) {
-      const hit = NEVER_IN_ENTRY.find((suffix) => id.endsWith(suffix))
-      if (hit) leaked.push(`${hit} (in ${file})`)
+      const hit = entryLeak(id)
+      if (hit) leaked.push(`${hit === id || id.endsWith(hit) ? hit : `${id.slice(id.indexOf(hit))} (Work: ${hit})`} (in ${file})`)
     }
   }
   const lines = [
@@ -169,7 +187,7 @@ export function checkBundle(map = loadBundleMap(), budget = BUDGET_BYTES, assets
     ...closure.map((f) => `  ${(map.chunks[f].bytes / 1024).toFixed(1).padStart(8)} kB  ${f}`)
   ]
   if (closureBytes > budget) lines.push(`FAIL: the first-paint closure is over budget by ${((closureBytes - budget) / 1024).toFixed(1)} kB`)
-  for (const l of leaked) lines.push(`FAIL: ${l} is in the entry chunk; a static import pulled a lazy surface back in`)
+  for (const l of leaked) lines.push(`FAIL: ${l} is in the entry chunk; a static import pulled a lazy surface or a part of Work back in`)
   const badTags: string[] = []
   for (const { file, tags } of assets) {
     for (const tag of tags) {
