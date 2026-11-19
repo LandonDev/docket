@@ -153,7 +153,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **The Windows host core** — command strings in Git Bash (else cmd.exe) through one `ShellSpec`
   (loginShell.ts), PATH and PATHEXT, a Job Object per harness and job through a csc-compiled helper
   (`adoptTree`, `killTree` in src/main/server/procTree.ts), junctions and copies kept in step for
-  the config dirs (skills/links.ts `syncCopy`), the fence's Windows rules, ConPTY terminals.
+  the config dirs (skills/links.ts `syncCopy`), the fence's Windows rules, ConPTY terminals; a
+  Windows PC as a Mac-bridge host of the box (`hostPath`, `WINDOWS_ALWAYS_ASK`, `shellCall`).
   [docs/agents/windows-host.md](docs/agents/windows-host.md)
 - **The Windows rig** — one Windows 11 evaluation machine on the box for the
   Windows port, run by `agents` under QEMU/KVM, files under /srv/agents/win-vm;

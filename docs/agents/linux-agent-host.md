@@ -187,7 +187,9 @@
   Mac"; proof `bun run script:e2e-mac-bridge`. Computer use is one more
   class of call, off by default per host (`macBridge.computer.<envId>`):
   "Computer use: the Mac's apps from any thread" below and docs/box.md
-  "Computer use from a box thread".
+  "Computer use from a box thread". A Windows PC is a bridge host the same way
+  (milestone 41): its rules, paths and shells are in docs/agents/windows-host.md, "A Windows host
+  linked to the box".
 - Thread resources: what a thread created (git worktrees, simulators, dev
   instances), on its own host or on the Mac through the bridge, is on the
   host's `thread_resources` table (src/main/server/threadResources.ts; the

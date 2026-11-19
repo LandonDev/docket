@@ -2,7 +2,8 @@
 
 What lets threads, terminals and the harness CLIs run on a Windows host (milestone 13 of the
 Work plan): shells, process trees, links, paths. The install, updater, frame and keys are
-[windows-build.md](windows-build.md); a Windows host linked to the box is milestone 41's. Every
+[windows-build.md](windows-build.md); a Windows host linked to the box (milestone 41) is the section of
+that name below. Every
 Windows branch sits behind a platform check: macOS and Linux run the same calls as before, and
 their suites pass unchanged.
 
@@ -105,6 +106,65 @@ A standard Windows user may make a junction but no symlink, file or directory (s
   Windows' openssl (`opensslPath`, `OPENSSL_CONF` pointed at the CA's config); the gate finds
   `bun.exe` and `node.exe`; Codex starts without `nice`; the profiles folder is as broad as
   `/Users` to the indexer; the postinstall `chmod` is skipped.
+
+## A Windows host linked to the box
+
+Milestone 41. A Windows PC links to the box the way the Mac does: it saves the box as an
+environment, dials out (no inbound port), and registers on the box's peer link (`peer.register`)
+with its home and `build.platform: 'win32'`. Nothing new crosses the wire: the Mac bridge
+(remote/mac*.ts) is the desktop bridge, keyed by the host's environment id as it always was
+(`macBridge.thread.<sessionId>` names the host), and the code that answers runs on whichever
+desktop it is, with that platform's rules. The tool names stay `mac_*`.
+
+- **What a thread is told.** `peer.register`'s home may be a drive path (`MacHomeSchema`); a
+  drive-path home makes the tool text say "This host is a Windows PC, not a Mac", that paths are
+  drive paths, what `~\Desktop` is, and that commands run in Git Bash (`macToolDescriptions`, and
+  its copy in scripts/app-mcp-bridge.mjs).
+- **Paths** (`hostPath` in remote/macBridgeRules.ts, used by reads, lists, fetches, writes, runs
+  and jobs): `~`, `~/…` and `~\…` under home, else a drive path with either slash. A share or
+  device path, a stream name, a drive-relative `C:foo` and a root with no drive (the box's `/srv/…`)
+  are refused, as the fence refuses them (`plainWindowsPath`). Home and "above home" compare
+  case-blind, and any drive's root counts as above home (`coversHome`), so it is never offered as a
+  folder to remember or share. Full access still asks for Windows' credential stores
+  (`AppData\Roaming\Microsoft\Credentials`, `Protect`, `Vault`) and the app's own data
+  (`AppData\Local\TempCode`); a write under `~\AppData` always asks, as `~/Library` does on a Mac.
+- **Commands and jobs** (macRunner.ts `shellCall`, macJobs.ts): through Git Bash's `-lc` like the
+  Mac's login shell (`exec "$@"` for argv), else cmd.exe (argv with cross-spawn's quoting, a line as
+  written). The environment keeps Windows' own variables (`SystemRoot`, `USERPROFILE`, `APPDATA`,
+  `PATHEXT`, …) and the user's `Path`, and none of the app's. The child is adopted into a Job
+  Object (procTree.ts `adoptTree`) and every stop goes through `killTree`: the job, Git Bash's
+  console sweep and `taskkill /T /F`. Windows has no gentle signal: TERM and KILL both end the
+  tree; INT to a terminal job is its ^C.
+- **The always-ask floor** (`alwaysAsks`): on a Windows host `WINDOWS_ALWAYS_ASK` (`runas`, `reg`,
+  `regedit`, `schtasks`, `sc`, `certutil`, `cmdkey`, `netsh`, `icacls`, `takeown`, `bcdedit`,
+  `vssadmin`, `diskpart`, `format`, `wmic`, `Set-ExecutionPolicy`) joins the Mac's list, by any
+  spelling (`C:\Windows\System32\schtasks.exe`, `CertUtil`); PowerShell with an encoded command
+  or an execution policy asks; a recursive delete (`rm -r`, `rd /s`, `del /s`, `Remove-Item
+  -Recurse`) of a drive, a top folder or the profile asks; credential paths match with either slash
+  in any case. A quoted line inside a command (`powershell -Command "…"`) is read once more. A
+  remembered program is named without `.exe`, case-blind.
+- **Not ported, and why it is harmless:** the load watch reads `os.loadavg()`, which is always 0 on
+  Windows, so only the caps hold calls there; dev-server forwarding and computer use through the
+  bridge are off by default per host, and computer use on Windows is milestones 42 and 43.
+- **What it is not.** A Windows host never offers to publish (`macPublishOffers`) and refuses
+  `host.deployStatus` and `host.deploy` (`DEPLOY_NOT_ON_WINDOWS`), so its Deploy row never shows;
+  its drift mark's kind is `pc` (shared/deployDrift.ts), which updates from the feed once the Mac
+  publishes with `--win`. Its glyph is the desktop (`hostKind` 'pc', M12).
+- **Sync.** Harness sync sends nothing from a Windows host unless told to
+  (`harnessSyncDefault`); memory sync never runs there, and the box refuses a drive-path home
+  (`MEMORY_NO_WINDOWS`): its path map is POSIX only. Moving a thread between a Windows host and the
+  box maps no paths (sessionMove.ts and crossHostThreads.ts read POSIX roots), so a moved thread
+  keeps its old paths in its text.
+- **The harness CLIs.** Claude, Codex and Muse resolve with PATHEXT and npm shims as M13 built it.
+  Every harness child gets `CLAUDE_CODE_GIT_BASH_PATH` when Git for Windows' bash.exe is found,
+  per-user installs included (`withGitBash`, drivers/binaries.ts). `CODEX_CA_CERTIFICATE` alone is
+  enough for Codex to trust the gateway's https port (M13's Codex turn ran on it; nothing is added
+  to the user's certificate store). Muse ships a Windows exe in its release manifest
+  (`x86_windows`), but its launcher refuses Windows: Muse is offered on a Windows host only when
+  `muse.exe` is on the PATH or in `~\.local\bin`, and was not tried.
+- **Accounts.** aliax-core's process probes (`procs.ts`: `ps`, `pgrep`, `lsof`) find nothing on
+  Windows, so an account switch there does not find or restart the person's own terminal CLIs. The
+  app's threads go through the gateway and are not affected.
 
 ## Proof
 
