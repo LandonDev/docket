@@ -190,6 +190,21 @@ export function grantFor(item: Pick<OutboxItem, "kind" | "payload">): { matcher:
     const label = names.length <= 2 ? `Mail to ${names.join(" and ")}` : `Mail to ${names[0]} and ${names.length - 1} more`;
     return { matcher: { ...(m.accountId ? { accountId: m.accountId } : {}), recipients: people.map((a) => a.address.toLowerCase()) }, label };
   }
+  if (item.kind === "calendar.op") {
+    // An invitation's answer on one account, or an invite to these people on it; a change to an event is never granted.
+    const op = p as { kind?: string; account?: string; payload?: { attendees?: Address[] } };
+    const account = op.account ?? null;
+    const on = account ? ` on ${account}` : "";
+    if (op.kind === "accept" || op.kind === "decline" || op.kind === "tentative") {
+      const verb = { accept: "Accept", decline: "Decline", tentative: "Answer maybe to" }[op.kind];
+      return { matcher: { kind: op.kind, account }, label: `${verb} invitations${on}` };
+    }
+    const people = op.payload?.attendees ?? [];
+    if (op.kind !== "create" || people.length === 0) return null;
+    const names = people.map((a) => a.name || a.address);
+    const label = names.length <= 2 ? `Invites to ${names.join(" and ")}${on}` : `Invites to ${names[0]} and ${names.length - 1} more${on}`;
+    return { matcher: { kind: "create", account, attendees: people.map((a) => a.address.toLowerCase()) }, label };
+  }
   if (item.kind === "addon.call") {
     if (typeof p.addonId !== "string" || typeof p.tool !== "string") return null;
     return { matcher: { addonId: p.addonId, tool: p.tool }, label: `${String(p.words ?? p.tool)} with ${String(p.addon ?? "the add-on")}` };

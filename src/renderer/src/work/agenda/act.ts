@@ -1,11 +1,11 @@
+import { defineChunk } from "../../lib/lazyChunk";
 import type { ActViews } from "../acts/registry";
 
 /**
  * How the agenda pillar's held acts are shown (`calendar.op`;
- * docs/agents/work-agenda.md). A stub: `chunk: null` draws the Outbox's
- * generic view (the act's summary and its payload as text) until the pillar's
- * milestone gives the kind a view of its own.
+ * docs/agents/work-agenda.md): what the act does in his words, then that
+ * day's calendar with the act's slot set apart.
  */
 export const agendaActs = {
-  "calendar.op": { kind: "calendar.op", chunk: null },
+  "calendar.op": { kind: "calendar.op", chunk: defineChunk("work-calendar-act", () => import("./CalendarActView")) },
 } satisfies ActViews;
