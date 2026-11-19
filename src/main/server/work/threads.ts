@@ -1,5 +1,5 @@
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
-import type { SessionMeta } from '@shared/events'
+import { writtenByOwner, type SessionMeta, type UserTextBy } from '@shared/events'
 import { sessionScopeOf, WORK_HOME } from '@shared/work'
 import { OWNER_PREFIX } from '../remote/crossHostThreads'
 import type { CtxPart } from './ctx'
@@ -30,31 +30,39 @@ const plain = (text: string): string =>
 
 export interface OwnerWords {
   get(id: string): SessionMeta | null | undefined
-  /** A thread's `user-text` rows, oldest first. */
-  userTexts(id: string): string[]
+  /** A thread's `user-text` rows, oldest first, with who wrote each (absent on a row from before F1). */
+  userTexts(id: string): { text: string; by?: UserTextBy }[]
   /** The host that started the thread from another host, if one did. */
   farOwner(id: string): string | null
 }
 
 /**
- * The messages of a thread that are the owner's own typing. A subagent's
- * rows are its parent's words, so the question goes to the thread at the top
- * of its tree. There, a row is the owner's unless a model could have written
- * into the thread, and then none is: a thread a routine started, a batch
- * thread (its master may send into it), and a thread another thread started,
- * here or from another host (the starter writes its first message, and a
- * starter on another host may send more). A row does not say who wrote it,
- * and what a host knows of a thread's origin beyond its row does not move
- * with the thread, so only the row is read. Where this cannot tell, it says
- * no: a write that fails the check becomes a suggestion, which is the safe
- * side.
+ * The messages of a thread that are the owner's own typing: the rows the
+ * owner wrote (events.ts `writtenByOwner`) in the thread and in every thread
+ * above it, since a subagent works from its parent's words. A row says who
+ * wrote it: the owner at a window of this host, a client key that could
+ * approve (the owner's own device, a host's desktop), or not the owner (a
+ * thread, a host, a key of the MCP facade, the app). So the owner's own
+ * messages count in a thread another thread or a routine started, and a
+ * message a facade key sent never does.
+ *
+ * Rows from before F1 carry no `by`, and are read as M6 read every row: one
+ * counts only in a thread at the top of its tree into which no model could
+ * have written (not a routine's, not a batch thread, not one another thread
+ * started here or from another host). Where this cannot tell, it says no: a
+ * write that fails the check becomes a suggestion, which is the safe side.
  */
 export function ownerMessages(words: OwnerWords, sessionId: string): string[] {
-  let top = words.get(sessionId)
-  for (let hops = 0; top?.parentId && hops < 32; hops++) top = words.get(top.parentId)
-  if (!top || top.parentId) return []
-  if (top.routineRunId || top.masterId || top.startedBy || words.farOwner(top.id)) return []
-  return words.userTexts(top.id)
+  const chain: SessionMeta[] = []
+  for (let at = words.get(sessionId), hops = 0; at && hops < 32; at = at.parentId ? words.get(at.parentId) : null, hops++) chain.push(at)
+  const top = chain.at(-1)
+  const legacyCounts = !!top && !top.parentId && !(top.routineRunId || top.masterId || top.startedBy || words.farOwner(top.id))
+  return chain.flatMap((thread) =>
+    words.userTexts(thread.id).flatMap((row) => {
+      if (row.by) return writtenByOwner(row.by) ? [row.text] : []
+      return legacyCounts && thread === top ? [row.text] : []
+    })
+  )
 }
 
 /** Whether the owner typed `quote` in the thread: found whole in one of the owner's messages, letter case and spacing aside. */
@@ -73,7 +81,7 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
   }
   const words: OwnerWords = {
     get: (id) => registry.get(id),
-    userTexts: (id) => registry.eventsAfter(id, 0).flatMap((row) => (row.event.type === 'user-text' ? [row.event.text] : [])),
+    userTexts: (id) => registry.eventsAfter(id, 0).flatMap((row) => (row.event.type === 'user-text' ? [{ text: row.event.text, ...(row.event.by ? { by: row.event.by } : {}) }] : [])),
     farOwner: (id) => store.getSetting(`${OWNER_PREFIX}${id}`)
   }
   return {

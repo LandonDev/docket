@@ -11,6 +11,7 @@ import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isOmittedBody } from '@shared/wire'
 import { currentBranch, fileDiff, workingTreeChanges } from '../git'
 import type { SessionRegistry } from '../sessions'
+import { userTextByOf } from '../userTextBy'
 import type { RelayFacadeHosts } from './relay'
 import { eventsPage, sessionPage } from '../wire'
 
@@ -820,7 +821,7 @@ export async function startSession(
     threadType: input.type ?? 'implementation',
     title: input.title
   })
-  await reg.send(meta.id, input.prompt)
+  await reg.send(meta.id, input.prompt, { by: userTextByOf(ctx.principal) })
   const now = reg.get(meta.id) ?? meta
   return { ...rowOf(ctx, now, []), cwd: now.cwd }
 }
@@ -838,25 +839,26 @@ export async function sendMessage(
   const reg = ctx.registry
   const meta = sessionOf(reg, input.session)
   const live = LIVE_STATUSES.has(meta.status) || meta.status === 'paused'
+  const by = userTextByOf(ctx.principal)
   let delivered: 'sent' | 'queued' | 'steered' | 'interrupted'
   switch (input.when ?? 'after_turn') {
     case 'now':
-      await reg.send(meta.id, input.text)
+      await reg.send(meta.id, input.text, { by })
       delivered = live ? 'steered' : 'sent'
       break
     case 'interrupt':
       if (live) {
         // Front of the queue first, so the settle after the stop drains it before anything older.
-        reg.queueAdd(meta.id, input.text, undefined, true)
+        reg.queueAdd(meta.id, input.text, { by }, true)
         await reg.stopRun(meta.id)
         delivered = 'interrupted'
       } else {
-        await reg.send(meta.id, input.text)
+        await reg.send(meta.id, input.text, { by })
         delivered = 'sent'
       }
       break
     default:
-      reg.queueAdd(meta.id, input.text)
+      reg.queueAdd(meta.id, input.text, { by })
       delivered = live ? 'queued' : 'sent'
   }
   const now = reg.get(meta.id) ?? meta

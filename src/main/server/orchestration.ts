@@ -934,7 +934,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
         parentId: parent.id
       },
       anglePath ? `${r.task}\n\n${findingsContract(anglePath)}` : r.task,
-      { preamble: r.preamble }
+      { preamble: r.preamble, by: { kind: 'thread', sessionId: parent.id } }
     )
     // An agent the spawner did not name gets a title written from its task;
     // the first line stands until it lands, and a rename before that wins.
@@ -976,7 +976,7 @@ export async function orchSendToAgent(
   if (!registry) return 'orchestration registry not ready'
   if (crossHost?.isRemote(agentId)) return crossHost.send(parent, agentId, message)
   if (!childOf(parent, agentId)) return refusedAgent(parent, agentId)
-  await registry.send(agentId, message)
+  await registry.send(agentId, message, { by: { kind: 'thread', sessionId: parent.id } })
   return 'sent'
 }
 

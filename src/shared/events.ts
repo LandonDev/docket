@@ -231,6 +231,27 @@ export type AwayNotice = z.infer<typeof AwayNoticeSchema>
 export const SteerStateSchema = z.enum(['sent', 'received', 'queued', 'failed'])
 export type SteerState = z.infer<typeof SteerStateSchema>
 
+/**
+ * Who wrote a `user-text` row (F1, 2026-11-19): the owner at a window of this
+ * host; a paired key, `owner` when it held the approve capability as it wrote
+ * (the person's own device, a host's desktop); another thread, here or on the
+ * host named; another host's main process; or the app itself (a routine, a
+ * review's brief, an internal resume). Rows from before F1 carry none, and a
+ * reader that needs to know says how it reads them (work/threads.ts
+ * ownerMessages).
+ */
+export const UserTextBySchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('owner') }),
+  z.object({ kind: z.literal('key'), keyId: z.string(), owner: z.boolean() }),
+  z.object({ kind: z.literal('thread'), sessionId: z.string(), environmentId: z.string().optional() }),
+  z.object({ kind: z.literal('host'), environmentId: z.string() }),
+  z.object({ kind: z.literal('app') })
+])
+export type UserTextBy = z.infer<typeof UserTextBySchema>
+
+/** Whether a row's writer is the owner: the owner's own window, or a key that could act as them. */
+export const writtenByOwner = (by: UserTextBy): boolean => by.kind === 'owner' || (by.kind === 'key' && by.owner)
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // A message the user (or the orchestrator, for subagents) sent in.
   z.object({
@@ -251,7 +272,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
      *  fold falls back to inferring pass boundaries */
     newPass: z.boolean().optional(),
     /** a person's message into a running turn: the id its `steer` rows name */
-    steerId: z.string().optional()
+    steerId: z.string().optional(),
+    /** who wrote the row (UserTextBySchema); absent on rows from before F1 */
+    by: UserTextBySchema.optional()
   }),
 
   // Assistant output. delta=true → streaming chunk to append;

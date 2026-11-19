@@ -615,7 +615,9 @@ export async function appStartThread(
               kind: 'thread' as const,
               sessionId: s!.id
             }))
-          : undefined
+          : undefined,
+        // The starter wrote the first message, not the owner.
+        by: { kind: 'thread', sessionId: caller.id }
       }
     )
   } catch (err) {

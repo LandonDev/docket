@@ -177,18 +177,26 @@ the loaded list, as work/threads.ts does for the preamble parts.
 - `resume(sessionId, notice)` wakes a settled Work thread with the app's own
   line, delivered as a subagent report is, never as a row of the owner's.
 - `ownerSaid(sessionId, quote)` is true when the quote stands whole in one
-  message the owner typed in the thread (letter case and spacing aside, at
-  least 12 characters). A subagent's rows are its parent's writing, so the
-  question goes to the thread at the top of its tree. Nothing counts in a
-  thread a model could have written into: one a routine started, a batch
-  thread (its master may send into it), and one another thread started,
-  here or from another host. A row does not say who wrote it, and what a
-  host knows of a thread's origin beyond the row does not move with the
-  thread, so only the row is read. Where it cannot tell, it says no. Two
-  limits: a message a paired key sends through the remote facade counts as
-  the owner's, and a thread a Work thread started never has owner's words,
-  even ones he typed there later. A `by` on each `user-text` row would fix
-  both.
+  message the owner typed (letter case and spacing aside, at least 12
+  characters), in the thread or in any thread above it: a subagent works
+  from its parent's words. Since F1 every `user-text` row says who wrote it
+  (`by`, events.ts `UserTextBySchema`): `owner` (a window of this host),
+  `key` (a paired key; the owner's only when it is a client key that could
+  approve as it wrote: his phone, a host's desktop; never a key of the MCP
+  facade, which is another agent), `thread` (a spawn, `send_to_agent`,
+  `app_start_thread`, a master, a thread on another host), `host`, or `app`
+  (a routine, a review's brief, anything no caller claimed). Only `owner`
+  and an owner's key count, so the owner's own messages count in a thread
+  another thread or a routine started, and a facade key's never do.
+  **Rows from before F1** have no `by` and are read as M6 read every row:
+  one counts only in the thread at the top of its tree, and only when no
+  model could have written into it (not a routine's, not a batch thread,
+  not one another thread started here or from another host). Where it
+  cannot tell, it says no. The writer is stamped where the row is made
+  (`SessionRegistry.storeUserRow` and the steer path, `userTextByOf` for a
+  socket's principal). A process on this machine that opens the loopback
+  socket itself is taken for the owner, as the window is: the shell is not
+  fenced.
 
 ## The fence: no MCP server but the app's
 

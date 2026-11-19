@@ -49,7 +49,7 @@ import {
 } from '@shared/contract-crosshost'
 import type { WorkspaceMeta } from '@shared/domain'
 import { sessionScopeOf, workspaceKindOf } from '@shared/work/ids'
-import type { EventRow, SessionMeta, SessionStatus } from '@shared/events'
+import type { EventRow, SessionMeta, SessionStatus, UserTextBy } from '@shared/events'
 import type { EnsureLinkedArgs, ProjectLinkFacts } from '@shared/projectLinks'
 import type { EnsureLinkedResult } from '@shared/wireSchemas'
 import {
@@ -312,6 +312,9 @@ const pendingShape = (rows: EventRow[]): ThreadPending | null => {
 /** A Work tool's call from another host, as Work's own handler takes it (work/peer.ts). */
 export type WorkCallHandler = (from: string, call: Extract<ThreadWork, { kind: 'call' }>) => Promise<unknown>
 
+/** A row another host's thread wrote here: that thread, on that host (events.ts UserTextBySchema). */
+const farBy = (caller: CrossHostCaller): UserTextBy => ({ kind: 'thread', sessionId: caller.sessionId, environmentId: caller.environmentId })
+
 export class CrossHostThreads {
   private workCalls: WorkCallHandler | null = null
   /** Work's handler for a `call` from another host; unset, every such call is refused. */
@@ -455,7 +458,7 @@ export class CrossHostThreads {
       case 'thread.send': {
         const a = ThreadSendArgsSchema.parse(args)
         this.own(caller, a.sessionId)
-        await this.deps.registry.send(a.sessionId, a.message)
+        await this.deps.registry.send(a.sessionId, a.message, { by: farBy(caller) })
         line(`sent to ${a.sessionId}`)
         return { ok: true }
       }
@@ -679,7 +682,8 @@ export class CrossHostThreads {
         ...(args.masterId ? { masterId: args.masterId } : {}),
         cwd: placed.cwd
       },
-      args.firstMessage
+      args.firstMessage,
+      { by: farBy(caller) }
     )
     this.remember(caller, thread.id)
     this.lastStatus.set(thread.id, thread.status)
@@ -768,7 +772,7 @@ export class CrossHostThreads {
         ...(args.masterId ? { masterId: args.masterId } : {})
       },
       work.message,
-      { farWork: true }
+      { farWork: true, by: farBy(caller) }
     )
     const created = this.deps.registry.get(thread.id) ?? thread
     // The row decides: a thread that is not a Work thread here is removed, never left running.
@@ -807,7 +811,7 @@ export class CrossHostThreads {
         parentId: caller.sessionId
       },
       work.task,
-      { farWork: true }
+      { farWork: true, by: farBy(caller) }
     )
     const created = this.deps.registry.get(child.id) ?? child
     // The row decides: a child that is not a Work thread here is removed, never left running.
@@ -846,7 +850,7 @@ export class CrossHostThreads {
         parentId: caller.sessionId
       },
       args.task,
-      { preamble: args.preamble !== false }
+      { preamble: args.preamble !== false, by: farBy(caller) }
     )
     // The spawner gave no title: write one from the task, here where the model call runs.
     if (args.autoTitle) this.deps.registry.titleFromTask?.(child.id, args.task)

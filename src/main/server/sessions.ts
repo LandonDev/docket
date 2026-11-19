@@ -58,13 +58,16 @@ import {
 } from '@shared/session-lifecycle'
 import { isAccountProvider, pickedProviderOf, routedProviderOf, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
-import type { AwayNotice, LimitWindow, PreambleStamp } from '@shared/events'
+import type { AwayNotice, LimitWindow, PreambleStamp, UserTextBy } from '@shared/events'
 import type { UsageWindow } from 'aliax-core'
 import { foldEvent, foldLog, newFoldState, reviveTodo, serializeTodo, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
 
 /** How a harness words a 401 the gateway could not route around (codex: "workspace routing discovery unauthorized (401)"). */
 const UNAUTHORIZED_WORDING = /unauthorized|\(401\)/i
+/** A user row no caller claimed: the app wrote it (events.ts UserTextBySchema). */
+const APP_WROTE: UserTextBy = { kind: 'app' }
+
 /** The statuses a turn's phase lives through; any other drops it. */
 const PHASE_STATUSES = new Set<SessionMeta['status']>(['starting', 'running', 'waiting'])
 /** The statuses that end a person's Stop (the turn settled, or a new one
@@ -240,6 +243,8 @@ interface QueuedSendOpts {
   steer?: boolean
   /** A person's steer: the id its `steer` rows name (the user row carries it). */
   steerId?: string
+  /** Who wrote the message; the user row carries it (events.ts UserTextBySchema). Absent: the app. */
+  by?: UserTextBy
 }
 
 /** What queueAdd did with the message: queued it, or steered it into the live turn. */
@@ -291,6 +296,8 @@ export type StartWithOpts = RunSettings & {
   routineRunId?: string
   /** Work: a Work thread on another host starts this one (remote/crossHostThreads.ts, which checked the caller's scope): its preamble reads as a child's, and a master this host does not hold may own it. */
   farWork?: boolean
+  /** Who wrote the first message; its user row carries it (events.ts UserTextBySchema). Absent: the app. */
+  by?: UserTextBy
 }
 
 // ── thread references (send)─────────────────────────────────────────
@@ -3071,6 +3078,8 @@ export class SessionRegistry {
       steer?: boolean
       /** startWith's hook: the first message's user row is on disk */
       onStored?: () => void
+      /** Who wrote the message; the user row carries it. Absent: the app. */
+      by?: UserTextBy
     }
   ): Promise<void> {
     // The hook is startWith's alone: never on a queued item or a retry.
@@ -3475,7 +3484,7 @@ export class SessionRegistry {
     meta: SessionMeta,
     text: string,
     stamp: PreambleStamp | null | undefined,
-    opts: { attachments?: Attachment[]; newPass?: boolean; steerId?: string } | undefined,
+    opts: { attachments?: Attachment[]; newPass?: boolean; steerId?: string; by?: UserTextBy } | undefined,
     onStored?: () => void
   ): void {
     // Stamp the run settings that will execute this message (the board's
@@ -3493,7 +3502,8 @@ export class SessionRegistry {
       fast: meta.fast,
       ultrafast: meta.ultrafast,
       newPass: opts?.newPass === true,
-      ...(opts?.steerId ? { steerId: opts.steerId } : {})
+      ...(opts?.steerId ? { steerId: opts.steerId } : {}),
+      by: opts?.by ?? APP_WROTE
     })
     if (stamp === undefined) return
     this.store.flushEvents()
@@ -5466,14 +5476,14 @@ export class SessionRegistry {
    *  one takes the text as a turn of its own (the user row is already
    *  there); a harness that refuses it mid-turn, or any other failure to
    *  hand it over, front-queues it, so it sends next. */
-  private steerLive(sessionId: string, text: string): boolean {
+  private steerLive(sessionId: string, text: string, by: UserTextBy = APP_WROTE): boolean {
     const status = this.store.getSession(sessionId)?.status
     if (status !== 'running' && status !== 'starting') return false
     const handle = this.handles.get(sessionId)
     if (!handle || this.isTreePaused(sessionId)) return false
     const steerId = randomUUID()
-    this.append(sessionId, { type: 'user-text', text, steerId })
-    const again: QueuedSendOpts = { echoed: { first: false }, steerId }
+    this.append(sessionId, { type: 'user-text', text, steerId, by })
+    const again: QueuedSendOpts = { echoed: { first: false }, steerId, by }
     const deliver = async (): Promise<void> => {
       if (handle.alive?.() === false) throw new Error('harness gone')
       this.lastActivity.set(sessionId, Date.now())
@@ -5969,7 +5979,7 @@ export class SessionRegistry {
     this.assertNotMoving(sessionId)
     const { steer, ...rest } = opts ?? {}
     const item: QueuedMessage = { id: nanoid(10), text, ts: Date.now(), ...rest }
-    if (!front && !rest.attachments?.length && (steer || this.isMaster(sessionId)) && this.steerLive(sessionId, text)) {
+    if (!front && !rest.attachments?.length && (steer || this.isMaster(sessionId)) && this.steerLive(sessionId, text, rest.by)) {
       return { kind: 'steered', id: item.id }
     }
     const q = this.queues.get(sessionId) ?? []

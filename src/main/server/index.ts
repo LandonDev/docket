@@ -150,6 +150,7 @@ import { CheckpointTurns } from './checkpointTurns'
 import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
+import { userTextByOf } from './userTextBy'
 import { readPage } from './htmlRender'
 import { harnessEnv, resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
@@ -3008,7 +3009,8 @@ export async function startServer(
               model: req.params.model,
               reasoning: req.params.reasoning,
               attachments: req.params.attachments,
-              newPass: req.params.newPass
+              newPass: req.params.newPass,
+              by: userTextByOf(principal)
             })
             sendFrame({ id: req.id, ok: true, result: null })
             break
@@ -3243,7 +3245,8 @@ export async function startServer(
                 model: req.params.model,
                 reasoning: req.params.reasoning,
                 attachments: req.params.attachments,
-                steer: req.params.steer
+                steer: req.params.steer,
+                by: userTextByOf(principal)
               })
             })
             break

@@ -4,6 +4,81 @@
 import Foundation
 
 public struct UserTextEvent: Codable, Hashable, Sendable {
+    public enum By: Codable, Hashable, Sendable {
+        public struct Case0: Codable, Hashable, Sendable {
+            public init() {}
+        }
+        public struct Case1: Codable, Hashable, Sendable {
+            public let keyId: String
+            public let owner: Bool
+
+            public init(keyId: String, owner: Bool) {
+                self.keyId = keyId
+                self.owner = owner
+            }
+        }
+        public struct Case2: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let environmentId: String?
+
+            public init(sessionId: String, environmentId: String? = nil) {
+                self.sessionId = sessionId
+                self.environmentId = environmentId
+            }
+        }
+        public struct Case3: Codable, Hashable, Sendable {
+            public let environmentId: String
+
+            public init(environmentId: String) {
+                self.environmentId = environmentId
+            }
+        }
+        public struct Case4: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        case owner(Case0)
+        case key(Case1)
+        case thread(Case2)
+        case host(Case3)
+        case app(Case4)
+        /// A `kind` this build does not know: the whole object, untouched.
+        case unknown(JSONValue)
+
+        private enum Tag: String, CodingKey {
+            case kind
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .kind)
+            switch tag {
+            case "owner": self = .owner(try Case0(from: decoder))
+            case "key": self = .key(try Case1(from: decoder))
+            case "thread": self = .thread(try Case2(from: decoder))
+            case "host": self = .host(try Case3(from: decoder))
+            case "app": self = .app(try Case4(from: decoder))
+            default: self = .unknown(try JSONValue(from: decoder))
+            }
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            switch self {
+            case .owner(let value): try Self.encode(tag: "owner", value, to: encoder)
+            case .key(let value): try Self.encode(tag: "key", value, to: encoder)
+            case .thread(let value): try Self.encode(tag: "thread", value, to: encoder)
+            case .host(let value): try Self.encode(tag: "host", value, to: encoder)
+            case .app(let value): try Self.encode(tag: "app", value, to: encoder)
+            case .unknown(let value): try value.encode(to: encoder)
+            }
+        }
+
+        private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: Tag.self)
+            try container.encode(tag, forKey: .kind)
+            try value.encode(to: encoder)
+        }
+    }
+
     public let text: String
     public let attachments: [Attachment]?
     public let preamble: PreambleStamp?
@@ -14,8 +89,9 @@ public struct UserTextEvent: Codable, Hashable, Sendable {
     public let ultrafast: Bool?
     public let newPass: Bool?
     public let steerId: String?
+    public let by: By?
 
-    public init(text: String, attachments: [Attachment]? = nil, preamble: PreambleStamp? = nil, model: String? = nil, reasoning: String? = nil, context1m: Bool? = nil, fast: Bool? = nil, ultrafast: Bool? = nil, newPass: Bool? = nil, steerId: String? = nil) {
+    public init(text: String, attachments: [Attachment]? = nil, preamble: PreambleStamp? = nil, model: String? = nil, reasoning: String? = nil, context1m: Bool? = nil, fast: Bool? = nil, ultrafast: Bool? = nil, newPass: Bool? = nil, steerId: String? = nil, by: By? = nil) {
         self.text = text
         self.attachments = attachments
         self.preamble = preamble
@@ -26,6 +102,7 @@ public struct UserTextEvent: Codable, Hashable, Sendable {
         self.ultrafast = ultrafast
         self.newPass = newPass
         self.steerId = steerId
+        self.by = by
     }
 }
 
