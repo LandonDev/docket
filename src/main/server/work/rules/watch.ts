@@ -1,6 +1,6 @@
 import { errorText } from '@shared/work'
 import type { WorkCtx } from '../modules'
-import { dropDraft, noteDraft, recordSent, trackDraft, trackedDraft, trackedDraftIds } from './store'
+import { dropDraft, noteDraft, recordSent, staleDrafts, trackDraft, trackedDraft, trackedDraftIds, TRACK_DAYS } from './store'
 
 /**
  * Watches the drafts this host's Work threads make, from the moment the host
@@ -13,6 +13,7 @@ import { dropDraft, noteDraft, recordSent, trackDraft, trackedDraft, trackedDraf
 type Who = { name?: string; address?: string }
 interface DraftRow {
   _id: string
+  _creationTime?: number
   status: string
   sentAt?: number
   editedAt?: number
@@ -28,7 +29,13 @@ export function recipientOf(to: readonly Who[] | undefined): string {
   return list.length > 1 ? `${first} and ${list.length - 1} ${list.length === 2 ? 'other' : 'others'}` : first
 }
 
-export function watchDrafts(ctx: WorkCtx, changed: (workspaceId: string) => void): () => void {
+export interface DraftWatch {
+  stop(): void
+  /** Stops following these drafts (their thread or workspace was deleted). */
+  forget(draftIds: readonly string[]): void
+}
+
+export function watchDrafts(ctx: WorkCtx, changed: (workspaceId: string) => void, now = Date.now): DraftWatch {
   const follows = new Map<string, () => void>()
   let stopped = false
 
@@ -72,14 +79,19 @@ export function watchDrafts(ctx: WorkCtx, changed: (workspaceId: string) => void
     else queueMicrotask(off)
   }
 
-  // Drafts seen before the host last stopped: one sent meanwhile is read now.
+  // Drafts seen before the host last stopped: one sent meanwhile is read now. One older than a month is let go.
+  staleDrafts(ctx.db, now() - TRACK_DAYS * 86_400_000)
   for (const id of trackedDraftIds(ctx.db)) follow(id)
 
   const offHeld = ctx.lifeos.subscribe<DraftRow[]>('outboxHeld:held', { host: ctx.host }, (rows) => {
     if (stopped) return
+    const since = now() - TRACK_DAYS * 86_400_000
+    for (const id of staleDrafts(ctx.db, since)) unfollow(id)
     for (const row of rows ?? []) {
       const threadId = row.origin?.threadId
       if (row.origin?.app !== 'tempcode' || row.origin.host !== ctx.host || !threadId || row.message?.kind !== 'mail' || row.status !== 'draft') continue
+      // A draft older than the watch's month is not taken up again with today's words as the agent's.
+      if ((row._creationTime ?? now()) < since) continue
       if (!trackedDraft(ctx.db, row._id)) {
         const workspaceId = ctx.scopeOf(threadId)?.workspaceId
         // A Work Chat's draft belongs to no workspace's rules.
@@ -90,10 +102,15 @@ export function watchDrafts(ctx: WorkCtx, changed: (workspaceId: string) => void
     }
   })
 
-  return () => {
-    stopped = true
-    offHeld()
-    for (const off of follows.values()) off()
-    follows.clear()
+  return {
+    stop() {
+      stopped = true
+      offHeld()
+      for (const off of follows.values()) off()
+      follows.clear()
+    },
+    forget(draftIds) {
+      for (const id of draftIds) unfollow(id)
+    }
   }
 }

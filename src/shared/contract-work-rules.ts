@@ -92,13 +92,15 @@ export interface DraftProposals {
 }
 
 export interface VoiceFacts {
+  /** the switch, as the host's own row says, whatever LifeOS answers */
   on: boolean
-  /** sent mails of the sector in the window a thread reads */
-  count: number
+  /** sent mails of the sector in the window a thread reads; null when LifeOS could not be read (`error` says why) */
+  count: number | null
   /** the oldest of them, or null when there are none */
   since: number | null
   /** the addresses they were sent from */
   from: string[]
+  error?: string
 }
 
 export type RulesPush = { push: 'work.rules'; workspaceId: string }

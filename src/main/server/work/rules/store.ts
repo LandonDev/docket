@@ -35,6 +35,7 @@ export function ensureRulesTables(db: DatabaseSync): void {
     session_id TEXT NOT NULL,
     agent_text TEXT NOT NULL,
     proposed_text TEXT,
+    last_text TEXT,
     seen_at INTEGER NOT NULL
   )`)
   db.exec(`CREATE TABLE IF NOT EXISTS work_rules_edits (
@@ -131,12 +132,14 @@ export function editRule(db: DatabaseSync, id: string, patch: { text?: string; o
   return getRule(db, id)!
 }
 
-/** Deletes a rule. `reopen`, the Undo after an add, puts the proposal it came from back as open. */
+/** Deletes a rule. `reopen`, the Undo after an add, puts the proposal it came from back as open; otherwise that proposal is dismissed. */
 export function removeRule(db: DatabaseSync, id: string, reopen = false, now = Date.now()): HouseRule | null {
   const rule = getRule(db, id)
   if (!rule) return null
   db.prepare('DELETE FROM work_rules WHERE id = ?').run(id)
-  if (reopen && rule.proposalId) db.prepare("UPDATE work_rules_proposals SET state = 'open', rule_id = NULL, updated_at = ? WHERE id = ? AND rule_id = ?").run(now, rule.proposalId, id)
+  // Undo puts the proposal back; a rule he deletes later he removed on purpose, so its proposal is never offered again.
+  if (rule.proposalId)
+    db.prepare('UPDATE work_rules_proposals SET state = ?, rule_id = NULL, updated_at = ? WHERE id = ? AND rule_id = ?').run(reopen ? 'open' : 'dismissed', now, rule.proposalId, id)
   return rule
 }
 
@@ -162,7 +165,9 @@ export function trackDraft(db: DatabaseSync, d: Omit<TrackedDraft, 'proposedText
   // An edit already recorded for this draft is final: a draft is read once.
   if (db.prepare('SELECT 1 FROM work_rules_edits WHERE draft_id = ?').get(d.draftId)) return false
   return (
-    db.prepare('INSERT OR IGNORE INTO work_rules_drafts (draft_id, workspace_id, session_id, agent_text, seen_at) VALUES (?, ?, ?, ?, ?)').run(d.draftId, d.workspaceId, d.sessionId, d.agentText, now)
+    db
+      .prepare('INSERT OR IGNORE INTO work_rules_drafts (draft_id, workspace_id, session_id, agent_text, last_text, seen_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(d.draftId, d.workspaceId, d.sessionId, d.agentText, d.agentText, now)
       .changes > 0
   )
 }
@@ -176,16 +181,30 @@ export function trackedDraft(db: DatabaseSync, draftId: string): TrackedDraft | 
 
 export const trackedDraftIds = (db: DatabaseSync): string[] => (db.prepare('SELECT draft_id FROM work_rules_drafts').all() as { draft_id: string }[]).map((r) => r.draft_id)
 
+/** Drafts tracked longer than this are let go: one never sent nor discarded is not watched for ever. */
+export const TRACK_DAYS = 30
+
+/** Lets go of drafts first seen before `before`; answers their ids. */
+export function staleDrafts(db: DatabaseSync, before: number): string[] {
+  const ids = (db.prepare('SELECT draft_id FROM work_rules_drafts WHERE seen_at < ?').all(before) as { draft_id: string }[]).map((r) => r.draft_id)
+  db.prepare('DELETE FROM work_rules_drafts WHERE seen_at < ?').run(before)
+  return ids
+}
+
 /**
- * A draft as LifeOS holds it now. An agent's waiting rewrite is noted; once
- * he takes it (the draft's words become the rewrite's), the rewrite is the
- * agent's words too, so what he changes after it is still his edit.
+ * A draft as LifeOS holds it now. An agent's waiting rewrite is noted. He
+ * took it when the rewrite is gone and the words changed to the rewrite's
+ * since the last look: then the rewrite is the agent's words too, so what
+ * he changes after it is still his edit. A rewrite he left, or one that
+ * only copied the words he already had (a subject-only rewrite), moves
+ * nothing.
  */
 export function noteDraft(db: DatabaseSync, draftId: string, text: string, proposedText: string | null): void {
-  const d = trackedDraft(db, draftId)
-  if (!d) return
-  if (d.proposedText !== null && text === d.proposedText) db.prepare('UPDATE work_rules_drafts SET agent_text = ?, proposed_text = ? WHERE draft_id = ?').run(text, proposedText, draftId)
-  else if (proposedText !== d.proposedText) db.prepare('UPDATE work_rules_drafts SET proposed_text = ? WHERE draft_id = ?').run(proposedText, draftId)
+  const r = db.prepare('SELECT proposed_text, last_text FROM work_rules_drafts WHERE draft_id = ?').get(draftId) as { proposed_text: string | null; last_text: string | null } | undefined
+  if (!r) return
+  const taken = r.proposed_text !== null && proposedText === null && text !== r.last_text && text === r.proposed_text
+  if (taken) db.prepare('UPDATE work_rules_drafts SET agent_text = ?, proposed_text = NULL, last_text = ? WHERE draft_id = ?').run(text, text, draftId)
+  else db.prepare('UPDATE work_rules_drafts SET proposed_text = ?, last_text = ? WHERE draft_id = ?').run(proposedText, text, draftId)
 }
 
 export const dropDraft = (db: DatabaseSync, draftId: string): void => void db.prepare('DELETE FROM work_rules_drafts WHERE draft_id = ?').run(draftId)
@@ -268,9 +287,10 @@ const editRows = (db: DatabaseSync, workspaceId: string): (Omit<EditRow, 'ops' |
 
 /**
  * The workspace's proposals in the given states, each with its edits,
- * newest first. A broad habit whose every edit a narrower proposal already
- * holds (a greeting cut that is always the same phrase) is not offered:
- * the narrower one says it better, and a dismissed one keeps it quiet too.
+ * newest first. A broad habit is not offered while a narrower proposal
+ * holds every one of its edits (`covers`): three greetings cut the same
+ * way are one "Leave out …", not also "Keep the greeting to one line". A
+ * dismissed narrower one keeps it quiet too.
  */
 export function proposals(db: DatabaseSync, workspaceId: string, states: readonly ProposalState[] = ['open', 'later']): RuleProposal[] {
   const edits = editRows(db, workspaceId)
@@ -278,17 +298,30 @@ export function proposals(db: DatabaseSync, workspaceId: string, states: readonl
   const all = rows.map((row) => {
     const of = edits.filter((e) => e.habits.some((h) => h.key === row.habit))
     const habit = of[0]?.habits.find((h) => h.key === row.habit)
-    return { row, of, habit, set: new Set(of.map((e) => e.draft_id)) }
+    return { row, of, habit }
   })
   const out: RuleProposal[] = []
   for (const p of all) {
     if (!p.habit || !states.includes(p.row.state)) continue
-    const covered = all.some((q) => q !== p && q.habit && q.habit.rank > p.habit!.rank && [...p.set].every((id) => q.set.has(id)))
-    if (covered) continue
+    if (all.some((q) => q !== p && covers(q.row.habit, p.row.habit, p.of))) continue
     const edit = (e: (typeof edits)[number]): DraftEdit => ({ draftId: e.draft_id, to: e.recipient, subject: e.subject, sentAt: e.sent_at, ops: e.ops })
     out.push({ id: p.row.id, workspaceId, text: p.habit.rule, line: p.habit.line, state: p.row.state, ruleId: p.row.rule_id, edits: p.of.map(edit), updatedAt: p.row.updated_at })
   }
   return out.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+const isPhrase = (key: string): boolean => key.startsWith('cut:') || key.startsWith('swap:')
+
+/**
+ * Whether habit `q` says better what broad habit `p` says, in every one of
+ * `p`'s edits: a phrase cut or swapped in the greeting covers `opening`, in
+ * the closing `closing`; any cut covers `shorter`. Unrelated habits never
+ * cover each other.
+ */
+function covers(q: string, p: string, edits: readonly { habits: Habit[] }[]): boolean {
+  const narrower = (h: Habit): boolean =>
+    p === 'opening' || p === 'closing' ? isPhrase(h.key) && h.region === p : p === 'shorter' ? h.key.startsWith('cut:') || h.key === 'opening' || h.key === 'closing' : false
+  return edits.length > 0 && edits.every((e) => e.habits.some((h) => h.key === q && narrower(h)))
 }
 
 /** The open proposals a sent draft's edit is evidence for: the line under that mail. */

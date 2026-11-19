@@ -90,9 +90,13 @@ function RuleList({ env, workspaceId, page, put, onOpen }: { env: string; worksp
   const sortable = useSortable(
     ids,
     (order) => {
+      const was = page;
       const byId = new Map(page.rules.map((r) => [r.id, r]));
       put({ ...page, rules: order.map((id) => byId.get(id)!) });
-      void orderRules(env, workspaceId, order).catch(failed("The new order was not kept"));
+      void orderRules(env, workspaceId, order).catch((err: unknown) => {
+        put(was);
+        failed("The new order was not kept")(err);
+      });
     },
     "y",
   );
@@ -205,26 +209,27 @@ function ProposalRow({ env, proposal, onAdded, onEdit }: { env: string; proposal
 const DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 function Voice({ workspace }: { workspace: WorkspaceMeta }) {
-  const [tick, setTick] = useState(0);
-  const facts = useVoice(workspace.environmentId, workspace.id, tick);
+  const [facts, put] = useVoice(workspace.environmentId, workspace.id);
   const flip = async (voice: boolean): Promise<boolean> => {
     try {
       await setWorkspaceSettings(workspace, { voice });
-      setTick((n) => n + 1);
+      if (facts.status === "ready") put({ ...facts.value, on: voice });
       return true;
     } catch (err) {
       failed("The voice switch did not change")(err);
       return false;
     }
   };
-  const line =
-    facts.status !== "ready"
-      ? undefined
-      : !workspace.sector
-        ? "This workspace has no LifeOS sector"
-        : facts.value.count === 0
+  const v = facts.status === "ready" ? facts.value : null;
+  const line = !v
+    ? undefined
+    : !workspace.sector
+      ? "This workspace has no LifeOS sector"
+      : v.count === null
+        ? undefined
+        : v.count === 0
           ? "No mail sent in the last 30 days"
-          : `${facts.value.count} ${facts.value.count === 1 ? "mail" : "mails"}${facts.value.from[0] ? ` from ${facts.value.from[0]}` : ""} since ${DAY.format(facts.value.since ?? Date.now())}`;
+          : `${v.count} ${v.count === 1 ? "mail" : "mails"}${v.from[0] ? ` from ${v.from[0]}` : ""} since ${DAY.format(v.since ?? Date.now())}`;
   return (
     <PageSection title="Voice">
       {facts.status === "loading" ? (
@@ -232,7 +237,7 @@ function Voice({ workspace }: { workspace: WorkspaceMeta }) {
       ) : facts.status === "error" ? (
         <PageError>{facts.error}</PageError>
       ) : (
-        <PageRow title="Read my sent mail for how I write" description={line}>
+        <PageRow title="Read my sent mail for how I write" description={line} error={facts.value.error}>
           <SettingSwitch label="Read my sent mail for how I write" on={facts.value.on} disabled={!workspace.sector} onChange={flip} />
         </PageRow>
       )}

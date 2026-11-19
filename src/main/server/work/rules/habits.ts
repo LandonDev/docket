@@ -16,8 +16,13 @@ export interface Habit {
   rule: string
   /** what he did, as the line under the sent mail says it */
   line: string
-  /** how narrow it is: a broad habit whose edits a narrower one already holds is not offered */
-  rank: number
+  /**
+   * Where a phrase cut or swapped sat in the draft. A proposal for the
+   * greeting (`opening`) or the closing is not offered while a phrase
+   * proposal there holds every one of its edits, and `shorter` not while a
+   * cut does (store.ts `covers`).
+   */
+  region?: 'opening' | 'closing' | 'body'
 }
 
 /** A phrase cut or swapped counts up to this many words. */
@@ -80,7 +85,8 @@ function regionsOf(text: string): Regions {
   const paras = paragraphs(text)
   if (paras.length === 0) return { opening: [0, 0], closing: [0, 0], signoff: null }
   const last = paras.at(-1)!
-  const sign = paras.length > 1 && words(last.text) <= SIGNOFF_WORDS ? last : null
+  // A short last paragraph that ends no sentence ("Best,\nLandon", "Thanks!") is the sign-off; "See you then." is body.
+  const sign = paras.length > 1 && words(last.text) <= SIGNOFF_WORDS && !/[.?]\s*$/.test(last.text) ? last : null
   const body = sign ? paras.slice(0, -1) : paras
   const first = body[0]!
   const end = body.at(-1)!
@@ -91,6 +97,8 @@ function regionsOf(text: string): Regions {
 }
 
 const inside = (at: number, [a, b]: [number, number]): boolean => at >= a && at < b
+/** Whether a change reaches into a range: what it cuts overlaps it, or what it puts in lands in it or at its end. */
+const touches = (c: { at: number; cut: string }, [a, b]: [number, number]): boolean => (c.cut ? c.at < b && c.at + c.cut.length > a : c.at >= a && c.at <= b)
 
 interface Change {
   /** where it starts in the draft */
@@ -116,7 +124,7 @@ function changesOf(ops: readonly EditOp[]): Change[] {
       // A figure reads with the word after it: "3:00" to "3" is "3:00 PM" to "3 PM".
       const after = ops[i + (put ? 2 : 1)]
       const word = after?.op === '=' ? (after.text.match(/^\s*[\p{L}]+/u)?.[0] ?? '') : ''
-      if (put && /\d/.test(cut) && word) {
+      if (put && /\d/.test(cut) && !/\p{L}/u.test(cut) && !/\p{L}/u.test(put) && word) {
         cut += word
         put += word
       }
@@ -144,18 +152,20 @@ export function habitsOf(draft: string, sent: string): Habit[] {
   const out = new Map<string, Habit>()
   const add = (h: Habit): void => void (out.has(h.key) || out.set(h.key, h))
 
-  // The sign-off: what the last short paragraph became.
-  if (where.signoff && changes.some((c) => inside(c.at, where.signoff!) && (c.cut.trim() || c.put.trim()))) {
-    const after = regionsOf(b).signoff
-    const now = after ? b.slice(after[0], after[1]) : ''
-    if (now.trim()) {
-      const q = squash(now)
-      add({ key: `signoff:${keyOf(now)}`, rule: `Sign off with “${quote(q)}”`, line: `You changed the sign-off to “${quote(q)}” again.`, rank: 4 })
-    } else add({ key: 'signoff:none', rule: 'Leave off the sign-off', line: 'You took the sign-off out again.', rank: 4 })
+  // The sign-off: what the last short paragraph became, or that one was put in or taken out.
+  const signOf = (text: string, r: [number, number] | null): string => (r ? squash(text.slice(r[0], r[1])) : '')
+  const was = signOf(a, where.signoff)
+  const now = signOf(b, regionsOf(b).signoff)
+  const signRange: [number, number] = where.signoff ?? [a.trimEnd().length, a.length]
+  const inSign = (c: Change): boolean => touches(c, signRange)
+  if (keyOf(was) !== keyOf(now) && changes.some(inSign)) {
+    if (now) add({ key: `signoff:${keyOf(now)}`, rule: `Sign off with “${quote(now)}”`, line: `You changed the sign-off to “${quote(now)}” again.` })
+    else add({ key: 'signoff:none', rule: 'Leave off the sign-off', line: 'You took the sign-off out again.' })
   }
+  const regionOf = (at: number): Habit['region'] => (inside(at, where.opening) ? 'opening' : inside(at, where.closing) ? 'closing' : 'body')
 
   for (const c of changes) {
-    if (where.signoff && inside(c.at, where.signoff)) continue
+    if (inSign(c)) continue
     const cutWords = words(c.cut)
     const putWords = words(c.put)
     if (c.cut.trim() && c.put.trim()) {
@@ -164,27 +174,28 @@ export function habitsOf(draft: string, sent: string): Habit[] {
           key: `swap:${keyOf(c.cut)}→${keyOf(c.put)}`,
           rule: `Write “${quote(c.put)}”, not “${quote(c.cut)}”`,
           line: `You changed “${quote(c.cut)}” to “${quote(c.put)}” again.`,
-          rank: 6
+          region: regionOf(c.at)
         })
     } else if (c.cut.trim()) {
-      if (cutWords >= 1 && cutWords <= PHRASE_WORDS && keyOf(c.cut)) add({ key: `cut:${keyOf(c.cut)}`, rule: `Leave out “${quote(c.cut)}”`, line: `You took out “${quote(c.cut)}” again.`, rank: 5 })
+      if (cutWords >= 1 && cutWords <= PHRASE_WORDS && keyOf(c.cut)) add({ key: `cut:${keyOf(c.cut)}`, rule: `Leave out “${quote(c.cut)}”`, line: `You took out “${quote(c.cut)}” again.`, region: regionOf(c.at) })
     }
   }
 
-  // An exclamation mark made a full stop, or taken out alone; one cut with its sentence is the sentence's habit, not this one.
-  const plain = (s: string): string => squash(s.replace(/[!.]/g, '')).toLowerCase()
-  if (changes.some((c) => c.cut.includes('!') && !c.put.includes('!') && plain(c.cut) === plain(c.put))) add({ key: 'exclaim', rule: 'No exclamation marks', line: 'You took out the exclamation marks again.', rank: 3 })
+  // An exclamation mark made a full stop or a comma: the words before it are still there, ending otherwise. One cut with
+  // its sentence is the sentence's habit, not this one. Read from the words, not the diff, which may join it to a change beside it.
+  const bangs = [...a.slice(0, where.signoff?.[0] ?? a.length).matchAll(/([\p{L}\p{N}'’]+(?:[ \t]+[\p{L}\p{N}'’]+){0,2})!/gu)].map((m) => m[1]!)
+  if (bangs.some((w) => !b.includes(`${w}!`) && (b.includes(`${w}.`) || b.includes(`${w},`)))) add({ key: 'exclaim', rule: 'No exclamation marks', line: 'You took out the exclamation marks again.' })
 
-  const cutIn = (region: [number, number]): number => changes.filter((c) => inside(c.at, region)).reduce((n, c) => n + Math.max(0, words(c.cut) - words(c.put)), 0)
-  if (cutIn(where.opening) >= REGION_WORDS) add({ key: 'opening', rule: 'Keep the greeting to one line', line: 'You cut the greeting to one line again.', rank: 2 })
+  const cutIn = (region: [number, number]): number => changes.filter((c) => !inSign(c) && inside(c.at, region)).reduce((n, c) => n + Math.max(0, words(c.cut) - words(c.put)), 0)
+  if (cutIn(where.opening) >= REGION_WORDS) add({ key: 'opening', rule: 'Keep the greeting to one line', line: 'You cut the greeting to one line again.' })
   if (where.closing[1] > where.closing[0] && cutIn(where.closing) >= REGION_WORDS)
-    add({ key: 'closing', rule: 'End on the point, with no closing pleasantry', line: 'You cut the closing pleasantry again.', rank: 2 })
+    add({ key: 'closing', rule: 'End on the point, with no closing pleasantry', line: 'You cut the closing pleasantry again.' })
 
   const before = words(a)
   const after = words(b)
   if (before >= 40 && after <= before * 0.6) {
     const about = Math.max(10, Math.ceil(after / 10) * 10)
-    add({ key: 'shorter', rule: `Keep mail to about ${about} words`, line: `You cut the mail to about ${about} words again.`, rank: 1 })
+    add({ key: 'shorter', rule: `Keep mail to about ${about} words`, line: `You cut the mail to about ${about} words again.` })
   }
   return [...out.values()]
 }

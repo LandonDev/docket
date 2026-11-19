@@ -44,43 +44,48 @@ function Line({ env, proposal, workspace, onGone }: { env: string; proposal: Rul
   const [busy, setBusy] = useState(false);
   const failed = (what: string) => (err: unknown) => void loadToast().then((toast) => toast.error(what, { description: refusalWords(err) || undefined }));
 
-  if (proposal.state === "added") {
-    const undo = (rule: string): void => {
-      setBusy(true);
-      removeRule(env, rule, true)
-        .catch(failed("Undo did not go through"))
-        .finally(() => setBusy(false));
-    };
-    return <AddedLine workspace={workspace} busy={busy} onUndo={proposal.ruleId ? () => undo(proposal.ruleId!) : null} />;
-  }
+  const undo = (rule: string): void => {
+    setBusy(true);
+    removeRule(env, rule, true)
+      .catch(failed("Undo did not go through"))
+      .finally(() => setBusy(false));
+  };
   const notNow = (): void => {
     setBusy(true);
     decideProposal(env, proposal.id, "later").then(onGone, failed("The proposal was not put off")).finally(() => setBusy(false));
   };
+  // The dialog stays mounted across the line's turn to Added, so its exit plays and it never comes back by itself after Undo.
+  const dialog = adding ? <RuleDialog env={env} workspaceId={proposal.workspaceId} of={{ kind: "proposal", proposal }} onClose={() => setAdding(false)} /> : null;
   return (
-    <Collapsible open={open} onOpenChange={setOpen} data-rule-line={proposal.id}>
-      <div className="flex min-h-7 flex-wrap items-start gap-x-2 gap-y-1 py-1 text-[13px] leading-5 text-muted-foreground">
-        <span className="flex h-5 w-3.5 shrink-0 items-center justify-center">
-          <PenLine className="size-3.5" />
-        </span>
-        <CollapsibleTrigger className="min-w-0 flex-1 basis-60 rounded-sm text-start hover:text-foreground">
-          {proposal.line} Make it a rule for {workspace}?
-          <ChevronRight className={cn("ms-1 inline size-3 align-[-1px]", DISCLOSURE_CHEVRON, open && "rotate-90")} />
-        </CollapsibleTrigger>
-        <span className="-mt-0.5 ms-auto flex shrink-0 gap-2">
-          <Button variant="ghost" size="xs" disabled={busy} onClick={notNow}>
-            Not now
-          </Button>
-          <Button variant="secondary" size="xs" disabled={busy} onClick={() => setAdding(true)}>
-            Add rule…
-          </Button>
-        </span>
-      </div>
-      <CollapsibleContent>
-        <Evidence edits={proposal.edits} framed className="mt-1" />
-      </CollapsibleContent>
-      {adding ? <RuleDialog env={env} workspaceId={proposal.workspaceId} of={{ kind: "proposal", proposal }} onClose={() => setAdding(false)} /> : null}
-    </Collapsible>
+    <>
+      {proposal.state === "added" ? (
+        <AddedLine workspace={workspace} busy={busy} onUndo={proposal.ruleId ? () => undo(proposal.ruleId!) : null} />
+      ) : (
+        <Collapsible open={open} onOpenChange={setOpen} data-rule-line={proposal.id}>
+          <div className="flex min-h-7 flex-wrap items-start gap-x-2 gap-y-1 py-1 text-[13px] leading-5 text-muted-foreground">
+            <span className="flex h-5 w-3.5 shrink-0 items-center justify-center">
+              <PenLine className="size-3.5" />
+            </span>
+            <CollapsibleTrigger className="min-w-0 flex-1 basis-60 rounded-sm text-start hover:text-foreground">
+              {proposal.line} Make it a rule for {workspace}?
+              <ChevronRight className={cn("ms-1 inline size-3 align-[-1px]", DISCLOSURE_CHEVRON, open && "rotate-90")} />
+            </CollapsibleTrigger>
+            <span className="-mt-0.5 ms-auto flex shrink-0 gap-2">
+              <Button variant="ghost" size="xs" disabled={busy} onClick={notNow}>
+                Not now
+              </Button>
+              <Button variant="secondary" size="xs" disabled={busy} onClick={() => setAdding(true)}>
+                Add rule…
+              </Button>
+            </span>
+          </div>
+          <CollapsibleContent>
+            <Evidence edits={proposal.edits} framed className="mt-1" />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+      {dialog}
+    </>
   );
 }
 

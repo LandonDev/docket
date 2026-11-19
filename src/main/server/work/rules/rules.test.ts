@@ -21,7 +21,7 @@ const owner: Caller = { kind: 'local', caps: ['read', 'operate', 'approve', 'adm
 const model: Caller = { kind: 'model', caps: ['read', 'operate', 'approve'], sessionId: 't1' }
 const reader: Caller = { kind: 'remote', caps: ['read', 'operate'] }
 
-type Row = { _id: string; status: string; sector?: string; sentAt?: number; message: Record<string, unknown>; origin?: Record<string, string>; proposed?: { text: string } }
+type Row = { _id: string; _creationTime?: number; status: string; sector?: string; sentAt?: number; message: Record<string, unknown>; origin?: Record<string, string>; proposed?: { text: string } }
 
 /** LifeOS as the rules module reads it: the held drafts, one draft by id, and sent mail. */
 class FakeLifeos {
@@ -113,7 +113,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 
 describe('proposals from his edits', () => {
   it('three drafts he edited the same way make one proposal, with the three edits as its evidence', async () => {
-    const stop = watchDrafts(ctx, () => {})
+    const { stop } = watchDrafts(ctx, () => {})
     for (const [i, thread] of ['t1', 't2', 't1'].entries()) lifeos.send(lifeos.draft(thread, GREETING.replace('Sam', `Sam${i}`)), CUT.replace('Sam', `Sam${i}`), 1000 + i)
     await flush()
     const { proposals } = await page()
@@ -133,7 +133,7 @@ describe('proposals from his edits', () => {
   })
 
   it('one edit is not a habit, and a draft sent as the agent wrote it is no edit', async () => {
-    const stop = watchDrafts(ctx, () => {})
+    const { stop } = watchDrafts(ctx, () => {})
     lifeos.send(lifeos.draft('t1', GREETING), CUT)
     lifeos.send(lifeos.draft('t1', GREETING), GREETING)
     await flush()
@@ -143,7 +143,7 @@ describe('proposals from his edits', () => {
   })
 
   it('a rewrite he took is the agent\'s words, so only what he changed after it counts', async () => {
-    const stop = watchDrafts(ctx, () => {})
+    const { stop } = watchDrafts(ctx, () => {})
     const id = lifeos.draft('t1', 'Hi Sam, a first try.')
     lifeos.rows.get(id)!.proposed = { text: GREETING }
     lifeos.emit()
@@ -157,20 +157,56 @@ describe('proposals from his edits', () => {
     stop()
   })
 
+  it('a rewrite that only copied his own words does not make them the agent\'s', async () => {
+    const { stop } = watchDrafts(ctx, () => {})
+    const id = lifeos.draft('t1', GREETING)
+    lifeos.rows.get(id)!.message.text = CUT
+    lifeos.emit()
+    // A subject-only rewrite carries the draft's current words, his edit included; he leaves it.
+    lifeos.rows.get(id)!.proposed = { text: CUT }
+    lifeos.emit()
+    delete lifeos.rows.get(id)!.proposed
+    lifeos.emit()
+    lifeos.send(id, CUT)
+    await flush()
+    stop()
+    expect(db.prepare('SELECT COUNT(*) AS n FROM work_rules_edits').get()).toEqual({ n: 1 })
+  })
+
+  it('a deleted thread\'s drafts are let go, and so is one older than a month', async () => {
+    const stopModule = rules.start!(ctx)
+    lifeos.draft('t1', GREETING)
+    const old = lifeos.draft('t2', GREETING)
+    expect(lifeos.watching).toBe(3)
+    // The thread is gone, so the host no longer knows its scope.
+    const scopeOf = ctx.scopeOf
+    ctx.scopeOf = (id) => (id === 't1' ? null : scopeOf(id))
+    rules.sessionsRemoved!(['t1'], ctx)
+    await flush()
+    expect(lifeos.watching).toBe(2)
+    db.prepare('UPDATE work_rules_drafts SET seen_at = 0 WHERE draft_id = ?').run(old)
+    lifeos.rows.get(old)!._creationTime = 0
+    lifeos.emit()
+    await flush()
+    expect(lifeos.watching).toBe(1)
+    stopModule()
+    expect(lifeos.watching).toBe(0)
+  })
+
   it('a draft sent while the host was down is read when it comes back', async () => {
-    let stop = watchDrafts(ctx, () => {})
+    let { stop } = watchDrafts(ctx, () => {})
     const id = lifeos.draft('t1', GREETING)
     stop()
     lifeos.rows.get(id)!.message.text = CUT
     lifeos.rows.get(id)!.status = 'sent'
-    stop = watchDrafts(ctx, () => {})
+    ;({ stop } = watchDrafts(ctx, () => {}))
     await flush()
     expect(db.prepare('SELECT draft_id FROM work_rules_edits').all()).toEqual([{ draft_id: id }])
     stop()
   })
 
   it('a Work Chat\'s draft and another host\'s draft are not watched', async () => {
-    const stop = watchDrafts(ctx, () => {})
+    const { stop } = watchDrafts(ctx, () => {})
     lifeos.draft('chat', GREETING)
     lifeos.draft('t1', GREETING, 'mac')
     expect(db.prepare('SELECT COUNT(*) AS n FROM work_rules_drafts').get()).toEqual({ n: 0 })
@@ -180,7 +216,7 @@ describe('proposals from his edits', () => {
 
 describe('deciding a proposal', () => {
   const twice = async (): Promise<RuleProposal> => {
-    const stop = watchDrafts(ctx, () => {})
+    const { stop } = watchDrafts(ctx, () => {})
     lifeos.send(lifeos.draft('t1', GREETING), CUT)
     lifeos.send(lifeos.draft('t2', GREETING), CUT)
     await flush()
@@ -206,10 +242,19 @@ describe('deciding a proposal', () => {
     expect(pushes).toContainEqual({ push: 'work.rules', workspaceId: 'ws-purdue' })
   })
 
+  it('a rule he deletes later dismisses the proposal it came from', async () => {
+    const p = await twice()
+    const rule = await call<HouseRule>('work.rules.add', { workspaceId: 'ws-purdue', text: p.text, proposalId: p.id })
+    await call('work.rules.remove', { id: rule.id })
+    expect((await page()).proposals).toEqual([])
+    const draft = p.edits[0]!.draftId
+    expect((await call<{ proposals: RuleProposal[] }>('work.rules.forDraft', { draftId: draft })).proposals).toEqual([])
+  })
+
   it('a dismissed proposal does not return, however often he does it again', async () => {
     const p = await twice()
     await call('work.rules.decide', { id: p.id, to: 'dismissed' })
-    const stop = watchDrafts(ctx, () => {})
+    const { stop } = watchDrafts(ctx, () => {})
     lifeos.send(lifeos.draft('t1', GREETING), CUT)
     lifeos.send(lifeos.draft('t1', GREETING), CUT)
     await flush()
@@ -224,7 +269,7 @@ describe('deciding a proposal', () => {
     const draft = (db.prepare('SELECT draft_id FROM work_rules_edits LIMIT 1').get() as { draft_id: string }).draft_id
     expect((await call<{ proposals: RuleProposal[] }>('work.rules.forDraft', { draftId: draft })).proposals).toEqual([])
     expect((await page()).proposals.map((x) => x.state)).toEqual(['later'])
-    const stop = watchDrafts(ctx, () => {})
+    const { stop } = watchDrafts(ctx, () => {})
     const again = lifeos.draft('t1', GREETING)
     lifeos.send(again, CUT)
     await flush()
@@ -282,6 +327,12 @@ describe('the voice switch', () => {
     expect(await call('work.rules.voice', { workspaceId: 'ws-purdue' })).toEqual({ on: true, count: 1, since: now - 1000, from: ['landon@purdue.edu'] })
     expect(rules.tools!(scope('chat'))).toEqual([])
   })
+
+  it('keeps the switch readable when LifeOS does not answer', async () => {
+    voice(true)
+    ctx.lifeos.owner = () => ({ query: async () => Promise.reject(new Error('down')) }) as never
+    expect(await call('work.rules.voice', { workspaceId: 'ws-purdue' })).toMatchObject({ on: true, count: null, error: 'LifeOS did not answer: down' })
+  })
 })
 
 describe('habits', () => {
@@ -300,8 +351,24 @@ describe('habits', () => {
     expect(keys('Same words.', 'Same  words.\n')).toEqual([])
   })
 
+  it('reads a sign-off taken out or a name put under it, and widens a figure only when it has no unit', () => {
+    const body = 'Hi Sam,\n\nThe venue opens at noon for everyone.'
+    expect(keys(`${body}\n\nBest,\nBot`, body)).toEqual(['signoff:none'])
+    expect(keys(`${body}\n\nThanks,`, `${body}\n\nThanks,\nLandon`)).toEqual(['signoff:thanks, landon'])
+    expect(keys(body, `${body}\n\nLandon`)).toEqual(['signoff:landon'])
+    expect(habitsOf('Setup at 8:00 AM sharp.', 'Setup at 7:30 PM sharp.')[0]!.rule).toBe('Write “7:30 PM”, not “8:00 AM”')
+  })
+
+  it('unrelated habits in the same mails are each offered', async () => {
+    const { stop } = watchDrafts(ctx, () => {})
+    for (const t of ['t1', 't2']) lifeos.send(lifeos.draft(t, 'Hi Sam,\n\nGreat, see you then!\n\nBest,\nBot'), 'Hi Sam,\n\nGreat, see you then.\n\nThanks, Landon')
+    await flush()
+    stop()
+    expect((await page()).proposals.map((p) => p.text).sort()).toEqual(['No exclamation marks', 'Sign off with “Thanks, Landon”'])
+  })
+
   it('a broad habit is not offered when a narrower one holds every one of its edits', async () => {
-    const stop = watchDrafts(ctx, () => {})
+    const { stop } = watchDrafts(ctx, () => {})
     const long = 'Hi Sam, I hope your week is off to a great start and all is well. Thursday at 7 works.\n\nLandon'
     const short = 'Hi Sam, Thursday at 7 works.\n\nLandon'
     lifeos.send(lifeos.draft('t1', long), short)

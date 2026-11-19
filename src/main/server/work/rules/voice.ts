@@ -1,5 +1,5 @@
 import type { VoiceFacts } from '@shared/contract-work-rules'
-import { parseWorkspaceWorkSettings, type SectorKey } from '@shared/work'
+import { errorText, parseWorkspaceWorkSettings, type SectorKey } from '@shared/work'
 import type { WorkCtx } from '../modules'
 
 /**
@@ -56,8 +56,15 @@ export async function sentOfSector(ctx: Pick<WorkCtx, 'lifeos'>, sector: SectorK
 export async function voiceFacts(ctx: Pick<WorkCtx, 'db' | 'lifeos'>, workspaceId: string, now = Date.now()): Promise<VoiceFacts> {
   const ws = workspaceFacts(ctx, workspaceId)
   if (!ws) throw new Error('only a Work workspace has a voice')
-  if (!ws.sector || !ctx.lifeos.connected()) return { on: ws.voice, count: 0, since: null, from: [] }
-  const mail = await sentOfSector(ctx, ws.sector, now)
+  if (!ws.sector) return { on: ws.voice, count: 0, since: null, from: [] }
+  if (!ctx.lifeos.connected()) return { on: ws.voice, count: null, since: null, from: [], error: 'LifeOS is not connected' }
+  let mail: SentMail[]
+  try {
+    mail = await sentOfSector(ctx, ws.sector, now)
+  } catch (err) {
+    // The switch still shows, so he can turn it off while LifeOS does not answer.
+    return { on: ws.voice, count: null, since: null, from: [], error: `LifeOS did not answer: ${errorText(err)}` }
+  }
   const from = [...new Set(mail.map((m) => m.message.from?.address?.trim().toLowerCase()).filter((a): a is string => !!a))]
   return { on: ws.voice, count: mail.length, since: mail.at(-1)?.sentAt ?? null, from }
 }

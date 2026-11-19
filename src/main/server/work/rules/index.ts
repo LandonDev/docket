@@ -19,7 +19,7 @@ import {
   removeRule
 } from './store'
 import { voiceExamples, voiceFacts, workspaceFacts, VOICE_EXAMPLES } from './voice'
-import { watchDrafts } from './watch'
+import { watchDrafts, type DraftWatch } from './watch'
 
 /**
  * The rules pillar's server module (docs/agents/work-rules.md): a Work
@@ -37,6 +37,8 @@ function mustBePerson(by: Caller): void {
 
 /** The database the preamble reads: the module is handed it at every boot, before any thread starts. */
 let rulesDb: DatabaseSync | null = null
+/** The drafts being watched while Work is on, so a deleted thread's or workspace's are let go. */
+let watching: DraftWatch | null = null
 
 /** What a thread of the workspace is told: its rules in his order, then the voice line when the switch is on. */
 export function rulesPreamble(db: DatabaseSync, scope: Pick<WorkScope, 'workspaceId'>): string | null {
@@ -121,15 +123,24 @@ export const rules: WorkModule = {
   tools: (scope) => (scope.workspaceId ? [voiceTool] : []),
   preamble: (scope) => (rulesDb ? rulesPreamble(rulesDb, scope) : null),
   start(ctx) {
-    return watchDrafts(ctx, (workspaceId) => ctx.push({ push: 'work.rules', workspaceId }, { need: 'read' }))
+    const watch = watchDrafts(ctx, (workspaceId) => ctx.push({ push: 'work.rules', workspaceId }, { need: 'read' }))
+    watching = watch
+    return () => {
+      watch.stop()
+      if (watching === watch) watching = null
+    }
   },
   sessionsRemoved(sessionIds, ctx) {
     // A deleted thread's drafts on their way are no longer watched; the edits already made stay as evidence.
     const of = ctx.db.prepare('SELECT draft_id FROM work_rules_drafts WHERE session_id = ?')
-    for (const id of sessionIds) for (const row of of.all(id) as { draft_id: string }[]) dropDraft(ctx.db, row.draft_id)
+    const ids = sessionIds.flatMap((id) => (of.all(id) as { draft_id: string }[]).map((r) => r.draft_id))
+    for (const id of ids) dropDraft(ctx.db, id)
+    watching?.forget(ids)
   },
   workspaceRemoved(workspaceId, ctx) {
+    const ids = (ctx.db.prepare('SELECT draft_id FROM work_rules_drafts WHERE workspace_id = ?').all(workspaceId) as { draft_id: string }[]).map((r) => r.draft_id)
     dropWorkspace(ctx.db, workspaceId)
+    watching?.forget(ids)
   }
 }
 
