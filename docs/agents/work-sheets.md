@@ -71,8 +71,9 @@ renamed, saved into an opened package (architecture §9.1; the sheet report
 - LibreOffice runs as a conversion job (`xlsx → xlsx+ops`, `xlsm →
   xlsm+ops`, `STRUCTURAL_CONVERTERS`), with its own Python and the UNO
   script in structuralScript.ts, where LibreOffice is installed; a host
-  without it forwards the job. It loads the file read-only (a full
-  1,048,576-row sheet loads no other way), applies the ops, recalculates and
+  without it forwards the job. It loads the file (read-only only when it
+  will not load otherwise: a full 1,048,576-row sheet, where a rename is then
+  refused), applies the ops, recalculates and
   stores the same kind. A sort is applied as the grid made it: each target
   row takes its source row's cells, formats and formula text. A protected
   sheet, and an insert that would push cells off the sheet, are refused in
