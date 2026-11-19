@@ -86,7 +86,7 @@ a pillar knows (a guest link, a shared LifeOS document) is not guessed yet.
 | the Mac bridge's tools, computer use carried to a Mac | only when the workspace's Work settings name that Mac (`mayUseDesktop`); a Work Chat never. Checked when the tools are mounted and again at every call, so taking a Mac off the list stops a running thread | `mayUseFarDesktop`, work/scope.ts; the hook in drivers/claude.ts |
 | add-ons | its own Work workspace's rows, and the global rows marked for Work (`addons.for_work`); a child never sees more than its parent. On a host where Work's rule did not come up, a Work row reads none (`WORK_UNSCOPED`) | `workspaceIdOf`, `visibleAddons`, addons/scope.ts |
 | `addon_add`, `addon_remove` | its own workspace's scope only: `scope: 'global'` is refused, and a call with no scope is held to the workspace | `appToolsMcp`, apptools.ts |
-| `skill_write`, `skill_remove` | its own Work workspace's scope only; a Work Chat not at all. A skill for every workspace would be read by code threads, which hold the owner's servers: the fence, crossed by a file | `guardWorkSkills`, apptools.ts (the write is guarded for every caller; the bridge's remove is not, and still asks the card for a skill a person wrote) |
+| `skill_write`, `skill_remove` | its own Work workspace's scope only; a Work Chat not at all. A skill for every workspace would be read by code threads, which hold the owner's servers: the fence, crossed by a file | `workSkillRefusal`, apptools.ts, asked inside `skillWrite` and `skillRemove` (skills/tools.ts `scopeRefusal`), so every caller meets it: a Claude tool and the bridge's `app.skill*` alike, before any lookup or card |
 
 ### Across hosts
 

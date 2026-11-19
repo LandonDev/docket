@@ -771,8 +771,7 @@ export function setProjectPlans(plans: ProjectPlans | null): void {
 // The skill tools every thread gets (skills/tools.ts holds their one body; the bridge reaches it through index.ts).
 let skillTools: SkillToolDeps | null = null
 export function setAppSkillTools(deps: SkillToolDeps | null): void {
-  skillTools = deps
-  if (deps) guardWorkSkills(deps)
+  skillTools = deps && { ...deps, scopeRefusal: deps.scopeRefusal ?? workSkillRefusal }
 }
 
 export const WORK_ADDON_REFUSAL = 'refused: a Work thread adds and removes add-ons for its own workspace only, never for every workspace.'
@@ -783,38 +782,15 @@ export const WORK_SKILL_REFUSAL = 'refused: a Work thread writes and removes ski
  * every workspace would be read by code threads, which hold the person's own
  * MCP servers and sending keys: the fence, crossed by a file. So a Work
  * thread writes and removes skills in its own Work workspace's scope only,
- * and a Work Chat, which has none, not at all.
+ * and a Work Chat, which has none, not at all. skills/tools.ts asks it inside
+ * skillWrite and skillRemove (`scopeRefusal`), so it holds for whichever
+ * caller reaches them: a Claude tool here, the bridge's app.skill* in index.ts.
  */
-function workSkillRefusal(caller: SessionMeta, scopeWorkspaceId: string | null): string | null {
+export function workSkillRefusal(caller: SessionMeta, scopeWorkspaceId: string | null): string | null {
   if (!registry || sessionScopeOf(caller) !== 'work') return null
   const home = workHomeOfSession(scopeFactsOf(registry), caller)
   return typeof home !== 'string' && scopeWorkspaceId === home.id ? null : WORK_SKILL_REFUSAL
 }
-
-/**
- * The rule on the store's write itself, for whichever caller reaches it (a
- * Claude tool here, the bridge's app.skillWrite through index.ts, which holds
- * the same deps object): the write names its writer, the thread at the top of
- * the caller's tree, and its scope. A remove names no writer, so the Claude
- * tool checks it before the call (below); the bridge's remove still asks the
- * person's card for a skill a person wrote.
- */
-function guardWorkSkills(deps: SkillToolDeps): void {
-  const write = deps.write
-  if ((write as { workGuarded?: true }).workGuarded) return
-  const guarded: SkillToolDeps['write'] = async (input, expectUpdatedAt) => {
-    const by = input.writtenBy
-    const writer = by?.kind === 'thread' ? registry?.get(by.sessionId) : null
-    const refusal = writer ? workSkillRefusal(writer, input.workspaceId) : null
-    return refusal ?? write(input, expectUpdatedAt)
-  }
-  ;(guarded as { workGuarded?: true }).workGuarded = true
-  deps.write = guarded
-}
-
-/** The scope a skill call lands in, as skills/tools.ts decides it: the one named, else the caller's workspace, else every workspace. */
-const skillScopeOf = (deps: SkillToolDeps, caller: SessionMeta, scope: 'workspace' | 'global' | undefined): string | null =>
-  (scope ?? (deps.workspaceOf(caller) ? 'workspace' : 'global')) === 'global' ? null : (deps.workspaceOf(caller)?.id ?? null)
 
 export const SKILL_WRITE_SHAPE = {
   name: z.string().describe(SKILL_WRITE_PARAMS.name),
@@ -1034,9 +1010,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       deferredTool(
         tool(SKILL_REMOVE_TOOL, SKILL_REMOVE_DESCRIPTION, SKILL_REMOVE_SHAPE, async (args, x) => {
           if (!skillTools) return text(SKILLS_NOT_READY)
-          const caller = liveCaller(session)
-          const refusal = workSkillRefusal(caller, skillScopeOf(skillTools, caller, args.scope))
-          return text(refusal ?? (await skillRemove(skillTools, caller, args, { callId: toolUseIdOf(x) })))
+          return text(await skillRemove(skillTools, liveCaller(session), args, { callId: toolUseIdOf(x) }))
         })
       ),
       // note_decision on every thread: the record of a choice made while the person is away.

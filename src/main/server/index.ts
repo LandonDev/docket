@@ -206,6 +206,7 @@ import {
   setAppBridge,
   bridgeCallRefusal,
   workBridgeRefusal,
+  workSkillRefusal,
   setAppCrossHost,
   setAppSkillTools,
   setAppToolsRegistry,
@@ -868,6 +869,8 @@ export async function startServer(
       return ws ? { id: ws.id, name: ws.name } : null
     },
     requestApproval: (sessionId, req) => registry.requestApproval(sessionId, req),
+    // A Work thread writes and removes skills in its own workspace only, whichever harness asks (apptools.ts).
+    scopeRefusal: workSkillRefusal,
     skills: skillStore,
     write: storeWrite,
     remove: (id, expectUpdatedAt) =>

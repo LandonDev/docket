@@ -44,6 +44,8 @@ export interface SkillToolDeps {
   remove: (id: string, expectUpdatedAt: number) => Promise<{ removed: boolean } | string>
   /** the materializer's whenSettled */
   settle: () => Promise<boolean>
+  /** the caller's own limit on where it writes and removes, asked by both before anything else (Work's: its own workspace only, apptools.ts workSkillRefusal); a string is a refusal */
+  scopeRefusal?: (caller: SessionMeta, workspaceId: string | null) => string | null
 }
 
 /** The call's own id when the harness gives one: Claude's tool_use id. */
@@ -134,6 +136,8 @@ export async function skillWrite(deps: SkillToolDeps, caller: SessionMeta, args:
   if ((args.files === undefined) === (args.dir === undefined)) return args.files ? 'refused: pass files or dir, not both' : 'refused: pass files or dir'
   const scope = scopeFor(deps, caller, args.scope)
   if (typeof scope === 'string') return scope
+  const fenced = deps.scopeRefusal?.(caller, scope.workspaceId)
+  if (fenced) return fenced
   let files: SkillFile[]
   if (args.dir !== undefined) {
     if (!isAbsolute(args.dir)) return 'refused: dir must be an absolute folder on this host'
@@ -176,6 +180,8 @@ export async function skillWrite(deps: SkillToolDeps, caller: SessionMeta, args:
 export async function skillRemove(deps: SkillToolDeps, caller: SessionMeta, args: SkillRemoveArgs, call: SkillCall = {}): Promise<string> {
   const scope = scopeFor(deps, caller, args.scope)
   if (typeof scope === 'string') return scope
+  const fenced = deps.scopeRefusal?.(caller, scope.workspaceId)
+  if (fenced) return fenced
   const existing = deps.skills.byName(scope.workspaceId, args.name)
   if (!existing) {
     let hint = ''

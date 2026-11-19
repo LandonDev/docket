@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import { WORK_SETTING_KEY } from '@shared/work'
 import { configureAddonScope, visibleAddons, WORK_UNSCOPED, workspaceIdOf } from '../addons/scope'
-import { appToolsMcp, bridgeMcpConfig, workBridgeRefusal, setAppAddons, setAppBridge, setAppSkillTools, setAppToolsRegistry, WORK_ADDON_REFUSAL, WORK_SKILL_REFUSAL } from '../apptools'
+import { appToolsMcp, bridgeMcpConfig, workBridgeRefusal, setAppAddons, setAppBridge, setAppSkillTools, setAppToolsRegistry, WORK_ADDON_REFUSAL, WORK_SKILL_REFUSAL, workSkillRefusal } from '../apptools'
+import { skillRemove, skillWrite } from '../skills/tools'
 import { openDb, Store } from '../db'
 import { cancelMirrors } from '../mirror'
 import { setCrossHostAgents, setOrchestrationRegistry } from '../orchestration'
@@ -167,6 +168,33 @@ describe('skills from a Work thread', () => {
     skillCalls.length = 0
     expect(await call(code, 'skill_remove', { name: 'x', scope: 'global' })).toMatch(/^refused: no skill x in every workspace/)
     expect(skillCalls[0]).toEqual({ what: 'lookup', scope: null })
+  })
+})
+
+describe("skills through the bridge (index.ts's app.skill* calls skills/tools.ts with the same rule)", () => {
+  it('skillWrite and skillRemove themselves refuse a Work thread outside its own workspace, before any lookup or card', async () => {
+    const asked: string[] = []
+    const deps = {
+      environmentId: 'env_box',
+      rootOf: (s: SessionMeta) => s,
+      workspaceOf: (s: SessionMeta) => (s.workspaceId ? { id: s.workspaceId, name: 'ws' } : null),
+      requestApproval: async () => (asked.push('card'), true),
+      skills: { list: () => [], byName: (workspaceId: string | null) => (asked.push(`lookup ${workspaceId}`), null), files: () => [] },
+      write: async () => (asked.push('write'), { skill: { name: 'x' } }),
+      remove: async () => (asked.push('remove'), { removed: true }),
+      settle: async () => true,
+      scopeRefusal: workSkillRefusal
+    } as never
+    const files = [{ path: 'SKILL.md', text: '---\nname: x\ndescription: d\n---\nbody' }]
+    expect(await skillRemove(deps, work, { name: 'x', scope: 'global' })).toBe(WORK_SKILL_REFUSAL)
+    expect(await skillRemove(deps, chat, { name: 'x' })).toBe(WORK_SKILL_REFUSAL)
+    expect(await skillWrite(deps, work, { name: 'x', scope: 'global', files })).toBe(WORK_SKILL_REFUSAL)
+    expect(await skillWrite(deps, chat, { name: 'x', files })).toBe(WORK_SKILL_REFUSAL)
+    expect(asked).toEqual([])
+    // its own workspace goes on to the store; a code thread's every workspace as before
+    expect(await skillRemove(deps, work, { name: 'x' })).toMatch(/^refused: no skill x in ws/)
+    expect(await skillRemove(deps, code, { name: 'x', scope: 'global' })).toMatch(/^refused: no skill x in every workspace/)
+    expect(asked[0]).toBe(`lookup ${purdueId}`)
   })
 })
 
