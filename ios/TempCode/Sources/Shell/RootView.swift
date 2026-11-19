@@ -312,7 +312,10 @@ struct RootView: View {
             for _ in 0..<100 where OutboxEntries.of(model.registry.ordered).isEmpty {
                 try? await Task.sleep(for: .milliseconds(100))
             }
-            if route == "outbox-item", let entry = OutboxModel.bands(OutboxEntries.of(model.registry.ordered)).first?.entries.first {
+            // `TC_TEST_OPEN=<held id>` names the item (milestone 47's send whose outcome is unknown); else the newest.
+            let bands = OutboxModel.bands(OutboxEntries.of(model.registry.ordered))
+            let named = TestHooks.open.flatMap { id in bands.flatMap(\.entries).first { OutboxModel.key($0.item.ref) == "host:\(id)" } }
+            if route == "outbox-item", let entry = named ?? bands.first?.entries.first {
                 await home.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(entry.item.ref)))
             } else {
                 home.open(.outbox)

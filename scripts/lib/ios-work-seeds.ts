@@ -170,6 +170,10 @@ export async function verifyWork(ready: WorkSeedReady): Promise<string[]> {
 export const ITEMS_THREAD_TITLE = 'Spring LAN check-in'
 /** The comment the work set posts at a frame of the video, read back by `verifyWorkItems`. */
 export const MEDIA_COMMENT = 'Logo flickers here'
+/** A failed send whose outcome is unknown (milestone 47's "Check Sent first"). */
+export const WORK_UNKNOWN_ID = 'm47-unknown'
+/** A Work thread with one item open (the single-item header). */
+export const SINGLE_THREAD_TITLE = 'Floor plan check'
 
 /** A small PDF of `pages` pages, each with a heading and a line, written by hand (no PDF library here). */
 function pdfOf(pages: string[][]): Buffer {
@@ -284,6 +288,22 @@ export async function seedWorkItems(ready: WorkSeedReady & { environmentId: stri
       const video = await open('media', 'LAN promo', { at: 'file', host, path: mp4 })
       if (video) await ready_('media video', video, (p) => p.some((x) => x.via === 'hls' && x.ended === true))
     }
+    // And what most media is: a six-second clip and a 2400 by 1600 picture, which the phone reads whole
+    // (the original, or the picture, by its media token) since the host cuts no HLS or tiles for them.
+    const clip = `${dir}/Warm-up clip.mp4`
+    const clipMade = ffmpeg(['-f', 'lavfi', '-i', 'testsrc=duration=6:size=1280x720:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clip])
+    if (clipMade.status !== 0) lines.push(`NOT RUN media short clip: ffmpeg failed: ${clipMade.stderr}`)
+    else {
+      const short = await open('media', 'Warm-up clip', { at: 'file', host, path: clip })
+      if (short) await ready_('media short clip', short, (p) => p.some((x) => x.via === 'original' || x.via === 'proxy' || (x.via === 'hls' && x.ended === true)))
+    }
+    const small = `${dir}/Stage layout.png`
+    const smallMade = ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=2400x1600', '-frames:v', '1', small])
+    if (smallMade.status !== 0) lines.push(`NOT RUN media small picture: ffmpeg failed: ${smallMade.stderr}`)
+    else {
+      const picture = await open('media', 'Stage layout', { at: 'file', host, path: small })
+      if (picture) await ready_('media small picture', picture, (p) => p.some((x) => x.via === 'image' || x.via === 'tiles'))
+    }
     const png = `${dir}/Arena seating.png`
     const shot = ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=8000x5200', '-frames:v', '1', png])
     if (shot.status !== 0) lines.push(`NOT RUN media picture: ffmpeg failed: ${shot.stderr}`)
@@ -334,9 +354,15 @@ export async function seedWorkItems(ready: WorkSeedReady & { environmentId: stri
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        // Older than milestone 46's rows, so its outbox-item shots still open its own mail first.
         rows: [{
+          id: WORK_UNKNOWN_ID, workspaceId: purdue, sessionId, sector: 'purdue', kind: 'office.mail.send', verb: 'Send',
+          summary: 'Send to Karen Mills', state: 'failed', outcomeUnknown: true, error: 'Outlook did not answer before the send timed out.',
+          createdAt: Date.now() - 90 * 60_000,
+          payload: { host, to: ['kmills@purdue.edu'], cc: [], bcc: [], subject: 'Spring LAN headcount', html: '<p>We expect 180 players and 40 staff.</p>' }
+        }, {
           id: 'm47-browser-submit', workspaceId: purdue, sessionId, sector: 'purdue', kind: 'computer.act', verb: 'Submit',
-          summary: 'Submit the arena booking form', createdAt: Date.now() - 2 * 60_000,
+          summary: 'Submit the arena booking form', createdAt: Date.now() - 100 * 60_000,
           payload: { app: { name: 'Chromium', bundleId: 'org.chromium.Chromium' }, action: 'left_click', element: 'button "Submit booking"', url: 'https://recwell.purdue.edu/book' }
         }],
         forms: form ? [{ itemId: form, sessionId, body: { ...formBody, questions: [] } }] : [],
@@ -365,6 +391,14 @@ export async function seedWorkItems(ready: WorkSeedReady & { environmentId: stri
     const history = await open('history', 'LAN poster history', { at: 'file', host, path: tcdoc })
     if (history) await probe('history', 'work.history.versions', { source: { at: 'file', host, path: tcdoc } })
 
+    // A thread with one item: its row under the segment bar holds only the item's More.
+    const single = await s.call<{ id: string }>('session.create', { scope: 'work', workspaceId: purdue, threadType: 'chat', provider: 'claude', model: 'claude-opus-5-5', title: SINGLE_THREAD_TITLE })
+    try {
+      await s.call('work.canvas.open', { sessionId: single.id, kind: 'pdf', title: 'Spring LAN floor plan', source: { at: 'file', host, path: pdfPath } })
+    } catch (err) {
+      lines.push(`NOT RUN single-item thread: ${String(err)}`)
+    }
+
     // Slides need a deck rendered to PDF; this Mac has no LibreOffice (soffice).
     const soffice = spawnSync('sh', ['-c', 'command -v soffice || ls /Applications/LibreOffice.app/Contents/MacOS/soffice'], { encoding: 'utf8' })
     if (soffice.status !== 0) lines.push('NOT RUN slides: no soffice on this Mac, so no deck can be rendered')
@@ -381,11 +415,10 @@ export async function verifyWorkItems(ready: WorkSeedReady, sessionId: string): 
     const lines: string[] = []
     const { items } = await s.call<{ items: { id: string; kind: string; title: string }[] }>('work.canvas.list', { sessionId })
     lines.push(`INFO ${items.length} items open in "${ITEMS_THREAD_TITLE}": ${items.map((i) => `${i.kind} "${i.title}"`).join(', ')}`)
-    const video = items.find((i) => i.kind === 'media' && i.title === 'LAN promo')
-    if (video) {
+    for (const video of items.filter((i) => i.kind === 'media' && (i.title === 'LAN promo' || i.title === 'Warm-up clip'))) {
       const view = await s.call<{ notes?: { kind: string; body: string; anchor: { versionId: string; frame?: number } }[] }>('work.media.view', { itemId: video.id, plays: ['hls', 'tiles'] })
       const note = (view.notes ?? []).find((n) => n.kind === 'comment' && n.body === MEDIA_COMMENT)
-      lines.push(`${note ? 'PASS' : 'FAIL'} the video's comment from the phone is on the host${note ? ` at anchor.frame ${note.anchor.frame} of version ${note.anchor.versionId}` : ''}`)
+      lines.push(`${note ? 'PASS' : 'FAIL'} "${video.title}": the comment from the phone is on the host${note ? ` at anchor.frame ${note.anchor.frame} of version ${note.anchor.versionId}` : ''}`)
     }
     return lines
   } finally {

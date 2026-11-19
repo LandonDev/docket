@@ -1095,6 +1095,14 @@ work_m47() {
   ( TC_ITEM=form shot w38-item-form-light thread "$items" item )
   ( TC_ITEM=dashboard shot w39-item-dashboard-light thread "$items" item )
   ( TC_ITEM=history shot w40-item-history-light thread "$items" item compare )
+  # What most media is: a six-second clip and a 2400 by 1600 picture, read whole by their media token.
+  ( TC_ITEM="Warm-up clip" TC_ACTION="media-comment:Logo flickers here" shot w41-item-short-clip-comment-light thread "$items" item "" 30 )
+  ( TC_ITEM="Stage layout" shot w42-item-small-picture-light thread "$items" item "" 20 )
+  # One item open: the row under the segment bar holds only its More.
+  ( shot w43-item-single-header-light thread "Floor plan check" item )
+  # A send that failed and may have gone: Check Sent first, on its row and in its detail.
+  ( shot w44-outbox-check-sent-light outbox )
+  ( shot w45-outbox-check-sent-detail-light outbox-item "" "" m47-unknown )
 }
 
 work_m46() {

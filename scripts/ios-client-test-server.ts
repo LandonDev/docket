@@ -37,7 +37,8 @@
  *                                 machinery behind it here: macBridge.held, boot-resume, accounts)
  *   POST /batch-log { masterId, lines }  → appends lines to the master's running shell step (a streaming console)
  *   POST /notes { sessionId, text }      → writes a thread's notes.md (the `notes` push follows)
- *   POST /work-held { rows }   → writes held acts into the hold as it writes them (milestone 46's work set);
+ *   POST /work-held { rows }   → writes held acts into the hold as it writes them (milestone 46's work set; a row's
+ *                                 `outcomeUnknown: true` marks a failed send that may have gone);
  *                                 `forms` and `dashboards` write the rows behind a form's and a dashboard's item, and
  *                                 `tools: { ffmpeg: <dir> }` links that dir's ffmpeg and ffprobe in as the conversion tool (milestone 47)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
@@ -2104,9 +2105,9 @@ const control = createServer((req, res) => {
             }
             const at = typeof r.createdAt === 'number' ? r.createdAt : now - (rows.length - i) * 60_000
             db.prepare(
-              `INSERT INTO work_held_acts (id, workspace_id, session_id, sector, kind, origin, why, summary, verb, account, payload, state, run_key, error, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 'ios-proof', 'rule', ?, ?, NULL, ?, ?, ?, ?, ?, ?)`
-            ).run(String(r.id), r.workspaceId == null ? null : String(r.workspaceId), r.sessionId == null ? null : String(r.sessionId), r.sector == null ? null : String(r.sector), String(r.kind), String(r.summary), String(r.verb ?? 'Send'), JSON.stringify(payload), String(r.state ?? 'held'), `ios-proof-${String(r.id)}`, r.error == null ? null : String(r.error), at, at)
+              `INSERT INTO work_held_acts (id, workspace_id, session_id, sector, kind, origin, why, summary, verb, account, payload, state, run_key, error, outcome_unknown, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 'ios-proof', 'rule', ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+            ).run(String(r.id), r.workspaceId == null ? null : String(r.workspaceId), r.sessionId == null ? null : String(r.sessionId), r.sector == null ? null : String(r.sector), String(r.kind), String(r.summary), String(r.verb ?? 'Send'), JSON.stringify(payload), String(r.state ?? 'held'), `ios-proof-${String(r.id)}`, r.error == null ? null : String(r.error), r.outcomeUnknown === true ? 1 : 0, at, at)
           }
           // A held call as the thread saw it (the host's own answer), and Results the thread wrote.
           const transcript = Array.isArray(body.transcript) ? (body.transcript as { sessionId: string; heldId: string; tool: string }[]) : []
