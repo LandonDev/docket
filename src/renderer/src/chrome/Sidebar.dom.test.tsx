@@ -20,6 +20,7 @@ vi.mock("../lib/tcserver/workspaces", () => ({
   workspaceStore: { getSnapshot: () => ({ projects: [], workspaces: [ws] }) },
   workspaceIdOf: () => "w1",
   workspaceLabelKey: (_: unknown, __: string, fallback: string) => fallback,
+  WORK_CHATS: "~work",
 }));
 vi.mock("./ProjectRail", () => ({ ProjectRail: () => <nav data-testid="rail" />, RailFoot: () => <div data-testid="foot" /> }));
 vi.mock("./WorkspaceSessions", async () => {

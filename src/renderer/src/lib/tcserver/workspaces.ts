@@ -46,7 +46,14 @@ type SessionLike = {
   cwd: string;
   projectId?: string | null;
   workspaceId?: string | null;
+  /** "work" on a Work thread's row (SessionMeta.scope); absent on a code thread. */
+  scope?: string;
 };
+
+/** The Work Chats: the Work threads outside every workspace, as "~" is the
+ *  code chats' home (the host's WORK_HOME; docs/agents/work-scope.md). No
+ *  row and no folder carries it: it is the rail's and the column's key. */
+export const WORK_CHATS = "~work";
 
 // ── pure helpers ───────────────────────────────────────────────────────
 
@@ -93,7 +100,7 @@ export function workspaceByPath(
   workspaces: readonly WorkspaceMeta[],
   path: string | null | undefined,
 ): WorkspaceMeta | undefined {
-  if (!path || path === "~") return undefined;
+  if (!path || path === "~" || path === WORK_CHATS) return undefined;
   return workspaceIndex(workspaces).byKey.get(normalizeProjectPath(path));
 }
 
@@ -131,6 +138,8 @@ export function workspaceIdOf(
   const project = projectOf(projects, session);
   if (project) return project.workspaceId;
   if (session.workspaceId) return session.workspaceId;
+  // A Work thread outside every workspace is a Work Chat, never a code chat.
+  if (session.scope === "work") return WORK_CHATS;
   return workspaceByPath(workspaces, session.cwd)?.id ?? null;
 }
 

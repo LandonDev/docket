@@ -49,6 +49,26 @@ describe("projectMenuExtraItems", () => {
 });
 
 describe("railTopRows", () => {
+  it("puts Work's twins beside their code ones only when told: the Outbox after Inbox, Work Chats after Chats", () => {
+    const today = railTopRows({ chats: true, notes: true, aliax: true });
+    expect(railTopRows({ chats: true, notes: true, aliax: true, workChats: false, outbox: false })).toEqual(today);
+    expect(railTopRows({ chats: true, notes: true, aliax: true, workChats: true, outbox: true })).toEqual([
+      "search",
+      "inbox",
+      "outbox",
+      "read",
+      "notes",
+      "chats",
+      "workChats",
+      "accounts",
+      "stats",
+    ]);
+  });
+  it("names the Work Chats' state as the Chats' own", () => {
+    expect(chatsAriaLabel(true, false, "Work Chats")).toBe("Work Chats, working");
+    expect(chatsAriaLabel(false, true)).toBe("Chats, needs you");
+  });
+
   it("is one navigation group on the desktop: Search, Inbox, Mark all read, Notes, Chats, Accounts, Stats", () => {
     expect(railTopRows({ chats: true, notes: true, aliax: true })).toEqual(["search", "inbox", "read", "notes", "chats", "accounts", "stats"]);
   });

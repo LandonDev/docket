@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, type ComponentProps } from "react";
 import { sameData, useKept } from "../lib/keptValue";
 import { resolveSessionContext } from "../lib/projectContext";
 import { usePanelRoom, useRightPanel } from "../lib/rightPanel";
-import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { useWorkspaceCatalog, WORK_CHATS } from "../lib/tcserver/workspaces";
 import {
   filterTabsForProjectId,
   filterTabsForWorkspace,
@@ -101,12 +101,13 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const dockCwd = dockCwdOf({ projectCwd, selectedProjectId }, catalog.projects);
   const dock = useTerminals((s) => findProjectTerminal(s.docks, dockCwd));
   const projectTerminalActive = !!dock && dock.pane.files.length > 0;
-  const headerWorkspaceId =
-    resolveSessionContext({
-      ...catalog,
-      projectId: selectedProjectId,
-      workspacePath: projectCwd,
-    }).workspaceId ?? null;
+  const headerContext = resolveSessionContext({
+    ...catalog,
+    projectId: selectedProjectId,
+    workspacePath: projectCwd,
+  });
+  // The Work Chats' strip holds the Work threads outside every workspace (lib/tcserver/workspaces.ts WORK_CHATS).
+  const headerWorkspaceId = headerContext.scope === "work" ? WORK_CHATS : (headerContext.workspaceId ?? null);
   // The strip shows the selected project's tabs, keyed by server project id.
   // With no project selected it shows this workspace's own loose chats, or
   // on the home the chats outside every workspace.

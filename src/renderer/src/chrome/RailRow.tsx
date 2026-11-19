@@ -301,7 +301,8 @@ export function RailHeading({
 }: {
   id?: string;
   children: string;
-  action?: { label: string; icon: IconComponent; onClick: () => void };
+  /** The heading's one verb; `menu` marks one that opens a menu (aria-haspopup, and expanded while it is open). */
+  action?: { label: string; icon: IconComponent; onClick: (event: MouseEvent<HTMLButtonElement>) => void; menu?: boolean; expanded?: boolean };
 }) {
   const Icon = action?.icon;
   return (
@@ -317,6 +318,8 @@ export function RailHeading({
                 variant="ghost"
                 size="icon-xs"
                 aria-label={action.label}
+                aria-haspopup={action.menu ? "menu" : undefined}
+                aria-expanded={action.menu ? !!action.expanded : undefined}
                 onClick={action.onClick}
                 className="text-muted-foreground hover:text-foreground"
               />

@@ -83,6 +83,8 @@ import GitlabIcon from "@hugeicons/core-free-icons/GitlabIcon";
 import GitCompareIcon from "@hugeicons/core-free-icons/GitCompareIcon";
 import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
 import InboxIcon from "@hugeicons/core-free-icons/InboxIcon";
+import InboxUploadIcon from "@hugeicons/core-free-icons/InboxUploadIcon";
+import Briefcase01Icon from "@hugeicons/core-free-icons/Briefcase01Icon";
 import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
 import LayoutAlignRightIcon from "@hugeicons/core-free-icons/LayoutAlignRightIcon";
 import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
@@ -271,6 +273,10 @@ export const GitLab = wrap(GitlabIcon, "GitLab");
 export const GitPullRequest = wrap(GitPullRequestIcon, "GitPullRequest");
 export const GripVertical = wrap(DragDropVerticalIcon, "GripVertical");
 export const Inbox = wrap(InboxIcon, "Inbox");
+/** The Outbox (Work): what waits for the person's press. */
+export const Outbox = wrap(InboxUploadIcon, "Outbox");
+/** Settings → Work. */
+export const Briefcase = wrap(Briefcase01Icon, "Briefcase");
 export const Keyboard = wrap(KeyboardIcon, "Keyboard");
 export const ListFilter = wrap(FilterIcon, "ListFilter");
 export const ListPlus = wrap(PlayListAddIcon, "ListPlus");

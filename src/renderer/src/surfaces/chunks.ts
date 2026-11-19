@@ -83,9 +83,16 @@ export const computerChunk = defineChunk("computer", () => import("./threads/com
 /** A failed turn's card (FailureCard): its actions, the accounts popover and the failure words, drawn only on a turn that failed. */
 export const failureCardChunk = defineChunk("failureCard", () => import("./FailureCard"));
 
+/** The messages waiting their turn above the composer (chrome/MessageQueue.tsx), drawn only while a thread has some. */
+export const messageQueueChunk = defineChunk("messageQueue", () => import("../chrome/MessageQueue"));
+
 /** The canvas pane beside a Work thread and the composer's chip row (work/canvas). Asked for only by a Work thread or a
  *  composer that holds a chip: nothing of Work is in the first paint (docs/agents/work.md "The first paint"). */
 export const workCanvasChunk = defineChunk("work-canvas", () => import("../work/canvas"));
+
+/** Work's own chrome (work/shell): the Work heading's menus, the Work column's rows and views, Settings → Work and a
+ *  Work workspace's page, the LifeOS session. Asked for only once a host has Work on, or on Settings → Work. */
+export const workShellChunk = defineChunk("work-shell", () => import("../work/shell"));
 
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
@@ -119,4 +126,6 @@ export const allChunks = {
   computerChunk,
   workCanvasChunk,
   failureCardChunk,
+  workShellChunk,
+  messageQueueChunk,
 };

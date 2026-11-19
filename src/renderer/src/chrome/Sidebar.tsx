@@ -55,13 +55,25 @@ import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import type { OpenFileFn } from "../lib/search";
-import { dialogsChunk } from "../surfaces/chunks";
+import { dialogsChunk, workShellChunk } from "../surfaces/chunks";
+import { WORK_CHATS } from "../lib/tcserver/workspaces";
+import { useWorkOn } from "../lib/workSwitch";
+import { Skeleton } from "../components/ui/skeleton";
 import { LoadingLine } from "../surfaces/SurfaceSkeleton";
 
 // Opened from the workspace menu; mounted only while open (chrome/dialogs.ts).
 const NewProjectDialog = dialogsChunk.surface("NewProjectDialog");
 const ThreadDefaultsDialog = dialogsChunk.surface("ThreadDefaultsDialog");
 const PreambleDialog = dialogsChunk.surface("PreambleDialog");
+// A Work workspace's four rows over its projects (work/shell/WorkColumn.tsx); four row-shaped bars while the chunk lands.
+const WorkColumnHead = workShellChunk.surface(
+  "WorkColumnHead",
+  <div aria-hidden className="flex flex-col gap-1 px-2 pt-2 pb-2">
+    {[0, 1, 2, 3].map((i) => (
+      <Skeleton key={i} className="h-7 rounded-md" />
+    ))}
+  </div>,
+);
 
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 560;
@@ -93,6 +105,8 @@ type Props = {
   onOpenNotes?: () => void;
   onOpenAccountsPage?: (page: AliaxPageId) => void;
   onOpenChats?: () => void;
+  onOpenWorkChats?: () => void;
+  onOpenOutbox?: () => void;
   onGoToFile?: () => void;
   onSelectProjectCard?: (projectId: string | null) => void;
   onNewChat?: (projectId: string | null) => void;
@@ -116,6 +130,8 @@ function SidebarComponent({
   onOpenNotes,
   onOpenAccountsPage,
   onOpenChats,
+  onOpenWorkChats,
+  onOpenOutbox,
   onSelectProjectCard,
   onNewChat,
   onProjectCreated,
@@ -182,6 +198,9 @@ function SidebarComponent({
   );
   /** The home: no workspace folder, the chats outside every workspace. */
   const atHome = workspaceCwd === "~";
+  /** The Work Chats: the Work threads outside every workspace. */
+  const atWorkChats = workspaceCwd === WORK_CHATS;
+  const workOn = useWorkOn();
   const searchActive = useShell((s) => s.searchViewOpen);
   const inboxActive = useShell((s) => s.inboxViewOpen);
   const notesActive = useShell((s) => s.notesViewOpen);
@@ -203,13 +222,17 @@ function SidebarComponent({
   const catalogLoaded = useWorkspaceCatalog().loaded;
   const title = atHome
     ? "Chats"
-    : resolveTabGroupLabel(
+    : atWorkChats
+      ? "Work Chats"
+      : resolveTabGroupLabel(
         workspaceLabelKey(workspaces, workspacePath, projectName(workspacePath)),
         groupLabels,
         workspace?.name ?? basename(workspacePath),
       );
   /** What the Sessions list shows: a workspace, the home (null), or nothing. */
-  const sessionsScope: string | null | undefined = workspaceId ?? (atHome ? null : undefined);
+  const sessionsScope: string | null | undefined = workspaceId ?? (atHome ? null : atWorkChats ? WORK_CHATS : undefined);
+  /** A Work workspace: LifeOS's projects, no code verbs; its four rows show while Work is on. */
+  const isWork = workspace?.kind === "work";
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [threadDefaultsOpen, setThreadDefaultsOpen] = useState(false);
   const [preambleOpen, setPreambleOpen] = useState(false);
@@ -251,7 +274,7 @@ function SidebarComponent({
   const showSidebarFooter = !projectRailOpen;
   const sidebarVisible = asideVisible({
     inProject,
-    atHome,
+    atHome: atHome || atWorkChats,
     searchActive,
     inboxActive,
     notesActive,
@@ -321,7 +344,7 @@ function SidebarComponent({
                   <MoreHorizontal className="size-3.5" />
                 </Button>
               }
-              canNewProject={!!workspace}
+              canNewProject={!!workspace && !isWork}
               onNewProject={() => setNewProjectOpen(true)}
               onNewChat={() => onNewChat?.(null)}
               dormant={() => {
@@ -333,10 +356,10 @@ function SidebarComponent({
                 archiveDormantThreads(dormantByType(dormantNow()).find((g) => g.type === type)?.threads ?? [], activeSessionId)
               }
               onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
-              onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}
+              onOrchestration={workspace && !isWork ? () => openOrchestrationSettings(workspace.id) : undefined}
               onPreamble={workspace ? () => setPreambleOpen(true) : undefined}
               onWorkspaceSettings={workspace ? () => openWorkspaceSettings(workspace.id) : undefined}
-              onRemoveWorkspace={railVisible && !atHome ? () => requestProjectRailAction({ kind: "remove", path: workspacePath }) : undefined}
+              onRemoveWorkspace={railVisible && !atHome && !atWorkChats ? () => requestProjectRailAction({ kind: "remove", path: workspacePath }) : undefined}
             />
           ) : null}
         </div>
@@ -345,6 +368,7 @@ function SidebarComponent({
         ref={sessionsScrollRef}
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
       >
+        {isWork && workOn && workspace?.sector ? <WorkColumnHead key={`work-head:${workspace.id}`} workspace={workspace} /> : null}
         {/* Until the catalog names the workspace, the column waits; only then is a folder outside every workspace said. */}
         {workspaceSessions ??
           (catalogLoaded ? (
@@ -414,6 +438,8 @@ function SidebarComponent({
           onOpenNotes={onOpenNotes}
           onOpenAccountsPage={onOpenAccountsPage}
           onOpenChats={onOpenChats}
+          onOpenWorkChats={onOpenWorkChats}
+          onOpenOutbox={onOpenOutbox}
           onSelectProject={onSelectProject}
           onOpenProject={onOpenProject}
           onRemoveProject={onRemoveProject}

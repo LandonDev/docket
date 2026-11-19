@@ -20,6 +20,7 @@ import {
   useWorkspaceCatalog,
   workspaceByPath,
   workspaceIdOf,
+  WORK_CHATS,
   workspaceStore,
   type WorkspaceCatalog,
 } from "../lib/tcserver/workspaces";
@@ -216,11 +217,13 @@ export const project = {
    *  box), so the next New chat drafts there and never in the window's last
    *  folder; any other thread to its workspace. Nothing moves until the
    *  catalog has loaded. */
-  followSession: (session: Pick<Session, "cwd" | "projectId" | "workspaceId">) => {
+  followSession: (session: Pick<Session, "cwd" | "projectId" | "workspaceId" | "scope">) => {
     const catalog = workspaceStore.getSnapshot();
     if (!catalog.loaded) return;
-    if (workspaceIdOf(session, catalog.projects, catalog.workspaces) === null) {
-      if (projectStore.getState().projectCwd !== "~") project.setProjectCwd("~");
+    const home = workspaceIdOf(session, catalog.projects, catalog.workspaces);
+    if (home === null || home === WORK_CHATS) {
+      const key = home ?? "~";
+      if (projectStore.getState().projectCwd !== key) project.setProjectCwd(key);
       return;
     }
     const path = normalizeProjectPath(workspacePathOfSession(session, catalog));

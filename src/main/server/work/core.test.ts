@@ -67,6 +67,10 @@ describe("a workspace's Work settings", () => {
   it('refuses an unknown workspace, and a change while Work is off', async () => {
     const id = await workWorkspace('Purdue', 'purdue')
     await expect(call('work.workspace.get', { workspaceId: 'nope' })).rejects.toThrow('unknown workspace: nope')
+    const code = join(root, 'repo')
+    mkdirSync(code, { recursive: true })
+    const codeId = (await registry.createWorkspace(code)).id
+    await expect(call('work.workspace.set', { workspaceId: codeId, patch: { voice: true } })).rejects.toThrow('only a Work workspace has Work settings')
     switchWork(false)
     await expect(call('work.workspace.set', { workspaceId: id, patch: { voice: true } })).rejects.toThrow('Work is off on this host')
   })
@@ -84,6 +88,17 @@ describe('a LifeOS project opened in a Work workspace', () => {
     // the second ask finds it, whatever name it is asked with
     expect((await call<ProjectMeta>('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_1', name: 'Renamed' })).id).toBe(made.id)
     expect(store.listProjects().filter((p) => p.lifeosProjectId === 'lp_1')).toHaveLength(1)
+  })
+
+  it('is made once when two asks come at once', async () => {
+    const id = await workWorkspace('Purdue', 'purdue')
+    const [a, b] = await Promise.all([
+      call<ProjectMeta>('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_2', name: 'Nationals' }),
+      call<ProjectMeta>('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_2', name: 'Nationals' })
+    ])
+    expect(a.id).toBe(b.id)
+    expect(store.listProjects().filter((p) => p.lifeosProjectId === 'lp_2')).toHaveLength(1)
+    expect(a.branch).toBeNull()
   })
 
   it('is refused in a code workspace and in an unlinked Work workspace', async () => {

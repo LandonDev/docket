@@ -1,4 +1,5 @@
 import { createStore } from "zustand/vanilla";
+import { WORK_CHATS } from "./tcserver/workspaces";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ComposerSegment } from "./composerText";
 import { HARNESS_LABEL, type Attachment, type HarnessId, type RuntimeMode, type Session } from "./session";
@@ -36,6 +37,8 @@ export type DraftRecord = DraftPlace & {
   master?: boolean;
   /** The name typed in the draft row (Session.draftTitle); the first send makes it the thread's title. */
   title?: string;
+  /** "work": a Work Chat's draft (Session.scope), whose first send asks for Work. */
+  scope?: "work";
   segments: ComposerSegment[];
   attachments: Attachment[];
   seenAt: number;
@@ -55,14 +58,15 @@ type Catalog = { projects: readonly Pick<ProjectMeta, "id" | "environmentId" | "
 /** The key a draft for `session` lives under: its project's strip key, else
  *  its workspace's loose key. */
 export function draftKeyOf(
-  session: Pick<Session, "projectId" | "environmentId" | "workspaceId">,
+  session: Pick<Session, "projectId" | "environmentId" | "workspaceId"> & { scope?: string },
   catalog: Catalog,
 ): string {
   const project = session.projectId
     ? (catalog.projects.find((p) => p.id === session.projectId && p.environmentId === session.environmentId) ??
       catalog.projects.find((p) => p.id === session.projectId))
     : undefined;
-  return stripScopeKey(project, session.workspaceId ?? null);
+  // A Work Chat's draft is not the code chats' draft.
+  return stripScopeKey(project, session.workspaceId ?? (session.scope === "work" ? WORK_CHATS : null));
 }
 
 /** What localStorage may hold of an attachment: never bytes or a preview URL. */
@@ -210,6 +214,7 @@ export function draftPicks(session: Session): DraftPatch {
     threadRules: session.threadRules ?? null,
     master: !!session.draftMaster,
     title: session.draftTitle ?? "",
+    ...(session.scope === "work" ? { scope: "work" as const } : {}),
   };
 }
 
@@ -234,6 +239,8 @@ export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, 
     ...(record.threadRules ? { threadRules: record.threadRules } : {}),
     ...(record.master ? { draftMaster: true } : {}),
     ...(record.title ? { draftTitle: record.title } : {}),
+    // A Work Chat's draft stays one: outside every workspace, it asks for Work at its first send.
+    ...(record.scope === "work" && !where.projectId && !where.workspaceId ? { scope: "work" as const } : {}),
     createdAt: now,
     blocks: [],
   };

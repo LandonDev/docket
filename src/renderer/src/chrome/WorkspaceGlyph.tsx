@@ -186,3 +186,28 @@ export function FolderGlyph({
     />
   );
 }
+
+/** Each LifeOS sector's dot fill (index.css `--sector-*`), as literal classes Tailwind can see. */
+const SECTOR_FILL: Record<string, string> = {
+  cosmic: "bg-(--sector-cosmic)",
+  hypixel: "bg-(--sector-hypixel)",
+  purdue: "bg-(--sector-purdue)",
+  ref: "bg-(--sector-ref)",
+  unify: "bg-(--sector-unify)",
+  life: "bg-(--sector-life)",
+};
+
+/**
+ * A LifeOS sector's mark: one 8px dot in a 16px slot, where a code
+ * workspace has its glyph (docs/DESIGN.md "Canvas tints"). No sector is a
+ * 1.5px muted ring. Drawn only where sectors mix: the rail's Work rows, the
+ * settings list, a menu that lists sectors.
+ */
+export function SectorDot({ sector, className }: { sector: string | null | undefined; className?: string }) {
+  const fill = sector ? SECTOR_FILL[sector] : undefined;
+  return (
+    <span aria-hidden data-sector={sector ?? "none"} className={cn("grid size-4 shrink-0 place-items-center", className)}>
+      <span className={cn("size-2 rounded-full", fill ?? "border-[1.5px] border-muted-foreground")} />
+    </span>
+  );
+}

@@ -114,10 +114,13 @@ LifeOS's own refusal (a ConvexError) drops a link; any other failure queues it.
 `work.lifeos.status` (read), `pairStart`, `pairCancel`, `setToken`,
 `signOut`, `link` (admin), `jwt {sector?}` (**approve**: a LifeOS JWT can do
 what the owner does there, `compose.send` included). `jwt` answers
-`{ok: true, jwt, expiresAt}` or `{ok: false, state}`, and is carried to a
-far host only while its screen is unlocked (`'screen'`). The push
-`work.lifeos {status}` carries no pairing code. A key paired at the pairing
-dialog's default (`operate`) gets no JWT.
+`{ok: true, jwt, expiresAt, url}` (the Convex address the JWT is good for,
+where a screen opens its own client: work/shell/lifeos.ts) or
+`{ok: false, state}`, and is carried to a far host only while its screen is
+unlocked (`'screen'`). The push `work.lifeos {status}` carries no pairing
+code. A key paired at the pairing dialog's default (`operate`) gets no JWT.
+`link` writes the sector through `registry.setWorkspaceSector`, which sends
+the `workspaces` push, so every client's rail and menus see it.
 
 ## What this does not stop
 

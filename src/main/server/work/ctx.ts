@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { allows, CAPABILITIES, principalCaps, type Principal as SocketPrincipal } from '@shared/capabilities'
 import type { ClientRequest, CreateSessionParams } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
-import type { WorkspaceMeta } from '@shared/domain'
+import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import {
   handled,
@@ -364,6 +364,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
       return want.length === got.length && timingSafeEqual(want, got)
     }
   }
+  const openingProjects = new Map<string, Promise<ProjectMeta>>()
   const knownWorkspace = (id: string): WorkspaceMeta => {
     const workspace = deps.registry.listWorkspaces().find((w) => w.id === id)
     if (!workspace) throw new Error(`unknown workspace: ${id}`)
@@ -396,7 +397,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
         case 'work.workspace.set': {
           if (!settings.enabled()) throw new Error('Work is off on this host')
           const { workspaceId, patch } = req.params
-          knownWorkspace(workspaceId)
+          if (knownWorkspace(workspaceId).kind !== 'work') throw new Error('refused: only a Work workspace has Work settings')
           // null clears a model back to the Work default; absent keeps what is set.
           const { model, reasoning, ...rest } = patch
           settings.setWorkspace(workspaceId, {
@@ -412,7 +413,15 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           const workspace = knownWorkspace(workspaceId)
           if (workspace.kind !== 'work' || !workspace.sector) throw new Error(`${workspace.name} is not a Work workspace linked to LifeOS`)
           const mine = deps.registry.listProjects().find((p) => p.workspaceId === workspaceId && p.lifeosProjectId === lifeosProjectId)
-          return handled(mine ?? (await deps.registry.createProject(workspaceId, name, 'local', { lifeosProjectId })))
+          if (mine) return handled(mine)
+          // Two asks at once (a double click, a second window) make one project.
+          const key = `${workspaceId}\0${lifeosProjectId}`
+          let making = openingProjects.get(key)
+          if (!making) {
+            making = deps.registry.createProject(workspaceId, name, 'local', { lifeosProjectId }).finally(() => openingProjects.delete(key))
+            openingProjects.set(key, making)
+          }
+          return handled(await making)
         }
         case 'app.workTools':
           return handled({ tools: tools.listing(bridgeSession(req.params)) })

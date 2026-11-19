@@ -7,7 +7,7 @@ import { SurfaceSkeleton } from "./SurfaceSkeleton";
 
 /** What each chunk's barrel must expose: the mount points ask for these by name. */
 const EXPECTED: Record<keyof typeof allChunks, string[]> = {
-  settingsChunk: ["SettingsView"],
+  settingsChunk: ["SettingsView", "SettingsNav"],
   aliaxChunk: ["AliaxPagesView"],
   diffChunk: ["DiffBody"],
   editorChunk: ["FileEditor", "handleEditorFindKey", "openFindInActiveEditor"],
@@ -27,6 +27,7 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   virtualChunk: ["VirtualRows"],
   messageListChunk: ["TranscriptOutlineList"],
   failureCardChunk: ["FailureCard"],
+  messageQueueChunk: ["MessageQueue"],
   workCanvasChunk: ["CanvasSeat", "ComposerChips", "addContextChip", "CANVAS", "kindFor", "onOpenHeld", "openItem"],
   dialogsChunk: ["ThreadBatchDialog", "WhatsNewDialog", "NewProjectDialog", "NewWorkspaceDialog", "ProjectSettingsDialog", "ProjectTeardownDialog", "RemoteFolderDialog", "ThreadDefaultsDialog", "PreambleDialog"],
 };

@@ -2,6 +2,7 @@ import {
   Globe,
   Archive,
   ArrowLeft,
+  Briefcase,
   BookOpen,
   Bot,
   Camera,
@@ -33,6 +34,8 @@ import { resolveTabGroupLabel } from "../lib/tabGroups";
 import { useTabGroupLabels } from "../hooks/useTabGroupLabels";
 import { registry, useEnvironments } from "../lib/connection";
 import { RailHeading, RailRow } from "./RailRow";
+import { SectorDot } from "./WorkspaceGlyph";
+import { useWorkOn } from "../lib/workSwitch";
 
 const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   general: SlidersHorizontal,
@@ -49,6 +52,7 @@ const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   computer: SquareMousePointer,
   remote: Globe,
   archive: Archive,
+  work: Briefcase,
 };
 
 type Props = {
@@ -60,7 +64,11 @@ type Props = {
 /** Body of the project rail while settings are open. */
 export function SettingsNav({ section, onSelect, onClose }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const workspaces = useWorkspaces();
+  const all = useWorkspaces();
+  // A Work workspace's page sits under the Work heading, led by its sector's dot, and only while Work is on.
+  const workOn = useWorkOn();
+  const workspaces = all.filter((w) => w.kind !== "work");
+  const workWorkspaces = workOn ? all.filter((w) => w.kind === "work") : [];
   // The name Customize set, as the rail says it.
   const labels = useTabGroupLabels();
   // With another host paired, a workspace on it says so: two hosts can hold a folder of the same name.
@@ -100,6 +108,21 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
                 onClick={() => onSelect(item.id)}
               />
             ))}
+            {group.id === "work"
+              ? workWorkspaces.map((workspace) => {
+                  const id = workspaceSettingsSection(workspace.id);
+                  return (
+                    <RailRow
+                      key={id}
+                      label={resolveTabGroupLabel(workspaceLabelKey(all, workspace.path, workspace.name), labels, workspace.name)}
+                      trailing={hostOf(workspace.environmentId)}
+                      glyph={<SectorDot sector={workspace.sector} />}
+                      selected={id === section}
+                      onClick={() => onSelect(id)}
+                    />
+                  );
+                })
+              : null}
           </div>
         ))}
         {workspaces.length ? (
@@ -110,7 +133,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
               return (
                 <RailRow
                   key={id}
-                  label={resolveTabGroupLabel(workspaceLabelKey(workspaces, workspace.path, workspace.name), labels, workspace.name)}
+                  label={resolveTabGroupLabel(workspaceLabelKey(all, workspace.path, workspace.name), labels, workspace.name)}
                   trailing={hostOf(workspace.environmentId) ?? folderOf(workspace)}
                   icon={Folder}
                   selected={id === section}

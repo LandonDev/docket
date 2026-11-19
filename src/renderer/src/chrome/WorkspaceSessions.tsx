@@ -84,11 +84,14 @@ import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { usePlanReady } from "../hooks/usePlanReady";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
-import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { useWorkspaceCatalog, WORK_CHATS } from "../lib/tcserver/workspaces";
+import { LIFEOS_CARD, useLifeosProjects, workColumnPort } from "../lib/workSwitch";
+import { loadToast } from "../components/ui/toaster";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
 import {
   cardThreads,
   groupWorkspaceSessions,
+  withLifeosCards,
   rowCache,
   type ProjectGroup,
   type ThreadRow,
@@ -944,6 +947,8 @@ export type ProjectCardViewProps = {
   name: string;
   branch: string | null | undefined;
   mode: ProjectMeta["mode"];
+  /** A LifeOS project's card (a Work workspace's): no branch line, it has no checkout. */
+  lifeos?: boolean;
   /** Newest activity; 0 shows no time. Its clock, and the working lines' elapsed, are leaves of their own (CardNowContext fixes them). */
   latest: number;
   lines: readonly CardLine[];
@@ -986,6 +991,7 @@ export function ProjectCardView({
   onRename,
   onMore,
   menu,
+  lifeos = false,
 }: ProjectCardViewProps) {
   tallyRender("projectCard");
   const editing = title != null;
@@ -1002,6 +1008,7 @@ export function ProjectCardView({
           </>
         )}
       </span>
+      {lifeos ? null : (
       <span className="mt-0.5 flex h-4 min-w-0 items-center gap-1 text-muted-foreground" data-card-branch>
         <span className="flex min-w-0 items-center gap-1">
           <GitBranch aria-hidden className="size-3 shrink-0" />
@@ -1011,6 +1018,7 @@ export function ProjectCardView({
             and by weight, so the two facts never differ by space alone. */}
         {mode === "worktree" ? <span className="shrink-0 font-medium">worktree</span> : null}
       </span>
+      )}
       {lines.length ? (
         <span className="mt-1 flex min-w-0 flex-col">
           {lines.map((line) =>
@@ -1076,7 +1084,8 @@ export function ProjectCardView({
 export function estimateCard(group: ProjectGroup): number {
   const lines = group.threads.filter((t) => !t.housed && (t.unread || !!t.batch?.length || marksAtRest(rowState(t)))).length;
   const counts = group.threads.length === 0 || group.archivedCount > 0 || lines < group.threads.length;
-  return 58 + 24 * Math.min(lines, SESSION_LIST_PAGE) + (counts ? 20 : 0);
+  // A LifeOS project's card has no branch line (18px).
+  return (group.project.lifeosProjectId ? 40 : 58) + 24 * Math.min(lines, SESSION_LIST_PAGE) + (counts ? 20 : 0);
 }
 
 type ProjectCardProps = {
@@ -1129,10 +1138,13 @@ export const ProjectCard = memo(function ProjectCard({
 
   const dormant = () => dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
   const menuRows = (): MenuRow[] => {
+    // A LifeOS project's card: LifeOS names, archives and deletes it; until it holds a thread there is no project to set up.
+    if (project.id.startsWith(LIFEOS_CARD)) return [{ kind: "item", id: "chat", label: "New chat", icon: MessageSquarePlus }];
+    const lifeos = !!project.lifeosProjectId;
     const all = dormant();
     const items: MenuRow[] = [
       { kind: "item", id: "chat", label: "New chat", icon: MessageSquarePlus },
-      { kind: "item", id: "rename", label: "Rename", icon: Pencil },
+      ...(lifeos ? [] : [{ kind: "item", id: "rename", label: "Rename", icon: Pencil } as const]),
       { kind: "item", id: "settings", label: "Project settings", icon: Settings },
       { kind: "item", id: "preamble", label: "Preamble…", icon: FileText },
       { kind: "sep" },
@@ -1150,9 +1162,13 @@ export const ProjectCard = memo(function ProjectCard({
         disabled: all.length === 0,
       },
       ...dormantByType(all).map((g): MenuRow => ({ kind: "item", id: `archive-dormant:${g.type}`, label: g.label, icon: THREAD_MENU_ICONS[g.type] })),
-      { kind: "item", id: "archive", label: teardown ? "Archive project…" : "Archive project", icon: Archive },
-      { kind: "sep" },
-      { kind: "item", id: "delete", label: "Delete project…", icon: Trash2, danger: true },
+      ...(lifeos
+        ? []
+        : ([
+            { kind: "item", id: "archive", label: teardown ? "Archive project…" : "Archive project", icon: Archive },
+            { kind: "sep" },
+            { kind: "item", id: "delete", label: "Delete project…", icon: Trash2, danger: true },
+          ] as const)),
     );
     return tidy(items);
   };
@@ -1174,6 +1190,7 @@ export const ProjectCard = memo(function ProjectCard({
       name={project.name}
       branch={project.branch}
       mode={project.mode}
+      lifeos={!!project.lifeosProjectId}
       latest={latest}
       lines={shown}
       hidden={hidden}
@@ -1182,7 +1199,7 @@ export const ProjectCard = memo(function ProjectCard({
       selected={selected}
       offline={offline}
       onSelect={() => selectProject(project.id)}
-      onRename={() => setRenaming(true)}
+      onRename={project.lifeosProjectId ? undefined : () => setRenaming(true)}
       onMore={() => more(project.id)}
       menu={{ rows: menuRows, onPick: onMenuPick }}
       title={
@@ -1429,7 +1446,11 @@ export default function WorkspaceSessions({
   const metas = useSessionMetas();
   const planReady = usePlanReady(metas);
   const memory = memoryOf(workspaceId ?? "home");
-  const { workspaces, projects } = useWorkspaceCatalog();
+  const { workspaces, projects: catalogProjects } = useWorkspaceCatalog();
+  // A linked Work workspace lists its LifeOS projects live, a card for each (lib/workspaceSessions.ts).
+  const workWorkspace = workspaces.find((w) => w.id === workspaceId && w.kind === "work");
+  const lifeos = useLifeosProjects(workWorkspace?.sector ? workWorkspace.id : null);
+  const projects = useMemo(() => withLifeosCards(catalogProjects, workWorkspace, lifeos), [catalogProjects, workWorkspace, lifeos]);
   // Each copy's host, for the card's offline tint: one string, so a
   // memoized card sees the same prop until a host changes.
   const hostsOf = useCallback(
@@ -1511,11 +1532,32 @@ export default function WorkspaceSessions({
   useLayoutEffect(() => {
     latest.current = { onSelectProject, onOpenSession, onNewChat, onRenameSession, onDeleteSession, activeSessionId };
   });
-  const selectProject = useCallback((id: string) => latest.current.onSelectProject(id), []);
+  // A LifeOS project's card has no project yet: its first pick makes one, then opens it.
+  const realProject = useCallback(async (id: string): Promise<string | null> => {
+    if (!id.startsWith(LIFEOS_CARD) || !workspaceId) return id;
+    const port = workColumnPort.get();
+    // A refusal says so (Work off on that host, a key that may not): never a click that does nothing.
+    return port
+      ? port.openProject(workspaceId, id.slice(LIFEOS_CARD.length)).catch((error: unknown) => {
+          void loadToast().then((toast) => toast.error(error instanceof Error ? error.message : String(error)));
+          return null;
+        })
+      : null;
+  }, [workspaceId]);
+  const selectProject = useCallback(
+    (id: string) =>
+      void realProject(id).then((real) => {
+        if (real) latest.current.onSelectProject(real);
+      }),
+    [realProject],
+  );
   const openSession = useCallback((id: string) => latest.current.onOpenSession(id), []);
   const newChat = useCallback(
-    (projectId: string | null) => latest.current.onNewChat(projectId),
-    [],
+    (projectId: string | null) =>
+      void (projectId ? realProject(projectId) : Promise.resolve(null)).then((real) => {
+        if (!projectId || real) latest.current.onNewChat(real);
+      }),
+    [realProject],
   );
   const renameSession = useCallback(
     (id: string, title: string) => latest.current.onRenameSession(id, title),
@@ -1605,8 +1647,8 @@ export default function WorkspaceSessions({
   // re-renders per frame while a section opens or closes, and the memoized
   // cards sit that out.)
   const items = useMemo(
-    () => sidebarItems(groups, workspaceId === null),
-    [groups, workspaceId],
+    () => sidebarItems(groups, workspaceId === null || workspaceId === WORK_CHATS, !!workWorkspace),
+    [groups, workspaceId, workWorkspace],
   );
   const estimateSize = useCallback((i: number) => estimateItem(items[i]), [items]);
   const getItemKey = useCallback((i: number) => items[i].key, [items]);

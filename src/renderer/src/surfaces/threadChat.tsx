@@ -16,7 +16,11 @@ import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
 import { Composer } from "../chrome/Composer";
 import { ConnectionLine, useEnvironmentBlock } from "../chrome/ConnectionLine";
 import { ChevronDown } from "../chrome/icons";
-import { MessageQueue, visibleQueue } from "../chrome/MessageQueue";
+
+// The queue rides its own chunk (warmed in the idle slot), out of the first paint: it draws only while messages wait.
+const MessageQueue = messageQueueChunk.surface("MessageQueue");
+/** The items the queue shows: on a queued thread a stored item is already the transcript's user row (chrome/MessageQueue.tsx). */
+const visibleQueue = <T extends { stored?: boolean }>(items: readonly T[], queued: boolean): T[] => (queued ? items.filter((m) => !m.stored) : [...items]);
 import { SessionReview } from "../chrome/SessionReview";
 import type { ComposerIntent } from "../lib/composerAction";
 import { DUR, EASE_OUT, FADE_OUT } from "../lib/ease";
@@ -50,7 +54,7 @@ import { rightPanel, watchSection } from "../lib/rightPanel";
 import { desktopOnly } from "../lib/nativeWeb";
 import { askOnGesture } from "../lib/preconnect";
 import { useKept } from "../lib/keptValue";
-import { macBridgeChunk } from "./chunks";
+import { macBridgeChunk, messageQueueChunk } from "./chunks";
 
 /** A box thread's waiting Mac bridge card, loaded once one waits. */
 const MacBridgeThreadCards = macBridgeChunk.surface("MacBridgeThreadCards");

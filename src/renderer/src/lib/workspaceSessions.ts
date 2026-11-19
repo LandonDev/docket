@@ -435,3 +435,36 @@ export function groupWorkspaceSessions(
   }
   return out;
 }
+
+/**
+ * A linked Work workspace's projects are LifeOS's, shown live (the owner's
+ * rule): each LifeOS project that has no project here yet gets a card of its
+ * own, named as LifeOS names it, whose id says so (`lifeos:<id>`); its first
+ * thread makes the project (`work.project.open`). A project that already
+ * mirrors one keeps its card. Any other workspace's list is the one given.
+ */
+export function withLifeosCards(
+  projects: readonly ProjectMeta[],
+  workspace: WorkspaceMeta | undefined,
+  lifeos: readonly { id: string; name: string }[],
+): readonly ProjectMeta[] {
+  if (!workspace || workspace.kind !== "work" || lifeos.length === 0) return projects;
+  const mirrored = new Set(projects.filter((p) => p.workspaceId === workspace.id && p.lifeosProjectId).map((p) => p.lifeosProjectId));
+  const cards = lifeos
+    .filter((row) => !mirrored.has(row.id))
+    .map(
+      (row): ProjectMeta => ({
+        id: `lifeos:${row.id}`,
+        workspaceId: workspace.id,
+        name: row.name,
+        mode: "local",
+        branch: null,
+        cwd: workspace.path,
+        archived: false,
+        createdAt: 0,
+        lifeosProjectId: row.id,
+        environmentId: workspace.environmentId,
+      }),
+    );
+  return cards.length ? [...projects, ...cards] : projects;
+}

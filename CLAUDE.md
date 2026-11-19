@@ -224,7 +224,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   `github:` spec), kept out of the app by electron-builder; scripts/workKitPin.test.ts.
   [docs/agents/work-kit.md](docs/agents/work-kit.md)
 - **Work** — a job as a workspace, behind one switch per host, off by default
-  (`work.get`, `work.set`). Built so far: the frame, and what a Work thread is
+  (`work.get`, `work.set`). The screens: the rail's Work heading and Work Chats, the
+  Work column's four views (`WORK_VIEWS`), Settings → Work (work/shell, lib/workSwitch.ts;
+  work.md "The screens"). Built so far: the frame, and what a Work thread is
   on the server: `sessions.scope` stamped once at create and following a
   thread's parent or starter, no MCP server but the app's own (Claude Code,
   Codex and Muse; `work/fence.proof.test.ts` and `work/fence-muse.proof.test.ts`

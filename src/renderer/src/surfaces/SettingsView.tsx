@@ -1,4 +1,6 @@
 import { WindowControls } from "../chrome/WindowControls";
+// The rail's settings list loads with the pages (chrome/ProjectRail.tsx mounts it from this chunk).
+export { SettingsNav } from "../chrome/SettingsRail";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePageEscape } from "../lib/pageEscape";
 import { prettyCwd } from "../lib/paths";
@@ -26,6 +28,14 @@ import { ArchivePage } from "./settings/Archive";
 import { AddonsPage } from "./settings/addons/AddonsPage";
 import { SkillsPage } from "./settings/skills/SkillsPage";
 import { ComputerPage } from "./settings/Computer";
+import { WorkPage } from "./settings/Work";
+import { workShellChunk } from "./chunks";
+import { PageRowsSkeleton } from "../components/page";
+import { useWorkOn } from "../lib/workSwitch";
+
+// A Work workspace's own page, and a code workspace's sector, ride Work's chunk (work/shell/settings.tsx).
+const WorkWorkspacePage = workShellChunk.surface("WorkWorkspacePage", <PageRowsSkeleton rows={4} description control="button" />);
+const CodeWorkspaceSector = workShellChunk.surface("CodeWorkspaceSector");
 
 type Props = {
   cwd: string;
@@ -52,6 +62,7 @@ export function SettingsView({
   const workspaceId = workspaceOfSection(section);
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const title = workspace?.name ?? settingsSectionLabel(section);
+  const workOn = useWorkOn();
 
   usePageEscape(() => shell.closeSettings(), { fields: "undo" });
 
@@ -92,7 +103,15 @@ export function SettingsView({
               frame's 24px section gap never lands between its rows. */}
           {section === "general" ? <GeneralPage onOpenWhatsNew={onOpenWhatsNew} /> : null}
           {section === "defaults" ? <ThreadDefaultsPage /> : null}
-          {workspace ? <WorkspacePage key={workspace.id} workspaceId={workspace.id} /> : null}
+          {workspace?.kind === "work" ? (
+            <WorkWorkspacePage key={workspace.id} workspaceId={workspace.id} />
+          ) : workspace ? (
+            <>
+              {workOn ? <CodeWorkspaceSector workspaceId={workspace.id} /> : null}
+              <WorkspacePage key={workspace.id} workspaceId={workspace.id} />
+            </>
+          ) : null}
+          {section === "work" ? <WorkPage /> : null}
           {section === "appearance" ? <AppearancePage /> : null}
           {section === "editor" ? <EditorPage /> : null}
           {section === "keybindings" ? <KeybindingsPage /> : null}

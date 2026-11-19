@@ -2,7 +2,7 @@ import { aliasKeys } from "./linkedRail";
 import { looksLikeProject, normalizeProjectPath } from "./recents";
 import type { Session } from "./session";
 import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
-import { projectOf, workspaceByPath, workspaceIndex } from "./tcserver/workspaces";
+import { WORK_CHATS, projectOf, workspaceByPath, workspaceIndex } from "./tcserver/workspaces";
 
 /**
  * Where a new session runs and which server ids it carries. Every
@@ -14,6 +14,8 @@ export type ResolvedContext = {
   projectId: string | null;
   workspaceId: string | null;
   cwd: string;
+  /** "work": a Work Chat, outside every workspace (the window is on WORK_CHATS). */
+  scope?: "work";
 };
 
 export type Catalog = {
@@ -33,6 +35,8 @@ export function resolveSessionContext(
   if (project) {
     return { projectId: project.id, workspaceId: project.workspaceId, cwd: project.cwd };
   }
+  // The Work Chats: a Work thread outside every workspace; the host picks its folder.
+  if (args.workspacePath === WORK_CHATS) return { projectId: null, workspaceId: null, cwd: "~", scope: "work" };
   const workspace = workspaceByPath(args.workspaces, args.workspacePath);
   return {
     projectId: null,
@@ -80,17 +84,22 @@ export function contextOfSession(
  *  (the home directory, a stray folder) as the "~" home where loose chats
  *  live. */
 export function homeOrWorkspacePath(path: string): string {
+  if (path === WORK_CHATS) return path;
   return looksLikeProject(path) ? normalizeProjectPath(path) : "~";
 }
 
 export function workspacePathOfSession(
-  session: Pick<Session, "cwd" | "projectId" | "workspaceId">,
+  session: Pick<Session, "cwd" | "projectId" | "workspaceId"> & { scope?: string },
   catalog: Catalog,
 ): string {
   // Outside every workspace is the home, whatever folder it runs in (a box
   // chat's home directory reads as a folder on the Mac); only a path-only
   // row from before ids still sits in the workspace whose folder it is.
-  if (!session.projectId && !session.workspaceId) return workspaceByPath(catalog.workspaces, session.cwd)?.path ?? "~";
+  if (!session.projectId && !session.workspaceId) {
+    // A Work thread outside every workspace lives in the Work Chats, whatever its folder.
+    if (session.scope === "work") return WORK_CHATS;
+    return workspaceByPath(catalog.workspaces, session.cwd)?.path ?? "~";
+  }
   const project = projectOf(catalog.projects, session);
   const workspaceId = project?.workspaceId ?? session.workspaceId;
   const workspace = workspaceId
@@ -101,7 +110,7 @@ export function workspacePathOfSession(
 
 /** Sessions with their cwd swapped for the workspace path, for the
  *  path-keyed tab and rail helpers. */
-export function rebaseToWorkspace<T extends Pick<Session, "cwd" | "projectId" | "workspaceId">>(
+export function rebaseToWorkspace<T extends Pick<Session, "cwd" | "projectId" | "workspaceId"> & { scope?: string }>(
   sessions: T[],
   catalog: Catalog,
 ): T[] {
@@ -190,7 +199,7 @@ export type LandingScope = { projectId: string } | { workspacePath: string };
  *  leader's for a copy on another host (lib/linkedRail.ts), so a linked row
  *  reads every copy as one. */
 export function landingPathOfSession(
-  session: Pick<Session, "cwd" | "projectId" | "workspaceId">,
+  session: Pick<Session, "cwd" | "projectId" | "workspaceId"> & { scope?: string },
   catalog: Catalog,
 ): string {
   return aliasKeys(catalog.workspaces).path(workspacePathOfSession(session, catalog));

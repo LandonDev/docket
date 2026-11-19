@@ -172,6 +172,7 @@ import {
   useWorkspaceCatalog,
   workspaceByPath,
   workspaceStore,
+  WORK_CHATS,
 } from "./lib/tcserver/workspaces";
 import { draftFromDefaults } from "./lib/tcserver/defaults";
 import type { ThreadType } from "./lib/tcserver/types";
@@ -291,7 +292,8 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, awayReturnChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { aliaxChunk, awayReturnChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workShellChunk } from "./surfaces/chunks";
+import { openWorkView, useWorkOn, useWorkView, workHome, workStartPort } from "./lib/workSwitch";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -310,6 +312,8 @@ const NewWorkspaceDialog = dialogsChunk.surface("NewWorkspaceDialog");
 const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
 const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" lines={3} label="Loading notes" />);
+const WorkViewSurface = workShellChunk.surface("WorkViewSurface", <SurfaceSkeleton kind="page" label="Loading" />);
+const WorkRailHost = workShellChunk.surface("WorkRailHost");
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
 import { threadPane, titleThread, windowTitle } from "./lib/windowTitle";
 import {
@@ -398,6 +402,8 @@ function currentSessionDefaults(): Session | undefined {
 }
 
 function environmentForContext(ctx: ResolvedContext): string {
+  // A Work Chat goes to a host with Work on: the box by default (lib/workSwitch.ts workHome).
+  if (ctx.scope === "work") return workHome(registry.environments(), registry.primaryEnvironmentId) ?? registry.primary().environmentId;
   const project = workspaceStore.project(ctx.projectId);
   const workspace = workspaceStore.workspace(ctx.workspaceId);
   // A loose chat outside the catalog belongs to this window's machine.
@@ -445,6 +451,8 @@ export default function App() {
   const searchViewFocusToken = useShell((s) => s.searchViewFocusToken);
   const searchSeed = useShell((s) => s.searchSeed);
   const inboxViewOpen = useShell((s) => s.inboxViewOpen);
+  const workViewShown = useWorkView() !== null;
+  const workOn = useWorkOn();
   const notesViewOpen = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
   const settingsOpen = useShell((s) => s.settingsOpen);
@@ -653,6 +661,8 @@ export default function App() {
 
   const activateTab = useCallback((id: string) => {
     perfMark("tab-switch", id);
+    // A thread picked leaves a Work view: the threads come back.
+    openWorkView(null);
     workspaceActions.activateTab(id);
     const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === id);
     const shown = tab ? sessionStore.get(tab.focusedId) : undefined;
@@ -715,7 +725,7 @@ export default function App() {
       const ctx = newThreadContext(base, workspaceStore.projects, currentActivePane().active);
       const catalog = workspaceStore.getSnapshot();
       const key = draftKeyOf(
-        { projectId: ctx.projectId, environmentId: environmentForContext(ctx), workspaceId: ctx.workspaceId },
+        { projectId: ctx.projectId, environmentId: environmentForContext(ctx), workspaceId: ctx.workspaceId, scope: ctx.scope },
         catalog,
       );
       const linkId = ctx.projectId ? catalog.projects.find((p) => p.id === ctx.projectId)?.linkId : null;
@@ -2068,6 +2078,34 @@ export default function App() {
     openProjectDraft({ projectId: null }, { placement: "tab" });
   }, [openLanding, openProjectDraft]);
 
+  /** Rail: the Work Chats, the Work threads outside every workspace (WORK_CHATS): the Chats' twin. */
+  const onOpenWorkChats = useCallback(() => {
+    shell.closeViews();
+    openWorkView(null);
+    project.setProjectCwd(WORK_CHATS);
+    const state = workspaceTabsStore.getState();
+    const catalog = workspaceStore.getSnapshot();
+    const open = filterTabsForWorkspace(state.tabs, sessionStore.getSnapshot(), catalog, WORK_CHATS);
+    if (open.some((tab) => tab.id === state.activeTabId)) return;
+    const landing = landingOf({ workspacePath: WORK_CHATS }, sessionStore.metas(), catalog, seenNow())?.id;
+    if (landing) {
+      void openLanding(landing, WORK_CHATS);
+      return;
+    }
+    project.selectProject(null);
+    openProjectDraft({ projectId: null }, { placement: "tab" });
+  }, [openLanding, openProjectDraft]);
+
+  // Work's views start a thread here: a new thread's draft in the window's workspace, focused (work/shell/WorkColumn.tsx).
+  useEffect(() => {
+    workStartPort.set((projectId) => {
+      shell.closeViews();
+      project.selectProject(projectId);
+      return openProjectDraft({ projectId }, { placement: "tab", focus: true }).id;
+    });
+    return () => workStartPort.set(null);
+  }, [openProjectDraft]);
+
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
   const newWorkspaceEnvironmentId = useShell((s) => s.newWorkspaceEnvironmentId);
   /** Another host's folders, being browsed for a workspace there. */
@@ -3381,6 +3419,7 @@ export default function App() {
         onOpenNotes={onOpenNotes}
         onOpenAccountsPage={onOpenAccountsPage}
         onOpenChats={onOpenChats}
+        onOpenWorkChats={onOpenWorkChats}
         onGoToFile={onGoToFile}
         onOpenWhatsNew={onOpenWhatsNew}
       />
@@ -3474,6 +3513,8 @@ export default function App() {
               style={{ gridArea: "main" }}
             >
                 <div className="relative min-h-0 min-w-0 flex-1">
+              {/* A Work workspace's view (Mail, Tasks, Agenda, Docs) over the panes, the strip still above it. */}
+              {workViewShown ? <WorkViewSurface /> : null}
               {tabs.map((tab) => mountedTabIds.has(tab.id) && (
                 <div
                   key={tab.id}
@@ -3556,6 +3597,8 @@ export default function App() {
             onToggleSidebar={onToggleSidebar}
           />
         ) : null}
+        {/* Work's half of the rail: the + menu's rows and the dialog it opens (work/shell/WorkRailHost.tsx). */}
+        {workOn ? <WorkRailHost onOpenWorkspace={onSelectProject} /> : null}
         {settingsOpen ? (
           <SettingsView
             cwd={sidebarCwd}

@@ -3,11 +3,13 @@ import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { Input } from "../../components/ui/input";
 import { filterKeybindings, KEYBINDING_SCOPE_LABEL, visibleKeybindingGroups } from "../../lib/settings";
 import { isWebMode } from "../../lib/nativeWeb";
+import { useWorkOn } from "../../lib/workSwitch";
 import { Keys } from "./keys";
 
 export function KeybindingsPage() {
   const [query, setQuery] = useState("");
-  const groups = useMemo(() => filterKeybindings(visibleKeybindingGroups(isWebMode()), query), [query]);
+  const work = useWorkOn();
+  const groups = useMemo(() => filterKeybindings(visibleKeybindingGroups(isWebMode(), work), query), [query, work]);
 
   return (
     <>

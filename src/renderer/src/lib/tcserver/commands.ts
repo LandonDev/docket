@@ -147,6 +147,8 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
     // The draft's own workspace; null is a chat outside every workspace, which
     // the host never files by its cwd (a workspace's folder included).
     workspaceId: session.workspaceId ?? null,
+    // A Work Chat's draft asks for Work; a Work workspace's thread is stamped by its workspace.
+    ...(session.scope === "work" && !session.workspaceId && !session.projectId ? { scope: "work" as const } : {}),
     ...(about ? { about } : {}),
   });
   const meta: SessionMeta = { ...wire, environmentId: link.environmentId };

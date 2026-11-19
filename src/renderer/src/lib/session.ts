@@ -374,6 +374,8 @@ export type Session = {
   draftTitle?: string;
   /** A queued thread's sibling: the session it waits for before it boots. */
   after?: string | null;
+  /** "work" on a Work thread (SessionMeta.scope), and on a Work Chat's draft, whose first send asks for it. */
+  scope?: "work";
   /** Parent session for subagent children. */
   parentId?: string | null;
   agentType?: AgentType;
@@ -477,6 +479,8 @@ export type SessionContext = {
   threadType?: ThreadType;
   /** Per-thread rule overrides a research or orchestration draft starts with. */
   threadRules?: ThreadRules | null;
+  /** "work": a Work Chat's draft (outside every workspace). */
+  scope?: "work";
 };
 
 export function newSession(
@@ -502,6 +506,7 @@ export function newSession(
     workspaceId: context.workspaceId ?? null,
     threadType: context.threadType ?? "chat",
     ...(context.threadRules ? { threadRules: context.threadRules } : {}),
+    ...(context.scope ? { scope: context.scope } : {}),
     createdAt: Date.now(),
     blocks: [],
   };

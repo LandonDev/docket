@@ -358,6 +358,7 @@ export function applyThreadMeta(
   if (changed("isMaster")) set({ isMaster: !!meta.isMaster });
   if (changed("after")) set({ after: meta.after ?? null });
   if (changed("parentId")) set({ parentId: meta.parentId });
+  if (changed("scope")) set({ scope: meta.scope === "work" ? "work" : undefined });
   if (changed("agentType")) set({ agentType: meta.agentType });
   if (changed("status")) set({ status: meta.status });
   if (changed("archived")) set({ archived: meta.archived });

@@ -17,7 +17,8 @@ export type StaticSettingsSectionId =
   | "reviews"
   | "appshots"
   | "computer"
-  | "archive";
+  | "archive"
+  | "work";
 
 /** A fixed page, or one workspace's own page (`ws:<workspace id>`). */
 export type SettingsSectionId = StaticSettingsSectionId | `ws:${string}`;
@@ -26,6 +27,8 @@ export type SettingsSectionId = StaticSettingsSectionId | `ws:${string}`;
 export const SETTINGS_GROUPS = [
   { id: "app", label: "App" },
   { id: "threads", label: "Threads" },
+  // The Work page, then (while Work is on) each Work workspace's (chrome/SettingsRail.tsx).
+  { id: "work", label: "Work" },
 ] as const;
 
 export type SettingsGroupId = (typeof SETTINGS_GROUPS)[number]["id"];
@@ -88,6 +91,8 @@ export const SETTINGS_SECTIONS: {
     label: "Archive",
     description: "Projects and threads you archived.",
   },
+  // With Work off on every host the page holds the switch alone (docs/agents/work.md "The switch").
+  { id: "work", group: "work", label: "Work", description: "Threads for your jobs, and what they may do without you." },
 ];
 
 export const SETTINGS_SECTION_DEFAULT: SettingsSectionId = "general";
@@ -104,8 +109,8 @@ export function visibleSettingsSections(web: boolean, mac: boolean) {
 }
 
 /** The keybinding groups this window handles: the terminal's only in the desktop app. */
-export function visibleKeybindingGroups(web: boolean): KeybindingGroup[] {
-  return web ? KEYBINDING_GROUPS.filter((group) => !group.desktopOnly) : KEYBINDING_GROUPS;
+export function visibleKeybindingGroups(web: boolean, work = false): KeybindingGroup[] {
+  return KEYBINDING_GROUPS.filter((group) => !(web && group.desktopOnly) && (work || !group.work));
 }
 
 export function isSettingsSectionId(
@@ -193,8 +198,9 @@ export type Keybinding = {
   scope?: "editor" | "outside-editor" | "files";
 };
 
-/** `desktopOnly`: the bindings act only in the desktop app (the terminal), so /ui leaves the group out. */
-export type KeybindingGroup = { title: string; bindings: Keybinding[]; desktopOnly?: true };
+/** `desktopOnly`: the bindings act only in the desktop app (the terminal), so /ui leaves the group out.
+ *  `work`: the bindings act only in Work's screens, so the list has them only while Work is on. */
+export type KeybindingGroup = { title: string; bindings: Keybinding[]; desktopOnly?: true; work?: true };
 
 /**
  * Mirrors the bindings we actually handle: the command map in
@@ -278,6 +284,12 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
       { name: "Find", keys: [[CMD, "F"]], scope: "editor" },
       { name: "Replace", keys: [[CMD, OPT, "F"]], scope: "editor" },
     ],
+  },
+  {
+    // The canvas pane's selection bar (work/canvas/SelectionBar.tsx): Ask puts the selection in the thread's composer.
+    title: "Work",
+    bindings: [{ name: "Ask about the selection", keys: [[CMD, "L"]] }],
+    work: true,
   },
 ];
 

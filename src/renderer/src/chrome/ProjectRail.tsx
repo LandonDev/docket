@@ -1,7 +1,7 @@
 import { keyHint } from "../lib/keys";
 import { registry, useEnvironments } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
-import { aliasKeys, mergeRailSections, type RailItem } from "../lib/linkedRail";
+import { aliasKeys, mergeRailSections, splitWorkRows, type RailItem } from "../lib/linkedRail";
 import { HostsRow } from "./HostRows";
 import { AwayRow } from "./AwayRow";
 import { useHostsOffline } from "./hostOffline";
@@ -12,8 +12,10 @@ import {
   ChartBar,
   Inbox,
   ListChecks,
+  MessageMultiple,
   MessageSquare,
   MoreHorizontal,
+  Outbox,
   Pin,
   PinOff,
   Plus,
@@ -76,7 +78,7 @@ import { selectionFor } from "../lib/threadBatchSelection";
 import { loadLastSeen, seenFloor } from "../lib/sessionSeen";
 import { markAllSeen, markSessionsSeen } from "../lib/sessionSeen";
 import { sessionStore } from "../lib/tcserver/store";
-import { workspaceStore } from "../lib/tcserver/workspaces";
+import { WORK_CHATS, workspaceStore } from "../lib/tcserver/workspaces";
 import { subscribeProjectRailActions } from "../lib/projectRailActions";
 import {
   useWorkspaces,
@@ -84,7 +86,8 @@ import {
   workspaceLabelKey,
 } from "../lib/tcserver/workspaces";
 import { RailHeading, RailRow } from "./RailRow";
-import { WorkspaceGlyph, workspaceLook } from "./WorkspaceGlyph";
+import { SectorDot, WorkspaceGlyph, workspaceLook } from "./WorkspaceGlyph";
+import { isWorkMenuAction, useOutboxWaiting, useWorkOn, WORK_ADD_MENU, workRailPort } from "../lib/workSwitch";
 import { diffWords, useWorkspaceMarks, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
 import type { WorkspaceMark } from "../lib/sidebarRows";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
@@ -96,14 +99,23 @@ import { RailWorking } from "./RailWorking";
 import { useGitDiffStats } from "../lib/gitIndexStore";
 import type { GitDiffStats } from "../lib/fs";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
-import { SettingsNav } from "./SettingsRail";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
-import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk } from "../surfaces/chunks";
+import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workShellChunk } from "../surfaces/chunks";
 
 /** The Customize dialog loads with the click (its menu warms it). */
 const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
+// The settings list rides the settings chunk with the pages it opens: it draws only while Settings is open.
+const SettingsNav = settingsChunk.surface(
+  "SettingsNav",
+  <div aria-hidden className="flex min-h-0 flex-1 flex-col gap-1 px-2 pt-7">
+    {[0, 1, 2, 3, 4].map((i) => (
+      <Skeleton key={i} className="h-7 rounded-md" />
+    ))}
+  </div>,
+);
 import { Kbd } from "../components/ui/kbd";
+import { Skeleton } from "../components/ui/skeleton";
 import { StatusMark } from "../components/ui/status";
 
 /** The folder picker's title when it adds a workspace (⌘O's says "Open project"). */
@@ -161,6 +173,10 @@ type Props = {
   onOpenAccountsPage?: (page: AliaxPageId) => void;
   /** The home: the chats outside every workspace. */
   onOpenChats?: () => void;
+  /** The Work Chats: the Work threads outside every workspace (WORK_CHATS). */
+  onOpenWorkChats?: () => void;
+  /** The Outbox (Work's held items; its page is milestone 14's). */
+  onOpenOutbox?: () => void;
   onSelectProject: (path: string) => void;
   /** Add a workspace: this machine's folder dialog, or a host's folders when `environmentId` is another machine. */
   /** The folder picker; Add workspace passes its own title. */
@@ -185,6 +201,8 @@ export function ProjectRail({
   onOpenNotes,
   onOpenAccountsPage,
   onOpenChats,
+  onOpenWorkChats,
+  onOpenOutbox,
   onSelectProject,
   onOpenProject,
   onRemoveProject,
@@ -263,10 +281,17 @@ export function ProjectRail({
   // One list for every host: a workspace linked across hosts is one row
   // with every copy's threads (lib/linkedRail.ts); each host's status sits
   // in its own row at the foot (HostRows).
-  const rows = useMemo(() => mergeRailSections(sections, workspaces), [sections, workspaces]);
+  // A Work workspace lists under the Work heading, and only while Work is on.
+  const workOn = useWorkOn();
+  const allRows = useMemo(() => mergeRailSections(sections, workspaces), [sections, workspaces]);
+  const { work: workRows, ...rows } = useMemo(() => splitWorkRows(allRows, workspaces, workOn), [allRows, workspaces, workOn]);
+  // Work's menus and pages ride their own chunk: asked for only once a host has Work on.
+  useEffect(() => {
+    if (workOn) workShellChunk.preload();
+  }, [workOn]);
   /** The rail row a workspace folder sits in (its own, or its link's). */
   const rowOf = (path: string): RailItem | undefined =>
-    [...rows.pinned, ...rows.projects].find((row) => row.paths.some((p) => sameProjectPath(p, path)));
+    [...rows.pinned, ...rows.projects, ...workRows].find((row) => row.paths.some((p) => sameProjectPath(p, path)));
   /** The status map's key for a row: its link's leader path. */
   const statusKey = useMemo(() => aliasKeys(workspaces).path, [workspaces]);
   const busy = useMemo(() => {
@@ -321,14 +346,17 @@ export function ProjectRail({
   /** A project's menu: Customize… (the look), then pin, reveal, the fleet switches, archive and delete. */
   const projectMenuRows = (path: string | null): MenuRow[] | null => {
     if (!path) return null;
+    if (path === WORK_ADD_MENU) return workRailPort.get()?.addRows() ?? null;
     const projectKey = labelKey(path);
+    // With Work on, a code workspace links to a LifeOS sector from its own menu; a Work workspace's is set when it is made.
+    const sector = workOn && !workRows.some((row) => row.paths.some((p) => sameProjectPath(p, path))) ? (workRailPort.get()?.sectorRows(path) ?? []) : [];
     return groupMenuRows({
       actions: false,
-      extra: projectMenuExtraItems(
+      extra: sector.concat(projectMenuExtraItems(
         pinnedPaths.some((pinned) => (rowOf(path)?.paths ?? [path]).some((p) => sameProjectPath(pinned, p))),
         Boolean(onRemoveProject),
         batchCounts(sessionStore.metas(), { catalog: workspaceStore.getSnapshot(), lastSeen: loadLastSeen(), floor: seenFloor(), scope: projectScope(path, projectKey) }),
-      ),
+      )),
     });
   };
 
@@ -403,6 +431,10 @@ export function ProjectRail({
 
   const onProjectMenuPick = (action: string, path: string | null) => {
     if (!path) return;
+    if (isWorkMenuAction(action)) {
+      workRailPort.get()?.pick(action, path === WORK_ADD_MENU ? null : path);
+      return;
+    }
     const projectKey = labelKey(path);
     if (action === CUSTOMIZE) setCustomizing({ path, projectKey });
     else if (action === "pin" || action === "unpin") onTogglePin(path);
@@ -455,11 +487,29 @@ export function ProjectRail({
     axis: "y",
     onActivate: onSelectProject,
   });
+  const workIds = workRows.map((item) => item.path);
+  const onReorderWork = (ids: string[]) => {
+    const next = reorderSubset(railOrder, ids, new Set(workIds));
+    setRailOrder(next);
+    saveProjectRailOrder(next);
+  };
+  const workSortable = useSortable(workIds, onReorderWork, { axis: "y", onActivate: onSelectProject });
+  // The Work heading's + lists the sectors with no workspace yet (work/shell/WorkRailHost.tsx).
+  const openWorkAdd = (event: { currentTarget: HTMLElement }) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    void workShellChunk
+      .load()
+      .then(() => workRailPort.ready())
+      .then(() => projectMenu.current?.({ x: box.left, y: box.bottom + 4, id: WORK_ADD_MENU }));
+  };
+  const outboxWaiting = useOutboxWaiting();
   const inboxUnseen = useInboxUnseen();
   const topIds = railTopRows({
     chats: onOpenChats !== undefined,
     notes: onOpenNotes !== undefined,
     aliax: onOpenAccountsPage !== undefined,
+    workChats: workOn && onOpenWorkChats !== undefined,
+    outbox: workOn && outboxWaiting > 0,
   });
   const topRow = (id: RailTopRowId) => {
     switch (id) {
@@ -486,6 +536,27 @@ export function ProjectRail({
             selected={inboxActive}
             onClick={onOpenInbox}
             intent={inboxChunk.intent}
+          />
+        );
+      case "outbox":
+        // Plain muted count: held is not "needs you" (docs/DESIGN.md "Held is not Needs you").
+        return <RailRow key={id} icon={Outbox} label="Outbox" trailing={outboxWaiting} onClick={onOpenOutbox} />;
+      case "workChats":
+        return (
+          <RailRow
+            key={id}
+            icon={MessageMultiple}
+            label="Work Chats"
+            ariaLabel={chatsAriaLabel(busy.has(WORK_CHATS), needsYou.has(WORK_CHATS), "Work Chats")}
+            onClick={onOpenWorkChats}
+            selected={!overlayOpen && cwd === WORK_CHATS}
+            trailing={
+              needsYou.has(WORK_CHATS) ? (
+                <StatusMark state="waiting" word={false} />
+              ) : busy.has(WORK_CHATS) ? (
+                <StatusMark state="working" word={false} />
+              ) : null
+            }
           />
         );
       case "read":
@@ -621,6 +692,37 @@ export function ProjectRail({
               groupLabels={groupLabels}
               groupLooks={groupLooks}
             />
+            {workOn ? (
+              <ProjectSection
+                label="Work"
+                addLabel="Add Work workspace"
+                items={workRows}
+                statusKey={statusKey}
+                onAdd={workRows.length === 0 ? undefined : openWorkAdd}
+                addExpanded={menuPath === WORK_ADD_MENU}
+                emptyRow={
+                  workRows.length === 0 ? (
+                    <RailRow icon={Plus} label="Add Work workspace…" onClick={(event) => openWorkAdd(event)} />
+                  ) : null
+                }
+                cwd={cwd}
+                busy={busy}
+                needsYou={needsYou}
+                railStatuses={railStatuses}
+                activeSessionId={activeSessionId ?? null}
+                onSelectAgent={onSelectAgent}
+                sortable={workSortable}
+                searchActive={overlayOpen}
+                onSelect={onSelectProject}
+                onOpenMenu={openProjectMenu}
+                pinned={false}
+                pinnable={false}
+                onTogglePin={onTogglePin}
+                menuPath={menuPath}
+                groupLabels={groupLabels}
+                groupLooks={groupLooks}
+              />
+            ) : null}
             </div>
             </RowsContextMenu>
           </div>
@@ -680,6 +782,9 @@ type GroupLooks = Parameters<typeof workspaceLook>[1];
 
 function ProjectSection({
   label,
+  addLabel = "Add workspace",
+  addExpanded,
+  pinnable = true,
   items,
   statusKey,
   indexOf,
@@ -702,6 +807,12 @@ function ProjectSection({
   groupLooks,
 }: {
   label: string;
+  /** The heading's + (Add workspace; Add Work workspace, which opens a menu). */
+  addLabel?: string;
+  /** The + opens a menu that is open now. */
+  addExpanded?: boolean;
+  /** The rows offer Pin (a Work workspace's do not: it has its own heading). */
+  pinnable?: boolean;
   items: RailItem[];
   /** The status map's key for a row's folder (its link's leader path). */
   statusKey: (path: string) => string;
@@ -709,7 +820,7 @@ function ProjectSection({
   indexOf?: (item: RailItem) => number;
   /** The row that stands in for an empty list (Add workspace…). */
   emptyRow?: ReactNode;
-  onAdd?: () => void;
+  onAdd?: (event: { currentTarget: HTMLElement }) => void;
   cwd: string;
   busy: Set<string>;
   needsYou: Set<string>;
@@ -730,7 +841,7 @@ function ProjectSection({
 }) {
   return (
     <div className="shrink-0 px-2 pt-4">
-      <RailHeading action={onAdd ? { label: "Add workspace", icon: Plus, onClick: onAdd } : undefined}>
+      <RailHeading action={onAdd ? { label: addLabel, icon: Plus, onClick: onAdd, menu: addExpanded !== undefined, expanded: addExpanded } : undefined}>
         {label}
       </RailHeading>
       <div className="flex flex-col gap-1">
@@ -750,6 +861,7 @@ function ProjectSection({
             onSelect={onSelect}
             onOpenMenu={onOpenMenu}
             pinned={pinned}
+            pinnable={pinnable}
             onTogglePin={onTogglePin}
             menuOpen={menuPath !== null && item.paths.some((p) => sameProjectPath(p, menuPath))}
             groupLabels={groupLabels}
@@ -782,6 +894,7 @@ function WorkspaceRow({
   onSelect,
   onOpenMenu,
   pinned,
+  pinnable,
   onTogglePin,
   menuOpen,
   groupLabels,
@@ -801,13 +914,15 @@ function WorkspaceRow({
   onSelect: (path: string) => void;
   onOpenMenu: (path: string, x: number, y: number) => void;
   pinned: boolean;
+  pinnable: boolean;
   onTogglePin: (path: string) => void;
   menuOpen: boolean;
   groupLabels: Record<string, string>;
   groupLooks: GroupLooks;
 }) {
   const workspaces = useWorkspaces();
-  const workspaceId = workspaceByPath(workspaces, item.path)?.id ?? null;
+  const workspace = workspaceByPath(workspaces, item.path);
+  const workspaceId = workspace?.id ?? null;
   const offline = useHostsOffline(item.hosts);
   // Labels, colours and mascots key by the link's leader (lib/linkedRail.ts).
   const projectKey = workspaceLabelKey(workspaces, item.path, projectName(item.path));
@@ -830,13 +945,18 @@ function WorkspaceRow({
         className={`@container/railrow touch-none ${dragging ? "relative z-10" : ""} ${offline ? "opacity-50" : ""}`}
         surface="group"
         glyph={
-          <WorkspaceGlyph
-            logoPath={look.logoPath}
-            mascotName={look.mascotName}
-            color={look.color}
-            projectKey={projectKey}
-            workspaceId={workspaceId}
-          />
+          // A Work workspace leads with its sector's dot where a code workspace has its glyph.
+          workspace?.kind === "work" ? (
+            <SectorDot sector={workspace.sector} />
+          ) : (
+            <WorkspaceGlyph
+              logoPath={look.logoPath}
+              mascotName={look.mascotName}
+              color={look.color}
+              projectKey={projectKey}
+              workspaceId={workspaceId}
+            />
+          )
         }
         label={name}
         ariaLabel={workspaceRowAriaLabel(name, busy, needsYou, stats)}
@@ -864,11 +984,15 @@ function WorkspaceRow({
           ) : null
         }
         hoverActions={[
-          {
-            label: pinned ? "Unpin workspace" : "Pin workspace",
-            icon: pinned ? PinOff : Pin,
-            onClick: () => onTogglePin(item.path),
-          },
+          ...(pinnable
+            ? [
+                {
+                  label: pinned ? "Unpin workspace" : "Pin workspace",
+                  icon: pinned ? PinOff : Pin,
+                  onClick: () => onTogglePin(item.path),
+                },
+              ]
+            : []),
           {
             label: "Workspace options",
             icon: MoreHorizontal,
@@ -909,10 +1033,10 @@ function pathIn(path: string, paths: Set<string>): boolean {
 }
 
 /** The rail's Chats entry: loose chats signal like a workspace card does. */
-export function chatsAriaLabel(busy: boolean, needsYou: boolean): string {
-  if (needsYou) return "Chats, needs you";
-  if (busy) return "Chats, working";
-  return "Chats";
+export function chatsAriaLabel(busy: boolean, needsYou: boolean, name = "Chats"): string {
+  if (needsYou) return `${name}, needs you`;
+  if (busy) return `${name}, working`;
+  return name;
 }
 
 /** A workspace row's name for assistive tech: the name, the one state that
@@ -932,16 +1056,20 @@ export function workspaceRowAriaLabel(
   return parts.join(", ");
 }
 
-export type RailTopRowId = "search" | "inbox" | "read" | "notes" | "chats" | "accounts" | "stats";
+export type RailTopRowId = "search" | "inbox" | "outbox" | "read" | "notes" | "chats" | "workChats" | "accounts" | "stats";
 
 /** The rail's one navigation group, first in its list and with no heading:
  *  Search, Inbox, Mark all read, Notes (where the view can open), Chats
  *  (where the home is), then Accounts and Stats (where their pages open,
  *  never at /ui). */
-export function railTopRows(facts: { chats: boolean; notes: boolean; aliax: boolean }): RailTopRowId[] {
-  const rows: RailTopRowId[] = ["search", "inbox", "read"];
+export function railTopRows(facts: { chats: boolean; notes: boolean; aliax: boolean; workChats?: boolean; outbox?: boolean }): RailTopRowId[] {
+  const rows: RailTopRowId[] = ["search", "inbox"];
+  // Work's twins sit beside their code ones: the Outbox (while something waits) after Inbox, Work Chats after Chats.
+  if (facts.outbox) rows.push("outbox");
+  rows.push("read");
   if (facts.notes) rows.push("notes");
   if (facts.chats) rows.push("chats");
+  if (facts.workChats) rows.push("workChats");
   if (facts.aliax) rows.push("accounts", "stats");
   return rows;
 }

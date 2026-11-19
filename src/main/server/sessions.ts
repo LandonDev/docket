@@ -2247,7 +2247,8 @@ export class SessionRegistry {
       const wt = await addProjectWorktree(ws.path, name, opts)
       cwd = wt.cwd
       branch = wt.branch
-    } else {
+    } else if (ws.kind !== 'work') {
+      // A Work workspace's folder is never a checkout: no branch to ask git for.
       branch = await currentBranch(ws.path)
     }
     const meta: ProjectMeta = {

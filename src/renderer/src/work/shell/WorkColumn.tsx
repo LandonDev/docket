@@ -1,0 +1,77 @@
+import { useEffect, useLayoutEffect, useMemo } from "react";
+import type { ContextChip, SectorKey } from "@shared/work";
+import { RailRow } from "../../chrome/RailRow";
+import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import { openWorkView, setLifeosProjects, useWorkView, workColumnPort, workStartPort, type LifeosProjectRow } from "../../lib/workSwitch";
+import { addContextChip } from "../canvas/chips";
+import { workViewList } from "../views/registry";
+import { openLifeosProject } from "./actions";
+import { useLifeosQuery, useLifeosSession } from "./lifeos";
+
+/** The statuses whose projects the column lists: what is still under way. */
+const LISTED = new Set(["backlog", "active", "paused"]);
+
+type LifeosProject = { _id: string; name: string; status: string; order?: number };
+
+/** LifeOS's projects of one sector as the column lists them: still under way, in LifeOS's order, then by name. */
+export function columnProjects(rows: readonly LifeosProject[]): LifeosProjectRow[] {
+  return rows
+    .filter((p) => LISTED.has(p.status))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
+    .map((p) => ({ id: p._id, name: p.name }));
+}
+
+/**
+ * A linked Work workspace's column head (prototype workspace.html, "Four
+ * rows"): Mail, Tasks, Agenda and Docs, each with its one muted fact, 16px
+ * over the project cards; a row opens its view in the main pane under the
+ * thread strip. It also keeps the column's LifeOS projects live, so the
+ * cards under it are LifeOS's, and makes a card's project on its first
+ * thread. An unlinked Work workspace has no rows and no LifeOS projects.
+ */
+export function WorkColumnHead({ workspace }: { workspace: WorkspaceMeta }) {
+  const sector = (workspace.sector ?? null) as SectorKey | null;
+  const session = useLifeosSession(workspace.environmentId, sector);
+  const listed = useLifeosQuery<LifeosProject[]>(session, "projects:list", sector ? { sector } : {});
+  const rows = useMemo(() => (listed.status === "ready" ? columnProjects(listed.value) : null), [listed]);
+  const shown = useWorkView();
+
+  useEffect(() => {
+    if (sector && rows) setLifeosProjects(workspace.id, rows);
+  }, [rows, sector, workspace.id]);
+  useLayoutEffect(() => {
+    workColumnPort.set({
+      async openProject(_workspaceId, lifeosProjectId) {
+        const name = rows?.find((p) => p.id === lifeosProjectId)?.name ?? "Project";
+        return (await openLifeosProject(workspace, lifeosProjectId, name)).id;
+      },
+    });
+    return () => workColumnPort.set(null);
+  }, [rows, workspace]);
+
+  if (!sector) return null;
+  return (
+    <div className="flex flex-col gap-1 px-2 pt-2 pb-2">
+      {workViewList().map((view) => (
+        <RailRow
+          key={view.id}
+          icon={view.icon}
+          label={view.label}
+          trailing={view.fact(workspace)}
+          selected={shown?.workspaceId === workspace.id && shown.view === view.id}
+          // The row again closes it: the threads come back.
+          onClick={() => openWorkView(shown?.workspaceId === workspace.id && shown.view === view.id ? null : { workspaceId: workspace.id, view: view.id })}
+          intent={{ onPointerEnter: view.chunk.preload, onFocus: view.chunk.preload }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** A view's `startThread`: a new thread's composer in the workspace with the chip in it; nothing runs until he sends. */
+export function startThreadAbout(about: ContextChip, projectId: string | null = null): void {
+  const start = workStartPort.get();
+  if (!start) return;
+  openWorkView(null);
+  addContextChip(start(projectId), about);
+}

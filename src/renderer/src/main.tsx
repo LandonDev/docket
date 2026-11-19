@@ -16,6 +16,7 @@ import { sessionStore } from "./lib/tcserver/store";
 import { workspaceStore } from "./lib/tcserver/workspaces";
 import { inboxStore } from "./lib/inboxStore";
 import { rulesStore } from "./lib/tcserver/rules";
+import { workSwitch } from "./lib/workSwitch";
 import { slashCommandStore } from "./lib/tcserver/slashCommands";
 import { handleQuitRequested, loadBootWorkspace, persistLiveWorkspace } from "./lib/appLifecycle";
 import { consumeInstalledUpdate } from "./lib/updateNotice";
@@ -43,6 +44,7 @@ inboxStore.connect(registry);
 rulesStore.connect(registry);
 slashCommandStore.connect(registry);
 accountsStore.connect(registry);
+workSwitch.connect(registry);
 // Before environment zero and before the first render: every host's rows as
 // the launch mirror last saw them, so the rail is whole on its first frame
 // and a host that answers late (or not at all) still has its section.

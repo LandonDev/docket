@@ -11,9 +11,11 @@ the core columns, the shared types, the module list, the context the modules
 share, one stub per pillar in every closed list, the tool mount and the two
 build entries; and on that, Work workspaces, Work Chats and Work threads on
 the server, with their fence and their preamble
-([work-scope.md](work-scope.md)). No screen shows them yet, and a pillar's
-method is refused by name until the milestone that builds it lands. A
-pillar's own account goes in `docs/agents/work-<pillar>.md`.
+([work-scope.md](work-scope.md)); and the screens that make them visible:
+the rail's Work heading and Work Chats, the Work column with its four views,
+linking a workspace to a sector, and Settings → Work ("The screens" below).
+A pillar's method is refused by name until the milestone that builds it
+lands. A pillar's own account goes in `docs/agents/work-<pillar>.md`.
 
 ## The switch
 
@@ -61,6 +63,88 @@ mount grows with every pillar, which is why the relay's method table
 (`contract-relay.ts`, which spreads `WORK_RELAY`) must stay out too: a
 host's presence schemas live in `src/shared/macPresence.ts` so the Mac
 bridge's contract, which the first paint does read, does not import it.
+
+## The screens: the rail, the column, Settings
+
+Milestone 8 (the approved pages `rail.html`, `add.html`, `workspace.html`,
+`settings.html` under `.temp-code/prototypes/work-workspaces-2/`). Each
+first-paint file takes a few lines and a seam; everything else is the
+`work-shell` chunk (`src/renderer/src/work/shell/`, `workShellChunk` in
+surfaces/chunks.ts), asked for only once a host has Work on, or on
+Settings → Work.
+
+- **The switch in the window**: `lib/workSwitch.ts` asks each host
+  `work.get` when its socket opens and keeps the `work` push; the rail,
+  the column and Settings show Work things only while some host is on, and
+  the hosts that were on are remembered so a launch paints the rail it had.
+  With every host off the rail and the column are today's
+  (chrome/WorkRail.dom.test.tsx compares the rows with and without a Work
+  workspace) and Settings → Work is the switch alone. The switch writes
+  `work.set` to every host the window is linked to and its line names the
+  hosts that differ.
+- **The rail** (chrome/ProjectRail.tsx): `splitWorkRows` (lib/linkedRail.ts)
+  keeps a Work workspace out of the code list, pinned or not, always; with
+  Work on it sits under the **Work** heading, led by its sector's dot
+  (`SectorDot`, chrome/WorkspaceGlyph.tsx, the `--sector-*` tokens in
+  index.css), with no Pin. The heading's + opens the menu the chunk answers
+  through `workRailPort` (work/shell/WorkRailHost.tsx): one row per sector
+  no Work workspace has yet (one click makes it on `workHome()`: the host
+  picked on the Work page, else the box, else this machine), Sign in to
+  LifeOS… signed out, Retry when it is down, then Without a sector…, which
+  asks for a name. A code workspace's row menu gains **LifeOS sector ›**
+  (None and the six) while Work is on; `work.lifeos.link` writes it and
+  the host's `workspaces` push tells every client. **Work Chats** sits
+  after Chats, **Outbox** after Inbox while `setOutboxWaiting(n)` is above
+  0 (the Outbox's milestone, 14, sets it and owns its page).
+- **Work Chats**: `WORK_CHATS` (`"~work"`, lib/tcserver/workspaces.ts) is
+  their key as `"~"` is the code chats': `workspaceIdOf` and
+  `workspacePathOfSession` answer it for a row with `scope: "work"` and no
+  workspace, so the code home never lists a Work Chat; it is never a folder
+  (`looksLikeProject`). A draft there carries `scope: "work"`, which
+  `ensureCreated` sends on `session.create`.
+- **The column** (chrome/Sidebar.tsx, WorkspaceSessions.tsx): a Work
+  workspace offers no New project and no Orchestration; a linked one shows
+  `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Agenda and
+  Docs from `WORK_VIEWS`, then the project cards. Those are LifeOS's,
+  live: the head keeps `projects:list {sector}` (backlog, active, paused)
+  in `setLifeosProjects`, and `withLifeosCards` (lib/workspaceSessions.ts)
+  adds a `lifeos:<id>` card for each one no project mirrors yet; its first
+  pick or New thread calls `work.project.open`, which makes the project
+  (`projects.lifeos_project_id`). A view row opens `WorkViewSurface` over
+  the thread panes under the strip; picking a thread or the row again
+  closes it.
+- **A view registers** in `src/renderer/src/work/views/registry.ts`: the
+  milestone fills its own `work/<pillar>/view.ts` (mail, tasks, agenda,
+  docs) and nothing else. The view's chunk exports `View` and, optionally,
+  `Head` (the controls after its name in the 40px header); `fact` is the
+  row's one muted trailing fact. `WorkViewProps` hands it the workspace,
+  its sector, `lifeos` (a session narrowed to that sector) and
+  `startThread(chip)`, which opens a new thread's composer in the workspace
+  with the chip in it (`addContextChip`, work/canvas/chips.ts). Signed out,
+  the frame draws the sign-in instead of the view; unreachable, one state
+  line over it.
+- **The LifeOS session** (work/shell/lifeos.ts): `useLifeosStatus(env)`
+  (`work.lifeos.status` and the `work.lifeos` push) and
+  `useLifeosSession(env, sector)`, a `ConvexReactClient` of the screen's
+  own on the address `work.lifeos.jwt` answers (approve), fed narrowed
+  JWTs; `useLifeosQuery(session, "module:fn", args)` is a live query.
+- **Settings**: a **Work** group after Threads holds the Work page, then
+  (Work on) each Work workspace led by its dot; they leave the Workspaces
+  group. The Work page (surfaces/settings/Work.tsx, then
+  `WorkSettingsBody`): the switch; LifeOS per host (sign in by pairing,
+  the code and its countdown, or with a device token; sign out); the
+  sectors LifeOS has; Work threads' model (the code threads' default,
+  opening Thread defaults); where new Work workspaces are made and each
+  host's conversion tools (`ToolchainRow`). A Work workspace's page
+  (`WorkWorkspacePage`): its sector, its key's state, the host its threads
+  run on, "Computer use on <desktop>" per Mac or Windows host
+  (`work.workspace.set {mayUseDesktop}`), its thread defaults. A code
+  workspace's page gains its LifeOS sector while Work is on. Keybindings
+  lists the Work group (Ask about the selection, ⌘L) only while Work is on.
+- **The host's side** (contract-work.ts core): `work.workspace.get` (read)
+  and `work.workspace.set` (admin; a null model or reasoning goes back to
+  the default), `work.project.open` (operate), and the `url` on
+  `work.lifeos.jwt`'s answer. Tests: work/core.test.ts.
 
 ## The core columns
 

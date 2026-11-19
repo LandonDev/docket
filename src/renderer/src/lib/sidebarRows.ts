@@ -35,6 +35,8 @@ export type SidebarItem =
 export function sidebarItems(
   groups: WorkspaceSessionGroups,
   home = false,
+  /** A Work workspace: its projects are LifeOS's, so it never offers New project. */
+  work = false,
 ): SidebarItem[] {
   const items: SidebarItem[] = groups.projects.map((group) => ({
     kind: "project",
@@ -46,7 +48,7 @@ export function sidebarItems(
     items.push({ kind: "chats", key: "chats", threads: groups.chats, spaced, headed: !home });
   if (groups.archived.length)
     items.push({ kind: "archived", key: "archived", groups: groups.archived, spaced });
-  if (!items.length && !home) items.push({ kind: "empty", key: "empty" });
+  if (!items.length && !home && !work) items.push({ kind: "empty", key: "empty" });
   return items;
 }
 

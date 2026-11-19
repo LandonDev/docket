@@ -296,7 +296,8 @@ export function projectRailItems(
 
 /** True if this looks like a user project, not an app bundle or system root. */
 export function looksLikeProject(path: string): boolean {
-  if (!path || path === "/" || path === "~") return false;
+  // "~work" is the Work Chats' key (lib/tcserver/workspaces.ts WORK_CHATS), never a folder.
+  if (!path || path === "/" || path === "~" || path === "~work") return false;
   // Home itself arrives expanded (`/Users/me`), so the `~` check above misses
   // it. Indexing it walks `~/Library`, which trips the OS consent prompt.
   if (prettyCwd(path) === "~") return false;

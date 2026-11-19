@@ -146,6 +146,15 @@
   --presence-ink-6: oklch(0.2 0 0);
   --presence-ink-7: oklch(0.2 0 0);
   --presence-ink-8: oklch(0.2 0 0);
+  /* A LifeOS sector's 8px dot, LifeOS's own hues, a value per theme
+     (docs/DESIGN.md "Canvas tints"): drawn only where sectors mix, never a
+     fill, a chip, a tinted name or an edge (SectorDot, chrome/WorkspaceGlyph.tsx). */
+  --sector-cosmic: oklch(0.72 0.11 285);
+  --sector-hypixel: oklch(0.74 0.11 40);
+  --sector-purdue: oklch(0.78 0.1 85);
+  --sector-ref: oklch(0.72 0.09 155);
+  --sector-unify: oklch(0.72 0.09 235);
+  --sector-life: oklch(0.72 0.1 350);
   /* Runner sprites keep their coin and star colours in both themes. */
   --composer-coin: #e8b923;
   --composer-star: #f4e27a;
@@ -228,6 +237,12 @@
 }
 
 html.theme-light {
+  --sector-cosmic: oklch(0.6 0.12 285);
+  --sector-hypixel: oklch(0.64 0.12 40);
+  --sector-purdue: oklch(0.7 0.11 85);
+  --sector-ref: oklch(0.62 0.1 155);
+  --sector-unify: oklch(0.6 0.1 235);
+  --sector-life: oklch(0.62 0.11 350);
   --composer-coin: #e8b923;
   --composer-star: #f4e27a;
   --editor-type-name: #2a5fb0;

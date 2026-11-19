@@ -195,3 +195,24 @@ export function projectLeaders(projects: readonly ProjectMeta[], scope: readonly
   }
   return out;
 }
+
+/**
+ * The rail's rows parted by kind: a Work workspace (`kind: "work"`) never
+ * sits among the code workspaces, pinned or not, and shows under the Work
+ * heading only while Work is on somewhere (docs/agents/work.md "The
+ * switch"). With no Work workspace the code rows are the very arrays given.
+ */
+export function splitWorkRows(
+  rows: { pinned: RailItem[]; projects: RailItem[] },
+  workspaces: readonly WorkspaceMeta[],
+  workOn: boolean,
+): { pinned: RailItem[]; projects: RailItem[]; work: RailItem[] } {
+  const ids = new Set(workspaces.filter((w) => w.kind === "work").map((w) => w.id));
+  if (ids.size === 0) return { ...rows, work: [] };
+  const isWork = (item: RailItem): boolean => item.workspaceIds.some((id) => ids.has(id));
+  return {
+    pinned: rows.pinned.filter((item) => !isWork(item)),
+    projects: rows.projects.filter((item) => !isWork(item)),
+    work: workOn ? [...rows.pinned, ...rows.projects].filter(isWork) : [],
+  };
+}
