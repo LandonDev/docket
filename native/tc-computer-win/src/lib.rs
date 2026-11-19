@@ -6,6 +6,7 @@ pub mod book;
 pub mod desktop;
 pub mod generated;
 pub mod locks;
+pub mod platform;
 pub mod server;
 pub mod service;
 pub mod text;
