@@ -33,6 +33,7 @@ http.createServer((req, res) => {
 let dir: string
 let tool: string
 let saved: Array<{ open: FullOpen; to: SavedTo }>
+let failed: string[]
 let logs: string[]
 let enabled: boolean
 let rss: number
@@ -81,6 +82,7 @@ beforeEach(async () => {
   tool = fakeTool()
   writeFileSync(join(dir, 'saved.xlsx'), ZIP)
   saved = []
+  failed = []
   logs = []
   enabled = true
   rss = 0
@@ -92,6 +94,7 @@ beforeEach(async () => {
     enabled: () => enabled,
     log: (l) => logs.push(l),
     saved: (open, to) => saved.push({ open, to }),
+    failed: (_open, words) => failed.push(words),
     now: () => now,
     spawn: standinSpawn,
     rss: async () => rss,
@@ -126,7 +129,7 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
   it('opens a workbook: the route serves our page for its token, the editor paths behind it, and nothing else', async () => {
     const path = workbook()
     const token = await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(token).toMatch(/^[0-9a-f]{64}$/)
     expect(fe.running()).toBe(true)
     // A second press on the same file is the same session.
     expect(await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })).toBe(token)
@@ -146,10 +149,10 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
 
     expect((await get(`/w/full/${token}/info/info.json`)).status).toBe(404)
     expect((await get(`/w/full/${token}/coauthoring/CommandService.ashx`)).status).toBe(404)
-    expect((await get(`/w/full/${'a'.repeat(43)}/`)).status).toBe(404)
+    expect((await get(`/w/full/${'a'.repeat(64)}/`)).status).toBe(404)
     // The storage server is the docservice's alone, on loopback.
     const config = JSON.parse(/DocEditor\('editor', (.*)\)<\/script>/.exec(page.body)![1]!) as { document: { url: string } }
-    expect(config.document.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/file\/[A-Za-z0-9_-]{43}$/)
+    expect(config.document.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/file\/[0-9a-f]{48}$/)
     expect((await fetch(config.document.url)).status).toBe(200)
   })
 
@@ -179,9 +182,9 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     utimesSync(path, new Date(), new Date(Date.now() + 5000))
     expect(await callback(fe.configOf(open), { key: open.id, status: 2, url: 'http://x/cache/files/a/output.xlsx' })).toEqual({ error: 0 })
     expect(readFileSync(path, 'utf8')).toBe('Excel saved this')
-    expect(saved[0]!.to.beside).toBe(true)
-    expect(saved[0]!.to.path).toMatch(/Report \(full editor .+\)\.xlsx$/)
-    expect(readFileSync(saved[0]!.to.path).equals(ZIP)).toBe(true)
+    expect(saved).toEqual([])
+    const beside = /as (Report \(full editor .+\)\.xlsx):/.exec(failed[0]!)![1]!
+    expect(readFileSync(join(dir, beside)).equals(ZIP)).toBe(true)
   })
 
   it('refuses a callback the docservice did not sign, one for another document, and a save from outside its cache', async () => {
@@ -194,6 +197,15 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     expect(await callback(signed, { key: open.id, status: 2, url: 'http://x/info/info.json' })).toEqual({ error: 1 })
     expect(readFileSync(path, 'utf8')).toContain('as opened')
     expect(saved).toEqual([])
+  })
+
+  it('says when the editor could not save, and leaves the file as it was', async () => {
+    const path = workbook()
+    const token = await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
+    const open = (fe as unknown as { opens: Map<string, FullOpen> }).opens.get(token)!
+    expect(await callback(fe.configOf(open), { key: open.id, status: 3, url: 'http://x/cache/files/a/output.xlsx' })).toEqual({ error: 0 })
+    expect(failed).toEqual(['The full editor could not save the changes made there: this file does not have them.'])
+    expect(readFileSync(path, 'utf8')).toContain('as opened')
   })
 
   it('stops when Work turns off, over its memory cap, and when nothing has been open for its idle time', async () => {

@@ -8,11 +8,11 @@
  * own, and main answers only for an open still live.
  */
 
-/** A per-open token: 32 random bytes, base64url. */
-export const FULL_TOKEN = /^[A-Za-z0-9_-]{43}$/
+/** A per-open token: 32 random bytes, hex (the docservice escapes `_` in the links it writes, which would miss the route). */
+export const FULL_TOKEN = /^[0-9a-f]{64}$/
 
 /** `/w/full/<token><rest>`: the token and what follows it. */
-export const FULL_ROUTE = /^\/w\/full\/([A-Za-z0-9_-]{43})(\/.*)?$/
+export const FULL_ROUTE = /^\/w\/full\/([0-9a-f]{64})(\/.*)?$/
 
 /** Main's lookup socket, beside the service's internal one (both 0600 to this user). */
 export const lookupSocketOf = (serviceSocket: string): string => `${serviceSocket}.full`

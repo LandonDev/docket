@@ -23,8 +23,11 @@ import { FULL_TOKEN, lookupSocketOf, type FullLookup } from './wire'
  * more memory than the cap.
  */
 
-/** 32 random bytes, base64url: a token, an open's id. */
-export const newToken = (): string => randomBytes(32).toString('base64url')
+/** 32 random bytes, hex: a token (FULL_TOKEN), the docservice's secret. */
+export const newToken = (): string => randomBytes(32).toString('hex')
+
+/** An open's id, which is its document's key: hex, since the converter takes a key starting with `-` for a flag. */
+export const newDocId = (): string => randomBytes(24).toString('hex')
 
 /** What tells a change made outside the full editor (the same stamp the package store keeps). */
 export function stampOf(path: string): string {
@@ -93,6 +96,8 @@ export interface FullEditorDeps {
   log(line: string): void
   /** a save landed */
   saved(open: FullOpen, to: SavedTo): void
+  /** what the owner must hear about a save that did not land in the file */
+  failed(open: FullOpen, words: string): void
   now?: () => number
   spawn?: DocserviceOpts['spawn']
   rss?: (pgid: number) => Promise<number>
@@ -153,7 +158,7 @@ export class FullEditor {
     for (const open of this.opens.values()) if (open.path === o.path) return open.token
     await this.listen()
     await this.docservice(toolDir)
-    const id = newToken()
+    const id = newDocId()
     const fileType = extname(o.path).slice(1).toLowerCase()
     const files = join(this.home, 'files')
     mkdirSync(files, { recursive: true, mode: 0o700 })
@@ -276,7 +281,7 @@ export class FullEditor {
   // ── the lookup socket: the service's route asks what a token opens ──
 
   private serveLookup(req: IncomingMessage, res: ServerResponse): void {
-    const m = /^\/lookup\/([A-Za-z0-9_-]+)$/.exec(req.url ?? '')
+    const m = /^\/lookup\/([0-9a-f]+)$/.exec(req.url ?? '')
     const open = m && FULL_TOKEN.test(m[1]!) ? this.opens.get(m[1]!) : undefined
     if (req.method !== 'GET' || !open || !this.ds?.running()) {
       res.writeHead(404).end()
@@ -289,7 +294,7 @@ export class FullEditor {
   // ── the storage server: only the docservice calls it ───────────────
 
   private async serveStorage(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const m = /^\/(file|callback)\/([A-Za-z0-9_-]{43})$/.exec(req.url ?? '')
+    const m = /^\/(file|callback)\/([0-9a-f]{48})$/.exec(req.url ?? '')
     const open = m ? this.byId.get(m[2]!) : undefined
     if (!m || !open) return void res.writeHead(404).end()
     if (m[1] === 'file' && req.method === 'GET') {
@@ -336,13 +341,15 @@ export class FullEditor {
         const bytes = await this.fetchSaved(said.url)
         const to = this.writeBack(open, bytes)
         this.deps.log(`[full-editor] saved ${basename(open.path)}${to.beside ? ` beside it as ${basename(to.path)}: the file changed outside the editor meanwhile` : ''}`)
-        this.deps.saved(open, to)
+        if (to.beside) this.deps.failed(open, `The full editor saved its changes beside this file, as ${basename(to.path)}: this file changed while it was open there.`)
+        else this.deps.saved(open, to)
         if (said.status === 2) this.end(open)
         return
       }
       case 3:
       case 7:
         this.deps.log(`[full-editor] ${basename(open.path)}: the editor could not save it (status ${said.status})`)
+        this.deps.failed(open, 'The full editor could not save the changes made there: this file does not have them.')
         if (said.status === 3) this.end(open)
         return
       case 4:
@@ -355,7 +362,7 @@ export class FullEditor {
   private async fetchSaved(url: string): Promise<Buffer> {
     if (!this.ds?.running()) throw new Error('the docservice stopped before the save was fetched')
     const u = new URL(url)
-    const path = u.pathname.replace(/^\/w\/full\/[A-Za-z0-9_-]{43}/, '')
+    const path = u.pathname.replace(/^\/w\/full\/[0-9a-f]{64}/, '')
     if (!path.startsWith('/cache/files/')) throw new Error('a save named a file outside the editor\'s cache')
     const got = await dsGet(this.ds.socket, path + u.search, 60_000)
     if (got.status !== 200) throw new Error(`the saved file did not come (${got.status})`)

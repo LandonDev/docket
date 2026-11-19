@@ -1,6 +1,6 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -53,7 +53,9 @@ export function writeDsConfig(o: { toolDir: string; home: string; socket: string
     .split(VENDOR.appData).join(data)
     .split(VENDOR.etc).join(conf)
   writeFileSync(join(conf, 'production-linux.json'), production)
-  writeFileSync(join(conf, 'log4js/production.json'), readFileSync(join(etc, 'log4js/production.json')))
+  // Warnings and worse, as the vendor ships it; TEMP_CODE_FULL_EDITOR_LOG=info says what each request did.
+  const log4js = readFileSync(join(etc, 'log4js/production.json'), 'utf8')
+  writeFileSync(join(conf, 'log4js/production.json'), process.env.TEMP_CODE_FULL_EDITOR_LOG === 'info' ? log4js.replace('"WARN"', '"INFO"') : log4js)
   const secret = { string: o.secret }
   const local = {
     services: {
@@ -145,10 +147,12 @@ export class Docservice {
     rmSync(join(this.o.home, 'data'), { recursive: true, force: true })
     const conf = writeDsConfig({ toolDir: this.o.toolDir, home: this.o.home, socket: this.socket, secret: this.o.secret })
     const ds = join(this.o.toolDir, DS_ROOT)
+    // Its log is kept beside its config, new each start, for whoever needs to see why it failed.
+    const logFd = openSync(join(this.o.home, 'docservice.log'), 'w')
     const child = (this.o.spawn ?? nodeSpawn)('./docservice', [], {
       cwd: join(ds, 'server/DocService'),
       detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', logFd, 'pipe'],
       env: {
         PATH: process.env.PATH ?? '/usr/bin:/bin',
         HOME: this.o.home,
@@ -160,13 +164,13 @@ export class Docservice {
         LD_LIBRARY_PATH: join(ds, 'server/FileConverter/bin')
       }
     })
+    closeSync(logFd)
     this.child = child
     writeFileSync(join(runDir, 'docservice.pid'), String(child.pid ?? ''))
     let tail = ''
     const keep = (c: Buffer): void => {
       tail = (tail + c.toString()).slice(-2000)
     }
-    child.stdout?.on('data', keep)
     child.stderr?.on('data', keep)
     this.exited = new Promise((resolve) =>
       child.once('exit', (code) => {

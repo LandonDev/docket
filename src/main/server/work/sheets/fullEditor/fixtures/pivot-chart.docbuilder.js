@@ -1,0 +1,11 @@
+builder.CreateFile("xlsx");
+var s = Api.GetActiveSheet();
+s.SetName("Data");
+var rows = [["Region","Product","Units","Price"],["North","Apples",10,1.5],["South","Pears",7,2],["North","Pears",3,2],["East","Apples",12,1.5],["South","Apples",5,1.5],["East","Pears",9,2]];
+for (var r = 0; r < rows.length; r++) for (var c = 0; c < 4; c++) s.GetRangeByNumber(r, c).SetValue(rows[r][c]);
+var p = Api.InsertPivotNewWorksheet(s.GetRange("A1:D7"));
+p.AddFields({ rows: ["Region"] });
+p.AddDataField("Units");
+var chart = s.AddChart("'Data'!$A$1:$C$7", true, "bar", 2, 100 * 36000, 70 * 36000, 6, 0, 1, 0);
+builder.SaveFile("xlsx", "pivot-chart.xlsx");
+builder.CloseFile();

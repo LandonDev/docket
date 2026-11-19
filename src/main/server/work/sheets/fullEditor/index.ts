@@ -38,6 +38,11 @@ export function fullEditorOf(ctx: WorkCtx, seams: Partial<FullEditorDeps> = {}):
     enabled: () => ctx.enabled(),
     log: (line) => ctx.log(line),
     saved: (open) => void reload(ctx, open.itemId),
+    failed: (open, words) => {
+      // Said over the grid as the package store's own failed save is ("Couldn't save"), until the file next saves.
+      ctx.db.prepare('UPDATE work_sheets_files SET save_error = ? WHERE path = ?').run(words, open.path)
+      void reload(ctx, open.itemId)
+    },
     ...seams
   })
   editors.set(ctx.db, fe)
