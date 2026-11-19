@@ -43,7 +43,7 @@ struct HomeView: View {
                         if !home.work.isEmpty {
                             OutboxHomeRow(count: OutboxEntries.count(clients))
                         }
-                        ForEach(home.entries + home.work.filter { $0.kind == .workChats }) { entry in
+                        ForEach(home.mainEntries) { entry in
                             WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
                         }
                         if home.entries.isEmpty && home.work.isEmpty {

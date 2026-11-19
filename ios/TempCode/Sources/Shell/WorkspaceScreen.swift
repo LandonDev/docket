@@ -38,13 +38,8 @@ struct WorkspaceScreen: View {
             }
             // A Work workspace's house rules: one row that opens the page (milestone 39's wire).
             if let lead, lead.workspace.kind == .work {
-                NavigationLink(value: Route.houseRules(environmentId: lead.client.environment.id, workspaceId: lead.workspace.id)) {
-                    Label("House Rules", systemImage: "list.bullet.rectangle")
-                        .textStep(.title)
-                        .frame(minHeight: Layout.rowHeight)
-                }
-                .listRowInsets(Layout.rowInsets)
-                .accessibilityIdentifier("house-rules-row")
+                WorkViewRow(title: "House Rules", symbol: "list.bullet.rectangle",
+                            route: .houseRules(environmentId: lead.client.environment.id, workspaceId: lead.workspace.id), id: "house-rules-row")
             }
             if let screen {
                 ForEach(screen.projects) { card in
@@ -152,10 +147,10 @@ struct WorkspaceScreen: View {
         return (client: client, workspace: first.workspace)
     }
 
-    /// Every entry of Home, the Work band's after the code ones.
+    /// Every entry of Home in Home's order: Chats, Work Chats, the code workspaces, then the Work ones.
     private var titleEntries: [HomeSections.Entry] {
         let home = HomeSections.home(hosts: HomeRows.inputs(model.registry.ordered))
-        return home.entries + home.work
+        return home.mainEntries + home.work.filter { $0.kind != .workChats }
     }
 
     /// A Work workspace whose host cannot reach LifeOS says so once, above its threads.

@@ -32,6 +32,14 @@ import TempCodeContract
         #expect(view.body?.path == ["message", "text"])
     }
 
+    @Test func theUndoLineNamesAMailsRecipientsFromItsPayload() {
+        let lifeos = item("m1", summary: "Send to events booking: Ballroom for April 10", payload: mail)
+        #expect(OutboxModel.pendingLine(lifeos) == "Sending to Events booking")
+
+        let office = OutboxItem(ref: .host(.init(id: "o1")), kind: .officeMailSend, workspaceId: "w1", sessionId: "s1", sector: "purdue", summary: "Reply to dlee@purdue.edu: Re: Ballroom", verb: "Reply", account: nil, state: .held, payload: .object(["host": .string("env_1"), "to": .array([.string("dlee@purdue.edu")]), "cc": .array([.string("a@b.edu"), .string("c@d.edu")]), "subject": .string("Re: Ballroom")]), createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, updatedAt: 1)
+        #expect(OutboxModel.pendingLine(office) == "Replying to dlee@purdue.edu, a@b.edu and 1 more")
+    }
+
     @Test func theHostThatHoldsAnActIsBookkeepingNotAField() {
         let call: JSONValue = .object(["host": .string("env_Q2gUxM8"), "channel": .string("#events"), "text": .string("Booked.\nSee you there.")])
         #expect(OutboxModel.payloadView(call).fields.map(\.label) == ["In"])

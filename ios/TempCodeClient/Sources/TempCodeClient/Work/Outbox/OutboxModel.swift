@@ -48,11 +48,43 @@ public enum OutboxModel {
     }
 
     /// "Sending to events booking": the undo capsule's line while a press waits its five seconds.
+    /// A mail names its recipients from the payload ("Sending to Dana Lee"), as the host's
+    /// summary does, without the subject the summary carries after them; any other act
+    /// is its summary with the verb made progressive.
     public nonisolated static func pendingLine(_ item: OutboxItem) -> String {
+        if let people = recipients(item), !people.isEmpty {
+            return "\(progressive(item.verb)) to \(peopleWords(people))"
+        }
         let summary = item.summary
         guard summary.hasPrefix(item.verb) else { return summary }
         let rest = summary.dropFirst(item.verb.count)
         return progressive(item.verb) + rest
+    }
+
+    /// A mail's To and Cc as a person reads them: the name where there is one, else the address.
+    /// LifeOS's mail keeps them under `message`; Outlook's as plain addresses at the top.
+    nonisolated static func recipients(_ item: OutboxItem) -> [String]? {
+        guard case .object(let payload)? = item.payload else { return nil }
+        switch item.kind {
+        case .mailSend:
+            guard case .object(let message)? = payload["message"] else { return nil }
+            return ["to", "cc"].flatMap { key in (message[key].flatMap(addresses) ?? []).map { $0.name ?? $0.address } }
+        case .officeMailSend:
+            return ["to", "cc"].flatMap { key -> [String] in
+                guard case .array(let list)? = payload[key] else { return [] }
+                return list.compactMap { value -> String? in
+                    guard case .string(let address) = value else { return nil }
+                    return address
+                }
+            }
+        default:
+            return nil
+        }
+    }
+
+    /// "Dana Lee", "Dana Lee and Sam", "Dana Lee, Sam and 2 more": the host's own list words.
+    nonisolated static func peopleWords(_ people: [String]) -> String {
+        people.count <= 2 ? people.joined(separator: " and ") : "\(people.prefix(2).joined(separator: ", ")) and \(people.count - 2) more"
     }
 
     private nonisolated static func progressive(_ verb: String) -> String {

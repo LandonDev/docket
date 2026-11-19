@@ -14,20 +14,48 @@ struct WorkViewRows: View {
 
     var body: some View {
         ForEach(LifeViewScreen.Kind.allCases) { view in
-            row(view.title, symbol: view.symbol, view: view.rawValue)
+            WorkViewRow(title: view.title, symbol: view.symbol, route: route(view.rawValue), id: "work-view-\(view.rawValue)")
                 .opacity(dimmed ? 0.5 : 1)
         }
-        row("Routines", symbol: "clock.arrow.circlepath", view: "routines")
+        WorkViewRow(title: "Routines", symbol: "clock.arrow.circlepath", route: route("routines"), id: "work-view-routines")
     }
 
-    private func row(_ title: String, symbol: String, view: String) -> some View {
-        NavigationLink(value: Route.workView(environmentId: client.environment.id, workspaceId: workspace.id, view: view)) {
-            Label(title, systemImage: symbol)
-                .textStep(.title)
-                .frame(minHeight: Layout.rowHeight)
+    private func route(_ view: String) -> Route {
+        .workView(environmentId: client.environment.id, workspaceId: workspace.id, view: view)
+    }
+}
+
+/// One row of a Work workspace's head, on the Home row grid (WorkspaceEntryRow):
+/// the glyph in the 28 pt mark slot, the name, no chevron; every row pushes.
+struct WorkViewRow: View {
+    @Environment(ShellNavigator.self) private var navigator
+    let title: String
+    let symbol: String
+    let route: Route
+    let id: String
+    @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 28
+
+    var body: some View {
+        Button { navigator.open(route) } label: {
+            HStack(spacing: Layout.rowGap + 2) {
+                Image(systemName: symbol)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(width: icon, height: icon)
+                Text(title)
+                    .textStep(.title, weight: .medium)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+            }
+            .padding(.vertical, 8)
+            .frame(minHeight: Layout.rowHeight + 8)
+            .contentShape(Rectangle())
+            .separatorAtTextEdge(icon + Layout.rowGap + 2)
         }
+        .buttonStyle(.pressable)
         .listRowInsets(Layout.rowInsets)
-        .accessibilityIdentifier("work-view-\(view)")
+        .accessibilityAddTraits(.isLink)
+        .accessibilityIdentifier(id)
     }
 }
 
