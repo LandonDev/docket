@@ -22,8 +22,8 @@ until he presses Post. [work.md](work.md) says how a pillar registers;
   (`BROWSER_BUNDLES`; a Send kept in Mail stays the Outbox's) and presses it with
   `work.outbox.send`; the press runs it once, only if the window still holds
   what he was shown. `portal.submit` stays in `ACT_KINDS` unregistered: the
-  box's browser (milestone 38), which the Mac's classifier does not read,
-  may claim it.
+  box's browser (milestone 38) did not need it, since its submits are
+  `computer.act` items held the same way (below).
 - **Who drives, a page's need, the sources**: this pillar's one table,
   `work_browser_drive`, one row per pane thread (src/main/server/work/browser/drive.ts).
   The rows are about a screen on this host, so they do not ride a thread to
@@ -123,6 +123,62 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
 - `bun run ui:preview src/renderer/src/work/browser/BrowserCanvas.preview.tsx#BrowserPreview --width 864`
   draws the six moments in both themes.
 
+## The box's browser (milestone 38)
+
+A real Chromium on the box, so a box thread can drive a website with no Mac
+awake. The code is `src/main/server/work/browser/box/`; the protocol's
+§28 is its wire.
+
+- **One browser** (`chromium.ts`): headless, its own profile under
+  `<userData>/work-browser/box/profile`, DevTools on 127.0.0.1 only, the
+  sandbox on, never root. Started on first use; stopped after ten idle
+  minutes, or when its whole process tree passes 2 GB (`/proc`, every 15 s),
+  or when Work is turned off. It is not stopped for idleness while a held
+  step waits on one of its pages (for a day at most), or while a page asks
+  for him or he drives (two hours at most). A new start waits for the last
+  browser to exit. The binary: `TEMP_CODE_BOX_CHROMIUM`, else `chromium` or
+  `google-chrome` on PATH, else the newest Playwright download under
+  `~/.cache/ms-playwright` (the box has `chromium-1248`).
+- **The Linux service** (`service.ts`, `ax.ts`, `cdp.ts`): tc-computer's
+  wire, answered for this browser over DevTools, run in the host's process
+  behind a stdio pair (`inProcessSpawn`). One app, "Chromium"
+  (`org.chromium.Chromium`), whose windows are its pages.
+- **The tools** (`index.ts`): `box_browser_open`, `box_browser_observe`,
+  `box_browser_act`, `box_browser_batch`: the four computer tools, renamed,
+  run on computer sessions of the box's own (`wireBoxBrowser`, made by
+  index.ts on a Linux host whose computer use is not local). Work threads
+  get them only where the box has a Chromium. They refuse to act while he
+  drives (`BOX_OWNER_DRIVES`; the Mac's computer use has no such gate yet).
+- **The hold** is run.ts's, unchanged: the host reads a Work thread's step
+  on the screen (`readOutward`, with `org.chromium.Chromium` in
+  `BROWSER_BUNDLES` so a mail or chat page's Return counts), keeps it as a
+  live `computer.act` item, and carries it out on these sessions at his
+  press. The canvas finds it as it finds a Mac browser's.
+- **The canvas** opens for a box thread (`browser_open` is host-neutral)
+  but has no live picture: the preview stream is the Mac's computer host's
+  (`ComputerPreviews` in index.ts), and the service answers
+  `capture.stream.start` with `capture_failed`. A held submit shows its
+  picture in the Outbox.
+
+## Logins
+
+The box never sees a password. Two ways in:
+
+- **From his Mac** (`logins.ts`, `exportLogins.ts`): he runs
+  `bun src/main/server/work/browser/box/exportLogins.ts > logins.json` on the
+  Mac (`--sites a.com,b.com`; by default the hosts Outlook on the web needs,
+  `OUTLOOK_SITES`). It reads Chrome's cookie store and asks his Keychain for
+  "Chrome Safe Storage"; each value is decrypted and checked against its
+  host's hash. He copies the file into
+  `<userData>/work-browser/box/import/` on the box; the next use of the
+  browser takes it in (`Storage.setCookies`) and deletes it, and a file that
+  does not parse is deleted too.
+- **When a site needs him**: the thread calls `browser_needs_you` and ends
+  its turn. He signs in through the browser's DevTools: on the Mac,
+  `ssh -L 9333:127.0.0.1:$(ssh box head -1 /srv/agents/temp-code-data/work-browser/box/profile/DevToolsActivePort) box`,
+  then chrome://inspect, Configure, `localhost:9333`, and Inspect on the page:
+  its screencast takes his clicks and typing. Then he hands back.
+
 ## Not built here
 
 - Holding a box thread's act on the Mac (a Mac-side row the box presses
@@ -153,3 +209,13 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   posted once, picture stored.
 - Not run: anything on the Mac (it was locked and its owner asleep); the
   live Teams post; a live portal submit.
+- src/main/server/work/browser/box/: `service.test.ts` is the Linux
+  service's wire conformance test (every method against the real Chromium
+  on a local test site, each frame through the wire's zod, each observation
+  through the grammar's parser); `hold.test.ts` drives that site through the
+  host's computer sessions (a Work thread's submit and a Return beside Send
+  held, the press submits once, a code thread's click runs); `outbox.test.ts`
+  holds the submit in the real Outbox, through Away, and presses it with
+  `work.outbox.send`; `logins.test.ts` decrypts Chrome's values and imports
+  into the profile; `chromium.test.ts` the launcher, the idle stop and the
+  cap.

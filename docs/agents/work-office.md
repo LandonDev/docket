@@ -40,12 +40,13 @@ id per Outlook address). Suggestions over a workbook use the sheets pillar's
 
 ## Carriers
 
-A carrier is what drives the apps. The Mac's osascript and our Office add-in
-exist now; Outlook on the web on the box is M38's and COM on Windows is
-M44's. `index.ts` picks `withAddin(macCarrier())` on darwin and
-`withAddin(null)` elsewhere (`setCarrier` in tests): a file open with our
-add-in goes through the add-in, anything else to the Mac's scripts. A host
-with only the add-in reports `carrier: 'addin'`.
+A carrier is what drives the apps. The Mac's osascript, our Office add-in
+and Outlook on the web on the box (M38) exist now; COM on Windows is M44's.
+`index.ts` picks `withAddin(macCarrier())` on darwin, `withAddin(owaCarrier())`
+on Linux where a Chromium is, and `withAddin(null)` elsewhere (`setCarrier`
+in tests): a file open with our add-in goes through the add-in, anything
+else to the desktop carrier. A host with only the add-in reports
+`carrier: 'addin'`; the box reports `owa`.
 
 **The Mac.** Each verb is one JXA script run by `/usr/bin/osascript -l
 JavaScript -`. A range is one Apple Event each way, never one per cell. The
@@ -68,6 +69,30 @@ Office call from the installed app answers "TempCode may not control …".
 `apps()` reports each app as installed, running and allowed. macOS will not
 say whether an app is allowed without asking, so `allowed` is what the last
 call found, and `unknown` before any call.
+
+**Outlook on the web** (`owa/`, milestone 38). Mail and calendar only:
+Excel, Word and PowerPoint answer "not on the box". The carrier keeps its
+own tab of Outlook on the web in the box's browser
+([work-browser.md](work-browser.md) "The box's browser"), hidden from the
+agents' browser tools (`RESERVED_TARGETS`). It calls the page's own
+`/owa/service.svc?action=<Action>` from inside the page (`page.ts`), signed
+with the headers the page itself last sent there (its bearer token and
+canary, read off its own requests), so his session never leaves the
+browser; a 401 or 440 reopens the page once, then asks for a sign-in. The
+bodies are Exchange's operations as JSON (`ews.ts`): `CreateItem` with a
+`Message` (HTML body, `SendAndSaveCopy` to Sent, `SaveOnly` for a draft),
+`ReplyToItem` and `ForwardItem`, a `CalendarItem` with
+`SendMeetingInvitations`, `AcceptItem`, `DeclineItem` and
+`TentativelyAcceptItem`; `FindItem` over a folder or a `CalendarPageView`
+(with `calendar:UID`, so `eventByUid` matches exactly); `GetItem` for a
+mail's text or HTML; `GetOwaUserConfiguration` for who is signed in. A
+refusal Exchange answers is a plain refusal (`not-allowed`, or `not-found`),
+so the route fails its row; anything unclear stays journaled. Who is signed
+in is kept in `<userData>/work-browser/box/owa.json`, so the route's minute
+beat never starts the browser; while none is known and the profile's
+cookies hold a Microsoft sign-in, `apps()` asks the page at most once an
+hour. Logins come as the browser's do ([work-browser.md](work-browser.md)
+"Logins"). `TEMP_CODE_OWA_URL` points the page at a stand-in.
 
 ## The add-in
 
@@ -240,6 +265,10 @@ connected and Outlook is installed (checked every 5 minutes):
   (not installed, not allowed, not open, no such account) fails a row; a
   timeout or an unclear end stays journaled and is acked as sent. The Purdue
   PC's sender works the same way.
+- **two machines on one account.** The box (Outlook on the web) and the Mac
+  may both report one address. `localClaim` is atomic, and since milestone
+  38 LifeOS records the claimer (`outbox.claimedBy`): a row a named host
+  claimed is settled, and seen in flight, by that host alone.
 
 ## Excel behind the grid
 
@@ -313,9 +342,21 @@ and Outlook sends nothing), the helper (`excel.test.ts`), the canvas path
 (`grid.test.ts`), the route with a LifeOS in memory (`route.test.ts`) and
 the wire (`index.test.ts`). `mac.test.ts` runs each JXA script in a node
 sandbox against stand-ins for Excel's and Outlook's objects, and the carrier
-against a recorded osascript.
+against a recorded osascript. `owa/owa.test.ts` runs the Outlook on the web carrier
+through the box's real Chromium against a stand-in in Outlook's shapes
+(`owa/fixture.ts`: its page signs its first call with a bearer token and the
+canary, its `service.svc` checks every `__type` and answers as Exchange
+does): who is signed in, a formatted send read back from Sent, the route end
+to end, booking, an invitation by UID and its answer, a session that ends.
 
 ## Not proven
+
+**Outlook on the web**: nothing has run against his real Outlook on the web
+(no agent may sign in to it). The live test is in landed/M38.md. Unproven
+there: that the real page's `service.svc` takes these bodies as the stand-in
+does, which headers sign a call (the carrier keeps `authorization`,
+`x-owa-canary`, `x-anchormailbox` and the like off the page's own requests),
+and that `FindItem` returns `calendar:UID`.
 
 None of this has run against real Excel or Outlook. The add-in has not run
 in any real Office host: its live test, with the sideload steps, is in the

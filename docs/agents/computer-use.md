@@ -3,6 +3,9 @@
 docs/computer-protocol.md is the contract and the long account, by
 section; docs/box.md "Computer use: the Mac's apps from any thread" has
 why and the measured headline.
+
+**On the box** there is no tc-computer: a box thread's computer tools cross the Mac bridge. A Work thread on the box also has the box's own Chromium through the `box_browser_*` tools, a Linux service that answers the same wire over DevTools ([computer-protocol.md](../computer-protocol.md) §28, [work-browser.md](work-browser.md) "The box's browser"); run.ts's hold applies to it unchanged.
+
 - **The service.** `tc-computer`, a Swift binary in native/tc-computer,
   one process per app instance. scripts/lib/tcComputerBuild.ts builds it
   on macOS into resources/native/tc-computer beside a content stamp

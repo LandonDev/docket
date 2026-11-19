@@ -32,6 +32,7 @@ TempCode's own computer use: a Swift service on the Mac, `tc-computer`, reads ac
 | Activity row, preview pane, images in results | renderer, drivers, bridge script | Preview and image results |
 | Timed task suite | `scripts/bench-computer.ts` | Task benchmark |
 | Fixtures | `src/main/server/computer/fixtures/` | Computer protocol spec |
+| The Linux service: the box's Chromium over DevTools (§28) | `src/main/server/work/browser/box/` | Work milestone 38 |
 
 The binary is `tc-computer`, built by the Service shell's electron.vite plugin from `native/tc-computer` into `resources/native/tc-computer` and signed through electron-builder's `mac.binaries`, like the appshot helper. It runs only on the Mac, as a child of the app's main process, so TCC grants attribute to TempCode.app. A box thread never runs it; its `computer_*` calls cross the Mac bridge (§18).
 
@@ -2076,6 +2077,94 @@ The field test's nine runs (2026-11-10) showed that a call costs about four seco
 | the three Finder tasks, as one group | 36 s, 7 calls together | ≤ 12 s and 2 calls each (with §26) |
 
 27.15 **Tests and the proof.** On the box, `sh scripts/computer-text-test.sh`: AXText's `NamedTargetTests`, `MenuPathTests`, `MenuBlockTests`, `CompactMenuBarTests`; ComputerServiceKit's `FocusPlanTests`, `BatchStopTests` (the shared case table) and `WaitRuleTests` (no change, one change, more than sixteen changes 25 ms apart). On the Mac, `bun run computer:test` adds the live seams and `FewerCallsServiceTests`; on 2026-11-10 a scratch clone of the branch with §26 merged passed it: 988 tests, none failed, six skipped (the live scratch Chrome and pick tests), after the layout walk's frame was cut to fit a test thread's stack. vitest: protocol, observation (the block and the compact line), batchStop, tools (the step lines read back), descriptions (the listing local and remote), errorWords, policy, run (the fake service's `Menuful`, `Newdoc`, `Renamey`, `Blindy`, `Unplanned`, `Secret`, `Splitty`), mcp, and the bench's fieldTargets, fieldWaste and fieldBar. The `--gate` leg is `--fewer` in scripts/e2e-tc-computer.ts on TC Probe's `--fewer` window: a pop up opened and its item picked by `named` in one call; `menu: "Probe > New Note"` following the new window and typing into its live focus; a rename by `[left_click row, key Return, type, key Return]`; a click that changes nothing stopping the keys after it; the opened-menu block. Measured on 2026-11-11 (652f9dac plus the gate-r2 fixes, the person at the Mac, every call at ax or process): launch 2138 ms, the pop up 1639 ms, the new note 3188 ms, its close 1371 ms, the rename 1668 ms, the stopped keys 2487 ms, the menu block 2450 ms; 14.9 s in all. Its first runs found three faults: a pop up's AXPress posts AXMenuOpened before the AX call returns, so the wait's clock never saw it and the open read `none` (a step during which the call record saw a menu open, or a window or sheet made, is now `changed`: `CallRecord.opened(during:)`), and a picked pop up's menu still answered AXRole, so the closing read listed it open (an AXMenuClosed now takes it off the record); a cell-based table with an editable column reads each cell as an `input` under a row with no name, which the proof now finds by its cell (`rowShowing`); and the rename's Return was refused `unplanned` because AppKit focuses a clicked row's table, never the row (27.7 now admits the table holding a targeted row, `HeldItem`). TC Probe Fewer's No Change button draws no pressed flash, whose pixels the wait counted as a change. The proof launches TC Probe Fewer with `--over-front`, so its window opens under the person's front window, centred on it and still behind it: a pop up's AXPress orders the probe's window above theirs, and the guard sees and undoes that every time (`front` restored in 26 to 43 ms on fewer 1 and 5), wherever the person's window sits; before, the leg passed or failed by where their window was. An open menu closes at the person's click anywhere on the Mac, so fewer 5 is void and runs again when the only fault is the missing menu block and the person used the Mac during the call (`menuClosedByPerson`, scripts/lib/fewerLeg.ts). The person checks of every step (`assertPersonUntouched` over `judgeFront` and `judgePointer`) ran with the person at the Mac: untouched, or the person's own input, in every step of every run. Measured again on 2026-11-11 (gate-r2 at 0a094f0e plus these fixes, the person at the Mac), medians of five green runs: launch 2144 ms, the pop up 1346 ms, the new note 3018 ms, its close 1432 ms, the rename 1734 ms, the stopped keys 2491 ms, the menu block 2448 ms; 14.4 to 18.6 s in all. To measure, as hand runs on an idle, unlocked Mac: the field suite on the three models (`--set field --runs 3`) with the Codex reference (`--reference codex`), judged with `--judge-field` against the targets; then the wait-row A/B, `bun scripts/ax-wait-rows.ts rows` on the first report, the suite again with `TEMP_CODE_COMPUTER_WAIT_AX` set to those rows, and `judge`. Until then `axAction` and `axStep` stay equal to `action` and `step`, and 27.1 has no numbers after this build.
+
+## 28. The Linux service: the box's browser
+
+Work milestone 38. A box thread drives the box's own Chromium through the
+same host code as the Mac's apps: a service that answers this protocol's
+wire for that browser, over the Chrome DevTools Protocol. Its account is
+docs/agents/work-browser.md "The box's browser".
+
+### 28.1 Process
+
+It runs in the host's process (`BoxComputerService` in
+`src/main/server/work/browser/box/service.ts`), behind a stdio pair
+(`inProcessSpawn`), as the `spawn` of a `ComputerService` of its own. The
+host's `ComputerConnection` reads its frames and checks each against the
+zod of §2 and §3 as it would a child's; `ComputerSessions` and run.ts drive
+it unchanged. It connects to the one Chromium (started by `chromium.ts`) on first use, over DevTools on
+127.0.0.1. `initialize` answers `features: []`, so the host sends it
+nothing past protocol 1; both permissions are always granted (there is no
+TCC); one display, 1280×800 at scale 1.
+
+### 28.2 The app and its windows
+
+One app: "Chromium", bundle id `org.chromium.Chromium` (in `BROWSER_BUNDLES`,
+so the hold reads it as a browser). Its pid is the browser's. `app` matches
+that name, its bundle id, a prefix of the name, "chrome" or "browser"; any
+other answers `app_not_found` with "Chromium" as the one candidate. Each
+page (a DevTools `page` target) is a window, its id a small integer kept
+while the page lives; the main window is the page last used. Pages the host
+keeps for itself (the Outlook on the web carrier's, `RESERVED_TARGETS`) are
+never listed. `apps.launch` with `open` loads each address into a blank page
+or a new one; only `http:`, `https:` and `about:blank` open (`open_refused`
+otherwise: never `file:` or `chrome:`).
+
+### 28.3 The observation
+
+Chromium's accessibility tree (`Accessibility.getFullAXTree`) read into §4's
+grammar (`ax.ts`, `formatObservation`, so `parseObservation` takes every
+text back). Roles map to §4.1's words; layout roles drop and their children
+rise; a text node that repeats its parent's name drops; an `<input
+type=password>` (found in the DOM, since Chromium calls it `textbox`) is
+`password` and never shows a value. Above the page, as Chrome on the Mac
+reads, the observation draws the window and an address bar: `[i] window
+"<title>"`, `[j] input "Address and search bar" = "<url>"`, then the page's
+`web area`. The hold reads a page's site from that bar (outward.ts
+`pageHost`); typing into it and Return navigates, under the same rule as
+`open`.
+
+What differs from the Mac's reader: every `auto` read answers `full` (no
+diffs); no range lines, no `more below` summaries and no clip by the visible
+rect (the budget's cut ends with `(truncated …)`, the focused element kept);
+`@x,y w×h` come from `DOM.getBoxModel` in the page's CSS pixels, which are
+the screenshot's pixels at scale 1; `stats.partial` is never set. Indices
+follow §4.2: a page's DOM node keeps its number while it lives, a number is
+never given twice in a session, and an element of a page that navigated
+away answers `stale_element` with reason `gone`.
+
+### 28.4 Actions
+
+Input goes into the page by DevTools (`Input.dispatchMouseEvent`,
+`dispatchKeyEvent`, `insertText`): the `process` tier when the call allows
+it, else the first tier it names. It never moves a person's pointer or
+keyboard; the box has none. Clicks land on an element's box centre after
+`DOM.scrollIntoViewIfNeeded`; `named` finds the element of that name in a
+fresh read, a control first; `type` inserts each line and presses Return
+between lines; `set_value` sets the value through the element's own setter
+and fires `input` and `change`; `perform` takes `press`, `confirm`, `show
+menu` and `scroll to visible`; `screenshot` and `zoom` capture the page.
+`menu`, `select_text` and `save_as` answer `action_unsupported`; every
+step's `effect` is `unknown`. The smart wait (§7) waits for the document to
+be complete and its address and element count to hold still for `quietMs`.
+
+### 28.5 What it does not serve
+
+`capture.stream.start` answers `capture_failed`: the live preview is the
+Mac's computer host's, and the box browser has no stream yet.
+`escape.watch`, `input.probe` and `input.restoreSession` answer at once
+(there is no person's input to watch or restore); `clipboard.state` never
+changes. No notification is sent.
+
+### 28.6 Proof
+
+`src/main/server/work/browser/box/service.test.ts` is the wire conformance
+test: every method of §3 over the stdio pair, each answer held to
+`resultFrameSchema` or `RpcErrorResponseSchema`, each observation through
+`parseObservation`, against the real Chromium on a local test site; the
+refusals (`not_initialized`, an unknown method, bad params, `app_not_found`,
+`open_refused`, a stale epoch, an unknown and a gone element). `hold.test.ts`
+and `outbox.test.ts` run the hold of §19.3 over it.
 
 ## The unattended proof modes
 
