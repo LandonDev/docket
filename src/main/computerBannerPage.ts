@@ -9,10 +9,10 @@ export const BANNER_TOKENS = {
   },
   light: {
     popover: 'oklch(1 0 0)',
-    border: 'rgb(0 0 0 / 0.08)',
-    foreground: 'oklch(0.2 0.004 270)',
-    'muted-foreground': 'oklch(0.5 0.008 270)',
-    muted: 'oklch(0.955 0.002 80)'
+    border: 'rgb(15 23 42 / 0.1)',
+    foreground: 'oklch(0.2 0.012 264)',
+    'muted-foreground': 'oklch(0.46 0.014 264)',
+    muted: 'oklch(0.948 0.004 264)'
   },
   shared: {
     'dur-base': '180ms',

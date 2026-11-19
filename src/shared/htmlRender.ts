@@ -190,11 +190,13 @@ const FONT_SANS =
 const FONT_MONO =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
 
-/** index.css's values with the hue/lightness variables resolved by hand. */
+/** index.css's values, for a page with no window to read them from (a
+ *  preview's screenshot, a standalone file); htmlRender.test.ts holds every
+ *  colour but `busy`, which has no token, equal to the app's. */
 export const DEFAULT_TOKENS: Readonly<Record<HtmlRenderAppearance, HtmlRenderTokens>> = {
   dark: {
-    background: 'hsl(240 0% 9%)',
-    foreground: 'hsl(240 0% 92%)',
+    background: 'oklch(0.195 0.003 270)',
+    foreground: 'oklch(0.93 0.003 270)',
     accent: 'hsl(211 92% 62%)',
     link: '#7dd3fc',
     success: '#34d399',
@@ -208,14 +210,14 @@ export const DEFAULT_TOKENS: Readonly<Record<HtmlRenderAppearance, HtmlRenderTok
     fontMono: FONT_MONO
   },
   light: {
-    background: 'hsl(240 0% 97%)',
-    foreground: 'hsl(240 0% 18%)',
-    accent: 'hsl(211 92% 62%)',
-    link: 'hsl(211 92% 40%)',
-    success: '#059669',
-    warning: '#d97706',
-    danger: '#dc2626',
-    info: '#2563eb',
+    background: 'oklch(1 0 0)',
+    foreground: 'oklch(0.2 0.012 264)',
+    accent: 'hsl(214 88% 44%)',
+    link: 'hsl(214 90% 38%)',
+    success: '#046c4e',
+    warning: '#92450a',
+    danger: '#b91c1c',
+    info: '#1d4ed8',
     violet: '#7c3aed',
     cyan: '#0891b2',
     busy: '#db2777',

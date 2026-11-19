@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { declarations, resolve, themes } from '../renderer/src/lib/colourMath'
 import {
   DEFAULT_TOKENS,
   HTML_RENDER_MAX_HEIGHT,
@@ -224,6 +227,34 @@ describe('htmlRenderTheme', () => {
     expect(theme.variables['--background']).toBe(DEFAULT_TOKENS.dark.background)
     expect(theme.variables['--chart-1']).toBe(DEFAULT_TOKENS.dark.accent)
     expect(theme.variables['--muted']).toContain(DEFAULT_TOKENS.dark.foreground)
+  })
+
+  it('falls back to the app\'s own tokens in both themes', () => {
+    const css = readFileSync(join(__dirname, '../renderer/src/index.css'), 'utf8')
+    const app = themes(css)
+    const fonts = declarations(css, '@theme')
+    const TOKEN = {
+      background: '--background',
+      foreground: '--foreground',
+      accent: '--accent',
+      link: '--link',
+      success: '--thread-success',
+      warning: '--thread-warning',
+      danger: '--thread-danger',
+      info: '--thread-info',
+      violet: '--thread-violet',
+      cyan: '--thread-cyan'
+    } as const
+    for (const appearance of ['dark', 'light'] as const) {
+      for (const [name, token] of Object.entries(TOKEN))
+        expect([appearance, name, DEFAULT_TOKENS[appearance][name as keyof typeof TOKEN]]).toEqual([
+          appearance,
+          name,
+          resolve(app[appearance], `var(${token})`)
+        ])
+      expect(DEFAULT_TOKENS[appearance].fontSans).toBe(fonts.get('--font-sans')?.replace(/\s+/g, ' '))
+      expect(DEFAULT_TOKENS[appearance].fontMono).toBe(fonts.get('--font-mono')?.replace(/\s+/g, ' '))
+    }
   })
 
   it('is an MCP Apps host-context-changed notification and a decodable fragment', () => {

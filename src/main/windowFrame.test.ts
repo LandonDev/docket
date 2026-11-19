@@ -1,5 +1,16 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { APP_USER_MODEL_ID, CAPTION_HEIGHT, captionInk, captionOverlay, frameOptions, isDarkColor, localUserData } from './windowFrame'
+import { channels, resolve, themes } from '../renderer/src/lib/colourMath'
+import { APP_USER_MODEL_ID, CAPTION_HEIGHT, captionInk, captionOverlay, frameOptions, isDarkColor, localUserData, SYMBOL } from './windowFrame'
+
+/** A token of index.css in one theme, as the plain `#rrggbb` main can hand to Electron. */
+const app = themes(readFileSync(join(__dirname, '../renderer/src/index.css'), 'utf8'))
+const tokenHex = (theme: 'dark' | 'light', token: string): string =>
+  `#${channels(resolve(app[theme], `var(${token})`))
+    .slice(0, 3)
+    .map((c) => Math.round(c * 255).toString(16).padStart(2, '0'))
+    .join('')}`
 
 const look = { dark: true, icon: '/app/icon.png' }
 
@@ -25,7 +36,7 @@ describe('the window frame per platform', () => {
   it("Windows hides the title bar and lets Windows draw its own caption buttons over the page's bar", () => {
     const frame = frameOptions('win32', look)
     expect(frame.titleBarStyle).toBe('hidden')
-    expect(frame.titleBarOverlay).toEqual({ height: CAPTION_HEIGHT, color: '#00000000', symbolColor: '#fafafa' })
+    expect(frame.titleBarOverlay).toEqual({ height: CAPTION_HEIGHT, color: '#00000000', symbolColor: SYMBOL.dark })
     expect(frame.backgroundColor).toBe('#171717')
     // No traffic lights, no icon (the exe carries it), and no auto-hide: the menu bar is hidden outright.
     expect(frame).not.toHaveProperty('trafficLightPosition')
@@ -36,13 +47,15 @@ describe('the window frame per platform', () => {
   })
 
   it('the caption glyphs take the ink of the theme they sit on', () => {
-    expect(captionOverlay(true).symbolColor).toBe('#fafafa')
-    expect(captionOverlay(false).symbolColor).toBe('#0a0a0a')
+    expect(captionOverlay(true).symbolColor).toBe(SYMBOL.dark)
+    expect(captionOverlay(false).symbolColor).toBe(SYMBOL.light)
+    // The ink is the app's own `foreground`, so the glyphs match the title bar's text.
+    expect(SYMBOL).toEqual({ dark: tokenHex('dark', '--foreground'), light: tokenHex('light', '--foreground') })
     expect(frameOptions('win32', { ...look, dark: false }).titleBarOverlay).toEqual(captionOverlay(false))
   })
 
   it('a theme change sets the glyphs\' ink alone, so a zoomed bar keeps its caption height', () => {
-    expect(captionInk(false)).toEqual({ color: '#00000000', symbolColor: '#0a0a0a' })
+    expect(captionInk(false)).toEqual({ color: '#00000000', symbolColor: SYMBOL.light })
     expect(captionInk(true)).not.toHaveProperty('height')
     expect(captionOverlay(true)).toEqual({ height: CAPTION_HEIGHT, ...captionInk(true) })
   })

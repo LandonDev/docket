@@ -30,16 +30,16 @@ export const PAIR_TOKENS = {
   },
   light: {
     background: 'oklch(1 0 0)',
-    card: 'oklch(0.985 0.002 80)',
-    secondary: 'oklch(0.94 0.003 80)',
-    input: 'rgb(0 0 0 / 0.12)',
-    border: 'rgb(0 0 0 / 0.08)',
-    foreground: 'oklch(0.2 0.004 270)',
-    'muted-foreground': 'oklch(0.5 0.008 270)',
-    primary: 'oklch(0.2 0 0)',
+    card: 'oklch(0.974 0.003 264)',
+    secondary: 'oklch(0.935 0.005 264)',
+    input: 'rgb(15 23 42 / 0.18)',
+    border: 'rgb(15 23 42 / 0.1)',
+    foreground: 'oklch(0.2 0.012 264)',
+    'muted-foreground': 'oklch(0.46 0.014 264)',
+    primary: 'oklch(0.21 0.012 264)',
     'primary-foreground': 'oklch(0.99 0 0)',
-    accent: 'hsl(211 92% 48%)',
-    destructive: '#c81e1e'
+    accent: 'hsl(214 88% 44%)',
+    destructive: '#b91c1c'
   },
   shared: {
     'dur-fast': '120ms',
