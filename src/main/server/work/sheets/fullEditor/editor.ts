@@ -1,9 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { chmodSync, copyFileSync, createReadStream, mkdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, copyFileSync, createReadStream, existsSync, fsyncSync, mkdirSync, openSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { basename, dirname, extname, join } from 'node:path'
-import { Docservice, dsGet, groupRss, type DocserviceOpts } from './docservice'
+import { Docservice, dsGet, groupRss, STORAGE_HOST, type DocserviceOpts, type DsSecrets } from './docservice'
 import { FULL_TOKEN, lookupSocketOf, type FullLookup } from './wire'
 
 /**
@@ -82,8 +82,9 @@ export interface FullOpen {
 /** Where a save from the editor went. */
 export interface SavedTo {
   path: string
-  /** the file had changed outside the editor meanwhile: the save is a copy beside it */
+  /** the save could not go into the file: it is a copy beside it (or in the full editor's folder), for `why` */
   beside: boolean
+  why?: string
 }
 
 export interface FullEditorDeps {
@@ -114,12 +115,25 @@ export function memoryCapOf(env: NodeJS.ProcessEnv = process.env): number {
 
 /** An open nobody loaded in this long is let go. */
 export const UNSEEN_MS = 15 * 60_000
-/** No open lives longer than this. */
+/** An open nobody is in is let go after this long. */
 export const MAX_OPEN_MS = 24 * 60 * 60_000
+
+/** A file's name with a time to the second, made free of any file already there: `Budget (full editor 2026-11-19 064012).xlsx`, then ` 2`… */
+export function freeName(dir: string, path: string, now: number): string {
+  const ext = extname(path)
+  const at = new Date(now).toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '')
+  for (let n = 1; ; n++) {
+    const name = join(dir, `${basename(path, ext)} (full editor ${at}${n > 1 ? ` ${n}` : ''})${ext}`)
+    if (!existsSync(name)) return name
+  }
+}
 
 export class FullEditor {
   private readonly home: string
-  private readonly secret = newToken()
+  /** the browser's config and sessions; the docservice's callbacks (only main checks them); its cache links */
+  private readonly secrets: DsSecrets = { browser: newToken(), outbox: newToken(), storage: newToken() }
+  /** open and stop run one at a time, so a stop never closes what an open is starting, and two presses on one file meet */
+  private queue: Promise<unknown> = Promise.resolve()
   private readonly opens = new Map<string, FullOpen>()
   private readonly byId = new Map<string, FullOpen>()
   private ds: Docservice | null = null
@@ -151,11 +165,23 @@ export class FullEditor {
    * token. A file already open answers the same token, so two presses never
    * make two sessions that would save over each other.
    */
-  async open(o: { path: string; itemId: string; title: string }): Promise<string> {
+  open(o: { path: string; itemId: string; title: string }): Promise<string> {
+    return this.serial(() => this.openNow(o))
+  }
+
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn)
+    this.queue = run.catch(() => {})
+    return run
+  }
+
+  private async openNow(o: { path: string; itemId: string; title: string }): Promise<string> {
     if (!this.deps.enabled()) throw new Error('Work is off on this host.')
     const toolDir = this.deps.toolDir()
     if (process.platform !== 'linux' || !toolDir) throw new Error('The full editor is not installed on this host.')
-    for (const open of this.opens.values()) if (open.path === o.path) return open.token
+    const real = realpathSync(o.path)
+    for (const open of this.opens.values()) if (realOr(open.path) === real) return open.token
+    this.quietSince = this.now()
     await this.listen()
     await this.docservice(toolDir)
     const id = newDocId()
@@ -174,7 +200,7 @@ export class FullEditor {
 
   /** The editor's config for an open, signed for the docservice. */
   configOf(open: FullOpen): Record<string, unknown> {
-    const store = `http://127.0.0.1:${this.storagePort}`
+    const store = `http://${STORAGE_HOST}:${this.storagePort}`
     const config: Record<string, unknown> = {
       document: {
         fileType: open.fileType,
@@ -195,14 +221,18 @@ export class FullEditor {
       width: '100%',
       height: '100%'
     }
-    return { ...config, token: signHs256(config, this.secret) }
+    return { ...config, token: signHs256(config, this.secrets.browser) }
   }
 
   /** Every open ends, the docservice and both servers stop. */
-  async stop(why: string): Promise<void> {
+  stop(why: string): Promise<void> {
+    return this.serial(() => this.stopNow(why))
+  }
+
+  private async stopNow(why: string): Promise<void> {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
-    for (const open of [...this.opens.values()]) this.end(open)
+    for (const open of [...this.opens.values()]) this.lost(open, `it stopped: ${why}`)
     const ds = this.ds
     this.ds = null
     this.starting = null
@@ -221,14 +251,18 @@ export class FullEditor {
     if (ds?.pid) {
       const cap = this.deps.memoryCapBytes ?? memoryCapOf()
       const rss = await (this.deps.rss ?? groupRss)(ds.pid)
-      if (rss > cap) return this.stop(`its processes held ${Math.round(rss / 1048576)} MB, over the ${Math.round(cap / 1048576)} MB cap; edits not yet saved there are lost`)
+      if (rss > cap) return this.stop(`its processes held ${Math.round(rss / 1048576)} MB, over its ${Math.round(cap / 1048576)} MB cap`)
     }
     const now = this.now()
     for (const open of [...this.opens.values()]) {
       if (!open.seen && now - open.at > UNSEEN_MS) this.end(open)
       else if (open.users === 0 && now - open.at > MAX_OPEN_MS) this.end(open)
     }
-    if (this.opens.size === 0 && now - this.quietSince > (this.deps.idleMs ?? 10 * 60_000)) await this.stop('nothing open for ten minutes')
+    // A stop here waits behind any open in flight, and an open that began meanwhile keeps it running.
+    if (this.opens.size === 0 && now - this.quietSince > (this.deps.idleMs ?? 10 * 60_000))
+      await this.serial(async () => {
+        if (this.opens.size === 0 && this.now() - this.quietSince > (this.deps.idleMs ?? 10 * 60_000)) await this.stopNow('nothing was open for ten minutes')
+      })
   }
 
   // ── what it starts ─────────────────────────────────────────────────
@@ -236,12 +270,12 @@ export class FullEditor {
   private docservice(toolDir: string): Promise<Docservice> {
     if (this.ds?.running()) return Promise.resolve(this.ds)
     this.starting ??= (async () => {
-      const ds = new Docservice({ toolDir, home: this.home, secret: this.secret, log: this.deps.log, ...(this.deps.spawn ? { spawn: this.deps.spawn } : {}) })
+      const ds = new Docservice({ toolDir, home: this.home, secrets: this.secrets, log: this.deps.log, ...(this.deps.spawn ? { spawn: this.deps.spawn } : {}) })
       this.deps.log('[full-editor] starting the docservice')
       await ds.start(() => {
         if (this.ds !== ds) return
         this.ds = null
-        for (const open of [...this.opens.values()]) this.end(open)
+        for (const open of [...this.opens.values()]) this.lost(open, 'it stopped by itself')
       })
       this.ds = ds
       this.quietSince = this.now()
@@ -257,7 +291,7 @@ export class FullEditor {
   private async listen(): Promise<void> {
     if (!this.storage) {
       const storage = createServer((req, res) => void this.serveStorage(req, res))
-      await new Promise<void>((resolve, reject) => storage.once('error', reject).listen(0, '127.0.0.1', () => resolve()))
+      await new Promise<void>((resolve, reject) => storage.once('error', reject).listen(0, STORAGE_HOST, () => resolve()))
       this.storage = storage
       this.storagePort = (storage.address() as AddressInfo).port
     }
@@ -269,6 +303,12 @@ export class FullEditor {
       chmodSync(socket, 0o600)
       this.lookup = lookup
     }
+  }
+
+  /** An open ends with the editor under it: edits made there since its last save are gone, and the grid says so when someone was in it. */
+  private lost(open: FullOpen, why: string): void {
+    if (open.users > 0) this.deps.failed(open, `The full editor closed while this file was open there (${why}): changes made since its last save are lost.`)
+    this.end(open)
   }
 
   private end(open: FullOpen): void {
@@ -311,7 +351,7 @@ export class FullEditor {
       return answer(1)
     }
     const header = /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1]
-    const claims = verifyHs256(header ?? (typeof body.token === 'string' ? body.token : ''), this.secret, this.now())
+    const claims = verifyHs256(header ?? (typeof body.token === 'string' ? body.token : ''), this.secrets.outbox, this.now())
     if (!claims) {
       this.deps.log('[full-editor] refused a callback that was not signed by the docservice')
       return answer(1)
@@ -324,6 +364,7 @@ export class FullEditor {
       answer(0)
     } catch (err) {
       this.deps.log(`[full-editor] ${basename(open.path)}: ${(err as Error).message}`)
+      this.deps.failed(open, 'The full editor could not save the changes made there: this file does not have them.')
       answer(1)
     }
   }
@@ -339,9 +380,9 @@ export class FullEditor {
       case 6: {
         if (typeof said.url !== 'string') throw new Error('a save came with no file')
         const bytes = await this.fetchSaved(said.url)
-        const to = this.writeBack(open, bytes)
+        const to = this.writeBack(open, bytes, said.filetype)
         this.deps.log(`[full-editor] saved ${basename(open.path)}${to.beside ? ` beside it as ${basename(to.path)}: the file changed outside the editor meanwhile` : ''}`)
-        if (to.beside) this.deps.failed(open, `The full editor saved its changes beside this file, as ${basename(to.path)}: this file changed while it was open there.`)
+        if (to.beside) this.deps.failed(open, `The full editor saved its changes ${dirname(to.path) === dirname(realOr(open.path)) ? 'beside this file' : `in ${dirname(to.path)}`}, as ${basename(to.path)}: ${to.why}.`)
         else this.deps.saved(open, to)
         if (said.status === 2) this.end(open)
         return
@@ -375,18 +416,33 @@ export class FullEditor {
    * A file changed outside the editor since it was opened is not
    * overwritten: the save goes beside it.
    */
-  writeBack(open: FullOpen, bytes: Buffer): SavedTo {
+  writeBack(open: FullOpen, bytes: Buffer, filetype?: string): SavedTo {
     if (bytes.length < 4 || bytes.readUInt32LE(0) !== 0x04034b50) throw new Error('the editor saved something that is not a workbook')
-    const real = realpathSync(open.path)
-    if (stampOf(real) !== open.stamp) {
-      const ext = extname(real)
-      const at = new Date(this.now()).toISOString().slice(0, 16).replace('T', ' ').replace(':', '')
-      const beside = join(dirname(real), `${basename(real, ext)} (full editor ${at})${ext}`)
-      writeFileSync(beside, bytes, { flag: 'wx', mode: statSync(real).mode & 0o777 })
-      return { path: beside, beside: true }
+    const real = existsSync(open.path) ? realpathSync(open.path) : null
+    const keep = (why: string): SavedTo => {
+      // Never lost: beside the file, else (it was moved or removed) in the full editor's own folder.
+      const dir = real ? dirname(real) : join(this.home, 'rescued')
+      mkdirSync(dir, { recursive: true })
+      const path = freeName(dir, real ?? open.path, this.now())
+      writeFileSync(path, bytes, { flag: 'wx', mode: real ? statSync(real).mode & 0o777 : 0o600 })
+      return { path, beside: true, why }
     }
+    if (!real) return keep('this file was moved or removed while it was open there')
+    if (filetype && filetype.toLowerCase() !== open.fileType) return keep(`it saved a .${filetype} file`)
+    if (stampOf(real) !== open.stamp) return keep('this file changed while it was open there')
     const tmp = join(dirname(real), `.${basename(real)}.full-${randomBytes(4).toString('hex')}`)
-    writeFileSync(tmp, bytes, { mode: statSync(real).mode & 0o777 })
+    const fd = openSync(tmp, 'wx', statSync(real).mode & 0o777)
+    try {
+      writeSync(fd, bytes)
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
+    // Looked at again just before the rename: a save made outside meanwhile is never overwritten.
+    if (stampOf(real) !== open.stamp) {
+      rmSync(tmp, { force: true })
+      return keep('this file changed while it was open there')
+    }
     renameSync(tmp, real)
     open.stamp = stampOf(real)
     return { path: open.path, beside: false }
@@ -398,8 +454,11 @@ export interface CallbackBody {
   key?: string
   status?: number
   url?: string
+  filetype?: string
   users?: string[]
 }
+
+const realOr = (path: string): string => (existsSync(path) ? realpathSync(path) : path)
 
 function readAll(req: IncomingMessage, max: number): Promise<string> {
   return new Promise((resolve, reject) => {

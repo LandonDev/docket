@@ -71,6 +71,8 @@ const LONG_WRITES: Readonly<Record<string, number>> = {
   "resources.remove": LONG_TIMEOUT_MS,
   "batch.archive": LONG_TIMEOUT_MS,
   "remote.environments.add": LONG_TIMEOUT_MS,
+  // The box may start ONLYOFFICE before it answers the full editor's page.
+  "work.sheets.switch": LONG_TIMEOUT_MS,
 };
 
 /** The deadline a method gets by default: by its name, so an unknown method gets the read's 30 s. */

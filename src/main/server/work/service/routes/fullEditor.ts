@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { lstatSync } from 'node:fs'
 import { request, type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
 import { connect } from 'node:net'
 import { EDITOR_PATHS, FULL_ROUTE, editorPage, editorPageCsp, lookupSocketOf, type FullLookup } from '../../sheets/fullEditor/wire'
@@ -23,8 +24,18 @@ const looked = new Map<string, { at: number; found: FullLookup | null }>()
 export async function lookupToken(ctx: RouteCtx, token: string, now = Date.now()): Promise<FullLookup | null> {
   const hit = looked.get(token)
   if (hit && now - hit.at < (hit.found ? FOUND_MS : MISSING_MS)) return hit.found
-  const found = await new Promise<FullLookup | null>((resolve) => {
-    const req = request({ socketPath: lookupSocketOf(ctx.config().socketPath), path: `/lookup/${token}`, method: 'GET', timeout: 5000 }, (res) => {
+  const socket = lookupSocketOf(ctx.config().socketPath)
+  // Only main, running as this user, answers here: a socket someone else put at that path (a moved one sits in /tmp) is not asked.
+  const own = ((): boolean => {
+    try {
+      const st = lstatSync(socket)
+      return st.isSocket() && st.uid === process.getuid?.()
+    } catch {
+      return false
+    }
+  })()
+  const found = !own ? null : await new Promise<FullLookup | null>((resolve) => {
+    const req = request({ socketPath: socket, path: `/lookup/${token}`, method: 'GET', timeout: 5000 }, (res) => {
       const chunks: Buffer[] = []
       res.on('data', (c: Buffer) => chunks.push(c))
       res.on('end', () => {
@@ -64,6 +75,11 @@ const PROXIED_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff'
 }
 
+/** The vendor's own code, fonts and dictionaries may be kept by the browser; nothing else is kept anywhere (a saved workbook at the tunnel's edge would outlive its token). */
+const STATIC = /^\/(?:web-apps|sdkjs|sdkjs-plugins|fonts|dictionaries)\//
+export const cacheControlOf = (rest: string, theirs: string | string[] | undefined): string =>
+  STATIC.test(rest) && typeof theirs === 'string' ? `private, ${theirs.replace(/\b(public|private),?\s*/g, '')}`.replace(/,\s*$/, '') : 'no-store'
+
 function pathAndQuery(req: IncomingMessage, rest: string): string {
   const q = (req.url ?? '').indexOf('?')
   return q < 0 ? rest : rest + (req.url ?? '').slice(q)
@@ -91,7 +107,7 @@ export const fullEditorRoute: PublicRoute = {
       const up = request({ socketPath: found.socket, path: pathAndQuery(req, rest), method: req.method, headers: forwardedHeaders(req.headers, token) }, (answer) => {
         const headers = { ...answer.headers }
         delete headers['x-frame-options']
-        res.writeHead(answer.statusCode ?? 502, { ...headers, ...PROXIED_HEADERS })
+        res.writeHead(answer.statusCode ?? 502, { ...headers, ...PROXIED_HEADERS, 'cache-control': cacheControlOf(rest, answer.headers['cache-control']) })
         answer.pipe(res)
         answer.on('end', resolve)
         answer.on('error', () => resolve())

@@ -61,10 +61,19 @@ async function reload(ctx: WorkCtx, itemId: string): Promise<void> {
   }
 }
 
-/** The address remote clients reach this host by (Settings → Hosts), else what the tunnel last said. */
-function publicOrigin(ctx: WorkCtx): string | null {
+/**
+ * The address the owner's other devices open the editor on. It must be an
+ * origin of its own: ONLYOFFICE's code on the remote UI's origin could use
+ * the owner's session there. So it is never `remote.publicOrigin`, only
+ * `TEMP_CODE_FULL_EDITOR_ORIGIN` or the `work.fullEditor.origin` setting (a
+ * hostname the tunnel sends to the Work service's `/w/full/` alone).
+ */
+export function fullEditorOrigin(ctx: Pick<WorkCtx, 'db'>, env: NodeJS.ProcessEnv = process.env): string | null {
   const read = (key: string): string | null => (ctx.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined)?.value || null
-  return read('remote.publicOrigin') ?? read('remote.learnedOrigin')
+  const origin = (env.TEMP_CODE_FULL_EDITOR_ORIGIN || read('work.fullEditor.origin'))?.replace(/\/+$/, '') ?? null
+  if (!origin) return null
+  const shared = [read('remote.publicOrigin'), read('remote.learnedOrigin')].some((o) => o && new URL(o).host === new URL(origin).host)
+  return shared ? null : origin
 }
 
 /**
@@ -78,9 +87,8 @@ export async function openFull(ctx: WorkCtx, item: CanvasItem, path: string, by:
   if (by.kind === 'remote' && !by.caps.includes('admin')) throw new Error('The full editor opens only on the owner\'s own devices.')
   // The route is the Work service's: it must be running before a token is worth anything.
   const local = ctx.service.url('/w/full/')
+  const origin = by.kind === 'local' ? local.replace(/\/w\/full\/$/, '') : fullEditorOrigin(ctx)
+  if (!origin) throw new Error('The full editor has no address of its own on this host yet, so it opens only in a window on this host (docs/agents/work-sheets.md, "The full editor").')
   const token = await fullEditorOf(ctx).open({ path, itemId: item.id, title: item.title })
-  if (by.kind === 'local') return `${local}${token}/`
-  const origin = publicOrigin(ctx)
-  if (!origin) throw new Error('This host has no address the owner\'s devices reach it by (Settings → Hosts).')
-  return `${origin.replace(/\/+$/, '')}/w/full/${token}/`
+  return `${origin}/w/full/${token}/`
 }

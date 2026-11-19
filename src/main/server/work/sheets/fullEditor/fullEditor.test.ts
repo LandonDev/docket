@@ -1,14 +1,14 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, chmodSync } from 'node:fs'
 import { createServer, request, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { connect, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { fullEditorRoute, forwardedHeaders } from '../../service/routes/fullEditor'
+import { cacheControlOf, fullEditorRoute, forwardedHeaders } from '../../service/routes/fullEditor'
 import type { RouteCtx } from '../../service/routes/route'
 import { FullEditor, signHs256, verifyHs256, type FullOpen, type SavedTo } from './editor'
-import { openFull } from './index'
+import { fullEditorOrigin, openFull } from './index'
 import { EDITOR_PATHS, FULL_ROUTE, editorPage, lookupSocketOf } from './wire'
 
 /**
@@ -22,12 +22,17 @@ const ZIP = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('s
 const STANDIN = `
 const http = require('node:http'), fs = require('node:fs');
 const socket = JSON.parse(fs.readFileSync(process.env.NODE_CONFIG_DIR + '/local.json', 'utf8')).services.CoAuthoring.server.port;
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   if (req.url === '/healthcheck') return res.end('true');
   if (req.url.startsWith('/cache/files/')) return res.end(fs.readFileSync(process.env.STANDIN_SAVED));
   if (req.url.startsWith('/web-apps/')) return res.writeHead(200, { 'x-frame-options': 'DENY', 'x-seen-host': req.headers['x-forwarded-host'] || '' }).end('api');
   res.writeHead(404).end();
-}).listen(socket);
+});
+server.on('upgrade', (req, sock) => {
+  sock.write('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nX-Seen-Path: ' + req.url + '\\r\\n\\r\\n');
+  sock.pipe(sock);
+});
+server.listen(socket);
 `
 
 let dir: string
@@ -71,7 +76,7 @@ function get(path: string, headers: Record<string, string> = {}): Promise<{ stat
 /** What the docservice posts to the callback URL in the config, signed the way it signs. */
 async function callback(config: Record<string, unknown>, body: Record<string, unknown>, secretFrom = config): Promise<unknown> {
   const url = (config.editorConfig as { callbackUrl: string }).callbackUrl
-  const secret = (fe as unknown as { secret: string }).secret
+  const secret = (fe as unknown as { secrets: { outbox: string } }).secrets.outbox
   const token = secretFrom === config ? signHs256({ payload: body }, secret) : 'x.y.z'
   const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   return res.json()
@@ -107,6 +112,11 @@ beforeEach(async () => {
     const m = FULL_ROUTE.exec(new URL(req.url ?? '/', 'http://x').pathname)
     if (!m) return void res.writeHead(404).end()
     void fullEditorRoute.http!(req, res, ctx, m)
+  })
+  listener.on('upgrade', (req, socket, head) => {
+    const m = FULL_ROUTE.exec(new URL(req.url ?? '/', 'http://x').pathname)
+    if (!m) return void socket.destroy()
+    fullEditorRoute.upgrade!(req, socket, head, ctx, m)
   })
   await new Promise<void>((r) => listener.listen(0, '127.0.0.1', () => r()))
   base = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`
@@ -146,13 +156,14 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     // The editor's own frames are this origin's; its links come back through the token's prefix.
     expect(api.headers['x-frame-options']).toBe('SAMEORIGIN')
     expect(api.headers['x-seen-host']).toBe(`tempcode.example/w/full/${token}`)
+    expect(api.headers['cache-control']).toBe('no-store')
 
     expect((await get(`/w/full/${token}/info/info.json`)).status).toBe(404)
     expect((await get(`/w/full/${token}/coauthoring/CommandService.ashx`)).status).toBe(404)
     expect((await get(`/w/full/${'a'.repeat(64)}/`)).status).toBe(404)
-    // The storage server is the docservice's alone, on loopback.
+    // The storage server is on a loopback address of its own, the one private address the docservice may fetch from.
     const config = JSON.parse(/DocEditor\('editor', (.*)\)<\/script>/.exec(page.body)![1]!) as { document: { url: string } }
-    expect(config.document.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/file\/[0-9a-f]{48}$/)
+    expect(config.document.url).toMatch(/^http:\/\/127\.0\.0\.2:\d+\/file\/[0-9a-f]{48}$/)
     expect((await fetch(config.document.url)).status).toBe(200)
   })
 
@@ -180,11 +191,72 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     const open = (fe as unknown as { opens: Map<string, FullOpen> }).opens.get(token)!
     writeFileSync(path, 'Excel saved this')
     utimesSync(path, new Date(), new Date(Date.now() + 5000))
-    expect(await callback(fe.configOf(open), { key: open.id, status: 2, url: 'http://x/cache/files/a/output.xlsx' })).toEqual({ error: 0 })
+    expect(await callback(fe.configOf(open), { key: open.id, status: 6, url: 'http://x/cache/files/a/output.xlsx' })).toEqual({ error: 0 })
     expect(readFileSync(path, 'utf8')).toBe('Excel saved this')
     expect(saved).toEqual([])
     const beside = /as (Report \(full editor .+\)\.xlsx):/.exec(failed[0]!)![1]!
     expect(readFileSync(join(dir, beside)).equals(ZIP)).toBe(true)
+    // A second save in the same second gets a name of its own.
+    expect(await callback(fe.configOf(open), { key: open.id, status: 2, url: 'http://x/cache/files/a/output.xlsx' })).toEqual({ error: 0 })
+    const second = /as (Report \(full editor .+\)\.xlsx):/.exec(failed[1]!)![1]!
+    expect(second).not.toBe(beside)
+    expect(readFileSync(join(dir, second)).equals(ZIP)).toBe(true)
+  })
+
+  it('keeps a save whose file was moved away in its own folder, and says where', async () => {
+    const path = workbook()
+    const token = await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
+    const open = (fe as unknown as { opens: Map<string, FullOpen> }).opens.get(token)!
+    rmSync(path)
+    expect(await callback(fe.configOf(open), { key: open.id, status: 2, url: 'http://x/cache/files/a/output.xlsx' })).toEqual({ error: 0 })
+    expect(failed[0]).toMatch(/in .*full-editor\/rescued, as Report \(full editor .+\)\.xlsx: this file was moved or removed/)
+  })
+
+  it('says a save is lost when it could not be fetched, never silently', async () => {
+    const path = workbook()
+    const token = await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
+    const open = (fe as unknown as { opens: Map<string, FullOpen> }).opens.get(token)!
+    rmSync(join(dir, 'saved.xlsx'))
+    expect(await callback(fe.configOf(open), { key: open.id, status: 2, url: 'http://x/cache/files/a/output.xlsx' })).toEqual({ error: 1 })
+    expect(failed).toEqual(['The full editor could not save the changes made there: this file does not have them.'])
+  })
+
+  it('two presses on one file at once make one session, and a stop waits for an open in flight', async () => {
+    const path = workbook()
+    const [a, b] = await Promise.all([fe.open({ path, itemId: 'i1', title: 'Report.xlsx' }), fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })])
+    expect(a).toBe(b)
+    await fe.stop('test')
+    const opening = fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
+    const stopping = fe.stop('Work is off')
+    await opening
+    await stopping
+    expect(fe.running()).toBe(false)
+    expect(existsSync(lookupSocketOf(join(dir, 'svc.sock')))).toBe(false)
+  })
+
+  it('carries the editor\'s socket through to the docservice', async () => {
+    const token = await fe.open({ path: workbook(), itemId: 'i1', title: 'Report.xlsx' })
+    const port = (listener.address() as AddressInfo).port
+    const got = await new Promise<string>((resolve, reject) => {
+      const sock = connect(port, '127.0.0.1', () => sock.write(`GET /w/full/${token}/doc/k/c/?EIO=4&transport=websocket HTTP/1.1\r\nHost: h\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nCookie: tc_session=x\r\n\r\n`))
+      let text = ''
+      sock.on('data', (c) => {
+        text += c.toString()
+        if (text.includes('\r\n\r\n') && !text.includes('ping')) sock.write('ping')
+        if (text.endsWith('ping')) {
+          sock.destroy()
+          resolve(text)
+        }
+      })
+      sock.on('error', reject)
+    })
+    expect(got).toMatch(/^HTTP\/1\.1 101/)
+    expect(got).toContain('X-Seen-Path: /doc/k/c/?EIO=4&transport=websocket')
+    const refused = await new Promise<string>((resolve) => {
+      const sock = connect(port, '127.0.0.1', () => sock.write(`GET /w/full/${token}/info/x HTTP/1.1\r\nHost: h\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
+      sock.on('data', (c) => resolve(c.toString()))
+    })
+    expect(refused).toMatch(/^HTTP\/1\.1 404/)
   })
 
   it('refuses a callback the docservice did not sign, one for another document, and a save from outside its cache', async () => {
@@ -214,7 +286,7 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     rss = 5000
     await fe.tick()
     expect(fe.running()).toBe(false)
-    expect(logs.some((l) => l.includes('over the 0 MB cap'))).toBe(true)
+    expect(logs.some((l) => l.includes('over its 0 MB cap'))).toBe(true)
 
     rss = 0
     const token = await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
@@ -263,6 +335,22 @@ describe('the full editor\'s pieces', () => {
     for (const no of ['/info/info.json', '/welcome/', '/coauthoring/CommandService.ashx', '/converter', '/ConvertService.ashx', '/docbuilder', '/healthcheck', '/internal/cluster/inactive', '/web-appsx/']) expect(EDITOR_PATHS.test(no), no).toBe(false)
   })
 
+  it('lets the browser keep only the vendor\'s static files', () => {
+    expect(cacheControlOf('/web-apps/apps/api/documents/api.js', 'public, max-age=604800')).toBe('private, max-age=604800')
+    expect(cacheControlOf('/cache/files/data/k/output.xlsx', 'public, max-age=604800')).toBe('no-store')
+    expect(cacheControlOf('/sdkjs/cell/sdk-all.js', undefined)).toBe('no-store')
+  })
+
+  it('opens for the owner\'s other devices only on an origin of its own, never the remote UI\'s', () => {
+    const settings = new Map<string, string>([['remote.publicOrigin', 'https://tempcode.example']])
+    const ctx = { db: { prepare: () => ({ get: (k: string) => (settings.has(k) ? { value: settings.get(k)! } : undefined) }) } } as never
+    expect(fullEditorOrigin(ctx, {})).toBeNull()
+    expect(fullEditorOrigin(ctx, { TEMP_CODE_FULL_EDITOR_ORIGIN: 'https://tempcode.example' })).toBeNull()
+    expect(fullEditorOrigin(ctx, { TEMP_CODE_FULL_EDITOR_ORIGIN: 'https://sheets.tempcode.example/' })).toBe('https://sheets.tempcode.example')
+    settings.set('work.fullEditor.origin', 'https://full.tempcode.example')
+    expect(fullEditorOrigin(ctx, {})).toBe('https://full.tempcode.example')
+  })
+
   it('hands the docservice none of the caller\'s credentials', () => {
     const h = forwardedHeaders({ host: 'h', cookie: 'c', authorization: 'a', 'cf-connecting-ip': '1.2.3.4', 'x-forwarded-host': 'evil', 'x-forwarded-proto': 'https', accept: '*/*' }, 'T')
     expect(h).toEqual({ host: 'h', accept: '*/*', 'x-forwarded-host': 'h/w/full/T', 'x-forwarded-proto': 'https' })
@@ -279,5 +367,7 @@ describe('the full editor\'s pieces', () => {
     const item = { id: 'i1', title: 'R.xlsx' } as never
     await expect(openFull(ctx, item, '/x.xlsx', { kind: 'model', caps: ['read', 'operate', 'approve', 'admin'], sessionId: 't1' })).rejects.toThrow('a thread cannot open it')
     await expect(openFull(ctx, item, '/x.xlsx', { kind: 'remote', caps: ['read', 'operate'] })).rejects.toThrow('owner\'s own devices')
+    const noOrigin = { service: { url: () => 'http://127.0.0.1:1/w/full/' }, db: { prepare: () => ({ get: () => undefined }) } } as never
+    await expect(openFull(noOrigin, item, '/x.xlsx', { kind: 'remote', caps: ['read', 'operate', 'approve', 'admin'] })).rejects.toThrow('no address of its own')
   })
 })

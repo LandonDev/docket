@@ -16,6 +16,21 @@ import { join } from 'node:path'
  * its port is the one way to keep it off every interface.
  */
 
+/**
+ * The loopback address the storage server binds and the only private
+ * address the docservice may fetch from: nothing else on the box listens on
+ * 127.0.0.2 alone, so the editor's own URL fetches (an image from a URL)
+ * reach none of this host's other services.
+ */
+export const STORAGE_HOST = '127.0.0.2'
+
+/** Separate secrets: the browser's config and sessions, the docservice's callbacks to us, and its cache links. */
+export interface DsSecrets {
+  browser: string
+  outbox: string
+  storage: string
+}
+
 /** Where the docservice lives inside the toolchain's onlyoffice folder. */
 export const DS_ROOT = 'var/www/onlyoffice/documentserver'
 
@@ -39,7 +54,7 @@ export function dsSocketPath(home: string): string {
  * and signs, and leave to fetch from this host's loopback (the storage
  * server is on 127.0.0.1).
  */
-export function writeDsConfig(o: { toolDir: string; home: string; socket: string; secret: string }): string {
+export function writeDsConfig(o: { toolDir: string; home: string; socket: string; secrets: DsSecrets }): string {
   const etc = join(o.toolDir, 'etc/onlyoffice/documentserver')
   const ds = join(o.toolDir, DS_ROOT)
   const conf = join(o.home, 'conf')
@@ -56,17 +71,17 @@ export function writeDsConfig(o: { toolDir: string; home: string; socket: string
   // Warnings and worse, as the vendor ships it; TEMP_CODE_FULL_EDITOR_LOG=info says what each request did.
   const log4js = readFileSync(join(etc, 'log4js/production.json'), 'utf8')
   writeFileSync(join(conf, 'log4js/production.json'), process.env.TEMP_CODE_FULL_EDITOR_LOG === 'info' ? log4js.replace('"WARN"', '"INFO"') : log4js)
-  const secret = { string: o.secret }
+  const browser = { string: o.secrets.browser }
   const local = {
     services: {
       CoAuthoring: {
         server: { port: o.socket },
-        secret: { browser: secret, inbox: secret, outbox: secret, session: secret },
+        secret: { browser, inbox: browser, session: browser, outbox: { string: o.secrets.outbox } },
         token: { enable: { browser: true, request: { inbox: true, outbox: true } } },
-        'request-filtering-agent': { allowPrivateIPAddress: true, allowMetaIPAddress: false }
+        'request-filtering-agent': { allowPrivateIPAddress: false, allowMetaIPAddress: false, allowIPAddressList: [STORAGE_HOST] }
       }
     },
-    storage: { fs: { secretString: o.secret } }
+    storage: { fs: { secretString: o.secrets.storage } }
   }
   writeFileSync(join(conf, 'local.json'), JSON.stringify(local, null, 2), { mode: 0o600 })
   chmodSync(join(conf, 'local.json'), 0o600)
@@ -110,7 +125,7 @@ export async function groupRss(pgid: number, proc = '/proc'): Promise<number> {
 export interface DocserviceOpts {
   toolDir: string
   home: string
-  secret: string
+  secrets: DsSecrets
   log(line: string): void
   spawn?: typeof nodeSpawn
   /** how long a start may take before it is given up */
@@ -145,7 +160,7 @@ export class Docservice {
     rmSync(this.socket, { force: true })
     // What the last run left in its cache is not ours to keep: every open starts from the file.
     rmSync(join(this.o.home, 'data'), { recursive: true, force: true })
-    const conf = writeDsConfig({ toolDir: this.o.toolDir, home: this.o.home, socket: this.socket, secret: this.o.secret })
+    const conf = writeDsConfig({ toolDir: this.o.toolDir, home: this.o.home, socket: this.socket, secrets: this.o.secrets })
     const ds = join(this.o.toolDir, DS_ROOT)
     // Its log is kept beside its config, new each start, for whoever needs to see why it failed.
     const logFd = openSync(join(this.o.home, 'docservice.log'), 'w')
@@ -175,18 +190,29 @@ export class Docservice {
     this.exited = new Promise((resolve) =>
       child.once('exit', (code) => {
         const asked = this.child !== child
-        this.child = null
+        if (!asked) this.child = null
         if (!asked) {
+          // Its converters are in its group and outlive it: they go too.
+          try {
+            if (child.pid) process.kill(-child.pid, 'SIGKILL')
+          } catch {
+            /* gone */
+          }
           this.o.log(`[full-editor] the docservice exited (${code}): ${tail.trim().split('\n').slice(-3).join(' | ')}`)
           onExit(code)
         }
         resolve()
       })
     )
-    child.once('error', (err) => this.o.log(`[full-editor] the docservice did not start: ${err.message}`))
+    let failed: Error | null = null
+    child.once('error', (err) => {
+      failed = err
+      this.o.log(`[full-editor] the docservice did not start: ${err.message}`)
+      if (this.child === child) this.child = null
+    })
     const deadline = Date.now() + (this.o.readyMs ?? 90_000)
     while (Date.now() < deadline) {
-      if (this.child !== child) throw new Error('The full editor stopped while it started.')
+      if (failed || this.child !== child) throw new Error('The full editor stopped while it started.')
       const ok = await dsGet(this.socket, '/healthcheck', 2000).catch(() => null)
       if (ok?.status === 200 && ok.body.toString().trim() === 'true') return
       await new Promise((r) => setTimeout(r, 400))

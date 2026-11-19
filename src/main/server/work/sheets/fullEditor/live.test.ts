@@ -212,7 +212,7 @@ describe.skipIf(!LIVE)('the full editor, live', () => {
 
     // The docservice had no TCP port; what this process listens on is loopback only.
     const ss = execFileSync('ss', ['-ltnpH'], { encoding: 'utf8' })
-    for (const line of ss.split('\n').filter((l) => l.includes(`pid=${process.pid},`))) expect(line).toMatch(/\s127\.0\.0\.1:\d+\s/)
+    for (const line of ss.split('\n').filter((l) => l.includes(`pid=${process.pid},`))) expect(line).toMatch(/\s127\.0\.0\.[12]:\d+\s/)
     expect(ss).not.toMatch(/"docservice"/)
     expect((await fetch(`${state.base}/w/full/${'a'.repeat(64)}/`)).status).toBe(404)
 

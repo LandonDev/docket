@@ -33,7 +33,7 @@ export interface FullLookup {
  * uploads and saves an editor makes. Its admin, info, command, conversion
  * and builder endpoints are not reached through the route.
  */
-export const EDITOR_PATHS = /^\/(?:web-apps|sdkjs|sdkjs-plugins|fonts|dictionaries|doc|cache\/files|downloadas|downloadfile|upload|savefile|plugins\.json|themes\.json)(?:\/|$|\?)/
+export const EDITOR_PATHS = /^\/(?:web-apps|sdkjs|sdkjs-plugins|fonts|dictionaries|doc|cache\/files|downloadas|upload|savefile|plugins\.json|themes\.json)(?:\/|$|\?)/
 
 /** The page the owner's browser opens: ONLYOFFICE's own api.js, given the signed config. */
 export function editorPage(o: { token: string; nonce: string; title: string; config: Record<string, unknown> }): string {

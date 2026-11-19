@@ -208,17 +208,22 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   thread (`by.kind === 'model'`) or a remote key short of admin. The
   `docservice` runs as this user from the toolchain's tree with a config we
   write under `<userData>/full-editor/conf` (the vendor's files with paths
-  moved, and a `local.json` with one fresh secret for every token it signs
-  and checks). Its "port" is a Unix socket in a 0700 folder
+  moved, and a `local.json` with fresh secrets: one for the browser's config
+  and sessions, one the docservice signs its callbacks with and only main
+  checks, one for its cache links). It may fetch from no private address
+  but 127.0.0.2, where the storage server listens (`allowIPAddressList`), so
+  the editor's own URL fetches reach none of the box's other services. Its "port" is a Unix socket in a 0700 folder
   (`full-editor/run/ds.sock`): it has no TCP listener at all. It has no
   database and no queue server (in-memory editor data); its cache under
   `full-editor/data` is wiped at each start. Its log is
   `full-editor/docservice.log`; `TEMP_CODE_FULL_EDITOR_LOG=info` makes it say
   what each request did.
 - **Each open** copies the file as it is (the docservice fetches that copy
-  from a storage server main runs on 127.0.0.1) and mints a token of 32
-  random bytes in hex. A second press on the same file answers the same
-  token. The document key is hex too: the converter takes a key starting
+  from a storage server main runs on 127.0.0.2) and mints a token of 32
+  random bytes in hex. Opens and stops run one at a time, so a second
+  press on the same file (by its real path) answers the same token, and a
+  stop never closes what an open is starting. The canvas allows the press
+  two minutes (`LONG_WRITES`), since a cold start can be slow. The document key is hex too: the converter takes a key starting
   with `-` for a flag, and the docservice escapes `_` in the links it writes.
 - **The route** `…/w/full/<token>/` asks main what the token opens, over the
   Unix socket beside the service's own (`work-service.sock.full`, 0600;
@@ -229,10 +234,20 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   converter or builder endpoints), WebSocket upgrades included, with
   `X-Forwarded-Host: <host>/w/full/<token>` so the editor's own links come
   back through the route, the caller's cookies and credentials dropped,
-  and `X-Frame-Options: SAMEORIGIN` so its frames load here only. A
-  window on the box opens `http://127.0.0.1:<service port>/w/full/<token>/`;
-  the owner's other devices open it on the host's public address, which
-  reaches the service only once the owner applies M18's `/w/` tunnel rule.
+  `X-Frame-Options: SAMEORIGIN` so its frames load here only, and
+  `Cache-Control: no-store` on all but the vendor's static files (a saved
+  workbook kept at the tunnel's edge would outlive its token). The route
+  asks the lookup socket only when this user owns it.
+- **Its address.** A window on the box opens
+  `http://127.0.0.1:<service port>/w/full/<token>/`. The owner's other
+  devices open it on an origin of its own, never the remote UI's
+  (`tempcode.landonhale.com`): ONLYOFFICE's code there could use the
+  owner's session on that origin. The origin is `TEMP_CODE_FULL_EDITOR_ORIGIN`
+  or the `work.fullEditor.origin` setting; one equal to the remote UI's host
+  is refused, and with none the press says the editor opens only in a window
+  on the box. It needs a hostname of its own in the tunnel (the owner's
+  step): an ingress rule for, say, `full.tempcode.landonhale.com` with
+  `path: ^/w/full/` to the installed host's Work port (7695).
 - **Saves** come to the storage server's callback, signed by the
   docservice (checked HS256, the document's key matched). The status-6
   save made with Save and the status-2 save made after everyone leaves are
@@ -240,17 +255,23 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   change from outside (a temp file renamed over it, its mode kept): the
   package store makes it a revision of its own (`by: 'file'`), suggestions
   over the file are orphaned, and the canvas reloads. If the file changed
-  outside the editor since it was opened, the save goes beside it
-  (`<name> (full editor <date time>).xlsx`) and the grid says so where it
-  says a failed save. A save the editor cannot make (status 3 or 7) is
-  said there too, and the file is left as it was.
+  outside the editor since it was opened (looked at again just before the
+  rename), or the editor saved another format, the save goes beside it
+  (`<name> (full editor <date time>).xlsx`, a second in the same second
+  numbered); a file moved or removed meanwhile has its save kept in
+  `full-editor/rescued/`. Each of these is said over the grid where a failed
+  save is ("Couldn't save", with where the save went). A save the editor
+  cannot make (status 3 or 7) or that could not be fetched is said there
+  too, and the file is left as it was.
 - **Stopped** when Work turns off (the module's `start` return), when
   nothing has been open for ten minutes, or when its process group holds
   more than its cap (2 GiB, `TEMP_CODE_FULL_EDITOR_MEMORY_MB`): a watchdog
   adds up the RSS of every process in the group every ten seconds, since
   the box gives this user no cgroup of its own. An open nobody loaded in
-  fifteen minutes is let go; none lives past a day. Stopping kills the
-  whole group; a docservice an earlier run left (the app was killed) is
+  fifteen minutes is let go, and one nobody is in after a day. Stopping
+  under someone still in the editor says over the grid that changes since
+  its last save are lost. Stopping kills the whole group, and so does the
+  docservice exiting by itself (its converters with it); a docservice an earlier run left (the app was killed) is
   stopped before the next starts.
 - **The live proof**, `fullEditor/live.test.ts`, runs only with
   `FULL_EDITOR_LIVE=1` and `FULL_EDITOR_PLAYWRIGHT` naming a playwright-core
@@ -295,6 +316,13 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   ONLYOFFICE wrote saves; one Excel wrote is untried (no Excel on the box).
 - ONLYOFFICE rewrites a chart's XML when it saves (the chart is kept).
 - The memory cap is a watchdog, not a kernel limit: a burst inside ten
-  seconds can pass it. Stopping over the cap loses edits not yet saved.
+  seconds can pass it. Stopping (over the cap, Work off, a crash) loses
+  edits not yet saved there; the grid says so, but no forcesave is asked
+  for first.
+- A window on the box itself opens the editor on 127.0.0.1, whose cookies
+  are shared across ports with the remote listener's; the box has no
+  window in use, so this is left.
+- A route error's log line in serve.ts names the request path, token
+  included.
 - On a phone the page loads the desktop editor, cramped: Community's mobile
   editor is view-only, so the config asks for the desktop one.
