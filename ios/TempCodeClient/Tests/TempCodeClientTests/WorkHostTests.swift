@@ -137,4 +137,24 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         #expect(rig.work.awayEnd == nil)
         #expect(UserDefaults.standard.object(forKey: "work.away.reviewed.env_test") as? Int == 3_000)
     }
+
+    @Test func `an end the phone pressed is kept when its answer lands before the stretch's tally`() async throws {
+        let rig = try WorkRig()
+        let fake = await rig.open()
+        let work = try #require(await rig.request(fake, "work.get"))
+        fake.answer(id: work, result: #"{"enabled":false}"#)
+        let first = try #require(await rig.request(fake, "away.get"))
+        // A host never away: its tally starts at 0.
+        fake.answer(id: first, result: away(false, at: 0, since: 0))
+        #expect(await rig.until { rig.work.away != nil })
+        // On, then off, the answers landing before any push.
+        fake.deliver(#"{"push":"away",\#(away(true, at: 2_000, since: 0).dropFirst())"#)
+        fake.deliver(#"{"push":"away",\#(away(false, at: 3_000, since: 0).dropFirst())"#)
+        #expect(await rig.until { rig.work.awayEnd != nil })
+        #expect(rig.work.awayEnd?.since == 2_000)
+        // The host's push then brings the stretch's tally for the same end.
+        fake.deliver(#"{"push":"away",\#(away(false, at: 3_000, since: 2_000, decided: 2).dropFirst())"#)
+        #expect(await rig.until { rig.work.awayEnd?.decided.threads.first?.count == 2 })
+        #expect(rig.work.awayEnd?.until == 3_000)
+    }
 }

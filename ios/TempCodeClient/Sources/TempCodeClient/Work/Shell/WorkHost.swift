@@ -165,11 +165,24 @@ public final class WorkHost {
         // A new stretch: an end not yet reviewed belongs to the stretch before; the next end brings its own.
         guard !state.enabled else { awayEnd = nil; return }
         let at = Int(state.at)
+        // The same end heard again (the push after the phone's own press, which may carry the stretch's
+        // tally the press's answer did not): the end keeps its span and takes the newer tally.
+        if let end = awayEnd, end.until == at {
+            if Int(snapshot.decided.since) >= end.since { awayEnd?.decided = snapshot.decided }
+            return
+        }
         let reviewed = defaults.object(forKey: reviewedKey) as? Int
         let ended = live ? previous?.state.enabled == true : (reviewed.map { at > $0 } ?? false)
         if reviewed == nil { defaults.set(at, forKey: reviewedKey) }
-        guard ended, snapshot.decided.since > 0, Int(snapshot.decided.since) < at else { return }
-        awayEnd = AwayEnd(since: Int(snapshot.decided.since), until: at, decided: snapshot.decided)
+        guard ended else { return }
+        // The stretch began when Away went on. A tally from before that stretch (the press's answer can
+        // land before the push that resets it) is not this one's: then the span is from the on.
+        let onAt = previous.flatMap { $0.state.enabled ? Int($0.state.at) : nil }
+        let tallied = Int(snapshot.decided.since)
+        let current = onAt.map { tallied >= $0 } ?? (tallied > 0)
+        let since = current ? tallied : (onAt ?? 0)
+        guard since > 0, since < at else { return }
+        awayEnd = AwayEnd(since: since, until: at, decided: current ? snapshot.decided : AwayDecided(since: Double(since), threads: []))
     }
 
     /// The review was opened (or set aside): the end is not offered again.
