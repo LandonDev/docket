@@ -66,7 +66,7 @@ const isAddressList = (v: unknown): v is Address[] => Array.isArray(v) && v.leng
 export const addressWords = (list: readonly Address[]): string => list.map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(", ");
 
 /** Keys that are the host's bookkeeping, never what goes. */
-const QUIET = new Set(["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why"]);
+const QUIET = new Set(["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why"]);
 /** Keys whose text is the body: drawn as one plain-text block, not a field. */
 const BODY_KEYS = ["text", "body", "message", "content"];
 

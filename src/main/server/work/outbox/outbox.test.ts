@@ -7,6 +7,7 @@ import type { ActKindDef, WorkModule } from '../modules'
 import { outbox as outboxModule, NOT_A_PERSON } from './index'
 import { adminKey, approveKey, cast, FAKE_SPEC, fakeSpec, LIFEOS_MCP, makeRig, person, readKey, until, type Rig } from './rig'
 import { ActNotSent } from './kinds'
+import { ROUTINE_UNKNOWN } from './ctx'
 import { MAY_HAVE_GONE } from './outbox'
 import { INTERRUPTED } from './store'
 import { REFUSED_OFF } from './words'
@@ -501,6 +502,24 @@ describe('a standing grant', () => {
     expect(text(await rig.claudeCall('t-unknown', slack.id, 'echo', { text: 'no such run' }))).toMatch(/^Held as item/)
     const orphan = (await rig.waiting()).find((i) => i.routineRunId === 'run-nobody-knows')!
     await expect(grant(orphan, { addonId: slack.id, tool: 'echo' })).rejects.toThrow("this item's routine is not known")
+  })
+
+  it('takes none for a thread whose line this host cannot follow: a parent on another host, or past 32 links', async () => {
+    const slack = await rig.addon('slack', 'ws-purdue')
+    await rig.claudeCall('t-work', slack.id, 'echo', { text: 'by hand' })
+    await grant((await rig.waiting())[0]!, { addonId: slack.id, tool: 'echo' })
+    expect(text(await rig.claudeCall('t-work', slack.id, 'echo', { text: 'again' }))).toBe('again')
+    // a child whose parent lives on another host may be a routine run's: the ordinary grant does not fit it
+    rig.thread('t-far-child', { scope: 'work', workspaceId: 'ws-purdue', parentId: 'thread-on-the-mac' } as Partial<SessionMeta>)
+    expect(text(await rig.claudeCall('t-far-child', slack.id, 'echo', { text: 'far' }))).toMatch(/^Held as item/)
+    const far = (await rig.waiting()).find((i) => i.sessionId === 't-far-child')!
+    expect(far.routineRunId).toBe(ROUTINE_UNKNOWN)
+    await expect(grant(far, { addonId: slack.id, tool: 'echo' })).rejects.toThrow("this item's routine is not known")
+    // a line longer than the walk is unknown too; a short ordinary one is not
+    rig.thread('t-deep-0', { scope: 'work', workspaceId: 'ws-purdue', parentId: 't-work' } as Partial<SessionMeta>)
+    for (let i = 1; i <= 33; i++) rig.thread(`t-deep-${i}`, { scope: 'work', workspaceId: 'ws-purdue', parentId: `t-deep-${i - 1}` } as Partial<SessionMeta>)
+    expect(text(await rig.claudeCall('t-deep-0', slack.id, 'echo', { text: 'near' }))).toBe('near')
+    expect(text(await rig.claudeCall('t-deep-33', slack.id, 'echo', { text: 'deep' }))).toMatch(/^Held as item/)
   })
 })
 

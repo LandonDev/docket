@@ -12,7 +12,7 @@ import { errorResult } from '../../addons/downstream'
 import type { ActKindDef, WorkModule } from '../modules'
 import { ActNotSent, ActStale } from './kinds'
 import { textOf, type Outbox } from './outbox'
-import { isLifeosRow, standingRule, type RuleAddons } from './rules'
+import { isLifeosRow, standingRule, toolDigest, type RuleAddons } from './rules'
 import type { HeldStore } from './store'
 import { grantedLine, heldLine, REFUSED_NO_HOLD, REFUSED_OFF } from './words'
 
@@ -51,6 +51,8 @@ export const AddonCallPayloadSchema = z.object({
   arguments: z.record(z.string(), z.unknown()),
   /** the server the call was held for: carried out on no other */
   specDigest: z.string(),
+  /** the tool as the server listed it when the call was held (rules.ts `toolDigest`): carried out, and granted, only while it is listed the same */
+  toolDigest: z.string().optional(),
   /** what the server said of the tool, for the view; never decisive */
   hints: z.record(z.string(), z.unknown()).optional()
 })
@@ -67,7 +69,8 @@ export const AddonCallMatcherSchema = z.object({
   arguments: z.record(z.string(), z.unknown()).optional(),
   /** arguments that may hold anything, or be left out */
   free: z.array(z.string()).optional(),
-  specDigest: z.string().optional()
+  specDigest: z.string().optional(),
+  toolDigest: z.string().optional()
 })
 export type AddonCallMatcher = z.infer<typeof AddonCallMatcherSchema>
 
@@ -168,6 +171,7 @@ export function makeAddonGate(deps: CatchDeps): AddonGate {
       words: hints.title?.trim() || toolWords(call.tool),
       arguments: call.args,
       specDigest: specDigest(call.row.spec),
+      ...(listed ? { toolDigest: toolDigest(listed) } : {}),
       ...(Object.keys(hints).length ? { hints } : {})
     }
     try {
@@ -207,6 +211,8 @@ export function addonCallKind(deps: { addons: RuleAddons; ungated(addonId: strin
     matches(m, p) {
       // A grant is for one server: without the digest of the server it was made for, it fits nothing.
       if (m.addonId !== p.addonId || m.tool !== p.tool || !m.specDigest || m.specDigest !== p.specDigest) return false
+      // And for the tool as he saw it listed: a server that redefines it makes the grant fit no call of it (milestone 50's hold review, finding 8).
+      if ((m.toolDigest ?? null) !== (p.toolDigest ?? null)) return false
       if (!m.arguments) return true
       const fixed = m.arguments
       if (!Object.keys(p.arguments).every((key) => key in fixed || m.free?.includes(key))) return false
@@ -217,6 +223,8 @@ export function addonCallKind(deps: { addons: RuleAddons; ungated(addonId: strin
       if (!row) throw new ActStale('the add-on was removed')
       if (specDigest(row.spec) !== p.specDigest) throw new ActStale('the add-on was changed since this call was held, so it now reaches another server')
       if (!row.enabled) throw new ActNotSent(`${row.name} is turned off`)
+      const listed = deps.addons.tools(p.addonId)?.tools.find((t) => t.name === p.tool)
+      if (p.toolDigest && listed && toolDigest(listed) !== p.toolDigest) throw new ActStale('the add-on changed what this tool does since this call was held')
       const result = await deps.ungated(p.addonId, p.tool, p.arguments)
       const text = textOf({ summary: '', ref: result })
       if (result.isError) throw new Error(text?.trim() || `${row.name} answered with an error`)
@@ -226,4 +234,4 @@ export function addonCallKind(deps: { addons: RuleAddons; ungated(addonId: strin
 }
 
 /** What the host adds to a grant's matcher before it is kept: the server the held call was for. */
-export const sealAddonMatcher = (matcher: AddonCallMatcher, payload: AddonCallPayload): AddonCallMatcher => ({ ...matcher, specDigest: payload.specDigest })
+export const sealAddonMatcher = (matcher: AddonCallMatcher, payload: AddonCallPayload): AddonCallMatcher => ({ ...matcher, specDigest: payload.specDigest, toolDigest: payload.toolDigest })

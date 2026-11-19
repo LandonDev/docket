@@ -61,6 +61,9 @@ export interface OutboxHost {
 const hosts = new WeakMap<WorkCtx, OutboxHost>()
 export const outboxHostOf = (ctx: WorkCtx): OutboxHost | undefined => hosts.get(ctx)
 
+/** The run a thread acts for when this host cannot follow its line to the end: no routine has it, so no grant fits it. */
+export const ROUTINE_UNKNOWN = 'unknown-run'
+
 const outcomeText = (out: ComputerToolOutcome): string => [...out.steps, ...(out.body ? [out.body] : [])].join('\n')
 
 export const heldPart: CtxPart<'held'> = (ctx, deps) => {
@@ -75,15 +78,28 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
     for (let hops = 0; at?.parentId && hops < 32; hops++) at = deps.registry.get(at.parentId)
     return at?.id ?? sessionId
   }
-  /** The routine run a thread acts for: its own, or the nearest above it by parent or starter. A run's subagent acts for the run. */
+  /**
+   * The routine run a thread acts for: its own, or the nearest above it by
+   * parent or starter. A run's subagent acts for the run. A thread whose line
+   * this host cannot follow to its end (a parent on another host, or more than
+   * 32 links) acts for an unknown run, which takes no grant (milestone 50's
+   * hold review, finding 5).
+   */
   const routineRunOf = (sessionId: string): string | null => {
     let at = deps.registry.get(sessionId)
-    for (let hops = 0; at && hops < 32; hops++) {
+    for (let hops = 0; at; hops++) {
       if (at.routineRunId) return at.routineRunId
       const up = at.parentId ?? at.startedBy
-      at = up ? deps.registry.get(up) : null
+      if (!up) return null
+      if (hops >= 32) return ROUTINE_UNKNOWN
+      at = deps.registry.get(up)
+      if (!at) return ROUTINE_UNKNOWN
     }
     return null
+  }
+  const knownRunOf = (sessionId: string): string | null => {
+    const run = routineRunOf(sessionId)
+    return run === ROUTINE_UNKNOWN ? null : run
   }
 
   // What a stop left behind: a row that was being sent is never sent again by the host, and a live act's screen went with the process.
@@ -137,7 +153,7 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
       if (!root) return null
       const scope = ctx.scopeOf(root.id)
       const workspaceId = scope?.workspaceId ?? (root.projectId ? deps.registry.getProject(root.projectId)?.workspaceId : null) ?? root.workspaceId ?? null
-      return { app: 'tempcode', threadId: root.id, host: ctx.host, ...(workspaceId ? { workspaceId } : {}), ...(routineRunOf(sessionId) ? { routineRunId: routineRunOf(sessionId)! } : {}) }
+      return { app: 'tempcode', threadId: root.id, host: ctx.host, ...(workspaceId ? { workspaceId } : {}), ...(knownRunOf(sessionId) ? { routineRunId: knownRunOf(sessionId)! } : {}) }
     }
     const gate = makeAddonGate({ outbox, store, addons, sessions: deps.registry, mcpUrl, isWorkScope, originOf: origin, modules: () => WORK_MODULES, log: ctx.log })
     const door = deps.addonHost.setGate(gate)
