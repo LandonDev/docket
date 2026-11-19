@@ -975,7 +975,14 @@ thread; nothing answers inside the canvas.
   v3.mp4"): 24px, the `muted` fill, 6px radius, a 12px muted glyph, the
   label at 12px, a 16px remove control. The chips are a row of their own
   inside the composer's box, over the field and under any attachments, 4px
-  apart, 8px from the box's edge. A chip alone can be sent.
+  apart, 8px from the box's edge. A chip alone can be sent. `@` offers
+  Work's things in the composer's one list: each kind a group under its
+  quiet label (Tasks, Mail, Agenda, Projects, People, Documents, Items,
+  Outbox, Routines), a row its 14px glyph, the label, one muted fact and a
+  time at the end; they lead the list in a Work thread. A pick is a chip,
+  never text. The sent bubble draws its chips the same way over his words,
+  4px apart and 8px above them; one that opens something takes the hover
+  fill and presses to 0.96, one that does not is a label.
 - **Avatars** are initials on `muted` on `image-outline`, 20px in the bar,
   24px in lists, overlapping 6px with a 2px `background` ring.
 - **Share** is a 320px popover from the bar (rows 28px or more, Revoke

@@ -233,7 +233,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   per host, off by default (`work.get`, `work.set`); code branches on the row
   (`workspaces.kind`, `sessions.scope`), never on the switch. All fifty
   milestones are built. The frame: `WORK_MODULES`, `WorkCtx`, one tool mount
-  (`withWorkTools`, `app.workTools`); a pillar fills its own folder, edits no
+  (`withWorkTools`, `app.workTools`); the composer's `@` for Work's things, a
+  pillar's `mentions` within `mentionReachOf` (work-canvas.md "Mentions"); a pillar fills its own folder, edits no
   shared file and reaches the frame only through `WorkCtx`
   (`work/pillarReach.test.ts`); the screens are the rail's Work heading, Work
   Chats, the column's views (`WORK_VIEWS`), the canvas pane and Settings → Work

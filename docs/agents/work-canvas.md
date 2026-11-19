@@ -274,18 +274,89 @@ until the composer sends:
 - Ask's key is ⌘L (Ctrl+L off macOS), live while a kind feeds a selection.
   Settings → Keybindings lists it in the Work group while Work is on.
 
-The sent bubble shows the chip's line as text; a drawn chip in the bubble
-is not built.
+The sent bubble draws the chips back from their lines (`sentChipsOf`,
+lib/sentChips.ts; `SentChips`, work/canvas/SentChips.tsx) over his words,
+the lines and their quoted words gone from the text and Copy still copying
+the message whole. Until the work-canvas chunk lands the row is the same
+boxes with the labels alone. A chip opens what it names when this window can
+show it: a LifeOS document or a canvas item in the thread's pane, a held act
+in the Outbox, a task, mail, event or routine in its workspace's view (the
+view, not the row in it). A person, a project, a selection's file and
+anything in a Work Chat that needs a workspace's view are labels.
+
+## Mentions
+
+The composer's `@` offers Work's things beside files, threads and notes:
+LifeOS's tasks, mail threads, events, projects, people and documents, the
+workspace's canvas items, the held acts waiting in the Outbox and the
+workspace's routines. A pick becomes a chip, and the message carries its
+line with a short excerpt quoted under it (`chipLine`), so the model gets a
+reference it can open with its tools and a few words of what it says.
+
+**Where it is offered.** A Work thread, a Work Chat (its draft included),
+and a code thread of a workspace linked to a sector, on a host with Work
+on. The host decides what each may read, from the row, or for a draft from
+where it will be made (`mentionReachOf`, work/scope.ts, `ctx.mentionReach`):
+
+| Thread | Offered |
+|---|---|
+| a Work workspace's | its sector's LifeOS things; the workspace's items, held acts and routines |
+| a Work Chat | every sector's LifeOS things; its own pane's items; the held acts outside every workspace |
+| a code thread of a linked workspace | that sector's LifeOS things, nothing of Work's own |
+| an unlinked code thread, a loose chat, a Work thread with no Work home | nothing |
+
+The host reads LifeOS as the owner, so the sector is the fence on the
+host: a LifeOS row is kept only when its sector is in reach, whatever
+LifeOS answered, and a workspace with no sector reads none.
+
+**The wire.** `work.canvas.mentions {sessionId, draft?, text, kinds?}` →
+`MentionAnswer {hits, failed}` (src/shared/work/mentions.ts). It needs
+`approve`, as `work.lifeos.jwt` does (it reads his mail), and is carried to
+a far host only while its screen is unlocked. Each kind answers at most
+five hits (`MENTION_PER_KIND`), best or newest first; the answer is in kind
+order (`MENTION_ORDER`). A kind that throws or takes over 4 s is named in
+`failed` and the rest answer; the LifeOS kinds are named there while
+LifeOS is not connected.
+
+**Registering a kind.** A pillar lists its own on its module:
+`mentions: MentionSource[]` (modules.ts), each `{kind, lifeos?, search(text,
+reach, ctx)}`. `lifeos: true` marks a kind read from LifeOS, the only kinds
+a code thread is offered. The router (canvas/mentions.ts `searchMentions`)
+asks every module's list; nothing else changes. The kind's name is one of
+`CHIP_KINDS` (src/shared/work/canvas.ts), which the phone's generated
+contract reads; `card` is there already for a project's cards, so the
+projects suite adds its source in its own folder and edits no shared file.
+A kind not in `CHIP_KINDS` adds its word there, its glyph to `CHIP_GLYPH`
+(ComposerChips.tsx), its group to `GROUP` (canvas/mentions.ts) and its noun
+to `CHIP_NOUN`; until then it draws with the item glyph and noun. The ref is
+one of the chip's (`{at: 'lifeos', table}`, a `CanvasSource`, `{at:
+'item', id}`, `{at: 'work', pillar, id}`); a sent chip opens only what
+`openerOf` (SentChips.tsx) knows.
+
+**The list** (chrome/useWorkMentions.ts, chrome/CommandPopover.tsx): the
+text is asked a beat (120 ms) after the last key, the first ask at once,
+through the work-canvas chunk, which loads the first time. The last answer
+stays on screen until the next lands, so the list never empties under the
+typing; until the first, one muted row says Loading…, and a kind that could
+not be searched says so in one muted row ("Couldn't reach LifeOS"). Each
+kind is a group under its name with its glyph, a muted fact (a sender, a
+place, the canvas kind) and a time; in a Work thread they lead the list,
+in a code thread they follow the files, threads and notes. Enter or a click
+takes the typed `@words` out and adds the chip.
 
 ## The first paint
 
 Nothing here is in the first paint (docs/agents/work.md "The first
 paint"). `surfaces/chunks.ts` has one chunk, `workCanvasChunk`
-(`work-canvas`), asked for by a Work thread's view and by a composer that
-holds a chip; each kind's body is its own chunk behind that. The first
-paint carries only the chip port (`lib/contextChips.ts`, a type from
-`@shared/work` and no value), a few lines in the composer and the seat's
-mount in `ThreadView`: 1.8 kB of the entry chunk in all.
+(`work-canvas`), asked for by a Work thread's view, by a composer that
+holds a chip or asks `@` for Work's things, and by a bubble that went with
+chips; each kind's body is its own chunk behind that. The first paint
+carries only the chip port (`lib/contextChips.ts`, a type from
+`@shared/work` and no value), a few lines in the composer, the `@` hook
+(chrome/useWorkMentions.ts), the sent-chip parser and the bubble's bones
+(lib/sentChips.ts, UserMessage.tsx) and the seat's mount in `ThreadView`:
+1.8 kB of the entry chunk before mentions, about 3 kB more with them
+(estimated from the files minified, not measured in a build).
 
 ## The store
 
