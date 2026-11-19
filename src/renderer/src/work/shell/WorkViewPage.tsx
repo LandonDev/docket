@@ -1,15 +1,17 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SectorKey } from "@shared/work";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
+import { errorText } from "../../chrome/ConfirmDialog";
+import { loadToast } from "../../components/ui/toaster";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
 import { WORK_VIEWS, type WorkViewId, type WorkViewProps } from "../views/registry";
 import { openWorkSettings } from "./open";
-import { useLifeosSession, useLifeosStatus, watchLifeos } from "./lifeos";
+import { refreshLifeos, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { clockTime } from "../../lib/duration";
 
@@ -18,7 +20,9 @@ import { clockTime } from "../../lib/duration";
  * over the thread panes, under the strip): the view's 40px header (its glyph,
  * its name, the controls the view's chunk puts there), then the view, which
  * reads LifeOS through the workspace's own sector. Signed out it is one
- * sign-in; unreachable, one state line over what was last shown.
+ * sign-in; unreachable, one state line over what was last shown. While the
+ * view's chunk loads it is a column of rows; a view that throws (a LifeOS
+ * read refused) is its own error with Retry, never the window's.
  */
 export function WorkViewSurface() {
   const open = useWorkView();
@@ -56,11 +60,18 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
   const View = useMemo(() => lazy(() => def.chunk.load().then((m) => ({ default: m.View }))), [def]);
   const Icon = def.icon;
   const signedOut = state === "signed-out" || state === "refused";
+  const [retrying, setRetrying] = useState(false);
+  const retry = (): void => {
+    setRetrying(true);
+    refreshLifeos(environmentId)
+      .catch((err: unknown) => void loadToast().then((toast) => toast.error("LifeOS did not answer", { description: errorText(err) })))
+      .finally(() => setRetrying(false));
+  };
   return (
     // Over every layer a thread's pane raises (its composer and queue reach z-30), under dialogs and menus (--layer-dialog 90):
     // the draft composer must not float over a view's body.
     <div role="region" aria-label={def.label} className="absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col bg-background">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
+      <div className="@container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
         <Icon className="size-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">{def.label}</span>
         <span className="flex-1" />
@@ -71,8 +82,8 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
           <StatusMark state="failed" word={false} />
           <span className="font-medium text-destructive">LifeOS did not answer</span>
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">As of {clockTime(status.lifeos.since)}</span>
-          <Button variant="ghost" size="xs" onClick={() => watchLifeos(environmentId)}>
-            Retry
+          <Button variant="ghost" size="xs" disabled={retrying} onClick={retry}>
+            <BusyLabel busy={retrying} label="Retry" />
           </Button>
         </div>
       ) : null}
@@ -80,11 +91,45 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
         {signedOut ? (
           <EmptyState title="Sign in to LifeOS" action={{ label: "Sign in", onClick: openWorkSettings }} />
         ) : (
-          <Suspense fallback={<SurfaceSkeleton kind="page" label={`Loading ${def.label}`} />}>
-            <View {...props} />
-          </Suspense>
+          <ViewBoundary label={def.label}>
+            <Suspense fallback={<ViewSkeleton label={def.label} />}>
+              <View {...props} />
+            </Suspense>
+          </ViewBoundary>
         )}
       </div>
     </div>
   );
+}
+
+/** A view's chunk on its way: the one-column rows Tasks, Agenda, Docs and the lists start as, under the view's own header. */
+function ViewSkeleton({ label }: { label: string }) {
+  return (
+    <div className="mx-auto w-full max-w-[720px] px-5 py-5">
+      <SurfaceSkeleton kind="rows" count={6} label={`Loading ${label}`} />
+    </div>
+  );
+}
+
+/** A view that throws (a LifeOS read refused, a chunk that did not load) is the view's error with Retry, which mounts it again. */
+export class ViewBoundary extends Component<{ label: string; children: ReactNode }, { error: string | null; attempt: number }> {
+  override state = { error: null as string | null, attempt: 0 };
+  static getDerivedStateFromError(error: unknown): { error: string } {
+    return { error: errorText(error) };
+  }
+  override render(): ReactNode {
+    if (this.state.error !== null)
+      return (
+        <EmptyState
+          title={`${this.props.label} did not load`}
+          line={this.state.error}
+          action={{ label: "Retry", onClick: () => this.setState((s) => ({ error: null, attempt: s.attempt + 1 })) }}
+        />
+      );
+    return <ViewAttempt key={this.state.attempt}>{this.props.children}</ViewAttempt>;
+  }
+}
+
+function ViewAttempt({ children }: { children: ReactNode }) {
+  return children;
 }

@@ -40,7 +40,7 @@ function Body({ task, project, onClose, onStart, onDone }: { task: Task; project
       <SheetHeader>
         <SheetTitle>{full.title}</SheetTitle>
       </SheetHeader>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-4 pb-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-5 pb-5">
         {detail === undefined ? (
           <div aria-hidden className="flex flex-col gap-2">
             <Skeleton className="h-3.5 w-1/3" />
@@ -66,7 +66,7 @@ function Body({ task, project, onClose, onStart, onDone }: { task: Task; project
           </div>
         ) : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3">
+      <div className="flex shrink-0 items-center gap-2 border-t border-border px-5 py-3">
         <Button size="sm" onClick={() => (onClose(), onStart(full))}>
           Start thread
         </Button>

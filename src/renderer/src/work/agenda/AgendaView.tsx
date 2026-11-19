@@ -4,7 +4,6 @@ import type { ContextChip } from "@shared/work";
 import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
 import { addDays, endOf, formatPeriod, groupByDay, leaveAt, localeWeekStart, shiftPeriod, startOfDay, viewRange } from "work-kit/views/lib/agenda";
 import { formatDayHeading, formatLeave, formatTime } from "work-kit/views/lib/format";
-import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ChevronLeft, ChevronRight, Plus } from "../../chrome/icons";
 import { ChoiceToggle } from "../../components/choice-toggle";
 import { Button } from "../../components/ui/button";
@@ -47,7 +46,7 @@ export function Head(_props: WorkViewProps) {
     <>
       {view !== "list" ? (
         <>
-          <span className="text-[13px] text-muted-foreground tabular-nums">{formatPeriod(view, day, weekStart)}</span>
+          <span className="hidden truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:inline">{formatPeriod(view, day, weekStart)}</span>
           <Button variant="ghost" size="sm" onClick={() => go({ day: startOfDay(Date.now()) })}>
             Today
           </Button>
@@ -60,9 +59,9 @@ export function Head(_props: WorkViewProps) {
         </>
       ) : null}
       <ChoiceToggle label="Show as" value={view} options={VIEWS} onChange={(next) => go({ view: next })} />
-      <Button variant="ghost" size="sm" onClick={() => go({ adding: "now" })}>
+      <Button variant="ghost" size="sm" aria-label="New event" className="@max-[40rem]/viewhead:px-1.5" onClick={() => go({ adding: "now" })}>
         <Plus />
-        New event
+        <span className="@max-[40rem]/viewhead:hidden">New event</span>
       </Button>
     </>
   );
@@ -82,9 +81,9 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   );
 }
 
-/** What the shared week and month draw with in TempCode: the sector's dot, no faces, no copy reference. */
+/** What the shared week and month draw with in TempCode: no sector dot (a workspace's view is one sector, and a dot means sectors mix), no faces, no copy reference. */
 const kit: ViewsKit = {
-  SectorMark: ({ sector, className }) => <SectorDot sector={sector} className={className} />,
+  SectorMark: () => null,
   Face: () => null,
   openTask: () => {},
 };
@@ -132,7 +131,7 @@ function Agenda({ client, startThread }: { client: AgendaClient; startThread: (a
 /** One event: its time (with when to leave under it while that is ahead), its title over where it is, Prepare on hover. */
 const EventRow = memo(function EventRow({ event, past, leave, onPrepare }: { event: AgendaEvent; past: boolean; leave: number | undefined; onPrepare: (event: AgendaEvent) => void }) {
   return (
-    <div role="listitem" className="group/row relative grid min-h-9 grid-cols-[72px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-muted">
+    <div role="listitem" className="group/row relative grid min-h-9 grid-cols-[72px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5">
       <span className="flex flex-col text-xs leading-5 text-muted-foreground tabular-nums">
         <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
         {leave !== undefined && !past ? <span className="font-medium text-foreground">Leave {formatLeave(leave, event.startsAt)}</span> : null}

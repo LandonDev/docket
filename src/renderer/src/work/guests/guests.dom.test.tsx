@@ -11,7 +11,7 @@ import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEdit
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>() }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -19,6 +19,7 @@ vi.mock("../../lib/connection", async (original) => {
     onPush: () => () => undefined,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       calls.list.push({ env, method, params });
+      if (calls.down.has(env)) throw new Error("The host did not answer");
       // The Mac does not serve LifeOS's documents: it names the box, as the host does.
       if (env === "mac") throw new Error("served elsewhere: box");
       if (calls.failOnce && method === "work.guests.forItem") {
@@ -53,6 +54,7 @@ afterEach(() => {
   cleanup();
   calls.list.length = 0;
   calls.links = [];
+  calls.down.clear();
 });
 
 describe("Share", () => {
@@ -127,6 +129,28 @@ describe("the held request and the audit list", () => {
     expect(screen.getByText(/Edit, Run of show, until .*, in it now/)).toBeTruthy();
     expect(screen.getByText(/revoked/)).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+    // Copy new address and Revoke wait for the row's hover.
+    expect(document.querySelector("[data-guest-actions]")!.className).toContain("group-hover/item:opacity-100");
+  });
+
+  it("keeps the links one host gave when another does not answer, with Retry, and lists a link read through two hosts once", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [LINK];
+    calls.down.add("win");
+    render(<GuestLinksSection hosts={["box", "mac", "win"]} />);
+    await screen.findByText("Sam Ortiz");
+    expect(screen.getAllByText("Sam Ortiz")).toHaveLength(1);
+    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    calls.down.clear();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await waitFor(() => expect(screen.queryByText("The host did not answer")).toBeNull());
+    expect(screen.getByText("Sam Ortiz")).toBeTruthy();
+  });
+
+  it("says an empty list in a plain line", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    render(<GuestLinksSection hosts={["box"]} />);
+    expect(await screen.findByText("No guest links")).toBeTruthy();
   });
 });
 

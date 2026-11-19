@@ -51,6 +51,12 @@ export function watchLifeos(environmentId: string): void {
   });
 }
 
+/** Ask one host for its LifeOS status now (Retry on "LifeOS did not answer"); rejects when the host does not answer. */
+export async function refreshLifeos(environmentId: string): Promise<void> {
+  watchLifeos(environmentId);
+  putStatus(environmentId, await registry.linkOf(environmentId).request<LifeosStatus>("work.lifeos.status"));
+}
+
 /** A host's LifeOS status; null until it answers. */
 export function useLifeosStatus(environmentId: string | null | undefined): LifeosStatus | null {
   useEffect(() => {

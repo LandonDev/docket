@@ -1,7 +1,11 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import type { CanvasSource } from "@shared/work";
 import { ChevronLeft } from "../../chrome/icons";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
+import { ItemButton } from "../../components/ui/item";
+import { ROW_PRESS } from "../../components/ui/press";
+import { loadToast } from "../../components/ui/toaster";
+import { refusalWords } from "../../lib/settingsHome";
 import { Skeleton } from "../../components/ui/skeleton";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -19,7 +23,11 @@ import { registry } from "../../lib/connection";
  * documents, one line each, grouped by project, newest first. A row opens
  * the document right here, in the shared editor; Ask starts a thread about
  * it. Suggestions are stepped in a thread's canvas, where the agent works.
+ * The list reads 25 at a time; Show more reads the next 25.
  */
+
+/** How many documents the list reads at a time. */
+const PAGE = 25;
 
 type DocRow = { _id: string; title: string; projectId?: string; editedAt?: number; _creationTime: number };
 type Page = { page: DocRow[]; isDone: boolean };
@@ -46,7 +54,9 @@ const sourceOf = (id: string): CanvasSource => ({ at: "lifeos", table: "docs", i
 
 export function View(props: WorkViewProps) {
   const doc = useOpenedDoc(props.workspace.id);
-  return doc ? <OpenDoc {...props} doc={doc} /> : <DocList {...props} />;
+  // Retry mounts the list again, so its query is asked anew.
+  const [attempt, setAttempt] = useState(0);
+  return doc ? <OpenDoc {...props} doc={doc} /> : <DocList key={attempt} {...props} onRetry={() => setAttempt((n) => n + 1)} />;
 }
 
 /** The header's verb: New on the list, Ask on a document. */
@@ -69,31 +79,38 @@ export function Head({ env, workspace, sector, startThread }: WorkViewProps) {
         try {
           const made = await registry.linkOf(env).request<{ source: { id: string }; title: string }>("work.docs.create", { sector, title: "Untitled" });
           setOpened(workspace.id, { id: made.source.id, title: made.title });
+        } catch (err) {
+          void loadToast().then((toast) => toast.error("The document was not made", { description: refusalWords(err) || undefined }));
         } finally {
           setMaking(false);
         }
       }}
     >
-      New
+      <BusyLabel busy={making} label="New" />
     </Button>
   );
 }
 
-function DocList({ workspace, sector, lifeos }: WorkViewProps) {
-  const docs = useLifeosQuery<Page>(lifeos, "docs:list", { sector, paginationOpts: { numItems: 25, cursor: null } });
+function DocList({ workspace, sector, lifeos, onRetry }: WorkViewProps & { onRetry: () => void }) {
+  const [count, setCount] = useState(PAGE);
+  const docs = useLifeosQuery<Page>(lifeos, "docs:list", { sector, paginationOpts: { numItems: count, cursor: null } });
+  // While the longer read loads, the rows already shown stay.
+  const [shown, setShown] = useState<Page | null>(null);
+  if (docs.status === "ready" && docs.value !== shown) setShown(docs.value);
   const projects = useLifeosQuery<Project[]>(lifeos, "projects:list", { sector });
+  const page = docs.status === "ready" ? docs.value : shown;
   const groups = useMemo(() => {
-    if (docs.status !== "ready") return null;
+    if (!page) return null;
     const names = new Map((projects.status === "ready" ? projects.value : []).map((p) => [p._id, p.name]));
     const by = new Map<string, DocRow[]>();
-    for (const row of docs.value.page) {
+    for (const row of page.page) {
       const key = row.projectId && names.has(row.projectId) ? row.projectId : "";
       by.set(key, [...(by.get(key) ?? []), row]);
     }
     return [...by].map(([key, rows]) => ({ key, name: key ? names.get(key)! : "Other", rows })).sort((a, b) => (a.key === "" ? 1 : b.key === "" ? -1 : 0));
-  }, [docs, projects]);
+  }, [page, projects]);
 
-  if (docs.status === "failed") return <EmptyState title="Docs did not load" line={docs.error} />;
+  if (docs.status === "failed") return <EmptyState title="Docs did not load" line={docs.error} action={{ label: "Retry", onClick: onRetry }} />;
   if (!groups)
     return (
       <div aria-busy className="mx-auto flex max-w-[720px] flex-col gap-3 px-6 py-5">
@@ -110,19 +127,24 @@ function DocList({ workspace, sector, lifeos }: WorkViewProps) {
         <section key={g.key} className={i ? "mt-5" : undefined}>
           <h2 className="mb-1 text-xs font-medium text-muted-foreground">{g.name}</h2>
           {g.rows.map((row) => (
-            <button
+            <ItemButton
               key={row._id}
-              type="button"
+              size="xs"
               onClick={() => setOpened(workspace.id, { id: row._id, title: row.title })}
-              className="-mx-2 flex h-8 w-[calc(100%+16px)] min-w-0 items-center gap-2 rounded-md px-2 text-start text-[13px] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] focus-visible:outline-2 focus-visible:outline-ring"
+              className={`-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap rounded-md py-0 text-[13px] ${ROW_PRESS}`}
             >
               <Doc className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-foreground">{row.title}</span>
               <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{dayTime(row.editedAt ?? row._creationTime)}</span>
-            </button>
+            </ItemButton>
           ))}
         </section>
       ))}
+      {page && !page.isDone ? (
+        <Button variant="ghost" size="sm" className="-ms-2 mt-3" disabled={docs.status === "loading"} onClick={() => setCount((n) => n + PAGE)}>
+          <BusyLabel busy={docs.status === "loading"} label="Show more" />
+        </Button>
+      ) : null}
     </div>
   );
 }

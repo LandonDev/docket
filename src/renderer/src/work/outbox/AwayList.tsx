@@ -10,9 +10,9 @@ import { useEnvironments } from "../../lib/connection";
 import { workSwitch } from "../../lib/workSwitch";
 import { storeTitleOf } from "../../lib/threadMentions";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { AWAY_HEADING, awayLine, awaySections, byWorkspace, pastOf, spanWords, WORK_CHATS_KEY, type AwayCounts } from "./model";
+import { AWAY_HEADING, awayLine, awaySections, byWorkspace, spanWords, WORK_CHATS_KEY, type AwayCounts } from "./model";
 import { resultsSince, undoResult, type HostResult } from "./results";
-import { loadHost, notSentWords, outboxNow, sendItem, sendMany, useOutbox, wentOut, type HostItem } from "./store";
+import { loadHost, outboxNow, useOutbox, type HostItem } from "./store";
 import { splitSummary } from "./OutboxView";
 
 /** One host's tally of the stretch, as its Away push carried it. */
@@ -62,10 +62,13 @@ export async function gatherAway(hosts: readonly AwayHost[], now = Date.now()): 
 const toastError = (err: unknown) => void loadToast().then((t) => t.error(err instanceof Error ? err.message : String(err)));
 
 /**
- * The list behind the return toast's Review: one dialog whose sections come
- * in the order he must act (held, failed, decided, written), each row with
- * its verb. Held items are read live from the Outbox, so a press here and a
- * press in the Outbox are one state.
+ * The list behind the return toast's Review (docs/DESIGN.md "Back from
+ * Away": held items are the Outbox's): one dialog whose sections come in the
+ * order he must act. Held is each workspace and how many wait there, Failed
+ * each act that did not go and why; neither is sent from here, so a send that
+ * may have gone keeps the Outbox's own guard. Decided is each thread with its
+ * count and Open, Written each write with its way back. Held and failed are
+ * read live from the Outbox; Open the Outbox sits at the footer's start.
  */
 export function AwayReturnWork({
   report,
@@ -89,17 +92,22 @@ export function AwayReturnWork({
   const hostOf = (environmentId: string) => (environments.length > 1 ? environments.find((e) => e.id === environmentId)?.name : undefined);
   return (
     <Modal onClose={onClose} title="While you were away" description={spanWords(report.since, report.until)}>
-      <ModalBody className="gap-5">
+      <ModalBody className="gap-4">
         {awaySections(counts).length === 0 ? <p className="text-[13px] text-muted-foreground">Everything here is done.</p> : null}
         {awaySections(counts).map((section) => (
           <section key={section} aria-label={AWAY_HEADING[section]} className="flex flex-col">
             <h2 className="flex h-7 items-center text-xs font-medium text-muted-foreground">{AWAY_HEADING[section]}</h2>
             {section === "held"
               ? byWorkspace(held).map((group) => (
-                  <HeldGroup key={group.key} name={nameOf(group.items[0]!.environmentId, group.workspaceId)} sector={group.sector} items={group.items} />
+                  <Row
+                    key={group.key}
+                    media={<SectorDot sector={group.sector} />}
+                    title={nameOf(group.items[0]!.environmentId, group.workspaceId)}
+                    line={heldWords(group.items)}
+                  />
                 ))
               : section === "failed"
-                ? failed.map((item) => <FailedRow key={`${item.environmentId}:${item.ref.id}`} item={item} />)
+                ? failed.map((item) => <Row key={`${item.environmentId}:${item.ref.id}`} title={splitSummary(item.summary).act} line={item.error ?? "It couldn't be sent"} tone="failed" />)
                 : section === "decided"
                   ? report.decided.map((d) => (
                       <Row
@@ -116,109 +124,38 @@ export function AwayReturnWork({
           </section>
         ))}
       </ModalBody>
-      <DialogFooter confirmLabel="Done" onConfirm={onClose} closeOnConfirm>
-        {counts.held || counts.failed ? (
-          <Button variant="secondary" onClick={onOpenOutbox}>
-            Open the Outbox
-          </Button>
-        ) : null}
-      </DialogFooter>
+      <DialogFooter
+        start={
+          counts.held || counts.failed ? (
+            <Button variant="ghost" onClick={onOpenOutbox}>
+              Open the Outbox
+            </Button>
+          ) : undefined
+        }
+        confirmLabel="Done"
+        onConfirm={onClose}
+        closeOnConfirm
+      />
     </Modal>
   );
 }
 
-function Row({ title, line, tone, children }: { title: string; line?: string | null; tone?: "failed"; children?: React.ReactNode }) {
+/** "2 mails waiting", or "3 waiting" across kinds: what a workspace holds, said once; the acts themselves are the Outbox's. */
+export function heldWords(items: readonly Pick<HostItem, "kind">[]): string {
+  const mail = items.every((i) => i.kind === "mail.send" || i.kind === "office.mail.send");
+  return mail ? `${items.length} ${items.length === 1 ? "mail" : "mails"} waiting` : `${items.length} waiting`;
+}
+
+function Row({ title, line, tone, media, children }: { title: string; line?: string | null; tone?: "failed"; media?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <div className="flex min-h-10 min-w-0 items-center gap-3 border-t border-border py-1.5 first-of-type:border-t-0">
-      {tone ? <StatusMark state="failed" word={false} /> : null}
+      {tone ? <StatusMark state="failed" word={false} /> : media ? <span className="flex size-3.5 shrink-0 items-center justify-center">{media}</span> : null}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[13px] leading-5">{title}</span>
         {line ? <span className={tone ? "truncate text-xs leading-4 text-destructive" : "truncate text-xs leading-4 text-muted-foreground"}>{line}</span> : null}
       </span>
-      <span className="flex shrink-0 items-center">{children}</span>
+      {children ? <span className="flex shrink-0 items-center">{children}</span> : null}
     </div>
-  );
-}
-
-function HeldGroup({ name, sector, items }: { name: string; sector: string | null; items: HostItem[] }) {
-  const [busy, setBusy] = useState(false);
-  const ready = items.filter((i) => i.state === "held" || i.state === "live");
-  const sendAll = async () => {
-    setBusy(true);
-    try {
-      const { sent, failed } = await sendMany(ready);
-      if (sent) void loadToast().then((t) => t(`${pastOf("Send")} ${sent} from ${name}`));
-      if (failed.length) toastError(new Error(`${failed.length} could not go: ${failed[0]!.error}`));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="flex flex-col">
-      <div className="mt-1 flex h-8 items-center gap-1.5">
-        <SectorDot sector={sector} className="-ms-1" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{name}</span>
-        {ready.length > 1 ? (
-          <Button variant="ghost" size="xs" disabled={busy} onClick={() => void sendAll()}>
-            <BusyLabel busy={busy} label={`Send ${ready.length}`} />
-          </Button>
-        ) : null}
-      </div>
-      <div className="flex flex-col">
-        {items.map((item) => (
-          <HeldRow key={`${item.environmentId}:${item.ref.at}:${item.ref.id}`} item={item} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function HeldRow({ item }: { item: HostItem }) {
-  const [busy, setBusy] = useState(false);
-  const { act, about } = splitSummary(item.summary);
-  const press = async () => {
-    setBusy(true);
-    try {
-      const after = await sendItem(item);
-      if (!wentOut(after)) toastError(new Error(notSentWords(after)));
-    } catch (err) {
-      toastError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Row title={act} line={about}>
-      {item.state === "sending" ? (
-        <StatusMark state="working" word={false} />
-      ) : (
-        <Button variant="secondary" size="xs" disabled={busy} onClick={() => void press()}>
-          <BusyLabel busy={busy} label={item.verb} />
-        </Button>
-      )}
-    </Row>
-  );
-}
-
-function FailedRow({ item }: { item: HostItem }) {
-  const [busy, setBusy] = useState(false);
-  const press = async () => {
-    setBusy(true);
-    try {
-      const after = await sendItem(item);
-      if (!wentOut(after)) toastError(new Error(notSentWords(after)));
-    } catch (err) {
-      toastError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Row title={splitSummary(item.summary).act} line={item.error ?? "It couldn't be sent"} tone="failed">
-      <Button variant="secondary" size="xs" disabled={busy} onClick={() => void press()}>
-        <BusyLabel busy={busy} label={`${item.verb} again`} />
-      </Button>
-    </Row>
   );
 }
 

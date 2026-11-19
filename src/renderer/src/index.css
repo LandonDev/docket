@@ -517,11 +517,14 @@ html.theme-light {
      The same curve is EASE_OUT in lib/ease.ts. */
   --default-transition-duration: var(--dur-fast);
   --default-transition-timing-function: var(--ease-out);
-  /* work-kit's two named type steps on DESIGN.md's scale: `text-lead`
+  /* work-kit's three named type steps on DESIGN.md's scale: `text-lead`
      (LifeOS 15px at 1.375) is a document's body, 15/24; `text-sheet-title`
-     (LifeOS 17px at 1.375) is the title, 16/24 at -0.01em. */
+     (LifeOS 17px at 1.375) is the title, 16/24 at -0.01em; `text-label`
+     (the Agenda's day heads and event titles, a field's label) is 12/16. */
   --text-lead: 15px;
   --text-lead--line-height: 24px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
   --text-sheet-title: 16px;
   --text-sheet-title--line-height: 24px;
   --text-sheet-title--letter-spacing: -0.01em;

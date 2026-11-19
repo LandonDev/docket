@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { RULE_TEXT_MAX, type HouseRule, type RuleProposal } from "@shared/contract-work-rules";
-import { Modal, useModalClose } from "../../chrome/Modal";
+import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -69,17 +69,21 @@ function Body({
     if (!trimmed || pending || unchanged) return;
     void run("save", async () => {
       if (of.kind === "rule") await editRule(env, of.rule.id, { text: trimmed });
-      else onAdded?.(await addRule(env, workspaceId, trimmed, of.kind === "proposal" ? of.proposal.id : undefined));
+      else {
+        // Awaited first: `onAdded?.(await addRule(…))` skips the write when no callback is given.
+        const rule = await addRule(env, workspaceId, trimmed, of.kind === "proposal" ? of.proposal.id : undefined);
+        onAdded?.(rule);
+      }
     });
   };
 
   return (
     <form onSubmit={submit}>
-      <div className="flex flex-col gap-4 px-5 py-4">
+      <ModalBody>
         <Field label="Rule">
           <Textarea
             autoFocus
-            rows={3}
+            rows={2}
             value={text}
             maxLength={RULE_TEXT_MAX}
             onChange={(event) => setText(event.target.value.replace(/\n/g, " "))}
@@ -93,7 +97,7 @@ function Body({
         </Field>
         {of.kind === "proposal" && of.proposal.edits.length ? <Evidence edits={of.proposal.edits} large className="border-t border-border pt-4" /> : null}
         <ErrorLine error={error} />
-      </div>
+      </ModalBody>
       <DialogFooter
         start={
           of.kind === "rule" ? (

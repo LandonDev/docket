@@ -46,7 +46,7 @@ function AwayReviewRow({ thread, host, onOpen, onClose }: { thread: AwayDecidedT
         if (close) close(onClose);
         else onClose();
       }}
-      className="text-left hover:bg-muted"
+      className="text-left hover:bg-foreground/5"
     >
       <ItemMedia>
         <TypeGlyph type={meta?.threadType} className="size-3.5" />

@@ -704,7 +704,7 @@ export function ProjectRail({
                 addExpanded={menuPath === WORK_ADD_MENU}
                 emptyRow={
                   workRows.length === 0 ? (
-                    <RailRow icon={Plus} label="Add Work workspace…" onClick={(event) => openWorkAdd(event)} />
+                    <RailRow icon={Plus} label="Add workspace…" ariaLabel="Add Work workspace…" onClick={(event) => openWorkAdd(event)} />
                   ) : null
                 }
                 cwd={cwd}

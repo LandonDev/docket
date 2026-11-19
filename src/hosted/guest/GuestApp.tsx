@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@renderer/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { Doc, Table } from "@renderer/work/icons";
@@ -122,17 +123,21 @@ const ENDED: Record<Failure, { title: string; detail: string }> = {
 function Ended({ why, owner, retry }: { why: Failure; owner: boolean; retry(): void }) {
   const words = owner && why === "gone" ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : ENDED[why];
   return (
-    <div className="grid h-dvh place-items-center bg-background px-6 text-foreground">
-      <div className="flex max-w-sm flex-col items-center gap-1 text-center">
-        <h1 className="text-sm font-medium text-balance">{words.title}</h1>
-        <p className="text-[13px] text-muted-foreground text-pretty">{words.detail}</p>
+    <main className="grid h-dvh place-items-center bg-background px-6 text-foreground">
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>
+            <h1>{words.title}</h1>
+          </EmptyTitle>
+          <EmptyDescription>{words.detail}</EmptyDescription>
+        </EmptyHeader>
         {why === "down" ? (
-          <Button variant="secondary" size="sm" className="mt-3" onClick={retry}>
+          <Button variant="secondary" size="sm" onClick={retry}>
             <RefreshCw />
-            Try again
+            Retry
           </Button>
         ) : null}
-      </div>
-    </div>
+      </Empty>
+    </main>
   );
 }

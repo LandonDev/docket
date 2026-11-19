@@ -3,7 +3,7 @@ import type { SectorKey, WorkspaceWorkSettings } from "@shared/work";
 import type { LifeosKeyState, LifeosState, LifeosStatus } from "@shared/contract-work-lifeos";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
-import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
+import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
@@ -23,7 +23,7 @@ import { AddinRow } from "../office/AddinRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { HouseRules } from "../rules/HouseRules";
 import { linkSector, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
-import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
+import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
 /**
  * Settings → Work while Work is on (prototype settings.html, "One Work
@@ -84,7 +84,7 @@ export function WorkSettingsBody() {
           </PageRow>
         ) : null}
         {hosts.map((host) => (
-          <ToolchainRow key={host.id} link={registry.linkOf(host.id)} />
+          <ToolchainRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Conversion tools on ${host.name}` : undefined} />
         ))}
         {hosts.map((host) => (
           <AddinRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Office add-in on ${host.name}` : "Office add-in"} />
@@ -96,32 +96,38 @@ export function WorkSettingsBody() {
 }
 
 /** One host's LifeOS sign-in: its state, then Sign in… or Sign out. */
-function LifeosHostRow({ environmentId, name }: { environmentId: string; name: string }) {
+export function LifeosHostRow({ environmentId, name }: { environmentId: string; name: string }) {
   const status = useLifeosStatus(environmentId);
   const [signingIn, setSigningIn] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<"signout" | "retry" | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!status) return <PageRowsSkeleton rows={1} description control="button" />;
   const state = status.lifeos;
   const { line, failed } = lifeosLine(state);
-  const signOut = async (): Promise<void> => {
-    setPending(true);
+  const press = async (what: "signout" | "retry"): Promise<void> => {
+    setPending(what);
     setError(null);
     try {
-      await registry.linkOf(environmentId).request<LifeosStatus>("work.lifeos.signOut", {});
+      if (what === "retry") await refreshLifeos(environmentId);
+      else await registry.linkOf(environmentId).request<LifeosStatus>("work.lifeos.signOut", {});
     } catch (err) {
       setError(errorText(err));
     } finally {
-      setPending(false);
+      setPending(null);
     }
   };
   const signedIn = state.state === "connected" || state.state === "unreachable" || state.state === "connecting";
   return (
     <>
       <PageRow title={name} description={failed ? undefined : line} error={failed ? line : (error ?? undefined)}>
+        {state.state === "unreachable" ? (
+          <Button variant="ghost" size="sm" disabled={pending !== null} onClick={() => void press("retry")}>
+            <BusyLabel busy={pending === "retry"} label="Retry" />
+          </Button>
+        ) : null}
         {signedIn ? (
-          <Button variant="ghost" size="sm" disabled={pending} onClick={() => void signOut()}>
-            <BusyLabel busy={pending} label="Sign out" />
+          <Button variant="ghost" size="sm" disabled={pending !== null} onClick={() => void press("signout")}>
+            <BusyLabel busy={pending === "signout"} label="Sign out" />
           </Button>
         ) : (
           <Button variant="secondary" size="sm" onClick={() => setSigningIn(true)}>
@@ -219,7 +225,7 @@ function SignInDialog({ environmentId, state, onClose }: { environmentId: string
     <Dialog {...root}>
       <ModalPanel onClose={cancel} busy={pending} title="Sign in to LifeOS" description="Approve this code in LifeOS, under Approve a sign-in." size="sm">
         <form onSubmit={(event) => void submit(event)}>
-          <div className="flex flex-col gap-4 px-5 py-4">
+          <ModalBody>
             <div className="flex items-baseline justify-between gap-3">
               {code ? (
                 <span className="font-mono text-base font-medium leading-6 text-foreground tabular-nums">{code.code}</span>
@@ -236,7 +242,7 @@ function SignInDialog({ environmentId, state, onClose }: { environmentId: string
               <Input value={token} onChange={(event) => setToken(event.target.value)} placeholder="lo_…" spellCheck={false} autoComplete="off" />
             </Field>
             <ErrorLine error={error} />
-          </div>
+          </ModalBody>
           <DialogFooter onCancel={cancel} confirmLabel="Sign in" pending={pending} disabled={!token.trim()} />
         </form>
       </ModalPanel>

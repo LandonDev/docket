@@ -45,6 +45,14 @@ describe("the Tasks view", () => {
     vi.useRealTimers();
   });
 
+  it("opens a row through one button over the whole row, so keyboard focus rings the row", () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} />);
+    const open = screen.getByRole("button", { name: "Open Send Dana the budget" });
+    expect(open.hasAttribute("data-row-open")).toBe(true);
+    expect(open.closest("[role=listitem]")?.contains(screen.getByRole("checkbox", { name: "Mark Send Dana the budget done" }))).toBe(true);
+    expect(open.contains(screen.getByText("Send Dana the budget"))).toBe(false);
+  });
+
   it("says when nothing is open", () => {
     render(<Tasks client={fakeTasksClient([])} startThread={() => {}} />);
     expect(screen.getByText("Nothing open")).toBeTruthy();

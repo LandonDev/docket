@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
-import { Plus } from "../../chrome/icons";
+import { ChevronLeft, Plus } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -11,7 +11,8 @@ import { hostKind, platformOf } from "../../lib/hostPlatform";
 import { refusalWords } from "../../lib/settingsHome";
 import { loadToast } from "../../components/ui/toaster";
 import { workOpenPort } from "../../lib/workSwitch";
-import { EmptyState, PAGE_LIST_WIDTH } from "../../surfaces/SurfaceSkeleton";
+import { cn } from "../../lib/cn";
+import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { RoutineDialog } from "./RoutineForm";
 import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
@@ -22,6 +23,8 @@ import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
  * on the right with what it does, what starts it and every run, each run its
  * thread one click away. New routine and Edit open the form; a proposal's
  * Create opens it filled, and nothing an agent proposed runs until then.
+ * Under 640px of pane the list and the detail take turns: a pick opens the
+ * detail, and its Routines row goes back.
  */
 
 // The header's New routine asks the view to open the form.
@@ -43,9 +46,10 @@ export function Head(_props: WorkViewProps) {
 
 type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "error"; error: string };
 
-function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, number] {
+function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, number, () => void] {
   const [state, setState] = useState<Load<RoutineRow[]>>({ status: "loading" });
   const [tick, setTick] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const link = registry.linkOf(env);
     let live = true;
@@ -69,12 +73,18 @@ function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, num
       live = false;
       off();
     };
-  }, [env, workspaceId]);
-  return [state, tick];
+  }, [env, workspaceId, attempt]);
+  const retry = useCallback(() => {
+    setState({ status: "loading" });
+    setAttempt((n) => n + 1);
+  }, []);
+  return [state, tick, retry];
 }
 
-function useRuns(env: string, id: string | null, tick: number): RoutineRun[] | null {
-  const [runs, setRuns] = useState<{ id: string; runs: RoutineRun[] } | null>(null);
+/** A routine's runs: null while they load, or why they did not, kept apart from a routine that never ran. */
+function useRuns(env: string, id: string | null, tick: number): [RoutineRun[] | { error: string } | null, () => void] {
+  const [runs, setRuns] = useState<{ id: string; runs: RoutineRun[] | { error: string } } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!id) return;
     let live = true;
@@ -83,17 +93,21 @@ function useRuns(env: string, id: string | null, tick: number): RoutineRun[] | n
       .request<{ runs: RoutineRun[] }>("work.routines.runs", { id, limit: 30 })
       .then(
         (r) => live && setRuns({ id, runs: r.runs }),
-        () => live && setRuns({ id, runs: [] }),
+        (err: unknown) => live && setRuns({ id, runs: { error: refusalWords(err) || "The host did not answer" } }),
       );
     return () => {
       live = false;
     };
-  }, [env, id, tick]);
-  return runs?.id === id ? runs.runs : null;
+  }, [env, id, tick, attempt]);
+  const retry = useCallback(() => {
+    setRuns(null);
+    setAttempt((n) => n + 1);
+  }, []);
+  return [runs?.id === id ? runs.runs : null, retry];
 }
 
 export function View({ env, workspace }: WorkViewProps) {
-  const [load, tick] = useRoutines(env, workspace.id);
+  const [load, tick, retry] = useRoutines(env, workspace.id);
   const [picked, setPicked] = useState<string | null>(null);
   const [form, setForm] = useState<{ row: RoutineRow | null } | null>(null);
   const asked = useSyncExternalStore(
@@ -116,19 +130,31 @@ export function View({ env, workspace }: WorkViewProps) {
   const current = rows.find((r) => r.id === picked) ?? rows[0] ?? null;
 
   if (load.status === "loading") return <ListSkeleton />;
-  if (load.status === "error") return <EmptyState title="Routines did not load" line={load.error} />;
+  if (load.status === "error") return <EmptyState title="Routines did not load" line={load.error} action={{ label: "Retry", onClick: retry }} />;
+  // Narrow, the detail shows only once a routine is picked; wide, the first is shown until then.
+  const narrowDetail = picked !== null && current?.id === picked;
   return (
     <>
       {rows.length === 0 ? (
-        <EmptyState title="No routines yet" line="Work that starts on a schedule or when something changes." action={{ label: "New routine", onClick: () => setForm({ row: null }) }} />
+        <EmptyState title="No routines yet" />
       ) : (
-        <div className="flex h-full min-h-0">
-          <div role="listbox" aria-label="Routines" className="flex shrink-0 flex-col gap-px overflow-x-hidden overflow-y-auto border-r border-border p-2" style={{ width: PAGE_LIST_WIDTH }}>
+        <div className="@container/routines flex h-full min-h-0">
+          <div
+            role="listbox"
+            aria-label="Routines"
+            data-routine-list=""
+            className={cn(
+              "flex w-70 shrink-0 flex-col gap-px overflow-x-hidden overflow-y-auto border-r border-border p-2 @max-[40rem]/routines:w-full @max-[40rem]/routines:border-r-0",
+              narrowDetail && "@max-[40rem]/routines:hidden",
+            )}
+          >
             {rows.map((r) => (
               <RoutineItem key={r.id} row={r} current={r.id === current?.id} onPick={() => setPicked(r.id)} />
             ))}
           </div>
-          {current ? <Detail key={current.id} env={env} row={current} tick={tick} onEdit={() => setForm({ row: current })} /> : null}
+          {current ? (
+            <Detail key={current.id} env={env} row={current} tick={tick} narrowShown={narrowDetail} onBack={() => setPicked(null)} onEdit={() => setForm({ row: current })} />
+          ) : null}
         </div>
       )}
       {form ? <RoutineDialog env={env} workspaceId={workspace.id} row={form.row} onClose={() => setForm(null)} onSaved={(row) => setPicked(row.id)} /> : null}
@@ -149,8 +175,8 @@ function RoutineItem({ row, current, onPick }: { row: RoutineRow; current: boole
   );
 }
 
-function Detail({ env, row, tick, onEdit }: { env: string; row: RoutineRow; tick: number; onEdit: () => void }) {
-  const runs = useRuns(env, row.id, tick);
+function Detail({ env, row, tick, narrowShown, onBack, onEdit }: { env: string; row: RoutineRow; tick: number; narrowShown: boolean; onBack: () => void; onEdit: () => void }) {
+  const [runs, retryRuns] = useRuns(env, row.id, tick);
   const [busy, setBusy] = useState<"pause" | "run" | "drop" | null>(null);
   const hostName = useEnvironments().find((e) => e.id === env)?.name ?? "this host";
   const mac = hostKind(platformOf(env)) === "mac";
@@ -177,9 +203,15 @@ function Detail({ env, row, tick, onEdit }: { env: string; row: RoutineRow; tick
   const ends = row.ends.kind === "day" ? dayTime(row.ends.at) : row.ends.kind === "once" ? "After the first run" : null;
 
   return (
-    <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+    <div data-routine-detail="" className={cn("min-w-0 flex-1 overflow-x-hidden overflow-y-auto", !narrowShown && "@max-[40rem]/routines:hidden")}>
+      <div className="hidden px-4 pt-2 @max-[40rem]/routines:block">
+        <Button variant="ghost" size="xs" onClick={onBack}>
+          <ChevronLeft className="size-3.5" />
+          Routines
+        </Button>
+      </div>
       <div className="mx-auto flex max-w-[672px] flex-col gap-6 px-6 py-5">
-        <div className="flex min-w-0 items-start gap-3">
+        <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
           <h1 className="min-w-0 flex-1 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{row.name}</h1>
           <div className="flex shrink-0 items-center gap-1">
             {row.proposed ? (
@@ -242,6 +274,13 @@ function Detail({ env, row, tick, onEdit }: { env: string; row: RoutineRow; tick
             <h2 className="text-xs font-medium text-muted-foreground">Runs</h2>
             {runs === null ? (
               <Skeleton className="h-4 w-1/2" />
+            ) : "error" in runs ? (
+              <p className="flex items-baseline gap-2 text-xs">
+                <span className="min-w-0 text-destructive">{runs.error}</span>
+                <Button variant="ghost" size="xs" onClick={retryRuns}>
+                  Retry
+                </Button>
+              </p>
             ) : runs.length === 0 ? (
               <p className="text-xs text-muted-foreground">{noRunsLine(row)}</p>
             ) : (
@@ -265,7 +304,7 @@ function Detail({ env, row, tick, onEdit }: { env: string; row: RoutineRow; tick
 function ListSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading routines" className="flex h-full min-h-0">
-      <div className="flex shrink-0 flex-col gap-3 border-r border-border p-4" style={{ width: PAGE_LIST_WIDTH }}>
+      <div className="flex w-70 shrink-0 flex-col gap-3 border-r border-border p-4">
         {[64, 48, 72, 40].map((w, i) => (
           <div key={i} className="flex flex-col gap-1.5">
             <Skeleton className="h-3.5" style={{ width: `${w}%` }} />

@@ -8,7 +8,7 @@ import { reveal, yields } from "../../components/ui/reveal";
 import { StatusMark } from "../../components/ui/status";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { loadToast } from "../../components/ui/toaster";
-import { ChevronDown, Globe, MoreHorizontal, Outbox, Plug, SquareMousePointer } from "../../chrome/icons";
+import { ChevronDown, ChevronLeft, Globe, MoreHorizontal, Outbox, Plug, SquareMousePointer } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { OverlayNav } from "../../chrome/TitleBar";
 import { WindowControls } from "../../chrome/WindowControls";
@@ -21,13 +21,15 @@ import { storeTitleOf } from "../../lib/threadMentions";
 import { useEnvironments } from "../../lib/connection";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
+import { Facts } from "../../surfaces/settings/hosts/Facts";
+import { Skeleton } from "../../components/ui/skeleton";
 import { ActView } from "../acts/ActView";
 import { Calendar, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
-import { byWorkspace, dayOf, decidedWords, grantFor, pastOf, timeOf, WORK_CHATS_KEY } from "./model";
-import { undoResult, useResults } from "./results";
-import { discardItem, grantAndSend, loadOutbox, notSentWords, sendItem, sendMany, useOutbox, wentOut, type HostItem } from "./store";
+import { byWorkspace, dayOf, decidedWords, grantFor, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
+import { loadResults, undoResult, useResults } from "./results";
+import { discardItem, fetchItem, grantAndSend, loadOutbox, notSentWords, sendItem, sendMany, useOutbox, wentOut, type HostItem } from "./store";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
@@ -40,6 +42,16 @@ const keyOf = (item: Pick<HostItem, "environmentId" | "ref">): string => `${item
 const pressable = (item: HostItem): boolean => item.state === "held" || item.state === "live" || item.state === "failed";
 /** What a plain Send may take, alone or with others: a send that may have gone waits for his own "Send again". */
 const sendable = (item: HostItem): boolean => pressable(item) && !item.outcomeUnknown;
+/**
+ * Whether Edit has anything to offer: a field a person may change, or a body
+ * not drawn from html alone. An act read from a live screen is carried out as
+ * it was read, so the host refuses any change to it.
+ */
+export function canEdit(item: Pick<HostItem, "payload" | "state">): boolean {
+  if (item.state === "live") return false;
+  const view = payloadView(item.payload);
+  return view.fields.some((f) => f.edit !== null) || (view.body !== null && !view.body.readOnly);
+}
 /** Where he looks to see whether a send that may have gone went. */
 const checkWords = (item: HostItem): string => (item.kind === "mail.send" || item.kind === "office.mail.send" ? "Check Sent first" : "Check whether it went first");
 /** "Send to Dana Lee: Re: budget" → the act and what it is about. */
@@ -80,12 +92,15 @@ type Props = {
  * Work on, under its workspace, with exactly what will go on the right and
  * one fixed bar of verbs under it. Sent sits beside Waiting. Held is never
  * amber: a held row's glyph is its kind's, and only a failed send takes
- * the red mark.
+ * the red mark. Under 640px of page the list and the detail take turns: a
+ * pick opens the detail, and its back row returns to the list.
  */
 export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpenSession }: Props) {
   const outbox = useOutbox();
   const [tab, setTab] = useState<"waiting" | "sent">(rememberedTab);
   const [selected, setSelected] = useState<string | null>(null);
+  // Narrow, the detail shows only once he picks an item (the first is picked for the wide page by itself).
+  const [opened, setOpened] = useState(false);
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [grantsOpen, setGrantsOpen] = useState(false);
   const onCloseRef = useRef(onClose);
@@ -126,6 +141,8 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
       !workspaceId || workspaceId === WORK_CHATS_KEY ? "Work Chats" : (names.get(`${environmentId}:${workspaceId}`) ?? "A Work workspace");
   }, [workspaces]);
   const hostName = (id: string) => environments.find((e) => e.id === id)?.name ?? "A host";
+  const sectorOf = (environmentId: string, workspaceId: string | null): string | null =>
+    workspaces.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.sector ?? null;
 
   const list = tab === "waiting" ? outbox.waiting : outbox.sent;
   // The detail shows only the item he picked: one that left under him (sent elsewhere, a grant, a stale draft)
@@ -144,6 +161,12 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
       else next.delete(keyOf(item));
       return next;
     });
+
+  const pick = (item: HostItem) => {
+    setSelected(keyOf(item));
+    setOpened(true);
+  };
+  const narrowDetail = opened || (tab === "waiting" && tickedItems.length > 0);
 
   // After a press the item leaves Waiting: the next one down takes the selection.
   const afterPress = (item: HostItem) => {
@@ -184,14 +207,22 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
           </Button>
         </div>
       ))}
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <div ref={resize.attachPane} className="relative flex h-full min-h-0 shrink-0 flex-col border-r border-border">
+      <div className="@container/outbox flex min-h-0 min-w-0 flex-1">
+        <div
+          ref={resize.attachPane}
+          data-outbox-list=""
+          className={cn(
+            "relative flex h-full min-h-0 shrink-0 flex-col border-r border-border @max-[40rem]/outbox:w-full! @max-[40rem]/outbox:border-r-0",
+            narrowDetail && "@max-[40rem]/outbox:hidden",
+          )}
+        >
           <div className="flex shrink-0 items-center border-b border-border p-2">
             <Tabs
               value={tab}
               onValueChange={(v) => {
                 setTab(v as "waiting" | "sent");
                 setSelected(null);
+                setOpened(false);
               }}
             >
               <TabsList aria-label="Outbox" className="relative bg-transparent p-0 group-data-[orientation=horizontal]/tabs:h-7">
@@ -215,24 +246,32 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
                 ticked={ticked}
                 ticking={ticked.size > 0}
                 nameOf={nameOf}
-                onSelect={(item) => setSelected(keyOf(item))}
+                onSelect={pick}
                 onTick={tick}
                 onSendGroup={sendSeveral}
               />
             ) : (
-              <SentList items={outbox.sent} current={current} nameOf={nameOf} onSelect={(item) => setSelected(keyOf(item))} />
+              <SentList items={outbox.sent} current={current} nameOf={nameOf} onSelect={pick} />
             )}
           </div>
           <div
             {...sashKeys}
-            className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent ${resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"}`}
+            className={`absolute inset-y-0 -right-px z-10 w-1.5 cursor-col-resize touch-none outline-none focus-visible:bg-accent @max-[40rem]/outbox:hidden ${resize.dragging ? "bg-foreground/12" : "hover:bg-foreground/7"}`}
             onPointerDown={resize.onPointerDown}
           />
         </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div data-outbox-detail="" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", !narrowDetail && "@max-[40rem]/outbox:hidden")}>
+          <div className="hidden shrink-0 px-4 pt-2 @max-[40rem]/outbox:block">
+            <Button variant="ghost" size="xs" onClick={() => setOpened(false)}>
+              <ChevronLeft className="size-3.5" />
+              {tab === "waiting" ? "Waiting" : "Sent"}
+            </Button>
+          </div>
           {tab === "waiting" && tickedItems.length > 0 ? (
             <TickedDetail items={tickedItems} onClear={() => setTicked(new Set())} onSend={() => sendSeveral(tickedItems)} />
-          ) : !outbox.loaded && list.length === 0 ? null : !current ? (
+          ) : !outbox.loaded && list.length === 0 ? (
+            <DetailSkeleton />
+          ) : !current ? (
             list.length > 0 ? (
               <EmptyState title="No longer waiting" line="Another press or device decided it. Pick an item from the list." />
             ) : tab === "waiting" ? (
@@ -241,25 +280,26 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
               <EmptyState title="Nothing sent yet" line="What left the machine shows here, newest first." />
             )
           ) : tab === "waiting" ? (
-            <HeldDetail key={keyOf(current)} item={current} workspace={nameOf(current.environmentId, current.workspaceId)} onOpenSession={onOpenSession} onPressed={afterPress} />
+            <HeldDetail key={keyOf(current)} item={current} workspace={nameOf(current.environmentId, current.workspaceId)} host={hostName(current.environmentId)} onOpenSession={onOpenSession} onPressed={afterPress} />
           ) : (
             <SentDetail key={keyOf(current)} item={current} workspace={nameOf(current.environmentId, current.workspaceId)} grantLabel={outbox.grants.find((g) => current.decidedBy === `grant:${g.id}`)?.label ?? null} onOpenSession={onOpenSession} />
           )}
         </div>
       </div>
-      <GrantsSheet open={grantsOpen} onOpenChange={setGrantsOpen} grants={outbox.grants} nameOf={nameOf} />
+      <GrantsSheet open={grantsOpen} onOpenChange={setGrantsOpen} grants={outbox.grants} nameOf={nameOf} sectorOf={sectorOf} />
     </div>
   );
 }
 
 // ── the lists ─────────────────────────────────────────────────────────────
 
-function GroupHead({ sector, name, children }: { sector: string | null; name: string; children?: React.ReactNode }) {
+/** A workspace's heading; its Send N shows on hover, as a row's controls do. */
+function GroupHead({ sector, name, children, busy = false }: { sector: string | null; name: string; children?: React.ReactNode; busy?: boolean }) {
   return (
-    <div className="mt-3 flex h-7 items-center gap-2 pe-1 ps-2 first:mt-1">
+    <div className="group/item mt-3 flex h-7 items-center gap-2 pe-1 ps-2 first:mt-1">
       <SectorDot sector={sector} className="size-3.5" />
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">{name}</span>
-      {children}
+      {children ? <span className={cn(reveal("item", { row: true }), busy && "opacity-100")}>{children}</span> : null}
     </div>
   );
 }
@@ -291,7 +331,7 @@ function WaitingList({
         const ready = group.items.filter(sendable);
         return (
           <section key={group.key} aria-label={name}>
-            <GroupHead sector={group.sector} name={name}>
+            <GroupHead sector={group.sector} name={name} busy={busy === group.key}>
               {ready.length > 1 ? (
                 <Button
                   size="xs"
@@ -414,7 +454,7 @@ function DetailHead({ item, facts, menu }: { item: HostItem; facts: string[]; me
       <div className="flex min-h-7 items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1 text-xs text-muted-foreground">
           <SectorDot sector={item.sector} className="-ms-1 size-4" />
-          <span className="min-w-0 truncate">{facts.filter(Boolean).join(" · ")}</span>
+          <Facts parts={facts} className="min-w-0" />
         </span>
         {menu}
       </div>
@@ -442,7 +482,7 @@ const threadWords = (item: HostItem): string | null => {
   return title ? `from ${title}` : null;
 };
 
-function HeldDetail({ item, workspace, onOpenSession, onPressed }: { item: HostItem; workspace: string; onOpenSession?: Props["onOpenSession"]; onPressed: (item: HostItem) => void }) {
+function HeldDetail({ item, workspace, host, onOpenSession, onPressed }: { item: HostItem; workspace: string; host: string; onOpenSession?: Props["onOpenSession"]; onPressed: (item: HostItem) => void }) {
   const [busy, setBusy] = useState<"send" | "discard" | "grant" | null>(null);
   const [editing, setEditing] = useState(false);
   const grant = grantFor(item);
@@ -473,19 +513,18 @@ function HeldDetail({ item, workspace, onOpenSession, onPressed }: { item: HostI
               <span className="min-w-0 flex-1 text-destructive">{item.error ?? "It couldn't be sent."}</span>
             </div>
           ) : null}
-          {item.kind === "computer.act" ? <p className="text-[13px] leading-5 text-muted-foreground">Takes this host's screen for a moment.</p> : null}
-          {item.proposed ? <p className="text-[13px] leading-5 text-muted-foreground">An agent's rewrite waits in this draft; what shows is what goes.</p> : null}
+          {item.kind === "computer.act" ? <p className="text-[13px] leading-5 text-muted-foreground">Takes {host}'s screen for a moment.</p> : null}
           <ActView item={item} env={item.environmentId} />
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 border-t border-border px-8 py-3">
+      <VerbBar>
         <Button variant="ghost" size="sm" disabled={!waiting || busy !== null} onClick={() => void press("discard")}>
           <BusyLabel busy={busy === "discard"} label="Discard" />
         </Button>
         <span className="flex-1" />
         {/* A send that may have gone: no plain Send, only his own Send again once he has looked. */}
         {item.outcomeUnknown && waiting ? <span className="text-[13px] leading-5 text-muted-foreground">{checkWords(item)}</span> : null}
-        {waiting ? (
+        {waiting && canEdit(item) ? (
           <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
             Edit
           </Button>
@@ -516,7 +555,7 @@ function HeldDetail({ item, workspace, onOpenSession, onPressed }: { item: HostI
             ) : null}
           </span>
         )}
-      </div>
+      </VerbBar>
       {editing ? <EditDialog item={item} onClose={() => setEditing(false)} /> : null}
     </>
   );
@@ -549,11 +588,19 @@ function SentDetail({ item, workspace, grantLabel, onOpenSession }: { item: Host
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
           <DetailHead item={item} facts={[workspace, `${decidedWords(item, grantLabel)} ${dayOf(at) === "Today" ? "at" : "on"} ${timeOf(at)}`]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
           <ActView item={item} env={item.environmentId} />
+          {item.kind === "computer.act" ? <KeptPicture item={item} /> : null}
         </div>
       </div>
-      <div className="flex h-[57px] shrink-0 items-center gap-2 border-t border-border px-8">
+      <VerbBar>
         <span className="flex-1" />
-        {!results.loaded ? null : result?.undoneAt ? (
+        {!results.loaded ? null : results.error && !result ? (
+          <>
+            <span className="min-w-0 truncate text-[13px] text-destructive">{results.error}</span>
+            <Button variant="ghost" size="sm" onClick={() => loadResults(item.environmentId, item.sessionId ?? "")}>
+              Retry
+            </Button>
+          </>
+        ) : result?.undoneAt ? (
           <span className="text-[13px] text-muted-foreground">Taken back at {timeOf(result.undoneAt)}</span>
         ) : result?.undo ? (
           <Button variant="secondary" size="sm" disabled={busy} onClick={() => void back()}>
@@ -562,7 +609,7 @@ function SentDetail({ item, workspace, grantLabel, onOpenSession }: { item: Host
         ) : (
           <span className="text-[13px] text-muted-foreground">{item.kind === "mail.send" || item.kind === "office.mail.send" ? "Sent mail cannot be taken back" : "This cannot be taken back"}</span>
         )}
-      </div>
+      </VerbBar>
     </>
   );
 }
@@ -588,7 +635,7 @@ function TickedDetail({ items, onClear, onSend }: { items: HostItem[]; onClear: 
           </ul>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 border-t border-border px-8 py-3">
+      <VerbBar>
         <Button variant="ghost" size="sm" disabled={busy} onClick={onClear}>
           Clear
         </Button>
@@ -603,7 +650,74 @@ function TickedDetail({ items, onClear, onSend }: { items: HostItem[]; onClear: 
         >
           <BusyLabel busy={busy} label={`Send ${items.length}`} />
         </Button>
-      </div>
+      </VerbBar>
     </>
   );
+}
+
+/** The detail's foot: the hairline across the pane, its verbs in the detail's own 640px column so they line up with the text. */
+function VerbBar({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="shrink-0 border-t border-border">
+      <div className="mx-auto flex min-h-14 w-full max-w-[640px] items-center gap-2 px-8 py-3 @max-[40rem]/outbox:px-4">{children}</div>
+    </div>
+  );
+}
+
+/** While the Outbox first loads: the detail's head and a few lines, in its column. */
+function DetailSkeleton() {
+  return (
+    <div role="status" aria-label="Loading the item" aria-busy className="mx-auto flex w-full max-w-[640px] flex-col gap-2 px-8 py-8">
+      <Skeleton className="h-3 w-40" />
+      <Skeleton className="mt-1 h-4 w-64 max-w-full" />
+      <div className="mt-4 flex flex-col gap-3">
+        <Skeleton className="h-3 w-[88%]" />
+        <Skeleton className="h-3 w-[72%]" />
+        <Skeleton className="h-3 w-[80%]" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A computer act's Sent record keeps the window as it was read (DESIGN.md
+ * "Around the canvas"). The list leaves the picture's bytes out, so the
+ * whole act is read for it; an act that kept none draws nothing, and a read
+ * that failed says so with Retry.
+ */
+function KeptPicture({ item }: { item: HostItem }) {
+  const kept = (item.payload as { picture?: { width?: number; height?: number } | null } | null)?.picture;
+  const key = kept ? JSON.stringify(item.ref) : null;
+  // undefined while it comes; "failed" when the host did not answer.
+  const [src, setSrc] = useState<string | null | undefined | "failed">(undefined);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!key) return;
+    let live = true;
+    setSrc(undefined);
+    fetchItem(item.environmentId, item.ref).then(
+      (whole) => {
+        const picture = (whole.payload as { picture?: { data?: string; mimeType?: string } | null } | null)?.picture;
+        if (live) setSrc(picture?.data ? `data:${picture.mimeType ?? "image/jpeg"};base64,${picture.data}` : null);
+      },
+      () => live && setSrc("failed"),
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read again only for another act or a Retry
+  }, [key, attempt]);
+  if (!key || src === null) return null;
+  const shape = kept?.width && kept.height ? `${kept.width} / ${kept.height}` : "16 / 10";
+  if (src === undefined) return <Skeleton className="w-full rounded-lg" style={{ aspectRatio: shape }} />;
+  if (src === "failed")
+    return (
+      <p className="flex items-baseline gap-2 text-[13px] leading-5">
+        <span className="text-destructive">The picture did not load</span>
+        <Button variant="ghost" size="xs" onClick={() => setAttempt((n) => n + 1)}>
+          Retry
+        </Button>
+      </p>
+    );
+  return <img src={src} alt={`The window as it was read, ${item.summary}`} draggable={false} className="h-auto w-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" style={{ aspectRatio: shape }} />;
 }

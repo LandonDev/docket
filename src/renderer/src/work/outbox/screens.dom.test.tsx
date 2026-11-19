@@ -83,14 +83,21 @@ describe("the return from Away", () => {
     expect(found!.report.written.map((r) => r.summary)).toEqual(["Added Dietary needs"]);
   });
 
-  it("lists them in the order he must act, each with its verb", async () => {
+  it("lists them in the order he must act, leaving the held acts themselves to the Outbox", async () => {
     const found = await gatherAway([{ environmentId: "box", decided: { since: 1_500, threads: [{ sessionId: "t1", count: 2 }] } }], 3_000);
     const onOpenSession = vi.fn();
-    render(<AwayReturnWork report={found!.report} onClose={() => undefined} onOpenSession={onOpenSession} onOpenOutbox={() => undefined} />);
+    const onOpenOutbox = vi.fn();
+    render(<AwayReturnWork report={found!.report} onClose={() => undefined} onOpenSession={onOpenSession} onOpenOutbox={onOpenOutbox} />);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getAllByRole("region").map((r) => r.getAttribute("aria-label"))).toEqual(["Held", "Failed", "Decided without you", "Written on your files"]);
+    expect(within(within(dialog).getByRole("region", { name: "Held" })).getByText("1 waiting")).toBeTruthy();
     expect(within(within(dialog).getByRole("region", { name: "Failed" })).getByText("Slack did not answer")).toBeTruthy();
-    expect(within(within(dialog).getByRole("region", { name: "Failed" })).getByRole("button", { name: "Send again" })).toBeTruthy();
+    // No send from here: a send that may have gone keeps the Outbox's guard.
+    expect(within(dialog).queryByRole("button", { name: /^Send/ })).toBeNull();
+    const outboxButton = within(dialog).getByRole("button", { name: "Open the Outbox" });
+    expect(outboxButton.closest("[data-footer-start]")).toBeTruthy();
+    fireEvent.click(outboxButton);
+    expect(onOpenOutbox).toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Open" }));
     expect(onOpenSession).toHaveBeenCalledWith("t1", "box");
     // Held is never amber

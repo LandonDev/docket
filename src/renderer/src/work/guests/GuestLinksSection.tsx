@@ -2,45 +2,47 @@ import { useCallback, useEffect, useState } from "react";
 import { errorText } from "../../chrome/ConfirmDialog";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { reveal } from "../../components/ui/reveal";
 import { loadToast } from "../../components/ui/toaster";
+import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { copyText } from "../../lib/clipboard";
 import { clockTime } from "../../lib/duration";
 import { Avatar } from "./Share";
-import { isLive, ROLE_WORDS, shortDay, type GuestLinkRow } from "./api";
+import { guestsCall, isLive, ROLE_WORDS, shortDay, type GuestLinkRow } from "./api";
 
 /**
  * Settings → Work, Guest links (prototype guest.html, "One list"; the audit
  * list): every link on every Work host, live ones first, who, to what, what
  * they can do, when it ends, when they last opened it, and Revoke. A link
  * that ended or was revoked stays a week, muted. The rows live on the host
- * that serves LifeOS's documents, so in practice one host answers.
+ * that serves LifeOS's documents, so in practice one host answers; a host
+ * that says another serves them is asked there, once. A host that does not
+ * answer is its own red line with Retry, and the others' links stay. A
+ * live row's Copy new address and Revoke show on hover.
  */
 export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
   const [rows, setRows] = useState<{ env: string; link: GuestLinkRow }[] | null>(null);
+  // A host's read that failed, and a press that failed: each said once, apart from the rows that did come.
+  const [failed, setFailed] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const key = hosts.join(",");
 
   const load = useCallback(() => {
-    Promise.all(
+    void Promise.allSettled(
       key
         .split(",")
         .filter(Boolean)
-        .map((env) =>
-          registry
-            .linkOf(env)
-            .request<GuestLinkRow[]>("work.guests.list", {})
-            .then((links) => links.map((link) => ({ env, link }))),
-        ),
-    ).then(
-      (all) => {
-        const now = Date.now();
-        setRows(all.flat().sort((a, b) => Number(isLive(b.link, now)) - Number(isLive(a.link, now)) || b.link.createdAt - a.link.createdAt));
-        setError(null);
-      },
-      (err: unknown) => setError(errorText(err)),
-    );
+        .map((env) => guestsCall<GuestLinkRow[]>(env, "work.guests.list", {}).then(({ env: there, value }) => value.map((link) => ({ env: there, link })))),
+    ).then((all) => {
+      const now = Date.now();
+      // Two hosts sent to the one that serves the links read the same rows: each link once.
+      const byId = new Map(all.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).map((row) => [row.link.id, row]));
+      setRows([...byId.values()].sort((a, b) => Number(isLive(b.link, now)) - Number(isLive(a.link, now)) || b.link.createdAt - a.link.createdAt));
+      setFailed([...new Set(all.flatMap((r) => (r.status === "rejected" ? [errorText(r.reason)] : [])))]);
+      setError(null);
+    });
   }, [key]);
   useEffect(load, [load]);
   // A link made or revoked anywhere: the host says so.
@@ -81,15 +83,27 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
 
   return (
     <PageSection title="Guest links">
-      {error ? <PageError action={<Button variant="ghost" size="sm" onClick={load}>Try again</Button>}>{error}</PageError> : null}
-      {rows === null && !error ? <PageRowsSkeleton rows={2} description control="button" media /> : null}
-      {rows?.length === 0 ? <PageEmpty>Share on a document or a sheet makes one.</PageEmpty> : null}
+      {failed.map((why) => (
+        <PageError
+          key={why}
+          action={
+            <Button variant="ghost" size="sm" onClick={load}>
+              Retry
+            </Button>
+          }
+        >
+          {why}
+        </PageError>
+      ))}
+      {error ? <PageError>{error}</PageError> : null}
+      {rows === null ? <PageRowsSkeleton rows={2} description control="button" media /> : null}
+      {rows?.length === 0 && failed.length === 0 ? <PageEmpty>No guest links</PageEmpty> : null}
       {rows?.map(({ env, link }) => {
         const live = isLive(link);
         return (
           <PageRow key={link.id} media={<Avatar name={link.name} />} title={link.name} description={describe(link, live)} className={live ? undefined : "opacity-60"}>
             {live ? (
-              <div className="flex shrink-0 items-center gap-1">
+              <div data-guest-actions="" className={cn("flex shrink-0 items-center gap-1", revoking?.endsWith(link.id) ? "opacity-100" : reveal("item", { row: true }))}>
                 <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void copyNew(env, link.id)}>
                   <BusyLabel busy={revoking === `copy:${link.id}`} label="Copy new address" />
                 </Button>

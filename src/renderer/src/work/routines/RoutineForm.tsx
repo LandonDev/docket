@@ -8,6 +8,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle, type ToggleChoice } from "../../components/choice-toggle";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
@@ -167,12 +168,16 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
             </Field>
           ) : form.starts === "read" ? (
             tools !== null && tools.length === 0 ? (
-              <p className="text-xs text-muted-foreground">A read uses a tool set to Runs in Settings → Work. None is yet.</p>
+              <p className="text-xs text-muted-foreground">A read needs a tool set to Runs in Settings → Work.</p>
             ) : (
               <>
                 <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-3">
                   <Field label="Read">
-                    <ChoiceSelect label="Read" value={form.tool} options={[{ value: "", label: tools === null ? "Loading…" : "Pick a tool" }, ...(tools ?? [])]} onChange={(tool) => patchTrigger({ tool })} />
+                    {tools === null ? (
+                      <Skeleton aria-label="Loading the tools" className="h-8 w-full rounded-lg" />
+                    ) : (
+                      <ChoiceSelect label="Read" value={form.tool} options={[{ value: "", label: "Pick a tool" }, ...tools]} onChange={(tool) => patchTrigger({ tool })} />
+                    )}
                   </Field>
                   <Field label="Every">
                     <ChoiceSelect label="Every" value={form.every} options={EVERY_CHOICES} onChange={(every) => patchTrigger({ every })} />

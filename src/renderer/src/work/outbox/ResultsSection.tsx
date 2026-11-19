@@ -3,21 +3,31 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { LoadingLine } from "../../surfaces/SurfaceSkeleton";
 import { timeOf } from "./model";
-import { undoResult, useResults, type HostResult } from "./results";
+import { loadResults, undoResult, useResults, type HostResult } from "./results";
 
 /**
  * A Work thread's Results (docs/DESIGN.md "Around the canvas"): what it and
  * its subagents sent and wrote that lasts, split by whether it can still be
  * taken back. Each row is the act in his words, then where and when, with
- * its way back. Listed only while there is one (lib/rightPanel.ts).
+ * its way back. Listed only while there is one (lib/rightPanel.ts). A read
+ * that failed is its red line with Retry, over the rows already read, never
+ * an empty list.
  */
 export function ResultsSection({ environmentId, sessionId }: { environmentId: string; sessionId: string }) {
-  const { rows, loaded } = useResults(environmentId, sessionId, true);
+  const { rows, loaded, error } = useResults(environmentId, sessionId, true);
   if (!loaded && rows.length === 0) return <LoadingLine label="Loading the results" />;
   const can = rows.filter((r) => r.undo && !r.undoneAt);
   const cannot = rows.filter((r) => !r.undo || r.undoneAt);
   return (
     <div data-slot="results" className="flex min-h-0 flex-col gap-4 overflow-x-hidden overflow-y-auto px-3 pb-3">
+      {error ? (
+        <div role="alert" className="flex min-h-7 items-center gap-2 text-xs">
+          <span className="min-w-0 flex-1 text-destructive">{error}</span>
+          <Button variant="ghost" size="xs" onClick={() => loadResults(environmentId, sessionId)}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       {can.length ? <Group title="Can undo" rows={can} /> : null}
       {cannot.length ? <Group title="Can't undo" rows={cannot} /> : null}
     </div>

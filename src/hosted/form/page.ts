@@ -16,11 +16,19 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return node
 }
 
-function message(root: HTMLElement, title: string, line?: string): void {
+function message(root: HTMLElement, title: string, line?: string, action?: { label: string; run: () => void }): void {
   root.replaceChildren()
   const box = el('div', 'fm-msg')
   box.append(el('h1', undefined, title))
   if (line) box.append(el('p', 'fm-desc', line))
+  if (action) {
+    const foot = el('div', 'fm-foot')
+    const button = el('button', 'fm-send', action.label)
+    button.type = 'button'
+    button.addEventListener('click', action.run)
+    foot.append(button)
+    box.append(foot)
+  }
   root.append(box)
   root.removeAttribute('aria-busy')
 }
@@ -134,6 +142,7 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
     if (missing) return showError(missing.id, 'This question needs an answer.')
     button.disabled = true
     button.setAttribute('aria-busy', 'true')
+    button.textContent = 'Sending…'
     void fetcher(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers }) })
       .then(async (r) => {
         if (r.ok) return message(root, f.title, 'Your answer was sent. Thank you.')
@@ -145,20 +154,27 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
       .finally(() => {
         button.disabled = false
         button.removeAttribute('aria-busy')
+        button.textContent = 'Send'
       })
   })
   root.append(form)
   root.removeAttribute('aria-busy')
 }
 
-/** Reads the form the page's address names and draws it. */
+/**
+ * Reads the form the page's address names and draws it. A form that is not
+ * there (404, 410) says so; a read that failed (the service, the connection)
+ * is not the same thing, and offers Retry.
+ */
 export async function mount(root: HTMLElement, pathname: string, fetcher: Fetch): Promise<void> {
   const base = pathname.replace(/\/+$/, '')
+  const retry = { label: 'Retry', run: () => void mount(root, pathname, fetcher) }
   try {
     const r = await fetcher(`${base}/form`)
-    if (!r.ok) return message(root, 'There is no form here', 'The link may be wrong, or the form was taken down.')
+    if (r.status === 404 || r.status === 410) return message(root, 'There is no form here', 'The link may be wrong, or the form was taken down.')
+    if (!r.ok) return message(root, 'The form did not load', 'Something went wrong on our side.', retry)
     renderForm(root, (await r.json()) as PublicForm, base, fetcher)
   } catch {
-    message(root, 'The form did not load', 'Check your connection and reload the page.')
+    message(root, 'The form did not load', 'Check your connection.', retry)
   }
 }

@@ -90,7 +90,7 @@ function Body({ sector, startsAt, onClose, pending, setPending }: { sector: Sect
         <Field label="Event">
           <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} placeholder="Walk the ballroom" autoComplete="off" />
         </Field>
-        <div className="grid grid-cols-[minmax(0,1fr)_96px_96px] gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_120px_120px] gap-2">
           <Field label="Day">
             <Input type="date" value={form.day} onChange={(e) => patch({ day: e.target.value })} />
           </Field>

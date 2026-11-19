@@ -3,7 +3,7 @@ import type { HouseRule, RuleProposal, RulesPage } from "@shared/contract-work-r
 import { ChevronRight, GripVertical, Search } from "../../chrome/icons";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../../components/ui/collapsible";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { reveal } from "../../components/ui/reveal";
@@ -23,7 +23,8 @@ import { RuleDialog, type RuleDialogOf } from "./RuleDialog";
  * as one-line rows that open their edit dialog, a switch each, a grip in the
  * gutter on hover to reorder, a find field past twelve rules; then the
  * proposals his edits made, each opening to the edits; then the voice
- * switch. Every write is his press.
+ * switch, only where the workspace has a sector to read mail from. Every
+ * write is his press.
  */
 
 /** Past this many rules, a find field sits over the list. */
@@ -76,7 +77,7 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
           ))}
         </PageSection>
       ) : null}
-      <Voice workspace={workspace} />
+      {workspace.sector ? <Voice workspace={workspace} /> : null}
       {dialog ? <RuleDialog env={env} workspaceId={workspace.id} of={dialog} onClose={() => setDialog(null)} onAdded={dialog.kind === "proposal" ? added : undefined} /> : null}
     </>
   );
@@ -139,7 +140,7 @@ function RuleList({ env, workspaceId, page, put, onOpen }: { env: string; worksp
             )}
             <PageRow
               title={
-                <span className={cn("block min-w-0 truncate font-normal", !rule.on && "text-muted-foreground")}>
+                <span className={cn("block min-w-0 truncate font-normal @max-[30rem]/page:line-clamp-2 @max-[30rem]/page:whitespace-normal", !rule.on && "text-muted-foreground")}>
                   <Marked text={rule.text} find={q} />
                 </span>
               }
@@ -187,10 +188,10 @@ function ProposalRow({ env, proposal, onAdded, onEdit }: { env: string; proposal
         </CollapsibleTrigger>
         <span className="flex shrink-0 gap-2">
           <Button variant="ghost" size="xs" disabled={busy !== null} onClick={dismiss}>
-            Dismiss
+            <BusyLabel busy={busy === "dismiss"} label="Dismiss" />
           </Button>
           <Button variant="secondary" size="xs" disabled={busy !== null} onClick={add}>
-            Add
+            <BusyLabel busy={busy === "add"} label="Add" />
           </Button>
         </span>
       </div>
@@ -221,15 +222,12 @@ function Voice({ workspace }: { workspace: WorkspaceMeta }) {
     }
   };
   const v = facts.status === "ready" ? facts.value : null;
-  const line = !v
-    ? undefined
-    : !workspace.sector
-      ? "This workspace has no LifeOS sector"
-      : v.count === null
-        ? undefined
-        : v.count === 0
-          ? "No mail sent in the last 30 days"
-          : `${v.count} ${v.count === 1 ? "mail" : "mails"}${v.from[0] ? ` from ${v.from[0]}` : ""} since ${DAY.format(v.since ?? Date.now())}`;
+  const line =
+    !v || v.count === null
+      ? undefined
+      : v.count === 0
+        ? "No mail sent in the last 30 days"
+        : `${v.count} ${v.count === 1 ? "mail" : "mails"}${v.from[0] ? ` from ${v.from[0]}` : ""} since ${DAY.format(v.since ?? Date.now())}`;
   return (
     <PageSection title="Voice">
       {facts.status === "loading" ? (
@@ -238,7 +236,7 @@ function Voice({ workspace }: { workspace: WorkspaceMeta }) {
         <PageError>{facts.error}</PageError>
       ) : (
         <PageRow title="Read my sent mail for how I write" description={line} error={facts.value.error}>
-          <SettingSwitch label="Read my sent mail for how I write" on={facts.value.on} disabled={!workspace.sector} onChange={flip} />
+          <SettingSwitch label="Read my sent mail for how I write" on={facts.value.on} onChange={flip} />
         </PageRow>
       )}
     </PageSection>

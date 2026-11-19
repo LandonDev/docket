@@ -6,6 +6,8 @@ import { formatDue } from "work-kit/views/lib/format";
 import { ChevronDown, Plus } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
+import { ItemButton } from "../../components/ui/item";
+import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { reveal, yields } from "../../components/ui/reveal";
@@ -183,15 +185,15 @@ const TaskRow = memo(function TaskRow({
   }, [ticked]);
   return (
     <ContextMenu>
-      <ContextMenuTrigger
-        render={<div role="listitem" className="group/row relative flex min-h-11 items-start gap-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-muted" />}
-      >
-        <Checkbox shape="round" className="mt-0.5" checked={ticked} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
-        <button type="button" onClick={() => onOpen(task)} className="flex min-w-0 flex-1 flex-col text-left outline-none">
+      <ContextMenuTrigger render={<div role="listitem" className={cn("group/row flex min-h-11 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
+        {/* The open control lies over the whole row, so keyboard focus rings the row; the tick and Start sit above it. */}
+        <ItemButton data-row-open aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} className={ROW_OPEN} />
+        <Checkbox shape="round" className={cn("mt-0.5", ROW_CONTROLS)} checked={ticked} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
+        <span className={cn("flex min-w-0 flex-1 flex-col", ROW_SHOWS)}>
           <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
           {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
-        </button>
-        {due ? <span className={cn("shrink-0 text-xs leading-5 tabular-nums", overdue ? "text-destructive" : "text-muted-foreground", yields("row"))}>{due}</span> : null}
+        </span>
+        {due ? <span className={cn("shrink-0 text-xs leading-5 tabular-nums", ROW_SHOWS, overdue ? "text-destructive" : "text-muted-foreground", yields("row"))}>{due}</span> : null}
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true, overlay: true }))}>
           <Button size="xs" variant="ghost" onClick={() => onStart(task)}>
             Start

@@ -4,7 +4,7 @@ import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { LogIn } from "../../chrome/icons";
 import type { MenuIcon, MenuRow } from "../../chrome/menuRows";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
-import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
+import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { Dialog } from "../../components/ui/dialog";
@@ -183,12 +183,12 @@ function NameWorkspaceDialog({
     <Dialog {...root}>
       <ModalPanel onClose={onClose} busy={pending} title="New Work workspace" size="sm">
         <form onSubmit={submit}>
-          <div className="flex flex-col gap-4 px-5 py-4">
+          <ModalBody>
             <Field label="Name">
               <Input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Side projects" />
             </Field>
             <ErrorLine error={clash ? "A workspace there already has that name" : error} />
-          </div>
+          </ModalBody>
           <DialogFooter onCancel={() => closeThen(onClose)} confirmLabel="Create" pending={pending} disabled={!trimmed || clash} />
         </form>
       </ModalPanel>

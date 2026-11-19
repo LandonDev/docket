@@ -74,4 +74,11 @@ describe("ToolchainRow", () => {
     await act(async () => asks[1].resolve({ host: "box", platform: "linux-x64", tools: [], converts: [], queue: { cap: { jobs: 1, threads: 1 }, running: 0, queued: 0 } }));
     expect(screen.getByText("None installed")).toBeTruthy();
   });
+
+  it("names its host where the page lists more than one", async () => {
+    const { link, asks } = fakeLink();
+    render(<ToolchainRow link={link} title="Conversion tools on the box" />);
+    await act(async () => asks[0].resolve({ host: "box", platform: "linux-x64", tools: [], converts: [], queue: { cap: { jobs: 1, threads: 1 }, running: 0, queued: 0 } }));
+    expect(screen.getByText("Conversion tools on the box")).toBeTruthy();
+  });
 });

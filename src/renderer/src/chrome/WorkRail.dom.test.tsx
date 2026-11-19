@@ -130,8 +130,9 @@ describe("the rail with Work on", () => {
     const names = labels(root);
     expect(names.indexOf("Work Chats")).toBe(names.indexOf("Chats") + 1);
     expect(names).not.toContain("Outbox");
-    // With no Work workspace yet, the heading's own row adds the first.
-    expect(names).toContain("Add Work workspace…");
+    // With no Work workspace yet, the heading's own row adds the first: "Add workspace…" under Work, fitting the 200px rail, named in full for a screen reader.
+    expect(names).toContain("Add workspace…");
+    expect(root.querySelector('nav button[aria-label="Add Work workspace…"]')).toBeTruthy();
   });
 });
 

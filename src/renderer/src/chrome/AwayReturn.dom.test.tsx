@@ -99,6 +99,8 @@ describe("AwayReturn", () => {
     expect(line).toBe("Decided without you in 4 threads");
     expect(options.id).toBe("away-return");
     expect(options.action.label).toBe("Review");
+    // It offers Review, so it stays until pressed (docs/DESIGN.md "Back from Away").
+    expect(options.duration).toBe(Infinity);
   });
 
   it("a stretch the host decided only by allowing (each allow counted on its thread) still toasts with Review", async () => {

@@ -15,6 +15,7 @@ const world = vi.hoisted(() => ({
   calls: [] as Call[],
   items: new Map<string, OutboxItem[]>(),
   grants: new Map<string, OutboxGrant[]>(),
+  resultsDown: false,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -58,7 +59,10 @@ vi.mock("../../lib/connection", async (original) => {
           return grant;
         }
         case "work.outbox.results":
+          if (world.resultsDown) throw new Error("The host did not answer");
           return { results: [] };
+        case "work.outbox.get":
+          return { ...find(), payload: { ...(find().payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" } } };
       }
       throw new Error(`unknown ${method}`);
     },
@@ -80,7 +84,7 @@ vi.mock("../../lib/connection", async (original) => {
 vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { OutboxView } from "./OutboxView";
+import { canEdit, OutboxView } from "./OutboxView";
 import { resetOutboxStore } from "./store";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({
@@ -123,9 +127,11 @@ beforeEach(() => {
   world.calls = [];
   world.items = new Map([
     ["box", [mail("o1", "Dana Lee", "Budget"), mail("o2", "Sam Ortiz", "Scrims"), mail("o3", "Events booking", "Ballroom")]],
-    ["mac", [addonCall]],
+    // a copy: a press marks the host's row sent, and the next test must find it held again
+    ["mac", [{ ...addonCall }]],
   ]);
   world.grants = new Map();
+  world.resultsDown = false;
   workSwitch.reset();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -249,5 +255,70 @@ describe("the Outbox", () => {
   it("never draws Held in amber: no waiting mark anywhere on the page", async () => {
     await open();
     expect(document.querySelector('[data-state="waiting"]')).toBeNull();
+  });
+
+  it("says the detail's facts as one comma sentence, never with a middle dot", async () => {
+    await open();
+    const facts = document.querySelector("header [data-slot=facts]") as HTMLElement;
+    expect(facts).toBeTruthy();
+    expect(facts.closest("header")!.textContent).not.toContain("·");
+  });
+
+  it("says a rewrite waits once, in the mail's own view, not again over it", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { proposed: true } as Partial<OutboxItem>)]);
+    await open();
+    expect(screen.queryByText("An agent's rewrite waits in this draft; what shows is what goes.")).toBeNull();
+  });
+
+  it("offers Edit only where something can change", async () => {
+    expect(canEdit(mail("o1", "Dana Lee", "Budget"))).toBe(true);
+    expect(canEdit({ state: "live", payload: { title: "Click Send", app: "Mail" } })).toBe(false);
+    expect(canEdit({ state: "held", payload: { id: "x", html: "<p>Only html</p>" } })).toBe(false);
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "live" })]);
+    await open();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("names the host whose screen a computer act takes, and keeps its picture in Sent", async () => {
+    const click: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "c1" }, kind: "computer.act", summary: "Click Send in Mail", payload: { title: "Click Send in Mail", app: "Mail", picture: { mimeType: "image/png", width: 16, height: 10 } } };
+    // The last test's press reloads its host as it ends: let that land before this world is read.
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    world.items.set("mac", [click]);
+    world.items.set("box", []);
+    resetOutboxStore();
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getAllByText("Click Send in Mail").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText(/screen for a moment\./)).toBeTruthy());
+    expect(screen.queryByText(/this host's screen/)).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    const picture = (await screen.findByRole("img")) as HTMLImageElement;
+    expect(picture.src).toBe("data:image/png;base64,AAAA");
+    expect(world.calls.some((c) => c.method === "work.outbox.get")).toBe(true);
+  });
+
+  it("keeps a failed read of the Results apart from an act with no way back, with Retry", async () => {
+    world.resultsDown = true;
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    await waitFor(() => expect(screen.getByText("The host did not answer")).toBeTruthy());
+    expect(screen.queryByText("Sent mail cannot be taken back")).toBeNull();
+    world.resultsDown = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await waitFor(() => expect(screen.getByText("Sent mail cannot be taken back")).toBeTruthy());
+  });
+
+  it("narrow, shows the list until he picks an item, then the detail with a way back", async () => {
+    await open();
+    const list = document.querySelector("[data-outbox-list]") as HTMLElement;
+    const detail = () => document.querySelector("[data-outbox-detail]") as HTMLElement;
+    expect(detail().className).toContain("@max-[40rem]/outbox:hidden");
+    fireEvent.click(await screen.findByText("Post message with Slack"));
+    expect(list.className).toContain("@max-[40rem]/outbox:hidden");
+    expect(detail().className).not.toContain("@max-[40rem]/outbox:hidden");
+    fireEvent.click(within(detail()).getByRole("button", { name: "Waiting" }));
+    expect(list.className).not.toContain("@max-[40rem]/outbox:hidden");
   });
 });

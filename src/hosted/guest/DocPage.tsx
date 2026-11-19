@@ -3,6 +3,7 @@ import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvi
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { Comment } from "@renderer/work/icons";
+import { commentLeft } from "./place";
 import { OpenFailed, type Opened, type Session } from "./session";
 import { guestThreads } from "./threads";
 
@@ -65,7 +66,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
               <span className="min-w-0 truncate text-muted-foreground">{status.message}</span>
               {status.retry ? (
                 <Button variant="ghost" size="xs" className="ms-auto" onClick={status.retry}>
-                  Try again
+                  Retry
                 </Button>
               ) : null}
             </div>
@@ -89,6 +90,9 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
     </EditorKitProvider>
   );
 }
+
+/** The comment field's width: 320px, or the page's width on a narrow phone. */
+const COMMENT_WIDTH = 320;
 
 function useWide(px: number): boolean {
   const [wide, setWide] = useState(() => window.innerWidth >= px);
@@ -151,11 +155,14 @@ function SelectionComment({ session, frame, onMade }: { session: Session; frame:
       setBusy(false);
     }
   };
+  // The field stays inside the page: as wide as it may be, and moved left of the selection near the right edge.
+  const frameWidth = frame.current?.clientWidth ?? COMMENT_WIDTH;
+  const width = writing ? Math.min(COMMENT_WIDTH, frameWidth) : undefined;
   return (
     <div
       className="absolute z-(--layer-popover) rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay"
       // The bar sits over the words; the field opens under them, so it never runs off the top.
-      style={{ left: Math.max(0, at.x), top: writing ? at.bottom + 8 : Math.max(0, at.y - 40), width: writing ? 320 : undefined }}
+      style={{ left: commentLeft(at.x, width ?? 120, frameWidth), top: writing ? at.bottom + 8 : Math.max(0, at.y - 40), width }}
       onMouseDown={(e) => {
         // The selection stays while the bar is pressed.
         if (!writing) e.preventDefault();

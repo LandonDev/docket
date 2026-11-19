@@ -136,6 +136,26 @@ describe("the rules page", () => {
   });
 });
 
+describe("the rule dialog", () => {
+  it("Add rule… writes the rule though no callback waits on it", async () => {
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add rule…" }));
+    await settle();
+    fireEvent.change(screen.getByRole("textbox", { name: "Rule" }), { target: { value: "Sign as Landon" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
+    await settle();
+    expect(calls.find((c) => c.method === "work.rules.add")?.params).toEqual({ workspaceId: "ws", text: "Sign as Landon" });
+  });
+
+  it("a workspace with no sector has no voice section", async () => {
+    render(<HouseRules workspace={{ ...(WORKSPACE as object), sector: null } as never} />);
+    await settle();
+    expect(screen.queryByText("Voice")).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Read my sent mail for how I write" })).toBeNull();
+  });
+});
+
 describe("the line under a sent mail", () => {
   it("names the habit, opens to the edits, and Not now leaves it for the rules page", async () => {
     render(<RuleLine env="box" draftId="d3" />);

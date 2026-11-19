@@ -83,4 +83,30 @@ describe('the form page', () => {
     await mount(root, '/f/abcdefghijklmnop', async () => json(200, { ...FORM, open: false }))
     expect(root.textContent).toContain('This form is closed.')
   })
+
+  it('says Sending… on the button while the answer is on its way', async () => {
+    let done: (r: Response) => void = () => undefined
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'POST' ? new Promise<Response>((r) => (done = r)) : json(200, FORM)))
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    type('#q0', 'Ava')
+    root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
+    submit()
+    const button = root.querySelector<HTMLButtonElement>('.fm-send')!
+    expect(button.textContent).toBe('Sending…')
+    expect(button.disabled).toBe(true)
+    done(json(400, { error: 'Try again.' }))
+    await vi.waitFor(() => expect(button.textContent).toBe('Send'))
+  })
+
+  it('tells a form that failed to load from one that is not there, and Retry reads it again', async () => {
+    let answer = json(503, {})
+    const fetcher = vi.fn(async () => answer)
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    expect(root.querySelector('h1')!.textContent).toBe('The form did not load')
+    answer = json(200, FORM)
+    root.querySelector<HTMLButtonElement>('button')!.click()
+    await vi.waitFor(() => expect(root.querySelector('h1')!.textContent).toBe('Spring LAN registration'))
+    await mount(root, '/f/abcdefghijklmnop', async () => Promise.reject(new TypeError('offline')))
+    expect(root.querySelector('button')!.textContent).toBe('Retry')
+  })
 })

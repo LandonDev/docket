@@ -12,10 +12,11 @@ import { registry } from "../../lib/connection";
 
 export type HostResult = WorkResult & { environmentId: string };
 
-type Entry = { environmentId: string; rows: HostResult[]; loaded: boolean };
+/** `error`: why the newest read failed, kept apart from a list that is empty; the rows already read stay. */
+type Entry = { environmentId: string; rows: HostResult[]; loaded: boolean; error: string | null };
 const results = new Map<string, Entry>();
 const listeners = new Set<() => void>();
-const EMPTY: { rows: HostResult[]; loaded: boolean } = { rows: [], loaded: false };
+const EMPTY: Omit<Entry, "environmentId"> = { rows: [], loaded: false, error: null };
 const loading = new Set<string>();
 const again = new Set<string>();
 
@@ -36,8 +37,9 @@ export function loadResults(environmentId: string, sessionId: string): void {
     .linkOf(environmentId)
     .request<{ results: WorkResult[] }>("work.outbox.results", { sessionId })
     .then(
-      (answer) => void results.set(sessionId, { environmentId, rows: tag(environmentId, answer.results), loaded: true }),
-      () => void results.set(sessionId, { environmentId, rows: results.get(sessionId)?.rows ?? [], loaded: true }),
+      (answer) => void results.set(sessionId, { environmentId, rows: tag(environmentId, answer.results), loaded: true, error: null }),
+      (err: unknown) =>
+        void results.set(sessionId, { environmentId, rows: results.get(sessionId)?.rows ?? [], loaded: true, error: (err instanceof Error ? err.message : String(err)) || "The host did not answer" }),
     )
     .finally(() => {
       loading.delete(sessionId);
@@ -47,7 +49,7 @@ export function loadResults(environmentId: string, sessionId: string): void {
 }
 
 /** A Work thread's Results, live; asked of its host once it is shown. A subagent's own thread gets its own. */
-export function useResults(environmentId: string, sessionId: string, enabled: boolean): { rows: HostResult[]; loaded: boolean } {
+export function useResults(environmentId: string, sessionId: string, enabled: boolean): Omit<Entry, "environmentId"> {
   const read = () => results.get(sessionId) ?? EMPTY;
   const entry = useSyncExternalStore(
     (listener) => {

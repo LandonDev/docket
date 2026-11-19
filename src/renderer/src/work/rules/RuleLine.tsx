@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { RuleProposal } from "@shared/contract-work-rules";
 import { Check, ChevronRight, PenLine } from "../../chrome/icons";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../../components/ui/collapsible";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
@@ -72,7 +72,7 @@ function Line({ env, proposal, workspace, onGone }: { env: string; proposal: Rul
             </CollapsibleTrigger>
             <span className="-mt-0.5 ms-auto flex shrink-0 gap-2">
               <Button variant="ghost" size="xs" disabled={busy} onClick={notNow}>
-                Not now
+                <BusyLabel busy={busy} label="Not now" />
               </Button>
               <Button variant="secondary" size="xs" disabled={busy} onClick={() => setAdding(true)}>
                 Add rule…
@@ -99,7 +99,7 @@ function AddedLine({ workspace, busy, onUndo }: { workspace: string; busy: boole
       <span className="min-w-0 flex-1">Added to {workspace}'s rules</span>
       {onUndo ? (
         <Button variant="ghost" size="xs" className="-mt-0.5" disabled={busy} onClick={onUndo}>
-          Undo
+          <BusyLabel busy={busy} label="Undo" />
         </Button>
       ) : null}
     </div>

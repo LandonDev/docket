@@ -12,9 +12,6 @@ const AwayReviewDialog = dialogsChunk.surface("AwayReviewDialog");
 /** With Work on, the return is Work's list (work/outbox/AwayList.tsx): held, failed, decided, written. */
 const AwayReturnWork = workOutboxChunk.surface("AwayReturnWork");
 
-/** The toast waits a while: the person just came back to it. */
-const RETURN_TOAST_MS = 8_000;
-
 type Props = {
   /** Opens a thread the list names. */
   onOpen: (sessionId: string, environmentId: string) => void;
@@ -22,10 +19,11 @@ type Props = {
 
 /**
  * Back from Away: one toast, "Decided without you in 4 threads", with
- * Review, which opens the list of those threads. Mounted once with the
- * app's toasts (App.tsx); nothing when no thread decided anything. While a
- * host has Work on, the toast is Work's ("Held 7, decided 4 without you"),
- * it stays until pressed, and Review opens Work's list (work/outbox).
+ * Review, which opens the list of those threads; it stays until pressed
+ * (docs/DESIGN.md "Back from Away"). Mounted once with the app's toasts
+ * (App.tsx); nothing when no thread decided anything. While a host has Work
+ * on, the toast is Work's ("Held 7, decided 4 without you"), and Review
+ * opens Work's list (work/outbox).
  */
 export function AwayReturn({ onOpen }: Props) {
   const [review, setReview] = useState<AwayDecidedThread[] | null>(null);
@@ -61,7 +59,7 @@ export function AwayReturn({ onOpen }: Props) {
         void loadToast().then((toast) =>
           toast(returnLine(threads.length), {
             id: AWAY_RETURN_TOAST,
-            duration: RETURN_TOAST_MS,
+            duration: Infinity,
             action: { label: "Review", onClick: () => setReview(threads) },
           }),
         );

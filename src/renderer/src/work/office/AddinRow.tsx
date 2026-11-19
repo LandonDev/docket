@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { OfficeAddinCode, OfficeAddinKey } from "@shared/contract-work-office";
-import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
+import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -123,7 +123,7 @@ function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: rea
   return (
     <Dialog {...root}>
       <ModalPanel onClose={close} title="Pair the Office add-in" description="Enter this code in the TempCode pane in Excel, Word or PowerPoint." size="sm">
-        <div className="flex flex-col gap-4 px-5 py-4">
+        <ModalBody>
           <div className="flex items-baseline justify-between gap-3">
             {code ? (
               <span className="font-mono text-base font-medium leading-6 text-foreground tabular-nums">{code.code}</span>
@@ -137,7 +137,7 @@ function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: rea
             ) : null}
           </div>
           <ErrorLine error={error} />
-        </div>
+        </ModalBody>
         <DialogFooter confirmLabel="Done" onConfirm={close} />
       </ModalPanel>
     </Dialog>

@@ -44,17 +44,28 @@ function listOf(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-export function ToolchainRow({ link }: { link: Link | null | undefined }) {
+/** `title` names the host where the page lists more than one ("Conversion tools on the box"). */
+export function ToolchainRow({ link, title }: { link: Link | null | undefined; title?: string }) {
   const read = useHostRead(link, () => link!.request<ToolsReport>("work.formats.tools", {}));
-  return <ToolchainRowView report={read.value} error={read.error} onRetry={read.retry} />;
+  return <ToolchainRowView title={title} report={read.value} error={read.error} onRetry={read.retry} />;
 }
 
 /** The row as the host's answer leaves it: its shape while loading, the refusal with Retry, or the line. */
-export function ToolchainRowView({ report, error, onRetry }: { report: Pick<ToolsReport, "tools"> | undefined; error: string | null; onRetry: () => void }) {
+export function ToolchainRowView({
+  title = "Conversion tools",
+  report,
+  error,
+  onRetry,
+}: {
+  title?: string;
+  report: Pick<ToolsReport, "tools"> | undefined;
+  error: string | null;
+  onRetry: () => void;
+}) {
   if (!report) {
     if (!error) return <PageRowsSkeleton rows={1} description control="none" />;
     return (
-      <PageRow title="Conversion tools" error={error}>
+      <PageRow title={title} error={error}>
         <Button variant="ghost" size="sm" onClick={onRetry}>
           Retry
         </Button>
@@ -63,7 +74,7 @@ export function ToolchainRowView({ report, error, onRetry }: { report: Pick<Tool
   }
   const line = toolchainLine(report);
   return (
-    <PageRow title="Conversion tools" description={line.installed} error={line.failed ?? undefined}>
+    <PageRow title={title} description={line.installed} error={line.failed ?? undefined}>
       {line.bytes > 0 ? <span className="text-xs tabular-nums text-muted-foreground">{formatBytes(line.bytes)}</span> : null}
     </PageRow>
   );
