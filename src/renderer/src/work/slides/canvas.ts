@@ -1,14 +1,15 @@
 import { defineChunk } from "../../lib/lazyChunk";
 import { Slides } from "../icons";
-import type { CanvasKindDef } from "../canvas/kind";
+import { defineCanvasKind, type CanvasKindDef } from "../canvas/kind";
+import type { SlidesState } from "./SlidesCanvas";
 
 /**
- * The slides kind of canvas item (docs/agents/work-slides.md). A stub: its
- * body says "Not built yet" until the slides pillar's milestone builds it
- * (`PILLAR_MILESTONE` in src/shared/work/ids.ts), which then points `chunk`
- * at its own module and corrects what the kind claims.
+ * The slides kind of canvas item (docs/agents/work-slides.md). The body is
+ * its own chunk, with pdf.js behind it: a slide is a page of the PDF the
+ * host renders from the deck. A Google deck is milestone 30's: the host
+ * refuses it with a sentence.
  */
-export const slidesCanvas: CanvasKindDef = {
+export const slidesCanvas: CanvasKindDef = defineCanvasKind<SlidesState>({
   kind: "slides",
   label: "Slides",
   icon: Slides,
@@ -19,5 +20,5 @@ export const slidesCanvas: CanvasKindDef = {
   },
   phone: "native",
   guestable: false,
-  chunk: defineChunk("work-slides-canvas", () => import("../canvas/NotBuilt")),
-};
+  chunk: defineChunk("work-slides-canvas", () => import("./SlidesCanvas")),
+});

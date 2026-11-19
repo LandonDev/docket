@@ -1,0 +1,217 @@
+// @vitest-environment jsdom
+/**
+ * The slides kind in the real canvas pane, with a host that keeps one deck's
+ * view and pages of words in place of pdf.js: a 12-slide deck in the strip,
+ * an agent's revision stepped from the bar slide by slide, a move shown
+ * where it lands and where it leaves, the notes, a shape asked about, the
+ * PowerPoint switch, and a deck with no picture.
+ */
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DeckView } from "@shared/contract-work-slides";
+import type { CanvasItem } from "@shared/work";
+import { openMenus } from "../../chrome/menuRows";
+import { defineChunk } from "../../lib/lazyChunk";
+import { CANVAS } from "../canvas/registry";
+import { canvasItem, fakeHost } from "../canvas/testkit";
+import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
+import { fakeDoc, fakeEngine } from "../pdf/testkit";
+import { changeIndex, slideOfChange, stageWidth } from "./SlidesCanvas";
+import { change, deckView, fakeDeckHost, slide } from "./testkit";
+
+const host = vi.hoisted(() => ({
+  current: null as ReturnType<typeof import("../canvas/testkit").fakeHost> | null,
+  pushes: new Set<(push: never) => void>(),
+  opens: new Set<() => void>(),
+}));
+vi.mock("../../lib/connection", async (original) => {
+  const link = {
+    environmentId: "local",
+    connected: true,
+    request: (method: string, params?: Record<string, unknown>) => host.current!.link.request(method, params),
+    onPush: (listener: (push: never) => void) => (host.pushes.add(listener), () => host.pushes.delete(listener)),
+    onOpen: (listener: () => void) => (host.opens.add(listener), () => host.opens.delete(listener)),
+    onClose: () => () => undefined,
+  };
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
+});
+
+import { CanvasSeat } from "../canvas/CanvasSeat";
+import { resetCanvasStore } from "../canvas/store";
+
+const WIDE = { width: 640 * 0.75, height: 360 * 0.75 };
+const DECK = fakeDoc(Array.from({ length: 12 }, (_, i) => ({ size: WIDE, runs: [{ str: `Slide ${i + 1}`, box: [0.1, 0.1, 0.6, 0.2] as [number, number, number, number] }] })));
+const PROPOSED = fakeDoc(Array.from({ length: 13 }, (_, i) => ({ size: WIDE, runs: [{ str: `Proposed ${i + 1}`, box: [0.1, 0.1, 0.6, 0.2] as [number, number, number, number] }] })));
+
+let deckHost: ReturnType<typeof fakeDeckHost>;
+let item: CanvasItem;
+
+function kinds(): Record<string, CanvasKindDef> {
+  // Each render a doc of its own: the file's 12 slides, the proposed deck's 13.
+  let opened = 0;
+  const engine = fakeEngine(() => (opened++ === 0 ? DECK : PROPOSED));
+  const module = import("./SlidesCanvas").then((m) => ({
+    Body: (props: CanvasBodyProps) => <m.Body {...(props as CanvasBodyProps<undefined>)} host={deckHost} engine={engine} width={800} height={700} />,
+    Bar: m.Bar as never,
+    TabEnd: m.TabEnd as never,
+  }));
+  return { ...CANVAS, slides: { ...CANVAS.slides, chunk: defineChunk(`test-slides-${Math.random()}`, () => module) } };
+}
+
+let n = 0;
+function open(view: DeckView) {
+  // Each test its own item, so the deck's per-item store starts fresh.
+  item = canvasItem(`deck${++n}`, { kind: "slides", title: "Sponsor deck.pptx", source: { at: "file", host: "local", path: "/work/deck.pptx" } });
+  deckHost = fakeDeckHost({ ...view, itemId: item.id });
+  host.current = fakeHost([item], host as never);
+  return render(
+    <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+      <div />
+    </CanvasSeat>,
+  );
+}
+
+const found = (selector: string): Promise<HTMLElement> =>
+  waitFor(() => {
+    const el = document.querySelector<HTMLElement>(selector);
+    expect(el).not.toBeNull();
+    return el!;
+  });
+const thumbs = () => [...document.querySelectorAll<HTMLElement>("[data-slide]")];
+
+beforeEach(async () => {
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as never;
+  Element.prototype.scrollIntoView ??= () => undefined;
+  localStorage.clear();
+  resetCanvasStore();
+  await new Promise<void>((done) => openMenus(done));
+});
+afterEach(cleanup);
+
+/** Five changes, as the prototype: three reworded, one moved, one added. */
+function revised(): DeckView {
+  const order = [1, 2, 6, 3, 4, 5, 13, 7, 8, 9, 10, 11, 12];
+  const slides = order.map((id, i) => {
+    if (id === 2 || id === 3 || id === 4) return slide(id, { number: i + 1, from: "proposed", page: i + 1, change: `c${id}`, tint: "add", changed: [[0.1, 0.4, 0.8, 0.6]] });
+    if (id === 6) return slide(6, { number: i + 1, from: "proposed", page: i + 1, change: "c6", tint: "add" });
+    if (id === 13) return slide(13, { number: i + 1, title: "Commit by Dec 15", from: "proposed", page: i + 1, change: "c13", tint: "add" });
+    return slide(id, { number: i + 1, from: "proposed", page: i + 1 });
+  });
+  // The place slide 6 left, after slide 5.
+  slides.splice(6, 0, slide(6, { key: "ghost:6", number: null, from: "file", page: 6, change: "c6", tint: "del" }));
+  return deckView({
+    slides,
+    changes: [
+      change("c2", 2, { edits: [{ where: "Title", before: "Why sponsor us", after: "Why sponsor Spring LAN" }] }),
+      change("c6", 6, { kind: "moved", label: "Last year" }),
+      change("c3", 3),
+      change("c4", 4),
+      change("c13", 13, { kind: "added", label: "Commit by Dec 15" }),
+    ],
+    renders: { file: { rev: "f1", size: 1000, pages: 12 }, proposed: { rev: "p1", size: 1100, pages: 13 } },
+  });
+}
+
+describe("the slides kind", () => {
+  it("draws a 12-slide deck in the strip and the first slide on the stage, with its notes", async () => {
+    open(deckView({ slides: Array.from({ length: 12 }, (_, i) => slide(i + 1, { notes: i === 0 ? "Open with the turnout." : "" })) }));
+    await found("[data-slides-stage]");
+    expect(thumbs()).toHaveLength(12);
+    expect(thumbs()[0].getAttribute("aria-current")).toBe("true");
+    await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 1"));
+    expect(screen.getByText("Open with the turnout.")).toBeTruthy();
+    fireEvent.click(thumbs()[1]);
+    await waitFor(() => expect(screen.getByText("None yet")).toBeTruthy());
+    expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+  });
+
+  it("shows an agent's revision as changed slides, a move where it lands and where it leaves, stepped from the bar", async () => {
+    open(revised());
+    const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+    // The stage starts on slide 1, which no change touches.
+    expect(within(bar).getByText("0/5")).toBeTruthy();
+    expect(thumbs().filter((t) => t.dataset.tint === "add")).toHaveLength(5);
+    const ghost = thumbs().find((t) => t.dataset.slide === "ghost:6")!;
+    expect(ghost.dataset.tint).toBe("del");
+    fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+    await waitFor(() => expect(within(bar).getByText("1/5")).toBeTruthy());
+    expect(thumbs().find((t) => t.dataset.slide === "2")!.getAttribute("aria-current")).toBe("true");
+    // The words before and after, under the stage, and the changed shape tinted on it.
+    const edits = await found("[data-slide-edits]");
+    expect(edits.textContent).toContain("Why sponsor us");
+    expect(edits.textContent).toContain("Why sponsor Spring LAN");
+    expect(document.querySelectorAll("[data-slide-changed]")).toHaveLength(1);
+    fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+    await waitFor(() => expect(thumbs().find((t) => t.dataset.slide === "6")!.getAttribute("aria-current")).toBe("true"));
+    fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: ["c6"], verdict: "accept" }]));
+    await waitFor(() => expect(thumbs().some((t) => t.dataset.slide === "ghost:6")).toBe(false));
+    expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByText(/\/4$/)).toBeTruthy();
+  });
+
+  it("puts a shape's words in Ask's chip when he picks it on the stage", async () => {
+    open(deckView({ slides: [slide(1, { shapes: [{ id: 3, name: "Figures", bbox: [0.1, 0.4, 0.9, 0.7], text: "6,200 stream viewers" }] })], renders: { file: { rev: "f1", size: 10, pages: 1 }, proposed: null } }));
+    const shape = await found('[data-shape="3"]');
+    fireEvent.click(shape);
+    expect(shape.getAttribute("aria-pressed")).toBe("true");
+    expect(await screen.findByRole("button", { name: /Ask/ })).toBeTruthy();
+  });
+
+  it("follows the host's push when the agent revises the deck", async () => {
+    open(deckView());
+    await found("[data-slides-stage]");
+    act(() => deckHost.push(revised()));
+    expect(await screen.findByRole("toolbar", { name: "Review changes" })).toBeTruthy();
+  });
+
+  it("offers PowerPoint in the tab row for a hosted deck, and says there what waits in TempCode", async () => {
+    open({ ...revised(), hosted: true });
+    const tabs = await screen.findByRole("tablist", { name: "Open in" });
+    fireEvent.click(within(tabs).getByRole("tab", { name: "PowerPoint" }));
+    expect(await screen.findByText("5 suggestions wait in TempCode")).toBeTruthy();
+    expect(screen.getByText("Not built yet")).toBeTruthy();
+    expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(await screen.findByRole("toolbar", { name: "Review changes" })).toBeTruthy();
+  });
+
+  it("has no switch for a deck on disk", async () => {
+    open(deckView());
+    await found("[data-slides-stage]");
+    expect(screen.queryByRole("tablist", { name: "Open in" })).toBeNull();
+  });
+
+  it("says once when the host cannot draw the slides, and still lists them", async () => {
+    open(deckView({ renders: { file: null, proposed: null }, renderError: "LibreOffice is not installed on this host" }));
+    const line = await found('[data-canvas-state="failed"]');
+    expect(line.textContent).toContain("Can't draw the slides");
+    expect(thumbs()).toHaveLength(12);
+    expect(thumbs()[2].textContent).toContain("Slide 3");
+  });
+
+  it("shows what the agent wrote directly with its Undo", async () => {
+    open(deckView({ mode: "writes", written: { id: "w1", text: "Wrote notes for 12 slides", at: Date.now() } }));
+    const written = await found("[data-canvas-written]");
+    expect(written.textContent).toContain("Wrote notes for 12 slides");
+    fireEvent.click(within(written).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(deckHost.calls).toContainEqual(["undo", "w1"]));
+  });
+});
+
+describe("the stage's rules", () => {
+  it("is at most 760px, and short enough for the notes", () => {
+    expect(stageWidth(2000, 2000, 16 / 9)).toBe(760);
+    expect(stageWidth(500, 2000, 16 / 9)).toBe(468);
+    expect(stageWidth(2000, 450, 16 / 9)).toBe(533);
+  });
+  it("counts the current slide's change and finds a change's slide where it lands", () => {
+    const view = revised();
+    expect(changeIndex(view, "1")).toBe(-1);
+    expect(changeIndex(view, "ghost:6")).toBe(1);
+    expect(slideOfChange(view, view.changes[1])!.key).toBe("6");
+  });
+});
