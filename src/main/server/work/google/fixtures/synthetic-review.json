@@ -1,0 +1,668 @@
+{
+ "documentId": "SYNTHETIC",
+ "title": "Launch brief",
+ "revisionId": "rev1",
+ "suggestionsViewMode": "SUGGESTIONS_INLINE",
+ "commentsViewMode": "COMMENTS_VIEW_MODE_INCLUDED",
+ "tabs": [
+  {
+   "tabProperties": {
+    "tabId": "t.0",
+    "title": "Brief",
+    "index": 0
+   },
+   "childTabs": [
+    {
+     "tabProperties": {
+      "tabId": "t.child",
+      "title": "Appendix",
+      "index": 0
+     },
+     "childTabs": [],
+     "documentTab": {
+      "body": {
+       "content": [
+        {
+         "endIndex": 1,
+         "sectionBreak": {
+          "sectionStyle": {
+           "columnSeparatorStyle": "NONE",
+           "sectionType": "CONTINUOUS"
+          }
+         }
+        },
+        {
+         "startIndex": 1,
+         "endIndex": 17,
+         "paragraph": {
+          "elements": [
+           {
+            "startIndex": 1,
+            "endIndex": 17,
+            "textRun": {
+             "content": "Child tab text.\n",
+             "textStyle": {}
+            }
+           }
+          ],
+          "paragraphStyle": {
+           "namedStyleType": "NORMAL_TEXT"
+          }
+         }
+        }
+       ]
+      }
+     }
+    }
+   ],
+   "documentTab": {
+    "body": {
+     "content": [
+      {
+       "endIndex": 1,
+       "sectionBreak": {
+        "sectionStyle": {
+         "columnSeparatorStyle": "NONE",
+         "sectionType": "CONTINUOUS"
+        }
+       }
+      },
+      {
+       "startIndex": 1,
+       "endIndex": 14,
+       "paragraph": {
+        "elements": [
+         {
+          "startIndex": 1,
+          "endIndex": 14,
+          "textRun": {
+           "content": "Launch brief\n",
+           "textStyle": {}
+          }
+         }
+        ],
+        "paragraphStyle": {
+         "namedStyleType": "TITLE"
+        }
+       }
+      },
+      {
+       "startIndex": 14,
+       "endIndex": 20,
+       "paragraph": {
+        "elements": [
+         {
+          "startIndex": 14,
+          "endIndex": 20,
+          "textRun": {
+           "content": "Goals\n",
+           "textStyle": {}
+          }
+         }
+        ],
+        "paragraphStyle": {
+         "namedStyleType": "HEADING_1"
+        }
+       }
+      },
+      {
+       "startIndex": 20,
+       "endIndex": 58,
+       "paragraph": {
+        "elements": [
+         {
+          "startIndex": 20,
+          "endIndex": 28,
+          "textRun": {
+           "content": "We ship ",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 28,
+          "endIndex": 36,
+          "textRun": {
+           "content": "in March",
+           "textStyle": {
+            "bold": true
+           }
+          }
+         },
+         {
+          "startIndex": 36,
+          "endIndex": 42,
+          "textRun": {
+           "content": " with ",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 42,
+          "endIndex": 45,
+          "textRun": {
+           "content": "two",
+           "textStyle": {},
+           "suggestedDeletionIds": [
+            "suggest.del1"
+           ]
+          }
+         },
+         {
+          "startIndex": 45,
+          "endIndex": 50,
+          "textRun": {
+           "content": "three",
+           "textStyle": {},
+           "suggestedInsertionIds": [
+            "suggest.ins1"
+           ]
+          }
+         },
+         {
+          "startIndex": 50,
+          "endIndex": 58,
+          "textRun": {
+           "content": " teams.\n",
+           "textStyle": {}
+          }
+         }
+        ],
+        "paragraphStyle": {
+         "namedStyleType": "NORMAL_TEXT"
+        }
+       }
+      },
+      {
+       "startIndex": 58,
+       "endIndex": 67,
+       "paragraph": {
+        "elements": [
+         {
+          "startIndex": 58,
+          "endIndex": 65,
+          "textRun": {
+           "content": "Owner: ",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 65,
+          "endIndex": 66,
+          "person": {
+           "personId": "p1",
+           "personProperties": {
+            "name": "Ada Lovelace",
+            "email": "ada@example.com"
+           }
+          }
+         },
+         {
+          "startIndex": 66,
+          "endIndex": 67,
+          "textRun": {
+           "content": "\n",
+           "textStyle": {}
+          }
+         }
+        ],
+        "paragraphStyle": {
+         "namedStyleType": "NORMAL_TEXT"
+        },
+        "bullet": {
+         "listId": "kix.list1",
+         "nestingLevel": 0
+        }
+       }
+      },
+      {
+       "startIndex": 67,
+       "endIndex": 75,
+       "paragraph": {
+        "elements": [
+         {
+          "startIndex": 67,
+          "endIndex": 73,
+          "textRun": {
+           "content": "Spec: ",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 73,
+          "endIndex": 74,
+          "richLink": {
+           "richLinkId": "r1",
+           "richLinkProperties": {
+            "title": "Spec v2",
+            "uri": "https://docs.google.com/document/d/abc",
+            "mimeType": "application/vnd.google-apps.document"
+           }
+          }
+         },
+         {
+          "startIndex": 74,
+          "endIndex": 75,
+          "textRun": {
+           "content": "\n",
+           "textStyle": {}
+          }
+         }
+        ],
+        "paragraphStyle": {
+         "namedStyleType": "NORMAL_TEXT"
+        },
+        "bullet": {
+         "listId": "kix.list1",
+         "nestingLevel": 1
+        }
+       }
+      },
+      {
+       "startIndex": 75,
+       "endIndex": 93,
+       "paragraph": {
+        "elements": [
+         {
+          "startIndex": 75,
+          "endIndex": 87,
+          "textRun": {
+           "content": "Review legal",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 87,
+          "endIndex": 91,
+          "textRun": {
+           "content": " by ",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 91,
+          "endIndex": 92,
+          "dateElement": {
+           "dateId": "d1",
+           "dateElementProperties": {
+            "displayText": "Mar 3, 2027",
+            "timestamp": "2027-03-03T00:00:00Z"
+           }
+          }
+         },
+         {
+          "startIndex": 92,
+          "endIndex": 93,
+          "textRun": {
+           "content": "\n",
+           "textStyle": {}
+          }
+         }
+        ],
+        "paragraphStyle": {
+         "namedStyleType": "NORMAL_TEXT"
+        },
+        "bullet": {
+         "listId": "kix.list2",
+         "nestingLevel": 0
+        }
+       }
+      },
+      {
+       "startIndex": 93,
+       "endIndex": 109,
+       "paragraph": {
+        "elements": [
+         {
+          "startIndex": 93,
+          "endIndex": 106,
+          "textRun": {
+           "content": "See the chart",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 106,
+          "endIndex": 107,
+          "footnoteReference": {
+           "footnoteId": "kix.fn1",
+           "footnoteNumber": "1"
+          }
+         },
+         {
+          "startIndex": 107,
+          "endIndex": 109,
+          "textRun": {
+           "content": ".\n",
+           "textStyle": {}
+          }
+         }
+        ],
+        "paragraphStyle": {
+         "namedStyleType": "NORMAL_TEXT"
+        },
+        "positionedObjectIds": [
+         "kix.pos1"
+        ]
+       }
+      },
+      {
+       "startIndex": 109,
+       "endIndex": 122,
+       "paragraph": {
+        "elements": [
+         {
+          "startIndex": 109,
+          "endIndex": 117,
+          "textRun": {
+           "content": "Status: ",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 117,
+          "endIndex": 118,
+          "dropdown": {
+           "dropdownDefinitionId": "kix.dd1"
+          }
+         },
+         {
+          "startIndex": 118,
+          "endIndex": 119,
+          "textRun": {
+           "content": " ",
+           "textStyle": {}
+          }
+         },
+         {
+          "startIndex": 119,
+          "endIndex": 120,
+          "autoText": {
+           "type": "PAGE_NUMBER"
+          }
+         },
+         {
+          "startIndex": 120,
+          "endIndex": 121,
+          "equation": {}
+         },
+         {
+          "startIndex": 121,
+          "endIndex": 122,
+          "textRun": {
+           "content": "\n",
+           "textStyle": {}
+          }
+         }
+        ],
+        "paragraphStyle": {
+         "namedStyleType": "NORMAL_TEXT"
+        }
+       }
+      }
+     ]
+    },
+    "headers": {
+     "kix.h1": {
+      "headerId": "kix.h1",
+      "content": [
+       {
+        "startIndex": 0,
+        "endIndex": 9,
+        "paragraph": {
+         "elements": [
+          {
+           "startIndex": 0,
+           "endIndex": 9,
+           "textRun": {
+            "content": "Draft v3\n",
+            "textStyle": {}
+           }
+          }
+         ],
+         "paragraphStyle": {
+          "namedStyleType": "NORMAL_TEXT"
+         }
+        }
+       }
+      ]
+     }
+    },
+    "footers": {
+     "kix.f1": {
+      "footerId": "kix.f1",
+      "content": [
+       {
+        "startIndex": 0,
+        "endIndex": 12,
+        "paragraph": {
+         "elements": [
+          {
+           "startIndex": 0,
+           "endIndex": 12,
+           "textRun": {
+            "content": "Confidential\n",
+            "textStyle": {}
+           }
+          }
+         ],
+         "paragraphStyle": {}
+        }
+       }
+      ]
+     }
+    },
+    "footnotes": {
+     "kix.fn1": {
+      "footnoteId": "kix.fn1",
+      "content": [
+       {
+        "startIndex": 0,
+        "endIndex": 15,
+        "paragraph": {
+         "elements": [
+          {
+           "startIndex": 0,
+           "endIndex": 15,
+           "textRun": {
+            "content": " Source: Sheet\n",
+            "textStyle": {}
+           }
+          }
+         ],
+         "paragraphStyle": {}
+        }
+       }
+      ]
+     }
+    },
+    "lists": {
+     "kix.list1": {
+      "listProperties": {
+       "nestingLevels": [
+        {
+         "glyphSymbol": "●"
+        },
+        {
+         "glyphSymbol": "○"
+        }
+       ]
+      }
+     },
+     "kix.list2": {
+      "listProperties": {
+       "nestingLevels": [
+        {
+         "glyphType": "GLYPH_TYPE_UNSPECIFIED"
+        }
+       ]
+      }
+     }
+    },
+    "positionedObjects": {
+     "kix.pos1": {
+      "objectId": "kix.pos1",
+      "positionedObjectProperties": {
+       "embeddedObject": {
+        "title": "Chart",
+        "description": "Q3 revenue",
+        "size": {
+         "width": {
+          "magnitude": 200,
+          "unit": "PT"
+         },
+         "height": {
+          "magnitude": 120,
+          "unit": "PT"
+         }
+        },
+        "imageProperties": {
+         "contentUri": "https://lh3.googleusercontent.com/EXPIRES-IN-30-MIN",
+         "cropProperties": {}
+        }
+       }
+      }
+     }
+    },
+    "documentStyle": {
+     "pageSize": {
+      "width": {
+       "magnitude": 612,
+       "unit": "PT"
+      },
+      "height": {
+       "magnitude": 792,
+       "unit": "PT"
+      }
+     }
+    },
+    "commentAnchors": {
+     "kix.a1": {
+      "anchorId": "kix.a1",
+      "ranges": [
+       {
+        "startIndex": 28,
+        "endIndex": 36,
+        "tabId": "t.0"
+       }
+      ]
+     },
+     "kix.a2": {
+      "anchorId": "kix.a2",
+      "ranges": [
+       {
+        "startIndex": 75,
+        "endIndex": 87,
+        "tabId": "t.0"
+       }
+      ]
+     }
+    }
+   }
+  }
+ ],
+ "comments": [
+  {
+   "commentId": "AAAA1",
+   "anchorId": "kix.a1",
+   "status": "OPEN",
+   "plainTextQuote": "in March",
+   "headPost": {
+    "postId": "AAAA1",
+    "content": "Is March firm?",
+    "contentHtml": "Is March firm?",
+    "author": {
+     "displayName": "Grace Hopper",
+     "me": false,
+     "user": "users/AAAA1"
+    },
+    "createTime": "2026-11-10T09:00:00Z",
+    "updateTime": "2026-11-10T09:00:00Z"
+   },
+   "replies": [
+    {
+     "postId": "r1",
+     "content": "Yes, board approved.",
+     "contentHtml": "Yes, board approved.",
+     "author": {
+      "displayName": "Ada Lovelace",
+      "me": false,
+      "user": "users/r1"
+     },
+     "createTime": "2026-11-10T09:00:00Z",
+     "updateTime": "2026-11-10T09:00:00Z"
+    }
+   ]
+  },
+  {
+   "commentId": "AAAA2",
+   "anchorId": "kix.a2",
+   "status": "RESOLVED",
+   "plainTextQuote": "Review legal",
+   "headPost": {
+    "postId": "AAAA2",
+    "content": "Who owns this?",
+    "contentHtml": "Who owns this?",
+    "author": {
+     "displayName": "Ada Lovelace",
+     "me": false,
+     "user": "users/AAAA2"
+    },
+    "createTime": "2026-11-10T09:00:00Z",
+    "updateTime": "2026-11-10T09:00:00Z"
+   },
+   "replies": [
+    {
+     "postId": "r2",
+     "content": "",
+     "contentHtml": "",
+     "author": {
+      "displayName": "Grace Hopper",
+      "me": false,
+      "user": "users/r2"
+     },
+     "createTime": "2026-11-10T09:00:00Z",
+     "updateTime": "2026-11-10T09:00:00Z",
+     "commentAction": "RESOLVE"
+    }
+   ]
+  }
+ ],
+ "suggestions": [
+  {
+   "suggestionId": "suggest.del1",
+   "status": "OPEN",
+   "summaryText": "Replace two with three",
+   "headPost": {
+    "postId": "s1",
+    "content": "",
+    "contentHtml": "",
+    "author": {
+     "displayName": "Grace Hopper",
+     "me": false,
+     "user": "users/s1"
+    },
+    "createTime": "2026-11-10T09:00:00Z",
+    "updateTime": "2026-11-10T09:00:00Z",
+    "suggestionAction": "NO_SUGGESTION_ACTION_CHANGE"
+   }
+  },
+  {
+   "suggestionId": "suggest.ins1",
+   "status": "OPEN",
+   "summaryText": "Replace two with three",
+   "headPost": {
+    "postId": "s1",
+    "content": "",
+    "contentHtml": "",
+    "author": {
+     "displayName": "Grace Hopper",
+     "me": false,
+     "user": "users/s1"
+    },
+    "createTime": "2026-11-10T09:00:00Z",
+    "updateTime": "2026-11-10T09:00:00Z",
+    "suggestionAction": "NO_SUGGESTION_ACTION_CHANGE"
+   }
+  }
+ ]
+}
