@@ -91,6 +91,14 @@ const decode = (s: string): string =>
     return ENTITIES[e.toLowerCase()] ?? whole;
   });
 
+/** CSS's own escapes, `\\72` and `\\r`, read as the characters they stand for. */
+const cssUnescape = (s: string): string =>
+  s.replace(/\\([0-9a-f]{1,6})\s?|\\([^\n0-9a-f])/gi, (_m, hex: string | undefined, ch: string | undefined) => {
+    if (ch !== undefined) return ch;
+    const n = parseInt(hex!, 16);
+    return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : "";
+  });
+
 /**
  * An html body as the words a person reads, for a view that must show what
  * goes: every link keeps its target beside its words and every image its
@@ -99,9 +107,11 @@ const decode = (s: string): string =>
  */
 export function htmlWords(html: string): string {
   // A background image goes with the mail as surely as an <img>: named first, before the tags go (the hold re-review's finding 23).
+  // Read through character references and CSS escapes (`u&#114;l(`, `u\\72l(`), as the mail's reader will.
+  const plain = cssUnescape(decode(html));
   const backgrounds: string[] = [];
-  for (const m of html.matchAll(/\sbackground\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) backgrounds.push(decode(m[1] ?? m[2] ?? m[3] ?? "").trim());
-  for (const m of html.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)) backgrounds.push(decode(m[1] ?? m[2] ?? m[3] ?? "").trim());
+  for (const m of plain.matchAll(/\sbackground\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) backgrounds.push((m[1] ?? m[2] ?? m[3] ?? "").trim());
+  for (const m of plain.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)) backgrounds.push((m[1] ?? m[2] ?? m[3] ?? "").trim());
   const out = html
     .replace(/<(script|style|head|title)\b[\s\S]*?<\/\1\s*>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
@@ -161,10 +171,13 @@ export function payloadView(payload: unknown): PayloadView {
       if (v === null) continue;
       if (typeof v === "string") {
         if (quiet && body?.path.join(".") === at.join(".")) continue;
+        // An add-on's empty or blank argument still goes: shown quoted, never as an empty body (the hold re-review's finding 18).
+        if (!quiet && !v.trim()) {
+          fields.push({ key, path: at, label: labelOf(key), value: JSON.stringify(v), edit: "text" });
+          continue;
+        }
         if (!body && BODY_KEYS.includes(key) && (v.includes("\n") || v.length > 80)) body = { path: at, text: v };
         else if (v.trim()) fields.push({ key, path: at, label: labelOf(key), value: v, edit: "text" });
-        // An add-on's empty or blank argument still goes: shown quoted (the hold re-review's finding 18).
-        else if (!quiet) fields.push({ key, path: at, label: labelOf(key), value: JSON.stringify(v), edit: "text" });
       } else if (typeof v === "number" || typeof v === "boolean") {
         fields.push({ key, path: at, label: labelOf(key), value: String(v), edit: null });
       } else if (isAddress(v)) {

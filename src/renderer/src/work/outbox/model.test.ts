@@ -57,6 +57,12 @@ describe("payloadView", () => {
       ["Destination", '""'],
       ["Text", "hi"],
     ]);
+    const blank = payloadView({ ...CALL, arguments: { body: "\n", text: " ".repeat(81) } });
+    expect(blank.body).toBeNull();
+    expect(blank.fields.map((f) => [f.label, f.value])).toEqual([
+      ["Body", '"\\n"'],
+      ["Text", JSON.stringify(" ".repeat(81))],
+    ]);
   });
 });
 
@@ -69,6 +75,8 @@ describe("htmlWords", () => {
     expect(htmlWords('<table background="https://e.test/private.png"><tr><td style="background-image: url(\'https://e.test/b.png\')">Hi</td></tr></table>')).toBe(
       "Hi\n[background image: https://e.test/private.png]\n[background image: https://e.test/b.png]",
     );
+    expect(htmlWords('<p style="background-image:u&#114;l(https://e.test/p)">Hi</p>')).toBe("Hi\n[background image: https://e.test/p]");
+    expect(htmlWords('<p style="background-image:u\\72l(https://e.test/q)">Hi</p>')).toBe("Hi\n[background image: https://e.test/q]");
     expect(htmlWords('<ul><li>one</li><li>two &amp; three</li></ul><img alt="logo" src=\'/l.png\'>')).toBe("- one\n- two & three\n\n[image logo: /l.png]");
   });
 
