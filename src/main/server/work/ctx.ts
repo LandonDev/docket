@@ -45,6 +45,7 @@ import { resultsPart } from './outbox/results'
 import { peerPart } from './peer'
 import { ensureWorkTables } from './schema'
 import { scopePart } from './scope'
+import { routinesHostPart } from './routines/host'
 import { servicePart } from './service/ctx'
 import { WorkSettingsStore } from './settings'
 import { inputShapeOf } from './toolInput'
@@ -168,7 +169,9 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
     part('outbox/ctx.ts', ['held'], () => heldPart(ctx, deps)),
     part('outbox/results.ts', ['results'], () => resultsPart(ctx, deps)),
     part('formats/jobs.ts', ['convert'], () => convertPart(ctx, deps)),
-    part('service/ctx.ts', ['service'], () => servicePart(ctx, deps))
+    part('service/ctx.ts', ['service'], () => servicePart(ctx, deps)),
+    // Not a member: the host handles the routines engine needs and the context does not carry (milestone 32).
+    part('routines/host.ts', [], () => (routinesHostPart(deps), {}))
   )
   return { ctx, admission }
 }
