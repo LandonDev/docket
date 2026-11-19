@@ -24,7 +24,7 @@ vi.mock("../../lib/connection", async (original) => ({
   },
 }));
 
-const { sendThroughHost } = await import("./kit");
+const { sendThroughHost, tempcodeMailKit } = await import("./kit");
 const { View: MailAct } = await import("./MailAct");
 const { mailActView, mailChip } = await import("./model");
 const { proposalDiff } = await import("./proposal");
@@ -122,5 +122,15 @@ describe("Start thread", () => {
   it("puts the mail in the new thread's composer by its LifeOS thread", () => {
     expect(mailChip("mt_1", " Re: Invoice 1042 ")).toEqual({ kind: "mail", label: "Re: Invoice 1042", ref: { at: "lifeos", table: "mailThreads", id: "mt_1" } });
     expect(mailChip("mt_2", null).label).toBe("A mail");
+  });
+});
+
+describe("the kit", () => {
+  it("draws a sector by name, and no bare dot on a row: its screens hold one sector", () => {
+    const { SectorMark } = tempcodeMailKit;
+    const { container, rerender } = render(<SectorMark sector="life" label={false} />);
+    expect(container.innerHTML).toBe("");
+    rerender(<SectorMark sector="life" />);
+    expect(container.textContent).toBe("Life");
   });
 });

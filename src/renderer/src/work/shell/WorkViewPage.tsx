@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { Button } from "../../components/ui/button";
@@ -42,6 +42,11 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
   const status = useLifeosStatus(environmentId);
   const session = useLifeosSession(environmentId, sector);
   const state: LifeosStateName | null = status?.lifeos.state ?? null;
+  // The header's controls come from the chunk: draw again once it lands, or they never show.
+  const [, landed] = useState(0);
+  useEffect(() => {
+    if (!def.chunk.loaded()) void def.chunk.load().then(() => landed((n) => n + 1), () => {});
+  }, [def]);
   const loaded = def.chunk.loaded();
   const props = useMemo<WorkViewProps>(
     () => ({ env: environmentId, workspace, sector, lifeos: session, startThread: (about) => startThreadAbout(about) }),

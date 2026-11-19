@@ -1,5 +1,6 @@
 /* The shared mail client on TempCode's scale (docs/DESIGN.md "Type scale": a
-   mail's subject is the 16px title, a field's label 12px), and the menus'
+   mail's subject is the 16px title, rows and fields 13px, a field's label
+   12px; the editor keeps its own 14px body), and the menus'
    highlight as TempCode's own: the muted fill, not the brand accent
    (work-kit/ui/host-rules `HOST_WASH`). Loaded with the mail chunks only. */
 
@@ -17,4 +18,9 @@
 .tc-mail .text-label {
   font-size: 12px;
   line-height: 16px;
+}
+
+.tc-mail .text-sm {
+  font-size: 13px;
+  line-height: 20px;
 }

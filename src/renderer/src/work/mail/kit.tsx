@@ -112,7 +112,9 @@ function Face({ name, size = "row", className }: MailFaceProps) {
 
 const SECTOR_NAMES: Record<string, string> = { cosmic: "Cosmic", hypixel: "Hypixel", purdue: "Purdue", ref: "Ref", unify: "Unify", life: "Life" };
 
+/** A sector's mark with its name. TempCode's mail screens hold one sector, so a row's bare dot is drawn nowhere (docs/DESIGN.md: only where sectors mix). */
 function SectorMark({ sector, label = true, className }: MailSectorMarkProps) {
+  if (!label) return null;
   return (
     <span className={cn("inline-flex items-center gap-1 text-xs text-muted-foreground", className)}>
       <SectorDot sector={sector} />
