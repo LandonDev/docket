@@ -126,6 +126,8 @@ def apply(doc, op):
         doc.Sheets.removeByName(op["sheet"])
     elif kind == "renameSheet":
         doc.Sheets.getByName(op["sheet"]).setName(op["to"])
+        if op["to"] not in doc.Sheets.ElementNames:
+            raise RuntimeError("LibreOffice did not rename " + op["sheet"])
     else:
         raise RuntimeError("unknown op " + kind)
 
@@ -135,9 +137,12 @@ def main():
     ops = json.load(open(ops_path))
     proc, desktop = start(profile)
     try:
-        # Read-only, as the research lab loaded every file: a full 1,048,576-row sheet loads no other way.
-        # The document still takes edits; it is stored elsewhere, never over its source.
-        doc = desktop.loadComponentFromURL(uno.systemPathToFileUrl(os.path.abspath(src)), "_blank", 0, props(Hidden=True, ReadOnly=True))
+        url = uno.systemPathToFileUrl(os.path.abspath(src))
+        doc = desktop.loadComponentFromURL(url, "_blank", 0, props(Hidden=True))
+        if doc is None:
+            # A full 1,048,576-row sheet loads only read-only, as the research lab loaded every file. The
+            # document still takes most edits (not a rename); it is stored elsewhere, never over its source.
+            doc = desktop.loadComponentFromURL(url, "_blank", 0, props(Hidden=True, ReadOnly=True))
         if doc is None:
             raise RuntimeError("LibreOffice could not open the file")
         for op in ops:
