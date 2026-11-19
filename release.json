@@ -1,5 +1,5 @@
 {
-  "n": 348,
-  "notes": "Work workspaces, overnight build (interim): Work as a workspace kind linked to a LifeOS sector; mail, tasks, agenda and documents shared with LifeOS; the canvas with documents, sheets (Univer with our engine patches, ONLYOFFICE as the full editor), PDF, slides, images and video, meetings, forms, dashboards, a live browser; the hold and the Outbox; routines and triggers; import and export; Google files; guest links; house rules and voice; Office tools on the Mac and on the web; browser and computer use on the box; Work on the phone; Windows build, host core, linked Windows hosts and the Windows computer reader.",
-  "ts": 1795100378497
+  "n": 349,
+  "notes": "Work workspaces: all fifty milestones (the phone's part ships with the next phone build). Since 1.0.348: the phone's mail, tasks, agenda and canvases on the host side, Windows input and capture, Office tools on Windows, the end-to-end proofs and their fixes, the hold review's fixes, and the first design council fixes.",
+  "ts": 1795121733532
 }
