@@ -97,6 +97,10 @@ targets:
         INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
         # The catalog holds no app icon (the app has never had one); the application preset names AppIcon.
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        # LifeKitUI calls presentationPlacement behind #available(iOS 27.1, *), but the SDK marks it 27.0,
+        # so the symbol is bound strongly and dyld refuses the app on the iOS 27.0 simulator runtime, which
+        # lacks it. Weak, the missing symbol is null and the availability check skips it.
+        OTHER_LDFLAGS: ["$(inherited)", "-weak_framework", "SwiftUI"]
   # The Live Activity (lock screen and Dynamic Island) for a running thread:
   # a WidgetKit extension with the activity configuration alone.
   TempCodeActivity:
