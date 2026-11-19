@@ -160,6 +160,7 @@ describe('nothing is sent without his press', () => {
     const actCtx = { host: 'env_mac' } as ActCtx
     await expect(mail.execute(p, actCtx)).resolves.toMatchObject({ summary: 'Sent to dana@example.com: Plan', ref: { outlook: 'sent-1' } })
     expect(office.sent[0].html).toBe('<table border="1"><tr><td><b>1</b></td></tr></table><a >l</a>')
+    expect(cleanMailHtml('<img src="https://a.test/1.png" srcset="https://b.test/2.png 2x">')).toBe('<img src="https://a.test/1.png">')
     await expect(mail.execute({ ...p, host: 'env_box' }, actCtx)).rejects.toThrow('held for another host')
     expect(office.sent).toHaveLength(1)
 

@@ -62,4 +62,14 @@ describe("a calendar act's grant", () => {
     const op: CalendarOp = { id: "o1", kind: "accept", eventId: "e1", eventStartsAt: at(9) };
     expect(opStart(op, { ...call, startsAt: at(11) } as DayEvent)).toBe(at(9));
   });
+
+  it("draws the event's title, time and place as the host bound them, even with no live read", () => {
+    const op: CalendarOp = { id: "o1", kind: "accept", eventId: "e1", eventTitle: "Budget review", eventStartsAt: at(9), eventEndsAt: at(10), eventLocation: "Room 210" };
+    const rows = opFields(op, null);
+    expect(rows.find((r) => r.label === "Event")?.value).toBe("Budget review");
+    expect(rows.find((r) => r.label === "Where")?.value).toBe("Room 210");
+    expect(rows.find((r) => r.label === "When")?.value).toBeTruthy();
+    // a live read that says otherwise does not replace what the press binds
+    expect(opFields(op, { ...call, title: "New contract approval", location: "Room 9" } as DayEvent).find((r) => r.label === "Where")?.value).toBe("Room 210");
+  });
 });

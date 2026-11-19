@@ -22,6 +22,8 @@ import type { ActKind, ActResult, HeldRef, HeldState } from '@shared/work'
  */
 
 export const HELD_TABLE = 'work_held_acts'
+/** A LifeOS calendar act's event as last shown, and how often it changed: its revision moves on with it, across restarts. */
+export const BOUND_TABLE = 'work_outbox_bound_events'
 export const GRANTS_TABLE = 'work_grants'
 export const RULES_TABLE = 'work_outbox_tool_rules'
 
@@ -83,6 +85,11 @@ function ensureTables(db: DatabaseSync): void {
       routine_id   TEXT,
       created_at   INTEGER NOT NULL,
       removed_at   INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS ${BOUND_TABLE} (
+      act_id  TEXT PRIMARY KEY,
+      shown   TEXT NOT NULL,
+      bump    INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS ${RULES_TABLE} (
       addon_id    TEXT NOT NULL,
@@ -295,6 +302,22 @@ export class HeldStore {
       )
     return this.told(id)!
   }
+  /**
+   * How many times a calendar act's bound event (`shown`) has changed since it was first listed: added to its revision,
+   * so a view from before the change names an older one. Kept here so a restart does not let an older revision repeat.
+   */
+  boundBump(actId: string, shown: string): number {
+    const row = this.db.prepare(`SELECT shown, bump FROM ${BOUND_TABLE} WHERE act_id = ?`).get(actId) as { shown: string; bump: number } | undefined
+    if (!row) {
+      this.db.prepare(`INSERT INTO ${BOUND_TABLE} (act_id, shown, bump) VALUES (?, ?, 0)`).run(actId, shown)
+      return 0
+    }
+    if (row.shown === shown) return Number(row.bump)
+    const bump = Number(row.bump) + 1
+    this.db.prepare(`UPDATE ${BOUND_TABLE} SET shown = ?, bump = ? WHERE act_id = ?`).run(shown, bump, actId)
+    return bump
+  }
+
 
   get(id: string): HeldRow | null {
     const row = this.db.prepare(`${SELECT} WHERE id = ?`).get(id) as unknown as Row | undefined

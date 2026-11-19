@@ -27,7 +27,7 @@ import { ActView } from "../acts/ActView";
 import { Calendar, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
-import { byWorkspace, dayOf, decidedWords, grantFor, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
+import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
 import { loadResults, undoResult, useResults } from "./results";
 import { discardItem, fetchItem, grantAndSend, loadOutbox, notSentWords, sendItem, sendMany, useOutbox, wentOut, type HostItem } from "./store";
 
@@ -53,8 +53,8 @@ export const batchable = (item: HostItem): boolean => sendable(item) && item.kin
  * not drawn from html alone. An act read from a live screen is carried out as
  * it was read, so the host refuses any change to it.
  */
-export function canEdit(item: Pick<HostItem, "payload" | "state">): boolean {
-  if (item.state === "live") return false;
+export function canEdit(item: Pick<HostItem, "payload" | "state" | "kind">): boolean {
+  if (item.state === "live" || !EDITABLE.includes(item.kind)) return false;
   const view = payloadView(item.payload);
   return view.fields.some((f) => f.edit !== null) || (view.body !== null && !view.body.readOnly);
 }

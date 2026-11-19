@@ -99,6 +99,8 @@ export function cleanMailHtml(html: string): string {
       .replace(new RegExp(`<(${tags})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi'), '')
       .replace(new RegExp(`<\\/?(${tags})\\b[^>]*>`, 'gi'), '')
       .replace(/([\s/"'])on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '$1')
+      // An image's other sources would go unseen by the preview, which names its src (the hold review): only src stays.
+      .replace(/\s(?:srcset|imagesrcset)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
       .replace(/\s(?:xlink:)?(?:href|src|action|formaction|background)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (m: string, v: string) =>
         /^(javascript|vbscript|data):/i.test(decode(v.replace(/^["']|["']$/g, ''))) ? '' : m
       )

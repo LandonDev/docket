@@ -254,8 +254,6 @@ export class LifeosHeldItems implements LifeosHeld {
   private readonly eventTitles = new Map<string, string>()
   /** each act's event as last read: what the screens show and the press checks (milestone 50's hold review, 29) */
   private readonly eventFacts = new Map<string, { startsAt?: number; endsAt?: number; location?: string }>()
-  /** times a calendar act was put back in front of the screens after its event changed: added to its revision, so an older view is refused */
-  private readonly bumps = new Map<string, number>()
 
   constructor(private readonly deps: LifeosHeldDeps) {}
 
@@ -281,9 +279,8 @@ export class LifeosHeldItems implements LifeosHeld {
 
   relist(item: OutboxItem): void {
     const key = keyOf(item.ref)
-    // The revision moves on, so a view still showing the old event is refused too.
-    const bumped = item.kind === 'calendar.op' ? (this.bumps.set(key, (this.bumps.get(key) ?? 0) + 1), { ...item, updatedAt: item.updatedAt + 1 }) : item
-    const swap = (list: OutboxItem[]): OutboxItem[] => list.map((i) => (keyOf(i.ref) === key ? bumped : i))
+    // The item read now already carries the revision its changed event moved on to (`boundBump`).
+    const swap = (list: OutboxItem[]): OutboxItem[] => list.map((i) => (keyOf(i.ref) === key ? item : i))
     if (item.kind === 'calendar.op') this.calendar = swap(this.calendar)
     else this.mail = swap(this.mail)
     this.deps.outbox.changed(null)
@@ -521,8 +518,8 @@ export class LifeosHeldItems implements LifeosHeld {
       error: failed ? (text('error') ?? 'LifeOS could not carry it out') : null,
       result: null,
       routineRunId: origin.routineRunId ?? null,
-      // A view from before the act's event changed names an older revision: each time the screens are shown the change, it moves on.
-      updatedAt: Math.round(at) + (this.bumps.get(keyOf({ at: 'lifeos', table: 'calendarOps', id })) ?? 0)
+      // A view from before the act's event changed names an older revision: it moves on whenever the bound event does, kept across restarts.
+      updatedAt: Math.round(at) + this.deps.outbox.store.boundBump(id, shownEvent(payload))
     }
   }
 }

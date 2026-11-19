@@ -318,6 +318,29 @@ describe("the owner's press", () => {
     await expect(rig.rpc('work.outbox.edit', { ref: item!.ref, payload: { arguments: {} } })).rejects.toThrow('already decided')
   })
 
+  it('refuses an edit to a kind whose payload is not what goes (a form publish sends the form as stored)', async () => {
+    await rig.close()
+    const z = (await import('zod')).z
+    const kind: ActKindDef<{ title: string }, never> = {
+      kind: 'form.publish',
+      store: 'host',
+      payload: z.object({ title: z.string() }),
+      words: (p) => ({ summary: `Publish ${p.title}`, verb: 'Publish' }),
+      execute: async (p) => ({ summary: `Published ${p.title}` })
+    }
+    const pillar: WorkModule = { id: 'forms', ensure() {}, acts: [kind as unknown as ActKindDef] }
+    rig = await makeRig({ modules: [outboxModule, pillar] })
+    const { WORK_MODULES } = await import('../modules')
+    WORK_MODULES.push(pillar)
+    try {
+      cast(rig)
+      const item = rig.work.ctx.held.create({ kind: 'form.publish', sessionId: 't-work', payload: { title: 'Spring LAN' } })
+      await expect(rig.rpc('work.outbox.edit', { ref: item.ref, payload: { title: 'Changed' } })).rejects.toThrow('cannot be changed here')
+    } finally {
+      WORK_MODULES.splice(WORK_MODULES.indexOf(pillar), 1)
+    }
+  })
+
   it("puts back what a kind's carrier fixes for itself when he edits it, so what he edits is what goes", async () => {
     await rig.close()
     const z = (await import('zod')).z

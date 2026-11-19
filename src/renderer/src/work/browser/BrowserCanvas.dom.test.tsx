@@ -26,6 +26,8 @@ const host = vi.hoisted(() => ({
   picture: "bytes" as "bytes" | "none" | "empty",
   /** while set, the picture's read waits on it */
   pictureGate: null as Promise<void> | null,
+  /** the windows this desktop can draw live */
+  drawn: [] as unknown[],
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -55,7 +57,7 @@ vi.mock("../../lib/connection", async (original) => {
 });
 vi.mock("../../lib/computerSection", async (original) => ({
   ...(await original<typeof import("../../lib/computerSection")>()),
-  useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: true, loading: false, live: false }),
+  useComputerSection: () => ({ entries: host.drawn, keys: [], histories: {}, exists: true, loading: false, live: false }),
 }));
 // A session this desktop cannot draw (the box, the browser /ui): Take over still stops it.
 vi.mock("../../lib/computerSessions", async (original) => ({
@@ -108,6 +110,7 @@ beforeEach(() => {
   host.stateDown = false;
   host.picture = "bytes";
   host.pictureGate = null;
+  host.drawn = [];
 });
 afterEach(cleanup);
 
@@ -250,6 +253,35 @@ describe("a held submit's primary waits on the page he approves", () => {
     fireEvent.error(await screen.findByRole("img"));
     await screen.findByText("The page's picture did not load");
     expect(submit().hasAttribute("disabled")).toBe(true);
+  });
+
+  it("with a window live here, shows the kept picture in place of the stream's placeholder, and waits on it", async () => {
+    let open!: () => void;
+    host.pictureGate = new Promise((resolve) => (open = resolve));
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    host.items = [HELD];
+    const { container } = render(<Pane />);
+    await screen.findByRole("button", { name: "Submit Report in Concur" });
+    expect(container.querySelector("[data-face=live]")).toBeNull();
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    open();
+    const img = await screen.findByRole("img", { name: HELD.summary });
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    fireEvent.load(img);
+    await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
+  });
+
+  it("with a window live here, a failed picture keeps the primary off until Retry draws it", async () => {
+    host.pictureDown = true;
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    host.items = [HELD];
+    render(<Pane />);
+    await screen.findByText("The page's picture did not load");
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    host.pictureDown = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.load(await screen.findByRole("img", { name: HELD.summary }));
+    await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
   });
 
   it("an act that kept no picture has nothing to wait on", async () => {

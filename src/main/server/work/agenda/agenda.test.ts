@@ -105,6 +105,19 @@ describe('a held calendar act', () => {
     expect((again!.payload as CalendarOpPayload).eventTitle).toBe('New contract approval')
   })
 
+  it("an older view is refused after any read caught the event's change, not only after a refused press", async () => {
+    rig.lifeos.calendarOp({ kind: 'accept', eventId: 'ev_1' })
+    rig.lifeos.fire()
+    await settled()
+    const [old] = await list()
+    Object.assign(rig.lifeos.events.get('ev_1')!, { location: 'Room 210' })
+    // the detail reads it fresh: the revision moves on with the event, durably
+    const fresh = await rig.rpc<OutboxItem>('work.outbox.get', { ref: old!.ref })
+    expect(fresh.updatedAt).not.toBe(old!.updatedAt)
+    await expect(rig.rpc('work.outbox.send', { ref: old!.ref, rev: old!.updatedAt })).rejects.toThrow('changed since')
+    expect(sends()).toEqual([])
+  })
+
   it('does not go when its event moved after it was shown', async () => {
     const id = rig.lifeos.calendarOp({ kind: 'accept', eventId: 'ev_1' })
     rig.lifeos.fire()

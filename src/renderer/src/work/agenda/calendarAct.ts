@@ -13,8 +13,10 @@ export interface CalendarOp {
   calendarId?: string;
   eventId?: string;
   eventTitle?: string;
-  /** the event's start as the host bound it for the press; shown in place of a live read */
+  /** the event as the host bound it for the press (start, end, place); shown in place of a live read */
   eventStartsAt?: number;
+  eventEndsAt?: number;
+  eventLocation?: string;
   payload?: {
     title?: string;
     startsAt?: number;
@@ -67,12 +69,12 @@ export function whenWords(startsAt: number, endsAt: number | undefined, allDay =
 export function opFields(op: CalendarOp, event: DayEvent | null): { label: string; value: string }[] {
   const p = op.payload ?? {};
   const rows: { label: string; value: string }[] = [];
-  const title = p.title ?? event?.title ?? op.eventTitle;
+  const title = p.title ?? op.eventTitle ?? event?.title;
   if (title) rows.push({ label: "Event", value: title });
   const startsAt = p.startsAt ?? op.eventStartsAt ?? event?.startsAt;
-  if (startsAt !== undefined) rows.push({ label: "When", value: whenWords(startsAt, p.endsAt ?? event?.endsAt, p.allDay ?? event?.allDay) });
+  if (startsAt !== undefined) rows.push({ label: "When", value: whenWords(startsAt, p.endsAt ?? op.eventEndsAt ?? event?.endsAt, p.allDay ?? event?.allDay) });
   if (op.kind === "propose" && p.proposedStart !== undefined) rows.push({ label: "Instead", value: whenWords(p.proposedStart, p.proposedEnd) });
-  const where = p.location ?? event?.location;
+  const where = p.location ?? op.eventLocation ?? event?.location;
   if (where) rows.push({ label: "Where", value: where });
   if (p.attendees?.length) rows.push({ label: "Invites", value: p.attendees.map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(", ") });
   if (p.uninvite?.length) rows.push({ label: "Uninvites", value: p.uninvite.join(", ") });

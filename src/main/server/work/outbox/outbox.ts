@@ -69,6 +69,9 @@ type EventShown = { eventTitle?: string; eventStartsAt?: number; eventEndsAt?: n
 export const shownEvent = (p: EventShown | null | undefined): string =>
   JSON.stringify([p?.eventTitle ?? null, p?.eventStartsAt ?? null, p?.eventEndsAt ?? null, p?.eventLocation ?? null])
 
+/** Kinds whose payload, edited here, is what goes. The renderer's Edit follows the same list (work/outbox/model.ts EDITABLE). */
+export const EDITABLE_KINDS: readonly ActKind[] = ['mail.send', 'addon.call', 'teams.post', 'office.mail.send']
+export const NOT_EDITABLE = 'This act cannot be changed here; change it where it was made, and it is held again.'
 export const NO_SUCH_ITEM = 'no such held item on this host'
 export const CHANGED_SINCE = 'This item changed since you opened it. Look at it again before you decide.'
 export const MAY_HAVE_GONE = 'This may have gone already: the last send did not say how it ended. Check Sent first, and choose Send again only if it is not there.'
@@ -225,6 +228,8 @@ export class Outbox {
     }
     const row = this.store.byRef(ref)
     if (!row) throw new Error(NO_SUCH_ITEM)
+    // Only a kind whose payload is what goes may be changed here: a form's publish, say, sends the form as stored (the hold review).
+    if (!EDITABLE_KINDS.includes(row.kind)) throw new Error(NOT_EDITABLE)
     const def = this.def(row.kind)
     const parsed = def.payload.parse(KEEPS[row.kind] ? KEEPS[row.kind]!(row.payload, payload) : payload)
     const next = def.keep ? def.keep(def.payload.parse(row.payload), parsed) : parsed

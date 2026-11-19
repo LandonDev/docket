@@ -85,11 +85,11 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const { env } = props;
   const pane = paneOf(props);
   const fetched = useBrowser(env, pane);
-  const { state, held, entry, live, error } = props.data ?? fetched;
+  const { state, held, live, error } = props.data ?? fetched;
   const face = barFaceOf(state, held);
-  // Where no window is live the body draws the held page's kept picture: his press approves what he has seen, so the
-  // primary waits until that picture has drawn (or none was kept), and stays off while it comes or failed.
-  const still = face.face === "held" && !entry && !props.picture ? face.item.ref : null;
+  // While a submit waits the body draws the held page's kept picture, a live window or not: his press approves what he has
+  // seen, so the primary waits until that picture has drawn (or none was kept), and stays off while it comes or failed.
+  const still = face.face === "held" && !props.picture ? face.item.ref : null;
   const picture = useHeldPicture(env, still);
   const seen = !still || pictureShown(picture);
   const [busy, press] = usePress();
@@ -202,7 +202,9 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
   const { state, held, entry, live, error, retry } = props.data ?? fetched;
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
-  const stream = useLiveStream(entry, true, box, measure);
+  const waiting = held && (held.state === "held" || held.state === "live") ? held : null;
+  // A waiting submit shows the page it kept, never the live window's placeholder, so the stream rests until it is decided.
+  const stream = useLiveStream(entry, !waiting, box, measure);
 
   // Where it runs, said once after the page's title: the Mac a box thread drives, else the thread's own host (none for this one).
   const where = entry?.row.macName ?? live.find((e) => e.row.macName)?.row.macName ?? hostName(env);
@@ -217,7 +219,6 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
     return () => shell.statusLine(null);
   }, [shell, error, retry]);
 
-  const waiting = held && (held.state === "held" || held.state === "live") ? held : null;
   const values = useMemo<PortalValue[]>(() => (waiting ? portalValues((waiting.payload as HeldSubmitPayload).mark ?? "", state?.sources ?? []) : []), [waiting, state?.sources]);
 
   return (
@@ -225,7 +226,9 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
       {/* The page fills the body inside its inset (browser.html), at any width of canvas. */}
       <div className="flex w-full flex-col gap-3">
         {error && !props.picture ? null : props.picture ??
-          (entry ? (
+          (waiting ? (
+            <StillView env={env} held={waiting} />
+          ) : entry ? (
             <LiveView stream={stream} box={box} label={liveLabel(entry)} />
           ) : state ? (
             <StillView env={env} held={waiting} />
@@ -264,7 +267,7 @@ function LiveView({ stream, box, label }: { stream: ReturnType<typeof useLiveStr
   );
 }
 
-/** Where the window cannot be drawn live (the box, the browser /ui): the held page's picture, or one line. The bar's primary waits on the same read. */
+/** A waiting submit's page, live window or not, and where none can be drawn (the box, the browser /ui): the held page's picture, or one line. The bar's primary waits on the same read. */
 function StillView({ env, held }: { env: string; held: OutboxItem | null }) {
   const picture = useHeldPicture(env, held?.ref ?? null);
   const { src } = picture;
