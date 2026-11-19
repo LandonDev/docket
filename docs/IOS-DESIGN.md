@@ -2394,12 +2394,64 @@ phone does everything the desktop does. What milestone 46 built:
   line with its switch, reworded in a sheet, deleted by swipe, reordered
   with Edit; + adds one.
 
-Not yet on the phone, and whose: the workspace screen's four view rows
-(Mail, Tasks, Agenda, Docs), LifeOS's project cards and the Routines
-header, opening a document or sheet in the hosted editor
-(`work.guests.ticket`) and making a guest link from its Share, the
-proposal line under a sent mail (`work.rules.forDraft`) and the voice
-switch (milestone 47, with LifeKit and the canvas).
+What milestone 47 added (approved pages `phone-life.html` and
+`phone-canvas.html`):
+
+- **A Work workspace's screen** leads with Mail, Tasks, Agenda and
+  Routines on the Home row grid, then House Rules. While its host is
+  signed out of LifeOS or cannot reach it, the three LifeOS rows sit at
+  half strength under the one status line.
+- **Mail, Tasks and Agenda are LifeOS's own screens** (work-kit's
+  LifeKitUI), narrowed to the workspace's sector, so no sector dot shows.
+  They keep LifeOS's type ladder (body and subheadline), beside the app's
+  15/13/11 list ladder, as the approved page draws them. Their sheets are
+  LifeOS's. Send in their composer goes to the host (the hold, for a
+  thread's draft); Start Thread leads the task, event and mail menus.
+- **Start Thread** opens a form sheet, "New Thread": the item as a chip
+  (28 pt, radius 8, the fill, the kind's glyph and its label) above his
+  words, Cancel and Start. Nothing runs until Start; the thread opens.
+- **Item | Chat**: a Work thread with an open item is two segments, the
+  item's name (cut to fit) and Chat. Under the bar one row names the item
+  (a menu when there are several) and holds its More (Make a Guest Link
+  for a document or sheet, Close).
+- **The hosted editor**: a LifeOS document or sheet loads `/w/open` in a
+  web view at full width with no inset; the page draws its own loading
+  and its own review. It never raises the keyboard before his first
+  touch. Its failure is the system's unavailable view, "This page cannot
+  be reached right now", with Try Again. The edit menu over a selection
+  leads with Ask.
+- **Native kinds**: a PDF in the system's viewer with the page capsule
+  ("6 of 14", glass) at its foot and Ask at its top corner; a deck's
+  render with the filmstrip under it and, while changes wait, the review
+  row (44 pt: how many, Reject, Accept as the one tinted button); a video
+  over its comments by time, a comment field that pins to the frame
+  shown; a picture from its tiles; a meeting's transcript (who, when, the
+  words); the browser's driver ("You are driving" or "The agent is
+  driving") with Take Over or Hand Back, and an act it holds as the one
+  prominent glass button, which opens the held detail; a form's responses
+  (each answer under its question); a dashboard's blocks; history as a
+  version list, each opening a compare with now (what went struck through
+  in red, what came underlined in green). A held mail shows as it will go;
+  once sent, the rule his edits suggest is one muted line with Add Rule.
+- **Ask** from an item is a form sheet: the selection as its chip, his
+  words, Send; then Chat shows.
+- **The guest link sheet**: a form sheet at medium height, For, Can (View,
+  Comment, Edit, one segmented control), Ends (a date), Cancel and
+  Create; then the address once, with Copy and Share.
+- **Routines**: two bands, Routines and Watches; each row its name, its
+  trigger in plain words under it, and when it next runs as the stamp (a
+  watch that ends on a day: "Until Tue, Nov 24"); a watch carries the
+  watching dot, a paused one the pause glyph; swipe for Pause (warning) or
+  Resume.
+- **Write in My Voice** is the first row of the house rules page.
+
+Not on the phone, and why: the Docs row and LifeOS's project cards on a
+Work workspace's screen (no wire lists a workspace's documents yet); a
+native review row for a document or sheet (its suggestions live inside
+the hosted editor, which shows its own); the recording player of a
+meeting; the browser's picture (no wire carries its frames to a phone);
+a document or sheet that is a file on a computer (view only there, §19,
+not built).
 
 ## Visual system
 

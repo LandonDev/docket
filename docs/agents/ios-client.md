@@ -835,6 +835,43 @@
   writes held acts as the hold does), shoots the screens and reads back on
   the host what the phone's presses did (`work-report.txt`).
 
+## A Work thread's items and LifeOS's screens (milestone 47)
+
+- **`WorkCanvas`** (Work/Items/WorkCanvas.swift, `client.work.canvas`): a
+  Work thread's open items in tab order (`work.canvas.list` when the thread
+  screen opens, then the `work.canvas` push; `opened` selects the item an
+  open just showed), `routinesRev` per workspace (the `work.routines`
+  push), and each kind's reads and presses. `ItemBody.of(item)` says what
+  the phone draws: a LifeOS document or sheet in the hosted editor
+  (`work.guests.ticket`, its `url` in a WKWebView), the phone's own view
+  for a PDF, slides, media, meeting, browser, form, dashboard, history and
+  a held mail, and a sentence for a file document or sheet (those open on
+  the computer that has them). `ChunkedRead` reads a PDF or a deck's render
+  in frames of one `rev`; `MediaPick` plays the fMP4 proxy (its segments
+  fetched and joined into one file) or draws a picture from its tiles
+  (`TileGrid`); the frame arithmetic is mediaFrames.ts's.
+- **The Item segment** (ThreadFrame.swift `segments(for:hasItems:)`): a
+  Work thread that is its transcript alone and has an open item is Item
+  and Chat; a thread with a hero of its own keeps it. The bar shows the
+  item's name (`ItemLabel.short`); several items switch from the name.
+- **LifeOS's screens** (app Work/Life): one `WorkLifeHost` per Work
+  workspace holds a `LifeClient` and a `LifeStore` narrowed to the
+  workspace's sector, signed in with the JWT its host signs
+  (`LifeTokenSource`: `work.lifeos.jwt {sector}`, kept until five minutes
+  before it ends, asked again on a refusal). It is the screens'
+  `LifeActions`: `holdsSends` (the draft LifeOS saved, read back with
+  `compose:get`, goes to `work.mail.send` with what it says as `seen`),
+  `startsThreads` (a sheet with the item as its chip; `startThread` sends
+  `session.create` with `about` and the chip's line above his words,
+  `ChipWords`, the desktop's `chipLine`). The screens keep LifeOS's own
+  type ladder. `TC_TEST_LIFE_FIXTURES=1` runs them on LifeKit's fixture
+  day (debug builds).
+- **Ask** from an item opens a sheet with the selection (or the PDF's
+  page) as its chip and sends to the thread (`WorkHost.ask`), then shows
+  Chat; the thread's own composer holds no chips.
+- **Routes**: `.workView(environmentId:workspaceId:view:)` (`mail`,
+  `tasks`, `agenda`, `routines`), in the detail column.
+
 ## The data path's two contracts (the performance pass, 2026-11)
 
 What a push and a key may re-run is written down in docs/IOS-DESIGN.md

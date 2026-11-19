@@ -42,3 +42,18 @@
   `BuildFacts` and `NoticeKind` once, and `scripts/gen-swift-contract.test.ts`
   pins its rules; `DecoderRulesTests.swift` proves the decoder on
   hand-written JSON, so it passes before the fixtures are re-recorded.
+  Milestone 47 added a Work thread's items and LifeOS's screens: the
+  `work.canvas` and `work.routines` pushes, `CanvasItem` and `FrameTable`
+  named, and `work.lifeos.jwt`, `work.mail.send`, `work.rules.forDraft`,
+  `work.workspace.get/set`, `work.canvas.list/open/close`,
+  `work.guests.ticket/create`, and each kind the phone draws (`work.pdf.open/read`,
+  `work.slides.open/read/review`, `work.media.view/note/segment/tile`,
+  `work.meetings.get`, `work.forms.responses`, `work.dashboards.open/review`,
+  `work.history.versions/compare`, `work.browser.state/drive`,
+  `work.routines.list/pause`). A phone view of a pillar's answer
+  (`PdfPhoneView`, `DeckPhoneView`, `MediaPhoneView`, …) keeps only the
+  fields the phone draws; its pin is `Reads` (every value of the server's
+  type is one the schema reads), not `Mirror`. Two generator rules came
+  with them: union branches that come out as one Swift case (a string or
+  the literal `'live'`, two tuple shapes) are one case, and a field named
+  `patch` gets the type name `Changes`, never `Patch` (the request wrapper).
