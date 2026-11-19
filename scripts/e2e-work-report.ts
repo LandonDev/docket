@@ -88,7 +88,7 @@ wb.save(sys.argv[1])`,
   await run.page(`(() => { const el = [...document.querySelectorAll('button, a, [role=button]')].find((e) => /^Outbox\\d*$/.test(e.textContent.trim())); el?.click() })()`)
   await run.until('row', 20_000, () => run.has(`${PREFIX} weekly report`))
   await sleep(1200)
-  await run.shot('02-report-held')
+  await run.shot('02-report-held', { hide: box.address })
   const gone = await run.call<OutboxItem>('work.outbox.discard', { ref: held!.ref })
   run.check('he discards it; nothing was sent', gone.state === 'discarded' && gone.decidedBy === 'owner', gone.state)
 } catch (err) {

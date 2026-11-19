@@ -62,7 +62,7 @@ try {
   await run.page(`(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=link]')].find((e) => /^Outbox\\d*$/.test(e.textContent.trim())); el?.click(); return !!el })()`)
   run.check('the Outbox lists the three', await run.until('rows', 30_000, async () => (await run.has(`${PREFIX} triage reply 1`)) && (await run.has(`${PREFIX} triage reply 3`))))
   run.check("the window offers the three as one batch (the group's Send 3)", await run.page<boolean>(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Send 3')`))
-  await run.shot('01-outbox-batch')
+  await run.shot('01-outbox-batch', { hide: box.address })
 
   // The owner's press: one sent (to himself) or discarded, the other two discarded.
   const items = await held()
@@ -84,7 +84,7 @@ try {
     run.check(`LifeOS holds ${id.slice(-6)} as not sent`, !r || r.row.status !== 'sent', r?.row.status ?? 'gone')
   }
   await sleep(1500)
-  await run.shot('02-outbox-decided')
+  await run.shot('02-outbox-decided', { hide: box.address })
 } catch (err) {
   await run.finish(err)
 }

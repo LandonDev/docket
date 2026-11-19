@@ -50,20 +50,20 @@ What they share is `scripts/e2e-work-lib.ts` (`Run`):
 
 ## Results
 
-All on the box (Linux, xvfb), 2026-11-19, on the branch's final build.
+On the box (Linux, xvfb), 2026-11-19, on the branch's build over master with milestone 47 (`3aa164060`); every job ran twice in a row there, then once more with each change to its script.
 
 | Job | What it proves | Runs |
 |---|---|---|
-| triage | morning triage to held drafts to the owner's batch | RESULTS_TRIAGE |
-| report | a weekly report from a real .xlsx to a held mail | RESULTS_REPORT |
-| document | a .docx through suggestions and a guest's edit to .docx, .odt, .md and PDF | RESULTS_DOCUMENT |
-| meeting | a recording to accepted tasks in LifeOS | RESULTS_MEETING |
-| routine | a routine that fires under Away and leaves a held item | RESULTS_ROUTINE |
-| switchoff | Work off is the app before Work | RESULTS_SWITCHOFF |
-| sweep | nothing a proof made is left in LifeOS | RESULTS_SWEEP |
+| triage | morning triage to held drafts to the owner's batch | 2 of 2 (20 checks each) |
+| report | a weekly report from a real .xlsx to a held mail | 2 of 2 (15) |
+| document | a .docx through suggestions and a guest's edit to .docx, .odt, .md and PDF | 2 of 2 (17), and 2 of 2 on the Mac (17, guest leg left out) |
+| meeting | a recording to accepted tasks in LifeOS | 2 of 2 (13) |
+| routine | a routine that fires under Away and leaves a held item | 2 of 2 (15) |
+| switchoff | Work off is the app before Work | 2 of 2 (16) |
+| sweep | nothing a proof made is left in LifeOS | nothing left; 15 proof tasks found, all dropped |
 | Windows hold | a Work thread's flagged submit on a Windows PC waits for his press | 2 of 2 in the rig |
-| Mac | MAC_RESULT | |
-| Phone | PHONE_RESULT | |
+| Mac | the document job under the Mac's Electron | 2 of 2 |
+| Phone | the whole work set in the iOS simulator (45 shots), ios:test, ios:test:client | 2 of 2 |
 
 ### Morning triage to held drafts to a batch
 
@@ -100,7 +100,9 @@ rewrite waits as one branch, tinted in the text, the text unchanged; Accept
 all takes it. The document exports as .docx (python-docx reads back the
 accepted words, the table and the comment), .odt and .md, and as a PDF
 from Electron's own print window (`work.formats.print`, read back by
-pdfium) — the print window's first run anywhere.
+pdfium) — the print window's first run anywhere. The job hands the print
+window the document's markdown as plain lines, not the editor's own page,
+so the PDF shows `#` and table pipes: it proves the window, not the layout.
 
 The guest's edit runs milestone 31's live proof against this tree's built
 hosted page: the real Work service and the guest page in headless
@@ -175,11 +177,40 @@ choice, so a workbook in real Excel on Windows is his PC's (below).
 
 ### The Mac
 
-MAC_SECTION
+An Opus child on the Mac ran the document job twice from a scratch clone
+(`/private/tmp`, its own userData and ports; the installed app untouched),
+with `E2E_GUEST=0` and a scratch Python: 17 checks, all passed, both runs.
+That is the .docx import with LibreOffice, the Work service's live editing
+(Hocuspocus) under the Mac's Electron, suggestions and Accept all, the
+exports, and the print window's PDF on macOS — the first time the service
+and the print window ran on a Mac. The Mac had been idle 43 minutes and was
+not locked. Excel 16.102.1 and Outlook 16.115 are installed; Word and
+PowerPoint are not. Nothing was opened in Office (below).
 
 ### The phone
 
-PHONE_SECTION
+An Opus child on the Mac, on the branch over master with milestone 47:
+`bun run ios:test` (51 tests) and `ios:test:client` (1,456 tests) passed;
+the whole work set (`TC_PROOF_SET=work`: milestone 46's w01–w20 and 47's
+w21–w45), simulator erased before each, passed twice (824 s and 712 s, all
+45 shots). The host read back the same both times: the held mail sent from
+the phone, what went was the phone's edit, a grant made from the post's
+Send menu and the post going after it, Away on and off, both video comments
+on the host at their frames (28 and 90).
+
+It found a fault in the set: in a full run milestone 47's shots were taken
+dark under "-light" names (milestone 46's part ends dark). It then made
+three of milestone 47's four unproven lines run, in scripts only: the test
+server can run the Work service in its own process
+(`TC_TEST_WORK_SERVICE=1`), so the set now seeds a deck with two waiting
+edits (LibreOffice 26.8.3 installed on the Mac with `brew install --cask
+libreoffice`, python-pptx in a scratch venv named by `TC_PROOF_PPTX_VENV`),
+a published form with three answers, and a history compare against a
+second version. That run (milestone 47's part, light again) passed once.
+
+![A deck with its review row on the phone](work-proofs/phone-deck.jpg)
+![A form's three answers](work-proofs/phone-form.jpg)
+![A history compare](work-proofs/phone-compare.jpg)
 
 ## Faults the proofs found, and their fixes
 
@@ -197,6 +228,21 @@ PHONE_SECTION
   Both now wait up to 20 s for a starting service. `service/ctx.ts`
   `runningSoon`, one test in `service/ctx.test.ts`.
 
+Also from the phone leg, in the work set's scripts (milestones 46 and 47):
+milestone 47's shots were dark in a full run; the slides seed passed
+silently with LibreOffice present and never checked python-pptx. Both fixed
+(above).
+
+Seen and left as they are, for the pillar's owner to judge:
+
+- A routine run's thread is titled by its prompt's first words ("Draft a
+  short digest of…"), not the routine's name, and the Outbox's line names
+  it so.
+- The phone's history compare (w40) has no title saying which version it
+  compares with the live document.
+- With its provider at a dead address, a thread says "Provider overloaded,
+  retry n in s" rather than that the provider cannot be reached.
+
 ## Still unproven
 
 Each line: what, why it was not proven here, and what proves it. "Owner"
@@ -208,8 +254,9 @@ marks a step only he can take; the rest a later thread can run.
   through, its changes seen in the grid; Word and PowerPoint opening what
   we export; formatted Outlook mail. Why: Office scripting asks his one
   click per app on macOS's Automation prompt, needs the Apple Events
-  entitlement in an installed build (F3; tonight's release carries it), and
-  the Mac was locked and unattended. Steps (owner, on the Mac, after
+  entitlement in an installed build (F3; release 1.0.348 carries it), and
+  no agent may answer that prompt for him. Word and PowerPoint are not
+  installed on the Mac (Excel 16.102.1 and Outlook 16.115 are). Steps (owner, on the Mac, after
   installing a release with F3): from a Work thread whose workspace may use
   the Mac, with scratch files under /private/tmp only —
   1. Open Excel; make `/private/tmp/m28/xl-test.xlsx` with Sheet1 A1:C3
@@ -227,7 +274,8 @@ marks a step only he can take; the rest a later thread can run.
   5. An invitation to himself from another account: `office_calendar_answer`
      accept is held; press; Outlook shows it accepted.
 - **Every exported file in real Excel, Word and PowerPoint** (milestones
-  21, 27, 33). Why: as above. Steps (owner): open each file the proofs
+  21, 27, 33). Why: as above, and Word and PowerPoint are not on the Mac.
+  Steps (owner, after installing Word and PowerPoint): open each file the proofs
   wrote — `.temp-code/plans/landed/M49/document/exports/` (.docx, .odt,
   .pdf), a sheet exported from the canvas (⋯ → Export → .xlsx), a deck from
   the slides canvas (.pptx) — in Word, Excel and PowerPoint; each opens with
@@ -284,7 +332,9 @@ marks a step only he can take; the rest a later thread can run.
   the draft is held in the Outbox with the thread's origin; a routine whose
   prompt drafts the same settles "Held 1".
 - **Computer use on the Mac, live** (milestones 37, 10): portals, Teams
-  posts and a held act on the Mac's own screen. Why: the Mac was locked.
+  posts and a held act on the Mac's own screen. Why: not run here, to keep
+  to one Mac child at a time and the little usage left; the Mac was idle
+  and unlocked during the Mac leg, so a child can run it.
   Steps: a Mac child after five idle minutes (the memory's idle gate) runs
   `bun scripts/e2e-computer.ts` and `TC_MAC_RIG=1` hold tests; or the owner
   asks a Work thread on the Mac to fill a test form and presses its Send.
@@ -292,6 +342,16 @@ marks a step only he can take; the rest a later thread can run.
   it ships with the next LifeOS desktop release; every proof signed in by a
   minted session. Steps (owner): after that release, Settings → Work → Sign
   in on a dev instance, approve the code in LifeOS desktop.
+- **The hosted editor on the phone** (milestone 47): a LifeOS document
+  edited in the web view and a suggestion accepted there. Why: the hosted
+  editor serves LifeOS documents only, the simulator's test server has no
+  LifeOS, and pressing Accept inside the web view needs a launch hook in the
+  app. Steps: with the box's Work service live (above), open a LifeOS
+  document from a phone thread's item row and accept a suggestion in its
+  review; or a later milestone adds the hook and a scratch Convex behind
+  the test server.
+- **Accept pressed on a deck from the phone** (milestone 47): the deck and
+  its review row are shown; the app has no launch hook to press Accept.
 - **The phone on a real device** (milestones 45, 46, 47): lock-screen
   notices through APNs, the Duo's open postures, an iPad's windows. Steps
   (owner): install the Ad Hoc build, sign in, turn Away on, have a Work

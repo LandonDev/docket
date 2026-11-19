@@ -34,7 +34,7 @@ try {
   const routine = await run.call<RoutineRow>('work.routines.save', {
     workspaceId: ws,
     name: `${PREFIX} overnight digest`,
-    prompt: `Draft a short digest of overnight mail to me at ${box.address}, subject "${PREFIX} overnight digest". Do not send it.`,
+    prompt: `Draft a short digest of overnight mail to me, subject "${PREFIX} overnight digest". Do not send it.`,
     trigger: { on: 'schedule', rrule, tz: TZ },
     ends: { kind: 'once' }
   })
@@ -71,7 +71,7 @@ try {
   await run.page(`(() => { const el = [...document.querySelectorAll('button, a, [role=button]')].find((e) => /^Outbox\\d*$/.test(e.textContent.trim())); el?.click() })()`)
   run.check('the Outbox shows the night\'s digest waiting', await run.until('row', 20_000, () => run.has(`${PREFIX} overnight digest`)))
   await sleep(1200)
-  await run.shot('01-overnight-held')
+  await run.shot('01-overnight-held', { hide: box.address })
   const gone = await run.call<OutboxItem>('work.outbox.discard', { ref: held!.ref })
   run.check('he discards it; nothing was sent', gone.state === 'discarded' && gone.decidedBy === 'owner', gone.state)
 } catch (err) {

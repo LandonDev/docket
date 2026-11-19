@@ -292,9 +292,14 @@ export class Run {
   has(text: string): Promise<boolean> {
     return this.page<boolean>(`document.body.textContent.includes(${JSON.stringify(text)})`)
   }
-  /** Both themes of what the window shows now, into the job's out folder. `clipLeft` leaves out the rail and the column, which show his real lists. */
-  async shot(name: string, opts: { clipLeft?: number } = {}): Promise<void> {
+  /** Both themes of what the window shows now, into the job's out folder. `clipLeft` leaves out the rail and the column, which show his real lists; `hide` swaps a text (his address) out of the picture. */
+  async shot(name: string, opts: { clipLeft?: number; hide?: string } = {}): Promise<void> {
     const clip = opts.clipLeft ? { clip: { x: opts.clipLeft, y: 0, width: 1440 - opts.clipLeft, height: 900, scale: 1 } } : {}
+    // His address stays out of a picture the public repo may carry: each text naming it says "his own address" instead.
+    if (opts.hide)
+      await this.page(
+        `(() => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (n.nodeValue.includes(${JSON.stringify(opts.hide)})) n.nodeValue = n.nodeValue.split(${JSON.stringify(opts.hide)}).join('his own address'); for (const el of document.querySelectorAll('body *')) if (el.children.length && el.textContent.trim() === ${JSON.stringify(opts.hide)}) el.textContent = 'his own address' })()`
+      )
     for (const light of [false, true]) {
       await this.page(`document.documentElement.classList.toggle('theme-light', ${light})`)
       await sleep(400)
