@@ -8,7 +8,7 @@
  *   bun scripts/e2e-updater.ts --win              build both copies, start the rig, drive, stop it
  *   bun scripts/e2e-updater.ts --win --reuse      keep the builds under ROOT, redrive
  *   bun scripts/e2e-updater.ts --win --rig-up     the rig is up and yours: use it, leave it running
- *   bun scripts/e2e-updater.ts --win --busy       restart with a terminal and a bundled claude.exe alive
+ *   bun scripts/e2e-updater.ts --win --busy       restart with the bundled claude.exe running out of the install folder
  *   bun scripts/e2e-updater.ts --win --build-only build and check both copies, leave the rig alone
  *   bun scripts/e2e-updater.ts --win --no-vite    out/ is already built: pack it as it is
  *
@@ -411,14 +411,15 @@ async function drive(): Promise<void> {
 
   let childrenBefore: string[] = []
   if (busy) {
-    // A terminal whose shell runs the bundled CLI: a live child tree with a file of the install
-    // folder held open, which is what a warm harness leaves and what the installer cannot replace.
-    await cdp.eval(`window.api.pty.spawn({ id: 'e2e-busy', cwd: ${JSON.stringify(`C:\\Users\\${STANDARD_USER}`)}, cols: 100, rows: 30 })`)
-    await sleep(4000)
-    await cdp.eval(`window.api.pty.write('e2e-busy', ${JSON.stringify(`& "${GUEST_CLI}"\r`)})`)
-    await waitFor('the bundled CLI in the terminal', 60_000, async () => (await appProcesses()).some((l) => /claude\.exe$/i.test(l)))
+    // The bundled CLI running out of the install folder, which holds claude.exe open: what a warm harness
+    // leaves, and a file the installer cannot replace. Started on the desktop, not through a terminal (a
+    // terminal on Windows waits for milestone 13's shells), so it is the sweep's install-folder rule that
+    // must end it; its walk down the app's own tree is unit-tested (updateInstall.test.ts).
+    const cli = await guest([vm('run-in-session'), GUEST_CLI], 120_000)
+    log(`bundled CLI on the desktop: ${cli.out.slice(0, 160)}`)
+    await waitFor('the bundled CLI', 60_000, async () => (await appProcesses()).some((l) => /claude\.exe$/i.test(l)))
     childrenBefore = (await appProcesses()).filter((l) => !l.toLowerCase().endsWith(`${PRODUCT.toLowerCase()}.exe`))
-    check('a bundled claude.exe is alive under the app before the restart', childrenBefore.some((l) => /claude\.exe$/i.test(l)), childrenBefore.join(' | '))
+    check('a bundled claude.exe runs out of the install folder before the restart', childrenBefore.some((l) => /claude\.exe$/i.test(l)), childrenBefore.join(' | '))
     await shot('busy-before-restart')
   }
 

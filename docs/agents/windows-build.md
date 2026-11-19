@@ -3,12 +3,31 @@
 TempCode on Windows 11 as a desktop app: an installer that needs no admin, an updater, the
 Windows frame and Ctrl keys (milestone 12 of the Work plan). The host core under it (shells,
 process trees, links, the path fence) is milestone 13's, and a Windows host linked to the box is
-milestone 41's. **Work in progress (2026-11-19):** the build, the silent install and the bundled
-CLI are proven in the rig; the window does not open yet, because the server's boot stops at a
-symlink a standard Windows user may not make (`SkillMaterializer.swapIfWanted`, milestone 13's
-link helpers), so the frame, the keys and the update are written and unit-tested but not yet seen
-running. Every Windows branch is behind a platform check; the Mac's build, release and updater
-are meant to be as they were, and that has not been proven on a Mac yet.
+milestone 41's. Every Windows branch sits behind a platform check, and the Mac's build, release
+and updater are as they were. What runs today: the install, the window with its frame, the keys
+and the update (seen in the rig, "Proof" below). What does not yet: a thread. Terminals need a
+Windows shell, and Claude's and Muse's config dirs are still made of symlinks, which a standard
+user may not make (`skills/claudeRoots.ts`, `museConfigDirs.ts`); both are milestone 13's.
+
+## Skills links at boot
+
+The server's boot writes the skills views and scope pointers (src/main/server/skills/), which were
+directory symlinks, and a standard Windows user may not make one: the first build stopped at boot
+with EPERM. Milestone 13 owns those files; the master gave this milestone the smallest piece early
+(src/main/server/skills/links.ts):
+
+- On win32 the views' and pointers' directory links are junctions (`linkDir`), which need no
+  privilege. A junction's target is absolute and reads back that way (with a trailing backslash),
+  so `readDirLink` hands it back relative to the link's folder, as a symlink reads; every reader
+  that feeds gc goes through it, so gc never takes the live generation. Windows will not rename a
+  junction over another, so `swapDirLink` removes the old one and renames the new one in.
+- A failed write-out never stops the boot, on any platform: `SkillMaterializer.start` and
+  `SkillPointers.start` log it, and a refresh logs a scope it cannot point and goes on with the rest.
+- Off win32 the links are the same symlinks, made, read and renamed by the same calls.
+
+Left for milestone 13: the file links and per-entry links of the config dirs (`claudeRoots.ts`
+`linkTo`, `museConfigDirs.ts`), generations copied instead of hard-linked if that is wanted, and
+proving a junction view through a gc pass in the rig.
 
 ## The build
 
@@ -92,6 +111,10 @@ updateInstall.ts):
 - **No Squirrel.** ShipIt's log, its staged bundle and its launchd job are read and cleared only
   on a Mac. Off the Mac the attempt record (`update-attempt.json`) alone says an install did not
   land, and a retry drops electron-updater's `pending` download.
+- **Only "Restart to update" installs.** `autoInstallOnAppQuit` is off on win32
+  (`installsWhenQuitting`): the NSIS installer runs silently for minutes after the window closes,
+  and an app started meanwhile would be the old one, which the installer then closes. On a Mac a
+  release still installs on quit.
 - **The child tree is stopped first.** The app is unpacked, the installer replaces thousands of
   plain files, and Windows will not replace one a running process holds open: a bundled
   `claude.exe` kept warm fails the update. A child does not die with its parent on Windows. So
@@ -100,8 +123,15 @@ updateInstall.ts):
   `stopChildTree` reads one process table (`Get-CimInstance Win32_Process`) and ends every
   descendant that is not the app's own executable, and anything else running out of the install
   folder (`installBlockers`: a parent id counts only when the parent is older than the child,
-  since Windows reuses ids). A quit with a downloaded release waiting does the same sweep after
-  its shutdown. Milestone 13's `procTree.ts` and its Job Objects can take this over.
+  since Windows reuses ids). One `taskkill /F` over that exact list, never `/T`, which would walk
+  the tree again past that check (`taskkillArgs`). Milestone 13's `procTree.ts` and its Job
+  Objects can take this over.
+- **An installer that never starts.** electron-updater quits only once it has started the
+  installer; when it cannot (its `error`, a missing download) the app would be left open with its
+  work already stopped. So if no quit has begun eight seconds after `quitAndInstall`, the app
+  starts itself again (`relaunchIfStillHere`), and its attempt record says the update never installed.
+- **The install takes minutes** in the rig (five to seven, with Defender on and an emulated disk),
+  under the installer's own progress window; the new app starts when it is done.
 
 ## The frame
 
@@ -109,7 +139,8 @@ src/main/windowFrame.ts (`frameOptions`), used by windows.ts:
 
 - `titleBarStyle: 'hidden'` with a title bar overlay: Windows draws its own minimise, maximise and
   close over the page's bar, so Snap Layouts, the hover states and the red close are the system's.
-  The overlay is clear and 40px tall, the bar's height; `window:set-zoom` rescales it with the page.
+  The overlay is clear and 40px tall, the bar's height; `window:set-zoom` rescales it with the page,
+  and a theme change sets only its colours (`captionInk`), so a zoomed bar keeps its height.
 - The renderer leaves that corner empty: `chrome/WindowControls.tsx` draws a spacer as wide as
   the system says the buttons are (`env(titlebar-area-width)`), and no controls of ours. Linux
   and the /ui page keep the drawn ones. The bar is the drag region, as on the Mac.
