@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parseSchedule, scheduleRrule, scheduleWords, type RoutineRun } from '@shared/contract-work-routines'
 import type { SessionMeta } from '@shared/events'
 import type { WorkPush } from '@shared/contract-work'
-import type { Trigger } from '@shared/work'
+import type { Trigger, TriggerSource } from '@shared/work'
 import { RoutinesEngine, LIFEOS_SINCE, noteOwnWrite, type EngineDeps, type LifeosEvent } from './engine'
 import type { RoutinesHost } from './host'
 import { dueCount, nextAt } from './schedule'
@@ -40,6 +40,8 @@ interface Rig {
   /** a thread's status changed, as the registry would say */
   settle(sessionId: string, status: SessionMeta['status']): void
   stop(): void
+  /** the other pillars' trigger sources, as `WorkModule.triggers` gives them */
+  sources: TriggerSource[]
   add(n: Partial<NewRoutine> & { trigger: Trigger }): string
   /** a new engine on the same database: a restart */
   restart(): void
@@ -64,7 +66,8 @@ function makeRig(): Rig {
     subs: [],
     lifeosUp: { value: true },
     readAnswer: { text: 'no reply yet', runs: true },
-    files: new Map()
+    files: new Map(),
+    sources: []
   } as unknown as Rig
   let n = 0
   const host: RoutinesHost = {
@@ -115,6 +118,7 @@ function makeRig(): Rig {
         }
       },
       host,
+      sources: () => rig.sources,
       now: () => clock.now,
       files: {
         stat: (p) => (rig.files.has(p) ? { mtimeMs: rig.files.get(p)!.length * 1000 + rig.files.get(p)!.charCodeAt(0), size: rig.files.get(p)!.length } : null),
@@ -468,5 +472,38 @@ describe('a file on this host', () => {
     await tickAt(at(16, '09:02'))
     expect(rig.started).toHaveLength(1)
     expect(runs(id)[0]!.cause).toBe('Nationals travel budget.xlsx changed')
+  })
+})
+
+describe('a file another pillar watches', () => {
+  it('arms the source for its own place, not the first file source', async () => {
+    const armed: string[] = []
+    const fires: Record<string, (cause: string) => void> = {}
+    const source = (at: 'microsoft' | 'google', name: string): TriggerSource => ({
+      on: 'file',
+      at,
+      words: () => `When someone changes it in ${name}`,
+      arm(t, fire) {
+        armed.push(`${at} ${JSON.stringify(t.on === 'file' ? t.source : null)}`)
+        fires[at] = fire
+        return () => {}
+      }
+    })
+    rig.sources = [source('microsoft', 'Excel'), source('google', 'Google')]
+    const id = rig.add({ name: 'Roster', trigger: { on: 'file', source: { at: 'google', account: 'a@x.org', fileId: 'f1', mime: 'application/vnd.google-apps.spreadsheet' }, by: 'someone-else' } })
+    await tickAt(at(16, '09:00'))
+    expect(armed).toEqual([`google ${JSON.stringify({ at: 'google', account: 'a@x.org', fileId: 'f1', mime: 'application/vnd.google-apps.spreadsheet' })}`])
+    expect(rig.engine.row(rig.engine.store.get(id)!).words).toBe('When someone changes it in Google')
+    fires.google!('Roster changed in Google')
+    await tickAt(at(16, '09:01'))
+    expect(rig.started).toHaveLength(1)
+  })
+
+  it('waits, and asks nobody, when no source watches that place', async () => {
+    const armed: string[] = []
+    rig.sources = [{ on: 'file', at: 'microsoft', words: () => 'Excel', arm: () => (armed.push('microsoft'), () => {}) }]
+    rig.add({ name: 'Cut', trigger: { on: 'file', source: { at: 'frameio', account: 'a', fileId: 'v1' }, by: 'someone-else' } })
+    await tickAt(at(16, '09:00'))
+    expect(armed).toEqual([])
   })
 })

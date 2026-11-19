@@ -22,6 +22,8 @@ export const TriggerSchema = z.discriminatedUnion('on', [
 /** One way a trigger fires. `arm` returns its disarm; `cursor` is what the routine last saw. */
 export interface TriggerSource<T extends Trigger = Trigger> {
   on: T['on']
+  /** A `file` source names the place it watches (`microsoft`, `google`, …): the engine asks it only about files there. */
+  at?: CanvasSource['at']
   /** "Weekdays at 7:00 AM", "When Dana Lee changes it" */
   words(t: T): string
   arm(t: T, fire: (cause: string) => void, cursor: unknown): () => void

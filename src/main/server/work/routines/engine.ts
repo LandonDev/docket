@@ -114,6 +114,13 @@ const lifeosWords = (kinds: readonly string[]): string => {
   return words.length ? (words.length === 1 ? words[0]! : `${words.slice(0, -1).join(', ')} or ${words.at(-1)!.toLowerCase()}`) : 'Any LifeOS event'
 }
 
+/** The pillar's source that watches a file's place (Excel, Google, Frame.io); this pillar watches files here and LifeOS itself. */
+function fileSourceFor(t: Extract<Trigger, { on: 'file' }>, sources: readonly TriggerSource[]): TriggerSource | null {
+  const at = t.source.at
+  if (at === 'file' || at === 'lifeos') return null
+  return sources.find((s) => s.on === 'file' && s.at === at) ?? null
+}
+
 /** A trigger in plain words, never a tag. */
 export function triggerWords(t: Trigger, sources: readonly TriggerSource[] = []): string {
   if (t.on === 'schedule') {
@@ -122,7 +129,7 @@ export function triggerWords(t: Trigger, sources: readonly TriggerSource[] = [])
   }
   if (t.on === 'lifeos') return lifeosWords(t.kinds)
   if (t.on === 'read') return scheduleWords({ every: 'minutes', interval: Math.max(1, Math.round(t.everySec / 60)) })
-  const other = t.source.at === 'file' || t.source.at === 'lifeos' ? null : sources.find((s) => s.on === 'file')
+  const other = fileSourceFor(t, sources)
   if (other) {
     try {
       return other.words(t)
@@ -499,7 +506,7 @@ export class RoutinesEngine {
     }
     for (const [id, r] of want) {
       if (this.armed.has(id)) continue
-      const source = sources.find((s) => s.on === 'file')
+      const source = r.trigger.on === 'file' ? fileSourceFor(r.trigger, sources) : null
       if (!source) {
         if (r.lastWords === null) {
           this.store.setLastWords(id, 'Waiting: nothing watches files there yet')

@@ -55,6 +55,7 @@ const NO_OFFICE = 'Office is not on this host.'
 /** A file in Excel changed by someone else: a routine's `file` trigger on a workbook (architecture §11.1). */
 const excelChanges = (ctx: () => WorkCtx | null): TriggerSource => ({
   on: 'file',
+  at: 'microsoft',
   words: (t) => (t.on === 'file' && t.source.at === 'microsoft' ? `When someone changes ${t.source.name}` : 'When the file changes'),
   arm(t, fire) {
     const c = ctx()

@@ -84,7 +84,9 @@ failure: its thread is marked read), `held` (`Held N`: acts in
   or sheet (`{at: 'lifeos', table, id}`) fires on its `doc.changed` or
   `sheet.changed` event through the workspace's feed. Any other place
   (Google, Microsoft, Frame.io) is armed through another pillar's
-  `WorkModule.triggers` with `on: 'file'`; with none the row says "Waiting:
+  `WorkModule.triggers` whose source has `on: 'file'` and the same `at`
+  (Excel's says `at: 'microsoft'`, Google's `at: 'google'`); a source with
+  no `at` is never asked. With none for that place the row says "Waiting:
   nothing watches files there yet".
 
 A firing starts a root Work thread through `ctx.threads.start({workspaceId,
