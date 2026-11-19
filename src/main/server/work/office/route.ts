@@ -24,6 +24,8 @@ import { cleanMailHtml } from './held'
  */
 
 export const BEAT_MS = 60_000
+/** LifeOS's answer when a row this host journaled was claimed by another machine since */
+const TAKEN = /another machine took that mail/
 export const PUMP_MS = 20_000
 
 export function ensureRouteTables(db: DatabaseSync): void {
@@ -140,7 +142,9 @@ export class OutlookRoute {
         await lifeos().mutation(j.tbl === 'outbox' ? 'outbox:localSent' : 'calendarOps:localDone', { id: j.id, host, ...extra })
         this.unjournal(j.tbl, j.id)
       } catch (err) {
-        this.deps.log(`office route: replaying ${j.tbl} ${j.id}: ${errorText(err)}`)
+        // Another machine has claimed the row since (LifeOS's claimedBy): it is that machine's to settle now, so the entry goes, said once.
+        if (TAKEN.test(errorText(err))) this.unjournal(j.tbl, j.id)
+        this.deps.log(`office route: replaying ${j.tbl} ${j.id}: ${errorText(err)}${TAKEN.test(errorText(err)) ? '; dropped from the journal' : ''}`)
       }
     }
   }

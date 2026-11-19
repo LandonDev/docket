@@ -157,4 +157,15 @@ describe("LifeOS's Outlook route", () => {
       ['calendarOps:localFailed', { id: 'c3', host: 'env_mac', error: 'Outlook on env_mac does not carry "propose" yet: do it in Outlook.' }]
     ])
   })
+
+  it('drops a journaled mail that another machine has claimed since, and says so once', async () => {
+    db.prepare('INSERT INTO work_office_journal (tbl, id, provider_id, at) VALUES (?, ?, ?, ?)').run('outbox', 'gone1', null, 1)
+    const logs: string[] = []
+    const taken: LifeosClient = { ...lifeos, mutation: async <T,>(fn: string, args: Record<string, unknown> = {}) => (fn === 'outbox:localSent' ? Promise.reject(new Error('[CONVEX M(outbox:localSent)] Uncaught ConvexError: another machine took that mail')) : lifeos.mutation<T>(fn, args)) }
+    const r = new OutlookRoute({ db, lifeos: () => taken, carrier: office, host: 'env_box', log: (l) => logs.push(l), now: () => 5_000 })
+    await r.pump()
+    await r.pump()
+    expect(db.prepare('SELECT count(*) AS n FROM work_office_journal').get()).toEqual({ n: 0 })
+    expect(logs.filter((l) => l.includes('gone1'))).toEqual([expect.stringContaining('dropped from the journal')])
+  })
 })
