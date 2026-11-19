@@ -70,7 +70,7 @@ export interface EngineDeps {
   /** A file's look, for a test; default: the disk. */
   files?: { stat(path: string): { mtimeMs: number; size: number } | null; read(path: string): Buffer | null }
   /** The Outbox's live list of LifeOS's held items, null while it is not watching LifeOS: a run's drafts are counted from it. */
-  lifeosHeld?(): Pick<LifeosHeld, 'items'> | null
+  lifeosHeld?(): Pick<LifeosHeld, 'items' | 'loaded'> | null
 }
 
 const disk = {
@@ -434,11 +434,12 @@ export class RoutinesEngine {
    * What a run left for the owner. LifeOS's drafts are counted from the Outbox's own list, by the run their
    * origin names, whenever the Outbox is watching LifeOS: a draft made by any path (a Codex or Muse bridge
    * call, a subagent, a tool the transcript names otherwise) counts, and one already sent or discarded does
-   * not. Without that list the transcripts are read instead.
+   * not. Without that list, or before LifeOS has first answered it (at boot, or with LifeOS out of reach), the
+   * transcripts are read instead.
    */
   private heldBy(runId: string, sessionId: string): number {
     const lifeos = this.deps.lifeosHeld?.()
-    if (!lifeos) return this.deps.host.heldIn(sessionId)
+    if (!lifeos?.loaded()) return this.deps.host.heldIn(sessionId)
     const drafts = lifeos.items().filter((i) => i.routineRunId === runId && (i.state === 'held' || i.state === 'live' || i.state === 'failed')).length
     return this.deps.host.heldIn(sessionId, { drafts: false }) + drafts
   }

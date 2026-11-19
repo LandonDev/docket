@@ -269,6 +269,10 @@ export class LifeosHeldItems implements LifeosHeld {
     return [...this.mail, ...this.calendar]
   }
 
+  loaded(): boolean {
+    return !this.first.mail
+  }
+
   async read(ref: LifeosRef): Promise<OutboxItem | null> {
     if (ref.table === 'calendarOps') {
       // Read fresh: what the press sends is what LifeOS holds now, not what the watcher saw last.

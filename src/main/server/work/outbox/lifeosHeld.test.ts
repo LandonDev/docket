@@ -3,6 +3,7 @@ import type { OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
 import type { SessionMeta } from '@shared/events'
 import { CHANGED_SINCE, REV_NEEDED } from './outbox'
 import { mailGrantFits, mailWords, type MailSendPayload } from './lifeosHeld'
+import { outboxHostOf } from './ctx'
 import { approveKey, cast, makeRig, until, type Rig } from './rig'
 import { INTERRUPTED } from './store'
 
@@ -28,6 +29,20 @@ afterEach(async () => {
 })
 
 describe('a draft a Work thread made in LifeOS', () => {
+  it("says its list is loaded only once LifeOS has answered the watch, and not again after Work goes off and on until it answers", async () => {
+    const outbox = outboxHostOf(rig.work.ctx)!.outbox
+    expect(outbox.lifeos?.loaded()).toBe(true)
+    rig.lifeos.connected = false
+    rig.work.settings.set({ enabled: false })
+    rig.work.settings.set({ enabled: true })
+    await settled()
+    expect(outbox.lifeos?.loaded()).toBe(false)
+    rig.lifeos.connected = true
+    rig.lifeos.fire()
+    await settled()
+    expect(outbox.lifeos?.loaded()).toBe(true)
+  })
+
   it('is listed with this host\'s own held rows, as one list, in his words, and told once as held', async () => {
     const slack = await rig.addon('slack', 'ws-purdue')
     await rig.claudeCall('t-work', slack.id, 'echo', { text: 'x' })

@@ -37,6 +37,8 @@ interface Rig {
   heldActs: Map<string, number>
   /** the Outbox's list of LifeOS-held items while it watches LifeOS; null when it does not */
   lifeos: { routineRunId: string | null; state: string }[] | null
+  /** whether LifeOS has answered the Outbox's watch yet */
+  lifeosLoaded: boolean
   pushes: WorkPush[]
   subs: { fn: string; args: { sector: string; after: number }; on: (v: unknown) => void; off: boolean }[]
   lifeosUp: { value: boolean }
@@ -69,6 +71,7 @@ function makeRig(): Rig {
     held: new Map(),
     heldActs: new Map(),
     lifeos: null,
+    lifeosLoaded: true,
     pushes: [],
     subs: [],
     lifeosUp: { value: true },
@@ -125,7 +128,7 @@ function makeRig(): Rig {
         }
       },
       host,
-      lifeosHeld: () => (rig.lifeos ? { items: () => rig.lifeos as never } : null),
+      lifeosHeld: () => (rig.lifeos ? { items: () => rig.lifeos as never, loaded: () => rig.lifeosLoaded } : null),
       sources: () => rig.sources,
       now: () => clock.now,
       files: {
@@ -306,6 +309,16 @@ describe('a weekday routine on a fake clock', () => {
     rig.held.set('t1', 1)
     rig.settle('t1', 'idle')
     expect(runs(id)[0]).toMatchObject({ state: 'quiet', summary: 'Nothing held' })
+  })
+
+  it("before LifeOS has answered the Outbox's watch (at boot), a run's drafts are read from its transcripts", async () => {
+    const id = rig.add({ trigger: WEEKDAYS_7AM })
+    await tickAt(at(16, '07:00'))
+    rig.lifeos = []
+    rig.lifeosLoaded = false
+    rig.held.set('t1', 1)
+    rig.settle('t1', 'idle')
+    expect(runs(id)[0]).toMatchObject({ state: 'held', summary: 'Held 1' })
   })
 
   it('a routine paused while its firing was on its way fires nothing', async () => {

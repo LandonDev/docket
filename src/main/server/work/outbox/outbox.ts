@@ -26,6 +26,8 @@ type LifeosRef = Extract<HeldRef, { at: 'lifeos' }>
 export interface LifeosHeld {
   /** The items LifeOS holds for this host's threads, as the watcher last read them: drafts and failed sends, whole payload included. */
   items(): OutboxItem[]
+  /** Whether LifeOS has answered the watch of its held mail since the watch began: until then `items()` knows nothing. */
+  loaded(): boolean
   /** One item read now from LifeOS; null when LifeOS no longer holds it. */
   read(ref: LifeosRef): Promise<OutboxItem | null>
   /** Delete the draft in LifeOS. */
