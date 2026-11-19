@@ -439,6 +439,7 @@ function hostCommand(): [string, string[]] {
       '--packages=external',
       '--alias:@shared=./src/shared',
       '--alias:aliax-core=./node_modules/aliax-core/src',
+      '--alias:work-kit=./node_modules/work-kit/src',
       '--alias:electron=./scripts/electron-shim.mjs',
       `--outfile=${out}`,
       '--log-level=warning'
