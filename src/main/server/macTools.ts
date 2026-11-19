@@ -47,6 +47,7 @@ import { MacPause, isMacRead } from './macPause'
 import type { MacRunLive } from './macRunLive'
 import { callMacWrite, macWriteStages, type MacWriteStages } from './macWriteStage'
 import type { PeerCalls } from './remote/peerCalls'
+import { mayUseFarDesktop } from './work/scope'
 
 /**
  * The box side of the Mac bridge (docs/box.md "The Mac bridge"). A thread
@@ -67,6 +68,9 @@ export const MAC_THREAD_PREFIX = 'macBridge.thread.'
 export const MAC_HOME_PREFIX = 'macBridge.home.'
 /** The reply's travel time on top of what the Mac may spend. */
 const DEADLINE_SLACK_MS = 30_000
+
+/** A Work thread's Mac call while its workspace's Work settings do not name that Mac (work/scope.ts mayUseFarDesktop). */
+export const MAC_NOT_FOR_WORKSPACE = 'refused: this workspace may not use that Mac (its Work settings)'
 
 /**
  * Per-thread tokens. TEMP_CODE_MAC_TOKEN_SEED (hex) fixes the key for an
@@ -279,6 +283,8 @@ export class MacTools {
     const { macPeer } = this.macPeerOf(sessionId)
     if (!macPeer)
       throw new Error('the Mac bridge is off for this thread (turn it on from the thread menu)')
+    // A Work thread reaches a Mac only while its workspace may use it: asked at every call, whichever harness makes it.
+    if (!mayUseFarDesktop(session, macPeer)) throw new Error(MAC_NOT_FOR_WORKSPACE)
     if (!this.deps.calls.online(macPeer, MAC_BRIDGE_OFFER))
       throw new Error(`Mac offline: ${macPeer} has no live link to this host`)
     if (method === 'mac.run' && !args.argv === !args.command)
@@ -426,6 +432,8 @@ export class MacTools {
     const { macPeer } = this.macPeerOf(sessionId)
     if (!macPeer)
       throw new Error('the Mac bridge is off for this thread (turn it on from the thread menu)')
+    // A Work thread reaches a Mac only while its workspace may use it: asked at every call, whichever harness makes it.
+    if (!mayUseFarDesktop(session, macPeer)) throw new Error(MAC_NOT_FOR_WORKSPACE)
     if (!this.deps.calls.online(macPeer, MAC_BRIDGE_OFFER))
       throw new Error(`Mac offline: ${macPeer} has no live link to this host`)
     if (method === 'mac.jobStart' && !args.argv === !args.command)

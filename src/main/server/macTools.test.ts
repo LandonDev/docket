@@ -23,7 +23,7 @@ import {
   macCallLine
 } from './macTools'
 import { MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY } from './awayPrompts'
-import { MAC_JOB_TOOLS, type MacToolsDeps } from './macTools'
+import { MAC_JOB_TOOLS, MAC_NOT_FOR_WORKSPACE, type MacToolsDeps } from './macTools'
 import { MAC_JOB_TOOL_PARAMS } from '@shared/contract-macjobs'
 import { macBridgeLandingDir } from './macBridgeLanding'
 import {
@@ -57,7 +57,8 @@ function setup(
     ['root', meta('root', { projectId: 'p1' })],
     ['child', meta('child', { parentId: 'root', projectId: 'p1' })],
     ['loose', meta('loose')],
-    ['ws', meta('ws', { workspaceId: 'w1' })]
+    ['ws', meta('ws', { workspaceId: 'w1' })],
+    ['work', meta('work', { workspaceId: 'w1', scope: 'work' })]
   ])
   const calls = new PeerCalls('env_box', () => {})
   const tokens = new MacThreadTokens('ab'.repeat(16))
@@ -236,6 +237,20 @@ describe('MacTools gate', () => {
     tools.setThread('root', null)
     expect(reboots).toEqual(['root', 'root'])
     expect(() => tools.setThread('ghost', 'env_mac')).toThrow(/unknown session/)
+  })
+
+  it("refuses a Work thread's every Mac call, the bridge's included, while its workspace may not use that Mac, and asks the Mac nothing", async () => {
+    const { tools, tokens, pushes } = setup()
+    tools.setThread('work', 'env_mac')
+    const token = tokens.tokenFor('work')
+    await expect(tools.call('work', token, 'mac.readFile', { path: '/x' })).rejects.toThrow(MAC_NOT_FOR_WORKSPACE)
+    await expect(tools.call('work', token, 'mac.run', { argv: ['ls'], background: true })).rejects.toThrow(MAC_NOT_FOR_WORKSPACE)
+    await expect(tools.callJob('work', token, 'mac.jobRead', { jobId: 'j1', afterOffset: 0 })).rejects.toThrow(MAC_NOT_FOR_WORKSPACE)
+    await expect(tools.handle({ id: '1', method: 'mac.listDir', params: { sessionId: 'work', token, path: '/' } } as never)).rejects.toThrow(MAC_NOT_FOR_WORKSPACE)
+    expect(pushes).toEqual([])
+    // a code thread on the same Mac is as it was
+    tools.setThread('ws', 'env_mac')
+    expect(await tools.call('ws', tokens.tokenFor('ws'), 'mac.readFile', { path: '/x' })).toBe('ok')
   })
 
   it('answers Mac offline when no Mac registered', async () => {
