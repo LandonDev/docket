@@ -30,6 +30,12 @@
       var p = Office.context.diagnostics && Office.context.diagnostics.platform
       return p === 'OfficeOnline' ? 'web' : p === 'Mac' ? 'mac' : p === 'PC' ? 'windows' : String(p || 'unknown').toLowerCase()
     }
+    /** What TempCode lists it as: "Excel on the web", "Word on Mac". */
+    function label() {
+      var names = { excel: 'Excel', word: 'Word', powerpoint: 'PowerPoint' }
+      var where = { web: 'the web', mac: 'Mac', windows: 'Windows' }
+      return (names[app] || 'Office') + ' on ' + (where[platform()] || platform())
+    }
     function fileKey() {
       return Office.context.document.url || ''
     }
@@ -338,7 +344,7 @@
       /** Pairs with the short code TempCode shows; the key it gets back stays in this pane's storage. */
       pair: function (code, name) {
         stopped = false
-        connect({ t: 'pair', code: String(code).trim().toUpperCase(), name: name || app + ' on ' + platform(), app: app, platform: platform() })
+        connect({ t: 'pair', code: String(code).trim().toUpperCase(), name: name || label(), app: app, platform: platform() })
       },
       stop: function () {
         stopped = true

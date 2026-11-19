@@ -151,7 +151,7 @@ describe('the add-in through the relay', () => {
     const a = await paired()
     expect(a.storage.get('tempcode.addin.key')).toMatch(/^tca_/)
     const { result } = await call('work.office.addin.list')
-    expect(result).toMatchObject({ keys: [{ app: 'excel', name: 'excel on web', live: true }] })
+    expect(result).toMatchObject({ keys: [{ app: 'excel', name: 'Excel on the web', live: true }] })
     // The key, not the code, opens the next connection.
     a.stop()
     await until(() => !addinHub()?.sessionFor('excel', BOOK))

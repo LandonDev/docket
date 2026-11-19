@@ -19,6 +19,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { ToolchainRow } from "../formats/ToolchainRow";
+import { AddinRow } from "../office/AddinRow";
 import { linkSector, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -82,6 +83,9 @@ export function WorkSettingsBody() {
         ) : null}
         {hosts.map((host) => (
           <ToolchainRow key={host.id} link={registry.linkOf(host.id)} />
+        ))}
+        {hosts.map((host) => (
+          <AddinRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Office add-in on ${host.name}` : "Office add-in"} />
         ))}
       </PageSection>
     </>
