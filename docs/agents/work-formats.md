@@ -114,6 +114,15 @@ pid that is gone). Everything it found goes to `work-tools/state.json`
 probe's first line or the `error`, the licence. It exits 1 when a tool that
 is offered here did not install this time.
 
+`bytes` is what the tool alone holds, so the sizes add up to the folder.
+A pip tool shares its venv's folder: after each pip install the venv and
+every pip tool in it are measured again (`venvShares`), each pip tool by
+the files pip recorded for its packages (their `.dist-info/RECORD`), a
+package two tools both list counted once, for the first in manifest order,
+and the venv tool by what is left (its interpreter, pip, setuptools).
+Every run ends by measuring each venv again, so a record an older
+installer wrote (a pip tool at 0 bytes) is put right without a reinstall.
+
 On a packaged Mac the installer is run from a bundle, since the app does not
 carry `scripts/`: `bun build scripts/work-tools/install.ts --target=bun
 --outfile install.js`, then `bun install.js --data … --manifests <dir with the

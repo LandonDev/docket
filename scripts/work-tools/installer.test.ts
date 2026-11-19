@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -182,6 +182,73 @@ describe.skipIf(process.platform === 'win32')('the toolchain installer', () => {
     expect(fetched).toEqual(['https://downloads.test/ground-1.0.0.tar.gz', 'https://downloads.test/house-1.0.0.tar.gz'])
   })
 
+  it("records what each tool in a venv holds, so the sizes add up to the folder: a pip tool its packages, a package two tools share once, the venv the rest", async () => {
+    // A stand-in python: `-m venv <dir>` makes a venv of itself with 1000 bytes of pip; `-m pip install -r <file>` lays each
+    // `name==version` line down as a package of 1000 bytes a letter of its name, with the RECORD pip writes.
+    const fake = [
+      '#!/bin/sh',
+      'self="$0"',
+      'if [ "$1" = "--version" ]; then echo "Python 3.12.0"; exit 0; fi',
+      '[ "$1" = "-I" ] && shift',
+      'if [ "$1 $2" = "-m venv" ]; then d="$3"; mkdir -p "$d/bin" "$d/lib/python3.12/site-packages"; cp "$self" "$d/bin/python"; chmod +x "$d/bin/python"; echo "home = x" > "$d/pyvenv.cfg"; head -c 1000 /dev/zero > "$d/lib/python3.12/site-packages/pip.py"; exit 0; fi',
+      'if [ "$1 $2" = "-m pip" ]; then',
+      '  for a; do req="$a"; done',
+      '  sp="$(dirname "$self")/../lib/python3.12/site-packages"',
+      '  while read -r line; do',
+      '    spec="${line%% *}"; name="${spec%%==*}"; ver="${spec##*==}"; mod=$(echo "$name" | tr "A-Z-" "a-z_")',
+      '    mkdir -p "$sp/$mod" "$sp/$mod-$ver.dist-info"; size=$(( ${#name} * 1000 ))',
+      '    head -c $size /dev/zero > "$sp/$mod/__init__.py"',
+      '    printf "%s/__init__.py,sha256=x,%s\\n%s-%s.dist-info/RECORD,,\\n" "$mod" "$size" "$mod" "$ver" > "$sp/$mod-$ver.dist-info/RECORD"',
+      '  done < "$req"',
+      '  exit 0',
+      'fi',
+      'exit 1'
+    ].join('\n')
+    const src = join(root, 'src', 'python-3.12.0')
+    mkdirSync(join(src, 'tool-3.12.0', 'bin'), { recursive: true })
+    writeFileSync(join(src, 'tool-3.12.0', 'bin', 'python'), `${fake}\n`)
+    chmodSync(join(src, 'tool-3.12.0', 'bin', 'python'), 0o755)
+    const file = join(root, 'src', 'python.tar.gz')
+    execFileSync('tar', ['-czf', file, '-C', src, 'tool-3.12.0'])
+    const body = readFileSync(file)
+    served.set('https://downloads.test/python.tar.gz', body)
+    const python = { url: 'https://downloads.test/python.tar.gz', sha256: createHash('sha256').update(body).digest('hex'), size: body.length }
+    const probe = { steps: [{ run: ['{bin}', '--version'], expect: '^Python 3\\.12' }] }
+    const hash = `--hash=sha256:${'a'.repeat(64)}`
+    const pip = (name: string, packages: string[]) => ({ ...(tool(name, '1.0.0', python, { needs: ['venv'], probe }) as Record<string, unknown>), platforms: { [platform]: { kind: 'pip', packages: packages.map((p) => `${p} ${hash}`), bin: 'bin/python' } } })
+    const dir = join(root, 'manifests')
+    manifest(dir, 'base.json', 'toolchain', [
+      { ...(tool('python', '3.12.0', python, { probe }) as Record<string, unknown>), platforms: { [platform]: { kind: 'archive', files: [{ ...python, strip: 1 }], bin: 'bin/python' } } },
+      { ...(tool('venv', '3.12.0', python, { needs: ['python'], probe }) as Record<string, unknown>), platforms: { [platform]: { kind: 'venv', bin: 'bin/python' } } }
+    ])
+    // two pillars' pip tools in the one venv, sharing Pillow
+    manifest(dir, 'pdf.json', 'pdf', [pip('pdf-tools', ['pdfplumber==0.11.10', 'Pillow==12.0.0'])])
+    manifest(dir, 'slides.json', 'slides', [pip('slides-tools', ['python-pptx==1.0.2', 'pillow==12.0.0'])])
+    const { state, failed } = await install(opts(dir))
+    expect(failed).toEqual([])
+    const record = (name: string): number => name.length * 1000
+    expect(state.tools['pdf-tools'].bytes).toBe(record('pdfplumber') + record('Pillow') + recordRows('pdfplumber', '0.11.10') + recordRows('pillow', '12.0.0'))
+    // Pillow is the pdf tools' (first in manifest order); the slides tools hold only python-pptx
+    expect(state.tools['slides-tools'].bytes).toBe(record('python-pptx') + recordRows('python_pptx', '1.0.2'))
+    // the venv is the rest of its folder: its own python, pyvenv.cfg and pip
+    const venvDir = join(root, 'data', 'work-tools', state.tools.venv.dir!)
+    const folder = walkSize(venvDir)
+    expect(state.tools.venv.bytes).toBe(folder - state.tools['pdf-tools'].bytes! - state.tools['slides-tools'].bytes!)
+    expect(state.tools.venv.bytes).toBeGreaterThan(1000)
+
+    // a record from an installer before this one (a pip tool at 0 bytes) is put right by the next run, which installs nothing
+    const stateFile = join(root, 'data', 'work-tools', 'state.json')
+    const old = JSON.parse(readFileSync(stateFile, 'utf8'))
+    old.tools['pdf-tools'].bytes = 0
+    old.tools.venv.bytes = 1
+    writeFileSync(stateFile, JSON.stringify(old))
+    fetched = []
+    const again = await install(opts(dir))
+    expect(fetched).toEqual([])
+    expect(again.state.tools['pdf-tools'].bytes).toBe(state.tools['pdf-tools'].bytes)
+    expect(again.state.tools.venv.bytes).toBe(state.tools.venv.bytes)
+  })
+
   it('refuses a pip line with no hashes and a file that would land outside its folder', () => {
     const pip = (packages: string[]) => ({ pillar: 'p', tools: [{ ...(tool('pp', '1.0.0', { url: 'https://x.test/a.tgz', sha256: 'a'.repeat(64) }) as Record<string, unknown>), platforms: { [platform]: { kind: 'pip', packages, bin: 'bin/python' } } }] })
     expect(ToolManifestSchema.safeParse(pip(['python-pptx==1.0.2'])).success).toBe(false)
@@ -227,3 +294,15 @@ describe.skipIf(process.platform === 'win32')('the toolchain installer', () => {
     for (const t of tools.filter((t) => /GPL/.test(t.licence))) expect(t.licenceNote).toMatch(/separate/)
   })
 })
+
+/** The bytes of the RECORD the stand-in python writes for one package. */
+function recordRows(mod: string, version: string): number {
+  const m = mod.toLowerCase().replace(/-/g, '_')
+  return Buffer.byteLength(`${m}/__init__.py,sha256=x,${m.length * 1000}\n${m}-${version}.dist-info/RECORD,,\n`)
+}
+
+function walkSize(dir: string): number {
+  let n = 0
+  for (const e of readdirSync(dir, { withFileTypes: true })) n += e.isDirectory() ? walkSize(join(dir, e.name)) : statSync(join(dir, e.name)).size
+  return n
+}

@@ -138,7 +138,9 @@ export async function install(opts: InstallOptions): Promise<{ state: ToolchainS
       try {
         const t = await installOne(tool, entry, state, opts, log, now)
         state.tools[tool.name] = t
-        log(`${tool.name} ${tool.version}: ok, ${mb(t.bytes ?? 0)}${t.probed ? ` (${t.probed})` : ''}`)
+        // A pip tool's files are in its venv's folder: the venv and every pip tool in it are measured again, each for what is its own.
+        if (entry.kind === 'pip') sizeVenv(state, tools, opts.platform, root, t.dir!)
+        log(`${tool.name} ${tool.version}: ok, ${mb(state.tools[tool.name].bytes ?? 0)}${t.probed ? ` (${t.probed})` : ''}`)
       } catch (err) {
         const why = err instanceof Error ? err.message : String(err)
         failed.push(tool.name)
@@ -153,6 +155,9 @@ export async function install(opts: InstallOptions): Promise<{ state: ToolchainS
       }
       writeState(opts.dataDir, state, now)
     }
+    // A run that installed nothing new still corrects a venv measured by an installer from before venvShares.
+    const venvs = new Set(tools.flatMap((t) => (t.platforms[opts.platform]?.kind === 'pip' && state.tools[t.name]?.ok && state.tools[t.name].dir ? [state.tools[t.name].dir!] : [])))
+    for (const dir of venvs) sizeVenv(state, tools, opts.platform, root, dir)
     writeState(opts.dataDir, state, now)
     return { state, failed }
   } finally {
@@ -439,6 +444,81 @@ function walk(dir: string): string[] {
     else out.push(p)
   }
   return out
+}
+
+/**
+ * What each tool in one venv holds on disk, so the toolchain's sizes add
+ * up to the folder: each pip tool the files pip recorded for its packages
+ * (every `<name>-<version>.dist-info/RECORD` in the venv's site-packages),
+ * a file two tools both list counted once, for the first in manifest
+ * order; the venv tool what is left of its folder (the interpreter's
+ * links, pip, setuptools). By apparent size, file by file, so the parts
+ * and the whole are one measure.
+ */
+export function venvShares(venvDir: string, pipTools: ReadonlyArray<{ name: string; packages: readonly string[] }>): { tools: Map<string, number>; venv: number } {
+  const all = walk(venvDir)
+  const size = (f: string): number => {
+    try {
+      return lstatSync(f).size
+    } catch {
+      return 0
+    }
+  }
+  const total = all.reduce((n, f) => n + size(f), 0)
+  const records = new Map<string, string[]>()
+  for (const f of all) {
+    if (basename(f) !== 'RECORD' || !basename(dirname(f)).endsWith('.dist-info')) continue
+    const site = dirname(dirname(f))
+    const files = readFileSync(f, 'utf8')
+      .split(/\r?\n/)
+      .flatMap((line) => (line ? [join(site, csvFirst(line))] : []))
+    records.set(packageKey(basename(dirname(f)).replace(/\.dist-info$/, '').split('-')[0]), files)
+  }
+  const counted = new Set<string>()
+  const tools = new Map<string, number>()
+  for (const tool of pipTools) {
+    let bytes = 0
+    for (const line of tool.packages) {
+      for (const file of records.get(packageKey(line.split(/[\s=<>!~;[]/)[0])) ?? []) {
+        if (counted.has(file)) continue
+        counted.add(file)
+        bytes += size(file)
+      }
+    }
+    tools.set(tool.name, bytes)
+  }
+  return { tools, venv: Math.max(0, total - [...tools.values()].reduce((n, b) => n + b, 0)) }
+}
+
+/** A distribution's name as pip compares them (PEP 503): `Python_PPTX` and `python-pptx` are one. */
+const packageKey = (name: string): string => name.toLowerCase().replace(/[-_.]+/g, '-')
+
+/** The first field of a RECORD row, which is quoted when the path holds a comma. */
+function csvFirst(line: string): string {
+  if (!line.startsWith('"')) return line.split(',')[0]
+  let out = ''
+  for (let i = 1; i < line.length; i++) {
+    if (line[i] === '"' && line[i + 1] === '"') {
+      out += '"'
+      i++
+    } else if (line[i] === '"') break
+    else out += line[i]
+  }
+  return out
+}
+
+/** Measures one venv again after a pip install: the sizes of the venv tool and of every pip tool installed into it (`venvShares`). */
+function sizeVenv(state: ToolchainState, tools: readonly PlannedTool[], platform: Platform, root: string, dir: string): void {
+  const inIt = tools.filter((t) => state.tools[t.name]?.ok && state.tools[t.name].dir === dir)
+  const pip = inIt.flatMap((t) => {
+    const e = t.platforms[platform]
+    return e?.kind === 'pip' ? [{ name: t.name, packages: e.packages ?? [] }] : []
+  })
+  const shares = venvShares(join(root, dir), pip)
+  for (const t of inIt) {
+    const bytes = t.platforms[platform]?.kind === 'venv' ? shares.venv : shares.tools.get(t.name)
+    if (bytes !== undefined) state.tools[t.name] = { ...state.tools[t.name], bytes }
+  }
 }
 
 async function bytesOf(dir: string): Promise<number> {
