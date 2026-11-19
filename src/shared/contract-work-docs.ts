@@ -108,6 +108,8 @@ export const DocsRequestSchemas = [
   request('work.docs.thread', z.object({ source: CanvasSourceSchema, change: DocThreadOpSchema })),
   /** → DocOpen: how the agent's own ideas land on this document */
   request('work.docs.mode', z.object({ source: CanvasSourceSchema, mode: z.enum(['suggests', 'writes']) })),
+  /** → { ok: true }: a LifeOS document's new title (a .tcdoc is named by its file) */
+  request('work.docs.rename', z.object({ source: CanvasSourceSchema, title: z.string().trim().min(1).max(200) })),
   /** → { ok: true }: the agent's last write is settled; the bar stops offering its Undo */
   request('work.docs.dismiss', z.object({ source: CanvasSourceSchema })),
   /** → { source, title }: a new LifeOS document in the sector, or in a project */
@@ -127,6 +129,7 @@ export const DOCS_CAPS = {
   'work.docs.threads': 'read',
   'work.docs.thread': 'operate',
   'work.docs.mode': 'operate',
+  'work.docs.rename': 'operate',
   'work.docs.dismiss': 'operate',
   'work.docs.create': 'operate'
 } satisfies CapsOf<typeof DocsRequestSchemas>

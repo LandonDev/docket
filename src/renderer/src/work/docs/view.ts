@@ -3,9 +3,10 @@ import { Doc } from "../icons";
 import type { WorkViewDef } from "../views/registry";
 
 /**
- * The Docs row of a linked Work workspace and its view (docs/agents/work-docs.md).
- * A stub: its view says "Not built yet" and its row has no fact until the
- * docs pillar's milestone (20) points `chunk` at its own module and fills `fact`.
+ * The Docs row of a linked Work workspace and its view (docs/agents/work-docs.md
+ * "The Docs view"): the sector's LifeOS documents by project, each opening in
+ * the shared editor there. The row has no fact: a count of documents is not
+ * worth a glance.
  */
 export const docsView: WorkViewDef = {
   id: "docs",
@@ -13,5 +14,5 @@ export const docsView: WorkViewDef = {
   icon: Doc,
   order: 3,
   fact: () => null,
-  chunk: defineChunk("work-docs-view", () => import("../views/NotBuilt")),
+  chunk: defineChunk("work-docs-view", () => import("./DocsView")),
 };

@@ -120,6 +120,12 @@ export const docs: WorkModule = {
         setMode(ctx, t.doc, req.params.mode, pathOf(t))
         return handled(await opened(ctx, by, t))
       }
+      case 'work.docs.rename': {
+        const t = await targetOf(ctx, by, req.method, req.params.source)
+        if (t.at !== 'lifeos') throw new Error('a .tcdoc is named by its file')
+        await ctx.lifeos.owner().mutation('docs:rename', { id: t.docId, title: req.params.title })
+        return handled({ ok: true as const })
+      }
       case 'work.docs.dismiss': {
         const t = await targetOf(ctx, by, req.method, req.params.source)
         dismissWritten(ctx, t.doc, pathOf(t))

@@ -1,14 +1,17 @@
 import { defineChunk } from "../../lib/lazyChunk";
 import { Doc } from "../icons";
-import type { CanvasKindDef } from "../canvas/kind";
+import { defineCanvasKind } from "../canvas/kind";
+import type { DocState } from "./DocumentCanvas";
 
 /**
- * The document kind of canvas item (docs/agents/work-docs.md). A stub: its
- * body says "Not built yet" until the docs pillar's milestone builds it
- * (`PILLAR_MILESTONE` in src/shared/work/ids.ts), which then points `chunk`
- * at its own module and corrects what the kind claims.
+ * The document kind of canvas item (docs/agents/work-docs.md): the shared
+ * block editor on a LifeOS document, a LifeOS project note that is one, or a
+ * `.tcdoc`. Its versions open beside it (`history`). It claims Word and
+ * Google documents too, which its body cannot open yet: import (milestone
+ * 21) and Google (milestone 30) bring those in, and until then the item says
+ * so on its state line.
  */
-export const documentCanvas: CanvasKindDef = {
+export const documentCanvas = defineCanvasKind<DocState>({
   kind: "document",
   label: "Document",
   icon: Doc,
@@ -19,5 +22,6 @@ export const documentCanvas: CanvasKindDef = {
   },
   phone: "web",
   guestable: true,
-  chunk: defineChunk("work-docs-canvas", () => import("../canvas/NotBuilt")),
-};
+  history: true,
+  chunk: defineChunk("work-docs-canvas", () => import("./DocumentCanvas")),
+});

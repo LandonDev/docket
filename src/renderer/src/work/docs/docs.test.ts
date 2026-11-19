@@ -1,0 +1,171 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HistoryBranch } from "@shared/contract-work-history";
+
+/*
+ * The document canvas's own logic, without an editor on screen: pending
+ * branches as the editor's review, the socket relayed over the host link,
+ * the comment threads adapter, and presence in the pane's palette.
+ */
+
+const link = {
+  request: vi.fn<(method: string, params: Record<string, unknown>, options?: { timeoutMs?: number }) => Promise<unknown>>(),
+  onPush: vi.fn(() => () => undefined),
+};
+vi.mock("../../lib/connection", () => ({ registry: { linkOf: () => link } }));
+
+const { changeId, decided, reviewOf } = await import("./review");
+const { relaySocket, servedBy } = await import("./host");
+const { docThreads } = await import("./threads");
+const { presenceOf } = await import("./DocumentCanvas");
+
+afterEach(() => {
+  link.request.mockReset();
+});
+
+const branch = (rows: HistoryBranch["diff"]["rows"], lines: HistoryBranch["diff"]["lines"] = []): HistoryBranch => ({
+  id: "b1",
+  baseVersionId: "v1",
+  authors: ["agent:env_box:t1"],
+  label: "Agent",
+  at: 1,
+  editedAt: 1,
+  diff: { stats: { same: 0, added: 0, removed: 0, changed: 0, moved: 0 }, rows, lines },
+});
+const block = (id: string, text: string) => ({ id, type: "paragraph", props: {}, text, runs: [{ text }], depth: 0, parent: null, index: 0 });
+
+describe("suggestions as the editor's review", () => {
+  it("cuts a changed line into its pieces, each its own change Accept names by piece", () => {
+    const { changes, groups } = reviewOf(
+      [
+        branch([
+          {
+            kind: "changed",
+            id: "p1",
+            left: block("p1", "Setup at 8:00 in the north hall"),
+            right: block("p1", "Setup at 7:30 in the south hall"),
+            inline: [
+              { op: "=", text: "Setup at " },
+              { op: "-", text: "8:00" },
+              { op: "+", text: "7:30" },
+              { op: "=", text: " in the " },
+              { op: "-", text: "north" },
+              { op: "+", text: "south" },
+              { op: "=", text: " hall" },
+            ],
+          },
+        ]),
+      ],
+      { "agent:env_box:t1": "Northside PT kickoff" },
+    );
+    expect(groups).toEqual([{ id: "b1", label: "Northside PT kickoff", by: "agent:env_box:t1" }]);
+    expect(changes.map((c) => c.id)).toEqual([changeId("b1", "p1#0"), changeId("b1", "p1#1")]);
+    expect(changes[1]!.marks).toEqual([
+      { tone: "del", block: "p1", from: 21, to: 26 },
+      { tone: "add", block: "p1", at: 26, text: "south" },
+    ]);
+    expect(decided(changes[1]!)).toEqual({ branchId: "b1", which: "p1#1" });
+  });
+
+  it("a block put in follows the live block before it; one taken out, moved, or a table's cells are one change each", () => {
+    const { changes } = reviewOf(
+      [
+        branch(
+          [
+            { kind: "added", id: "n", right: block("n", "New line") },
+            { kind: "removed", id: "r", left: block("r", "Old line") },
+            { kind: "changed", id: "t", cells: [[null, [{ op: "-", text: "Seats" }, { op: "+", text: "Chairs" }]]] },
+          ],
+          [
+            { id: "a", left: block("a", "A"), right: block("a", "A"), row: null },
+            { id: "n", left: null, right: block("n", "New line"), row: 0 },
+            { id: "r", left: block("r", "Old line"), right: null, row: 1 },
+          ],
+        ),
+      ],
+      {},
+    );
+    expect(changes.map((c) => [decided(c).which, c.marks])).toEqual([
+      ["n", [{ tone: "add", after: "a", text: "New line" }]],
+      ["r", [{ tone: "del", block: "r" }]],
+      [
+        "t",
+        [
+          { tone: "del", block: "t", from: 0, to: 5, cell: [0, 1] },
+          { tone: "add", block: "t", at: 5, text: "Chairs", cell: [0, 1] },
+        ],
+      ],
+    ]);
+  });
+});
+
+describe("the relayed socket", () => {
+  it("opens once the host made its socket, sends frames in order, hands down what the host received, and closes when the host says", async () => {
+    let recvs = 0;
+    const sent: string[][] = [];
+    link.request.mockImplementation(async (method, params) => {
+      if (method === "work.docs.connect") return { socket: "s".repeat(24) };
+      if (method === "work.docs.send") return void sent.push(params.frames as string[]);
+      if (method === "work.docs.recv") {
+        recvs += 1;
+        return recvs === 1 ? { frames: [btoa("\u0001\u0002")] } : { frames: [], closed: { code: 4403, reason: "revoked" } };
+      }
+      return { ok: true };
+    });
+    const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+    const ws = new Socket("ws://x/w/doc/d1");
+    const events: string[] = [];
+    const got: number[][] = [];
+    ws.addEventListener("open", () => {
+      events.push("open");
+      ws.send(new Uint8Array([7, 8]));
+      ws.send(new Uint8Array([9]));
+    });
+    ws.addEventListener("message", (e) => got.push([...new Uint8Array((e as MessageEvent).data as ArrayBuffer)]));
+    const closed = new Promise<{ code: number }>((resolve) => ws.addEventListener("close", (e) => resolve(e as unknown as { code: number })));
+    const done = await closed;
+    expect(events).toEqual(["open"]);
+    expect(got).toEqual([[1, 2]]);
+    expect(done.code).toBe(4403);
+    expect(sent.flat().map((f) => [...atob(f)].map((c) => c.charCodeAt(0)))).toEqual([[7, 8], [9]]);
+    expect(ws.readyState).toBe(3);
+    // The long ask is given time past the host's 20 s wait.
+    expect(link.request.mock.calls.find(([m]) => m === "work.docs.recv")?.[2]).toEqual({ timeoutMs: 45_000 });
+  });
+
+  it("a document another host serves names that host", () => {
+    expect(servedBy(new Error("served elsewhere: env_box"))).toBe("env_box");
+    expect(servedBy(new Error("not found"))).toBeNull();
+  });
+});
+
+describe("the threads adapter", () => {
+  it("reads once asked, again after a write and on the host's word", async () => {
+    const rows = [{ thread: { publicId: "t1", resolved: false, resolvedAt: null, resolvedByMemberId: null, createdAt: 1, updatedAt: 1, deletedAt: null }, comments: [] }];
+    const host = {
+      threads: vi.fn(async () => ({ rows, names: { owner: "Landon" } })),
+      thread: vi.fn(async () => ({ ok: true })),
+    };
+    const t = docThreads(host as never, "d1");
+    const seen = vi.fn();
+    t.adapter.subscribe("d1", seen);
+    await vi.waitFor(() => expect(t.adapter.rows("d1")).toEqual(rows));
+    expect(t.names()).toEqual({ owner: "Landon" });
+    expect(t.adapter.rows("other")).toBeNull();
+    await t.adapter.writes("d1").setResolved({ threadPublicId: "t1", resolved: true });
+    expect(host.thread).toHaveBeenCalledWith({ op: "resolve", threadId: "t1", resolved: true });
+    await vi.waitFor(() => expect(host.threads).toHaveBeenCalledTimes(2));
+    t.refresh();
+    await vi.waitFor(() => expect(host.threads).toHaveBeenCalledTimes(3));
+    expect(seen).toHaveBeenCalled();
+  });
+});
+
+describe("presence", () => {
+  it("takes the pane's hue for the editor's caret colour", () => {
+    const palette = ["#3b82f6", "#8b5cf6"];
+    expect(presenceOf([{ id: "a", name: "Dana", avatarUrl: null, color: "#8B5CF6" }, { id: "b", name: "Sam", avatarUrl: "x.png", color: "#000000" }], palette)).toEqual([
+      { id: "a", name: "Dana", hue: 2 },
+      { id: "b", name: "Sam", image: "x.png" },
+    ]);
+  });
+});

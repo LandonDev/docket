@@ -75,12 +75,13 @@ describe("a Work thread's canvas", () => {
   });
 
   it("shows two stub items as tabs, the first shown, each saying it is not built", async () => {
-    const { container } = await seat([DOC, SHEET]);
+    // Forms are a kind still to be built (milestone 36).
+    const { container } = await seat([{ ...DOC, kind: "form" }, SHEET]);
     const tabs = within(screen.getByRole("tablist", { name: "Open items" })).getAllByRole("tab");
     expect(tabs.map((tab) => tab.textContent)).toEqual(["Run of show", "Travel budget"]);
     expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["true", "false"]);
     await waitFor(() => expect(screen.getByText("Not built yet")).toBeTruthy());
-    expect(container.querySelector("[data-canvas-pane]")?.getAttribute("data-kind")).toBe("document");
+    expect(container.querySelector("[data-canvas-pane]")?.getAttribute("data-kind")).toBe("form");
     // A stub feeds the frame nothing, so its bar is not drawn.
     expect(container.querySelector("[data-canvas-bar]")).toBeNull();
     // The thread stays beside it, in the same element.

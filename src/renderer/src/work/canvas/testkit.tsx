@@ -99,5 +99,6 @@ export function drivenKinds(onShell: (shell: CanvasShell, props: CanvasBodyProps
     ...(parts.tabEnd ? { TabEnd: () => <span data-testid="tab-end">Excel</span> } : {}),
   };
   const chunk = defineChunk("test-kind", () => Promise.resolve(module));
-  return { ...CANVAS, document: { ...CANVAS.document, chunk } };
+  // The test kind is drawn only as the test says: no History of its own in the bar.
+  return { ...CANVAS, document: { ...CANVAS.document, history: false, chunk } };
 }
