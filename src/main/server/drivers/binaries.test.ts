@@ -69,6 +69,12 @@ describe('finding a binary on win32', () => {
     mkdirSync(bin, { recursive: true })
     writeFileSync(join(bin, 'codex.exe'), '')
     expect(await npmShimExe(shim, 'codex')).toBe(join(bin, 'codex.exe'))
+    // opencode's platform package keeps its program under bin/
+    writeFileSync(join(npm, 'opencode.cmd'), '"%_prog%"  "%dp0%\\node_modules\\opencode-ai\\bin\\opencode" %*')
+    const ocBin = join(npm, 'node_modules', 'opencode-ai', 'node_modules', 'opencode-windows-x64', 'bin')
+    mkdirSync(ocBin, { recursive: true })
+    writeFileSync(join(ocBin, 'opencode.exe'), '')
+    expect(await npmShimExe(join(npm, 'opencode.cmd'), 'opencode')).toBe(join(ocBin, 'opencode.exe'))
     const other = join(npm, 'npx.cmd')
     writeFileSync(other, '"%_prog%" "%dp0%\\node_modules\\npm\\bin\\npx-cli.js" %*')
     expect(await npmShimExe(other, 'npx')).toBeNull()

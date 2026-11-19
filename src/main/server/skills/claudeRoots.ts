@@ -57,6 +57,13 @@ export const CLAUDE_WORK_LINKS: readonly string[] = ['projects', 'CLAUDE.md', '.
  * shell would have put it there.
  */
 export const CLAUDE_WORK_DROP: readonly string[] = ['agents', 'commands', 'rules', 'output-styles', 'plugins', 'workflows', 'hooks', 'settings.local.json', 'managed-settings.json']
+/**
+ * The files of the person's dir a root keeps as copies on Windows: the CLI's
+ * settings, sign-in, state and standing instructions. Anything else (history,
+ * logs) is the root's own there: a copy of a file two roots append to would
+ * keep only one root's lines.
+ */
+export const CLAUDE_COPIED_FILES: readonly string[] = ['.claude.json', 'settings.json', '.credentials.json', 'CLAUDE.md']
 /** A Work root's own settings.json: the CLI reads it as the user's, and it turns the account's connectors off. */
 export const CLAUDE_WORK_SETTINGS = { disableClaudeAiConnectors: true } as const
 /** The placeholder the gateway replaces with the thread's account. */
@@ -113,11 +120,11 @@ function readLink(path: string): string | null {
  * is left alone (false). With `copies` a directory's link is a junction and a
  * file's is a copy kept in step (true while it is one).
  */
-function linkTo(path: string, target: string, copies = JUNCTIONS): boolean {
+function linkTo(path: string, target: string, copies = JUNCTIONS, log: (line: string) => void = defaultLog): boolean {
   const st = lstatOrNull(path)
   if (copies && !isDir(target) && !st?.isSymbolicLink()) {
     if (st && !st.isFile()) return false
-    syncCopy(path, target)
+    syncCopy(path, target, log)
     return true
   }
   if (st && !st.isSymbolicLink()) return false
@@ -152,14 +159,15 @@ export function ensureClaudeRoot(deps: ClaudeRootDeps): string {
     renameSync(json, `${json}.diverged`)
     log(`${json} was a file of its own (the CLI replaced the link); set aside as ${CLAUDE_JSON}.diverged and linked again`)
   }
-  linkTo(json, personJson, copies)
+  linkTo(json, personJson, copies, log)
 
-  // Every other entry of the person's dir, linked by its name.
+  // Every other entry of the person's dir, linked by its name (on Windows its directories, and the files CLAUDE_COPIED_FILES names).
   const theirs = new Set<string>()
   for (const name of readdirSync(personDir)) {
     if (name === 'skills' || name === CLAUDE_JSON || name === COPY_STAMPS) continue
     theirs.add(name)
-    linkTo(join(dir, name), join(personDir, name), copies)
+    if (copies && !CLAUDE_COPIED_FILES.includes(name) && !isDir(join(personDir, name))) continue
+    linkTo(join(dir, name), join(personDir, name), copies, log)
   }
   // A link to an entry the person's dir no longer has goes; what the CLI made here stays.
   const copied = new Set(copies ? copiedNames(dir) : [])
@@ -172,7 +180,7 @@ export function ensureClaudeRoot(deps: ClaudeRootDeps): string {
     }
     if (copied.has(name)) {
       // A copy of a file the person's dir no longer has: syncCopy removes it once it was in step, else copies it back.
-      syncCopy(path, join(personDir, name))
+      syncCopy(path, join(personDir, name), log)
       continue
     }
     const target = lstatOrNull(path)?.isSymbolicLink() ? linkTargetOf(readLink(path)) : null
@@ -204,9 +212,9 @@ export function ensureClaudeWorkRoot(deps: ClaudeRootDeps): string {
       log(`${path} was a file of its own; removed and linked to the person's`)
     }
     if (lstatOrNull(join(personDir, name))) {
-      if (!linkTo(path, join(personDir, name), copies)) log(`${path} is a file of its own, not the person's ${name}`)
+      if (!linkTo(path, join(personDir, name), copies, log)) log(`${path} is a file of its own, not the person's ${name}`)
     } else if (lstatOrNull(path)?.isSymbolicLink()) rmSync(path, { force: true })
-    else if (copies && copiedNames(dir).includes(name)) syncCopy(path, join(personDir, name))
+    else if (copies && copiedNames(dir).includes(name)) syncCopy(path, join(personDir, name), log)
   }
   for (const name of readdirSync(dir)) {
     if (name === 'skills' || name === COPY_STAMPS || CLAUDE_WORK_LINKS.includes(name)) continue

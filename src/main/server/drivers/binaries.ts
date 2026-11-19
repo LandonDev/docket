@@ -128,23 +128,31 @@ export function binaryCandidates(dir: string, name: string, platform: NodeJS.Pla
 /**
  * The native program behind an npm `.cmd` shim, when its package carries one:
  * Node will not spawn a `.cmd` without a shell, and a shell would have to
- * quote every argument. Codex's shim runs `node_modules/@openai/codex/bin/codex.js`,
- * whose platform package holds `vendor/<triple>/bin/codex.exe`.
+ * quote every argument. The shim runs `node_modules/<pkg>/bin/<x>.js`; the
+ * program is in the package or in a platform package beside it, under
+ * `vendor/<triple>/bin/` (Codex: `@openai/codex-win32-x64`) or `bin/`
+ * (opencode's `opencode-windows-x64`).
  */
 export async function npmShimExe(shim: string, name: string): Promise<string | null> {
   const text = await readFile(shim, 'utf8').catch(() => '')
   const m = text.match(/%dp0%\\(node_modules\\.+?)\\bin\\[^"\\]+"/)
   if (!m) return null
   const pkg = join(dirname(shim), ...m[1].split('\\'))
-  const scopes = [pkg, ...(await readdir(join(pkg, 'node_modules'), { withFileTypes: true }).catch(() => [])).flatMap((e) => (e.isDirectory() ? [join(pkg, 'node_modules', e.name)] : []))]
-  for (const scope of scopes) {
-    const packages = scope === pkg ? [pkg] : (await readdir(scope).catch(() => [] as string[])).map((n) => join(scope, n))
-    for (const dir of packages) {
-      for (const triple of await readdir(join(dir, 'vendor')).catch(() => [] as string[])) {
-        const exe = join(dir, 'vendor', triple, 'bin', `${name}.exe`)
-        if (await exists(exe)) return exe
-      }
+  const dirs = async (dir: string): Promise<string[]> =>
+    (await readdir(dir, { withFileTypes: true }).catch(() => [])).flatMap((e) => (e.isDirectory() ? [join(dir, e.name)] : []))
+  // The package, its own node_modules (scoped or not), and the global node_modules it sits in.
+  const packages = [pkg]
+  for (const root of [join(pkg, 'node_modules'), dirname(pkg).endsWith('node_modules') ? dirname(pkg) : join(dirname(pkg), '..')]) {
+    for (const dir of await dirs(root)) packages.push(...(/[\\/]@[^\\/]+$/.test(dir) ? await dirs(dir) : [dir]))
+  }
+  for (const dir of packages) {
+    if (dir !== pkg && !dir.includes(name)) continue
+    for (const triple of await readdir(join(dir, 'vendor')).catch(() => [] as string[])) {
+      const exe = join(dir, 'vendor', triple, 'bin', `${name}.exe`)
+      if (await exists(exe)) return exe
     }
+    const exe = join(dir, 'bin', `${name}.exe`)
+    if (await exists(exe)) return exe
   }
   return null
 }
@@ -394,8 +402,9 @@ export async function updateProvider(provider: ProviderId): Promise<DoctorReport
         ? 'brew upgrade codex'
         : null
     if (!cmd) throw new Error(`can't tell how codex was installed (${real}) — update it manually`)
+    // As written off Windows (the npm or brew the login shell finds is the one that installed it).
     const shell = commandShell()
-    await execFileP(shell.file, shell.args(shellLine(cmd, shell)), { ...opts, ...shell.options }).catch(fail)
+    await execFileP(shell.file, shell.args(process.platform === 'win32' ? shellLine(cmd, shell) : cmd), { ...opts, ...shell.options }).catch(fail)
   }
   // paths and versions may have moved — re-resolve everything
   binCache.clear()

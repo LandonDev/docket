@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, renameSync } from 'node:fs'
+import { existsSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -105,12 +105,19 @@ static class TcJobs {
       if (parts[0] == "add") {
         job = CreateJobObject(IntPtr.Zero, IntPtr.Zero);
         var info = new Ext();
-        info.Basic.LimitFlags = 0x2000;
-        SetInformationJobObject(job, 9, ref info, Marshal.SizeOf(typeof(Ext)));
+        // KILL_ON_JOB_CLOSE, and BREAKAWAY_OK: a launcher that asks to leave (a browser opening a link) may.
+        info.Basic.LimitFlags = 0x2000 | 0x0800;
+        if (job == IntPtr.Zero || !SetInformationJobObject(job, 9, ref info, Marshal.SizeOf(typeof(Ext)))) {
+          int code = Marshal.GetLastWin32Error();
+          if (job != IntPtr.Zero) CloseHandle(job);
+          Console.WriteLine("err " + pid + " job " + code);
+          continue;
+        }
         var proc = OpenProcess(0x0101, false, pid);
         bool ok = proc != IntPtr.Zero && AssignProcessToJobObject(job, proc);
+        int error = ok ? 0 : Marshal.GetLastWin32Error();
         if (proc != IntPtr.Zero) CloseHandle(proc);
-        if (!ok) { CloseHandle(job); Console.WriteLine("err " + pid + " " + Marshal.GetLastWin32Error()); continue; }
+        if (!ok) { CloseHandle(job); Console.WriteLine("err " + pid + " " + error); continue; }
         if (jobs.ContainsKey(pid)) CloseHandle(jobs[pid]);
         jobs[pid] = job;
         Console.WriteLine("ok " + pid);
@@ -142,10 +149,14 @@ export class JobHost {
 
   constructor(private readonly deps: JobHelperDeps = {}) {}
 
-  /** Put `pid` (and so whatever it starts from now on) in a job of its own; resolves false when the helper is unavailable. */
-  async add(pid: number): Promise<boolean> {
+  /**
+   * Put `pid` (and so whatever it starts from now on) in a job of its own;
+   * false when the helper is unavailable, or when `gone()` says the process
+   * exited while the helper was starting (its pid may be another's by then).
+   */
+  async add(pid: number, gone: () => boolean = () => false): Promise<boolean> {
     const helper = await this.start()
-    if (!helper?.stdin || helper.stdin.destroyed) return false
+    if (!helper?.stdin || helper.stdin.destroyed || gone()) return false
     this.live.add(pid)
     helper.stdin.write(`add ${pid}\n`)
     return true
@@ -164,31 +175,48 @@ export class JobHost {
     return this.live.has(pid)
   }
 
-  private start(): Promise<ChildProcess | null> {
+  /** Start the helper now (compiled on first use); the app calls it at boot so the first adoption does not wait. */
+  start(): Promise<ChildProcess | null> {
     this.ready ??= (async () => {
       const log = this.deps.log ?? ((line: string) => console.log(`[procTree] ${line}`))
       const exe = this.deps.exe ?? join(tmpdir(), `tempcode-jobs-${createHash('sha256').update(JOB_HELPER_CS).digest('hex').slice(0, 12)}.exe`)
       try {
         if (!existsSync(exe)) {
           const tmp = `${exe}.${process.pid}.tmp.exe`
-          await (this.deps.compile ?? compileCs)(this.deps.csc ?? defaultCsc(), JOB_HELPER_CS, tmp)
-          renameSync(tmp, exe)
+          try {
+            await (this.deps.compile ?? compileCs)(this.deps.csc ?? defaultCsc(), JOB_HELPER_CS, tmp)
+            renameSync(tmp, exe)
+          } catch (err) {
+            // Another instance compiled the same helper first and runs it: use that one.
+            if (!existsSync(exe)) throw err
+          } finally {
+            rmSync(tmp, { force: true })
+          }
         }
         const helper = (this.deps.spawnHelper ?? spawnJobHelper)(exe)
-        helper.on('error', (err) => log(`job helper: ${err.message}`))
+        const lost = (why: string): void => {
+          if (this.helper !== helper) return
+          // Every job closes with the helper, and KILL_ON_JOB_CLOSE ends what was in them.
+          if (this.live.size) log(`job helper ${why}: ${this.live.size} adopted tree(s) ended with it`)
+          this.helper = null
+          this.ready = null
+          this.live.clear()
+        }
+        helper.on('error', (err) => {
+          log(`job helper: ${err.message}`)
+          lost('failed')
+        })
         helper.stdin?.on('error', () => undefined)
         helper.stdout?.on('data', (d: Buffer) => {
           for (const line of d.toString().split('\n')) if (line.startsWith('err')) log(`job helper: ${line.trim()}`)
         })
-        helper.once('exit', () => {
-          this.helper = null
-          this.ready = null
-          this.live.clear()
-        })
+        helper.once('exit', (code) => lost(`exited (${code})`))
         this.helper = helper
         return helper
       } catch (err) {
         log(`no job helper (stops use taskkill /T): ${err instanceof Error ? err.message : String(err)}`)
+        // A later adoption tries again.
+        setTimeout(() => (this.ready = null), 60_000).unref?.()
         return null
       }
     })()
@@ -241,9 +269,18 @@ function endJob(pid: number): boolean {
 export function adoptTree<C extends ChildProcess>(child: C, platform: NodeJS.Platform = process.platform, host: () => JobHost = jobHost): C {
   if (platform !== 'win32' || !child.pid) return child
   const pid = child.pid
-  void host().add(pid)
-  child.once('exit', () => host().end(pid))
+  let exited = false
+  child.once('exit', () => {
+    exited = true
+    host().end(pid)
+  })
+  void host().add(pid, () => exited)
   return child
+}
+
+/** Start the job helper ahead of the first adoption (win32; nothing elsewhere). The server calls it at boot. */
+export function warmJobHost(platform: NodeJS.Platform = process.platform): void {
+  if (platform === 'win32') void jobHost().start()
 }
 
 // ── the process table and the listeners (win32) ──────────────────────
@@ -298,13 +335,17 @@ export interface PortListener {
   address: string
 }
 
-/** `netstat -ano -p tcp`'s LISTENING rows (v4; `-p tcpv6` prints the v6 ones the same way). */
+/**
+ * `netstat -ano -p tcp`'s listening rows (v4; `-p tcpv6` prints the v6 ones
+ * the same way). Told by the foreign address, `0.0.0.0:0` or `[::]:0`, not
+ * by the state, which netstat prints in the system's language (ABHÖREN).
+ */
 export function parseNetstat(text: string): PortListener[] {
   const out: PortListener[] = []
   const seen = new Set<string>()
   for (const line of text.split(/\r?\n/)) {
     const cols = line.trim().split(/\s+/)
-    if (cols.length < 5 || !/^TCP/i.test(cols[0]!) || cols[3] !== 'LISTENING') continue
+    if (cols.length < 5 || !/^TCP/i.test(cols[0]!) || !/^(0\.0\.0\.0|\[::\]):0$/.test(cols[2]!)) continue
     const at = cols[1]!.lastIndexOf(':')
     const port = Number(cols[1]!.slice(at + 1))
     const pid = Number(cols[4])
@@ -328,3 +369,7 @@ function execText(file: string, args: string[]): Promise<string> {
     execFile(file, args, { windowsHide: true, timeout: 15_000, maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => (err && !stdout ? reject(err) : resolve(String(stdout))))
   )
 }
+
+// Whatever process imports this at boot (the server, the terminals) starts the helper then on Windows,
+// so the first harness it adopts does not wait for csc; tests start their own.
+if (IS_WIN && process.env.NODE_ENV !== 'test') warmJobHost()

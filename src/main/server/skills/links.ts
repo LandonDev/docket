@@ -65,24 +65,26 @@ function readStamps(dir: string): CopyStamps {
  * `target`, kept in step both ways. A standard user may not make a file
  * symlink, and a hard link would part from the person's file the first time
  * the CLI replaces it by rename (settings.json, .credentials.json, auth.json).
- * So the file is copied in; when the copy changed since the last pass (the
- * CLI rewrote it) it is copied back, unless the person's changed later still;
- * when only the person's changed it is copied in again. A person's file that
- * is gone takes the copy with it, once it was in step. `.tc-copies.json`
- * beside the copies keeps what each was when last in step.
+ * So the file is copied in; when only the copy changed since the last pass
+ * (the CLI rewrote it) it is copied back; when only the person's changed it is
+ * copied in again. When both changed (or there is no record and they differ)
+ * the later one wins and the other is kept beside the copy as
+ * `<name>.diverged`, never lost. A person's file that is gone takes the copy
+ * with it, once it was in step. `.tc-copies.json` beside the copies keeps what
+ * each was when last in step.
  */
-export function syncCopy(path: string, target: string): 'in' | 'back' | 'same' | 'none' {
+export function syncCopy(path: string, target: string, log: (line: string) => void = () => undefined): 'in' | 'back' | 'same' | 'none' {
   const dir = dirname(path)
   const name = basename(path)
   const stamps = readStamps(dir)
   const rec = stamps[name]
   const mine = statOrNull(path)
   const theirs = statOrNull(target)
-  let did: 'in' | 'back' | 'same' | 'none' = 'same'
+  if (!theirs && !mine) return 'none'
   const changedHere = !!mine && (!rec || mine.mtimeMs !== rec.mtimeMs || mine.size !== rec.size)
   const changedThere = !!theirs && (!rec || theirs.mtimeMs !== rec.theirs)
-  if (!theirs && !mine) did = 'none'
-  else if (!theirs) {
+  let did: 'in' | 'back' | 'same'
+  if (!theirs) {
     if (rec && !changedHere) {
       rmSync(path, { force: true })
       delete stamps[name]
@@ -91,9 +93,16 @@ export function syncCopy(path: string, target: string): 'in' | 'back' | 'same' |
     }
     did = 'back'
   } else if (!mine) did = 'in'
-  else if (changedHere && rec && (!changedThere || mine.mtimeMs >= theirs.mtimeMs)) did = 'back'
-  else if (changedThere || !rec) did = 'in'
-  if (did === 'none') return did
+  else if (!changedHere && !changedThere) did = 'same'
+  else if (!changedThere) did = 'back'
+  else if (!changedHere) did = 'in'
+  else if (sameBytes(path, target)) did = 'same'
+  else {
+    // Both moved on (two roots, or the person's own CLI, wrote it): the later wins, the other is set aside.
+    did = mine!.mtimeMs > theirs.mtimeMs ? 'back' : 'in'
+    copyFileSync(did === 'back' ? target : path, `${path}.diverged`)
+    log(`${path} and ${target} both changed; kept the later (${did === 'back' ? 'this copy' : "the person's"}), the other is ${name}.diverged`)
+  }
   if (did === 'in') copyFileSync(target, path)
   if (did === 'back') {
     mkdirSync(dirname(target), { recursive: true })
@@ -101,9 +110,20 @@ export function syncCopy(path: string, target: string): 'in' | 'back' | 'same' |
   }
   const a = statOrNull(path)
   const b = statOrNull(target)
-  if (a && b) stamps[name] = { mtimeMs: a.mtimeMs, size: a.size, theirs: b.mtimeMs }
-  writeStamps(dir, stamps)
+  const next = a && b ? { mtimeMs: a.mtimeMs, size: a.size, theirs: b.mtimeMs } : null
+  if (next && (!rec || rec.mtimeMs !== next.mtimeMs || rec.size !== next.size || rec.theirs !== next.theirs)) {
+    stamps[name] = next
+    writeStamps(dir, stamps)
+  }
   return did
+}
+
+function sameBytes(a: string, b: string): boolean {
+  try {
+    return readFileSync(a).equals(readFileSync(b))
+  } catch {
+    return false
+  }
 }
 
 /** The names a root holds as copies. */

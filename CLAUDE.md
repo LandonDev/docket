@@ -150,6 +150,11 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   `keyHint` in src/renderer/src/lib/keys.ts), the skills links as junctions on win32
   (src/main/server/skills/links.ts); `bun scripts/e2e-updater.ts --win` proves it in the rig.
   [docs/agents/windows-build.md](docs/agents/windows-build.md)
+- **The Windows host core** — command strings in Git Bash (else cmd.exe) through one `ShellSpec`
+  (loginShell.ts), PATH and PATHEXT, a Job Object per harness and job through a csc-compiled helper
+  (`adoptTree`, `killTree` in src/main/server/procTree.ts), junctions and copies kept in step for
+  the config dirs (skills/links.ts `syncCopy`), the fence's Windows rules, ConPTY terminals.
+  [docs/agents/windows-host.md](docs/agents/windows-host.md)
 - **The Windows rig** — one Windows 11 evaluation machine on the box for the
   Windows port, run by `agents` under QEMU/KVM, files under /srv/agents/win-vm;
   `up.sh`, `ssh.sh`, `scp.sh`, `run-in-session.sh` (a program on the logged-on

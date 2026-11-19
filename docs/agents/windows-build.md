@@ -4,10 +4,9 @@ TempCode on Windows 11 as a desktop app: an installer that needs no admin, an up
 Windows frame and Ctrl keys (milestone 12 of the Work plan). The host core under it (shells,
 process trees, links, the path fence) is milestone 13's, and a Windows host linked to the box is
 milestone 41's. Every Windows branch sits behind a platform check, and the Mac's build, release
-and updater are as they were. What runs today: the install, the window with its frame, the keys
-and the update (seen in the rig, "Proof" below). What does not yet: a thread. Terminals need a
-Windows shell, and Claude's and Muse's config dirs are still made of symlinks, which a standard
-user may not make (`skills/claudeRoots.ts`, `museConfigDirs.ts`); both are milestone 13's.
+and updater are as they were. What runs: the install, the window with its frame, the keys and
+the update (seen in the rig, "Proof" below); threads, terminals and the harness CLIs run on the
+host core, [windows-host.md](windows-host.md).
 
 ## Skills links at boot
 
@@ -25,9 +24,8 @@ with EPERM. Milestone 13 owns those files; the master gave this milestone the sm
   `SkillPointers.start` log it, and a refresh logs a scope it cannot point and goes on with the rest.
 - Off win32 the links are the same symlinks, made, read and renamed by the same calls.
 
-Left for milestone 13: the file links and per-entry links of the config dirs (`claudeRoots.ts`
-`linkTo`, `museConfigDirs.ts`), generations copied instead of hard-linked if that is wanted, and
-proving a junction view through a gc pass in the rig.
+Milestone 13 finished the rest (the config dirs' file and directory links, copied generations,
+a junction view through gc in the rig): [windows-host.md](windows-host.md) "Links and config dirs".
 
 ## The build
 

@@ -210,6 +210,25 @@ describe('file copies in step (Windows)', () => {
     at(join(person, 'a.json'), 600)
     expect(syncCopy(join(mine, 'a.json'), join(person, 'a.json'))).toBe('in')
     expect(readFileSync(join(mine, 'a.json'), 'utf8')).toBe('person')
+    // the loser is set aside, never lost
+    expect(readFileSync(join(mine, 'a.json.diverged'), 'utf8')).toBe('cli')
+  })
+
+  it('with no record, takes a copy that is already the same, and sets the older of two different files aside', () => {
+    const person = join(tmp, 'p3')
+    const mine = join(tmp, 'm3')
+    mkdirSync(person)
+    mkdirSync(mine)
+    writeFileSync(join(person, 's.json'), 'x')
+    writeFileSync(join(mine, 's.json'), 'x')
+    expect(syncCopy(join(mine, 's.json'), join(person, 's.json'))).toBe('same')
+    writeFileSync(join(person, 't.json'), 'person')
+    at(join(person, 't.json'), 100)
+    writeFileSync(join(mine, 't.json'), 'mine')
+    at(join(mine, 't.json'), 200)
+    expect(syncCopy(join(mine, 't.json'), join(person, 't.json'))).toBe('back')
+    expect(readFileSync(join(person, 't.json'), 'utf8')).toBe('mine')
+    expect(readFileSync(join(mine, 't.json.diverged'), 'utf8')).toBe('person')
   })
 
   it("gives the person a file the CLI made first, and drops a copy in step once the person's is gone", () => {

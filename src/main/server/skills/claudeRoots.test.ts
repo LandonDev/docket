@@ -212,6 +212,7 @@ describe('the owned Claude root with copies (Windows)', () => {
     symlinkSync(genDir, pointer, 'junction')
     return pointer
   }
+  beforeEach(() => writeFileSync(join(person, 'history.jsonl'), '{"display":"hi"}\n'))
   const ensureCopies = (pointer: string): string =>
     ensureClaudeRoot({ root, scope: 'global', pointer, personDir: person, personJson, log: (l) => logs.push(l), copies: true })
 
@@ -221,6 +222,8 @@ describe('the owned Claude root with copies (Windows)', () => {
     expect(readlinkSync(join(dir, 'commands')).replace(/[\\/]+$/, '')).toBe(join(person, 'commands'))
     expect(lstatSync(join(dir, 'projects')).isSymbolicLink()).toBe(true)
     for (const file of ['settings.json', 'CLAUDE.md', '.claude.json']) expect(lstatSync(join(dir, file)).isFile()).toBe(true)
+    // a file two roots would append to is the root's own, not a copy
+    expect(existsSync(join(dir, 'history.jsonl'))).toBe(false)
     expect(readFileSync(join(dir, '.claude.json'), 'utf8')).toBe('{"projects":{}}')
     expect(lstatSync(join(dir, 'skills', 'alpha')).isSymbolicLink()).toBe(true)
     expect(logs.filter((l) => l.includes('diverged'))).toEqual([])

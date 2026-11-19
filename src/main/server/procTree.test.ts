@@ -70,6 +70,28 @@ describe('JobHost', () => {
     expect(lines).toEqual(['add 10', 'end 10'])
   })
 
+  it("skips a child that exited while the helper was starting: its pid may be another's by then", async () => {
+    const { proc, lines } = fakeHelper()
+    const host = new JobHost({ exe: __filename, spawnHelper: () => proc, log: () => undefined })
+    expect(await host.add(12, () => true)).toBe(false)
+    expect(host.has(12)).toBe(false)
+    await new Promise((r) => setImmediate(r))
+    expect(lines).toEqual([])
+  })
+
+  it('starts again after the helper failed to spawn, and says how many trees went with a lost helper', async () => {
+    const first = fakeHelper()
+    const second = fakeHelper()
+    const logs: string[] = []
+    const spawnHelper = vi.fn().mockReturnValueOnce(first.proc).mockReturnValueOnce(second.proc)
+    const host = new JobHost({ exe: __filename, spawnHelper, log: (l) => logs.push(l) })
+    await host.add(1)
+    first.proc.emit('error', new Error('EACCES'))
+    expect(logs.some((l) => l.includes('1 adopted tree(s) ended'))).toBe(true)
+    expect(await host.add(2)).toBe(true)
+    expect(spawnHelper).toHaveBeenCalledTimes(2)
+  })
+
   it('forgets every job when the helper exits, so a later adoption starts it again', async () => {
     const first = fakeHelper()
     const second = fakeHelper()
@@ -92,7 +114,7 @@ describe('adoptTree', () => {
     adoptTree(child, 'linux', host)
     expect(add).not.toHaveBeenCalled()
     adoptTree(child, 'win32', host)
-    expect(add).toHaveBeenCalledWith(99)
+    expect(add).toHaveBeenCalledWith(99, expect.any(Function))
     child.emit('exit', 0)
     expect(end).toHaveBeenCalledWith(99)
   })
@@ -117,13 +139,16 @@ describe('the win32 readers', () => {
       '  TCP    127.0.0.1:5173         0.0.0.0:0              LISTENING       4242',
       '  TCP    127.0.0.1:5173         127.0.0.1:50000        ESTABLISHED     4242',
       '  TCP    [::1]:5173             [::]:0                 LISTENING       4242',
-      '  TCP    [::]:8080              [::]:0                 LISTENING       77'
+      '  TCP    [::]:8080              [::]:0                 LISTENING       77',
+      // netstat speaks the system's language: a German Windows says ABHÖREN
+      '  TCP    127.0.0.1:3000         0.0.0.0:0              ABHÖREN         99'
     ].join('\r\n')
     expect(parseNetstat(text + '\r\n' + text)).toEqual([
       { port: 135, pid: 1012, address: '0.0.0.0' },
       { port: 5173, pid: 4242, address: '127.0.0.1' },
       { port: 5173, pid: 4242, address: '[::1]' },
-      { port: 8080, pid: 77, address: '[::]' }
+      { port: 8080, pid: 77, address: '[::]' },
+      { port: 3000, pid: 99, address: '127.0.0.1' }
     ])
   })
 })
