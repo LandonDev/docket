@@ -6,7 +6,7 @@
  *     and dispatches whatever it returns.
  *   - Native menu: `src/shared/menuTree.ts` items carry the same ids and
  *     arrive over `native:menu` (`listen(id)` in lib/native.ts), and the
- *     in-app bar of a browser on /ui (chrome/MenuBar.tsx) reads the same
+ *     in-app bar of a browser on /ui (chrome/MenuBarView.tsx) reads the same
  *     table; `menuCommandAllowed` applies the same overlay guard.
  *
  * Handlers live in App.tsx (they close over its state); `window.__app`

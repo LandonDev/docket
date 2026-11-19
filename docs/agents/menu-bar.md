@@ -14,7 +14,8 @@ Show/Hide on the four toggles, ⌘W's Close Tab or Close Pane while the
 focused tab is split, idle rows greyed) and main rebuilds the menu
 from the focused window's state when it changes. A `pageKey` row (New
 Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar
-(chrome/MenuBar.tsx, `inAppMenus`) mounts only in web mode off macOS: a
+(chrome/MenuBarView.tsx, `inAppMenus`; it and the menu tree load from their own chunk,
+chrome/MenuBar.tsx, so no desktop window's first paint carries them) mounts only in web mode off macOS: a
 desktop window on Linux has the native bar, and one on Windows has none
 (windows.ts hides it, so Alt reveals nothing; the menu's accelerators still
 run, Ctrl where the Mac has ⌘: [windows-build.md](windows-build.md)). It is a `menubar` named "Menu

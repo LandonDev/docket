@@ -7,6 +7,7 @@ import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { dayTime } from "../../lib/duration";
+import { modOrCtrl } from "../../lib/keys";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
@@ -384,7 +385,7 @@ function FindField({ nav }: { nav: PdfNav }) {
 function FindKeys({ nav, itemId }: { nav: PdfNav; itemId: string }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "f" || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+      if (event.key !== "f" || !modOrCtrl(event) || event.altKey || event.shiftKey) return;
       // Its own pane only: with two PDFs on screen (a board), the one with the focus or the pointer finds.
       const pane = document.querySelector(`[data-pdf-column="${CSS.escape(itemId)}"]`)?.closest("[data-canvas-pane]");
       if (!pane || !(pane.contains(document.activeElement) || pane.matches(":hover"))) return;
