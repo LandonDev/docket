@@ -130,7 +130,8 @@ export const office: WorkModule = {
     let timer: ReturnType<typeof setInterval> | null = null
     // The route runs while LifeOS is connected and Outlook is here; it says nothing new until either changes.
     let said = ''
-    const heard = (book: string, sheet: string, address: string) => void hereOf(ctx)?.excel.heard(book, sheet, address)
+    // A change with no sheet is a co-author's merge somewhere in the book: read every watched block again now.
+    const heard = (book: string, sheet: string, address: string) => void (sheet ? hereOf(ctx)?.excel.heard(book, sheet, address) : hereOf(ctx)?.excel.pass())
     const stopAddin = startAddin(ctx, heard)
     // Windows' Excel tells of each change itself; elsewhere the safety pass and the add-in find them.
     const stopChanges = here?.carrier.changes?.(heard)

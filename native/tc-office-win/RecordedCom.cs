@@ -97,9 +97,13 @@ public class RecordedCom : ICom {
   public object Call(object o, string name, params object[] args) { return Get(o, name, args); }
   // The surface reading itself: not a call the helper made.
   static object Raw(object o, string name) { return ((Obj)o).G[name](new object[0]); }
-  public void Advise(object source, Guid iid, int dispid, Delegate handler) {
-    if (source == excel && iid == new Guid("00024413-0000-0000-C000-000000000046") && dispid == 0x61c) sheetChange = handler;
+  public void Advise(object source, string name, Delegate handler) {
+    var o = (Obj)source;
+    if (o == excel && name == "SheetChange") { sheetChange = handler; return; }
+    if (o.Kind == "Workbook" && name == "AfterRemoteChange") { var key = (string)Raw(o, "FullName"); remote[key] = remote.ContainsKey(key) ? Delegate.Combine(remote[key], handler) : handler; return; }
+    throw Err(E_UNKNOWN, "no event " + name);
   }
+  readonly Dictionary<string, Delegate> remote = new Dictionary<string, Delegate>();
   public void Start(string file, string args) { started.Add(Office.Obj("file", file, "args", args)); }
   public string AppPath(string exe) { return @"C:\Program Files\Microsoft Office\root\Office16\" + exe.ToUpperInvariant(); }
   public void Foreground(int hwnd) { started.Add(Office.Obj("foreground", hwnd)); }
@@ -506,6 +510,15 @@ public class RecordedCom : ICom {
         var at = Parse((string)a["cell"]);
         var c = CellAt(sheet, at[0], at[1], true); c.F = ""; c.V = Constant(a["value"]);
         Changed(sheet, at);
+        return null;
+      }
+      case "_merge": {
+        // A co-author's edit merged in: the cell changes, SheetChange stays quiet, AfterRemoteChange fires.
+        var book = books.First(b => b.Key == (string)a["book"]);
+        var at = Parse((string)a["cell"]);
+        var c = CellAt(book.Sheets.First(x => x.Name == (string)a["sheet"]), at[0], at[1], true); c.F = ""; c.V = Constant(a["value"]);
+        Delegate d;
+        if (remote.TryGetValue(book.Key, out d)) d.DynamicInvoke();
         return null;
       }
       case "_state":

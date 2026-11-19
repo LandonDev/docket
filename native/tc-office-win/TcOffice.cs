@@ -43,7 +43,8 @@ public interface ICom {
   object Get(object o, string name, params object[] args);
   void Set(object o, string name, object value);
   object Call(object o, string name, params object[] args);
-  void Advise(object source, Guid iid, int dispid, Delegate handler);
+  // Hands `handler` the source's event `name` (its default source interface's member).
+  void Advise(object source, string name, Delegate handler);
   // Starts a program, or opens a document or URI with its handler (the switch).
   void Start(string file, string args);
   // The app's exe from App Paths, or null.
@@ -67,7 +68,43 @@ public class RealCom : ICom {
   }
   // A method, or a property that takes arguments (a Range's Item): IDispatch takes both as one call.
   public object Call(object o, string name, params object[] args) { return Invoke(o, name, BindingFlags.InvokeMethod | BindingFlags.GetProperty, args); }
-  public void Advise(object source, Guid iid, int dispid, Delegate handler) { ComEventsHelper.Combine(source, iid, dispid, handler); }
+  public void Advise(object source, string name, Delegate handler) {
+    Guid iid; int dispid;
+    if (!EventId(source, name, out iid, out dispid)) {
+      // Excel's AppEvents as its type library gives them, should the object not describe itself.
+      if (name != "SheetChange") throw new Refusal("failed", "no event " + name + " on this object");
+      iid = new Guid("00024413-0000-0000-C000-000000000046"); dispid = 0x61c;
+    }
+    ComEventsHelper.Combine(source, iid, dispid, handler);
+  }
+
+  // The event's interface and dispid, read from the object's own class info: its default source interface.
+  static bool EventId(object source, string name, out Guid iid, out int dispid) {
+    iid = Guid.Empty; dispid = 0;
+    var pci = source as IProvideClassInfo;
+    System.Runtime.InteropServices.ComTypes.ITypeInfo ti;
+    if (pci == null || pci.GetClassInfo(out ti) != 0 || ti == null) return false;
+    try {
+      IntPtr pa; ti.GetTypeAttr(out pa);
+      var ta = (System.Runtime.InteropServices.ComTypes.TYPEATTR)Marshal.PtrToStructure(pa, typeof(System.Runtime.InteropServices.ComTypes.TYPEATTR));
+      ti.ReleaseTypeAttr(pa);
+      const System.Runtime.InteropServices.ComTypes.IMPLTYPEFLAGS want = System.Runtime.InteropServices.ComTypes.IMPLTYPEFLAGS.IMPLTYPEFLAG_FDEFAULT | System.Runtime.InteropServices.ComTypes.IMPLTYPEFLAGS.IMPLTYPEFLAG_FSOURCE;
+      for (var i = 0; i < ta.cImplTypes; i++) {
+        System.Runtime.InteropServices.ComTypes.IMPLTYPEFLAGS f; ti.GetImplTypeFlags(i, out f);
+        if ((f & want) != want) continue;
+        int href; ti.GetRefTypeOfImplType(i, out href);
+        System.Runtime.InteropServices.ComTypes.ITypeInfo ev; ti.GetRefTypeInfo(href, out ev);
+        IntPtr pe; ev.GetTypeAttr(out pe);
+        var ea = (System.Runtime.InteropServices.ComTypes.TYPEATTR)Marshal.PtrToStructure(pe, typeof(System.Runtime.InteropServices.ComTypes.TYPEATTR));
+        ev.ReleaseTypeAttr(pe);
+        var ids = new int[1];
+        ev.GetIDsOfNames(new[] { name }, 1, ids);
+        iid = ea.guid; dispid = ids[0];
+        return true;
+      }
+    } catch (COMException) { }
+    return false;
+  }
   public void Start(string file, string args) {
     var p = new ProcessStartInfo(file);
     if (args != null) p.Arguments = args;
@@ -93,6 +130,11 @@ public class RealCom : ICom {
   }
 }
 
+[ComImport, Guid("B196B283-BAB4-101A-B69C-00AA00341D07"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IProvideClassInfo {
+  [PreserveSig] int GetClassInfo(out System.Runtime.InteropServices.ComTypes.ITypeInfo info);
+}
+
 // Answers a busy app's "retry later" by retrying for a while, as Office's own clients do; past that
 // the call fails with RPC_E_CALL_REJECTED, which TempCode shows as "busy, try again".
 [ComImport, Guid("00000016-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -112,6 +154,7 @@ class MessageFilter : IOleMessageFilter {
 }
 
 public delegate void SheetChangeHandler(object sheet, object target);
+public delegate void RemoteChangeHandler();
 
 public class Office {
   public const int Version = 1;
@@ -138,6 +181,7 @@ public class Office {
         // Busy is the app saying "not now", not gone: the caller hears it and tries again.
         if (Busy(e)) throw;
         attached.Remove(app); if (advised == a) advised = null;
+        if (app == "excel") remoteBooks.Clear();
       }
     }
     if (!com.Registered(ProgId(app))) throw new Refusal("not-installed", Named(app) + " is not installed on this PC.");
@@ -165,8 +209,8 @@ public class Office {
 
   // ---- Excel. A range is one call each way, never one per cell.
   int writing;
-  static readonly Guid AppEvents = new Guid("00024413-0000-0000-C000-000000000046");
-  const int DispSheetChange = 0x61c;
+  // Workbooks whose AfterRemoteChange is ours, by FullName, for the Excel attached now.
+  readonly HashSet<string> remoteBooks = new HashSet<string>();
 
   public object Watch(bool on) {
     watching = on;
@@ -176,7 +220,7 @@ public class Office {
 
   void Advise(object xl) {
     if (advised == xl) return;
-    try { com.Advise(xl, AppEvents, DispSheetChange, new SheetChangeHandler(SheetChanged)); advised = xl; }
+    try { com.Advise(xl, "SheetChange", new SheetChangeHandler(SheetChanged)); advised = xl; }
     catch (Exception e) { Console.Error.WriteLine("tc-office: no SheetChange events: " + e.Message); }
   }
 
@@ -188,6 +232,15 @@ public class Office {
       var address = (string)com.Get(target, "Address", false, false);
       emit(Obj("event", "changed", "book", book, "sheet", (string)com.Get(sheet, "Name"), "address", address));
     } catch (Exception e) { Console.Error.WriteLine("tc-office: SheetChange: " + e.Message); }
+  }
+
+  // A co-author's edits raise no SheetChange: Excel merges them and says so, with no range, by the
+  // workbook's AfterRemoteChange. Heard for each workbook the helper reaches while listening.
+  void AdviseBook(object b, string key) {
+    if (!watching || remoteBooks.Contains(key)) return;
+    remoteBooks.Add(key);
+    try { com.Advise(b, "AfterRemoteChange", new RemoteChangeHandler(() => { if (watching) emit(Obj("event", "remote", "book", key)); })); }
+    catch (Exception e) { Console.Error.WriteLine("tc-office: no AfterRemoteChange for " + key + ": " + e.Message); }
   }
 
   IEnumerable<object> Each(object collection) {
@@ -220,6 +273,7 @@ public class Office {
 
   object Range(string book, string sheet, string address) {
     var b = ByKey(com.Get(App("excel"), "Workbooks"), book, "workbook");
+    AdviseBook(b, book);
     object ws;
     try { ws = com.Call(com.Get(b, "Worksheets"), "Item", sheet); }
     catch (COMException) { throw new Refusal("not-found", book + " has no sheet " + sheet + "."); }

@@ -187,6 +187,22 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       offChanges()
     })
 
+    it("hears a co-author's edit merged in by the workbook's AfterRemoteChange, which names no range, and reads the watched blocks again", async () => {
+      const events: string[] = []
+      const offChanges = carrier.changes!((book, sheet, address) => {
+        events.push(`${book}|${sheet}|${address}`)
+        if (!sheet) void excel.pass()
+      })
+      const heard: SheetChange[] = []
+      const off = excel.watch(SHARED, 'Sheet1', parseAddress('A1:B1'), (c) => heard.push(c))
+      await vi.waitFor(async () => expect(await excel.read(SHARED, 'Sheet1', parseAddress('A1'))).toBeTruthy())
+      await carrier.call('_merge', { book: SHARED, sheet: 'Sheet1', cell: 'B1', value: 150 })
+      expect(events).toEqual([`${SHARED}||`])
+      await vi.waitFor(() => expect(heard.some((c) => c.kind === 'cells' && c.by === 'excel')).toBe(true))
+      off()
+      offChanges()
+    })
+
     it('says busy, in words that ask to try again, when Excel turns the call away, and the next call goes through', async () => {
       await carrier.call('_busy', { calls: 1 })
       const r = await run('office_range_read', { workbook: MINE, range: 'Sheet1!A1' })

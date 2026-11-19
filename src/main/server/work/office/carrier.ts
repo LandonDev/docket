@@ -129,7 +129,7 @@ export interface OfficeCarrier {
   /** brings the app forward with the file (the switch) */
   open(app: OfficeApp, ref: { kind: 'path'; path: string } | { kind: 'url'; url: string }): Promise<void>
 
-  /** A carrier the app itself tells of changes (Excel's SheetChange on Windows): `address` changed on a sheet. Returns its off. */
+  /** A carrier the app itself tells of changes (Windows' Excel): `address` changed on `sheet`, or, with `sheet` '', a co-author's edits were merged somewhere in the book. Returns its off. */
   changes?(fn: (book: string, sheet: string, address: string) => void): () => void
 }
 

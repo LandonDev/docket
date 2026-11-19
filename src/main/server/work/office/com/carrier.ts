@@ -12,10 +12,11 @@ import { spawnHelper } from './helper'
  * helper for the app's life, started on the first call and again after it
  * stops. Like the Mac's, it drives only the apps he started, save `open`.
  *
- * Excel tells the helper of every change he or a co-author makes in a sheet
- * (its SheetChange event); those reach `changes` listeners, and the Excel
- * helper reads the blocks they touch again at once (`ExcelHelper.heard`). The
- * safety pass still runs for what no event reports (formatting).
+ * Excel tells the helper of every change he makes in a sheet (SheetChange,
+ * with its range) and of a co-author's edits merged into a workbook
+ * (AfterRemoteChange, with no range: sheet ''). Those reach `changes`
+ * listeners, and the Excel helper reads the blocks again at once. The safety
+ * pass still runs for what no event reports (formatting).
  */
 
 /** What the carrier needs of a helper process: the Node child, or a stand-in in tests. */
@@ -41,6 +42,7 @@ const READY_MS = 30_000
 type Frame =
   | { event: 'ready'; version: number; pid?: number }
   | { event: 'changed'; book: string; sheet: string; address: string }
+  | { event: 'remote'; book: string }
   | { id: number; ok: true; value: unknown }
   | { id: number; ok: false; error: { code?: string; message?: string; hresult?: string } }
 
@@ -161,6 +163,7 @@ class Link {
         ready()
         if (this.listeners.size) this.send(c, 'watch', { on: true }).catch(() => undefined)
       } else if (f.event === 'changed') for (const area of f.address.split(',')) for (const fn of this.listeners) fn(f.book, f.sheet, area)
+      else if (f.event === 'remote') for (const fn of this.listeners) fn(f.book, '', '')
       return
     }
     const p = c.pending.get(f.id)

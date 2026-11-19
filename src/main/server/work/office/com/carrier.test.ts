@@ -159,6 +159,9 @@ describe('the Windows carrier', () => {
     expect(procs[0].seen[0].args).toEqual({ on: true })
     procs[0].line({ event: 'changed', book: 'C:\\b.xlsx', sheet: 'Sheet1', address: 'A1:B2,D4' })
     await vi.waitFor(() => expect(heard).toEqual(['C:\\b.xlsx|Sheet1|A1:B2', 'C:\\b.xlsx|Sheet1|D4']))
+    // A co-author's merge comes with no range: no sheet.
+    procs[0].line({ event: 'remote', book: 'https://contoso.sharepoint.com/Plan.xlsx' })
+    await vi.waitFor(() => expect(heard.at(-1)).toBe('https://contoso.sharepoint.com/Plan.xlsx||'))
 
     procs[0].emit('exit', 0)
     await carrier.workbooks()

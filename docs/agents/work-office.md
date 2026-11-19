@@ -16,6 +16,10 @@ the sheet canvas.
 | `office/carrier.ts` | `OfficeCarrier`, the one interface every carrier fills: workbooks and ranges, documents, decks, Outlook mail and calendar, `open` |
 | `office/osa.ts` | one osascript run (`runOsa`), and osascript's errors in words (`osaError`: -1743 refused, -1744 needs his click, -600 not open, -1728 no such item) |
 | `office/mac.ts` | the Mac carrier: one JXA script per verb (`SCRIPTS`), arguments as one JSON string, the answer JSON |
+| `office/com/carrier.ts` | the Windows carrier: one request per verb to `tc-office.exe` over stdio, its refusals as `OfficeError`s, Excel's change events (`changes`) |
+| `office/com/helper.ts` | the helper compiled on the host by Windows' own `csc.exe` into the temp dir, and started in a Job Object |
+| `office/com/source.ts` | the helper's C# as a string, generated from `native/tc-office-win/TcOffice.cs` by `scripts/gen-tc-office-source.ts` |
+| `native/tc-office-win/` | `TcOffice.cs` (the helper), `RecordedCom.cs` (the recorded COM surface, tests only), `build-in-rig.sh` |
 | `office/fake.ts` | `FakeOffice`, an Office in memory that logs every call: the recorded carrier for the box's tests |
 | `office/excel.ts` | `ExcelHelper`: Excel as the truth behind a grid |
 | `office/grid.ts` | what the sheets pillar asks for an item whose source is `{at: 'microsoft', app: 'excel'}` |
@@ -40,13 +44,21 @@ id per Outlook address). Suggestions over a workbook use the sheets pillar's
 
 ## Carriers
 
-A carrier is what drives the apps. The Mac's osascript, our Office add-in
-and Outlook on the web on the box (M38) exist now; COM on Windows is M44's.
-`index.ts` picks `withAddin(macCarrier())` on darwin, `withAddin(owaCarrier())`
-on Linux where a Chromium is, and `withAddin(null)` elsewhere (`setCarrier`
-in tests): a file open with our add-in goes through the add-in, anything
-else to the desktop carrier. A host with only the add-in reports
-`carrier: 'addin'`; the box reports `owa`.
+A carrier is what drives the apps: the Mac's osascript, COM on Windows
+(M44), our Office add-in, and Outlook on the web on the box (M38).
+`index.ts` picks `withAddin(macCarrier())` on darwin, `withAddin(comCarrier())`
+on win32, `withAddin(owaCarrier())` on Linux where a Chromium is, and
+`withAddin(null)` elsewhere (`setCarrier` in tests): a file open with our
+add-in goes through the add-in, anything else to the desktop carrier. A host
+with only the add-in reports `carrier: 'addin'`; Windows reports `com`, the
+box `owa`.
+
+A carrier may also offer `changes(fn)`: the app itself tells of a change to
+a sheet (Windows' Excel does). The module hands those to
+`ExcelHelper.heard`, as it does the add-in's. `OfficeError`'s `busy` code is
+an app turning a call away for now (a dialog open, a cell in edit): nothing
+was done, and the agent may try again. The route takes it as a plain
+refusal, so a LifeOS row fails in words rather than waiting as sent.
 
 **The Mac.** Each verb is one JXA script run by `/usr/bin/osascript -l
 JavaScript -`. A range is one Apple Event each way, never one per cell. The
@@ -69,6 +81,65 @@ Office call from the installed app answers "TempCode may not control …".
 `apps()` reports each app as installed, running and allowed. macOS will not
 say whether an app is allowed without asking, so `allowed` is what the last
 call found, and `unknown` before any call.
+
+**Windows** (`com/`, milestone 44). Every verb is one request to
+`tc-office.exe`, a small helper that drives Excel, Word, PowerPoint and
+classic Outlook by COM in his own session: one JSON object per line each
+way (`{id, verb, args}` in; `{id, ok, value}` or `{id, ok: false, error:
+{code, message, hresult}}` out; `{event: 'ready'}` once, and from Excel
+`{event: 'changed', book, sheet, address}` and `{event: 'remote', book}`). No PowerShell runs. The
+helper is C# 5 (`native/tc-office-win/TcOffice.cs`), carried in the server as
+a string and compiled on first use by the `csc.exe` every Windows has (.NET
+Framework 4), into `%TEMP%\tempcode-office-<hash>.exe`, as the job helper is
+(procTree.ts). It is spawned hidden with `adoptTree`, so it ends with the
+app; it also exits when its stdin closes. One helper serves the app's life;
+one that stops is started again on the next call, and one that does not
+answer within two minutes (Office on a modal dialog) is stopped and
+replaced. Its calls and Excel's events run on one STA thread with a message
+loop; stdin is read beside it.
+
+- **It drives only what he started.** It attaches with `GetActiveObject` and
+  checks the process first, as LifeOS's `outlook.ps1` does, so a verb on an
+  app that is not open answers "not open" (an app run as administrator while
+  TempCode is not answers the same, in other words). A proxy left by an app
+  that quit is dropped and the next call attaches afresh. The one exception
+  is `open`, the switch: an open file's window is activated and brought
+  forward (Windows may refuse a background process the foreground: the
+  window is then active in its app, not in front); a file not open starts
+  the app from App Paths with it, and a URL goes to `ms-<app>:ofe|u|<url>`.
+- **Busy.** An OLE message filter retries an app's "retry later" for ten
+  seconds; past that COM's RPC_E_CALL_REJECTED (0x80010001) or
+  RPC_E_SERVERCALL_RETRYLATER (0x8001010A) answers `busy`. Outlook's object
+  model guard (E_ABORT, 0x80004004) answers `not-allowed`.
+- **Excel.** A range is one call each way: `Value` (a date comes as ISO
+  text in UTC, as the Mac gives it, and goes back as a date; an error cell as
+  its text, `#DIV/0!`), `Formula2` (or `Formula` on an Excel without it), and
+  `NumberFormat`, read by row and then by cell where the cells differ (COM
+  answers null for those). Excel's `SheetChange` reaches `changes` with its
+  range for his own typing; the helper drops the events its own writes
+  raise. A co-author's edits raise no `SheetChange` (Microsoft: "the default
+  behavior of not firing change events"); Excel says it merged them by the
+  workbook's `AfterRemoteChange`, which names no range, so it reaches
+  `changes` with sheet '' and the module reads every watched block again
+  (`ExcelHelper.pass`). The helper hooks it on each workbook it reaches
+  while listening. It reads each event's interface and dispid from the
+  object's own class info (`IProvideClassInfo`), with `SheetChange`'s from
+  Excel's type library (AppEvents, 0x61c) should that fail. The safety pass
+  still runs for formatting.
+- **Word and PowerPoint.** Word's text is `Content.Text`; a find and replace
+  walks `Find.Execute` and sets each hit's text (Word's own replace takes at
+  most 255 characters), with Track Changes as the tool asks and put back
+  after. PowerPoint replaces with `TextRange.Replace`, which keeps each run's
+  formatting.
+- **Outlook**, as `outlook.ps1` does it: addresses by `PR_SMTP_ADDRESS` and
+  `PR_SENDER_SMTP_ADDRESS`, then the Exchange user, then the address itself;
+  lists sorted and stopped (no date filter for mail); a reply or forward
+  puts our HTML just inside the body, above Outlook's quoted original; the
+  account by `SendUsingAccount`; recipients resolved before a send. Events
+  are sorted, recurrences expanded, then restricted to the window.
+  `eventByUid` matches `GlobalAppointmentID` in hex, or the `vCal-Uid` an
+  invitation made elsewhere carries in it. A send answers no id.
+- New Outlook (`olk.exe`) has no COM: only classic Outlook is reached.
 
 **Outlook on the web** (`owa/`, milestone 38). Mail and calendar only:
 Excel, Word and PowerPoint answer "not on the box". The carrier keeps its
@@ -349,7 +420,45 @@ canary, its `service.svc` checks every `__type` and answers as Exchange
 does): who is signed in, a formatted send read back from Sent, the route end
 to end, booking, an invitation by UID and its answer, a session that ends.
 
+Windows: `com/carrier.test.ts` runs the carrier's wire against a stand-in
+helper (each verb's request, refusals and busy codes, the allowed state, a
+helper that cannot start, stops, hangs or never says ready, Excel's events
+area by area and the watch after a restart); `com/helper.test.ts` holds the
+string to the C# file and the compile to Windows' csc. `com/rig.test.ts` is
+the tool set's contract on Windows, opt in: the real `tc-office.exe` built
+in the rig with the recorded COM surface (`RecordedCom.cs`: Excel, Word,
+PowerPoint and Outlook in Microsoft's documented shapes, with their quirks:
+1-based blocks, a single cell as a scalar, null formats over mixed cells,
+error cells as Int32, an unknown member, a closed app, a busy app, the
+guard, SheetChange, AfterRemoteChange), driven over the rig's SSH by the real carrier, tools,
+held acts and Excel helper: reads and writes, a stale write's conflict,
+suggestions on a shared workbook, an older Excel, a typed change heard at
+once and never our own, a co-author's merge heard by its workbook, busy, not open and not installed, the switch,
+tracked changes in Word, slide text, mail listed and read, every send verb
+held with nothing sent, a formatted send and a reply through execute, a
+draft, an invitation, an answer by UID with a comment, the guard; and the
+shipped `tc-office.exe` on a Windows with no Office. Run it with
+`native/tc-office-win/build-in-rig.sh m44`, then `TC_OFFICE_RIG=m44
+NODE_ENV=test bunx vitest run src/main/server/work/office/com/rig.test.ts`.
+Through sshd it needs Git Bash's pipes between (`cat | helper | cat`): sshd
+hands a program one synchronous handle for stdin and stdout, and a read
+waiting on it holds every write back. Node gives the helper two pipes.
+
 ## Not proven
+
+**Windows**: nothing has run against real Office on Windows (the rig has
+none, by the owner's choice). The recorded surface follows Microsoft's
+documentation, not a recording of real Office. Unproven: the COM member
+names and argument shapes against real Excel, Word, PowerPoint and Outlook
+(the checklist in landed/M44.md runs them); `ComEventsHelper` sinking
+Excel's events late-bound, the event ids read from class info, and
+`AfterRemoteChange` firing for a co-author's merge; `Respond` with no dialog returning a reply to send; the guard's
+answer on a PC with no antivirus (it may prompt, and the call then waits
+out its two minutes); bringing a window forward from a background process;
+a locked-down PC that refuses an unsigned exe in %TEMP% (AppLocker), where
+the helper would have to ship signed beside the app; the helper compiled
+by TempCode itself on Windows (the rig compiled it with the same command
+over SSH).
 
 **Outlook on the web**: nothing has run against his real Outlook on the web
 (no agent may sign in to it). The live test is in landed/M38.md. Unproven
