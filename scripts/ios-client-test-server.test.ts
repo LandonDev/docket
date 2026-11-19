@@ -45,3 +45,13 @@ describe('the iOS test server seeds', () => {
     expect(seededIds("make('a', {})\nmakeTyped(THREAD_B, 'chat')\nexport const THREAD_B = 'b'\nagent('c', 'explorer')\nserver.registry.create({ id: 'd', x: 1 })\ncreate({ id: THREAD_B })")).toEqual(['a', 'b', 'c', 'd', 'b'])
   })
 })
+
+describe('the work set', () => {
+  // A relayed host is this server under another id: it would list the same Outbox once per host.
+  it('seeds no relayed hosts', () => {
+    expect(source).toContain("const relayed = process.env.TC_TEST_NO_RELAY === '1' ? [] : relaySeed")
+    expect(source).toMatch(/hosts: relayed\n/)
+    const local = readFileSync(resolve(import.meta.dirname, 'ios-sim-proof-local.ts'), 'utf8')
+    expect(local).toContain("TC_PROOF_SET === 'work' ? { TC_TEST_ADDONS: '1', TC_TEST_NO_RELAY: '1' }")
+  })
+})

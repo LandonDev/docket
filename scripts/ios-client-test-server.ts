@@ -68,6 +68,7 @@
  * (`/ws?ticket=…&host=<id>`) lists this server's own seeded threads under
  * that host's id; the asleep one answers `unavailable: the Mac is asleep`;
  * the unreachable one is refused 503.
+ * TC_TEST_NO_RELAY=1 (the work set) seeds none: each would serve this server's Work again.
  */
 import { createServer, Server as HttpServer } from 'node:http'
 import { execFileSync, fork, spawn, type Serializable } from 'node:child_process'
@@ -1436,13 +1437,15 @@ const relaySeed = [
   { environmentId: relayId('Asleep'), name: 'Studio Mac (asleep)', state: 'asleep', row: { ...relayRow, power: 'asleep' as const } },
   { environmentId: relayId('Unreachable'), name: 'Studio Mac (unreachable)', state: 'unreachable', row: { ...relayRow, link: 'down' as const, since: Date.now() - 5 * 60_000 } }
 ]
+// The work set (TC_TEST_NO_RELAY=1) seeds none: a relayed host here is this server under another id, so it would list the same Outbox again.
+const relayed = process.env.TC_TEST_NO_RELAY === '1' ? [] : relaySeed
 const relayHosts = startLoopbackHosts({
   carrierId: server.environmentId,
   carrierName: 'iOS test server',
   relay: server.relay,
   attach: (socket, principal) => server.attach(socket as never, principal),
   facade: () => ({ registry: server.registry, origin: null }),
-  hosts: relaySeed
+  hosts: relayed
 })
 
 // ── the auth clock, shiftable for ticket expiry ─────────────────────────
@@ -2294,6 +2297,6 @@ process.stdout.write(
     projectId: project.id,
     workspaceId: workspace.id,
     links: { workspace: WORKSPACE_LINK_ID, project: PROJECT_LINK_ID },
-    relayHosts: relaySeed.map(({ environmentId, name, state }) => ({ environmentId, name, state }))
+    relayHosts: relayed.map(({ environmentId, name, state }) => ({ environmentId, name, state }))
   }) + '\n'
 )
