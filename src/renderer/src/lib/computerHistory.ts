@@ -60,8 +60,8 @@ export interface HistoryKey {
  * another host (a box thread that drove this Mac). None off a Mac's desktop:
  * the journal is read by this Mac's own socket alone.
  */
-export function historyKeys(tree: ReadonlySet<string>, threadHost: string, ctx: Pick<PreviewContext, "macDesktop">): HistoryKey[] {
-  if (!ctx.macDesktop) return [];
+export function historyKeys(tree: ReadonlySet<string>, threadHost: string, ctx: Pick<PreviewContext, "desktop">): HistoryKey[] {
+  if (!ctx.desktop) return [];
   return [...tree].map((threadId) => ({ threadId, key: threadHost === LOCAL_ENVIRONMENT_ID ? threadId : macComputerKey(threadHost, threadId) }));
 }
 

@@ -12,6 +12,7 @@ import {
   hostWords,
   localComputerPlatform
 } from '@shared/computer/tools'
+import type { ComputerPlatform } from '@shared/computer/descriptions'
 import type { AppComputerAnswer } from '@shared/contract-computer'
 import type { SessionMeta } from '@shared/events'
 import { deferredTool } from '../addons/exposure'
@@ -54,8 +55,8 @@ export const REMOTE_NOTE_TOOL = 'computer_apps'
 /** The note's text, as a bridged thread's computer_apps reads it after its description. */
 export const COMPUTER_REMOTE_NOTE = COMPUTER_BRIDGE_NOTE
 /** A tool's description as a thread on another host reads it. */
-export const remoteDescription = (name: string, description: string): string =>
-  name === REMOTE_NOTE_TOOL ? description + COMPUTER_REMOTE_NOTE : description
+export const remoteDescription = (name: string, description: string, platform: ComputerPlatform = 'mac'): string =>
+  name === REMOTE_NOTE_TOOL ? description + hostWords(COMPUTER_REMOTE_NOTE, platform) : description
 
 /** Every name either tool shape lists, on every host: claude's allow list covers them and the warm pool's argv stays one shape. */
 export const COMPUTER_APP_TOOLS: readonly string[] = [...COMPUTER_TOOL_NAMES, ...COMPUTER_ACTION_NAMES.map((a) => `computer_${a}`)].map((n) => `mcp__app__${n}`)
@@ -96,14 +97,14 @@ export async function computerAnswer(o: ComputerToolOutcome, images: 'parts' | '
  */
 export function computerToolList(
   session: Pick<SessionMeta, 'provider' | 'model'>,
-  opts: { bridged?: boolean; result?: boolean } = {}
+  opts: { bridged?: boolean; result?: boolean; platform?: ComputerPlatform } = {}
 ): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
   const { shape, tools } = wordsFor(session)
-  // the bridge carries a call to the Mac; otherwise the tools act on this host's own apps
-  const platform = opts.bridged ? 'mac' : localComputerPlatform()
+  // the bridge carries a call to the far host (a Mac unless it says otherwise); otherwise the tools act on this host's own apps
+  const platform = opts.bridged ? (opts.platform ?? 'mac') : localComputerPlatform()
   return computerToolSpecs(shape, tools, { result: opts.result, platform }).map((t) => ({
     name: t.name,
-    description: opts.bridged ? remoteDescription(t.name, t.description) : t.description,
+    description: opts.bridged ? remoteDescription(t.name, t.description, platform) : t.description,
     inputSchema: computerToolJsonSchema(t.input)
   }))
 }
@@ -132,11 +133,11 @@ export function computerTools(session: SessionMeta, host: ComputerHost | null = 
   if (!local && !bridge?.offered(session.id)) return []
   const { shape, tools } = wordsFor(session)
   const eager = eagerComputer(session, host, bridge)
-  const platform = local ? localComputerPlatform() : 'mac'
+  const platform = local ? localComputerPlatform() : (bridge?.platform(session.id) ?? 'mac')
   return computerToolSpecs(shape, tools, { platform }).map((spec) => {
     const def = tool(
       spec.name,
-      local ? spec.description : remoteDescription(spec.name, spec.description),
+      local ? spec.description : remoteDescription(spec.name, spec.description, platform),
       shapeOf(spec.input),
       async (args, extra) => {
         // the queue parses again with the tool's full schema, refinements and all

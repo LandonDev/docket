@@ -4,6 +4,7 @@ import type { ThreadResource, ThreadResourceKind, ThreadResourceRemoval } from '
 import { registry } from './connection/registry'
 import type { EnvLink } from './connection/link'
 import { macBridgeStore } from './macBridge'
+import { thisDesktopInLine } from './native'
 import { sessionStore } from './tcserver/store'
 import { setResourceCleanup } from './threadBatch'
 
@@ -119,9 +120,9 @@ export const KIND_LABEL: Record<ThreadResourceKind, string> = {
   computer: 'computer use'
 }
 
-/** The host a resource lives on, by name: "this Mac" for this machine, the saved host's name otherwise. */
+/** The host a resource lives on, by name: "this Mac" or "this PC" for this machine, the saved host's name otherwise. */
 export function hostName(environmentId: string): string {
-  if (environmentId === macBridgeStore.getState().localId) return 'this Mac'
+  if (environmentId === macBridgeStore.getState().localId) return thisDesktopInLine()
   return registry.environment(environmentId)?.name ?? environmentId.replace(/^env_/, '').slice(0, 6)
 }
 

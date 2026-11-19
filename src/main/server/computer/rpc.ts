@@ -264,7 +264,7 @@ export class ComputerSocket {
     if (!server) return { tools: [] }
     // the thread's words; the default ones for a thread the registry does not list
     const meta = ('local' in server ? server.local.sessions.meta(p.sessionId) : server.bridge.meta(p.sessionId)) ?? { provider: 'claude' as const, model: '' }
-    return { tools: computerToolList(meta, { bridged: 'bridge' in server, result: true }) }
+    return { tools: computerToolList(meta, 'bridge' in server ? { bridged: true, result: true, platform: server.bridge.platform(p.sessionId) } : { result: true }) }
   }
 
   /** The socket closed: the bridge is gone, and so is every call it made, pending ones too. */

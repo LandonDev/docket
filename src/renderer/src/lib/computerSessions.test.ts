@@ -22,7 +22,7 @@ vi.mock('./connection/registry', () => ({
   }
 }))
 
-const { asksOf, computerSessionsStore, entriesOf, startComputerSessions } = await import('./computerSessions')
+const { asksOf, computerSessionsStore, drawsSessions, entriesOf, startComputerSessions } = await import('./computerSessions')
 
 const row = (threadId: string, over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
   threadId,
@@ -80,9 +80,18 @@ describe('the computer sessions store', () => {
   })
 })
 
+describe('drawsSessions', () => {
+  it("a Mac's and a Windows PC's own desktop draw their sessions; the browser /ui and a Linux desktop do not", () => {
+    expect(drawsSessions('darwin', false)).toBe(true)
+    expect(drawsSessions('win32', false)).toBe(true)
+    expect(drawsSessions('win32', true)).toBe(false)
+    expect(drawsSessions('linux', false)).toBe(false)
+  })
+})
+
 describe('entriesOf', () => {
   const tree = new Set(['s1', 'sub1'])
-  const mac = { macDesktop: true, localId: 'env_mac' }
+  const mac = { desktop: true, localId: 'env_mac' }
 
   it("keeps the rows of the thread's tree, on the thread's host", () => {
     const entries = entriesOf([row('s1'), row('sub1'), row('other')], tree, 'local', mac)
@@ -109,7 +118,7 @@ describe('entriesOf', () => {
 
   it("never previews another Mac's session, a box row before this Mac's id is known, or anything off the Mac desktop", () => {
     expect(entriesOf([row('s1', { macPeer: 'env_other' })], tree, 'env_box', mac)[0].previewable).toBe(false)
-    expect(entriesOf([row('s1', { macPeer: 'env_mac' })], tree, 'env_box', { macDesktop: true, localId: null })[0].previewable).toBe(false)
-    expect(entriesOf([row('s1')], tree, 'local', { macDesktop: false, localId: 'env_mac' })[0]).toEqual({ host: 'local', row: row('s1'), previewable: false })
+    expect(entriesOf([row('s1', { macPeer: 'env_mac' })], tree, 'env_box', { desktop: true, localId: null })[0].previewable).toBe(false)
+    expect(entriesOf([row('s1')], tree, 'local', { desktop: false, localId: 'env_mac' })[0]).toEqual({ host: 'local', row: row('s1'), previewable: false })
   })
 })

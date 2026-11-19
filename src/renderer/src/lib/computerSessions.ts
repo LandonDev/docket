@@ -129,16 +129,19 @@ export interface ComputerEntry {
 }
 
 export interface PreviewContext {
-  /** the desktop app (not the browser /ui) on a Mac */
-  macDesktop: boolean
+  /** the desktop app (not the browser /ui) on a Mac or a Windows PC: the machine whose computer service draws */
+  desktop: boolean
   /** this Mac's real environment id, once its hello said it */
   localId: string | null
 }
 
-/** What this desktop is: only a Mac's own desktop draws a session's window or reads its journal. */
+/** Whether a platform's desktop app draws its sessions' windows: a Mac's and a Windows PC's (docs/computer-protocol.md §29.6). */
+export const drawsSessions = (platform: string, web: boolean): boolean => !web && (platform === 'darwin' || platform === 'win32')
+
+/** What this desktop is: only a Mac's or a PC's own desktop draws a session's window or reads its journal. */
 export function previewContext(): PreviewContext {
   return {
-    macDesktop: !isWebMode() && nativePlatform() === 'darwin',
+    desktop: drawsSessions(nativePlatform(), isWebMode()),
     localId: registry.statusOf(LOCAL_ENVIRONMENT_ID).lastHello?.environmentId ?? null
   }
 }
@@ -148,7 +151,7 @@ export function entriesOf(rows: readonly ComputerSessionRow[], tree: ReadonlySet
   return rows.flatMap((row) => {
     if (!tree.has(row.threadId)) return []
     const entry: ComputerEntry = { host: threadHost, row, previewable: false }
-    if (!ctx.macDesktop) return [entry]
+    if (!ctx.desktop) return [entry]
     // The box's own browser (work/browser/box): the session lives on the thread's own host, which streams it.
     if (threadHost !== LOCAL_ENVIRONMENT_ID && !row.macPeer && row.apps.some((a) => a.bundleId === BOX_BROWSER_BUNDLE)) {
       return [{ ...entry, previewable: true, previewHost: threadHost, previewKey: row.threadId }]

@@ -124,12 +124,12 @@ describe('claude reads it once, in its system prompt', () => {
 
   it('a box thread whose bridge names a Mac with computer use on loads them too; one without it reads the search sentence', async () => {
     computerHooks.current = null
-    computerBridgeHooks.current = { offered: () => true } as unknown as NonNullable<typeof computerBridgeHooks.current>
+    computerBridgeHooks.current = { offered: () => true, platform: () => 'mac' } as unknown as NonNullable<typeof computerBridgeHooks.current>
     try {
       const prompt = await systemPromptOf({ threadType: 'chat' })
       expect(count(prompt)).toBe(1)
       expect(prompt).not.toContain('tool search')
-      computerBridgeHooks.current = { offered: () => false } as unknown as NonNullable<typeof computerBridgeHooks.current>
+      computerBridgeHooks.current = { offered: () => false, platform: () => 'mac' } as unknown as NonNullable<typeof computerBridgeHooks.current>
       expect(count(await systemPromptOf({ threadType: 'chat' }))).toBe(0)
     } finally {
       computerBridgeHooks.current = null

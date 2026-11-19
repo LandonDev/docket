@@ -387,6 +387,11 @@ export function thisDesktopName(): "This PC" | "This Mac" {
   return nativePlatform() === "win32" ? "This PC" : "This Mac";
 }
 
+/** The same name inside a sentence: "this PC" on Windows, "this Mac" elsewhere. */
+export function thisDesktopInLine(): "this PC" | "this Mac" {
+  return thisDesktopName() === "This PC" ? "this PC" : "this Mac";
+}
+
 /** The in-process server's port, straight from preload; never opens a socket. */
 export async function getServerPort(): Promise<number> {
   const port = await api().getServerPort();

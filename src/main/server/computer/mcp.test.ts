@@ -118,10 +118,11 @@ describe('computerTools', () => {
 })
 
 describe('computerTools on a box thread bridged to its Mac', () => {
-  const stubBridge = (offered: boolean) => {
+  const stubBridge = (offered: boolean, platform: 'mac' | 'windows' = 'mac') => {
     const runs: { threadId: string; tool: string; args: unknown }[] = []
     const bridge = {
       offered: () => offered,
+      platform: () => platform,
       run: async (ctx: { threadId: string }, tool: string, args: unknown) => {
         runs.push({ threadId: ctx.threadId, tool, args })
         return { steps: ['set_value [3] · ax · changed'], shots: [], body: 'TextEdit "Untitled"', isError: false }
@@ -161,6 +162,16 @@ describe('computerTools on a box thread bridged to its Mac', () => {
     expect(computerToolList({ provider: 'codex', model: 'gpt-6.1-sol' })).toHaveLength(4)
     const { tools } = await (await connect(null, stubBridge(true).bridge)).listTools()
     expect(tools.map((t) => t.name)).not.toContain('computer_result')
+  })
+
+  it("a bridge that names a Windows PC lists the tools in a PC's words, its note included (§29.5)", async () => {
+    const { tools } = await (await connect(null, stubBridge(true, 'windows').bridge)).listTools()
+    const apps = tools.find((t) => t.name === REMOTE_NOTE_TOOL)!
+    expect(apps.description).toMatch(/running apps/)
+    expect(apps.description).toContain("act on the user's PC")
+    expect(tools.map((t) => t.description ?? '').join(' ')).not.toMatch(/\bMac\b/)
+    const listed = computerToolList(session, { bridged: true, platform: 'windows' })
+    expect(listed.find((t) => t.name === REMOTE_NOTE_TOOL)!.description).toContain("act on the user's PC")
   })
 
   it('a call goes to the bridge, never to a host that is not available', async () => {

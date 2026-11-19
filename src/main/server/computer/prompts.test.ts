@@ -142,6 +142,9 @@ describe("COMPUTER_MECHANICS on a Windows PC (§29.5)", () => {
     const pc = renderComputerMechanics({ ...o, platform: 'windows' })
     expect(pc).toContain('This thread runs on a Windows PC.')
     expect(pc).not.toMatch(/\bMac\b/)
+    // the confirmations policy's off-limits line and the examples name Windows' own things
+    expect(pc).toContain("Windows' password, consent and sign-in prompts are off limits")
+    expect(pc).not.toMatch(/macOS|TextEdit|xcrun|`defaults`/)
     expect(renderComputerMechanics({ ...o, platform: 'mac' })).toContain('This thread runs on a Mac.')
   })
 })

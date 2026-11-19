@@ -20,6 +20,7 @@ import {
   macLacksReader,
   type MacComputerReaderResult
 } from '@shared/contract-maccomputer'
+import type { ComputerPlatform } from '@shared/computer/descriptions'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import { READER_ACK_MS } from '@shared/computer/heldCalls'
 import type { ComputerToolCall, ComputerToolName } from '@shared/computer/tools'
@@ -97,6 +98,8 @@ export interface ComputerBridgeDeps {
   landing: (session: SessionMeta) => string
   /** What this host calls a Mac: its saved name, else its key's name, else its id. */
   macName: (envId: string) => string
+  /** The far host's platform as its build says it (`win32` for a Windows PC); unknown reads as a Mac. */
+  platformOf?: (envId: string) => string | null | undefined
   resources?: { recordComputer(sessionId: string, macPeer: string, label: string): void; computerEnded(sessionId: string, macPeer: string, note: string): void }
   /** The thread's tool set changed: its harness comes back with (or without) the tools at its next turn. */
   reboot?: (sessionId: string) => void
@@ -194,6 +197,12 @@ export class ComputerBridge {
     const live = this.deps.calls.offersOf(mac)
     if (live) return live.has(MAC_COMPUTER_OFFER)
     return this.deps.store.getSetting(`${COMPUTER_OFFER_PREFIX}${mac}`) === 'on'
+  }
+
+  /** The words the thread's tools are listed in: the far host's, a PC's where the bridge names a Windows PC (§29.5). */
+  platform(sessionId: string): ComputerPlatform {
+    const far = this.deps.macPeerOf(sessionId)
+    return far && this.deps.platformOf?.(far) === 'win32' ? 'windows' : 'mac'
   }
 
   /** The thread's bridge names a Mac: its calls go there, and the Mac answers even a refusal (its switch off) in its own words. */

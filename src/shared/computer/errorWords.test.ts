@@ -198,3 +198,15 @@ describe('the words of steps that need the app in front (§26)', () => {
     )
   })
 })
+
+describe('on a Windows PC (§29.5)', () => {
+  it("reads a PC's words where the call acted on one, and the Mac's otherwise", () => {
+    const e = { kind: 'interrupted', message: 'x' } as ComputerError
+    expect(errorLine(e, { platform: 'windows' })).toBe('the person used the PC, so this step stopped; carry on in the background or try later')
+    expect(errorLine(e, { platform: 'mac' })).toContain('used the Mac')
+    const refused = { kind: 'session_unavailable', message: 'x', reason: 'secure' } as ComputerError
+    expect(errorLine(refused, { platform: 'windows' })).toBe("the session tier can't run now: an administrator's window or a Windows prompt has the input; stay in the background tiers")
+    const key = { kind: 'invalid_key', message: 'x' } as ComputerError
+    expect(errorLine(key, { platform: 'windows', action: { action: 'key', text: 'hyper' } as ComputerAction })).toContain('Escape, ctrl+c')
+  })
+})

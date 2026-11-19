@@ -12,6 +12,7 @@ import { cn } from "../../lib/cn";
 import { treeIds } from "../../lib/activity";
 import { drawable, useComputerSection } from "../../lib/computerSection";
 import { stopComputer, useComputerEntries, type ComputerEntry } from "../../lib/computerSessions";
+import { thisDesktopInLine } from "../../lib/native";
 import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
 import { ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, streamSize, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
@@ -189,10 +190,10 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
   const box = useRef<HTMLDivElement>(null);
   const stream = useLiveStream(entry, true, box, measure);
 
-  // Where it runs, said once after the page's title: the Mac a box thread drives, else the thread's own host.
+  // Where it runs, said once after the page's title: the Mac a box thread drives, else the thread's own host (none for this one).
   const where = entry?.row.macName ?? live.find((e) => e.row.macName)?.row.macName ?? hostName(env);
   useEffect(() => {
-    shell.detail(where === "this Mac" ? null : where);
+    shell.detail(where === thisDesktopInLine() ? null : where);
     return () => shell.detail(null);
   }, [shell, where]);
 

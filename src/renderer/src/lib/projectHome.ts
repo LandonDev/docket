@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { settingsHomeOf } from "@server/shared/projectLinks";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection/registry";
+import { thisDesktopInLine } from "./native";
 import { useEnvironmentStatuses } from "./connection/status";
 import { archiveProject, deleteProject, renameProject } from "./tcserver/projects";
 import { useWorkspaceCatalog, workspaceStore } from "./tcserver/workspaces";
@@ -21,7 +22,7 @@ export interface HostFacts {
   hostIdOf(slot: string): string;
   /** The host's hello `build.platform`; undefined until heard. */
   platformOf(slot: string): string | undefined;
-  /** The host by name, for a sentence: "box", "this Mac". */
+  /** The host by name, for a sentence: "box", "this Mac", "this PC". */
   nameOf(slot: string): string;
   /** The host's link is open now. */
   isOpen(slot: string): boolean;
@@ -67,7 +68,7 @@ export function resolveProjectHome(project: ProjectMeta, projects: readonly Proj
 export const liveHostFacts: HostFacts = {
   hostIdOf: (slot) => registry.statusOf(slot).lastHello?.environmentId ?? slot,
   platformOf: (slot) => registry.statusOf(slot).lastHello?.build?.platform,
-  nameOf: (slot) => (slot === LOCAL_ENVIRONMENT_ID ? "this Mac" : (registry.environment(slot)?.name ?? slot)),
+  nameOf: (slot) => (slot === LOCAL_ENVIRONMENT_ID ? thisDesktopInLine() : (registry.environment(slot)?.name ?? slot)),
   isOpen: (slot) => registry.statusOf(slot).transport === "open",
 };
 

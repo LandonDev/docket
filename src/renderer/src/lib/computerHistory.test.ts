@@ -82,7 +82,7 @@ beforeEach(() => {
 });
 
 describe("historyKeys", () => {
-  const mac = { macDesktop: true };
+  const mac = { desktop: true };
   it("a Mac thread's tree reads by each thread's own id", () => {
     expect(H.historyKeys(new Set(["t1", "sub1"]), "local", mac)).toEqual([
       { threadId: "t1", key: "t1" },
@@ -96,8 +96,8 @@ describe("historyKeys", () => {
     ]);
   });
   it("nothing off a Mac's desktop: the browser, a Linux desktop", () => {
-    expect(H.historyKeys(new Set(["t1"]), "local", { macDesktop: false })).toEqual([]);
-    expect(H.historyKeys(new Set(["b1"]), "env_box", { macDesktop: false })).toEqual([]);
+    expect(H.historyKeys(new Set(["t1"]), "local", { desktop: false })).toEqual([]);
+    expect(H.historyKeys(new Set(["b1"]), "env_box", { desktop: false })).toEqual([]);
   });
   it("65 keys are two reads", async () => {
     const keys = Array.from({ length: 65 }, (_, i) => `t${i}`);
@@ -114,14 +114,14 @@ describe("historyKeys", () => {
 describe("the join with the live row", () => {
   it("a box thread's row on the box's push joins this Mac's journal under the bridge's key", () => {
     const row: ComputerSessionRow = { threadId: "b1", since: 1, lastCallAt: 1, apps: [], running: null, tier: null, macPeer: "env_mac", macName: "Mac" };
-    const [entry] = entriesOf([row], new Set(["b1"]), "env_box", { macDesktop: true, localId: "env_mac" });
-    const [key] = H.historyKeys(new Set(["b1"]), "env_box", { macDesktop: true });
+    const [entry] = entriesOf([row], new Set(["b1"]), "env_box", { desktop: true, localId: "env_mac" });
+    const [key] = H.historyKeys(new Set(["b1"]), "env_box", { desktop: true });
     expect(H.historyKeyOf(entry)).toBe(key.key);
     // a Mac thread's own row joins by its id
-    const [own] = entriesOf([{ ...row, threadId: "t1", macPeer: undefined }], new Set(["t1"]), "local", { macDesktop: true, localId: "env_mac" });
+    const [own] = entriesOf([{ ...row, threadId: "t1", macPeer: undefined }], new Set(["t1"]), "local", { desktop: true, localId: "env_mac" });
     expect(H.historyKeyOf(own)).toBe("t1");
     // a session this desktop cannot draw has no journal here
-    const [other] = entriesOf([{ ...row, macPeer: "env_other_mac" }], new Set(["b1"]), "env_box", { macDesktop: true, localId: "env_mac" });
+    const [other] = entriesOf([{ ...row, macPeer: "env_other_mac" }], new Set(["b1"]), "env_box", { desktop: true, localId: "env_mac" });
     expect(H.historyKeyOf(other)).toBeNull();
   });
 });

@@ -1456,6 +1456,7 @@ export async function startServer(
       store,
       landing: (s) => join(attachmentDir(s), 'computer'),
       macName: (id) => hostNameOf(id) ?? id,
+      platformOf: (id) => peers.get(id)?.build?.platform,
       resources,
       reboot: (id) => void registry.rebootAtNextTurn(id),
       awayNoticed: (id, kind, what) => registry.awayNotice(id, kind, what),

@@ -248,6 +248,7 @@ describe('a box thread bridged to its Mac', () => {
     const bridge = {
       offered: (id: string) => id === 'b1',
       meta: () => null,
+      platform: () => 'mac',
       bridged: (id: string) => id === 'b1' || id === 'b3',
       run: async (ctx: { threadId: string }, tool: string) => (runs.push(`${ctx.threadId} ${tool}`), { steps: [], shots: [], body: 'ok', isError: false }),
       rows: () => [row],
