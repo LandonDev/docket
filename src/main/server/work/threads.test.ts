@@ -103,8 +103,9 @@ describe('ctx.threads.start', () => {
     expect(byDefault).toMatchObject({ provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'high' })
     const named = registry.get(await work.ctx.threads.start({ workspaceId: purdue, text: 'b', model: 'claude-opus-5-5' }))!
     expect(named).toMatchObject({ provider: 'claude', model: 'claude-opus-5-5' })
-    // a model of a harness with no fence is refused, whoever names it: the workspace's setting or the caller
-    await expect(work.ctx.threads.start({ workspaceId: purdue, text: 'x', model: 'gpt-6.1-sol' })).rejects.toThrow(/not offered for Work/)
+    // a model of a harness with no fence is refused, whoever names it: the workspace's setting or the caller (Cursor; Codex is offered since F1)
+    await expect(work.ctx.threads.start({ workspaceId: purdue, text: 'x', model: 'composer-2.5' })).rejects.toThrow(/not offered for Work/)
+    expect(registry.get(await work.ctx.threads.start({ workspaceId: purdue, text: 'e', model: 'gpt-6.1-sol' }))).toMatchObject({ scope: 'work', provider: 'codex' })
     const project = await registry.createProject(purdue, 'esports', 'local')
     expect(registry.get(await work.ctx.threads.start({ workspaceId: purdue, projectId: project.id, text: 'c' }))).toMatchObject({ scope: 'work', projectId: project.id })
     const chat = registry.get(await work.ctx.threads.start({ workspaceId: WORK_HOME, text: 'd' }))!
