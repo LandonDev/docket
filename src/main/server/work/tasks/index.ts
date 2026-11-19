@@ -16,14 +16,18 @@ interface LinkRow {
   title: string
 }
 
-/** Done on a task, as the owner: with the newest of this host's threads that worked it, else plainly. */
-export async function taskDone(ctx: WorkCtx, taskId: string): Promise<TasksDone> {
+/** Done on a task, as the owner, from a workspace's view: refused unless the task is in the workspace's sector. */
+export async function taskDone(ctx: WorkCtx, workspaceId: string, taskId: string): Promise<TasksDone> {
+  const workspace = ctx.db.prepare('SELECT sector FROM workspaces WHERE id = ? AND kind = ?').get(workspaceId, 'work') as { sector: string | null } | undefined
+  if (!workspace?.sector) throw new Error('That workspace is not linked to a LifeOS sector here.')
   const owner = ctx.lifeos.owner()
   const [links, detail] = await Promise.all([
     owner.query<LinkRow[]>('workLinks:byEntity', { entity: { table: 'tasks', id: taskId } }),
     owner.query<{ task: { sector: string } } | null>('tasks:get', { id: taskId })
   ])
   const sector = detail?.task.sector
+  // The view shows only its sector's tasks; a task of another sector is not this workspace's to complete.
+  if (sector !== workspace.sector) throw new Error("That task is not in this workspace's sector.")
   // A link another host made, to a thread this host no longer has, or to a thread of another sector names no work accepted here.
   const link = [...links].reverse().find((l) => l.host === ctx.host && sector !== undefined && ctx.scopeOf(l.threadId)?.sector === sector) ?? null
   const args = link
@@ -38,6 +42,6 @@ export const tasks: WorkModule = {
   ensure() {},
   async handle(req, ctx) {
     if (req.method !== 'work.tasks.done') return NOT_HANDLED
-    return handled(await taskDone(ctx, req.params.taskId))
+    return handled(await taskDone(ctx, req.params.workspaceId, req.params.taskId))
   }
 }

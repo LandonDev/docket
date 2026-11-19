@@ -21,8 +21,8 @@ import type { WorkViewProps } from "../views/registry";
 
 const DAYS = 14;
 
-export function View({ env, sector, lifeos, startThread }: WorkViewProps) {
-  const clients = useMemo(() => viewsClients(env, sector), [env, sector]);
+export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
+  const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
   if (!lifeos.client) return <AgendaSkeleton />;
   return (
     <ConvexProvider client={lifeos.client}>

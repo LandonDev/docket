@@ -22,12 +22,12 @@ const write: LifeosViewsClientOptions["write"] = async ({ run, failed, message, 
   }
 };
 
-export function viewsClients(env: string, sector: SectorKey) {
+export function viewsClients(env: string, workspaceId: string, sector: SectorKey) {
   return createLifeosViewsClients({
     // A workspace's sector is one of LifeOS's six (the link refuses any other).
     sector: sector as KitSector,
     write,
-    complete: (task) => registry.linkOf(env).request<TasksDone>("work.tasks.done", { taskId: task._id }),
+    complete: (task) => registry.linkOf(env).request<TasksDone>("work.tasks.done", { workspaceId, taskId: task._id }),
   });
 }
 

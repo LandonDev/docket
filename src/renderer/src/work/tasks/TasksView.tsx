@@ -30,8 +30,8 @@ import { useMinute } from "./minute";
 const HOLD_MS = 350;
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-export function View({ env, sector, lifeos, startThread }: WorkViewProps) {
-  const clients = useMemo(() => viewsClients(env, sector), [env, sector]);
+export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
+  const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
   if (!lifeos.client) return <TasksSkeleton />;
   return (
     <ConvexProvider client={lifeos.client}>
