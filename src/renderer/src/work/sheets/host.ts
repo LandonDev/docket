@@ -1,5 +1,6 @@
 import type { SheetChart, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
 import { registry } from "../../lib/connection";
+import { openUrl } from "../../lib/native";
 
 /**
  * The host's side of a sheet item, as its canvas uses it
@@ -43,7 +44,7 @@ export interface SheetHost {
   chart(chart: SheetChart, remove?: boolean): Promise<SheetView>;
   /** Writes the sheet out on the host (`work.sheets.export`); answers where it went. */
   exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string }>;
-  /** Opens the file in the app `view.reach.to` names; refused where it is not on the host. */
+  /** Opens the file in the app `view.reach.to` names; refused where it is not on the host. The full editor answers its page, opened in the browser. */
   switchApp(): Promise<void>;
   /** Something landed on this item. */
   onPush(listener: (push: SheetPushed) => void): () => void;
@@ -63,7 +64,10 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     undo: (writeId) => call("work.sheets.undo", { writeId }),
     chart: (chart, remove = false) => call("work.sheets.chart", { chart, remove }),
     exportAs: (format, sheet) => call("work.sheets.export", { format, ...(sheet ? { sheet } : {}) }),
-    switchApp: async () => void (await call("work.sheets.switch")),
+    switchApp: async () => {
+      const { url } = await call<{ opened: true; url?: string }>("work.sheets.switch");
+      if (url) await openUrl(url);
+    },
     onPush: (listener) =>
       link().onPush((push) => {
         if (push.push === "work.sheets" && push.itemId === itemId) listener({ rev: push.rev, ...(push.view ? { view: push.view } : {}) });

@@ -6,6 +6,7 @@ import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutati
 import { handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
+import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
 import type { SheetRef } from './host/wire'
 import { writeCsv, writeXlsx } from './writer'
 import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Sheets } from './held'
@@ -173,6 +174,7 @@ export const sheets: WorkModule = {
           return handled({ opened: true as const })
         }
         if (held.at !== 'package') throw new Error('This sheet opens only here for now.')
+        if (fullEditorHere(ctx.dataDir)) return handled({ opened: true as const, url: await openFull(ctx, item!, held.path, by) })
         await openInExcel(held.path)
         return handled({ opened: true as const })
       }
@@ -181,6 +183,8 @@ export const sheets: WorkModule = {
     }
     return NOT_HANDLED
   },
+  // The full editor's docservice stops with Work (fullEditor/).
+  start: (ctx) => () => void fullEditorOf(ctx).stop('Work is off'),
   tools: () => sheetTools,
   convert: STRUCTURAL_CONVERTERS,
   preamble: () =>

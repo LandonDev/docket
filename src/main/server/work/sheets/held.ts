@@ -6,6 +6,7 @@ import type { SheetChart, SheetMutationJson, SheetView } from '@shared/contract-
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import { Toolchain } from '../formats/tools'
+import { fullEditorHere } from './fullEditor'
 import type { Caller, WorkCtx } from '../modules'
 import { excelStore } from '../office/excel'
 import { excelRefOf, type ExcelRef } from '../office/grid'
@@ -160,7 +161,8 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       shared,
       suggestions: s.suggestions.open(key),
       ...(written ? { written } : {}),
-      ...(st.inspected.reach ? { reach: st.inspected.reach } : {}),
+      // The switch goes to the full editor where this host runs it (the box), else to desktop Excel.
+      ...(st.inspected.reach ? { reach: { ...st.inspected.reach, to: fullEditorHere(s.ctx.dataDir) ? 'full' : 'excel' } } : {}),
       ...(st.inspected.readOnly ? { readOnly: st.inspected.readOnly } : {}),
       ...(st.inspected.date1904 ? { date1904: true } : {}),
       ...(st.saveError ? { saveError: st.saveError } : {}),
