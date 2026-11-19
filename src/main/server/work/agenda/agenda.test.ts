@@ -50,7 +50,8 @@ describe('a held calendar act', () => {
     const [item] = await list()
     await rig.rpc('work.outbox.send', { ref: item!.ref, rev: item!.updatedAt })
     await settled()
-    expect(sends()).toEqual([{ fn: 'calendarOps:send', args: { id, cause: 'press' } }])
+    // with the revision he was shown, which LifeOS checks in the send's own transaction
+    expect(sends()).toEqual([{ fn: 'calendarOps:send', args: { id, cause: 'press', editedAt: (item!.payload as CalendarOpPayload).editedAt } }])
     // the act was read again at the press, not taken from the watcher's copy
     expect(rig.lifeos.calls.some((c) => c.fn === 'calendarOps:get' && c.args.id === id)).toBe(true)
     expect(rig.lifeos.completed.map((c) => c.reason)).toEqual(['Sent: Accept "Big Ten league call"'])
@@ -70,6 +71,28 @@ describe('a held calendar act', () => {
     Object.assign(rig.lifeos.ops.get(id)!, { status: 'queued', editedAt: shown.editedAt })
     await def.execute(shown, ctx)
     expect(sends()).toEqual([])
+  })
+
+  it("does not go when it is edited between the press's read and LifeOS's send", async () => {
+    const id = rig.lifeos.calendarOp({ kind: 'accept', eventId: 'ev_1' })
+    rig.lifeos.fire()
+    await settled()
+    const def = rig.host.outbox.def('calendar.op')
+    const shown = (await list())[0]!.payload as CalendarOpPayload
+    const ctx = { ...rig.work.ctx, item: {} as never, decidedBy: 'owner' as const }
+    // the edit lands after the host's read: LifeOS's own check refuses the send
+    const query = rig.lifeos.query.bind(rig.lifeos)
+    rig.lifeos.query = (async (fn: string, args: Record<string, unknown>) => {
+      const got = await query(fn, args)
+      if (fn !== 'calendarOps:get') return got
+      const read = { ...(got as object) }
+      Object.assign(rig.lifeos.ops.get(id)!, { editedAt: Number(shown.editedAt) + 7 })
+      return read
+    }) as typeof rig.lifeos.query
+    await expect(def.execute(shown, ctx)).rejects.toThrow('changed since it was shown')
+    expect(rig.lifeos.ops.get(id)!.status).toBe('draft')
+    // and one with no revision to check never goes
+    await expect(def.execute({ ...shown, editedAt: undefined }, ctx)).rejects.toThrow('edited since it was shown')
   })
 
   it("is edited through calendarOps.save, keeping its kind and event", async () => {

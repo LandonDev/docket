@@ -74,6 +74,13 @@ export interface CalendarEvent {
   response: string
 }
 
+/** One event by its Outlook id, read from his calendar a year either side of now; null when none has it. */
+export async function eventById(carrier: Pick<OfficeCarrier, 'events'>, id: string): Promise<CalendarEvent | null> {
+  const now = Date.now()
+  const all = await carrier.events(new Date(now - 366 * 864e5).toISOString(), new Date(now + 366 * 864e5).toISOString())
+  return all.find((e) => e.id === id) ?? null
+}
+
 export interface EventOut {
   account?: string
   subject: string

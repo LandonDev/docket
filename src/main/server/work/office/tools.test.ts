@@ -48,6 +48,8 @@ const text = (r: WorkToolResult): string => r.content.map((c) => (c.type === 'te
 
 beforeEach(() => {
   office = new FakeOffice()
+  const soon = new Date(Date.now() + 864e5).toISOString()
+  office.calendar.push({ id: 'ev-9', subject: 'Standup', start: soon, end: soon, location: '', organizer: 'lee@example.com', attendees: ['me@example.com'], response: '' })
   office.addBook(SHARED, { Sheet1: { A1: 'Q1', B1: 100 } })
   office.addBook(MINE, { Sheet1: { A1: 1 } })
   office.docs.set('https://contoso.sharepoint.com/Brief.docx', { paragraphs: ['Draft one.'], tracked: [] })
@@ -103,7 +105,7 @@ describe('nothing is sent without his press', () => {
     ['office_mail_send', { to: [], subject: 'Re: Budget', html: '<p>Yes</p>', replyTo: '42' }],
     ['office_mail_send', { to: ['lee@example.com'], subject: 'Fw: Budget', html: '<p>FYI</p>', forward: '42' }],
     ['office_calendar_create', { subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] }],
-    ['office_calendar_answer', { id: 'ev-9', subject: 'Standup', answer: 'accept' }]
+    ['office_calendar_answer', { id: 'ev-9', answer: 'accept' }]
   ]
 
   it('every verb that sends, replies, forwards, invites or answers returns a held act, and Outlook sends nothing', async () => {
@@ -135,12 +137,18 @@ describe('nothing is sent without his press', () => {
     expect(keepOfficeMail(plain, { ...plain, to: ['sam@example.com'], subject: 'Hi' })).toMatchObject({ to: ['sam@example.com'], subject: 'Hi' })
   })
 
+  it("an answer's card names the invitation as his calendar has it, whatever subject the model gives", async () => {
+    await run('office_calendar_answer', { id: 'ev-9', subject: 'Something harmless', answer: 'accept' })
+    expect(held[0].payload).toMatchObject({ id: 'ev-9', subject: 'Standup', organizer: expect.any(String) })
+    expect(text(await run('office_calendar_answer', { id: 'ev-404', answer: 'accept' }))).toMatch(/no event with that id/)
+  })
+
   it('a draft only leaves a draft, and a hold on his own calendar with nobody invited is made at once', async () => {
     await run('office_mail_draft', { to: ['dana@example.com'], subject: 'Plan', html: '<p>x</p>' })
     await run('office_calendar_create', { subject: 'Focus', start: '2026-11-20T15:00:00Z', end: '2026-11-20T17:00:00Z' })
     expect(office.drafts).toHaveLength(1)
     expect(office.sent).toEqual([])
-    expect(office.calendar.map((e) => e.subject)).toEqual(['Focus'])
+    expect(office.calendar.map((e) => e.subject)).toEqual(['Standup', 'Focus'])
     expect(held).toEqual([])
   })
 
@@ -158,6 +166,10 @@ describe('nothing is sent without his press', () => {
     const cal = acts.find((a) => a.kind === 'office.calendar.op')!
     await cal.execute(OfficeCalendarSchema.parse({ host: 'env_mac', op: 'answer', id: 'ev-9', subject: 'Standup', answer: 'decline' }), actCtx)
     expect(office.answers).toEqual([{ id: 'ev-9', answer: 'decline' }])
+    // an invitation that changed or went since it was shown is stale, and nothing is answered
+    await expect(cal.execute(OfficeCalendarSchema.parse({ host: 'env_mac', op: 'answer', id: 'ev-9', subject: 'Board meeting', answer: 'accept' }), actCtx)).rejects.toThrow('changed since it was shown')
+    await expect(cal.execute(OfficeCalendarSchema.parse({ host: 'env_mac', op: 'answer', id: 'ev-404', subject: 'Standup', answer: 'accept' }), actCtx)).rejects.toThrow('no longer in his calendar')
+    expect(office.answers).toHaveLength(1)
   })
 
   it('a grant fits a mail only when every recipient is named or in a named domain', () => {

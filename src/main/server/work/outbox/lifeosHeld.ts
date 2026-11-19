@@ -545,8 +545,9 @@ export const calendarOpKind: ActKindDef<CalendarOpPayload, CalendarOpMatcher> = 
     })
     if (!now) throw new ActStale('LifeOS no longer has this calendar change')
     if (now.status === 'draft' || now.status === 'failed') {
-      if (p.editedAt !== undefined && now.editedAt !== p.editedAt) throw new ActStale('The calendar change was edited since it was shown')
-      await owner.mutation(LIFEOS_HELD_FNS.calendarSend, { id: p.id, cause })
+      if (p.editedAt === undefined || now.editedAt !== p.editedAt) throw new ActStale('The calendar change was edited since it was shown')
+      // LifeOS checks it again in the send's own transaction, so an edit after this read never goes on this press (milestone 50's hold review, 20).
+      await owner.mutation(LIFEOS_HELD_FNS.calendarSend, { id: p.id, cause, editedAt: p.editedAt })
     } else if (!['queued', 'sending', 'done'].includes(now.status ?? '')) throw new ActStale(`LifeOS holds this calendar change as ${now.status}`)
     return { summary: pastOf(calendarWords(p).summary), ref: { at: 'lifeos', table: 'calendarOps', id: p.id } }
   },

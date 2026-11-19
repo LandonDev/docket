@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { ActKindDef } from '../modules'
-import { OfficeError, type OfficeCarrier } from './carrier'
+import { ActStale } from '../outbox/kinds'
+import { eventById, OfficeError, type OfficeCarrier } from './carrier'
 
 /**
  * The office pillar's two held acts (docs/agents/work-office.md "What is
@@ -61,7 +62,17 @@ const EventSchema = z.object({
 })
 export const OfficeCalendarSchema = z.discriminatedUnion('op', [
   z.object({ host: z.string(), op: z.literal('create'), event: EventSchema }),
-  z.object({ host: z.string(), op: z.literal('answer'), id: z.string().max(200), subject: z.string().max(255), answer: z.enum(['accept', 'decline', 'tentative']), comment: z.string().max(10_000).optional() })
+  z.object({
+    host: z.string(),
+    op: z.literal('answer'),
+    id: z.string().max(200),
+    /** read from the event by its id when the act is made, never the model's word; the press checks the event still reads so */
+    subject: z.string().max(255),
+    start: z.string().max(40).optional(),
+    organizer: z.string().max(320).optional(),
+    answer: z.enum(['accept', 'decline', 'tentative']),
+    comment: z.string().max(10_000).optional()
+  })
 ])
 export type OfficeCalendarOp = z.infer<typeof OfficeCalendarSchema>
 
@@ -148,6 +159,11 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
         const id = await c.createEvent(p.event)
         return { summary: `Invited ${list(p.event.attendees)} to ${p.event.subject}`, ref: { outlook: id } }
       }
+      // The invitation he was shown, or nothing: an event gone or changed since is stale (milestone 50's hold review, 22).
+      const event = await eventById(c, p.id)
+      if (!event) throw new ActStale('the invitation is no longer in his calendar')
+      if (event.subject !== p.subject || (p.start !== undefined && event.start !== p.start) || (p.organizer !== undefined && event.organizer !== p.organizer))
+        throw new ActStale('the invitation changed since it was shown')
       await c.answerEvent(p.id, p.answer, p.comment)
       return { summary: `${p.answer === 'accept' ? 'Accepted' : p.answer === 'decline' ? 'Declined' : 'Answered maybe to'} ${p.subject}` }
     },

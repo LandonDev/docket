@@ -211,14 +211,17 @@ export async function publish(ctx: ActCtx, p: FormPublish): Promise<{ summary: s
   if (!row) throw new ActStale('The form is gone. Nothing was published.')
   if (row.rev !== p.rev) throw new ActStale('The form changed after this was held. Nothing was published; publish it again.')
   if (row.state === 'open') throw new ActStale(`${row.body.title} is published already.`)
+  // The form as he pressed it: an edit that lands while the sheet is made is not published on this press (milestone 50's hold review, 19).
   let next = row
   if (!row.sheetRef) {
     const made = await makeSheet(ctx, row)
-    next = store.update(row.itemId, { sheet: made.source, sheetRef: made.ref })
+    next = { ...row, sheet: made.source, sheetRef: made.ref }
+    store.update(row.itemId, { sheet: made.source, sheetRef: made.ref })
   }
   // The sheet's header and the service's copy first: a write that fails leaves the form a draft he can publish again.
   const live: FormRow = { ...next, columns: mergeColumns(next.columns, next.body.questions), publicId: next.publicId ?? newPublicId(), state: 'open', publishedAt: Date.now(), closedAt: null, held: null }
   await writeHeader(ctx, live)
+  if (store.get(p.itemId)?.rev !== p.rev) throw new ActStale('The form changed while it was being published. Nothing was published; publish it again.')
   writeCopy(ctx, live)
   next = store.update(row.itemId, { columns: live.columns, publicId: live.publicId, state: 'open', publishedAt: live.publishedAt, closedAt: null, held: null })
   announce(ctx, next)

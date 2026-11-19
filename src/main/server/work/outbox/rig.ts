@@ -177,7 +177,8 @@ export class FakeOutboxLifeos implements LifeosClient {
       case 'calendarOps:send': {
         const op = this.ops.get(String(args.id))
         if (!op || (op.status !== 'draft' && op.status !== 'failed')) throw new Error('this calendar act is already on its way')
-        Object.assign(op, { status: 'queued', cause: args.cause, sentFrom: 'tempcode' })
+        if (args.editedAt !== undefined && op.editedAt !== args.editedAt) throw new Error('this calendar act changed since it was shown')
+        Object.assign(op, { status: 'queued', cause: args.cause, sentFrom: 'tempcode', sentAt: args.editedAt })
         this.fire()
         return null as T
       }

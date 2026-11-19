@@ -7,7 +7,7 @@ import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { parseA1, rangeCells } from '../sheets/a1'
 import type { SuggestionStore } from '../sheets/suggestions'
-import type { OfficeCarrier } from './carrier'
+import { eventById, type OfficeCarrier } from './carrier'
 import { cleanMailHtml } from './held'
 import { cellOf, EXCEL_MAX_CELLS, excelStore, type ExcelHelper } from './excel'
 
@@ -269,10 +269,17 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   tool({
     name: 'office_calendar_answer',
     description: "Answers an invitation in Outlook (accept, decline or tentative). Held: it waits for the owner's press.",
-    input: { id: z.string().max(200), subject: z.string().max(255).describe("The event's subject, as he will see it on the held card."), answer: z.enum(['accept', 'decline', 'tentative']), comment: z.string().max(10_000).optional() },
+    input: { id: z.string().max(200).describe('The event id, from office_calendar_list.'), answer: z.enum(['accept', 'decline', 'tentative']), comment: z.string().max(10_000).optional() },
     readOnly: false,
     async run(a, env) {
-      const item = env.ctx.held.create({ kind: 'office.calendar.op', sessionId: env.sessionId, payload: { host: env.ctx.host, op: 'answer', ...a } })
+      // What the card names is read from the event itself, never taken from the model (milestone 50's hold review, 22).
+      const event = await eventById(env.carrier, a.id)
+      if (!event) return fail('His calendar has no event with that id: take it from office_calendar_list.')
+      const item = env.ctx.held.create({
+        kind: 'office.calendar.op',
+        sessionId: env.sessionId,
+        payload: { host: env.ctx.host, op: 'answer', id: a.id, subject: event.subject, start: event.start, organizer: event.organizer, answer: a.answer, ...(a.comment ? { comment: a.comment } : {}) }
+      })
       return heldAnswer(item.state, item.summary)
     }
   })

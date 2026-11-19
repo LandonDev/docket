@@ -33,7 +33,7 @@ vi.mock('../scope', async (orig) => ({
     admitSession: () => {}
   })
 }))
-const rc = vi.hoisted(() => ({ ctx: null as unknown, failCells: false }))
+const rc = vi.hoisted(() => ({ ctx: null as unknown, failCells: false, onCreate: null as null | (() => Promise<void>) }))
 vi.mock('../service/ctx', async (orig) => {
   const real = await orig<typeof import('../service/ctx')>()
   const { INTERNAL_ROUTES } = await import('../service/routes/index')
@@ -47,6 +47,7 @@ vi.mock('../service/ctx', async (orig) => {
           const r = INTERNAL_ROUTES.find((x) => x.path === route)
           if (!r) throw new Error(`no route ${route}`)
           if (rc.failCells && route === '/internal/sheet/cells') throw new Error('the sheet host did not answer')
+          if (rc.onCreate && route === '/internal/sheet/create') await rc.onCreate()
           return r.run(body as Record<string, unknown>, rc.ctx as RouteCtx)
         }
       }
@@ -297,6 +298,19 @@ describe('a form', () => {
     expect(sent.state).toBe('stale')
     const after = await call<FormView>('work.forms.open', { itemId })
     expect(after).toMatchObject({ state: 'draft', held: null, link: null })
+  })
+
+  it('does not publish an edit that lands while the press is making its sheet', async () => {
+    const { itemId, view } = await made()
+    await tool('form_publish', { item: itemId })
+    const held = (await call<FormView>('work.forms.open', { itemId })).held!
+    rc.onCreate = async () => {
+      rc.onCreate = null
+      await call('work.forms.save', { itemId, rev: view.rev, body: { ...view.body, title: 'Unapproved title' } })
+    }
+    const sent = await call<OutboxItem>('work.outbox.send', { ref: held.ref })
+    expect(sent.state).toBe('stale')
+    expect((await call<FormView>('work.forms.open', { itemId })).link).toBeNull()
   })
 
   it('refuses the canvas\'s methods to a thread, and an edit made on an old rev', async () => {
