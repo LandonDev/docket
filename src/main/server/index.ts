@@ -207,6 +207,7 @@ import {
   bridgeCallRefusal,
   workBridgeRefusal,
   workSkillRefusal,
+  workAddonArgs,
   setAppCrossHost,
   setAppSkillTools,
   setAppToolsRegistry,
@@ -3454,14 +3455,19 @@ export async function startServer(
           case 'app.addonList':
             sendFrame({ id: req.id, ok: true, result: appAddonList(addonToolDeps, callerOf(registry, req.params.sessionId), 'bridge') })
             break
+          // A Work thread's add and remove are held to its own workspace, as Claude's tools hold them (apptools.ts workAddonArgs).
           case 'app.addonAdd': {
             const { sessionId, ...args } = req.params
-            sendFrame({ id: req.id, ok: true, result: await appAddonAdd(addonToolDeps, callerOf(registry, sessionId), args, 'bridge') })
+            const caller = callerOf(registry, sessionId)
+            const held = workAddonArgs(caller, args)
+            sendFrame({ id: req.id, ok: true, result: typeof held === 'string' ? held : await appAddonAdd(addonToolDeps, caller, held, 'bridge') })
             break
           }
           case 'app.addonRemove': {
             const { sessionId, ...args } = req.params
-            sendFrame({ id: req.id, ok: true, result: await appAddonRemove(addonToolDeps, callerOf(registry, sessionId), args) })
+            const caller = callerOf(registry, sessionId)
+            const held = workAddonArgs(caller, args)
+            sendFrame({ id: req.id, ok: true, result: typeof held === 'string' ? held : await appAddonRemove(addonToolDeps, caller, held) })
             break
           }
           case 'app.addonFind': {

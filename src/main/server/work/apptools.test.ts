@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import { WORK_SETTING_KEY } from '@shared/work'
 import { configureAddonScope, visibleAddons, WORK_UNSCOPED, workspaceIdOf } from '../addons/scope'
-import { appToolsMcp, bridgeMcpConfig, workBridgeRefusal, setAppAddons, setAppBridge, setAppSkillTools, setAppToolsRegistry, WORK_ADDON_REFUSAL, WORK_SKILL_REFUSAL, workSkillRefusal } from '../apptools'
+import { appToolsMcp, bridgeMcpConfig, workBridgeRefusal, setAppAddons, setAppBridge, setAppSkillTools, setAppToolsRegistry, WORK_ADDON_REFUSAL, WORK_SKILL_REFUSAL, workAddonArgs, workSkillRefusal } from '../apptools'
 import { skillRemove, skillWrite } from '../skills/tools'
 import { openDb, Store } from '../db'
 import { cancelMirrors } from '../mirror'
@@ -168,6 +168,16 @@ describe('skills from a Work thread', () => {
     skillCalls.length = 0
     expect(await call(code, 'skill_remove', { name: 'x', scope: 'global' })).toMatch(/^refused: no skill x in every workspace/)
     expect(skillCalls[0]).toEqual({ what: 'lookup', scope: null })
+  })
+})
+
+describe("add-ons through the bridge (index.ts's app.addonAdd and app.addonRemove hold them as Claude's tools do)", () => {
+  it("a Work thread's add or remove is its own workspace's, never every workspace's; a code thread's passes as it was", () => {
+    expect(workAddonArgs(work, { name: 'x', scope: 'global' as const })).toBe(WORK_ADDON_REFUSAL)
+    expect(workAddonArgs(chat, { name: 'x', scope: 'global' as const })).toBe(WORK_ADDON_REFUSAL)
+    expect(workAddonArgs(work, { name: 'x' })).toEqual({ name: 'x', scope: 'workspace' })
+    expect(workAddonArgs(code, { name: 'x', scope: 'global' as const })).toEqual({ name: 'x', scope: 'global' })
+    expect(workAddonArgs(code, { name: 'x' })).toEqual({ name: 'x' })
   })
 })
 

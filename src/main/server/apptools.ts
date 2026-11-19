@@ -774,6 +774,18 @@ export function setAppSkillTools(deps: SkillToolDeps | null): void {
   skillTools = deps && { ...deps, scopeRefusal: deps.scopeRefusal ?? workSkillRefusal }
 }
 
+/**
+ * An add-on add or remove as a Work thread may make it, whichever harness asks
+ * (Claude's tools here, the bridge's app.addonAdd and app.addonRemove in
+ * index.ts): its own workspace's scope only, as one for every workspace would
+ * reach code threads; a string is the refusal. A code thread's args pass as
+ * they are.
+ */
+export function workAddonArgs<A extends { scope?: 'workspace' | 'global' }>(caller: SessionMeta, args: A): A | string {
+  if (sessionScopeOf(caller) !== 'work') return args
+  return args.scope === 'global' ? WORK_ADDON_REFUSAL : { ...args, scope: 'workspace' }
+}
+
 export const WORK_ADDON_REFUSAL = 'refused: a Work thread adds and removes add-ons for its own workspace only, never for every workspace.'
 export const WORK_SKILL_REFUSAL = 'refused: a Work thread writes and removes skills for its own workspace only, never for every workspace: a skill there is read by code threads too.'
 
@@ -1092,16 +1104,16 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         tool(ADDON_ADD_TOOL, ADDON_ADD_DESCRIPTION, ADDON_ADD_SHAPE, async (args) => {
           const live = registry?.get(session.id) ?? session
           if (!addons) return text('refused: add-ons are not available here')
-          if (sessionScopeOf(live) !== 'work') return text(await addons.add(live, args))
-          return text(args.scope === 'global' ? WORK_ADDON_REFUSAL : await addons.add(live, { ...args, scope: 'workspace' }))
+          const held = workAddonArgs(live, args)
+          return text(typeof held === 'string' ? held : await addons.add(live, held))
         })
       ),
       deferredTool(
         tool(ADDON_REMOVE_TOOL, ADDON_REMOVE_DESCRIPTION, ADDON_REMOVE_SHAPE, async (args) => {
           const live = registry?.get(session.id) ?? session
           if (!addons) return text('refused: add-ons are not available here')
-          if (sessionScopeOf(live) !== 'work') return text(await addons.remove(live, args))
-          return text(args.scope === 'global' ? WORK_ADDON_REFUSAL : await addons.remove(live, { ...args, scope: 'workspace' }))
+          const held = workAddonArgs(live, args)
+          return text(typeof held === 'string' ? held : await addons.remove(live, held))
         })
       )
     ]
