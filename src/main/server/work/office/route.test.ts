@@ -54,6 +54,17 @@ beforeEach(() => {
 })
 
 describe("LifeOS's Outlook route", () => {
+  it('says why when Outlook cannot carry mail, and reports no account and claims nothing', async () => {
+    office.problem = 'New Outlook does not answer scripts yet'
+    const r = route()
+    await r.beat()
+    due = [mail('m1')]
+    await r.pump()
+    expect(r.state).toEqual({ accounts: [], beatAt: 5_000, error: 'New Outlook does not answer scripts yet' })
+    expect(calls.filter((c) => c.fn !== 'outbox:localDue' && c.fn !== 'calendarOps:localDue')).toEqual([])
+    expect(office.log.map((l) => l.verb)).not.toContain('accounts')
+  })
+
   it('reports each Outlook address once, then only beats', async () => {
     const r = route()
     await r.beat()

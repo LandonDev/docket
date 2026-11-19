@@ -132,6 +132,15 @@ describe('writes, by the rule for files others can open', () => {
   })
 })
 
+describe('office_files', () => {
+  it("says why Outlook here cannot carry mail, when the carrier knows", async () => {
+    office.problem = 'New Outlook does not answer scripts yet'
+    expect(JSON.parse(text(await run('office_files', {})))).toMatchObject({ outlook: 'New Outlook does not answer scripts yet' })
+    office.problem = null
+    expect(JSON.parse(text(await run('office_files', {})))).not.toHaveProperty('outlook')
+  })
+})
+
 describe('nothing is sent without his press', () => {
   const SENDS: [string, unknown][] = [
     ['office_mail_send', { to: ['dana@example.com'], subject: 'Plan', html: '<p><b>Here</b> it is</p>' }],

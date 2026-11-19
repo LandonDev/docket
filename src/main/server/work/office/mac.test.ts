@@ -1,6 +1,6 @@
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import { macCarrier, SCRIPTS, type ScriptName } from './mac'
+import { macCarrier, NEW_OUTLOOK, SCRIPTS, type ScriptName } from './mac'
 import { osaError, type Osa } from './osa'
 
 /**
@@ -181,6 +181,14 @@ describe('the Mac carrier', () => {
     await c.open('excel', { kind: 'url', url: 'https://contoso.sharepoint.com/B.xlsx' })
     expect(seen).toEqual([])
     expect(opened).toEqual([['-a', 'Microsoft Excel', '/tmp/B.xlsx'], ['ms-excel:ofe|u|https://contoso.sharepoint.com/B.xlsx']])
+  })
+
+  it('says New Outlook cannot carry mail, from its own setting, without running a script', async () => {
+    const seen: string[][] = []
+    expect(await macCarrier({ osa: recorded({}, seen), installed: () => true, newOutlook: async () => true }).outlookProblem!()).toBe(NEW_OUTLOOK)
+    expect(await macCarrier({ osa: recorded({}, seen), installed: () => true, newOutlook: async () => false }).outlookProblem!()).toBeNull()
+    expect(await macCarrier({ osa: recorded({}, seen), installed: () => false, newOutlook: async () => true }).outlookProblem!()).toBeNull()
+    expect(seen).toEqual([])
   })
 
   it('maps osascript errors', () => {

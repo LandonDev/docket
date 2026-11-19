@@ -111,8 +111,10 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     async run(_a, env) {
       const apps = await env.carrier.apps()
       const on = (app: string) => apps.some((s) => s.app === app && s.running)
+      const outlook = (await env.carrier.outlookProblem?.()) ?? null
       return json({
         apps,
+        ...(outlook ? { outlook } : {}),
         workbooks: on('excel') ? await env.carrier.workbooks() : [],
         documents: on('word') ? await env.carrier.documents() : [],
         decks: on('powerpoint') ? await env.carrier.presentations() : []

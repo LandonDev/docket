@@ -139,7 +139,21 @@ export interface MacDeps {
   running?: (app: OfficeApp) => Promise<boolean>
   /** `open` with its arguments: the switch */
   open?: (args: string[]) => Promise<void>
+  /** whether Outlook runs as New Outlook: its own setting, read without starting it */
+  newOutlook?: () => Promise<boolean>
 }
+
+/**
+ * New Outlook for Mac ships the legacy scripting dictionary but does not answer it: accounts,
+ * folders and messages come back empty (Microsoft's answers on Q&A, 2023 to 2026: AppleScript is
+ * "still not supported in the New Outlook for Mac"; Legacy Outlook still runs it).
+ */
+export const NEW_OUTLOOK =
+  "New Outlook does not answer scripts yet, so this Mac carries no Outlook mail or invitations. To carry them, turn off New Outlook in Outlook's menu and use Legacy Outlook."
+
+/** Outlook's own "New Outlook" switch (`IsRunningNewOutlook`), read from its defaults; false when unset or unreadable. */
+const readNewOutlook = (): Promise<boolean> =>
+  new Promise((resolve) => execFile('/usr/bin/defaults', ['read', 'com.microsoft.Outlook', 'IsRunningNewOutlook'], (err, out) => resolve(!err && String(out).trim() === '1')))
 
 const appPath = (app: OfficeApp): string => `/Applications/${APP_NAMES[app]}.app`
 
@@ -170,6 +184,9 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
   const mail = (m: unknown, send: boolean) => call<string>('mail', { m, send })
   return {
     kind: 'mac',
+    async outlookProblem() {
+      return installed('outlook') && (await (deps.newOutlook ?? readNewOutlook)()) ? NEW_OUTLOOK : null
+    },
     async apps() {
       return Promise.all(
         OFFICE_APPS.map(async (app) => {

@@ -90,6 +90,12 @@ export class FakeOffice implements OfficeCarrier {
     return s
   }
 
+  /** what `outlookProblem` answers */
+  problem: string | null = null
+  async outlookProblem() {
+    return this.problem
+  }
+
   async apps() {
     this.seen('apps')
     return (['excel', 'word', 'powerpoint', 'outlook'] as const).map((app) => ({ app, installed: true, running: true, allowed: 'yes' as const }))

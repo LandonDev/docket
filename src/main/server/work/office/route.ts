@@ -92,6 +92,9 @@ export class OutlookRoute {
   async beat(): Promise<void> {
     const { db, lifeos, carrier, host } = this.deps
     try {
+      // An Outlook that cannot carry anything (New Outlook on the Mac) is said once, plainly, and reports no account.
+      const problem = (await carrier.outlookProblem?.()) ?? null
+      if (problem) return void Object.assign(this.state, { accounts: [], beatAt: this.now, error: problem })
       const accounts = (await carrier.accounts()).map((a) => a.trim().toLowerCase()).filter(Boolean)
       for (const account of accounts) {
         let id = (db.prepare('SELECT source_id FROM work_office_sources WHERE account = ?').get(account) as { source_id: string } | undefined)?.source_id

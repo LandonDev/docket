@@ -99,6 +99,8 @@ export type DocEdit = { insert: string; at: 'start' | 'end' } | { find: string; 
 export interface OfficeCarrier {
   readonly kind: 'mac' | 'owa' | 'com' | 'fake' | 'addin'
   apps(): Promise<OfficeAppState[]>
+  /** Why this host's Outlook cannot carry mail or invitations at all, in words the status shows; null or absent: nothing known against it. Must not start Outlook. */
+  outlookProblem?(): Promise<string | null>
 
   workbooks(): Promise<WorkbookInfo[]>
   /** `address` is A1 without a sheet (B2:D9) */

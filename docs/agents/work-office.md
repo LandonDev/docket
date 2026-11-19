@@ -83,7 +83,22 @@ answers "TempCode may not control …".
 
 `apps()` reports each app as installed, running and allowed. macOS will not
 say whether an app is allowed without asking, so `allowed` is what the last
-call found, and `unknown` before any call.
+call found: `yes` once the app answered anything (a list, an empty list, or
+"no such item"), `unknown` before any call. An app's collection with nothing
+in it comes back from JXA as null, not [] (Excel open with no workbook):
+every list script reads null as empty (`all(...)` in the scripts' prelude).
+
+**New Outlook does not answer scripts.** Outlook for Mac in New Outlook mode
+(`IsRunningNewOutlook = 1` in `com.microsoft.Outlook`'s defaults) ships the
+legacy dictionary, and TempCode may control it, but accounts, folders and
+messages come back empty. Microsoft's answers on its Q&A site, through
+spring 2026, say AppleScript is "still not supported in the New Outlook for
+Mac", with the roadmap date moved more than once; Legacy Outlook still runs
+it. Found live on the owner's Mac on 2026-11-19. The Mac carrier reads that
+setting without starting Outlook (`outlookProblem`). While it is on, the
+route reports no account and its status says why (`NEW_OUTLOOK`, in
+`route.error` of `work.office.status`, and in `office_files`' answer as
+`outlook`). TempCode never changes the setting.
 
 **Windows** (`com/`, milestone 44). Every verb is one request to
 `tc-office.exe`, a small helper that drives Excel, Word, PowerPoint and
@@ -344,7 +359,10 @@ connected and Outlook is installed (checked every 5 minutes):
 
 - **beat**, every minute: each Outlook address once through
   `sources:register` (channel `outlook-local:<host id>`), then
-  `sources:heartbeat`.
+  `sources:heartbeat`. A carrier that knows its Outlook cannot carry
+  anything (`outlookProblem`: New Outlook on the Mac) reports no account, so
+  LifeOS sees no fresh presence and offers "Open in Outlook", and
+  `route.error` says why.
 - **pump**, every 20 seconds: `outbox:localDue {host}`, then for each row
   `localClaim`, a journal row, `sendMail` from the row's account (HTML
   through `cleanMailHtml`; plain text as HTML when there is none), then
@@ -499,7 +517,8 @@ the web, the public address (the tunnel's rule is the owner's step), Word
 and PowerPoint, and Office on the web inside our window. The test is written out
 in M28.md, "The live test". It needs his one click per app. Also unproven:
 
-- new Outlook's answer to the legacy dictionary;
+- Outlook mail and calendar on the Mac at all: the owner's Mac runs New
+  Outlook, which answers no scripts (above);
 - Word and PowerPoint, which were not installed;
 - a reply through the route, which does not thread under the original: the
   route sends it as a new mail with its subject;
