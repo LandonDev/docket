@@ -117,14 +117,31 @@ struct WorkItemsTests {
     @Test func aMediaFileIsReadInRangesUntilItsSize() async throws {
         let bytes = Data((0..<5).map(UInt8.init))
         var asked: [Int] = []
-        let read = try await ChunkedRead.media(frame: 2) { offset, length in
+        var read = Data()
+        try await ChunkedRead.media(frame: 2, read: { offset, length in
             asked.append(offset)
             let end = min(5, offset + length)
             return MediaRange(dataBase64: bytes.subdata(in: offset..<end).base64EncodedString(), mime: "video/mp4", size: 5, mtimeMs: 1)
-        }
+        }, write: { read.append($0) })
         #expect(read == bytes)
         #expect(asked == [0, 2, 4])
-        await #expect(throws: ChunkedRead.Failure.short) { _ = try await ChunkedRead.media { _, _ in nil } }
+        await #expect(throws: ChunkedRead.Failure.short) { try await ChunkedRead.media(read: { _, _ in nil }, write: { _ in }) }
+    }
+
+    @Test func aMediaCopyIsWholeOrAbsent() async throws {
+        let file = MediaFiles.file(item: "test-\(UUID().uuidString)", version: "v1")
+        try await MediaFiles.write(to: file) { try $0.write(contentsOf: Data([1, 2, 3])) }
+        #expect(try Data(contentsOf: file) == Data([1, 2, 3]))
+        await #expect(throws: ChunkedRead.Failure.short) {
+            try await MediaFiles.write(to: file) { handle in
+                try handle.write(contentsOf: Data([9]))
+                throw ChunkedRead.Failure.short
+            }
+        }
+        // The failed second read left the whole first copy, and no part file.
+        #expect(try Data(contentsOf: file) == Data([1, 2, 3]))
+        #expect(!FileManager.default.fileExists(atPath: file.appendingPathExtension("part").path()))
+        try? FileManager.default.removeItem(at: file)
     }
 
     private func routine(_ id: String, kind: String, nextAt: Int?, ended: Bool = false, proposed: Bool = false, ends: String = #"{"kind":"never"}"#) throws -> RoutinePhoneRow {
@@ -170,5 +187,17 @@ struct WorkItemsTests {
         #expect(!token.usable(now: 3_600_000 - LifeToken.margin))
         #expect(throws: LifeToken.Refusal.host("signedOut")) { try LifeToken.from(.init(ok: false, state: "signedOut")) }
         #expect(throws: LifeToken.Refusal.malformed) { try LifeToken.from(.init(ok: true, jwt: "j")) }
+    }
+}
+
+/// A pressed Send goes only while the draft says what the composer pressed on (milestone 47).
+struct HeldSendCheckTests {
+    @Test func theSameSubjectAndRecipientsGo() {
+        #expect(HeldSendCheck.matches(pressedSubject: "Arena hold", pressedTo: ["Karen@purdue.edu", "dana@x.com"], subject: " Arena hold", to: ["karen@purdue.edu"], cc: ["dana@x.com"], bcc: []))
+    }
+
+    @Test func aChangedSubjectOrRecipientIsRefused() {
+        #expect(!HeldSendCheck.matches(pressedSubject: "Arena hold", pressedTo: ["karen@purdue.edu"], subject: "Arena hold confirmed", to: ["karen@purdue.edu"], cc: [], bcc: []))
+        #expect(!HeldSendCheck.matches(pressedSubject: "Arena hold", pressedTo: ["karen@purdue.edu"], subject: "Arena hold", to: ["karen@purdue.edu"], cc: [], bcc: ["someone@else.com"]))
     }
 }

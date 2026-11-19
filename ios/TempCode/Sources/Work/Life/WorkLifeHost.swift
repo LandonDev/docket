@@ -40,6 +40,7 @@ final class WorkLifeHost: LifeActions {
     var started: SessionMeta?
 
     @ObservationIgnored private let tokens: LifeTokenSource
+    @ObservationIgnored private var preparing = false
     @ObservationIgnored private var signIn: Task<Void, Never>?
 
     private static var hosts: [String: WorkLifeHost] = [:]
@@ -62,7 +63,10 @@ final class WorkLifeHost: LifeActions {
 
     /// Builds the store once the host has signed a token; again after a refusal (Retry).
     func prepare() async {
-        guard store == nil else { return }
+        // One at a time: the screen's task and Try Again may both ask.
+        guard store == nil, !preparing else { return }
+        preparing = true
+        defer { preparing = false }
         phase = .loading
         let sectors = sector.map { [$0] } ?? Sector.allCases
         #if DEBUG
@@ -172,15 +176,21 @@ final class WorkLifeHost: LifeActions {
     /// The draft as LifeOS saved it goes to the host, which sends it only if it still says that.
     func hold(_ send: LifeHeldSend) async throws -> String {
         let message = try await draft(send.draftId).row.message
+        let to = (message.to ?? []).map(\.address), cc = (message.cc ?? []).map(\.address), bcc = (message.bcc ?? []).map(\.address)
+        // The host compares the draft with this `seen`, read just now; what the composer pressed on is checked here.
+        guard HeldSendCheck.matches(pressedSubject: send.subject, pressedTo: send.to, subject: message.subject, to: to, cc: cc, bcc: bcc) else {
+            throw HeldSendRefusal.changed
+        }
         let seen = Methods.WorkMailSend.Params.Seen(
-            to: (message.to ?? []).map(\.address),
-            cc: (message.cc ?? []).map(\.address),
-            bcc: (message.bcc ?? []).map(\.address),
+            to: to,
+            cc: cc,
+            bcc: bcc,
             subject: message.subject ?? "",
             text: message.text ?? ""
         )
         let answer = try await client.work.sendMail(draftId: send.draftId, seen: seen, sendAt: send.sendAt)
-        return answer.via == .hold ? "Waiting in the Outbox" : "Sending"
+        if answer.via == .hold { return "Waiting in the Outbox" }
+        return send.sendAt == nil ? "Sending" : "Scheduled"
     }
 
     var startsThreads: Bool { client.work.canApprove }
@@ -244,5 +254,15 @@ private struct LifeHostEnvironment: ViewModifier {
             .environment(scene?.writes)
             .environment(store?.clock)
             .environment(store?.connection)
+    }
+}
+
+/// Why a held Send did not go.
+enum HeldSendRefusal: LocalizedError {
+    case changed
+    var errorDescription: String? {
+        switch self {
+        case .changed: "This draft changed. Look it over again."
+        }
     }
 }

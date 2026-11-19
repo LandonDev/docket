@@ -3059,12 +3059,22 @@ public enum Methods {
         }
 
         public struct Output: Codable, Hashable, Sendable {
-            public let workspaceId: String
+            public let workspaceId: String?
             public let proposals: [RuleProposal]
 
-            public init(workspaceId: String, proposals: [RuleProposal]) {
+            public init(workspaceId: String?, proposals: [RuleProposal]) {
                 self.workspaceId = workspaceId
                 self.proposals = proposals
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case workspaceId, proposals
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(workspaceId, forKey: .workspaceId)
+                try container.encode(proposals, forKey: .proposals)
             }
         }
     }

@@ -34,6 +34,8 @@ struct SlidesItemView: View {
     private struct Loaded {
         var deck: DeckPhoneView
         var data: Data
+        /// Which render this is: a new one (after Accept or Reject, or the file's next version) gets a new viewer.
+        var key: String { "\(deck.rev):\(deck.changes.isEmpty ? "file" : "proposed")" }
     }
 
     var body: some View {
@@ -46,6 +48,7 @@ struct SlidesItemView: View {
                     Divider()
                 }
                 PdfPages(data: loaded.data, filmstrip: true, onAsk: { quote in ask(ChipWords.selection(in: item, quote: quote)) })
+                    .id(loaded.key)
             }
         }
         .alert("Couldn’t do that", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {

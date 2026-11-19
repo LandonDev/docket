@@ -30,20 +30,21 @@ public enum ChunkedRead {
         return data
     }
 
-    /// A media file by its token (`media.read`): the first range says the whole size.
-    public static func media(frame: Int = 2 * 1024 * 1024, read: (_ offset: Int, _ length: Int) async throws -> MediaRange?) async throws -> Data {
-        var data = Data()
+    /// A media file by its token (`media.read`), each range handed to `write` as it lands (a file
+    /// handle, so a long recording never sits whole in memory); the first range says the whole size.
+    public static func media(frame: Int = 2 * 1024 * 1024, read: (_ offset: Int, _ length: Int) async throws -> MediaRange?, write: (Data) throws -> Void) async throws {
+        var done = 0
         var size = Int.max
         var mtime: Double?
-        while data.count < size {
-            guard let range = try await read(data.count, frame) else { throw Failure.short }
+        while done < size {
+            guard let range = try await read(done, frame) else { throw Failure.short }
             if let mtime, mtime != range.mtimeMs { throw Failure.changed }
             mtime = range.mtimeMs
             size = Int(range.size)
             guard let bytes = Data(base64Encoded: range.dataBase64) else { throw Failure.notBase64 }
-            guard !bytes.isEmpty || data.count >= size else { throw Failure.short }
-            data.append(bytes)
+            guard !bytes.isEmpty || done >= size else { throw Failure.short }
+            try write(bytes)
+            done += bytes.count
         }
-        return data
     }
 }

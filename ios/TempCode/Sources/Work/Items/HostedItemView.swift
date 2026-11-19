@@ -62,7 +62,7 @@ private struct HostedWebView: UIViewRepresentable {
     })()
     """
 
-    func makeCoordinator() -> Coordinator { Coordinator(onFail: onFail) }
+    func makeCoordinator() -> Coordinator { Coordinator(home: url, onFail: onFail) }
 
     func makeUIView(context: Context) -> AskingWebView {
         let config = WKWebViewConfiguration()
@@ -83,20 +83,48 @@ private struct HostedWebView: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
+        /// The ticket's address: its origin is the one this view may show.
+        let home: URL
         let onFail: () -> Void
-        init(onFail: @escaping () -> Void) { self.onFail = onFail }
+        init(home: URL, onFail: @escaping () -> Void) {
+            self.home = home
+            self.onFail = onFail
+        }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            // A redirect, or a navigation this view cancelled itself, is not a failure.
+            if (error as NSError).code == NSURLErrorCancelled { return }
             onFail()
         }
 
-        /// The ticket's page and what it loads stay in the view; any other link opens in Safari.
+        /// The page was killed (memory): a fresh ticket opens it again.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            onFail()
+        }
+
+        /// The view stays on the ticket's origin (scheme, host and port). A link he taps elsewhere opens
+        /// in Safari when it is a web address; anything else, and any navigation he did not tap, goes nowhere.
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
-            guard action.navigationType == .linkActivated, let target = action.request.url else { return .allow }
-            if target.host == webView.url?.host { return .allow }
-            await UIApplication.shared.open(target)
+            guard action.targetFrame?.isMainFrame != false, let target = action.request.url else { return .allow }
+            if target.scheme == "about" || HostedOrigin.same(target, home) { return .allow }
+            if action.navigationType == .linkActivated, HostedOrigin.isWeb(target) {
+                await UIApplication.shared.open(target)
+            }
             return .cancel
         }
+    }
+}
+
+/// The hosted page's origin rule.
+enum HostedOrigin {
+    static func same(_ a: URL, _ b: URL) -> Bool {
+        a.scheme?.lowercased() == b.scheme?.lowercased() && a.host?.lowercased() == b.host?.lowercased() && port(a) == port(b)
+    }
+
+    static func isWeb(_ url: URL) -> Bool { ["http", "https"].contains(url.scheme?.lowercased() ?? "") }
+
+    private static func port(_ url: URL) -> Int? {
+        url.port ?? (url.scheme?.lowercased() == "https" ? 443 : url.scheme?.lowercased() == "http" ? 80 : nil)
     }
 }
 

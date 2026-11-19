@@ -91,10 +91,13 @@ public final class WorkCanvas {
         try await socket.request(Methods.WorkMediaView.self, .init(itemId: itemId, plays: MediaPick.asks(canRead: canRead)))
     }
 
-    /// A proxy, an original or a picture by its media token, in ranges (`media.read`, admin).
-    public func mediaFile(token: String) async throws -> Data {
-        try await ChunkedRead.media { offset, length in
-            try await self.socket.request(Methods.MediaRead.self, .init(token: token, offset: offset, length: length))
+    /// A proxy, an original or a picture by its media token, in ranges (`media.read`, admin), written
+    /// to `file` as they land. A read that fails leaves no file.
+    public func mediaFile(token: String, to file: URL) async throws {
+        try await MediaFiles.write(to: file) { handle in
+            try await ChunkedRead.media(read: { offset, length in
+                try await self.socket.request(Methods.MediaRead.self, .init(token: token, offset: offset, length: length))
+            }, write: { try handle.write(contentsOf: $0) })
         }
     }
 

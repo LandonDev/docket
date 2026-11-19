@@ -181,7 +181,7 @@ struct ThreadScreen: View {
         .task(id: session?.scope == .work) {
             if session?.scope == .work { await client.work.canvas.load(sessionId) }
         }
-        .onChange(of: client.work.canvas.opened[sessionId]) {
+        .onChange(of: client.work.canvas.opened[sessionId], initial: true) {
             guard let opened = client.work.canvas.opened[sessionId] else { return }
             client.work.canvas.tookOpened(sessionId)
             model.itemId = opened

@@ -1,4 +1,5 @@
 import AVKit
+import ImageIO
 import SwiftUI
 import TempCodeClient
 import TempCodeContract
@@ -24,8 +25,10 @@ struct MediaItemView: View {
                     switch MediaPick.of(version.plays, ready: version.state == .ready, canRead: canRead) {
                     case .segments(let initSegment, let count, let table):
                         VideoVersionView(client: client, item: item, view: view, versionId: version.id, source: .segments(init: initSegment, count: count), table: table, reload: reload)
+                            .id(version.id)
                     case .file(let token, let table):
                         VideoVersionView(client: client, item: item, view: view, versionId: version.id, source: .token(token), table: table, reload: reload)
+                            .id(version.id)
                     case .image(let token):
                         TokenPicture(client: client, token: token)
                     case .picture(_, let width, let height, let tile, let overlap, let levels, let minLevel):
@@ -156,20 +159,22 @@ private struct VideoVersionView: View {
 
     /// The init segment and every media segment, joined: one fragmented MP4 the player reads from disk.
     private func load() async {
-        let file = FileManager.default.temporaryDirectory.appending(path: "tc-media-\(item.id)-\(versionId).mp4")
+        let file = MediaFiles.file(item: item.id, version: versionId)
         if !FileManager.default.fileExists(atPath: file.path()) {
             do {
                 switch source {
                 case .segments(_, let count):
-                    var joined = try await client.work.canvas.mediaSegment(item.id, versionId: versionId, index: nil)
-                    loaded = 1
-                    for index in 0..<count {
-                        joined.append(try await client.work.canvas.mediaSegment(item.id, versionId: versionId, index: index))
-                        loaded = index + 2
+                    // Each segment goes to disk as it lands: a long recording never sits whole in memory.
+                    try await MediaFiles.write(to: file) { handle in
+                        try handle.write(contentsOf: try await client.work.canvas.mediaSegment(item.id, versionId: versionId, index: nil))
+                        loaded = 1
+                        for index in 0..<count {
+                            try handle.write(contentsOf: try await client.work.canvas.mediaSegment(item.id, versionId: versionId, index: index))
+                            loaded = index + 2
+                        }
                     }
-                    try joined.write(to: file, options: .atomic)
                 case .token(let token):
-                    try await client.work.canvas.mediaFile(token: token).write(to: file, options: .atomic)
+                    try await client.work.canvas.mediaFile(token: token, to: file)
                 }
             } catch {
                 failure = ActionError.wrap(error).message
@@ -278,10 +283,15 @@ private struct TokenPicture: View {
         }
         .task {
             do {
-                let data = try await client.work.canvas.mediaFile(token: token)
-                guard let full = UIImage(data: data) else { failure = "The picture could not be read."; return }
-                let scale = min(1, 2048 / max(full.size.width, full.size.height, 1))
-                image = full.preparingThumbnail(of: CGSize(width: full.size.width * scale, height: full.size.height * scale)) ?? full
+                let file = MediaFiles.file(item: "picture", version: token, ext: "img")
+                if !FileManager.default.fileExists(atPath: file.path()) { try await client.work.canvas.mediaFile(token: token, to: file) }
+                // Decoded at the size a phone shows, never whole: a 40 MP picture is 160 MB as pixels.
+                let options = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 2048] as CFDictionary
+                guard let source = CGImageSourceCreateWithURL(file as CFURL, nil), let picture = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
+                    failure = "The picture could not be read."
+                    return
+                }
+                image = UIImage(cgImage: picture)
             } catch {
                 failure = ActionError.wrap(error).message
             }

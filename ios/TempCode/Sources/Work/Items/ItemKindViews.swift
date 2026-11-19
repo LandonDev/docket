@@ -42,7 +42,8 @@ struct BrowserItemView: View {
     @State private var error: String?
 
     private var held: [OutboxItem] {
-        client.work.items.filter { $0.sessionId == item.sessionId && $0.state == .held }
+        // The browser's own acts: a held computer act of this thread, not its mail.
+        client.work.items.filter { $0.sessionId == item.sessionId && $0.state == .held && $0.kind == .computerAct }
     }
 
     var body: some View {

@@ -73,9 +73,8 @@ struct ItemPage: View {
                     }
                 }
                 .accessibilityIdentifier("item-switch")
-            } else {
-                Text(item.title).textStep(.title, weight: .semibold).lineLimit(1)
             }
+            // One item: its name is the segment's label already, so the row holds only its More.
             Spacer(minLength: 8)
             Menu {
                 if ItemBody.of(item).guestSource != nil, client.work.canApprove {
@@ -201,11 +200,13 @@ struct ItemLoad<Value, Content: View>: View {
     @State private var value: Value?
     @State private var error: String?
     @State private var round = 0
+    /// A read is out: a reload waits for it rather than cancelling it (a poll faster than the host).
+    @State private var reading = false
 
     var body: some View {
         Group {
             if let value {
-                content(value) { round += 1 }
+                content(value) { if !reading { round += 1 } }
             } else if let error {
                 ContentUnavailableView {
                     Label("Can’t Open This", systemImage: "exclamationmark.triangle")
@@ -219,6 +220,8 @@ struct ItemLoad<Value, Content: View>: View {
             }
         }
         .task(id: round) {
+            reading = true
+            defer { reading = false }
             do {
                 value = try await read()
                 error = nil

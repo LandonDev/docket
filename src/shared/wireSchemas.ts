@@ -1251,7 +1251,7 @@ export const LifeosJwtAnswerSchema = z.object({
   state: z.string().optional()
 })
 export const MailSendAnswerSchema = z.object({ id: z.string(), via: z.enum(['hold', 'owner']) })
-export const RulesForDraftSchema = z.object({ workspaceId: z.string(), proposals: z.array(RuleProposalSchema) })
+export const RulesForDraftSchema = z.object({ workspaceId: z.string().nullable(), proposals: z.array(RuleProposalSchema) })
 export const WorkspaceWorkSettingsWireSchema = z.object({ mayUseDesktop: z.array(z.string()), model: z.string().optional(), reasoning: z.string().optional(), voice: z.boolean() })
 export const GuestTicketSchema = z.object({ url: z.string(), expiresAt: z.number().int() })
 export const GuestCreatedSchema = z.object({ link: GuestLinkRowSchema, url: z.string() })
@@ -1593,6 +1593,8 @@ export type WireSchemaPins = [
   Expect<Reads<typeof HistoryVersionsPhoneSchema, HistoryVersions>>,
   Expect<Reads<typeof HistoryComparePhoneSchema, HistoryCompare>>,
   Expect<Reads<typeof RoutinePhoneRowSchema, RoutineRow>>,
+  // what rules/store.ts proposalsForDraft answers (a draft with no row: no workspace)
+  Expect<Mirror<typeof RulesForDraftSchema, { workspaceId: string | null; proposals: RuleProposal[] }>>,
   Expect<Mirror<typeof GuestLinkRowSchema, GuestLinkRow>>,
   Expect<Mirror<typeof HouseRuleSchema, HouseRule>>,
   Expect<Mirror<typeof EditOpSchema, EditOp>>,
