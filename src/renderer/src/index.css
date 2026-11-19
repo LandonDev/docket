@@ -40,6 +40,19 @@
      `HOST_WASH`). */
   --ui-wash: var(--muted);
   --ui-wash-foreground: var(--foreground);
+  /* work-kit's date picker (Mail's Send later): the chosen day and a period
+     cell are the primary pair, today and a range the muted fill. Its editor
+     sizes its corners from one radius, our `lg`; its cells' ring moves over
+     the fast duration. */
+  --calendar-selected: var(--primary);
+  --calendar-selected-foreground: var(--primary-foreground);
+  --calendar-active: var(--primary);
+  --calendar-active-foreground: var(--primary-foreground);
+  --calendar-range: var(--muted);
+  --calendar-today: var(--muted);
+  --calendar-today-foreground: var(--foreground);
+  --radius: 8px;
+  --ring-duration: var(--dur-fast);
   /* Ink: foreground for what matters, muted for what supports it, faint for
      what may be missed (a line number, ghost text, a done task). Text is one
      of the three, never an opacity of foreground (docs/DESIGN.md "The light
@@ -476,6 +489,14 @@ html.theme-light {
   box-shadow: none;
   filter: none;
   scale: 1;
+}
+
+/* work-kit's floating sheet (Mail's composer) asks for this by name: it is a
+   floating layer, so it takes the one shadow and the hairline. */
+.smooth-shadow-ring-xl {
+  box-shadow:
+    0 0 0 1px var(--border),
+    var(--shadow-overlay);
 }
 
 /* The toast stack (sonner) on our motion and layers instead of its 400-500ms

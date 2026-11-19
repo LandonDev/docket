@@ -48,6 +48,11 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
       { ink: "--popover-foreground", on: "--popover" },
       { ink: "--secondary-foreground", on: "--secondary" },
       { ink: "--ui-wash-foreground", on: "--ui-wash" },
+      // work-kit's date picker reads these names; each must be a pair that reads.
+      { ink: "--calendar-selected-foreground", on: "--calendar-selected" },
+      { ink: "--calendar-active-foreground", on: "--calendar-active" },
+      { ink: "--calendar-today-foreground", on: "--calendar-today" },
+      { ink: "--foreground", on: "--calendar-range" },
       { ink: "--background", on: "--foreground" },
     ],
   },
