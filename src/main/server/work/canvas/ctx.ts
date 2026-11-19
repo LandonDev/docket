@@ -14,7 +14,14 @@ export const canvasPart: CtxPart<'canvas'> = (ctx, deps) => {
     db: deps.db,
     dataDir: deps.dataDir,
     session: (id) => deps.registry.get(id),
-    push: (p) => ctx.push(p),
+    push: (p, to) => ctx.push(p, to),
+    remoteReaches: (path) => {
+      try {
+        return ctx.reaches({ kind: 'remote', caps: [] }, path)
+      } catch {
+        return false
+      }
+    },
     log: (line) => ctx.log(line)
   })
   setCanvasStore(deps.db, store)

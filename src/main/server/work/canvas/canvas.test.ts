@@ -349,3 +349,46 @@ describe('telling LifeOS a thread moved', () => {
     expect(waiting()).toEqual([])
   })
 })
+
+describe('item paths and a fenced key', () => {
+  const key: Principal = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: ['read', 'operate'] } as Principal
+  const got = { window: [] as WorkPush[], key: [] as WorkPush[] }
+  const items = (p: WorkPush | undefined) => (p as { items: { source: CanvasSource }[] } | undefined)?.items.map((i) => i.source)
+  beforeEach(() => {
+    work.close()
+    work = startWork(
+      { db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {}, remoteFence: { roots: () => [join(dir, 'shared')], denied: () => [] } },
+      [canvas]
+    )
+    got.window = []
+    got.key = []
+    work.pushes.onPush((p) => p.push === 'work.canvas' && got.window.push(p))
+    work.pushes.onPush((p) => p.push === 'work.canvas' && got.key.push(p), key)
+  })
+
+  it('a key the fence does not admit sees a file name, never the path; this host sees the path; a path the key may name stays whole', async () => {
+    await call('work.set', { enabled: true })
+    const inside = join(dir, 'shared', 'w9.pdf')
+    store().open('t1', { kind: 'pdf', source: file(inside), title: 'W-9' })
+    expect(items(got.window.at(-1))).toEqual([file(inside)])
+    expect(items(got.key.at(-1))).toEqual([file(inside)])
+    // one push to both while every path is one the key may name
+    expect(got.window).toHaveLength(1)
+    expect(got.key).toHaveLength(1)
+
+    store().open('t1', { kind: 'sheet', source: { at: 'microsoft', host: 'env_test', app: 'excel', name: 'Budget', ref: { kind: 'path', path: '/Users/landon/Private/Budget.xlsx' } }, title: 'Budget' })
+    const opened = store().open('t1', { kind: 'pdf', source: file('/Users/landon/Private/offer.pdf'), title: 'Offer' })
+    const whole = [file(inside), { at: 'microsoft', host: 'env_test', app: 'excel', name: 'Budget', ref: { kind: 'path', path: '/Users/landon/Private/Budget.xlsx' } }, file('/Users/landon/Private/offer.pdf')]
+    const cut = [file(inside), { at: 'microsoft', host: 'env_test', app: 'excel', name: 'Budget', ref: { kind: 'path', path: 'Budget.xlsx' } }, file('offer.pdf')]
+    expect(items(got.window.at(-1))).toEqual(whole)
+    expect(items(got.key.at(-1))).toEqual(cut)
+    expect(JSON.stringify(got.key)).not.toContain('/Users/landon/Private')
+    expect(got.key.at(-1)).toMatchObject({ opened: opened.id })
+
+    expect(((await call('work.canvas.list', { sessionId: 't1' }, key)) as { items: { source: CanvasSource }[] }).items.map((i) => i.source)).toEqual(cut)
+    expect(((await call('work.canvas.list', { sessionId: 't1' })) as { items: { source: CanvasSource }[] }).items.map((i) => i.source)).toEqual(whole)
+    const order = ids('t1').reverse()
+    expect(((await call('work.canvas.reorder', { sessionId: 't1', order }, key)) as { items: { source: CanvasSource }[] }).items.map((i) => i.source)).toEqual([...cut].reverse())
+    expect(((await call('work.canvas.open', { sessionId: 't1', itemId: opened.id }, key)) as { source: CanvasSource }).source).toEqual(file('offer.pdf'))
+  })
+})

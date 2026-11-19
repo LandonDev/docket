@@ -51,6 +51,8 @@ export interface PushTo {
   need?: Capability
   /** only the sockets whose caller could name this file itself, or every one of these files (`ctx.reaches`): a push about an item whose file is outside a remote key's roots never reaches that key */
   path?: string | readonly string[]
+  /** only this host's own window, or only remote keys: one push in two shapes, as the canvas list is with paths a key may not see cut to file names */
+  only?: 'local' | 'remote'
 }
 export type WorkSend = (p: WorkPush, to?: PushTo) => void
 

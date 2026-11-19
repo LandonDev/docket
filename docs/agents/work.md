@@ -347,7 +347,10 @@ once (work/ctx.ts `buildWorkCtx`). `db`, `host`, `dataDir`, `enabled`,
   sockets whose caller could name that file, or every file listed
   (`reaches`), so a push about an item whose file is outside a remote
   key's roots never reaches that key, admin or not. A socket must pass
-  both when both are given. The fence is asked once a push, and a fence
+  both when both are given. `{ only: 'local' }` or `{ only: 'remote' }`
+  sends it to this host's windows alone or to remote keys alone: one push
+  in two shapes, as the canvas list is with the paths a key may not name
+  cut to file names (work-canvas.md "The push"). The fence is asked once a push, and a fence
   that throws sends the push to this host's windows alone. **A pillar
   pushes what it says about one item's file with `{ path: <that file> }`**
   (a `{ at: 'thread' }` item needs none), and answers a remote key's read

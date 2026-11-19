@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { CanvasPush } from '@shared/contract-work-canvas'
+import type { PushTo } from '../modules'
 import type { SessionMeta } from '@shared/events'
 import { CanvasKindSchema, CanvasSourceSchema, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
 
@@ -58,8 +59,26 @@ export interface CanvasStoreDeps {
   dataDir: string
   /** The thread's row (the session registry's `get`). */
   session(id: string): Pick<SessionMeta, 'id' | 'workspaceId' | 'scope' | 'parentId'> | null
-  push(p: CanvasPush): void
+  push(p: CanvasPush, to?: PushTo): void
+  /** Whether a remote key could name this path (the listener's fence, `ctx.reaches`); absent, it names none. */
+  remoteReaches?(path: string): boolean
   log(line: string): void
+}
+
+/** The path on its host an item's source names: a file, or a workbook Office opens by path. Null for the rest. */
+export function sourcePathOf(source: CanvasSource): string | null {
+  if (source.at === 'file') return source.path
+  if (source.at === 'microsoft' && source.ref.kind === 'path') return source.ref.path
+  return null
+}
+
+/** An item as a caller the path fence does not admit sees it: its source's path cut to the file's name. */
+export function fencedItem(item: CanvasItem, reaches: (path: string) => boolean): CanvasItem {
+  const path = sourcePathOf(item.source)
+  if (path === null || reaches(path)) return item
+  const s = item.source
+  const source: CanvasSource = s.at === 'file' ? { ...s, path: basename(path) } : s.at === 'microsoft' ? { ...s, ref: { kind: 'path', path: basename(path) } } : s
+  return { ...item, source }
 }
 
 /** What an open asks: a known item again, or a kind, source and title. */
@@ -162,7 +181,15 @@ export class CanvasStore {
 
   private announce(sessionId: string, opened?: string): CanvasItem[] {
     const items = this.list(sessionId)
-    this.deps.push({ push: 'work.canvas', sessionId, items, ...(opened ? { opened } : {}) })
+    const p: CanvasPush = { push: 'work.canvas', sessionId, items, ...(opened ? { opened } : {}) }
+    // A remote key sees the paths its fence admits; the rest are cut to file names, in a push of their own.
+    const reaches = this.deps.remoteReaches ?? (() => false)
+    const remote = items.map((i) => fencedItem(i, reaches))
+    if (remote.every((i, k) => i === items[k])) this.deps.push(p)
+    else {
+      this.deps.push(p, { only: 'local' })
+      this.deps.push({ ...p, items: remote }, { only: 'remote' })
+    }
     return items
   }
 

@@ -290,6 +290,8 @@ A row whose `kind` or `source` no longer parses is left out of every list and lo
 
 Every change sends `{ push: 'work.canvas', sessionId, items, opened? }` through `ctx.push` to every client socket: `items` is the thread's whole open list in tab order, and `opened` names the item an open just made or opened again, for the pane to select.
 
+A remote key sees only the paths it could name itself. A source's path (`{ at: 'file' }`, and a Microsoft workbook opened by path) that the listener's fence does not admit (`ctx.reaches`) reaches a remote key cut to the file's name (`fencedItem`, store.ts): in `work.canvas.list`, `open` and `reorder` answers by the caller, and in the push, which then goes twice, whole to this host's windows (`{ only: 'local' }`) and cut to remote keys (`{ only: 'remote' }`). While every path is one a key may name, one push goes to all (F3).
+
 ### How the module and the part share one store
 
 A module's `handle` gets the context and nothing else, but the store needs the session registry and the data dir, which only a part gets. So the part (`canvasPart` in ctx.ts) makes the database's one `CanvasStore` from `deps` at boot and leaves it in a `WeakMap` keyed by the database (`setCanvasStore`). The module and the tools find it with `canvasStoreOf(ctx.db)`. `ctx.canvas.open`, `close` and `forSession` are the same store's methods, so they push the same push. `ctx.canvas.get(itemId)` reads any item, open or closed (null when there is none), and `ctx.canvas.paneOf(sessionId)` is the thread whose pane a thread's items show in (its root thread). A pillar reads items through these two and never imports `canvasStoreOf` from canvas/store.

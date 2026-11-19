@@ -245,6 +245,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
     for (const [send, principal] of [...sinks]) {
       if (to?.need && !allows(principalCaps(principal), to.need)) continue
       if (!remoteOk && principal.kind !== 'local') continue
+      if (to?.only && (to.only === 'local') !== (principal.kind === 'local')) continue
       send(p)
     }
   }
