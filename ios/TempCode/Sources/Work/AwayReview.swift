@@ -102,6 +102,7 @@ struct AwayReviewSheet: View {
                     Text(span)
                         .textStep(.meta)
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
                 if !held.isEmpty {
                     Section("Held") { ForEach(held) { heldRow($0) } }
