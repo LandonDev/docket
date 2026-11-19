@@ -2954,6 +2954,1241 @@ public enum Methods {
         }
     }
 
+    public enum WorkLifeosJwt: ContractMethod {
+        public static let name = "work.lifeos.jwt"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sector: String?
+
+            public init(sector: String? = nil) {
+                self.sector = sector
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let ok: Bool
+            public let jwt: String?
+            public let expiresAt: Int?
+            public let url: String?
+            public let state: String?
+
+            public init(ok: Bool, jwt: String? = nil, expiresAt: Int? = nil, url: String? = nil, state: String? = nil) {
+                self.ok = ok
+                self.jwt = jwt
+                self.expiresAt = expiresAt
+                self.url = url
+                self.state = state
+            }
+        }
+    }
+
+    public enum WorkMailSend: ContractMethod {
+        public static let name = "work.mail.send"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Seen: Codable, Hashable, Sendable {
+                public let to: [String]
+                public let cc: [String]
+                public let bcc: [String]
+                public let subject: String
+                public let text: String
+
+                public init(to: [String], cc: [String], bcc: [String], subject: String, text: String) {
+                    self.to = to
+                    self.cc = cc
+                    self.bcc = bcc
+                    self.subject = subject
+                    self.text = text
+                }
+            }
+
+            public let id: String
+            public let sendAt: Int?
+            public let seen: Seen
+
+            public init(id: String, sendAt: Int? = nil, seen: Seen) {
+                self.id = id
+                self.sendAt = sendAt
+                self.seen = seen
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public enum Via: RawRepresentable, Codable, Hashable, Sendable {
+                case hold
+                case owner
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "hold": self = .hold
+                    case "owner": self = .owner
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .hold: "hold"
+                    case .owner: "owner"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let id: String
+            public let via: Via
+
+            public init(id: String, via: Via) {
+                self.id = id
+                self.via = via
+            }
+        }
+    }
+
+    public enum WorkRulesForDraft: ContractMethod {
+        public static let name = "work.rules.forDraft"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let draftId: String
+
+            public init(draftId: String) {
+                self.draftId = draftId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let proposals: [RuleProposal]
+
+            public init(workspaceId: String, proposals: [RuleProposal]) {
+                self.workspaceId = workspaceId
+                self.proposals = proposals
+            }
+        }
+    }
+
+    public enum WorkWorkspaceGet: ContractMethod {
+        public static let name = "work.workspace.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+
+            public init(workspaceId: String) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let mayUseDesktop: [String]
+            public let model: String?
+            public let reasoning: String?
+            public let voice: Bool
+
+            public init(mayUseDesktop: [String], model: String? = nil, reasoning: String? = nil, voice: Bool) {
+                self.mayUseDesktop = mayUseDesktop
+                self.model = model
+                self.reasoning = reasoning
+                self.voice = voice
+            }
+        }
+    }
+
+    public enum WorkWorkspaceSet: ContractMethod {
+        public static let name = "work.workspace.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Patch: Codable, Hashable, Sendable {
+                public let mayUseDesktop: [String]?
+                public let model: Patch<String>?
+                public let reasoning: Patch<String>?
+                public let voice: Bool?
+
+                public init(mayUseDesktop: [String]? = nil, model: Patch<String>? = nil, reasoning: Patch<String>? = nil, voice: Bool? = nil) {
+                    self.mayUseDesktop = mayUseDesktop
+                    self.model = model
+                    self.reasoning = reasoning
+                    self.voice = voice
+                }
+            }
+
+            public let workspaceId: String
+            public let patch: Patch
+
+            public init(workspaceId: String, patch: Patch) {
+                self.workspaceId = workspaceId
+                self.patch = patch
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let mayUseDesktop: [String]
+            public let model: String?
+            public let reasoning: String?
+            public let voice: Bool
+
+            public init(mayUseDesktop: [String], model: String? = nil, reasoning: String? = nil, voice: Bool) {
+                self.mayUseDesktop = mayUseDesktop
+                self.model = model
+                self.reasoning = reasoning
+                self.voice = voice
+            }
+        }
+    }
+
+    public enum WorkCanvasList: ContractMethod {
+        public static let name = "work.canvas.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let items: [CanvasItem]
+
+            public init(items: [CanvasItem]) {
+                self.items = items
+            }
+        }
+    }
+
+    public enum WorkCanvasOpen: ContractMethod {
+        public static let name = "work.canvas.open"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                case mail
+                case document
+                case sheet
+                case pdf
+                case slides
+                case media
+                case browser
+                case history
+                case meeting
+                case form
+                case dashboard
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "mail": self = .mail
+                    case "document": self = .document
+                    case "sheet": self = .sheet
+                    case "pdf": self = .pdf
+                    case "slides": self = .slides
+                    case "media": self = .media
+                    case "browser": self = .browser
+                    case "history": self = .history
+                    case "meeting": self = .meeting
+                    case "form": self = .form
+                    case "dashboard": self = .dashboard
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .mail: "mail"
+                    case .document: "document"
+                    case .sheet: "sheet"
+                    case .pdf: "pdf"
+                    case .slides: "slides"
+                    case .media: "media"
+                    case .browser: "browser"
+                    case .history: "history"
+                    case .meeting: "meeting"
+                    case .form: "form"
+                    case .dashboard: "dashboard"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let sessionId: String
+            public let itemId: String?
+            public let kind: Kind?
+            public let source: CanvasSource?
+            public let title: String?
+
+            public init(sessionId: String, itemId: String? = nil, kind: Kind? = nil, source: CanvasSource? = nil, title: String? = nil) {
+                self.sessionId = sessionId
+                self.itemId = itemId
+                self.kind = kind
+                self.source = source
+                self.title = title
+            }
+        }
+
+        public typealias Output = CanvasItem
+    }
+
+    public enum WorkCanvasClose: ContractMethod {
+        public static let name = "work.canvas.close"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+
+            public init(itemId: String) {
+                self.itemId = itemId
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum WorkGuestsTicket: ContractMethod {
+        public static let name = "work.guests.ticket"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Source: Codable, Hashable, Sendable {
+                public enum Table: RawRepresentable, Codable, Hashable, Sendable {
+                    case docs
+                    case sheets
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "docs": self = .docs
+                        case "sheets": self = .sheets
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .docs: "docs"
+                        case .sheets: "sheets"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+
+                public let at: String
+                public let table: Table
+                public let id: String
+
+                public init(at: String, table: Table, id: String) {
+                    self.at = at
+                    self.table = table
+                    self.id = id
+                }
+            }
+
+            public let source: Source
+            public let title: String
+
+            public init(source: Source, title: String) {
+                self.source = source
+                self.title = title
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let url: String
+            public let expiresAt: Int
+
+            public init(url: String, expiresAt: Int) {
+                self.url = url
+                self.expiresAt = expiresAt
+            }
+        }
+    }
+
+    public enum WorkGuestsCreate: ContractMethod {
+        public static let name = "work.guests.create"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Source: Codable, Hashable, Sendable {
+                public enum Table: RawRepresentable, Codable, Hashable, Sendable {
+                    case docs
+                    case sheets
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "docs": self = .docs
+                        case "sheets": self = .sheets
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .docs: "docs"
+                        case .sheets: "sheets"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+
+                public let at: String
+                public let table: Table
+                public let id: String
+
+                public init(at: String, table: Table, id: String) {
+                    self.at = at
+                    self.table = table
+                    self.id = id
+                }
+            }
+            public enum Role: RawRepresentable, Codable, Hashable, Sendable {
+                case view
+                case comment
+                case edit
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "view": self = .view
+                    case "comment": self = .comment
+                    case "edit": self = .edit
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .view: "view"
+                    case .comment: "comment"
+                    case .edit: "edit"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let source: Source
+            public let title: String
+            public let name: String
+            public let role: Role
+            public let expiresAt: Int
+
+            public init(source: Source, title: String, name: String, role: Role, expiresAt: Int) {
+                self.source = source
+                self.title = title
+                self.name = name
+                self.role = role
+                self.expiresAt = expiresAt
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let link: GuestLinkRow
+            public let url: String
+
+            public init(link: GuestLinkRow, url: String) {
+                self.link = link
+                self.url = url
+            }
+        }
+    }
+
+    public enum WorkPdfOpen: ContractMethod {
+        public static let name = "work.pdf.open"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+
+            public init(itemId: String) {
+                self.itemId = itemId
+            }
+        }
+
+        public typealias Output = PdfPhoneView
+    }
+
+    public enum WorkPdfRead: ContractMethod {
+        public static let name = "work.pdf.read"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Which: RawRepresentable, Codable, Hashable, Sendable {
+                case file
+                case export
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "file": self = .file
+                    case "export": self = .export
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .file: "file"
+                    case .export: "export"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let itemId: String
+            public let which: Which?
+            public let rev: String?
+            public let offset: Int
+            public let length: Int
+
+            public init(itemId: String, which: Which? = nil, rev: String? = nil, offset: Int, length: Int) {
+                self.itemId = itemId
+                self.which = which
+                self.rev = rev
+                self.offset = offset
+                self.length = length
+            }
+        }
+
+        public typealias Output = FileBytes
+    }
+
+    public enum WorkSlidesOpen: ContractMethod {
+        public static let name = "work.slides.open"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+
+            public init(itemId: String) {
+                self.itemId = itemId
+            }
+        }
+
+        public typealias Output = DeckPhoneView
+    }
+
+    public enum WorkSlidesRead: ContractMethod {
+        public static let name = "work.slides.read"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Which: RawRepresentable, Codable, Hashable, Sendable {
+                case file
+                case proposed
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "file": self = .file
+                    case "proposed": self = .proposed
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .file: "file"
+                    case .proposed: "proposed"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let itemId: String
+            public let which: Which
+            public let offset: Int
+            public let length: Int
+
+            public init(itemId: String, which: Which, offset: Int, length: Int) {
+                self.itemId = itemId
+                self.which = which
+                self.offset = offset
+                self.length = length
+            }
+        }
+
+        public typealias Output = FileBytes
+    }
+
+    public enum WorkSlidesReview: ContractMethod {
+        public static let name = "work.slides.review"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Changes: Codable, Hashable, Sendable {
+                case array([String])
+                case string(String)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode([String].self) { self = .array(value); return }
+                    if let value = try? container.decode(String.self) { self = .string(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .array(let value): try container.encode(value)
+                    case .string(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+            public enum Verdict: RawRepresentable, Codable, Hashable, Sendable {
+                case accept
+                case reject
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "accept": self = .accept
+                    case "reject": self = .reject
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .accept: "accept"
+                    case .reject: "reject"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let itemId: String
+            public let changes: Changes
+            public let verdict: Verdict
+
+            public init(itemId: String, changes: Changes, verdict: Verdict) {
+                self.itemId = itemId
+                self.changes = changes
+                self.verdict = verdict
+            }
+        }
+
+        public typealias Output = DeckPhoneView
+    }
+
+    public enum WorkMediaView: ContractMethod {
+        public static let name = "work.media.view"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+            public let plays: [String]?
+            public let retry: Bool?
+
+            public init(itemId: String, plays: [String]? = nil, retry: Bool? = nil) {
+                self.itemId = itemId
+                self.plays = plays
+                self.retry = retry
+            }
+        }
+
+        public typealias Output = MediaPhoneView
+    }
+
+    public enum WorkMediaNote: ContractMethod {
+        public static let name = "work.media.note"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                case comment
+                case chapter
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "comment": self = .comment
+                    case "chapter": self = .chapter
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .comment: "comment"
+                    case .chapter: "chapter"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+            public struct Anchor: Codable, Hashable, Sendable {
+                public struct Region: Codable, Hashable, Sendable {
+                    public let x: Double
+                    public let y: Double
+                    public let w: Double
+                    public let h: Double
+
+                    public init(x: Double, y: Double, w: Double, h: Double) {
+                        self.x = x
+                        self.y = y
+                        self.w = w
+                        self.h = h
+                    }
+                }
+                public struct Pin: Codable, Hashable, Sendable {
+                    public let x: Double
+                    public let y: Double
+
+                    public init(x: Double, y: Double) {
+                        self.x = x
+                        self.y = y
+                    }
+                }
+                public enum Shape: Codable, Hashable, Sendable {
+                    public struct Case0: Codable, Hashable, Sendable {
+                        public enum Point: Codable, Hashable, Sendable {
+                            case array([JSONValue])
+                            case array([JSONValue])
+                            /// A shape this build does not know, untouched.
+                            case unknown(JSONValue)
+
+                            public init(from decoder: any Decoder) throws {
+                                let container = try decoder.singleValueContainer()
+                                if let value = try? container.decode([JSONValue].self) { self = .array(value); return }
+                                if let value = try? container.decode([JSONValue].self) { self = .array(value); return }
+                                self = .unknown(try container.decode(JSONValue.self))
+                            }
+
+                            public func encode(to encoder: any Encoder) throws {
+                                var container = encoder.singleValueContainer()
+                                switch self {
+                                case .array(let value): try container.encode(value)
+                                case .array(let value): try container.encode(value)
+                                case .unknown(let value): try container.encode(value)
+                                }
+                            }
+                        }
+
+                        public let color: String
+                        public let width: Double
+                        public let points: [Point]
+
+                        public init(color: String, width: Double, points: [Point]) {
+                            self.color = color
+                            self.width = width
+                            self.points = points
+                        }
+                    }
+                    public struct Case1: Codable, Hashable, Sendable {
+                        public let color: String
+                        public let width: Double
+                        public let x: Double
+                        public let y: Double
+                        public let w: Double
+                        public let h: Double
+
+                        public init(color: String, width: Double, x: Double, y: Double, w: Double, h: Double) {
+                            self.color = color
+                            self.width = width
+                            self.x = x
+                            self.y = y
+                            self.w = w
+                            self.h = h
+                        }
+                    }
+                    public struct Case2: Codable, Hashable, Sendable {
+                        public let color: String
+                        public let width: Double
+                        public let cx: Double
+                        public let cy: Double
+                        public let rx: Double
+                        public let ry: Double
+
+                        public init(color: String, width: Double, cx: Double, cy: Double, rx: Double, ry: Double) {
+                            self.color = color
+                            self.width = width
+                            self.cx = cx
+                            self.cy = cy
+                            self.rx = rx
+                            self.ry = ry
+                        }
+                    }
+                    public struct Case3: Codable, Hashable, Sendable {
+                        public let color: String
+                        public let width: Double
+                        public let x1: Double
+                        public let y1: Double
+                        public let x2: Double
+                        public let y2: Double
+
+                        public init(color: String, width: Double, x1: Double, y1: Double, x2: Double, y2: Double) {
+                            self.color = color
+                            self.width = width
+                            self.x1 = x1
+                            self.y1 = y1
+                            self.x2 = x2
+                            self.y2 = y2
+                        }
+                    }
+                    public struct Case4: Codable, Hashable, Sendable {
+                        public let color: String
+                        public let width: Double
+                        public let x1: Double
+                        public let y1: Double
+                        public let x2: Double
+                        public let y2: Double
+
+                        public init(color: String, width: Double, x1: Double, y1: Double, x2: Double, y2: Double) {
+                            self.color = color
+                            self.width = width
+                            self.x1 = x1
+                            self.y1 = y1
+                            self.x2 = x2
+                            self.y2 = y2
+                        }
+                    }
+
+                    case pen(Case0)
+                    case rect(Case1)
+                    case ellipse(Case2)
+                    case line(Case3)
+                    case arrow(Case4)
+                    /// A `tool` this build does not know: the whole object, untouched.
+                    case unknown(JSONValue)
+
+                    private enum Tag: String, CodingKey {
+                        case tool
+                    }
+
+                    public init(from decoder: any Decoder) throws {
+                        let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .tool)
+                        switch tag {
+                        case "pen": self = .pen(try Case0(from: decoder))
+                        case "rect": self = .rect(try Case1(from: decoder))
+                        case "ellipse": self = .ellipse(try Case2(from: decoder))
+                        case "line": self = .line(try Case3(from: decoder))
+                        case "arrow": self = .arrow(try Case4(from: decoder))
+                        default: self = .unknown(try JSONValue(from: decoder))
+                        }
+                    }
+
+                    public func encode(to encoder: any Encoder) throws {
+                        switch self {
+                        case .pen(let value): try Self.encode(tag: "pen", value, to: encoder)
+                        case .rect(let value): try Self.encode(tag: "rect", value, to: encoder)
+                        case .ellipse(let value): try Self.encode(tag: "ellipse", value, to: encoder)
+                        case .line(let value): try Self.encode(tag: "line", value, to: encoder)
+                        case .arrow(let value): try Self.encode(tag: "arrow", value, to: encoder)
+                        case .unknown(let value): try value.encode(to: encoder)
+                        }
+                    }
+
+                    private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                        var container = encoder.container(keyedBy: Tag.self)
+                        try container.encode(tag, forKey: .tool)
+                        try value.encode(to: encoder)
+                    }
+                }
+
+                public let versionId: String
+                public let frame: Int?
+                public let durationFrames: Int?
+                public let region: Region?
+                public let pin: Pin?
+                public let shapes: [Shape]?
+
+                public init(versionId: String, frame: Int? = nil, durationFrames: Int? = nil, region: Region? = nil, pin: Pin? = nil, shapes: [Shape]? = nil) {
+                    self.versionId = versionId
+                    self.frame = frame
+                    self.durationFrames = durationFrames
+                    self.region = region
+                    self.pin = pin
+                    self.shapes = shapes
+                }
+            }
+
+            public let itemId: String
+            public let kind: Kind?
+            public let anchor: Anchor
+            public let body: String
+            public let parentId: String?
+
+            public init(itemId: String, kind: Kind? = nil, anchor: Anchor, body: String, parentId: String? = nil) {
+                self.itemId = itemId
+                self.kind = kind
+                self.anchor = anchor
+                self.body = body
+                self.parentId = parentId
+            }
+        }
+
+        public typealias Output = MediaPhoneNote
+    }
+
+    public enum WorkMediaSegment: ContractMethod {
+        public static let name = "work.media.segment"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Index: Codable, Hashable, Sendable {
+                case integer(Int)
+                case string(String)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(Int.self) { self = .integer(value); return }
+                    if let value = try? container.decode(String.self) { self = .string(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .integer(let value): try container.encode(value)
+                    case .string(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+
+            public let itemId: String
+            public let versionId: String
+            public let index: Index
+
+            public init(itemId: String, versionId: String, index: Index) {
+                self.itemId = itemId
+                self.versionId = versionId
+                self.index = index
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let data: String
+
+            public init(data: String) {
+                self.data = data
+            }
+        }
+    }
+
+    public enum WorkMediaTile: ContractMethod {
+        public static let name = "work.media.tile"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+            public let versionId: String
+            public let level: Int
+            public let x: Int
+            public let y: Int
+
+            public init(itemId: String, versionId: String, level: Int, x: Int, y: Int) {
+                self.itemId = itemId
+                self.versionId = versionId
+                self.level = level
+                self.x = x
+                self.y = y
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let data: String
+
+            public init(data: String) {
+                self.data = data
+            }
+        }
+    }
+
+    public enum WorkMeetingsGet: ContractMethod {
+        public static let name = "work.meetings.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+
+            public init(itemId: String) {
+                self.itemId = itemId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let meeting: MeetingPhone?
+
+            public init(meeting: MeetingPhone?) {
+                self.meeting = meeting
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case meeting
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(meeting, forKey: .meeting)
+            }
+        }
+    }
+
+    public enum WorkFormsResponses: ContractMethod {
+        public static let name = "work.forms.responses"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+            public let rev: Int?
+
+            public init(itemId: String, rev: Int? = nil) {
+                self.itemId = itemId
+                self.rev = rev
+            }
+        }
+
+        public typealias Output = FormResponses
+    }
+
+    public enum WorkDashboardsOpen: ContractMethod {
+        public static let name = "work.dashboards.open"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let itemId: String
+
+            public init(itemId: String) {
+                self.itemId = itemId
+            }
+        }
+
+        public typealias Output = DashboardPhoneView
+    }
+
+    public enum WorkDashboardsReview: ContractMethod {
+        public static let name = "work.dashboards.review"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct WhichCase0: Codable, Hashable, Sendable {
+                public let ids: [String]
+
+                public init(ids: [String]) {
+                    self.ids = ids
+                }
+            }
+            public enum Which: Codable, Hashable, Sendable {
+                case object(WhichCase0)
+                case string(String)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(WhichCase0.self) { self = .object(value); return }
+                    if let value = try? container.decode(String.self) { self = .string(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .object(let value): try container.encode(value)
+                    case .string(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+            public enum Verdict: RawRepresentable, Codable, Hashable, Sendable {
+                case accept
+                case reject
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "accept": self = .accept
+                    case "reject": self = .reject
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .accept: "accept"
+                    case .reject: "reject"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let itemId: String
+            public let which: Which
+            public let verdict: Verdict
+
+            public init(itemId: String, which: Which, verdict: Verdict) {
+                self.itemId = itemId
+                self.which = which
+                self.verdict = verdict
+            }
+        }
+
+        public typealias Output = DashboardPhoneView
+    }
+
+    public enum WorkHistoryVersions: ContractMethod {
+        public static let name = "work.history.versions"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let source: CanvasSource
+
+            public init(source: CanvasSource) {
+                self.source = source
+            }
+        }
+
+        public typealias Output = HistoryVersionsPhone
+    }
+
+    public enum WorkHistoryCompare: ContractMethod {
+        public static let name = "work.history.compare"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum From: Codable, Hashable, Sendable {
+                case string(String)
+                case string(String)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(String.self) { self = .string(value); return }
+                    if let value = try? container.decode(String.self) { self = .string(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .string(let value): try container.encode(value)
+                    case .string(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+            public enum To: Codable, Hashable, Sendable {
+                case string(String)
+                case string(String)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(String.self) { self = .string(value); return }
+                    if let value = try? container.decode(String.self) { self = .string(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .string(let value): try container.encode(value)
+                    case .string(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+
+            public let source: CanvasSource
+            public let from: From
+            public let to: To
+
+            public init(source: CanvasSource, from: From, to: To) {
+                self.source = source
+                self.from = from
+                self.to = to
+            }
+        }
+
+        public typealias Output = HistoryComparePhone
+    }
+
+    public enum WorkBrowserState: ContractMethod {
+        public static let name = "work.browser.state"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public typealias Output = BrowserState
+    }
+
+    public enum WorkBrowserDrive: ContractMethod {
+        public static let name = "work.browser.drive"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Driver: RawRepresentable, Codable, Hashable, Sendable {
+                case agent
+                case owner
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "agent": self = .agent
+                    case "owner": self = .owner
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .agent: "agent"
+                    case .owner: "owner"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let sessionId: String
+            public let driver: Driver
+
+            public init(sessionId: String, driver: Driver) {
+                self.sessionId = sessionId
+                self.driver = driver
+            }
+        }
+
+        public typealias Output = BrowserState
+    }
+
+    public enum WorkRoutinesList: ContractMethod {
+        public static let name = "work.routines.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String?
+
+            public init(workspaceId: String? = nil) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let routines: [RoutinePhoneRow]
+
+            public init(routines: [RoutinePhoneRow]) {
+                self.routines = routines
+            }
+        }
+    }
+
+    public enum WorkRoutinesPause: ContractMethod {
+        public static let name = "work.routines.pause"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let id: String
+            public let paused: Bool
+
+            public init(id: String, paused: Bool) {
+                self.id = id
+                self.paused = paused
+            }
+        }
+
+        public typealias Output = RoutinePhoneRow
+    }
+
     public enum AwayGet: ContractMethod {
         public static let name = "away.get"
 

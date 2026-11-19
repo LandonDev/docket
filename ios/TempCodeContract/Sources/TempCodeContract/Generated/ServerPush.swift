@@ -265,6 +265,28 @@ public struct WorkGuestsPush: Codable, Hashable, Sendable {
     public init() {}
 }
 
+public struct WorkCanvasPush: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let items: [CanvasItem]
+    public let opened: String?
+
+    public init(sessionId: String, items: [CanvasItem], opened: String? = nil) {
+        self.sessionId = sessionId
+        self.items = items
+        self.opened = opened
+    }
+}
+
+public struct WorkRoutinesPush: Codable, Hashable, Sendable {
+    public let workspaceId: String
+    public let id: String
+
+    public init(workspaceId: String, id: String) {
+        self.workspaceId = workspaceId
+        self.id = id
+    }
+}
+
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
     case resync(ResyncPush)
@@ -293,6 +315,8 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case away(AwayPush)
     case workRules(WorkRulesPush)
     case workGuests(WorkGuestsPush)
+    case workCanvas(WorkCanvasPush)
+    case workRoutines(WorkRoutinesPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -330,6 +354,8 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "away": self = .away(try AwayPush(from: decoder))
         case "work.rules": self = .workRules(try WorkRulesPush(from: decoder))
         case "work.guests": self = .workGuests(try WorkGuestsPush(from: decoder))
+        case "work.canvas": self = .workCanvas(try WorkCanvasPush(from: decoder))
+        case "work.routines": self = .workRoutines(try WorkRoutinesPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -363,6 +389,8 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .away(let value): try Self.encode(tag: "away", value, to: encoder)
         case .workRules(let value): try Self.encode(tag: "work.rules", value, to: encoder)
         case .workGuests(let value): try Self.encode(tag: "work.guests", value, to: encoder)
+        case .workCanvas(let value): try Self.encode(tag: "work.canvas", value, to: encoder)
+        case .workRoutines(let value): try Self.encode(tag: "work.routines", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

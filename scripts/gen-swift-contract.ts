@@ -88,7 +88,7 @@ import { TurnPassSchema } from '../src/shared/turnpass'
 import { ModelPolicySchema, OrchestrationRulesSchema } from '../src/shared/rules'
 import { MacBridgePolicySchema } from '../src/shared/contract-macbridge'
 import * as W from '../src/shared/wireSchemas'
-import { CanvasSourceSchema, ContextChipSchema } from '../src/shared/work/canvas'
+import { CanvasItemSchema, CanvasSourceSchema, ContextChipSchema } from '../src/shared/work/canvas'
 import { SessionScopeSchema, WorkspaceKindSchema } from '../src/shared/work/ids'
 import { WorkSettingsSchema } from '../src/shared/work/scope'
 import { OutboxItemSchema } from '../src/shared/contract-work-outbox'
@@ -472,6 +472,52 @@ export const SUBSET: SubsetEntry[] = [
   method('work.guests.list', z.array(W.GuestLinkRowSchema)),
   method('work.guests.rekey', z.object({ url: z.string() })),
   method('work.guests.revoke', z.object({ ok: z.literal(true) })),
+  // Work on the phone, milestone 47: LifeOS's screens through the host's JWT, a mail's Send, a
+  // thread's items and each kind the phone draws, the hosted editor's ticket, Share, routines
+  type('CanvasItem', CanvasItemSchema),
+  method('work.lifeos.jwt', W.LifeosJwtAnswerSchema),
+  method('work.mail.send', W.MailSendAnswerSchema),
+  method('work.rules.forDraft', W.RulesForDraftSchema),
+  method('work.workspace.get', W.WorkspaceWorkSettingsWireSchema),
+  method('work.workspace.set', W.WorkspaceWorkSettingsWireSchema),
+  method('work.canvas.list', W.CanvasItemsSchema),
+  method('work.canvas.open', CanvasItemSchema),
+  method('work.canvas.close', z.null()),
+  method('work.guests.ticket', W.GuestTicketSchema),
+  method('work.guests.create', W.GuestCreatedSchema),
+  type('PdfPhoneView', W.PdfPhoneViewSchema),
+  type('FileBytes', W.FileBytesSchema),
+  method('work.pdf.open', W.PdfPhoneViewSchema),
+  method('work.pdf.read', W.FileBytesSchema),
+  type('DeckPhoneView', W.DeckPhoneViewSchema),
+  method('work.slides.open', W.DeckPhoneViewSchema),
+  method('work.slides.read', W.FileBytesSchema),
+  method('work.slides.review', W.DeckPhoneViewSchema),
+  type('MediaPlay', W.MediaPlaySchema),
+  type('MediaPhoneNote', W.MediaPhoneNoteSchema),
+  type('MediaPhoneView', W.MediaPhoneViewSchema),
+  method('work.media.view', W.MediaPhoneViewSchema),
+  method('work.media.note', W.MediaPhoneNoteSchema),
+  method('work.media.segment', W.Base64DataSchema),
+  method('work.media.tile', W.Base64DataSchema),
+  type('MeetingPhone', W.MeetingPhoneSchema),
+  method('work.meetings.get', W.MeetingAnswerSchema),
+  type('FormResponses', W.FormResponsesSchema),
+  method('work.forms.responses', W.FormResponsesSchema),
+  type('DashBlockPhone', W.DashBlockPhoneSchema),
+  type('DashboardPhoneView', W.DashboardPhoneViewSchema),
+  method('work.dashboards.open', W.DashboardPhoneViewSchema),
+  method('work.dashboards.review', W.DashboardPhoneViewSchema),
+  type('HistoryVersionsPhone', W.HistoryVersionsPhoneSchema),
+  type('HistoryComparePhone', W.HistoryComparePhoneSchema),
+  method('work.history.versions', W.HistoryVersionsPhoneSchema),
+  method('work.history.compare', W.HistoryComparePhoneSchema),
+  type('BrowserState', W.BrowserStateSchema),
+  method('work.browser.state', W.BrowserStateSchema),
+  method('work.browser.drive', W.BrowserStateSchema),
+  type('RoutinePhoneRow', W.RoutinePhoneRowSchema),
+  method('work.routines.list', W.RoutinesListSchema),
+  method('work.routines.pause', W.RoutinePhoneRowSchema),
   method('away.get', W.AwaySnapshotSchema),
   method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state }))
 ]

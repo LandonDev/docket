@@ -7,6 +7,20 @@ import { ActKindSchema, HeldRefSchema } from './work/acts'
 import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
+import { CanvasItemSchema, type CanvasItem } from './work/canvas'
+import type { WorkspaceWorkSettings } from './work/scope'
+import type { LifeosJwtAnswer } from './contract-work-lifeos'
+import type { MailSendAnswer } from './contract-work-mail'
+import type { GuestCreated } from './contract-work-guests'
+import type { PdfView } from './contract-work-pdf'
+import type { DeckView } from './contract-work-slides'
+import { FrameTableSchema, type MediaView } from './contract-work-media'
+import type { Meeting } from './contract-work-meetings'
+import type { FormResponses } from './contract-work-forms'
+import type { DashboardView } from './contract-work-dashboards'
+import type { HistoryCompare, HistoryVersions } from './contract-work-history'
+import { BROWSER_DRIVERS, PortalSourceSchema, type BrowserState } from './contract-work-browser'
+import { ROUTINE_KINDS, RoutineEndsSchema, type RoutineRow } from './contract-work-routines'
 import type { DraftEdit, EditOp, HouseRule, RuleProposal, RulesPage, VoiceFacts } from './contract-work-rules'
 import { GUEST_ROLES, GuestSourceSchema, type GuestLinkRow } from './contract-work-guests'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
@@ -185,6 +199,8 @@ type PinKeys<A, B, Seen> = [NonNullable<A>] extends [(infer AU)[]]
 /** The schema's output type is the interface: the same keys at every level, the same types. */
 type Mirror<S extends z.ZodType, T> = Pin<z.infer<S>, T>
 type Expect<T extends true> = T
+/** A phone's narrowed view of `T`: every value of `T` is a value the schema reads (fields it leaves out are ignored). */
+type Reads<S extends z.ZodType, T> = [T] extends [z.infer<S>] ? true : false
 /** `K` of `T` kept opaque on the wire: a client never reads inside it. */
 type Opaque<T, K extends keyof T> = Flat<Omit<T, K> & { [P in K]?: unknown }>
 
@@ -1223,6 +1239,150 @@ export const GuestLinkRowSchema = z.object({
 })
 /** A host's guest links changed. */
 export const WorkGuestsPushSchema = push('work.guests', {})
+// ── Work on the phone, milestone 47: LifeOS's screens and a thread's items ──
+// A phone view of a pillar's answer keeps only the fields the phone draws; its pin (`Reads`) holds
+// that every one of them is still in the server's type, with the same meaning.
+export const LifeosJwtAnswerSchema = z.object({
+  ok: z.boolean(),
+  jwt: z.string().optional(),
+  expiresAt: z.number().int().optional(),
+  url: z.string().optional(),
+  state: z.string().optional()
+})
+export const MailSendAnswerSchema = z.object({ id: z.string(), via: z.enum(['hold', 'owner']) })
+export const RulesForDraftSchema = z.object({ workspaceId: z.string(), proposals: z.array(RuleProposalSchema) })
+export const WorkspaceWorkSettingsWireSchema = z.object({ mayUseDesktop: z.array(z.string()), model: z.string().optional(), reasoning: z.string().optional(), voice: z.boolean() })
+export const GuestTicketSchema = z.object({ url: z.string(), expiresAt: z.number().int() })
+export const GuestCreatedSchema = z.object({ link: GuestLinkRowSchema, url: z.string() })
+export const CanvasItemsSchema = z.object({ items: z.array(CanvasItemSchema) })
+/** A thread's open items changed: the whole list, in tab order; `opened` the one an open just showed. */
+export const WorkCanvasPushSchema = push('work.canvas', { sessionId: z.string(), items: z.array(CanvasItemSchema), opened: z.string().optional() })
+/** Bytes of a file the phone draws itself (a PDF, a deck's render), a frame at a time. */
+export const FileBytesSchema = z.object({ data: z.string(), size: z.number(), rev: z.string() })
+export const Base64DataSchema = z.object({ data: z.string() })
+export const PdfPhoneViewSchema = z.object({ itemId: z.string(), name: z.string(), size: z.number(), rev: z.string(), missing: z.object({ asOf: z.number() }).optional() })
+export const DeckPhoneViewSchema = z.object({
+  itemId: z.string(),
+  name: z.string(),
+  rev: z.string(),
+  slides: z.array(
+    z.object({
+      key: z.string(),
+      number: z.number().int().nullable(),
+      title: z.string(),
+      hidden: z.boolean(),
+      from: z.enum(['file', 'proposed']),
+      page: z.number().int(),
+      change: z.string().nullable(),
+      tint: z.enum(['add', 'del']).nullable()
+    })
+  ),
+  changes: z.array(z.object({ id: z.string(), kind: z.enum(['changed', 'added', 'removed', 'moved']), slideId: z.number().int(), label: z.string() })),
+  renders: z.object({ file: z.object({ rev: z.string(), size: z.number(), pages: z.number().int() }).nullable(), proposed: z.object({ rev: z.string(), size: z.number(), pages: z.number().int() }).nullable() }),
+  renderError: z.string().optional()
+})
+export const MediaPlaySchema = z.discriminatedUnion('via', [
+  z.object({ via: z.literal('original'), url: z.string(), mime: z.string(), table: FrameTableSchema }),
+  z.object({ via: z.literal('proxy'), url: z.string(), table: FrameTableSchema, why: z.string() }),
+  z.object({ via: z.literal('hls'), init: z.string(), segments: z.array(z.object({ start: z.number(), duration: z.number() })), ended: z.boolean(), mime: z.string(), table: FrameTableSchema, why: z.string() }),
+  z.object({ via: z.literal('image'), url: z.string(), width: z.number(), height: z.number(), converted: z.string().optional() }),
+  z.object({ via: z.literal('tiles'), preview: z.string(), width: z.number(), height: z.number(), tile: z.number(), overlap: z.number(), levels: z.number().int(), minLevel: z.number().int(), format: z.literal('jpg') })
+])
+export const MediaPhoneNoteSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['comment', 'chapter']),
+  anchor: z.object({ versionId: z.string(), frame: z.number().int().optional(), durationFrames: z.number().int().optional() }),
+  body: z.string(),
+  by: z.string(),
+  state: z.enum(['kept', 'suggested']),
+  resolved: z.boolean(),
+  parentId: z.string().optional(),
+  createdAt: z.number().int()
+})
+export const MediaPhoneViewSchema = z.object({
+  itemId: z.string(),
+  kind: z.enum(['video', 'image']),
+  versions: z.array(
+    z.object({
+      id: z.string(),
+      n: z.number().int(),
+      name: z.string(),
+      state: z.enum(['probing', 'preparing', 'ready', 'failed']),
+      error: z.string().optional(),
+      plays: z.array(MediaPlaySchema)
+    })
+  ),
+  notes: z.array(MediaPhoneNoteSchema),
+  rev: z.number().int()
+})
+export const MeetingPhoneSchema = z.object({
+  itemId: z.string(),
+  title: z.string(),
+  status: z.string(),
+  error: z.string().optional(),
+  durationSec: z.number(),
+  speakers: z.array(z.object({ id: z.string(), label: z.string(), name: z.string().nullable() })),
+  segments: z.array(z.object({ id: z.string(), speaker: z.string().nullable(), start: z.number(), end: z.number().nullable(), text: z.string() }))
+})
+export const MeetingAnswerSchema = z.object({ meeting: MeetingPhoneSchema.nullable() })
+export const FormResponsesSchema = z.object({ rev: z.number().int(), columns: z.array(z.object({ id: z.string(), label: z.string() })), rows: z.array(z.array(z.string())), count: z.number().int(), cut: z.boolean() })
+export const DashBlockPhoneSchema = z.discriminatedUnion('kind', [
+  z.object({ id: z.string(), kind: z.literal('heading'), text: z.string() }),
+  z.object({ id: z.string(), kind: z.literal('text'), text: z.string() }),
+  z.object({ id: z.string(), kind: z.literal('figures'), figures: z.array(z.object({ id: z.string(), label: z.string(), sub: z.string().optional(), value: z.string().nullable() })) }),
+  z.object({ id: z.string(), kind: z.literal('chart'), title: z.string(), bars: z.array(z.object({ label: z.string(), value: z.number() })) }),
+  z.object({ id: z.string(), kind: z.literal('table'), title: z.string(), head: z.array(z.string()), rows: z.array(z.array(z.string())), numeric: z.array(z.boolean()) })
+])
+export const DashboardPhoneViewSchema = z.object({ itemId: z.string(), rev: z.number().int(), title: z.string(), blocks: z.array(DashBlockPhoneSchema), asOf: z.number().nullable(), stale: z.boolean(), failed: z.string().nullable() })
+export const HistoryVersionsPhoneSchema = z.object({
+  versions: z.array(z.object({ id: z.string(), at: z.number(), label: z.string().optional(), by: z.array(z.string()) })),
+  shared: z.boolean(),
+  names: z.record(z.string(), z.string())
+})
+const InlineOpWireSchema = z.object({ op: z.enum(['=', '-', '+']), text: z.string() })
+export const HistoryComparePhoneSchema = z.object({
+  diff: z.object({
+    stats: z.object({ same: z.number().int(), added: z.number().int(), removed: z.number().int(), changed: z.number().int(), moved: z.number().int() }),
+    rows: z.array(
+      z.object({
+        kind: z.enum(['added', 'removed', 'changed', 'moved']),
+        id: z.string(),
+        left: z.object({ text: z.string() }).optional(),
+        right: z.object({ text: z.string() }).optional(),
+        inline: z.array(InlineOpWireSchema).optional(),
+        by: z.array(z.string()).optional()
+      })
+    )
+  }),
+  names: z.record(z.string(), z.string())
+})
+export const BrowserStateSchema = z.object({
+  sessionId: z.string(),
+  driver: z.enum(BROWSER_DRIVERS),
+  needs: z.string().nullable(),
+  site: z.object({ url: z.string(), name: z.string() }).nullable(),
+  sources: z.array(PortalSourceSchema),
+  since: z.number().int()
+})
+export const RoutinePhoneRowSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  kind: z.enum(ROUTINE_KINDS),
+  name: z.string(),
+  words: z.string(),
+  ends: RoutineEndsSchema,
+  enabled: z.boolean(),
+  proposed: z.boolean(),
+  nextAt: z.number().int().nullable(),
+  lastAt: z.number().int().nullable(),
+  running: z.boolean(),
+  ended: z.boolean(),
+  waiting: z.string().nullable()
+})
+export const RoutinesListSchema = z.object({ routines: z.array(RoutinePhoneRowSchema) })
+/** A routine or watch changed on this host. */
+export const WorkRoutinesPushSchema = push('work.routines', { workspaceId: z.string(), id: z.string() })
+
 /** Computer use (contract-computer.ts): the desktop's; not in RemotePushSchema, since the phone does not speak it. */
 export const ComputerPushSchema = push('computer', {
   service: ComputerServiceStateSchema,
@@ -1294,7 +1454,9 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkLifeosPushSchema,
   AwayPushSchema,
   WorkRulesPushSchema,
-  WorkGuestsPushSchema
+  WorkGuestsPushSchema,
+  WorkCanvasPushSchema,
+  WorkRoutinesPushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -1410,6 +1572,23 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof AwayPushSchema, PushOf<'away'>>>,
   Expect<Mirror<typeof WorkRulesPushSchema, PushOf<'work.rules'>>>,
   Expect<Mirror<typeof WorkGuestsPushSchema, PushOf<'work.guests'>>>,
+  Expect<Mirror<typeof WorkCanvasPushSchema, PushOf<'work.canvas'>>>,
+  Expect<Mirror<typeof WorkRoutinesPushSchema, PushOf<'work.routines'>>>,
+  Expect<Mirror<typeof CanvasItemSchema, CanvasItem>>,
+  Expect<Mirror<typeof MailSendAnswerSchema, MailSendAnswer>>,
+  Expect<Mirror<typeof GuestCreatedSchema, GuestCreated>>,
+  Expect<Mirror<typeof FormResponsesSchema, FormResponses>>,
+  Expect<Mirror<typeof BrowserStateSchema, BrowserState>>,
+  Expect<Reads<typeof LifeosJwtAnswerSchema, LifeosJwtAnswer>>,
+  Expect<Reads<typeof WorkspaceWorkSettingsWireSchema, WorkspaceWorkSettings>>,
+  Expect<Reads<typeof PdfPhoneViewSchema, PdfView>>,
+  Expect<Reads<typeof DeckPhoneViewSchema, DeckView>>,
+  Expect<Reads<typeof MediaPhoneViewSchema, MediaView>>,
+  Expect<Reads<typeof MeetingPhoneSchema, Meeting>>,
+  Expect<Reads<typeof DashboardPhoneViewSchema, DashboardView>>,
+  Expect<Reads<typeof HistoryVersionsPhoneSchema, HistoryVersions>>,
+  Expect<Reads<typeof HistoryComparePhoneSchema, HistoryCompare>>,
+  Expect<Reads<typeof RoutinePhoneRowSchema, RoutineRow>>,
   Expect<Mirror<typeof GuestLinkRowSchema, GuestLinkRow>>,
   Expect<Mirror<typeof HouseRuleSchema, HouseRule>>,
   Expect<Mirror<typeof EditOpSchema, EditOp>>,
