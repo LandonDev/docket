@@ -113,9 +113,25 @@ function bringIntoView(scroller: HTMLElement | null, row: number): void {
   scroller?.querySelector(`[data-row="${row}"]`)?.scrollIntoView({ block: "center", behavior: "instant" });
 }
 
+/**
+ * A restore: on his own document written at once, the bar saying so with Undo (back to the version cut
+ * just before it, which holds what was typed since); on a shared one, the review of the branch it made.
+ */
+async function restoreTo(target: HistoryVersion, actions: ReturnType<typeof historyActions>, shell: CanvasShell, set: (patch: Partial<HistoryState>) => void): Promise<void> {
+  try {
+    const done = await actions.restore(target.id);
+    if (done.mode === "branch") return set({ view: "review", branchId: done.branchId, current: 0 });
+    set({ view: "list" });
+    const back = done.beforeVersionId;
+    shell.written({ text: `Restored the ${dayTime(target.at)} version`, ...(back ? { undo: async () => void (await actions.restore(back)) } : {}) });
+  } catch (err) {
+    shell.statusLine({ tone: "failed", word: "The restore did not go through", detail: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 // ── the list ─────────────────────────────────────────────────────────
 
-function VersionRow({ v, all, names, now, picked, picking, onPick, onCompare, onRestore }: { v: HistoryVersion; all: readonly HistoryVersion[]; names: Record<string, string>; now: boolean; picked: boolean; picking: boolean; onPick(): void; onCompare(): void; onRestore(): void }) {
+function VersionRow({ v, all, names, now, shared, picked, picking, onPick, onCompare, onRestore }: { v: HistoryVersion; all: readonly HistoryVersion[]; names: Record<string, string>; now: boolean; shared: boolean; picked: boolean; picking: boolean; onPick(): void; onCompare(): void; onRestore(): void }) {
   const who = whoWords(v.by, names);
   return (
     <div aria-selected={picked} className={cn("group/row relative flex min-h-[52px] items-center gap-3 rounded-lg p-2", picked ? "bg-muted" : "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]")}>
@@ -135,7 +151,7 @@ function VersionRow({ v, all, names, now, picked, picking, onPick, onCompare, on
           </Button>
           {now ? null : (
             <Button variant="ghost" size="xs" onClick={onRestore}>
-              Restore
+              {shared ? "Suggest restore" : "Restore"}
             </Button>
           )}
         </span>
@@ -206,16 +222,7 @@ function List({ env, source, state, setState, shell }: CanvasBodyProps<HistorySt
       </Empty>
     );
   const names = { ...v.names, ...branches.value?.names };
-  const restore = async (target: HistoryVersion) => {
-    const before = v.versions[0];
-    try {
-      const done = await actions.restore(target.id);
-      if (done.mode === "branch") return set({ view: "review", branchId: done.branchId, current: 0 });
-      shell.written({ text: `Restored the ${dayTime(target.at)} version`, ...(before ? { undo: async () => void (await actions.restore(before.id)) } : {}) });
-    } catch (err) {
-      shell.statusLine({ tone: "failed", word: "The restore did not go through", detail: err instanceof Error ? err.message : String(err) });
-    }
-  };
+  const restore = (target: HistoryVersion) => restoreTo(target, actions, shell, set);
   return (
     <div className="mx-auto flex max-w-[640px] flex-col gap-0.5 px-2 pt-2 pb-8">
       {pending.length > 0 ? (
@@ -234,6 +241,7 @@ function List({ env, source, state, setState, shell }: CanvasBodyProps<HistorySt
           all={v.versions}
           names={names}
           now={i === 0}
+          shared={v.shared}
           picked={picked.includes(ver.id)}
           picking={picked.length > 0}
           onPick={() => set({ picked: picked.includes(ver.id) ? picked.filter((id) => id !== ver.id) : [...picked, ver.id].slice(-2) })}
@@ -283,11 +291,7 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
             id: "restore",
             label: "Restore the older version",
             icon: History,
-            run: async () => {
-              const done = await actions.restore(older.id);
-              if (done.mode === "branch") set({ view: "review", branchId: done.branchId, current: 0 });
-              else set({ view: "list" });
-            },
+            run: () => restoreTo(older, actions, shell, set),
           },
         ]
       : [],
@@ -302,7 +306,7 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
   const diff = compare.value?.diff;
   const v = versions.value;
   return (
-    <div ref={ref} className="min-h-full">
+    <div ref={ref} className="flex min-h-full flex-col">
       {layout === "sxs" && v ? (
         // Side by side, each version is named over its own column.
         <div className="sticky top-0 z-10 grid h-7 grid-cols-2 border-b border-border bg-background text-xs text-muted-foreground">
@@ -364,7 +368,7 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
   }, [shell, branch, current]);
   useEffect(() => bringIntoView(ref.current, current), [ref, current, layout, branch]);
   return (
-    <div ref={ref} className="min-h-full">
+    <div ref={ref} className="flex min-h-full flex-col">
       {branch ? <CompareDoc diff={branch.diff} layout={layout} current={current} title={item.title} /> : <CompareSkeleton layout={layout} />}
     </div>
   );
@@ -428,6 +432,8 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
   );
   if (view === "list") {
     const picked = state?.picked ?? [];
+    // Shown once a version is ticked, waiting for the second.
+    if (picked.length === 0) return null;
     const list = versions.value?.versions ?? [];
     // The older of the two on the left.
     const [a, b] = [...picked].sort((x, y) => list.findIndex((v) => v.id === y) - list.findIndex((v) => v.id === x));

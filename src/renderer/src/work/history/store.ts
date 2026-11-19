@@ -20,7 +20,8 @@ export type HistoryBranches = { branches: HistoryBranch[]; names: Record<string,
 const EMPTY: Asked<never> = { value: null, error: null };
 const entries = new Map<string, Asked<unknown>>();
 const listeners = new Map<string, Set<() => void>>();
-const asking = new Set<string>();
+/** what each key was last asked with, and the generation of that ask: an answer to an older one is dropped */
+const asks = new Map<string, { env: string; method: string; params: Record<string, unknown>; gen: number }>();
 
 const sourceKey = (source: CanvasSource): string => JSON.stringify(source);
 const keyOf = (env: string, source: CanvasSource, what: string): string => `${env}\u0000${sourceKey(source)}\u0000${what}`;
@@ -30,15 +31,15 @@ function put(key: string, next: Asked<unknown>): void {
   for (const l of listeners.get(key) ?? []) l();
 }
 
+/** Asks the host; while it answers, what was there stays on screen. A newer ask of the same key wins. */
 async function ask(env: string, key: string, method: string, params: Record<string, unknown>): Promise<void> {
-  if (asking.has(key)) return;
-  asking.add(key);
+  const gen = (asks.get(key)?.gen ?? 0) + 1;
+  asks.set(key, { env, method, params, gen });
   try {
-    put(key, { value: await registry.linkOf(env).request(method, params), error: null });
+    const value = await registry.linkOf(env).request(method, params);
+    if (asks.get(key)?.gen === gen) put(key, { value, error: null });
   } catch (err) {
-    put(key, { value: entries.get(key)?.value ?? null, error: err instanceof Error ? err.message : String(err) });
-  } finally {
-    asking.delete(key);
+    if (asks.get(key)?.gen === gen) put(key, { value: entries.get(key)?.value ?? null, error: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -55,7 +56,7 @@ function useAsked<T>(env: string, source: CanvasSource, what: string | null, met
     () => (key ? (entries.get(key) as Asked<T> | undefined) : undefined) ?? EMPTY,
   );
   useEffect(() => {
-    if (key && !entries.has(key)) void ask(env, key, method, { source, ...params });
+    if (key && !asks.has(key)) void ask(env, key, method, { source, ...params });
     // `params` is named by `what`, which is part of the key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -69,16 +70,15 @@ export const useCompare = (env: string, source: CanvasSource, from: string | nul
 
 export const useBranches = (env: string, source: CanvasSource) => useAsked<HistoryBranches>(env, source, "branches", "work.history.branches", {});
 
-/** Everything kept for a document is stale after an act: asked again by whoever shows it. */
+/** Everything kept for a document is stale after an act: asked again now, the old answer shown until the new one lands. */
 export function refreshHistory(env: string, source: CanvasSource): void {
   const prefix = `${env}\u0000${sourceKey(source)}\u0000`;
-  for (const key of [...entries.keys()]) {
+  for (const [key, last] of [...asks]) {
     if (!key.startsWith(prefix)) continue;
     const what = key.slice(prefix.length);
-    // Two versions compared never change; "live" does.
-    if (what.startsWith("compare|") && !what.endsWith("|live")) continue;
-    entries.delete(key);
-    for (const l of listeners.get(key) ?? []) l();
+    // Two versions compared never change; a side that is "live" does.
+    if (what.startsWith("compare|") && !what.split("|").includes("live")) continue;
+    void ask(last.env, key, last.method, last.params);
   }
 }
 
@@ -103,7 +103,11 @@ export function historyActions(env: string, source: CanvasSource): HistoryAction
 
 /** For a preview page or a test: an answer as if the host had given it. */
 export function seedHistory(env: string, source: CanvasSource, seed: { versions?: HistoryVersions; branches?: HistoryBranches; compares?: Array<[string, string, HistoryCompare]> }): void {
-  if (seed.versions) put(keyOf(env, source, "versions"), { value: seed.versions, error: null });
-  if (seed.branches) put(keyOf(env, source, "branches"), { value: seed.branches, error: null });
-  for (const [from, to, value] of seed.compares ?? []) put(keyOf(env, source, `compare|${from}|${to}`), { value, error: null });
+  const seeded = (key: string, method: string, params: Record<string, unknown>, value: unknown) => {
+    asks.set(key, { env, method, params: { source, ...params }, gen: 1 });
+    put(key, { value, error: null });
+  };
+  if (seed.versions) seeded(keyOf(env, source, "versions"), "work.history.versions", {}, seed.versions);
+  if (seed.branches) seeded(keyOf(env, source, "branches"), "work.history.branches", {}, seed.branches);
+  for (const [from, to, value] of seed.compares ?? []) seeded(keyOf(env, source, `compare|${from}|${to}`), "work.history.compare", { from, to }, value);
 }

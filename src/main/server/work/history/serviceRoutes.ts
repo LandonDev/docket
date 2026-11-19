@@ -32,6 +32,9 @@ function filePath(value: unknown): string {
 
 async function targetOf(body: Record<string, unknown>, ctx: RouteCtx): Promise<Target> {
   const fence = fenceOf(body)
+  // History's acts are the owner's: main calls with an unfenced fence. The LifeOS worker holds the same
+  // secret but always names its bot key; a bot's call here (a draft-only key accepting its own branch) is refused.
+  if (fence.botId !== undefined || fence.client !== undefined || fence.draftOnly) throw new RouteError(403, "history is the owner's: a bot key cannot ask it")
   if (body.file !== undefined) {
     if (fence.sectors !== 'all') throw new RouteError(404, 'not found')
     const path = filePath(body.file)

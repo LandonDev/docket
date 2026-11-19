@@ -49,7 +49,7 @@ function changed(segments: readonly InlineSegment[], side: Side, cur: boolean): 
       // Taken words then new ones read as two: a space's width between them, as the prototype draws it, with no space in the text.
       const after = s.op === "+" && all[i - 1]?.op === "-";
       return (
-        <span key={i} className={cn(s.op === "+" ? INS : DEL, after && "ms-1", cur && CUR)}>
+        <span key={i} className={cn(s.op === "+" ? INS : DEL, after && "ms-1.5", cur && CUR)}>
           {inner}
         </span>
       );
@@ -221,15 +221,16 @@ export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; 
     return <Block block={block} other={other} row={row} mark={mark} side={side} compact number={(side === "left" ? left : right)[i]!} cur={line.row !== null && line.row === current} />;
   };
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] pb-12 text-sm leading-[22px] [overflow-wrap:anywhere] select-text">
+    // The rule between the columns runs the body's whole height, however short a side is.
+    <div className="relative grid grow grid-cols-[minmax(0,1fr)_minmax(0,1fr)] content-start pb-12 text-sm leading-[22px] [overflow-wrap:anywhere] select-text before:absolute before:inset-y-0 before:start-1/2 before:w-px before:bg-border">
       <div className="px-4 pt-5 text-base leading-6 font-semibold tracking-[-0.01em]">{title}</div>
-      <div className="border-s border-border px-4 pt-5 text-base leading-6 font-semibold tracking-[-0.01em]">{title}</div>
+      <div className="px-4 pt-5 text-base leading-6 font-semibold tracking-[-0.01em]">{title}</div>
       {lines.map((line, i) => (
         <div key={`${line.id}:${i}`} className="contents">
           <div data-row={line.row ?? undefined} className="px-4">
             {cell(line, i, "left")}
           </div>
-          <div data-row={line.row ?? undefined} className="border-s border-border px-4">
+          <div data-row={line.row ?? undefined} className="px-4">
             {cell(line, i, "right")}
           </div>
         </div>

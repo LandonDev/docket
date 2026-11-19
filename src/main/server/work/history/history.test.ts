@@ -146,6 +146,14 @@ describe('who may ask', () => {
     await expect(r.ask('work.history.versions', { source: { at: 'lifeos', table: 'outbox', id: 'o1' } })).rejects.toThrow(/documents/)
   })
 
+  it("refuses a bot key's call on the socket: history's acts are the owner's", async () => {
+    const r = await rig()
+    r.convex.docs.set('kd2', { _id: 'kd2', sector: 'life', seq: 0, title: 'Plan', shared: true, markdown: '', plain: '' })
+    for (const fence of [{ sectors: 'all', botId: 'k1' }, { sectors: ['life'], client: 'tempcode', draftOnly: true }])
+      await expect(post(r.config.socketPath, '/internal/history/decide', { docId: 'kd2', branchId: 'b', which: 'all', accept: true, fence })).rejects.toThrow("history is the owner's")
+    await expect(post(r.config.socketPath, '/internal/history/list', { file: join(r.dir, 'x.tcdoc'), fence: { sectors: 'all', botId: 'k1' } })).rejects.toThrow("history is the owner's")
+  })
+
   it('leaves methods that are not its own to the rest of the chain', async () => {
     const r = await rig()
     expect(await history.handle!({ id: '1', method: 'work.history.list', params: {} } as unknown as ClientRequest, r.ctx, { kind: 'local', caps: [] })).toEqual({ handled: false })

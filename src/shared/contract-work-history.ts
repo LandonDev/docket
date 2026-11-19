@@ -55,7 +55,8 @@ export interface HistoryBranch {
   diff: BlockDiff
 }
 
-export type HistoryWrite = { mode: 'direct'; versionId?: string } | { mode: 'branch'; branchId: string; versionId: string }
+/** A write's result. A direct restore also names the version cut just before it: its Undo goes back there. */
+export type HistoryWrite = { mode: 'direct'; versionId?: string; beforeVersionId?: string } | { mode: 'branch'; branchId: string; versionId: string }
 
 const side = z.union([z.literal('live'), z.string().min(1).max(64)])
 

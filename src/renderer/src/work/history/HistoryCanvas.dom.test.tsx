@@ -53,7 +53,10 @@ vi.mock("../../lib/connection", async (original) => {
       }
       if (method === "work.history.branches") return { branches: host.branches, names };
       if (method === "work.history.restore") return host.restore;
-      if (method === "work.history.decide") return { left: 0 };
+      if (method === "work.history.decide") {
+        host.branches = [];
+        return { left: 0 };
+      }
       throw new Error(`unexpected ${method}`);
     },
     onPush: (listener: (push: never) => void) => (host.pushes.add(listener), () => host.pushes.delete(listener)),
@@ -142,13 +145,15 @@ describe("the history canvas", () => {
   });
 
   it("a restore of his own document is written at once, with Undo", async () => {
-    host.restore = { mode: "direct", versionId: "v3" };
+    host.restore = { mode: "direct", versionId: "v3", beforeVersionId: "v2b" };
     const { container } = await seat();
     await waitFor(() => expect(screen.getByText("Wrote the morning")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("button", { name: "Restore", hidden: true })[0]!);
     await waitFor(() => expect((container.querySelector("[data-canvas-bar]") as HTMLElement).textContent).toMatch(/Restored the .* version/));
     expect(host.calls.find((c) => c.method === "work.history.restore")!.params).toMatchObject({ versionId: "v1" });
-    expect(within(container.querySelector("[data-canvas-bar]") as HTMLElement).getByRole("button", { name: "Undo" })).toBeTruthy();
+    // Undo goes back to the version cut just before the restore, which holds what was typed since.
+    fireEvent.click(within(container.querySelector("[data-canvas-bar]") as HTMLElement).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(host.calls.filter((c) => c.method === "work.history.restore").map((c) => c.params.versionId)).toEqual(["v1", "v2b"]));
   });
 
   it("a branch waits for him: the frame's stepper steps it, Accept takes the current row", async () => {
@@ -162,5 +167,8 @@ describe("the history canvas", () => {
     fireEvent.click(within(bar()).getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(host.calls.find((c) => c.method === "work.history.decide")).toBeTruthy());
     expect(host.calls.find((c) => c.method === "work.history.decide")!.params).toMatchObject({ branchId: "b1", which: ["a"], accept: true });
+    // The host now has nothing waiting: the views ask again and the review gives way to the list.
+    await waitFor(() => expect(screen.getByText("Wrote the morning")).toBeTruthy());
+    expect(screen.queryByText("Waiting for you")).toBeNull();
   });
 });
