@@ -65,7 +65,7 @@ refuses a plain press (`MAY_HAVE_GONE`) and takes it only with `again:
 true`, which the Outbox offers as "Send again" beside "Check Sent first" in
 place of Send. No group send or tick takes such a row. A LifeOS row is never
 marked: LifeOS holds what became of it, and its kind reads that before it
-sends again.
+sends again. On the phone the item's button already reads Send Again for any failed send; for one that may have gone the press carries `again: true` (`WorkHost.send`) and the line reads the desktop's words (`OutboxModel.checkFirst`, `failureLine`; milestone 47).
 
 ## Add-on tools: the rule he sets
 

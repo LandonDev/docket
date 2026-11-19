@@ -24,6 +24,20 @@ public enum OutboxModel {
         }
     }
 
+    /// A failed send that may have gone (`outcomeUnknown`): what he checks before Send Again, as the desktop says it.
+    public nonisolated static func checkFirst(_ item: OutboxItem) -> String? {
+        guard item.state == .failed, item.outcomeUnknown == true else { return nil }
+        return item.kind == .mailSend || item.kind == .officeMailSend ? "Check Sent first" : "Check whether it went first"
+    }
+
+    /// The held detail's line for a failed send: the reason, then what to check when it may have gone.
+    public nonisolated static func failureLine(_ item: OutboxItem) -> String {
+        let reason = item.error?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let check = checkFirst(item) else { return reason.isEmpty ? "Didn’t send." : reason }
+        guard !reason.isEmpty else { return "It may have gone. \(check)." }
+        return (reason.hasSuffix(".") ? reason : reason + ".") + " \(check)."
+    }
+
     /// "Send" → "Sent", "Post" → "Posted", "Make link" → "Made link".
     public nonisolated static func pastOf(_ verb: String) -> String {
         var words = verb.split(separator: " ", omittingEmptySubsequences: false).map(String.init)

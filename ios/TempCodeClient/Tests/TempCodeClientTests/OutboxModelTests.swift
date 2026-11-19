@@ -111,4 +111,15 @@ import TempCodeContract
         #expect(OutboxModel.heldOf(tool: "Bash", result: answer) == nil)
         #expect(OutboxModel.heldOf(tool: "mcp__x__y", result: "Sent.") == nil)
     }
+
+    @Test func aSendThatMayHaveGoneAsksHimToCheckFirst() {
+        let unknown = OutboxItem(ref: .host(.init(id: "u1")), kind: .mailSend, workspaceId: "w1", sessionId: "s1", sector: "purdue", summary: "Send to events booking", verb: "Send", account: nil, state: .failed, createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: "The connection dropped", result: nil, routineRunId: nil, outcomeUnknown: true, updatedAt: 1)
+        #expect(OutboxModel.checkFirst(unknown) == "Check Sent first")
+        #expect(OutboxModel.failureLine(unknown) == "The connection dropped. Check Sent first.")
+        let post = OutboxItem(ref: .host(.init(id: "u2")), kind: .addonCall, workspaceId: "w1", sessionId: "s1", sector: nil, summary: "Post", verb: "Post", account: nil, state: .failed, createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, outcomeUnknown: true, updatedAt: 1)
+        #expect(OutboxModel.failureLine(post) == "It may have gone. Check whether it went first.")
+        let failed = item("f1", state: .failed)
+        #expect(OutboxModel.checkFirst(failed) == nil)
+        #expect(OutboxModel.failureLine(failed) == "Didn’t send.")
+    }
 }

@@ -213,7 +213,9 @@ public final class WorkHost {
     /// Sends exactly what was shown: `rev` is the item's `updatedAt` as the screen read it.
     @discardableResult
     public func send(_ item: OutboxItem) async throws -> OutboxItem {
-        let out = try await socket.request(Methods.WorkOutboxSend.self, .init(ref: item.ref, rev: item.updatedAt))
+        // A send that may have gone takes only an explicit Send Again (`MAY_HAVE_GONE` otherwise); the
+        // phone offers no plain Send for such an item, so its press is that one.
+        let out = try await socket.request(Methods.WorkOutboxSend.self, .init(ref: item.ref, rev: item.updatedAt, again: item.outcomeUnknown == true ? true : nil))
         merge(out)
         return out
     }

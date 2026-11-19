@@ -188,7 +188,7 @@ private struct OutboxRow: View {
 
     /// The failure's reason, else what the payload names first after the verb (a subject, a target).
     private var line: String? {
-        if failed { return item.error ?? "Didn’t send" }
+        if failed { return OutboxModel.checkFirst(item) ?? item.error ?? "Didn’t send" }
         let view = OutboxModel.payloadView(item.payload)
         let shown = view.fields.first { ["subject", "title", "channel"].contains($0.key) } ?? view.fields.first { $0.edit == .text }
         return shown?.value ?? view.body.map { $0.text.split(separator: "\n").first.map(String.init) ?? "" }

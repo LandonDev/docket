@@ -162,7 +162,7 @@ struct OutboxItemScreen: View {
     /// Why it stopped, or that it went: one line under the title.
     private func stateLine(_ item: OutboxItem) -> (text: String, failed: Bool)? {
         switch item.state {
-        case .failed: (item.error ?? "Didn’t send.", true)
+        case .failed: (OutboxModel.failureLine(item), true)
         case .stale: (item.error ?? "No longer current.", true)
         case .sending: ("Sending…", false)
         case .sent: ("\(OutboxModel.pastOf(item.verb)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")", false)
