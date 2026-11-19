@@ -74,13 +74,21 @@ carrier that posted nothing throws `ActStale` (the item reads stale); any
 other throw reads failed, "may or may not have gone". A host that lost its
 carrier between the hold and the press reads stale.
 
-**Not wired yet.** The carrier needs the thread's computer session, which
-only index.ts holds (`ComputerSessions`), and index.ts is not this pillar's.
-A foundation follow-up sets it beside `new ComputerSessions(…)`: bring Teams
-forward (`computer_apps`), find the chat by name, type the text into the
-message box and press Return as the owner's press (a `pressed` call, so the
-hold does not keep it again), then take one picture of the window. Until
-then `teams_reply` is refused on every host.
+**The carrier** (browser/teamsPost.ts) is set at boot by index.ts beside
+the host's computer sessions, through a dynamic import (`wireTeamsCarrier`),
+so a host with computer use (a Mac) posts and a host without it (the box)
+refuses `teams_reply` before anything is held. On the press it runs on the
+reply's thread's computer session, every acting step a `pressed` call (no
+card, no second hold, and only if the window still holds what the step was
+read against): bring Microsoft Teams forward; read it; click the one chat
+named exactly as the reply says, counting a row and the text inside it as
+one (none, or more than one: stale, nothing posted); read again; the one
+message box, which must be empty (a draft of his: stale); type the reply
+into it, a line break as Shift-Return (at most 9 lines), and Return; read
+once more with a picture. A box that still holds the reply after the Return
+reads failed. Proven on the fake computer service dressed as Teams
+(teamsPost.test.ts), end to end from `teams_reply` through the press; not
+against a live Teams.
 
 ## The canvas (src/renderer/src/work/browser)
 
@@ -137,5 +145,10 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
 - src/renderer/src/work/browser/portal.test.ts and BrowserCanvas.dom.test.tsx:
   the fields from the mark, the sources joined, the held item chosen from
   the tree, every bar face, the press sent once.
+- src/main/server/work/browser/teamsPost.test.ts: the carrier on the real
+  computer host over the fake service dressed as Teams: one chat posts with
+  Return and a picture, nothing held again; no chat, two chats, a draft in
+  the box and a reply with no thread post nothing; held, pressed twice,
+  posted once, picture stored.
 - Not run: anything on the Mac (it was locked and its owner asleep); the
   live Teams post; a live portal submit.

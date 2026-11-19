@@ -1399,6 +1399,8 @@ export async function startServer(
       history
     })
     computer = { available: () => computerUnavailable() === null, sessions, service, tokens: MacThreadTokens.fromEnv(process.env, 'computer') }
+    // A held Teams reply is posted on these sessions at the owner's press (work/browser/teamsPost.ts); loaded apart, as all of Work is.
+    void import('./work/browser/teamsPost').then((m) => m.wireTeamsCarrier(sessions), (err) => console.log(`[computer] the Teams carrier did not load: ${String(err)}`))
     registry.onMeta((m) => sessions.onMeta(m))
     registry.onRemoved((ids) => void sessions.end(ids))
     // A removed thread's history goes at once, wired on its own: sessions.end also runs for an archive and an idle

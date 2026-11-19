@@ -13,10 +13,9 @@ import { ActStale } from '../outbox/kinds'
  * The posting itself is the carrier's: the steps on Teams (bring it
  * forward, find the chat, type, Return) run through the thread's computer
  * session as the owner's press, so the computer hold does not hold them a
- * second time. It is to be set once at boot beside the host's computer
- * sessions (index.ts); nothing sets it yet (docs/agents/work-browser.md,
- * "Teams"), so `teams_reply` refuses before anything is held. A box
- * thread's reply is refused the same way: the box has no Teams to post with.
+ * second time (teamsPost.ts). index.ts sets it once at boot beside the
+ * host's computer sessions; a host with none (the box) sets no carrier, and
+ * `teams_reply` refuses there before anything is held.
  */
 
 export const TeamsPostSchema = z.object({
