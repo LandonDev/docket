@@ -1,0 +1,4 @@
+# The C runtime goes into the exe: a PC without the Visual C++ runtime (the rig has none) cannot start a
+# dynamically linked one (STATUS_DLL_NOT_FOUND).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

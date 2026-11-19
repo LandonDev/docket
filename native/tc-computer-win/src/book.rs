@@ -39,6 +39,15 @@ impl<H: Clone> AppBook<H> {
         index
     }
 
+    /// A number of its own for an element whose key another element of the same read already took
+    /// (two UI Automation elements can share a RuntimeId): an index appears once in a read.
+    pub fn fresh(&mut self, handle: H) -> i64 {
+        let i = self.next;
+        self.next += 1;
+        self.handles.insert(i, handle);
+        i
+    }
+
     /// The handle behind an index: `Err(true)` when it was given and is gone, `Err(false)` when never given.
     pub fn handle(&self, index: i64) -> Result<H, bool> {
         match self.handles.get(&index) {
@@ -102,6 +111,8 @@ mod tests {
         assert_eq!(b.handle(99), Err(false));
         assert_eq!(b.handle(1), Ok(0));
         assert_eq!(b.index_of(&[3], 0), 2, "an element seen again keeps its number");
+        assert_eq!(b.fresh(0), 5);
+        assert_eq!(b.index_of(&[1, 2], 0), 1, "fresh leaves the key's number alone");
     }
 
     #[test]

@@ -147,6 +147,7 @@ struct Walk<'a, H> {
     origin: (f64, f64),
     scale: f64,
     out: Vec<Kept>,
+    used: std::collections::HashSet<i64>,
 }
 
 impl<H: Clone> Walk<'_, H> {
@@ -179,7 +180,11 @@ impl<H: Clone> Walk<'_, H> {
             }
             return;
         }
-        let index = self.book.index_of(&node.key, node.handle.clone());
+        let mut index = self.book.index_of(&node.key, node.handle.clone());
+        if !self.used.insert(index) {
+            index = self.book.fresh(node.handle.clone());
+            self.used.insert(index);
+        }
         let line = self.line(node, index, depth.min(limits::MAX_DEPTH as usize), &listed);
         let text_bytes = node.name.as_deref().map_or(0, str::len) + node.value.as_deref().map_or(0, str::len);
         let me = self.out.len();
@@ -263,7 +268,7 @@ pub fn header(app: &str, title: &str, space: &CoordinateSpace, focused: Option<i
 /// picture: the thin word ("see the screenshot") is printed only then.
 pub fn render<H: Clone>(win: &RawWindow<H>, root: &RawNode<H>, book: &mut AppBook<H>, opts: TextOptions, with_shot: bool) -> Rendered {
     let space = space_of(win.frame.w, win.frame.h);
-    let mut walk = Walk { book, opts, origin: (win.frame.x, win.frame.y), scale: space.scale, out: Vec::new() };
+    let mut walk = Walk { book, opts, origin: (win.frame.x, win.frame.y), scale: space.scale, out: Vec::new(), used: Default::default() };
     walk.visit(root, 0, None, &[]);
     let kept = walk.out;
 
@@ -420,6 +425,14 @@ mod tests {
         let r = render(&w2, &w2.root, &mut book, TextOptions::default(), false);
         assert!(r.text.contains("[3] text area"));
         assert!(r.text.contains("[5] button \"Save\""), "{}", r.text);
+    }
+
+    #[test]
+    fn two_elements_with_one_key_get_two_numbers() {
+        let mut book = AppBook::default();
+        let w = win(n("window", Some("W"), 1, vec![n("button", Some("A"), 7, vec![]), n("button", Some("B"), 7, vec![])]));
+        let r = render(&w, &w.root, &mut book, TextOptions::default(), false);
+        assert!(r.text.ends_with("[2] button \"A\"\n  [3] button \"B\""), "{}", r.text);
     }
 
     #[test]

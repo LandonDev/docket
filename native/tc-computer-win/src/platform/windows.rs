@@ -89,6 +89,15 @@ const PROPS: &[UIA_PROPERTY_ID] = &[
     UIA_RuntimeIdPropertyId,
     UIA_NativeWindowHandlePropertyId,
     UIA_LocalizedControlTypePropertyId,
+    UIA_FrameworkIdPropertyId,
+    // a pattern's Cached* values come only from its own property ids in the request
+    UIA_ValueValuePropertyId,
+    UIA_ValueIsReadOnlyPropertyId,
+    UIA_ToggleToggleStatePropertyId,
+    UIA_ExpandCollapseExpandCollapseStatePropertyId,
+    UIA_SelectionItemIsSelectedPropertyId,
+    UIA_RangeValueValuePropertyId,
+    UIA_WindowIsModalPropertyId,
 ];
 
 const PATTERNS: &[UIA_PATTERN_ID] = &[
@@ -330,7 +339,7 @@ fn runtime_id(e: &IUIAutomationElement) -> Vec<i32> {
 }
 
 /// UI Automation's control type as a word of the grammar (§29.3).
-fn role_of(ct: UIA_CONTROLTYPE_ID, class: &str, password: bool, editable: bool, top: bool, modal: bool) -> &'static str {
+fn role_of(ct: UIA_CONTROLTYPE_ID, framework: &str, password: bool, editable: bool, top: bool, modal: bool) -> &'static str {
     match ct {
         UIA_ButtonControlTypeId => "button",
         UIA_SplitButtonControlTypeId => "menu button",
@@ -351,7 +360,7 @@ fn role_of(ct: UIA_CONTROLTYPE_ID, class: &str, password: bool, editable: bool, 
             }
         }
         UIA_DocumentControlTypeId => {
-            if class.starts_with("Chrome") || class.contains("WebView") {
+            if framework == "Chrome" {
                 "web area"
             } else {
                 "text area"
@@ -399,6 +408,8 @@ fn role_of(ct: UIA_CONTROLTYPE_ID, class: &str, password: bool, editable: bool, 
 
 struct Walker<'a> {
     uia: &'a Uia,
+    /// the RuntimeId of the element with the system's focus
+    focus: Option<Vec<i32>>,
     deadline: Instant,
     nodes: usize,
     partial: bool,
@@ -410,7 +421,11 @@ impl Walker<'_> {
         self.nodes += 1;
         unsafe {
             let ct = e.CachedControlType().unwrap_or(UIA_CustomControlTypeId);
-            let class = s(e.CachedClassName()).unwrap_or_default();
+            let framework = s(e.CachedFrameworkId()).unwrap_or_default();
+            // a scroll bar is never a line, nor anything in it (§4.3): the scroll area's own actions scroll
+            if matches!(ct, UIA_ScrollBarControlTypeId | UIA_ThumbControlTypeId) {
+                return None;
+            }
             let offscreen = b(e.CachedIsOffscreen());
             if offscreen && !top {
                 return None;
@@ -420,7 +435,7 @@ impl Walker<'_> {
             let window_p = e.GetCachedPatternAs::<IUIAutomationWindowPattern>(UIA_WindowPatternId).ok();
             let modal = window_p.as_ref().is_some_and(|w| b(w.CachedIsModal()));
             let password = b(e.CachedIsPassword());
-            let role = role_of(ct, &class, password, value_p.is_some() && !read_only, top, modal);
+            let role = role_of(ct, &framework, password, value_p.is_some() && !read_only, top, modal);
             let mut n = RawNode {
                 handle: Elem(e.clone()),
                 key: runtime_id(e),
@@ -462,7 +477,8 @@ impl Walker<'_> {
             }
 
             // states
-            let focused = b(e.CachedHasKeyboardFocus());
+            // the one element with the system's focus: XAML islands each say HasKeyboardFocus
+            let focused = !n.key.is_empty() && self.focus.as_deref() == Some(n.key.as_slice());
             if focused {
                 n.states.push("focused");
             }
@@ -511,14 +527,15 @@ impl Walker<'_> {
                 }
             }
 
-            // caret or selection in the focused text element
-            if focused {
+            // caret or selection in the focused text element; a background window has no focus, so
+            // there a text area's selection alone shows (select_text's evidence)
+            if focused || role == "text area" || role == "input" {
                 if let Some(t) = &text_p {
                     if let Some((a, z)) = selection_of(t) {
-                        if a == z {
-                            n.caret = Some(a);
-                        } else {
+                        if a != z {
                             n.selection = Some((a, z));
+                        } else if focused {
+                            n.caret = Some(a);
                         }
                     }
                 }
@@ -681,7 +698,8 @@ impl Desktop for WindowsDesktop {
         let started = Instant::now();
         let (win, others) = self.resolve_window(pid, window)?;
         let path = exe_path(pid as u32).unwrap_or_default();
-        let mut walker = Walker { uia: &self.uia, deadline, nodes: 0, partial: false };
+        let focus = unsafe { self.uia.automation.GetFocusedElement() }.ok().map(|f| runtime_id(&f)).filter(|k| !k.is_empty());
+        let mut walker = Walker { uia: &self.uia, focus, deadline, nodes: 0, partial: false };
         let root = unsafe {
             match from {
                 Some(Elem(e)) => {
@@ -847,8 +865,15 @@ unsafe fn set_value(e: &IUIAutomationElement, value: &str) -> Result<Acted, Comp
         } else {
             return Err(fail(ComputerErrorKind::ActionUnsupported, "the element has no value it takes without typing"));
         }
+        // the evidence, read for up to 300 ms (§5.3): Chromium updates its tree after the write.
         // RichEdit hands back \r for each line break: compare as written
-        let back = current_text(e).map(|t| if !value.contains('\r') { t.replace("\r\n", "\n").replace('\r', "\n") } else { t });
+        let read = || current_text(e).map(|t| if !value.contains('\r') { t.replace("\r\n", "\n").replace('\r', "\n") } else { t });
+        let until = Instant::now() + std::time::Duration::from_millis(300);
+        let mut back = read();
+        while back.as_deref() != Some(value) && Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+            back = read();
+        }
         Ok(Acted { value: back, via: None })
     }
 }
