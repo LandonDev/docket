@@ -142,7 +142,9 @@ export function rigSpawn(port: number, guestDataDir: string, hostDataDir: string
         while ((nl = outBuf.indexOf('\n')) >= 0) {
           const line = outBuf.slice(0, nl)
           outBuf = outBuf.slice(nl + 1)
-          queue = queue.then(() => child.stdout.write(fetchShots(line, guestDataDir, hostDataDir) + '\n') && undefined)
+          queue = queue.then(() => {
+            child.stdout.write(fetchShots(line, guestDataDir, hostDataDir) + '\n')
+          })
         }
       })
       s.on('close', () => {
