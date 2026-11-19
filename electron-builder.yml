@@ -75,7 +75,10 @@ mac:
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    - NSAppleEventsUsageDescription: TempCode restarts your terminal sessions after switching accounts.
+    # One string for every app TempCode scripts: Office for Work's agents (docs/agents/work-office.md)
+    # and Terminal after an account switch. Under the hardened runtime macOS asks only when the
+    # entitlements also carry com.apple.security.automation.apple-events.
+    - NSAppleEventsUsageDescription: TempCode drives Excel, Word, PowerPoint and Outlook for your agents, and restarts your terminal sessions after switching accounts.
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 # Windows: built unsigned, on the Mac or the box, with `--config build/electron-builder.win.yml` (that file
