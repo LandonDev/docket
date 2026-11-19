@@ -2,7 +2,7 @@ import type { OfficeApp, OfficeAppState, OfficeCell } from '@shared/contract-wor
 
 /**
  * What carries an Office tool out (docs/agents/work-office.md "Carriers"):
- * the Mac's osascript now (mac.ts), Outlook on the web on the box (M38) and
+ * the Mac's osascript (mac.ts), Outlook on the web on the box (owa/) and
  * COM on Windows (M44) later. One interface, so the tools, the held acts and
  * Excel behind the grid never know which. The fake (fake.ts) is an Office in
  * memory for the box's tests.
@@ -90,7 +90,7 @@ export type EventAnswer = 'accept' | 'decline' | 'tentative'
 export type DocEdit = { insert: string; at: 'start' | 'end' } | { find: string; replace: string }
 
 export interface OfficeCarrier {
-  readonly kind: 'mac' | 'fake' | 'addin'
+  readonly kind: 'mac' | 'owa' | 'fake' | 'addin'
   apps(): Promise<OfficeAppState[]>
 
   workbooks(): Promise<WorkbookInfo[]>

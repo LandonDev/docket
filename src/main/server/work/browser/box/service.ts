@@ -76,6 +76,9 @@ interface SessionState {
 
 const SAFE_URL = /^(https?:\/\/|about:blank$)/i
 
+/** Pages the host keeps for itself (the Outlook on the web carrier's tab): no thread sees or drives them. */
+export const RESERVED_TARGETS = new Set<string>()
+
 export const MODIFIER_BITS: Record<Modifier, number> = { alt: 1, ctrl: 2, super: 4, shift: 8 }
 
 /** A key as DevTools dispatches it. */
@@ -309,7 +312,7 @@ export class BoxComputerService {
   private async pages(): Promise<Page[]> {
     const cdp = await this.browser()
     const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string; url: string }[] }>('Target.getTargets')
-    const pages = targetInfos.filter((t) => t.type === 'page')
+    const pages = targetInfos.filter((t) => t.type === 'page' && !RESERVED_TARGETS.has(t.targetId))
     for (const id of [...this.windows.keys()]) if (!pages.some((t) => t.targetId === id)) this.forgetPage(id)
     return pages.map((t) => {
       if (!this.windows.has(t.targetId)) this.windows.set(t.targetId, this.nextWindow++)

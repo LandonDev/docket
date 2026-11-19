@@ -24,6 +24,8 @@ import { BoxComputerService, inProcessSpawn } from './service'
  */
 
 export interface BoxBrowserHost {
+  /** <dataDir>/work-browser/box: the profile, the import folder and the carrier's marker live here */
+  root: string
   browser: BoxChromium
   service: ComputerService
   sessions: ComputerSessions
@@ -80,7 +82,7 @@ export function wireBoxBrowser(o: { registry: BoxRegistry; store: SettingsStore;
   })
   o.registry.onMeta((m) => sessions.onMeta(m))
   o.registry.onRemoved((ids) => void sessions.end(ids))
-  host = { browser, service, sessions }
+  host = { root, browser, service, sessions }
   return host
 }
 

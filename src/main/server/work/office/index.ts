@@ -11,6 +11,7 @@ import { officeActs } from './held'
 import { addinHandle, addinHub, addinTools, ensureAddinTables, startAddin } from './addin'
 import { withAddin } from './addin/carrier'
 import { macCarrier } from './mac'
+import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
 
@@ -22,7 +23,7 @@ import { officeTool, runHere, type Env } from './tools'
  * Outlook after his press. Sends are held acts (held.ts).
  */
 
-let carrierFor: () => OfficeCarrier | null = () => withAddin(process.platform === 'darwin' ? macCarrier() : null, addinHub)
+let carrierFor: () => OfficeCarrier | null = () => withAddin(process.platform === 'darwin' ? macCarrier() : process.platform === 'linux' ? owaCarrier() : null, addinHub)
 /** A test hands its own carrier (a `FakeOffice`); null: this host has none. */
 export const setCarrier = (fn: () => OfficeCarrier | null): void => {
   carrierFor = fn
