@@ -45,7 +45,6 @@ export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: Canv
     const done = await ctx.convert({ from: 'docx', to: params.format, input })
     try {
       const data = readFileSync(done.output).toString('base64')
-      if (params.format === 'rtf') warnings.push('RTF keeps no comment replies or resolved state.')
       return { name, data, warnings: [...warnings, ...done.warnings] }
     } finally {
       rmSync(done.output, { force: true })
@@ -56,7 +55,7 @@ export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: Canv
 }
 
 export async function printPage(ctx: WorkCtx, params: { name: string; html: string; paper?: 'A4' | 'Letter' }): Promise<ExportAnswer> {
-  const pdf = await printToPdf(params.html, { paper: params.paper ?? 'A4', dir: scratchDir(ctx) })
+  const { pdf, warnings } = await printToPdf(params.html, { paper: params.paper ?? 'A4', dir: scratchDir(ctx) })
   const stem = safeName(params.name).replace(/\.pdf$/i, '')
-  return { name: `${stem}.pdf`, data: Buffer.from(pdf).toString('base64'), warnings: [] }
+  return { name: `${stem}.pdf`, data: Buffer.from(pdf).toString('base64'), warnings }
 }

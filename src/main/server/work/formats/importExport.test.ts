@@ -98,6 +98,7 @@ async function rig() {
     scopeOf: (id: string) => (id === 't1' ? { sessionId: 't1', workspaceId: 'w1', sector: null, host: 'env_box', away: false, routineRunId: null, shared: () => false } : null),
     canvas: {
       paneOf: (id: string) => id,
+      get: (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1' } : id === 'other' ? { id: 'other', sessionId: 't2' } : null),
       open: (pane: string, _kind: string, source: CanvasSource, title: string) => (opened.push({ pane, source, title }), { id: `i${opened.length + 1}` }),
       close: (id: string) => void closed.push(id)
     },
@@ -133,12 +134,15 @@ describe('a Word file opened in the canvas', () => {
     expect(readFileSync(original).equals(before)).toBe(true)
     expect(r.opened).toEqual([{ pane: 't1', source: got.source, title: 'review' }])
     expect(r.closed).toEqual(['i0'])
+    // An item of another thread's pane is never closed by an import.
+    await r.ask<ImportAnswer>('work.formats.import', { sessionId: 't1', itemId: 'other', from: { at: 'source', source: { at: 'file', host: 'env_box', path: original } } })
+    expect(r.closed).toEqual(['i0'])
     const rows = JSON.parse((r.ctx.db.prepare('SELECT rows FROM work_docs_threads WHERE doc = ?').get(fileDocName(join(r.work, 'review.tcdoc'))) as { rows: string }).rows) as unknown[]
     expect(rows).toHaveLength(3)
     expect((await r.branches(join(r.work, 'review.tcdoc'))).map((b) => b.authors[0]).sort()).toEqual(['external:Ada Reviewer', 'external:Ben Editor'])
     // A second import of the same file makes another document, never over the first.
     const again = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path: original } } })
-    expect((again.source as { path: string }).path).toBe(join(r.work, 'review 2.tcdoc'))
+    expect((again.source as { path: string }).path).toBe(join(r.work, 'review 3.tcdoc'))
   })
 
   it('a remote key reaches only files inside its roots', async () => {
@@ -192,7 +196,7 @@ describe('a document out as a file', () => {
   it('PDF: the window’s print page printed here', async () => {
     const r = await rig()
     let printed = ''
-    setPrinter(async (html, o) => ((printed = `${o.paper}:${html}`), new TextEncoder().encode('%PDF-1.7')))
+    setPrinter(async (html, o) => ((printed = `${o.paper}:${html}`), { pdf: new TextEncoder().encode('%PDF-1.7'), warnings: [] }))
     const out = await r.ask<ExportAnswer>('work.formats.print', { name: 'Plan', html: '<h1>Plan</h1>', paper: 'Letter' })
     expect(out).toEqual({ name: 'Plan.pdf', data: Buffer.from('%PDF-1.7').toString('base64'), warnings: [] })
     expect(printed).toBe('Letter:<h1>Plan</h1>')
@@ -220,7 +224,6 @@ describe.skipIf(!REAL)('through the real LibreOffice and pymupdf4llm (TEMP_CODE_
     const r = await rig()
     const got = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path: word(r) } } })
     const rtf = await r.ask<ExportAnswer>('work.formats.export', { source: got.source, format: 'rtf' })
-    expect(rtf.warnings.some((w) => /RTF/.test(w))).toBe(true)
     const path = join(r.work, 'back.rtf')
     writeFileSync(path, Buffer.from(rtf.data, 'base64'))
     const again = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path } } })

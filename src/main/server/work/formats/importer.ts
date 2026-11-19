@@ -6,6 +6,7 @@ import type { ExportAnswer, ImportAnswer } from '@shared/contract-work-formats'
 import { canvasSourcePath, type CanvasSource } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
+import { ensureThreadTables } from '../docs/threads'
 import { canonicalPath } from '../service/ctx'
 
 /**
@@ -34,6 +35,8 @@ const DROPPED: Record<string, (n: number) => string> = {
   listInCell: (n) => `${n} list ${n === 1 ? 'item' : 'items'} inside table cells kept as text`,
   nestedTable: (n) => `${n} ${n === 1 ? 'table' : 'tables'} inside a table kept as text`,
   image: (n) => `${n} ${n === 1 ? 'picture' : 'pictures'} that could not be read left out`,
+  unsafeLink: (n) => `${n} ${n === 1 ? 'link' : 'links'} to somewhere other than the web or mail kept as text`,
+  paragraphJoin: (n) => `${n} tracked ${n === 1 ? 'join' : 'joins'} of two paragraphs not kept`,
   paragraphFormatChange: (n) => `${n} tracked ${n === 1 ? 'change' : 'changes'} to paragraph formatting not kept`,
   overlappingChange: (n) => `${n} ${n === 1 ? 'suggestion' : 'suggestions'} on a paragraph another suggestion changes left out`,
   blockFormatChange: (n) => `${n} ${n === 1 ? 'change' : 'changes'} of a block's kind or look written as they stand`,
@@ -67,7 +70,8 @@ function folderFor(ctx: WorkCtx, sessionId: string | undefined): string {
   const row = scope?.workspaceId ? (ctx.db.prepare('SELECT path FROM workspaces WHERE id = ?').get(scope.workspaceId) as { path?: string } | undefined) : undefined
   const dir = row?.path && existsSync(row.path) ? row.path : join(ctx.dataDir, 'attachments', 'work-imports')
   mkdirSync(dir, { recursive: true })
-  return dir
+  // The path a document is opened by (and its threads are kept under) is the real one, links resolved.
+  return canonicalPath(dir)
 }
 
 /** Scratch files for a job, under the formats pillar's own folder. */
@@ -133,17 +137,19 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
   const target = freePath(folder, stem, '.tcdoc')
   const { writeImportedTcdoc } = await import('work-kit/formats/tcdoc')
   const made = await writeImportedTcdoc(target, read.imported, { principal: 'owner' })
-  if (made.threads.length) {
-    ctx.db.exec('CREATE TABLE IF NOT EXISTS work_docs_threads (doc TEXT PRIMARY KEY, rows TEXT NOT NULL)')
-    ctx.db.prepare('INSERT OR REPLACE INTO work_docs_threads (doc, rows) VALUES (?, ?)').run(fileDocName(target), JSON.stringify(made.threads))
-  }
+  // Always written, an empty list too: a row a deleted file left under this name is never inherited.
+  ensureThreadTables(ctx.db)
+  ctx.db.prepare('INSERT OR REPLACE INTO work_docs_threads (doc, rows) VALUES (?, ?)').run(fileDocName(target), JSON.stringify(made.threads))
   const source: CanvasSource = { at: 'file', host: ctx.host, path: target }
   const warnings = [...read.warnings, ...droppedWords(read.imported.sidecar.dropped)]
+  if (made.unplaced) warnings.push(`${made.unplaced} ${made.unplaced === 1 ? 'comment is' : 'comments are'} on suggested words, so ${made.unplaced === 1 ? 'it has' : 'they have'} no place in the text`)
   let itemId: string | undefined
   if (params.sessionId) {
     const pane = ctx.canvas.paneOf(params.sessionId)
     itemId = ctx.canvas.open(pane, 'document', source, stem).id
-    if (params.itemId && params.itemId !== itemId) ctx.canvas.close(params.itemId)
+    // The item it replaces, only when it is in the same pane: a caller cannot close another thread's items.
+    const old = params.itemId && params.itemId !== itemId ? ctx.canvas.get(params.itemId) : null
+    if (old && ctx.canvas.paneOf(old.sessionId) === pane) ctx.canvas.close(old.id)
   }
   ctx.log(`formats: imported ${name} as ${basename(target)} (${made.threads.length} threads, ${made.branches.length} authors of changes)`)
   return { source, title: stem, ...(itemId ? { itemId } : {}), warnings, outsiders: made.outsiders }

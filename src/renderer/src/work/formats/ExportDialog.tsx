@@ -49,7 +49,8 @@ function Body({ target, onClose, pending, setPending }: { target: ExportTarget; 
   const close = useModalClose();
   const [format, setFormat] = useState<ExportFormat>(lastFormat);
   const [error, setError] = useState<string | null>(null);
-  const comments = target.editor?.domElement?.querySelectorAll(".bn-thread-mark").length ?? 0;
+  // Threads, not marks: a thread over three lines is one comment.
+  const comments = new Set(Array.from(target.editor?.domElement?.querySelectorAll(".bn-thread-mark") ?? [], (m) => m.getAttribute("data-bn-thread-id") ?? m.textContent)).size;
   const note = formatNote(format, { comments, suggestions: target.suggestions });
 
   const run = async (): Promise<void> => {

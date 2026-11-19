@@ -116,7 +116,7 @@ describe("Import", () => {
     await waitFor(() => expect(s.lines.at(-1)).toMatchObject({ tone: "failed", word: "Did not open", detail: "that file is not there any more", action: { label: "Retry" } }));
   });
 
-  it("a file dropped on a document opens as a document; a file that is not one is refused in a toast", async () => {
+  it("a file dropped on a document opens as a document; a picture is left to the editor", async () => {
     answer = async () => ({ source: SOURCE, title: "Plan", itemId: "i3", warnings: [], outsiders: false });
     render(
       <DropImport env="env_box" sessionId="t1" editor={null}>
@@ -128,7 +128,8 @@ describe("Import", () => {
     fireEvent.dragEnter(zone, { dataTransfer: { types: ["Files"], files: [] } });
     expect(screen.getByText("Drop to open as a document")).toBeTruthy();
     await act(async () => drop(new File(["%PNG"], "photo.png")));
-    await waitFor(() => expect(toasts).toEqual(["error: A document opens from Word, OpenDocument, RTF, markdown, HTML or PDF"]));
+    expect(requests).toEqual([]);
+    expect(toasts).toEqual([]);
     await act(async () => drop(new File([new Uint8Array([80, 75, 3, 4])], "Brief.docx")));
     await waitFor(() => expect(requests).toHaveLength(1));
     expect(requests[0]!.params).toEqual({ sessionId: "t1", from: { at: "bytes", name: "Brief.docx", data: toBase64(new Uint8Array([80, 75, 3, 4])) } });

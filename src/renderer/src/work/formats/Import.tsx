@@ -18,17 +18,19 @@ import { DROP_MAX_BYTES, importable, isHtml, toBase64, warningsLine } from "./mo
 
 const IMPORT_MS = 5 * 60_000;
 
-/** One import per item at a time: an effect run twice (React's dev check, a quick remount) makes one document. */
-const inFlight = new Map<string, Promise<ImportAnswer>>();
+/**
+ * One import per key: an effect run again (React's dev check, a remount, a new shell before the host's
+ * push closes the item) gets the same answer and makes no second document. A key that failed is
+ * forgotten, so Retry asks again.
+ */
+const imports = new Map<string, Promise<ImportAnswer>>();
 
 function importOnce(env: string, key: string, params: Record<string, unknown>): Promise<ImportAnswer> {
-  const running = inFlight.get(key);
-  if (running) return running;
-  const p = registry
-    .linkOf(env)
-    .request<ImportAnswer>("work.formats.import", params, { timeoutMs: IMPORT_MS })
-    .finally(() => inFlight.delete(key));
-  inFlight.set(key, p);
+  const known = imports.get(key);
+  if (known) return known;
+  const p = registry.linkOf(env).request<ImportAnswer>("work.formats.import", params, { timeoutMs: IMPORT_MS });
+  p.catch(() => imports.delete(key));
+  imports.set(key, p);
   return p;
 }
 
@@ -40,10 +42,17 @@ const sayWarnings = (a: ImportAnswer): void => {
 /** The body of a Word file's item while it becomes a document: the editor's bones, or the one state line when it cannot. */
 export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown>) {
   const [attempt, setAttempt] = useState(0);
+  const said = useRef(false);
   useEffect(() => {
     let live = true;
     shell.statusLine(null);
-    importOnce(env, `${item.id}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source } }).then(sayWarnings, (err: unknown) => {
+    importOnce(env, `${item.id}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source } }).then(
+      (a) => {
+        if (said.current) return;
+        said.current = true;
+        sayWarnings(a);
+      },
+      (err: unknown) => {
       if (!live) return;
       shell.statusLine({
         tone: "failed",
@@ -51,7 +60,8 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
         detail: err instanceof Error && err.message ? err.message : "It could not be read",
         action: { label: "Retry", run: () => setAttempt((n) => n + 1) },
       });
-    });
+      },
+    );
     return () => {
       live = false;
     };
@@ -93,7 +103,6 @@ export function DropImport({ env, sessionId, editor, children }: { env: string; 
   };
   const drop = async (file: File): Promise<void> => {
     const toast = await loadToast();
-    if (!importable(file.name)) return void toast.error("A document opens from Word, OpenDocument, RTF, markdown, HTML or PDF");
     if (file.size > DROP_MAX_BYTES) return void toast.error("That file is over 64 MB");
     setBusy(file.name);
     try {
@@ -124,10 +133,12 @@ export function DropImport({ env, sessionId, editor, children }: { env: string; 
       }}
       onDrop={(e) => {
         if (!hasFiles(e)) return;
-        e.preventDefault();
         leave();
-        const file = e.dataTransfer.files[0];
-        if (file && !busy) void drop(file);
+        // A file that is not a document (a picture) is the editor's to take.
+        const file = Array.from(e.dataTransfer.files).find((f) => importable(f.name));
+        if (!file) return;
+        e.preventDefault();
+        if (!busy) void drop(file);
       }}
     >
       {children}
