@@ -24,24 +24,29 @@ impl<H> Default for AppBook<H> {
 
 impl<H: Clone> AppBook<H> {
     /// The element's number, assigning the next unused one to an element not seen before.
-    /// An element with no key (no RuntimeId) is new on every read.
-    pub fn index_of(&mut self, key: &[i32], handle: H) -> i64 {
+    /// An element with no key (no RuntimeId) is new on every read, and so is one whose key another
+    /// element of this read (`used`) already took: two UI Automation elements can share a RuntimeId,
+    /// and an index appears once in a read and always names the element it was printed for.
+    pub fn index_of(&mut self, key: &[i32], handle: H, used: &std::collections::HashSet<i64>) -> i64 {
         let found = if key.is_empty() { None } else { self.by_key.get(key).copied() };
-        let index = found.unwrap_or_else(|| {
-            let i = self.next;
-            self.next += 1;
-            if !key.is_empty() {
-                self.by_key.insert(key.to_vec(), i);
+        match found {
+            Some(i) if !used.contains(&i) => {
+                self.handles.insert(i, handle);
+                i
             }
-            i
-        });
-        self.handles.insert(index, handle);
-        index
+            Some(_) => self.fresh(handle),
+            None => {
+                let i = self.fresh(handle);
+                if !key.is_empty() {
+                    self.by_key.insert(key.to_vec(), i);
+                }
+                i
+            }
+        }
     }
 
-    /// A number of its own for an element whose key another element of the same read already took
-    /// (two UI Automation elements can share a RuntimeId): an index appears once in a read.
-    pub fn fresh(&mut self, handle: H) -> i64 {
+    /// A number never given before.
+    fn fresh(&mut self, handle: H) -> i64 {
         let i = self.next;
         self.next += 1;
         self.handles.insert(i, handle);
@@ -100,19 +105,31 @@ mod tests {
 
     #[test]
     fn numbers_persist_and_are_never_reused() {
+        let none = std::collections::HashSet::new();
         let mut b: AppBook<u8> = AppBook::default();
-        assert_eq!(b.index_of(&[1, 2], 0), 1);
-        assert_eq!(b.index_of(&[3], 0), 2);
-        assert_eq!(b.index_of(&[1, 2], 0), 1);
-        assert_eq!(b.index_of(&[], 0), 3);
-        assert_eq!(b.index_of(&[], 0), 4);
+        assert_eq!(b.index_of(&[1, 2], 0, &none), 1);
+        assert_eq!(b.index_of(&[3], 0, &none), 2);
+        assert_eq!(b.index_of(&[1, 2], 0, &none), 1);
+        assert_eq!(b.index_of(&[], 0, &none), 3);
+        assert_eq!(b.index_of(&[], 0, &none), 4);
         b.keep_only(&[1]);
         assert_eq!(b.handle(2), Err(true));
         assert_eq!(b.handle(99), Err(false));
         assert_eq!(b.handle(1), Ok(0));
-        assert_eq!(b.index_of(&[3], 0), 2, "an element seen again keeps its number");
-        assert_eq!(b.fresh(0), 5);
-        assert_eq!(b.index_of(&[1, 2], 0), 1, "fresh leaves the key's number alone");
+        assert_eq!(b.index_of(&[3], 0, &none), 2, "an element seen again keeps its number");
+    }
+
+    #[test]
+    fn a_second_element_with_a_taken_key_gets_its_own_number_and_leaves_the_first_one_alone() {
+        let mut b: AppBook<&str> = AppBook::default();
+        let mut used = std::collections::HashSet::new();
+        let a = b.index_of(&[7], "A", &used);
+        used.insert(a);
+        let second = b.index_of(&[7], "B", &used);
+        assert_ne!(a, second);
+        assert_eq!(b.handle(a), Ok("A"), "the first element's index still acts on it");
+        assert_eq!(b.handle(second), Ok("B"));
+        assert_eq!(b.index_of(&[7], "A", &std::collections::HashSet::new()), a, "the key keeps its first number");
     }
 
     #[test]

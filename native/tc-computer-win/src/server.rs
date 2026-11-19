@@ -14,6 +14,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use crate::desktop::Desktop;
+use crate::locks::guard;
 use crate::generated::contract::{rpc_error, service as limits};
 use crate::service::Service;
 use crate::wire::{ComputerError, ComputerErrorKind};
@@ -91,7 +92,7 @@ type Out = Arc<Mutex<Box<dyn Write + Send>>>;
 pub fn write_frame(out: &Out, frame: &Value) {
     let mut line = serde_json::to_vec(frame).expect("a frame serializes");
     line.push(b'\n');
-    let mut w = out.lock().unwrap();
+    let mut w = guard(&out);
     if w.write_all(&line).and_then(|_| w.flush()).is_err() {
         std::process::exit(0);
     }
@@ -126,7 +127,7 @@ pub fn serve<D: Desktop>(service: Arc<Service<D>>, mut input: impl Read + Send +
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_millis(limits::PARENT_POLL_MS as u64));
             if !service.desktop().parent_alive() {
-                *exit.0.lock().unwrap() = Some(0);
+                *guard(&exit.0) = Some(0);
                 exit.1.notify_all();
                 return;
             }
@@ -156,20 +157,20 @@ pub fn serve<D: Desktop>(service: Arc<Service<D>>, mut input: impl Read + Send +
                     }
                 });
                 if stop {
-                    *exit.0.lock().unwrap() = Some(0);
+                    *guard(&exit.0) = Some(0);
                     exit.1.notify_all();
                     return;
                 }
             }
             // stdin EOF (§1)
-            *exit.0.lock().unwrap() = Some(0);
+            *guard(&exit.0) = Some(0);
             exit.1.notify_all();
         });
     }
 
-    let mut code = exit.0.lock().unwrap();
+    let mut code = guard(&exit.0);
     while code.is_none() {
-        code = exit.1.wait(code).unwrap();
+        code = exit.1.wait(code).unwrap_or_else(|e| e.into_inner());
     }
     Exit(code.unwrap())
 }
@@ -217,7 +218,7 @@ fn on_line<D: Desktop>(
         // the host's notifications
         if method == "$/cancel" {
             if let Some(target) = params.get("id") {
-                if let Some(flag) = cancels.lock().unwrap().get(&target.to_string()) {
+                if let Some(flag) = guard(&cancels).get(&target.to_string()) {
                     flag.store(true, Ordering::SeqCst);
                 }
             }
@@ -226,14 +227,14 @@ fn on_line<D: Desktop>(
     };
     // never behind work (§1)
     if matches!(method.as_str(), "permissions.get" | "clipboard.state" | "shutdown") {
-        let reply = service.handle(&method, params, &AtomicBool::new(false));
+        let reply = guarded(|| service.handle(&method, params, &AtomicBool::new(false)));
         write_frame(out, &answer_frame(&id, reply.clone()));
         return method == "shutdown" && reply.is_ok();
     }
     let cancel = Arc::new(AtomicBool::new(false));
-    cancels.lock().unwrap().insert(id.to_string(), cancel.clone());
+    guard(&cancels).insert(id.to_string(), cancel.clone());
     let job = Job { id, method, params, cancel };
-    let mut adm = admission.lock().unwrap();
+    let mut adm = guard(&admission);
     if adm.running < limits::MAX_IN_FLIGHT as usize {
         adm.running += 1;
         drop(adm);
@@ -243,11 +244,19 @@ fn on_line<D: Desktop>(
         adm.queue.push_back(job);
     } else {
         drop(adm);
-        cancels.lock().unwrap().remove(&job.id.to_string());
+        guard(&cancels).remove(&job.id.to_string());
         let msg = format!("overloaded: {} requests waiting", limits::MAX_QUEUED);
         write_frame(out, &error_frame(&job.id, &RpcError::std(rpc_error::INTERNAL_ERROR, msg)));
     }
     false
+}
+
+/// A handler that panicked answers -32603 rather than leaving its request unanswered and its slot taken.
+fn guarded(f: impl FnOnce() -> Result<Value, RpcError>) -> Result<Value, RpcError> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|e| {
+        let why = e.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| e.downcast_ref::<String>().cloned()).unwrap_or_default();
+        Err(RpcError::std(rpc_error::INTERNAL_ERROR, format!("internal fault: {why}")))
+    })
 }
 
 /// Runs a job, writes its answer, then takes the next waiting one; the slot frees only once the answer is written.
@@ -262,11 +271,11 @@ fn run_jobs<D: Desktop>(
         let reply = if job.cancel.load(Ordering::SeqCst) {
             Err(ComputerError { kind: ComputerErrorKind::Cancelled, message: "cancelled".into(), ..Default::default() }.into())
         } else {
-            service.handle(&job.method, job.params, &job.cancel)
+            guarded(|| service.handle(&job.method, job.params, &job.cancel))
         };
         write_frame(&out, &answer_frame(&job.id, reply));
-        cancels.lock().unwrap().remove(&job.id.to_string());
-        let mut adm = admission.lock().unwrap();
+        guard(&cancels).remove(&job.id.to_string());
+        let mut adm = guard(&admission);
         match adm.queue.pop_front() {
             Some(next) => job = next,
             None => {

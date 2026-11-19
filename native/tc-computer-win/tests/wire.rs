@@ -20,6 +20,8 @@ struct Fake {
     value: Mutex<String>,
     /// the save button exists
     save: Mutex<bool>,
+    /// a read panics, as a UIA fault would
+    panics: bool,
 }
 
 impl Desktop for Fake {
@@ -38,6 +40,9 @@ impl Desktop for Fake {
         ])
     }
     fn read(&self, pid: i64, window: Option<&WindowRef>, from: Option<&&'static str>, _deadline: Instant) -> Result<RawWindow<&'static str>, ComputerError> {
+        if self.panics {
+            panic!("the reader fell over");
+        }
         if pid != 10 {
             return Err(fail(ComputerErrorKind::WindowNotFound, "no window"));
         }
@@ -263,4 +268,36 @@ fn shutdown_is_answered_then_the_service_ends() {
     let mut w = Wire::start(Fake::default());
     init(&mut w);
     assert_eq!(w.ok("shutdown", json!({})), json!({}));
+}
+
+#[test]
+fn shutdown_before_initialize_is_answered() {
+    let mut w = Wire::start(Fake::default());
+    assert_eq!(w.ok("shutdown", json!({})), json!({}));
+}
+
+#[test]
+fn an_empty_batch_and_no_tiers_are_bad_params_and_an_old_epoch_under_expect_focus_is_stale() {
+    let mut w = Wire::start(Fake::default());
+    init(&mut w);
+    w.ok("session.open", json!({ "session": "s" }));
+    let empty = w.call("action.batch", json!({ "session": "s", "app": { "app": "Notepad" }, "actions": [], "tiers": ["ax"] }));
+    assert_eq!(empty["error"]["code"], json!(-32602));
+    let no_tiers = w.call("action.run", json!({ "session": "s", "app": { "app": "Notepad" }, "action": { "action": "wait", "duration": 0.1 }, "tiers": [] }));
+    assert_eq!(no_tiers["error"]["code"], json!(-32602));
+    let kind = w.kind("action.run", json!({ "session": "s", "app": { "app": "Notepad" }, "epoch": "old", "expectFocus": 2, "action": { "action": "wait", "duration": 0.1 }, "tiers": ["ax"] }));
+    assert_eq!(kind, "stale_element");
+}
+
+#[test]
+fn a_handler_that_panics_is_answered_and_frees_its_slot() {
+    let mut w = Wire::start(Fake { panics: true, ..Default::default() });
+    init(&mut w);
+    w.ok("session.open", json!({ "session": "s" }));
+    for _ in 0..40 {
+        let f = w.call("state.get", json!({ "session": "s", "app": { "app": "Notepad" } }));
+        assert_eq!(f["error"]["code"], json!(-32603), "{f}");
+        assert!(f["error"]["message"].as_str().unwrap().contains("the reader fell over"));
+    }
+    assert_eq!(w.ok("apps.list", json!({}))["apps"][0]["name"], json!("Notepad"), "40 faults later the service still answers");
 }

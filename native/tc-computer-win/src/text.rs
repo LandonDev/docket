@@ -82,7 +82,7 @@ pub fn space_of(w: f64, h: f64) -> CoordinateSpace {
     let edge = 1280.0 / w.max(h);
     let pixels = (3_750_000.0 / (w * h)).sqrt();
     let scale = 1f64.min(edge).min(pixels);
-    CoordinateSpace { width: (w * scale).round() as i64, height: (h * scale).round() as i64, scale }
+    CoordinateSpace { width: ((w * scale).round() as i64).max(1), height: ((h * scale).round() as i64).max(1), scale }
 }
 
 /// A string as JSON.stringify writes it (serde_json escapes the same set, with lower-case hex).
@@ -180,11 +180,8 @@ impl<H: Clone> Walk<'_, H> {
             }
             return;
         }
-        let mut index = self.book.index_of(&node.key, node.handle.clone());
-        if !self.used.insert(index) {
-            index = self.book.fresh(node.handle.clone());
-            self.used.insert(index);
-        }
+        let index = self.book.index_of(&node.key, node.handle.clone(), &self.used);
+        self.used.insert(index);
         let line = self.line(node, index, depth.min(limits::MAX_DEPTH as usize), &listed);
         let text_bytes = node.name.as_deref().map_or(0, str::len) + node.value.as_deref().map_or(0, str::len);
         let me = self.out.len();
@@ -433,6 +430,8 @@ mod tests {
         let w = win(n("window", Some("W"), 1, vec![n("button", Some("A"), 7, vec![]), n("button", Some("B"), 7, vec![])]));
         let r = render(&w, &w.root, &mut book, TextOptions::default(), false);
         assert!(r.text.ends_with("[2] button \"A\"\n  [3] button \"B\""), "{}", r.text);
+        let r = render(&w, &w.root, &mut book, TextOptions::default(), false);
+        assert!(r.text.ends_with("[2] button \"A\"\n  [4] button \"B\""), "A keeps its number; B gets a new one each read: {}", r.text);
     }
 
     #[test]
@@ -477,5 +476,6 @@ mod tests {
         let s = space_of(2560.0, 1440.0);
         assert_eq!((s.width, s.height), (1280, 720));
         assert_eq!(space_of(800.0, 600.0).scale, 1.0);
+        assert_eq!(space_of(1.0, 4000.0).width, 1, "a side never rounds to 0");
     }
 }

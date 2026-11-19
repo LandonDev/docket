@@ -135,3 +135,13 @@ describe('wordsFor', () => {
     expect(wordsFor({ provider: 'claude', model: 'claude-opus-5-5' })).toEqual({ shape: 'cua', tools: 'act' })
   })
 })
+
+describe("COMPUTER_MECHANICS on a Windows PC (§29.5)", () => {
+  const o = { shape: 'anthropic' as const, tools: 'act' as const, search: false, provenance: 'person' as const }
+  it("says PC where the tools act on a Windows PC, and keeps the Mac's words otherwise", () => {
+    const pc = renderComputerMechanics({ ...o, platform: 'windows' })
+    expect(pc).toContain('This thread runs on a Windows PC.')
+    expect(pc).not.toMatch(/\bMac\b/)
+    expect(renderComputerMechanics({ ...o, platform: 'mac' })).toContain('This thread runs on a Mac.')
+  })
+})

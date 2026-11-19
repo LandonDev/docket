@@ -739,9 +739,10 @@ impl Desktop for WindowsDesktop {
                     match name {
                         "press" => press(e).map(|_| Acted::default()),
                         "toggle" => pattern::<IUIAutomationTogglePattern>(e, UIA_TogglePatternId, name)?.Toggle().map(|_| Acted::default()).map_err(|x| err(ComputerErrorKind::ActionUnsupported, name, x)),
-                        "expand" | "collapse" => {
+                        // `show menu` is a pop up's, menu button's and combo box's role default: it opens their list
+                        "expand" | "collapse" | "show menu" => {
                             let p = pattern::<IUIAutomationExpandCollapsePattern>(e, UIA_ExpandCollapsePatternId, name)?;
-                            if name == "expand" { p.Expand() } else { p.Collapse() }.map(|_| Acted::default()).map_err(|x| err(ComputerErrorKind::ActionUnsupported, name, x))
+                            if name == "collapse" { p.Collapse() } else { p.Expand() }.map(|_| Acted::default()).map_err(|x| err(ComputerErrorKind::ActionUnsupported, name, x))
                         }
                         "increment" | "decrement" => {
                             let p = pattern::<IUIAutomationRangeValuePattern>(e, UIA_RangeValuePatternId, name)?;
@@ -761,7 +762,7 @@ impl Desktop for WindowsDesktop {
                         }
                         "select" => pattern::<IUIAutomationSelectionItemPattern>(e, UIA_SelectionItemPatternId, name)?.Select().map(|_| Acted::default()).map_err(|x| err(ComputerErrorKind::ActionUnsupported, name, x)),
                         _ => Err(ComputerError {
-                            available: Some(vec!["press".into(), "toggle".into(), "expand".into(), "collapse".into(), "increment".into(), "decrement".into(), "scroll up".into(), "scroll down".into(), "select".into()]),
+                            available: Some(vec!["press".into(), "toggle".into(), "expand".into(), "collapse".into(), "show menu".into(), "increment".into(), "decrement".into(), "scroll up".into(), "scroll down".into(), "select".into()]),
                             ..unsupported(&format!("perform {name:?} is not an action this element takes on Windows"))
                         }),
                     }
@@ -821,6 +822,9 @@ unsafe fn press(e: &IUIAutomationElement) -> Result<(), ComputerError> {
     }
 }
 
+/// EM_SETMODIFY (winuser.h): an edit control's modified flag.
+const EM_SETMODIFY: u32 = 0x00B9;
+
 /// The element's own window, when it has one (a classic Edit or RichEdit control).
 unsafe fn own_hwnd(e: &IUIAutomationElement) -> Option<HWND> {
     unsafe { e.CurrentNativeWindowHandle().ok().filter(|h| !h.is_invalid()) }
@@ -858,6 +862,8 @@ unsafe fn set_value(e: &IUIAutomationElement, value: &str) -> Result<Acted, Comp
             if r.0 == 0 || result == 0 {
                 return Err(fail(ComputerErrorKind::ValueNotTaken, "the control did not take the text"));
             }
+            // WM_SETTEXT clears the edit's modified flag (and its undo): set it again, so the app still asks to save
+            SendMessageTimeoutW(hwnd, EM_SETMODIFY, WPARAM(1), LPARAM(0), SMTO_ABORTIFHUNG, 2000, None);
         } else if let Ok(rv) = e.GetCurrentPatternAs::<IUIAutomationRangeValuePattern>(UIA_RangeValuePatternId) {
             let x: f64 = value.trim().parse().map_err(|_| fail(ComputerErrorKind::ValueNotTaken, "the element takes a number"))?;
             rv.SetValue(x).map_err(|x| err(ComputerErrorKind::ValueNotTaken, "set value", x))?;
@@ -903,10 +909,24 @@ unsafe fn select_text(e: &IUIAutomationElement, a: &ComputerAction) -> Result<Ac
             Some(Placement::After) => (to, to),
             _ => (from, to),
         };
+        // UIA counts a provider's own characters (Chromium's are grapheme clusters), so the range is
+        // built by units and then checked against the UTF-16 slice it must hold before it is selected
+        let units = |a: i64, b: i64| -> Option<String> { all.get(a.max(0) as usize..b.max(0) as usize).map(String::from_utf16_lossy) };
         let r = doc.Clone().map_err(|x| err(ComputerErrorKind::ActionUnsupported, "text", x))?;
-        r.MoveEndpointByRange(TextPatternRangeEndpoint_End, &doc, TextPatternRangeEndpoint_Start).ok();
-        r.MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Character, to as i32).ok();
-        r.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, from as i32).ok();
+        let _ = r.MoveEndpointByRange(TextPatternRangeEndpoint_End, &doc, TextPatternRangeEndpoint_Start);
+        let head = units(0, from).unwrap_or_default();
+        let body = units(from, to).ok_or_else(|| fail(ComputerErrorKind::TextNotFound, "the range is past the end of the text"))?;
+        let chars = |t: &str| t.chars().count() as i32;
+        let _ = r.MoveEndpointByUnit(TextPatternRangeEndpoint_End, TextUnit_Character, chars(&head) + chars(&body));
+        let _ = r.MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, chars(&head));
+        let got = r.GetText(-1).map(|t| t.to_string()).unwrap_or_default();
+        let before = doc.Clone().ok().and_then(|p| {
+            p.MoveEndpointByRange(TextPatternRangeEndpoint_End, &r, TextPatternRangeEndpoint_Start).ok()?;
+            p.GetText(-1).ok().map(|t| t.to_string())
+        });
+        if got != body || before.as_deref().is_some_and(|b| b != head) {
+            return Err(fail(ComputerErrorKind::TextNotFound, "the text could not be selected exactly in this element"));
+        }
         r.Select().map_err(|x| err(ComputerErrorKind::ActionUnsupported, "select", x))?;
         Ok(Acted::default())
     }

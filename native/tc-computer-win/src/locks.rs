@@ -6,8 +6,14 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
+
+/// A mutex's guard, taken back from a thread that panicked while holding it: one fault must not stop
+/// every later request.
+pub fn guard<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 #[derive(Default)]
 struct Slot {
@@ -40,7 +46,7 @@ impl AppSlots {
     /// The app's slot for an action, waiting at most `wait`; None means `app_busy`.
     pub fn act(&self, pid: i64, wait: Duration) -> Option<ActGuard<'_>> {
         let deadline = Instant::now() + wait;
-        let mut g = self.slots.lock().unwrap();
+        let mut g = guard(&self.slots);
         g.0 += 1;
         let ticket = g.0;
         g.1.entry(pid).or_default().waiting.push_back(ticket);
@@ -58,25 +64,25 @@ impl AppSlots {
                 self.changed.notify_all();
                 return None;
             }
-            g = self.changed.wait_timeout(g, deadline - now).unwrap().0;
+            g = self.changed.wait_timeout(g, deadline - now).unwrap_or_else(|e| e.into_inner()).0;
         }
     }
 
     /// The app's slot for a read: shared, after any running or queued action.
     pub fn read(&self, pid: i64) -> ReadGuard<'_> {
-        let mut g = self.slots.lock().unwrap();
+        let mut g = guard(&self.slots);
         loop {
             let slot = g.1.entry(pid).or_default();
             if !slot.acting && slot.waiting.is_empty() {
                 slot.readers += 1;
                 return ReadGuard { slots: self, pid };
             }
-            g = self.changed.wait(g).unwrap();
+            g = self.changed.wait(g).unwrap_or_else(|e| e.into_inner());
         }
     }
 
     fn release(&self, pid: i64, action: bool) {
-        let mut g = self.slots.lock().unwrap();
+        let mut g = guard(&self.slots);
         if let Some(slot) = g.1.get_mut(&pid) {
             if action {
                 slot.acting = false;

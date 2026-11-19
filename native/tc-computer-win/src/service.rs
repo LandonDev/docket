@@ -20,7 +20,7 @@ use serde_json::{json, Value};
 use crate::book::Sessions;
 use crate::desktop::{fail, Desktop};
 use crate::generated::contract::{budget, rpc_error, service as limits, walk, COMPUTER_PROTOCOL};
-use crate::locks::{lock_file, AppSlots, FileLock};
+use crate::locks::{guard, lock_file, AppSlots, FileLock};
 use crate::server::{write_frame, RpcError};
 use crate::text::{brief_of, render, space_of, RawWindow, TextOptions};
 use crate::wire::*;
@@ -40,6 +40,8 @@ pub struct Service<D: Desktop> {
     started_at: i64,
     version: String,
     state: Mutex<State<D::Handle>>,
+    /// one initialize at a time, held while it waits for the data dir; never the state lock (§1)
+    init: Mutex<()>,
     slots: AppSlots,
 }
 
@@ -74,6 +76,7 @@ impl<D: Desktop> Service<D> {
             started_at: now_ms(),
             version: version.into(),
             state: Mutex::new(State { initialized: None, _service_lock: None, sessions: Sessions::default() }),
+            init: Mutex::new(()),
             slots: AppSlots::default(),
         }
     }
@@ -95,7 +98,7 @@ impl<D: Desktop> Service<D> {
             let mut first = true;
             loop {
                 std::thread::sleep(Duration::from_millis(1000));
-                if me.state.lock().unwrap().initialized.is_none() {
+                if guard(&me.state).initialized.is_none() {
                     continue;
                 }
                 let Ok(apps) = me.desktop.apps(false) else { continue };
@@ -135,15 +138,15 @@ impl<D: Desktop> Service<D> {
         }
         // params are checked before the init gate, as the box's service does
         let gate = || -> Result<(), RpcError> {
-            if self.state.lock().unwrap().initialized.is_none() {
+            if guard(&self.state).initialized.is_none() {
                 return Err(fail(ComputerErrorKind::NotInitialized, "initialize first").into());
             }
             Ok(())
         };
         match method {
+            // answered before initialize too, as the Swift service does, so a host can end one it gave up on
             "shutdown" => {
                 let _: Empty = decode(params)?;
-                gate()?;
                 encode(json!({}))
             }
             "permissions.get" | "permissions.request" => {
@@ -166,13 +169,13 @@ impl<D: Desktop> Service<D> {
             "session.open" => {
                 let p: SessionRef = decode(params)?;
                 gate()?;
-                self.state.lock().unwrap().sessions.open(&p.session);
+                guard(&self.state).sessions.open(&p.session);
                 encode(json!({}))
             }
             "session.close" => {
                 let p: SessionRef = decode(params)?;
                 gate()?;
-                self.state.lock().unwrap().sessions.close(&p.session);
+                guard(&self.state).sessions.close(&p.session);
                 encode(json!({}))
             }
             "state.get" => {
@@ -182,17 +185,23 @@ impl<D: Desktop> Service<D> {
             }
             "action.run" => {
                 let p: ActionRunParams = decode(params)?;
+                if p.tiers.is_empty() {
+                    return Err(RpcError::std(rpc_error::INVALID_PARAMS, "invalid params: at least one tier"));
+                }
                 gate()?;
                 let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch };
                 let wait = p.ax_wait.or(p.wait);
-                let r = self.run_steps(&target, &[p.action], &p.tiers, None, wait, p.observe.as_ref(), cancel)?;
+                let r = self.run_steps(&target, &[p.action], &p.tiers, None, wait, p.observe.as_ref(), p.expect_focus.is_some(), cancel)?;
                 encode(ActionResult { step: r.steps.into_iter().next().unwrap(), observation: r.observation, observation_error: r.observation_error, ..Default::default() })
             }
             "action.batch" => {
                 let p: ActionBatchParams = decode(params)?;
+                if p.actions.is_empty() || p.actions.len() > limits::BATCH_MAX_ACTIONS as usize || p.tiers.is_empty() {
+                    return Err(RpcError::std(rpc_error::INVALID_PARAMS, format!("invalid params: 1 to {} actions and at least one tier", limits::BATCH_MAX_ACTIONS)));
+                }
                 gate()?;
                 let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch };
-                let r = self.run_steps(&target, &p.actions, &p.tiers, p.ax_step_wait.or(p.step_wait), p.ax_wait.or(p.wait), p.observe.as_ref(), cancel)?;
+                let r = self.run_steps(&target, &p.actions, &p.tiers, p.ax_step_wait.or(p.step_wait), p.ax_wait.or(p.wait), p.observe.as_ref(), p.expect_focus.is_some(), cancel)?;
                 encode(r)
             }
             "capture.screenshot" | "capture.stream.start" => {
@@ -226,8 +235,8 @@ impl<D: Desktop> Service<D> {
         if p.protocol != COMPUTER_PROTOCOL {
             return Err(fail(ComputerErrorKind::ProtocolMismatch, format!("this service speaks protocol {COMPUTER_PROTOCOL}")).into());
         }
-        let mut st = self.state.lock().unwrap();
-        if let Some((dir, result)) = &st.initialized {
+        let _one = guard(&self.init);
+        if let Some((dir, result)) = &guard(&self.state).initialized {
             if *dir == p.data_dir {
                 return encode(result.clone());
             }
@@ -247,6 +256,7 @@ impl<D: Desktop> Service<D> {
             displays: self.desktop.displays(),
             features: Some(vec![]),
         };
+        let mut st = guard(&self.state);
         st.initialized = Some((p.data_dir, result.clone()));
         st._service_lock = Some(lock);
         encode(result)
@@ -288,7 +298,7 @@ impl<D: Desktop> Service<D> {
     }
 
     fn check_session(&self, t: &Target) -> Result<(), ComputerError> {
-        if !self.state.lock().unwrap().sessions.is_open(&t.session) {
+        if !guard(&self.state).sessions.is_open(&t.session) {
             return Err(fail(ComputerErrorKind::UnknownSession, format!("no session {}", t.session)));
         }
         Ok(())
@@ -310,7 +320,7 @@ impl<D: Desktop> Service<D> {
 
     /// The handle behind an index, or the error a call naming it answers.
     fn element(&self, session: &str, pid: i64, index: i64) -> Result<D::Handle, ComputerError> {
-        let mut st = self.state.lock().unwrap();
+        let mut st = guard(&self.state);
         let book = st.sessions.book(session, pid).ok_or_else(|| fail(ComputerErrorKind::UnknownSession, format!("no session {session}")))?;
         book.handle(index).map_err(|gone| {
             if gone {
@@ -325,7 +335,7 @@ impl<D: Desktop> Service<D> {
     fn observe(&self, session: &str, raw: RawWindow<D::Handle>, subtree: bool, geometry: bool, budget_bytes: Option<i64>, waited: Option<WaitReport>) -> Result<Observation, ComputerError> {
         let started = Instant::now();
         let bytes = budget_bytes.unwrap_or(budget::DEFAULT_BYTES).clamp(budget::MIN_BYTES, budget::MAX_BYTES) as usize;
-        let mut st = self.state.lock().unwrap();
+        let mut st = guard(&self.state);
         let book = st.sessions.book(session, raw.pid).ok_or_else(|| fail(ComputerErrorKind::UnknownSession, format!("no session {session}")))?;
         let r = render(&raw, &raw.root, book, TextOptions { budget_bytes: bytes, geometry, whole_values: subtree }, false);
         if !subtree {
@@ -425,10 +435,12 @@ impl<D: Desktop> Service<D> {
         step_wait: Option<WaitOptions>,
         wait: Option<WaitOptions>,
         observe: Option<&ObserveOptions>,
+        expect_focus: bool,
         cancel: &AtomicBool,
     ) -> Result<BatchResult, RpcError> {
         self.check_session(target)?;
-        let names_element = actions.iter().any(|a| a.element.is_some() || a.start_element.is_some());
+        // expectFocus is an element index too (§2); no step here posts a key, so it is checked for its epoch only
+        let names_element = expect_focus || actions.iter().any(|a| a.element.is_some() || a.start_element.is_some());
         if names_element {
             self.check_epoch(target)?;
         }
@@ -441,7 +453,7 @@ impl<D: Desktop> Service<D> {
             steps.push(StepResult::Failed(FailedStep { index: 0, action: actions[0].action, error: fail(ComputerErrorKind::AppBusy, format!("{} is busy with another action", app.name)) }));
         }
         let before = {
-            let mut st = self.state.lock().unwrap();
+            let mut st = guard(&self.state);
             st.sessions.book(&target.session, pid).and_then(|b| b.last_text.clone())
         };
         for (i, action) in actions.iter().enumerate().skip(steps.len()) {

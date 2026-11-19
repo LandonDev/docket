@@ -100,6 +100,7 @@ import { MacThreadTokens, macToolsHooks, toolUseIdOf } from './macTools'
 import { COMPUTER_APP_TOOLS, computerHooks, computerTools, eagerComputer, type ComputerHost } from './computer/mcp'
 import { computerBridgeHooks } from './computer/bridge'
 import { provenanceOf, renderComputerMechanics, wordsFor } from './computer/prompts'
+import { localComputerPlatform } from '@shared/computer/descriptions'
 import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
@@ -295,7 +296,9 @@ export function computerMechanicsFor(session: SessionMeta, host: ComputerHost | 
   if (!offersComputerTools(session, host)) return ''
   // Claude's tools are in process and four, behind tool search unless loaded at spawn (§27.11); the bridge (Codex, Muse) also lists computer_result
   const claude = session.provider === 'claude'
-  return renderComputerMechanics({ ...wordsFor(session), search: claude && !eagerComputer(session, host), provenance: provenanceOf(session), held: !claude })
+  // the words of the host the tools act on: this one's when computer use is local, else the Mac's across the bridge (§29.5)
+  const platform = host?.available() ? localComputerPlatform() : 'mac'
+  return renderComputerMechanics({ ...wordsFor(session), search: claude && !eagerComputer(session, host), provenance: provenanceOf(session), held: !claude, platform })
 }
 
 /** The code tools' methods: merge, the plan's completion, a batch's gate and landing rules. A Work thread is listed none of them, by any harness. */
