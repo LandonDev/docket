@@ -159,9 +159,10 @@ export const sheetTools: WorkTool[] = [
         const s = await sheetsOf(ctx)
         const key = storeKey(t.held)
         const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
-        const routine = a.because === 'routine' && !!ctx.scope.routineRunId
+        // A routine's run writes directly only where nobody else reads: on a shared sheet no grant covers it (milestone 50's hold review, finding 6).
+        const routine = a.because === 'routine' && !!ctx.scope.routineRunId && !t.shared
         const writes = asked || routine || (!t.shared && s.suggestions.mode(key) === 'writes')
-        const note = a.because === 'asked' && !asked ? ' The quote was not found among the owner\'s words in this thread, so this counts as your own idea.' : a.because === 'routine' && !routine ? ' This thread runs no routine, so this counts as your own idea.' : ''
+        const note = a.because === 'asked' && !asked ? ' The quote was not found among the owner\'s words in this thread, so this counts as your own idea.' : a.because === 'routine' && !routine ? (ctx.scope.routineRunId ? ' A routine writes to what others share only under a grant he made for it, and none does, so this counts as your own idea.' : ' This thread runs no routine, so this counts as your own idea.') : ''
         const by = agentPrincipal(ctx.host, ctx.sessionId)
         const label = `Wrote ${a.cells.length === 1 ? a.cells[0].at : `${a.cells.length} cells`}`
         if (!writes) {

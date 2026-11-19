@@ -146,6 +146,16 @@ const OPS: Record<HostAsk['op'], (body: Record<string, unknown>, ctx: RouteCtx) 
   }
 }
 
+/**
+ * Whether a write through `/internal/sheet/write` waits as suggestions. Its
+ * caller is LifeOS's worker, carrying a bot's call: its "asked" or "routine"
+ * is the model's word, which only main can check (the owner's words in his
+ * thread, a routine's grant), so on a shared sheet every such write waits,
+ * as `/internal/doc/write` does (milestone 50's hold review). TempCode's own
+ * agents write through `/internal/sheet/cells` after main has judged them.
+ */
+export const writeSuggests = (suggestAsked: boolean, shared: boolean): boolean => suggestAsked || shared
+
 export const internalSheetRoutes: InternalRoute[] = [
   {
     path: '/internal/sheet/read',
@@ -168,8 +178,7 @@ export const internalSheetRoutes: InternalRoute[] = [
       const cells = cellsOf(body)
       const host = hostOf(ctx)
       const { shared } = await host.open(ref)
-      // An agent's own idea on a shared sheet waits as a suggestion; what the owner asked for or a routine was granted is written (the owner's rule).
-      const suggest = body.suggest === true || (because === 'own' && shared)
+      const suggest = writeSuggests(body.suggest === true, shared)
       const origin = body.origin && typeof body.origin === 'object' ? body.origin : undefined
       const got = await said(() => host.cells(ref, cells, by, suggest, undefined, origin))
       return suggest ? { mode: 'suggest', changeSetId: got.changeSetId } : { mode: 'direct', rev: got.rev }

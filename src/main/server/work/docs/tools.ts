@@ -79,7 +79,8 @@ const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
 async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 'asked' | 'routine' | 'own'; quote?: string; suggest?: boolean }): Promise<WorkToolResult> {
   const { t, shared, fence } = await resolve(ctx, a)
   const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
-  const routine = a.because === 'routine' && !!ctx.scope.routineRunId
+  // A routine's run writes directly only where nobody else reads: on a shared document no grant covers it, so it suggests (milestone 50's hold review, finding 6).
+  const routine = a.because === 'routine' && !!ctx.scope.routineRunId && !shared
   const verdict = asked ? 'asked' : routine ? 'routine' : 'own'
   const suggest = a.suggest === true || (verdict === 'own' && (shared || modeOf(ctx, t.doc) === 'suggests'))
   const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown
@@ -89,7 +90,9 @@ async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 
     a.because === 'asked' && !asked
       ? " The quote was not found among the owner's words in this thread, so this counts as your own idea."
       : a.because === 'routine' && !routine
-        ? ' This thread runs no routine, so this counts as your own idea.'
+        ? ctx.scope.routineRunId
+          ? ' A routine writes to what others share only under a grant he made for it, and none does, so this counts as your own idea.'
+          : ' This thread runs no routine, so this counts as your own idea.'
         : ''
   const parts = changedParts(before, a.markdown)
   if (done.mode === 'branch') {

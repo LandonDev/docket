@@ -154,8 +154,12 @@ describe('a package in the canvas', () => {
     const asked = await tool('sheet_write', { item: itemId, cells: [{ at: 'A4', v: 100 }], because: 'asked', quote: 'set A4 to 100' })
     expect(asked.text).toBe('Wrote A4.')
     expect(valueAt('Data', 3, 0)).toBe(100)
+    // A routine's run suggests on a shared sheet: no grant covers its write (milestone 50's hold review, finding 6); on his own it writes.
     state.routine = 'run1'
-    expect((await tool('sheet_write', { item: itemId, cells: [{ at: 'A5', v: 7 }], because: 'routine' })).text).toBe('Wrote A5.')
+    expect((await tool('sheet_write', { item: itemId, cells: [{ at: 'A5', v: 7 }], because: 'routine' })).text).toMatch(/^Suggested 1 cell: .* none does, so this counts as your own idea\.$/)
+    expect(valueAt('Data', 4, 0)).not.toBe(7)
+    state.shared = false
+    expect((await tool('sheet_write', { item: itemId, cells: [{ at: 'A6', v: 8 }], because: 'routine' })).text).toBe('Wrote A6.')
   })
 
   it('accepts one suggestion into the file and leaves the rest; an owner edit over a pending cell makes it a conflict', async () => {

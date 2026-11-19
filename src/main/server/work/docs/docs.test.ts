@@ -163,11 +163,16 @@ describe('an agent writing a document', () => {
   it('"routine" counts only in a routine\'s run; doc_suggest always waits', async () => {
     const r = await rig({ shared: true })
     expect((await r.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'x'), because: 'routine' })).text).toMatch(/This thread runs no routine/)
+    // On a shared document a routine's run suggests: no grant covers its write (milestone 50's hold review, finding 6).
     const s = await rig({ shared: true, routineRunId: 'run1' })
-    expect((await s.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Routine words'), because: 'routine' })).text).toBe('Wrote 1 section.')
-    expect(await s.text()).toContain('Routine words')
-    expect((await s.tool('doc_suggest', { item: 'i1', markdown: md('# Week 1', 'Suggested words') })).text).toMatch(/^Suggested changes to 2 sections: he steps through them/)
-    expect(await s.text()).toContain('Routine words')
+    expect((await s.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Routine words'), because: 'routine' })).text).toMatch(/^Suggested changes to 1 section: .* none does, so this counts as your own idea\.$/)
+    expect(await s.text()).not.toContain('Routine words')
+    // On his own document it writes.
+    const mine = await rig({ routineRunId: 'run1' })
+    expect((await mine.tool('doc_write', { item: 'i1', markdown: md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Routine words'), because: 'routine' })).text).toBe('Wrote 1 section.')
+    expect(await mine.text()).toContain('Routine words')
+    expect((await mine.tool('doc_suggest', { item: 'i1', markdown: md('# Week 1', 'Suggested words') })).text).toMatch(/^Suggested changes to 2 sections: he steps through them/)
+    expect(await mine.text()).toContain('Routine words')
   })
 
   it('a thread with no such item, or a path outside a .tcdoc, is told so', async () => {
