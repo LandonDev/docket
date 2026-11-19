@@ -447,7 +447,10 @@ export const SUBSET: SubsetEntry[] = [
   method('work.outbox.send', OutboxItemSchema),
   method('work.outbox.discard', OutboxItemSchema),
   method('work.outbox.edit', OutboxItemSchema),
+  method('work.outbox.grant', W.OutboxGrantSchema),
   method('work.outbox.grants', z.object({ grants: z.array(W.OutboxGrantSchema) })),
+  // a new Work workspace from Home's Work band (`kind: 'work'`, a sector)
+  method('workspace.create', W.WorkspaceMetaSchema),
   method('work.outbox.ungrant', W.OutboxGrantSchema),
   method('work.outbox.rules', z.object({ addons: z.array(W.ToolRulesCardSchema) })),
   method('work.outbox.setRules', W.ToolRulesCardSchema),

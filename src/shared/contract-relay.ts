@@ -121,6 +121,8 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   // the shell
   'catalog.get': 'link',
   'workspace.list': 'link',
+  // a new Work workspace from the phone's Work band, on the host the lane names (milestone 46)
+  'workspace.create': 'link',
   'workspace.icon': 'link',
   'workspace.root': 'link',
   'project.list': 'link',

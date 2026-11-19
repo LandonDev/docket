@@ -760,6 +760,12 @@ describe('the APNs payloads match the shared fixtures', () => {
     expect(JSON.parse(fetch.mock.calls.at(-1)![1]!.body as string).aps.category).toBe('tc.run-skip')
     await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, kind: 'approval', requestId: 'h1', choices: 'later' }, auth)
     expect(JSON.parse(fetch.mock.calls.at(-1)![1]!.body as string).aps.category).toBe('tc.approval')
+    // A held act's notice carries its item, ids only, and keeps the Open category: nothing sends from the lock screen.
+    await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, kind: 'waiting', held: { at: 'lifeos', table: 'outbox', id: 'ob_1', extra: 'dropped' } }, auth)
+    const heldSent = JSON.parse(fetch.mock.calls.at(-1)![1]!.body as string)
+    expect(heldSent.tc.held).toEqual({ at: 'lifeos', table: 'outbox', id: 'ob_1' })
+    expect(heldSent.aps.category).toBe('tc.thread')
+    expect((await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, held: { at: 'mars', id: 'x' } }, auth)).status).toBe(400)
     await callWith(hubEnv, `/v1/hosts/box/activities/thread-1/k1`, 'PUT', { token: TOKEN, bundleId: 'dev.landon.tempcode.ios', environment: 'production' }, auth)
     const update = { hostId: 'box', threadId: 'thread-1', event: 'update', state: { phase: 'working', since: 1000, ts: 5000, done: 2, total: 4, unit: 'threads' }, ts: 5000 }
     expect(await (await callWith(hubEnv, '/v1/activity', 'POST', update, auth)).json()).toEqual({ delivered: 1, failed: 0 })

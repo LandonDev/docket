@@ -17,6 +17,8 @@ export interface HubEvent {
   requestId?: string
   /** A computer step held for the session tier: the phone's Run now and Skip (`tc.run-skip`). */
   choices?: 'run-skip'
+  /** An act held for the owner's press: the phone's tap opens this item (`tc.held`). */
+  held?: import('../../shared/work/acts').HeldRef
   /** This host's name: the payload's `tc.host`, which the phone adds to the subtitle when several hosts are paired. */
   hostName?: string
   /** Another host's thread: a relayed host's notice (remote/relay.ts); default this host's own id. */
@@ -277,7 +279,8 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
           ...(event.kind === undefined ? {} : { kind: event.kind }),
           ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
           ...(event.choices === undefined ? {} : { choices: event.choices }),
-          ...(event.hostName === undefined ? {} : { hostName: event.hostName })
+          ...(event.hostName === undefined ? {} : { hostName: event.hostName }),
+          ...(event.held === undefined ? {} : { held: event.held })
         },
         'notify',
         25_000

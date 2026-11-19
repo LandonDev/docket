@@ -55,6 +55,7 @@ export function notificationPayload(notice: Notice): unknown {
       ...(notice.kind === undefined ? {} : { kind: notice.kind }),
       ...(notice.requestId === undefined ? {} : { requestId: notice.requestId }),
       ...(notice.hostName === undefined ? {} : { host: notice.hostName }),
+      ...(notice.held === undefined ? {} : { held: notice.held }),
       ts: notice.ts
     }
   }

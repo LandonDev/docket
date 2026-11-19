@@ -1,5 +1,5 @@
 import { guardTarget } from './target'
-import { activityPhases, activityUnits, events, pushEnvironments, type ActivityRow, type ActivityUpdate, type ApnsDevice, type Heartbeat, type Notice, noticeKinds, type NoticeKind } from './types'
+import { activityPhases, activityUnits, events, pushEnvironments, type ActivityRow, type ActivityUpdate, type ApnsDevice, type Heartbeat, type HeldRef, type Notice, noticeKinds, type NoticeKind } from './types'
 export class Invalid extends Error {}
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -95,8 +95,17 @@ export function notice(value: unknown): Notice {
     ...(v.requestId === undefined ? {} : { requestId: str(v.requestId, 'requestId', 200) }),
     // Only the one value a phone knows; any other is left out, so the notice keeps Approve and Deny.
     ...(v.choices === 'run-skip' ? { choices: 'run-skip' as const } : {}),
-    ...(v.hostName === undefined ? {} : { hostName: str(v.hostName, 'hostName', 80) })
+    ...(v.hostName === undefined ? {} : { hostName: str(v.hostName, 'hostName', 80) }),
+    ...(v.held === undefined ? {} : { held: heldRef(v.held) })
   }
+}
+
+/** A held item's ref, exactly one of its two shapes: ids, nothing else. */
+function heldRef(value: unknown): HeldRef {
+  const v = object(value)
+  if (v.at === 'host') return { at: 'host', id: str(v.id, 'held.id', 200) }
+  if (v.at === 'lifeos' && (v.table === 'outbox' || v.table === 'calendarOps')) return { at: 'lifeos', table: v.table, id: str(v.id, 'held.id', 200) }
+  throw new Invalid('Invalid held')
 }
 function noticeKind(value: unknown): NoticeKind {
   if (!noticeKinds.includes(value as never)) throw new Invalid('Invalid kind')

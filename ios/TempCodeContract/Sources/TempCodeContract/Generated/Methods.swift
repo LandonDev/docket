@@ -2529,6 +2529,26 @@ public enum Methods {
         public typealias Output = OutboxItem
     }
 
+    public enum WorkOutboxGrant: ContractMethod {
+        public static let name = "work.outbox.grant"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let from: HeldRef
+            public let matcher: JSONValue?
+            public let label: String?
+            public let routine: Bool?
+
+            public init(from: HeldRef, matcher: JSONValue? = nil, label: String? = nil, routine: Bool? = nil) {
+                self.from = from
+                self.matcher = matcher
+                self.label = label
+                self.routine = routine
+            }
+        }
+
+        public typealias Output = OutboxGrant
+    }
+
     public enum WorkOutboxGrants: ContractMethod {
         public static let name = "work.outbox.grants"
 
@@ -2549,6 +2569,26 @@ public enum Methods {
                 self.grants = grants
             }
         }
+    }
+
+    public enum WorkspaceCreate: ContractMethod {
+        public static let name = "workspace.create"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let path: String?
+            public let name: String?
+            public let kind: WorkspaceKind?
+            public let sector: Patch<String>?
+
+            public init(path: String? = nil, name: String? = nil, kind: WorkspaceKind? = nil, sector: Patch<String>? = nil) {
+                self.path = path
+                self.name = name
+                self.kind = kind
+                self.sector = sector
+            }
+        }
+
+        public typealias Output = WorkspaceMeta
     }
 
     public enum WorkOutboxUngrant: ContractMethod {

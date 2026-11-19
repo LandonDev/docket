@@ -25,7 +25,10 @@ export interface Notice {
   choices?: 'run-skip'
   /** The host's name: `tc.host`, which the phone's service extension adds to the subtitle when several hosts are paired. */
   hostName?: string
+  /** An act held for the owner's press: `tc.held`, the item the phone's tap opens (ids only; the category stays Open). */
+  held?: HeldRef
 }
+export type HeldRef = { at: 'host'; id: string } | { at: 'lifeos'; table: 'outbox' | 'calendarOps'; id: string }
 export const noticeKinds = ['approval', 'question', 'plan', 'waiting', 'finished', 'failed', 'stuck', 'batch', 'stopped'] as const
 export type NoticeKind = (typeof noticeKinds)[number]
 export interface Heartbeat {

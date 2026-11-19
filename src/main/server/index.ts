@@ -3713,7 +3713,7 @@ export async function startServer(
   if (hub) {
     notifier.onNotice(
       (n) =>
-        n.onScreen ? undefined : void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId, choices: n.choices, hostName: n.hostName })
+        n.onScreen ? undefined : void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId, choices: n.choices, hostName: n.hostName, held: n.held })
     )
   }
   // A host with the key posts every notice to its phones itself.
