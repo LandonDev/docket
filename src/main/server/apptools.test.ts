@@ -498,6 +498,10 @@ it("a remote thread's digest names the host, the files its tool calls wrote and 
   expect(writtenPathOf('Read', { file_path: '/a' })).toBeNull()
   expect(writtenPathOf('Write', { file_path: 'relative' })).toBeNull()
   expect(writtenPathOf('screenshot', { path: '/shots/1.png' })).toBe('/shots/1.png')
+  // A thread on a Windows host writes drive paths, with either slash.
+  expect(writtenPathOf('Write', { file_path: 'C:\\Users\\tc\\a.md' })).toBe('C:\\Users\\tc\\a.md')
+  expect(writtenPathOf('Edit', { file_path: 'c:/src/a.ts' })).toBe('c:/src/a.ts')
+  expect(writtenPathOf('Write', { file_path: 'C:relative' })).toBeNull()
 })
 
 // ── app_start_thread on another host: the project is the far host's to resolve ──

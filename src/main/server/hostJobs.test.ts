@@ -11,6 +11,7 @@ import {
   HostLog,
   Publisher,
   handleHost,
+  DEPLOY_NOT_ON_WINDOWS,
   notesFrom,
   releaseCommand,
   scriptsEnv,
@@ -444,6 +445,10 @@ describe('handleHost', () => {
     expect(await handleHost(req('host.deployStatus'), { deploy, publish }, caller)).toMatchObject({ handled: true, result: { installed: true, phase: 'pending' } })
     expect(await handleHost(req('catalog.get'), { deploy, publish }, caller)).toEqual({ handled: false })
     expect(await handleHost(req('host.log', { job: 'publish' }), { deploy, publish }, caller)).toMatchObject({ handled: true, result: { text: '' } })
+    // A Windows host is never deployed: its status and deploy are refused, which hides its Deploy row.
+    await expect(handleHost(req('host.deployStatus'), { deploy, publish }, caller, 'win32')).rejects.toThrow(DEPLOY_NOT_ON_WINDOWS)
+    await expect(handleHost(req('host.deploy', { ref: 'master' }), { deploy, publish }, caller, 'win32')).rejects.toThrow(DEPLOY_NOT_ON_WINDOWS)
+    expect(await handleHost(req('host.log', { job: 'deploy' }), { deploy, publish }, caller, 'win32')).toMatchObject({ handled: true })
     deploy.dispose()
   })
 })

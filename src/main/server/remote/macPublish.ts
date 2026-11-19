@@ -145,7 +145,9 @@ export class MacPublish {
   }
 }
 
-export const macPublishOffers = (): string[] => [PUBLISH_OFFER]
+/** A Windows host never offers to publish (docs/agents/windows-host.md); the Mac, and a Linux instance standing in for it in a proof, do. */
+export const macPublishOffers = (platform: NodeJS.Platform = process.platform): string[] =>
+  platform === 'win32' ? [] : [PUBLISH_OFFER]
 
 /**
  * The Mac's own batch publishing on the Mac (batch.ts `publish` dep when

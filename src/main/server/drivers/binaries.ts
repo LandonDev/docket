@@ -6,7 +6,7 @@ import { delimiter, dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { ProviderId } from '@shared/catalog'
 import { hasAppBridge } from '../apptools'
-import { commandShell, pathOf, shellLine, withPath } from '../loginShell'
+import { commandShell, gitBash, pathOf, shellLine, withPath } from '../loginShell'
 
 const execFileP = promisify(execFile)
 
@@ -81,6 +81,23 @@ export async function harnessEnv(): Promise<NodeJS.ProcessEnv> {
   delete env.NODE_ENV_ELECTRON_VITE
   delete env.NODE
   if (codexCa) env.CODEX_CA_CERTIFICATE = codexCa
+  return withGitBash(env)
+}
+
+/**
+ * win32: Claude Code's Bash tool needs Git for Windows' bash.exe and finds it
+ * only where the machine-wide installer puts it; a per-user install
+ * (%LOCALAPPDATA%\Programs\Git) is named to it by CLAUDE_CODE_GIT_BASH_PATH.
+ * A path the person set is kept. Elsewhere nothing.
+ */
+export function withGitBash(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+  exists?: (path: string) => boolean
+): NodeJS.ProcessEnv {
+  if (platform !== 'win32') return env
+  const bash = gitBash(env, exists)
+  if (bash) env.CLAUDE_CODE_GIT_BASH_PATH = bash
   return env
 }
 

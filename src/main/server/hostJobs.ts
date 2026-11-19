@@ -649,8 +649,12 @@ export interface HostCaller {
 
 type Handled = { handled: true; result: unknown } | { handled: false }
 
-export async function handleHost(req: ClientRequest, jobs: HostJobs, caller: HostCaller): Promise<Handled> {
+/** A Windows host is never deployed: it takes the Windows build from the feed (docs/agents/windows-host.md). The refusal hides its Deploy row. */
+export const DEPLOY_NOT_ON_WINDOWS = 'a Windows host is not deployed: it updates itself from the feed once the Mac publishes with --win'
+
+export async function handleHost(req: ClientRequest, jobs: HostJobs, caller: HostCaller, platform: NodeJS.Platform = process.platform): Promise<Handled> {
   const done = (result: unknown): Handled => ({ handled: true, result })
+  if (platform === 'win32' && (req.method === 'host.deployStatus' || req.method === 'host.deploy')) throw new Error(DEPLOY_NOT_ON_WINDOWS)
   switch (req.method) {
     case 'host.deployStatus':
       return done(jobs.deploy.status())

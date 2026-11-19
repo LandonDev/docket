@@ -87,6 +87,11 @@ import type { Peers } from './peers'
  */
 
 export const ENABLED_KEY = 'harness.sync.enabled'
+
+/** Sending is on by default on a Mac; a headless host (the box) receives, and a Windows host sends nothing unless told to (its paths do not map onto the box's). */
+export function harnessSyncDefault(headless: boolean, platform: NodeJS.Platform = process.platform): boolean {
+  return !headless && platform !== 'win32'
+}
 export const STATUS_KEY = 'harness.sync.status'
 export const PATH_MAP_KEY = 'harness.sync.pathMap'
 export const PERIOD_MS = 15 * 60_000

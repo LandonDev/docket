@@ -190,6 +190,8 @@ describe('MacPublish', () => {
   it('takes only publish pushes and sends the outcome through the peer link', async () => {
     const { mac, publisher, replies } = setup()
     expect(macPublishOffers()).toEqual(['publish'])
+    expect(macPublishOffers('darwin')).toEqual(['publish'])
+    expect(macPublishOffers('win32')).toEqual([])
     expect(
       mac.onPeerPush(BOX, {
         push: 'peer.call',

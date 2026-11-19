@@ -31,5 +31,11 @@ describe('driftTitle', () => {
     expect(driftKindOf('darwin')).toBe('mac')
     expect(driftKindOf('linux')).toBe('box')
     expect(driftKindOf(undefined)).toBe('box')
+    expect(driftKindOf('win32')).toBe('pc')
+  })
+  it('a Windows PC is neither published nor deployed: the Windows build comes from the feed', () => {
+    expect(driftTitle({ behind: 2, running: 271, master: 273, kind: 'pc' })).toBe(
+      '2 releases behind master (runs v1.0.271, master is v1.0.273). Publish with: bun run release:publish --win'
+    )
   })
 })

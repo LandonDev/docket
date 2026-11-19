@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import { HARNESS_CHUNK_BYTES } from '@shared/contract-harness'
 import { requiredCapability } from '@shared/capabilities'
-import { HarnessSync, handleHarness, PATH_MAP_KEY, stripHostBoundEnv } from './harnessSync'
+import { HarnessSync, handleHarness, harnessSyncDefault, PATH_MAP_KEY, stripHostBoundEnv } from './harnessSync'
 import { setLagForTests } from '../stalls'
 import { HARNESS_SET_LABELS } from '@shared/harnessSets'
 import { HARNESS_SET, RETIRED_ROOTS, SKILL_BINARY_CACHE, buildManifest, commandExecutable, inSet, isMachO, isRetired, isSecretPath, missingHookExecutables, ruleFor, ruleRoot, setCounts, validRelPath, type SetRule } from './harnessSet'
@@ -638,5 +638,13 @@ describe('stripHostBoundToml', () => {
     expect(r.dropped).toEqual(['chatgpt_base_url'])
     expect(r.text).toBe('model = "x"\n[model_providers.a]\nbase_url = "http://localhost:1/keep"\n')
     expect(stripHostBoundToml('model = "x"\nchatgpt_base_url = "https://example.com/codex"\n').dropped).toEqual([])
+  })
+})
+
+describe('harnessSyncDefault', () => {
+  it('a Mac sends by default; the box receives; a Windows host sends nothing unless told to', () => {
+    expect(harnessSyncDefault(false, 'darwin')).toBe(true)
+    expect(harnessSyncDefault(true, 'linux')).toBe(false)
+    expect(harnessSyncDefault(false, 'win32')).toBe(false)
   })
 })

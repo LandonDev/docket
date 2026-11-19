@@ -14,7 +14,7 @@ export interface BuildFacts {
   version: string
   /** The commit the build came from; null when the build recorded none. */
   sha: string | null
-  /** `process.platform` of the host: darwin publishes, anything else deploys. */
+  /** `process.platform` of the host: darwin publishes, win32 updates from the feed, anything else deploys. */
   platform: string
 }
 
@@ -37,12 +37,18 @@ export function releaseVersion(n: number): string {
   return `1.0.${n}`
 }
 
-/** What brings a host up to master: the box is deployed by hand over ssh, the Mac app is published. */
-export type DriftHostKind = 'box' | 'mac'
+/**
+ * What brings a host up to master: the box is deployed by hand over ssh, the
+ * Mac app is published, and a Windows PC updates itself from the feed once
+ * the Mac publishes the Windows build too (`--win`): it neither publishes
+ * nor is deployed.
+ */
+export type DriftHostKind = 'box' | 'mac' | 'pc'
 
 export const DRIFT_COMMANDS: Record<DriftHostKind, string> = {
   box: "ssh box 'box-update master'",
-  mac: 'bun run release:publish'
+  mac: 'bun run release:publish',
+  pc: 'bun run release:publish --win'
 }
 
 /** The mark's text: `+3`. */
@@ -53,11 +59,11 @@ export function driftMark(behind: number): string {
 /** The mark's tooltip: the count, both versions and the command that closes the gap. */
 export function driftTitle(input: { behind: number; running: number; master: number; kind: DriftHostKind }): string {
   const releases = input.behind === 1 ? 'release' : 'releases'
-  const verb = input.kind === 'mac' ? 'Publish' : 'Deploy'
+  const verb = input.kind === 'box' ? 'Deploy' : 'Publish'
   return `${input.behind} ${releases} behind master (runs v${releaseVersion(input.running)}, master is v${releaseVersion(input.master)}). ${verb} with: ${DRIFT_COMMANDS[input.kind]}`
 }
 
-/** A darwin host publishes the app; anything else is a box deployed over ssh. */
+/** A darwin host publishes the app, a win32 host takes the Windows build from the feed; anything else is a box deployed over ssh. */
 export function driftKindOf(platform: string | null | undefined): DriftHostKind {
-  return platform === 'darwin' ? 'mac' : 'box'
+  return platform === 'darwin' ? 'mac' : platform === 'win32' ? 'pc' : 'box'
 }

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import { requiredCapability } from '@shared/capabilities'
 import { parseMapping } from '../pathMap'
-import { MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory } from './memorySync'
+import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory } from './memorySync'
 import { encodeProjectDir } from './memorySet'
 import { TOMBSTONE_MS } from './memoryMerge'
 
@@ -391,5 +391,18 @@ describe('the peers\' homes', () => {
     expect(JSON.parse(macStore.rows[PEER_HOMES_KEY]!)).toEqual({ env_box: { home: box, workRoot: work } })
     const again = new MemorySync({ environmentId: 'env_box', store: boxStore, peers: { get: () => undefined, all: () => [] }, dataDir: join(root, 'box-data'), pathMap: () => ({ roots: {}, prefixes: {} }) })
     expect(again.peerHomes()).toEqual(receiver.peerHomes())
+  })
+})
+
+describe('a Windows host', () => {
+  const quiet = (platform?: NodeJS.Platform) =>
+    new MemorySync({ environmentId: 'env_x', store: store(), peers: { get: () => undefined, all: () => [] }, dataDir: join(tmpdir(), 'tc-mem-win'), pathMap: () => ({ roots: {}, prefixes: {} }), ...(platform ? { platform } : {}) })
+
+  it('never syncs from a Windows host, whatever the setting, and the box refuses a Windows home', async () => {
+    expect(quiet('win32').enabled()).toBe(false)
+    expect(quiet('linux').enabled()).toBe(true)
+    await expect(
+      quiet('linux').handleExchange({ from: 'env_pc', home: 'C:\\Users\\tc', generation: 'g', entries: [], tombstones: [] })
+    ).rejects.toThrow(MEMORY_NO_WINDOWS)
   })
 })

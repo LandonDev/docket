@@ -409,7 +409,8 @@ export async function appReadThread(
 export function writtenPathOf(name: string, input: unknown): string | null {
   if (!input || typeof input !== 'object') return null
   const i = input as Record<string, unknown>
-  const key = ['file_path', 'path', 'filePath', 'notebook_path', 'output_path', 'save_path', 'screenshot_path'].find((k) => typeof i[k] === 'string' && (i[k] as string).startsWith('/'))
+  // Absolute on this host or on a Windows host (C:\… or C:/…).
+  const key = ['file_path', 'path', 'filePath', 'notebook_path', 'output_path', 'save_path', 'screenshot_path'].find((k) => typeof i[k] === 'string' && /^(\/|[A-Za-z]:[\\/])/.test(i[k] as string))
   if (!key) return null
   const writes = /write|edit|save|create|patch|screenshot|notebook|put/i.test(name)
   return writes ? (i[key] as string) : null

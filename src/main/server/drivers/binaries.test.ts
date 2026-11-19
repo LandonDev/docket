@@ -80,3 +80,16 @@ describe('finding a binary on win32', () => {
     expect(await npmShimExe(other, 'npx')).toBeNull()
   })
 })
+
+describe('withGitBash', () => {
+  it("names a per-user Git for Windows' bash to Claude Code on Windows, keeps a set path, and touches nothing elsewhere", async () => {
+    const { withGitBash } = await import('./binaries')
+    const bash = 'C:\\Users\\tc\\AppData\\Local\\Programs\\Git\\bin\\bash.exe'
+    const has = (path: string): boolean => path === bash
+    expect(withGitBash({ LOCALAPPDATA: 'C:\\Users\\tc\\AppData\\Local' }, 'win32', has).CLAUDE_CODE_GIT_BASH_PATH).toBe(bash)
+    const set = 'D:\\Git\\bin\\bash.exe'
+    expect(withGitBash({ CLAUDE_CODE_GIT_BASH_PATH: set, LOCALAPPDATA: 'C:\\Users\\tc\\AppData\\Local' }, 'win32', (p) => p === set || has(p)).CLAUDE_CODE_GIT_BASH_PATH).toBe(set)
+    expect(withGitBash({}, 'win32', () => false).CLAUDE_CODE_GIT_BASH_PATH).toBeUndefined()
+    expect(withGitBash({ LOCALAPPDATA: 'x' }, 'linux', () => true).CLAUDE_CODE_GIT_BASH_PATH).toBeUndefined()
+  })
+})

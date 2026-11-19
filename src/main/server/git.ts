@@ -1,7 +1,7 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, sep } from 'node:path'
+import { isAbsolute, join, sep } from 'node:path'
 import { APP_DIR } from './appDir'
 import type { CommitInfo, CompareResult, FileChange, MergeResult } from '@shared/domain'
 
@@ -245,7 +245,7 @@ export async function ensureLocalExclude(dir: string): Promise<void> {
   try {
     const { stdout } = await execFileP('git', ['-C', dir, 'rev-parse', '--git-common-dir'])
     const excludePath = join(
-      stdout.trim().startsWith('/') ? stdout.trim() : join(dir, stdout.trim()),
+      isAbsolute(stdout.trim()) ? stdout.trim() : join(dir, stdout.trim()),
       'info',
       'exclude'
     )

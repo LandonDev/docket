@@ -146,7 +146,12 @@ export interface MemorySyncDeps {
   nudgePeers?: (frame: ServerPush) => void
   log?: (line: string) => void
   now?: () => number
+  /** This host's platform (tests); process.platform otherwise. */
+  platform?: NodeJS.Platform
 }
+
+/** A Windows host's memory never crosses (docs/agents/windows-host.md): the path map that rewrites a note's paths is POSIX only. */
+export const MEMORY_NO_WINDOWS = 'memory sync takes no Windows host yet: its path map is POSIX only'
 
 const within = (path: string, root: string): boolean => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
 
@@ -232,6 +237,7 @@ export class MemorySync {
   // ── settings and status ────────────────────────────────────────────────
 
   enabled(): boolean {
+    if ((this.deps.platform ?? process.platform) === 'win32') return false
     const raw = this.deps.store.getSetting(MEMORY_ENABLED_KEY)
     return raw === null ? true : raw === 'true'
   }
@@ -640,6 +646,7 @@ export class MemorySync {
   }
 
   private async exchange(params: MemoryExchangeParams): Promise<MemoryExchangeAnswer> {
+    if (/^[A-Za-z]:[\\/]/.test(params.home)) throw new Error(MEMORY_NO_WINDOWS)
     if (!params.home.startsWith('/')) throw new Error('memory.exchange: home must be absolute')
     this.generation = null
     const home = this.home()

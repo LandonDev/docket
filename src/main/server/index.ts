@@ -45,7 +45,7 @@ import { MasterReleaseWatcher } from '../deployDrift'
 import { usageSamples } from './usageSamples'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
-import { HarnessSync, handleHarness } from './remote/harnessSync'
+import { HarnessSync, handleHarness, harnessSyncDefault } from './remote/harnessSync'
 import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { MemorySync, handleMemory } from './remote/memorySync'
 import { ProjectLinker } from './remote/projectLinks'
@@ -756,13 +756,13 @@ export async function startServer(
   }
   accountSyncHooks.current = accountSync
   // The user's Claude Code and Codex config, mirrored onto the same hosts
-  // (remote/harnessSync.ts). A headless host (the box) receives and does not send.
+  // (remote/harnessSync.ts). A headless host (the box) receives and does not send; nor does a Windows host by default.
   const harnessSync = new HarnessSync({
     environmentId,
     store,
     peers,
     dataDir: options.dataDir ?? dirname(dbPath),
-    defaultEnabled: !isHeadless(),
+    defaultEnabled: harnessSyncDefault(isHeadless()),
     workRoot: () => workRoot(store).root
   })
   harnessSync.start()
