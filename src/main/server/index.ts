@@ -192,7 +192,9 @@ import {
   orchWaitForAgent,
   setCrossHostAgents,
   setOrchestrationRegistry,
-  setPeerCatalogs
+  setPeerCatalogs,
+  farWorkHomeOf,
+  scopeFactsOf
 } from './orchestration'
 import { PeerCatalogs } from './peerCatalogs'
 import {
@@ -1482,7 +1484,9 @@ export async function startServer(
     projectLink: (projectId) => registry.projectLinkFacts(projectId),
     // A batch child on another host landing, or changing state: the engine here (batch.ts) decides and reviews.
     landing: (l) => batchRuns.remoteLanding(l),
-    batchChanged: (masterId) => batchRuns.schedule(masterId)
+    batchChanged: (masterId) => batchRuns.schedule(masterId),
+    // A Work thread's subagent there carries its workspace (work/scope.ts, by way of orchestration.ts).
+    workHomeOf: (session) => farWorkHomeOf(scopeFactsOf(registry), session)
   })
   setCrossHostAgents(crossHostAgents)
   setAppCrossHost(crossHostAgents)

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { Capability } from '@shared/capabilities'
-import { ThreadStartArgsSchema, workAskArgs, type CrossHostCallParams, type CrossHostPeerMethod } from '@shared/contract-crosshost'
+import { ThreadSpawnArgsSchema, ThreadStartArgsSchema, workAskArgs, type CrossHostCallParams, type CrossHostPeerMethod } from '@shared/contract-crosshost'
 import type { MacBridgePolicy } from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
 import { handled, NOT_HANDLED, WORK_SETTING_KEY, type WorkScope } from '@shared/work'
@@ -13,7 +13,7 @@ import { CrossHostAgents } from '../crossHostAgents'
 import { openDb, Store } from '../db'
 import type { DriverCtx, DriverHandle } from '../drivers/types'
 import { cancelMirrors } from '../mirror'
-import { orchSpawnAgent, setCrossHostAgents, setOrchestrationRegistry } from '../orchestration'
+import { farWorkHomeOf, orchSpawnAgent, scopeFactsOf, setCrossHostAgents, setOrchestrationRegistry } from '../orchestration'
 import { CrossHostThreads } from '../remote/crossHostThreads'
 import type { HostTransport } from '../remote/hostLinks'
 import { SessionRegistry } from '../sessions'
@@ -73,6 +73,9 @@ let root: string
 /** The schema a build from before Work reads thread.start with: a message is required, and `work` is a key it does not know. */
 const OldThreadStartArgs = z.object({ threadType: z.string(), provider: z.string(), firstMessage: z.string().min(1).max(200_000), cwd: z.string(), title: z.string().optional(), model: z.string().optional(), reasoning: z.string().optional() })
 
+/** The schema a build from before Work reads thread.spawn with: a task is required, and `work` is a key it does not know. */
+const OldThreadSpawnArgs = z.object({ provider: z.string(), model: z.string(), task: z.string().min(1).max(200_000), cwd: z.string(), title: z.string() })
+
 const linkFrom = (from: string): HostTransport => ({
   reachable: () => [...hosts.keys()].filter((id) => id !== from).map((id) => ({ id, via: 'registered' as const })),
   via: (id) => (hosts.has(id) && id !== from ? 'registered' : null),
@@ -81,6 +84,11 @@ const linkFrom = (from: string): HostTransport => ({
     const far = hosts.get(id)!
     // over the wire: what arrives is what JSON carried
     const wire = JSON.parse(JSON.stringify(params)) as CrossHostCallParams
+    if (far.old && method === 'thread.spawn') {
+      const args = OldThreadSpawnArgs.parse(wire.args)
+      const child = await far.registry.startWith({ provider: 'claude', cwd: far.dir, parentId: wire.caller.sessionId }, args.task)
+      return { sessionId: child.id, title: child.title, cwd: child.cwd, projectId: null } as T
+    }
     if (far.old && method === 'thread.start') {
       const args = OldThreadStartArgs.parse(wire.args)
       const thread = await far.registry.startWith({ threadType: 'chat', provider: 'claude', cwd: far.dir, workspaceId: null, startedBy: wire.caller.sessionId }, args.firstMessage)
@@ -109,7 +117,7 @@ function makeHost(id: string, modules: WorkModule[], opts: { work?: boolean; old
     log: () => {}
   })
   const host: Host = { id, dir, db, store, registry, threads, work: null as never, policy: 'read+run', old: opts.old === true }
-  const agents = new CrossHostAgents({ environmentId: id, store, sessions: { get: (sid) => registry.get(sid), append: () => {}, deliverAgentReport: () => {} }, links: linkFrom(id), macPeerOf: () => null, workRoot: () => dir, log: () => {} })
+  const agents = new CrossHostAgents({ environmentId: id, store, sessions: { get: (sid) => registry.get(sid), append: () => {}, deliverAgentReport: () => {} }, links: linkFrom(id), macPeerOf: () => null, workRoot: () => dir, workHomeOf: (s) => farWorkHomeOf(scopeFactsOf(registry), s), log: () => {} })
   host.work = startWork(
     {
       db,
@@ -262,14 +270,52 @@ describe('a Work thread starts a thread on another host', () => {
     expect(mac.registry.list()[0].scope).toBeUndefined()
   })
 
-  it('spawn_agent with a host is refused for a Work thread, and nothing reaches that host', async () => {
+  it("spawn_agent with a host makes the child a Work thread of that host's own workspace for the job, its parent the caller", async () => {
+    const box = makeHost(BOX, [])
+    const mac = makeHost(MAC, [])
+    const macPurdue = await workWorkspace(mac, 'Purdue RecWell', 'purdue')
+    actAs(box)
+    const caller = await box.registry.startWith({ threadType: 'chat', workspaceId: await workWorkspace(box, 'purdue') }, 'go')
+    const answer = JSON.parse(await orchSpawnAgent(box.registry.get(caller.id)!, { task: 'tally the budget on the mac', model: 'claude-opus-5-5', provider: 'claude', agentType: 'implementer', environmentId: MAC }))
+    expect(answer).toMatchObject({ host: MAC })
+    const [child] = mac.registry.list()
+    expect(child).toMatchObject({ scope: 'work', workspaceId: macPurdue, parentId: caller.id, projectId: null, cwd: join(mac.dir, 'Work', 'Purdue RecWell') })
+    // its first message opens with the Work preamble a child gets: the task is the owner's work passed on
+    await vi.waitFor(() => expect(sent.get(child.id)?.[0]).toBeDefined())
+    expect(sent.get(child.id)?.[0]).toContain(WORK_PREAMBLE_HEADING)
+    expect(sent.get(child.id)?.[0]).toContain("Another of the owner's Work threads started this one")
+    expect(sent.get(child.id)?.[0]).toContain('This workspace is Purdue RecWell (purdue).')
+    expect(sent.get(child.id)?.[0]).toContain('tally the budget on the mac')
+  })
+
+  it("a Work spawn is refused by a host with no workspace for the job, with Work off, or from before Work, and nothing starts there", async () => {
+    for (const kind of ['no workspace', 'work off', 'old'] as const) {
+      const box = makeHost(BOX, [])
+      const mac = makeHost(MAC, [], { old: kind === 'old' })
+      // with Work off the workspace is there and still nothing starts; the others have none or cannot say
+      if (kind === 'work off') {
+        await workWorkspace(mac, 'purdue')
+        mac.store.setSetting(WORK_SETTING_KEY, JSON.stringify({ enabled: false }))
+      }
+      actAs(box)
+      const caller = await box.registry.startWith({ threadType: 'chat', workspaceId: await workWorkspace(box, 'purdue') }, 'go')
+      expect(await orchSpawnAgent(box.registry.get(caller.id)!, { task: 'on the mac', model: 'claude-opus-5-5', provider: 'claude', environmentId: MAC })).toMatch(/^refused: /)
+      expect(mac.registry.list()).toEqual([])
+      for (const host of hosts.values()) {
+        host.work.close()
+        host.threads.close()
+        await host.registry.close()
+        host.db.close()
+      }
+      hosts.clear()
+    }
+  })
+
+  it('a Work thread starts there only as a Work start and adopts nothing from there, whoever reaches the calls', async () => {
     const box = makeHost(BOX, [])
     const mac = makeHost(MAC, [])
     actAs(box)
     const caller = await box.registry.startWith({ threadType: 'chat', workspaceId: await workWorkspace(box, 'purdue') }, 'go')
-    expect(await orchSpawnAgent(box.registry.get(caller.id)!, { task: 'on the mac', model: 'claude-opus-5-5', provider: 'claude', environmentId: MAC })).toMatch(/^refused: a Work thread spawns its subagents on this host/)
-    // and the calls themselves are guarded, whoever reaches them (the bridge's app.spawnAgent, batch.adopt)
-    await expect(agentsOf(box).spawn(box.registry.get(caller.id)!, MAC, [])).rejects.toThrow(/on its own host/)
     await expect(agentsOf(box).startThread(box.registry.get(caller.id)!, MAC, { threadType: 'chat', provider: 'claude', firstMessage: 'as a code thread', cwd: '/' })).rejects.toThrow(/only as a Work thread/)
     expect((await agentsOf(box).adopt(box.registry.get(caller.id)!, [`${MAC}:abc`])).adopted).toEqual([])
     expect(mac.registry.list()).toEqual([])
@@ -294,6 +340,16 @@ describe('the wire', () => {
     expect(ThreadStartArgsSchema.safeParse({ threadType: 'chat', provider: 'claude', firstMessage: 'hello', cwd: '/' }).success).toBe(true)
     // what a build from before Work makes of the same args
     expect(OldThreadStartArgs.safeParse(workAskArgs({ kind: 'probe', sector: 'purdue', workspaceLinkId: null, workspaceName: 'purdue' })).success).toBe(false)
+  })
+
+  it('a Work spawn leaves task empty, and a spawn with no task and no Work home is refused, here and by a build from before Work', () => {
+    const base = { provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', title: 't', useWorktree: false, cwd: '/' }
+    const work = { sector: 'purdue', workspaceLinkId: null, workspaceName: 'Purdue', task: 'tally' }
+    expect(ThreadSpawnArgsSchema.safeParse({ ...base, task: '', work }).success).toBe(true)
+    expect(ThreadSpawnArgsSchema.safeParse({ ...base, task: 'tally', work }).success).toBe(false)
+    expect(ThreadSpawnArgsSchema.safeParse({ ...base, task: '' }).success).toBe(false)
+    expect(ThreadSpawnArgsSchema.safeParse({ ...base, task: 'tally' }).success).toBe(true)
+    expect(OldThreadSpawnArgs.safeParse({ ...base, task: '', work }).success).toBe(false)
   })
 })
 

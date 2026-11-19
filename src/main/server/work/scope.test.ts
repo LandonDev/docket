@@ -5,7 +5,6 @@ import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import { WORK_HOME } from '@shared/work'
 import {
-  guardCrossHostAgents,
   sameScope,
   stampScope,
   WORK_OFF,
@@ -209,45 +208,6 @@ describe('names', () => {
   it('a workspace as another host matches it; all null for a Work Chat', () => {
     expect(workHomeOf(purdue)).toEqual({ sector: 'purdue', workspaceLinkId: 'link-purdue', workspaceName: 'purdue', workspacePath: '/w/purdue' })
     expect(workHomeOf(null)).toEqual({ sector: null, workspaceLinkId: null, workspaceName: null, workspacePath: null })
-  })
-})
-
-describe('the calls that make or take a thread on another host', () => {
-  const calls: string[] = []
-  const agents = {
-    startThread: async (caller: SessionMeta, _host: string, _args: unknown) => (calls.push(`start ${caller.id}`), { threadId: 'far' }),
-    spawn: async (caller: SessionMeta, _host: string, _specs: unknown[]) => (calls.push(`spawn ${caller.id}`), []),
-    adopt: async (master: SessionMeta, ids: readonly string[]) => (calls.push(`adopt ${master.id}`), { adopted: [...ids], refused: [] as { sessionId: string; why: string }[] })
-  }
-  guardCrossHostAgents(agents, () => facts)
-  // wrapped once, however many times the host hands the object over
-  guardCrossHostAgents(agents, () => null)
-
-  it('a code thread goes through as before', async () => {
-    await agents.startThread(by('code'), 'mac', {} as never)
-    await agents.spawn(by('code'), 'mac', [] as never)
-    expect(await agents.adopt(by('code'), ['env:1'])).toEqual({ adopted: ['env:1'], refused: [] })
-    expect(calls).toEqual(['start code', 'spawn code', 'adopt code'])
-  })
-
-  it('a Work thread starts there only as a Work start, spawns nothing there and adopts nothing from there', async () => {
-    calls.length = 0
-    await expect(agents.startThread(by('work-purdue'), 'mac', {} as never)).rejects.toThrow(/only as a Work thread/)
-    await expect(agents.spawn(by('work-purdue'), 'mac', [] as never)).rejects.toThrow(/on its own host/)
-    expect(await agents.adopt(by('work-purdue'), ['env:1', 'env:1', 'env:2'])).toEqual({
-      adopted: [],
-      refused: [
-        { sessionId: 'env:1', why: 'a Work master takes no thread from another host into its batch' },
-        { sessionId: 'env:2', why: 'a Work master takes no thread from another host into its batch' }
-      ]
-    })
-    expect(calls).toEqual([])
-    await agents.startThread(by('work-purdue'), 'mac', { work: { kind: 'start' } } as never)
-    expect(calls).toEqual(['start work-purdue'])
-  })
-
-  it('reads the row as it is now, not the meta a tool closure holds', async () => {
-    await expect(agents.spawn({ ...by('work-purdue'), scope: undefined } as SessionMeta, 'mac', [] as never)).rejects.toThrow(WorkRefused)
   })
 })
 

@@ -192,17 +192,17 @@ describe('with the Work switch on', () => {
   })
 
   describe('scope follows the parent', () => {
-    it('spawn_agent: the child is a Work thread of the parent\'s workspace, and never on another host', async () => {
+    it('spawn_agent: the child is a Work thread of the parent\'s workspace, here or through the cross-host calls', async () => {
       const purdue = await workWorkspace('purdue')
       const parent = await registry.startWith({ threadType: 'chat', workspaceId: purdue.id }, 'do the thing')
       const answer = JSON.parse(await orchSpawnAgent(registry.get(parent.id)!, { task: 'look at the budget', model: 'claude-opus-5-5', provider: 'claude', agentType: 'explorer' }))
       const child = registry.get(answer.agentId)!
       expect(child).toMatchObject({ scope: 'work', parentId: parent.id, workspaceId: purdue.id, cwd: purdue.path })
-      // another host: the request names no scope there, so it is refused before anything is sent
-      const far = vi.fn()
+      // another host: the spawn goes to CrossHostAgents, whose own calls carry the workspace (crossHostAgents.ts, work/hosts.test.ts)
+      const far = vi.fn(async () => [{ agentId: 'mac:c1', title: 't', cwd: '/w', host: 'mac' }])
       setCrossHostAgents({ children: () => [], spawn: far } as never)
-      expect(await orchSpawnAgent(registry.get(parent.id)!, { task: 'on the mac', model: 'claude-opus-5-5', provider: 'claude', environmentId: 'mac' })).toMatch(/^refused: a Work thread spawns its subagents on this host/)
-      expect(far).not.toHaveBeenCalled()
+      await orchSpawnAgent(registry.get(parent.id)!, { task: 'on the mac', model: 'claude-opus-5-5', provider: 'claude', environmentId: 'mac' })
+      expect(far).toHaveBeenCalledWith(expect.objectContaining({ id: parent.id, scope: 'work' }), 'mac', expect.any(Array))
     })
 
     it('app_start_thread: a code project is refused, another job is refused, and with no project the thread is the parent\'s workspace\'s', async () => {

@@ -23,15 +23,18 @@ import {
   type ThreadEventsResult,
   type ThreadReadResult,
   type ThreadSpawnArgs,
+  type WorkHome,
   type ThreadStartArgs,
   type ThreadStartResult,
   type ThreadWaitResult
 } from '@shared/contract-crosshost'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectLinkFacts } from '@shared/projectLinks'
+import { sessionScopeOf } from '@shared/work/ids'
 import { batchMembershipOf, INTERRUPT_WORDS, taskTitle, type ResolvedSpawn } from './orchestration'
 import type { HostTransport } from './remote/hostLinks'
 import { PeerOfflineError, servePeerCall, type LinkRequest } from './remote/peerCalls'
+import { WorkRefused } from './work/scope'
 
 /**
  * The asking side of threads on another host (docs/box.md "Threads across
@@ -115,6 +118,16 @@ export interface RemoteLanding {
   sha?: string
 }
 
+/**
+ * Work's rule on the calls here that make or take a thread on another host,
+ * whichever tool or method reaches them (a Claude tool, the bridge's app.*,
+ * the desktop's batch.adopt), read from the row as it is now: a Work thread
+ * starts a thread there only as a Work start, spawns a subagent there only as
+ * a Work spawn, and adopts nothing from there. It holds on a host where
+ * Work's mount failed too.
+ */
+const isWork = (session: SessionMeta): boolean => sessionScopeOf(session) === 'work'
+
 export interface CrossHostAgentsDeps {
   /** This host's own environment id. */
   environmentId: string
@@ -147,6 +160,12 @@ export interface CrossHostAgentsDeps {
   landing?: (l: RemoteLanding) => CrossHostLandingResult
   /** A batch child on another host changed state: the engine reviews the batch (batch.ts schedule). */
   batchChanged?: (masterId: string) => void
+  /**
+   * A Work thread's workspace as another host can match it (work/scope.ts
+   * workHomeOf), or 'orphan' when it has none here. Unset, a Work thread
+   * spawns nothing on another host.
+   */
+  workHomeOf?: (session: SessionMeta) => WorkHome | 'orphan'
   log?: (line: string) => void
   now?: () => number
 }
@@ -431,6 +450,9 @@ export class CrossHostAgents {
    * back per id with the host's reason; a host out of reach is one too.
    */
   async adopt(master: SessionMeta, encodedIds: readonly string[]): Promise<{ adopted: string[]; refused: { sessionId: string; why: string }[] }> {
+    // A Work master takes no thread from another host: this host cannot see its scope, and a code thread in its batch is one it may instruct.
+    if (isWork(this.fresh(master)))
+      return { adopted: [], refused: [...new Set(encodedIds)].map((sessionId) => ({ sessionId, why: 'a Work master takes no thread from another host into its batch' })) }
     const adopted: string[] = []
     const refused: { sessionId: string; why: string }[] = []
     for (const id of new Set(encodedIds)) {
@@ -522,6 +544,8 @@ export class CrossHostAgents {
     args: StartOnHostArgs
   ): Promise<{ threadId: string; title: string; host: string; cwd: string; projectId: string | null; cwdNote?: string }> {
     const session = this.fresh(caller)
+    // A Work thread starts a thread there only as a Work start, which a host from before Work refuses (contract-crosshost.ts).
+    if (isWork(session) && !args.work) throw new WorkRefused('a Work thread starts a thread on another host only as a Work thread')
     const host = this.resolveHost(session.id, environmentId)
     if (this.children(session.id).length >= CROSS_HOST_MAX_PER_THREAD)
       throw new Error(`this thread already has ${CROSS_HOST_MAX_PER_THREAD} threads on other hosts`)
@@ -558,11 +582,16 @@ export class CrossHostAgents {
     specs: ResolvedSpawn[]
   ): Promise<{ agentId: string; title: string; cwd: string; host: string; cwdNote?: string }[]> {
     const session = this.fresh(caller)
+    // A Work thread's subagent there is a Work thread of that host's own workspace for the job, or the call is refused there.
+    const home = isWork(session) ? this.deps.workHomeOf?.(session) : null
+    if (home === undefined) throw new WorkRefused('this host cannot name a Work thread\'s workspace to another host, so its subagents run here')
+    if (home === 'orphan') throw new WorkRefused('this Work thread has no Work workspace on this host, so it spawns nothing on another host')
     const host = this.resolveHost(session.id, environmentId)
     if (this.children(session.id).length + specs.length > CROSS_HOST_MAX_PER_THREAD)
       throw new Error(`this thread may have at most ${CROSS_HOST_MAX_PER_THREAD} threads on other hosts`)
     const started: { agentId: string; title: string; cwd: string; host: string; cwdNote?: string }[] = []
-    const project = this.projectFacts(session.projectId)
+    // A Work child lands in that host's workspace for the job, never in a code project.
+    const project = home ? null : this.projectFacts(session.projectId)
     for (const r of specs) {
       const wire: ThreadSpawnArgs = {
         provider: r.provider,
@@ -570,10 +599,11 @@ export class CrossHostAgents {
         reasoning: r.reasoning,
         context1m: r.context1m,
         agentType: r.agentType,
-        task: r.task,
+        // A Work spawn's task rides inside `work`, so a host from before Work refuses it (contract-crosshost.ts).
+        ...(home ? { task: '', work: { ...home, task: r.task } } : { task: r.task }),
         title: r.title ?? taskTitle(r),
         ...(r.title ? {} : { autoTitle: true }),
-        useWorktree: r.useWorktree,
+        useWorktree: home ? false : r.useWorktree,
         cwd: session.cwd,
         workRoot: this.deps.workRoot(),
         ...(r.preamble ? {} : { preamble: false }),

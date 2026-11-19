@@ -41,6 +41,7 @@ function setup(
     parent?: SessionMeta
     landing?: (l: RemoteLanding) => { hold: boolean }
     projectLink?: (projectId: string) => ProjectLinkFacts | null
+    workHomeOf?: ConstructorParameters<typeof CrossHostAgents>[0]['workHomeOf']
   } = {}
 ) {
   const calls = new PeerCalls(BOX, () => {})
@@ -103,6 +104,7 @@ function setup(
     workRoot: () => '/srv/agents/work',
     landing: opts.landing,
     ...(opts.projectLink ? { projectLink: opts.projectLink } : {}),
+    ...(opts.workHomeOf ? { workHomeOf: opts.workHomeOf } : {}),
     batchChanged: (id) => changed.push(id),
     log: () => {}
   })
@@ -501,5 +503,55 @@ describe("CrossHostAgents: the caller's project rides along", () => {
     await agents.startThread(parent, 'mac', { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/srv/agents/work/temp-code', projectId: 'gone' })
     await agents.spawn(parent, MAC, [{ provider: 'claude', model: 'm', reasoning: 'medium', context1m: false, agentType: 'explorer', task: 't', useWorktree: false, preamble: true }])
     for (const call of seen) expect(call.params.args).not.toHaveProperty('project')
+  })
+})
+
+describe("CrossHostAgents: a Work thread's calls to another host (the rule is in the calls themselves)", () => {
+  const work = { ...parent, scope: 'work', workspaceId: 'w-purdue' } as SessionMeta
+  const purdue = { sector: 'purdue', workspaceLinkId: 'link-purdue', workspaceName: 'Purdue RecWell', workspacePath: '/srv/agents/work/Work/Purdue RecWell' }
+  const spec = { provider: 'claude' as const, model: 'claude-opus-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'implementer' as const, task: 'tally the budget', useWorktree: true, preamble: true }
+
+  it("a Work spawn's task rides inside work with the top-level task empty, no worktree and no code project", async () => {
+    const { agents, seen } = setup({ parent: work, workHomeOf: () => purdue, projectLink: () => ({ linkId: 'p', name: 'p' }) as never })
+    await agents.spawn(work, MAC, [spec])
+    const wire = seen.find((c) => c.method === 'thread.spawn')!.params.args as Record<string, unknown>
+    expect(wire).toMatchObject({ task: '', work: { ...purdue, task: 'tally the budget' }, useWorktree: false, title: 'tally the budget' })
+    expect(wire).not.toHaveProperty('project')
+  })
+
+  it('a code thread spawns and starts as before, with no work on the wire', async () => {
+    const { agents, seen } = setup({ workHomeOf: () => purdue })
+    await agents.spawn(parent, MAC, [spec])
+    await agents.startThread(parent, MAC, { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/x' })
+    expect(seen.map((c) => c.params.args as Record<string, unknown>).map((a) => [a.task ?? a.firstMessage, 'work' in a])).toEqual([['tally the budget', false], ['go', false]])
+  })
+
+  it('a Work thread spawns nothing there when this host cannot name its workspace, or it has none here', async () => {
+    for (const workHomeOf of [undefined, () => 'orphan' as const]) {
+      const { agents, seen } = setup({ parent: work, ...(workHomeOf ? { workHomeOf } : {}) })
+      await expect(agents.spawn(work, MAC, [spec])).rejects.toThrow(/subagents run here|spawns nothing on another host/)
+      expect(seen).toEqual([])
+    }
+  })
+
+  it('a Work thread starts there only as a Work start, and adopts nothing from there', async () => {
+    const { agents, seen } = setup({ parent: work, workHomeOf: () => purdue })
+    await expect(agents.startThread(work, MAC, { threadType: 'chat', provider: 'claude', firstMessage: 'go', cwd: '/x' })).rejects.toThrow(/only as a Work thread/)
+    expect(await agents.adopt(work, [encodeAgentId(MAC, 'a'), encodeAgentId(MAC, 'a'), encodeAgentId(MAC, 'b')])).toEqual({
+      adopted: [],
+      refused: [
+        { sessionId: encodeAgentId(MAC, 'a'), why: 'a Work master takes no thread from another host into its batch' },
+        { sessionId: encodeAgentId(MAC, 'b'), why: 'a Work master takes no thread from another host into its batch' }
+      ]
+    })
+    expect(seen).toEqual([])
+    await agents.startThread(work, MAC, { threadType: 'chat', provider: 'claude', firstMessage: '', cwd: '/x', work: { kind: 'start', message: 'go', ...purdue } })
+    expect(seen.map((c) => c.method)).toEqual(['thread.start'])
+  })
+
+  it('reads the row as it is now, not the meta a tool closure holds', async () => {
+    const { agents, seen } = setup({ parent: work })
+    await expect(agents.spawn({ ...work, scope: undefined } as SessionMeta, MAC, [spec])).rejects.toThrow(/subagents run here/)
+    expect(seen).toEqual([])
   })
 })

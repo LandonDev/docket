@@ -78,7 +78,7 @@ a pillar knows (a guest link, a shared LifeOS document) is not guessed yet.
 | Tool or path | Rule | Where |
 |---|---|---|
 | `app_start_thread` | chat or research only; a `projectId` outside its workspace is refused; seeds must be threads of its own scope | `appStartThread`, apptools.ts |
-| `spawn_agent` | the child is a Work thread of the parent's workspace; with `environmentId` it is refused | `orchSpawnAgent`, orchestration.ts |
+| `spawn_agent` | the child is a Work thread of the parent's workspace; with `environmentId`, of that host's own workspace for the job, or refused there | `orchSpawnAgent`, orchestration.ts; `spawn`, crossHostAgents.ts; `spawnWork`, crossHostThreads.ts |
 | `app_list_threads`, `app_read_thread` | its own scope's threads only | apptools.ts |
 | `send_to_agent`, `wait_for_agent`, `check_agent`, `answer_agent`, `interrupt_agent` | never a thread outside its scope, however it came to hang under it | `supervisedBy`, orchestration.ts |
 | a batch | one scope: a Work master takes only Work threads of its workspace; a Work thread joins no other batch, and none on another host | `assertBatchScope`, sessions.ts; `thread.adopt`, crossHostThreads.ts |
@@ -105,16 +105,21 @@ ordinary code thread.
 | `call` | runs a Work module's method for `ctx.peer` (below). Starts nothing |
 
 - `app_start_thread` with `environmentId` from a Work thread sends `start`.
-- `spawn_agent` with `environmentId` is refused: the spawn request names no
-  scope, so the child would be a code thread there.
-- `guardCrossHostAgents` (work/scope.ts) wraps `CrossHostAgents` where the
-  host hands it to the tools (`setCrossHostAgents`, orchestration.ts), so
-  the rule holds whichever caller reaches it (a Claude tool, the bridge's
-  `app.spawnAgent`, the desktop's `batch.adopt`) and whether or not Work's
-  mount came up: a Work thread starts a far thread only as a Work start,
-  spawns none there, and a Work master adopts none from there. The wrap is
-  there because `crossHostAgents.ts` is not this milestone's file; the rule
-  belongs in it.
+- `spawn_agent` with `environmentId` from a Work thread (since F1) sends
+  `thread.spawn` with `work`: the parent's workspace as that host matches it
+  (`farWorkHomeOf`) and the task, with the top-level `task` left **empty**,
+  so a host from before Work refuses it as it refuses an empty start. The
+  far host (`spawnWork`) makes the child a Work thread of its own workspace
+  for the job, in that workspace's folder, never a worktree or a code
+  project, its parent the caller and its preamble a child's; or refuses
+  when Work is off there or it has no such workspace.
+- The rule is in `CrossHostAgents`' own calls (crossHostAgents.ts), read
+  from the row as it is now, so it holds whichever caller reaches them (a
+  Claude tool, the bridge's `app.spawnAgent`, the desktop's `batch.adopt`)
+  and whether or not Work's mount came up: a Work thread starts a far thread
+  only as a Work start, spawns there only as a Work spawn (none when this
+  host cannot name its workspace, `workHomeOf` unset, or it has none here),
+  and a Work master adopts none from there.
 - **A move** (`sessionMove`): `SessionRegistry.freezeForMove` asks the
   destination with a `probe` before any row leaves
   (`registry.workMove`, set by work/peer.ts). A tree with a Work thread

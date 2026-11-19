@@ -38,6 +38,7 @@ import {
   type ThreadReadResult,
   type ThreadPending,
   type ThreadSpawnArgs,
+  type ThreadSpawnWork,
   type ThreadStartArgs,
   type ThreadStartResult,
   type ThreadWaitResult,
@@ -446,8 +447,9 @@ export class CrossHostThreads {
         return result
       }
       case 'thread.spawn': {
-        const result = await this.spawn(caller, ThreadSpawnArgsSchema.parse(args))
-        line(`spawned ${result.sessionId} in ${result.cwd}${result.cwdNote ? ' (work root)' : ''}`)
+        const spawn = ThreadSpawnArgsSchema.parse(args)
+        const result = spawn.work ? await this.spawnWork(caller, spawn, spawn.work) : await this.spawn(caller, spawn)
+        line(`spawned ${result.sessionId} in ${result.cwd}${result.cwdNote ? ' (work root)' : ''}${result.scope === 'work' ? ' as a Work thread' : ''}`)
         return result
       }
       case 'thread.send': {
@@ -777,6 +779,46 @@ export class CrossHostThreads {
     this.remember(caller, thread.id)
     this.lastStatus.set(thread.id, thread.status)
     return { sessionId: thread.id, title: created.title, cwd: created.cwd, projectId: null, scope: 'work' }
+  }
+
+  /**
+   * A Work thread on another host spawns a subagent here: a Work thread of
+   * this host's own workspace for that job, its parent the caller, in that
+   * workspace's folder and never a worktree or a code project; or a
+   * refusal. Its task came inside `work`, so a host that does not reach this
+   * line never started anything.
+   */
+  private async spawnWork(caller: CrossHostCaller, args: ThreadSpawnArgs, work: ThreadSpawnWork): Promise<ThreadStartResult> {
+    if (!workEnabled(this.deps.store)) throw new Error(WORK_OFF)
+    const home = this.workHome(work, args.workRoot)
+    if (!home) throw new Error(`this host has no Work workspace for ${work.sector ?? work.workspaceName ?? 'that job'}`)
+    this.admitted(caller)
+    const child = await this.deps.registry.startWith(
+      {
+        scope: 'work',
+        provider: args.provider,
+        model: args.model,
+        reasoning: args.reasoning,
+        agentType: args.agentType,
+        ...(args.context1m ? { context1m: true } : {}),
+        permission: caller.permission,
+        title: args.title,
+        workspaceId: home.chat ? null : home.workspace.id,
+        parentId: caller.sessionId
+      },
+      work.task,
+      { farWork: true }
+    )
+    const created = this.deps.registry.get(child.id) ?? child
+    // The row decides: a child that is not a Work thread here is removed, never left running.
+    if (sessionScopeOf(created) !== 'work') {
+      await this.deps.registry.delete?.(child.id)
+      throw new Error('this host did not make the subagent a Work thread; nothing was started')
+    }
+    if (args.autoTitle) this.deps.registry.titleFromTask?.(child.id, work.task)
+    this.remember(caller, child.id)
+    this.lastStatus.set(child.id, child.status)
+    return { sessionId: child.id, title: created.title, cwd: created.cwd, projectId: null, scope: 'work' }
   }
 
   private async spawn(caller: CrossHostCaller, args: ThreadSpawnArgs): Promise<ThreadStartResult> {

@@ -10,7 +10,7 @@ import { setMovingTo } from '../sessionMove'
 import { workRoot } from '../workRoot'
 import type { CtxPart } from './ctx'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from './modules'
-import { guardCrossHostAgents, scopeFactsOf, WORK_OFF, workHomeOf, workHomeOfSession } from './scope'
+import { scopeFactsOf, WORK_OFF, workHomeOf, workHomeOfSession } from './scope'
 
 /**
  * `ctx.peer(host)`: a Work tool's route to the same module on another host
@@ -124,10 +124,6 @@ export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
 
   // The far side: a Work call another host sends is answered here.
   deps.crossHostThreads?.serveWork((from, call) => servePeerWork({ ctx, modules: WORK_MODULES, policyOf: (id) => deps.macBridge?.policyOf(id) ?? 'off' }, from, call))
-
-  // A Work thread never starts a code thread on another host, whichever tool or method asks (work/scope.ts). The host's
-  // own wiring guards the object too (orchestration.ts); this covers a host built without it.
-  if (deps.crossHostAgents) guardCrossHostAgents(deps.crossHostAgents, () => facts)
 
   // A move: the destination says it keeps Work threads, or the thread stays (sessions.ts freezeForMove).
   deps.registry.workMove = {

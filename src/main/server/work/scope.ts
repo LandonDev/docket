@@ -157,6 +157,12 @@ export const workHomeOf = (workspace: WorkspaceMeta | null): { sector: string | 
   workspacePath: workspace?.path ?? null
 })
 
+/** A Work thread's workspace as another host matches it: its own, all null for a Work Chat; 'orphan' when it has none here. */
+export function farWorkHomeOf(facts: ScopeFacts, session: SessionMeta): ReturnType<typeof workHomeOf> | 'orphan' {
+  const home = workHomeOfSession(facts, session)
+  return home === 'orphan' ? 'orphan' : workHomeOf(home === 'chat' ? null : home)
+}
+
 export interface StampInput {
   /** What the create asked for. */
   asked: {
@@ -248,51 +254,6 @@ let desktops: ((session: SessionMeta) => readonly string[]) | null = null
 export function mayUseFarDesktop(session: SessionMeta, host: string | null): boolean {
   if (sessionScopeOf(session) !== 'work') return true
   return !!host && !!desktops?.(session).includes(host)
-}
-
-/** The calls of `CrossHostAgents` a Work thread's scope bears on. */
-interface FarAgentCalls {
-  startThread(caller: SessionMeta, environmentId: string | null | undefined, args: { work?: unknown }): Promise<unknown>
-  spawn(caller: SessionMeta, environmentId: string | null | undefined, specs: unknown[]): Promise<unknown>
-  adopt(master: SessionMeta, encodedIds: readonly string[]): Promise<{ adopted: string[]; refused: { sessionId: string; why: string }[] }>
-}
-
-/**
- * Work's rule on the calls that make or take a thread on another host,
- * whichever tool or method reaches them (a Claude tool, the bridge's
- * `app.*`, the desktop's `batch.adopt`):
- *
- *  - a Work thread starts a thread there only as a Work start (`work` in
- *    the args, which a host from before Work refuses);
- *  - it spawns no subagent there: the spawn request names no scope, so the
- *    child would be a code thread of that host;
- *  - a Work master adopts no thread there: this host cannot see the
- *    thread's scope, and a code thread in its batch is one it may instruct.
- *
- * The rule sits here, wrapped round the object where the host hands it to
- * the tools (orchestration.ts `setCrossHostAgents`), because the calls
- * themselves live in a file outside this milestone (crossHostAgents.ts). It
- * does not wait for Work's mount: a Work row is held to it even on a host
- * where Work failed to come up.
- */
-export function guardCrossHostAgents(agents: object, facts: () => ScopeFacts | null): void {
-  const target = agents as FarAgentCalls & { workGuarded?: true }
-  if (target.workGuarded) return
-  target.workGuarded = true
-  const isWork = (session: SessionMeta): boolean => sessionScopeOf(facts()?.session(session.id) ?? session) === 'work'
-  const { startThread, spawn, adopt } = target
-  target.startThread = async function (this: unknown, caller, environmentId, args) {
-    if (isWork(caller) && !args?.work) throw new WorkRefused('a Work thread starts a thread on another host only as a Work thread')
-    return startThread.call(this, caller, environmentId, args)
-  }
-  target.spawn = async function (this: unknown, caller, environmentId, specs) {
-    if (isWork(caller)) throw new WorkRefused('a Work thread spawns its subagents on its own host; a subagent on another host would not be a Work thread')
-    return spawn.call(this, caller, environmentId, specs)
-  }
-  target.adopt = async function (this: unknown, master, encodedIds) {
-    if (isWork(master)) return { adopted: [], refused: [...new Set(encodedIds)].map((sessionId) => ({ sessionId, why: 'a Work master takes no thread from another host into its batch' })) }
-    return adopt.call(this, master, encodedIds)
-  }
 }
 
 export const scopePart: ScopePart = (ctx, deps) => {

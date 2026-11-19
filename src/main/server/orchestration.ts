@@ -47,11 +47,11 @@ import { encodeAgentId } from '@shared/contract-crosshost'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
 import { computerActivity } from '@shared/computer/words'
 import { sessionScopeOf } from '@shared/work/ids'
-import { guardCrossHostAgents, OUTSIDE_FENCE, scopeFactsOf, withinFence } from './work/scope'
+import { OUTSIDE_FENCE, scopeFactsOf, withinFence } from './work/scope'
 
 // Work's scope rule for the app tools (apptools.ts), which may load nothing under work/ itself. work/scope.ts is
 // the host's own rule, not a pillar: it imports no pillar, not the registry and not the mount (work/scope.test.ts).
-export { mayUseFarDesktop, OUTSIDE_FENCE, scopeFactsOf, withinFence, WORK_THREAD_TYPES, workHomeOf, workHomeOfSession, WorkRefused } from './work/scope'
+export { farWorkHomeOf, mayUseFarDesktop, OUTSIDE_FENCE, scopeFactsOf, withinFence, WORK_THREAD_TYPES, workHomeOf, workHomeOfSession, WorkRefused } from './work/scope'
 
 
 /**
@@ -75,8 +75,6 @@ export function setOrchestrationRegistry(r: SessionRegistry): void {
 let crossHost: CrossHostAgents | null = null
 export function setCrossHostAgents(c: CrossHostAgents | null): void {
   crossHost = c
-  // Work's rule on the calls that make or take a thread on another host (work/scope.ts), whoever reaches them.
-  if (c) guardCrossHostAgents(c, () => (registry ? scopeFactsOf(registry) : null))
 }
 // What the other hosts can run (peerCatalogs.ts): the table lists their
 // approved rows, and a spawn there is checked against them.
@@ -886,11 +884,8 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   if (args.environmentId?.trim()) {
     if (!crossHost) return 'refused: threads on other hosts are not available here'
     if (researchRoot) return 'refused: a research tree spawns its explorers here, not on another host'
-    // Scope follows the parent (work/scope.ts). A subagent on another host is made from this
-    // host's spawn request, which names no scope, so it would be a code thread there: refused.
-    // A Work thread that needs another host starts a thread on it (app_start_thread carries the scope).
-    if (sessionScopeOf(parentNow) === 'work')
-      return 'refused: a Work thread spawns its subagents on this host. To run Work on another host, use app_start_thread with environmentId: that start carries the workspace, and the host refuses it if it cannot keep the thread a Work thread.'
+    // Scope follows the parent there too: a Work thread's spawn carries its workspace, and that host
+    // makes the child a Work thread of its own workspace for the job or refuses (crossHostAgents.ts).
     let started: Awaited<ReturnType<CrossHostAgents['spawn']>>
     try {
       started = await crossHost.spawn(parentNow, args.environmentId, resolved)

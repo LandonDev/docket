@@ -200,14 +200,26 @@ export interface WorkCallResult {
   work: { result: unknown }
 }
 
+/**
+ * A Work thread's subagent on another host (thread.spawn's `work`): the
+ * parent's workspace as that host can match it, and the task. The task rides
+ * here with the top-level `task` left EMPTY, as a Work start's message does:
+ * a host from before Work requires a non-empty task and refuses the call,
+ * where it would otherwise drop `work` and spawn a code thread.
+ */
+export const ThreadSpawnWorkSchema = WorkHomeSchema.extend({ task: z.string().min(1).max(200_000) })
+export type ThreadSpawnWork = z.infer<typeof ThreadSpawnWorkSchema>
+
 /** thread.spawn: one subagent, already resolved against the box thread's rules. */
-export const ThreadSpawnArgsSchema = z.object({
+export const ThreadSpawnArgsSchema = z
+  .object({
   provider: providerArg,
   model: z.string().max(200),
   reasoning: reasoningArg,
   context1m: z.boolean(),
   agentType: z.enum(AGENT_TYPES),
-  task: z.string().min(1).max(200_000),
+  /** The child's task. Empty exactly when `work` is set: that is what makes a host from before Work refuse a Work spawn. */
+  task: z.string().max(200_000),
   title: z.string().max(300),
   /** The spawner gave no title: `title` is the task's first line, and this host writes one from the task (SessionRegistry.titleFromTask). */
   autoTitle: z.boolean().optional(),
@@ -217,8 +229,14 @@ export const ThreadSpawnArgsSchema = z.object({
   /** false: the spawner opted the child out of the project preamble (projectPreamble.ts). */
   preamble: z.boolean().optional(),
   /** The caller's project (shared/projectLinks.ts): the child lands in this host's linked copy. */
-  project: ProjectLinkFactsSchema.optional()
-})
+  project: ProjectLinkFactsSchema.optional(),
+  /** A Work thread's subagent (above); absent for a code thread's. */
+  work: ThreadSpawnWorkSchema.optional()
+  })
+  .superRefine((args, ctx) => {
+    if (args.work && args.task !== '') ctx.addIssue({ code: 'custom', path: ['task'], message: 'a Work spawn leaves task empty' })
+    if (!args.work && args.task.length < 1) ctx.addIssue({ code: 'custom', path: ['task'], message: 'a subagent starts with a task' })
+  })
 export type ThreadSpawnArgs = z.infer<typeof ThreadSpawnArgsSchema>
 
 export const ThreadSendArgsSchema = z.object({

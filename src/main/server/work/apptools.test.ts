@@ -210,19 +210,3 @@ describe("skills through the bridge (index.ts's app.skill* calls skills/tools.ts
   })
 })
 
-describe('the calls to another host, guarded where the host hands them to the tools', () => {
-  it('holds a Work thread to the rule with no Work mount at all', async () => {
-    const reached: string[] = []
-    const agents = {
-      children: () => [],
-      startThread: async () => (reached.push('start'), {}),
-      spawn: async () => (reached.push('spawn'), []),
-      adopt: async () => (reached.push('adopt'), { adopted: [], refused: [] })
-    }
-    setCrossHostAgents(agents as never)
-    await expect((agents.spawn as (...a: unknown[]) => Promise<unknown>).call(agents, work, 'mac', [])).rejects.toThrow(/on its own host/)
-    await expect((agents.startThread as (...a: unknown[]) => Promise<unknown>).call(agents, work, 'mac', {})).rejects.toThrow(/only as a Work thread/)
-    await (agents.spawn as (...a: unknown[]) => Promise<unknown>).call(agents, code, 'mac', [])
-    expect(reached).toEqual(['spawn'])
-  })
-})
