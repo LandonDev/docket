@@ -41,7 +41,7 @@ refused. It is never made a code thread.
 | a Work parent or starter asking `scope: 'code'` | `a thread a Work thread starts is a Work thread` |
 | `scope: 'work'` naming a code workspace or project | `… is not a Work workspace` |
 | a root Work thread that is not a chat or a research thread | `a Work thread is a chat or a research thread` |
-| a Work thread on a harness that is not offered | `Work threads run on Claude Code only …` |
+| a Work thread on a harness that is not offered | `Work threads run on Claude or Codex. … is not offered for Work …` |
 
 Code branches on the row (`session.scope === 'work'`), never on the switch.
 A Work row made while the switch was on keeps its fence with the switch
@@ -188,11 +188,9 @@ the loaded list, as work/threads.ts does for the preamble parts.
 ## The fence: no MCP server but the app's
 
 A harness is offered for Work only when every way out of the fence is shut
-for it (`WORK_PROVIDERS`, work/scope.ts). Today that is **Claude Code
-alone**. Codex's fence at the harness is built and proven, and it is
-withheld for a reason outside the harness (below). A Work row on any other
-harness is refused at create, at a provider switch and again before a
-process is made.
+for it (`WORK_PROVIDERS`, work/scope.ts). Today that is **Claude Code and
+Codex** (Codex since F1, below). A Work row on any other harness is refused
+at create, at a provider switch and again before a process is made.
 
 `src/main/server/work/fence.proof.test.ts` is the proof for the sources,
 kept so a new one fails it. For Claude Code and for Codex it plants one
@@ -243,30 +241,32 @@ the thread mounts is in the options:
 - The same built-ins in `disallowedTools`.
 - `WORK_STANDING_RULE` appended to the system prompt.
 
-### Codex: fenced at the harness, not offered yet
+### Codex: fenced at the harness, offered
 
-Two things keep Codex out of `WORK_PROVIDERS`, neither a source it reads:
+Codex is in `WORK_PROVIDERS` since F1 (2026-11-19). M6 withheld it for one
+reason that is now shut and one limit that stands:
 
-1. **The stdio bridge lets a tool call name its own caller.**
-   `scripts/app-mcp-bridge.mjs` sends `{ sessionId: SESSION, ...params }`,
-   so a tool argument named `sessionId` replaces the thread's own, and the
-   server answers as that thread. A Codex Work thread could list, start and
-   send as a code thread. Claude's tools are in process and bound to the
-   thread; Codex's and Muse's all go through the bridge. The fix is in the
-   bridge (the thread's id last, undeclared arguments refused, better a
-   per-thread token as the Work calls have); work/scope.test.ts fails when
-   that line changes, as a reminder to look again.
-2. **The Work home is a file the agent's shell can write.** The driver
-   puts it back before every start, but a process the agent left running
-   can change it again before codex reads it. The proof's last case does
-   exactly that: plugins and hooks still do not load (the argv and the
+1. **Shut: the stdio bridge let a tool call name its own caller.** It sent
+   `{ sessionId: SESSION, ...params }`, so an argument named `sessionId`
+   replaced the thread's own. Now every `app.*` call carries the thread's own
+   token and the app checks it (docs/agents/app-bridge.md), undeclared
+   arguments are refused, and what a Claude Work thread is held to in
+   process is held on the app's side for the bridge too: no code tool
+   (`workBridgeRefusal`), skills in its own workspace (`scopeRefusal`
+   inside skills/tools.ts), add-ons in its own workspace (`workAddonArgs`),
+   the Mac only where its workspace may use it (macTools.ts at dispatch).
+2. **Stands: the Work home is a file the agent's shell can write.** The
+   driver puts it back before every start, but a process the agent left
+   running can change it again before codex reads it. The proof's last case
+   does exactly that: plugins and hooks still do not load (the argv and the
    thread's config say off), but a server named in the file does, and so do
    the folder's project servers once the file marks the folder trusted. The
-   driver now stops a Work thread whose app-server names any server but
-   `app`, before a turn runs (`mcpServer/startupStatus/updated`). Whether
-   that notice comes for every kind of server was not shown.
+   driver stops a Work thread whose app-server names any server but `app`,
+   before a turn runs (`mcpServer/startupStatus/updated`). Whether that
+   notice comes for every kind of server was not shown. What the race buys
+   is a program the agent could have started from its shell anyway.
 
-What follows is built, tested and ready for the day the bridge is fixed.
+The fence at the harness:
 
 | Source | Loads for a code thread | Cut for a Work thread by |
 |---|---|---|

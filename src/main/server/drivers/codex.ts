@@ -124,9 +124,8 @@ export const codexPluginsOff = (env: NodeJS.ProcessEnv = process.env): boolean =
 // codex's read. So the driver also checks what codex did: a Work thread
 // whose app-server names any MCP server but `app` is stopped before a turn.
 //
-// Codex is not offered for Work threads yet (work/scope.ts WORK_PROVIDERS):
-// its app tools go through the stdio bridge, where a tool call can name
-// another thread as its caller. This fence is ready for when that is shut.
+// Codex is offered for Work threads (work/scope.ts WORK_PROVIDERS) since the
+// stdio bridge answers only as its own thread (docs/agents/app-bridge.md).
 
 /** The feature switches a Work thread runs with, each off. */
 export const CODEX_WORK_OFF = ['plugins', 'remote_plugin', 'apps', 'hooks', 'skill_mcp_dependency_install', 'tool_suggest'] as const

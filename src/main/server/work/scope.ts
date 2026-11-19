@@ -43,28 +43,26 @@ export const WORK_THREAD_TYPES: readonly ThreadType[] = ['chat', 'research']
 
 /**
  * The harnesses a Work thread may run on. One is offered only when every
- * path out of the fence is shut for it. Today that is Claude Code alone:
+ * path out of the fence is shut for it:
  *
  *  - **Claude Code**: its tools are the app's own, in process, bound to the
  *    thread; every source of MCP servers is cut and shown cut with a planted
  *    server in each (work/fence.proof.test.ts).
  *  - **Codex**: every source is cut and shown cut the same way, and the
- *    driver is fenced (drivers/codex.ts). It is withheld for another reason:
- *    its app tools go through the stdio bridge, which sends
- *    `{ sessionId: SESSION, ...params }`, so a tool call that names a
- *    `sessionId` of its own is answered as that thread (scripts/app-mcp-bridge.mjs).
- *    A Work thread could so act as a code thread. When the bridge binds the
- *    caller, add 'codex' here.
- *  - **Muse Code**: its fence needs an empty app-owned primary root, and
- *    whether a child runtime of Muse's own delegation re-reads a `.mcp.json`
- *    the agent wrote there was not shown. It shares the bridge.
+ *    driver is fenced (drivers/codex.ts). Its app tools go through the stdio
+ *    bridge, which since F1 answers only as its own thread: every app.* call
+ *    carries the thread's own token and the app checks it
+ *    (apptools.ts bridgeCallRefusal), the code tools are not listed or
+ *    answered (workBridgeRefusal), and skills, add-ons and the Mac are held
+ *    to the workspace on the app's side, whichever harness asks.
+ *  - **Muse Code**: see drivers/muse.ts for why it is or is not here.
  *  - No other harness has a fence at all.
  */
-export const WORK_PROVIDERS: readonly ProviderId[] = ['claude']
+export const WORK_PROVIDERS: readonly ProviderId[] = ['claude', 'codex']
 export const workProviderRefusal = (provider: ProviderId): string | null =>
   WORK_PROVIDERS.includes(provider)
     ? null
-    : `refused: Work threads run on Claude Code only. ${CATALOG[provider]?.label ?? provider} is not offered for Work: it cannot yet be kept inside a Work thread's fence.`
+    : `refused: Work threads run on ${WORK_PROVIDERS.map((p) => CATALOG[p]?.label ?? p).join(' or ')}. ${CATALOG[provider]?.label ?? provider} is not offered for Work: it cannot yet be kept inside a Work thread's fence.`
 
 /** The Work switch as the store holds it. */
 export const workEnabled = (store: { getSetting(key: string): string | null }): boolean => parseWorkSettings(store.getSetting(WORK_SETTING_KEY)).enabled

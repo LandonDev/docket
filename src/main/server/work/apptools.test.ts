@@ -70,7 +70,8 @@ beforeEach(async () => {
     skills: { list: () => [], byName: (workspaceId: string | null) => (skillCalls.push({ what: 'lookup', scope: workspaceId }), null), files: () => [] },
     write: async () => 'refused: not in this test',
     remove: async () => ({ removed: true }),
-    settle: async () => true
+    settle: async () => true,
+    scopeRefusal: workSkillRefusal
   } as never)
 })
 afterEach(async () => {
@@ -173,11 +174,12 @@ describe('skills from a Work thread', () => {
 
 describe("add-ons through the bridge (index.ts's app.addonAdd and app.addonRemove hold them as Claude's tools do)", () => {
   it("a Work thread's add or remove is its own workspace's, never every workspace's; a code thread's passes as it was", () => {
+    type Args = { name: string; scope?: 'workspace' | 'global' }
     expect(workAddonArgs(work, { name: 'x', scope: 'global' as const })).toBe(WORK_ADDON_REFUSAL)
     expect(workAddonArgs(chat, { name: 'x', scope: 'global' as const })).toBe(WORK_ADDON_REFUSAL)
-    expect(workAddonArgs(work, { name: 'x' })).toEqual({ name: 'x', scope: 'workspace' })
+    expect(workAddonArgs<Args>(work, { name: 'x' })).toEqual({ name: 'x', scope: 'workspace' })
     expect(workAddonArgs(code, { name: 'x', scope: 'global' as const })).toEqual({ name: 'x', scope: 'global' })
-    expect(workAddonArgs(code, { name: 'x' })).toEqual({ name: 'x' })
+    expect(workAddonArgs<Args>(code, { name: 'x' })).toEqual({ name: 'x' })
   })
 })
 

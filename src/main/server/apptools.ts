@@ -771,7 +771,7 @@ export function setProjectPlans(plans: ProjectPlans | null): void {
 // The skill tools every thread gets (skills/tools.ts holds their one body; the bridge reaches it through index.ts).
 let skillTools: SkillToolDeps | null = null
 export function setAppSkillTools(deps: SkillToolDeps | null): void {
-  skillTools = deps && { ...deps, scopeRefusal: deps.scopeRefusal ?? workSkillRefusal }
+  skillTools = deps
 }
 
 /**

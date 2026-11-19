@@ -71,6 +71,7 @@ function deps(over: Partial<SkillToolDeps> = {}): SkillToolDeps {
       settles++
       return settled
     },
+    scopeRefusal: () => null,
     ...over
   }
 }
@@ -238,5 +239,16 @@ describe('skillChanges', () => {
       'a.md, b.md and c.md changed, d.md and e.md added, and 1 more'
     )
     expect(skillChanges([f('SKILL.md', 'a')], [f('SKILL.md', 'a')])).toBe('only which CLIs get it')
+  })
+})
+
+describe('the caller\'s own limit (scopeRefusal)', () => {
+  it('is asked first by a write and a remove, with the scope each lands in, and its words are the answer', async () => {
+    const asked: [string, string | null][] = []
+    const fenced = deps({ scopeRefusal: (caller, workspaceId) => (asked.push([caller.id, workspaceId]), 'refused: not here') })
+    expect(await skillWrite(fenced, root, { name: 'x', scope: 'global', files: files('x') })).toBe('refused: not here')
+    expect(await skillRemove(fenced, root, { name: 'x' })).toBe('refused: not here')
+    expect(asked).toEqual([[root.id, null], [root.id, 'w1']])
+    expect(calls).toEqual([])
   })
 })

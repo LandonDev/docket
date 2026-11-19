@@ -181,10 +181,11 @@ describe('the fence between threads', () => {
 })
 
 describe('the harnesses offered for Work', () => {
-  it('Claude Code, and no other: Codex is fenced at the harness but shares the bridge, through which a tool call can name another thread as its caller', () => {
-    expect([...WORK_PROVIDERS]).toEqual(['claude'])
+  it('Claude Code and Codex, each fenced at the harness and bound to its own thread on the app side; no other', () => {
+    expect([...WORK_PROVIDERS]).toEqual(['claude', 'codex'])
     expect(workProviderRefusal('claude')).toBeNull()
-    for (const provider of ['codex', 'muse', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx'] as const) expect(workProviderRefusal(provider)).toMatch(/not offered for Work/)
+    expect(workProviderRefusal('codex')).toBeNull()
+    for (const provider of ['muse', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx'] as const) expect(workProviderRefusal(provider)).toMatch(/^refused: Work threads run on Claude or Codex\. .+ is not offered for Work/)
   })
   it('the bridge sends its own thread and token after whatever a tool was given: no tool argument names another thread', async () => {
     const bridge = (await import(resolve(import.meta.dirname, '..', '..', '..', '..', 'scripts', 'app-mcp-bridge.mjs'))) as {

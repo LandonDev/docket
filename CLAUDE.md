@@ -218,7 +218,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   (`work.get`, `work.set`). Built so far: the frame, and what a Work thread is
   on the server: `sessions.scope` stamped once at create and following a
   thread's parent or starter, no MCP server but the app's own (Claude Code
-  only for now; `work/fence.proof.test.ts` plants one in every source and runs
+  and Codex; `work/fence.proof.test.ts` plants one in every source and runs
   the real CLIs), the Work preamble on every start path
   ([docs/agents/work-scope.md](docs/agents/work-scope.md)). The shared types
   (src/shared/work), the core columns (`workspaces.kind`, `sessions.scope`, …),

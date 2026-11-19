@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 import { WORK_HOME, WORK_SETTING_KEY } from '@shared/work'
 import { configureAddonScope, visibleAddons, workspaceIdOf } from '../addons/scope'
-import { appListThreads, appReadThread, appStartThread, setAppSkillTools, setAppToolsRegistry, WORK_SKILL_REFUSAL } from '../apptools'
+import { appListThreads, appReadThread, appStartThread, setAppSkillTools, setAppToolsRegistry, WORK_SKILL_REFUSAL, workSkillRefusal } from '../apptools'
 import { skillWrite } from '../skills/tools'
 import { openDb, Store } from '../db'
 import type { DriverCtx, DriverHandle } from '../drivers/types'
@@ -169,7 +169,8 @@ describe('with the Work switch on', () => {
     const purdue = await workWorkspace('purdue')
     await expect(registry.create({ threadType: 'implementation', workspaceId: purdue.id })).rejects.toThrow(/chat or a research thread/)
     await expect(registry.create({ threadType: 'chat', workspaceId: purdue.id, provider: 'muse', model: 'muse-wonder-full-1.0' })).rejects.toThrow(/not offered for Work/)
-    await expect(registry.create({ threadType: 'chat', workspaceId: purdue.id, provider: 'codex' })).rejects.toThrow(/not offered for Work/)
+    // Codex is offered: its bridge answers only as its own thread (docs/agents/app-bridge.md)
+    expect(await registry.create({ threadType: 'chat', workspaceId: purdue.id, provider: 'codex', model: 'gpt-6.1-sol' })).toMatchObject({ scope: 'work', provider: 'codex' })
     // nor does a Work thread become one later
     const thread = await registry.create({ threadType: 'chat', workspaceId: purdue.id })
     await expect(registry.retype(thread.id, 'implementation')).rejects.toThrow(WorkRefused)
@@ -376,7 +377,8 @@ describe('with the Work switch on', () => {
         skills: { list: () => [], byName: () => null, files: () => [] },
         write: async (input: unknown) => (wrote.push(input), { skill: { name: 'x', version: 1, fileCount: 1, bytes: 1, harnesses: 'all' } }),
         remove: async () => ({ removed: true }),
-        settle: async () => true
+        settle: async () => true,
+        scopeRefusal: workSkillRefusal
       } as never
       setAppToolsRegistry(registry)
       setAppSkillTools(deps)
