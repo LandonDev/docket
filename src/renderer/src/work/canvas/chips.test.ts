@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ContextChip } from "@shared/work";
 import { chipPort } from "../../lib/contextChips";
-import { aboutFor, addContextChip, chipLine, CHIPS_MAX, contextChipsOf, removeContextChip, resetContextChips, takeContextChips, withContextChips } from "./chips";
+import { aboutFor, addContextChip, chipLine, CHIPS_MAX, contextChipsOf, removeContextChip, resetContextChips, startAboutChip, takeContextChips, withContextChips } from "./chips";
 
 const task: ContextChip = { kind: "task", label: "Book the ballroom for April 10", ref: { at: "lifeos", table: "tasks", id: "k1" } };
 const mail: ContextChip = { kind: "mail", label: "Re: Ballroom for April 10", ref: { at: "lifeos", table: "mailThreads", id: "m1" } };
@@ -73,10 +73,26 @@ describe("what a message is about", () => {
   });
 });
 
+describe("a thread started about something", () => {
+  it("leads with the chip just picked, which replaces a LifeOS chip an unsent draft held, and keeps a selection", () => {
+    addContextChip("d", task);
+    addContextChip("d", selection);
+    startAboutChip("d", mail);
+    expect(contextChipsOf("d")).toEqual([mail, selection]);
+    // What the first send says the thread is about is the newest start's.
+    takeContextChips("d", true);
+    expect(aboutFor("d", () => false)).toEqual(mail);
+  });
+});
+
 describe("a chip as the model reads it", () => {
   it("is one line that names the thing and where it is", () => {
     expect(chipLine(task)).toBe("About this task: Book the ballroom for April 10 (LifeOS tasks k1)");
     expect(chipLine(mail)).toBe("About this mail: Re: Ballroom for April 10 (LifeOS mailThreads m1)");
+  });
+
+  it("quotes a task's notes under its line when the chip carries them (a code thread that cannot read LifeOS)", () => {
+    expect(chipLine({ ...task, quote: "Ask for the east hall.\nBudget 2k" })).toBe("About this task: Book the ballroom for April 10 (LifeOS tasks k1)\n> Ask for the east hall.\n> Budget 2k");
   });
 
   it("quotes a selection's words under its line", () => {

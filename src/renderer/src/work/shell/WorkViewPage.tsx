@@ -54,7 +54,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const loaded = def.chunk.loaded();
   const Head = loaded?.Head;
   const props = useMemo<WorkViewProps>(
-    () => ({ env: environmentId, workspace, sector, lifeos: session, startThread: (about) => startThreadAbout(about) }),
+    () => ({ env: environmentId, workspace, sector, lifeos: session, startThread: (about, at) => startThreadAbout(about, at?.projectId ?? null, at?.cwd) }),
     [environmentId, workspace, sector, session],
   );
   // React.lazy keeps a rejection for good: the boundary's Retry makes a fresh one, which imports again.

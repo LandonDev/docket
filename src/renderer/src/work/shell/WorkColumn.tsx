@@ -3,7 +3,7 @@ import type { ContextChip, SectorKey } from "@shared/work";
 import { RailRow } from "../../chrome/RailRow";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { openWorkView, setLifeosProjects, useWorkView, workColumnPort, workStartPort, type LifeosProjectRow } from "../../lib/workSwitch";
-import { addContextChip } from "../canvas/chips";
+import { addContextChip, startAboutChip } from "../canvas/chips";
 import { type WorkViewDef, workViewList } from "../views/registry";
 import { openLifeosProject } from "./actions";
 import { useLifeosQuery, useLifeosSession } from "./lifeos";
@@ -76,10 +76,14 @@ function ViewRow({ view, workspace, sector, selected }: { view: WorkViewDef; wor
 }
 
 /** A view's `startThread`: a new thread's composer in the workspace with the chip in it; nothing runs until he sends. */
-export function startThreadAbout(about: ContextChip | readonly ContextChip[], projectId: string | null = null): void {
+export function startThreadAbout(about: ContextChip | readonly ContextChip[], projectId: string | null = null, cwd?: string): void {
   const start = workStartPort.get();
   if (!start) return;
   openWorkView(null);
-  const id = start(projectId);
-  for (const chip of Array.isArray(about) ? about : [about]) addContextChip(id, chip as ContextChip);
+  const id = start(projectId, cwd);
+  const [first, ...rest] = Array.isArray(about) ? about : [about as ContextChip];
+  if (!first) return;
+  // The first leads, so it is what the first send says the thread is about.
+  startAboutChip(id, first);
+  for (const chip of rest) addContextChip(id, chip);
 }

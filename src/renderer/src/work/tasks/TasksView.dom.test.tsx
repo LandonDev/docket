@@ -14,11 +14,44 @@ vi.mock("../../lib/tcserver/store", async (original) => ({
   useSessionMeta: (id: string | null | undefined) => (id === "th1" ? { id: "th1", status: "running" } : null),
 }));
 
+// Open a code thread…: the rail lists two code workspaces on a host with Work on, one linked to Purdue.
+const code = vi.hoisted(() => ({
+  workspaces: [
+    { id: "w-site", name: "site", path: "/r/site", git: true, createdAt: 1, environmentId: "env_mac", sector: "purdue" },
+    { id: "w-app", name: "app", path: "/r/app", git: true, createdAt: 1, environmentId: "env_mac" },
+  ],
+  projects: [{ id: "p-api", workspaceId: "w-app", name: "api", mode: "local", branch: "main", cwd: "/r/app", archived: false, createdAt: 1, environmentId: "env_mac" }],
+  /** `tasks:get`'s answer; undefined while it loads. */
+  detail: { task: { description: "Ask for the east hall" } } as { task: { description: string } } | undefined,
+}));
+vi.mock("../../stores/project", async (original) => ({
+  ...(await original<object>()),
+  useRailRecents: () => [
+    { path: "/r/site", openedAt: 2 },
+    { path: "/r/app", openedAt: 1 },
+  ],
+}));
+vi.mock("../../lib/tcserver/workspaces", async (original) => ({
+  ...(await original<object>()),
+  useWorkspaceCatalog: () => ({ loaded: true, workspaces: code.workspaces, projects: code.projects }),
+}));
+vi.mock("../../lib/workSwitch", async (original) => ({
+  ...(await original<object>()),
+  useWorkHosts: () => new Set(["env_mac"]),
+}));
+// The task's notes, as `tasks:get` reads them.
+vi.mock("convex/react", async (original) => ({
+  ...(await original<object>()),
+  useQuery: () => code.detail,
+}));
+
 const { Tasks } = await import("./TasksView");
 const { newestOpenThread } = await import("./links");
 const { workOpenPort } = await import("../../lib/workSwitch");
 
 afterEach(cleanup);
+// jsdom draws no layout: the picker's keyboard list scrolls its pick into view.
+Element.prototype.scrollIntoView ??= () => {};
 
 const now = Date.now();
 const rows: Task[] = [
@@ -91,6 +124,60 @@ describe("the Tasks view", () => {
     expect(newestOpenThread([{ threadId: "a", state: "open", at: 1 }, { threadId: "b", state: "open", at: 2 }, { threadId: "c", state: "done", at: 3 }])).toBe("b");
     expect(newestOpenThread([{ threadId: "c", state: "done", at: 3 }])).toBeNull();
     expect(newestOpenThread(undefined)).toBeNull();
+  });
+
+  it("opens a code thread from a row's menu in the workspace picked, the notes as text where it cannot read LifeOS", async () => {
+    const startThread = vi.fn();
+    render(<Tasks client={fakeTasksClient(rows)} sector="purdue" startThread={startThread} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Send Dana the budget" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open a code thread…" }));
+    const dialog = await screen.findByRole("dialog");
+    // The rail's code rows, in its order; the first is the pick, and it has no projects to offer.
+    const options = within(dialog).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["site", "app"]);
+    expect(options[0]!.getAttribute("aria-selected")).toBe("true");
+    expect(within(dialog).queryByText("Project")).toBeNull();
+    // The search narrows the list; app is not linked to Purdue, so it is handed the notes.
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Workspace" }), { target: { value: "ap" } });
+    expect(within(dialog).getAllByRole("option").map((o) => o.textContent)).toEqual(["app"]);
+    expect(within(dialog).getByText("Project")).toBeTruthy();
+    fireEvent.submit(dialog.querySelector("form")!);
+    expect(startThread).toHaveBeenCalledWith(
+      { kind: "task", label: "Send Dana the budget", ref: { at: "lifeos", table: "tasks", id: "t2" }, quote: "Ask for the east hall" },
+      { cwd: "/r/app", projectId: null },
+    );
+  });
+
+  it("waits for the task's notes when Start comes first, then starts with them", async () => {
+    const startThread = vi.fn();
+    const notes = code.detail;
+    code.detail = undefined;
+    try {
+      const view = render(<Tasks client={fakeTasksClient(rows)} sector="purdue" startThread={startThread} />);
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Open Send Dana the budget" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Open a code thread…" }));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("option", { name: "app" }));
+      fireEvent.submit(dialog.querySelector("form")!);
+      expect(startThread).not.toHaveBeenCalled();
+      code.detail = notes;
+      view.rerender(<Tasks client={fakeTasksClient(rows)} sector="purdue" startThread={startThread} />);
+      await act(async () => {});
+      expect(startThread.mock.calls[0]![0].quote).toBe("Ask for the east hall");
+    } finally {
+      code.detail = notes;
+    }
+  });
+
+  it("gives a code workspace linked to the task's sector the task alone, from the lead's menu too", async () => {
+    const startThread = vi.fn();
+    render(<Tasks client={fakeTasksClient(rows)} sector="purdue" startThread={startThread} />);
+    fireEvent.contextMenu(screen.getByRole("heading", { level: 1 }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open a code thread…" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("option", { name: "site" }));
+    fireEvent.submit(dialog.querySelector("form")!);
+    expect(startThread).toHaveBeenCalledWith({ kind: "task", label: "Book the ballroom", ref: { at: "lifeos", table: "tasks", id: "t1" } }, { cwd: "/r/site", projectId: null });
   });
 
   it("says when nothing is open", () => {

@@ -42,6 +42,16 @@ export function addContextChip(sessionId: string, chip: ContextChip): void {
   put(sessionId, [...have, chip]);
 }
 
+/**
+ * A thread started about something (Start thread, Open a code thread…): its
+ * chip leads, so it is what the first send says the thread is about, and a
+ * LifeOS chip an unsent draft there still held from an earlier start goes.
+ */
+export function startAboutChip(sessionId: string, chip: ContextChip): void {
+  const rest = contextChipsOf(sessionId).filter((c) => c.ref.at !== "lifeos" && !same(c, chip));
+  put(sessionId, [chip, ...rest].slice(0, CHIPS_MAX));
+}
+
 export function removeContextChip(sessionId: string, index: number): void {
   put(sessionId, contextChipsOf(sessionId).filter((_, i) => i !== index));
 }
@@ -76,10 +86,14 @@ function refWords(ref: ContextChip["ref"]): string {
 
 const quoted = (text: string): string => text.split("\n").map((line) => `> ${line}`).join("\n");
 
-/** One chip as the model reads it: a line of its own, a selection's words or a mention's excerpt quoted under it. */
+/**
+ * One chip as the model reads it: a line of its own, quoted under it a
+ * selection's words, a mention's excerpt, or a task's notes for a code thread
+ * that cannot read LifeOS (its `quote`, past an excerpt's length).
+ */
 export function chipLine(chip: ContextChip): string {
   const head = `About this ${CHIP_NOUN[chip.kind] ?? chip.kind}: ${chip.label} (${refWords(chip.ref)})`;
-  const under = (chip.kind === "selection" ? chip.quote : chip.excerpt)?.trim() ?? "";
+  const under = (chip.kind === "selection" ? chip.quote : (chip.quote ?? chip.excerpt))?.trim() ?? "";
   return under ? `${head}\n${quoted(under)}` : head;
 }
 

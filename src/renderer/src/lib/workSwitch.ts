@@ -237,12 +237,14 @@ export function useWorkView(): OpenWorkView | null {
   return useSyncExternalStore(workSwitch.subscribe, read, read);
 }
 
-/** How Work's views start a thread (App registers it): a new thread's draft here, in the window's workspace,
- *  in `projectId` or none, focused; answers the draft's id, which the caller gives its chip. */
-let startPort: ((projectId: string | null) => string) | null = null;
+/** How Work's views start a thread (App registers it): a new thread's draft, focused, in `projectId` or none,
+ *  in the window's workspace or, given `cwd`, in that workspace, which the window moves to (a task's code
+ *  thread); answers the draft's id, which the caller gives its chip. */
+type StartPort = (projectId: string | null, cwd?: string) => string;
+let startPort: StartPort | null = null;
 export const workStartPort = {
   get: () => startPort,
-  set(next: ((projectId: string | null) => string) | null): void {
+  set(next: StartPort | null): void {
     startPort = next;
   },
 };

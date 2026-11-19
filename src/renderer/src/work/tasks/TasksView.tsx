@@ -27,6 +27,7 @@ import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
 import { useLinkedThread } from "./links";
 import { TaskSheet } from "./TaskSheet";
+import { CodeThreadDialog, type CodeThreadStart } from "./CodeThreadDialog";
 
 /**
  * A Work workspace's Tasks (prototype workspace.html, "Four rows"): its
@@ -36,7 +37,8 @@ import { TaskSheet } from "./TaskSheet";
  * accepting the work, so a task a thread here worked completes with that
  * thread's link. A task a thread already works on shows that thread's mark,
  * and Open thread takes Start's place everywhere, so a second press never
- * makes a second thread (prototype workspace.html). The rows come through the shared task client
+ * makes a second thread (prototype workspace.html). Open a code thread… in a
+ * task's menu starts one in a code workspace instead (CodeThreadDialog). The rows come through the shared task client
  * (work-kit's views) on the workspace's narrowed session.
  */
 
@@ -64,7 +66,7 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   if (!lifeos.client) return sessionWaits(lifeos) ? <TasksSkeleton /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
-      <Tasks client={clients.tasks} startThread={startThread} useThread={useLinkedThread} />
+      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} />
       {adding ? <NewTaskDialog sector={sector} onClose={() => newTask.set(false)} /> : null}
     </ConvexProvider>
   );
@@ -87,7 +89,18 @@ function useTaskThread(useThread: UseThread, taskId: string): TaskThread {
 
 const openThread = (thread: NonNullable<TaskThread>): void => workOpenPort.get()?.(thread.id);
 
-export function Tasks({ client, startThread, useThread = noThread }: { client: TasksClient; startThread: (about: ContextChip) => void; useThread?: UseThread }) {
+export function Tasks({
+  client,
+  sector = null,
+  startThread,
+  useThread = noThread,
+}: {
+  client: TasksClient;
+  /** The workspace's sector: a code workspace linked to it reads the task in LifeOS. */
+  sector?: string | null;
+  startThread: (about: ContextChip, at?: { cwd: string; projectId: string | null }) => void;
+  useThread?: UseThread;
+}) {
   const tasks = client.useOpenTasks();
   const projects = client.useProjectsById();
   const actions = client.useTaskActions();
@@ -96,8 +109,11 @@ export function Tasks({ client, startThread, useThread = noThread }: { client: T
   const latest = useRef(startThread);
   latest.current = startThread;
   const start = useMemo(() => (task: Task) => latest.current(chipOf(task)), []);
+  const startCode = useMemo((): CodeThreadStart => (about, at) => latest.current(about, at), []);
   const [opened, setOpened] = useState<string | null>(null);
   const open = useMemo(() => (task: Task) => setOpened(task._id), []);
+  const [coding, setCoding] = useState<Task | null>(null);
+  const code = useMemo(() => (task: Task) => setCoding(task), []);
   const groups = useMemo(() => (tasks ? groupTasks(tasks, now, zone) : null), [tasks, now]);
   if (!groups) return <TasksSkeleton />;
   // The open task as the list has it now; a task that left the list (done elsewhere) closes its sheet.
@@ -108,7 +124,7 @@ export function Tasks({ client, startThread, useThread = noThread }: { client: T
   const meta = (task: Task) => metaOf(task, projects?.get(task.projectId ?? "")?.name);
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
-      {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} useThread={useThread} /> : null}
+      {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
       {rest.map(({ g, rows }, i) => (
         <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{TASK_GROUP_LABELS[g]}</h2>
@@ -122,12 +138,14 @@ export function Tasks({ client, startThread, useThread = noThread }: { client: T
               actions={actions}
               onStart={start}
               onOpen={open}
+              onCode={code}
               useThread={useThread}
             />
           ))}
         </section>
       ))}
-      <TaskSheet task={shown} project={shown ? projects?.get(shown.projectId ?? "")?.name : undefined} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} useThread={useThread} />
+      <TaskSheet task={shown} project={shown ? projects?.get(shown.projectId ?? "")?.name : undefined} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
+      {coding ? <CodeThreadDialog task={coding} sector={sector} onStart={startCode} onClose={() => setCoding(null)} /> : null}
     </div>
   );
 }
@@ -145,6 +163,7 @@ function Lead({
   actions,
   onStart,
   onOpen,
+  onCode,
   useThread,
 }: {
   task: Task;
@@ -153,57 +172,95 @@ function Lead({
   actions: TaskActions;
   onStart: (task: Task) => void;
   onOpen: (task: Task) => void;
+  onCode: (task: Task) => void;
   useThread: UseThread;
 }) {
   const overdue = task.dueAt !== undefined && task.dueAt < now;
   const thread = useTaskThread(useThread, task._id);
   return (
-    <div className="flex flex-col gap-1 px-3">
-      {/* No mark beside the title (the owner's rule): the thread's state leads Open thread, as canvas.html's peek leads its line. */}
-      <h1 className="min-w-0 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{task.title}</h1>
-      {meta || task.dueAt !== undefined ? (
-        <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
-          {meta ? <span className="min-w-0 truncate">{meta}</span> : null}
-          {task.dueAt !== undefined ? <span className={cn("shrink-0 tabular-nums", overdue ? "text-destructive" : "text-foreground")}>{meta ? ", " : ""}Due {formatDue(task.dueAt, now)}</span> : null}
-        </p>
-      ) : null}
-      <div className="mt-3 flex items-center gap-2">
-        {thread && marksAtRest(thread.state) ? (
-          // Beside the button, not on its fill: the mark's tone must read on the page.
-          <span data-lead-thread={thread.state} className="flex size-4 shrink-0 items-center justify-center">
-            <StatusMark state={thread.state} word={false} />
-          </span>
+    <ContextMenu>
+      <ContextMenuTrigger render={<div className="flex flex-col gap-1 px-3" />}>
+        {/* No mark beside the title (the owner's rule): the thread's state leads Open thread, as canvas.html's peek leads its line. */}
+        <h1 className="min-w-0 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{task.title}</h1>
+        {meta || task.dueAt !== undefined ? (
+          <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
+            {meta ? <span className="min-w-0 truncate">{meta}</span> : null}
+            {task.dueAt !== undefined ? <span className={cn("shrink-0 tabular-nums", overdue ? "text-destructive" : "text-foreground")}>{meta ? ", " : ""}Due {formatDue(task.dueAt, now)}</span> : null}
+          </p>
         ) : null}
-        {thread ? (
-          <Button size="sm" onClick={() => openThread(thread)}>
-            Open thread
+        <div className="mt-3 flex items-center gap-2">
+          {thread && marksAtRest(thread.state) ? (
+            // Beside the button, not on its fill: the mark's tone must read on the page.
+            <span data-lead-thread={thread.state} className="flex size-4 shrink-0 items-center justify-center">
+              <StatusMark state={thread.state} word={false} />
+            </span>
+          ) : null}
+          {thread ? (
+            <Button size="sm" onClick={() => openThread(thread)}>
+              Open thread
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => onStart(task)}>
+              Start thread
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" onClick={() => actions.complete(task)}>
+            Done
           </Button>
-        ) : (
-          <Button size="sm" onClick={() => onStart(task)}>
-            Start thread
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>
+              Snooze
+              <ChevronDown />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {SNOOZE_CHOICES.map((choice: SnoozeChoice) => (
+                <DropdownMenuItem key={choice} onClick={() => actions.snooze(task, choice)}>
+                  {SNOOZE_LABELS[choice]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" variant="ghost" onClick={() => onOpen(task)}>
+            Open
           </Button>
-        )}
-        <Button size="sm" variant="secondary" onClick={() => actions.complete(task)}>
-          Done
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>
-            Snooze
-            <ChevronDown />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {SNOOZE_CHOICES.map((choice: SnoozeChoice) => (
-              <DropdownMenuItem key={choice} onClick={() => actions.snooze(task, choice)}>
-                {SNOOZE_LABELS[choice]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button size="sm" variant="ghost" onClick={() => onOpen(task)}>
-          Open
-        </Button>
-      </div>
-    </div>
+        </div>
+      </ContextMenuTrigger>
+      <TaskMenu task={task} thread={thread} actions={actions} onStart={onStart} onOpen={onOpen} onCode={onCode} onDone={() => actions.complete(task)} />
+    </ContextMenu>
+  );
+}
+
+/** A task's menu, the lead's and a row's alike: its thread first, then a code thread, Open, Done and the snoozes. */
+function TaskMenu({
+  task,
+  thread,
+  actions,
+  onStart,
+  onOpen,
+  onCode,
+  onDone,
+}: {
+  task: Task;
+  thread: TaskThread;
+  actions: TaskActions;
+  onStart: (task: Task) => void;
+  onOpen: (task: Task) => void;
+  onCode: (task: Task) => void;
+  onDone: () => void;
+}) {
+  return (
+    <ContextMenuContent>
+      {thread ? <ContextMenuItem onClick={() => openThread(thread)}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
+      <ContextMenuItem onClick={() => onCode(task)}>Open a code thread…</ContextMenuItem>
+      <ContextMenuItem onClick={() => onOpen(task)}>Open</ContextMenuItem>
+      <ContextMenuItem onClick={onDone}>Done</ContextMenuItem>
+      <ContextMenuSeparator />
+      {SNOOZE_CHOICES.map((choice: SnoozeChoice) => (
+        <ContextMenuItem key={choice} onClick={() => actions.snooze(task, choice)}>
+          Snooze {SNOOZE_LABELS[choice].toLowerCase()}
+        </ContextMenuItem>
+      ))}
+    </ContextMenuContent>
   );
 }
 
@@ -220,6 +277,7 @@ const TaskRow = memo(function TaskRow({
   actions,
   onStart,
   onOpen,
+  onCode,
   useThread,
 }: {
   task: Task;
@@ -229,6 +287,7 @@ const TaskRow = memo(function TaskRow({
   actions: TaskActions;
   onStart: (task: Task) => void;
   onOpen: (task: Task) => void;
+  onCode: (task: Task) => void;
   useThread: UseThread;
 }) {
   const [ticked, setTicked] = useState(false);
@@ -270,17 +329,7 @@ const TaskRow = memo(function TaskRow({
           )}
         </span>
       </ContextMenuTrigger>
-      <ContextMenuContent>
-        {thread ? <ContextMenuItem onClick={() => openThread(thread)}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
-        <ContextMenuItem onClick={() => onOpen(task)}>Open</ContextMenuItem>
-        <ContextMenuItem onClick={() => setTicked(true)}>Done</ContextMenuItem>
-        <ContextMenuSeparator />
-        {SNOOZE_CHOICES.map((choice: SnoozeChoice) => (
-          <ContextMenuItem key={choice} onClick={() => actions.snooze(task, choice)}>
-            Snooze {SNOOZE_LABELS[choice].toLowerCase()}
-          </ContextMenuItem>
-        ))}
-      </ContextMenuContent>
+      <TaskMenu task={task} thread={thread} actions={actions} onStart={onStart} onOpen={onOpen} onCode={onCode} onDone={() => setTicked(true)} />
     </ContextMenu>
   );
 });

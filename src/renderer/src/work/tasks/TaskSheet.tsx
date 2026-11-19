@@ -13,7 +13,7 @@ import type { Task } from "./client";
  * A task's Open: the task in full in a sheet over the view, as LifeOS reads
  * it (`tasks:get`): when it is due, its project, who it waits on, what it
  * came from in the words it was filed from, its notes. Start thread and Done
- * at its foot, as on the lead.
+ * at its foot, as on the lead, then Open a code thread… as in its menu.
  */
 
 type Detail = { task: Task & { description?: string; source?: Task["source"] & { quote?: string; permalink?: string } } } | null;
@@ -25,6 +25,7 @@ type Props = {
   onClose: () => void;
   onStart: (task: Task) => void;
   onDone: (task: Task) => void;
+  onCode: (task: Task) => void;
   /** The thread a link names for a task, if one works on it: Open thread takes Start thread's place. */
   useThread?: (taskId: string) => string | null;
 };
@@ -39,7 +40,7 @@ export function TaskSheet({ task, ...props }: Props & { task: Task | null }) {
   );
 }
 
-function Body({ task, project, onClose, onStart, onDone, useThread = noThread }: Props & { task: Task }) {
+function Body({ task, project, onClose, onStart, onDone, onCode, useThread = noThread }: Props & { task: Task }) {
   const detail = useQuery(get, { id: task._id }) as Detail | undefined;
   const threadId = useThread(task._id);
   const thread = useSessionMeta(threadId) ? threadId : null;
@@ -93,6 +94,9 @@ function Body({ task, project, onClose, onStart, onDone, useThread = noThread }:
         )}
         <Button size="sm" variant="secondary" onClick={() => (onClose(), onDone(full))}>
           Done
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => (onClose(), onCode(full))}>
+          Open a code thread…
         </Button>
       </div>
     </div>

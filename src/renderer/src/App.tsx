@@ -2102,11 +2102,13 @@ export default function App() {
     openProjectDraft({ projectId: null }, { placement: "tab" });
   }, [openLanding, openProjectDraft]);
 
-  // Work's views start a thread here: a new thread's draft in the window's workspace, focused (work/shell/WorkColumn.tsx).
+  // Work's views start a thread here: a new thread's draft in the window's workspace, or in the code workspace a task's code thread names, focused (work/shell/WorkColumn.tsx).
   useEffect(() => {
-    workStartPort.set((projectId) => {
+    workStartPort.set((projectId, cwd) => {
       shell.closeViews();
+      if (cwd) project.enterWorkspace(normalizeProjectPath(cwd));
       project.selectProject(projectId);
+      // By project, never by folder: a folder's draft would land in a local project whose cwd is the workspace's.
       return openProjectDraft({ projectId }, { placement: "tab", focus: true }).id;
     });
     return () => workStartPort.set(null);
