@@ -137,6 +137,11 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   drift, harness and memory sync, the Mac bridge, dev servers, process guard,
   threads across hosts, the relay, devices, restart resume, backups.
   [docs/agents/linux-agent-host.md](docs/agents/linux-agent-host.md)
+- **The Windows rig** — one Windows 11 evaluation machine on the box for the
+  Windows port, run by `agents` under QEMU/KVM, files under /srv/agents/win-vm;
+  `up.sh`, `ssh.sh`, `scp.sh`, `run-in-session.sh` (a program on the logged-on
+  desktop), `shot.sh`, `down.sh` in scripts/win-vm/.
+  [docs/agents/windows-vm.md](docs/agents/windows-vm.md)
 - **Search across hosts** — one query fanned out to every host
   (lib/crossHostSearch.ts), an FTS5 index per host (turnIndex.ts).
   [docs/agents/search-across-hosts.md](docs/agents/search-across-hosts.md)
