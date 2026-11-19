@@ -1,13 +1,7 @@
 /* The shared mail client on TempCode's scale (docs/DESIGN.md "Type scale": a
    mail's subject is the 16px title, rows and fields 13px, a field's label
-   12px; the editor keeps its own 14px body), and the menus'
-   highlight as TempCode's own: the muted fill, not the brand accent
-   (work-kit/ui/host-rules `HOST_WASH`). Loaded with the mail chunks only. */
-
-:root {
-  --ui-wash: var(--muted);
-  --ui-wash-foreground: var(--foreground);
-}
+   12px; the editor keeps its own 14px body). Loaded with the mail chunks
+   only; the menus' wash (`--ui-wash`) is index.css's, for every work-kit screen. */
 
 .tc-mail .text-subject {
   font-size: 16px;

@@ -1,7 +1,7 @@
 import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { MailClient, MailFaceProps, MailKit, MailSectorMarkProps, MailToastInput, MailWrite, OutboxActions } from "work-kit/mail";
 import { createLifeosMailClient } from "work-kit/lifeos";
-import type { MailSendAnswer } from "@shared/contract-work-mail";
+import type { MailSeen, MailSendAnswer } from "@shared/contract-work-mail";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
@@ -19,15 +19,26 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
  * hooks in a fixed order.
  */
 
-/** The composer's Send: the draft is saved as he sees it, then the host sends it (`work.mail.send`), never this window. */
+/** Mail that went through the hold: the hold has it as sent, so Undo cannot pull it back into a draft behind the hold's back. */
+const heldSends = new Set<string>();
+
+/**
+ * The composer's Send: the draft is saved as he sees it, then the host sends it (`work.mail.send`)
+ * only if LifeOS's row still says what he saw; this window never sends. Undo on a mail the hold
+ * sent answers false, which the composer reads as "Already sent".
+ */
 export function sendThroughHost(env: string, actions: OutboxActions): OutboxActions {
   return {
     ...actions,
     send: async (args) => {
       const id = await actions.save(args);
-      await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}) });
+      const m = args.message;
+      const seen: MailSeen = { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text };
+      const answer = await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen, ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}) });
+      if (answer.via === "hold") heldSends.add(id);
       return id;
     },
+    cancel: (id) => (heldSends.has(id) ? Promise.resolve(false) : actions.cancel(id)),
   };
 }
 

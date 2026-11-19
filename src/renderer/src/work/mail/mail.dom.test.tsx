@@ -18,7 +18,7 @@ vi.mock("../../lib/connection", async (original) => ({
       request: async (method: string, params: Record<string, unknown> = {}) => {
         calls.push({ method, params });
         if (params.id === "ob_late") throw new Error("A draft a thread made goes now or not at all.");
-        return { id: params.id, via: "hold" };
+        return { id: params.id, via: params.id === "ob_own" ? "owner" : "hold" };
       },
     }),
   },
@@ -45,11 +45,13 @@ function fakeActions(id: string) {
       log.push("convex send");
       return id;
     }),
+    cancel: vi.fn(async () => true),
   } as unknown as OutboxActions;
   return { actions, log };
 }
 
-const args = { message: { to: [{ address: "me@example.com" }] } } as unknown as SaveArgs;
+const args = { message: { to: [{ address: "me@example.com" }], cc: [], bcc: [{ address: "b@example.com" }], subject: "Hi", text: "Words" } } as unknown as SaveArgs;
+const seen = { to: ["me@example.com"], cc: [], bcc: ["b@example.com"], subject: "Hi", text: "Words" };
 
 describe("Send", () => {
   it("saves the draft as shown, then asks the host to send it, and never sends from the window", async () => {
@@ -57,13 +59,26 @@ describe("Send", () => {
     const wrapped = sendThroughHost("box", actions);
     expect(await wrapped.send({ ...args })).toBe("ob_1");
     expect(log).toEqual(["save"]);
-    expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_1" } }]);
+    expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_1", seen } }]);
+  });
+
+  it("answers Undo on a mail the hold sent with Already sent, and leaves his own mail's Undo to LifeOS", async () => {
+    const held = fakeActions("ob_9");
+    const wrappedHeld = sendThroughHost("box", held.actions);
+    await wrappedHeld.send({ ...args });
+    expect(await wrappedHeld.cancel("ob_9")).toBe(false);
+    expect(held.actions.cancel).not.toHaveBeenCalled();
+    const own = fakeActions("ob_own");
+    const wrappedOwn = sendThroughHost("box", own.actions);
+    await wrappedOwn.send({ ...args });
+    expect(await wrappedOwn.cancel("ob_own")).toBe(true);
+    expect(own.actions.cancel).toHaveBeenCalledWith("ob_own");
   });
 
   it("carries the time he chose, and the host's refusal reaches the composer", async () => {
     const { actions } = fakeActions("ob_late");
     await expect(sendThroughHost("box", actions).send({ ...args, sendAt: 1_800_000_000_000 })).rejects.toThrow("goes now or not at all");
-    expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_late", sendAt: 1_800_000_000_000 } }]);
+    expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_late", seen, sendAt: 1_800_000_000_000 } }]);
     expect(actions.send).not.toHaveBeenCalled();
   });
 });

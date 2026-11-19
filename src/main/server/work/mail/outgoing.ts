@@ -49,7 +49,9 @@ function decode(value: string): string {
   })
 }
 
-const escapeAttr = (value: string): string => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+/** A reference `decode` does not know (`&eacute;`) is left as written; a bare `&` is escaped. */
+const escapeAttr = (value: string): string =>
+  value.replace(/&(?![a-z][a-z0-9]*;|#\d+;|#x[0-9a-f]+;)/gi, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /** A URL kept only with one of `schemes`, or as a page fragment for a link; protocol-relative never. */
 function urlOk(raw: string, schemes: ReadonlySet<string>, fragment: boolean): boolean {
@@ -61,10 +63,21 @@ function urlOk(raw: string, schemes: ReadonlySet<string>, fragment: boolean): bo
   return fragment && url.startsWith('#')
 }
 
-/** A style declaration that could run something in an old renderer goes whole. */
-const styleOk = (value: string): boolean => !/expression\s*\(|javascript:|vbscript:|behavior\s*:|-moz-binding|@import/i.test(value.replace(/\\|\/\*[\s\S]*?\*\//g, ''))
+/** CSS as a renderer reads it: comments gone, `\65 ` and `\e` escapes turned back into their letters. */
+const cssText = (value: string): string =>
+  value
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\\([0-9a-f]{1,6})\s?/gi, (_, hex: string) => {
+      const code = parseInt(hex, 16)
+      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : ''
+    })
+    .replace(/\\(.)/g, '$1')
 
-const ATTR = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g
+/** A style declaration, or a `<style>` block, that could run something or reach out in an old renderer goes whole. */
+const styleOk = (value: string): boolean => !/expression\s*\(|javascript:|vbscript:|behavior\s*:|-moz-binding|@import/i.test(cssText(value))
+
+// An unquoted value runs to the next space or `>`, as browsers read it (`alt=Don't`).
+const ATTR = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g
 
 function attributes(tag: string, source: string): string {
   let out = ''
@@ -81,15 +94,20 @@ function attributes(tag: string, source: string): string {
   return out
 }
 
-/** Where a tag's `>` is, past any quoted attribute value; -1 when the tag never closes. */
+/** Where a tag's `>` is, past any quoted attribute value; -1 when the tag never closes. A quote opens a value only straight after `=`, as browsers read it: `alt=Don't` is a word with an apostrophe. */
 function tagEnd(html: string, from: number): number {
   let quote: string | null = null
+  let afterEquals = false
   for (let i = from; i < html.length; i++) {
     const c = html[i]
     if (quote) {
       if (c === quote) quote = null
-    } else if (c === '"' || c === "'") quote = c
+      continue
+    }
+    if ((c === '"' || c === "'") && afterEquals) quote = c
     else if (c === '>') return i
+    if (c === '=') afterEquals = true
+    else if (!/\s/.test(c)) afterEquals = false
   }
   return -1
 }
@@ -124,7 +142,11 @@ export function outgoingHtml(html: string): string {
       continue
     }
     const end = tagEnd(html, lt + open[0].length)
-    if (end < 0) break
+    if (end < 0) {
+      // A tag that never closes is text, so nothing after it is lost.
+      out += text(html.slice(lt))
+      break
+    }
     const closing = open[1] === '/'
     const tag = open[2].toLowerCase()
     i = end + 1
@@ -136,7 +158,7 @@ export function outgoingHtml(html: string): string {
     if (RAW.has(tag)) {
       const close = html.toLowerCase().indexOf(`</${tag}`, i)
       const inner = html.slice(i, close < 0 ? html.length : close)
-      if (tag === 'style') out += `${inner.replace(/</g, '\\3c ')}</style>`
+      if (tag === 'style') out += `${styleOk(inner) ? inner.replace(/</g, '\\3c ') : ''}</style>`
       if (close < 0) break
       const after = tagEnd(html, close)
       i = after < 0 ? html.length : after + 1

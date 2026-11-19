@@ -88,10 +88,13 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
 
   const settle = useCallback(
     async (take: boolean) => {
+      // The composer comes back on what was decided, even if he had closed it: set before the answer, since the query moves first.
+      const was = closed.current;
+      closed.current = false;
       try {
         await convex.mutation(settleProposal, { id, take });
-        closed.current = false;
       } catch (error) {
+        closed.current = was;
         const toast = await loadToast();
         toast.error(take ? "The rewrite could not be taken" : "The rewrite could not be dropped", { description: error instanceof Error ? error.message.replace(/^.*ConvexError:\s*/s, "") : undefined });
       }

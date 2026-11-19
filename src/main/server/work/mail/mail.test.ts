@@ -5,7 +5,7 @@ import type { CanvasItem } from '@shared/work'
 import { loadWorkModules, type WorkCtx } from '../modules'
 import { outbox as outboxModule } from '../outbox'
 import { cast, makeRig, readKey as reader, type Rig } from '../outbox/rig'
-import { ELSEWHERE, ensureMailTables, HELD_NOT_SCHEDULED, mail, openDrafts, type MailRow } from '.'
+import { CHANGED, ELSEWHERE, ensureMailTables, HELD_NOT_SCHEDULED, mail, openDrafts, stillSeen, type MailRow } from '.'
 import { outgoingHtml } from './outgoing'
 
 /**
@@ -39,10 +39,25 @@ describe('the outgoing rules', () => {
     expect(out).toContain('<style>p { color: blue }</style><div>x</div>')
   })
 
+  it('reads a stray quote as browsers do, so nothing after it is lost', () => {
+    expect(outgoingHtml(`<img alt=Don't src=https://x.test/a.png><p>rest</p>`)).toBe(`<img alt="Don't" src="https://x.test/a.png"><p>rest</p>`)
+    expect(outgoingHtml('<p>one</p><td width=50%">two</td><p>three</p>')).toBe('<p>one</p><td width="50%&quot;">two</td><p>three</p>')
+  })
+
+  it('keeps a character reference it does not know as written, and still escapes a bare ampersand', () => {
+    expect(outgoingHtml('<span title="&eacute;t&eacute; &amp; R&D">x</span>')).toBe('<span title="&eacute;t&eacute; &amp; R&amp;D">x</span>')
+  })
+
+  it('reads CSS escapes before it judges a style, in an attribute and in a style block', () => {
+    expect(outgoingHtml('<div style="width:\\65 xpression(alert(1))">a</div>')).toBe('<div>a</div>')
+    expect(outgoingHtml('<div style="background:url(\\6a avascript:x)">a</div>')).toBe('<div>a</div>')
+    expect(outgoingHtml('<style>@import url(https://x.test/a.css); p{}</style><p>b</p>')).toBe('<style></style><p>b</p>')
+  })
+
   it('never lets a quote or a broken tag open markup of its own', () => {
     expect(outgoingHtml('<a title="x"><img src=x onerror=alert(1)>">y</a>')).toBe('<a title="x"><img>"&gt;y</a>')
     expect(outgoingHtml('1 < 2 and <3 >')).toBe('1 &lt; 2 and &lt;3 &gt;')
-    expect(outgoingHtml('<p>cut <b')).toBe('<p>cut ')
+    expect(outgoingHtml('<p>cut <b')).toBe('<p>cut &lt;b')
     expect(outgoingHtml('<style>x</style ><p>a</p>')).toBe('<style>x</style><p>a</p>')
     expect(outgoingHtml('<style></style><script>a</style></script>')).toBe('<style></style>')
   })
@@ -52,6 +67,12 @@ describe('Send from TempCode', () => {
   let rig: Rig
   const sends = () => rig.lifeos.calls.filter((c) => c.fn === 'compose:send')
   const settled = () => new Promise((r) => setTimeout(r, 15))
+
+  /** What the composer saved: the row as it stands. */
+  const seenOf = (id: string) => {
+    const m = (rig.lifeos.rows.get(id) as { message: { to: { address: string }[]; cc: { address: string }[]; bcc: { address: string }[]; subject: string; text: string } }).message
+    return { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text }
+  }
 
   beforeEach(async () => {
     // The press finds the Outbox through the registry, as it does in the app.
@@ -70,7 +91,7 @@ describe('Send from TempCode', () => {
     row.message.html = '<p>Attached.</p><img src=x onerror="alert(1)">'
     rig.lifeos.fire()
     await settled()
-    expect(await rig.rpc('work.mail.send', { id })).toEqual({ id, via: 'hold' })
+    expect(await rig.rpc('work.mail.send', { id, seen: seenOf(id) })).toEqual({ id, via: 'hold' })
     expect(sends()).toHaveLength(1)
     expect(sends()[0]!.args).toMatchObject({ id, cause: 'press' })
     expect((sends()[0]!.args.message as { html: string }).html).toBe('<p>Attached.</p><img>')
@@ -78,7 +99,7 @@ describe('Send from TempCode', () => {
     const { items } = await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', { show: 'all' })
     expect(items.find((i) => i.ref.at === 'lifeos' && i.ref.id === id)).toMatchObject({ state: 'sent', decidedBy: 'owner' })
     // a second press sends nothing twice
-    await rig.rpc('work.mail.send', { id }).catch(() => null)
+    await rig.rpc('work.mail.send', { id, seen: seenOf(id) }).catch(() => null)
     expect(sends()).toHaveLength(1)
   })
 
@@ -88,7 +109,7 @@ describe('Send from TempCode', () => {
     delete row.origin
     row.message.html = '<p onmouseover="x()">See you</p>'
     const at = Date.now() + 3_600_000
-    expect(await rig.rpc('work.mail.send', { id, sendAt: at })).toEqual({ id, via: 'owner' })
+    expect(await rig.rpc('work.mail.send', { id, seen: seenOf(id), sendAt: at })).toEqual({ id, via: 'owner' })
     expect(sends()).toHaveLength(1)
     expect(sends()[0]!.args).toMatchObject({ id, cause: 'press', sendAt: at })
     expect((sends()[0]!.args.message as { html: string }).html).toBe('<p>See you</p>')
@@ -99,11 +120,32 @@ describe('Send from TempCode', () => {
     const far = rig.lifeos.draft({ host: 'env_mac' })
     rig.lifeos.fire()
     await settled()
-    await expect(rig.rpc('work.mail.send', { id: held, sendAt: Date.now() + 60_000 })).rejects.toThrow(HELD_NOT_SCHEDULED)
-    await expect(rig.rpc('work.mail.send', { id: far })).rejects.toThrow(ELSEWHERE)
-    await expect(rig.rpc('work.mail.send', { id: held }, reader)).rejects.toThrow()
-    await expect(rig.rpc('work.mail.send', { id: 'ob_none' })).rejects.toThrow('LifeOS has no such mail')
+    await expect(rig.rpc('work.mail.send', { id: held, seen: seenOf(held), sendAt: Date.now() + 60_000 })).rejects.toThrow(HELD_NOT_SCHEDULED)
+    await expect(rig.rpc('work.mail.send', { id: far, seen: seenOf(far) })).rejects.toThrow(ELSEWHERE)
+    await expect(rig.rpc('work.mail.send', { id: held, seen: seenOf(held) }, reader)).rejects.toThrow()
+    await expect(rig.rpc('work.mail.send', { id: 'ob_none', seen: seenOf(held) })).rejects.toThrow('LifeOS has no such mail')
     expect(sends()).toEqual([])
+  })
+
+  it('sends nothing when the row no longer says what he pressed Send on', async () => {
+    const id = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Attached.' })
+    rig.lifeos.fire()
+    await settled()
+    const seen = seenOf(id)
+    // the thread's agent rewrites the draft between the composer's save and the press
+    ;(rig.lifeos.rows.get(id) as { message: { to: { address: string }[] } }).message.to = [{ address: 'someone@else.test' }]
+    await expect(rig.rpc('work.mail.send', { id, seen })).rejects.toThrow(CHANGED)
+    expect(sends()).toEqual([])
+    expect(stillSeen({ kind: 'mail', to: [{ address: 'A@b.co' }], cc: [], bcc: [], subject: 'S', text: 'T\n' }, { to: ['a@b.co'], cc: [], bcc: [], subject: 'S', text: 'T' })).toBe(true)
+    expect(stillSeen({ kind: 'mail', to: [{ address: 'a@b.co' }], cc: [], bcc: [], subject: 'S', text: 'T' }, { to: ['a@b.co'], cc: [], bcc: [], subject: 'S', text: 'U' })).toBe(false)
+  })
+
+  it("says so when the hold's send fails, never Sent", async () => {
+    const id = rig.lifeos.draft()
+    rig.lifeos.fire()
+    await settled()
+    rig.lifeos.failNext.set('compose:send', 'the work PC is not there to send Purdue mail')
+    await expect(rig.rpc('work.mail.send', { id, seen: seenOf(id) })).rejects.toThrow('the work PC is not there')
   })
 
   it('cleans the HTML of a send pressed in the Outbox too', async () => {

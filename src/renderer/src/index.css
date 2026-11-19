@@ -35,6 +35,11 @@
   /* The hairline on an inline image or screenshot: pure white or black at
      10%, never a tinted neutral (it reads as dirt on the image's edge). */
   --image-outline: rgb(255 255 255 / 0.1);
+  /* work-kit's menus, selects and comboboxes highlight with the muted fill,
+     as TempCode's own menus do, not the brand accent (work-kit/ui/host-rules
+     `HOST_WASH`). */
+  --ui-wash: var(--muted);
+  --ui-wash-foreground: var(--foreground);
   /* Ink: foreground for what matters, muted for what supports it. */
   --foreground: oklch(0.93 0.003 270);
   --muted-foreground: oklch(0.68 0.006 270);

@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
-import type { MailSendAnswer } from '@shared/contract-work-mail'
+import type { MailSeen, MailSendAnswer } from '@shared/contract-work-mail'
+import type { OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, handled, NOT_HANDLED } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
 import { outgoingHtml } from './outgoing'
@@ -25,6 +26,23 @@ export interface MailRow {
 const NOT_A_PERSON = 'only a person can send mail'
 export const HELD_NOT_SCHEDULED = 'A draft a thread made goes now or not at all. Send it now, or schedule it from LifeOS.'
 export const ELSEWHERE = 'A thread on another host made this draft. Send it from that host.'
+export const CHANGED = 'The draft changed after you pressed Send. Look at it again, then send.'
+
+type Address = { address?: unknown }
+const addresses = (list: unknown): string[] => (Array.isArray(list) ? (list as Address[]).map((a) => String(a?.address ?? '').trim().toLowerCase()) : [])
+const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i])
+
+/** Whether the row still says what he pressed Send on: the same people, subject and words. */
+export function stillSeen(message: MailRow['message'], seen: MailSeen): boolean {
+  const norm = (list: readonly string[]) => list.map((x) => x.trim().toLowerCase())
+  return (
+    same(addresses(message.to), norm(seen.to)) &&
+    same(addresses(message.cc), norm(seen.cc)) &&
+    same(addresses(message.bcc), norm(seen.bcc)) &&
+    String(message.subject ?? '') === seen.subject &&
+    String(message.text ?? '').trim() === seen.text.trim()
+  )
+}
 
 function mustApprove(by: Caller): void {
   if (by.kind === 'model' || !by.caps.includes('approve')) throw new Error(NOT_A_PERSON)
@@ -38,12 +56,14 @@ function mustApprove(by: Caller): void {
  * his own mail and goes as his `compose.send`. The HTML is cleaned by the
  * outgoing rules on both roads (the hold's `mail.send` cleans its own).
  */
-export async function sendMail(ctx: WorkCtx, by: Caller, id: string, sendAt?: number): Promise<MailSendAnswer> {
+export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailSeen, sendAt?: number): Promise<MailSendAnswer> {
   mustApprove(by)
   const owner = ctx.lifeos.owner()
   const got = await owner.query<{ row: MailRow } | null>('compose:get', { id })
   const row = got?.row
   if (!row || row.message?.kind !== 'mail') throw new Error('LifeOS has no such mail')
+  // Anyone may have written between the composer's save and this read (the thread's agent, another app): what goes is what he saw.
+  if (!stillSeen(row.message, seen)) throw new Error(CHANGED)
   if (row.origin?.app === 'tempcode') {
     if (row.origin.host !== ctx.host) throw new Error(ELSEWHERE)
     if (sendAt !== undefined) throw new Error(HELD_NOT_SCHEDULED)
@@ -52,6 +72,9 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, sendAt?: nu
     const rev = Math.round(row.editedAt ?? row._creationTime)
     const answer = await outbox.handle({ id: 'mail', method: 'work.outbox.send', params: { ref: { at: 'lifeos', table: 'outbox', id }, rev } } as never, ctx, by)
     if (!answer.handled) throw new Error('the Outbox did not take the send')
+    // The hold settles a failed send, or a press another press beat, as a row and not a throw: say what became of it.
+    const item = answer.result as OutboxItem
+    if (item.state !== 'sent' && item.state !== 'sending') throw new Error(item.error ?? `This mail was not sent: the Outbox holds it as ${item.state}.`)
     return { id, via: 'hold' }
   }
   if (row.status !== 'draft') throw new Error(`LifeOS holds this mail as ${row.status}`)
@@ -101,7 +124,7 @@ export const mail: WorkModule = {
   ensure: ensureMailTables,
   async handle(req, ctx, by) {
     if (req.method !== 'work.mail.send') return NOT_HANDLED
-    return handled(await sendMail(ctx, by, req.params.id, req.params.sendAt))
+    return handled(await sendMail(ctx, by, req.params.id, req.params.seen, req.params.sendAt))
   },
   start(ctx) {
     return ctx.lifeos.subscribe<MailRow[]>('outboxHeld:held', { host: ctx.host }, (rows) => openDrafts(ctx, rows ?? []))
