@@ -203,10 +203,11 @@ the loaded list, as work/threads.ts does for the preamble parts.
 A harness is offered for Work only when every way out of the fence is shut
 for it (`WORK_PROVIDERS`, work/scope.ts). Today that is **Claude Code and
 Codex** (Codex since F1, below). A Work row on any other harness is refused
-at create, at a provider switch and again before a process is made.
+at create and at a provider switch, and again before a process is made by
+every driver but Muse's, which runs it fenced (below).
 
 `src/main/server/work/fence.proof.test.ts` is the proof for the sources,
-kept so a new one fails it. For Claude Code and for Codex it plants one
+kept so a new one fails it (Muse's is its sibling, fence-muse.proof.test.ts). For Claude Code and for Codex it plants one
 fake server per source, starts the real CLI as a code thread starts it
 (every plant must load, or it proves nothing) and as a Work thread starts
 it, with the drivers' own functions. No model
@@ -321,23 +322,83 @@ Proven by hand, with the owner's sign-in linked read-only, and not in the
 kept test: the account's apps and remote plugins load unfenced (937 tools)
 and not fenced. The kept test signs nothing in.
 
-### Muse Code: not offered
+### Muse Code: fenced at the harness, not yet offered
 
-Muse shares the bridge, and so the first reason above. It also reads servers from its `settings.json`, from approved plugins, and
-from a `.mcp.json` at the session's workspace root and every folder up to
-its git root, re-read at each session load. `--trust-workspace` cannot be
-dropped: without it Muse withholds every server, the app's bridge too. A
-fence exists on paper and passed an offline proof: a Work config dir with
-its own `settings.json`, a Work data dir with no plugins, and an empty
-app-owned git repo as the primary root with the thread's folder as an extra
-root. It is not built, for two more reasons. The shell's cwd would be the empty
-root, not the thread's folder. And one path is unproven: a new session on
-the same host re-reads a `.mcp.json` written after the host started, so if
-Muse's own delegation builds a child runtime, a file the agent wrote into
-the root mid-session could load there. Showing that needs a model turn that
-spawns a subagent. Until then `drivers/muse.ts` refuses a Work row. The
-sources table and the proof are in the milestone's landing note
-(`.temp-code/plans/landed/M06/`).
+Muse is not in `WORK_PROVIDERS`, so a Work row is still refused on it at
+create and at a provider switch. The driver no longer refuses one itself:
+since F1 (2026-11-19) it runs a Work row fenced, and whether Muse is offered
+is decided apart from this.
+
+Muse reads servers from its config dir's `settings.json` (hooks too), from
+plugins installed in its data dir and approved in that `settings.json`, and
+from a `.mcp.json` at the session's `workspaceRoot` and every folder up to
+its git root, read again at each session load. It reads none from an extra
+`workspaceRoots` entry. `--trust-workspace` cannot be dropped: without it
+Muse withholds every server, the app's bridge too. The sources table and
+the spike behind it are in `.temp-code/plans/landed/M06/muse-sources.md`.
+
+| Source | Loads for a code thread | Cut for a Work thread by |
+|---|---|---|
+| the person's `settings.json` servers and hooks (linked into a code thread's config dir) | yes | the Work config dir's own `settings.json`, `{"schema_version":1}` |
+| a plugin installed in the data dir and approved in `settings.json` | yes | the Work data dir, its `muse/plugins` removed; no approvals in the Work `settings.json` |
+| `.mcp.json` in the folder and up to its git root | yes | the folder is an extra root; the primary root is an empty app-owned repo |
+| servers, hooks or a plugin an agent wrote into the Work dirs, a `.mcp.json` in the root, a repo made above it | n/a | the dirs and the root are put back before every `muse serve` |
+| inherited `MUSE_*` / `TBH_*` switches | yes | dropped from a Work thread's env |
+
+In code (`museWorkDirs`, museConfigDirs.ts), before every `muse serve` of a
+Work row, start and resume, and again at the sandbox restart:
+
+- **The Work config dir**, `<userData>/muse-work/config/<accounts/<acct>|own>/<scope>/`,
+  handed over as `XDG_CONFIG_HOME`. Every entry of its `muse/` is removed
+  but `auth.json`; then `auth.json` is the account's copy (0600, by rename)
+  or a link to the person's own, `settings.json` is `{"schema_version":1}`
+  (opened with `wx`, so a link planted since the sweep fails the spawn) and
+  `skills` links the store's scope. Nothing of the person's is linked.
+  `recaptureMuseDir` reads an account's Work copies back as it does a code
+  thread's.
+- **The Work data dir**, `<userData>/muse-work/data/`, as `XDG_DATA_HOME`:
+  kept, so `session/resume` finds its sessions; `muse/plugins` removed.
+- **The primary root**, `<userData>/muse-work/roots/<thread>/`: removed,
+  made empty and `git init`ed (`--template=`, no `GIT_*`), so the
+  `.mcp.json` walk stops there. It is the process cwd and `workspaceRoot`;
+  `workspaceRoots` is `[root, the folder]`, both real paths. `session/resume`
+  names no root.
+- Any dir on the way that is a link or a file is removed and made a real
+  dir first (`realDir`), so the sweep never reaches the person's files
+  through a link an agent planted.
+- museHost.ts `museEnv`: `XDG_DATA_HOME` added, every inherited `MUSE_*`
+  and `TBH_*` dropped, then the driver's own (`MUSE_CONTRIBUTOR_MODE`,
+  `TBH_CREDENTIAL_BACKEND` for an account) set.
+- argv is a code thread's: `muse serve --trust-workspace`
+  (+ `--disable-sandbox` where the host says the sandbox is gone).
+- The shell starts in the empty root, so the Work preamble names the
+  folder for a Muse thread ("Your work folder is …; your shell starts
+  elsewhere, so cd there or use absolute paths.", `folder` in
+  `WorkPreambleFacts`). It goes by the provider when the first message is
+  sent; a thread switched to Muse later is not told.
+
+`src/main/server/work/fence-muse.proof.test.ts` is the kept proof on the
+real binary (Muse's offline echo provider, no sign-in): a code thread loads
+every plant, the Work dirs as an agent left them load the agent's plants,
+and a Work thread loads only `app`, in the Work folder and in another
+project, with the store's skill.
+
+Shown once by hand with a real model turn (F1, 2026-11-19, meta provider,
+`muse-wonder-1.0`, `:ask-me`): the agent wrote a `.mcp.json` naming a
+server into its primary root with its file tool, then started a subagent
+with `subagent_spawn`. The subagent listed only `app` (`mcp__app.app_ping`),
+and the planted server never started, in the subagent or in the reminder
+child session that ran after. A Muse subagent shares its parent's mounted
+servers; it does not read the root again. The same turn showed that the
+agent's file tool writes the extra root (the folder) without asking, and
+its shell, once allowed, writes both roots.
+
+What is left before Muse is offered: a new session on the same host reads
+a `.mcp.json` written after the host started (M6). The driver opens one
+session per host and puts the root back before the next, so only a Muse
+feature that opens a second root session on a live host would reach it;
+none was seen. Muse also shares the stdio bridge, which is shut (Codex,
+reason 1 above).
 
 ### What the fence does not do
 

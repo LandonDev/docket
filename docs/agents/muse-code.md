@@ -35,9 +35,12 @@ mismatch logs one `[muse]` line.
   server named like a settings server. So a server in `~/.config/muse/
   settings.json` (linked into every config dir) reaches every Muse thread,
   OAuth logins and tool filters included, and a settings server named `app`
-  would make every session start fail. For that reason, and two more, Muse
-  Code is not offered for Work threads: the driver refuses a `scope: 'work'`
-  row ([work-scope.md](work-scope.md) "Muse Code: not offered").
+  would make every session start fail. A `scope: 'work'` row runs fenced
+  instead: its own config and data dirs under `<userData>/muse-work/`, an
+  empty git repo as cwd and primary root, its folder an extra root
+  (`museWorkDirs`, museConfigDirs.ts). Muse is not in `WORK_PROVIDERS` yet
+  ([work-scope.md](work-scope.md) "Muse Code: fenced at the harness, not yet
+  offered").
   `harness/museProtocol.ts` is the pure mapping: `safe` → `:ask-me` +
   `promptUnmatched`, `edits` → `:ask-me` + `onRequest`, `auto` →
   `:unrestricted` + `allowAll`; the app-tools bridge rides `session/start`'s
