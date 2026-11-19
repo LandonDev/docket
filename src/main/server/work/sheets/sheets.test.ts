@@ -1,0 +1,202 @@
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { importXlsx } from 'work-kit/sheet/xlsx'
+import { LOCAL_PRINCIPAL } from '@shared/capabilities'
+import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
+import type { WorkPush } from '@shared/contract-work'
+import type { SheetView } from '@shared/contract-work-sheets'
+import type { SessionMeta } from '@shared/events'
+import type { CanvasSource, WorkScope } from '@shared/work'
+import { openDb, Store } from '../../db'
+import type { SessionRegistry } from '../../sessions'
+import { canvasStoreOf } from '../canvas/store'
+import { SET_RANGE_VALUES } from './mutations'
+import { PACKAGE_UNIT } from './packages'
+
+/**
+ * The sheets module end to end over an opened package: a real database,
+ * `startWork` with the canvas and sheets modules, the methods through the
+ * mount and the tools as a thread's harness calls them. The jobs run in this
+ * process (the app runs them in the sheet worker).
+ */
+const state = vi.hoisted(() => ({ shared: false, routine: null as string | null, said: [] as string[] }))
+vi.mock('../scope', () => ({
+  scopePart: () => ({
+    scopeOf: (id: string): WorkScope => ({ sessionId: id, workspaceId: 'w1', sector: null, host: 'env_test', away: false, routineRunId: state.routine, shared: () => state.shared }),
+    createWorkspace: async () => {
+      throw new Error('not in this test')
+    },
+    admitSession: () => {}
+  })
+}))
+vi.mock('../threads', () => ({
+  threadsPart: () => ({
+    threads: {
+      start: async () => 'x',
+      resume: async () => {},
+      ownerSaid: (_id: string, quote: string) => state.said.some((w) => w.includes(quote))
+    }
+  })
+}))
+const { startWork } = await import('../ctx')
+const { canvas } = await import('../canvas/index')
+const { sheets } = await import('./index')
+const { setJobs } = await import('./held')
+const { localJobs } = await import('./workerClient')
+setJobs(localJobs)
+
+const CORPUS = join(import.meta.dirname, 'harness/corpus')
+let dir: string
+let db: ReturnType<typeof openDb>
+let work: ReturnType<typeof startWork>
+const pushes: WorkPush[] = []
+const sessions = new Map<string, SessionMeta>()
+const registry = {
+  get: (id: string) => sessions.get(id) ?? null,
+  onRemoved: () => () => {},
+  onWorkspaceDeleted: () => () => {}
+} as unknown as SessionRegistry
+
+const call = async <T = unknown,>(method: string, params: unknown): Promise<T> => {
+  const out = await work.handle(ClientRequestSchema.parse({ id: '1', method, params } as ClientRequest), LOCAL_PRINCIPAL)
+  return (out.handled ? out.result : undefined) as T
+}
+const tool = async (name: string, args: unknown): Promise<{ text: string; isError?: boolean }> => {
+  const r = (await work.tools.call({ id: 't1', scope: 'work' }, name, args, new AbortController().signal)) as { content: Array<{ text?: string }>; isError?: boolean }
+  return { text: r.content.map((c) => c.text ?? '').join(''), isError: r.isError }
+}
+const file = (path: string): CanvasSource => ({ at: 'file', host: 'env_test', path })
+let path: string
+let itemId: string
+const valueAt = (sheet: string, row: number, col: number): unknown => {
+  const { workbook } = importXlsx(new Uint8Array(readFileSync(path)))
+  const id = workbook.sheetOrder.find((s) => workbook.sheets[s]?.name === sheet)!
+  return workbook.sheets[id]?.cellData?.[row]?.[col]?.v
+}
+
+beforeEach(async () => {
+  dir = mkdtempSync(join(tmpdir(), 'tc-sheets-'))
+  db = openDb(join(dir, 'test.db'))
+  pushes.length = 0
+  Object.assign(state, { shared: false, routine: null, said: [] })
+  sessions.set('t1', { id: 't1', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
+  work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {}, remoteFence: { roots: () => [dir], denied: () => [] } }, [canvas, sheets])
+  work.pushes.onPush((p) => pushes.push(p))
+  await call('work.set', { enabled: true })
+  path = join(dir, 'Budget.xlsx')
+  copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+  itemId = canvasStoreOf(db).open('t1', { kind: 'sheet', source: file(path), title: 'Budget.xlsx' }).id
+  pushes.length = 0
+})
+afterEach(() => {
+  work.close()
+  db.close()
+  rmSync(dir, { recursive: true, force: true })
+})
+
+describe('a package in the canvas', () => {
+  it('opens with its view and loads its bytes by range at the view\'s rev', async () => {
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view).toMatchObject({ itemId, sessionId: 't1', name: 'Budget.xlsx', store: 'package', rev: 0, shared: false, mode: 'writes', suggestions: [], charts: [] })
+    expect(view.reach).toBeUndefined()
+    const size = readFileSync(path).length
+    const a = await call<{ data: string; size: number; format: string }>('work.sheets.load', { itemId, rev: 0, offset: 0, length: 1000 })
+    const b = await call<{ data: string }>('work.sheets.load', { itemId, rev: 0, offset: 1000, length: size })
+    expect(a).toMatchObject({ size, format: 'xlsx' })
+    expect(Buffer.concat([Buffer.from(a.data, 'base64'), Buffer.from(b.data, 'base64')]).equals(readFileSync(path))).toBe(true)
+  })
+
+  it('saves the owner\'s edit, pushes the new rev, and answers a stale one with a conflict', async () => {
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]
+    const m = { id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: sheet, cellValue: { 1: { 0: { v: 42 } } } } }
+    expect(await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [m] })).toEqual({ rev: 1 })
+    expect(valueAt('Data', 1, 0)).toBe(42)
+    expect(pushes.some((p) => p.push === 'work.sheets' && p.itemId === itemId && p.rev === 1)).toBe(true)
+    expect(await call('work.sheets.edit', { itemId, baseRev: 0, mutations: [m] })).toEqual({ conflict: true, rev: 1 })
+  })
+
+  it('reads cells for an agent, with formulas', async () => {
+    const r = await tool('sheet_read', { item: itemId, range: 'Data!A1:B2' })
+    expect(r.isError).toBeUndefined()
+    expect(r.text.split('\n')[0]).toBe('Data')
+    expect(r.text).toContain('A2 1')
+  })
+
+  it('on his own sheet an agent\'s own idea is written, with the written line and Undo', async () => {
+    const r = await tool('sheet_write', { item: itemId, cells: [{ at: 'A2', v: 9 }], because: 'own' })
+    expect(r.text).toBe('Wrote A2.')
+    expect(valueAt('Data', 1, 0)).toBe(9)
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view.written?.text).toBe('Wrote A2')
+    await call('work.sheets.undo', { itemId, writeId: view.written!.id })
+    expect(valueAt('Data', 1, 0)).toBe(1)
+    expect((await call<SheetView>('work.sheets.open', { itemId })).written).toBeUndefined()
+  })
+
+  it('on a shared sheet an agent\'s own idea waits as suggestions; what the owner asked for is written at once', async () => {
+    state.shared = true
+    const own = await tool('sheet_write', { item: itemId, cells: [{ at: 'A2', v: 5 }, { at: 'B2', v: 'x' }], because: 'own', reason: 'Round the totals' })
+    expect(own.text).toMatch(/^Suggested 2 cells: others share this sheet/)
+    expect(valueAt('Data', 1, 0)).toBe(1)
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view.suggestions.map((s) => [s.row, s.col, s.base?.v, s.proposed?.v, s.state, s.reason])).toEqual([
+      [1, 0, 1, 5, 'pending', 'Round the totals'],
+      [1, 1, view.suggestions[1].base?.v, 'x', 'pending', 'Round the totals']
+    ])
+    // a quote he never typed does not count as asked
+    const fake = await tool('sheet_write', { item: itemId, cells: [{ at: 'A3', v: 1 }], because: 'asked', quote: 'set A3 to one please' })
+    expect(fake.text).toMatch(/quote was not found/)
+    state.said = ['please set A4 to 100 in the budget']
+    const asked = await tool('sheet_write', { item: itemId, cells: [{ at: 'A4', v: 100 }], because: 'asked', quote: 'set A4 to 100' })
+    expect(asked.text).toBe('Wrote A4.')
+    expect(valueAt('Data', 3, 0)).toBe(100)
+    state.routine = 'run1'
+    expect((await tool('sheet_write', { item: itemId, cells: [{ at: 'A5', v: 7 }], because: 'routine' })).text).toBe('Wrote A5.')
+  })
+
+  it('accepts one suggestion into the file and leaves the rest; an owner edit over a pending cell makes it a conflict', async () => {
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'A2', v: 5 }, { at: 'A3', v: 6 }, { at: 'A4', v: 8 }] })
+    let view = await call<SheetView>('work.sheets.open', { itemId })
+    const [a2, a3] = view.suggestions
+    view = await call<SheetView>('work.sheets.review', { itemId, which: { ids: [a2.id] }, verdict: 'accept' })
+    expect(valueAt('Data', 1, 0)).toBe(5)
+    expect(view.suggestions.map((s) => s.row)).toEqual([2, 3])
+    const m = { id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: a3.sheet, cellValue: { 2: { 0: { v: 99 } } } } }
+    await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [m] })
+    view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view.suggestions.find((s) => s.id === a3.id)?.state).toBe('conflict')
+    view = await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'reject' })
+    expect(view.suggestions).toEqual([])
+    expect(valueAt('Data', 2, 0)).toBe(99)
+  })
+
+  it('lists history and compares two revisions', async () => {
+    await tool('sheet_write', { item: itemId, cells: [{ at: 'A2', v: 3 }], because: 'own' })
+    const { revisions } = await call<{ revisions: { rev: number; label: string }[] }>('work.sheets.history', { itemId })
+    expect(revisions.map((r) => [r.rev, r.label])).toEqual([
+      [1, 'Wrote A2'],
+      [0, 'As opened']
+    ])
+    const diff = await call<{ cells: { sheetName: string; row: number; col: number; before: { v: unknown }; after: { v: unknown } }[] }>('work.sheets.compare', { itemId, from: 0, to: 1 })
+    expect(diff.cells.find((c) => c.sheetName === 'Data')).toMatchObject({ row: 1, col: 0, before: { v: 1 }, after: { v: 3 } })
+  })
+
+  it('offers the switch for a file with macros, and says where Excel is not', async () => {
+    const xlsm = join(dir, 'Macro.xlsm')
+    copyFileSync(join(CORPUS, 'macro.xlsm'), xlsm)
+    const id = canvasStoreOf(db).open('t1', { kind: 'sheet', source: file(xlsm), title: 'Macro.xlsm' }).id
+    const view = await call<SheetView>('work.sheets.open', { itemId: id })
+    expect(view.reach?.to).toBe('excel')
+    expect(view.reach!.parts).toContain('macros')
+    if (process.platform === 'linux') await expect(call('work.sheets.switch', { itemId: id })).rejects.toThrow(/Excel is not on this host/)
+  })
+
+  it('keeps a chart of ours over a range, and takes it off', async () => {
+    const chart = { id: 'c1', sheet: 'sheet1', range: 'A1:B5', title: 'Totals', row: 2, col: 4 }
+    expect((await call<SheetView>('work.sheets.chart', { itemId, chart })).charts).toEqual([chart])
+    expect((await call<SheetView>('work.sheets.chart', { itemId, chart, remove: true })).charts).toEqual([])
+  })
+})

@@ -28,7 +28,6 @@ export function ensurePackageTables(db: DatabaseSync): void {
     path TEXT PRIMARY KEY,
     rev INTEGER NOT NULL,
     stamp TEXT NOT NULL,
-    mode TEXT NOT NULL DEFAULT 'writes',
     save_error TEXT
   )`)
   db.exec(`CREATE TABLE IF NOT EXISTS work_sheets_ops (
@@ -54,14 +53,12 @@ interface FileRow {
   path: string
   rev: number
   stamp: string
-  mode: 'suggests' | 'writes'
   save_error: string | null
 }
 
 export interface PackageState {
   rev: number
   inspected: Inspected
-  mode: 'suggests' | 'writes'
   saveError: string | null
   missing: boolean
 }
@@ -130,13 +127,13 @@ export class PackageStore {
     if (!existsSync(path)) {
       const row = this.row(path)
       if (!row) throw new Error(`There is no file at ${path}.`)
-      return { rev: row.rev, inspected: this.inspected.get(path)?.value ?? { sheets: [], date1904: false, reach: null }, mode: row.mode, saveError: row.save_error, missing: true }
+      return { rev: row.rev, inspected: this.inspected.get(path)?.value ?? { sheets: [], date1904: false, reach: null }, saveError: row.save_error, missing: true }
     }
     const row = this.sync(path)
     const hit = this.inspected.get(path)
     const inspected = hit?.stamp === row.stamp ? hit.value : await this.jobs.inspect(path)
     this.inspected.set(path, { stamp: row.stamp, value: inspected })
-    return { rev: row.rev, inspected, mode: row.mode, saveError: row.save_error, missing: false }
+    return { rev: row.rev, inspected, saveError: row.save_error, missing: false }
   }
 
   /** The package's bytes as revision `rev` stood: the file itself when it is the newest, else its kept copy. */
@@ -293,10 +290,6 @@ export class PackageStore {
       this.prune(path)
       return { rev: next }
     })
-  }
-
-  setMode(path: string, mode: 'suggests' | 'writes'): void {
-    this.db.prepare('UPDATE work_sheets_files SET mode = ? WHERE path = ?').run(mode, path)
   }
 
   /** Keeps the original and the newest copies. */
