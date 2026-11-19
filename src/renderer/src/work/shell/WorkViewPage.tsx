@@ -48,6 +48,7 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
     if (!def.chunk.loaded()) void def.chunk.load().then(() => landed((n) => n + 1), () => {});
   }, [def]);
   const loaded = def.chunk.loaded();
+  const Head = loaded?.Head;
   const props = useMemo<WorkViewProps>(
     () => ({ env: environmentId, workspace, sector, lifeos: session, startThread: (about) => startThreadAbout(about) }),
     [environmentId, workspace, sector, session],
@@ -63,7 +64,7 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
         <Icon className="size-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">{def.label}</span>
         <span className="flex-1" />
-        {loaded?.Head && !signedOut ? loaded.Head(props) : null}
+        {Head && !signedOut ? <Head {...props} /> : null}
       </div>
       {status?.lifeos.state === "unreachable" ? (
         <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-4 text-[13px]">
