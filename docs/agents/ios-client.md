@@ -702,7 +702,13 @@
 - Tests: `bun run ios:test` (contract) and `bun run ios:test:client` (the
   package, pure suites plus a live suite against scripts/ios-client-test-server.ts,
   a real server with a read key that lives only in the test process
-  environment); both run in the release gate. The test server seeds one
+  environment); both run in the release gate. Both scripts bundle the server
+  for plain node through scripts/lib/bundle-node-script.ts: electron through
+  scripts/electron-shim.mjs, work-kit and @muse-code/sdk inlined (TypeScript
+  source), a `?modulePath` import as its source path. The work set
+  (`TC_PROOF_SET=work`) starts it with `TC_TEST_ADDONS=1` and
+  `TC_TEST_NO_RELAY=1` (no relayed fake hosts: each is this server under
+  another id and would list the same Outbox again). The test server seeds one
   thread per type with realistic rows and a 2,000-row chat. Simulator proof:
   `bun scripts/ios-sim-proof-local.ts` (every set compiles the Release configuration first and stops on a break, then every segment of every type, a chip
   opened, the diff, the agent detail, light and dark, then the scroll run
