@@ -68,7 +68,7 @@ Each later milestone fills its own file and edits no other; a stub answers
 | `wss …/w/sheet/<sheetId>` | `routes/sheet.ts` | **27, built** |
 | `GET …/w/open` | `routes/item.ts` | 31 |
 | `…/g/*` | `routes/guests.ts` | 31 |
-| `wss …/w/office`, `GET …/w/addin/*` | `routes/office.ts` | 29 |
+| `wss …/w/office`, `GET …/w/addin/*` | `routes/office.ts` | **29, built** (work-office.md, "The add-in") |
 | `GET`/`POST …/f/<publicId>` (published forms; [work-forms.md](work-forms.md)) | `routes/form.ts` | **36, built** |
 | `…/w/full/<token>/*` | `routes/fullEditor.ts` | **40, built** ([work-sheets.md](work-sheets.md) "The full editor") |
 | internal `/internal/doc/{read,write,create,comment}` | `routes/internal.ts` | 18, built |

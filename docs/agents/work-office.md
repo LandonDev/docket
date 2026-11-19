@@ -1,6 +1,6 @@
 # Work: the Office tools
 
-Milestone 28 of the Work plan (architecture §9.2, §10; the sheet research
+Milestones 28 and 29 of the Work plan (architecture §9.2, §10; the sheet research
 `reports/nJLC5WoplSWf.md` §4 and its `excel-as-the-truth-paths` file). One
 tool set lets agents use the Office files and the Outlook the owner has open,
 carried out on the host that has the apps. A workbook that lives in Excel
@@ -12,7 +12,7 @@ the sheet canvas.
 
 | File | What |
 |---|---|
-| `src/shared/contract-work-office.ts` | the wire: `work.office.status` (read), `read` (read), `write` (operate), `switch` (operate) |
+| `src/shared/contract-work-office.ts` | the wire: `work.office.status` (read), `read` (read), `write` (operate), `switch` (operate); the add-in's `addin.pair` (operate), `addin.list` (read), `addin.remove` (operate) |
 | `office/carrier.ts` | `OfficeCarrier`, the one interface every carrier fills: workbooks and ranges, documents, decks, Outlook mail and calendar, `open` |
 | `office/osa.ts` | one osascript run (`runOsa`), and osascript's errors in words (`osaError`: -1743 refused, -1744 needs his click, -600 not open, -1728 no such item) |
 | `office/mac.ts` | the Mac carrier: one JXA script per verb (`SCRIPTS`), arguments as one JSON string, the answer JSON |
@@ -23,17 +23,29 @@ the sheet canvas.
 | `office/held.ts` | the held acts `office.mail.send` and `office.calendar.op`, and `cleanMailHtml` |
 | `office/route.ts` | `OutlookRoute`: LifeOS's Outlook-account mail and calendar acts, carried by this host's Outlook |
 | `office/index.ts` | the module: tables, wire, tools, acts, the Excel trigger source, the route's start |
+| `addins/office/` | the add-in itself: `manifest.xml`, `taskpane.html`, `taskpane.js` (its screen), `core.js` (what it does), the icons as base64 |
+| `office/addin/keys.ts` | `AddinKeys`: the pairing code and each add-in's key (only its hash is kept) |
+| `office/addin/hub.ts` | `AddinHub`: main's end of the relay, the add-ins on it and the calls made to them |
+| `office/addin/carrier.ts` | `withAddin(desktop, hub)`: the add-in as a carrier ahead of the desktop one |
+| `office/addin/web.ts` | Office on the web in a window of our own, for the switch |
+| `office/addin/index.ts` | the link's start, `work.office.addin.*`, and which tool calls run here |
+| `office/addin/fakeOfficeJs.ts` | `FakeExcelHost`: a stub Office.js for the proofs |
+| `service/routes/office.ts` | the relay, `wss …/w/office`, and the add-in's files at `GET …/w/addin/*` |
 
-Tables: `work_office_undo` (the helper's undo log), `work_office_journal`
+Tables: `work_office_undo` (the helper's undo log), `work_office_addin_keys`
+(paired add-ins: name, app, the key's sha256, when made and last seen), `work_office_journal`
 (the route's sends not yet acked), `work_office_sources` (the LifeOS source
 id per Outlook address). Suggestions over a workbook use the sheets pillar's
 `work_sheets_suggestions` under `excel:<key>`.
 
 ## Carriers
 
-A carrier is what drives the apps. Only the Mac's exists now; Outlook on the
-web on the box is M38's and COM on Windows is M44's. `index.ts` picks
-`macCarrier()` on darwin and none elsewhere (`setCarrier` in tests).
+A carrier is what drives the apps. The Mac's osascript and our Office add-in
+exist now; Outlook on the web on the box is M38's and COM on Windows is
+M44's. `index.ts` picks `withAddin(macCarrier())` on darwin and
+`withAddin(null)` elsewhere (`setCarrier` in tests): a file open with our
+add-in goes through the add-in, anything else to the Mac's scripts. A host
+with only the add-in reports `carrier: 'addin'`.
 
 **The Mac.** Each verb is one JXA script run by `/usr/bin/osascript -l
 JavaScript -`. A range is one Apple Event each way, never one per cell. The
@@ -56,6 +68,87 @@ Office call from the installed app answers "TempCode may not control …".
 `apps()` reports each app as installed, running and allowed. macOS will not
 say whether an app is allowed without asking, so `allowed` is what the last
 call found, and `unknown` before any call.
+
+## The add-in
+
+Our own Office.js task pane add-in for Excel, Word and PowerPoint, on the
+Mac, on Windows and on the web (the research's Part B, path B). It is plain
+script with no build: the Work service serves `addins/office/` at
+`/w/addin/<file>` (`office/addin/assets.ts` builds the files in), and the
+manifest names `https://tempcode.landonhale.com/w/addin/taskpane.html`.
+Office's web views may not reach this machine's loopback (Chromium's Local
+Network Access), so the add-in connects out to the public address, through
+the tunnel, to `wss://tempcode.landonhale.com/w/office`. **Whichever host the
+tunnel points at holds the add-ins**, which is the box today: the Mac's own
+Excel with the add-in is reached through the box.
+
+**The relay** (`service/routes/office.ts`) judges nothing. Main connects to
+`/w/office/host` with the service's secret, from this machine only (a
+request carrying `CF-Connecting-IP` came through the tunnel and is refused).
+An add-in's first message, within 10 s and under 4 KiB, is `hello` with its
+key or `pair` with a code; the relay hands it to main (`open`), and passes
+nothing more until main answers `admit` or `refuse`. With main away it
+answers 503 at the upgrade; when main's link goes, every add-in closes 4503.
+The add-in's files are served without `X-Frame-Options` and with a
+`frame-ancestors` list of Office on the web's hosts, so Office can frame the
+pane.
+
+**Pairing** (`addin/keys.ts`). Settings → Work, Where it runs, has an Office
+add-in row per host. Pair… shows an 8-letter code (no 0, O, 1, I or L) for
+five minutes; one code at a time, one pairing per code, dead after five wrong
+tries. The pane takes the code once and gets a key of its own (`tca_` and 32
+random bytes), which it keeps in the pane's `localStorage`, never in the
+workbook. The host keeps only the key's sha256. Each paired add-in is a row
+under it ("Excel on the web", connected or when it last was) with Remove,
+which closes it at once (4403) and puts its pane back to asking for a code.
+Only the owner pairs: an agent's call is refused.
+
+**What it carries** (`addin/core.js`, `addin/carrier.ts`). On the open file:
+`excel.workbook` (its sheets and used ranges), `excel.read` (values,
+formulas and number formats of a range), `excel.write` (a grid: a string
+starting `=` is a formula, null empties the cell), `word.read` and
+`word.edit` (with Track Changes on when the tool asks), `slides.read` and
+`slides.replace`. Mail and calendar are never the add-in's. The file's key
+is `Office.context.document.url`, which is a path or a URL as the Mac's
+scripts name it. A call goes to the newest add-in with that file open; with
+none, to the desktop carrier; with neither, it says to open the file with
+the add-in.
+
+**Changes by range.** The add-in listens to `worksheets.onChanged` and sends
+each change's sheet and address, dropping its own writes (`triggerSource:
+'ThisLocalAddin'`). The hub hands it to `ExcelHelper.heard(book, sheet,
+range)`, which reads again at once the watched blocks the range touches; the
+15 s safety pass still runs for formatting and row moves. Suggestions stay
+under `excelStore(book)`, one set whichever carrier wrote.
+
+**Where a tool runs** (`addinTools`, `carriedHere`). On a host with a
+desktop carrier every call runs here, as before. On a host with only the
+add-in, a call runs here when it names a file an add-in has open, and
+`office_files` while any add-in is connected (it then lists only those
+files); every other call goes to the workspace's desktop host as if this
+host had no Office. So with the add-in closed, the tools fall back to the
+Mac's scripts.
+
+**Office on the web for the switch** (`addin/web.ts`). Where no desktop app
+is installed, the switch opens a file by URL (OneDrive, SharePoint, Teams)
+in a window of our own: one `WebContentsView` filling a `BrowserWindow`, a
+session apart (`persist:microsoft`), sandboxed with no Node, permissions
+refused but clipboard writes, `Electron/` dropped from the user agent so
+Microsoft's sign-in offers passkeys, and only Microsoft's own https sites
+reachable; any other link opens in his browser. A headless host says it
+has no screen.
+
+**Sideloading.** Excel for the web (personal account): office.com → Excel →
+open a workbook → Home → Add-ins → More Settings → Upload My Add-in → the
+manifest (`addins/office/manifest.xml`, or download it from
+`https://tempcode.landonhale.com/w/addin/manifest.xml`). The browser keeps
+it in local storage: clearing the cache or changing browser means uploading
+again. Excel on the Mac: copy the manifest to
+`~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/` (make `wef`
+if it is missing), restart Excel, then Home → Add-ins → TempCode. A tenant
+that hides Upload My Add-in, or a Mac with `OfficeWebAddinDisableAllCatalogs`
+set, simply does not get this carrier. The pane opens per workbook; it is
+not loaded on open.
 
 ## The tools
 
@@ -197,7 +290,14 @@ the pillar fires when the safety pass hears someone else's change.
 
 ## Testing
 
-On the box, everything runs against `FakeOffice`. That covers the tools,
+On the box, everything runs against `FakeOffice`. The add-in's proof
+(`addin/addin.test.ts`) runs the relay route on a real listener, main's link
+to it, and `addins/office/core.js` itself in a node sandbox against
+`FakeExcelHost`, a stub Office.js in the shapes Microsoft documents, over
+real sockets: pairing, every refusal, a range read and write, a stale
+write's conflict, a change heard within a second, the fall back to the
+desktop carrier, and a removed key. `AddinRow.dom.test.tsx` covers the
+Settings row. That covers the tools,
 the held acts (`tools.test.ts`: every verb that sends answers a held act,
 and Outlook sends nothing), the helper (`excel.test.ts`), the canvas path
 (`grid.test.ts`), the route with a LifeOS in memory (`route.test.ts`) and
@@ -207,7 +307,12 @@ against a recorded osascript.
 
 ## Not proven
 
-None of this has run against real Excel or Outlook. The test is written out
+None of this has run against real Excel or Outlook. The add-in has not run
+in any real Office host: its live test, with the sideload steps, is in the
+plan's landed/M29.md. Also unproven for the add-in: Office.js's real
+answers (the stub follows the docs), the pane's CSP and framing on Office on
+the web, the public address (the tunnel's rule is the owner's step), Word
+and PowerPoint, and Office on the web inside our window. The test is written out
 in M28.md, "The live test". It needs the build change above and his one
 click per app. Also unproven:
 
