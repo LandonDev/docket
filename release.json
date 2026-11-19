@@ -1,5 +1,5 @@
 {
-  "n": 349,
-  "notes": "Work workspaces: all fifty milestones (the phone's part ships with the next phone build). Since 1.0.348: the phone's mail, tasks, agenda and canvases on the host side, Windows input and capture, Office tools on Windows, the end-to-end proofs and their fixes, the hold review's fixes, and the first design council fixes.",
-  "ts": 1795121733532
+  "n": 350,
+  "notes": "Work, from the first day of live use: LifeOS documents open (the installed box serves them on its fixed port); the Work column's project cards keep LifeOS's order when clicked; @ in the composer offers mail, tasks, events, projects, documents and more; the Docs view has search, filters, grouping and saved views; a Files view for Teams libraries synced by OneDrive; the Mac's Office carrier reads an empty Excel as empty and says when New Outlook answers no accounts; the hold review's fixes and the design council's through round 6; the first commits of the light theme.",
+  "ts": 1795131302574
 }
