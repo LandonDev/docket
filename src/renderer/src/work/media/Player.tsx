@@ -4,6 +4,7 @@ import type { FrameTable, MediaNote, MediaRegion, MediaVersion } from "@shared/c
 import { RowsMenu } from "../../chrome/menuRows";
 import { Pause, Play } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
+import { chordKey } from "../../lib/keys";
 import { Comment, FullScreen, Volume, VolumeOff } from "../icons";
 import { RegionLayer } from "./parts";
 import { seekToFrame, stepFrame, watchFrames } from "./seek";
@@ -230,7 +231,7 @@ export function Player({
       tabIndex={0}
       className="focus-ring min-w-0 px-3 pt-3"
       onKeyDown={(e) => {
-        if (!table || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (!table || chordKey(e)) return;
         // A focused control keeps its own keys: Space presses the button, the arrows move in a menu.
         if (e.target !== e.currentTarget && (e.target as HTMLElement).closest("button, input, textarea, [role=menu], [role=menuitem]")) return;
         const step = e.shiftKey ? Math.max(1, Math.round(tableFps(table))) : 1;

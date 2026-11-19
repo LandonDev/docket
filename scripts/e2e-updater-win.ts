@@ -257,8 +257,9 @@ let startedRig = false
 
 /** The app's processes in the guest, and everything running out of its folder: `pid exe` lines. */
 async function appProcesses(): Promise<string[]> {
+  // Get-Process, not CIM: over SSH a standard user's CIM query of a desktop process answers "Access denied".
   const r = await ps(
-    `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '${GUEST_APP_DIR}\\*' } | ForEach-Object { "$($_.ProcessId) $($_.ExecutablePath)" }`
+    `Get-Process -EA 0 | Where-Object { $_.Path -like '${GUEST_APP_DIR}\\*' } | ForEach-Object { "$($_.Id) $($_.Path)" }`
   )
   return r.out.split('\n').map((l) => l.trim()).filter(Boolean)
 }

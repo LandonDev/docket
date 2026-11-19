@@ -16,28 +16,26 @@ import { TooltipProvider } from "../components/ui/tooltip";
  */
 const CAPTION_SPACE = "calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)))";
 
+// First paint on every platform: plain functions, out of the compiler's memo output.
 function CaptionSpace() {
-  useEffect(() => {
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "theme-color";
-      document.head.append(meta);
-    }
-    const tell = () => {
-      meta.content = getComputedStyle(document.documentElement).getPropertyValue("--sidebar").trim();
-    };
-    tell();
-    window.addEventListener(SCHEME_CHANGE_EVENT, tell);
-    return () => window.removeEventListener(SCHEME_CHANGE_EVENT, tell);
-  }, []);
-  return (
-    <div data-caption-space className="h-full shrink-0" style={{ width: CAPTION_SPACE }} />
-  );
+  "use no memo";
+  useEffect(followTheme, []);
+  return <div data-caption-space className="h-full shrink-0" style={{ width: CAPTION_SPACE }} />;
+}
+
+/** The shell's colour in a theme-color tag, now and on every theme change. */
+function followTheme() {
+  const meta = document.head.appendChild(document.createElement("meta"));
+  meta.name = "theme-color";
+  const tell = () => (meta.content = getComputedStyle(document.documentElement).getPropertyValue("--sidebar").trim());
+  tell();
+  window.addEventListener(SCHEME_CHANGE_EVENT, tell);
+  return () => (window.removeEventListener(SCHEME_CHANGE_EVENT, tell), meta.remove());
 }
 
 /** The window's controls at a title bar's end off macOS: Windows' own on a Windows desktop, ours on Linux and at /ui. */
 export function WindowControls() {
+  "use no memo";
   return !isWebMode() && nativePlatform() === "win32" ? <CaptionSpace /> : <DrawnControls />;
 }
 

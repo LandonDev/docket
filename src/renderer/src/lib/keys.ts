@@ -52,9 +52,8 @@ export function bareKey(e: AllMods): boolean {
   return !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey);
 }
 
-// `enter` and `return` are one key; the Mac's hints draw it both ways, so both names stay.
-const MAC_CAPS: Record<string, string> = { mod: "⌘", ctrl: "⌃", alt: "⌥", shift: "⇧", enter: "⏎", return: "↩", delete: "⌫" };
-const PC_CAPS: Record<string, string> = { mod: "Ctrl", ctrl: "Ctrl", alt: "Alt", shift: "Shift", enter: "Enter", return: "Enter", delete: "Delete" };
+// Each name's cap on a Mac, then elsewhere. `enter` and `return` are one key; the Mac's hints draw it both ways, so both names stay.
+const CAPS: Record<string, string> = { mod: "⌘Ctrl", ctrl: "⌃Ctrl", alt: "⌥Alt", shift: "⇧Shift", enter: "⏎Enter", return: "↩Enter", delete: "⌫Delete" };
 
 /**
  * A chord as key caps, one per key: `keyCaps("mod+shift+M")` is ["⌘", "⇧", "M"]
@@ -66,8 +65,7 @@ export function keyCaps(chord: string, mac = IS_MAC): string[] {
   const plus = chord.endsWith("++") || chord === "+";
   const parts = (plus ? chord.slice(0, -1) : chord).split("+").filter(Boolean);
   if (plus) parts.push("+");
-  const names = mac ? MAC_CAPS : PC_CAPS;
-  return parts.map((part) => names[part] ?? part);
+  return parts.map((part) => (CAPS[part] ? (mac ? CAPS[part][0] : CAPS[part].slice(1)) : part));
 }
 
 /** Caps as one hint: run together on a Mac ("⌘⇧M"), joined by a plus elsewhere ("Ctrl+Shift+M"). */

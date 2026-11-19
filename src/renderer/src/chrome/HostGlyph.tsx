@@ -25,6 +25,8 @@ export function HostGlyph({
   bare?: boolean;
   className?: string;
 }) {
+  // One glyph per row, in the first paint: out of the compiler's memo output, which outweighed it.
+  "use no memo";
   const environments = useEnvironments();
   const platform = useHostPlatform(environmentId ?? undefined);
   if (!environmentId || environments.length < 2) return null;
