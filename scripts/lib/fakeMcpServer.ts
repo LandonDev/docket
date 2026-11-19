@@ -50,7 +50,6 @@ type ToolDef = { name: string; description: string; inputSchema: Record<string, 
 const obj = (properties: Record<string, unknown> = {}, required: string[] = []): Record<string, unknown> => ({ type: 'object', properties, required })
 const tools: ToolDef[] = [
   { name: 'echo', description: 'Echo the text back unchanged', inputSchema: obj({ text: { type: 'string', description: 'What to echo' } }, ['text']) },
-  { name: 'send_mail', description: 'Send a mail (a stand-in that only records it)', inputSchema: obj({ to: { type: 'string' }, subject: { type: 'string' }, text: { type: 'string' } }, ['to', 'text']) },
   { name: 'read', description: 'Read a value without changing anything', inputSchema: obj({ key: { type: 'string' } }), annotations: { readOnlyHint: true } },
   { name: 'image', description: 'Answer a one-pixel image', inputSchema: obj() },
   { name: 'whoami', description: 'Answer the sha256 prefix of the token this server got', inputSchema: obj() },
@@ -63,6 +62,8 @@ const tools: ToolDef[] = [
   { name: 'printtoken', description: 'Print the token to stderr and throw it', inputSchema: obj() },
   { name: 'add_tool', description: 'Add a tool and announce the list changed', inputSchema: obj({ name: { type: 'string' } }, ['name']) }
 ]
+// The phone's work proof set (scripts/lib/ios-work-seeds.ts) asks for a mail tool; the add-on tests count the default list.
+if (argv.includes('--mail')) tools.push({ name: 'send_mail', description: 'Send a mail (a stand-in that only records it)', inputSchema: obj({ to: { type: 'string' }, subject: { type: 'string' }, text: { type: 'string' } }, ['to', 'text']) })
 for (let i = 0; i < Number(flag('--many') ?? 0); i++) tools.push({ name: `t${String(i).padStart(3, '0')}`, description: `Filler ${i}`, inputSchema: obj() })
 
 function makeServer(headerValue: () => string | undefined): Server {

@@ -64,7 +64,7 @@ export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ pu
     const t2 = await s.call<{ id: string }>('session.create', { scope: 'work', workspaceId: unify.id, threadType: 'chat', provider: 'claude', model: 'claude-opus-5-5', title: 'Overdue invoices' })
     const fake = resolve(repo, 'scripts/lib/fakeMcpServer.ts')
     const { addon } = await s.call<{ addon: { id: string } }>('addons.set', {
-      addon: { name: 'purdue-mail', workspaceId: purdue.id, description: 'Purdue mail', spec: { transport: 'stdio', command: process.execPath, args: [fake, '--stdio'], env: [], auth: 'none' } }
+      addon: { name: 'purdue-mail', workspaceId: purdue.id, description: 'Purdue mail', spec: { transport: 'stdio', command: process.execPath, args: [fake, '--stdio', '--mail'], env: [], auth: 'none' } }
     })
     for (let i = 0; i < 120; i++) {
       const listed = await s.call<{ tools: unknown[] }>('addons.tools', { id: addon.id }).catch((err: unknown) => { if (i % 20 === 19) console.error(`work seed: ${String(err)}`); return { tools: [] } })
