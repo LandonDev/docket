@@ -229,26 +229,25 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   `git+https://www.github.com/LandonDev/work-kit.git#<sha>` (bun cannot fetch a private
   `github:` spec), kept out of the app by electron-builder; scripts/workKitPin.test.ts.
   [docs/agents/work-kit.md](docs/agents/work-kit.md)
-- **Work** — a job as a workspace, behind one switch per host, off by default
-  (`work.get`, `work.set`). The screens: the rail's Work heading and Work Chats, the
-  Work column's four views (`WORK_VIEWS`), Settings → Work (work/shell, lib/workSwitch.ts;
-  work.md "The screens"). Built so far: the frame, and what a Work thread is
-  on the server: `sessions.scope` stamped once at create and following a
-  thread's parent or starter, no MCP server but the app's own (Claude Code,
-  Codex and Muse; `work/fence.proof.test.ts` and `work/fence-muse.proof.test.ts`
-  plant one in every source and run the real CLIs), the Work preamble on every start path
-  ([docs/agents/work-scope.md](docs/agents/work-scope.md)); and the hold: a Work
-  thread's add-on call runs only when the owner set that tool to Runs, its outward
-  computer acts and LifeOS drafts wait for his press (`work.outbox.*`), Away
-  releases none (the outbox account below). The shared types
-  (src/shared/work), the core columns (`workspaces.kind`, `sessions.scope`, …),
-  `WORK_MODULES` and `WorkCtx` (src/main/server/work), one stub per pillar in
-  every closed list (`contract-work-<pillar>.ts`, `work/<pillar>/index.ts`), the
-  one tool mount (`withWorkTools`, `app.workTools`). Code branches on the row,
-  never on the switch; an unbuilt part answers `not built: … (milestone N)`. A
-  pillar fills its own stubs and edits no shared file, and reaches the frame
-  only through `WorkCtx` (`ctx.canvas.get`/`paneOf`, `ctx.dataDir`, the
-  listener's path fence `ctx.reaches`, `push(p, { path })`;
-  `work/pillarReach.test.ts`).
-  [docs/agents/work.md](docs/agents/work.md); the Work service is [work-service.md](docs/agents/work-service.md); whole jobs proven end to end, and what is still unproven, are [work-proofs.md](docs/agents/work-proofs.md) (`scripts/e2e-work-*.ts`). Each pillar's own account (a stub until
-  its milestone): [outbox](docs/agents/work-outbox.md), [canvas](docs/agents/work-canvas.md), [lifeos](docs/agents/work-lifeos.md), [routines](docs/agents/work-routines.md), [rules](docs/agents/work-rules.md), [mail](docs/agents/work-mail.md), [tasks](docs/agents/work-tasks.md), [agenda](docs/agents/work-agenda.md), [docs](docs/agents/work-docs.md), [history](docs/agents/work-history.md), [formats](docs/agents/work-formats.md), [sheets](docs/agents/work-sheets.md), [office](docs/agents/work-office.md), [google](docs/agents/work-google.md), [guests](docs/agents/work-guests.md), [pdf](docs/agents/work-pdf.md), [slides](docs/agents/work-slides.md), [media](docs/agents/work-media.md), [frameio](docs/agents/work-frameio.md), [meetings](docs/agents/work-meetings.md), [forms](docs/agents/work-forms.md), [dashboards](docs/agents/work-dashboards.md), [browser](docs/agents/work-browser.md)
+- **Work** — a job as a workspace (one per sector per host), behind one switch
+  per host, off by default (`work.get`, `work.set`); code branches on the row
+  (`workspaces.kind`, `sessions.scope`), never on the switch. All fifty
+  milestones are built. The frame: `WORK_MODULES`, `WorkCtx`, one tool mount
+  (`withWorkTools`, `app.workTools`); a pillar fills its own folder, edits no
+  shared file and reaches the frame only through `WorkCtx`
+  (`work/pillarReach.test.ts`); the screens are the rail's Work heading, Work
+  Chats, the column's views (`WORK_VIEWS`), the canvas pane and Settings → Work
+  ([docs/agents/work.md](docs/agents/work.md)). Scope and the fence: a Work
+  thread is stamped once at create, follows its parent or starter on any host,
+  and loads no MCP server but the app's own on Claude Code, Codex and Muse
+  ([work-scope.md](docs/agents/work-scope.md)). The hold: every act that sends,
+  posts, shares, books or submits is a held kind made through
+  `ctx.held.create` and runs only on his press in the Outbox or a narrow grant
+  he made from a held item; Away releases none; what it cannot catch (the
+  shell, an unnamed control) is listed in the outbox's account below. The
+  Work service is
+  [work-service.md](docs/agents/work-service.md); whole jobs proven end to end,
+  and what is still unproven, are [work-proofs.md](docs/agents/work-proofs.md);
+  what we ship from others, and the tools run as separate processes, is
+  `THIRD-PARTY-NOTICES.md`. Each pillar's account:
+  [outbox](docs/agents/work-outbox.md), [canvas](docs/agents/work-canvas.md), [lifeos](docs/agents/work-lifeos.md), [routines](docs/agents/work-routines.md), [rules](docs/agents/work-rules.md), [mail](docs/agents/work-mail.md), [tasks](docs/agents/work-tasks.md), [agenda](docs/agents/work-agenda.md), [docs](docs/agents/work-docs.md), [history](docs/agents/work-history.md), [formats](docs/agents/work-formats.md), [sheets](docs/agents/work-sheets.md), [office](docs/agents/work-office.md), [google](docs/agents/work-google.md), [guests](docs/agents/work-guests.md), [pdf](docs/agents/work-pdf.md), [slides](docs/agents/work-slides.md), [media](docs/agents/work-media.md), [frameio](docs/agents/work-frameio.md), [meetings](docs/agents/work-meetings.md), [forms](docs/agents/work-forms.md), [dashboards](docs/agents/work-dashboards.md), [browser](docs/agents/work-browser.md)

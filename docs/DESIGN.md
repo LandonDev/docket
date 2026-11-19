@@ -835,15 +835,13 @@ is the page, so Escape there closes it).
 
 #### The canvas pane
 
-What is built: the pane's frame (the tab row, the kind's bar, the fold,
-the review stepper, the selection bar and the composer's chip row), and
-the document, PDF, slides, images and video, meeting, live browser, sheet,
-form, dashboard, and compare and History bodies; every other kind's body
-is a "Not built yet" stub. A sheet's chart axis is
-12px, not the prototype's 11px (the type scale allows 11px only for key caps
-and menu labels). Each kind's own surface below that is not built yet, the
-Outbox, Back from Away, routines, house rules and Settings → Work are the
-standard for the work that builds them, not yet in the app.
+Every kind's body is built on the pane's frame (the tab row, the kind's
+bar, the fold, the review stepper, the selection bar and the composer's chip
+row); the slides kind's PowerPoint side alone says "Not built yet". A sheet's
+chart axis is 12px, not the prototype's 11px (the type scale allows 11px only
+for key caps and menu labels). Around the canvas, the Outbox, Back from Away,
+routines, house rules and Settings → Work are built to the rules below, but
+for the routines' week grid, which is not.
 
 A Work thread opens an item (a mail, a document, a sheet, a PDF, slides,
 an image or a video, a live browser, a compare or History, a meeting, a
@@ -904,6 +902,10 @@ thread; nothing answers inside the canvas.
 
 The kinds, each a hand-made body built from components/ui:
 
+- **Mail.** The kind opens a draft; the mail it answers sits above the
+  composer. A waiting rewrite replaces the composer with a read-only diff
+  of the two, and the stepper in the bar takes or leaves it: the draft
+  never changes until he takes it. Send goes through the Outbox's press.
 - **Sheet.** A selected cell or range is the 2px `accent` outline, the one
   place the focus ring marks content; the range fills with `sel-bg`, and
   its row and column headers take `muted`. Another person's cell is their
@@ -936,13 +938,21 @@ The kinds, each a hand-made body built from components/ui:
   2 by 6 ticks in `success`; the transport 32px; list rows 32px or more on
   a 36/20/1fr grid; a side list 240px, under the body below a 600px body.
   Ask on a stretch or a region chips "start to end, file" or "Region of
-  file". A note for a shared review service is a suggestion here and a
-  held "Post on …" in the thread, never a canvas button.
+  file". The transport has a Comment button that notes the frame shown,
+  with no selection; an image region's selection bar has Comment, not
+  Copy. Two versions compare inside the item, side by side on one
+  transport, chosen by two pickers in the bar, never as a compare tab. A
+  note for a shared review service is a suggestion here and a held "Post
+  on …" in the thread, never a canvas button.
 - **Meetings.** A 40px player row with a 24px wave; turns 8 by 12 inside,
   radius 8, 2px apart; topic rows 13 medium on 36px with 12px tabular
   times, an open topic inset 34px. Tasks found in a recording are
   suggestions at their turn; Accept files them in LifeOS. A recording
   that fails keeps its player; the empty kind offers one Choose a file.
+  Once notes exist, a Notes and Transcript switch leads the body. Find
+  sits after the mode, and the mode is the fixed text "Agent writes".
+  An unnamed speaker's first turn says "Sounds like <name>" when a kept
+  voice matches; naming a speaker offers Use and Forget this voice.
 - **Live browser.** The Computer section's viewport rules filling the
   body. Its bar holds the host (12px foreground, a lock glyph, never a
   field), who drives (12px muted, foreground while the person drives) and
@@ -977,32 +987,48 @@ Around the canvas:
   computer-use act names the Mac and says it "takes its screen for a
   moment", and its Sent record keeps a picture. "Sent mail cannot be taken
   back" stands in for a way back. The right panel gains Results (the
-  `outbox` glyph, two groups).
-- **Back from Away** is a form or decision dialog whose sections come in
-  the order the person must act. "Decided while you were away:" leads the
-  away line, with Change on hover. A toast that offers Review stays until
-  pressed.
+  `outbox` glyph, two groups). The page is the split view only. Send's
+  toast has no Undo: the host sends on the press, and the toast says what
+  happened; a press decided elsewhere says so ("Already discarded"). The
+  transcript's held line opens the Outbox page. In the grants sheet, under
+  each workspace's heading, a grant's line is "Made today from a held
+  mail". Each kind draws its own payload view; a kind with none gets the
+  generic one (a mail's headers and body, a call's arguments).
+- **Back from Away** is one toast ("Decided without you in 4 threads";
+  with Work on, "Held 7, decided 4 without you") that offers Review and
+  stays until pressed. Review opens "Decided while you were away": one row
+  per thread with its count and Open, since the host counts decisions per
+  thread and keeps no choices; held items are the Outbox's.
 - **Routines.** The week grid has 36px rows with hairlines, 12px muted day
   heads (today's foreground medium) and a 6px `run-dot`; past runs use the
   status marks. A trigger is always plain words ("Weekdays at 7:00 AM",
   "When Dana Lee changes it"), never a tag; a watch's row ends "until
   <day>" or "once". The status slot shows Watching, Paused, Failed or
-  Working, and nothing for an idle routine.
-- **House rules** is a `Page` of one-line `PageRow`s that open, a
+  Working, and nothing for an idle routine. Only the list view is built;
+  the week grid and "By what starts it" are not.
+- **House rules** is a section of the workspace's own settings page
+  (the page's title is the workspace's name), not a page of its own: a
+  rule belongs to the workspace it came from, so its dialog has no
+  workspace select. It is a list of one-line `PageRow`s that open, a
   `Switch` each, a grip in the 24px gutter on hover; past 12 rules a Find
   `Input` over the list, its matches in `sel-bg`, reorder off while
   filtered. A proposal row is the sentence, then "from N edits" as its
   muted line, with Dismiss (ghost `xs`) and Add (secondary `xs`): the one
   row with two buttons. An edit's evidence is one paragraph with its
   removed and added words tinted, 13px (14px in a dialog). The
-  transcript's proposal line is a muted 13px line under a sent row
-  ("Add rule…", "Reword…", "Not now"); after: "Added to <workspace>'s
-  rules" with Undo.
+  proposal line is a muted 13px line under the sent mail, in the mail
+  canvas where he pressed Send ("Add rule…", "Reword…", "Not now"); after:
+  "Added to <workspace>'s rules" with Undo.
 - **Settings for Work.** The settings list gains a Work heading after
   Threads: the Work page, then each Work workspace led by its sector's
   dot. A grant row is the dot (on mixed lists only), the grant's name and
   "<workspace>, made <date> from a held <kind>" as its muted line, with
-  Remove and no confirm. A section that needs an account the person is
+  Remove and no confirm. With the switch off, the Work page is the switch
+  alone. A Work workspace's sector is shown, never edited. Models is one
+  row that opens Thread defaults. "Where it runs" names the host new Work
+  workspaces are made on (only with two or more hosts with Work on) and
+  each host's conversion tools; computer use is one switch per desktop
+  host on each workspace's page. A section that needs an account the person is
   signed out of shows one muted line naming the sign-in ("Sign in to
   LifeOS to …"), never disabled controls.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the

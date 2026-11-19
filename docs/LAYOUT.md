@@ -1276,11 +1276,8 @@ alone, with no header.
 
 ### The canvas pane: an item beside a Work thread
 
-Built: the frame below, with every kind's body a "Not built yet" stub.
-The kinds' own bodies, the rail's and the Work column's Work rows and
-Settings → Work are specified here and in docs/DESIGN.md "The canvas
-pane", and are not built yet (the rail, the column and Settings → Work
-come with milestone 8).
+Built: the frame below, every kind's body (docs/DESIGN.md "The canvas
+pane"), the rail's and the Work column's Work rows and Settings → Work.
 
 The canvas is `SplitShell` with an item in the board's place: the item on
 the left, the thread on the right at 360px or more. The item takes the
@@ -1307,22 +1304,26 @@ The thread's composer gains a chip row inside its box, above the field,
 shared with the file attachments: one 24px chip per item the message is
 about.
 
-The rail (milestone 8, not built yet) gains Outbox after Inbox and Work
+The rail gains Outbox after Inbox (only while something waits) and Work
 Chats after Chats, and a second heading, Work, whose + lists the sectors
 with no workspace yet; a Work workspace's row leads with its sector's
 8px dot where a code workspace's leads with its glyph. The Work column
-(not built yet) gains a first group of four `RailRow`s (Mail, Tasks,
-Agenda, Docs, one muted trailing fact each) 16px above the project cards;
-a LifeOS project's card has no branch line. A view opens in the main pane
-and the thread strip stays.
+gains a first group of five `RailRow`s (Mail, Tasks, Agenda, Docs,
+Routines, one muted trailing fact each; `WORK_VIEWS`) 16px above the
+project cards; an unlinked Work workspace has no view rows. A LifeOS
+project's card has no branch line. A view opens over the thread panes,
+under the strip, and the strip stays; picking a thread or the row again
+closes it.
 
-Settings → Work (not built yet) has, in order: the switch, LifeOS (its
-error on the heading line), Models, Where it runs, Grants, Guest links;
-off, the Work workspaces leave the settings list and the Work page stays.
-Settings → a Work workspace has Sector, Threads run on ("Same as code
-threads" as a select's muted line), Writing (House rules as an open row
-with "6 rules, 3 proposed", the voice switch with its count and date) and
-Grants.
+Settings → Work has, in order: the switch (alone while Work is off),
+LifeOS (each host's sign-in, its error on the heading line, then the
+sectors), Models (one row that opens Thread defaults), Where it runs (the
+host new Work workspaces are made on, each host's conversion tools and
+Office add-in) and Guest links. Off, the Work workspaces leave the
+settings list and the Work page stays. Settings → a Work workspace has
+LifeOS (its sector, shown and never edited), Where it runs (Threads run
+on, and one Computer use switch per desktop host) and House rules. Grants
+are a sheet of the Outbox page.
 
 ### Planning — a document, not a conversation
 
