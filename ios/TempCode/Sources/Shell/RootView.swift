@@ -155,8 +155,11 @@ struct RootView: View {
             tab = .home
             home.sidebarPath = []
             // A held act's notice: the item over the Outbox, so Back is the list.
-            if case .outboxItem = route { home.open(.outbox) }
-            home.open(route)
+            if case .outboxItem = route {
+                Task { await home.openHeld(route) }
+            } else {
+                home.open(route)
+            }
             router.pending = nil
         }
         .onOpenURL(perform: open)
@@ -305,9 +308,10 @@ struct RootView: View {
             for _ in 0..<100 where OutboxEntries.of(model.registry.ordered).isEmpty {
                 try? await Task.sleep(for: .milliseconds(100))
             }
-            home.open(.outbox)
             if route == "outbox-item", let entry = OutboxModel.bands(OutboxEntries.of(model.registry.ordered)).first?.entries.first {
-                home.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(entry.item.ref)))
+                await home.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(entry.item.ref)))
+            } else {
+                home.open(.outbox)
             }
         case "away":
             // The work set: Away on and off from the phone, as the host menu's item does; the note follows.

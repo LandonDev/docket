@@ -93,6 +93,17 @@ final class ShellNavigator {
     /// The sidebar's routes, the detail's root and the detail's stack, counted.
     var depth: Int { sidebarPath.count + (detailRoot == nil ? 0 : 1) + detailStack.count }
 
+    /// A held item over the Outbox, so Back is the list. In the collapsed
+    /// split one change that pushes the sidebar and shows the detail keeps
+    /// only the detail, so the item opens once the Outbox's push has landed.
+    func openHeld(_ route: Route) async {
+        if sidebarPath.last != .outbox {
+            sidebarPath.append(.outbox)
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+        open(route)
+    }
+
     func popToRoot() {
         sidebarPath = []
         detailRoot = nil
