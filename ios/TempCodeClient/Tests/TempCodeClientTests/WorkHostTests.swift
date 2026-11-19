@@ -28,7 +28,26 @@ private final class WorkRig {
         let fake = await sockets.socket(0)
         fake.hello(caps: ["read", "approve"])
         _ = await until { await self.client.socket.isOpen }
+        await answerShell(fake)
         return fake
+    }
+
+    /// The open handler lists the shell before Work asks anything (EnvironmentClient's `.opened`).
+    private func answerShell(_ fake: FakeWebSocket) async {
+        var answered: Set<String> = []
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
+        while ContinuousClock.now < deadline, answered.count < 4 {
+            for sent in fake.sentRequests where !answered.contains(sent.id) {
+                switch sent.method {
+                case "workspace.list", "project.list": fake.answer(id: sent.id, result: "[]")
+                case "session.changes": fake.answer(id: sent.id, result: json(SessionChanges(reset: true, seq: 1, generation: "g0")))
+                case "session.list": fake.answer(id: sent.id, result: json(SessionPage(sessions: [], cursor: nil)))
+                default: continue
+                }
+                answered.insert(sent.id)
+            }
+            try? await Task.sleep(for: .milliseconds(1))
+        }
     }
 
     func until(_ predicate: () async -> Bool) async -> Bool {
@@ -65,6 +84,8 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         let fake = await rig.open()
         let work = try #require(await rig.request(fake, "work.get"))
         fake.answer(id: work, result: #"{"enabled":true}"#)
+        // The open reads the switch and Away before the Outbox.
+        fake.answer(id: try #require(await rig.request(fake, "away.get")), result: away(false, at: 1_000, since: 0))
         let list = try #require(await rig.request(fake, "work.outbox.list"))
         fake.answer(id: list, result: #"{"items":[\#(item("a", at: 10)),\#(item("b", at: 20)),\#(item("c", state: "sent"))],"waiting":2}"#)
         #expect(await rig.until { rig.work.listed })
