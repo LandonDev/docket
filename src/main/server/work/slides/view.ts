@@ -7,7 +7,7 @@ import type { CanvasItem } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { NoConverterError } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
-import { copyWhole, hasMagic, inRemoteFence, itemDir, ItemFileError, sourcePath } from '../pdf/file'
+import { copyWhole, hasMagic, itemDir, ItemFileError, pushFor, sourcePath } from '../pdf/file'
 import { isNote, type DeckInfo, type ShapeInfo, type SlideInfo } from './deck'
 import { DECK_PY } from './deckScript'
 import { SlidesStore, type PendingOp } from './store'
@@ -21,7 +21,7 @@ import { SlidesStore, type PendingOp } from './store'
  * item's one promise chain.
  */
 
-export type Ctx = Pick<WorkCtx, 'db' | 'host' | 'push' | 'convert'>
+export type Ctx = Pick<WorkCtx, 'db' | 'host' | 'push' | 'convert' | 'dataDir' | 'canvas'>
 
 /** The file's name inside the folder of a deck a thread made. */
 export const OWN_FILE = 'deck.pptx'
@@ -360,7 +360,7 @@ export async function announce(ctx: Ctx, item: CanvasItem, signal?: AbortSignal)
   const view = await viewOf(ctx, item, signal)
   // A deck outside the remote roots: only a socket holding admin (this host's own window holds every capability)
   // hears of it. The push API narrows by capability alone, so an admin key still does; see work-slides.md.
-  ctx.push({ push: 'work.slides', sessionId: item.sessionId, view }, inRemoteFence(ctx, item) ? undefined : { need: 'admin' })
+  ctx.push({ push: 'work.slides', sessionId: item.sessionId, view }, pushFor(item))
   return view
 }
 

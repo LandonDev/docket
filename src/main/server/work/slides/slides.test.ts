@@ -1,3 +1,4 @@
+import type { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -184,7 +185,7 @@ async function host(converters: Converter[], dataDir?: string): Promise<void> {
   sessions.set('t1', { id: 't1', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
   // ctx.convert reads the registry: the converters under test come first.
   WORK_MODULES.splice(0, WORK_MODULES.length, { id: 'formats', ensure() {}, convert: converters } as WorkModule)
-  work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {} }, [canvas, slides])
+  work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {}, remoteFence: hostFence(db) }, [canvas, slides])
   work.pushes.onPush((p) => pushes.push(p))
   await call('work.set', { enabled: true })
 }
@@ -716,3 +717,8 @@ describe.skipIf(!DATA)('a real deck, through python-pptx and LibreOffice', () =>
     expect(png.subarray(1, 4).toString()).toBe('PNG')
   })
 })
+
+/** The listener's roots as index.ts hands them in (managedRoots): every project's checkout and workspace's folder. */
+function hostFence(db: DatabaseSync): { roots(): string[]; denied(): string[] } {
+  return { roots: () => (db.prepare(`SELECT cwd AS p FROM projects UNION SELECT path AS p FROM workspaces`).all() as Array<{ p: string }>).map((r) => r.p), denied: () => [] }
+}

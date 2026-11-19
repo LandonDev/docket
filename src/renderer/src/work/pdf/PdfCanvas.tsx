@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import type { PdfCite, PdfField, PdfSignature, PdfView } from "@shared/contract-work-pdf";
-import { ArrowDownLong, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X } from "../../chrome/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -11,6 +11,7 @@ import { modOrCtrl } from "../../lib/keys";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
+import { Download } from "../icons";
 import { onCite } from "./cite";
 import { Column } from "./Column";
 import { pdfjsEngine, type PdfEngine } from "./engine";
@@ -415,7 +416,7 @@ function SaveCopy({ host }: { host: PdfHost }) {
             .finally(() => setBusy(false));
         }}
       >
-        {busy ? <BusyLabel busy label="" /> : <ArrowDownLong />}
+        {busy ? <BusyLabel busy label="" /> : <Download />}
       </Button>
     </Tip>
   );

@@ -7,7 +7,7 @@ import type { CanvasItem } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { runnerOf } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
-import { hasMagic, inRemoteFence, itemDir, ItemFileError, sourcePath, stampOf, type FileStamp } from './file'
+import { hasMagic, itemDir, pushFor, ItemFileError, sourcePath, stampOf, type FileStamp } from './file'
 import { PdfFormError, readForm, writePdf, type FormRead, type WriteInput } from './form'
 import { PdfStore } from './store'
 
@@ -18,7 +18,7 @@ import { PdfStore } from './store'
  * here.
  */
 
-type Ctx = Pick<WorkCtx, 'db' | 'host' | 'push'>
+type Ctx = Pick<WorkCtx, 'db' | 'host' | 'push' | 'dataDir' | 'canvas'>
 
 /** The file's name inside the folder of an item a thread made. */
 const OWN_FILE = 'file.pdf'
@@ -155,7 +155,7 @@ export async function announce(ctx: Ctx, item: CanvasItem): Promise<PdfView> {
   const view = await viewOf(ctx, item)
   // A remote key's socket hears of an item only when it could read the item's file: the push can filter by capability
   // alone, so an item outside the remote roots goes only to sockets that hold every capability (this host's window).
-  ctx.push({ push: 'work.pdf', sessionId: item.sessionId, view }, inRemoteFence(ctx, item) ? undefined : { need: 'admin' })
+  ctx.push({ push: 'work.pdf', sessionId: item.sessionId, view }, pushFor(item))
   return view
 }
 

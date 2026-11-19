@@ -66,17 +66,13 @@ The wire is `src/shared/contract-work-pdf.ts`: `Bbox`, `PdfField`,
   itself: every method that takes an `itemId` (open, read, review,
   setField, mark, unmark, mode, undo, sign, export) refuses it otherwise,
   before anything is read or written, with the listener's own error
-  ("forbidden: work.pdf.read is outside app-managed roots"). The
-  `work.pdf` push of such an item goes only to sockets that hold every
-  capability (this host's window, an admin key): the push can filter by
-  capability alone, so an admin key on another device still hears it. A
-  push filter by principal (`to: { admit(principal) }`) is what the frame
-  would need to fence that too. A module cannot see the host's list of roots, so `fenceItem`
-  (file.ts) reads the ones it can (every project's checkout and every
-  workspace's folder) and admits less than the listener, never more. A
-  thread-made item's file is in its own folder and passes. The frame would
-  need to hand a module the caller's fence (a `Caller.fence(path)`, or
-  `ctx.remoteRoots()`) for this to match the listener exactly.
+  ("forbidden: work.pdf.read is outside app-managed roots"). `fenceItem`
+  (file.ts) asks the listener's own fence, `ctx.reaches` (F2), so it
+  admits exactly what the listener would. The `work.pdf` push of an item
+  names its file (`pushFor`, `PushTo.path`), so it reaches only the sockets
+  whose caller could name that file: this host's window, and a key whose
+  roots hold it, admin or not. A thread-made item's file is in its own
+  folder, names no path, and passes both.
 - An encrypted file still opens, with `formError` saying why its form
   cannot be read.
 

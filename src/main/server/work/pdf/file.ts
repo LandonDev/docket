@@ -2,10 +2,9 @@ import { createHash } from 'node:crypto'
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readSync, renameSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { canvasSourcePath, type CanvasItem, type CanvasKind } from '@shared/work'
-import { FenceError, insideRoots } from '../../remote/fence'
-import { canvasItemDir, canvasStoreOf } from '../canvas/store'
-import { runnerOf } from '../formats/jobs'
-import type { Caller, WorkCtx } from '../modules'
+import { FenceError } from '../../remote/fence'
+import { canvasItemDir } from '../canvas/store'
+import type { Caller, PushTo, WorkCtx } from '../modules'
 
 /**
  * A canvas item's file on this host, for the two kinds that are files (a
@@ -14,7 +13,7 @@ import type { Caller, WorkCtx } from '../modules'
  * the slides pillars.
  */
 
-type Ctx = Pick<WorkCtx, 'db' | 'host'>
+type Ctx = Pick<WorkCtx, 'host' | 'dataDir' | 'canvas'>
 
 /** A plain sentence the canvas shows as it is. */
 export class ItemFileError extends Error {
@@ -29,7 +28,7 @@ export class ItemFileError extends Error {
 
 /** The item, which must be of this kind. */
 export function itemOf(ctx: Ctx, itemId: string, kind: CanvasKind): CanvasItem {
-  const item = canvasStoreOf(ctx.db).get(itemId)
+  const item = ctx.canvas.get(itemId)
   if (!item) throw new ItemFileError(`There is no canvas item ${itemId}.`)
   if (item.kind !== kind) throw new ItemFileError(`${item.title} is not a ${kind === 'pdf' ? 'PDF' : 'deck'}.`)
   return item
@@ -38,20 +37,13 @@ export function itemOf(ctx: Ctx, itemId: string, kind: CanvasKind): CanvasItem {
 /** The item a thread may act on by id: one of its own pane's (a subagent's pane is its root thread's). */
 export function paneItem(ctx: Ctx, sessionId: string, itemId: string, kind: CanvasKind): CanvasItem {
   const item = itemOf(ctx, itemId, kind)
-  if (item.sessionId !== canvasStoreOf(ctx.db).paneOf(sessionId)) throw new ItemFileError(`This thread has no canvas item ${itemId}.`)
+  if (item.sessionId !== ctx.canvas.paneOf(sessionId)) throw new ItemFileError(`This thread has no canvas item ${itemId}.`)
   return item
 }
 
-/** This host's data folder. The frame hands a module no data folder of its own; the job runner's toolchain names it. */
-export async function dataDirOf(ctx: Pick<WorkCtx, 'db'>): Promise<string> {
-  const runner = await runnerOf(ctx)
-  if (!runner) throw new Error('Work is off on this host')
-  return runner.tools.dataDir
-}
-
 /** The item's own folder (`canvas/<thread>/<item>/`), which rides a move and goes with the thread; made on first use. */
-export async function itemDir(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem, ...sub: string[]): Promise<string> {
-  const dir = join(canvasItemDir(await dataDirOf(ctx), item.sessionId, item.id), ...sub)
+export async function itemDir(ctx: Pick<WorkCtx, 'dataDir'>, item: CanvasItem, ...sub: string[]): Promise<string> {
+  const dir = join(canvasItemDir(ctx.dataDir, item.sessionId, item.id), ...sub)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   return dir
 }
@@ -139,29 +131,18 @@ export function readRange(path: string, offset: number, length: number): { data:
 }
 
 /**
- * The roots a remote key may name a file under, as far as a module can see
- * them: every project's checkout and every workspace's folder. The host's
- * own list (`managedRoots` in server/index.ts) also has the work root and the
- * attachment folders, which a module cannot see, so this admits less than
- * the listener's fence, never more.
+ * The listener's path fence (`ctx.reaches`), for a file a method reaches
+ * through an item id: a remote key reads an item's file only when it could
+ * have named the path itself. A thread-made item's file is in its own
+ * folder and names no path; this host's own window always passes.
  */
-export function remoteRoots(db: WorkCtx['db']): string[] {
-  const rows = db.prepare(`SELECT cwd AS p FROM projects UNION SELECT path AS p FROM workspaces`).all() as Array<{ p: string | null }>
-  return rows.flatMap((r) => (r.p ? [r.p] : []))
-}
-
-/**
- * The listener's path fence, for a file a method reaches through an item
- * id: a remote key reads an item's file only when the path is under the
- * roots, as it could have named the path itself. A thread-made item's file
- * is in its own folder and passes; this host's own window always passes.
- */
-export function fenceItem(ctx: Pick<WorkCtx, 'db'>, by: Caller, item: CanvasItem, method: string): void {
-  if (by.kind === 'remote' && !inRemoteFence(ctx, item)) throw new FenceError(method)
-}
-
-/** Whether a remote key could read the item's file: a thread-made item's is in its own folder; any other is under the roots. */
-export function inRemoteFence(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem): boolean {
+export function fenceItem(ctx: Pick<WorkCtx, 'reaches'>, by: Caller, item: CanvasItem, method: string): void {
   const path = canvasSourcePath(item.source)
-  return path === null || insideRoots(path, remoteRoots(ctx.db))
+  if (path !== null && !ctx.reaches(by, path)) throw new FenceError(method)
+}
+
+/** Who a push about the item's file is for: the sockets whose caller could name the file (a thread-made item's goes to every socket). */
+export function pushFor(item: CanvasItem): PushTo | undefined {
+  const path = canvasSourcePath(item.source)
+  return path === null ? undefined : { path }
 }

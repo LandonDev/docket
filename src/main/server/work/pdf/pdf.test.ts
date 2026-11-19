@@ -1,3 +1,4 @@
+import type { DatabaseSync } from 'node:sqlite'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -100,7 +101,7 @@ beforeEach(async () => {
   sessions.clear()
   removed.length = 0
   thread('t1')
-  work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {} }, [canvas, pdf])
+  work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {}, remoteFence: hostFence(db) }, [canvas, pdf])
   work.pushes.onPush((p) => pushes.push(p))
   await call('work.set', { enabled: true })
   pushes.length = 0
@@ -239,7 +240,7 @@ describe('signing', () => {
   it('only the owner saves a signature and signs: a thread\'s call is refused, and a key without approve', async () => {
     const id = openItem(put('fw9.pdf', W9))
     const model = { kind: 'model' as const, caps: [], sessionId: 't1' }
-    const ctx = { db, host: 'env_test', push: () => {} } as unknown as WorkCtx
+    const ctx = { ...work.ctx, push: () => {} } as WorkCtx
     const req = (method: string, params: unknown) => ClientRequestSchema.parse({ id: '1', method, params } as ClientRequest)
     await expect(pdf.handle!(req('work.pdf.setSignature', { signature: SIGNATURE }), ctx, model)).rejects.toThrow('Only the owner saves a signature.')
     await expect(pdf.handle!(req('work.pdf.sign', { itemId: id, signed: true }), ctx, model)).rejects.toThrow('Only the owner signs.')
@@ -584,10 +585,14 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
   it('H1: the work.pdf push of an out-of-fence item never reaches a remote key\'s socket; an item inside does', async () => {
     const heard: WorkPush[] = []
     work.pushes.onPush((p) => heard.push(p), remote)
+    // an admin key on another device is fenced by path as any key is (F2): before, a push of an out-of-fence item went to admin keys
+    const admin: WorkPush[] = []
+    work.pushes.onPush((p) => admin.push(p), { ...remote, caps: ['read', 'operate', 'approve', 'admin'] as never })
     const outside = openItem(put('tax.pdf', W9), 'Tax')
     await call('work.pdf.setField', { itemId: outside, key: NAME, value: 'SECRET-SSN' })
     expect(pushes.some((p) => p.push === 'work.pdf')).toBe(true)
     expect(heard.filter((p) => p.push === 'work.pdf')).toEqual([])
+    expect(admin.filter((p) => p.push === 'work.pdf')).toEqual([])
     const inside = openItem(insideWorkspace(), 'Inside')
     await call('work.pdf.setField', { itemId: inside, key: NAME, value: 'Ada' })
     expect(heard.filter((p) => p.push === 'work.pdf').map((p) => (p as { view: PdfView }).view.itemId)).toEqual([inside])
@@ -650,3 +655,8 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
     await expect(call('work.pdf.read', { itemId: id, rev: v.rev, offset: 0, length: 10 })).rejects.toThrow('fw9.pdf is not where it was.')
   })
 })
+
+/** The listener's roots as index.ts hands them in (managedRoots): every project's checkout and workspace's folder. */
+function hostFence(db: DatabaseSync): { roots(): string[]; denied(): string[] } {
+  return { roots: () => (db.prepare(`SELECT cwd AS p FROM projects UNION SELECT path AS p FROM workspaces`).all() as Array<{ p: string }>).map((r) => r.p), denied: () => [] }
+}

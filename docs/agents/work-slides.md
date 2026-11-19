@@ -123,21 +123,15 @@ change pushes `work.slides` with the view. There is no method named `list`.
 
 The listener's path fence reads only the paths a request names, and these
 methods name an item id. So `handle` fences the item itself, once, before
-any method runs: `fenceItem` (pdf/file.ts) refuses a remote key every one of
-the five methods on a deck whose file is not under `remoteRoots` (every
-project's checkout and every workspace's folder), with the fence's own
-error. The key gets nothing of the view and changes nothing. A deck a
-thread made sits in its own folder and passes; this host's own window
-always passes. `remoteRoots` admits less than the listener's own list
-(which also has the work root and the attachment folders), never more.
+any method runs: `fenceItem` (pdf/file.ts) asks the listener's own fence
+(`ctx.reaches`) and refuses a remote key every one of the five methods on a
+deck whose file it could not name itself, with the fence's own error. The
+key gets nothing of the view and changes nothing. A deck a thread made sits
+in its own folder and passes; this host's own window always passes.
 
-The `work.slides` push goes to every client socket that holds the
-capability `PushTo.need` names. That is the only filter the push API has,
-so a deck outside the remote roots is pushed with `need: 'admin'`
-(`inRemoteFence`, as the pdf pillar does): the host's own window hears it,
-a read or operate key does not. An admin key still does. Closing that needs
-a push filter by path (`PushTo` naming the item's file, checked against
-each remote socket's fence), which is the frame's.
+The `work.slides` push names the deck's file (`pushFor`, `PushTo.path`), so
+it reaches only the sockets whose caller could name that file: the host's
+own window, and a key whose roots hold it, admin or not.
 
 ### Tools
 
