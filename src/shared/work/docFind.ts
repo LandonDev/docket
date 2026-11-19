@@ -65,6 +65,8 @@ export interface FindEntry {
   where: FindWhere
   /** what to open it by */
   source: CanvasSource
+  /** the thread whose canvas holds it, for an item only a thread has */
+  sessionId?: string
   /** its LifeOS project, for a LifeOS row */
   projectId?: string
   editedAt: number

@@ -116,7 +116,7 @@ describe('work.docs.find', () => {
     expect(byKey.get('lifeos:sheets:s1')).toMatchObject({ kind: 'sheet', projectId: 'p1', held: 1, waiting: 2 })
     expect(byKey.get(`file:${join(folder, 'Plan.tcdoc')}`)).toMatchObject({ title: 'Plan', kind: 'document', where: 'folder' })
     expect(byKey.get('google:g1')).toMatchObject({ kind: 'sheet', where: 'google', shared: true })
-    expect(byKey.get('item:i2')).toMatchObject({ kind: 'form', where: 'thread' })
+    expect(byKey.get('item:i2')).toMatchObject({ kind: 'form', where: 'thread', sessionId: 't1' })
     expect(got.projects).toEqual([{ id: 'p1', name: 'Fall Invitational' }])
     expect(got.complete).toBe(true)
     expect(got.hits).toEqual([])

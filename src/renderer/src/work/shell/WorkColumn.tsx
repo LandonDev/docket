@@ -76,9 +76,10 @@ function ViewRow({ view, workspace, sector, selected }: { view: WorkViewDef; wor
 }
 
 /** A view's `startThread`: a new thread's composer in the workspace with the chip in it; nothing runs until he sends. */
-export function startThreadAbout(about: ContextChip, projectId: string | null = null): void {
+export function startThreadAbout(about: ContextChip | readonly ContextChip[], projectId: string | null = null): void {
   const start = workStartPort.get();
   if (!start) return;
   openWorkView(null);
-  addContextChip(start(projectId), about);
+  const id = start(projectId);
+  for (const chip of Array.isArray(about) ? about : [about]) addContextChip(id, chip as ContextChip);
 }

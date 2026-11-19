@@ -24,8 +24,8 @@ export interface WorkViewProps {
   sector: SectorKey;
   /** The LifeOS session for this workspace's sector: its Convex client, fed JWTs narrowed to the sector. */
   lifeos: LifeosSession;
-  /** A new thread's composer, here, with the chip in it; nothing runs until the person sends. */
-  startThread(about: ContextChip): void;
+  /** A new thread's composer, here, with the chip in it (or each of several, up to the composer's eight); nothing runs until the person sends. */
+  startThread(about: ContextChip | readonly ContextChip[]): void;
 }
 
 /** What a view's chunk exports: its body, and optionally the controls its header carries after its name (a search, a segment, its verb). */

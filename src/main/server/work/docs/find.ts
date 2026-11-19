@@ -5,6 +5,7 @@ import { basename, join } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
 import type { CanvasItem, CanvasSource } from '@shared/work'
 import { FIND_KINDS, kindOfFile, kindOfMime, queryTerms, snippetOf, type FindBy, type FindEntry, type FindKind, type FindSpec, type SavedFindView } from '@shared/work/docFind'
+import type { FindAnswer } from '@shared/contract-work-docs'
 import type { Caller, WorkCtx } from '../modules'
 import { GuestStore } from '../guests/store'
 import { HELD_TABLE } from '../outbox/store'
@@ -29,17 +30,6 @@ import { fileRows } from './threads'
  * Titles are matched by the caller over the entries (`findIn`); `hits` are
  * the text matches with the words around each.
  */
-
-export interface FindAnswer {
-  entries: FindEntry[]
-  projects: { id: string; name: string }[]
-  /** text matches for `query`: an entry's key and the words around its first match */
-  hits: { key: string; snippet: string }[]
-  /** false when a place held more than was read */
-  complete: boolean
-  /** why LifeOS's part is missing, when it is */
-  lifeos?: string
-}
 
 /** How deep and how wide the folder walk goes. */
 const WALK_DEPTH = 4
@@ -176,6 +166,7 @@ function itemEntry(item: CanvasItem): FindEntry | null {
     kind,
     where: s.at === 'file' ? 'folder' : s.at,
     source: s,
+    sessionId: item.sessionId,
     editedAt: item.updatedAt,
     createdAt: item.createdAt,
     shared: s.at === 'google' || s.at === 'microsoft',

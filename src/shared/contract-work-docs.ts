@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { CanvasSourceSchema } from './work/canvas'
-import { EDITED_WITHIN, FIND_BY, FIND_GROUPS, FIND_KINDS, FIND_SORTS, FIND_WHERE } from './work/docFind'
+import { EDITED_WITHIN, FIND_BY, FIND_GROUPS, FIND_KINDS, FIND_SORTS, FIND_WHERE, type FindEntry } from './work/docFind'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -85,6 +85,18 @@ export const DocThreadOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('react'), commentId: z.string().min(1).max(64), emoji: z.string().min(1).max(16), reacted: z.boolean() })
 ])
 export type DocThreadOp = z.infer<typeof DocThreadOpSchema>
+
+/** What `work.docs.find` answers (main/server/work/docs/find.ts). */
+export interface FindAnswer {
+  entries: FindEntry[]
+  projects: { id: string; name: string }[]
+  /** text matches for `query`: an entry's key and the words around its first match */
+  hits: { key: string; snippet: string }[]
+  /** false when a place held more than was read */
+  complete: boolean
+  /** why LifeOS's part is missing, when it is */
+  lifeos?: string
+}
 
 const id = z.string().min(1).max(200)
 const list = <T extends readonly [string, ...string[]]>(values: T) => z.array(z.enum(values)).max(values.length).optional()
