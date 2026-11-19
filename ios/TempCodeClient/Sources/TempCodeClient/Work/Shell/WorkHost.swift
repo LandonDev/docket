@@ -136,6 +136,9 @@ public final class WorkHost {
     /// or one found at an open that is newer than the last one reviewed here.
     /// The first open on a phone reviews nothing that came before it.
     private func take(_ snapshot: AwaySnapshot, live: Bool) {
+        // An answer older than what is held (the open's `away.get`, landing after a flip the phone made
+        // meanwhile) would hide the flip's on-to-off change: the newer state stands.
+        if let held = away, snapshot.state.at < held.state.at { return }
         let previous = away
         away = snapshot
         let state = snapshot.state
