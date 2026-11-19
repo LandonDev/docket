@@ -233,6 +233,15 @@ export const workStartPort = {
   },
 };
 
+/** How Work's views open a thread (App registers it): a routine's run, the thread that set a watch. */
+let openPort: ((sessionId: string) => void) | null = null;
+export const workOpenPort = {
+  get: () => openPort,
+  set(next: ((sessionId: string) => void) | null): void {
+    openPort = next;
+  },
+};
+
 const HOME_KEY = "work.home.v1";
 
 /**

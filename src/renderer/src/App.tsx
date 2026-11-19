@@ -293,7 +293,7 @@ import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workShellChunk } from "./surfaces/chunks";
-import { openWorkView, useWorkOn, useWorkView, workHome, workStartPort } from "./lib/workSwitch";
+import { openWorkView, useWorkOn, useWorkView, workHome, workOpenPort, workStartPort } from "./lib/workSwitch";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -2105,6 +2105,14 @@ export default function App() {
     });
     return () => workStartPort.set(null);
   }, [openProjectDraft]);
+  // Work's views open a thread here: a routine's run, the thread that set a watch (work/routines).
+  useEffect(() => {
+    workOpenPort.set((sessionId) => {
+      openWorkView(null);
+      onOpenSessionById(sessionId);
+    });
+    return () => workOpenPort.set(null);
+  }, [onOpenSessionById]);
 
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
   const newWorkspaceEnvironmentId = useShell((s) => s.newWorkspaceEnvironmentId);
