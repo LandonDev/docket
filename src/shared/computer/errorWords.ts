@@ -7,6 +7,7 @@
  * text.
  */
 import type { ComputerAction, ComputerError, ComputerErrorKind, ErrorReason } from './protocol'
+import { hostWords, localComputerPlatform, type ComputerPlatform } from './descriptions'
 import { noReadForTextLine } from './hostErrors'
 import { openItemName } from './words'
 
@@ -19,6 +20,8 @@ export interface ErrorContext {
   open?: string[]
   /** the error is one step's, not the request's */
   step?: boolean
+  /** the host whose apps the call acted on; this host's own by default (a Windows PC reads a PC's words, §29.5) */
+  platform?: ComputerPlatform
 }
 
 /** A line, or null for the service's own `message`. */
@@ -59,7 +62,9 @@ const SESSION_WHY: Partial<Record<ErrorReason, string>> = {
   locked: 'the screen is locked',
   'secure-input': 'secure input is on (a password field has the keyboard)',
   'activation-refused': 'the app would not come to the front',
-  'in-use': 'another app holds it'
+  'in-use': 'another app holds it',
+  // Windows refused SendInput: an administrator's window has the input, or the secure desktop is up (§29.4)
+  secure: "an administrator's window or a Windows prompt has the input"
 }
 
 /** An element's line, cut to fit a sentence. */
@@ -204,5 +209,5 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
 /** The line a model reads for a service error: the host's words, else the service's own message. */
 export function errorLine(e: ComputerError, ctx: ErrorContext = {}): string {
   const words = (COMPUTER_ERROR_WORDS as Partial<Record<string, Words>>)[e.kind]
-  return words?.(e, ctx) ?? e.message
+  return hostWords(words?.(e, ctx) ?? e.message, ctx.platform ?? localComputerPlatform())
 }

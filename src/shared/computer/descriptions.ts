@@ -25,6 +25,10 @@ export const localComputerPlatform = (platform: string = typeof process === 'obj
 
 /** The Mac's words and a Windows PC's, in the order they are swapped (the longer phrase first). */
 const WINDOWS_WORDS: readonly [RegExp, string][] = [
+  [/macOS's password and Touch ID prompts/g, "Windows' password, consent and sign-in prompts"],
+  [/ \(TextEdit may save Untitled to iCloud\)/g, ''],
+  [/`xcrun simctl` drives simulators, `defaults` and config files change settings/g, '`reg` and config files change settings'],
+  [/\bsuper\+c\b/g, 'ctrl+c'],
   [/\bon a Mac\b/g, 'on a Windows PC'],
   [/\bMac\b/g, 'PC'],
   [/\bbundle ids\b/g, 'exe names'],

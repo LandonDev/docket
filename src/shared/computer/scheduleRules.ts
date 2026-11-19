@@ -10,6 +10,7 @@
  */
 import type { PermissionPolicy } from '../events'
 import type { StepResult } from './protocol'
+import { hostWords, localComputerPlatform } from './descriptions'
 
 /**
  * Whether a call's steps touched the session tier, so the host puts the person's front app and pointer back with
@@ -148,9 +149,9 @@ export function formatHeldLine(h: { waitedMs: number; via: AdmitVia | 'clipboard
     case 'clipboard':
       return `waited ${waited} for the clipboard, the person had just copied`
     case 'allowed':
-      return `waited ${waited} for the Mac to be free, then the person chose Run now`
+      return hostWords(`waited ${waited} for the Mac to be free, then the person chose Run now`, localComputerPlatform())
     default:
-      return `waited ${waited} for the Mac to be free`
+      return hostWords(`waited ${waited} for the Mac to be free`, localComputerPlatform())
   }
 }
 
@@ -175,9 +176,9 @@ export function sessionRefusalWords(reason: SessionTierRefusal, app?: string): s
     case 'no-scheduler':
       return 'nothing schedules it yet'
     case 'screen-locked':
-      return "the Mac's screen is locked"
+      return hostWords("the Mac's screen is locked", localComputerPlatform())
     case 'asleep':
-      return 'the Mac is asleep'
+      return hostWords('the Mac is asleep', localComputerPlatform())
     case 'skipped':
       return 'the person did not choose Run now'
     case 'skipped-earlier':
