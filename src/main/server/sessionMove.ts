@@ -29,6 +29,7 @@ import {
   type SessionMovePart,
   type SessionMoveRowState
 } from '@shared/contract-session-move'
+import type { WorkHome } from '@shared/contract-crosshost'
 import type { EnsureLinkedArgs, ProjectLinkFacts } from '@shared/projectLinks'
 import type { EnsureLinkedResult } from '@shared/wireSchemas'
 import { stripSlash, type HistoryMapping } from './pathMap'
@@ -269,7 +270,7 @@ export function partDigest(part: SessionMovePart): string {
 export const chainNext = (prev: string, part: SessionMovePart): string => sha256(prev + partDigest(part))
 
 /** What the commit compares: the chain's end, bound to the manifest's ids, row counts and files. */
-export function finalDigest(chain: string, m: Pick<SessionMoveManifest, 'sessions' | 'events' | 'files' | 'moveId' | 'modules'>): string {
+export function finalDigest(chain: string, m: Pick<SessionMoveManifest, 'sessions' | 'events' | 'files' | 'moveId' | 'modules' | 'workHomes'>): string {
   const ids = m.sessions.map((s) => String(s.id)).join(',')
   const events = Object.keys(m.events)
     .sort()
@@ -281,7 +282,63 @@ export function finalDigest(chain: string, m: Pick<SessionMoveManifest, 'session
   // the thread stays where it was, whole, instead of landing without its rows.
   const carried = Object.keys(m.modules ?? {}).sort()
   const modules = carried.length ? `\0${sha256(JSON.stringify(carried.map((id) => [id, m.modules![id]])))}` : ''
-  return sha256(`${chain}\0${m.moveId}\0${ids}\0${events}\0${files}${modules}`)
+  // And the job each Work thread is from, for the same reason: a host that does not know the key would land a Work
+  // thread without checking whose workspace it lands in.
+  // Bound whenever the bundle holds a Work thread, even when none has a home.
+  const homes = m.workHomes ? `\0${sha256(JSON.stringify(Object.keys(m.workHomes).sort().map((id) => [id, ...homeKey(m.workHomes![id])])))}` : ''
+  return sha256(`${chain}\0${m.moveId}\0${ids}\0${events}\0${files}${modules}${homes}`)
+}
+
+// ── Work: a thread keeps its job across a move ──────────────────────────
+// A Work thread reads its workspace's add-ons and its sector's key, so it must land in the workspace of the same job or
+// in none. Before a row leaves, the sender asks the receiver whether the thread's folder lands in that job's workspace
+// (work/peer.ts, `probe`); but the import also places a thread by its project's linked copy, which can sit in another
+// workspace. So the manifest says which job each Work thread is from, and the import checks the workspace it resolved.
+
+const homeKey = (h: WorkHome): (string | null)[] => [h.sector, h.workspaceLinkId, h.workspaceName, h.workspacePath ?? null]
+const CHAT_HOME: WorkHome = { sector: null, workspaceLinkId: null, workspaceName: null, workspacePath: null }
+
+/** The job each Work thread of these rows belongs to on this host: its Work workspace, all null for a Work Chat, no entry for one whose workspace is not Work's (work/scope.ts `workHomeOfSession`). */
+export function workHomesOf(db: DatabaseSync, sessions: readonly Row[]): Record<string, WorkHome> {
+  const out: Record<string, WorkHome> = {}
+  const cols = tableColumns(db, 'workspaces')
+  if (!cols.has('kind')) return out
+  const ofProject = db.prepare(`SELECT workspace_id AS id FROM projects WHERE id = ?`)
+  const workspace = db.prepare(`SELECT name, path, kind, sector, link_id FROM workspaces WHERE id = ?`)
+  for (const s of sessions) {
+    if (s.scope !== 'work') continue
+    const wsId = (s.project_id ? (ofProject.get(s.project_id) as { id: string } | undefined)?.id : undefined) ?? s.workspace_id
+    if (!wsId) {
+      if (!s.project_id) out[String(s.id)] = CHAT_HOME
+      continue
+    }
+    const w = workspace.get(wsId) as { name: string; path: string; kind: string; sector: string | null; link_id: string | null } | undefined
+    if (w?.kind === 'work') out[String(s.id)] = { sector: w.sector, workspaceLinkId: w.link_id, workspaceName: w.name, workspacePath: w.path }
+  }
+  return out
+}
+
+/**
+ * Why a Work thread from `home` may not land in the Work workspace `landing`, or null when it is that job's: the same
+ * link id, the same sector, or (for a workspace with neither) the same folder, and never two different sectors.
+ * `home` undefined: the thread had no Work workspace on the sender. Landing in a code workspace is not asked here: the
+ * thread keeps its fence there and has no job's add-ons to read.
+ */
+export function workLandingRefusal(
+  home: WorkHome | undefined,
+  landing: { name: string; path: string; sector: string | null; link_id: string | null },
+  sameFolder: (senderPath: string) => boolean
+): string | null {
+  if (!home) return `the thread has no Work workspace on the other host and would join ${landing.name} here`
+  if (!home.sector && !home.workspaceLinkId && !home.workspaceName && !home.workspacePath) return `a Work Chat would land in ${landing.name}, a job's workspace on this host`
+  const job = home.sector ?? home.workspaceName ?? 'another job'
+  const other = `the thread is from ${job} and would land in ${landing.name}, another job's workspace on this host`
+  if (home.sector && landing.sector && home.sector !== landing.sector) return other
+  const same =
+    (!!home.workspaceLinkId && home.workspaceLinkId === landing.link_id) ||
+    (!!home.sector && home.sector === landing.sector) ||
+    (!!home.workspacePath && sameFolder(home.workspacePath))
+  return same ? null : other
 }
 
 // ── export ──────────────────────────────────────────────────────────────
@@ -448,6 +505,8 @@ export class MoveExport {
       const dir = htmlDirOf(host.dataDir, id)
       for (const rel of walkFiles(dir)) add('html', id, rel, join(dir, rel))
     }
+    // Work: the job each Work thread is from, for the receiver to check where it lands.
+    const workHomes = workHomesOf(db, sessions)
     // The move modules: their rows in the manifest, their files under `<id>/`.
     const modules: Record<string, unknown[]> = {}
     for (const m of modulesOf(db)) {
@@ -519,7 +578,9 @@ export class MoveExport {
       dirtyMore: Math.max(0, dirtyAll.length - DIRTY_CAP),
       checkpoints,
       branch: branch?.descriptor ?? null,
-      ...(Object.keys(modules).length ? { modules } : {})
+      ...(Object.keys(modules).length ? { modules } : {}),
+      // Present whenever a Work thread rides, so a receiver can tell "no home" from "a sender that does not say".
+      ...(sessions.some((s) => s.scope === 'work') ? { workHomes } : {})
     }
     return new MoveExport(host, manifest, plan, paths, branch)
   }
@@ -794,6 +855,22 @@ export class MoveImports {
       workspaceId = holding[0]?.id ?? null
     }
     if (!workspaceId) throw new MoveRefused(`no workspace on this host holds ${rootCwd}; add the workspace here first`)
+
+    // Work: every row lands in that one workspace. When it is a Work workspace, each Work thread must be of its job.
+    const work = manifest.sessions.filter((s) => s.scope === 'work')
+    if (work.length && tableColumns(db, 'workspaces').has('kind')) {
+      const landing = db.prepare(`SELECT name, path, kind, sector, link_id FROM workspaces WHERE id = ?`).get(workspaceId) as
+        | { name: string; path: string; kind: string; sector: string | null; link_id: string | null }
+        | undefined
+      if (landing?.kind === 'work') {
+        if (!manifest.workHomes) throw new MoveRefused(`the other host's build does not say which job a Work thread is from; update it, then move the thread`)
+        const sameFolder = (senderPath: string): boolean => landingCandidates(senderPath, ctx).some((c) => stripSlash(c) === stripSlash(landing.path))
+        for (const s of work) {
+          const why = workLandingRefusal(manifest.workHomes[String(s.id)], landing, sameFolder)
+          if (why) throw new MoveRefused(why)
+        }
+      }
+    }
 
     const projects = db.prepare(`SELECT id, cwd FROM projects WHERE workspace_id = ?`).all(workspaceId) as { id: string; cwd: string }[]
     const projectAt = (cwd: string): string | null => projects.find((p) => stripSlash(p.cwd) === stripSlash(cwd))?.id ?? null

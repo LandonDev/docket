@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { WorkHomeSchema } from './contract-crosshost'
 import { ProjectLinkFactsSchema } from './projectLinks'
 
 // Moving one thread between hosts (docs/box.md "Moving a thread between
@@ -154,7 +155,14 @@ export const SessionMoveManifestSchema = z.object({
   /** The working branch and its uncommitted changes (they travel); absent from an older sender, null when the cwd is not a git checkout. */
   branch: SessionMoveBranchSchema.nullish(),
   /** Rows a move module keeps for these threads, by its id (sessionMove.ts `MoveModule`); absent from an older sender and when no module has any. */
-  modules: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), z.array(z.unknown()).max(20_000)).optional()
+  modules: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), z.array(z.unknown()).max(20_000)).optional(),
+  /**
+   * Work: the job each Work thread of the bundle belongs to on the sender, by session id (contract-crosshost.ts
+   * `WorkHome`; all null for a Work Chat). A Work thread with no entry had no Work workspace there. The receiver lands
+   * a Work thread in a Work workspace only when it is that job's (sessionMove.ts `workLandingRefusal`). Present whenever
+   * the bundle holds a Work thread; absent otherwise, and from a sender before it.
+   */
+  workHomes: z.record(ID, WorkHomeSchema).optional()
 })
 export type SessionMoveManifest = z.infer<typeof SessionMoveManifestSchema>
 

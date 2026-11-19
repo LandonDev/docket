@@ -128,6 +128,20 @@ ordinary code thread.
   thread moves. A host from before Work cannot answer the probe,
   and that is the refusal: its import would drop the `scope` column it
   lacks and run the thread as a code thread.
+  The import checks again where it stands, for the route the probe cannot
+  see: it also places a thread by its project's linked copy, which can sit
+  in another workspace. The manifest names the job of every Work thread
+  in the bundle (`workHomes`, by session id: the workspace's sector, link
+  id, name and folder; all null for a Work Chat; no entry for a thread
+  with no Work workspace), and `MoveImports.begin` refuses a Work thread
+  that would land in a Work workspace of another job (`workLandingRefusal`,
+  sessionMove.ts: the same link id, the same sector, or for a workspace
+  with neither the same folder, and never two different sectors), a Work
+  Chat or a thread with no home that would gain a job there, and a bundle
+  whose sender does not say. A landing in a code workspace is left as it
+  was: the thread keeps its fence and reads no job. The commit's digest
+  covers the names, so a host that does not check them cannot land the
+  thread.
 
 ### `ctx.peer`: a Work tool on another host
 
