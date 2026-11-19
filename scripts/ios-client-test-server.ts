@@ -2145,8 +2145,12 @@ const control = createServer((req, res) => {
           for (const [i, r] of rows.entries()) {
             const payload = { ...(r.payload as Record<string, unknown>) }
             if (r.kind === 'addon.call' && typeof payload.addonId === 'string') {
-              const rule = db.prepare('SELECT spec_digest FROM work_outbox_tool_rules WHERE addon_id = ? LIMIT 1').get(payload.addonId) as { spec_digest?: string } | undefined
+              // And the tool's own digest, as the hold seals it (a call held without one never runs or takes a grant).
+              const rule = db
+                .prepare('SELECT spec_digest, tool_digest FROM work_outbox_tool_rules WHERE addon_id = ? ORDER BY tool = ? DESC LIMIT 1')
+                .get(payload.addonId, String(payload.tool ?? '')) as { spec_digest?: string; tool_digest?: string } | undefined
               if (rule?.spec_digest) payload.specDigest = rule.spec_digest
+              if (rule?.tool_digest) payload.toolDigest = rule.tool_digest
             }
             const at = typeof r.createdAt === 'number' ? r.createdAt : now - (rows.length - i) * 60_000
             db.prepare(
