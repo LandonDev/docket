@@ -1,0 +1,311 @@
+{
+ "generated_by": "lab/scripts/make_corpus.sh",
+ "files": [
+  {
+   "file": "formulas.xlsx",
+   "bytes": 16336,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "functions-legacy",
+    "functions-future-xlfn",
+    "dynamic-arrays",
+    "let",
+    "lambda",
+    "lambda-defined-name",
+    "cse-array-formulas",
+    "cross-sheet-formulas",
+    "3d-references",
+    "defined-names-workbook",
+    "defined-names-sheet"
+   ],
+   "edit": {
+    "sheet": "Data",
+    "cell": "A5",
+    "value": "999"
+   },
+   "large": false
+  },
+  {
+   "file": "formats.xlsx",
+   "bytes": 8137,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "number-formats",
+    "fonts",
+    "fills",
+    "borders",
+    "alignment",
+    "rich-text"
+   ],
+   "edit": {
+    "sheet": "Formats",
+    "cell": "B2",
+    "value": "12345.5"
+   },
+   "large": false
+  },
+  {
+   "file": "layout.xlsx",
+   "bytes": 10632,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "merged-cells",
+    "freeze-panes",
+    "split-panes",
+    "column-widths",
+    "row-heights",
+    "hidden-rows",
+    "hidden-columns",
+    "outline-grouping",
+    "hidden-sheet",
+    "tab-color",
+    "zoom",
+    "gridlines-off"
+   ],
+   "edit": {
+    "sheet": "Layout",
+    "cell": "C2",
+    "value": "777"
+   },
+   "large": false
+  },
+  {
+   "file": "objects.xlsx",
+   "bytes": 12974,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "comments-notes",
+    "hyperlinks",
+    "images",
+    "images-in-cell",
+    "textbox",
+    "autofilter"
+   ],
+   "edit": {
+    "sheet": "Objects",
+    "cell": "B3",
+    "value": "500"
+   },
+   "large": false
+  },
+  {
+   "file": "threaded_comments.xlsx",
+   "bytes": 8295,
+   "maker": "XlsxWriter 3.3.1 + injected threadedComments/persons parts (make_threaded.py)",
+   "features": [
+    "threaded-comments",
+    "comments-notes"
+   ],
+   "edit": {
+    "sheet": "Review",
+    "cell": "B3",
+    "value": "1000"
+   },
+   "large": false
+  },
+  {
+   "file": "protect_print.xlsx",
+   "bytes": 8706,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "sheet-protection",
+    "print-settings",
+    "print-area",
+    "print-titles",
+    "header-footer",
+    "page-breaks"
+   ],
+   "edit": {
+    "sheet": "Report",
+    "cell": "B3",
+    "value": "42"
+   },
+   "large": false
+  },
+  {
+   "file": "charts.xlsx",
+   "bytes": 21387,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "charts-column",
+    "charts-bar",
+    "charts-line",
+    "charts-pie",
+    "charts-doughnut",
+    "charts-scatter",
+    "charts-area",
+    "charts-radar",
+    "charts-stock",
+    "charts-combo",
+    "chartsheet",
+    "trendline",
+    "sparklines"
+   ],
+   "edit": {
+    "sheet": "Data",
+    "cell": "B3",
+    "value": "250"
+   },
+   "large": false
+  },
+  {
+   "file": "conditional.xlsx",
+   "bytes": 92801,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "cf-color-scale",
+    "cf-data-bar",
+    "cf-icon-set",
+    "cf-cell-is",
+    "cf-formula",
+    "cf-top10",
+    "cf-above-average",
+    "cf-duplicate-unique",
+    "cf-text",
+    "cf-blanks-errors",
+    "cf-dates",
+    "cf-x14-extensions",
+    "cf-thousands-of-ranges"
+   ],
+   "edit": {
+    "sheet": "Rules",
+    "cell": "A3",
+    "value": "95"
+   },
+   "large": false
+  },
+  {
+   "file": "validation.xlsx",
+   "bytes": 9479,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "dv-list-inline",
+    "dv-list-range",
+    "dv-list-other-sheet",
+    "dv-whole",
+    "dv-decimal",
+    "dv-date",
+    "dv-time",
+    "dv-text-length",
+    "dv-custom",
+    "dv-messages",
+    "dv-500-ranges"
+   ],
+   "edit": {
+    "sheet": "Inputs",
+    "cell": "B15",
+    "value": "3"
+   },
+   "large": false
+  },
+  {
+   "file": "tables.xlsx",
+   "bytes": 8873,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "tables",
+    "table-totals-row",
+    "calculated-columns",
+    "structured-references"
+   ],
+   "edit": {
+    "sheet": "Sales",
+    "cell": "D3",
+    "value": "15"
+   },
+   "large": false
+  },
+  {
+   "file": "pivot.xlsx",
+   "bytes": 16884,
+   "maker": "LibreOffice 26.8.3 via Python-UNO (make_corpus_lo.py)",
+   "features": [
+    "pivot-tables",
+    "pivot-cache",
+    "pivot-page-field"
+   ],
+   "edit": {
+    "sheet": "Data",
+    "cell": "G2",
+    "value": "6"
+   },
+   "large": false
+  },
+  {
+   "file": "links_source.xlsx",
+   "bytes": 5379,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values)",
+   "features": [
+    "external-link-source"
+   ],
+   "edit": {
+    "sheet": "Prices",
+    "cell": "B2",
+    "value": "99"
+   },
+   "large": false
+  },
+  {
+   "file": "links_dest.xlsx",
+   "bytes": 6808,
+   "maker": "LibreOffice 26.8.3 via Python-UNO (make_corpus_lo.py)",
+   "features": [
+    "external-links",
+    "externalLink-cache"
+   ],
+   "edit": {
+    "sheet": "Orders",
+    "cell": "B2",
+    "value": "4"
+   },
+   "large": false
+  },
+  {
+   "file": "macro.xlsm",
+   "bytes": 11106,
+   "maker": "XlsxWriter 3.3.1 (+ LibreOffice-computed cached values); vbaProject.bin from XlsxWriter examples (BSD-2-Clause)",
+   "features": [
+    "vba-project",
+    "form-button",
+    "xlsm"
+   ],
+   "edit": {
+    "sheet": "Main",
+    "cell": "A3",
+    "value": "50"
+   },
+   "large": false
+  },
+  {
+   "file": "big_100k.xlsx",
+   "bytes": 15643934,
+   "maker": "XlsxWriter 3.3.1 constant_memory, cached values computed in Python",
+   "features": [
+    "large-100k-rows",
+    "20-columns",
+    "800k-formulas"
+   ],
+   "edit": {
+    "sheet": "Big",
+    "cell": "A2",
+    "value": "1.5"
+   },
+   "large": true
+  },
+  {
+   "file": "big_1m.xlsx",
+   "bytes": 15311928,
+   "maker": "XlsxWriter 3.3.1 constant_memory, cached values computed in Python",
+   "features": [
+    "large-1m-rows",
+    "200k-formulas"
+   ],
+   "edit": {
+    "sheet": "Rows",
+    "cell": "B2",
+    "value": "5"
+   },
+   "large": true
+  }
+ ]
+}
