@@ -53,6 +53,10 @@ struct ItemPage: View {
             Button("OK", role: .cancel) {}
         } message: { Text(failure ?? "") }
         .accessibilityIdentifier("item-page")
+        #if DEBUG
+        // The work set's item, as the thread's selection, so the segment bar names it too.
+        .onChange(of: items.map(\.id), initial: true) { if selected == nil, let pick = testItem { selected = pick.id } }
+        #endif
     }
 
     private func header(_ item: CanvasItem) -> some View {
