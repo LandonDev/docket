@@ -364,7 +364,8 @@ describe("the frame a kind drives through its shell", () => {
     expect(container.querySelector("[data-canvas-bar]")).not.toBeNull();
     fireEvent.pointerDown(within(screen.getByRole("tablist")).getAllByRole("tab")[1], { button: 0 });
     await waitFor(() => expect(container.querySelector("[data-canvas-pane]")?.getAttribute("data-kind")).toBe("sheet"));
-    expect(container.querySelector("[data-canvas-bar]")).toBeNull();
+    // The sheet kind draws History in its bar (milestone 27); what the first kind fed is gone.
+    expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
     // A late call from the body that left is dropped.
     act(() => shell.statusLine({ tone: "failed", word: "Late" }));
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
