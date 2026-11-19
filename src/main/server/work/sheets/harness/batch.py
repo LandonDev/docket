@@ -2,7 +2,7 @@
 
     python -I batch.py <patched.xlsx>
 
-Prints one JSON line: formulas, match, mismatch and a few examples. The lab's
+Prints one JSON line: formulas, match, mismatch, the cells that mismatch and a few examples. The lab's
 adapters/patch/scripts/check_batch.py, pointed at the harness beside it.
 """
 import json, os, sys
@@ -13,7 +13,7 @@ import reopen, xmldiff  # noqa: E402
 p = sys.argv[1]
 d = reopen.lo_dump(p, p + ".lo.json", timeout=2400)
 ext = xmldiff.extract(p)
-out = {"formulas": 0, "match": 0, "mismatch": 0, "examples": []}
+out = {"formulas": 0, "match": 0, "mismatch": 0, "examples": [], "cells": []}
 for sheet, sh in ext["sheets"].items():
     lo = d["sheets"].get(sheet, {})
     for ref, cv in sh["cached"].items():
@@ -24,6 +24,7 @@ for sheet, sh in ext["sheets"].items():
             out["match"] += 1
         else:
             out["mismatch"] += 1
+            out["cells"].append(f"{sheet}!{ref}")
             if len(out["examples"]) < 8:
                 out["examples"].append(f"{sheet}!{ref}: stored {cv}, LibreOffice {e}")
 os.remove(p + ".lo.json")

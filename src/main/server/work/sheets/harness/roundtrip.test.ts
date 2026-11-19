@@ -75,9 +75,20 @@ describe.skipIf(!on)('the patch writer on the research corpus', () => {
       const { out, report } = await patched(pathOf(entry), edits, 'batch_100k.xlsx')
       expect(report.recalc.ok).toBe(true)
       expect(report.edits).toBe(1000)
-      const got = python<{ formulas: number; match: number; mismatch: number; examples: string[] }>('batch.py', [out], 45 * 60_000)
+      type Check = { formulas: number; match: number; mismatch: number; cells: string[] }
+      const got = python<Check>('batch.py', [out], 45 * 60_000)
+      // The corpus file already stores values LibreOffice and IronCalc both compute otherwise (a rounding
+      // difference in how it was made): the writer leaves those to Excel's recalculation on open
+      // (path b, fullCalcOnLoad). The batch must add no wrong value to them, and every value it
+      // patched must be LibreOffice's.
+      const orig = join(scratch, 'orig_100k.xlsx')
+      writeFileSync(orig, readFileSync(pathOf(entry)))
+      const before = python<Check>('batch.py', [orig], 45 * 60_000)
       expect(got.formulas).toBeGreaterThan(800_000)
-      expect({ mismatch: got.mismatch, examples: got.examples }).toEqual({ mismatch: 0, examples: [] })
+      expect(report.recalc.pathA.length).toBeGreaterThan(600)
+      expect(got.cells.filter((c) => !before.cells.includes(c))).toEqual([])
+      const written = new Set(report.recalc.pathA.map((a) => a.cell))
+      expect(got.cells.filter((c) => written.has(c))).toEqual([])
     },
     50 * 60_000
   )
