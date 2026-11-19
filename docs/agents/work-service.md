@@ -179,6 +179,11 @@ Hocuspocus 4.4 with garbage collection off, behind our own listener (`ws` in
   and the docs and sheets contract files are M20's and M27's.
 - `internal(route, body)`: a POST over the socket with the secret; a 4xx or
   5xx comes back as a thrown error with the service's words.
+- `token` and `internal` wait up to 20 s (`STARTING_WAIT_MS`) for a service
+  that is still starting (Work just turned on, the host just booted) before
+  they throw; `url` is synchronous and throws at once. Milestone 49's
+  document proof found an agent's first `doc_read` refused as "not running
+  (starting)" a few seconds after Work came on.
 
 ## The tunnel
 

@@ -238,6 +238,32 @@ describe('ctx.service', () => {
     expect(broken.ctx.enabled()).toBe(true)
   })
 
+  it('a call made while the service is still starting waits for it rather than failing', async () => {
+    const spawned: Child[] = []
+    let release = (): void => {}
+    const gate = new Promise<void>((r) => (release = r))
+    const slow = inProcess(spawned)
+    // The child answers `ready` only once the gate opens: the host's state stays 'starting' until then.
+    const work = host('env_slow', spawned, {}, () => {
+      const child = slow()
+      const post = child.post.bind(child)
+      child.post = (m) => (m.t === 'config' ? void gate.then(() => post(m)) : post(m))
+      return child
+    })
+    work.settings.set({ enabled: true })
+    await until('starting', () => serviceOf(work.ctx)?.state() === 'starting')
+    const path = canonicalPath(join(dataDir(work), 'Slow.tcdoc'))
+    const token = work.ctx.service.token({ item: { doc: fileDocName(path) }, role: 'edit', principal: 'owner', source: { at: 'file', host: 'env_slow', path } })
+    const internal = work.ctx.service.internal('/internal/health', {}).then(
+      () => 'answered',
+      (e: Error) => e.message
+    )
+    expect(() => work.ctx.service.url('/w/doc/x')).toThrow(/not running on this host \(starting\)/)
+    release()
+    await expect(token).resolves.toMatch(/\./)
+    expect(await internal).not.toMatch(/not running/)
+  })
+
   it('two instances run their services side by side, each on its own port', async () => {
     const a: Child[] = []
     const b: Child[] = []

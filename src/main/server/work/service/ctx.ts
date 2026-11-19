@@ -30,6 +30,8 @@ export interface CollabClaims {
 
 /** How long a token this host signs lasts; clients refresh every 45 s (M16). */
 export const TOKEN_SECONDS = 5 * 60
+/** How long a token or an internal call waits for a service that is still starting before it says so. */
+export const STARTING_WAIT_MS = 20_000
 
 /** The item is served by another host: the caller routes the request there (`host` is its environment id). */
 export class ServedElsewhere extends Error {
@@ -125,6 +127,11 @@ export const servicePart: CtxPart<'service'> = (ctx, deps) => {
     if (!ctx.enabled()) throw new Error(WORK_OFF)
     if (supervisor.state() !== 'running') throw new Error(`the Work service is not running on this host (${supervisor.state()})`)
   }
+  /** As `running`, but a service still starting (Work just turned on, the host just booted) is waited for, not refused. */
+  const runningSoon = async (): Promise<void> => {
+    if (ctx.enabled() && supervisor.state() === 'starting') await supervisor.ready(STARTING_WAIT_MS)
+    running()
+  }
 
   return {
     service: {
@@ -135,7 +142,7 @@ export const servicePart: CtxPart<'service'> = (ctx, deps) => {
       },
 
       async token(claims) {
-        running()
+        await runningSoon()
         const signer = supervisor.tokenSigner()
         if (!signer) throw new Error('the Work service is not running on this host')
         if ('sheet' in claims.item) {
@@ -168,10 +175,10 @@ export const servicePart: CtxPart<'service'> = (ctx, deps) => {
         return (await signer.sign(kit, Math.min(TOKEN_SECONDS, MAX_TOKEN_SECONDS))).token
       },
 
-      internal(route, body) {
-        running()
+      async internal(route, body) {
+        await runningSoon()
         const secret = supervisor.internalSecret()
-        if (!secret) return Promise.reject(new Error('the Work service is not running on this host'))
+        if (!secret) throw new Error('the Work service is not running on this host')
         const payload = JSON.stringify(body ?? {})
         return new Promise((resolve, reject) => {
           let done = false
