@@ -1,16 +1,14 @@
 //! The methods of docs/computer-protocol.md §3 as the Windows service serves
-//! them (§29): initialize and the lifecycle, apps, sessions, `state.get`
-//! (every `auto` read answers `full`, as the box's service does, §28.3),
-//! and `action.run` / `action.batch` at the `ax` tier. Pointer, key and
-//! capture verbs answer `action_unsupported` until milestone 43 brings the
-//! input and capture tiers; the methods with nothing to do on Windows
-//! (`escape.watch`, `input.probe`, `input.restoreSession`, the stream) answer
-//! as the box's service does.
+//! them (§29): initialize and the lifecycle, apps and launching, sessions,
+//! `state.get` (every `auto` read answers `full`, as the box's service does,
+//! §28.3), `action.run` / `action.batch` at the `ax` tier and the event tiers
+//! (act.rs), capture and the preview stream (stream.rs), the Escape watch and
+//! the clipboard's.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::de::DeserializeOwned;
@@ -18,11 +16,12 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::book::Sessions;
-use crate::desktop::{fail, Desktop};
-use crate::generated::contract::{budget, rpc_error, service as limits, walk, COMPUTER_PROTOCOL};
+use crate::desktop::{fail, Desktop, PersonInput, Win};
+use crate::generated::contract::{budget, escape as escape_limits, rpc_error, service as limits, walk, COMPUTER_PROTOCOL};
 use crate::locks::{guard, lock_file, AppSlots, FileLock};
-use crate::server::{write_frame, RpcError};
-use crate::text::{brief_of, render, space_of, RawWindow, TextOptions};
+use crate::server::{write_frame, Out, RpcError};
+use crate::stream::Stream;
+use crate::text::{brief_of, render, RawWindow, TextOptions};
 use crate::wire::*;
 
 /// The verbs the `ax` tier takes on Windows (§29.4).
@@ -35,23 +34,102 @@ const AX_VERBS: &[ComputerActionName] = &[
 ];
 
 pub struct Service<D: Desktop> {
-    desktop: D,
+    pub(crate) desktop: D,
     epoch: String,
-    started_at: i64,
     version: String,
-    state: Mutex<State<D::Handle>>,
+    pub(crate) state: Mutex<State<D::Handle>>,
     /// one initialize at a time, held while it waits for the data dir; never the state lock (§1)
     init: Mutex<()>,
     slots: AppSlots,
+    /// the frames' writer, for notifications, once serving
+    out: Mutex<Option<Out>>,
+    me: OnceLock<Weak<Self>>,
+    pub(crate) person: Person,
+    pub(crate) clip: ClipWatch,
+    pub(crate) streams: Mutex<HashMap<String, Arc<Stream>>>,
 }
 
-struct State<H> {
+pub(crate) struct State<H> {
     initialized: Option<(String, InitializeResult)>,
     _service_lock: Option<FileLock>,
     sessions: Sessions<H>,
+    /// each session × window's space: its last whole screenshot's (§6)
+    pub(crate) spaces: HashMap<(String, i64), CoordinateSpace>,
+    /// the agent cursor per session × app: its window and its point in the session's space
+    pub(crate) cursors: HashMap<(String, i64), (i64, (i64, i64))>,
+    /// a left button held down per session × app (§5.1)
+    pub(crate) held: HashMap<(String, i64), Held>,
+    /// each session's next shot number
+    pub(crate) shot_numbers: HashMap<String, u64>,
+    /// what the last session step found: the front window and the pointer, for `input.restoreSession`
+    pub(crate) restore: Option<(Option<i64>, (f64, f64))>,
 }
 
-fn now_ms() -> i64 {
+/// A left button held by `left_mouse_down`.
+#[derive(Debug, Clone)]
+pub(crate) struct Held {
+    pub tier: Tier,
+    pub window: i64,
+    pub at: (i64, i64),
+    pub since: Instant,
+}
+
+/// The person watch: whether a session step runs, whether the person stopped it, and the Escape watch's lease.
+#[derive(Default)]
+pub(crate) struct Person {
+    pub active: AtomicBool,
+    pub interrupted: AtomicBool,
+    pub escape_until: Mutex<Option<Instant>>,
+}
+
+/// The clipboard watch (§5.3): its sequence number polled every 250 ms, a change the service did not make is
+/// the person's copy. The watch's start counts as one, as `clipboard.state` reads it.
+pub(crate) struct ClipWatch {
+    since: i64,
+    seq: Mutex<Option<i64>>,
+    ours: Mutex<HashSet<i64>>,
+    foreign_at: Mutex<Option<i64>>,
+    /// a paste is writing: the poll leaves the numbers it moves through alone
+    pub writing: AtomicBool,
+}
+
+impl ClipWatch {
+    fn new(since: i64) -> Self {
+        ClipWatch { since, seq: Mutex::new(None), ours: Mutex::default(), foreign_at: Mutex::new(None), writing: AtomicBool::new(false) }
+    }
+
+    pub(crate) fn poll<D: Desktop>(&self, d: &D) {
+        if self.writing.load(Ordering::SeqCst) {
+            return;
+        }
+        let now = d.clip_seq();
+        let mut last = guard(&self.seq);
+        if *last != Some(now) {
+            if last.is_some() && !guard(&self.ours).contains(&now) {
+                *guard(&self.foreign_at) = Some(now_ms());
+            }
+            *last = Some(now);
+        }
+    }
+
+    /// A sequence number the service's own write left.
+    pub(crate) fn ours(&self, seq: i64) {
+        guard(&self.ours).insert(seq);
+        *guard(&self.seq) = Some(seq);
+    }
+
+    /// The person copied (or the watch started) within `ms`.
+    pub(crate) fn foreign_within(&self, ms: i64) -> bool {
+        let latest = guard(&self.foreign_at).unwrap_or(self.since).max(self.since);
+        now_ms() - latest <= ms
+    }
+
+    fn state(&self) -> ClipboardActivity {
+        ClipboardActivity { change_count: guard(&self.seq).unwrap_or(0), foreign_change_at: guard(&self.foreign_at).map(|t| t as f64), watching_since: self.since as f64 }
+    }
+}
+
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
 
@@ -70,15 +148,41 @@ fn cancelled() -> ComputerError {
 impl<D: Desktop> Service<D> {
     pub fn new(desktop: D, version: impl Into<String>) -> Self {
         let epoch = format!("{:x}-{:x}", std::process::id(), now_ms());
+        let started_at = now_ms();
         Service {
             desktop,
             epoch,
-            started_at: now_ms(),
             version: version.into(),
-            state: Mutex::new(State { initialized: None, _service_lock: None, sessions: Sessions::default() }),
+            state: Mutex::new(State {
+                initialized: None,
+                _service_lock: None,
+                sessions: Sessions::default(),
+                spaces: HashMap::new(),
+                cursors: HashMap::new(),
+                held: HashMap::new(),
+                shot_numbers: HashMap::new(),
+                restore: None,
+            }),
             init: Mutex::new(()),
             slots: AppSlots::default(),
+            out: Mutex::new(None),
+            me: OnceLock::new(),
+            person: Person::default(),
+            clip: ClipWatch::new(started_at),
+            streams: Mutex::default(),
         }
+    }
+
+    /// A notification to the host; nothing before serving starts.
+    pub(crate) fn notify(&self, method: &str, params: Value) {
+        let out = guard(&self.out).clone();
+        if let Some(out) = out {
+            write_frame(&out, &json!({ "jsonrpc": "2.0", "method": method, "params": params }));
+        }
+    }
+
+    pub(crate) fn data_dir(&self) -> Option<PathBuf> {
+        guard(&self.state).initialized.as_ref().map(|(d, _)| PathBuf::from(d))
     }
 
     pub fn desktop(&self) -> &D {
@@ -89,8 +193,30 @@ impl<D: Desktop> Service<D> {
         &self.epoch
     }
 
-    /// `apps/changed` from a poll of the app list every second: launched, terminated, activated.
-    pub fn start_watch(self: &Arc<Self>, out: Arc<Mutex<Box<dyn std::io::Write + Send>>>) {
+    /// `apps/changed` from a poll of the app list every second: launched, terminated, activated. Also the
+    /// person watch (a session step stopped, Escape while watched), the clipboard's and the held button's clocks.
+    pub fn start_watch(self: &Arc<Self>, out: Out) {
+        *guard(&self.out) = Some(out.clone());
+        let _ = self.me.set(Arc::downgrade(self));
+        let weak = Arc::downgrade(self);
+        self.desktop.watch_person(Box::new(move |input| {
+            let Some(me) = weak.upgrade() else { return };
+            if me.person.active.load(Ordering::SeqCst) {
+                me.person.interrupted.store(true, Ordering::SeqCst);
+            }
+            if input == PersonInput::Escape && guard(&me.person.escape_until).is_some_and(|t| Instant::now() < t) {
+                me.notify("escape/pressed", json!({ "at": now_ms() }));
+            }
+        }));
+        let ticker = Arc::downgrade(self);
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(limits::CLIPBOARD_POLL_MS as u64));
+            match ticker.upgrade() {
+                Some(me) if guard(&me.state).initialized.is_some() => me.tick(),
+                Some(_) => {}
+                None => return,
+            }
+        });
         let me = self.clone();
         std::thread::spawn(move || {
             let mut known: HashMap<i64, AppInfo> = HashMap::new();
@@ -147,6 +273,7 @@ impl<D: Desktop> Service<D> {
             // answered before initialize too, as the Swift service does, so a host can end one it gave up on
             "shutdown" => {
                 let _: Empty = decode(params)?;
+                self.release_held(None, None);
                 encode(json!({}))
             }
             "permissions.get" | "permissions.request" => {
@@ -175,7 +302,14 @@ impl<D: Desktop> Service<D> {
             "session.close" => {
                 let p: SessionRef = decode(params)?;
                 gate()?;
-                guard(&self.state).sessions.close(&p.session);
+                self.release_held(Some(&p.session), None);
+                for s in guard(&self.streams).values().filter(|s| s.session == p.session) {
+                    self.stream_stop(&s.id);
+                }
+                let mut st = guard(&self.state);
+                st.sessions.close(&p.session);
+                st.spaces.retain(|(s, _), _| *s != p.session);
+                st.cursors.retain(|(s, _), _| *s != p.session);
                 encode(json!({}))
             }
             "state.get" => {
@@ -191,7 +325,7 @@ impl<D: Desktop> Service<D> {
                 gate()?;
                 let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch };
                 let wait = p.ax_wait.or(p.wait);
-                let r = self.run_steps(&target, &[p.action], &p.tiers, None, wait, p.observe.as_ref(), p.expect_focus.is_some(), cancel)?;
+                let r = self.run_steps(&target, &[p.action], &p.tiers, None, wait, p.observe.as_ref(), p.expect_focus.is_some(), p.paste_quiet_ms, cancel)?;
                 encode(ActionResult { step: r.steps.into_iter().next().unwrap(), observation: r.observation, observation_error: r.observation_error, ..Default::default() })
             }
             "action.batch" => {
@@ -201,31 +335,55 @@ impl<D: Desktop> Service<D> {
                 }
                 gate()?;
                 let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch };
-                let r = self.run_steps(&target, &p.actions, &p.tiers, p.ax_step_wait.or(p.step_wait), p.ax_wait.or(p.wait), p.observe.as_ref(), p.expect_focus.is_some(), cancel)?;
+                let r = self.run_steps(&target, &p.actions, &p.tiers, p.ax_step_wait.or(p.step_wait), p.ax_wait.or(p.wait), p.observe.as_ref(), p.expect_focus.is_some(), p.paste_quiet_ms, cancel)?;
                 encode(r)
             }
-            "capture.screenshot" | "capture.stream.start" => {
+            "capture.screenshot" => {
+                let p: CaptureScreenshotParams = decode(params)?;
                 gate()?;
-                Err(fail(ComputerErrorKind::CaptureFailed, "window capture on Windows is not built yet (milestone 43)").into())
+                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone() };
+                self.check_session(&target)?;
+                let app = self.resolve(&p.app)?;
+                let win = self.desktop.window(app.pid, p.window.as_ref())?;
+                encode(self.shoot(&p.session, &win, p.max_edge, p.region.as_ref(), p.format, "screenshot")?)
             }
-            "capture.stream.stop" | "escape.watch" => {
+            "capture.stream.start" => {
+                let p: CaptureStreamStartParams = decode(params)?;
                 gate()?;
+                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone() };
+                self.check_session(&target)?;
+                let me = self.me.get().and_then(Weak::upgrade).ok_or_else(|| fail(ComputerErrorKind::CaptureFailed, "the service is not serving"))?;
+                encode(me.stream_start(p)?)
+            }
+            "capture.stream.stop" => {
+                let p: CaptureStreamStopParams = decode(params)?;
+                gate()?;
+                self.stream_stop(&p.stream);
+                encode(json!({}))
+            }
+            "escape.watch" => {
+                let p: EscapeWatchParams = decode(params)?;
+                gate()?;
+                let lease = p.lease_ms.unwrap_or(escape_limits::LEASE_MS).clamp(escape_limits::MIN_LEASE_MS, escape_limits::MAX_LEASE_MS);
+                *guard(&self.person.escape_until) = p.on.then(|| Instant::now() + Duration::from_millis(lease as u64));
                 encode(json!({}))
             }
             "input.probe" => {
                 let p: InputProbeParams = decode(params)?;
                 gate()?;
                 let app = self.resolve(&p.app)?;
-                // no class runs at the process tier yet (milestone 43): nothing was tried
+                // posted messages reach a background window's controls whatever has the focus: nothing to probe
                 encode(ProbeReport { pid: app.pid, bundle_id: app.bundle_id, key_window: KeyWindowState::None, results: vec![] })
             }
             "input.restoreSession" => {
+                let _: InputRestoreSessionParams = decode(params)?;
                 gate()?;
-                encode(SessionRestore { frontmost: RestoreOutcome::Nothing, pointer: RestoreOutcome::Nothing, held: None, person_guard: None })
+                encode(self.restore_session())
             }
             "clipboard.state" => {
                 gate()?;
-                encode(ClipboardActivity { change_count: 0, foreign_change_at: None, watching_since: self.started_at as f64 })
+                self.clip.poll(&self.desktop);
+                encode(self.clip.state())
             }
             _ => Err(RpcError::std(rpc_error::METHOD_NOT_FOUND, format!("no method {method}"))),
         }
@@ -263,7 +421,7 @@ impl<D: Desktop> Service<D> {
     }
 
     /// §2.1 on Windows: the exe name (`notepad.exe`) or display name, case-insensitively; else a unique prefix of a name.
-    fn resolve(&self, r: &AppRef) -> Result<AppInfo, ComputerError> {
+    pub(crate) fn resolve(&self, r: &AppRef) -> Result<AppInfo, ComputerError> {
         let apps = self.desktop.apps(false)?;
         if let Some(pid) = r.pid {
             return apps.into_iter().find(|a| a.pid == pid).ok_or_else(|| fail(ComputerErrorKind::AppNotFound, format!("no app with pid {pid}")));
@@ -284,17 +442,65 @@ impl<D: Desktop> Service<D> {
         Err(ComputerError { candidates: Some(candidates), ..fail(ComputerErrorKind::AppNotFound, format!("no running app matches {:?}", r.app.as_deref().unwrap_or(""))) })
     }
 
-    /// Launching is milestone 43's: a running app answers its pid, anything else `app_not_found`,
-    /// so the host's resolver still falls back to a prefix of a running app's name.
+    /// `apps.launch` (§23 as Windows has it): a running app answers its pid (opening `open` in it when given);
+    /// else its exe is started without coming forward, and an app that comes forward anyway is sent back.
     fn launch(&self, p: AppsLaunchParams) -> Result<Value, RpcError> {
-        let app = self.resolve(&AppRef { app: Some(p.app.clone()), pid: None })?;
-        if p.refuse.as_ref().is_some_and(|r| app.bundle_id.as_ref().is_some_and(|b| r.iter().any(|x| x.eq_ignore_ascii_case(b)))) {
-            return Err(fail(ComputerErrorKind::OpenRefused, format!("{} may not be launched", app.name)).into());
+        let refused = |exe: &str| p.refuse.as_ref().is_some_and(|r| r.iter().any(|x| x.eq_ignore_ascii_case(exe)));
+        let open = p.open.clone().unwrap_or_default();
+        if open.len() > limits::OPEN_ITEMS_MAX as usize {
+            return Err(fail(ComputerErrorKind::OpenRefused, format!("at most {} items at once", limits::OPEN_ITEMS_MAX)).into());
         }
-        if p.open.as_ref().is_some_and(|o| !o.is_empty()) {
-            return Err(fail(ComputerErrorKind::OpenRefused, "opening items on Windows is not built yet (milestone 43)").into());
+        if let Some(item) = open.iter().find(|i| runs_as_program(i)) {
+            return Err(ComputerError { reason: Some(ErrorReason::Executable), ..fail(ComputerErrorKind::OpenRefused, format!("{item} is a program; open opens documents, folders and pages")) }.into());
         }
-        encode(AppsLaunchResult { pid: app.pid, launched: false, ..Default::default() })
+        let running = self.resolve(&AppRef { app: Some(p.app.clone()), pid: None });
+        let exe = match &running {
+            Ok(app) => app.bundle_id.clone().unwrap_or_default(),
+            Err(_) => {
+                let a = p.app.to_lowercase();
+                if a.ends_with(".exe") { a } else { format!("{a}.exe") }
+            }
+        };
+        if refused(&exe) {
+            return Err(fail(ComputerErrorKind::OpenRefused, format!("{exe} may not be launched")).into());
+        }
+        if let Ok(app) = &running {
+            if open.is_empty() {
+                return encode(AppsLaunchResult { pid: app.pid, launched: false, ..Default::default() });
+            }
+        }
+        let front_before = self.desktop.front();
+        let started = self.desktop.launch(&exe, &open).map_err(|e| if running.is_err() { running.clone().err().unwrap_or(e) } else { e })?;
+        // the app's window, by its exe (a launcher hands its work to the app's own process), for up to 10 s
+        let deadline = Instant::now() + Duration::from_millis(limits::LAUNCH_WINDOW_MS as u64);
+        let known: HashSet<i64> = match &running {
+            Ok(app) => self.desktop.apps(true).ok().and_then(|a| a.into_iter().find(|x| x.pid == app.pid)).and_then(|a| a.windows).unwrap_or_default().iter().map(|w| w.id).collect(),
+            Err(_) => HashSet::new(),
+        };
+        let mut found: Option<(i64, WindowInfo)> = None;
+        while found.is_none() && Instant::now() < deadline {
+            if let Ok(apps) = self.desktop.apps(true) {
+                found = apps
+                    .iter()
+                    .filter(|a| a.pid == started || a.bundle_id.as_deref().is_some_and(|b| b.eq_ignore_ascii_case(&exe)))
+                    .flat_map(|a| a.windows.clone().unwrap_or_default().into_iter().map(move |w| (a.pid, w)))
+                    .find(|(_, w)| !known.contains(&w.id) || running.is_ok());
+            }
+            if found.is_none() {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+        let pid = found.as_ref().map(|(pid, _)| *pid).or(running.as_ref().ok().map(|a| a.pid)).unwrap_or(started);
+        // the front guard (§23.3): an app that took the front is sent back behind the person's window
+        let front = match (front_before, self.desktop.front()) {
+            (Some((before_pid, before)), Some((now_pid, _))) if now_pid == pid && before_pid != pid => {
+                let back = self.desktop.raise(before);
+                Some(FrontReport { raised: true, restored: Some(if back { FrontRestore::Restored } else { FrontRestore::Failed }), ms: None })
+            }
+            _ => None,
+        };
+        let window = found.map(|(_, w)| LaunchedWindow { id: w.id, title: w.title });
+        encode(AppsLaunchResult { pid, launched: running.is_err(), front, window, others: None })
     }
 
     fn check_session(&self, t: &Target) -> Result<(), ComputerError> {
@@ -319,7 +525,7 @@ impl<D: Desktop> Service<D> {
     }
 
     /// The handle behind an index, or the error a call naming it answers.
-    fn element(&self, session: &str, pid: i64, index: i64) -> Result<D::Handle, ComputerError> {
+    pub(crate) fn element(&self, session: &str, pid: i64, index: i64) -> Result<D::Handle, ComputerError> {
         let mut st = guard(&self.state);
         let book = st.sessions.book(session, pid).ok_or_else(|| fail(ComputerErrorKind::UnknownSession, format!("no session {session}")))?;
         book.handle(index).map_err(|gone| {
@@ -331,20 +537,47 @@ impl<D: Desktop> Service<D> {
         })
     }
 
-    /// A read rendered into an Observation, the session's book updated.
-    fn observe(&self, session: &str, raw: RawWindow<D::Handle>, subtree: bool, geometry: bool, budget_bytes: Option<i64>, waited: Option<WaitReport>) -> Result<Observation, ComputerError> {
+    /// A read rendered into an Observation, the session's book updated. With `shots`, a picture comes too:
+    /// `always`, or `auto` on a thin tree (§4.5); a failed one is `shotError`.
+    #[allow(clippy::too_many_arguments)]
+    fn observe(&self, session: &str, raw: RawWindow<D::Handle>, subtree: bool, geometry: bool, budget_bytes: Option<i64>, waited: Option<WaitReport>, shots: Option<Shots>) -> Result<Observation, ComputerError> {
         let started = Instant::now();
         let bytes = budget_bytes.unwrap_or(budget::DEFAULT_BYTES).clamp(budget::MIN_BYTES, budget::MAX_BYTES) as usize;
+        let win = Win { id: raw.window_id, pid: raw.pid, title: raw.title.clone(), frame: raw.frame.clone(), minimized: false };
+        let policy = shots.as_ref().map_or(ScreenshotPolicy::Never, |s| s.policy);
+        // an `always` shot first: it may set the session's space, which the text's geometry is in
+        let mut shot: Option<Result<Shot, ComputerError>> = (policy == ScreenshotPolicy::Always).then(|| self.shoot(session, &win, shots.as_ref().and_then(|s| s.max_edge), None, None, "observe"));
+        let space = self.space(session, &win);
+        let opts = TextOptions { budget_bytes: bytes, geometry, whole_values: subtree, space: Some(space.clone()) };
+        let with_shot = policy != ScreenshotPolicy::Never;
         let mut st = guard(&self.state);
         let book = st.sessions.book(session, raw.pid).ok_or_else(|| fail(ComputerErrorKind::UnknownSession, format!("no session {session}")))?;
-        let r = render(&raw, &raw.root, book, TextOptions { budget_bytes: bytes, geometry, whole_values: subtree, space: None }, false);
+        let r = render(&raw, &raw.root, book, opts, with_shot);
         if !subtree {
             book.keep_only(&r.seen);
             book.seq += 1;
             book.last_text = Some(r.text.clone());
         }
         let seq = book.seq;
-        let space = space_of(raw.frame.w, raw.frame.h);
+        drop(st);
+        if shot.is_none() && policy == ScreenshotPolicy::Auto && r.thin {
+            shot = Some(self.shoot(session, &win, shots.as_ref().and_then(|s| s.max_edge), None, None, "observe"));
+        }
+        let (shot, shot_error) = match shot {
+            Some(Ok(s)) => (Some(s), None),
+            Some(Err(e)) => (None, Some(e)),
+            None => (None, None),
+        };
+        // the thin word points at a picture: none came, so the header does not say it
+        let mut r = r;
+        if shot.is_none() && r.thin {
+            let thin = format!("{}{}", crate::generated::contract::grammar::HEADER_SEPARATOR, crate::generated::contract::grammar::HEADER_THIN);
+            if let Some(end) = r.text.find('\n').or(Some(r.text.len())) {
+                if r.text[..end].ends_with(&thin) {
+                    r.text.replace_range(end - thin.len()..end, "");
+                }
+            }
+        }
         Ok(Observation {
             epoch: self.epoch.clone(),
             session: session.to_string(),
@@ -364,6 +597,8 @@ impl<D: Desktop> Service<D> {
             },
             text: r.text,
             space,
+            shot,
+            shot_error,
             waited,
             ..Default::default()
         })
@@ -383,7 +618,8 @@ impl<D: Desktop> Service<D> {
         };
         let from = p.element.map(|i| self.element(&p.session, app.pid, i)).transpose()?;
         let raw = self.read(app.pid, p.window.as_ref(), from.as_ref())?;
-        let obs = self.observe(&p.session, raw, from.is_some(), p.geometry.unwrap_or(false), p.budget.map(|b| b.bytes), waited)?;
+        let shots = (from.is_none()).then(|| Shots { policy: p.screenshot.unwrap_or(ScreenshotPolicy::Auto), max_edge: p.max_edge });
+        let obs = self.observe(&p.session, raw, from.is_some(), p.geometry.unwrap_or(false), p.budget.map(|b| b.bytes), waited, shots)?;
         encode(obs)
     }
 
@@ -436,6 +672,7 @@ impl<D: Desktop> Service<D> {
         wait: Option<WaitOptions>,
         observe: Option<&ObserveOptions>,
         expect_focus: bool,
+        paste_quiet_ms: Option<i64>,
         cancel: &AtomicBool,
     ) -> Result<BatchResult, RpcError> {
         self.check_session(target)?;
@@ -467,10 +704,10 @@ impl<D: Desktop> Service<D> {
                 failed = true;
                 continue;
             }
-            match self.step(target, pid, action, tiers, cancel) {
+            match self.step(target, pid, action, tiers, observe.and_then(|o| o.max_edge), paste_quiet_ms, cancel) {
                 Ok(ok) => {
                     steps.push(StepResult::Ok(OkStep { index, ..ok }));
-                    let changes_screen = !matches!(action.action, ComputerActionName::Wait | ComputerActionName::CursorPosition);
+                    let changes_screen = !matches!(action.action, ComputerActionName::Wait | ComputerActionName::CursorPosition | ComputerActionName::Screenshot | ComputerActionName::Zoom);
                     if changes_screen && i + 1 < actions.len() {
                         if let Some(w) = &step_wait {
                             self.wait(pid, target.window.as_ref(), w, cancel)?;
@@ -495,7 +732,8 @@ impl<D: Desktop> Service<D> {
         } else if mode != ObserveMode::None {
             match self.read(pid, target.window.as_ref(), None) {
                 Ok(raw) => {
-                    let o = self.observe(&target.session, raw, false, observe.and_then(|o| o.geometry).unwrap_or(false), observe.and_then(|o| o.budget.clone()).map(|b| b.bytes), Some(waited.clone()))?;
+                    let shots = Shots { policy: observe.and_then(|o| o.screenshot).unwrap_or(ScreenshotPolicy::Auto), max_edge: observe.and_then(|o| o.max_edge) };
+                    let o = self.observe(&target.session, raw, false, observe.and_then(|o| o.geometry).unwrap_or(false), observe.and_then(|o| o.budget.clone()).map(|b| b.bytes), Some(waited.clone()), Some(shots))?;
                     // a step's effect: whether the window's text moved from the last one the session got
                     for s in steps.iter_mut() {
                         if let StepResult::Ok(ok) = s {
@@ -527,8 +765,9 @@ impl<D: Desktop> Service<D> {
         Ok(BatchResult { steps, observation, observation_error, waited, ..Default::default() })
     }
 
-    /// One step at the `ax` tier, or the reason it cannot run here.
-    fn step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier], cancel: &AtomicBool) -> Result<OkStep, ComputerError> {
+    /// One step: at the `ax` tier when it takes the step, else at the first allowed event tier (act.rs).
+    #[allow(clippy::too_many_arguments)]
+    fn step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier], max_edge: Option<i64>, paste_quiet_ms: Option<i64>, cancel: &AtomicBool) -> Result<OkStep, ComputerError> {
         let ok = |tier: Option<Tier>| OkStep { action: a.action, tier, effect: StepEffect::Unknown, ..Default::default() };
         match a.action {
             ComputerActionName::Wait => {
@@ -536,23 +775,43 @@ impl<D: Desktop> Service<D> {
                 let waited = self.wait(pid, target.window.as_ref(), &WaitOptions { min_ms: 0, quiet_ms: 300, max_ms: ms, busy_max_ms: ms }, cancel)?;
                 return Ok(OkStep { waited: Some(waited), ..ok(None) });
             }
-            ComputerActionName::CursorPosition => return Ok(OkStep { text: Some("X=0, Y=0".into()), cursor: Some(vec![0, 0]), ..ok(None) }),
+            ComputerActionName::CursorPosition => {
+                let p = guard(&self.state).cursors.get(&(target.session.clone(), pid)).map(|(_, p)| *p).unwrap_or((0, 0));
+                return Ok(OkStep { text: Some(format!("X={}, Y={}", p.0, p.1)), cursor: Some(vec![p.0, p.1]), ..ok(None) });
+            }
+            ComputerActionName::Screenshot | ComputerActionName::Zoom => {
+                let win = self.desktop.window(pid, target.window.as_ref())?;
+                let region = if a.action == ComputerActionName::Zoom { a.region.as_ref() } else { None };
+                let shot = self.shoot(&target.session, &win, max_edge, region, None, a.action.as_str())?;
+                return Ok(OkStep { effect: StepEffect::None, shot: Some(shot), ..ok(None) });
+            }
             _ => {}
         }
         let ax_form = AX_VERBS.contains(&a.action) && a.element.is_some() && a.coordinate.is_none() && a.duration.is_none() && (a.action != ComputerActionName::LeftClick || a.text.is_none());
-        if !ax_form {
-            return Err(fail(
-                ComputerErrorKind::ActionUnsupported,
-                format!("{} needs pointer or key input, which Windows does not have yet (milestone 43); act on an element with set_value, perform or a click", a.action.as_str()),
-            ));
+        let ax_only = matches!(a.action, ComputerActionName::SetValue | ComputerActionName::Perform | ComputerActionName::SelectText);
+        let event = crate::input::event_tier(tiers, a);
+        if ax_form && tiers.contains(&Tier::Ax) {
+            match self.ax_step(target, pid, a, tiers) {
+                // a click or typing the element takes no other way goes on to an event tier
+                Err(e) if e.kind == ComputerErrorKind::ActionUnsupported && !ax_only && event.is_some() => {}
+                r => return r,
+            }
+        } else if ax_only {
+            return if tiers.contains(&Tier::Ax) { self.ax_step(target, pid, a, tiers) } else { Err(ComputerError { needed: Some(Tier::Ax), ..fail(ComputerErrorKind::NeedsTier, "this step runs only at the ax tier") }) };
         }
-        if !tiers.contains(&Tier::Ax) {
-            return Err(ComputerError { needed: Some(Tier::Ax), ..fail(ComputerErrorKind::NeedsTier, "this step runs only at the ax tier") });
-        }
+        let (tier, done) = self.event_step(&target.session, pid, target.window.as_ref(), a, tiers, paste_quiet_ms, cancel)?;
+        let input = done.via.map(|via| OkStepInput { via, clipboard: done.clipboard, on: None });
+        let element = a.element.map(|index| ElementBrief { index, line: String::new() });
+        Ok(OkStep { element, input, session: done.session, cursor: done.cursor.map(|p| vec![p.0, p.1]), ..ok(Some(tier)) })
+    }
+
+    /// One step at the `ax` tier.
+    fn ax_step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier]) -> Result<OkStep, ComputerError> {
+        let ok = |tier: Option<Tier>| OkStep { action: a.action, tier, effect: StepEffect::Unknown, ..Default::default() };
         if a.action == ComputerActionName::Perform && a.name.as_deref() == Some("raise") && !tiers.contains(&Tier::Session) {
             return Err(ComputerError { needed: Some(Tier::Session), ..fail(ComputerErrorKind::NeedsTier, "raise needs the session tier") });
         }
-        let index = a.element.unwrap();
+        let index = a.element.ok_or_else(|| fail(ComputerErrorKind::ActionUnsupported, "this step needs an element"))?;
         let handle = self.element(&target.session, pid, index)?;
         let acted = self.desktop.act(pid, &handle, a)?;
         if a.action == ComputerActionName::SetValue {
@@ -566,6 +825,22 @@ impl<D: Desktop> Service<D> {
         let input = acted.via.map(|via| OkStepInput { via, clipboard: None, on: None });
         Ok(OkStep { element: Some(ElementBrief { index, line: String::new() }), input, effect, ..ok(Some(Tier::Ax)) })
     }
+}
+
+/// What an observation's picture follows: the call's policy and long edge.
+pub(crate) struct Shots {
+    policy: ScreenshotPolicy,
+    max_edge: Option<i64>,
+}
+
+/// An item `open` refuses on Windows: a program or a script, which would run rather than open.
+fn runs_as_program(item: &str) -> bool {
+    let lower = item.to_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return false;
+    }
+    const RUNS: &[&str] = &[".exe", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".msi", ".msp", ".scr", ".lnk", ".url", ".hta", ".cpl", ".msc", ".reg", ".pif", ".appref-ms"];
+    RUNS.iter().any(|ext| lower.ends_with(ext))
 }
 
 /// A cheap hash of a read: every node's role, name, value and states.

@@ -35,7 +35,7 @@ fn hold_lock(args: &[String]) -> i32 {
     if which != "clipboard" && which != "session" {
         return 64;
     }
-    let path = tc_computer_win::locks::machine_lock_path(&user_temp(), which);
+    let path = tc_computer_win::locks::machine_lock_path(&tc_computer_win::locks::user_temp(), which);
     match tc_computer_win::locks::lock_file(&path, Duration::from_secs(5)) {
         Ok(Some(_held)) => {
             println!("{{\"held\":true}}");
@@ -50,14 +50,6 @@ fn hold_lock(args: &[String]) -> i32 {
             eprintln!("{e}");
             70
         }
-    }
-}
-
-/// The signed-in user's own temporary folder: `%LOCALAPPDATA%\Temp`, never a `TMP` a caller set.
-fn user_temp() -> std::path::PathBuf {
-    match std::env::var_os("LOCALAPPDATA") {
-        Some(l) if cfg!(windows) => std::path::PathBuf::from(l).join("Temp"),
-        _ => std::env::temp_dir(),
     }
 }
 

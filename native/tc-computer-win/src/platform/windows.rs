@@ -3,7 +3,8 @@
 //! in the grammar's words, and the invisible tier's actions through UIA
 //! patterns (Invoke, Toggle, SelectionItem, ExpandCollapse, Value,
 //! RangeValue, Scroll, Text), with `WM_SETTEXT` for a text control that has
-//! no Value pattern. No pointer, key or focus change: that is milestone 43's.
+//! no Value pattern. Input at the event tiers, capture, the clipboard and
+//! launching are io.rs's.
 //!
 //! Every thread that calls in joins the COM multithreaded apartment once;
 //! the one `IUIAutomation` and every element handle are free-threaded there.
@@ -30,7 +31,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SendMessageTimeoutW, GWL_EXSTYLE, GW_OWNER, SMTO_ABORTIFHUNG, WM_GETTEXT, WM_GETTEXTLENGTH, WM_SETTEXT, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
-use crate::desktop::{fail, Acted, Desktop};
+use super::io;
+use crate::capture::Image;
+use crate::desktop::{fail, Acted, Clip, Desktop, Event, PersonInput, Win as Target};
 use crate::generated::contract::walk as limits;
 use crate::text::{RawNode, RawWindow};
 use crate::wire::*;
@@ -52,6 +55,7 @@ unsafe impl Sync for Uia {}
 pub struct WindowsDesktop {
     uia: Uia,
     parent: Option<HANDLE>,
+    wic: Option<windows::Win32::Graphics::Imaging::IWICImagingFactory>,
 }
 unsafe impl Send for WindowsDesktop {}
 unsafe impl Sync for WindowsDesktop {}
@@ -61,7 +65,7 @@ thread_local! {
 }
 
 /// Joins this thread to the multithreaded apartment, once.
-fn com() {
+pub(crate) fn com() {
     COM.with(|c| {
         if !c.get() {
             unsafe {
@@ -124,7 +128,7 @@ impl WindowsDesktop {
                 request.AddPattern(*p)?;
             }
             let view = automation.ControlViewCondition()?;
-            Ok(WindowsDesktop { uia: Uia { automation, request, view }, parent: parent_handle() })
+            Ok(WindowsDesktop { uia: Uia { automation, request, view }, parent: parent_handle(), wic: super::io::wic() })
         }
     }
 }
@@ -790,6 +794,91 @@ impl Desktop for WindowsDesktop {
             Some(h) => unsafe { WaitForSingleObject(h, 0) }.0 != 0,
             None => true,
         }
+    }
+
+    fn window(&self, pid: i64, window: Option<&WindowRef>) -> Result<Target, ComputerError> {
+        let (w, _) = self.resolve_window(pid, window)?;
+        Ok(Target { id: w.hwnd.0 as i64, pid, title: w.title, frame: w.frame, minimized: w.minimized })
+    }
+
+    fn frame_of(&self, element: &Elem) -> Option<Rect> {
+        com();
+        let r = unsafe { element.0.CurrentBoundingRectangle() }.ok()?;
+        Some(Rect { x: r.left as f64, y: r.top as f64, w: (r.right - r.left) as f64, h: (r.bottom - r.top) as f64 })
+    }
+
+    fn focus(&self, element: &Elem) -> Result<(), ComputerError> {
+        com();
+        unsafe { element.0.SetFocus() }.map_err(|e| err(ComputerErrorKind::ActionUnsupported, "focus", e))
+    }
+
+    fn post(&self, win: &Target, element: Option<&Elem>, tier: Tier, event: &Event) -> Result<(), ComputerError> {
+        com();
+        let own = element.and_then(|e| unsafe { own_hwnd(&e.0) });
+        let r = io::tier_post(win.id, own, tier, event);
+        if r.is_err() && tier == Tier::Session {
+            // nothing stays down after a failed step
+            io::release_all();
+        }
+        r
+    }
+
+    fn front(&self) -> Option<(i64, i64)> {
+        io::front()
+    }
+
+    fn raise(&self, window_id: i64) -> bool {
+        io::raise(window_id)
+    }
+
+    fn pointer(&self) -> (f64, f64) {
+        io::pointer()
+    }
+
+    fn set_pointer(&self, at: (f64, f64)) {
+        io::set_pointer(at)
+    }
+
+    fn locked(&self) -> bool {
+        io::locked()
+    }
+
+    fn watch_person(&self, f: Box<dyn Fn(PersonInput) + Send + Sync>) {
+        io::watch_person(f)
+    }
+
+    fn grab(&self, window_id: i64) -> Result<Image, ComputerError> {
+        let f = window_frame(HWND(window_id as *mut c_void));
+        io::grab(window_id, (f.x as i32, f.y as i32, f.w as i32, f.h as i32))
+    }
+
+    fn encode(&self, img: &Image, format: ShotFormat, quality: f32) -> Result<Vec<u8>, ComputerError> {
+        let wic = self.wic.as_ref().ok_or_else(|| fail(ComputerErrorKind::CaptureFailed, "Windows Imaging Component is not available"))?;
+        io::encode(wic, img, format, quality)
+    }
+
+    fn alive(&self, window_id: i64) -> bool {
+        io::alive(window_id)
+    }
+
+    fn clip_seq(&self) -> i64 {
+        io::clip_seq()
+    }
+
+    fn clip_save(&self) -> Result<Clip, ComputerError> {
+        io::clip_save()
+    }
+
+    fn clip_put(&self, text: &str, html: Option<&str>) -> Result<(), ComputerError> {
+        io::clip_put(text, html)
+    }
+
+    fn clip_restore(&self, clip: &Clip) -> Result<(), ComputerError> {
+        io::clip_restore(clip)
+    }
+
+    fn launch(&self, exe: &str, args: &[String]) -> Result<i64, ComputerError> {
+        io::launch(exe, args)
     }
 }
 

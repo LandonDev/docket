@@ -86,7 +86,7 @@ impl LineSplitter {
     }
 }
 
-type Out = Arc<Mutex<Box<dyn Write + Send>>>;
+pub type Out = Arc<Mutex<Box<dyn Write + Send>>>;
 
 /// Writes one frame as one line. A failed write is the host gone: exit 0 (§16.2).
 pub fn write_frame(out: &Out, frame: &Value) {
@@ -221,6 +221,11 @@ fn on_line<D: Desktop>(
                 if let Some(flag) = guard(&cancels).get(&target.to_string()) {
                     flag.store(true, Ordering::SeqCst);
                 }
+            }
+        }
+        if method == "capture.stream.ack" {
+            if let (Some(stream), Some(seq)) = (params.get("stream").and_then(Value::as_str), params.get("seq").and_then(Value::as_i64)) {
+                service.stream_ack(stream, seq);
             }
         }
         return false;

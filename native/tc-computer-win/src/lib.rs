@@ -2,6 +2,7 @@
 //! wire served over UI Automation. Everything but `platform::windows` is
 //! platform-free and tested on the box with `cargo test`.
 
+pub mod act;
 pub mod book;
 pub mod capture;
 pub mod clip;
@@ -12,6 +13,7 @@ pub mod locks;
 pub mod platform;
 pub mod server;
 pub mod service;
+pub mod stream;
 pub mod text;
 
 pub use generated::{contract, wire};

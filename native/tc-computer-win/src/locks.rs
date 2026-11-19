@@ -136,6 +136,14 @@ pub fn lock_file(path: &Path, wait: Duration) -> std::io::Result<Option<FileLock
     }
 }
 
+/// The signed-in user's own temporary folder: `%LOCALAPPDATA%\Temp`, never a `TMP` a caller set.
+pub fn user_temp() -> PathBuf {
+    match std::env::var_os("LOCALAPPDATA") {
+        Some(l) if cfg!(windows) => PathBuf::from(l).join("Temp"),
+        _ => std::env::temp_dir(),
+    }
+}
+
 /// `<user temp>\tc-computer\<clipboard|session>.lock`.
 pub fn machine_lock_path(user_temp: &Path, which: &str) -> PathBuf {
     use crate::generated::contract::locks;
