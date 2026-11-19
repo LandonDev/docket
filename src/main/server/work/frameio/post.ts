@@ -1,4 +1,6 @@
-import { closeSync, openSync, readSync, statSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { closeSync, copyFileSync, mkdirSync, openSync, readSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { z } from 'zod'
 import { MediaShapeSchema } from '@shared/contract-work-media'
 import type { FrameioPost } from '@shared/contract-work-frameio'
@@ -6,7 +8,8 @@ import { liveOf as mediaOf, pushSoon } from '../media/view'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { ActStale } from '../outbox/kinds'
 import { frameioConfig } from './auth'
-import { FrameioError, type FrameioApi } from './api'
+import { mediaServes } from '../../media'
+import { FrameioError, seg, type FrameioApi } from './api'
 import { annotationOf, commentBody } from './map'
 import { frameioItem, frameioOf, saveItem } from './live'
 import { syncComments } from './media'
@@ -36,13 +39,13 @@ export const FrameioPostSchema: z.ZodType<FrameioPost> = z.discriminatedUnion('w
     itemId: z.string().optional(),
     noteId: z.string().optional()
   }),
-  z.object({ what: z.literal('version'), account: z.string(), onto: z.string(), ontoName: z.string(), path: z.string(), name: z.string(), size: z.number().int().nonnegative(), itemId: z.string().optional() })
+  z.object({ what: z.literal('version'), account: z.string(), onto: z.string(), ontoName: z.string(), from: z.string(), path: z.string(), name: z.string(), size: z.number().int().nonnegative(), itemId: z.string().optional() })
 ])
 
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 export function postWords(p: FrameioPost): { summary: string; verb: string } {
-  if (p.what === 'version') return { summary: `Add ${p.name} as the next version of ${p.ontoName} in Frame.io`, verb: 'Upload' }
+  if (p.what === 'version') return { summary: `Add ${p.from} as the next version of ${p.ontoName} in Frame.io`, verb: 'Upload' }
   const lossy = p.shapes?.length ? annotationOf(p.shapes, p.height ?? 1080).lossy : []
   return { summary: `Comment on ${p.fileName}${p.clock ? ` at ${p.clock}` : ''}: “${clip(p.text, 60)}”${lossy.length ? ` (${lossy.join('; ')})` : ''}`, verb: 'Post' }
 }
@@ -77,8 +80,8 @@ async function upload(api: FrameioApi, account: string, folder: string, p: Extra
   }
 }
 
-/** Puts a new file on top of `onto`'s stack, making the stack when `onto` stands alone. Answers the new file's id. */
-export async function addVersion(ctx: WorkCtx, p: Extract<FrameioPost, { what: 'version' }>): Promise<string> {
+/** Puts a new file on top of `onto`'s stack, making the stack when `onto` stands alone. Answers the new file's id and its stack's. */
+export async function addVersion(ctx: WorkCtx, p: Extract<FrameioPost, { what: 'version' }>): Promise<{ id: string; stackId: string }> {
   const { api } = frameioOf(ctx)
   const onto = await api.file(p.account, p.onto).catch((err) => {
     if (err instanceof FrameioError && err.status === 404) throw new ActStale(`${p.ontoName} is no longer in Frame.io. Nothing was uploaded.`)
@@ -86,13 +89,38 @@ export async function addVersion(ctx: WorkCtx, p: Extract<FrameioPost, { what: '
   })
   if (!onto.parent_id) throw new Error(`Frame.io did not say where ${p.ontoName} is`)
   const stacked = await api.isStack(p.account, onto.parent_id)
-  const folder = stacked ? ((await api.call<{ parent_id?: string }>('GET', `/accounts/${p.account}/version_stacks/${onto.parent_id}`)).parent_id ?? '') : onto.parent_id
+  const folder = stacked ? ((await api.call<{ parent_id?: string }>('GET', `/accounts/${seg(p.account)}/version_stacks/${seg(onto.parent_id)}`)).parent_id ?? '') : onto.parent_id
   if (!folder) throw new Error(`Frame.io did not say which folder holds ${p.ontoName}`)
   const id = await upload(api, p.account, folder, p)
   // The migration guide's way: upload into the stack's folder, then move the file into the stack.
-  if (stacked) await api.moveFile(p.account, id, onto.parent_id)
-  else await api.makeStack(p.account, folder, [onto.id, id])
-  return id
+  if (stacked) {
+    await api.moveFile(p.account, id, onto.parent_id)
+    return { id, stackId: onto.parent_id }
+  }
+  return { id, stackId: (await api.makeStack(p.account, folder, [onto.id, id])).id }
+}
+
+/** Where a held version's copy waits: under the host's data folder, one folder per hold. */
+export const heldDir = (dataDir: string): string => join(dataDir, 'work-frameio', 'held')
+
+/**
+ * Copies a file named for upload into the held folder: only a file the
+ * media host would show (by its real path, so a link pointing out is out),
+ * so the bytes pressed are the bytes named.
+ */
+export function holdCopy(dataDir: string, file: string): { path: string; size: number } {
+  if (!mediaServes(file)) throw new Error(`${file} is outside the folders this host shows; put the file in the workspace first`)
+  const dir = join(heldDir(dataDir), randomUUID())
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  const path = join(dir, basename(file))
+  copyFileSync(realpathSync(file), path)
+  return { path, size: statSync(path).size }
+}
+
+/** A held copy goes once its post is sent or given up. */
+function dropCopy(dataDir: string, p: FrameioPost): void {
+  if (p.what !== 'version' || dirname(dirname(p.path)) !== heldDir(dataDir)) return
+  rmSync(dirname(p.path), { recursive: true, force: true })
 }
 
 export const frameioPostKind: ActKindDef<FrameioPost, never> = {
@@ -103,11 +131,12 @@ export const frameioPostKind: ActKindDef<FrameioPost, never> = {
   async execute(p, act) {
     if (!frameioConfig.tokens.read()) throw new ActStale('Frame.io is not signed in on this host. Nothing was posted.')
     if (p.what === 'version') {
-      const id = await addVersion(act, p)
+      const { id, stackId } = await addVersion(act, p)
+      dropCopy(act.dataDir, p)
       const row = p.itemId ? frameioItem(act.db, p.itemId) : null
       if (row && p.itemId) {
         mediaOf(act).store.addVersion(p.itemId, { source: { at: 'frameio', account: p.account, fileId: id }, name: p.name, by: 'owner' })
-        saveItem(act.db, { ...row, fileIds: [...row.fileIds, id] })
+        saveItem(act.db, { ...row, stackId, fileIds: [...row.fileIds, id] })
         pushSoon(act, p.itemId)
       }
       return { summary: `Added ${p.name} to ${p.ontoName} in Frame.io`, ref: { fileId: id } }
@@ -127,10 +156,11 @@ export const frameioPostKind: ActKindDef<FrameioPost, never> = {
   wayBack: () => null
 }
 
-/** A discarded comment takes its waiting note with it. */
+/** A post given up (discarded, or stale) takes its waiting note or its held copy with it. */
 export function onPostDecided(ctx: WorkCtx, item: { kind: string; state: string; payload: unknown }): void {
-  if (item.kind !== 'frameio.post' || item.state !== 'discarded') return
+  if (item.kind !== 'frameio.post' || (item.state !== 'discarded' && item.state !== 'stale')) return
   const p = item.payload as FrameioPost
+  dropCopy(ctx.dataDir, p)
   if (p.what !== 'comment' || !p.itemId || !p.noteId) return
   const { store } = mediaOf(ctx)
   if (store.note(p.noteId)?.state !== 'suggested') return

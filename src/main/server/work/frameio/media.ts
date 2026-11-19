@@ -1,10 +1,11 @@
+import { randomUUID } from 'node:crypto'
 import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as WebStream } from 'node:stream/web'
 import type { MediaPlay, MediaProbe } from '@shared/contract-work-media'
-import type { CanvasItem, CanvasSource } from '@shared/work'
+import type { CanvasItem, CanvasSource, Principal } from '@shared/work'
 import { mediaUrl, workMediaRoot } from '../../media'
 import { runnerOf } from '../formats/jobs'
 import { probeFile } from '../media/probe'
@@ -35,19 +36,50 @@ const href = (l?: FioLink | null): string | null => l?.download_url ?? l?.url ??
 const safe = (id: string): string => id.replace(/[^A-Za-z0-9_-]/g, '')
 
 /** The rendition a viewer gets: a video's best transcode, a plain picture as it is, any other picture as Frame.io's high-quality still. */
-export function renditionOf(file: FioFile): { url: string; kind: 'video' | 'image'; mime: string } {
+export function renditionOf(file: FioFile): { url: string; kind: 'video' | 'image'; mime: string; which: 'original' | 'high_quality' | 'efficient' } {
   const links = file.media_links ?? {}
   const type = file.media_type ?? ''
+  const best = (): { url: string; which: 'high_quality' | 'efficient' } | null => {
+    const hq = href(links.high_quality)
+    if (hq) return { url: hq, which: 'high_quality' }
+    const small = href(links.efficient)
+    return small ? { url: small, which: 'efficient' } : null
+  }
   if (type.startsWith('image/')) {
     const original = PLAIN_IMAGES.has(type) ? href(links.original) : null
-    const url = original ?? href(links.high_quality) ?? href(links.efficient)
-    if (!url) throw new Error(`Frame.io has no picture of ${file.name} to show yet`)
-    return { url, kind: 'image', mime: original ? type : 'image/jpeg' }
+    if (original) return { url: original, kind: 'image', mime: type, which: 'original' }
+    const b = best()
+    if (!b) throw new Error(`Frame.io has no picture of ${file.name} to show yet`)
+    return { ...b, kind: 'image', mime: 'image/jpeg' }
   }
-  const url = href(links.high_quality) ?? href(links.efficient)
-  if (!url) throw new Error(`Frame.io has not finished making ${file.name} playable`)
-  return { url, kind: 'video', mime: 'video/mp4' }
+  const b = best()
+  if (!b) throw new Error(`Frame.io has not finished making ${file.name} playable`)
+  return { ...b, kind: 'video', mime: 'video/mp4' }
 }
+
+/** What the copy beside a Frame.io file says of itself: which rendition, of what size of file, and the picture's height. */
+interface Meta {
+  size?: number
+  dest?: string
+  which?: string
+  height?: number
+}
+const metaPathOf = (dataDir: string, fileId: string): string => join(workMediaRoot(dataDir), `frameio-${safe(fileId)}`, 'meta.json')
+function readMeta(path: string): Meta | null {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as Meta
+  } catch {
+    return null
+  }
+}
+
+/** The picture's height a file's mark sizes are counted in: the probe's, else the one kept beside the copy, else 1080. */
+export function heightOf(ctx: WorkCtx, fileId: string): number {
+  return frameioOf(ctx).probes.get(fileId)?.height ?? readMeta(metaPathOf(ctx.dataDir, fileId))?.height ?? 1080
+}
+
+/** Downloads in flight, by copy: two items showing one file share one download. */
+const downloads = new Map<string, Promise<void>>()
 
 async function probeOf(ctx: WorkCtx, path: string, signal: AbortSignal): Promise<{ probe: MediaProbe; table?: import('@shared/contract-work-media').FrameTable }> {
   if (frameioConfig.probe) return frameioConfig.probe(path, signal)
@@ -62,7 +94,7 @@ async function probeOf(ctx: WorkCtx, path: string, signal: AbortSignal): Promise
 async function download(url: string, dest: string, signal: AbortSignal): Promise<void> {
   const res = await frameioConfig.fetch(url, { signal })
   if (!res.ok || !res.body) throw new Error(`Frame.io's copy did not download (${res.status})`)
-  const part = `${dest}.part`
+  const part = `${dest}.${randomUUID()}.part`
   try {
     await pipeline(Readable.fromWeb(res.body as unknown as WebStream), createWriteStream(part, { mode: 0o600 }), { signal })
     renameSync(part, dest)
@@ -81,16 +113,21 @@ export const frameioMedia: MediaSourceAdapter = {
     const r = renditionOf(file)
     const dir = join(workMediaRoot(ctx.dataDir), `frameio-${safe(fileId)}`)
     const dest = join(dir, r.kind === 'video' ? 'rendition.mp4' : `rendition.${r.mime.split('/')[1]}`)
-    const metaPath = join(dir, 'meta.json')
-    // A copy stands until Frame.io's file changes: its size says so.
-    const meta = existsSync(metaPath) ? (JSON.parse(readFileSync(metaPath, 'utf8')) as { size?: number; dest?: string }) : null
-    if (!existsSync(dest) || meta?.size !== file.file_size || meta?.dest !== dest) {
-      mkdirSync(dir, { recursive: true, mode: 0o700 })
-      await download(r.url, dest, signal)
-      writeFileSync(metaPath, JSON.stringify({ size: file.file_size, dest }))
+    const metaPath = metaPathOf(ctx.dataDir, fileId)
+    // A copy stands until Frame.io's file changes (its size says so) or a better rendition is ready.
+    const meta = readMeta(metaPath)
+    if (!existsSync(dest) || meta?.size !== file.file_size || meta?.dest !== dest || meta?.which !== r.which || file.file_size === undefined) {
+      let running = downloads.get(dest)
+      if (!running) {
+        mkdirSync(dir, { recursive: true, mode: 0o700 })
+        running = download(r.url, dest, signal).finally(() => downloads.delete(dest))
+        downloads.set(dest, running)
+      }
+      await running
     }
     const probed = await probeOf(ctx, dest, signal)
     live.probes.set(fileId, probed.probe)
+    writeFileSync(metaPath, JSON.stringify({ size: file.file_size, dest, which: r.which, height: probed.probe.height } satisfies Meta))
     const url = mediaUrl(dest, { kind: r.kind, mime: r.mime }, statSync(dest).mtimeMs)
     let play: MediaPlay
     if (r.kind === 'image') play = { via: 'image', url, width: probed.probe.width, height: probed.probe.height }
@@ -101,7 +138,7 @@ export const frameioMedia: MediaSourceAdapter = {
 }
 
 /** Opens a Frame.io file in the thread's pane: one media item for its version stack, shared, its comments in. */
-export async function openFile(ctx: WorkCtx, sessionId: string, account: string, fileId: string): Promise<CanvasItem> {
+export async function openFile(ctx: WorkCtx, sessionId: string, account: string, fileId: string, by: Principal = 'owner'): Promise<CanvasItem> {
   const { api } = frameioOf(ctx)
   const file = await api.file(account, fileId)
   let stackId: string | null = null
@@ -119,15 +156,18 @@ export async function openFile(ctx: WorkCtx, sessionId: string, account: string,
   const item = ctx.canvas.open(pane, 'media', { at: 'frameio', account, fileId: files[0].id }, title)
   const { store } = mediaOf(ctx)
   // The first version is named for its own file, not for the item.
-  store.ensureItem(item.id, item.sessionId, { source: item.source, name: files[0].name, by: 'owner' })
+  store.ensureItem(item.id, item.sessionId, { source: item.source, name: files[0].name, by })
   const have = new Set(store.versions(item.id).flatMap((v) => (v.source.at === 'frameio' ? [v.source.fileId] : [])))
-  for (const f of files) if (!have.has(f.id)) store.addVersion(item.id, { source: { at: 'frameio', account, fileId: f.id }, name: f.name, by: 'owner' })
+  for (const f of files) if (!have.has(f.id)) store.addVersion(item.id, { source: { at: 'frameio', account, fileId: f.id }, name: f.name, by })
   if (!store.item(item.id)?.shared) store.setShared(item.id, true)
   saveItem(ctx.db, { itemId: item.id, sessionId: item.sessionId, account, stackId, fileIds: files.map((f) => f.id) })
   await syncComments(ctx, item.id).catch((err: unknown) => ctx.log(`frameio: comments of ${title}: ${err instanceof Error ? err.message : err}`))
   pushSoon(ctx, item.id)
   return item
 }
+
+/** Where a note sits, with its marks' line widths left out: the same comment read at another picture height has not moved. */
+const placeOf = (a: NoteInput['anchor']): string => JSON.stringify({ ...a, shapes: a.shapes?.map((x) => ({ ...x, width: 0 })) })
 
 /**
  * Brings an item's notes in step with Frame.io's comments on each of its
@@ -148,20 +188,23 @@ export async function syncComments(ctx: WorkCtx, itemId: string, signal?: AbortS
     if (v.source.at !== 'frameio') continue
     const fileId = v.source.fileId
     const comments = await live.api.comments(row.account, fileId, signal)
-    const height = live.probes.get(fileId)?.height ?? 1080
+    const height = heightOf(ctx, fileId)
     const put = (c: (typeof comments)[number], parentId?: string, parentAnchor?: NoteInput['anchor']): string => {
       seen.add(c.id)
       const n = noteOfComment(c, { versionId: v.id, me, height })
       const anchor = parentAnchor ?? n.anchor
       const was = ours.get(c.id)
-      if (was && JSON.stringify(was.anchor) === JSON.stringify(anchor)) {
-        if (was.body !== n.body || was.resolved !== n.resolved) {
-          store.editNote(was.id, { body: n.body, resolved: n.resolved })
-          changed++
+      if (was) {
+        // Moved in Frame.io (or read at another picture height): the anchor changes in place, so the note keeps its id and the replies made on it here.
+        const moved = placeOf(was.anchor) !== placeOf(anchor)
+        if (moved) {
+          ctx.db.prepare(`UPDATE work_media_notes SET anchor = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(anchor), Date.now(), was.id)
+          store.bump(itemId)
         }
+        if (was.body !== n.body || was.resolved !== n.resolved) store.editNote(was.id, { body: n.body, resolved: n.resolved })
+        if (moved || was.body !== n.body || was.resolved !== n.resolved) changed++
         return was.id
       }
-      if (was) store.removeNote(was.id)
       const made = store.addNote(itemId, { anchor, body: n.body, by: n.by, external: n.external, ...(parentId ? { parentId } : {}) })
       if (n.resolved) store.editNote(made.id, { resolved: true })
       changed++

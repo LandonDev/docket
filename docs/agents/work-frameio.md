@@ -89,9 +89,13 @@ answered 404: …". Paths used: `/me`, `/accounts`,
   like any other. It is fetched again when Frame.io's file size changes.
   ffprobe reads the copy for the frame table; Frame.io keeps no frame rate.
 - Comments come in as notes: at open, after a post, on any webhook about the
-  file, and on `frameio_refresh`. New comments are added, changed words and
-  resolved marks follow, comments deleted in Frame.io go. Notes made in
-  TempCode are left alone. The media pillar never calls an adapter's
+  file, and on `frameio_refresh`. New comments are added; changed words,
+  resolved marks and a new frame or pin follow in place, so a note keeps its
+  id and the replies made on it in TempCode (the anchor is written to
+  `work_media_notes` directly: `MediaStore.editNote` takes no anchor); a
+  comment deleted in Frame.io goes, with what hangs on it. Notes made in
+  TempCode are left alone. Mark sizes count in the rendition's height, kept
+  in `meta.json` beside the copy, and a change of height alone is not a move. The media pillar never calls an adapter's
   `notes`, so this pillar keeps them itself (`syncComments`); the adapter
   has none.
 
@@ -129,13 +133,16 @@ grant ever covers posting to a review others read). Its payload
   `FRAME_BASE`), drops the waiting note and reads the comments again, so the
   posted comment comes back as Frame.io's, the person's own. Discarded in
   the Outbox, it takes its waiting note with it.
-- `version`: a file on the host, its name and size, and the version it goes
-  on top of. On the press: `local_upload` into the stack's folder, each
+- `version`: a file on the host and the version it goes on top of. Held, the
+  file is copied into `<userData>/work-frameio/held/<id>/`, and only from the
+  folders the media host shows, by its real path (`mediaServes`: a link that
+  points out is refused), so the bytes pressed are the bytes named and the
+  summary names the full path. On the press: `local_upload` into the stack's folder, each
   part `PUT` to the address Frame.io gave (`x-amz-acl: private`), the
   upload status polled up to ten minutes, then `move` into the stack (the
   migration guide's way), or a new stack of the two when the file stood
-  alone. A file whose size changed since it was held is refused stale. The
-  item gains the version.
+  alone. The item gains the version; the copy goes once it is sent,
+  discarded or stale.
 
 A post with Frame.io signed out, or a file gone (404), is stale and nothing
 goes. Replies cannot be posted: V4 has no route for them.
@@ -148,19 +155,25 @@ A routine whose trigger is `{on: 'file', source: {at: 'frameio', …}, by:
 
 - needs a sign-in and the host's **public https address**
   (`work.frameio.setPublicUrl`, Settings → Work), else it says why it waits;
-- makes one webhook per Frame.io workspace (found from the file's project),
+- makes one webhook per Frame.io workspace (found from the file's project;
+  routines arming together wait on one making), retried with a growing wait
+  while it fails,
   for `comment.created`, `comment.updated`, `comment.deleted`,
   `comment.completed`, `comment.uncompleted` and `file.versioned`, pointed at
   `<public address>/frameio/hook`. Frame.io gives the signing secret only
-  then; it is kept with the tokens. A new address deletes the old webhooks.
+  then; it is kept with the tokens. A new address, or a new sign-in, deletes
+  the old webhooks and every armed routine makes its own again.
 
-The receiver listens on `127.0.0.1:7696` (`TEMP_CODE_FRAMEIO_HOOK_PORT`; any
-free port on an isolated instance). **The tunnel must route the public
+The receiver listens on `127.0.0.1:7696` (`TEMP_CODE_FRAMEIO_HOOK_PORT`, 0 for
+any free port), and only once a webhook exists. **The tunnel must route the public
 address's `/frameio/hook` to it**; nothing routes it today. A delivery must be
-signed by one of the webhooks' secrets within five minutes, or it gets a 401.
+signed by one of the webhooks' secrets within five minutes, or it gets a 401;
+the same delivery twice (a replay, or two webhooks' copies) is taken once.
 It answers 200 at once and then reads what the delivery names (it carries
-only ids): a comment's file, a version's file. Every open item showing that
-file or its stack reads its comments again; the routines watching any version
+only ids): a comment's file, a version's file. A new version joins every open
+item showing its stack, or the lone file it was stacked on (a file's stack is
+read again on `file.versioned`; a lone file's is never cached). Every open
+item showing that file or its stack reads its comments again; the routines watching any version
 of the stack fire, with words such as "Dana Lee commented in Frame.io: “…”",
 unless the person did it himself (`user.id` is his).
 
@@ -227,4 +240,11 @@ When the owner signs in, before trusting any frame:
 - A rendition is downloaded whole before it plays; a long 4K cut takes as
   long as its download.
 - `comment.deleted` cannot be read back, so every open item of the account
-  reads its comments again.
+  reads its comments again; a busy workspace costs a few calls per event
+  even for files nothing watches.
+- An upload that fails after its bytes went (the status wait, the move)
+  leaves the file loose in the folder, and a second press uploads again.
+- Whether Adobe's Native App credential takes an `http://127.0.0.1`
+  redirect at all (the live test's first step).
+- Ids an agent passes are checked to be ids (`seg` in `api.ts`) before they
+  enter a path.

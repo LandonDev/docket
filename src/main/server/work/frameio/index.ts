@@ -1,7 +1,7 @@
 import { handled, NOT_HANDLED, type TriggerSource } from '@shared/work'
 import { registerMediaSource } from '../media/sources'
 import type { WorkModule } from '../modules'
-import { dropHooks, frameioTrigger, startHooks } from './hooks'
+import { dropHooks, frameioTrigger, rearmHooks, startHooks } from './hooks'
 import { ensureFrameioTables, frameioOf, removeSessionItems, setSetting, statusOf, stopFrameio } from './live'
 import { frameioMedia, openFile } from './media'
 import { frameioPostKind, onPostDecided } from './post'
@@ -39,6 +39,7 @@ export const frameio: WorkModule = {
         return handled({ url: live.auth.start(req.params.clientId, req.params.redirectUri) })
       case 'work.frameio.finish':
         await live.auth.finish(req.params.url)
+        rearmHooks(ctx)
         return handled(statusOf(ctx))
       case 'work.frameio.signOut':
         await dropHooks(ctx).catch(() => undefined)
@@ -47,9 +48,10 @@ export const frameio: WorkModule = {
       case 'work.frameio.setPublicUrl': {
         const url = req.params.url
         if (url && !url.startsWith('https://')) throw new Error('Frame.io sends webhooks only to an https address')
-        // Webhooks made for the old address go; a routine makes its own again when it next arms.
+        // Webhooks made for the old address go; every armed routine makes its own again for the new one.
         await dropHooks(ctx).catch(() => undefined)
         setSetting(ctx.db, 'publicUrl', url ? url.replace(/\/$/, '') : null)
+        rearmHooks(ctx)
         const status = statusOf(ctx)
         ctx.push({ push: 'work.frameio', status }, { need: 'read' })
         return handled(status)

@@ -3,14 +3,14 @@ import { basename, isAbsolute } from 'node:path'
 import { z } from 'zod'
 import { clock, frameStart, MediaRegionSchema, type MediaShape } from '@shared/contract-work-media'
 import type { FrameioEntry, FrameioPost } from '@shared/contract-work-frameio'
-import { workText, type WorkToolResult } from '@shared/work'
+import { agentPrincipal, workText, type WorkToolResult } from '@shared/work'
 import { frameOf } from '../media/tools'
 import { agentWrite, liveOf as mediaOf, mediaItem, preparerOf } from '../media/view'
 import type { ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { frameioConfig } from './auth'
 import { frameioItem, frameioOf } from './live'
 import { openFile, syncComments } from './media'
-import { postWords } from './post'
+import { holdCopy, postWords } from './post'
 
 /**
  * The agent's Frame.io tools (docs/agents/work-frameio.md, "Tools"): look
@@ -86,7 +86,7 @@ export const frameioTools: WorkTool[] = [
       const a = args as { account: string; file: string }
       try {
         signedIn()
-        const item = await openFile(ctx, ctx.sessionId, a.account, a.file)
+        const item = await openFile(ctx, ctx.sessionId, a.account, a.file, agentPrincipal(ctx.host, ctx.sessionId))
         const { store } = mediaOf(ctx)
         const notes = store.notes(item.id).filter((n) => n.external?.service === 'frameio' && !n.parentId).length
         return workText(`Opened ${item.title} as media item ${item.id}: ${store.versions(item.id).length} version(s), ${notes} Frame.io comment(s). Others review it, so your notes wait for the person.`)
@@ -164,10 +164,11 @@ export const frameioTools: WorkTool[] = [
         signedIn()
         const { itemId, account } = ownItem(ctx, a.item)
         if (!isAbsolute(a.file) || !existsSync(a.file) || !statSync(a.file).isFile()) throw new Error(`there is no file at ${a.file}`)
+        const copy = holdCopy(ctx.dataDir, a.file)
         const versions = mediaOf(ctx).store.versions(itemId).filter((v) => v.source.at === 'frameio')
         const top = versions[versions.length - 1]
         if (!top || top.source.at !== 'frameio') throw new Error('the item has no Frame.io version to stack onto')
-        return hold(ctx, { what: 'version', account, onto: top.source.fileId, ontoName: top.name, path: a.file, name: basename(a.file), size: statSync(a.file).size, itemId })
+        return hold(ctx, { what: 'version', account, onto: top.source.fileId, ontoName: top.name, from: a.file, path: copy.path, name: basename(a.file), size: copy.size, itemId })
       } catch (err) {
         return fail(message(err))
       }

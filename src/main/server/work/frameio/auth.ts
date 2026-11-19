@@ -185,7 +185,9 @@ export class FrameioAuth {
       if (!t?.refresh) return null
       try {
         const fresh = await this.token({ grant_type: 'refresh_token', client_id: t.clientId, refresh_token: t.refresh })
-        frameioConfig.tokens.write({ ...t, ...fresh, refresh: fresh.refresh ?? t.refresh })
+        // What is stored now, not what was read before the wait: a webhook's secret may have been saved meanwhile.
+        const now = frameioConfig.tokens.read() ?? t
+        frameioConfig.tokens.write({ ...now, ...fresh, refresh: fresh.refresh ?? now.refresh })
         return fresh.access
       } catch (err) {
         this.error = err instanceof Error ? err.message : String(err)

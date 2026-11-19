@@ -22,6 +22,8 @@ export function FrameioRows({ link }: { link: Link | null | undefined }) {
   const read = useHostRead(link, () => link!.request<FrameioStatus>("work.frameio.status", {}));
   const [status, setStatus] = useState<FrameioStatus | undefined>(undefined);
   useEffect(() => {
+    // Another host's link: what the last one pushed is not this one's.
+    setStatus(undefined);
     if (!link) return;
     return link.onPush((push) => {
       if (push.push === "work.frameio") setStatus(push.status);

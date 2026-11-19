@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -7,6 +7,7 @@ import type { FrameioEntry, FrameioStatus } from '@shared/contract-work-frameio'
 import { VIEWER_DEFAULT_PLAYS, type MediaView } from '@shared/contract-work-media'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { CanvasItem, Trigger, TriggerSource } from '@shared/work'
+import { setMediaRoots } from '../../media'
 import { canvas } from '../canvas/index'
 import { formats } from '../formats/index'
 import { media } from '../media/index'
@@ -15,7 +16,7 @@ import { outbox as outboxModule } from '../outbox/index'
 import { cast, makeRig, until, type Rig } from '../outbox/rig'
 import { challengeOf, configureFrameio, frameioConfig, memoryTokens } from './auth'
 import { FakeFrameio } from './fakeFrameio'
-import { signedBy } from './hooks'
+import { hookPort, signedBy } from './hooks'
 import { frameio } from './index'
 import { annotationOf, FRAME_BASE, frameOfComment, shapesOf } from './map'
 
@@ -33,6 +34,7 @@ let fake: FakeFrameio
 let rig: Rig
 let restore: () => void
 const probed: string[] = []
+let probeHeight = 1080
 
 const freePort = (): Promise<number> =>
   new Promise((resolve) => {
@@ -53,6 +55,7 @@ afterAll(() => {
 beforeEach(async () => {
   fake = await new FakeFrameio().start()
   probed.length = 0
+  probeHeight = 1080
   restore = configureFrameio({
     api: fake.api,
     ims: fake.base,
@@ -62,15 +65,19 @@ beforeEach(async () => {
       probed.push(path)
       if (readFileSync(path).length !== 4096) throw new Error('not the rendition')
       return {
-        probe: { kind: 'video', container: 'mov,mp4', size: 4096, mtimeMs: 1, width: 1920, height: 1080, rotation: 0, codec: 'h264', rate: { num: 24, den: 1 }, durationS: 250 / 24, frames: 250 },
+        probe: { kind: 'video', container: 'mov,mp4', size: 4096, mtimeMs: 1, width: (probeHeight * 16) / 9, height: probeHeight, rotation: 0, codec: 'h264', rate: { num: 24, den: 1 }, durationS: 250 / 24, frames: 250 },
         table: { kind: 'cfr', start: 0, rate: { num: 24, den: 1 }, count: 250 }
       }
     }
   })
   rig = await makeRig({ modules: [outboxModule, canvas, formats, media, frameio] })
   cast(rig)
+  // The folders this host shows: the workspace, as the media host has them.
+  mkdirSync(join(rig.dir, 'ws'), { recursive: true })
+  setMediaRoots(() => [join(rig.dir, 'ws')])
 })
 afterEach(async () => {
+  setMediaRoots(() => [])
   await rig.close()
   restore()
   await fake.stop()
@@ -249,11 +256,17 @@ describe('held posts', () => {
 
   it('holds a new version, then uploads it in parts and stacks it on top on his press', async () => {
     const item = await openCut()
-    const file = join(rig.dir, 'cut12_v3.mp4')
+    const file = join(rig.dir, 'ws', 'cut12_v3.mp4')
     writeFileSync(file, Buffer.alloc(5000, 7))
+    // A link that points out of the shown folders is refused, whatever it is named.
+    writeFileSync(join(rig.dir, 'secret.txt'), 'key')
+    symlinkSync(join(rig.dir, 'secret.txt'), join(rig.dir, 'ws', 'cut_v4.mp4'))
+    expect(text(await tool('frameio_add_version', { item: item.id, file: join(rig.dir, 'ws', 'cut_v4.mp4') }))).toContain('outside the folders this host shows')
     expect(text(await tool('frameio_add_version', { item: item.id, file }))).toBe(
-      'Held: Add cut12_v3.mp4 as the next version of cut12_v2.mov in Frame.io. It waits in the Outbox for the person to post it; nothing went to Frame.io.'
+      `Held: Add ${file} as the next version of cut12_v2.mov in Frame.io. It waits in the Outbox for the person to post it; nothing went to Frame.io.`
     )
+    // What goes is what was named when it was held: a rewrite after the hold does not reach Frame.io.
+    writeFileSync(file, Buffer.alloc(5000, 9))
     expect(fake.writes).toEqual([])
     const [held] = await rig.waiting()
     expect(held).toMatchObject({ verb: 'Upload' })
@@ -270,8 +283,36 @@ describe('held posts', () => {
   })
 })
 
+describe('keeping notes in step', () => {
+  it("moves a comment's note in place when it is read again at the picture's real height, keeping its id and the replies made here", async () => {
+    probeHeight = 2160
+    const item = await openCut()
+    const first = (await rig.rpc<MediaView>('work.media.view', { itemId: item.id })).notes.find((n) => n.body === 'The logo pops a frame early')!
+    expect(first.anchor.shapes![0].width).toBe(8 / 1080)
+    const reply = await rig.rpc<{ id: string }>('work.media.note', { itemId: item.id, anchor: first.anchor, body: 'Our own reply', parentId: first.id })
+    await readyView(item.id)
+    expect(text(await tool('frameio_refresh', { item: item.id }))).toBe('Nothing new.')
+    // A reviewer moves it in Frame.io: same note, new frame, the reply still there.
+    const c = [...fake.comments.values()].find((x) => x.text === 'The logo pops a frame early')!
+    c.timestamp = 31
+    // The comment and Frame.io's reply on it, which sits on its anchor.
+    expect(text(await tool('frameio_refresh', { item: item.id }))).toBe('2 note(s) changed.')
+    const notes = (await rig.rpc<MediaView>('work.media.view', { itemId: item.id })).notes
+    const moved = notes.find((n) => n.body === 'The logo pops a frame early')!
+    expect([moved.id, moved.anchor.frame]).toEqual([first.id, 30])
+    expect(notes.find((n) => n.id === reply.id)?.parentId).toBe(first.id)
+  })
+})
+
 describe('webhooks as a trigger', () => {
-  const trigger: Extract<Trigger, { on: 'file' }> = { on: 'file', source: { at: 'frameio', account: 'acc-1', fileId: 'file-v1' }, by: 'someone-else' }
+  it('listens on 7696 unless told otherwise, the box service (with its own userData) included', () => {
+    expect(hookPort({ TEMP_CODE_USER_DATA: '/srv/agents/temp-code-data' })).toBe(7696)
+    expect(hookPort({ TEMP_CODE_FRAMEIO_HOOK_PORT: '0' })).toBe(0)
+    expect(hookPort({ TEMP_CODE_FRAMEIO_HOOK_PORT: '7701' })).toBe(7701)
+  })
+
+  const fio = { at: 'frameio' as const, account: 'acc-1', fileId: 'file-v1' }
+  const trigger: Extract<Trigger, { on: 'file' }> = { on: 'file', source: fio, by: 'someone-else' }
   const source = (): TriggerSource => frameio.triggers![0]
 
   it('waits, and says why, until the host has a public address', async () => {
@@ -288,7 +329,12 @@ describe('webhooks as a trigger', () => {
     fake.deliverTo = `http://127.0.0.1:${process.env.TEMP_CODE_FRAMEIO_HOOK_PORT}/frameio/hook`
     const fired: string[] = []
     const off = source().arm(trigger, (cause) => fired.push(cause), null)
+    // A second routine in the same workspace, armed in the same tick, shares the one webhook.
+    const offTwin = source().arm({ ...trigger, source: { ...fio, fileId: 'file-v2' } }, () => {}, null)
     await until(() => fake.hooks.size === 1)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(fake.hooks.size).toBe(1)
+    offTwin()
     const [hook] = fake.hooks.values()
     expect(hook).toMatchObject({ url: 'https://box.example.test/frameio/hook', workspace_id: 'ws-hypixel' })
     expect(hook.events).toEqual(expect.arrayContaining(['comment.created', 'file.versioned']))
@@ -311,10 +357,41 @@ describe('webhooks as a trigger', () => {
     await fake.deliver('file.versioned', { id: 'file-v2', type: 'file' }, fake.reviewer)
     await until(() => fired.length === 2)
     expect(fired[1]).toBe('A new version was added in Frame.io')
+    // A new public address: the old webhook goes, the armed routine makes one for the new address.
+    await rig.rpc('work.frameio.setPublicUrl', { url: 'https://tunnel.example.test' })
+    await until(() => [...fake.hooks.values()].some((h) => h.url === 'https://tunnel.example.test/frameio/hook'))
+    expect(fake.hooks.size).toBe(1)
+    await fake.reviewerComments('file-v1', 'Still heard', 3)
+    await until(() => fired.length === 3)
     off()
     await fake.reviewerComments('file-v2', 'After the routine went', 7)
     await new Promise((r) => setTimeout(r, 100))
-    expect(fired).toHaveLength(2)
+    expect(fired).toHaveLength(3)
+  })
+
+  it('follows a file that stood alone into the stack a reviewer makes, and adds the new version to the open item', async () => {
+    await signIn()
+    fake.files.set('file-solo', { ...fake.files.get('file-v1')!, id: 'file-solo', name: 'promo.mov', parent_id: 'fld-cuts' })
+    const item = await rig.rpc<CanvasItem>('work.frameio.open', { sessionId: 't-work', account: fake.account, fileId: 'file-solo' })
+    await rig.rpc('work.frameio.setPublicUrl', { url: 'https://box.example.test' })
+    fake.deliverTo = `http://127.0.0.1:${process.env.TEMP_CODE_FRAMEIO_HOOK_PORT}/frameio/hook`
+    const fired: string[] = []
+    const off = source().arm({ ...trigger, source: { ...fio, fileId: 'file-solo' } }, (cause) => fired.push(cause), null)
+    await until(() => fake.hooks.size === 1)
+    // A comment on the lone file first: its group is read, and not kept.
+    await fake.reviewerComments('file-solo', 'First pass', 2)
+    await until(() => fired.length === 1)
+    // Dana uploads promo_v2 and stacks it on the file.
+    fake.files.set('file-solo2', { ...fake.files.get('file-v2')!, id: 'file-solo2', name: 'promo_v2.mov', parent_id: 'vs-promo' })
+    fake.stacks.set('vs-promo', { id: 'vs-promo', name: 'promo', parent_id: 'fld-cuts', project_id: 'prj-1', files: ['file-solo2', 'file-solo'] })
+    fake.files.get('file-solo')!.parent_id = 'vs-promo'
+    await fake.deliver('file.versioned', { id: 'file-solo2', type: 'file' }, fake.reviewer)
+    await until(() => fired.length === 2)
+    await until(() => rig.pushes.some((p) => p.push === 'work.media' && (p as { view: MediaView }).view.versions.length === 2))
+    expect((await rig.rpc<MediaView>('work.media.view', { itemId: item.id })).versions.map((v) => v.name)).toEqual(['promo.mov', 'promo_v2.mov'])
+    await fake.reviewerComments('file-solo2', 'Better', 4)
+    await until(() => fired.length === 3)
+    off()
   })
 })
 

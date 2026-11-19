@@ -1,10 +1,11 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { Trigger, TriggerSource } from '@shared/work'
 import { errorText } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import { frameioConfig } from './auth'
-import { itemsOf, frameioOf, setSetting, setting } from './live'
+import { liveOf as mediaOf, pushSoon } from '../media/view'
+import { itemsOf, frameioOf, saveItem, setSetting, setting } from './live'
 import { syncComments } from './media'
 
 /**
@@ -58,9 +59,12 @@ async function groupOf(ctx: WorkCtx, account: string, fileId: string): Promise<s
   const { api } = frameioOf(ctx)
   const file = await api.file(account, fileId)
   const group = file.parent_id && (await api.isStack(account, file.parent_id)) ? file.parent_id : fileId
-  groups.set(fileId, group)
+  // A file that stands alone may be stacked at any moment (a version added to it): only a stack is kept.
+  if (group !== fileId) groups.set(fileId, group)
   return group
 }
+
+const ensuring = new Map<string, Promise<void>>()
 
 /** Makes sure Frame.io sends this workspace's comment and version events here. */
 export async function ensureHook(ctx: WorkCtx, account: string, fileId: string): Promise<void> {
@@ -71,15 +75,43 @@ export async function ensureHook(ctx: WorkCtx, account: string, fileId: string):
   if (!file.project_id) throw new Error('Frame.io did not say which project holds the file')
   const ws = (await api.project(account, file.project_id)).workspace_id
   const key = `hook:${account}:${ws}`
-  const t = frameioConfig.tokens.read()
-  const have = setting(ctx.db, key)
-  if (have && t?.hooks?.[have]) return void startReceiver(ctx)
-  const made = await api.createWebhook(account, ws, { name: 'TempCode', url: `${base.replace(/\/$/, '')}${HOOK_PATH}`, events: HOOK_EVENTS })
-  if (!made.secret) throw new Error('Frame.io made the webhook but sent no secret to check it with')
-  const now = frameioConfig.tokens.read()
-  if (now) frameioConfig.tokens.write({ ...now, hooks: { ...now.hooks, [made.id]: made.secret } })
-  setSetting(ctx.db, key, made.id)
-  startReceiver(ctx)
+  // Routines in one workspace arm in the same tick: one makes the webhook, the others wait for it.
+  let running = ensuring.get(key)
+  if (!running) {
+    running = (async () => {
+      const have = setting(ctx.db, key)
+      if (have && frameioConfig.tokens.read()?.hooks?.[have]) return
+      const made = await api.createWebhook(account, ws, { name: 'TempCode', url: `${base.replace(/\/$/, '')}${HOOK_PATH}`, events: HOOK_EVENTS })
+      if (!made.secret) throw new Error('Frame.io made the webhook but sent no secret to check it with')
+      const now = frameioConfig.tokens.read()
+      if (now) frameioConfig.tokens.write({ ...now, hooks: { ...now.hooks, [made.id]: made.secret } })
+      setSetting(ctx.db, key, made.id)
+    })().finally(() => ensuring.delete(key))
+    ensuring.set(key, running)
+  }
+  await running
+  if (current === ctx) startReceiver(ctx)
+}
+
+/**
+ * Keeps one watch's webhook made: tried at once, and again with a longer
+ * wait each time it fails (a network blip at boot, a token mid-refresh),
+ * for as long as the watch is armed.
+ */
+function keepHook(ctx: WorkCtx, w: Watch, wait = 30_000): void {
+  void ensureHook(ctx, w.account, w.fileId).catch((err: unknown) => {
+    ctx.log(`frameio: the webhook for ${w.fileId}: ${errorText(err)}; trying again in ${Math.round(wait / 1000)} s`)
+    const t = setTimeout(() => {
+      if (watches.has(w) && current === ctx) keepHook(ctx, w, Math.min(wait * 2, 30 * 60_000))
+    }, wait)
+    t.unref()
+  })
+}
+
+/** Every armed watch makes its webhook again: after a new public address, or a sign-in. */
+export function rearmHooks(ctx: WorkCtx): void {
+  if (!setting(ctx.db, 'publicUrl') || !frameioConfig.tokens.read()) return
+  for (const w of watches) keepHook(ctx, w)
 }
 
 /** Forgets every webhook this host made (a new public address, or a sign-out), deleting them in Frame.io where it can. */
@@ -118,7 +150,9 @@ export async function onHook(ctx: WorkCtx, e: HookEvent): Promise<void> {
     cause = 'A new version was added in Frame.io'
   }
   if (!fileId) return
+  if (e.type === 'file.versioned') groups.delete(fileId)
   const group = await groupOf(ctx, account, fileId)
+  if (e.type === 'file.versioned') await addToItems(ctx, account, fileId, group)
   for (const row of itemsOf(ctx.db).filter((r) => r.account === account && (r.fileIds.includes(fileId!) || r.stackId === group))) {
     await syncComments(ctx, row.itemId).catch((err: unknown) => ctx.log(`frameio: webhook sync: ${errorText(err)}`))
   }
@@ -129,6 +163,32 @@ export async function onHook(ctx: WorkCtx, e: HookEvent): Promise<void> {
     if (w.account !== account) continue
     if ((await groupOf(ctx, account, w.fileId).catch(() => w.fileId)) === group) w.fire(cause)
   }
+}
+
+/** A version added in Frame.io joins every open item showing its stack (or the file it was stacked on). */
+async function addToItems(ctx: WorkCtx, account: string, fileId: string, group: string): Promise<void> {
+  if (group === fileId) return
+  const { store } = mediaOf(ctx)
+  for (const row of itemsOf(ctx.db).filter((r) => r.account === account && !r.fileIds.includes(fileId))) {
+    // An item whose file stood alone joins the stack when its file is one of the stack's.
+    const inStack = row.stackId === group || (await Promise.all(row.fileIds.map((f) => groupOf(ctx, account, f).catch(() => f)))).includes(group)
+    if (!inStack) continue
+    const file = await frameioOf(ctx).api.file(account, fileId)
+    store.addVersion(row.itemId, { source: { at: 'frameio', account, fileId }, name: file.name, by: 'external:frameio' })
+    saveItem(ctx.db, { ...row, stackId: group, fileIds: [...row.fileIds, fileId] })
+    pushSoon(ctx, row.itemId)
+  }
+}
+
+/** Deliveries already taken, by their time and body, for the five minutes a signature stands: a replay or a second webhook's copy does nothing twice. */
+const taken = new Map<string, number>()
+function firstTime(body: string): boolean {
+  const now = Date.now()
+  for (const [k, at] of taken) if (now - at > GRACE_S * 1000) taken.delete(k)
+  const key = createHash('sha256').update(body).digest('hex')
+  if (taken.has(key)) return false
+  taken.set(key, now)
+  return true
 }
 
 const readBody = (req: IncomingMessage): Promise<string> =>
@@ -146,8 +206,16 @@ const readBody = (req: IncomingMessage): Promise<string> =>
     req.on('error', reject)
   })
 
-/** The port the receiver listens on: `TEMP_CODE_FRAMEIO_HOOK_PORT`, else 7696, else any free one for an isolated instance. */
-export const hookPort = (): number => Number(process.env.TEMP_CODE_FRAMEIO_HOOK_PORT) || (process.env.TEMP_CODE_USER_DATA ? 0 : 7696)
+/**
+ * The port the receiver listens on: `TEMP_CODE_FRAMEIO_HOOK_PORT` (0 for any
+ * free one), else 7696, the box's service included (which runs with
+ * TEMP_CODE_USER_DATA set). It listens only once a webhook exists, so a dev
+ * instance with none never takes the port.
+ */
+export function hookPort(env: NodeJS.ProcessEnv = process.env): number {
+  const v = env.TEMP_CODE_FRAMEIO_HOOK_PORT
+  return v !== undefined && v !== '' && Number.isInteger(Number(v)) ? Number(v) : 7696
+}
 
 export function startReceiver(ctx: WorkCtx): Server {
   if (receiver) return receiver
@@ -161,6 +229,7 @@ export function startReceiver(ctx: WorkCtx): Server {
         if (!secrets.some((s) => signedBy(s, String(ts ?? ''), body, typeof sig === 'string' ? sig : undefined))) return void res.writeHead(401).end()
         // Frame.io waits five seconds and retries; answer now and do the work after.
         res.writeHead(200).end()
+        if (!firstTime(`${String(ts ?? '')}\n${body}`)) return
         let e: HookEvent
         try {
           e = JSON.parse(body) as HookEvent
@@ -172,7 +241,11 @@ export function startReceiver(ctx: WorkCtx): Server {
       () => res.writeHead(413).end()
     )
   })
-  server.on('error', (err) => ctx.log(`frameio: the webhook receiver failed: ${err.message}`))
+  server.on('error', (err) => {
+    ctx.log(`frameio: the webhook receiver could not listen: ${err.message}`)
+    // Not kept: the next webhook made tries again.
+    if (receiver === server) receiver = null
+  })
   server.listen(hookPort(), '127.0.0.1')
   server.unref()
   receiver = server
@@ -187,6 +260,7 @@ export function startHooks(ctx: WorkCtx): () => void {
     receiver?.close()
     receiver = null
     groups.clear()
+    taken.clear()
   }
 }
 
@@ -208,7 +282,7 @@ export const frameioTrigger: TriggerSource<FileTrigger> = {
     if (!setting(ctx.db, 'publicUrl')) throw new Error('Frame.io needs this host’s public address for its webhooks')
     const w: Watch = { account: t.source.account, fileId: t.source.fileId, fire }
     watches.add(w)
-    void ensureHook(ctx, w.account, w.fileId).catch((err: unknown) => ctx.log(`frameio: the webhook for ${w.fileId}: ${errorText(err)}`))
+    keepHook(ctx, w)
     return () => void watches.delete(w)
   }
 }

@@ -40,8 +40,10 @@ export interface FrameioEntry {
  * version (Frame.io's file), at a frame of TempCode's count (0 is the first
  * frame; the host shifts it to Frame.io's at the send) with its pin and its
  * marks in picture space; `height` is the picture's in pixels, which
- * Frame.io's mark sizes are counted in. `version`: a file on the host
- * uploaded and stacked on top of `onto`.
+ * Frame.io's mark sizes are counted in. `version`: a file on the host,
+ * copied when it was held (`path`, under the host's data folder, so the
+ * bytes that go are the bytes he saw named), uploaded and stacked on top
+ * of `onto`; `from` is where it was.
  */
 export type FrameioPost =
   | {
@@ -60,7 +62,7 @@ export type FrameioPost =
       itemId?: string
       noteId?: string
     }
-  | { what: 'version'; account: string; onto: string; ontoName: string; path: string; name: string; size: number; itemId?: string }
+  | { what: 'version'; account: string; onto: string; ontoName: string; from: string; path: string; name: string; size: number; itemId?: string }
 
 export const FrameioRequestSchemas = [
   /** → FrameioStatus */

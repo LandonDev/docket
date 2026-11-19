@@ -87,6 +87,12 @@ export class FrameioError extends Error {
 
 type Query = Record<string, string | number | boolean | undefined>
 
+/** An id as one path segment: Frame.io's are UUIDs, so anything else (a `..`, a `?`) is refused before it can reach another route. */
+export function seg(id: string): string {
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) throw new Error(`${JSON.stringify(id).slice(0, 60)} is not a Frame.io id`)
+  return id
+}
+
 export class FrameioApi {
   constructor(
     private readonly auth: {
@@ -149,29 +155,29 @@ export class FrameioApi {
 
   me = (): Promise<FioUser> => this.call('GET', '/me')
   accounts = (): Promise<FioAccount[]> => this.list('/accounts')
-  workspaces = (a: string): Promise<FioWorkspace[]> => this.list(`/accounts/${a}/workspaces`)
-  projects = (a: string, ws: string): Promise<FioProject[]> => this.list(`/accounts/${a}/workspaces/${ws}/projects`)
-  project = (a: string, p: string): Promise<FioProject> => this.call('GET', `/accounts/${a}/projects/${p}`)
-  children = (a: string, folder: string): Promise<FioChild[]> => this.list(`/accounts/${a}/folders/${folder}/children`)
-  stackChildren = (a: string, stack: string): Promise<FioFile[]> => this.list(`/accounts/${a}/version_stacks/${stack}/children`)
+  workspaces = (a: string): Promise<FioWorkspace[]> => this.list(`/accounts/${seg(a)}/workspaces`)
+  projects = (a: string, ws: string): Promise<FioProject[]> => this.list(`/accounts/${seg(a)}/workspaces/${seg(ws)}/projects`)
+  project = (a: string, p: string): Promise<FioProject> => this.call('GET', `/accounts/${seg(a)}/projects/${seg(p)}`)
+  children = (a: string, folder: string): Promise<FioChild[]> => this.list(`/accounts/${seg(a)}/folders/${seg(folder)}/children`)
+  stackChildren = (a: string, stack: string): Promise<FioFile[]> => this.list(`/accounts/${seg(a)}/version_stacks/${seg(stack)}/children`)
   isStack = async (a: string, id: string): Promise<boolean> =>
-    this.call('GET', `/accounts/${a}/version_stacks/${id}`).then(
+    this.call('GET', `/accounts/${seg(a)}/version_stacks/${seg(id)}`).then(
       () => true,
       (err) => {
         if (err instanceof FrameioError && err.status === 404) return false
         throw err
       }
     )
-  file = (a: string, id: string, include?: string, signal?: AbortSignal): Promise<FioFile> => this.call('GET', `/accounts/${a}/files/${id}`, { query: { include }, ...(signal ? { signal } : {}) })
-  comments = (a: string, file: string, signal?: AbortSignal): Promise<FioComment[]> => this.list(`/accounts/${a}/files/${file}/comments`, { include: 'owner,replies' }, 2000, signal)
-  comment = (a: string, id: string): Promise<FioComment> => this.call('GET', `/accounts/${a}/comments/${id}`, { query: { include: 'owner' } })
-  createComment = (a: string, file: string, data: Record<string, unknown>): Promise<FioComment> => this.call('POST', `/accounts/${a}/files/${file}/comments`, { body: { data } })
+  file = (a: string, id: string, include?: string, signal?: AbortSignal): Promise<FioFile> => this.call('GET', `/accounts/${seg(a)}/files/${seg(id)}`, { query: { include }, ...(signal ? { signal } : {}) })
+  comments = (a: string, file: string, signal?: AbortSignal): Promise<FioComment[]> => this.list(`/accounts/${seg(a)}/files/${seg(file)}/comments`, { include: 'owner,replies' }, 2000, signal)
+  comment = (a: string, id: string): Promise<FioComment> => this.call('GET', `/accounts/${seg(a)}/comments/${seg(id)}`, { query: { include: 'owner' } })
+  createComment = (a: string, file: string, data: Record<string, unknown>): Promise<FioComment> => this.call('POST', `/accounts/${seg(a)}/files/${seg(file)}/comments`, { body: { data } })
   localUpload = (a: string, folder: string, name: string, size: number): Promise<FioFile & { upload_urls: Array<{ size: number; url: string }> }> =>
-    this.call('POST', `/accounts/${a}/folders/${folder}/files/local_upload`, { body: { data: { name, file_size: size } } })
-  uploadStatus = (a: string, file: string): Promise<{ upload_complete?: boolean; upload_failed?: boolean }> => this.call('GET', `/accounts/${a}/files/${file}/status`)
-  moveFile = (a: string, file: string, parent: string): Promise<FioFile> => this.call('PATCH', `/accounts/${a}/files/${file}/move`, { body: { data: { parent_id: parent } } })
-  makeStack = (a: string, folder: string, fileIds: string[]): Promise<{ id: string }> => this.call('POST', `/accounts/${a}/folders/${folder}/version_stacks`, { body: { data: { file_ids: fileIds } } })
-  webhooks = (a: string, ws: string): Promise<FioWebhook[]> => this.list(`/accounts/${a}/workspaces/${ws}/webhooks`)
-  createWebhook = (a: string, ws: string, data: { name: string; url: string; events: string[] }): Promise<FioWebhook> => this.call('POST', `/accounts/${a}/workspaces/${ws}/webhooks`, { body: { data } })
-  deleteWebhook = (a: string, id: string): Promise<void> => this.call('DELETE', `/accounts/${a}/webhooks/${id}`)
+    this.call('POST', `/accounts/${seg(a)}/folders/${seg(folder)}/files/local_upload`, { body: { data: { name, file_size: size } } })
+  uploadStatus = (a: string, file: string): Promise<{ upload_complete?: boolean; upload_failed?: boolean }> => this.call('GET', `/accounts/${seg(a)}/files/${seg(file)}/status`)
+  moveFile = (a: string, file: string, parent: string): Promise<FioFile> => this.call('PATCH', `/accounts/${seg(a)}/files/${seg(file)}/move`, { body: { data: { parent_id: parent } } })
+  makeStack = (a: string, folder: string, fileIds: string[]): Promise<{ id: string }> => this.call('POST', `/accounts/${seg(a)}/folders/${seg(folder)}/version_stacks`, { body: { data: { file_ids: fileIds } } })
+  webhooks = (a: string, ws: string): Promise<FioWebhook[]> => this.list(`/accounts/${seg(a)}/workspaces/${seg(ws)}/webhooks`)
+  createWebhook = (a: string, ws: string, data: { name: string; url: string; events: string[] }): Promise<FioWebhook> => this.call('POST', `/accounts/${seg(a)}/workspaces/${seg(ws)}/webhooks`, { body: { data } })
+  deleteWebhook = (a: string, id: string): Promise<void> => this.call('DELETE', `/accounts/${seg(a)}/webhooks/${seg(id)}`)
 }
