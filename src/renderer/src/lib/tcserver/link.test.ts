@@ -9,6 +9,7 @@ vi.mock("../native", () => ({
   isWebMode: () => native.webMode,
   getServerPort: () => Promise.resolve(native.port),
   bindServer: (router: unknown) => native.bound.push(router),
+  thisDesktopName: () => "This Mac",
 }));
 vi.mock("../nativeWeb", () => ({ webSocketUrl: () => "wss://box.example/ws" }));
 vi.mock("./smoke", () => ({ smoke: () => Promise.reject(new Error("not in tests")) }));

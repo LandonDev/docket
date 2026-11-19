@@ -12,6 +12,7 @@ import {
   type MacBridgeQueue
 } from '../lib/macBridge'
 import { startMacBridgeRules } from '../lib/macBridgeRules'
+import { thisDesktopName } from '../lib/native'
 import { useWorkspaceTabs } from '../stores/workspace'
 
 /**
@@ -50,11 +51,13 @@ export const requestCode = (request: MacBridgeRequest): string =>
 /** A computer request's steps are words, not code: they read in the text face. */
 export const requestIsCode = (request: MacBridgeRequest): boolean => request.kind !== 'computer'
 
-/** "box wants to run on this Mac", "box wants to use TextEdit on this Mac": the line a card and a toast lead with. */
-export const requestTitle = (request: MacBridgeRequest): string =>
-  request.kind === 'computer'
-    ? `${request.hostName} wants to use ${request.computer?.app || 'an app'} on this Mac`
-    : `${request.hostName} wants to ${METHOD_TEXT[request.method]}${request.interactive ? ' interactively' : ''} on this Mac`
+/** "box wants to run on this Mac", "box wants to use TextEdit on this Mac" ("on this PC" on Windows): the line a card and a toast lead with. */
+export const requestTitle = (request: MacBridgeRequest): string => {
+  const here = thisDesktopName() === 'This PC' ? 'this PC' : 'this Mac'
+  return request.kind === 'computer'
+    ? `${request.hostName} wants to use ${request.computer?.app || 'an app'} on ${here}`
+    : `${request.hostName} wants to ${METHOD_TEXT[request.method]}${request.interactive ? ' interactively' : ''} on ${here}`
+}
 
 /** A live computer session as its row names it: "Using TextEdit, window "Untitled"". */
 export const computerSessionLine = (request: MacBridgeRequest): string => {

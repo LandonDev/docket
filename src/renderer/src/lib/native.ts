@@ -380,6 +380,13 @@ export function nativePlatform(): string {
   return api()?.platform ?? "";
 }
 
+/** What this desktop is called where it names itself: "This PC" on Windows, "This Mac" otherwise (and at /ui or in a test). */
+export function thisDesktopName(): "This PC" | "This Mac" {
+  // The registry builds environment zero in node tests too, where there is no window.
+  if (typeof window === "undefined") return "This Mac";
+  return nativePlatform() === "win32" ? "This PC" : "This Mac";
+}
+
 /** The in-process server's port, straight from preload; never opens a socket. */
 export async function getServerPort(): Promise<number> {
   const port = await api().getServerPort();

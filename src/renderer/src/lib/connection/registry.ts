@@ -1,4 +1,5 @@
 import type { WireProfile } from "@server/shared/wire";
+import { thisDesktopName } from "../native";
 import { EnvLink } from "./link";
 import { Supervisor, type Clock, type ProbeTrigger } from "./supervisor";
 import type { Transport } from "./transport";
@@ -375,11 +376,11 @@ export function pageProfile(): WireProfile {
   return new URLSearchParams(location.search).get("profile") === "remote" ? "remote" : "local";
 }
 
-/** Environment zero: this machine's server on its loopback port. */
+/** Environment zero: this machine's server on its loopback port, "This PC" on Windows, else "This Mac". */
 export function localEnvironment(port: number): Environment {
   return {
     id: LOCAL_ENVIRONMENT_ID,
-    name: "This Mac",
+    name: thisDesktopName(),
     routes: [{ url: `ws://127.0.0.1:${port}`, kind: "loopback", credential: "implicit" }],
     credentialRef: null,
   };
