@@ -27,6 +27,8 @@ describe('ios/TempCode/project.yml', () => {
   it("builds no x86_64 simulator slice (convex-swift has none) and names the accent asset LifeKit's ink reads", () => {
     expect(yml).toContain('EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64')
     expect(yml).toContain('ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor')
+    // The catalog has no AppIcon set: naming one fails the asset compile.
+    expect(yml).toContain('ASSETCATALOG_COMPILER_APPICON_NAME: ""')
   })
 
   it('links the shared tokens to the client package in the Live Activity', () => {

@@ -71,18 +71,7 @@ struct OutboxScreen: View {
         let presses = OutboxPresses.shared
         let bands = OutboxModel.bands(OutboxEntries.of(clients).filter { !presses.hides($0) })
         List {
-            ForEach(bands) { band in
-                let client = model.registry.client(band.environmentId)
-                let place = client?.workPlace(band.workspaceId) ?? ("Work Chats", nil)
-                Section {
-                    ForEach(band.entries) { entry in
-                        OutboxRow(entry: entry, canApprove: client?.work.canApprove == true, discard: { confirmDiscard = entry })
-                    }
-                } header: {
-                    BandHeader(name: place.name, sector: band.sector ?? place.sector, count: band.entries.count)
-                        .listRowInsets(EdgeInsets())
-                }
-            }
+            ForEach(bands) { band in bandSection(band) }
         }
         .listStyle(.plain)
         .overlay {
@@ -107,6 +96,20 @@ struct OutboxScreen: View {
         }
         .listOnScreen("outbox")
         .accessibilityIdentifier("outbox")
+    }
+
+    private func bandSection(_ band: OutboxModel.Band) -> some View {
+        let client = model.registry.client(band.environmentId)
+        let place: (name: String, sector: String?) = client?.workPlace(band.workspaceId) ?? ("Work Chats", nil)
+        let canApprove = client?.work.canApprove == true
+        return Section {
+            ForEach(band.entries) { entry in
+                OutboxRow(entry: entry, canApprove: canApprove, discard: { confirmDiscard = entry })
+            }
+        } header: {
+            BandHeader(name: place.name, sector: band.sector ?? place.sector, count: band.entries.count)
+                .listRowInsets(EdgeInsets())
+        }
     }
 
     private func discard(_ entry: OutboxModel.Entry) async {

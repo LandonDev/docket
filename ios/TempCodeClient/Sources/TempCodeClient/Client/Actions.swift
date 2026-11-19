@@ -80,7 +80,8 @@ public enum ActionError: Error, Hashable, Sendable {
         }
     }
 
-    static func wrap(_ error: any Error) -> ActionError {
+    /// Any thrown error as the line a screen shows (the Work screens wrap what WorkHost throws).
+    public static func wrap(_ error: any Error) -> ActionError {
         if let action = error as? ActionError { return action }
         if let transport = error as? TransportError {
             // A relayed host's state said no: the host's own words, one line.
