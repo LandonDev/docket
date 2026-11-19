@@ -84,6 +84,10 @@ describe('a held calendar act', () => {
     expect(sends()).toEqual([])
     const [again] = await list()
     expect((again!.payload as CalendarOpPayload).eventStartsAt).toBe(shown + 7_200_000)
+    // another view, still showing the old start, is refused too: the revision covers the start
+    expect(again!.updatedAt).not.toBe(item!.updatedAt)
+    await expect(rig.rpc('work.outbox.send', { ref: item!.ref, rev: item!.updatedAt })).rejects.toThrow('changed since')
+    expect(sends()).toEqual([])
     await rig.rpc('work.outbox.send', { ref: again!.ref, rev: again!.updatedAt })
     await settled()
     expect(sends()).toHaveLength(1)

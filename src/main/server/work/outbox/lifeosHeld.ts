@@ -508,9 +508,18 @@ export class LifeosHeldItems implements LifeosHeld {
       error: failed ? (text('error') ?? 'LifeOS could not carry it out') : null,
       result: null,
       routineRunId: origin.routineRunId ?? null,
-      updatedAt: Math.round(at)
+      // The revision a press names covers the event start the act is bound to, so a view from before the event moved is refused.
+      updatedAt: Math.round(at) + startMark(eventStartsAt)
     }
   }
+}
+
+/** A calendar act's revision moves with its event's start: up to 1,000,000 ms added, from a hash of the start (FNV-1a). */
+export function startMark(startsAt: number | undefined): number {
+  if (startsAt === undefined) return 0
+  let h = 0x811c9dc5
+  for (const c of String(startsAt)) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0
+  return (h % 1_000_000) + 1
 }
 
 const keyOf = (ref: HeldRef): string => (ref.at === 'lifeos' ? `${ref.table}:${ref.id}` : `host:${ref.id}`)

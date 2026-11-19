@@ -17,6 +17,7 @@ const world = vi.hoisted(() => ({
   grants: new Map<string, OutboxGrant[]>(),
   resultsDown: false,
   quote: null as string | null,
+  getFails: false,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -63,6 +64,7 @@ vi.mock("../../lib/connection", async (original) => {
           if (world.resultsDown) throw new Error("The host did not answer");
           return { results: [] };
         case "work.outbox.get":
+          if (world.getFails) throw new Error("The host did not answer");
           return { ...find(), payload: { ...(find().payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" }, ...(world.quote ? { quote: world.quote } : {}) } };
       }
       throw new Error(`unknown ${method}`);
@@ -200,6 +202,17 @@ describe("the Outbox", () => {
     ]);
   });
 
+  it("a group's Send leaves a reply that quotes its mail for its own look, and sends the rest", async () => {
+    world.quote = "<p>On Tue, Dana wrote:</p>";
+    try {
+      await open();
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 3" })));
+      expect(sends()).toEqual([]);
+    } finally {
+      world.quote = null;
+    }
+  });
+
   it("a send that may have gone offers no plain Send: a line to check Sent, his own Send again, and no group or tick takes it", async () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "failed", error: "Outlook did not answer in time", outcomeUnknown: true }), mail("o2", "Sam Ortiz", "Scrims"), mail("o3", "Events booking", "Ballroom")]);
     await open();
@@ -322,6 +335,27 @@ describe("the Outbox", () => {
     const picture = (await screen.findByRole("img")) as HTMLImageElement;
     expect(picture.src).toBe("data:image/png;base64,AAAA");
     expect(world.calls.some((c) => c.method === "work.outbox.get")).toBe(true);
+  });
+
+  it("offers no Send for a computer act until its kept picture is on screen", async () => {
+    const click: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "c2" }, kind: "computer.act", summary: "Click Send in Mail", payload: { title: "Click Send in Mail", app: "Mail", picture: { mimeType: "image/png", width: 16, height: 10 } } };
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    world.items.set("mac", [click]);
+    world.items.set("box", []);
+    world.getFails = true;
+    try {
+      resetOutboxStore();
+      render(<OutboxView besideRail onClose={() => undefined} />);
+      fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+      await waitFor(() => expect(screen.getByText("The picture did not load")).toBeTruthy());
+      expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+      world.getFails = false;
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await screen.findByRole("img");
+      await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false));
+    } finally {
+      world.getFails = false;
+    }
   });
 
   it("keeps a failed read of the Results apart from an act with no way back, with Retry", async () => {

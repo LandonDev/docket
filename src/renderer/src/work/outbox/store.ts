@@ -205,8 +205,25 @@ export async function removeGrant(grant: HostGrant): Promise<void> {
 }
 
 /** Several at once, each its own press; answers how many went and the first refusal. */
+/** What a list press leaves for its own look: a reply carries the mail it quotes, which only its detail shows. */
+export const REPLY_NEEDS_A_LOOK = "Open it to send: it quotes the mail it answers, which shows only there";
+
 export async function sendMany(items: readonly HostItem[]): Promise<{ sent: number; failed: { item: HostItem; error: string }[] }> {
-  const outcomes = await Promise.allSettled(items.map((item) => registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt })));
+  // A LifeOS mail is read whole first; one that quotes the mail it answers waits for its own look (the hold review's finding 28).
+  const quoted = new Set<HostItem>();
+  await Promise.all(
+    items
+      .filter((item) => item.kind === "mail.send")
+      .map(async (item) => {
+        const whole = await fetchItem(item.environmentId, item.ref).catch(() => null);
+        if (!whole || (whole.payload as { quote?: string } | null)?.quote) quoted.add(item);
+      }),
+  );
+  const outcomes = await Promise.allSettled(
+    items.map((item) =>
+      quoted.has(item) ? Promise.reject(new Error(REPLY_NEEDS_A_LOOK)) : registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt }),
+    ),
+  );
   for (const id of new Set(items.map((item) => item.environmentId))) void loadHost(id);
   const failed = outcomes.flatMap((o, i) => (o.status === "rejected" ? [{ item: items[i]!, error: errorText(o.reason) }] : []));
   // A press the host answered with anything but a send (it failed, or another press or device decided it first) is not one.

@@ -522,7 +522,10 @@ function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: bo
 }
 
 function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }: { item: HostItem; workspace: string; host: string; onOpenSession?: Props["onOpenSession"]; onPressed: (item: HostItem) => void }) {
-  const { shown: item, ready, failed: unread, retry } = useWhole(listed);
+  const { shown: item, ready: read, failed: unread, retry } = useWhole(listed);
+  const picture = usePicture(listed);
+  // Send waits until all he approves is on screen: the mail read whole, the act's kept picture loaded (the hold review).
+  const ready = read && pictureShown(picture);
   const [busy, setBusy] = useState<"send" | "discard" | "grant" | null>(null);
   const [editing, setEditing] = useState(false);
   const grant = grantFor(item);
@@ -564,7 +567,7 @@ function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }:
           ) : null}
           <ActView item={item} env={item.environmentId} />
           {/* What his press approves: the window as the host read it, above the verbs. */}
-          {item.kind === "computer.act" ? <KeptPicture item={item} /> : null}
+          {item.kind === "computer.act" ? <KeptPicture item={item} picture={picture} /> : null}
         </div>
       </div>
       <VerbBar>
@@ -612,6 +615,7 @@ function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }:
 }
 
 function SentDetail({ item, workspace, grantLabel, onOpenSession }: { item: HostItem; workspace: string; grantLabel: string | null; onOpenSession?: Props["onOpenSession"] }) {
+  const picture = usePicture(item);
   // The act's Result carries its way back (work_results); a mail has none.
   const results = useResults(item.environmentId, item.sessionId ?? "", !!item.sessionId);
   const result = results.rows.find((r) => {
@@ -638,7 +642,7 @@ function SentDetail({ item, workspace, grantLabel, onOpenSession }: { item: Host
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
           <DetailHead item={item} facts={[workspace, `${decidedWords(item, grantLabel)} ${dayOf(at) === "Today" ? "at" : "on"} ${timeOf(at)}`]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
           <ActView item={item} env={item.environmentId} />
-          {item.kind === "computer.act" ? <KeptPicture item={item} /> : null}
+          {item.kind === "computer.act" ? <KeptPicture item={item} picture={picture} /> : null}
         </div>
       </div>
       <VerbBar>
@@ -736,10 +740,12 @@ function DetailSkeleton() {
  * whole act is read for it; an act that kept none draws nothing, and a read
  * that failed says so with Retry.
  */
-function KeptPicture({ item }: { item: HostItem }) {
-  const kept = (item.payload as { picture?: { width?: number; height?: number } | null } | null)?.picture;
+type Picture = { kept: { width?: number; height?: number } | null | undefined; src: string | null | undefined | "failed"; retry(): void };
+
+/** The kept picture of a computer act, read whole: undefined while it comes, "failed" when the host did not answer, null when none was kept. */
+function usePicture(item: HostItem): Picture {
+  const kept = item.kind === "computer.act" ? (item.payload as { picture?: { width?: number; height?: number } | null } | null)?.picture : null;
   const key = kept ? JSON.stringify(item.ref) : null;
-  // undefined while it comes; "failed" when the host did not answer.
   const [src, setSrc] = useState<string | null | undefined | "failed">(undefined);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -758,6 +764,15 @@ function KeptPicture({ item }: { item: HostItem }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read again only for another act or a Retry
   }, [key, attempt]);
+  return { kept, src: key ? src : null, retry: () => setAttempt((n) => n + 1) };
+}
+
+/** Whether what his press approves is all on screen: a computer act's kept picture has loaded, or none was kept. */
+const pictureShown = (p: Picture): boolean => p.src === null || (typeof p.src === "string" && p.src !== "failed");
+
+function KeptPicture({ item, picture }: { item: HostItem; picture: Picture }) {
+  const { kept, src } = picture;
+  const key = kept ? "kept" : null;
   if (!key || src === null) return null;
   const shape = kept?.width && kept.height ? `${kept.width} / ${kept.height}` : "16 / 10";
   if (src === undefined) return <Skeleton className="w-full rounded-lg" style={{ aspectRatio: shape }} />;
@@ -765,7 +780,7 @@ function KeptPicture({ item }: { item: HostItem }) {
     return (
       <p className="flex items-baseline gap-2 text-[13px] leading-5">
         <span className="text-destructive">The picture did not load</span>
-        <Button variant="ghost" size="xs" onClick={() => setAttempt((n) => n + 1)}>
+        <Button variant="ghost" size="xs" onClick={picture.retry}>
           Retry
         </Button>
       </p>

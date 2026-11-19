@@ -172,7 +172,11 @@ export class Outbox {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
       if (opts.rev === undefined) throw new Error(REV_NEEDED)
       const live = await this.readLifeos(ref)
-      if (live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
+      if (live.updatedAt !== opts.rev) {
+        // The screens catch up with what LifeOS holds now (an event that moved), so the next look shows it.
+        if (live.kind === 'calendar.op') this.lifeos?.relist?.(live)
+        throw new Error(CHANGED_SINCE)
+      }
       // A calendar act binds its event's start as it was listed to the screens: an event moved since is refused, and
       // the listing catches up so the next look shows the new time (milestone 50's hold review, 29).
       if (live.kind === 'calendar.op') {
