@@ -226,9 +226,10 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(screen.queryByText("Couldn't save")).toBeNull());
   });
 
-  it("sends an opened Excel file cell contents only, says once that the rest stays out, and never resends a refused batch", async () => {
+  it("sends an opened Excel file what it saves (cells, rows, a fill with its formulas), says once that formatting stays out, and never resends a refused batch", async () => {
     open(sheetView({ store: "package", rev: 3 }));
     await gridUp();
+    grid.formulas.set("budget!2:4", "=SUM(B3:D3)");
     const bold: SheetMutationJson = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { s: { bl: 1 } } } } } };
     const fill: SheetMutationJson = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 2: { 4: { si: "f1" } } } } };
     const row: SheetMutationJson = { id: "sheet.mutation.insert-row", params: { unitId: "book", subUnitId: "budget" } };
@@ -241,7 +242,8 @@ describe("the sheet kind", () => {
       grid.edit(set(1, 1, 15));
     });
     await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
-    expect(edits()[0]).toEqual({ baseRev: 3, mutations: [set(1, 1, 15)] });
+    const filled = { ...fill, params: { ...(fill.params as object), cellValue: { 2: { 4: { si: "f1", f: "=SUM(B3:D3)" } } } } };
+    expect(edits()[0]).toEqual({ baseRev: 3, mutations: [row, filled, set(1, 1, 15)] });
     expect(await screen.findByText("Not saved")).toBeTruthy();
     expect(screen.getAllByText("Not saved")).toHaveLength(1);
 
@@ -320,6 +322,31 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "chart")).toBe(true));
     const made = sheetHost.calls.find((c) => c[0] === "chart")![1] as { chart: { range: string; title: string; col: number } };
     expect(made.chart).toMatchObject({ range: "A1:B5", title: "Qty", col: 3 });
+  });
+
+  it("offers Export as Excel for a sheet made here", async () => {
+    open(sheetView({ store: "tcsheet" }));
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Export as Excel" }));
+    await waitFor(() => expect(sheetHost.calls.find((c) => c[0] === "export")?.[1]).toEqual({ format: "xlsx", sheet: undefined }));
+  });
+
+  it("offers Save as CSV, back over the file, for a sheet read from a .csv", async () => {
+    open(sheetView({ store: "csv" }));
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    expect(screen.queryByRole("menuitem", { name: "Export as Excel" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save as CSV" }));
+    await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "export").at(-1)?.[1]).toMatchObject({ format: "csv" }));
+  });
+
+  it("offers an opened Excel file a CSV of its sheet, and no Excel export", async () => {
+    open(sheetView({ store: "package" }));
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    expect(await screen.findByRole("menuitem", { name: "Export sheet as CSV" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Export as Excel" })).toBeNull();
   });
 
   it("offers the switch only while the file holds what the grid cannot reach", async () => {

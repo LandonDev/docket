@@ -15,8 +15,8 @@ export const sheetCanvas: CanvasKindDef = defineCanvasKind<SheetState>({
   icon: Table,
   opens: {
     sources: [{ at: "lifeos", table: "sheets" }, { at: "microsoft", app: "excel" }],
-    mime: ["application/vnd.google-apps.spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel.sheet.macroEnabled.12"],
-    ext: ["tcsheet", "xlsx", "xlsm"],
+    mime: ["application/vnd.google-apps.spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel.sheet.macroEnabled.12", "text/csv"],
+    ext: ["tcsheet", "xlsx", "xlsm", "csv"],
   },
   phone: "web",
   guestable: true,

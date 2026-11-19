@@ -44,6 +44,7 @@ export const univerGrid: SheetGrid = {
     apply: (mutations) => handle.apply(mutations),
     onMutation: (listener) => handle.onMutation(listener),
     read: (sheet, row, col) => (sheetOf(handle, sheet)?.getRange(row, col).getCellData() ?? null) as SheetCellJson | null,
+    formula: (sheet, row, col) => sheetOf(handle, sheet)?.getRange(row, col).getFormula() || null,
   }),
   values: (handle, sheet, a1) => (sheetOf(handle, sheet)?.getRange(a1).getValues() ?? []) as unknown[][],
   place(handle, chart, size, onSlot) {

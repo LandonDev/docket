@@ -41,6 +41,8 @@ export interface SheetHost {
   mode(mode: "suggests" | "writes"): Promise<SheetView>;
   undo(writeId: string): Promise<SheetView>;
   chart(chart: SheetChart, remove?: boolean): Promise<SheetView>;
+  /** Writes the sheet out on the host (`work.sheets.export`); answers where it went. */
+  exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string }>;
   /** Opens the file in the app `view.reach.to` names; refused where it is not on the host. */
   switchApp(): Promise<void>;
   /** Something landed on this item. */
@@ -60,6 +62,7 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     mode: (mode) => call("work.sheets.mode", { mode }),
     undo: (writeId) => call("work.sheets.undo", { writeId }),
     chart: (chart, remove = false) => call("work.sheets.chart", { chart, remove }),
+    exportAs: (format, sheet) => call("work.sheets.export", { format, ...(sheet ? { sheet } : {}) }),
     switchApp: async () => void (await call("work.sheets.switch")),
     onPush: (listener) =>
       link().onPush((push) => {

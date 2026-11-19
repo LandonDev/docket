@@ -132,6 +132,10 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook): FakeSheet
       host.view = { ...host.view, charts: remove ? host.view.charts.filter((c) => c.id !== chart.id) : [...host.view.charts.filter((c) => c.id !== chart.id), chart] };
       return host.view;
     },
+    async exportAs(format: "xlsx" | "csv", sheet?: string) {
+      host.calls.push(["export", { format, sheet }]);
+      return { path: `/host/files/${host.view.name.replace(/\.[^.]+$/, "")}.${format}` };
+    },
     async switchApp() {
       host.calls.push(["switch", null]);
       if (host.switchRefusal) throw new Error(host.switchRefusal);
@@ -183,6 +187,8 @@ export interface FakeGrid extends SheetGrid {
   edit(mutation: SheetMutationJson): void;
   /** What came in through `apply`, call by call. */
   applied: SheetMutationJson[][];
+  /** formula text the grid holds, by `sheet!row:col`, for a fill's cells */
+  formulas: Map<string, string>;
   /** The person selects a range, A1. */
   select(a1: string): void;
   /** Whether something listens for the person's edits: the body has attached. */
@@ -364,6 +370,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
   const grid: FakeGrid = {
     handle: null,
     applied: [],
+    formulas: new Map(),
     Canvas: FakeCanvas,
     prepare: async () => undefined,
     link: () => ({
@@ -371,6 +378,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       apply: (mutations) => grid.handle?.apply(mutations),
       onMutation: (listener) => grid.handle!.onMutation(listener),
       read: (sheet, row, col) => live?.cells.get(at(sheet, row, col)) ?? null,
+      formula: (sheet, row, col) => grid.formulas.get(at(sheet, row, col)) ?? null,
     }),
     values(_handle, sheet, a1) {
       const r = parseA1(a1);

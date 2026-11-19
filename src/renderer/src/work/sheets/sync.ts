@@ -24,6 +24,8 @@ export interface GridLink {
   /** every mutation the person makes */
   onMutation(listener: (mutation: SheetMutationJson) => void): () => void;
   read(sheet: string, row: number, col: number): SheetCellJson | null;
+  /** the formula text the grid holds for a cell (a fill's cell holds only its shared formula's id) */
+  formula(sheet: string, row: number, col: number): string | null;
 }
 
 export interface SheetSyncState {
@@ -54,24 +56,54 @@ const CONFLICT_TRIES = 5;
 const BOOKKEEPING = new Set(["sheet.mutation.set-worksheet-row-auto-height", "sheet.mutation.set-worksheet-row-is-auto-height"]);
 
 /**
- * Whether an opened Excel file keeps this mutation: cell contents only, a
- * set-range-values whose every cell is cleared or carries a value or a
- * formula. Formatting, a row or column inserted or deleted, a fill (a
- * shared formula's follower, `si` with no `f`) and rich text it refuses.
+ * What an opened Excel file saves (docs/agents/work-sheets.md "Structural edits"): rows and columns
+ * inserted or deleted, a sort, sheets added, removed or renamed (through LibreOffice on the host), and
+ * cell contents (through the patch writer).
  */
-export function isContent(mutation: SheetMutationJson): boolean {
-  if (mutation.id !== SET_RANGE_VALUES) return false;
-  const cells = (mutation.params as { cellValue?: Record<string, Record<string, Record<string, unknown> | null>> } | null)?.cellValue;
-  if (!cells) return false;
-  for (const row of Object.values(cells))
-    for (const cell of Object.values(row)) {
-      if (cell === null) continue;
-      if (!("v" in cell) && !("f" in cell)) return false;
-      if (cell.si != null && cell.f == null) return false;
-      if (cell.p != null) return false;
+const STRUCTURAL_SAVED = new Set([
+  "sheet.mutation.insert-row",
+  "sheet.mutation.remove-rows",
+  "sheet.mutation.insert-col",
+  "sheet.mutation.remove-col",
+  "sheet.mutation.reorder-range",
+  "sheet.mutation.insert-sheet",
+  "sheet.mutation.remove-sheet",
+  "sheet.mutation.set-worksheet-name",
+]);
+
+type Cells = Record<string, Record<string, Record<string, unknown> | null>>;
+
+/**
+ * A mutation as an opened Excel file takes it, or null when nothing of it can be saved (formatting,
+ * moved cells, rich text). A fill's cells carry only a shared formula's id: each gets its own formula
+ * text from the grid, which the file needs.
+ */
+export function forPackage(mutation: SheetMutationJson, formula: (sheet: string, row: number, col: number) => string | null): SheetMutationJson | null {
+  if (STRUCTURAL_SAVED.has(mutation.id)) return mutation;
+  if (mutation.id !== SET_RANGE_VALUES) return null;
+  const params = mutation.params as { subUnitId?: string; cellValue?: Cells } | null;
+  if (!params?.cellValue) return null;
+  const cellValue: Cells = {};
+  let kept = 0;
+  for (const [r, row] of Object.entries(params.cellValue))
+    for (const [c, cell] of Object.entries(row)) {
+      let out = cell;
+      if (cell !== null) {
+        if (cell.p != null) continue;
+        if (cell.si != null && cell.f == null) {
+          const f = formula(params.subUnitId ?? "", Number(r), Number(c));
+          if (!f) continue;
+          out = { ...cell, f };
+        } else if (!("v" in cell) && !("f" in cell)) continue;
+      }
+      (cellValue[r] ??= {})[c] = out;
+      kept++;
     }
-  return true;
+  return kept ? { id: mutation.id, params: { ...params, cellValue } } : null;
 }
+
+/** Whether `forPackage` left something out of a mutation: the person hears once that it stays out of the file. */
+export const leftOut = (mutation: SheetMutationJson, kept: SheetMutationJson | null): boolean => kept === null || JSON.stringify(kept) !== JSON.stringify(mutation);
 
 /** An op as this grid names its workbook: the host's unit id and the grid's can differ. */
 const inUnit = (mutation: SheetMutationJson, unitId: string): SheetMutationJson =>
@@ -194,9 +226,11 @@ export class SheetSync {
     this.grid = grid;
     const off = grid.onMutation((mutation) => {
       if (BOOKKEEPING.has(mutation.id)) return;
-      if (this.state.view?.store === "package" && !isContent(mutation)) {
-        if (!this.state.dropped) this.set({ dropped: true });
-        return;
+      if (this.state.view?.store === "package") {
+        const kept = forPackage(mutation, (sheet, row, col) => grid.formula(sheet, row, col));
+        if (leftOut(mutation, kept) && !this.state.dropped) this.set({ dropped: true });
+        if (!kept) return;
+        mutation = kept;
       }
       this.queue.push(mutation);
       this.set({ tick: this.state.tick + 1 });

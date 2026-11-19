@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { SheetChart, SheetView } from "@shared/contract-work-sheets";
 import { reviewMarks, useGridState, type GridSelection, type SheetHandle } from "work-kit/sheet";
 import { ChartBar, MoreHorizontal, Trash2 } from "../../chrome/icons";
+import { loadToast } from "../../components/ui/toaster";
 import { RowsMenu } from "../../chrome/menuRows";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -10,6 +11,7 @@ import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from ".
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
+import { Export } from "../icons";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
@@ -153,7 +155,7 @@ function useFeeds(
     if (missing) shell.statusLine({ tone: "needs", word: `${name} moved`, detail: "Read only" });
     else if (readOnly !== undefined) shell.statusLine({ tone: "failed", word: "Read only", detail: readOnly });
     else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() } });
-    else if (dropped) shell.statusLine({ tone: "failed", word: "Not saved", detail: "Formatting and row or column changes stay out of an opened Excel file", action: { label: "Reload", run: () => sync.retry() } });
+    else if (dropped) shell.statusLine({ tone: "failed", word: "Not saved", detail: "Formatting and moved cells stay out of an opened Excel file", action: { label: "Reload", run: () => sync.retry() } });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
   }, [shell, sync, name, missing, readOnly, saveError, dropped, store]);
@@ -228,6 +230,13 @@ function useSelectionFeed(
   }, [shell, handle, grid, key, many, source, pointer, frame]);
 
   const wide = !!range && range.endColumn > range.startColumn && !locked && !!handle;
+  const store = sync.state.view?.store;
+  // The sheet in hand, by its tab name: the one a CSV takes.
+  const activeName = useCallback((): string | undefined => {
+    if (!handle) return undefined;
+    const { sheets, active } = handle.store.get() as { sheets: { id: string; name: string }[]; active?: string };
+    return sheets.find((x) => x.id === active)?.name ?? sheets[0]?.name;
+  }, [handle]);
   useEffect(() => {
     if (!shell.more) return;
     shell.more([
@@ -243,9 +252,16 @@ function useSelectionFeed(
           await act(sync.host.chart(chart), "Couldn't make the chart");
         },
       },
+      // An opened Excel file is saved as it is edited; anything else is written out on request.
+      ...(store && store !== "package"
+        ? [{ id: "export-xlsx", label: "Export as Excel", icon: Export, run: () => saveAs(sync.host, "xlsx") }]
+        : []),
+      ...(store
+        ? [{ id: "export-csv", label: store === "csv" ? "Save as CSV" : "Export sheet as CSV", icon: Export, run: () => saveAs(sync.host, "csv", activeName()) }]
+        : []),
     ]);
     return () => shell.more?.(null);
-  }, [shell, sync, wide, handle, grid, act]);
+  }, [shell, sync, wide, handle, grid, act, store, activeName]);
 }
 
 const letters = (column: number): string => {
@@ -424,4 +440,15 @@ export function TabEnd(props: Props) {
       </TabsList>
     </Tabs>
   );
+}
+
+/** Writes the sheet out on the host and says where, by the file's name: the folder is the host's. */
+async function saveAs(host: SheetHost, format: "xlsx" | "csv", sheet?: string): Promise<void> {
+  try {
+    const { path } = await host.exportAs(format, sheet);
+    const toast = await loadToast();
+    toast.success(`Saved ${path.split(/[\\/]/).pop()}`);
+  } catch (error) {
+    sayError(error, "Couldn't save the sheet");
+  }
 }
