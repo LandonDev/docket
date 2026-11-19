@@ -14,6 +14,7 @@ import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { openWorkSettings } from "../shell/open";
 import { useLifeosSession, watchLifeos } from "../shell/lifeos";
+import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor, tempcodeMailKit } from "./kit";
 import { proposalDiff, type Proposal } from "./proposal";
 
@@ -48,11 +49,18 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
         <MailKitProvider kit={tempcodeMailKit}>
           <div className="tc-mail flex h-full min-h-0 flex-col">
             <Draft id={source.id} shell={shell} />
+            <SentLine env={env} id={source.id} />
           </div>
         </MailKitProvider>
       </MailClientProvider>
     </ConvexProvider>
   );
+}
+
+/** Under a sent mail he changed: the house rule his repeated edit proposes, if any (work/rules). */
+function SentLine({ env, id }: { env: string; id: string }) {
+  const doc = useMailClient().useComposeDoc(id);
+  return doc?.status === "sent" ? <RuleLine env={env} draftId={id} className="shrink-0 border-t border-border px-5 py-2" /> : null;
 }
 
 const NO_TASKS: ReadonlySet<string> = new Set();

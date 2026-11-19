@@ -286,7 +286,7 @@ export function proposals(db: DatabaseSync, workspaceId: string, states: readonl
     const covered = all.some((q) => q !== p && q.habit && q.habit.rank > p.habit!.rank && [...p.set].every((id) => q.set.has(id)))
     if (covered) continue
     const edit = (e: (typeof edits)[number]): DraftEdit => ({ draftId: e.draft_id, to: e.recipient, subject: e.subject, sentAt: e.sent_at, ops: e.ops })
-    out.push({ id: p.row.id, workspaceId, text: p.habit.rule, line: p.habit.line, state: p.row.state, edits: p.of.map(edit), updatedAt: p.row.updated_at })
+    out.push({ id: p.row.id, workspaceId, text: p.habit.rule, line: p.habit.line, state: p.row.state, ruleId: p.row.rule_id, edits: p.of.map(edit), updatedAt: p.row.updated_at })
   }
   return out.sort((a, b) => b.updatedAt - a.updatedAt)
 }

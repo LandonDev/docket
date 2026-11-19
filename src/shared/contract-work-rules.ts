@@ -70,10 +70,12 @@ export interface RuleProposal {
   workspaceId: string
   /** the sentence a rule would say */
   text: string
-  /** the line under a sent mail: what he did again, and the offer */
+  /** the line under a sent mail: what he did again ("You took out “…” again.") */
   line: string
   /** `open`: offered under the sent mail and on the page; `later`: on the page only */
   state: ProposalState
+  /** the rule it became, once added: Undo removes it */
+  ruleId: string | null
   /** the edits it was drawn from, newest first */
   edits: DraftEdit[]
   updatedAt: number

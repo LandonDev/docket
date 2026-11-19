@@ -20,6 +20,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { ToolchainRow } from "../formats/ToolchainRow";
 import { AddinRow } from "../office/AddinRow";
+import { HouseRules } from "../rules/HouseRules";
 import { linkSector, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -256,8 +257,9 @@ const isDesktop = (platform: string | undefined): boolean => platform === "darwi
 
 /**
  * A Work workspace's own page (`ws:<id>`): its sector (set when it was
- * made), where its threads run and whose desktop they may use, and the
- * model they start on (the workspace's thread defaults).
+ * made), where its threads run and whose desktop they may use, its house
+ * rules and voice (work/rules), and the model they start on (the
+ * workspace's thread defaults).
  */
 export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
@@ -319,6 +321,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         )}
         {error ? <PageError>{error}</PageError> : null}
       </PageSection>
+      <HouseRules workspace={workspace} />
       <ThreadDefaultsEditor workspaceId={workspace.id} />
     </>
   );
