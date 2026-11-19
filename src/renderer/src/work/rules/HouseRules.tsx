@@ -118,7 +118,7 @@ function RuleList({ env, workspaceId, page, put, onOpen }: { env: string; worksp
         const ix = ids.indexOf(rule.id);
         const dropping = !q && sortable.toIndex === ix && sortable.fromIndex !== null && sortable.toIndex !== sortable.fromIndex;
         return (
-          <div key={rule.id} ref={(el) => sortable.setItemRef(rule.id, el)} data-rule={rule.id} className={cn("group/row relative", sortable.draggingId === rule.id && "z-10 [&_[data-slot=item]]:bg-muted")}>
+          <div key={rule.id} ref={(el) => sortable.setItemRef(rule.id, el)} data-rule={rule.id} className={cn("group/row relative border-t border-transparent [[data-rule]+&]:border-border", sortable.draggingId === rule.id && "z-10 [&_[data-slot=item]]:bg-muted")}>
             {dropping ? <div aria-hidden className={cn("pointer-events-none absolute inset-x-0 z-20 h-0.5 rounded-full bg-accent", sortable.toIndex! < sortable.fromIndex! ? "-top-px" : "-bottom-px")} /> : null}
             {q ? null : (
               <span
@@ -135,7 +135,7 @@ function RuleList({ env, workspaceId, page, put, onOpen }: { env: string; worksp
             )}
             <PageRow
               title={
-                <span className={cn("block truncate font-normal", !rule.on && "text-muted-foreground")}>
+                <span className={cn("block min-w-0 truncate font-normal", !rule.on && "text-muted-foreground")}>
                   <Marked text={rule.text} find={q} />
                 </span>
               }

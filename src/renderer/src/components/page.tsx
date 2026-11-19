@@ -183,7 +183,7 @@ function PageRow({
           )}
           {media ? <ItemMedia className={ROW_SHOWS}>{media}</ItemMedia> : null}
           <ItemContent className={cn("min-w-0", ROW_SHOWS)}>
-            <ItemTitle>{title}</ItemTitle>
+            <ItemTitle className="max-w-full">{title}</ItemTitle>
             {description ? <ItemDescription className="line-clamp-none">{description}</ItemDescription> : null}
             {error ? <ItemDescription className="line-clamp-none text-destructive">{error}</ItemDescription> : null}
           </ItemContent>
@@ -203,7 +203,7 @@ function PageRow({
     >
       {media ? <ItemMedia>{media}</ItemMedia> : null}
       <ItemContent className="min-w-0">
-        <ItemTitle>{title}</ItemTitle>
+        <ItemTitle className="max-w-full">{title}</ItemTitle>
         {description ? <ItemDescription className="line-clamp-none">{description}</ItemDescription> : null}
         {error ? <ItemDescription className="line-clamp-none text-destructive">{error}</ItemDescription> : null}
       </ItemContent>
@@ -238,7 +238,7 @@ function WidePageRow({
       )}
     >
       <ItemContent className="col-start-1 row-start-1 min-w-0">
-        <ItemTitle>{title}</ItemTitle>
+        <ItemTitle className="max-w-full">{title}</ItemTitle>
         {description ? <ItemDescription className="line-clamp-none">{description}</ItemDescription> : null}
       </ItemContent>
       {children ? (
