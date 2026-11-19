@@ -1,0 +1,148 @@
+import type { OfficeApp, OfficeAppState, OfficeCell } from '@shared/contract-work-office'
+
+/**
+ * What carries an Office tool out (docs/agents/work-office.md "Carriers"):
+ * the Mac's osascript now (mac.ts), Outlook on the web on the box (M38) and
+ * COM on Windows (M44) later. One interface, so the tools, the held acts and
+ * Excel behind the grid never know which. The fake (fake.ts) is an Office in
+ * memory for the box's tests.
+ *
+ * A workbook, document or presentation is named by its key: the full name
+ * Office gives it, a path for a local file and a URL for one in OneDrive,
+ * SharePoint or Teams.
+ */
+
+export interface OfficeFile {
+  key: string
+  name: string
+}
+
+export interface WorkbookInfo extends OfficeFile {
+  /** each sheet with its used range: rows and columns from A1 to the last used cell */
+  sheets: { name: string; rows: number; columns: number }[]
+}
+
+/** A block of cells: each cell's value, its formula ('' for none) and its number format. Rows first. */
+export interface RangeGrid {
+  values: OfficeCell[][]
+  formulas: string[][]
+  formats: string[][]
+}
+
+export interface SlideText {
+  index: number
+  texts: string[]
+}
+
+export interface MailSummary {
+  id: string
+  account: string
+  from: string
+  subject: string
+  at: string
+  read: boolean
+}
+
+export interface MailFull extends MailSummary {
+  to: string[]
+  cc: string[]
+  /** the body as plain text */
+  text: string
+}
+
+/** A mail to go out. `html` is the body; `replyTo` or `forward` names the mail it answers or passes on. */
+export interface MailOut {
+  account?: string
+  to: string[]
+  cc: string[]
+  bcc: string[]
+  subject: string
+  html: string
+  replyTo?: string
+  forward?: string
+}
+
+export interface CalendarEvent {
+  id: string
+  subject: string
+  start: string
+  end: string
+  location: string
+  organizer: string
+  attendees: string[]
+  /** his answer to an invitation; '' when it is his own */
+  response: string
+}
+
+export interface EventOut {
+  account?: string
+  subject: string
+  start: string
+  end: string
+  location?: string
+  body?: string
+  attendees: string[]
+}
+
+export type EventAnswer = 'accept' | 'decline' | 'tentative'
+
+/** A change to a document: text put at its start or end, or every match of `find` replaced. */
+export type DocEdit = { insert: string; at: 'start' | 'end' } | { find: string; replace: string }
+
+export interface OfficeCarrier {
+  readonly kind: 'mac' | 'fake'
+  apps(): Promise<OfficeAppState[]>
+
+  workbooks(): Promise<WorkbookInfo[]>
+  /** `address` is A1 without a sheet (B2:D9) */
+  readRange(book: string, sheet: string, address: string): Promise<RangeGrid>
+  /** writes the block at `address`, whose size is the grid's; a string starting with `=` is a formula, null empties a cell */
+  writeRange(book: string, sheet: string, address: string, grid: OfficeCell[][]): Promise<void>
+
+  documents(): Promise<OfficeFile[]>
+  /** the document's paragraphs as text */
+  readDocument(doc: string): Promise<string[]>
+  /** `tracked`: made with Track Changes on, so it waits as a revision he accepts or rejects. Answers how many places changed. */
+  editDocument(doc: string, edit: DocEdit, tracked: boolean): Promise<number>
+
+  presentations(): Promise<OfficeFile[]>
+  readSlides(pres: string): Promise<SlideText[]>
+  /** answers how many text runs changed */
+  replaceSlideText(pres: string, find: string, replace: string): Promise<number>
+
+  /** the addresses of Outlook's mail accounts */
+  accounts(): Promise<string[]>
+  listMail(q: { folder: 'inbox' | 'sent' | 'drafts'; limit: number; query?: string }): Promise<MailSummary[]>
+  readMail(id: string): Promise<MailFull>
+  /** a draft left in Outlook's Drafts for him; answers its id */
+  draftMail(m: MailOut): Promise<string>
+  /** only ever from a held act's execute, after his press */
+  sendMail(m: MailOut): Promise<{ id: string | null }>
+  events(from: string, to: string): Promise<CalendarEvent[]>
+  /** only from a held act's execute, or a plain hold on his own calendar */
+  createEvent(e: EventOut): Promise<string>
+  /** only from a held act's execute */
+  answerEvent(id: string, answer: EventAnswer, comment?: string): Promise<void>
+  /** the event whose calendar UID is `uid` (Outlook's iCalUId), from a week back to half a year on; null if none */
+  eventByUid(uid: string): Promise<string | null>
+
+  /** brings the app forward with the file (the switch) */
+  open(app: OfficeApp, ref: { kind: 'path'; path: string } | { kind: 'url'; url: string }): Promise<void>
+}
+
+/** A refusal in words the agent and the screen show as they are. */
+export class OfficeError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'not-installed' | 'not-running' | 'not-allowed' | 'needs-consent' | 'not-found' | 'failed' = 'failed'
+  ) {
+    super(message)
+  }
+}
+
+export const APP_NAMES: Record<OfficeApp, string> = {
+  excel: 'Microsoft Excel',
+  word: 'Microsoft Word',
+  powerpoint: 'Microsoft PowerPoint',
+  outlook: 'Microsoft Outlook'
+}
