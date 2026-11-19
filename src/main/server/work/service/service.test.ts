@@ -375,13 +375,13 @@ describe('the internal document routes', () => {
     expect((await call(r.config.socketPath, '/internal/doc/write', { docId: 'kd10', markdown: 'x', because: 'asked', botId: 'key1', fence })).status).toBe(200)
   })
 
-  it('the sheet routes say "not built" with milestone 27; a bad body is a 400 with words', async () => {
+  it('the sheet routes (milestone 27) answer "not found" for a sheet LifeOS does not have; a bad body is a 400 with words', async () => {
     const r = await rig()
-    for (const route of ['/internal/sheet/read', '/internal/sheet/write']) {
-      const res = await call(r.config.socketPath, route, { sheetId: 's', range: 'A1', fence })
-      expect(res.status).toBe(501)
-      expect(res.body.error).toMatch(/^not built: .* \(milestone 27\)$/)
-    }
+    expect((await call(r.config.socketPath, '/internal/sheet/read', { sheetId: 's', range: 'A1', fence })).status).toBe(404)
+    const res = await call(r.config.socketPath, '/internal/sheet/write', { sheetId: 's', range: 'A1', fence })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('because is asked, routine or own')
+    expect((await call(r.config.socketPath, '/internal/sheet/open', { sheet: { tcsheet: 'relative.tcsheet' } })).status).toBe(400)
     expect((await call(r.config.socketPath, '/internal/doc/write', { docId: 'kd1', fence })).status).toBe(400)
     expect((await call(r.config.socketPath, '/internal/doc/write', { docId: 'kd1', markdown: 'x', because: 'asked', fence })).status).toBe(400)
     expect((await call(r.config.socketPath, '/internal/nothing', {})).status).toBe(404)

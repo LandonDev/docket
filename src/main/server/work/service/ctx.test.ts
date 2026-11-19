@@ -144,7 +144,7 @@ describe('ctx.service', () => {
     expect(statSync(join(dataDir(work), 'work-service.sock')).isSocket()).toBe(true)
     expect(work.ctx.service.url('/w/doc/kd1')).toMatch(/^ws:\/\/127\.0\.0\.1:\d+\/w\/doc\/kd1$/)
     expect(work.ctx.service.url('/w/hosted/')).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/w\/hosted\/$/)
-    await expect(work.ctx.service.internal('/internal/sheet/read', { sheetId: 's', range: 'A1', fence: { sectors: 'all' } })).rejects.toThrow(/^not built: .*\(milestone 27\)$/)
+    await expect(work.ctx.service.internal('/internal/sheet/read', { sheetId: 's', range: 'A1', fence: { sectors: 'all' } })).rejects.toThrow(/^this instance serves no LifeOS sheets$/)
     work.settings.set({ enabled: false })
     await until('stopped', () => serviceOf(work.ctx)?.state() === 'off' && !existsSync(secret))
     expect(existsSync(join(dataDir(work), 'work-service.sock'))).toBe(false)
