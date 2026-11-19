@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+
+// These keys are a Mac's (⌘): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
+vi.mock("../../lib/platform", () => ({ IS_MAC: true }));
 import { DEFAULT_BATCH_RULES, type BatchState, type BoardDigest } from "@server/shared/contract-batch";
 import type { AgentEvent, EventRow } from "@server/shared/events";
 import type { Session } from "../../lib/session";

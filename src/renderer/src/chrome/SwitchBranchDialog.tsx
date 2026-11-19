@@ -1,3 +1,4 @@
+import { keyHint, modOrCtrl } from "../lib/keys";
 import { WandSparkles } from "./icons";
 import { useRef, useState } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
@@ -6,7 +7,6 @@ import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
 import { Tip } from "../components/tip";
 import { Modal } from "./Modal";
 import { generateCommitMessage } from "../lib/harness";
-import { MOD } from "../lib/platform";
 
 type Busy = "stash" | "commit" | null;
 
@@ -76,13 +76,13 @@ function Body({
             autoFocus
             rows={1}
             value={message}
-            placeholder={`Message (${MOD}↩ to commit)`}
+            placeholder={`Message (${keyHint("mod+return")} to commit)`}
             disabled={waiting}
             aria-label="Commit message"
             className="max-h-40 min-h-8 resize-none overflow-x-hidden overflow-y-auto py-1.5 pe-9"
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canCommit) {
+              if (modOrCtrl(event) && event.key === "Enter" && canCommit) {
                 event.preventDefault();
                 onCommit(trimmed);
               }

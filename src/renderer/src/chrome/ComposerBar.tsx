@@ -1,3 +1,4 @@
+import { modKey } from "../lib/keys";
 import { useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../components/ui/button";
 import {
@@ -9,7 +10,6 @@ import {
 import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { composerActionHint, composerActionLabel, type ComposerIntent } from "../lib/composerAction";
-import { MOD } from "../lib/platform";
 import { SwapIcon } from "../motion/IconSwap";
 import { sessionStore } from "../lib/tcserver/store";
 import type { HarnessId, RuntimeMode } from "../lib/session";
@@ -143,12 +143,12 @@ export function SendButton({
   const [side, setSide] = useState({ intent, swapped: false });
   if (side.intent !== intent) setSide({ intent, swapped: !side.swapped });
   const label = composerActionLabel(intent);
-  const hint = composerActionHint(intent, MOD);
+  const hint = composerActionHint(intent);
   const Glyph = GLYPH[intent];
   const glyph = <Glyph className="size-4" />;
   const onClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (intent === "pause") onPause();
-    else onSubmit(e.metaKey);
+    else onSubmit(modKey(e));
   };
   return (
     <Tooltip>

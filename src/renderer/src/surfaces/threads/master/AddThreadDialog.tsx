@@ -1,3 +1,4 @@
+import { modOrCtrl } from "../../../lib/keys";
 import { useEffect, useMemo, useState } from "react";
 import type { Reasoning } from "@server/shared/catalog";
 import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
@@ -230,7 +231,7 @@ function AddThreadForm({
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            if (e.key === "Enter" && modOrCtrl(e)) {
               e.preventDefault();
               void add();
             }

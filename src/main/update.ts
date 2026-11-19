@@ -10,11 +10,14 @@ import {
   bundleShortVersion,
   compareVersions,
   feedFallback,
+  installBlockers,
   judgeAttempt,
   parseAttempt,
+  parseProcessTable,
   serializeAttempt,
   stagedBundlePath,
   stalePaths,
+  staleWindowsPaths,
   updaterCacheDirName,
   type InstallFailure
 } from './updateInstall'
@@ -139,6 +142,41 @@ async function check(): Promise<UpdateStatus> {
 }
 
 /**
+ * Windows only: set by index.ts to shut the app's own work down (the server,
+ * the terminals, the helpers) before the installer starts; `stopChildTree`
+ * then ends whatever is left. Nothing calls it on a Mac.
+ */
+let beforeInstall: (() => void) | null = null
+
+/**
+ * Windows: end every process the app started, and anything else running out
+ * of the install folder, before the installer runs. The app is unpacked
+ * (`asar: false`), so the installer replaces thousands of plain files, and
+ * Windows refuses to replace one a running process holds open: a bundled
+ * `claude.exe` left alive by a warm harness fails the whole update. Children
+ * do not die with their parent on Windows, so the quit alone does not do it.
+ * One process table through PowerShell's CIM query, one taskkill; a failure
+ * of either is logged and the install goes on.
+ */
+export function stopChildTree(): void {
+  if (process.platform !== 'win32') return
+  try {
+    const table = execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,ExecutablePath,CreationDate | ConvertTo-Json -Compress'],
+      { encoding: 'utf8', timeout: 15_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true }
+    )
+    const pids = installBlockers(parseProcessTable(table), { pid: process.pid, exe: process.execPath, appDir: dirname(process.execPath) })
+    if (pids.length === 0) return
+    console.log(`[update] stopping ${pids.length} child process(es) before the installer runs`)
+    execFileSync('taskkill.exe', ['/F', '/T', ...pids.flatMap((pid) => ['/PID', String(pid)])], { stdio: 'ignore', timeout: 15_000, windowsHide: true })
+  } catch (error) {
+    // taskkill exits non-zero when one of them was already gone
+    console.log(`[update] child sweep: ${String((error as Error).message ?? error).split('\n')[0]}`)
+  }
+}
+
+/**
  * Restart into the downloaded release, down the same path as Cmd-Q: the
  * window in front asks about busy sessions once and persists its layout,
  * and its `app:confirm-quit` then ends in quitAndInstall instead of
@@ -148,11 +186,21 @@ async function check(): Promise<UpdateStatus> {
  * dialog disarms and leaves the release waiting. quitAndInstall used to be
  * called cold here, and the close handler asked the renderer, which hid
  * the window on a busy session and left Squirrel waiting forever.
+ *
+ * On Windows quitAndInstall starts the NSIS installer at once (its own
+ * window says it is installing, then it starts the app again), so the app's
+ * work and its child tree are stopped first.
  */
 function restartToInstall(): void {
   if (status.latest) recordAttempt(status.latest)
   armQuit(
-    () => autoUpdater.quitAndInstall(),
+    () => {
+      if (process.platform === 'win32') {
+        beforeInstall?.()
+        stopChildTree()
+      }
+      autoUpdater.quitAndInstall()
+    },
     () => forgetAttempt()
   )
   if (hasQuitSubscriber()) requestQuit()
@@ -265,6 +313,11 @@ export function noteInstallOnQuit(): void {
   if (app.isPackaged && status.phase === 'ready' && status.latest) recordAttempt(status.latest)
 }
 
+/** Whether a downloaded release installs when this quit ends (Windows asks, to stop the child tree first). */
+export function installsOnQuit(): boolean {
+  return app.isPackaged && status.phase === 'ready' && !!status.latest
+}
+
 const cachesDir = (): string => join(homedir(), 'Library', 'Caches')
 
 /** Our CFBundleIdentifier, from the bundle's Info.plist (electron-builder.yml appId). */
@@ -299,6 +352,7 @@ function readText(file: string): string {
 /** The bundle ShipItState.plist still points at, if any: its version and
  *  when Squirrel last wrote the state (the hand-over time). */
 function stagedUpdate(): { version: string; at: number } | null {
+  if (process.platform !== 'darwin') return null
   const state = join(shipItDir(), 'ShipItState.plist')
   if (!existsSync(state)) return null
   try {
@@ -315,11 +369,12 @@ function stagedUpdate(): { version: string; at: number } | null {
  * At boot: did the last hand-over install? The record wins; without one
  * (an older build wrote none) a staged bundle newer than us in Squirrel's
  * state means the same thing. A staged bundle no newer than us is left
- * over from an install that happened and is removed.
+ * over from an install that happened and is removed. Off the Mac there is
+ * no Squirrel to read: the record alone decides, with no log behind it.
  */
 function detectFailedInstall(): InstallFailure | null {
   const current = app.getVersion()
-  const log = readText(join(shipItDir(), 'ShipIt_stderr.log'))
+  const log = process.platform === 'darwin' ? readText(join(shipItDir(), 'ShipIt_stderr.log')) : ''
   const attempt = parseAttempt(readText(attemptFile()) || null)
   if (attempt) {
     const failure = judgeAttempt(attempt, current, log)
@@ -342,6 +397,19 @@ function detectFailedInstall(): InstallFailure | null {
  * submits a fresh job at the next hand-over.
  */
 function clearStaleUpdate(download = true): void {
+  if (process.platform !== 'darwin') {
+    // No Squirrel, no launchd job: on Windows a retry only drops the download the installer was run from.
+    if (download && process.platform === 'win32' && process.env.LOCALAPPDATA) {
+      for (const path of staleWindowsPaths(process.env.LOCALAPPDATA, cacheDirName())) {
+        try {
+          rmSync(path, { recursive: true, force: true })
+        } catch {
+          /* best effort; the download overwrites what it can */
+        }
+      }
+    }
+    return
+  }
   const shipIt = shipItDir()
   try {
     execFileSync('launchctl', ['remove', `${bundleId()}.ShipIt`], { stdio: 'ignore' })
@@ -401,7 +469,8 @@ function applyFeedFallback(): void {
   autoUpdater.setFeedURL(feed)
 }
 
-export function registerUpdates(): void {
+export function registerUpdates(hooks: { beforeInstall?: () => void } = {}): void {
+  beforeInstall = hooks.beforeInstall ?? null
   if (app.isPackaged) {
     if (process.env.TEMP_CODE_UPDATE_FEED && process.env.TEMP_CODE_USER_DATA) applyFeedOverride()
     else applyFeedFallback()

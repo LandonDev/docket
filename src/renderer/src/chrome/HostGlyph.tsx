@@ -1,11 +1,13 @@
 import { useEnvironments } from "../lib/connection/status";
-import { useHostPlatform } from "../lib/hostPlatform";
+import { hostKind, useHostPlatform, type HostKind } from "../lib/hostPlatform";
 import { Tip } from "../components/tip";
-import { CloudServer, Laptop } from "./icons";
+import { CloudServer, Desktop, Laptop } from "./icons";
+
+const ICON: Record<HostKind, typeof Laptop> = { mac: Laptop, pc: Desktop, server: CloudServer };
 
 /**
- * Which host a thread or agent lives on: a laptop for a Mac, a server for
- * anything else, 12 px and muted, the host's name on hover. Drawn only when
+ * Which host a thread or agent lives on: a laptop for a Mac, a desktop for a
+ * Windows PC, a server for anything else, 12 px and muted, the host's name on hover. Drawn only when
  * the window knows two or more hosts; with one there is nothing to tell
  * apart. Monochrome on purpose: colour on a row is for status dots. `bare`
  * drops its own tooltip, for a glyph inside a control whose tooltip names
@@ -27,15 +29,15 @@ export function HostGlyph({
   const platform = useHostPlatform(environmentId ?? undefined);
   if (!environmentId || environments.length < 2) return null;
   const name = environments.find((e) => e.id === environmentId)?.name ?? environmentId;
-  const mac = platform === "darwin";
-  const Icon = mac ? Laptop : CloudServer;
+  const kind = hostKind(platform);
+  const Icon = ICON[kind];
   const label = title ?? name;
   const glyph = (
     <span
       role="img"
       aria-label={label}
       data-host-glyph={environmentId}
-      data-host-kind={mac ? "mac" : "server"}
+      data-host-kind={kind}
       className={`inline-flex shrink-0 text-muted-foreground ${className}`}
     >
       <Icon className="size-3" aria-hidden />

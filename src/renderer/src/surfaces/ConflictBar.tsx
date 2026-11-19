@@ -1,9 +1,9 @@
+import { keyHint } from "../lib/keys";
 import { Kbd } from "../components/ui/kbd";
-import { MOD } from "../lib/platform";
 import { EditorAlert } from "./FileNoteBar";
 
 /** ⌘S keeps mine while the bar shows; the tooltip says so. */
-const SAVE_KEYS = <Kbd size="sm">{`${MOD}S`}</Kbd>;
+const SAVE_KEYS = <Kbd size="sm">{keyHint("mod+S")}</Kbd>;
 
 /**
  * The line above a buffer whose file changed on disk under unsaved edits

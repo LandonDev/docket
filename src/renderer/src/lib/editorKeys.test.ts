@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+
+// These keys are a Mac's (⌘): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
+vi.mock("./platform", () => ({ IS_MAC: true }));
 import { insideMonaco, isEditorChord, onEditorKeydown, setMonacoKeyHandler } from "./editorKeys";
 
 const monacoTarget = { closest: (sel: string) => (sel === ".monaco-editor" ? {} : null) };

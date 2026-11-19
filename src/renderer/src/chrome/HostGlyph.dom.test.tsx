@@ -60,6 +60,13 @@ describe('HostGlyph', () => {
     expect(box.getAttribute('aria-label')).toBe('The box')
   })
 
+  it('a desktop for a Windows PC', () => {
+    h.environments = [TWO[0], { ...TWO[1], platform: 'win32' }]
+    const pc = glyph(render(<HostGlyph environmentId="env_box" />).container)!
+    expect(pc.getAttribute('data-host-kind')).toBe('pc')
+    expect(pc.querySelector('svg')).not.toBeNull()
+  })
+
   it('reads the live hello first, the saved platform before it, and preload for this machine', () => {
     // Saved as a Mac (a mirror paint before the socket), then the hello says linux.
     h.environments = [TWO[0], { ...TWO[1], platform: 'darwin' }]

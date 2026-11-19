@@ -1,3 +1,4 @@
+import { modKey } from "../../../lib/keys";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { BackButton, ViewBackContext } from "../viewBack";
 import type { OpenFileFn } from "../../../lib/search";
@@ -74,7 +75,7 @@ export function ChildPane({
 
   const onKey = (e: KeyboardEvent) => {
     if (e.defaultPrevented || !paneRef.current?.contains(e.target as Node)) return;
-    const back = e.key === "Escape" || (e.key === "Enter" && e.metaKey && !(e.target as HTMLElement).closest?.("[data-composer-box]"));
+    const back = e.key === "Escape" || (e.key === "Enter" && modKey(e) && !(e.target as HTMLElement).closest?.("[data-composer-box]"));
     if (!back) return;
     e.preventDefault();
     e.stopPropagation();

@@ -23,3 +23,10 @@ const subscribe = (fn: () => void) => registry.subscribe(fn);
 export function useHostPlatform(environmentId: string | undefined): string | undefined {
   return useSyncExternalStore(subscribe, () => (environmentId ? platformOf(environmentId) : undefined));
 }
+
+/** What a host is, for its glyph: a Mac, a Windows PC, or a server (Linux, and a host nothing is known of yet). */
+export type HostKind = "mac" | "pc" | "server";
+
+export function hostKind(platform: string | undefined): HostKind {
+  return platform === "darwin" ? "mac" : platform === "win32" ? "pc" : "server";
+}

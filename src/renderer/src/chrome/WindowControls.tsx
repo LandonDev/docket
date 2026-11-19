@@ -1,11 +1,47 @@
-import { getCurrentWindow } from "../lib/native";
+import { getCurrentWindow, isWebMode, nativePlatform } from "../lib/native";
+import { SCHEME_CHANGE_EVENT } from "../lib/appearance";
 import { Copy, Minus, Square, X } from "./icons";
 import { useEffect, useState } from "react";
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { TooltipProvider } from "../components/ui/tooltip";
 
+/**
+ * Windows draws its own minimise, maximise and close over the bar's end
+ * (src/main/windowFrame.ts): this is the room they take, nothing more. The
+ * width is the system's own measure of them, so it holds at any zoom and
+ * display scale; three 46px buttons until the window says. The glyphs take
+ * the ink of the app's theme, which only the page knows, so the page says
+ * what it sits on in its theme-color and main reads that.
+ */
+const CAPTION_SPACE = "calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)))";
+
+function CaptionSpace() {
+  useEffect(() => {
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.append(meta);
+    }
+    const tell = () => {
+      meta.content = getComputedStyle(document.documentElement).getPropertyValue("--sidebar").trim();
+    };
+    tell();
+    window.addEventListener(SCHEME_CHANGE_EVENT, tell);
+    return () => window.removeEventListener(SCHEME_CHANGE_EVENT, tell);
+  }, []);
+  return (
+    <div data-caption-space className="h-full shrink-0" style={{ width: CAPTION_SPACE }} />
+  );
+}
+
+/** The window's controls at a title bar's end off macOS: Windows' own on a Windows desktop, ours on Linux and at /ui. */
 export function WindowControls() {
+  return !isWebMode() && nativePlatform() === "win32" ? <CaptionSpace /> : <DrawnControls />;
+}
+
+function DrawnControls() {
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { ctrlOnly, modOrCtrl } from "./keys";
 import { insideMonaco } from "./editorKeys";
 /**
  * Workspace keybindings:
@@ -42,12 +43,12 @@ export function tabCommand(e: KeyboardEvent): TabCommand | null {
 
   // A focused Monaco editor keeps its ctrl-only chords: ctrl-t (refactor)
   // and ctrl-d (debug). cmd-d stays a workspace command.
-  if (e.ctrlKey && !e.metaKey && !e.altKey && insideMonaco(e.target)) {
+  if (ctrlOnly(e) && !e.altKey && insideMonaco(e.target)) {
     const key = e.key.toLowerCase();
     if (key === "t" || key === "d") return null;
   }
 
-  const mod = e.metaKey || e.ctrlKey;
+  const mod = modOrCtrl(e);
 
   if (mod && e.altKey && !e.shiftKey) {
     if (e.key === "ArrowLeft") return { focus: "left" };
@@ -57,7 +58,7 @@ export function tabCommand(e: KeyboardEvent): TabCommand | null {
     return null;
   }
 
-  if (e.key === "Tab" && e.ctrlKey && !e.metaKey && !e.altKey) {
+  if (e.key === "Tab" && ctrlOnly(e) && !e.altKey) {
     return e.shiftKey ? "prev" : "next";
   }
 
@@ -65,7 +66,7 @@ export function tabCommand(e: KeyboardEvent): TabCommand | null {
 
   if (e.key === "`" || e.code === "Backquote") {
     // Control alone: on macOS ⌘` cycles the app's windows.
-    if (!e.ctrlKey || e.metaKey) return null;
+    if (!ctrlOnly(e)) return null;
     return e.shiftKey ? "new-terminal-tab" : "new-terminal";
   }
 

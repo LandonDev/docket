@@ -1,4 +1,4 @@
-import { MOD } from "../lib/platform";
+import { keyHint } from "../lib/keys";
 import { Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
@@ -225,7 +225,7 @@ export function SurfaceTabs({
                         <X />
                       </TooltipTrigger>
                       <TooltipContent>
-                        Close <Kbd>{MOD}W</Kbd>
+                        Close <Kbd>{keyHint("mod+W")}</Kbd>
                       </TooltipContent>
                     </Tooltip>
                   ) : dirty ? (

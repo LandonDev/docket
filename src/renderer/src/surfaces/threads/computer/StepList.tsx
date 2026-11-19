@@ -1,3 +1,4 @@
+import { bareKey } from "../../../lib/keys";
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { ComputerHistoryStep, ComputerStepKind } from "@server/shared/contract-computer";
 import { workingStep } from "@server/shared/computer/historyWords";
@@ -385,7 +386,7 @@ export function useStepKeys(opts: {
   const { ids, openId, followId, scroller, onSelect, onFollow } = opts;
   return useCallback(
     (e: KeyboardEvent<HTMLElement>) => {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !ids.length) return;
+      if (!bareKey(e) || !ids.length) return;
       // a key inside the read text is the text's own
       if ((e.target as HTMLElement).closest("pre")) return;
       const at = openId ? ids.indexOf(openId) : -1;

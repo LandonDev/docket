@@ -1,3 +1,4 @@
+import { modOrCtrl } from '../lib/keys'
 import { DUR } from '../lib/ease'
 import {
   forwardRef,
@@ -390,7 +391,7 @@ export const ComposerInput = forwardRef<
         // paste back in one step.
         if (
           undo.current.length > 0 &&
-          (e.metaKey || e.ctrlKey) &&
+          modOrCtrl(e) &&
           !e.shiftKey &&
           !e.altKey &&
           e.key.toLowerCase() === 'z'

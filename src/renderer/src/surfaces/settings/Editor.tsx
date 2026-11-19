@@ -1,3 +1,4 @@
+import { keyCaps } from "../../lib/keys";
 import { useEffect, useMemo, useState } from "react";
 import { EDITOR_IDS, EDITOR_LABELS, type EditorChoice } from "@shared/editor";
 import { useProjects } from "../../lib/tcserver/workspaces";
@@ -24,7 +25,7 @@ import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "..
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
-import { Keys, MOD_CAP } from "./keys";
+import { Keys } from "./keys";
 import { Facts } from "./hosts/Facts";
 import { CONSOLE } from "../../components/ui/console";
 import { cn } from "../../lib/cn";
@@ -248,7 +249,7 @@ export function EditorPage() {
           description={
             <>
               Writes 800 ms after the last keystroke;
-              <Keys keys={[MOD_CAP, "S"]} />
+              <Keys keys={keyCaps("mod+S")} />
               writes at once.
             </>
           }

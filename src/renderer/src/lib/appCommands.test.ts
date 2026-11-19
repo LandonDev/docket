@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// These keys are a Mac's (⌘): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
+vi.mock("./platform", () => ({ IS_MAC: true }));
 import { RENDERER_MENU_IDS } from "@shared/menuTree";
 import { createKeyResolver, isAppCommandId, menuCommandAllowed, DOUBLE_SHIFT_MS } from "./appCommands";
 

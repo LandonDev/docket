@@ -1,3 +1,4 @@
+import { modOrCtrl } from "../lib/keys";
 import { MessageSquare, Search, StickyNote } from "../chrome/icons";
 import {
   useCallback,
@@ -445,7 +446,7 @@ export function SearchView({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      openHit(activeHit, event.metaKey || event.ctrlKey);
+      openHit(activeHit, modOrCtrl(event));
     }
   };
 
@@ -622,7 +623,7 @@ function ResultList({
             aria-selected={highlighted}
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => onRowEnter(index)}
-            onClick={(event) => onOpen(hit, event.metaKey || event.ctrlKey)}
+            onClick={(event) => onOpen(hit, modOrCtrl(event))}
             size="xs"
             id={`app-search-hit-${index}`}
             data-kind={hit.kind}

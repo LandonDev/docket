@@ -1,3 +1,4 @@
+import { keyHint, modOrCtrl } from "../lib/keys";
 import { Check, ChevronDown, Search, Star } from "./icons";
 import {
   useEffect,
@@ -60,7 +61,6 @@ import {
   type HarnessId,
 } from "../lib/session";
 import { HarnessIcon } from "./HarnessIcon";
-import { MOD } from "../lib/platform";
 import { OPEN_MODEL_PICKER, type ModelPick, type ModelPickerRequest } from "../lib/modelPickerSignal";
 import { effortLabel, ModelSettingsRows, useModelSettings } from "./ModelSettings";
 
@@ -229,7 +229,7 @@ export function ModelPicker({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing) return;
-      const mod = e.metaKey || e.ctrlKey;
+      const mod = modOrCtrl(e);
       if (
         hotkeys &&
         mod &&
@@ -371,7 +371,7 @@ export function ModelPicker({
       if (item && available(item.harness)) pick(item);
       return;
     }
-    const mod = e.metaKey || e.ctrlKey;
+    const mod = modOrCtrl(e);
     if (mod && !e.altKey && !e.shiftKey && e.key >= "1" && e.key <= "9") {
       e.preventDefault();
       const item = visible[Number(e.key) - 1];
@@ -395,7 +395,7 @@ export function ModelPicker({
                 <Button
                   variant="ghost"
                   aria-label={`${HARNESS_TITLE[current.harness]} ${current.name}${effort ? ` ${effort}` : ""}`}
-                  aria-keyshortcuts={`${MOD}.`}
+                  aria-keyshortcuts={keyHint("mod+.")}
                   size={quiet ? "xs" : "sm"}
                   // One recipe in every placement (ModelMark's): the logo 6px from the name,
                   // the effort 4px after it, the chevron 8px after the last word. Each gap is
@@ -413,7 +413,7 @@ export function ModelPicker({
           <ChevronDown className="ms-2 size-3 shrink-0 text-muted-foreground" />
         </TooltipTrigger>
         <TooltipContent>
-          Model <Kbd>{`${MOD}.`}</Kbd>
+          Model <Kbd>{keyHint("mod+.")}</Kbd>
         </TooltipContent>
       </Tooltip>
       <PopoverContent
@@ -564,7 +564,7 @@ export function ModelList({
           const highlighted = index === active;
           const favorited = favorites.includes(item.id);
           const disabled = !available(item.harness);
-          const shortcut = index < 9 && !disabled ? `${MOD}${index + 1}` : null;
+          const shortcut = index < 9 && !disabled ? keyHint(`mod+${index + 1}`) : null;
           const row = (
             <div
               key={item.id}

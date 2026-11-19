@@ -11,6 +11,13 @@ import { join } from 'path'
  * ShipIt; the next boot compares the attempted version with the one running
  * and, if the install did not happen, reads the tail of
  * `~/Library/Caches/<bundleId>.ShipIt/ShipIt_stderr.log` for the reason.
+ *
+ * Windows has no Squirrel: electron-updater runs the NSIS installer itself,
+ * which leaves no log of ours to read, so there the record alone says an
+ * install did not land. What Windows needs instead is at the foot of this
+ * file: the app is unpacked, the installer cannot replace a file a running
+ * process holds open, and a child does not die with its parent there, so
+ * the child tree is stopped before the installer starts (`installBlockers`).
  */
 
 export interface InstallAttempt {
@@ -163,4 +170,82 @@ export function stalePaths(
     join(shipIt, 'ShipItState.plist'),
     ...shipItEntries.filter((e) => e.startsWith('update.')).map((e) => join(shipIt, e))
   ]
+}
+
+// ── Windows ──────────────────────────────────────────────────────────────────
+
+/** What a retry removes on Windows: electron-updater's download under %LOCALAPPDATA%\<cache name>. */
+export function staleWindowsPaths(localAppData: string, cacheDirName: string): string[] {
+  return [join(localAppData, cacheDirName, 'pending')]
+}
+
+/** One row of the process table (Win32_Process). */
+export interface ProcRow {
+  pid: number
+  ppid: number
+  /** the image's full path; null for a process Windows will not describe */
+  exe: string | null
+  /** when it started, epoch ms; 0 when unknown */
+  startedAt: number
+}
+
+/** `Get-CimInstance Win32_Process | Select ProcessId,ParentProcessId,ExecutablePath,CreationDate | ConvertTo-Json` → rows. */
+export function parseProcessTable(json: string): ProcRow[] {
+  let raw: unknown
+  try {
+    raw = JSON.parse(json)
+  } catch {
+    return []
+  }
+  const rows: ProcRow[] = []
+  for (const item of Array.isArray(raw) ? raw : [raw]) {
+    const row = item as { ProcessId?: unknown; ParentProcessId?: unknown; ExecutablePath?: unknown; CreationDate?: unknown }
+    if (typeof row?.ProcessId !== 'number' || typeof row.ParentProcessId !== 'number') continue
+    // PowerShell 5 writes a date as "/Date(1763500000000)/"; 7 as ISO text.
+    const date = typeof row.CreationDate === 'string' ? row.CreationDate : ''
+    const ticks = /\/Date\((\d+)\)\//.exec(date)?.[1]
+    const startedAt = ticks ? Number(ticks) : Date.parse(date) || 0
+    rows.push({ pid: row.ProcessId, ppid: row.ParentProcessId, exe: typeof row.ExecutablePath === 'string' ? row.ExecutablePath : null, startedAt })
+  }
+  return rows
+}
+
+const samePath = (a: string | null, b: string): boolean => a !== null && a.toLowerCase() === b.toLowerCase()
+
+/**
+ * The processes to end before the installer runs: everything this app
+ * started, down the tree (a harness's CLI, a terminal's shell, a helper's git
+ * or MCP server), and anything else running out of the install folder (a CLI
+ * that outlived an earlier parent). The app's own processes (`self.exe`: the
+ * renderers and utility processes) are left to the quit that follows, and
+ * walked through for what they started. A parent id is believed only when the
+ * parent is older than the child: Windows reuses ids, and a dead parent's id
+ * can belong to a stranger.
+ */
+export function installBlockers(rows: ProcRow[], self: { pid: number; exe: string; appDir: string }): number[] {
+  const byPid = new Map(rows.map((r) => [r.pid, r]))
+  const children = new Map<number, ProcRow[]>()
+  for (const row of rows) {
+    const parent = byPid.get(row.ppid)
+    if (!parent || row.pid === row.ppid) continue
+    if (parent.startedAt && row.startedAt && parent.startedAt > row.startedAt) continue
+    children.set(row.ppid, [...(children.get(row.ppid) ?? []), row])
+  }
+  const blockers = new Set<number>()
+  const seen = new Set<number>([self.pid])
+  const queue = [self.pid]
+  while (queue.length) {
+    for (const child of children.get(queue.shift()!) ?? []) {
+      if (seen.has(child.pid)) continue
+      seen.add(child.pid)
+      if (!samePath(child.exe, self.exe)) blockers.add(child.pid)
+      queue.push(child.pid)
+    }
+  }
+  const dir = self.appDir.toLowerCase().replace(/[\\/]+$/, '') + '\\'
+  for (const row of rows) {
+    if (row.pid === self.pid || !row.exe || samePath(row.exe, self.exe)) continue
+    if (row.exe.toLowerCase().startsWith(dir)) blockers.add(row.pid)
+  }
+  return [...blockers]
 }

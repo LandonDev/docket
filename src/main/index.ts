@@ -6,7 +6,7 @@ import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { bootMark } from './server/boot'
-import { noteInstallOnQuit, registerUpdates, selfUpdate } from './update'
+import { installsOnQuit, noteInstallOnQuit, registerUpdates, selfUpdate, stopChildTree } from './update'
 import { applyHarness, bakedHarness } from './harness'
 import { SOAK_SWITCHES, soakWindow } from './soakWindow'
 import { configureAliax, upstream } from './aliax'
@@ -29,7 +29,7 @@ import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes, 
 import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
 import { isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
-import { declareUserActivity, MacPresenceWatcher, macScreenReader, presenceFromEnv } from './presence'
+import { declareUserActivity, MacPresenceWatcher, macScreenReader, presenceFromEnv, screenOfIdleState } from './presence'
 import { AttentionWatcher } from './attention'
 import { PersonIdle } from './personIdle'
 import { htmlPreviewer } from './htmlPreview'
@@ -52,6 +52,7 @@ import {
 import { setSignInParent } from './aliax/signInWindow'
 import { aboutPanelOptions, buildInfo } from './buildInfo'
 import { installWarningLog } from './warningLog'
+import { APP_USER_MODEL_ID, localUserData } from './windowFrame'
 
 // First statement of the bundle: everything before this mark is Electron's
 // own init plus the compile of out/main/index.js (through boot.js). `start=`
@@ -84,7 +85,10 @@ const FLUSH_AFTER_MS = 10_000
 // they never contend with the primary checkout's running app. A packaged
 // test build carries the same overrides in its package.json (harness.ts).
 applyHarness(process.env, bakedHarness(app.getAppPath()))
-/** Electron's own userData before any override: the installed app's data dir, the prod one on a Mac. */
+// Windows: the data dir sits under %LOCALAPPDATA%, off the roaming profile (windowFrame.ts).
+const winUserData = localUserData(process.platform, process.env, app.getPath('userData'))
+if (winUserData) app.setPath('userData', winUserData)
+/** The app's own userData before any override: the installed app's data dir, the prod one on a Mac. */
 const defaultUserData = app.getPath('userData')
 if (process.env.TEMP_CODE_USER_DATA) {
   app.setPath('userData', process.env.TEMP_CODE_USER_DATA)
@@ -131,7 +135,8 @@ if (!app.requestSingleInstanceLock()) {
 registerSchemes()
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('dev.landon.temp-code')
+  // Windows only (a no-op elsewhere): toasts and the taskbar button group under the installer's shortcut.
+  electronApp.setAppUserModelId(APP_USER_MODEL_ID)
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -191,6 +196,12 @@ app.whenReady().then(async () => {
     presence.attach(powerMonitor)
     if (!fromEnv.screen) void presence.readInitialLock()
   }
+  if (process.platform === 'win32' && !headless) {
+    // Windows says its lock and its sleep through powerMonitor alone, and a lock there is always a lock:
+    // there is no passwordless saver to tell from one, so no reader and nothing to dismiss.
+    if (!fromEnv.screen) presence.set({ screen: screenOfIdleState(powerMonitor.getSystemIdleState(1)) })
+    presence.attach(powerMonitor)
+  }
   // Whether the person is at this machine (attention.ts): the renderer names its focused thread only then.
   const attention = new AttentionWatcher(presence, personIdle ?? { getSystemIdleTime: () => 0 })
   ipcMain.handle('app:attention', () => attention.isPresent())
@@ -223,9 +234,9 @@ app.whenReady().then(async () => {
     selfUpdate: headless ? undefined : (version) => selfUpdate(version),
     presence,
     personIdle: personIdle ?? undefined,
-    // The display stays awake while threads work (server/keepAwake.ts): a Mac with a desktop only.
+    // The display stays awake while threads work (server/keepAwake.ts): a Mac or a Windows PC with a desktop.
     keepAwake:
-      process.platform === 'darwin' && !headless
+      (process.platform === 'darwin' || process.platform === 'win32') && !headless
         ? {
             blocker: {
               start: () => powerSaveBlocker.start('prevent-display-sleep'),
@@ -242,7 +253,17 @@ app.whenReady().then(async () => {
         : undefined
   })
   if (!headless) {
-    registerUpdates()
+    // Windows: the installer cannot replace a file a running child holds open, so "Restart to update" shuts
+    // the app's work down before it starts the installer (update.ts); before-quit then has nothing left to do.
+    registerUpdates({
+      beforeInstall:
+        process.platform === 'win32'
+          ? () => {
+              stoppedForInstall = true
+              shutDown()
+            }
+          : undefined
+    })
     // Master's release.json again when a window comes forward after fifteen idle minutes (deployDrift.ts).
     const running = server
     app.on('browser-window-focus', () => running.masterRelease.focus())
@@ -378,6 +399,19 @@ app.on('before-quit', (e) => {
     requestQuit()
     return
   }
+  // Windows: "Restart to update" already ran this, ahead of the installer it started (update.ts).
+  if (stoppedForInstall) return
+  shutDown()
+  // Windows: a downloaded release installs when this quit ends, and its installer cannot replace a
+  // file a child still holds open; a child does not die with its parent there.
+  if (process.platform === 'win32' && installsOnQuit()) stopChildTree()
+})
+
+/** Windows only: the updater shut the app's work down before it started the installer, so before-quit has nothing left to do. */
+let stoppedForInstall = false
+
+/** What a certain quit does to the app's own work. */
+function shutDown(): void {
   flushCompileCache()
   // A downloaded release installs on this quit (Squirrel does that on its
   // own); remember it so the next boot can tell whether it landed.
@@ -393,7 +427,7 @@ app.on('before-quit', (e) => {
   killAllPtys()
   void server?.close()
   killTrackedChildren()
-})
+}
 
 /** The threads mid-turn right now, written for the next boot to resume
  *  (sessions.ts recordForResume). Synchronous: both callers exit at once.

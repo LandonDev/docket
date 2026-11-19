@@ -1,3 +1,4 @@
+import { keyHint, modOrCtrl } from "../lib/keys";
 import { openUrl } from "../lib/native";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Tip } from "../components/tip";
@@ -17,7 +18,6 @@ import {
   inboxPersonAvatarUrl,
   type InboxProvider,
 } from "../lib/githubTasks";
-import { MOD } from "../lib/platform";
 import { AgentMarkdown } from "./AgentMarkdown";
 
 export type InboxReplyTarget = {
@@ -144,7 +144,7 @@ export function InboxCommentForm({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+    if (event.key !== "Enter" || !modOrCtrl(event)) return;
     event.preventDefault();
     void submit();
   };
@@ -178,7 +178,7 @@ export function InboxCommentForm({
         disabled={posting}
         aria-label={replyTo ? "Reply" : "Comment"}
         placeholder={
-          replyTo ? `Write a reply (${MOD}↩)` : `Leave a comment (${MOD}↩)`
+          replyTo ? `Write a reply (${keyHint("mod+return")})` : `Leave a comment (${keyHint("mod+return")})`
         }
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}

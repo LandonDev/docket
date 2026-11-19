@@ -34,6 +34,7 @@
  *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌃` …)
  */
 
+import { chordKey, ctrlOnly, modOrCtrl } from "./keys";
 import { insideMonaco, isEditorChord } from "./editorKeys";
 import { tabCommand, type TabCommand } from "./tabKeys";
 
@@ -133,7 +134,7 @@ const isMac = (): boolean =>
 /** Chords a focused Monaco runs itself (see MonacoPane.tsx addCommand). */
 function monacoOwns(e: KeyboardEvent): boolean {
   if (isEditorChord(e)) return true;
-  if (!e.ctrlKey || e.metaKey) return false;
+  if (!ctrlOnly(e)) return false;
   const key = e.key.toLowerCase();
   return key === "t" || key === "d" || key === "h";
 }
@@ -170,7 +171,7 @@ function environmentChord(code: string): AppCommand | null {
 }
 
 function zoomChord(e: KeyboardEvent): AppCommandId | null {
-  if (!(e.metaKey || e.ctrlKey) || e.altKey) return null;
+  if (!modOrCtrl(e) || e.altKey) return null;
   if (e.key === "=" || e.key === "+" || e.code === "Equal") return "zoom_in";
   if (e.key === "-" || e.code === "Minus") return "zoom_out";
   if (e.key === "0" || e.code === "Digit0") return "zoom_reset";
@@ -193,7 +194,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 
     if (ctx.lightboxOpen) {
       lastShift = -Infinity;
-      if (e.metaKey || e.ctrlKey || e.altKey) return zoom ? { id: zoom } : null;
+      if (chordKey(e)) return zoom ? { id: zoom } : null;
       if (e.key === "Escape") return { id: "lightbox_close" };
       if (e.key === "ArrowLeft") return { id: "lightbox_prev" };
       if (e.key === "ArrowRight") return { id: "lightbox_next" };
@@ -202,7 +203,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 
     // Double Shift: two bare Shift presses with nothing between them.
     if (e.key === "Shift") {
-      if (e.metaKey || e.ctrlKey || e.altKey) {
+      if (chordKey(e)) {
         lastShift = -Infinity;
         return null;
       }
@@ -219,7 +220,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 
     if (within(target, DIALOG)) {
       if (zoom) return { id: zoom };
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "s") {
+      if (modOrCtrl(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "s") {
         return { id: "save_all" };
       }
       return null;
@@ -228,11 +229,11 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
     if (insideMonaco(target) && monacoOwns(e)) return null;
 
     const inTerminal = within(target, TERMINAL);
-    if (inTerminal && e.ctrlKey && !e.metaKey && isMac()) return null;
+    if (inTerminal && ctrlOnly(e) && isMac()) return null;
 
     const tab = tabCommand(e);
     if (tab) {
-      if (inTerminal && e.ctrlKey && !e.metaKey) return null;
+      if (inTerminal && ctrlOnly(e)) return null;
       if ((tab === "split-right" || tab === "split-down") && within(target, CODEMIRROR)) {
         return null;
       }
@@ -243,7 +244,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 
     if (zoom) return { id: zoom };
 
-    const mod = e.metaKey || e.ctrlKey;
+    const mod = modOrCtrl(e);
     if (!mod) return null;
     const key = e.key.toLowerCase();
 

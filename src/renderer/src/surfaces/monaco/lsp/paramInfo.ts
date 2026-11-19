@@ -1,3 +1,4 @@
+import { bareKey } from "../../../lib/keys";
 import { monaco } from "../monaco";
 import { signatureHelpAt } from "./providers";
 
@@ -235,7 +236,7 @@ export async function showParamInfo(editor: monaco.editor.ICodeEditor): Promise<
  *  the line and lands at the end of the previous one. */
 export function installSmartBackspace(editor: monaco.editor.ICodeEditor): void {
   editor.onKeyDown((e) => {
-    if (e.keyCode !== monaco.KeyCode.Backspace || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)
+    if (e.keyCode !== monaco.KeyCode.Backspace || !bareKey(e))
       return;
     const model = editor.getModel();
     const position = editor.getPosition();

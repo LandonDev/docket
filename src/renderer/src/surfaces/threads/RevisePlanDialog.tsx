@@ -1,3 +1,4 @@
+import { modOrCtrl } from "../../lib/keys";
 import { useState } from "react";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
@@ -46,7 +47,7 @@ export function RevisePlanDialog({
         size="sm"
         busy={busy}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          if (e.key === "Enter" && modOrCtrl(e)) {
             e.preventDefault();
             void send();
           }

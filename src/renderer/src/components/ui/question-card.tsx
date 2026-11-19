@@ -1,9 +1,13 @@
 import { DUR, EASE_EXIT, EASE_OUT } from "@renderer/lib/ease";
+import { chordKey, keyCaps, modOrCtrl } from "@renderer/lib/keys";
 import { AnimatePresence, motion, MotionConfig, type Variants } from "motion/react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { Button } from "./button";
 import { Kbd, KbdGroup } from "./kbd";
+
+/** The submit chord as caps: ⌘ ⏎ on a Mac, Ctrl Enter elsewhere. */
+const SUBMIT_CAPS = keyCaps("mod+enter");
 
 /**
  * A question an agent needs answered before it continues: one question at
@@ -172,14 +176,14 @@ export function QuestionCard({
   // Keys reach the card only from inside it: a letter picks, ⌘⏎ continues.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!question) return;
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (event.key === "Enter" && modOrCtrl(event)) {
       event.preventDefault();
       submit();
       return;
     }
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (chordKey(event)) return;
     const letter = /^[a-z]$/i.test(event.key) ? event.key.toUpperCase() : undefined;
     const index = letter === undefined ? -1 : KEYS.indexOf(letter);
     if (index >= 0 && index < question.options.length) {
@@ -330,12 +334,11 @@ export function QuestionCard({
             </AnimatePresence>
           </MotionConfig>
           <KbdGroup className="ms-2">
-            <Kbd size="sm" className="justify-center border-transparent bg-background/15 text-current">
-              ⌘
-            </Kbd>
-            <Kbd size="sm" className="justify-center border-transparent bg-background/15 text-current">
-              ⏎
-            </Kbd>
+            {SUBMIT_CAPS.map((cap) => (
+              <Kbd key={cap} size="sm" className="justify-center border-transparent bg-background/15 text-current">
+                {cap}
+              </Kbd>
+            ))}
           </KbdGroup>
         </Button>
       </div>

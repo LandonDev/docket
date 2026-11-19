@@ -1,3 +1,4 @@
+import { macCommand, modOrCtrl } from "../lib/keys";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import { frameLoopAllowed, usePaneVisible } from "../hooks/paneVisibility";
@@ -230,12 +231,12 @@ function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
     host.addEventListener("paste", onPaste);
 
     term.attachCustomKeyEventHandler((event) => {
-      const mod = event.metaKey || event.ctrlKey;
+      const mod = modOrCtrl(event);
       if (!mod || event.altKey) return true;
       const key = event.key.toLowerCase();
       if (key === "c") {
         if (term.hasSelection()) return false;
-        if (event.metaKey && !event.ctrlKey) return false;
+        if (macCommand(event)) return false;
         return true;
       }
       if (key === "v") return false;

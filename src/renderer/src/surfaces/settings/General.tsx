@@ -1,3 +1,4 @@
+import { keyCaps } from "../../lib/keys";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { InboxProviderMark } from "../../chrome/InboxProviderMark";
 import { ChoiceSelect } from "../../components/choice-select";
@@ -15,7 +16,6 @@ import {
   saveTranscriptAnchor,
   TRANSCRIPT_ANCHOR_CHANGE_EVENT,
 } from "../../lib/appearance";
-import { IS_MAC } from "../../lib/platform";
 import { clearInboxCache } from "../../lib/githubTasks";
 import {
   disconnectLinear,
@@ -73,7 +73,7 @@ function SwitchRow({
   );
 }
 
-const MOD_ENTER = IS_MAC ? ["⌘", "↩"] : ["Ctrl", "Enter"];
+const MOD_ENTER = keyCaps("mod+return");
 
 export function GeneralPage({
   onOpenWhatsNew,

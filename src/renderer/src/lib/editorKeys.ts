@@ -1,3 +1,5 @@
+import { modKey } from "./keys";
+
 /**
  * Editor-first keys. The app's global shortcut listener sits on window
  * capture and claims chords like ⌘P before a focused Monaco editor sees
@@ -24,7 +26,7 @@ export function insideMonaco(target: EventTarget | null): boolean {
 /** The chords the editor keeps for itself while it has focus. */
 export function isEditorChord(e: KeyboardEvent): boolean {
   if (e.isComposing) return false;
-  if (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p") return true;
+  if (modKey(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p") return true;
   return false;
 }
 

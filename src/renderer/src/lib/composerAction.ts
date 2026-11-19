@@ -1,3 +1,4 @@
+import { keyHint } from "./keys";
 import type { MidTurnDefault } from "./settings";
 
 /** What the composer's one button (and Enter) does right now. */
@@ -44,9 +45,9 @@ export function composerActionLabel(intent: ComposerIntent): string {
  *  key and what it does ("⌘⏎ steers" while Enter queues, and back). */
 export function composerActionHint(
   intent: ComposerIntent,
-  mod: string,
+  mac?: boolean,
 ): { keys: string; verb: string } | undefined {
-  if (intent === "queue") return { keys: `${mod}⏎`, verb: "steers" };
-  if (intent === "steer") return { keys: `${mod}⏎`, verb: "queues" };
+  if (intent === "queue") return { keys: keyHint("mod+enter", mac), verb: "steers" };
+  if (intent === "steer") return { keys: keyHint("mod+enter", mac), verb: "queues" };
   return undefined;
 }

@@ -1,3 +1,4 @@
+import { modOrCtrl } from "../lib/keys";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import type { DevPortLog, DevRun, DevRunPush } from "@server/shared/contract-devservers";
@@ -66,7 +67,7 @@ export function DevConsole({ source, active }: { source: DevConsoleSource; activ
     };
     host.addEventListener("copy", onCopy);
     // ⌘C with a selection goes to the copy event above.
-    term.attachCustomKeyEventHandler((e) => !((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c" && term.hasSelection()));
+    term.attachCustomKeyEventHandler((e) => !(modOrCtrl(e) && e.key.toLowerCase() === "c" && term.hasSelection()));
 
     const onScheme = () => (term.options.theme = terminalTheme(isLightScheme()));
     window.addEventListener(SCHEME_CHANGE_EVENT, onScheme);

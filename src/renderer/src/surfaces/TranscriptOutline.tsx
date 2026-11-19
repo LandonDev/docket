@@ -1,3 +1,4 @@
+import { keyHint } from "../lib/keys";
 import { memo, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "../components/ui/button";
 import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
@@ -91,7 +92,7 @@ export const TranscriptOutline = memo(function TranscriptOutline({
         >
           <ChevronRight className={cn("size-3.5", DISCLOSURE_CHEVRON, !folded && "rotate-90")} />
         </TooltipTrigger>
-        <TooltipContent side="right">{verb} ⌘⇧M</TooltipContent>
+        <TooltipContent side="right">{verb} {keyHint("mod+shift+M")}</TooltipContent>
       </Tooltip>
       {mounted !== "no" ? (
         <List

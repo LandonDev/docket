@@ -1,10 +1,10 @@
+import { keyHint } from "../lib/keys";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { MENU_TREE, inAppMenus, type InAppMenu } from "@shared/menuTree";
 import { Button } from "../components/ui/button";
 import { useAway } from "../lib/away";
 import { cn } from "../lib/cn";
 import { RowsMenu, type MenuRow } from "./menuRows";
-import { ALT, IS_MAC, MOD, SHIFT } from "../lib/platform";
 
 /**
  * The menu bar a browser on /ui shows off macOS, opened by a lone Alt: the
@@ -18,19 +18,15 @@ import { ALT, IS_MAC, MOD, SHIFT } from "../lib/platform";
  */
 
 const KEY_NAMES: Record<string, string> = { Left: "←", Right: "→", Up: "↑", Down: "↓", Plus: "+" };
+/** Electron's modifier names as lib/keys.ts names them. */
+const MODIFIER_NAMES: Record<string, string> = { CmdOrCtrl: "mod", CommandOrControl: "mod", Cmd: "mod", Ctrl: "ctrl", Shift: "shift", Alt: "alt", Option: "alt" };
 
 /** `CmdOrCtrl+Shift+F` as the platform writes it: ⌘⇧F on a Mac, Ctrl+Shift+F elsewhere. */
 export function acceleratorLabel(accelerator: string): string {
   const parts = accelerator.split("+");
   const key = parts.pop() ?? "";
-  const mods = parts.map((part) => {
-    if (part === "CmdOrCtrl" || part === "CommandOrControl" || part === "Cmd") return MOD;
-    if (part === "Ctrl") return IS_MAC ? "⌃" : "Ctrl+";
-    if (part === "Shift") return SHIFT;
-    if (part === "Alt" || part === "Option") return ALT;
-    return `${part}+`;
-  });
-  return mods.join("") + (KEY_NAMES[key] ?? key);
+  const mods = parts.map((part) => MODIFIER_NAMES[part] ?? part);
+  return keyHint([...mods, KEY_NAMES[key] ?? key].join("+"));
 }
 
 /** A menu's rows: words and keys, no glyphs, as the native bar; a checkbox

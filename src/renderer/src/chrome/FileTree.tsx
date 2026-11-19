@@ -1,3 +1,4 @@
+import { modOrCtrl } from "../lib/keys";
 import { registry } from "../lib/connection";
 import { useEditorConfig } from "../lib/editorConfig";
 import { editorLabelFor, openInEditor } from "../lib/openInEditor";
@@ -482,7 +483,7 @@ export function FileTree({
     const path = selectedPath ?? cwd;
     const isRoot = path === cwd;
     const isDir = isDirAt(cwd, path);
-    const mod = e.metaKey || e.ctrlKey;
+    const mod = modOrCtrl(e);
     const key = e.key.toLowerCase();
     if (mod && !e.altKey && !e.shiftKey && key === "c") {
       if (isRoot) return;

@@ -28,9 +28,9 @@ describe("decideComposerAction", () => {
   });
 
   it("mid-turn, the hint names the other key and what it does", () => {
-    expect(composerActionHint("send", "⌘")).toBeUndefined();
-    expect(composerActionHint("pause", "⌘")).toBeUndefined();
-    expect(composerActionHint("queue", "⌘")).toEqual({ keys: "⌘⏎", verb: "steers" });
-    expect(composerActionHint("steer", "Ctrl+")).toEqual({ keys: "Ctrl+⏎", verb: "queues" });
+    expect(composerActionHint("send", true)).toBeUndefined();
+    expect(composerActionHint("pause", true)).toBeUndefined();
+    expect(composerActionHint("queue", true)).toEqual({ keys: "⌘⏎", verb: "steers" });
+    expect(composerActionHint("steer", false)).toEqual({ keys: "Ctrl+Enter", verb: "queues" });
   });
 });

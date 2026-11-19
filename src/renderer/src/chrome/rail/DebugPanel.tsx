@@ -1,3 +1,4 @@
+import { keyHint } from "../../lib/keys";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { DISCLOSURE_CHEVRON } from "@renderer/components/ui/disclosure";
@@ -111,7 +112,7 @@ export function DebugView({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {error ? <ErrorLine text={error} /> : null}
-        <p className="px-3 py-3 text-xs text-muted-foreground">⌃D in a Java file starts a session here</p>
+        <p className="px-3 py-3 text-xs text-muted-foreground">{keyHint("ctrl+D")} in a Java file starts a session here</p>
         {output.length > 0 ? consoleGroup("Console") : null}
       </div>
     );

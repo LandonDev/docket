@@ -1,3 +1,4 @@
+import { modOrCtrl } from "../lib/keys";
 import { Suspense, lazy, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Modal, useModalClose } from "./Modal";
 import { DialogFooter as Footer, ErrorLine, errorText } from "./ConfirmDialog";
@@ -143,7 +144,7 @@ function PreambleForm({
     <form
       onSubmit={submit}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        if (e.key === "Enter" && modOrCtrl(e)) {
           e.preventDefault();
           void submit(e);
         }

@@ -1,3 +1,4 @@
+import { keyHint } from "../lib/keys";
 import { registry, useEnvironments } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
 import { aliasKeys, mergeRailSections, type RailItem } from "../lib/linkedRail";
@@ -38,7 +39,7 @@ import {
 } from "../lib/appearance";
 import { basename, revealPath } from "../lib/fs";
 import { isWebMode } from "../lib/nativeWeb";
-import { IS_MAC, MOD } from "../lib/platform";
+import { IS_MAC } from "../lib/platform";
 import { projectName } from "../lib/paths";
 import {
   collectRailProjects,
@@ -471,7 +472,7 @@ export function ProjectRail({
             selected={searchActive}
             onClick={onSearch}
             intent={searchChunk.intent}
-            tooltip={<Kbd>{`${MOD}K`}</Kbd>}
+            tooltip={<Kbd>{keyHint("mod+K")}</Kbd>}
           />
         );
       case "inbox":
@@ -1005,7 +1006,7 @@ export function RailFoot({
             label="Settings"
             onClick={() => shell.openSettings()}
             intent={settingsChunk.intent}
-            tooltip={<Kbd>{`${MOD},`}</Kbd>}
+            tooltip={<Kbd>{keyHint("mod+,")}</Kbd>}
           />
         );
     }

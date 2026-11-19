@@ -7,7 +7,7 @@ import { Toggle } from "./toggle";
 import { Tabs, TabsList, TabsTrigger } from "./tabs";
 import { Item, ItemButton } from "./item";
 
-vi.mock("../../lib/native", () => ({ getCurrentWindow: () => ({ isMaximized: async () => false, onResized: async () => () => {} }) }));
+vi.mock("../../lib/native", () => ({ isWebMode: () => false, nativePlatform: () => "linux", getCurrentWindow: () => ({ isMaximized: async () => false, onResized: async () => () => {} }) }));
 import { WindowControls } from "../../chrome/WindowControls";
 
 afterEach(cleanup);

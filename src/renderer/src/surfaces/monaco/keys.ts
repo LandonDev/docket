@@ -1,3 +1,4 @@
+import { modKey } from "../../lib/keys";
 import { setMonacoKeyHandler } from "../../lib/editorKeys";
 import { showParamInfo } from "./lsp/paramInfo";
 import type { monaco } from "./monaco";
@@ -21,7 +22,7 @@ export function focusedEditor(): monaco.editor.ICodeEditor | null {
 setMonacoKeyHandler((e) => {
   const editor = focusedEditor();
   if (!editor) return false;
-  if (e.metaKey && e.key.toLowerCase() === "p") {
+  if (modKey(e) && e.key.toLowerCase() === "p") {
     void showParamInfo(editor);
     return true;
   }

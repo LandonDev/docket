@@ -1,5 +1,5 @@
+import { joinCaps, keyCaps } from "./keys";
 import { requestSettings } from "./monaco/debugTab";
-import { IS_MAC } from "./platform";
 
 const SECTION_KEY = "monocode.settingsSection";
 
@@ -183,12 +183,7 @@ export function saveClaudeHooks(value: boolean) {
 }
 
 // Key caps, one per key: macOS glyphs, words elsewhere.
-const CMD = IS_MAC ? "⌘" : "Ctrl";
-const OPT = IS_MAC ? "⌥" : "Alt";
-const SHF = IS_MAC ? "⇧" : "Shift";
-const CTL = IS_MAC ? "⌃" : "Ctrl";
-const DEL = IS_MAC ? "⌫" : "Delete";
-const RET = IS_MAC ? "⏎" : "Enter";
+const [CMD, OPT, SHF, CTL, DEL, RET] = keyCaps("mod+alt+shift+ctrl+delete+enter");
 
 export type Keybinding = {
   name: string;
@@ -292,7 +287,7 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
  *  (lib/menuShortcuts.test.ts holds every call to a real binding). */
 export function shortcutFor(group: string, name: string): string | undefined {
   const chord = KEYBINDING_GROUPS.find((g) => g.title === group)?.bindings.find((b) => b.name === name)?.keys[0];
-  return chord?.join(IS_MAC ? "" : "+");
+  return chord && joinCaps(chord);
 }
 
 export const KEYBINDING_SCOPE_LABEL: Record<NonNullable<Keybinding["scope"]>, string> = {

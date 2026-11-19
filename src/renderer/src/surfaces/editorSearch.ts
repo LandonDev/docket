@@ -1,3 +1,4 @@
+import { altOnly, modOrCtrl } from "../lib/keys";
 import {
   closeSearchPanel,
   findNext,
@@ -52,7 +53,7 @@ export function handleEditorFindKey(event: KeyboardEvent): boolean {
   }
 
   const view = editorViewForFind();
-  const mod = event.metaKey || event.ctrlKey;
+  const mod = modOrCtrl(event);
   const key = event.key.toLowerCase();
 
   if (mod && event.altKey && !event.shiftKey && key === "f") {
@@ -381,7 +382,7 @@ class FindPanel implements Panel {
       event.preventDefault();
       return;
     }
-    if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+    if (altOnly(event)) {
       const flag: FindFlag | null =
         event.code === "KeyC"
           ? "caseSensitive"

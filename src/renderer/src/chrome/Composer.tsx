@@ -1,3 +1,4 @@
+import { modKey } from '../lib/keys'
 import { registry } from '../lib/connection'
 import { environmentOfCwd, hostOfCwd } from '../lib/tcserver/projects'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -820,7 +821,7 @@ export function Composer({
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      submit(inputRef.current?.value() ?? '', e.metaKey)
+      submit(inputRef.current?.value() ?? '', modKey(e))
     }
   }
 

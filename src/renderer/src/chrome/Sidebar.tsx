@@ -1,3 +1,4 @@
+import { keyHint } from "../lib/keys";
 import { MoreHorizontal, Plus } from "./icons";
 import {
   memo,
@@ -8,7 +9,7 @@ import {
 import { warmProjectForCwd } from "../lib/monaco/focusBoot";
 import { AnimatePresence, motion } from "motion/react";
 import { DUR, EASE_OUT } from "../lib/ease";
-import { IS_MAC, MOD } from "../lib/platform";
+import { IS_MAC } from "../lib/platform";
 import { basename } from "../lib/fs";
 import { projectName } from "../lib/paths";
 import { resolveTabGroupLabel } from "../lib/tabGroups";
@@ -303,7 +304,7 @@ function SidebarComponent({
                 <Plus className="size-3.5" />
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                New thread <Kbd>{`${MOD}N`}</Kbd>
+                New thread <Kbd>{keyHint("mod+N")}</Kbd>
               </TooltipContent>
             </Tooltip>
           ) : null}

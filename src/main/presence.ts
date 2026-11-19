@@ -17,7 +17,9 @@ import { classifyScreen, DISMISS_POLL_MS, DISMISS_WAIT_MS, IDLE_LAUNCH_MIN_S, pa
  * IOPMAssertionDeclareUserActivity does), never touching a real lock.
  *
  * Sources: Electron's powerMonitor (`lock-screen`, `unlock-screen`,
- * `suspend`, `resume`); on `lock-screen` and at boot the facts behind it
+ * `suspend`, `resume`, which is all a Windows host has, with
+ * `getSystemIdleState` for its lock at boot: `screenOfIdleState`); on a Mac,
+ * on `lock-screen` and at boot, the facts behind it
  * (`ioreg -n Root -d1 -a`, the `IOConsoleUsers` entry's
  * `CGSSessionScreenIsLocked`; `sysadminctl -screenLock status`, kept ten
  * minutes; the person's idle when the cover rose), classified by
@@ -112,6 +114,16 @@ export function presenceFromEnv(env: NodeJS.ProcessEnv): Partial<Pick<MacPresenc
     else if (word === 'asleep' || word === 'awake') out.power = word
   }
   return out
+}
+
+/**
+ * Windows: Electron's `powerMonitor.getSystemIdleState` as a screen state, for the read at boot
+ * (the lock and unlock notices carry it from there). Its `locked` is the lock screen; `active`
+ * and `idle` are a desktop someone can reach; anything else is not known.
+ */
+export function screenOfIdleState(state: string): ScreenState {
+  if (state === 'locked') return 'locked'
+  return state === 'active' || state === 'idle' ? 'unlocked' : 'unknown'
 }
 
 /** Declares user activity for a second (`caffeinate -u -t 1`): the saver stops, as at a key press. */

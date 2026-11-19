@@ -1,3 +1,4 @@
+import { keyHint } from "../lib/keys";
 import { useSashKeys } from "../hooks/useSashKeys";
 import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import { X } from "../chrome/icons";
@@ -7,7 +8,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/toolti
 import { cn } from "../lib/cn";
 import { suppressTextSelection } from "../lib/drag";
 import { clampSashBoundary, type LayoutSash, type PaneEdge } from "../lib/layout";
-import { MOD } from "../lib/platform";
 
 const titleClass = (focused: boolean) =>
   cn("min-w-0 flex-1 truncate text-[13px]", focused ? "text-foreground" : "text-muted-foreground");
@@ -77,7 +77,7 @@ export function PaneHeader({
         </TooltipTrigger>
         <TooltipContent>
           Close pane
-          <Kbd size="sm">{`${MOD}W`}</Kbd>
+          <Kbd size="sm">{keyHint("mod+W")}</Kbd>
         </TooltipContent>
       </Tooltip>
     </div>

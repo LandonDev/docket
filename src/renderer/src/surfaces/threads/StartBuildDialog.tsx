@@ -1,3 +1,4 @@
+import { modOrCtrl } from "../../lib/keys";
 import { useState } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import { AccessPicker } from "../../chrome/AccessPicker";
@@ -109,7 +110,7 @@ export function StartBuildDialog({
         size="sm"
         busy={busy}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          if (e.key === "Enter" && modOrCtrl(e)) {
             e.preventDefault();
             void start();
           }

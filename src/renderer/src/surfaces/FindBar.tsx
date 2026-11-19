@@ -1,3 +1,4 @@
+import { keyHint } from "../lib/keys";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { ChevronDown, ChevronRight, ChevronUp, X } from "../chrome/icons";
 import { Button } from "../components/ui/button";
@@ -7,7 +8,6 @@ import { Toggle } from "../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 import { cn } from "../lib/cn";
-import { ALT, MOD, SHIFT } from "../lib/platform";
 
 export type CountState = "idle" | "ok" | "empty" | "invalid";
 
@@ -67,9 +67,9 @@ export function countLabel({
 const FIELD_ATTRS = { autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false } as const;
 
 const FLAGS: { flag: FindFlag; face: string; label: string; keys: string }[] = [
-  { flag: "caseSensitive", face: "Aa", label: "Match case", keys: `${ALT}C` },
-  { flag: "wholeWord", face: "ab", label: "Match whole word", keys: `${ALT}W` },
-  { flag: "regexp", face: ".*", label: "Use regular expression", keys: `${ALT}R` },
+  { flag: "caseSensitive", face: "Aa", label: "Match case", keys: keyHint("alt+C") },
+  { flag: "wholeWord", face: "ab", label: "Match whole word", keys: keyHint("alt+W") },
+  { flag: "regexp", face: ".*", label: "Use regular expression", keys: keyHint("alt+R") },
 ];
 
 /**
@@ -88,7 +88,7 @@ export function FindBar(props: FindBarProps) {
       >
         <Hint
           label="Toggle replace"
-          keys={`${MOD}${ALT}F`}
+          keys={keyHint("mod+alt+F")}
           face={
             <ChevronRight
               className={cn(DISCLOSURE_CHEVRON, replaceVisible && "rotate-90")}
@@ -151,13 +151,13 @@ export function FindBar(props: FindBarProps) {
               ))}
               <Hint
                 label="Previous match"
-                keys={`${MOD}${SHIFT}G`}
+                keys={keyHint("mod+shift+G")}
                 face={<ChevronUp />}
                 control={<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Previous match" onClick={props.onPrev} />}
               />
               <Hint
                 label="Next match"
-                keys={`${MOD}G`}
+                keys={keyHint("mod+G")}
                 face={<ChevronDown />}
                 control={<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Next match" onClick={props.onNext} />}
               />

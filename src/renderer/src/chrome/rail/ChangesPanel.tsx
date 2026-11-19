@@ -1,3 +1,4 @@
+import { keyHint, modOrCtrl } from "../../lib/keys";
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
@@ -45,7 +46,6 @@ import { refreshGitSnapshot, useGitIndex } from "../../lib/gitIndexStore";
 import { generateCommitMessage, generatePrContent } from "../../lib/harness";
 import { openUrl } from "../../lib/native";
 import { editorLabelFor, openInEditor } from "../../lib/openInEditor";
-import { MOD } from "../../lib/platform";
 import { requestReview } from "../../lib/reviewRequest";
 import type { OpenFileFn } from "../../lib/search";
 import { environmentOfCwd, projectForCwd } from "../../lib/tcserver/projects";
@@ -958,7 +958,7 @@ function CommitFooter({
           rows={1}
           onChange={(e) => onMessage(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+            if (e.key !== "Enter" || !modOrCtrl(e)) return;
             e.preventDefault();
             actions.commit("none");
           }}
@@ -981,7 +981,7 @@ function CommitFooter({
           >
             <BusyLabel busy={committing} label="Commit" />
           </TooltipTrigger>
-          <TooltipContent>Commit {MOD}↩</TooltipContent>
+          <TooltipContent>Commit {keyHint("mod+return")}</TooltipContent>
         </Tooltip>
         <DropdownMenu>
           <DropdownMenuTrigger

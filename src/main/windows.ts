@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, shell, type IpcMainEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -10,6 +10,7 @@ import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { soakWindow } from './soakWindow'
 import { bootMark } from './server/boot'
+import { CAPTION_HEIGHT, captionOverlay, frameOptions, isDarkColor } from './windowFrame'
 
 /**
  * The window registry. Every window has a *slot*: a stable id that names
@@ -28,8 +29,7 @@ import { bootMark } from './server/boot'
  * then asks every other window to persist, waits briefly, and exits.
  */
 
-/** Donor chrome: inset traffic lights and a floor the layout still fits in. */
-const TRAFFIC_LIGHT = { x: 12, y: 13 }
+/** A floor the layout still fits in. */
 const MIN_WIDTH = 800
 const MIN_HEIGHT = 520
 export const MAIN_SLOT = 'main'
@@ -66,8 +66,6 @@ function readWindowState(raw: Partial<WindowState>): WindowState {
 }
 
 let stateFile: StateFile | null = null
-
-const OPAQUE_BACKGROUND = '#171717'
 
 /** The file before M12 held one window's bounds; that window is `main`. */
 function loadStateFile(): StateFile {
@@ -203,13 +201,8 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
     show: false,
-    autoHideMenuBar: true,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    ...(process.platform === 'darwin'
-      ? { trafficLightPosition: TRAFFIC_LIGHT }
-      : {}),
-    backgroundColor: OPAQUE_BACKGROUND,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    // The frame per platform (windowFrame.ts): traffic lights on macOS, Windows' own caption buttons over the page.
+    ...frameOptions(process.platform, { dark: nativeTheme.shouldUseDarkColors, icon }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -221,6 +214,16 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
   const id = win.webContents.id
   windows.set(id, { win, slot })
   loadStateFile().windows[slot] = state
+
+  if (process.platform === 'win32') {
+    // No menu bar, so Alt never reveals one; the menu's accelerators still run.
+    win.setMenuBarVisibility(false)
+    // The caption glyphs take the ink of the app's own theme, which only the page knows: it says so in
+    // its theme-color (chrome/WindowControls.tsx), and until then the system's setting stands in.
+    win.webContents.on('did-change-theme-color', (_event, color) => {
+      if (color && !win.isDestroyed()) win.setTitleBarOverlay(captionOverlay(isDarkColor(color)))
+    })
+  }
 
   if (state.maximized) win.maximize()
 
@@ -456,6 +459,8 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
     const f = Number(factor)
     if (!Number.isFinite(f) || f <= 0) return
     e.sender.setZoomFactor(f)
+    // Windows: the caption buttons are as tall as the page's title bar, which grows with the zoom.
+    if (process.platform === 'win32') windowOf(e)?.setTitleBarOverlay({ height: Math.round(CAPTION_HEIGHT * f) })
   })
 
   ipcMain.handle('app:dock-badge', (e, count: number) => {
