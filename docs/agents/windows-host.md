@@ -127,7 +127,7 @@ desktop it is, with that platform's rules. The tool names stay `mac_*`.
   case-blind, and any drive's root counts as above home (`coversHome`), so it is never offered as a
   folder to remember or share. Full access still asks for Windows' credential stores
   (`AppData\Roaming\Microsoft\Credentials`, `Protect`, `Vault`) and the app's own data
-  (`AppData\Local\TempCode`); a write under `~\AppData` always asks, as `~/Library` does on a Mac.
+  (`AppData\Local\TempCode`).
 - **Commands and jobs** (macRunner.ts `shellCall`, macJobs.ts): through Git Bash's `-lc` like the
   Mac's login shell (`exec "$@"` for argv), else cmd.exe (argv with cross-spawn's quoting, a line as
   written). The environment keeps Windows' own variables (`SystemRoot`, `USERPROFILE`, `APPDATA`,
