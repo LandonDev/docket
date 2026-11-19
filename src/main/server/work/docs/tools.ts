@@ -51,7 +51,7 @@ function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {
   }
 }
 
-type ServiceWrite = { mode: 'direct'; versionId?: string } | { mode: 'branch'; branchId: string; versionId: string }
+type ServiceWrite = { mode: 'direct'; versionId?: string; beforeVersionId?: string } | { mode: 'branch'; branchId: string; versionId: string }
 
 /** The sections a rewrite touched, for the "Wrote 2 sections" line: by heading when the text has them, else by paragraph. */
 export function changedParts(before: string, after: string): { count: number; unit: 'section' | 'paragraph' } {
@@ -91,7 +91,7 @@ async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 
   }
   const text = `Wrote ${plural(parts.count, parts.unit)}`
   // His own document, on the agent's own idea: the bar says what was written, with Undo.
-  if (verdict === 'own' && done.versionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.versionId }, pathOf(t))
+  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId }, pathOf(t))
   return workText(`${text}.${note}`)
 }
 

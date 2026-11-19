@@ -7,6 +7,7 @@ import {
   EditorAdaptersProvider,
   EditorKitProvider,
   useReview,
+  type AnyEditor,
   type DocumentPresence,
   type DocumentSelection,
   type DocumentStatus,
@@ -248,7 +249,8 @@ function Opened({ host, open, shell, width, sessionId }: { host: DocHost; open: 
     return () => shell.written(null);
   }, [shell, doc.written, host, open.source]);
 
-  const review = useDocReview(host, open, shell);
+  const [editor, setEditor] = useState<AnyEditor | null>(null);
+  const review = useDocReview(host, open, shell, editor);
 
   const onAsk = (selection: DocumentSelection): void => {
     const words = selection.text.replace(/\s+/g, " ").trim();
@@ -268,6 +270,7 @@ function Opened({ host, open, shell, width, sessionId }: { host: DocHost; open: 
       onAsk={onAsk}
       review={review.state}
       onReviewPick={review.pick}
+      onEditor={setEditor}
     />
   );
 }
@@ -332,7 +335,7 @@ export function useDocument(host: DocHost, open: DocOpen): DocumentHandle {
 }
 
 /** Pending suggestions, drawn in the text and stepped from the pane's bar. */
-function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell) {
+function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, editor: AnyEditor | null) {
   const branches = useBranches(host.env, open.source);
   const value = branches.value;
   const { changes, groups } = useMemo(() => reviewOf(value?.branches ?? [], value?.names ?? {}), [value]);
@@ -346,6 +349,16 @@ function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell) {
     for (const [branchId, which] of byBranch) await actions.decide(branchId, which, accept);
   };
   const review = useReview({ changes, groups, accept: decide(true), reject: decide(false) });
+  // The changes are places in the text as it was when they were worked out: asked again once the text
+  // settles after a change, which is also how a decision made in another window reaches this one.
+  const pending = changes.length > 0;
+  const onChange = useMemo(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    return () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => refreshHistory(host.env, open.source), 700);
+    };
+  }, [host.env, open.source]);
   const latest = useRef(review);
   latest.current = review;
   const hooks = review.hooks;
@@ -368,6 +381,7 @@ function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shell, hooks?.index, hooks?.count, groupsKey]);
   useEffect(() => () => shell.review(null), [shell]);
+  useEffect(() => (editor && pending ? editor.onChange(onChange) : undefined), [editor, pending, onChange]);
   return review;
 }
 
@@ -381,6 +395,7 @@ export function DocumentFrame({
   onAsk,
   review,
   onReviewPick,
+  onEditor,
 }: {
   doc: DocumentHandle;
   open: DocOpen;
@@ -390,6 +405,7 @@ export function DocumentFrame({
   onAsk?(selection: DocumentSelection): void;
   review?: ReturnType<typeof useReview>["state"] | null;
   onReviewPick?(id: string): void;
+  onEditor?(editor: AnyEditor | null): void;
 }) {
   const scheme = useColorScheme();
   return (
@@ -409,6 +425,7 @@ export function DocumentFrame({
               {...(onAsk ? { onAsk } : {})}
               review={review ?? null}
               {...(onReviewPick ? { onReviewPick } : {})}
+              {...(onEditor ? { onEditor } : {})}
             />
           </div>
         </div>

@@ -76,12 +76,14 @@ export const docsRoutes: InternalRoute[] = [
       const because = body.because
       if (because !== 'asked' && because !== 'routine' && because !== 'own') throw new RouteError(400, 'because is asked, routine or own')
       const suggest = body.suggest === true
-      const done = await ctx.history.write(t.name, principalOf(body), markdown, {
-        because: suggest ? 'own' : because,
-        shared: suggest || t.shared,
-        ...(t.file ? { file: t.file } : {})
-      })
-      return { ...done, shared: t.shared }
+      const file = t.file ? { file: t.file } : {}
+      const verdict = suggest ? 'own' : because
+      const shared = suggest || t.shared
+      // A write that goes straight in: the version just before it is what its Undo goes back to
+      // (the one history.write answers is cut after it). Nothing changed since the last version: that one.
+      const before = verdict === 'own' && shared ? null : await ctx.history.cut(t.name, 'before-agent', file)
+      const done = await ctx.history.write(t.name, principalOf(body), markdown, { because: verdict, shared, ...file })
+      return { ...done, shared: t.shared, ...(before && done.mode === 'direct' ? { beforeVersionId: before.id } : {}) }
     }
   },
   {

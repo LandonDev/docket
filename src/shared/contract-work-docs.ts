@@ -22,7 +22,7 @@ export type DocMode = 'suggests' | 'writes'
 export interface DocWritten {
   text: string
   at: number
-  /** the version its Undo restores (`work.history.restore`) */
+  /** the version cut just before the write: its Undo restores it (`work.history.restore`) */
   versionId: string
 }
 

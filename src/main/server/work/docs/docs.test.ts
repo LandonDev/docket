@@ -113,7 +113,7 @@ async function rig(o: { ownerSaid?: string[]; shared?: boolean; routineRunId?: s
   const text = async () => (await service.collab.read(name, { path })).markdown
   const branches = async () => ((await post(config.socketPath, '/internal/history/branches', { file: path, fence: { sectors: 'all' } })) as { branches: unknown[] }).branches
   await service.collab.writeMarkdown(name, 'owner', md('# Week 1', 'Meet the team at 9:00 AM', '# Week 2', 'Shadow the front desk'), { path })
-  return { dir, path, source, name, service, ctx, pushes, tool, ask, text, branches }
+  return { dir, path, source, name, service, ctx, pushes, tool, ask, text, branches, post: (route: string, body: unknown) => post(config.socketPath, route, body) }
 }
 
 const docsPushes = (pushes: WorkPush[]) => pushes.filter((p): p is DocsPush => (p as { push: string }).push === 'work.docs')
@@ -127,6 +127,10 @@ describe('an agent writing a document', () => {
     const written = docsPushes(r.pushes).find((p) => p.written)!.written!
     expect(written).toMatchObject({ text: 'Wrote 1 section', versionId: expect.any(String) })
     expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toEqual(written)
+    // Undo restores the version cut just before the write.
+    await r.post('/internal/history/restore', { file: r.path, versionId: written.versionId, fence: { sectors: 'all' } })
+    expect(await r.text()).toContain('9:00 AM')
+    expect(await r.text()).not.toContain('9:30 AM')
     await r.ask('work.docs.dismiss', { source: r.source })
     expect((await r.ask<DocOpen>('work.docs.open', { source: r.source })).written).toBeNull()
   })
