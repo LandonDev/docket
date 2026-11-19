@@ -60,11 +60,17 @@ export function mirrorMoves(rows: readonly LifeosProject[], mirrors: readonly Pr
  * archived the moment it was made and its first thread started out of
  * sight: it is reopened first, which is one press on its page.
  */
-export async function lifeosProjectIn(ctx: Pick<WorkCtx, 'lifeos'>, workspace: Pick<WorkspaceMeta, 'name' | 'sector'>, lifeosProjectId: string): Promise<LifeosProject> {
+export async function lifeosProjectIn(
+  ctx: Pick<WorkCtx, 'lifeos'>,
+  workspace: Pick<WorkspaceMeta, 'name' | 'sector'>,
+  lifeosProjectId: string,
+  /** `over`: a finished project is answered too, for what is not a thread (linking a document to it) */
+  o: { over?: boolean } = {}
+): Promise<LifeosProject> {
   const rows = await ctx.lifeos.owner().query<LifeosProject[]>('projects:list', { sector: workspace.sector })
   const row = (rows ?? []).find((p) => p._id === lifeosProjectId)
   if (!row) throw new Error(`LifeOS has no such project in ${workspace.name}'s sector`)
-  if (FINAL.has(row.status)) throw new Error(`${row.name} is ${row.status}: reopen it to start a thread in it`)
+  if (!o.over && FINAL.has(row.status)) throw new Error(`${row.name} is ${row.status}: reopen it to start a thread in it`)
   return row
 }
 

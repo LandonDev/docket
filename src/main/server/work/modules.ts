@@ -257,7 +257,8 @@ export const PILLAR_LOADERS: PillarLoaders = {
   meetings: () => import('./meetings').then((m) => m.meetings),
   forms: () => import('./forms').then((m) => m.forms),
   dashboards: () => import('./dashboards').then((m) => m.dashboards),
-  browser: () => import('./browser').then((m) => m.browser)
+  browser: () => import('./browser').then((m) => m.browser),
+  projects: () => import('./projects').then((m) => m.projects)
 }
 
 let loaded: Promise<Map<PillarId, string>> | null = null

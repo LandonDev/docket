@@ -26,6 +26,7 @@ import { MEETINGS_CAPS, MEETINGS_RELAY, MeetingsRequestSchemas, type MeetingsPus
 import { FORMS_CAPS, FORMS_RELAY, FormsRequestSchemas, type FormsPush } from './contract-work-forms'
 import { DASHBOARDS_CAPS, DASHBOARDS_RELAY, DashboardsRequestSchemas, type DashboardsPush } from './contract-work-dashboards'
 import { BROWSER_CAPS, BROWSER_RELAY, BrowserRequestSchemas, type BrowserPush } from './contract-work-browser'
+import { PROJECTS_CAPS, PROJECTS_RELAY, ProjectsRequestSchemas, type ProjectsPush } from './contract-work-projects'
 
 /**
  * Work over the wire (docs/agents/work.md): the core's own methods, then
@@ -103,7 +104,8 @@ export const WorkRequestSchemas = [
   ...MeetingsRequestSchemas,
   ...FormsRequestSchemas,
   ...DashboardsRequestSchemas,
-  ...BrowserRequestSchemas
+  ...BrowserRequestSchemas,
+  ...ProjectsRequestSchemas
 ] as const
 
 export type WorkPush =
@@ -131,6 +133,7 @@ export type WorkPush =
   | FormsPush
   | DashboardsPush
   | BrowserPush
+  | ProjectsPush
 
 export const WORK_CAPS = {
   ...WORK_CORE_CAPS,
@@ -156,7 +159,8 @@ export const WORK_CAPS = {
   ...MEETINGS_CAPS,
   ...FORMS_CAPS,
   ...DASHBOARDS_CAPS,
-  ...BROWSER_CAPS
+  ...BROWSER_CAPS,
+  ...PROJECTS_CAPS
 }
 
 /** Each pillar's own requests, capability rows and relay rows, for the guards (contract-work.test.ts) and the router. */
@@ -183,7 +187,8 @@ export const WORK_PILLAR_CONTRACTS: Record<PillarId, { requests: readonly z.ZodT
   meetings: { requests: MeetingsRequestSchemas, caps: MEETINGS_CAPS, relay: MEETINGS_RELAY },
   forms: { requests: FormsRequestSchemas, caps: FORMS_CAPS, relay: FORMS_RELAY },
   dashboards: { requests: DashboardsRequestSchemas, caps: DASHBOARDS_CAPS, relay: DASHBOARDS_RELAY },
-  browser: { requests: BrowserRequestSchemas, caps: BROWSER_CAPS, relay: BROWSER_RELAY }
+  browser: { requests: BrowserRequestSchemas, caps: BROWSER_CAPS, relay: BROWSER_RELAY },
+  projects: { requests: ProjectsRequestSchemas, caps: PROJECTS_CAPS, relay: PROJECTS_RELAY }
 }
 
 /**
