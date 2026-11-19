@@ -355,8 +355,9 @@ How it works:
   ("Ballroom contract.pdf moved", "Read only, as of …") over the copy the
   host kept, with no mode. A file that will not open is one Empty.
 
-Not built here, and why: History in the bar (the `history` kind is
-milestone 19's, so the def does not ask the pane for it); Locate on a
+Not built here, and why: History in the bar (the `history` kind keeps
+block documents' versions, milestone 19; a PDF's versions are not kept
+there, so the def does not ask the pane for it); Locate on a
 moved file (a path picker on a remote host is its own work); links inside a
 PDF are not clickable (the text layer is ours, not pdf.js's annotation
 layer).

@@ -837,8 +837,9 @@ is the page, so Escape there closes it).
 
 What is built: the pane's frame (the tab row, the kind's bar, the fold,
 the review stepper, the selection bar and the composer's chip row), and
-the PDF, slides, images and video, meeting, live browser and sheet bodies;
-every other kind's body is a "Not built yet" stub. A sheet's chart axis is
+the PDF, slides, images and video, meeting, live browser, sheet, and
+compare and History bodies; every other kind's body is a "Not built yet"
+stub. A sheet's chart axis is
 12px, not the prototype's 11px (the type scale allows 11px only for key caps
 and menu labels). Each kind's own surface below (the document editor, the
 PDF page and the rest), the

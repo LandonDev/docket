@@ -43,11 +43,13 @@ const plain = (runs: readonly DiffRun[]): ReactNode => runs.map((r, i) => styled
 function changed(segments: readonly InlineSegment[], side: Side, cur: boolean): ReactNode {
   return segments
     .filter((s) => side === "both" || (side === "left" ? s.op !== "+" : s.op !== "-"))
-    .map((s, i) => {
+    .map((s, i, all) => {
       const inner = styled(s, s.text, i);
       if (s.op === "=") return inner;
+      // Taken words then new ones read as two: a space's width between them, as the prototype draws it, with no space in the text.
+      const after = s.op === "+" && all[i - 1]?.op === "-";
       return (
-        <span key={i} className={cn(s.op === "+" ? INS : DEL, cur && CUR)}>
+        <span key={i} className={cn(s.op === "+" ? INS : DEL, after && "ms-1", cur && CUR)}>
           {inner}
         </span>
       );

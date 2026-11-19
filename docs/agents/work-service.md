@@ -94,10 +94,15 @@ the bot; anything else is logged and answered "the Work service failed;
 nothing changed".
 
 - `read` → `{markdown, plain, seq}` from the live document.
-- `write` → `{mode: 'direct'}`. An agent's own change (`because: 'own'`) to a
-  shared document answers 409, since suggestions are milestone 19's.
+- `write` → `{mode: 'direct', versionId?}` or `{mode: 'branch', branchId,
+  versionId}` (milestone 19, [work-history.md](work-history.md)). An agent's
+  own change (`because: 'own'`) to a shared document goes into that agent's
+  branch and the live text waits; every other write is direct and cut as a
+  version, with a "before agent" version first on a shared document.
 - `create` → `{docId}`: `docs:create` with no seed, then the creator's own
   write, stored at once.
+- `/internal/history/*` (list, compare, cut, restore, branches, decide) are
+  history's, in `work/history/serviceRoutes.ts`; see work-history.md.
 - `comment` → `{threadId}`: `docs:createThread` (the body wrapped as one
   paragraph of block JSON), then the thread's mark on the first place the
   words stand.
