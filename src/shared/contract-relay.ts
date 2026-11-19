@@ -136,6 +136,9 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   'project.blame': 'link',
   'file.read': 'link',
   'fs.media': 'link',
+  // a media file's bytes by its token (milestone 47: the phone's short video and small picture);
+  // the token is the serving host's own (server/media.ts), so it goes to that host; admin there
+  'media.read': 'link',
   'fs.readPreview': 'link',
   'fs.read': 'link',
   'fs.list': 'link',
