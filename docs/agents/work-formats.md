@@ -56,7 +56,10 @@ adding its file: neither the installer nor `base.json` changes. The schema is
     runs. `bun scripts/work-tools/pip-lock.ts --data <userData> pkg==v …`
     writes the lines; it resolves the closure on the platform it runs on, so
     a dependency only another platform needs is missing there until a lock
-    run on that platform adds its line (the probe says so). Its folder is the venv's and its `bin` is the venv's
+    run on that platform adds its line (the probe says so). A wheel PyPI does
+    not carry is named by its https address, `name @ https://….whl
+    --hash=sha256:…` (the CPU builds of torch, which only download.pytorch.org
+    has; formats.json's `docling`), and locked by hand. Its folder is the venv's and its `bin` is the venv's
     python
 - `probe.steps`: commands that must exit 0, match `expect` (a regular
   expression over stdout and stderr) and leave `expectFile`. Placeholders:
@@ -221,9 +224,12 @@ document is `<name>.tcdoc` beside the original (`<name> 2.tcdoc` and on when
 taken); the original is never touched.
 - `.docx`: `readDocx`. `.odt`, `.rtf`, `.doc`: LibreOffice to `.docx`
   (`ctx.convert`, the toolchain's pairs), then the same reader. `.md`:
-  `readMarkdown`. `.pdf`: pymupdf4llm to markdown (`pdf → md`, `pdfIn.ts`),
-  Docling when pymupdf4llm reads next to no text and the host has Docling
-  (none does yet). `.html`: read in the window only.
+  `readMarkdown`. `.pdf`: pymupdf4llm to markdown (`pdf → md`, `pdfIn.ts`);
+  then Docling, where the host has it (the box), when pymupdf4llm reads next
+  to no text (a scan: Docling's OCR reads the page pictures) or PyMuPDF finds
+  tables on the pages (Docling reads tables and columns better, and keeps no
+  bold or italic); the warning says which (`needsDocling`). `.html`: read in
+  the window only.
 - The live text is the original, before anyone's tracked change; an `import`
   version is cut of it; each author of tracked changes gets one pending branch,
   `external:<name>`, which the canvas steps and Accept and Reject decide.
@@ -263,16 +269,24 @@ attributes) and, for a copy that is one table, tab-separated `text/plain`; the
 editor's own `blocknote/html` stays, so a paste back into a document is
 unchanged.
 
-**The tool.** `scripts/work-tools/formats.json`: pymupdf4llm 2.1 with PyMuPDF
+**The tools.** `scripts/work-tools/formats.json`: pymupdf4llm 2.1 with PyMuPDF
 2.1 (AGPL: a separate, unmodified Python process; the rest of the closure
-is permissive), pinned by `pip-lock.ts`, 277 MB in the venv. Installed and
-probed on the box (2026-11-19); not on the Mac, whose PDF imports forward to
-the box.
+is permissive), pinned by `pip-lock.ts`, 277 MB in the shared venv; and, on
+linux-x64 only, Docling 2.151.0 in a venv of its own (`docling-venv`, since
+its closure would fight the shared venv's pins) with the CPU builds of torch
+2.14.1 and torchvision 0.29.1 from download.pytorch.org and 100 more wheels,
+all permissive (MIT, Apache-2.0, BSD, PSF, MPL-2.0 for certifi), 1.6 GB; and
+`docling-models` (397 MB): docling-layout-heron (Apache-2.0), TableFormer
+accurate (CDLA-Permissive-2.0) and RapidOCR's PP-OCRv6 small torch weights
+(Apache-2.0), each fetched by URL and checksum and read offline
+(`--artifacts-path`, `HF_HUB_OFFLINE`). All installed and probed on the box
+(2026-11-19; the models' probe converts a PDF offline). The Mac has neither:
+its PDF imports read with what it has, or forward to the box.
 
 Tests: work-kit's `formats/docx/matrix.test.ts` (the report's 16-file matrix,
 no worse than its reader and writer), `formats/tcdoc/tcdoc.test.ts` (branches
 per author through a real history; the export of a live document),
 `formats/html/html.jsdom.ts`; here `work/formats/importExport.test.ts` (the
 service in process; with `TEMP_CODE_WORK_TOOLS_DATA` the round trips through
-the real LibreOffice and pymupdf4llm) and
+the real LibreOffice, pymupdf4llm and Docling: a scan and a PDF of tables) and
 `src/renderer/src/work/formats/formats.dom.test.tsx`.

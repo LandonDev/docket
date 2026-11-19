@@ -253,6 +253,10 @@ describe.skipIf(process.platform === 'win32')('the toolchain installer', () => {
     const pip = (packages: string[]) => ({ pillar: 'p', tools: [{ ...(tool('pp', '1.0.0', { url: 'https://x.test/a.tgz', sha256: 'a'.repeat(64) }) as Record<string, unknown>), platforms: { [platform]: { kind: 'pip', packages, bin: 'bin/python' } } }] })
     expect(ToolManifestSchema.safeParse(pip(['python-pptx==1.0.2'])).success).toBe(false)
     expect(ToolManifestSchema.safeParse(pip([`python-pptx==1.0.2 --hash=sha256:${'a'.repeat(64)}`])).success).toBe(true)
+    // A wheel PyPI does not carry, by its https address and hash (torch's CPU build); never a plain http one or one with no hash.
+    expect(ToolManifestSchema.safeParse(pip([`torch @ https://download.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl --hash=sha256:${'a'.repeat(64)}`])).success).toBe(true)
+    expect(ToolManifestSchema.safeParse(pip([`torch @ http://example.org/torch.whl --hash=sha256:${'a'.repeat(64)}`])).success).toBe(false)
+    expect(ToolManifestSchema.safeParse(pip(['torch @ https://example.org/torch.whl'])).success).toBe(false)
     const into = (where: string) => ({ pillar: 'p', tools: [tool('t', '1.0.0', { url: 'https://x.test/a.tgz', sha256: 'a'.repeat(64), into: where })] })
     expect(ToolManifestSchema.safeParse(into('../escape')).success).toBe(false)
     expect(ToolManifestSchema.safeParse(into('/abs')).success).toBe(false)

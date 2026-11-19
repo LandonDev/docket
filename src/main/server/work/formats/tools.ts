@@ -59,8 +59,18 @@ const PlatformEntrySchema = z.object({
   files: z.array(ToolFileSchema).default([]),
   /** dmg: the app bundle to copy out */
   app: z.string().optional(),
-  /** pip: the whole closure, one line each, `name==version --hash=sha256:…` (every wheel's hash; scripts/work-tools/pip-lock.ts writes them) */
-  packages: z.array(z.string().regex(/^[A-Za-z0-9._-]+==[^\s]+( --hash=sha256:[0-9a-f]{64})+$/, 'a pip line pins a version and its hashes')).optional(),
+  /**
+   * pip: the whole closure, one line each, `name==version --hash=sha256:…` (every wheel's hash;
+   * scripts/work-tools/pip-lock.ts writes them), or a wheel PyPI does not carry named by its https
+   * address, `name @ https://….whl --hash=sha256:…` (the CPU builds of torch, milestone 21)
+   */
+  packages: z
+    .array(
+      z
+        .string()
+        .regex(/^(?:[A-Za-z0-9._-]+==[^\s]+|[A-Za-z0-9._-]+ @ https:\/\/[^\s]+\.whl)( --hash=sha256:[0-9a-f]{64})+$/, 'a pip line pins a version (or an https wheel) and its hashes')
+    )
+    .optional(),
   /** the tool's main program or module, inside its folder */
   bin: z.string(),
   /** its other programs by name (ffmpeg's `ffprobe`) */

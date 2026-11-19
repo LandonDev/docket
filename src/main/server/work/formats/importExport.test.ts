@@ -1,7 +1,8 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { fileDocName } from 'work-kit/collab-server'
@@ -20,7 +21,7 @@ import { formats } from './index'
 import { droppedWords, freePath, safeName } from './importer'
 import { convertersOf, JobRunner } from './jobs'
 import { setPrinter } from './print'
-import { Toolchain } from './tools'
+import { runTool, Toolchain } from './tools'
 
 /*
  * Import and export on this host: the Work service in process (its socket
@@ -32,7 +33,8 @@ import { Toolchain } from './tools'
  */
 
 const REAL = process.env.TEMP_CODE_WORK_TOOLS_DATA
-const CORPUS = join(import.meta.dirname, '../../../../../node_modules/work-kit/src/formats/docx/corpus')
+// work-kit's Word corpus, wherever the package is installed.
+const CORPUS = join(dirname(createRequire(import.meta.url).resolve('work-kit/formats/docx')), 'corpus')
 const SECRET = 'f'.repeat(43)
 const open: { dirs: string[]; services: RunningService[]; convex: FakeConvex[] } = { dirs: [], services: [], convex: [] }
 
@@ -203,7 +205,7 @@ describe('a document out as a file', () => {
   })
 })
 
-describe.skipIf(!REAL)('through the real LibreOffice and pymupdf4llm (TEMP_CODE_WORK_TOOLS_DATA)', () => {
+describe.skipIf(!REAL)('through the real LibreOffice, pymupdf4llm and Docling (TEMP_CODE_WORK_TOOLS_DATA)', () => {
   it('a .docx with comments and tracked changes round-trips through OpenDocument with authors, replies and resolved flags intact', async () => {
     const r = await rig()
     const original = word(r)
@@ -232,16 +234,52 @@ describe.skipIf(!REAL)('through the real LibreOffice and pymupdf4llm (TEMP_CODE_
     expect((await r.branches((again.source as { path: string }).path)).length).toBeGreaterThan(0)
   }, 120_000)
 
-  it('a PDF comes in through pymupdf4llm', async () => {
+  it('a scanned PDF (pictures of pages, no text) comes in through Docling’s OCR', async () => {
+    const r = await rig()
+    const pdf = await r.ctx.convert({ from: 'docx', to: 'pdf', input: word(r, 'long-report.docx') })
+    // Each page as a picture in a new PDF: what a scanner makes.
+    const scan = join(r.work, 'scanned.pdf')
+    const py = new Toolchain(REAL!).bin('pdf-tools')!
+    const made = await runTool(py, ['-I', '-c', 'import sys, pypdfium2 as p\nd = p.PdfDocument(sys.argv[1])\nim = [d[i].render(scale=200/72).to_pil().convert("L") for i in range(2)]\nim[0].save(sys.argv[2], save_all=True, append_images=im[1:], resolution=200)', pdf.output, scan])
+    expect(made.code).toBe(0)
+    const got = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path: scan } } })
+    expect(got.warnings).toContain('Read from the page pictures by OCR: check the words.')
+    const md = ((await r.post('/internal/docs/read', { file: (got.source as { path: string }).path, fence: { sectors: 'all' } })) as { markdown: string }).markdown
+    expect(md).toMatch(/Annual Operations Report/i)
+    expect(md.replace(/\s/g, '').length).toBeGreaterThan(400)
+  }, 300_000)
+
+  it('a PDF that is mostly tables comes in through Docling', async () => {
     const r = await rig()
     const pdf = await r.ctx.convert({ from: 'docx', to: 'pdf', input: word(r, 'tables.docx') })
-    const path = join(r.work, 'tables.pdf')
+    const path = join(r.work, 'tables-heavy.pdf')
     copyFileSync(pdf.output, path)
     const got = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path } } })
+    expect(got.warnings).toContain('Its tables were read by Docling, which keeps no bold or italic.')
     const md = ((await r.post('/internal/docs/read', { file: (got.source as { path: string }).path, fence: { sectors: 'all' } })) as { markdown: string }).markdown
-    expect(md.length).toBeGreaterThan(200)
-    expect(md).toContain('|')
+    expect(md.split('\n').filter((l) => l.startsWith('|')).length).toBeGreaterThan(20)
+  }, 300_000)
+
+  it('a PDF of text comes in through pymupdf4llm, and Docling is not asked', async () => {
+    const r = await rig()
+    const pdf = await r.ctx.convert({ from: 'docx', to: 'pdf', input: word(r, 'review.docx') })
+    const path = join(r.work, 'review.pdf')
+    copyFileSync(pdf.output, path)
+    const got = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path } } })
+    expect(got.warnings).toEqual([])
+    const md = ((await r.post('/internal/docs/read', { file: (got.source as { path: string }).path, fence: { sectors: 'all' } })) as { markdown: string }).markdown
+    expect(md).toContain('Loans')
   }, 120_000)
+})
+
+describe('which reader a PDF gets', () => {
+  it('pymupdf4llm stands for text; Docling reads a scan and a PDF with tables', async () => {
+    const { needsDocling } = await import('./pdfIn')
+    const prose = 'A paragraph of ordinary words. '.repeat(10)
+    expect(needsDocling(prose, 0)).toBeNull()
+    expect(needsDocling('  \n ', 0)).toBe('scan')
+    expect(needsDocling(prose, 3)).toBe('tables')
+  })
 })
 
 describe('names and words', () => {
