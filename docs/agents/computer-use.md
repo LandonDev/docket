@@ -220,7 +220,10 @@ why and the measured headline.
   lib/computerSection.ts, lib/computerHistory.ts): a row per live session
   (the window in its app, Go live while a step is pinned, Stop), the
   viewport (the window live through computer/preview.ts at 4 fps, the
-  `local` RPCs `computer.preview.start/ack/stop`, with the click ring; or
+  RPCs `computer.preview.start/ack/stop`, which answer this desktop's own
+  socket alone for a person's windows (`previewRefusal`; the box's browser
+  also answers a key that may watch, [live-video.md](live-video.md)), with
+  the click ring; or
   a past call's kept picture; or the text the model read), and the steps
   of the thread's tree newest first, read from the journal: the running
   call as one line, then each finished step in `computerPhrase`'s words.

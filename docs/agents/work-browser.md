@@ -12,8 +12,11 @@ until he presses Post. [work.md](work.md) says how a pillar registers;
 - **The picture** is computer use's own live stream, the one the right
   panel's Computer section draws (`useComputerSection`, `useLiveStream`,
   `computer.preview.*`; [computer-use.md](computer-use.md) "What the person
-  sees"). Only a Mac's own desktop draws it; elsewhere the canvas shows the
-  held page's picture (`work.outbox.get`) or one line.
+  sees"). A Mac's own windows are drawn by that Mac's desktop alone. The box's
+  browser answers `computer.preview.start` from a client key with `approve`
+  (`mayWatch`, [live-video.md](live-video.md)), so a desktop linked to the box
+  draws it; the box's own local socket is refused. Elsewhere the canvas shows
+  the held page's picture (`work.outbox.get`) or one line.
 - **A submit** is the computer hold's live item (`computer.act`, milestone
   10): the host reads the click on "Submit" as outward, whatever the model
   flagged, and keeps it with the window's picture and the fields' text. This

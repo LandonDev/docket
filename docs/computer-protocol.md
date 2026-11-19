@@ -420,8 +420,11 @@ The Capture module (`native/tc-computer/Sources/Capture/`, `ScreenCaptureKitCapt
 
 ### The host preview relay
 
-`ComputerPreviews` (`src/main/server/computer/preview.ts`) serves the local
-`computer.preview.start`, `.ack` and `.stop` requests. It shares one service
+`ComputerPreviews` (`src/main/server/computer/preview.ts`) serves the
+`computer.preview.start`, `.ack` and `.stop` requests. `previewRefusal` says
+who may ask: a Mac's or a PC's own desktop socket for that machine's windows
+(a key is answered `local-only`, whatever it holds), and for the box's
+browser a client key with `approve` (`mayWatch`, docs/agents/live-video.md). It shares one service
 stream per thread, using that thread's last app pid and bound window and
 the largest edge its watchers requested (256..960), at 4 fps. Each socket
 gets its own preview id, which survives an app or window change. A socket
@@ -623,8 +626,9 @@ path on a line a person reads at a glance.
     thread's own host, so a box thread's Stop reaches its Mac through the
     box). No session row once the turn settles.
   - **The viewport**: the window as it is, or as it was. Live, it is the
-    preview stream: `computer.preview.*` are `local` methods, so a remote
-    key, the phone and the browser /ui never see a frame, and a box thread
+    preview stream: `computer.preview.*` answer this desktop's own socket
+    alone for its windows, so a remote key, the phone and the browser /ui
+    never see a frame of them, and a box thread
     driving this Mac is previewed through this Mac's own link by the
     bridge's key. Frames are decoded off the main thread and acked only
     after they are drawn; a frame repaints the canvas and re-renders

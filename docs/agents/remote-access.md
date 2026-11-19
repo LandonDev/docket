@@ -67,7 +67,9 @@
   redeems it as a key and shows that once with Copy. Any 401 reads one
   sentence: the wire never says whether a code existed. Bearer clients mint a 30 s ticket at
   `POST /api/ticket` and upgrade `/ws?ticket=…`; nothing else ever rides in
-  a socket URL. Revoking a key closes its sockets and sessions at once.
+  a socket URL but a live video stream's own single-use ticket
+  (`/video/<stream>?ticket=…`, [live-video.md](live-video.md)). Revoking a
+  key closes its sockets, its sessions and its video streams at once.
 - `/ui` serves the BUILT renderer (out/renderer, so `electron-vite build`
   first in a dev tree) behind the cookie; the bundle detects a missing
   `window.api` and runs in web mode (src/renderer/src/lib/nativeWeb.ts: no
