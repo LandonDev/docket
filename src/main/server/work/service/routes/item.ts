@@ -20,6 +20,8 @@ import { sendText, type PublicRoute, type RouteCtx } from './route'
 type Pass = GuestServiceLink & { pass: NonNullable<GuestServiceLink['pass']> }
 
 const used = new Set<string>()
+/** When this process started: a ticket main made before then may have been used by the process before, so it opens nothing. */
+const STARTED = Date.now()
 const renewals = new Map<string, string>()
 
 const hashOf = (s: string): Buffer => createHash('sha256').update(s, 'utf8').digest()
@@ -52,7 +54,7 @@ async function redeem(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx):
   const got = ticket ? hashOf(ticket) : null
   const now = Date.now()
   const p = got ? passes(ctx).find((x) => { const want = Buffer.from(x.pass.ticketHash, 'hex'); return want.length === got.length && timingSafeEqual(want, got) }) : undefined
-  if (!p || p.pass.ticketUntil <= now || used.has(p.linkId)) {
+  if (!p || p.pass.ticketUntil <= now || p.pass.issuedAt < STARTED || used.has(p.linkId)) {
     LIMITS.failures.take(caller)
     return json(res, 403, { error: 'This page has already been opened, or it ran out. Open it again from TempCode.' })
   }

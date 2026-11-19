@@ -46,6 +46,7 @@ type Seen = Record<string, { at: number; open: number }>
 
 interface Pass {
   id: string
+  issuedAt: number
   ticketHash: string
   ticketUntil: number
   until: number
@@ -109,6 +110,15 @@ export class GuestRuntime {
     return { link: this.rowOf(link, {}), url: guestUrl(publicOrigin(this.ctx), link.id, secret) }
   }
 
+  /** A new address for a live link (the one before stops opening); null when it is not live. */
+  async rekey(id: string): Promise<string | null> {
+    const secret = this.store.rekey(id)
+    if (!secret) return null
+    await this.sync()
+    this.ctx.push({ push: 'work.guests' })
+    return guestUrl(publicOrigin(this.ctx), id, secret)
+  }
+
   async revoke(id: string): Promise<void> {
     const link = this.store.get(id)
     if (!link) throw new Error('no such guest link on this host')
@@ -145,7 +155,7 @@ export class GuestRuntime {
     await this.servedHere(source)
     const ticket = randomBytes(32).toString('base64url')
     const now = Date.now()
-    const pass: Pass = { id: randomBytes(12).toString('base64url'), ticketHash: hashSecret(ticket), ticketUntil: now + TICKET_MS, until: now + PASS_MS, source, title }
+    const pass: Pass = { id: randomBytes(12).toString('base64url'), issuedAt: now, ticketHash: hashSecret(ticket), ticketUntil: now + TICKET_MS, until: now + PASS_MS, source, title }
     this.passes.set(pass.id, pass)
     await this.sync()
     return { url: `${publicOrigin(this.ctx)}/w/open#t=${ticket}`, expiresAt: pass.ticketUntil }
@@ -173,8 +183,20 @@ export class GuestRuntime {
     return next
   }
 
-  /** Tells the service every live link and open ticket, each with a token it may hand out. */
-  async sync(): Promise<void> {
+  private syncing: Promise<void> = Promise.resolve()
+
+  /**
+   * Tells the service every live link and open ticket, each with a token it may hand out. One at a
+   * time: a tick's sync that was signing when a revoke came must not send its older list after the
+   * revoke's, and what is sent is read again after the signing, so a link revoked meanwhile is out.
+   */
+  sync(): Promise<void> {
+    const run = this.syncing.then(() => this.syncOnce())
+    this.syncing = run.catch(() => {})
+    return run
+  }
+
+  private async syncOnce(): Promise<void> {
     const supervisor = this.service()
     if (!supervisor) return
     const now = Date.now()
@@ -183,7 +205,8 @@ export class GuestRuntime {
     const keep = new Set<string>()
     for (const l of this.store.live(now)) {
       const principal = `guest:${l.id}` as const
-      const t = await this.sign(l.id, { ...kitItem(l.source), role: l.role, principal, link: l.id })
+      // A link that cannot be signed is left out, never left as it was: the service then refuses it.
+      const t = await this.sign(l.id, { ...kitItem(l.source), role: l.role, principal, link: l.id }).catch((err: Error) => (this.ctx.log(`guests: ${l.id} was not signed: ${err.message}`), null))
       if (!t) continue
       keep.add(l.id)
       out.push({
@@ -201,7 +224,7 @@ export class GuestRuntime {
         continue
       }
       const key = PASS_PREFIX + p.id
-      const t = await this.sign(key, { ...kitItem(p.source), role: 'edit', principal: 'owner' })
+      const t = await this.sign(key, { ...kitItem(p.source), role: 'edit', principal: 'owner' }).catch(() => null)
       if (!t) continue
       keep.add(key)
       out.push({
@@ -210,11 +233,19 @@ export class GuestRuntime {
         role: 'edit',
         expiresAt: p.until,
         revokedAt: null,
-        pass: { ticketHash: p.ticketHash, ticketUntil: p.ticketUntil, title: p.title, token: t.token, tokenExp: t.exp }
+        pass: { ticketHash: p.ticketHash, ticketUntil: p.ticketUntil, issuedAt: p.issuedAt, title: p.title, token: t.token, tokenExp: t.exp }
       })
     }
     for (const key of this.tokens.keys()) if (!keep.has(key)) this.tokens.delete(key)
-    supervisor.setLinks(out)
+    // Read again now that the signing is done: a link revoked, rekeyed or ended meanwhile goes as it now stands.
+    const fresh = new Map(this.store.live().map((l) => [l.id, l]))
+    supervisor.setLinks(
+      out.flatMap((x): GuestServiceLink[] => {
+        if (x.pass) return [x]
+        const l = fresh.get(x.linkId)
+        return l && x.guest ? [{ ...x, guest: { ...x.guest, secretHash: l.secretHash } }] : []
+      })
+    )
   }
 
   /** Every 30 s: tokens signed again, and an item whose last link ended clears its `shared` (each item's told once after a start). */

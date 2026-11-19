@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { errorText } from "../../chrome/ConfirmDialog";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { copyText } from "../../lib/clipboard";
 import { clockTime } from "../../lib/duration";
 import { Avatar } from "./Share";
 import { isLive, ROLE_WORDS, shortDay, type GuestLinkRow } from "./api";
@@ -50,6 +52,21 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
     return () => offs.forEach((off) => off());
   }, [key, load]);
 
+  // The address is never kept: copying makes a new one, and the one before stops opening.
+  const copyNew = async (env: string, id: string): Promise<void> => {
+    setRevoking(`copy:${id}`);
+    try {
+      const { url } = await registry.linkOf(env).request<{ url: string }>("work.guests.rekey", { linkId: id });
+      await copyText(url);
+      const toast = await loadToast();
+      toast.success("Copied a new address. The one before no longer opens.");
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setRevoking(null);
+    }
+  };
+
   const revoke = async (env: string, id: string): Promise<void> => {
     setRevoking(id);
     try {
@@ -72,9 +89,14 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
         return (
           <PageRow key={link.id} media={<Avatar name={link.name} />} title={link.name} description={describe(link, live)} className={live ? undefined : "opacity-60"}>
             {live ? (
-              <Button variant="ghost" size="sm" disabled={revoking === link.id} onClick={() => void revoke(env, link.id)}>
-                <BusyLabel busy={revoking === link.id} label="Revoke" />
-              </Button>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void copyNew(env, link.id)}>
+                  <BusyLabel busy={revoking === `copy:${link.id}`} label="Copy new address" />
+                </Button>
+                <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void revoke(env, link.id)}>
+                  <BusyLabel busy={revoking === link.id} label="Revoke" />
+                </Button>
+              </div>
             ) : null}
           </PageRow>
         );

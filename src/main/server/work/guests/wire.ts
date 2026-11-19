@@ -26,6 +26,8 @@ export interface OpenPassFacts {
   ticketHash: string
   /** the ticket opens nothing after this */
   ticketUntil: number
+  /** when main made it: a service started after this refuses it, so a restart never lets a used ticket open again */
+  issuedAt: number
   title: string
   token: string
   tokenExp: number

@@ -57,6 +57,8 @@ export const GuestsRequestSchemas = [
   request('work.guests.forItem', z.object({ source: GuestSourceSchema })),
   /** The owner's own link: shown once in the answer, kept only as a hash. */
   request('work.guests.create', z.object({ source: GuestSourceSchema, title: GuestTitleSchema, name: GuestNameSchema, role: z.enum(GUEST_ROLES), expiresAt: z.number().int() })),
+  /** A new address for a live link, shown once: the one before opens nothing from now on. */
+  request('work.guests.rekey', z.object({ linkId })),
   /** Revoked at once: the guest's sockets close within a second. */
   request('work.guests.revoke', z.object({ linkId })),
   /** The owner's own hosted editor (`/w/open#t=<ticket>`), for the phone: a ticket that opens once, within two minutes. */
@@ -76,6 +78,7 @@ export const GUESTS_CAPS = {
   'work.guests.forItem': 'read',
   // Letting someone outside in is an outward act: a key must be able to approve one.
   'work.guests.create': 'approve',
+  'work.guests.rekey': 'approve',
   'work.guests.revoke': 'operate',
   'work.guests.ticket': 'operate'
 } satisfies CapsOf<typeof GuestsRequestSchemas>

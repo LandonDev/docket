@@ -9,7 +9,7 @@ import { GUEST_KEEP_MS, guestRefusal, type GuestSource } from '@shared/contract-
 import type { WorkCtx } from '../modules'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { PUBLIC_ROUTES } from '../service/routes'
-import { LIMITS, plainBody } from '../service/routes/guests'
+import { callerKey, cutDue, guestThreads, LIMITS, plainBody, Window } from '../service/routes/guests'
 import { servicePaths } from '../service/config'
 import { startWorkService, type RunningService } from '../service/serve'
 import { guestLinkKind, guestsTools } from '.'
@@ -317,6 +317,83 @@ describe('a guest link', () => {
   })
 })
 
+describe('after the review', () => {
+  it('a revoke during a tick that is still signing is not undone by the tick', async () => {
+    const r = await rig()
+    const a = await make(r, 'edit')
+    const sent: string[][] = []
+    let release!: () => void
+    const slow = new Promise<void>((res) => (release = res))
+    // A signer that holds the next re-sign until released: the tick's sync sits in it while the owner revokes.
+    const signer = { sign: async (c: never, s: number) => (await slow, r.signer.sign(c, s)) }
+    const rt = new GuestRuntime((r.rt as unknown as { ctx: WorkCtx }).ctx, () => ({ tokenSigner: () => signer as never, setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
+    const tick = rt.tick()
+    await sleep(20)
+    const revoked = rt.revoke(a.id)
+    release()
+    await Promise.all([tick, revoked])
+    expect(sent.at(-1)).not.toContain(a.id)
+    expect((await opened(r, a.id, a.secret)).status).toBe(403)
+  })
+
+  it('a link that cannot be signed is left out of what the service is told, never left as it was', async () => {
+    const r = await rig()
+    const a = await make(r, 'view')
+    const sent: string[][] = []
+    const broken = { sign: async () => Promise.reject(new Error('no key')) }
+    const rt = new GuestRuntime((r.rt as unknown as { ctx: WorkCtx }).ctx, () => ({ tokenSigner: () => broken as never, setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
+    await rt.sync()
+    expect(sent).toEqual([[]])
+    expect((await opened(r, a.id, a.secret)).status).toBe(403)
+  })
+
+  it('a new address opens and the one before does not; an ended link takes none', async () => {
+    const r = await rig()
+    const a = await make(r, 'view')
+    const url = (await r.rt.rekey(a.id))!
+    const secret = new URL(url).hash.slice(3)
+    expect(secret).not.toBe(a.secret)
+    expect((await opened(r, a.id, a.secret)).status).toBe(403)
+    expect((await opened(r, a.id, secret)).status).toBe(200)
+    await r.rt.revoke(a.id)
+    expect(await r.rt.rekey(a.id)).toBeNull()
+  })
+
+  it('the thread that asked is told the link, never its address', async () => {
+    const r = await rig()
+    const told: string[] = []
+    const ctx = { ...(r.rt as unknown as { ctx: WorkCtx }).ctx, item: { sessionId: 't1' }, threads: { resume: async (_s: string, notice: string) => void told.push(notice) } }
+    const got = await guestLinkKind.execute({ source: doc(), title: 'Run of show', name: 'Dana Lee', role: 'view', expiresAt: inDays(7) }, ctx as never)
+    expect(told).toHaveLength(1)
+    expect(told[0]).not.toMatch(/#k=|https?:\/\//)
+    expect(told[0]).toContain((got.ref as { linkId: string }).linkId)
+  })
+
+  it('the limits hold a bounded map, and an IPv6 caller is counted by its /64', () => {
+    const w = new Window(2, 60_000, 100)
+    for (let i = 0; i < 1000; i++) w.take(`198.51.100.${i}`)
+    expect(w.size).toBeLessThanOrEqual(100)
+    expect(callerKey('2001:db8:1:2:aaaa::1')).toBe(callerKey('2001:0db8:0001:0002:ffff:1:2:3'))
+    expect(callerKey('2001:db8:1:2::1')).toBe('2001:db8:1:2::/64')
+    expect(callerKey('2001:db8:1:3::1')).not.toBe(callerKey('2001:db8:1:2::1'))
+    expect(callerKey('203.0.113.9')).toBe('203.0.113.9')
+    expect(callerKey('::ffff:203.0.113.9')).toBe('203.0.113.9')
+  })
+
+  it('a guest sees other guests as "A guest", and a version is cut at most every five minutes per link', () => {
+    const rows = [{ thread: { _id: 't', resolved: false, at: 1, editedAt: 1 }, comments: [{ _id: 'c1', author: 'guest:other', body: '[]', at: 1, editedAt: 1 }, { _id: 'c2', author: 'guest:me', body: '[]', at: 2, editedAt: 2 }] }]
+    const got = guestThreads(rows, 'guest:me', 'Landon Hale')
+    const other = got.rows[0]!.comments[0]!.authorMemberId
+    expect(got.names[other]).toBe('A guest')
+    expect(other).not.toContain('other')
+    expect(got.names['guest:me']).toBe('You')
+    const now = Date.now()
+    expect(cutDue('d|l', now)).toBe(true)
+    expect(cutDue('d|l', now + 60_000)).toBe(false)
+    expect(cutDue('d|l', now + 6 * 60_000)).toBe(true)
+  })
+})
+
 describe('a sheet link', () => {
   it('names its sheet in the token, with the link; the socket goes to that sheet whatever the client asks', async () => {
     const r = await rig()
@@ -366,6 +443,10 @@ describe("the owner's hosted editor", () => {
     const renewed = await post(r, '/w/open/renew', { renew: got.renew })
     expect(renewed.status).toBe(200)
     expect((await post(r, '/w/open/renew', { renew: 'nope' })).status).toBe(403)
+    // A ticket main made before this service started may have been used by the one before: it opens nothing.
+    const old = 'o'.repeat(43)
+    r.service.setLinks([{ linkId: 'open.old', item: { doc: DOC }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null, pass: { ticketHash: hashSecret(old), ticketUntil: Date.now() + 60_000, issuedAt: 0, title: 'x', token: got.token, tokenExp: Date.now() + 60_000 } } as never])
+    expect((await post(r, '/w/open/redeem', { ticket: old })).status).toBe(403)
     // A pass is no guest link: its token is the owner's, and /g/ knows nothing of it.
     expect((await post(r, '/g/open.x/open', { secret: ticket })).status).toBe(404)
   })

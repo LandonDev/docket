@@ -84,6 +84,13 @@ export class GuestStore {
     return r ? rowOf(r) : null
   }
 
+  /** A new secret for a live link: the address shown before opens nothing from now on. Null for a link that is not live. */
+  rekey(id: string, now = Date.now()): string | null {
+    const secret = randomBytes(32).toString('base64url')
+    const changed = this.db.prepare(`UPDATE ${GUEST_LINKS_TABLE} SET secret_hash = ? WHERE id = ? AND revoked_at IS NULL AND expires_at > ?`).run(hashSecret(secret), id, now).changes
+    return Number(changed) > 0 ? secret : null
+  }
+
   /** Answers whether it was live before. */
   revoke(id: string, now = Date.now()): boolean {
     return Number(this.db.prepare(`UPDATE ${GUEST_LINKS_TABLE} SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`).run(now, id).changes) > 0

@@ -35,18 +35,23 @@ export const COMMENT_MAX = 4000
 
 // ── limits ─────────────────────────────────────────────────────────────
 
-/** A count per key in a fixed window. */
+/**
+ * A count per key in a fixed window, holding at most `cap` keys: past that the oldest goes (a Map
+ * keeps insertion order), so a flood of new callers costs a bounded map and no scan.
+ */
 export class Window {
   private readonly hits = new Map<string, { n: number; until: number }>()
   constructor(
     private readonly max: number,
-    private readonly ms: number
+    private readonly ms: number,
+    private readonly cap = 20_000
   ) {}
   /** Counts one; false once the key is past its limit in this window. */
   take(key: string, now = Date.now()): boolean {
     const h = this.hits.get(key)
     if (!h || h.until <= now) {
-      if (this.hits.size > 10_000) for (const [k, v] of this.hits) if (v.until <= now) this.hits.delete(k)
+      this.hits.delete(key)
+      while (this.hits.size >= this.cap) this.hits.delete(this.hits.keys().next().value!)
       this.hits.set(key, { n: 1, until: now + this.ms })
       return true
     }
@@ -57,6 +62,9 @@ export class Window {
     const h = this.hits.get(key)
     return !!h && h.until > now && h.n >= this.max
   }
+  get size(): number {
+    return this.hits.size
+  }
   clear(): void {
     this.hits.clear()
   }
@@ -65,9 +73,19 @@ export class Window {
 /** Requests per caller per minute, failed secrets per caller per ten minutes, comments per link per minute. */
 export const LIMITS = { requests: new Window(240, 60_000), failures: new Window(10, 10 * 60_000), comments: new Window(20, 60_000) }
 
+/** Who is asking, for the limits: the tunnel's `CF-Connecting-IP`, else the peer; an IPv6 address by its /64, which one home or host holds whole. */
 export const callerOf = (req: IncomingMessage): string => {
   const cf = req.headers['cf-connecting-ip']
-  return typeof cf === 'string' && cf.length > 0 && cf.length < 64 ? cf : (req.socket.remoteAddress ?? '?')
+  return callerKey(typeof cf === 'string' && cf.length > 0 && cf.length < 64 ? cf : (req.socket.remoteAddress ?? '?'))
+}
+export function callerKey(address: string): string {
+  if (!address.includes(':') || address.startsWith('::ffff:')) return address.replace(/^::ffff:/, '')
+  // Expand "::" so the first four groups are the /64.
+  const [head, tail] = address.split('::') as [string, string | undefined]
+  const left = head ? head.split(':') : []
+  const right = tail !== undefined && tail ? tail.split(':') : []
+  const groups = tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right]
+  return `${groups.slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, '')).join(':')}::/64`
 }
 
 // ── what the service saw ───────────────────────────────────────────────
@@ -153,7 +171,7 @@ interface LifeosThread {
   thread: { _id: string; quote?: string; resolved: boolean; resolvedAt?: number; at: number; editedAt: number; deletedAt?: number }
   comments: Array<{ _id: string; author?: string; externalAuthor?: { name: string }; body: string; at: number; editedAt: number; deletedAt?: number }>
 }
-export function guestThreads(rows: readonly LifeosThread[], me: string, owner: string, nameOf: (principal: string) => string | null) {
+export function guestThreads(rows: readonly LifeosThread[], me: string, owner: string) {
   const names: Record<string, string> = { owner, [me]: 'You' }
   const ids = new Map<string, string>([
     ['owner', 'owner'],
@@ -164,7 +182,8 @@ export function guestThreads(rows: readonly LifeosThread[], me: string, owner: s
     if (!id) {
       id = `p${ids.size}`
       ids.set(author, id)
-      names[id] = author.startsWith('guest:') ? (nameOf(author) ?? 'A guest') : author.startsWith('external:') ? author.slice(9).slice(0, 80) || 'Someone' : author.startsWith('agent:') ? `${owner}'s assistant` : owner
+      // Another guest is "A guest": a guest learns nobody else's name from here.
+      names[id] = author.startsWith('guest:') ? 'A guest' : author.startsWith('external:') ? author.slice(9).slice(0, 80) || 'Someone' : author.startsWith('agent:') ? `${owner}'s assistant` : owner
     }
     return id
   }
@@ -257,8 +276,7 @@ async function threads(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx,
   if (!got || !('doc' in got.link.item)) return json(res, 403, { error: 'gone' })
   const docId = got.link.item.doc
   const rows = (await ctx.convex('query', 'docs:threads', { docId })) as LifeosThread[]
-  const nameOf = (p: string): string | null => (ctx.links().get(p.slice(6)) as GuestServiceLink | undefined)?.guest?.name ?? null
-  json(res, 200, guestThreads(rows, `guest:${id}`, got.link.guest.owner, nameOf))
+  json(res, 200, guestThreads(rows, `guest:${id}`, got.link.guest.owner))
 }
 
 async function comment(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id: string): Promise<void> {
@@ -290,6 +308,15 @@ async function comment(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx,
   json(res, 200, { threadId })
 }
 
+/** A guest's leaving cuts a version at most every five minutes per link and document: reconnecting in a loop makes no pile of them. */
+const lastCut = new Map<string, number>()
+export function cutDue(key: string, now = Date.now()): boolean {
+  if ((lastCut.get(key) ?? 0) > now - 5 * 60_000) return false
+  if (lastCut.size > 5000) lastCut.clear()
+  lastCut.set(key, now)
+  return true
+}
+
 function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, head: Buffer, ctx: RouteCtx, id: string): void {
   const link = guestLink(ctx, id)
   if (!link) return refuseUpgrade(socket, 404, 'gone')
@@ -312,7 +339,7 @@ function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, hea
     ws.on('close', (code: number, reason: Buffer) => {
       accepted.close(code, reason.toString())
       // What an edit link's guest wrote is a version of its own (M19's `guest-end`); nothing written cuts nothing.
-      if (link.role === 'edit') void ctx.history.cut(doc, 'guest-end').catch((err: Error) => ctx.log(`[guests] ${doc}: the guest-end version was not cut: ${err.message}`))
+      if (link.role === 'edit' && cutDue(`${doc}|${id}`)) void ctx.history.cut(doc, 'guest-end').catch((err: Error) => ctx.log(`[guests] ${doc}: the guest-end version was not cut: ${err.message}`))
     })
     ws.on('error', () => ws.terminate())
   })

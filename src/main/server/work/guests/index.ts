@@ -40,7 +40,10 @@ export const guestLinkKind: ActKindDef<GuestLinkAct, never> = {
     const made = await guestRuntime(act).create({ ...p, bySession: act.item.sessionId })
     if (act.item.sessionId) {
       await act.threads
-        .resume(act.item.sessionId, `The owner made the guest link you asked for: ${p.name} can ${roleWords(p.role)} ${p.title} until ${day(p.expiresAt)}. Its address, shown only now: ${made.url}`)
+        .resume(
+          act.item.sessionId,
+          `The owner made the guest link you asked for (${made.link.id}): ${p.name} can ${roleWords(p.role)} ${p.title} until ${day(p.expiresAt)}. Its address is his alone to send: he copies it from Settings, Work, Guest links. Never ask him for it.`
+        )
         .catch((err: Error) => act.log(`guests: the thread was not told: ${err.message}`))
     }
     return { summary: `Made a guest link for ${p.name}: ${p.title}`, ref: { linkId: made.link.id } }
@@ -81,7 +84,7 @@ export const guestsTools: WorkTool[] = [
         const refused = guestRefusal(payload)
         if (refused) return fail(refused)
         const held = ctx.held.create({ kind: 'share.guestLink', sessionId: ctx.sessionId, payload })
-        return workText(`Held for the owner's press: a guest link for ${payload.name} to ${payload.title}, can ${roleWords(payload.role)}, ends ${day(payload.expiresAt)} (${held.state}). You will be told the address when he presses Create.`)
+        return workText(`Held for the owner's press: a guest link for ${payload.name} to ${payload.title}, can ${roleWords(payload.role)}, ends ${day(payload.expiresAt)} (${held.state}). He sends the address himself.`)
       } catch (err) {
         return fail(errorText(err))
       }
@@ -128,6 +131,11 @@ export const guests: WorkModule = {
         return handled(await rt.list(req.params.source))
       case 'work.guests.create':
         return handled(await rt.create({ ...req.params, bySession: null }))
+      case 'work.guests.rekey': {
+        const url = await rt.rekey(req.params.linkId)
+        if (!url) throw new Error('That link no longer opens anything.')
+        return handled({ url })
+      }
       case 'work.guests.revoke':
         await rt.revoke(req.params.linkId)
         return handled({ ok: true })
@@ -139,7 +147,7 @@ export const guests: WorkModule = {
   tools: () => guestsTools,
   acts: [guestLinkKind as ActKindDef],
   preamble: () =>
-    "To let someone outside open one of the owner's LifeOS documents or sheets, ask with `guest_link` (one named person, view, comment or edit, a number of days): it waits for his press, and you are told the address after. Sending one of his documents means sending such a link unless he asks for a file.",
+    "To let someone outside open one of the owner's LifeOS documents or sheets, ask with `guest_link` (one named person, view, comment or edit, a number of days): it waits for his press, and he sends the address himself; you never see it. Sending one of his documents means such a link unless he asks for a file.",
   start(ctx) {
     const rt = guestRuntime(ctx)
     const tick = (): void => void rt.tick().catch((err: Error) => ctx.log(`guests: ${err.message}`))
