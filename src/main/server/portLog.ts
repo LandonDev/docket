@@ -81,9 +81,11 @@ export class PortLogs {
   private async fileOf(row: ThreadResource): Promise<string | null> {
     const known = this.paths.get(row.id)
     if (known) return known
-    const linux = (this.deps.platform ?? process.platform) === 'linux'
-    const { parents } = row.pid ? await this.deps.scanner.get(2_000) : { parents: new Map<number, number>() }
-    let pid: number | undefined = row.pid ?? undefined
+    const platform = this.deps.platform ?? process.platform
+    const linux = platform === 'linux'
+    // Windows has no read of another process's open files: a row there shows the call's named file or its output.
+    const { parents } = row.pid && platform !== 'win32' ? await this.deps.scanner.get(2_000) : { parents: new Map<number, number>() }
+    let pid: number | undefined = platform === 'win32' ? undefined : (row.pid ?? undefined)
     for (let i = 0; pid && pid > 1 && i <= ANCESTORS; i++) {
       for (const p of await (linux ? linuxFiles(pid) : lsofFiles(pid))) {
         if (!isLogPath(p)) continue

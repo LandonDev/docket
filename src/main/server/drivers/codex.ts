@@ -7,6 +7,7 @@ import { limitField } from '../limitText'
 import { isMetaModel, type ProviderId, type Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver, SendOpts } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
+import { adoptTree } from '../procTree'
 import { WarmPool, type WarmSpec } from './warm'
 import { expandSlashRefs } from '../slash'
 import { recordDriverNote } from '../stalls'
@@ -237,8 +238,9 @@ function logBootFailure(entry: { session: string; cwd: string; account: string |
 }
 
 /** Lines from app-server's stderr that say nothing about why it died. */
-/** `ionice -c 3 nice -n 10` on a Linux host with ionice, `nice -n 10` elsewhere: the prefix the app-server starts under. */
-const lowered = (): string[] => [...(process.platform === 'linux' && existsSync('/usr/bin/ionice') ? ['/usr/bin/ionice', '-c', '3'] : []), 'nice', '-n', String(NICE_LEVEL)]
+/** `ionice -c 3 nice -n 10` on a Linux host with ionice, `nice -n 10` on the Mac, nothing on Windows (no `nice` there): the prefix the app-server starts under. */
+export const lowered = (platform: NodeJS.Platform = process.platform): string[] =>
+  platform === 'win32' ? [] : [...(platform === 'linux' && existsSync('/usr/bin/ionice') ? ['/usr/bin/ionice', '-c', '3'] : []), 'nice', '-n', String(NICE_LEVEL)]
 
 const STDERR_NOISE = /rmcp::|rmcp_|^\s*$/
 
@@ -305,8 +307,9 @@ export class AppServerConn {
     // them, so the process is started at nice 10 (idle I/O too where ionice
     // exists) and every build it runs inherits that. nice and ionice exec
     // into codex, so the pid the host tracks is the app-server's own.
-    const [file, ...prefix] = lowered()
-    this.proc = spawn(file, [...prefix, binPath, ...args], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+    // On Windows the app-server and whatever it runs share a Job Object (procTree.ts), ended when it exits.
+    const [file, ...rest] = [...lowered(), binPath, ...args]
+    this.proc = adoptTree(spawn(file!, rest, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }))
     // stderr is read even when nobody wants it: an unread pipe stalls a
     // chatty child, and its tail is the only account of a boot that died.
     createInterface({ input: this.proc.stderr }).on('line', (line) => {

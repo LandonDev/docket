@@ -470,10 +470,15 @@ const darwinEnviron = (pid: number, args?: string): Promise<string | null> =>
     () => null
   )
 
+/**
+ * Windows has no cheap read of another process's environment, so no marks to
+ * judge by: there the guard scans nothing, and a harness's Job Object
+ * (procTree.ts) ends what its calls left when the harness goes.
+ */
 export function hostGuardDeps(): Pick<ProcessGuardDeps, 'scan' | 'environ' | 'kill'> {
   const uid = process.getuid?.()
   return {
-    scan: process.platform === 'linux' ? () => readProcTable({ uid }) : async () => parseGuardPs(await psRows()),
+    scan: process.platform === 'win32' ? async () => [] : process.platform === 'linux' ? () => readProcTable({ uid }) : async () => parseGuardPs(await psRows()),
     environ: (pid, args) =>
       process.platform === 'linux'
         ? readFile(`/proc/${pid}/environ`, 'utf8').catch(() => null)

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import type { AdmissionMemory, AdmissionState } from '@shared/contract-admission'
 import { execFileOffBudget } from './spawnBudget'
+import { scanWinProcesses } from './procTree'
 
 /**
  * Admission control: how many harness processes may run on this host at
@@ -271,6 +272,11 @@ function nodeIo(): AdmissionIo {
     totalmem: () => os.totalmem(),
     freemem: () => os.freemem(),
     rssKb: async (pids) => {
+      if (process.platform === 'win32') {
+        // The working set out of CIM's table: one PowerShell per sample (every 60 s).
+        const byPid = new Map((await scanWinProcesses()).map((p) => [p.pid, p.rssKb]))
+        return pids.map((pid) => byPid.get(pid) ?? null)
+      }
       if (process.platform === 'linux') {
         return pids.map((pid) => {
           try {

@@ -5,6 +5,7 @@ import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { createInterface } from 'node:readline'
+import { adoptTree } from '../../procTree'
 import { binaryCandidates, harnessEnv as baseHarnessEnv, loginPath, resolveBinary } from '../binaries'
 import { loginShell } from '../../loginShell'
 
@@ -138,7 +139,7 @@ export async function spawnChild(sessionId: string, command: string, args: strin
   const env = await harnessEnv()
   const previous = children.get(sessionId)
   if (previous) terminate(previous)
-  const proc = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+  const proc = adoptTree(spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }))
   children.set(sessionId, proc)
   proc.stdin!.on('error', () => undefined)
   createInterface({ input: proc.stdout! }).on('line', (line) => watches.get(sessionId)?.onLine(line))

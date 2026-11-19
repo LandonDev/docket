@@ -201,6 +201,9 @@ async function linuxProbe(pid: number): ReturnType<Probe> {
   return { cwd, args: cmdline.replace(/\0+$/, '').replace(/\0/g, ' ') || null, ...parseEnviron(environ), files: [fd1, fd2].filter((f): f is string => !!f) }
 }
 
+/** Windows has no read of another process's cwd, environment or open files: a listener there is never attributed to a thread, so the sweep leaves it alone. */
+const winProbe: Probe = async () => ({ cwd: null, args: null, threadId: null, claudePid: null, files: [] })
+
 const exec = (cmd: string, args: string[]): Promise<string> =>
   execFileOffBudget(cmd, args, { timeout: 3_000 }).then(
     ({ stdout }) => stdout,
@@ -276,7 +279,8 @@ export class PortSweep {
   constructor(private readonly deps: SweepDeps) {
     this.now = deps.now ?? Date.now
     this.log = deps.log ?? ((line) => console.log(`[ports] ${line}`))
-    this.probe = deps.probe ?? ((deps.platform ?? process.platform) === 'linux' ? linuxProbe : macProbe)
+    const platform = deps.platform ?? process.platform
+    this.probe = deps.probe ?? (platform === 'linux' ? linuxProbe : platform === 'win32' ? winProbe : macProbe)
   }
 
   /** Shell calls and the output files they name, from the event stream. */

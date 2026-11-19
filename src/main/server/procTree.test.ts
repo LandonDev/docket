@@ -119,10 +119,11 @@ describe('the win32 readers', () => {
       '  TCP    [::1]:5173             [::]:0                 LISTENING       4242',
       '  TCP    [::]:8080              [::]:0                 LISTENING       77'
     ].join('\r\n')
-    expect(parseNetstat(text)).toEqual([
-      { port: 135, pid: 1012 },
-      { port: 5173, pid: 4242 },
-      { port: 8080, pid: 77 }
+    expect(parseNetstat(text + '\r\n' + text)).toEqual([
+      { port: 135, pid: 1012, address: '0.0.0.0' },
+      { port: 5173, pid: 4242, address: '127.0.0.1' },
+      { port: 5173, pid: 4242, address: '[::1]' },
+      { port: 8080, pid: 77, address: '[::]' }
     ])
   })
 })

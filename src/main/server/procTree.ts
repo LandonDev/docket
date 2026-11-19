@@ -238,7 +238,7 @@ function endJob(pid: number): boolean {
  * win32: put `child` in a job of its own, ended when it exits, so nothing it
  * started outlives it. Anywhere else nothing: its process group serves.
  */
-export function adoptTree(child: ChildProcess, platform: NodeJS.Platform = process.platform, host: () => JobHost = jobHost): ChildProcess {
+export function adoptTree<C extends ChildProcess>(child: C, platform: NodeJS.Platform = process.platform, host: () => JobHost = jobHost): C {
   if (platform !== 'win32' || !child.pid) return child
   const pid = child.pid
   void host().add(pid)
@@ -294,6 +294,8 @@ export function scanWinProcesses(run: (file: string, args: string[]) => Promise<
 export interface PortListener {
   port: number
   pid: number
+  /** The bound address as netstat prints it: 127.0.0.1, 0.0.0.0, [::1], [::]. */
+  address: string
 }
 
 /** `netstat -ano -p tcp`'s LISTENING rows (v4; `-p tcpv6` prints the v6 ones the same way). */
@@ -303,12 +305,14 @@ export function parseNetstat(text: string): PortListener[] {
   for (const line of text.split(/\r?\n/)) {
     const cols = line.trim().split(/\s+/)
     if (cols.length < 5 || !/^TCP/i.test(cols[0]!) || cols[3] !== 'LISTENING') continue
-    const port = Number(cols[1]!.slice(cols[1]!.lastIndexOf(':') + 1))
+    const at = cols[1]!.lastIndexOf(':')
+    const port = Number(cols[1]!.slice(at + 1))
     const pid = Number(cols[4])
-    const key = `${port}/${pid}`
+    const address = cols[1]!.slice(0, at)
+    const key = `${address}:${port}/${pid}`
     if (!Number.isInteger(port) || !Number.isInteger(pid) || seen.has(key)) continue
     seen.add(key)
-    out.push({ port, pid })
+    out.push({ port, pid, address })
   }
   return out
 }

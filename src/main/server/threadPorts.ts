@@ -1,4 +1,5 @@
 import { execFileBudgeted } from './spawnBudget'
+import { scanWinProcesses, winListeners } from './procTree'
 import type { ThreadResource } from '@shared/contract-resources'
 import { notDevServer, underRunner } from '@shared/devServerRules'
 import { listenerWords } from '@shared/devServerWords'
@@ -49,8 +50,17 @@ const run = async (cmd: string, args: string[]): Promise<string> => {
   }
 }
 
-/** The host's TCP listeners and process tree: ss on Linux, lsof on macOS, ps on both. */
+/** The host's TCP listeners and process tree: ss on Linux, lsof on macOS, ps on both; netstat and CIM's process table on Windows. */
 export async function scanHost(platform: NodeJS.Platform = process.platform): Promise<Scan> {
+  if (platform === 'win32') {
+    const [listen, procs] = await Promise.all([winListeners(), scanWinProcesses()])
+    return {
+      listeners: listen.map((l) => ({ ...l, command: null })),
+      parents: new Map(procs.map((p) => [p.pid, p.ppid])),
+      started: new Map(procs.flatMap((p) => (p.startedAt === null ? [] : [[p.pid, p.startedAt] as const]))),
+      args: new Map(procs.map((p) => [p.pid, p.args]))
+    }
+  }
   const [listen, ps] = await Promise.all([
     platform === 'linux' ? run('ss', ['-ltnpH']).then(parseSs) : run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN']).then(parseLsof),
     run('ps', ['-A', '-o', 'pid=,ppid=,etime=,args='])

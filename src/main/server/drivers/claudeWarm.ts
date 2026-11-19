@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { adoptTree } from '../procTree'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
 import type { RouteScope } from 'aliax-core'
@@ -35,13 +36,16 @@ const STDERR_LINES = 40
  * account of a CLI that died at boot.
  */
 export function spawnClaude(spec: WarmSpec, signal: AbortSignal | undefined, label: string): ChildProcess {
-  const proc = spawn(spec.command, spec.args, {
-    cwd: spec.cwd,
-    env: spec.env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    ...(signal ? { signal } : {}),
-    windowsHide: true
-  })
+  // On Windows the CLI and its tools share a Job Object (procTree.ts), ended when it exits.
+  const proc = adoptTree(
+    spawn(spec.command, spec.args, {
+      cwd: spec.cwd,
+      env: spec.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      ...(signal ? { signal } : {}),
+      windowsHide: true
+    })
+  )
   const tail: string[] = []
   if (proc.stderr) {
     createInterface({ input: proc.stderr }).on('line', (line) => {
