@@ -31,7 +31,12 @@ interface Rig {
   sessions: Map<string, SessionMeta>
   read: string[]
   marks: { read: string[]; unread: string[] }
+  /** what a thread's tree left: host acts plus the drafts its transcript names */
   held: Map<string, number>
+  /** host acts alone, for a count that takes LifeOS's drafts from the Outbox's list */
+  heldActs: Map<string, number>
+  /** the Outbox's list of LifeOS-held items while it watches LifeOS; null when it does not */
+  lifeos: { routineRunId: string | null; state: string }[] | null
   pushes: WorkPush[]
   subs: { fn: string; args: { sector: string; after: number }; on: (v: unknown) => void; off: boolean }[]
   lifeosUp: { value: boolean }
@@ -62,6 +67,8 @@ function makeRig(): Rig {
     read: [],
     marks: { read: [], unread: [] },
     held: new Map(),
+    heldActs: new Map(),
+    lifeos: null,
     pushes: [],
     subs: [],
     lifeosUp: { value: true },
@@ -82,7 +89,7 @@ function makeRig(): Rig {
     onMeta: (fn) => (metaFns.add(fn), () => metaFns.delete(fn)),
     markRead: (id) => void rig.marks.read.push(id),
     markUnread: (id) => void rig.marks.unread.push(id),
-    heldIn: (id) => rig.held.get(id) ?? 0,
+    heldIn: (id, o) => (o?.drafts === false ? rig.heldActs : rig.held).get(id) ?? 0,
     busyBelow: (id) => [...sessions.values()].some((t) => t.parentId === id && ['running', 'starting', 'queued', 'waiting', 'watching'].includes(t.status)),
     threadOfRun: (runId) => [...sessions.values()].find((t) => t.routineRunId === runId)?.id ?? null,
     readOnly: () => true
@@ -118,6 +125,7 @@ function makeRig(): Rig {
         }
       },
       host,
+      lifeosHeld: () => (rig.lifeos ? { items: () => rig.lifeos as never } : null),
       sources: () => rig.sources,
       now: () => clock.now,
       files: {
@@ -274,6 +282,30 @@ describe('a weekday routine on a fake clock', () => {
     rig.held.set('t1', 1)
     rig.settle('t1-sub', 'idle')
     expect(runs(id)[0]).toMatchObject({ state: 'held', summary: 'Held 1' })
+  })
+
+  it("counts a run's LifeOS drafts from the Outbox's list, whatever path made them", async () => {
+    const id = rig.add({ trigger: WEEKDAYS_7AM })
+    await tickAt(at(16, '07:00'))
+    const runId = runs(id)[0]!.id
+    // A draft made through the thread's key with no transcript row (a bridge call): the transcript count is 0.
+    rig.lifeos = [
+      { routineRunId: runId, state: 'held' },
+      { routineRunId: runId, state: 'discarded' },
+      { routineRunId: 'another run', state: 'held' }
+    ]
+    rig.heldActs.set('t1', 1)
+    rig.settle('t1', 'idle')
+    expect(runs(id)[0]).toMatchObject({ state: 'held', summary: 'Held 2' })
+  })
+
+  it('a draft the transcript names but the owner already took is not held while the Outbox watches LifeOS', async () => {
+    const id = rig.add({ trigger: WEEKDAYS_7AM })
+    await tickAt(at(16, '07:00'))
+    rig.lifeos = [{ routineRunId: runs(id)[0]!.id, state: 'sent' }]
+    rig.held.set('t1', 1)
+    rig.settle('t1', 'idle')
+    expect(runs(id)[0]).toMatchObject({ state: 'quiet', summary: 'Nothing held' })
   })
 
   it('a routine paused while its firing was on its way fires nothing', async () => {

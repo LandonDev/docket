@@ -13,6 +13,7 @@ import { errorText, type Trigger, type TriggerSource } from '@shared/work'
 import type { SessionMeta } from '@shared/events'
 import type { AddonCallResult } from '../../addons/addonWire'
 import type { WorkCtx } from '../modules'
+import type { LifeosHeld } from '../outbox/outbox'
 import { BUSY, type RoutinesHost } from './host'
 import { dueCount, nextAt } from './schedule'
 import { RoutineStore, type Cursor, type Routine } from './store'
@@ -68,6 +69,8 @@ export interface EngineDeps {
   sources?(): TriggerSource[]
   /** A file's look, for a test; default: the disk. */
   files?: { stat(path: string): { mtimeMs: number; size: number } | null; read(path: string): Buffer | null }
+  /** The Outbox's live list of LifeOS's held items, null while it is not watching LifeOS: a run's drafts are counted from it. */
+  lifeosHeld?(): Pick<LifeosHeld, 'items'> | null
 }
 
 const disk = {
@@ -408,7 +411,7 @@ export class RoutinesEngine {
       // An idle thread that never worked has not begun; one whose subagents still work has not ended.
       if ((!booting && !this.seenBusy.has(sessionId)) || this.deps.host.busyBelow(sessionId)) return
       this.seenBusy.delete(sessionId)
-      const held = this.deps.host.heldIn(sessionId)
+      const held = this.heldBy(run.id, sessionId)
       if (held > 0) {
         this.store.settle(run.id, 'held', `Held ${held}`)
         this.deps.host.markUnread(sessionId)
@@ -425,6 +428,19 @@ export class RoutinesEngine {
       this.deps.host.markUnread(sessionId)
     } else return
     if (r) this.changed(r)
+  }
+
+  /**
+   * What a run left for the owner. LifeOS's drafts are counted from the Outbox's own list, by the run their
+   * origin names, whenever the Outbox is watching LifeOS: a draft made by any path (a Codex or Muse bridge
+   * call, a subagent, a tool the transcript names otherwise) counts, and one already sent or discarded does
+   * not. Without that list the transcripts are read instead.
+   */
+  private heldBy(runId: string, sessionId: string): number {
+    const lifeos = this.deps.lifeosHeld?.()
+    if (!lifeos) return this.deps.host.heldIn(sessionId)
+    const drafts = lifeos.items().filter((i) => i.routineRunId === runId && (i.state === 'held' || i.state === 'live' || i.state === 'failed')).length
+    return this.deps.host.heldIn(sessionId, { drafts: false }) + drafts
   }
 
   /** A run's thread that no longer exists ends its run. */

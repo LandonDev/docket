@@ -10,6 +10,7 @@ import {
 import type { ClientRequest } from '@shared/contract'
 import { handled, NOT_HANDLED, WORK_HOME, workText, type Trigger } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
+import { outboxHostOf } from '../outbox/ctx'
 import { RoutinesEngine, triggerWords, type EngineDeps } from './engine'
 import { routinesHost, type RoutinesHost } from './host'
 import { knownZone, nextAt } from './schedule'
@@ -42,7 +43,8 @@ export function routinesEngine(ctx: WorkCtx): RoutinesEngine {
     ctx,
     host,
     now: routinesSeams.current?.now ?? Date.now,
-    sources: () => WORK_MODULES.filter((m) => m.id !== 'routines').flatMap((m) => m.triggers ?? [])
+    sources: () => WORK_MODULES.filter((m) => m.id !== 'routines').flatMap((m) => m.triggers ?? []),
+    lifeosHeld: () => outboxHostOf(ctx)?.outbox.lifeos ?? null
   }
   engine = new RoutinesEngine(deps)
   engineCtx = ctx

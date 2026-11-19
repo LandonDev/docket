@@ -25,8 +25,12 @@ export interface RoutinesHost {
   onMeta(fn: (session: SessionMeta) => void): () => void
   markRead(sessionId: string): void
   markUnread(sessionId: string): void
-  /** What a run's thread and its subagents left for the owner: acts held by the host, and drafts made in LifeOS. */
-  heldIn(sessionId: string): number
+  /**
+   * What a run's thread and its subagents left for the owner: acts held by the host, and drafts made in LifeOS
+   * as their transcripts show them. `drafts: false` leaves the transcripts out, for a caller that counts
+   * LifeOS's drafts from the Outbox's own list.
+   */
+  heldIn(sessionId: string, o?: { drafts?: boolean }): number
   /** Whether a thread below this one still works: its run has not settled while a subagent runs. */
   busyBelow(sessionId: string): boolean
   /** The thread a run made, if it was made before the host stopped. */
@@ -67,7 +71,7 @@ export function routinesHostPart(deps: WorkPartDeps): void {
     onMeta: (fn) => registry.onMeta((session) => fn(session)),
     markRead: (id) => registry.markRead([{ sessionId: id }]),
     markUnread: (id) => registry.markUnread([id]),
-    heldIn(sessionId) {
+    heldIn(sessionId, o) {
       const tree = treeOf(sessionId)
       let held = 0
       try {
@@ -76,7 +80,7 @@ export function routinesHostPart(deps: WorkPartDeps): void {
       } catch {
         // no outbox table on this host: nothing held by it
       }
-      for (const id of tree) {
+      for (const id of o?.drafts === false ? [] : tree) {
         for (const row of registry.eventsAfter(id, 0)) {
           const event = row.event
           if (event.type !== 'tool-call' || event.partial) continue
