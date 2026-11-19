@@ -12,6 +12,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'" />
     <meta name="color-scheme" content="light dark" />
     <title>TempCode</title>
+    <!-- Before the stylesheet, so a light viewer never starts dark (public/scheme.js). -->
+    <script src="/scheme.js"></script>
     <script type="module" src="./main.tsx"></script>
   </head>
   <body>

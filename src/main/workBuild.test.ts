@@ -64,18 +64,37 @@ describe('the hosted pages', () => {
     expect(plugin.apply).toBe('build')
     await (plugin.closeBundle as () => Promise<void>).call({})
     // `assets` is Vite's one folder for every page's scripts and styles, served under HOSTED_BASE on the page's own origin.
-    expect(readdirSync(join(out, 'hosted')).sort()).toEqual(['assets', 'form', 'guest', 'index.html', 'item'])
+    // `scheme.js` is the guest page's one script outside them (src/hosted/public): it runs before the stylesheet.
+    expect(readdirSync(join(out, 'hosted')).sort()).toEqual(['assets', 'form', 'guest', 'index.html', 'item', 'scheme.js'])
     // The form page (milestone 36) and the guest page (milestone 31, also the owner's /w/open) are built:
     // their scripts and stylesheets only, from the assets, under a CSP of their own origin.
     for (const page of ['form', 'guest']) {
       const html = readFileSync(join(out, 'hosted', page, 'index.html'), 'utf8')
       const loads = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1])
       expect(loads.length, page).toBeGreaterThanOrEqual(page === 'form' ? 2 : 1)
-      for (const url of loads) expect(url.startsWith(`${HOSTED_BASE}assets/`), url).toBe(true)
+      for (const url of loads) expect(url.startsWith(`${HOSTED_BASE}assets/`) || (page === 'guest' && url === `${HOSTED_BASE}scheme.js`), url).toBe(true)
       for (const url of loads) expect(existsSync(join(out, 'hosted', url.slice(HOSTED_BASE.length))), url).toBe(true)
       expect(html, page).toContain("script-src 'self'")
       expect(html, page).not.toContain('Not built')
     }
+    // A light viewer never starts dark: the guest page's scheme script is a plain one, so it runs
+    // before the stylesheet paints, and it sets the light class from the viewer's system alone.
+    const guest = readFileSync(join(out, 'hosted', 'guest', 'index.html'), 'utf8')
+    const early = guest.indexOf(`<script src="${HOSTED_BASE}scheme.js"></script>`)
+    expect(early).toBeGreaterThan(-1)
+    expect(early).toBeLessThan(guest.indexOf('rel="stylesheet"'))
+    expect(early).toBeLessThan(guest.indexOf('type="module"'))
+    const html = { classList: new Set<string>() }
+    const run = (dark: boolean): boolean => {
+      html.classList.clear()
+      new Function('window', 'document', readFileSync(join(out, 'hosted', 'scheme.js'), 'utf8'))(
+        { matchMedia: (query: string) => ({ matches: query === '(prefers-color-scheme: dark)' && dark }) },
+        { documentElement: { classList: { add: (name: string) => html.classList.add(name) } } }
+      )
+      return html.classList.has('theme-light')
+    }
+    expect(run(false)).toBe(true)
+    expect(run(true)).toBe(false)
     // The item entry stays a plain page: /w/open serves the guest page, which reads its own address.
     const item = readFileSync(join(out, 'hosted', 'item', 'index.html'), 'utf8')
     expect(item).not.toContain('<script')
