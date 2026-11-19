@@ -112,7 +112,7 @@ function bundleMap(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: ['aliax-core', '@muse-code/sdk'] }), appshotHelper(), tcComputer()],
+    plugins: [externalizeDepsPlugin({ exclude: ['aliax-core', '@muse-code/sdk', 'work-kit'] }), appshotHelper(), tcComputer()],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')

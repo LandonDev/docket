@@ -235,6 +235,10 @@
     "react-dom": "^19.3.1",
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#7b799ada174310de496c0fba0ea0d716453a2dd2"
+  },
+  "overrides": {
+    "yjs": "13.6.31"
   }
 }
