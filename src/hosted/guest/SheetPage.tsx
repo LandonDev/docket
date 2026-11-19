@@ -10,8 +10,9 @@ import type { Opened, Session } from "./session";
  * cell edits go as ops from the revision the grid stands at; everyone's ops
  * come back, and a refused one reloads the workbook. A view link is the grid
  * read only. The service holds a guest to values, formats and rows. A refused
- * edit says so on one line over the grid ("Edit not saved" and the service's
- * reason) while the sheet as it is reloads; the next edit it takes clears it.
+ * edit says so on one line over the grid ("Edit not saved" and why, in plain
+ * words) while the sheet as it is reloads; so does an edit the line dropped
+ * before the sheet answered it. The next edit the sheet takes clears it.
  */
 
 type Mutation = { id: string; params: Record<string, unknown> };
@@ -19,9 +20,23 @@ type Incoming = { t: "state"; rev: number; snapshot: string | Record<string, unk
 
 const EDIT_WAIT = 150;
 
+/**
+ * Why an edit was not saved, in a guest's words: the service's own reasons are
+ * protocol words. A reason with no plain form leaves the line its word alone
+ * (null); `lost` is an edit whose answer never came because the line dropped.
+ */
+export function refusedWords(reason: string | "lost"): string | null {
+  if (reason === "lost") return "The connection dropped before the sheet took it";
+  if (/changed under that edit/i.test(reason)) return "Someone changed the sheet first. Type it again";
+  if (/^a guest cannot/i.test(reason)) return "Guests can change values and formats only";
+  if (/can view, not edit/i.test(reason)) return "This link can view the sheet, not edit it";
+  return null;
+}
+
 export function SheetPage({ session, opened, onGone, onDown }: { session: Session; opened: Opened; onGone(): void; onDown(): void }) {
   const [book, setBook] = useState<{ snapshot: Record<string, unknown>; key: number } | null>(null);
-  const [refused, setRefused] = useState<string | null>(null);
+  // Set: an edit the sheet does not have, and why in his words (null: the word alone).
+  const [refused, setRefused] = useState<{ why: string | null } | null>(null);
   const handle = useRef<SheetHandle | null>(null);
   const live = useRef<{ ws: WebSocket | null; rev: number; pending: Mutation[]; sent: string[]; unit: string; inflight: boolean; timer: ReturnType<typeof setTimeout> | null; n: number }>({ ws: null, rev: -1, pending: [], sent: [], unit: "", inflight: false, timer: null, n: 0 });
 
@@ -62,13 +77,24 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
           flush();
         } else if (msg.t === "refused") {
           // The grid has an edit the sheet did not take: the sheet as it is replaces it, and the line says why the typed value went.
-          setRefused(msg.reason || "The sheet did not take it");
+          setRefused({ why: refusedWords(msg.reason ?? "") });
+          // That answer settles the batch: the close below is the reload, not a lost edit.
+          l.inflight = false;
+          l.pending = [];
           l.rev = -1;
           ws.close(1000);
         }
       };
       ws.onclose = (e) => {
         if (l.ws === ws) l.ws = null;
+        // An edit sent and not yet answered, or still waiting to go, is not on the sheet: say so, and take the sheet's own copy back.
+        if (l.inflight || l.pending.length) {
+          setRefused({ why: refusedWords("lost") });
+          l.pending = [];
+          if (l.timer) clearTimeout(l.timer);
+          l.timer = null;
+          l.rev = -1;
+        }
         l.inflight = false;
         if (stopped) return;
         if (e.code === 4403) return onGone();
@@ -100,7 +126,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
     <>
       {refused ? (
         <div role="alert" data-sheet-refused="" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
-          <StatusMark state="failed" word="Edit not saved" detail={refused} className="min-w-0 flex-1" />
+          <StatusMark state="failed" word="Edit not saved" detail={refused.why ?? undefined} className="min-w-0 flex-1" />
         </div>
       ) : null}
       <SheetCanvas

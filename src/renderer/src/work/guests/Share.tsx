@@ -153,6 +153,54 @@ export function Avatar({ name, size = "bar" }: { name: string; size?: "bar" | "l
   );
 }
 
+/**
+ * A link's address, shown once: read only and selectable, with Copy, and what
+ * the guest may do until when. A copy that fails says so here, and the address
+ * stays to select by hand. Used by a new link and by Settings' Replace address
+ * when its copy failed.
+ */
+export function MadeAddress({ url, link }: { url: string; link: Pick<GuestLinkRow, "name" | "role" | "expiresAt"> }) {
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const copy = async (): Promise<void> => {
+    try {
+      await copyText(url);
+      setCopyError(false);
+      setCopied(true);
+    } catch {
+      setCopyError(true);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2 px-5 py-4">
+      <div className="flex h-9 min-w-0 items-center gap-2 rounded-lg border border-input ps-3 pe-1">
+        <span className="min-w-0 flex-1 truncate font-mono text-xs select-all">{url}</span>
+        <Button variant="ghost" size="xs" onClick={() => void copy()}>
+          <SwapIcon swapped={copied} from={<Copy />} to={<Check />} />
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      {copyError ? <ErrorLine error="It didn't copy. Select the address to copy it." /> : null}
+      <p className="text-xs text-muted-foreground">
+        {link.name} can {ROLE_WORDS[link.role].toLowerCase()} until {dayOf(link.expiresAt)}. This address is shown only now.
+      </p>
+    </div>
+  );
+}
+
+/** The link-made dialog alone: Settings' Replace address opens it when the new address did not copy. */
+export function MadeLinkDialog({ url, link, title, onClose }: { url: string; link: Pick<GuestLinkRow, "name" | "role" | "expiresAt">; title: string; onClose(): void }) {
+  const { root, closeThen } = useClosingDialog(onClose, false);
+  return (
+    <Dialog {...root}>
+      <ModalPanel onClose={() => closeThen(onClose)} title={`Link for ${link.name}`} description={title} size="sm">
+        <MadeAddress url={url} link={link} />
+        <DialogFooter confirmLabel="Done" onConfirm={() => closeThen(onClose)} />
+      </ModalPanel>
+    </Dialog>
+  );
+}
+
 function NewLinkDialog({ env, source, title, onClose }: { env: string; source: GuestSource; title: string; onClose(): void }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState<GuestRole>("view");
@@ -160,7 +208,6 @@ function NewLinkDialog({ env, source, title, onClose }: { env: string; source: G
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<GuestCreated | null>(null);
-  const [copied, setCopied] = useState(false);
   const { root, closeThen } = useClosingDialog(onClose, pending);
   // A sheet's guest can view or edit: sheets keep no comments.
   const roles: GuestRole[] = source.table === "sheets" ? ["view", "edit"] : ["view", "comment", "edit"];
@@ -180,29 +227,13 @@ function NewLinkDialog({ env, source, title, onClose }: { env: string; source: G
       setPending(false);
     }
   };
-  const copy = async (): Promise<void> => {
-    if (!made) return;
-    await copyText(made.url);
-    setCopied(true);
-  };
 
   return (
     <Dialog {...root}>
       <ModalPanel onClose={() => closeThen(onClose)} busy={pending} title={made ? `Link for ${made.link.name}` : "New guest link"} description={title} size="sm">
         {made ? (
           <>
-            <div className="flex flex-col gap-2 px-5 py-4">
-              <div className="flex h-9 min-w-0 items-center gap-2 rounded-lg border border-input ps-3 pe-1">
-                <span className="min-w-0 flex-1 truncate font-mono text-xs select-all">{made.url}</span>
-                <Button variant="ghost" size="xs" onClick={() => void copy()}>
-                  <SwapIcon swapped={copied} from={<Copy />} to={<Check />} />
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {made.link.name} can {ROLE_WORDS[made.link.role].toLowerCase()} until {dayOf(made.link.expiresAt)}. This address is shown only now.
-              </p>
-            </div>
+            <MadeAddress url={made.url} link={made.link} />
             <DialogFooter confirmLabel="Done" onConfirm={() => closeThen(onClose)} />
           </>
         ) : (

@@ -28,6 +28,9 @@ const host = vi.hoisted(() => ({
   pictureGate: null as Promise<void> | null,
   /** the windows this desktop can draw live */
   drawn: [] as unknown[],
+  /** the live view's stream, as the viewport would report it; null for the real one (jsdom draws no frame) */
+  stream: null as null | { status: "starting" } | { status: "live"; app: string; window: null; width: number; height: number; drawn: boolean } | { status: "ended"; reason: "lost" },
+  streamRetries: 0,
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -65,6 +68,17 @@ vi.mock("../../lib/computerSessions", async (original) => ({
   useComputerEntries: () => LIVE_ENTRIES,
   stopComputer: async (entry: { row: { threadId: string } }) => void host.stopped.push(entry.row.threadId),
 }));
+
+vi.mock("../../surfaces/threads/computer/Viewport", async (original) => {
+  const real = await original<typeof import("../../surfaces/threads/computer/Viewport")>();
+  return {
+    ...real,
+    useLiveStream: (...args: Parameters<typeof real.useLiveStream>) => {
+      const stream = real.useLiveStream(...args);
+      return host.stream ? { ...stream, state: host.stream, retry: () => void (host.streamRetries += 1) } : stream;
+    },
+  };
+});
 
 vi.mock("../../lib/threadResources", () => ({ hostName: () => "Landon's MacBook" }));
 
@@ -111,6 +125,8 @@ beforeEach(() => {
   host.picture = "bytes";
   host.pictureGate = null;
   host.drawn = [];
+  host.stream = null;
+  host.streamRetries = 0;
 });
 afterEach(cleanup);
 
@@ -284,11 +300,11 @@ describe("a held submit's primary waits on the page he approves", () => {
     await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
   });
 
-  it("once he takes over a window live here, the body draws that window, not the still, and the primary needs no picture", async () => {
+  it("once he takes over a window live here, the body draws that window, not the still, and the primary waits on its first frame", async () => {
     host.pictureGate = new Promise(() => undefined);
     host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
     host.items = [HELD];
-    const { container } = render(<Pane />);
+    const { container, rerender } = render(<Pane />);
     await screen.findByRole("button", { name: "Submit Report in Concur" });
     expect(container.querySelector("[data-face=live]")).toBeNull();
     expect(submit().hasAttribute("disabled")).toBe(true);
@@ -299,6 +315,10 @@ describe("a held submit's primary waits on the page he approves", () => {
     await waitFor(() => expect(container.querySelector("[data-face=live]")).toBeTruthy());
     expect(screen.queryByText("The page's picture did not load")).toBeNull();
     expect(container.querySelector("img")).toBeNull();
+    // The live view has no frame yet: the primary waits on it, as it waited on the still.
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: true };
+    rerender(<Pane />);
     await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
     // Hand back: the agent drives again, and the still and its wait come back.
     fireEvent.click(screen.getByRole("button", { name: "Hand back" }));
@@ -306,6 +326,33 @@ describe("a held submit's primary waits on the page he approves", () => {
     act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
     await waitFor(() => expect(container.querySelector("[data-face=live]")).toBeNull());
     expect(submit().hasAttribute("disabled")).toBe(true);
+  });
+
+  it("after he takes over, the primary stays off while the live view is a skeleton or its stream ended, and comes on with its first frame", async () => {
+    host.state = { ...host.state, driver: "owner" };
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    host.items = [HELD];
+    host.stream = { status: "starting" };
+    const { container, rerender } = render(<Pane />);
+    await screen.findByRole("button", { name: "Hand back" });
+    await waitFor(() => expect(container.querySelector("[data-face=live] [data-slot=skeleton]")).toBeTruthy());
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    // A frame is coming but not drawn: still off.
+    host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: false };
+    rerender(<Pane />);
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    // The stream ended: off, with the stream's own Retry; Take over's way back (Hand back) stays.
+    host.stream = { status: "ended", reason: "lost" };
+    rerender(<Pane />);
+    await waitFor(() => expect(container.querySelector("[data-face=live] [data-slot=skeleton]")).toBeTruthy());
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Hand back" }).hasAttribute("disabled")).toBe(false);
+    // The first frame on screen: on.
+    host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: true };
+    rerender(<Pane />);
+    await waitFor(() => expect(submit().hasAttribute("disabled")).toBe(false));
+    // Not one read of the kept still while he drives a window drawn here.
+    expect(host.calls.filter((c) => c.method === "work.outbox.get")).toHaveLength(0);
   });
 
   it("where no window can be drawn here, taking over keeps the still and its wait", async () => {

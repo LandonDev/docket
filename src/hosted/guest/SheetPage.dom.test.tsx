@@ -3,7 +3,6 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("work-kit/sheet", () => ({ SheetCanvas: () => <div data-grid="" /> }));
 
 class FakeSocket {
   static last: FakeSocket | null = null;
@@ -27,7 +26,9 @@ class FakeSocket {
 }
 vi.stubGlobal("WebSocket", FakeSocket);
 
-const { SheetPage } = await import("./SheetPage");
+vi.mock("work-kit/sheet", () => ({ SheetCanvas: ({ onReady }: { onReady?: (h: unknown) => void }) => (onReady?.(grid.handle), <div data-grid="" />) }));
+const grid = vi.hoisted(() => ({ handle: null as unknown, emit: null as ((m: unknown) => void) | null }));
+const { SheetPage, refusedWords } = await import("./SheetPage");
 
 afterEach(cleanup);
 
@@ -44,8 +45,34 @@ describe("the hosted sheet", () => {
     await act(async () => FakeSocket.last!.say({ t: "refused", id: 1, reason: "A guest cannot change a formula" }));
     const line = screen.getByRole("alert");
     expect(line.textContent).toContain("Edit not saved");
-    expect(line.textContent).toContain("A guest cannot change a formula");
+    // The service's words become his.
+    expect(line.textContent).toContain("Guests can change values and formats only");
+    expect(line.textContent).not.toContain("A guest cannot");
     await act(async () => FakeSocket.last!.say({ t: "ack", id: 2, rev: 3 }));
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says the service's reasons in plain words", () => {
+    expect(refusedWords("the sheet changed under that edit: reload and make it again")).toBe("Someone changed the sheet first. Type it again");
+    expect(refusedWords("a guest cannot insert row")).toBe("Guests can change values and formats only");
+    expect(refusedWords("ops is 1 to 500 mutations")).toBeNull();
+  });
+
+  it("says an edit was not saved when the line drops before the sheet answered it", async () => {
+    grid.handle = { onMutation: (fn: (m: unknown) => void) => void (grid.emit = fn), apply: () => {} };
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} />);
+    await flush();
+    await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+    const socket = FakeSocket.last!;
+    await act(async () => grid.emit!({ id: "sheet.mutation.set-range-values", params: { unitId: "u1", subUnitId: "s1", cellValue: {} } }));
+    await act(async () => void vi.advanceTimersByTime(200));
+    expect(socket.sent.some((m) => m.includes('"t":"ops"'))).toBe(true);
+    await act(async () => socket.onclose?.({ code: 1006 }));
+    const line = screen.getByRole("alert");
+    expect(line.textContent).toContain("Edit not saved");
+    expect(line.textContent).toContain("The connection dropped before the sheet took it");
+    vi.useRealTimers();
+    grid.handle = null;
   });
 });

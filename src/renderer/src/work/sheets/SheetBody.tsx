@@ -91,7 +91,13 @@ export function Body(props: Props) {
   const act = useCallback((work: Promise<SheetView>, fallback: string): Promise<void> => work.then((next) => sync.view(next), (error: unknown) => sayError(error, fallback)), [sync]);
 
   const failed = state.failed ?? (typeof prepared === "string" ? prepared : null);
-  useFeeds(shell, sync, failed ? null : view, state.sendError, state.dropped && !failed, changes, current, handle, locked, act);
+  // Opened once the grid has drawn the book: until then History stays out of the bar and no Accept or Reject is offered for
+  // cells he cannot see; a sheet that did not open stays unopened. Before paint, as the document says it.
+  const ready = !failed && !!view && !!book && prepared === true && !!handle;
+  useLayoutEffect(() => {
+    shell.ready?.(ready);
+  }, [shell, ready]);
+  useFeeds(shell, sync, failed ? null : view, state.sendError, state.dropped && !failed, changes, current, handle, locked, act, ready);
   useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const width = useWidth(box);
@@ -152,6 +158,8 @@ function useFeeds(
   handle: SheetHandle | null,
   locked: boolean,
   act: (work: Promise<SheetView>, fallback: string) => Promise<void>,
+  /** the grid has drawn the book, so the cells a change touches are on screen */
+  ready: boolean,
 ): void {
   const host = sync.host;
   const mode = view?.mode;
@@ -177,7 +185,6 @@ function useFeeds(
     return () => shell.statusLine(null);
   }, [shell, sync, name, missing, readOnly, saveError, dropped, store]);
 
-  const opened = view !== null;
   const written = view?.written;
   const count = changes.changes.length;
   useEffect(() => {
@@ -190,7 +197,7 @@ function useFeeds(
 
   useEffect(() => {
     const list = changes.changes;
-    if (!opened || list.length === 0) return shell.review(null);
+    if (!ready || list.length === 0) return shell.review(null);
     const step = (to: number): void => {
       const next = list[to];
       if (!next) return;
@@ -208,7 +215,7 @@ function useFeeds(
     };
     shell.review(review);
     return () => shell.review(null);
-  }, [shell, sync, host, opened, changes, current, handle, act]);
+  }, [shell, sync, host, ready, changes, current, handle, act]);
 }
 
 /** A selection of more than one cell: Ask over it with the range named, and More's Chart while it spans two columns. */

@@ -672,10 +672,13 @@ describe('needsFreshRead', () => {
     expect(needsFreshRead(steps({ action: 'perform', name: 'confirm', named: 'Message' }))).toBe(true)
   })
 
-  it('needs no fresh read when every step names its element', () => {
-    expect(needsFreshRead(steps({ action: 'key', text: 'Return', element: 4 }))).toBe(false)
-    expect(needsFreshRead(steps({ action: 'type', text: 'hi\n', element: 4 }))).toBe(false)
-    expect(needsFreshRead(steps({ action: 'left_click', element: 4 }, { action: 'perform', name: 'confirm', element: 4 }))).toBe(false)
+  it('asks for a fresh read for every step that acts on an element by its number: the element may bear another name now', () => {
+    expect(needsFreshRead(steps({ action: 'key', text: 'Return', element: 4 }))).toBe(true)
+    expect(needsFreshRead(steps({ action: 'type', text: 'hi', element: 4 }))).toBe(true)
+    expect(needsFreshRead(steps({ action: 'left_click', element: 4 }))).toBe(true)
+    expect(needsFreshRead(steps({ action: 'left_click_drag', start_element: 4, element: 5 }))).toBe(true)
+    // a step that moves nothing needs no read for its element
+    expect(needsFreshRead(steps({ action: 'mouse_move', element: 4 }, { action: 'scroll', element: 4, scroll_direction: 'down', scroll_amount: 1 }))).toBe(false)
   })
 
   it('needs no fresh read for keys and text that cannot send', () => {
@@ -688,7 +691,8 @@ describe('needsFreshRead', () => {
     expect(needsFreshRead(steps({ action: 'perform', name: 'press', named: 'Send' }))).toBe(true)
     expect(needsFreshRead(steps({ action: 'left_click' }), { named: 'paperplane' })).toBe(true)
     expect(needsFreshRead(steps({ action: 'mouse_move', named: 'paperplane' }, { action: 'left_click' }))).toBe(true)
-    expect(needsFreshRead(steps({ action: 'left_click' }), { element: 4 })).toBe(false)
+    // and wherever the pointer was left: what lies under it is judged on the window as it is now
+    expect(needsFreshRead(steps({ action: 'left_click' }), { element: 4 })).toBe(true)
   })
 })
 

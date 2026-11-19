@@ -1,6 +1,8 @@
 import type { ActViewProps } from "../acts/registry";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { cn } from "../../lib/cn";
+import { useState } from "react";
+import { Button } from "../../components/ui/button";
 import { type LifeosSession, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 import { dayLines, opFields, opStart, type CalendarOp, type DayEvent } from "./calendarAct";
 
@@ -37,14 +39,33 @@ function Body({ op, event, session, sector }: Props & { event: DayEvent | null }
           </div>
         ))}
       </dl>
-      {from !== null ? <Day op={op} event={event} session={session} sector={sector} from={from} /> : null}
+      {from !== null ? <DayRead op={op} event={event} session={session} sector={sector} from={from} /> : null}
     </div>
   );
 }
 
-/** That day, every sector's, in time order; nothing until it has loaded, so the act above never moves. */
-function Day({ op, event, session, sector, from }: Props & { event: DayEvent | null; from: number }) {
+/** The day's read, asked again from scratch by its Retry. */
+function DayRead(props: Props & { event: DayEvent | null; from: number }) {
+  const [attempt, setAttempt] = useState(0);
+  return <Day key={attempt} {...props} onRetry={() => setAttempt((n) => n + 1)} />;
+}
+
+/**
+ * That day, every sector's, in time order; nothing until it has loaded, so the
+ * act above never moves. A read that failed is one muted line in the day's
+ * place with Retry, so a clash check that did not run never reads as a clear day.
+ */
+function Day({ op, event, session, sector, from, onRetry }: Props & { event: DayEvent | null; from: number; onRetry: () => void }) {
   const day = useLifeosQuery<DayEvent[]>(session, "events:range", { from, to: from + 86_400_000 });
+  if (day.status === "failed")
+    return (
+      <p data-day-failed="" className="flex min-h-7 items-center gap-2 text-[13px] text-muted-foreground">
+        Couldn't read that day
+        <Button variant="ghost" size="xs" onClick={onRetry}>
+          Retry
+        </Button>
+      </p>
+    );
   const lines = day.status === "ready" ? dayLines(op, day.value, event, sector) : null;
   if (!lines?.length) return null;
   return (

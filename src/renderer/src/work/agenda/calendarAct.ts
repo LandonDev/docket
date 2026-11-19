@@ -49,12 +49,23 @@ const REPLY: Partial<Record<CalendarOpKind, string>> = { accept: "Yes", decline:
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const day = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
 
-/** "Fri, Nov 20, 2:00 to 2:30 PM"; a day item is its day alone. */
+const sameDay = (a: number, b: number): boolean => new Date(a).toDateString() === new Date(b).toDateString();
+
+/**
+ * "Fri, Nov 20, 2:00 to 2:30 PM"; a day item is its day alone. An event that
+ * runs into another day names both: "Fri, Nov 20, 10:00 PM to Sat, Nov 21,
+ * 1:00 AM", and a day item over several days "Fri, Nov 20 to Sun, Nov 22"
+ * (its end is the midnight after its last day).
+ */
 export function whenWords(startsAt: number, endsAt: number | undefined, allDay = false): string {
-  if (allDay) return day.format(startsAt);
+  if (allDay) {
+    const last = endsAt !== undefined && endsAt > startsAt ? endsAt - 1 : startsAt;
+    return sameDay(startsAt, last) ? day.format(startsAt) : `${day.format(startsAt)} to ${day.format(last)}`;
+  }
   const start = time.format(startsAt);
   if (endsAt === undefined || endsAt <= startsAt) return `${day.format(startsAt)}, ${start}`;
   const end = time.format(endsAt);
+  if (!sameDay(startsAt, endsAt)) return `${day.format(startsAt)}, ${start} to ${day.format(endsAt)}, ${end}`;
   // One day period for both ends reads "2:00 to 2:30 PM".
   const startBare = start.replace(/\s?[AP]\.?M\.?$/i, "");
   const samePeriod = start.slice(startBare.length) === end.slice(end.replace(/\s?[AP]\.?M\.?$/i, "").length);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { grantFor } from "../outbox/model";
-import { dayLines, opFields, opStart, type CalendarOp, type DayEvent } from "./calendarAct";
+import { dayLines, opFields, opStart, whenWords, type CalendarOp, type DayEvent } from "./calendarAct";
 
 const at = (h: number, m = 0) => new Date(2026, 10, 20, h, m).getTime();
 const call: DayEvent = { _id: "ev_call", title: "Kickoff call with Northside PT", sector: "unify", startsAt: at(14), endsAt: at(14, 30), allDay: false, location: "Google Meet" };
@@ -71,5 +71,22 @@ describe("a calendar act's grant", () => {
     expect(rows.find((r) => r.label === "When")?.value).toBeTruthy();
     // a live read that says otherwise does not replace what the press binds
     expect(opFields(op, { ...call, title: "New contract approval", location: "Room 9" } as DayEvent).find((r) => r.label === "Where")?.value).toBe("Room 210");
+  });
+});
+
+describe("when an act happens", () => {
+  const d = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const t = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+  it("names one day once, and both days when the event runs into the next", () => {
+    expect(whenWords(at(14), at(14, 30)).startsWith(`${d.format(at(14))}, `)).toBe(true);
+    const late = new Date(2026, 10, 20, 22).getTime();
+    const after = new Date(2026, 10, 21, 1).getTime();
+    expect(whenWords(late, after)).toBe(`${d.format(late)}, ${t.format(late)} to ${d.format(after)}, ${t.format(after)}`);
+  });
+
+  it("names a day item's first and last days, its end being the midnight after", () => {
+    const fri = new Date(2026, 10, 20).getTime();
+    expect(whenWords(fri, new Date(2026, 10, 21).getTime(), true)).toBe(d.format(fri));
+    expect(whenWords(fri, new Date(2026, 10, 23).getTime(), true)).toBe(`${d.format(fri)} to ${d.format(new Date(2026, 10, 22).getTime())}`);
   });
 });

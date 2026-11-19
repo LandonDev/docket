@@ -8,7 +8,7 @@ import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { copyText } from "../../lib/clipboard";
 import { clockTime } from "../../lib/duration";
-import { Avatar } from "./Share";
+import { Avatar, MadeLinkDialog } from "./Share";
 import { guestsCall, isLive, ROLE_WORDS, shortDay, type GuestLinkRow } from "./api";
 
 /**
@@ -27,6 +27,7 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
   // A host's read that failed, and a press that failed: each said once, apart from the rows that did come.
   const [failed, setFailed] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [made, setMade] = useState<{ url: string; link: GuestLinkRow } | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const key = hosts.join(",");
 
@@ -67,7 +68,14 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
     setRevoking(`copy:${id}`);
     try {
       const { url } = await registry.linkOf(env).request<{ url: string }>("work.guests.rekey", { linkId: id });
-      await copyText(url);
+      const row = rows?.find((r) => r.link.id === id)?.link;
+      try {
+        await copyText(url);
+      } catch {
+        // The old address no longer opens: the new one must not go with a failed copy. It shows, once, to select.
+        if (row) setMade({ url, link: row });
+        return;
+      }
       const toast = await loadToast();
       toast.success("Copied the new address");
     } catch (err) {
@@ -123,6 +131,7 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
           </PageRow>
         );
       })}
+      {made ? <MadeLinkDialog url={made.url} link={made.link} title={made.link.title} onClose={() => setMade(null)} /> : null}
     </PageSection>
   );
 }

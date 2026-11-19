@@ -163,7 +163,7 @@ public enum OutboxModel {
     private nonisolated static let quiet: Set<String> = ["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host", "quote"]
     /// Keys whose text is the body: drawn as one plain-text block, not a field.
     private nonisolated static let bodyKeys = ["text", "body", "message", "content"]
-    private nonisolated static let labels = ["to": "To", "cc": "Cc", "bcc": "Bcc", "from": "From", "subject": "Subject", "channel": "In", "title": "Title", "app": "App", "window": "Window", "label": "Act"]
+    private nonisolated static let labels = ["to": "To", "cc": "Cc", "bcc": "Bcc", "from": "From", "subject": "Subject", "channel": "In", "title": "Title", "app": "App", "window": "Window", "label": "Act", "url": "URL", "chat": "In"]
     /// A payload object has no key order once decoded: these lead, in a mail's order; the rest follow by name.
     private nonisolated static let leading = ["from", "to", "cc", "bcc", "subject", "channel", "title"]
 
@@ -206,6 +206,11 @@ public enum OutboxModel {
         return lead + rest
     }
 
+    /// A value exactly as JSON writes it: `null`, `""`, an object or a list whole.
+    nonisolated static func json(_ value: JSONValue) -> String {
+        (try? String(decoding: JSONEncoder.sorted.encode(value), as: UTF8.self)) ?? ""
+    }
+
     private nonisolated static func text(_ value: JSONValue) -> String {
         switch value {
         case .string(let s): s
@@ -223,24 +228,41 @@ public enum OutboxModel {
     /// detail reads as the act, not as its wrapper.
     public nonisolated static func payloadView(_ payload: JSONValue?) -> PayloadView {
         var view = PayloadView(fields: [])
-        func walk(_ value: JSONValue, _ path: [String], _ depth: Int) {
+        // Inside an add-on call's or a computer act's arguments every key is what goes, so none is quiet there:
+        // no bookkeeping filter, a null or an empty value shown as it goes, an object or a list whole as JSON
+        // (the desktop's payloadView, the hold re-review's findings 10 and 18).
+        func walk(_ value: JSONValue, _ path: [String], _ depth: Int, quiet: Bool = true) {
             guard case .object(let object) = value else { return }
             // The html is what goes when there is one: the body reads from it (links with their targets,
             // images named), and an edit goes to the text beside it; with none beside it, it is read only
             // (the desktop's payloadView, the hold review's findings 4 and 11).
-            if view.body == nil, case .string(let html)? = object["html"], !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if quiet, view.body == nil, case .string(let html)? = object["html"], !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let hasText: Bool = if case .string? = object["text"] { true } else { false }
                 view.body = .init(path: path + [hasText ? "text" : "html"], text: HtmlWords.of(html), readOnly: !hasText)
             }
             for (key, v) in ordered(object) {
-                if quiet.contains(key) { continue }
+                if quiet, OutboxModel.quiet.contains(key) { continue }
                 let at = path + [key]
+                if !quiet {
+                    switch v {
+                    case .null, .array, .object:
+                        view.fields.append(Field(key: key, path: at, label: label(key), value: json(v), edit: nil))
+                        continue
+                    case .string(let s) where s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                        view.fields.append(Field(key: key, path: at, label: label(key), value: json(v), edit: .text))
+                        continue
+                    default:
+                        break
+                    }
+                }
                 switch v {
                 case .null:
                     continue
                 case .string(let s):
-                    if view.body?.path == at { continue }
-                    if view.body == nil, bodyKeys.contains(key), s.contains("\n") || s.count > 80 {
+                    if quiet, view.body?.path == at { continue }
+                    // A post's own words at the top (a Teams reply) are its body at any length, with no html beside them.
+                    let topText = depth == 0 && key == "text" && object["html"] == nil
+                    if view.body == nil, bodyKeys.contains(key), topText || s.contains("\n") || s.count > 80 {
                         view.body = .init(path: at, text: s)
                     } else if !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         view.fields.append(Field(key: key, path: at, label: label(key), value: s, edit: .text))
@@ -257,7 +279,7 @@ public enum OutboxModel {
                     if let one = address(v) {
                         view.fields.append(Field(key: key, path: at, label: label(key), value: one.name ?? one.address, detail: one.name == nil ? nil : one.address, edit: nil))
                     } else if depth < 1, ["message", "arguments", "args"].contains(key) {
-                        walk(v, at, depth + 1)
+                        walk(v, at, depth + 1, quiet: key == "message")
                     } else if case .string(let name)? = o["name"] {
                         view.fields.append(Field(key: key, path: at, label: label(key), value: name, edit: nil))
                     } else {

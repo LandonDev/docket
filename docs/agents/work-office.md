@@ -305,7 +305,7 @@ One set for Claude, Codex and Muse (architecture §10):
 | `office_slides_read`, `office_slides_replace` | each slide's text; replace text | no; the rule below |
 | `office_mail_list`, `office_mail_read` | Outlook's inbox, sent or drafts | no |
 | `office_mail_draft` | a draft left in Outlook's Drafts; nothing is sent | no |
-| `office_mail_send` | send, reply (`replyTo`: to that mail's sender, read when the act is made, so the card and a grant judge the address Outlook uses), forward (`forward`), HTML body, cleaned when held; `outlookAdds` names the mail Outlook puts under a reply or forward, and an edit keeps the account, the mail answered, a reply's recipients and the subject (`keepOfficeMail`) | **yes**: `office.mail.send` |
+| `office_mail_send` | send, reply (`replyTo`: to that mail's sender, read when the act is made, so the card and a grant judge the address Outlook uses), forward (`forward`); a reply or forward goes from the account its mail sits in, which the act is bound to, and another `account` asked for is refused, HTML body, cleaned when held; `outlookAdds` names the mail Outlook puts under a reply or forward, and an edit keeps the account, the mail answered, a reply's recipients and the subject (`keepOfficeMail`) | **yes**: `office.mail.send` |
 | `office_calendar_list` | events by start | no |
 | `office_calendar_create` | with nobody invited, a hold on his own calendar, made at once | with `attendees`, **yes**: `office.calendar.op` |
 | `office_calendar_answer` | accept, decline, tentative | **yes**: `office.calendar.op` |

@@ -18,7 +18,7 @@ import { ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, streamSize, useLiveStr
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { barFaceOf, heldSubmitOf, portalValues, siteHost, type BarFace, type HeldSubmitPayload, type PortalValue } from "./portal";
-import { discardHeld, pictureShown, setDriver, submitHeld, useBrowserState, useHeldActs, useHeldPicture } from "./store";
+import { discardHeld, pictureShown, setDriver, setLiveDrawn, submitHeld, useBrowserState, useHeldActs, useHeldPicture, useLiveDrawn } from "./store";
 
 /**
  * The live browser (docs/agents/work-browser.md "The canvas"; the approved
@@ -89,10 +89,13 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const face = barFaceOf(state, held);
   // While a submit waits and the agent drives, the body draws the held page's kept picture, a live window or not: his press
   // approves what he has seen, so the primary waits until that picture has drawn (or none was kept), and stays off while it
-  // comes or failed. Once he has taken over a window this desktop draws, he sees it live, and the still and its wait give way.
-  const still = face.face === "held" && !(face.owner && entry) && !props.picture ? face.item.ref : null;
+  // comes or failed. Once he has taken over a window this desktop draws, he sees it live, and the still and its wait give way
+  // to the live view's: the primary waits until that view has drawn a frame (a skeleton or an ended stream keeps it off).
+  const takenOver = face.face === "held" && face.owner && !!entry && !props.picture;
+  const still = face.face === "held" && !takenOver && !props.picture ? face.item.ref : null;
   const picture = useHeldPicture(env, still);
-  const seen = !still || pictureShown(picture);
+  const drawn = useLiveDrawn(`${env}\n${pane}`);
+  const seen = takenOver ? drawn : !still || pictureShown(picture);
   const [busy, press] = usePress();
   const takeOver = (): void =>
     press("take", async () => {
@@ -208,6 +211,13 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
   // once he takes over he drives the live window, so the body draws it (browser.html "You took over").
   const still = waiting && !(state?.driver === "owner" && entry) ? waiting : null;
   const stream = useLiveStream(entry, !still, box, measure);
+  // The bar's primary, after he takes over, waits on this view's first frame: say when one is on screen.
+  const framed = !props.picture && !still && !!entry && stream.state.status === "live" && stream.state.drawn;
+  const liveKey = `${env}\n${pane}`;
+  useEffect(() => {
+    setLiveDrawn(liveKey, framed);
+    return () => setLiveDrawn(liveKey, false);
+  }, [liveKey, framed]);
 
   // Where it runs, said once after the page's title: the Mac a box thread drives, else the thread's own host (none for this one).
   const where = entry?.row.macName ?? live.find((e) => e.row.macName)?.row.macName ?? hostName(env);

@@ -117,6 +117,75 @@ import TempCodeContract
         #expect(OutboxModel.payloadView(mail).body?.readOnly == false)
     }
 
+    @Test func anAddonCallsArgumentsAreShownWholeWithNoFilterInside() {
+        let call: JSONValue = .object(["addonId": .string("slack"), "toolDigest": .string("4d73"), "tool": .string("post"), "arguments": .object([
+            "id": .string("x1"), "status": .null, "notes": .string(""), "channel": .object(["name": .string("#events"), "id": .string("C1")]),
+            "tags": .array([]), "text": .string("Booked.\nSee you there."),
+        ])])
+        let view = OutboxModel.payloadView(call)
+        #expect(view.fields.map(\.label) == ["In", "Id", "Notes", "Status", "Tags"])
+        #expect(view.fields.map(\.value) == [##"{"id":"C1","name":"#events"}"##, "x1", #""""#, "null", "[]"])
+        #expect(view.body?.text == "Booked.\nSee you there.")
+    }
+
+    @Test func aTeamsPostReadsInAndItsWordsAsTheBodyAtAnyLength() {
+        let view = OutboxModel.payloadView(.object(["chat": .string("Esports staff"), "text": .string("Spring LAN is set")]))
+        #expect(view.fields.map(\.label) == ["In"])
+        #expect(view.body?.text == "Spring LAN is set")
+        #expect(view.body?.path == ["text"])
+        #expect(view.body?.readOnly == false)
+    }
+
+    @Test func aFormAShareAndAFrameioPostReadAsTheirOwnRows() {
+        let form = OutboxModel.actView(item("f1", kind: .formPublish, payload: .object(["itemId": .string("itm_1"), "title": .string("LAN sign-up"), "rev": .number(4), "questions": .number(6), "content": .string("Name (short answer, required)")])))
+        #expect(form.fields.map(\.label) == ["Form", "Questions"])
+        #expect(form.fields.map(\.value) == ["LAN sign-up", "6"])
+        #expect(form.body?.text == "Name (short answer, required)")
+        #expect(form.body?.readOnly == true)
+
+        let share = OutboxModel.actView(item("g1", kind: .shareGoogle, payload: .object(["account": .string("a@b.edu"), "fileId": .string("1AbC"), "name": .string("Budget.xlsx"), "email": .string("dana@purdue.edu"), "role": .string("writer"), "notify": .bool(true)])))
+        #expect(share.fields.map(\.label) == ["Person", "Access", "Notice"])
+        #expect(share.fields.map(\.value) == ["dana@purdue.edu", "Can edit", "Tells them by mail"])
+        let quiet = OutboxModel.actView(item("g2", kind: .shareGoogle, payload: .object(["email": .string("dana@purdue.edu"), "role": .string("reader"), "notify": .bool(false)])))
+        #expect(quiet.fields.map(\.value) == ["dana@purdue.edu", "Can view"])
+
+        let comment = OutboxModel.actView(item("p1", kind: .frameioPost, payload: .object(["what": .string("comment"), "account": .string("acc_1"), "fileId": .string("f_1"), "fileName": .string("cut.mp4"), "text": .string("Tighten the open"), "clock": .string("0:12"), "durationFrames": .number(48), "pin": .object(["x": .number(0.31), "y": .number(0.62)]), "shapes": .array([.object(["kind": .string("arrow")]), .object(["kind": .string("box")])]), "height": .number(1080)])))
+        #expect(comment.fields.map(\.label) == ["File", "At", "Marks"])
+        #expect(comment.fields.map(\.value) == ["cut.mp4", "0:12", "2 shapes"])
+        #expect(comment.body?.text == "Tighten the open")
+
+        let version = OutboxModel.actView(item("p2", kind: .frameioPost, payload: .object(["what": .string("version"), "account": .string("acc_1"), "onto": .string("stk_1"), "ontoName": .string("cut.mp4"), "from": .string("~/Movies/cut v2.mp4"), "path": .string("/Users/l/Library/Application Support/TempCode/work-frameio/held/x"), "name": .string("cut v2.mp4"), "size": .number(734_003_200)])))
+        #expect(version.fields.map(\.label) == ["On top of", "File", "Size", "From"])
+        #expect(version.fields.map(\.value) == ["cut.mp4", "cut v2.mp4", "700 MB", "~/Movies/cut v2.mp4"])
+        #expect(OutboxModel.megabytes(1.5 * 1024 * 1024) == "1.5 MB")
+    }
+
+    @Test func aComputerActDropsItsToolWordAndSaysURL() {
+        let act = OutboxModel.actView(item("c1", kind: .computerAct, payload: .object(["args": .object(["action": .string("left_click"), "url": .string("https://concur.example/expense")])])))
+        #expect(act.fields.map(\.label) == ["URL"])
+    }
+
+    @Test func aRowsTitleIsTheActAndItsLineTheWordsAfterIt() {
+        let post = OutboxModel.rowWords(item("p1", kind: .frameioPost, summary: "Comment on cut.mp4 at 0:12: Tighten the open", payload: .object(["account": .string("acc_1")])))
+        #expect(post.title == "Comment on cut.mp4 at 0:12")
+        #expect(post.line == "Tighten the open")
+        let share = OutboxModel.rowWords(item("g1", kind: .shareGoogle, summary: "Share Budget.xlsx with dana@purdue.edu (can edit)", payload: .object(["account": .string("a@b.edu")])))
+        #expect(share.line == nil)
+        let failed = OutboxModel.rowWords(item("p2", kind: .frameioPost, state: .failed, summary: "Post: x"))
+        #expect(failed.line == "Didn’t send")
+        let mailRow = OutboxModel.rowWords(item("m1", summary: "Send to events booking", payload: mail))
+        #expect(mailRow == (title: "Send to events booking", line: "Ballroom for April 10"))
+    }
+
+    @Test func anEventAcrossDaysNamesBothDays() {
+        let late = OutboxModel.whenWords(friday2pm + 7 * 3_600_000, friday2pm + 12 * 3_600_000, locale: us, timeZone: utc)
+        #expect(late.hasPrefix("Fri, Nov 20, 9:00"))
+        #expect(late.contains("to Sat, Nov 21, 2:00"))
+        let midnight = friday2pm - 14 * 3_600_000
+        #expect(OutboxModel.whenWords(midnight, midnight + 3 * 86_400_000, allDay: true, locale: us, timeZone: utc) == "Fri, Nov 20 to Sun, Nov 22")
+        #expect(OutboxModel.whenWords(midnight, midnight + 86_400_000, allDay: true, locale: us, timeZone: utc) == "Fri, Nov 20")
+    }
+
     @Test func aRepliesQuoteIsMutedWordsUnderTheBodyNeverAnEditableField() {
         var payload = mail
         if case .object(var o) = payload {

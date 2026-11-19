@@ -61,7 +61,7 @@ import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { dayTime } from "../../lib/duration";
 import { Bar, Body, selectionChip } from "./MediaCanvas";
 import { levelFor, scaleOf } from "./Picture";
-import { FEED_FAILED } from "./Player";
+import { FEED_FAILED, nativeErrorWords } from "./Player";
 import { resetMediaStore } from "./store";
 
 const table: FrameTable = { kind: "cfr", start: 0, rate: { num: 24, den: 1 }, count: 3216 };
@@ -218,6 +218,61 @@ describe("the media canvas", () => {
     expect(feeds[1]!.destroyed).toBe(false);
     await waitFor(() => expect(plays).toHaveLength(2));
     await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
+  });
+
+  it("says the video element's own error after Play on the state line, and Retry loads it again where it stood and plays", async () => {
+    const plays: number[] = [];
+    let loads = 0;
+    HTMLMediaElement.prototype.load = () => void loads++;
+    HTMLMediaElement.prototype.play = async () => void plays.push(Date.now());
+    const { shell } = await mount();
+    const video = document.querySelector("video")!;
+    let at = 0;
+    Object.defineProperty(video, "currentTime", { configurable: true, get: () => at, set: (t: number) => void (at = t) });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(plays).toHaveLength(1));
+    // It plays to 0:41, then the connection drops: the element fails with no refusal from Play.
+    at = 41;
+    Object.defineProperty(video, "error", { configurable: true, value: { code: 2 } });
+    fireEvent.error(video);
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't play this video", detail: "The video stopped loading" })));
+    const line = shell.statusLine.mock.lastCall![0] as { action: { label: string; run(): Promise<void> } };
+    expect(line.action.label).toBe("Retry");
+    // The load sends the element back to the start; Retry puts it back where it stood.
+    HTMLMediaElement.prototype.load = function (this: HTMLMediaElement) {
+      loads++;
+      if (this === video) at = 0;
+    };
+    Object.defineProperty(video, "error", { configurable: true, value: null });
+    await act(() => line.action.run());
+    expect(loads).toBeGreaterThan(0);
+    expect(at).toBe(41);
+    await waitFor(() => expect(plays).toHaveLength(2));
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
+  });
+
+  it("hears nothing of an element error from its own teardown or a source it swapped", async () => {
+    const { shell } = await mount();
+    const video = document.querySelector("video")!;
+    // A swap aborts the old source.
+    Object.defineProperty(video, "error", { configurable: true, value: { code: 1 } });
+    fireEvent.error(video);
+    // A teardown takes the source away, then loads nothing.
+    video.removeAttribute("src");
+    Object.defineProperty(video, "error", { configurable: true, value: { code: 4 } });
+    fireEvent.error(video);
+    await act(async () => await Promise.resolve());
+    expect(shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ word: "Couldn't play this video" }));
+  });
+
+  it("names each element error by its code", () => {
+    const el = (code: number | null, src: string | null = "x.mp4") => ({ error: code === null ? null : ({ code } as MediaError), getAttribute: () => src });
+    expect(nativeErrorWords(el(null))).toBeNull();
+    expect(nativeErrorWords(el(1))).toBeNull();
+    expect(nativeErrorWords(el(2))).toBe("The video stopped loading");
+    expect(nativeErrorWords(el(3))).toBe("Part of the video could not be read");
+    expect(nativeErrorWords(el(4))).toBe("This video cannot be played here");
+    expect(nativeErrorWords(el(4, null))).toBeNull();
   });
 
   it("takes a Pause that cut a starting Play for no refusal", async () => {

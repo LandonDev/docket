@@ -51,6 +51,8 @@ interface Showing {
   shift?: number
   /** a line only the host's own fresh reads (geometry) hold, under the window: the model never sees it */
   unseen?: string
+  /** [37] button "close" reads as button "Send" in the host's own fresh reads only: the same number, renamed since the thread's read */
+  renamed?: boolean
 }
 /** Rewrites what the fake answers before the host reads it; change the returned object to change later answers. */
 const showing = (h: ComputerHarness, show: Showing): Showing => {
@@ -60,6 +62,7 @@ const showing = (h: ComputerHarness, show: Showing): Showing => {
     let out = s
     if (own && show.shift) out = out.replace(/\[(\d+)\]/g, (_, n: string) => `[${Number(n) + show.shift!}]`)
     if (own && show.unseen && /^\[1\] window/m.test(out)) out = `${out}\n  ${show.unseen}`
+    if (own && show.renamed) out = out.replace(/button "close"/g, 'button "Send"')
     if (show.send) out = out.replace(/button "close"/g, 'button "Send"')
     if (show.menuSend) out = out.replace(/menu button "list style"/g, 'menu button "Send"')
     if (show.chat) out = out.replace(/^app "TextEdit"/, 'app "Slack"')
@@ -403,13 +406,15 @@ describe('what a Work thread asks of the service', () => {
     expect(methods(work)).toEqual(methods(code))
   })
 
-  it('sends no extra read before a plain click by element', async () => {
+  it('sends one fresh full read before a click by element, and only in a Work thread: the number may name another control now', async () => {
     useHold()
     const work = (await thread('work')).h
     const code = (await thread('code')).h
+    const before = { work: methods(work).length, code: methods(code).length }
     await click(work, PLAIN)
     await click(code, PLAIN)
-    expect(methods(work)).toEqual(methods(code))
+    expect(methods(work).slice(before.work)).toEqual(['state.get', ...methods(code).slice(before.code)])
+    expect(work.requests()[before.work]!.params).toMatchObject({ mode: 'full', geometry: true, screenshot: 'never' })
   })
 
   it('sends one fresh full read with frames before a click by position', async () => {
@@ -429,7 +434,7 @@ describe('what a Work thread asks of the service', () => {
     ['Return to the focus', { action: 'key', text: 'Return' }],
     ['a typed line break to the focus', { action: 'type', text: 'one\ntwo' }]
   ] as const) {
-    it(`sends one fresh full read with frames before ${what}, and none for a key to a named element`, async () => {
+    it(`sends one fresh full read with frames before ${what}, to the focus or to an element by its number`, async () => {
       useHold()
       const work = (await thread('work', 'auto', {})).h
       const code = (await thread('code', 'auto', {})).h
@@ -439,9 +444,10 @@ describe('what a Work thread asks of the service', () => {
       const c = code.requests().slice(before.code)
       expect(w.map((r) => r.method)).toEqual(['state.get', ...c.map((r) => r.method)])
       expect(w[0].params).toMatchObject({ mode: 'full', geometry: true, screenshot: 'never' })
+      // to an element by its number it is read afresh too: the number may name another control now
       const named = { work: work.requests().length, code: code.requests().length }
       for (const h of [work, code]) await h.run('computer_act', { app: 'TextEdit', ...act, element: 3 })
-      expect(work.requests().slice(named.work).map((r) => r.method)).toEqual(code.requests().slice(named.code).map((r) => r.method))
+      expect(work.requests().slice(named.work).map((r) => r.method)).toEqual(['state.get', ...code.requests().slice(named.code).map((r) => r.method)])
       expect(held).toHaveLength(0)
     })
   }
@@ -629,6 +635,16 @@ describe('the attacker under full access', () => {
     expect(held[0]).toMatchObject({ why: 'screen', label: 'Send' })
     expect(await h.run('computer_act', { app: 'TextEdit', action: 'type', named: 'Nowhere', text: 'hi' })).toMatchObject({ isError: true, body: HELD_UNPLACED })
     expect(held).toHaveLength(1)
+    expect(acts(h)).toBe(0)
+  })
+
+  it('holds a click by element on a number the thread read as "close" that names a Send now', async () => {
+    useHold()
+    const { h } = await thread('work', 'auto', { renamed: true })
+    const o = await click(h, SEND)
+    expect(o.isError).toBe(false)
+    expect(held).toHaveLength(1)
+    expect(held[0]).toMatchObject({ why: 'screen', label: 'Send' })
     expect(acts(h)).toBe(0)
   })
 

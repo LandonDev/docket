@@ -32,6 +32,8 @@ export type AwayReport = {
   written: HostResult[];
   /** hosts whose writes did not come back: a partial read, said with one Retry, never an empty list */
   unread: string[];
+  /** hosts whose Outbox did not answer: what waits there is not known, said with one Retry, never "nothing held" */
+  outboxDown: string[];
 };
 
 /**
@@ -44,6 +46,8 @@ const writesOf = async (environmentId: string, since: number, until: number): Pr
 
 /** The toast when the only thing to say is a read that failed. */
 export const UNREAD_LINE = "What was written while you were away did not all load";
+/** The toast when the only thing to say is that an Outbox did not answer. */
+export const OUTBOX_DOWN_LINE = "What waits in the Outbox did not all load";
 
 const isSend = (r: HostResult): boolean => !!(r.ref as { held?: unknown } | null)?.held;
 
@@ -69,14 +73,20 @@ export async function gatherAway(hosts: readonly AwayHost[], now = Date.now()): 
       return written;
     }),
   );
-  const waiting = outboxNow().waiting;
+  const outboxRead = outboxNow();
+  // loadHost resolves either way and keeps a host's failure beside its last lists: a down Outbox is named, not read as empty.
+  const outboxDown = outboxRead.errors.map((e) => e.environmentId).filter((id) => hosts.some((h) => h.environmentId === id));
+  // A down host's last lists are stale: they are not counted as what waits now.
+  const waiting = outboxRead.waiting.filter((i) => !outboxDown.includes(i.environmentId));
   const failed = waiting.filter((i) => i.state === "failed").length;
   const held = waiting.length - failed;
   const decided = hosts.flatMap((h) => h.decided.threads.filter((t) => t.count > 0).map((t) => ({ environmentId: h.environmentId, sessionId: t.sessionId, count: t.count })));
   const counts: AwayCounts = { held, failed, decided: decided.reduce((n, d) => n + d.count, 0), written: parts.flat().length };
-  const line = awayLine(counts) ?? (unread.length ? UNREAD_LINE : null);
+  // A down Outbox is said in the toast too: beside what else happened, or alone.
+  const base = awayLine(counts);
+  const line = outboxDown.length ? (base ? `${base}. ${OUTBOX_DOWN_LINE}` : OUTBOX_DOWN_LINE) : (base ?? (unread.length ? UNREAD_LINE : null));
   if (!line) return null;
-  return { report: { since: since || now, until: now, held, failed, decided, written: parts.flat(), unread }, line };
+  return { report: { since: since || now, until: now, held, failed, decided, written: parts.flat(), unread, outboxDown }, line };
 }
 
 const toastError = (err: unknown) => void loadToast().then((t) => t.error(err instanceof Error ? err.message : String(err)));
@@ -105,8 +115,11 @@ export function AwayReturnWork({
   const outbox = useOutbox();
   const workspaces = useWorkspaces();
   const environments = useEnvironments();
-  const held = outbox.waiting.filter((i) => i.state !== "failed");
-  const failed = outbox.waiting.filter((i) => i.state === "failed");
+  // The Outbox's own failure, read live: a down host's stale lists are left out, and its line has Retry.
+  const down = outbox.errors.map((e) => e.environmentId);
+  const answered = outbox.waiting.filter((i) => !down.includes(i.environmentId));
+  const held = answered.filter((i) => i.state !== "failed");
+  const failed = answered.filter((i) => i.state === "failed");
   const [writes, setWrites] = useState<{ written: HostResult[]; unread: string[] }>({ written: report.written, unread: report.unread });
   const [rereading, setRereading] = useState(false);
   const reread = async (): Promise<void> => {
@@ -119,7 +132,13 @@ export function AwayReturnWork({
     setRereading(false);
   };
   // Written shows while a host's writes are missing too: its red line and Retry live there.
-  const counts: AwayCounts = { held: held.length, failed: failed.length, decided: report.decided.length, written: writes.written.length || writes.unread.length };
+  const [rereadingOutbox, setRereadingOutbox] = useState(false);
+  const rereadOutbox = async (): Promise<void> => {
+    setRereadingOutbox(true);
+    await Promise.all(down.map((env) => loadHost(env)));
+    setRereadingOutbox(false);
+  };
+  const counts: AwayCounts = { held: held.length || down.length, failed: failed.length, decided: report.decided.length, written: writes.written.length || writes.unread.length };
   const nameOf = (environmentId: string, workspaceId: string | null) =>
     !workspaceId || workspaceId === WORK_CHATS_KEY ? "Work Chats" : (workspaces.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name ?? "A Work workspace");
   const hostOf = (environmentId: string) => (environments.length > 1 ? environments.find((e) => e.id === environmentId)?.name : undefined);
@@ -131,15 +150,29 @@ export function AwayReturnWork({
         {awaySections(counts).map((section) => (
           <section key={section} aria-label={AWAY_HEADING[section]} className="flex flex-col">
             <h2 className="flex h-7 items-center text-xs font-medium text-muted-foreground">{AWAY_HEADING[section]}</h2>
-            {section === "held"
-              ? byWorkspace(held).map((group) => (
+            {section === "held" ? (
+              <>
+                {byWorkspace(held).map((group) => (
                   <Row
                     key={group.key}
                     media={<SectorDot sector={group.sector} />}
                     title={nameOf(group.items[0]!.environmentId, group.workspaceId)}
                     line={heldWords(group.items)}
                   />
-                ))
+                ))}
+                {down.length ? (
+                  <div role="alert" data-away-outbox-down="" className="flex min-h-10 items-center gap-3 border-t border-border py-1.5 first-of-type:border-t-0">
+                    <StatusMark state="failed" word={false} />
+                    <span className="min-w-0 flex-1 text-xs leading-4 text-destructive">
+                      {down.length === 1 ? `${hostName(down[0]!)}'s Outbox did not answer` : `${down.length} hosts' Outboxes did not answer`}
+                    </span>
+                    <Button variant="ghost" size="xs" disabled={rereadingOutbox} onClick={() => void rereadOutbox()}>
+                      <BusyLabel busy={rereadingOutbox} label="Retry" />
+                    </Button>
+                  </div>
+                ) : null}
+              </>
+            )
               : section === "failed"
                 ? failed.map((item) => <Row key={`${item.environmentId}:${item.ref.id}`} title={splitSummary(item.summary).act} line={item.error ?? "It couldn't be sent"} tone="failed" />)
                 : section === "decided"

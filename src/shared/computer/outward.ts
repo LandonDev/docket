@@ -840,23 +840,27 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
   return null
 }
 
+/** Steps that move nothing of the window's: an element they name need not be read again. */
+const PASSIVE = ['mouse_move', 'scroll', 'zoom', 'screenshot', 'cursor_position', 'wait']
+
 /**
  * Whether the host needs the window read afresh, with frames, to judge a
- * call: a step lands by position, a click finds its element by a name, or a
- * key, a typed line break or a `confirm` goes to wherever the focus is now.
- * The thread's book says where the focus was, and what bore a name, at its
- * last read; a person or the app may have changed both, and the service
- * resolves a name on the window as it is when the step runs.
+ * call: a step lands by position, acts on an element by its number or by a
+ * name, clicks where the pointer was left, or sends a key, a typed line
+ * break or a `confirm` to wherever the focus is now. The thread's book says
+ * what each number named, where the focus was and what bore a name at its
+ * last read; a person or the app may have changed all three (a Next become a
+ * Send under the same number), and the service acts on the window as it is.
  */
 export function needsFreshRead(steps: readonly ComputerAction[], pointer: PointerAt = null): boolean {
   if (landsByPosition(steps, pointer)) return true
   return steps.some((a, step) => {
     if (namedClick(a) || namedKeys(a)) return true
-    if (targetlessClick(a)) {
-      const at = pointerAfter(steps.slice(0, step), pointer)
-      return !!at && 'named' in at
-    }
-    if (a.element !== undefined) return false
+    // A click where the pointer was left lands on whatever lies under it now.
+    if (targetlessClick(a)) return pointerAfter(steps.slice(0, step), pointer) !== null
+    // An element by its number: the service keeps the number on the live element, whose name may have changed since
+    // the book's read (a Next become a Send).
+    if (a.element !== undefined || a.start_element !== undefined) return !PASSIVE.includes(a.action)
     if (a.action === 'perform') return a.name === 'confirm'
     if (a.action === 'type') return /[\r\n ]/.test(a.text ?? '')
     if (a.action !== 'key' && a.action !== 'hold_key') return false

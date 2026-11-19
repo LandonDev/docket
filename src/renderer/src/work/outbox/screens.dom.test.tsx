@@ -8,7 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutboxItem, WorkResult } from "@shared/contract-work-outbox";
 
-const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], items: [] as OutboxItem[], results: [] as WorkResult[], writesDown: false }));
+const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], items: [] as OutboxItem[], results: [] as WorkResult[], writesDown: false, listDown: false }));
 
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -19,6 +19,7 @@ vi.mock("../../lib/connection", async (original) => {
     onClose: () => () => undefined,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       world.calls.push({ method, params });
+      if (method === "work.outbox.list" && world.listDown) throw new Error("socket closed");
       if (method === "work.outbox.list") return params.show === "decided" ? { items: [] } : { items: world.items, waiting: world.items.length };
       if (method === "work.outbox.grants") return { grants: [] };
       if (method === "work.outbox.results" && params.since !== undefined && world.writesDown) throw new Error("socket closed");
@@ -35,7 +36,7 @@ vi.mock("../../lib/connection", async (original) => {
 });
 
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { AwayReturnWork, gatherAway, UNREAD_LINE } from "./AwayList";
+import { AwayReturnWork, gatherAway, OUTBOX_DOWN_LINE, UNREAD_LINE } from "./AwayList";
 import { ResultsSection } from "./ResultsSection";
 import { resultsListed } from "./results";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
@@ -60,6 +61,7 @@ const held = (id: string, state: OutboxItem["state"], summary: string): OutboxIt
 beforeEach(() => {
   world.calls = [];
   world.writesDown = false;
+  world.listDown = false;
   world.items = [held("h1", "held", "Post message with Slack: “Standup at 10”"), held("h2", "failed", "Post message with Slack: “Lunch”")];
   world.results = [result("r1", "Added Dietary needs", true), result("r2", "Sent to Dana Lee", false, { ref: { held: { at: "lifeos", id: "o1" } } })];
   workSwitch.reset();
@@ -160,5 +162,25 @@ describe("the return from Away", () => {
     world.writesDown = true;
     const found = await gatherAway([{ environmentId: "box", decided: { since: 1_500, threads: [] } }], 3_000);
     expect(found!.line).toBe(UNREAD_LINE);
+  });
+
+  it("names a host whose Outbox did not answer, still toasts, and Retry reads it again", async () => {
+    world.items = [];
+    world.listDown = true;
+    const found = await gatherAway([{ environmentId: "box", decided: { since: 1_500, threads: [] } }], 3_000);
+    expect(found!.report.outboxDown).toEqual(["box"]);
+    // Its stale lists are not counted; the writes still are, and the toast says both.
+    expect(found!.line).toBe(`Wrote on 1 file while you were away. ${OUTBOX_DOWN_LINE}`);
+    world.results = [];
+    expect((await gatherAway([{ environmentId: "box", decided: { since: 1_500, threads: [] } }], 3_000))!.line).toBe(OUTBOX_DOWN_LINE);
+    render(<AwayReturnWork report={found!.report} onClose={() => undefined} onOpenSession={() => undefined} onOpenOutbox={() => undefined} />);
+    const dialog = await screen.findByRole("dialog");
+    const region = within(dialog).getByRole("region", { name: "Held" });
+    expect(within(region).getByRole("alert").textContent).toContain("Outbox did not answer");
+    world.listDown = false;
+    world.items = [held("h7", "held", "Post message with Slack: “Back”")];
+    await act(async () => fireEvent.click(within(region).getByRole("button", { name: "Retry" })));
+    await waitFor(() => expect(within(region).queryByRole("alert")).toBeNull());
+    expect(within(region).getByText("1 waiting")).toBeTruthy();
   });
 });

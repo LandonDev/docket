@@ -24,7 +24,6 @@ import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "../../surfaces/Sur
 import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ActView } from "../acts/ActView";
-import { ACT_VIEWS } from "../acts/registry";
 import { Calendar, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
@@ -535,29 +534,12 @@ function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: bo
   return { shown: mine?.item ?? item, ready: !!mine?.item, failed: !!mine && !mine.item, retry: () => setAttempt((n) => n + 1) };
 }
 
-/** Whether a kind's own act view has loaded, so what his press approves is on screen; true for the generic view. */
-function useActViewLoaded(kind: HostItem["kind"]): boolean {
-  const chunk = ACT_VIEWS[kind]?.chunk ?? null;
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!chunk || chunk.loaded()) return;
-    let live = true;
-    chunk.load().then(
-      () => live && setTick((n) => n + 1),
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [chunk]);
-  return !chunk || chunk.loaded() !== null;
-}
-
 function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }: { item: HostItem; workspace: string; host: string; onOpenSession?: Props["onOpenSession"]; onPressed: (item: HostItem) => void }) {
   const { shown: item, ready: read, failed: unread, retry } = useWhole(listed);
   const picture = usePicture(listed);
   // Send waits until all he approves is on screen: the act's own view loaded, the mail read whole, the act's kept picture drawn (the hold review).
-  const viewLoaded = useActViewLoaded(listed.kind);
+  // The act's own view says when its payload is on screen, again after its Retry, and not while its boundary shows an error.
+  const [viewLoaded, setViewLoaded] = useState(false);
   const ready = read && pictureShown(picture) && viewLoaded;
   const [busy, setBusy] = useState<"send" | "discard" | "grant" | null>(null);
   const [editing, setEditing] = useState(false);
@@ -598,7 +580,7 @@ function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }:
               </Button>
             </p>
           ) : null}
-          <ActView item={item} env={item.environmentId} />
+          <ActView item={item} env={item.environmentId} onReady={setViewLoaded} />
           {/* While the mail is read whole, a bone where its quote may land: Send waits on it. */}
           {item.kind === "mail.send" && !read && !unread ? <Skeleton data-mail-quote-bone className="h-4 w-2/3 rounded" /> : null}
           {/* What his press approves: the window as the host read it, above the verbs. */}

@@ -40,6 +40,14 @@ describe("an Outlook calendar act", () => {
     ]);
   });
 
+  it("names both dates when an invitation runs into the next day", () => {
+    const rows = officeOpFields({ ...invite, event: { ...invite.event, start: "2026-11-21T22:00:00", end: "2026-11-22T01:00:00" } });
+    const when = rows.find((r) => r.label === "When")!.value;
+    const d = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
+    expect(when).toContain(d.format(Date.parse("2026-11-21T22:00:00")));
+    expect(when).toContain(d.format(Date.parse("2026-11-22T01:00:00")));
+  });
+
   it("draws its own view, with no host id and no JSON", () => {
     expect(officeActs["office.calendar.op"].chunk).not.toBeNull();
     const { container } = render(<View item={{ kind: "office.calendar.op", payload: invite } as never} env="mac" />);

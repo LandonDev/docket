@@ -206,3 +206,27 @@ const PENDING: HeldPictureRead = { src: undefined, loaded: false };
 
 /** Whether what his press approves is on screen: the kept picture has drawn, or none was kept. */
 export const pictureShown = (p: HeldPictureRead): boolean => p.src === null || (typeof p.src === "string" && p.src !== "failed" && p.loaded);
+
+/**
+ * Whether the body's live view of a thread's browser has a frame on screen, by host and thread: once he has taken over a
+ * held submit, the bar's primary approves the live window he sees, so it waits on that view's first frame. A skeleton, a
+ * stream that ended or failed, or no live view at all reads as not drawn.
+ */
+const liveDrawn = new Map<string, boolean>();
+const liveSubs = new Set<() => void>();
+
+export function setLiveDrawn(key: string, drawn: boolean): void {
+  if ((liveDrawn.get(key) ?? false) === drawn) return;
+  if (drawn) liveDrawn.set(key, true);
+  else liveDrawn.delete(key);
+  liveSubs.forEach((fn) => fn());
+}
+
+const subscribeLive = (fn: () => void): (() => void) => {
+  liveSubs.add(fn);
+  return () => liveSubs.delete(fn);
+};
+
+export function useLiveDrawn(key: string): boolean {
+  return useSyncExternalStore(subscribeLive, () => liveDrawn.get(key) ?? false);
+}

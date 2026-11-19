@@ -68,7 +68,11 @@ public extension OutboxModel {
     /// other act through the generic reader.
     nonisolated static func actView(_ item: OutboxItem) -> PayloadView {
         if let fields = calendarFields(kind: item.kind, payload: item.payload) { return PayloadView(fields: fields) }
-        return payloadView(item.payload)
+        if let view = kindView(kind: item.kind, payload: item.payload) { return view }
+        var view = payloadView(item.payload)
+        // A computer act's tool word ("left_click") under a title that already says what the click does: left out.
+        if item.kind == .computerAct { view.fields.removeAll { $0.path == ["args", "action"] } }
+        return view
     }
 
     /// A calendar act's list line: when it lands ("Fri, Nov 20, 2:00 to 2:30 PM").
@@ -77,8 +81,9 @@ public extension OutboxModel {
         return (fields?.first { $0.label == "Instead" } ?? fields?.first { $0.label == "When" })?.value
     }
 
-    /// "Fri, Nov 20, 2:00 to 2:30 PM"; a day item is its day alone; one day period for both ends
-    /// is said once. Milliseconds in, as the host keeps them.
+    /// "Fri, Nov 20, 2:00 to 2:30 PM"; a day item is its day alone, or its first and last day; one day
+    /// period for both ends is said once; an event across days names both. Milliseconds in, as the
+    /// host keeps them.
     nonisolated static func whenWords(_ startsAt: Double, _ endsAt: Double?, allDay: Bool = false, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let day = DateFormatter()
         day.locale = locale
@@ -88,11 +93,21 @@ public extension OutboxModel {
         time.locale = locale
         time.timeZone = timeZone
         time.setLocalizedDateFormatFromTemplate("jmm")
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
         let start = Date(timeIntervalSince1970: startsAt / 1000)
-        if allDay { return day.string(from: start) }
+        if allDay {
+            // A day item's end is the midnight after its last day: the last day is the one before it.
+            guard let endsAt, endsAt > startsAt else { return day.string(from: start) }
+            let last = Date(timeIntervalSince1970: (endsAt - 1) / 1000)
+            return calendar.isDate(start, inSameDayAs: last) ? day.string(from: start) : "\(day.string(from: start)) to \(day.string(from: last))"
+        }
         let from = time.string(from: start)
         guard let endsAt, endsAt > startsAt else { return "\(day.string(from: start)), \(from)" }
-        let to = time.string(from: Date(timeIntervalSince1970: endsAt / 1000))
+        let end = Date(timeIntervalSince1970: endsAt / 1000)
+        let to = time.string(from: end)
+        // An event that spans days names both: "Fri, Nov 20, 9:00 PM to Sat, Nov 21, 2:00 AM".
+        if !calendar.isDate(start, inSameDayAs: end) { return "\(day.string(from: start)), \(from) to \(day.string(from: end)), \(to)" }
         if let period = [time.amSymbol, time.pmSymbol].compactMap({ $0 }).first(where: { !$0.isEmpty && from.hasSuffix($0) && to.hasSuffix($0) }) {
             let bare = String(from.dropLast(period.count)).trimmingCharacters(in: .whitespaces)
             return "\(day.string(from: start)), \(bare) to \(to)"

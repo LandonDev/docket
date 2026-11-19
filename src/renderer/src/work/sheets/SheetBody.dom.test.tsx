@@ -502,6 +502,46 @@ describe("the sheet kind", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  it("has no History and offers no Accept or Reject until the grid has drawn the changed cells", async () => {
+    sheetHost = fakeSheetHost(sheetView({ suggestions: [suggestion("a", 1, 3, { base: { v: 412 }, proposed: { v: 438 } })] }), BOOK);
+    grid = fakeGrid();
+    let draw!: () => void;
+    grid.prepare = () => new Promise<void>((done) => (draw = done));
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    // The host's view, its suggestions with it, is in; the grid is still preparing.
+    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "load")).toBe(true));
+    await waitFor(() => expect(document.querySelector("[data-canvas-bar]")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
+    expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+    act(() => draw());
+    await gridUp();
+    const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+    expect(within(bar).getByRole("button", { name: "Accept" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "History" })).toBeTruthy();
+  });
+
+  it("a sheet that did not open has no History beside its failure", async () => {
+    sheetHost = fakeSheetHost(sheetView(), BOOK);
+    grid = fakeGrid();
+    grid.prepare = async () => {
+      throw new Error("The grid did not load");
+    };
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    expect(await screen.findByText("Couldn't open this sheet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
+  });
+
   it("names the range and the file in Ask's chip", async () => {
     open(sheetView(), { selection: "A1:B5" });
     await gridUp();

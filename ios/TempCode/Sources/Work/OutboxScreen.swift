@@ -151,10 +151,10 @@ private struct OutboxRow: View {
                 }
                 .frame(width: Layout.glyphWidth + Layout.markWidth)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.summary)
+                    Text(words.title)
                         .textStep(.title)
                         .lineLimit(1)
-                    if let line {
+                    if let line = words.line {
                         Text(line)
                             .textStep(.meta, tint: failed ? Tint.destructiveText : nil)
                             .lineLimit(1)
@@ -200,20 +200,9 @@ private struct OutboxRow: View {
         }
     }
 
-    /// The failure's reason, else what the payload names first after the verb (a subject, a target).
-    private var line: String? {
-        if failed { return OutboxModel.checkFirst(item) ?? item.error ?? "Didn’t send" }
-        // A computer act's payload is the action's raw steps: its line is what the summary says it is about, as on the desktop.
-        if item.kind == .computerAct {
-            guard let at = item.summary.range(of: ": ") else { return nil }
-            return String(item.summary[at.upperBound...])
-        }
-        // A calendar act's line is when it lands, never the first text in its row (an account).
-        if let when = OutboxModel.calendarWhen(kind: item.kind, payload: item.payload) { return when }
-        let view = OutboxModel.payloadView(item.payload)
-        let shown = view.fields.first { ["subject", "title", "channel"].contains($0.key) } ?? view.fields.first { $0.edit == .text }
-        return shown?.value ?? view.body.map { $0.text.split(separator: "\n").first.map(String.init) ?? "" }
-    }
+    /// The act as its title and one line under it (`OutboxModel.rowWords`): the failure's reason, the
+    /// When, a mail's subject, or the summary's words after its ": ".
+    private var words: (title: String, line: String?) { OutboxModel.rowWords(item) }
 }
 
 /// An Outbox band's head on the one gray step: the sector's dot, the

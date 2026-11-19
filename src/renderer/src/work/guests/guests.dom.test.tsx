@@ -5,7 +5,7 @@
  * the audit list, and what a guest may write into a document as the owner's
  * own editor shows it: a `javascript:` link and a hostile paste.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEditor } from "work-kit/editor";
 import type { GuestLinkRow } from "@shared/contract-work-guests";
@@ -46,7 +46,12 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
   ...(await original<object>()),
   confirmAction: async (request: { title: string; body?: string; action: string }) => (confirm.asked.push(request), confirm.answer),
 }));
-vi.mock("../../lib/clipboard", () => ({ copyText: async () => undefined }));
+const clip = vi.hoisted(() => ({ fail: false }));
+vi.mock("../../lib/clipboard", () => ({
+  copyText: async () => {
+    if (clip.fail) throw new Error("denied");
+  },
+}));
 
 const LINK: GuestLinkRow = {
   id: "abc",
@@ -195,6 +200,22 @@ describe("the held request and the audit list", () => {
     confirm.answer = true;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
     expect(calls.list.filter((c) => c.method === "work.guests.rekey").map((c) => c.params)).toEqual([{ linkId: "abc" }]);
+  });
+
+  it("shows the new address in the link-made dialog when it did not copy, so it is not lost", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [LINK];
+    confirm.answer = true;
+    clip.fail = true;
+    render(<GuestLinksSection hosts={["box"]} />);
+    await screen.findByText("Sam Ortiz");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("https://tempcode.landonhale.com/g/new#k=secret");
+    // Copy there fails too: it says so, and the address stays to select.
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Copy" })));
+    expect(dialog.textContent).toContain("It didn't copy");
+    clip.fail = false;
   });
 
   it("says an empty list in a plain line", async () => {

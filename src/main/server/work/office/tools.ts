@@ -255,6 +255,11 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       if (a.replyTo && a.forward) return fail('A mail answers one mail or passes one on, not both.')
       // A reply goes where Outlook sends it, to the sender of the mail it answers: the card and a grant judge that address.
       const was = a.replyTo || a.forward ? await env.carrier.readMail((a.replyTo ?? a.forward)!) : null
+      // And from the account the mail it answers or passes on sits in, whatever `account` says (Outlook's replyTo and
+      // forward take no other): the card and a grant judge that account, and another one asked for is refused.
+      if (was && a.account && a.account.toLowerCase() !== was.account.toLowerCase())
+        return fail(`That mail is in ${was.account}: a ${a.replyTo ? 'reply' : 'forward'} goes from there, not from ${a.account}. Leave \`account\` out, or name ${was.account}.`)
+      const account = was ? was.account : a.account
       const to = a.replyTo && was ? [was.from] : a.to
       const subject = was ? `${a.replyTo ? 'Re' : 'Fw'}: ${was.subject.replace(/^(re|fw|fwd):\s*/i, '')}` : a.subject
       if (!to.length) return fail('Name at least one recipient in `to`.')
@@ -264,8 +269,8 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       const item = env.ctx.held.create({
         kind: 'office.mail.send',
         sessionId: env.sessionId,
-        account: a.account,
-        payload: { host: env.ctx.host, ...a, html: cleanMailHtml(a.html), to, subject, cc: a.cc ?? [], bcc: a.bcc ?? [], ...(outlookAdds ? { outlookAdds } : {}) }
+        account,
+        payload: { host: env.ctx.host, ...a, ...(account ? { account } : {}), html: cleanMailHtml(a.html), to, subject, cc: a.cc ?? [], bcc: a.bcc ?? [], ...(outlookAdds ? { outlookAdds } : {}) }
       })
       return heldAnswer(item.state, item.summary)
     }

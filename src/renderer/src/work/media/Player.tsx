@@ -49,6 +49,19 @@ export const FEED_FAILED = "Part of the video did not load";
 const playsHls = (v: MediaVersion): boolean => shownPlay(v)?.via === "hls";
 
 /**
+ * What the state line says of the element's own error, by its `MediaError` code; null for one it should not hear of: an
+ * abort (a source we swapped) or any error once we took the source away (a teardown's `load()` on no source).
+ */
+export function nativeErrorWords(video: Pick<HTMLVideoElement, "error" | "getAttribute">): string | null {
+  const code = video.error?.code;
+  if (!code || code === 1 || !video.getAttribute("src")) return null;
+  if (code === 2) return "The video stopped loading";
+  if (code === 3) return "Part of the video could not be read";
+  if (code === 4) return "This video cannot be played here";
+  return "The video stopped";
+}
+
+/**
  * Points a `<video>` at a version: the file's URL, or the HLS proxy through Media Source. A segment that fails stops the
  * feed, and `onFeedError` hears of it; a new `round` builds the feed again from nothing (a MediaSource attaches once).
  */
@@ -180,6 +193,12 @@ export function Player({
       el.onplay = () => setPaused(false);
       el.onpause = () => setPaused(true);
     }
+    // The element's own failure (a dropped connection, a frame it cannot decode) stalls the picture with no refusal, after
+    // Play as before it: said on the same state line, and Retry loads it again where it stood.
+    el.onerror = () => {
+      const words = nativeErrorWords(el);
+      if (words) failedRef.current?.(words);
+    };
   };
   const refFirst = useCallback((el: HTMLVideoElement | null) => (attach(0, el), setPrimary(el)), []);
   const refSecond = useCallback((el: HTMLVideoElement | null) => (attach(1, el), setSecond(el)), []);
@@ -210,7 +229,12 @@ export function Player({
         setFeedRound((n) => n + 1);
         return;
       }
-      for (const v of vs) v.load();
+      // Loaded again from where each stood: a load goes back to the start, and the default start position puts it back.
+      for (const v of vs) {
+        const t = v.currentTime;
+        v.load();
+        if (t > 0) v.currentTime = t;
+      }
       playAll(vs);
     },
     rectAt: (n) => {

@@ -82,10 +82,17 @@ const ENTITIES: Record<string, string> = {
   period: ".", lowbar: "_", num: "#", excl: "!", quest: "?", equals: "=", plus: "+", percnt: "%", lsqb: "[", rsqb: "]", lcub: "{", rcub: "}",
   hyphen: "-", dash: "-", Tab: "\t", NewLine: "\n",
 };
+/**
+ * An attribute of a start tag, read as HTML reads it: names and values in order, a quoted value read whole, so a value
+ * that holds text like ` href='…'` is never taken for an attribute of its own (the hold review). Null when absent.
+ */
 const attr = (tag: string, name: string): string | null => {
-  // Set off by a space, a slash or a quote, as HTML allows (`<a/href=…>`, `alt="x"src=…`).
-  const m = new RegExp(`[\\s/"']${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
-  return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
+  const body = tag.replace(/^<[^\s/>]+/, "").replace(/\/?>$/, "");
+  const re = /[\s/]*([^\s/>"'=]+)(?:\s*=\s*(?:"([^"]*)"?|'([^']*)'?|([^\s>]*)))?/g;
+  for (let m = re.exec(body); m && m[0]; m = re.exec(body)) {
+    if (m[1]!.toLowerCase() === name.toLowerCase()) return m[2] ?? m[3] ?? m[4] ?? "";
+  }
+  return null;
 };
 // Numeric references need no semicolon, as HTML reads them (`u&#114l(`).
 const decode = (s: string): string =>

@@ -179,6 +179,21 @@ describe('nothing is sent without his press', () => {
     expect(keepOfficeMail(plain, { ...plain, to: ['sam@example.com'], subject: 'Hi' })).toMatchObject({ to: ['sam@example.com'], subject: 'Hi' })
   })
 
+  it('a reply or a forward goes from the account its mail sits in: held with that account, and another one asked for is refused', async () => {
+    const asked = await run('office_mail_send', { replyTo: '42', to: [], subject: 'x', html: '<p>Sent.</p>', account: 'work@contoso.com' })
+    expect(asked).toMatchObject({ isError: true })
+    expect(text(asked)).toContain('That mail is in owner@example.com: a reply goes from there, not from work@contoso.com.')
+    expect(await run('office_mail_send', { forward: '42', to: ['lee@example.com'], subject: 'x', html: '<p>FYI</p>', account: 'WORK@contoso.com' })).toMatchObject({ isError: true })
+    expect(held).toEqual([])
+    await run('office_mail_send', { replyTo: '42', to: [], subject: 'x', html: '<p>Sent.</p>' })
+    await run('office_mail_send', { forward: '42', to: ['lee@example.com'], subject: 'x', html: '<p>FYI</p>', account: 'Owner@Example.com' })
+    expect(held.map((h) => [(h as { account?: string }).account, (h.payload as OfficeMail).account])).toEqual([
+      ['owner@example.com', 'owner@example.com'],
+      ['owner@example.com', 'owner@example.com']
+    ])
+    expect(office.log.some((l) => l.verb === 'sendMail')).toBe(false)
+  })
+
   it("an answer's card names the invitation as his calendar has it, whatever subject the model gives", async () => {
     await run('office_calendar_answer', { id: 'ev-9', subject: 'Something harmless', answer: 'accept' })
     expect(held[0].payload).toMatchObject({ id: 'ev-9', subject: 'Standup', organizer: expect.any(String) })
