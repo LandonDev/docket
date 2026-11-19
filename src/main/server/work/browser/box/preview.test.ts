@@ -8,9 +8,10 @@ import { ComputerPreviews } from '../../../computer/preview'
 import { ComputerRpc } from '../../../computer/rpc'
 import { ComputerService } from '../../../computer/service'
 import { ComputerSessions } from '../../../computer/sessions'
-import { BoxChromium, findChromium } from './chromium'
+import { type BoxChromium, findChromium } from './chromium'
 import { BoxComputerService, inProcessSpawn } from './service'
 import { serveTestSite, type TestSite } from './testSite'
+import { testBrowser } from './testTools'
 
 /**
  * Watch and Take over on a box thread's page: the host's own preview relay
@@ -31,12 +32,13 @@ d('the live picture of the box browser', () => {
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'm38-live-'))
-    browser = new BoxChromium({ root, bin: () => bin })
+    const rig = testBrowser(root, bin!)
+    browser = rig.browser
     site = await serveTestSite()
     service = new ComputerService({
       dataDir: join(root, 'computer'),
       bin: () => 'box-browser',
-      spawn: inProcessSpawn(() => new BoxComputerService({ browser: { endpoint: () => browser.endpoint(), pid: () => browser.pid, touch: () => browser.touch() } }))
+      spawn: inProcessSpawn(() => new BoxComputerService({ browser: rig.link }))
     })
     sessions = new ComputerSessions({
       service,

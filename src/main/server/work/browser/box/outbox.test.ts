@@ -4,9 +4,10 @@ import type { OutboxItem } from '@shared/contract-work-outbox'
 import { ComputerService } from '../../../computer/service'
 import { ComputerSessions } from '../../../computer/sessions'
 import { cast, makeRig, type Rig } from '../../outbox/rig'
-import { BoxChromium, findChromium } from './chromium'
+import { type BoxChromium, findChromium } from './chromium'
 import { BoxComputerService, inProcessSpawn } from './service'
 import { serveTestSite, type TestSite } from './testSite'
+import { testBrowser } from './testTools'
 
 /**
  * Milestone 38's done-when, end to end on the box with no Mac: a Work thread
@@ -29,11 +30,12 @@ d('a submit on the box, held in the Outbox until his press', () => {
     rig = await makeRig()
     cast(rig)
     site = await serveTestSite()
-    browser = new BoxChromium({ root: join(rig.dir, 'box'), bin: () => bin })
+    const made = testBrowser(join(rig.dir, 'box'), bin!)
+    browser = made.browser
     const service = new ComputerService({
       dataDir: join(rig.dir, 'box', 'computer'),
       bin: () => 'box-browser',
-      spawn: inProcessSpawn(() => new BoxComputerService({ browser: { endpoint: () => browser.endpoint(), pid: () => browser.pid, touch: () => browser.touch() } }))
+      spawn: inProcessSpawn(() => new BoxComputerService({ browser: made.link }))
     })
     sessions = new ComputerSessions({
       service,

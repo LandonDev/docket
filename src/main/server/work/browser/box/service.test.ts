@@ -6,9 +6,10 @@ import type { PassThrough } from 'node:stream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseObservation } from '@shared/computer/observation'
 import { COMPUTER_PROTOCOL, ComputerNotificationSchema, resultFrameSchema, type ComputerNotification, RpcErrorResponseSchema, type ComputerMethod, type ComputerResult, type Observation } from '@shared/computer/protocol'
-import { BoxChromium, findChromium } from './chromium'
+import { type BoxChromium, findChromium } from './chromium'
 import { BoxComputerService, inProcessSpawn } from './service'
 import { serveTestSite, type TestSite } from './testSite'
+import { testBrowser } from './testTools'
 
 /**
  * The wire conformance test for the Linux service (docs/computer-protocol.md
@@ -53,9 +54,10 @@ d('the box computer service speaks the wire', () => {
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'm38-svc-'))
-    browser = new BoxChromium({ root, bin: () => bin })
+    const rig = testBrowser(root, bin!, { pid: false })
+    browser = rig.browser
     site = await serveTestSite()
-    const spawn = inProcessSpawn(() => new BoxComputerService({ browser: { endpoint: () => browser.endpoint(), pid: () => null, touch: () => browser.touch() } }))
+    const spawn = inProcessSpawn(() => new BoxComputerService({ browser: rig.link }))
     child = spawn('box', ['serve']) as never
     createInterface({ input: child.stdout }).on('line', (line) => {
       const f = JSON.parse(line) as Frame

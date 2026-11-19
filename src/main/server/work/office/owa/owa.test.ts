@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { BoxChromium, findChromium } from '../../browser/box/chromium'
+import { type BoxChromium, findChromium } from '../../browser/box/chromium'
+import { testBrowser } from '../../browser/box/testTools'
 import { RESERVED_TARGETS } from '../../browser/box/service'
 import type { LifeosClient } from '../../lifeos/ctx'
 import { OfficeError } from '../carrier'
@@ -57,9 +58,11 @@ d('the Outlook on the web carrier, against a page in Outlook\'s shapes', () => {
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'm38-owa-'))
-    browser = new BoxChromium({ root, bin: () => bin })
+    // as the host wires it (owa/index.ts): the carrier's page is made by the stage, which keeps a headed one off the screen
+    const rig = testBrowser(root, bin!)
+    browser = rig.browser
     owa = await serveOwaFixture()
-    page = new OwaPage({ endpoint: () => browser.endpoint(), url: owa.url, waitMs: 10_000 })
+    page = new OwaPage({ endpoint: () => browser.endpoint(), open: (url) => rig.stage.open(url, 'carrier'), url: owa.url, waitMs: 10_000 })
     carrier = new OwaCarrier({ page: () => page, marker: () => join(root, 'owa.json'), running: () => browser.running, hasSignIn: () => true, now: () => clock })
   }, 30_000)
 

@@ -6,9 +6,10 @@ import type { SessionMeta } from '@shared/events'
 import { configureComputerHold, type HeldComputerCall } from '../../../computer/run'
 import { ComputerService } from '../../../computer/service'
 import { ComputerSessions } from '../../../computer/sessions'
-import { BoxChromium, findChromium } from './chromium'
+import { type BoxChromium, findChromium } from './chromium'
 import { BoxComputerService, inProcessSpawn } from './service'
 import { serveTestSite, type TestSite } from './testSite'
+import { testBrowser } from './testTools'
 
 /**
  * The done-when on the box with no Mac awake: a Work thread drives a test
@@ -31,12 +32,13 @@ d('the hold on the box browser', () => {
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'm38-hold-'))
-    browser = new BoxChromium({ root, bin: () => bin })
+    const rig = testBrowser(root, bin!)
+    browser = rig.browser
     site = await serveTestSite()
     const service = new ComputerService({
       dataDir: join(root, 'computer'),
       bin: () => 'box-browser',
-      spawn: inProcessSpawn(() => new BoxComputerService({ browser: { endpoint: () => browser.endpoint(), pid: () => browser.pid, touch: () => browser.touch() } }))
+      spawn: inProcessSpawn(() => new BoxComputerService({ browser: rig.link }))
     })
     sessions = new ComputerSessions({
       service,
