@@ -25,7 +25,7 @@ try {
 
   // The agent reads the morning.
   const guide = await run.addon(thread, 'get_guide')
-  run.check(`the thread's key reads ${sector} only, draft-only`, new RegExp(`"sectors":\\s*\\[\\s*"${sector}"\\s*\\]`).test(textOf(guide)) && /"draftOnly":\s*true/.test(textOf(guide)), textOf(guide).slice(0, 300))
+  const fenced = run.check(`the thread's key reads ${sector} only, draft-only`, new RegExp(`"sectors":\\s*\\[\\s*"${sector}"\\s*\\]`).test(textOf(guide)) && /"draftOnly":\s*true/.test(textOf(guide)), textOf(guide).slice(0, 300))
   const list = await run.addon(thread, 'list_mail', { box: 'inbox', limit: 10 })
   run.check("the thread reads its sector's inbox", !list.isError, textOf(list).slice(0, 200))
 
@@ -34,8 +34,11 @@ try {
   run.check('the thread filed a task', !!task.id)
   run.later('drop the task', () => run.addon(thread, 'drop_tasks', { ids: [task.id], reason: 'E2E-49 triage proof: cleanup' }))
 
-  // Three replies, drafted to himself.
+  // Three replies, drafted to himself; each is discarded at the end unless he sent it.
   const drafts: string[] = []
+  run.later('discard the unsent drafts', async () => {
+    for (const id of drafts.filter((d) => d !== sentId)) await run.mutation('compose:discard', { id }).catch(() => null)
+  })
   for (const n of [1, 2, 3]) {
     const d = await run.addon(thread, 'draft_mail', {
       account_id: box._id,
@@ -48,21 +51,22 @@ try {
     const parsed = JSON.parse(textOf(d)) as { id?: string; draftId?: string }
     drafts.push((parsed.id ?? parsed.draftId)!)
   }
-  run.later('discard the unsent drafts', async () => {
-    for (const id of drafts.filter((d) => d !== sentId)) await run.mutation('compose:discard', { id }).catch(() => null)
-  })
   const origin = await run.query<{ row: { origin?: { threadId?: string } } }>('compose:get', { id: drafts[0] })
   run.check("the host stamped the thread's origin on the draft", origin.row.origin?.threadId === thread)
   const held = (): Promise<OutboxItem[]> => run.call<{ items: OutboxItem[] }>('work.outbox.list', {}).then((l) => l.items.filter((i) => i.kind === 'mail.send' && drafts.includes(String((i.ref as { id?: string }).id))))
   run.check('all three wait in the Outbox', await run.until('three held', 60_000, async () => (await held()).length === 3))
-  const refused = await run.addon(thread, 'send_mail', { draft_id: drafts[0], reason: 'E2E-49: must be refused' })
-  run.check("the thread's key cannot send one", refused.isError === true, textOf(refused).slice(0, 160))
+  // Only a key read back as draft-only is asked to send: were the fence broken, the probe itself would send.
+  if (fenced) {
+    const refused = await run.addon(thread, 'send_mail', { draft_id: drafts[0], reason: 'E2E-49: must be refused' })
+    run.check("the thread's key cannot send one", refused.isError === true, textOf(refused).slice(0, 160))
+  } else run.check("the thread's key cannot send one", false, 'not asked: the key did not read back as draft-only')
 
   // The window: the Outbox with the three, ticked as a batch.
   await run.page(`(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=link]')].find((e) => /^Outbox\\d*$/.test(e.textContent.trim())); el?.click(); return !!el })()`)
   run.check('the Outbox lists the three', await run.until('rows', 30_000, async () => (await run.has(`${PREFIX} triage reply 1`)) && (await run.has(`${PREFIX} triage reply 3`))))
+  await run.until('detail', 15_000, () => run.has('Subject'))
   run.check("the window offers the three as one batch (the group's Send 3)", await run.page<boolean>(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Send 3')`))
-  await run.shot('01-outbox-batch', { hide: box.address })
+  await run.shot('01-outbox-batch')
 
   // The owner's press: one sent (to himself) or discarded, the other two discarded.
   const items = await held()
@@ -80,11 +84,12 @@ try {
   const mine = decided.items.filter((i) => drafts.includes(String((i.ref as { id?: string }).id)))
   run.check('each is decided by the owner', mine.length === 3 && mine.every((i) => i.decidedBy === 'owner' && (i.state === 'discarded' || (SEND && i.state === 'sent'))), JSON.stringify(mine.map((i) => [i.state, i.decidedBy])))
   for (const id of drafts.filter((d) => d !== sentId)) {
-    const r = await run.query<{ row: { status: string } } | null>('compose:get', { id }).catch(() => null)
-    run.check(`LifeOS holds ${id.slice(-6)} as not sent`, !r || r.row.status !== 'sent', r?.row.status ?? 'gone')
+    const r = await run.query<{ row: { status: string } } | null>('compose:get', { id }).catch((e: Error) => ({ error: e.message }))
+    const status = r === null ? 'gone' : 'error' in r ? null : r.row.status
+    run.check(`LifeOS holds ${id.slice(-6)} as not sent`, status !== null && status !== 'sent', status ?? (r as { error: string }).error)
   }
   await sleep(1500)
-  await run.shot('02-outbox-decided', { hide: box.address })
+  await run.shot('02-outbox-decided')
 } catch (err) {
   await run.finish(err)
 }

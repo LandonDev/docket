@@ -181,7 +181,10 @@ Hocuspocus 4.4 with garbage collection off, behind our own listener (`ws` in
   5xx comes back as a thrown error with the service's words.
 - `token` and `internal` wait up to 20 s (`STARTING_WAIT_MS`) for a service
   that is still starting (Work just turned on, the host just booted) before
-  they throw; `url` is synchronous and throws at once. Milestone 49's
+  they throw; `url` is synchronous and throws at once. A service waiting
+  to start again after a crash (`waiting`) is not waited for: the call
+  throws at once. Turning Work off does not cut a wait short: it ends at
+  its 20 s and throws that Work is off. Milestone 49's
   document proof found an agent's first `doc_read` refused as "not running
   (starting)" a few seconds after Work came on.
 

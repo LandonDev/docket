@@ -52,19 +52,21 @@ try {
   const keep = actions.find((a) => a.text.includes('Follow up'))!
   const drop = actions.find((a) => a.text.includes('turn down'))!
   const decided = await run.call<{ meeting: Meeting; failed: unknown[] }>('work.meetings.decide', { itemId: meetingId, actionIds: [keep.id], decision: 'accept' })
-  run.check('Accept files it', decided.failed.length === 0, JSON.stringify(decided.failed))
+  // Its cleanup comes first, from the answer itself: a later step that throws must not leave the task in his list.
+  const filedId = decided.meeting.notes?.actions.find((a) => a.id === keep.id)?.lifeosTaskId
+  if (filedId) run.later('drop the filed task', () => run.addon(thread, 'drop_tasks', { ids: [filedId], reason: 'E2E-49 meeting proof: cleanup' }))
+  run.check('Accept files it', decided.failed.length === 0 && !!filedId, JSON.stringify(decided.failed))
   await run.call('work.meetings.decide', { itemId: meetingId, actionIds: [drop.id], decision: 'reject' })
   const after = (await get()).notes!.actions
   const filed = after.find((a) => a.id === keep.id)
   run.check('the accepted task is filed, the other rejected', filed?.state === 'filed' && !!filed.lifeosTaskId && after.find((a) => a.id === drop.id)?.state === 'rejected', JSON.stringify(after))
   if (filed?.lifeosTaskId) {
     const id = filed.lifeosTaskId
-    run.later('drop the filed task', () => run.addon(thread, 'drop_tasks', { ids: [id], reason: 'E2E-49 meeting proof: cleanup' }))
     const task = (await run.query<{ task: { title: string; sector: string; description?: string } } | null>('tasks:get', { id }))?.task
     run.check('LifeOS holds it in Life, saying where it was said', task?.sector === 'life' && task.title.includes(PREFIX) && (task.description ?? '').includes('staff sync'), JSON.stringify(task).slice(0, 300))
   }
   const rejected = await run.addon(thread, 'search_tasks', { query: 'A task he will turn down' })
-  run.check('the rejected one is nowhere in LifeOS', !textOf(rejected).includes('turn down'), textOf(rejected).slice(0, 200))
+  run.check('the rejected one is nowhere in LifeOS', !rejected.isError && !textOf(rejected).includes('turn down'), textOf(rejected).slice(0, 200))
   await sleep(1500)
   await run.shot('02-meeting-filed', { clipLeft: 460 })
 } catch (err) {

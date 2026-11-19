@@ -87,12 +87,17 @@ d.save(sys.argv[1])`,
     '-c',
     `import sys, docx
 d = docx.Document(sys.argv[1])
-print("\\n".join(p.text for p in d.paragraphs))
-print("\\n".join(c.text for t in d.tables for row in t.rows for c in row.cells))
+print("PARAS", " | ".join(p.text for p in d.paragraphs))
+print("CELLS", " | ".join(c.text for t in d.tables for row in t.rows for c in row.cells))
 print("COMMENTS", len(list(d.comments)), " | ".join(c.text for c in d.comments))`,
     join(run.out, 'exports', `${TITLE}.docx`)
   ]).toString()
-  run.check('Word\'s own reader finds the accepted words, the table and the comment in the .docx', back.includes('fourteen days') && back.includes('Tables') && /COMMENTS [1-9]/.test(back) && back.includes('fourteen days?'), back.slice(0, 400))
+  const paras = /^PARAS (.*)$/m.exec(back)?.[1] ?? ''
+  run.check(
+    "Word's own reader finds the accepted words, the table and the reviewer's comment in the .docx",
+    paras.includes('within fourteen days of each order') && paras.includes('within fifteen days of the invoice') && !paras.includes('thirty days') && /^CELLS .*Tables/m.test(back) && /^COMMENTS 1 .*fourteen days\?/m.test(back),
+    back.slice(0, 400)
+  )
   const md = (await read()).replace(/\n/g, '<br>')
   const pdf = await run.call<{ name: string; data: string }>('work.formats.print', { name: TITLE, html: `<!doctype html><html><head><meta charset="utf-8"><title>${TITLE}</title></head><body><main>${md}</main></body></html>`, paper: 'Letter' }, 180_000)
   const pdfPath = join(run.out, 'exports', `${TITLE}.pdf`)

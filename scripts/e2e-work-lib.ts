@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -52,14 +52,18 @@ export const freePort = (): Promise<number> =>
     })
   })
 
-/** Mints a device session on the owner's LifeOS for one run; the run's sign-out revokes it. */
+/** Mints a device session on the owner's LifeOS for one run; the run's sign-out revokes it. Its words never reach a log. */
 export function mint(name: string): string {
-  const out = execFileSync('sudo', ['-n', '/usr/local/bin/lifeos-deploy', 'run', LIFEOS_CHECKOUT, 'auth:mint', JSON.stringify({ ownerId: 'landon', name })], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
-  const line = out.trim().split('\n').at(-1) ?? ''
-  const token = JSON.parse(line) as string
+  let token: unknown
+  try {
+    const out = execFileSync('sudo', ['-n', '/usr/local/bin/lifeos-deploy', 'run', LIFEOS_CHECKOUT, 'auth:mint', JSON.stringify({ ownerId: 'landon', name })], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    token = JSON.parse(out.trim().split('\n').at(-1) ?? '')
+  } catch {
+    throw new Error('auth:mint failed or answered something that is not a token')
+  }
   if (typeof token !== 'string' || token.length < 20) throw new Error('auth:mint answered no token')
   return token
 }
@@ -83,9 +87,14 @@ export class Run {
   /** Cleanups, newest first: each job registers what it made as it makes it. */
   private readonly undo: { label: string; fn: () => Promise<unknown> }[] = []
   private failures = 0
+  /** Texts kept out of every check line and picture: his address. */
+  private readonly hidden: string[] = []
+  /** The minted session's name: one per run, so the sweep can tell its own from one a run left. */
+  sessionName = ''
 
   constructor(readonly job: string) {
-    this.root = `/tmp/e2e-work-${job}`
+    // A root of its own: two runs of one job never share, wipe or kill each other.
+    this.root = realpathSync(mkdtempSync(`/tmp/e2e-work-${job}-`))
     const flag = process.argv.indexOf('--out')
     this.out = resolve(flag > 0 ? process.argv[flag + 1]! : join(REPO, '.temp-code/plans/landed/M49', job))
     this.data = join(this.root, 'data')
@@ -93,14 +102,23 @@ export class Run {
     this.work = join(this.home, 'work')
   }
 
+  /** Keeps `text` (his address) out of every later check line and picture. */
+  hide(text: string): void {
+    if (text && !this.hidden.includes(text)) this.hidden.push(text)
+  }
+  private clean(text: string): string {
+    return this.hidden.reduce((t, h) => t.split(h).join('his own address'), text)
+  }
+
   check(label: string, ok: boolean, detail = ''): boolean {
-    const line = `${ok ? 'PASS' : 'FAIL'} ${label}${detail ? `: ${detail.slice(0, 400)}` : ''}`
+    const line = this.clean(`${ok ? 'PASS' : 'FAIL'} ${label}${detail ? `: ${detail.slice(0, 400)}` : ''}`)
     this.results.push(line)
     console.log(`[${this.job}] ${line}`)
     if (!ok) this.failures++
     return ok
   }
   note(line: string): void {
+    line = this.clean(line)
     this.results.push(`NOTE ${line}`)
     console.log(`[${this.job}] ${line}`)
   }
@@ -123,8 +141,6 @@ export class Run {
     this.port = await freePort()
     this.workPort = await freePort()
     if (await fetch(`http://127.0.0.1:${this.port}/json/version`).then(() => true, () => false)) throw new Error(`debug port ${this.port} is in use`)
-    this.stopStale()
-    rmSync(this.root, { recursive: true, force: true })
     for (const d of [this.data, this.home, this.work, join(this.root, 'tmp'), join(this.home, '.claude'), this.out]) mkdirSync(d, { recursive: true })
     this.linkTools()
     const env: Record<string, string> = {
@@ -146,7 +162,8 @@ export class Run {
       TEMP_CODE_WORK_PORT: String(this.workPort),
       TEMP_CODE_APP_TOKEN_SEED: this.seed,
       TEMP_CODE_WORK_TOKEN_SEED: this.seed,
-      ...(process.env.E2E_MODEL_TURN === '1' ? {} : { TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9' })
+      // No model runs: a thread's turn would act on his real mail with words no cleanup knows.
+      TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9'
     }
     const electron = join(REPO, 'node_modules', '.bin', 'electron')
     // Linux draws into xvfb; a Mac opens a real window (a Mac child runs only after the idle gate).
@@ -185,8 +202,16 @@ export class Run {
 
   /** Signs in with a session minted for this run, and keeps the owner's client for checks and cleanup. */
   async signIn(name: string): Promise<void> {
-    const token = mint(`${PREFIX} ${name}`)
-    this.later('sign out (revokes the minted session)', () => this.call('work.lifeos.signOut', {}))
+    this.sessionName = `${PREFIX} ${name} ${new Date().toISOString()}`
+    const token = mint(this.sessionName)
+    // Run last to first: whatever a job left named E2E-49, then every key this instance minted (its Work
+    // Chats key, which reads every sector, among them), then the session itself.
+    this.later('sign out (revokes the minted session)', async () => {
+      const after = await this.call<{ lifeos: { state: string } }>('work.lifeos.signOut', {})
+      this.check('signed out: the minted session is revoked', after.lifeos.state === 'signed-out', after.lifeos.state)
+    })
+    this.later('retire the keys this run minted', () => this.retireKeys())
+    this.later('take away anything named E2E-49 a job left', () => this.leftovers())
     const s = await this.call<{ lifeos: { state: string } }>('work.lifeos.setToken', { token })
     this.check('signed in to LifeOS with a session minted for this run', s.lifeos.state === 'connected', JSON.stringify(s.lifeos))
     this.owner = new ConvexHttpClient(LIFEOS, { logger: false })
@@ -209,7 +234,6 @@ export class Run {
   /** A Work workspace for `sector`, its LifeOS key and add-on ready; deleted at the end (the host revokes its key). */
   async workspace(sector: string, name: string): Promise<string> {
     const ws = await this.call<{ id: string }>('workspace.create', { kind: 'work', sector, name })
-    this.later('retire the keys this run minted', () => this.retireKeys())
     this.later(`delete workspace ${name}`, () => this.call('workspace.delete', { workspaceId: ws.id }))
     const ready = await this.until('key ready', 120_000, async () => {
       const s = await this.call<{ keys: { workspaceId: string; addonId?: string }[] }>('work.lifeos.status', {})
@@ -292,17 +316,19 @@ export class Run {
   has(text: string): Promise<boolean> {
     return this.page<boolean>(`document.body.textContent.includes(${JSON.stringify(text)})`)
   }
-  /** Both themes of what the window shows now, into the job's out folder. `clipLeft` leaves out the rail and the column, which show his real lists; `hide` swaps a text (his address) out of the picture. */
-  async shot(name: string, opts: { clipLeft?: number; hide?: string } = {}): Promise<void> {
+  /** Both themes of what the window shows now, into the job's out folder. `clipLeft` leaves out the rail and the column, which show his real lists; every hidden text is swapped out first, and a picture that still shows one is not written. */
+  async shot(name: string, opts: { clipLeft?: number } = {}): Promise<void> {
     const clip = opts.clipLeft ? { clip: { x: opts.clipLeft, y: 0, width: 1440 - opts.clipLeft, height: 900, scale: 1 } } : {}
-    // His address stays out of a picture the public repo may carry: each text naming it says "his own address" instead.
-    if (opts.hide)
-      await this.page(
-        `(() => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (n.nodeValue.includes(${JSON.stringify(opts.hide)})) n.nodeValue = n.nodeValue.split(${JSON.stringify(opts.hide)}).join('his own address'); for (const el of document.querySelectorAll('body *')) if (el.children.length && el.textContent.trim() === ${JSON.stringify(opts.hide)}) el.textContent = 'his own address' })()`
-      )
+    const hidden = JSON.stringify(this.hidden)
+    // Swaps each hidden text (his address) in what is drawn, just before each picture; answers whether any is still there.
+    const scrub = `(() => { const hide = ${hidden}; const swap = (t) => hide.reduce((a, h) => a.split(h).join('his own address'), t); const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (hide.some((h) => n.nodeValue.includes(h))) n.nodeValue = swap(n.nodeValue); for (const el of document.querySelectorAll('body *')) if (el.children.length && hide.includes(el.textContent.trim())) el.textContent = 'his own address'; const vals = [...document.querySelectorAll('input, textarea')].map((e) => e.value); return hide.some((h) => document.body.innerText.includes(h) || vals.some((v) => v.includes(h))) })()`
     for (const light of [false, true]) {
       await this.page(`document.documentElement.classList.toggle('theme-light', ${light})`)
       await sleep(400)
+      if (this.hidden.length && (await this.page<boolean>(scrub))) {
+        this.check(`picture ${name} keeps his address out`, false, 'still on screen after the swap: no picture written')
+        continue
+      }
       const { data } = (await this.send('Page.captureScreenshot', { format: 'png', ...clip })) as { data: string }
       writeFileSync(join(this.out, `${name}.${light ? 'light' : 'dark'}.png`), Buffer.from(data, 'base64'))
     }
@@ -331,14 +357,25 @@ export class Run {
     this.check(`every LifeOS key this run minted is retired (${names.length})`, left !== null && left.length === 0, JSON.stringify(left?.map((b) => b.name)))
   }
 
+  /** A task or a draft named E2E-49 still in LifeOS after the job's own cleanups: taken away, and a failure. */
+  private async leftovers(): Promise<void> {
+    const tasks = (await this.query<{ _id: string; title: string; status: string }[]>('tasks:search', { text: PREFIX })).filter((t) => t.title.startsWith(PREFIX) && t.status !== 'dropped')
+    for (const t of tasks) await this.mutation('tasks:drop', { id: t._id, reason: 'E2E-49 proof: left by its job, taken away at its end' })
+    const drafts = (await this.query<{ _id: string; message?: { subject?: string } }[]>('compose:list', { view: 'drafts' })).filter((d) => d.message?.subject?.startsWith(PREFIX))
+    for (const d of drafts) await this.mutation('compose:discard', { id: d._id })
+    this.check('the job left no task or draft named E2E-49 in LifeOS', tasks.length + drafts.length === 0, [...tasks.map((t) => t.title), ...drafts.map((d) => d.message?.subject)].join('; '))
+  }
+
   /** Runs the cleanups, stops the instance, writes the results; exits non-zero on any failure. */
   async finish(err?: unknown): Promise<never> {
     if (err) this.check('the job ran to its end', false, err instanceof Error ? (err.stack ?? err.message) : String(err))
+    // A cleanup that throws, or a tool that answers an error, leaves something behind: that fails the run.
     for (const { label, fn } of this.undo) {
       try {
-        await fn()
+        const r = (await fn()) as { isError?: boolean } | undefined
+        if (r && typeof r === 'object' && r.isError) this.check(`cleanup "${label}"`, false, textOf(r as Tool).slice(0, 200))
       } catch (e) {
-        this.note(`cleanup "${label}": ${(e as Error).message.slice(0, 200)}`)
+        this.check(`cleanup "${label}"`, false, (e as Error).message.slice(0, 200))
       }
     }
     try {
@@ -352,6 +389,7 @@ export class Run {
     } catch {
       /* gone */
     }
+    if (!this.failures && process.env.E2E_KEEP !== '1') rmSync(this.root, { recursive: true, force: true })
     const summary = this.failures ? `${this.failures} FAILED` : 'ALL PASS'
     this.results.push(summary)
     writeFileSync(join(this.out, `run-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`), this.results.join('\n') + '\n')
@@ -418,5 +456,6 @@ export async function ownMailbox(run: Run): Promise<{ _id: string; address: stri
   const usable = accounts.filter((a) => a.provider !== 'outlook-forwarded' && a.defaultSector && a.defaultSector !== 'purdue')
   const mine = usable.find((a) => a.defaultSector === 'life') ?? usable[0]
   if (!mine) throw new Error('no mailbox of his own outside Purdue')
+  run.hide(mine.address)
   return mine as { _id: string; address: string; defaultSector: string }
 }

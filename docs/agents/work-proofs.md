@@ -25,28 +25,39 @@ non-zero on any failure.
 
 What they share is `scripts/e2e-work-lib.ts` (`Run`):
 
-- One windowed instance under xvfb with its own HOME, userData, Work root,
-  debug port and Work service port, both ports picked free. It never
-  touches the installed app or its data. The box's installed conversion and
-  meeting tools are linked into the run's own `work-tools/` (the run keeps
-  its own `jobs/`, `run/` and `downloads/`).
-- LifeOS: a device session minted for the run (`auth:mint`, named
-  `E2E-49 <job>`, never printed), revoked by the run's sign-out. Each Work
-  workspace's key is revoked when the workspace is deleted, and any left is
-  revoked by name from the instance's own database.
+- One windowed instance under xvfb, in a folder of its own under /tmp,
+  with its own HOME, userData, Work root, debug port and Work service port
+  (both ports picked free). It never opens the installed app's database.
+  It uses the box's installed conversion and meeting tools by linking each
+  tool's folder into the run's own `work-tools/`; the run keeps its own
+  `jobs/`, `run/` and `downloads/`, though a tool may still write its own
+  cache in its folder (Python's `__pycache__`).
+- LifeOS: the run mints a device session (`auth:mint`, named
+  `E2E-49 <job> <time>`, never printed) and its sign-out revokes it; the
+  run checks the sign-out. Deleting a Work workspace revokes its key; at
+  the end the run revokes every key its instance minted that is still live,
+  the Work Chats key (which reads every sector) among them, by the names in
+  its own database.
 - The agent's side is called as a thread's bridge calls it: `app.workCall`
   and `app.addonCall` with that thread's own tokens, from seeds the run
   sets (`TEMP_CODE_APP_TOKEN_SEED`, `TEMP_CODE_WORK_TOKEN_SEED`). No model
   turn runs: the instance's provider is a dead address. The owner's side is
   the wire (`work.outbox.send`, `work.meetings.decide`, …) or a press in
   the window.
-- Every LifeOS record a job makes is named `E2E-49 …` and taken away
-  through LifeOS's API, with a reason, when the job ends, pass or fail.
-  `e2e-work-sweep.ts` looks for anything left and takes it away.
+- Every LifeOS record a job makes is named `E2E-49 …`. When the job ends,
+  pass or fail, its own cleanups drop its tasks (with a reason; a dropped
+  task stays in LifeOS's lists, marked dropped) and discard its drafts;
+  then the run searches LifeOS for any task or draft named `E2E-49` still
+  live, takes it away and fails. A cleanup that throws or answers an error
+  fails the run too. `e2e-work-sweep.ts` revokes any `E2E-49` session or
+  key still live and lists the TempCode keys made in the last day.
 - Mail goes only to his own address. `E2E_SEND=1` lets the triage job send
   one mail to himself; every other run discards its drafts.
-- Pictures that could show his real lists (the rail, a workspace's column)
-  are cut to the canvas and the thread (`shot(name, { clipLeft: 460 })`).
+- A picture that could show his real lists (the rail, a workspace's
+  column) is cut to the canvas and the thread (`shot(name, { clipLeft:
+  460 })`). His address never reaches a check line or a picture: the run
+  swaps it for "his own address" before each picture, and writes no picture
+  that still shows it.
 
 ## Results
 
@@ -84,9 +95,10 @@ first run sent that one mail; the second discarded all three.
 A real .xlsx (written by openpyxl, with a `=SUM` formula) opens in the
 thread's canvas in the real Univer grid. `sheet_read` answers the week's
 figures; the owner sets the sheet to suggest and the agent's revenue total
-waits as a suggestion; the owner accepts it and the file holds
-`=SUM(C2:C6) = 3700`. The report the agent drafts with those figures waits
-in the Outbox with exactly them, and the owner discards it.
+waits as a suggestion, the only one; the owner accepts it and the .xlsx on
+disk holds `=SUM(C2:C6)` (read back by openpyxl). The agent drafts the
+report from the rows it read; it waits in the Outbox with exactly those
+figures, and the owner discards it.
 
 ![The workbook in the grid beside the thread](work-proofs/report-sheet.jpg)
 
@@ -104,7 +116,7 @@ pdfium) — the print window's first run anywhere. The job hands the print
 window the document's markdown as plain lines, not the editor's own page,
 so the PDF shows `#` and table pipes: it proves the window, not the layout.
 
-The guest's edit runs milestone 31's live proof against this tree's built
+For the guest's edit the job runs milestone 31's live proof against this tree's built
 hosted page: the real Work service and the guest page in headless
 Chromium; a guest types into the owner's document and the owner's words
 reach the guest; a view link writes nothing; a comment link marks words; a
@@ -120,8 +132,8 @@ service, which runs only in the installed app on a Work build (below).
 A 35-second recording of two people (the AMI corpus fixture) opens as a
 meeting and is transcribed on the box: 4 turns, two speakers. The agent's
 notes give two tasks resting on turns; both wait. The owner accepts one,
-which the host files in his real LifeOS, in Life, with "From “E2E-49 staff
-sync” at 0:00." and the quote; the rejected one is nowhere in LifeOS. The
+which the host files in his real LifeOS, in Life, with the description
+"From “E2E-49 staff sync” at 0:00."; the rejected one is nowhere in LifeOS. The
 filed task is dropped at the end with a reason.
 
 ![The meeting with its two tasks waiting](work-proofs/meeting-tasks.jpg)
@@ -148,16 +160,19 @@ answering "Work is off on this host", a code thread given no Work tools.
 Work is turned on (the service listens, the Outbox and Work Chats join the
 rail, a Work workspace and a Work Chat are made) and off again: the rail
 and Settings are as they were, the service has stopped, the method and the
-code thread's tools answer as before, and the database has gained no
-table (Work's tables exist from the first boot, empty). The Work workspace
+code thread's tools answer as before (none, while on as well, when a Work
+Chat gets its tools), and the database has gained no table (Work's tables
+exist from the first boot). The Work workspace
 is kept for when Work comes back.
 
-The start paths are held by kept tests: `work/switchOff.test.ts` (every
-way a code thread starts — a loose chat, a workspace chat, a project's
+The registry's own start paths are held by kept tests:
+`work/switchOff.test.ts` (every way a code thread starts — a loose chat, a workspace chat, a project's
 build with its rules, a child, one that opts out of the rules, Codex,
 `app_start_thread`, `spawn_agent` — makes the same row and sends the same
-first message with Work unset, off and on) and
-`work/claude-driver.test.ts` (a code thread's Claude tool surface).
+first message with Work unset, off and on; it mounts no Work part, so it
+holds what the registry itself does with the switch) and
+`work/claude-driver.test.ts` (a code thread's Claude tool surface with no
+Work, Work mounted and off, and Work on with a module's tools).
 
 ![The rail with Work never on](work-proofs/switchoff-never.jpg)
 ![The rail with Work on](work-proofs/switchoff-on.jpg)
