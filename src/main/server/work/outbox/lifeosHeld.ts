@@ -87,9 +87,105 @@ export function mailWords(p: MailSendPayload): { summary: string; verb: string }
   return { summary: `Send to ${to.length ? names(to) : 'nobody yet'}: ${subject || '(no subject)'}`.slice(0, 240), verb: 'Send' }
 }
 
-/** A calendar act as LifeOS holds it (`calendarOps`, milestone 24): kept whole, since LifeOS owns its shape. */
-export const CalendarOpPayloadSchema = z.looseObject({ id: z.string(), status: z.string().optional(), summary: z.string().optional(), title: z.string().optional(), op: z.string().optional() })
+export const CALENDAR_OP_KINDS = ['create', 'update', 'accept', 'decline', 'tentative', 'propose', 'cancel'] as const
+export type CalendarOpKind = (typeof CALENDAR_OP_KINDS)[number]
+
+/** What a calendar act changes (`calendarOps.payload`); the fields an edit may set. */
+export const CalendarFieldsSchema = z.object({
+  title: z.string().max(500).optional(),
+  startsAt: z.number().optional(),
+  endsAt: z.number().optional(),
+  allDay: z.boolean().optional(),
+  location: z.string().max(500).optional(),
+  notes: z.string().max(20_000).optional(),
+  attendees: z.array(z.object({ address: z.string().max(320), name: z.string().max(200).optional() })).max(100).optional(),
+  uninvite: z.array(z.string().max(320)).max(100).optional(),
+  comment: z.string().max(2_000).optional(),
+  proposedStart: z.number().optional(),
+  proposedEnd: z.number().optional(),
+  series: z.boolean().optional()
+})
+export type CalendarFields = z.infer<typeof CalendarFieldsSchema>
+
+/**
+ * A calendar act as LifeOS holds it (`calendarOps`, milestone 24), kept whole since LifeOS owns
+ * its shape, with the title of the event it answers or changes (`eventTitle`) as this host read it.
+ */
+export const CalendarOpPayloadSchema = z.looseObject({
+  id: z.string(),
+  kind: z.enum(CALENDAR_OP_KINDS).optional(),
+  status: z.string().optional(),
+  account: z.string().optional(),
+  eventId: z.string().optional(),
+  calendarId: z.string().optional(),
+  sector: z.string().optional(),
+  plain: z.boolean().optional(),
+  editedAt: z.number().optional(),
+  payload: z.looseObject(CalendarFieldsSchema.shape).optional(),
+  eventTitle: z.string().optional()
+})
 export type CalendarOpPayload = z.infer<typeof CalendarOpPayloadSchema>
+
+/** A grant for calendar acts: one kind on one account, and for an invite, only these people. */
+export const CalendarOpMatcherSchema = z
+  .object({
+    kind: z.enum(CALENDAR_OP_KINDS),
+    account: z.string().max(320).nullable(),
+    attendees: z.array(z.string().max(320)).max(50).optional()
+  })
+  .strict()
+export type CalendarOpMatcher = z.infer<typeof CalendarOpMatcherSchema>
+
+const addressesOf = (p: CalendarOpPayload): string[] => (p.payload?.attendees ?? []).map((a) => a.address.trim().toLowerCase())
+
+/** A grant fits an act of its kind on its account that invites no one the grant does not name. */
+export function calendarGrantFits(m: CalendarOpMatcher, p: CalendarOpPayload): boolean {
+  if (m.kind !== p.kind || m.account !== (p.account ?? null)) return false
+  const named = new Set((m.attendees ?? []).map((a) => a.trim().toLowerCase()))
+  return addressesOf(p).every((a) => named.has(a))
+}
+
+const quoted = (title: string): string => `"${title.replace(/\s+/g, ' ').trim().slice(0, 120)}"`
+
+/** The act in his words: what it does, to which event. */
+export function calendarWords(p: CalendarOpPayload): { summary: string; verb: string } {
+  const title = quoted(p.payload?.title ?? p.eventTitle ?? 'the event')
+  const invited = p.payload?.attendees ?? []
+  const people = invited.length ? names(invited) : ''
+  const summary = (() => {
+    switch (p.kind) {
+      case 'create':
+        return people ? `Invite ${people} to ${title}` : `Add ${title} to the calendar`
+      case 'update':
+        return people ? `Change ${title} and invite ${people}` : `Change ${title}`
+      case 'accept':
+        return `Accept ${title}`
+      case 'decline':
+        return `Decline ${title}`
+      case 'tentative':
+        return `Answer maybe to ${title}`
+      case 'propose':
+        return `Propose a new time for ${title}`
+      case 'cancel':
+        return `Cancel ${title}`
+      default:
+        return 'A calendar change'
+    }
+  })()
+  return { summary: summary.slice(0, 240), verb: 'Send' }
+}
+
+/** What a sent act did, in the past tense, for its Sent row and its Result. */
+const pastOf = (summary: string): string =>
+  summary
+    .replace(/^Invite /, 'Invited ')
+    .replace(/^Add /, 'Added ')
+    .replace(/^Change /, 'Changed ')
+    .replace(/^Accept /, 'Accepted ')
+    .replace(/^Decline /, 'Declined ')
+    .replace(/^Answer maybe/, 'Answered maybe')
+    .replace(/^Propose /, 'Proposed ')
+    .replace(/^Cancel /, 'Cancelled ')
 
 /** LifeOS's function names, in one place (architecture §4.3; `calendarOps` is milestone 24's and answers "not built" until it is deployed). */
 export const LIFEOS_HELD_FNS = {
@@ -100,8 +196,12 @@ export const LIFEOS_HELD_FNS = {
   mailSave: 'compose:save',
   mailDiscard: 'compose:discard',
   calendarHeld: 'calendarOps:held',
+  calendarGet: 'calendarOps:get',
+  calendarSave: 'calendarOps:save',
   calendarSend: 'calendarOps:send',
-  calendarDiscard: 'calendarOps:discard'
+  calendarDiscard: 'calendarOps:discard',
+  eventGet: 'events:get',
+  sources: 'sources:list'
 } as const
 
 /** A function LifeOS does not have yet says so by name; anything else is LifeOS's own word. */
@@ -132,6 +232,8 @@ export class LifeosHeldItems implements LifeosHeld {
   /** refs the watcher has seen, so a draft is told and offered to the grants once */
   private readonly seen = new Set<string>()
   private first = { mail: true, calendar: true }
+  /** the titles of the events calendar acts answer, read once each: an act holds only the event's id */
+  private readonly eventTitles = new Map<string, string>()
 
   constructor(private readonly deps: LifeosHeldDeps) {}
 
@@ -156,7 +258,13 @@ export class LifeosHeldItems implements LifeosHeld {
   }
 
   async read(ref: LifeosRef): Promise<OutboxItem | null> {
-    if (ref.table === 'calendarOps') return this.calendar.find((i) => i.ref.at === 'lifeos' && i.ref.id === ref.id) ?? null
+    if (ref.table === 'calendarOps') {
+      // Read fresh: what the press sends is what LifeOS holds now, not what the watcher saw last.
+      const row = await this.calendarRow(ref.id)
+      if (!row || (row.origin as { host?: string } | undefined)?.host !== this.deps.ctx.host) return null
+      await this.titlesFor([row])
+      return this.calendarItem(row)
+    }
     let got: { row: OutboxDoc } | null
     try {
       got = await this.deps.ctx.lifeos.owner().query<{ row: OutboxDoc } | null>(LIFEOS_HELD_FNS.mailGet, { id: ref.id })
@@ -178,7 +286,7 @@ export class LifeosHeldItems implements LifeosHeld {
   }
 
   async edit(ref: LifeosRef, payload: unknown): Promise<OutboxItem> {
-    if (ref.table !== 'outbox') throw new NotBuilt('editing a held calendar act', 24)
+    if (ref.table === 'calendarOps') return this.editCalendar(ref, payload)
     const now = await this.read(ref)
     if (!now) throw new Error('LifeOS no longer holds that item')
     if (now.state !== 'held') throw new Error('This mail is no longer a draft; it cannot be changed.')
@@ -191,11 +299,64 @@ export class LifeosHeldItems implements LifeosHeld {
     return after
   }
 
+  /**
+   * A held calendar act rewritten through `calendarOps.save`. Its kind, event and account stay the
+   * act's own: an edit changes what the act says (the time, the place, the words, who is asked).
+   */
+  private async editCalendar(ref: LifeosRef, payload: unknown): Promise<OutboxItem> {
+    const now = await this.read(ref)
+    if (!now) throw new Error('LifeOS no longer holds that item')
+    if (now.state !== 'held' && now.state !== 'failed') throw new Error('This calendar change is already on its way; it cannot be changed.')
+    const row = now.payload as CalendarOpPayload
+    const given = (payload as { payload?: unknown } | null)?.payload ?? payload
+    const fields = CalendarFieldsSchema.parse(Object.fromEntries(Object.entries((given ?? {}) as Record<string, unknown>).filter(([key]) => key in CalendarFieldsSchema.shape)))
+    const next = CalendarFieldsSchema.parse({ ...row.payload, ...fields })
+    const owner = this.deps.ctx.lifeos.owner()
+    // A new Google event names its calendar by the source that syncs it; an Outlook one by its account.
+    let sourceId: string | undefined
+    if (row.kind === 'create' && row.calendarId) {
+      const sources = await owner.query<{ _id: string; kind: string; channel?: string }[]>(LIFEOS_HELD_FNS.sources, {})
+      sourceId = sources.find((s) => s.kind === 'gcal' && s.channel === row.calendarId)?._id
+    }
+    await owner.mutation(LIFEOS_HELD_FNS.calendarSave, {
+      id: ref.id,
+      kind: row.kind,
+      ...(row.eventId ? { eventId: row.eventId } : {}),
+      ...(sourceId ? { sourceId } : row.account ? { account: row.account } : {}),
+      payload: next
+    })
+    const after = await this.read(ref)
+    if (!after) throw new Error('LifeOS no longer holds that item')
+    return after
+  }
+
+  private async calendarRow(id: string): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.deps.ctx.lifeos.owner().query<Record<string, unknown>>(LIFEOS_HELD_FNS.calendarGet, { id })
+    } catch (err) {
+      if (/validat|invalid|not found|does not match|no such/i.test(errorText(err))) return null
+      return calendarNotBuilt(err)
+    }
+  }
+
+  /** Reads the title of each event these acts name that this host has not read yet. A failed read leaves the words generic. */
+  private async titlesFor(rows: Record<string, unknown>[]): Promise<void> {
+    const ids = [...new Set(rows.flatMap((row) => (typeof row.eventId === 'string' && !this.eventTitles.has(row.eventId) ? [row.eventId] : [])))]
+    const owner = this.deps.ctx.lifeos.owner()
+    await Promise.all(
+      ids.map(async (id) => {
+        const event = await owner.query<{ title?: string } | null>(LIFEOS_HELD_FNS.eventGet, { id }).catch(() => null)
+        if (event?.title) this.eventTitles.set(id, event.title)
+      })
+    )
+  }
+
   // ── the watcher ───────────────────────────────────────────────────────
 
   private async took(what: 'mail' | 'calendar', rows: unknown[]): Promise<void> {
     const { outbox, ctx } = this.deps
     try {
+      if (what === 'calendar') await this.titlesFor(rows as Record<string, unknown>[])
       const items = what === 'mail' ? (rows as OutboxDoc[]).flatMap((row) => this.mailItem(row) ?? []) : (rows as Record<string, unknown>[]).flatMap((row) => this.calendarItem(row) ?? [])
       if (what === 'mail') this.mail = items
       else this.calendar = items
@@ -286,17 +447,19 @@ export class LifeosHeldItems implements LifeosHeld {
     const text = (key: string): string | null => (typeof row[key] === 'string' && (row[key] as string).trim() ? (row[key] as string).trim() : null)
     const at = typeof row.editedAt === 'number' ? row.editedAt : typeof row._creationTime === 'number' ? row._creationTime : 0
     const failed = row.status === 'failed'
+    const eventTitle = typeof row.eventId === 'string' ? this.eventTitles.get(row.eventId) : undefined
+    const payload = CalendarOpPayloadSchema.parse({ ...row, id, ...(eventTitle ? { eventTitle } : {}) })
     return {
       ref: { at: 'lifeos', table: 'calendarOps', id },
       kind: 'calendar.op',
       workspaceId: scope?.workspaceId ?? origin.workspaceId ?? null,
       sessionId: session?.id ?? null,
       sector: text('sector') ?? scope?.sector ?? null,
-      summary: (text('summary') ?? text('title') ?? 'A calendar change').slice(0, 240),
+      summary: calendarWords(payload).summary,
       verb: 'Send',
       account: text('account'),
       state: failed ? 'failed' : 'held',
-      payload: { ...row, id },
+      payload,
       createdAt: Math.round(typeof row._creationTime === 'number' ? row._creationTime : at),
       decidedBy: null,
       decidedAt: null,
@@ -340,16 +503,31 @@ export const mailSendKind: ActKindDef<MailSendPayload, MailSendMatcher> = {
   wayBack: () => null
 }
 
-/** `calendar.op`: the owner's `calendarOps.send`. Registered against the architecture's names; it answers "not built" until milestone 24 deploys them. */
-export const calendarOpKind: ActKindDef<CalendarOpPayload, never> = {
+/**
+ * `calendar.op`: the owner's `calendarOps.send` (milestone 24), on the act as LifeOS holds it at
+ * the press. An act that changed since it was shown goes stale rather than going as it is now;
+ * one already queued, sending or done went by another hand, and nothing goes twice.
+ */
+export const calendarOpKind: ActKindDef<CalendarOpPayload, CalendarOpMatcher> = {
   kind: 'calendar.op',
   store: 'lifeos',
   payload: CalendarOpPayloadSchema,
-  words: (p) => ({ summary: (p.summary ?? p.title ?? 'A calendar change').slice(0, 240), verb: 'Send' }),
+  matcher: CalendarOpMatcherSchema,
+  words: calendarWords,
+  matches: calendarGrantFits,
   async execute(p, ctx) {
+    const owner = ctx.lifeos.owner()
     const cause = ctx.decidedBy === 'owner' ? 'press' : 'grant'
-    await ctx.lifeos.owner().mutation(LIFEOS_HELD_FNS.calendarSend, { id: p.id, cause }).catch(calendarNotBuilt)
-    return { summary: (p.summary ?? p.title ?? 'A calendar change').slice(0, 240), ref: { at: 'lifeos', table: 'calendarOps', id: p.id } }
+    const now = await owner.query<{ status?: string; editedAt?: number } | null>(LIFEOS_HELD_FNS.calendarGet, { id: p.id }).catch((err: unknown) => {
+      if (/validat|invalid|not found|does not match|no such/i.test(errorText(err))) return null
+      return calendarNotBuilt(err)
+    })
+    if (!now) throw new ActStale('LifeOS no longer has this calendar change')
+    if (now.status === 'draft' || now.status === 'failed') {
+      if (p.editedAt !== undefined && now.editedAt !== p.editedAt) throw new ActStale('The calendar change was edited since it was shown')
+      await owner.mutation(LIFEOS_HELD_FNS.calendarSend, { id: p.id, cause })
+    } else if (!['queued', 'sending', 'done'].includes(now.status ?? '')) throw new ActStale(`LifeOS holds this calendar change as ${now.status}`)
+    return { summary: pastOf(calendarWords(p).summary), ref: { at: 'lifeos', table: 'calendarOps', id: p.id } }
   },
   wayBack: () => null
 }

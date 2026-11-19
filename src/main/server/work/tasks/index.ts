@@ -1,11 +1,39 @@
-import type { WorkModule } from '../modules'
+import { handled, NOT_HANDLED } from '@shared/work'
+import type { TasksDone } from '@shared/contract-work-tasks'
+import type { WorkCtx, WorkModule } from '../modules'
 
 /**
- * The tasks pillar's server module (docs/agents/work-tasks.md). A stub:
- * `PILLAR_MILESTONE` in src/shared/work/ids.ts names the milestone that
- * fills it. Its tables are made here, in `ensure`.
+ * The tasks pillar's server module (docs/agents/work-tasks.md). The Tasks
+ * view reads and writes LifeOS on its own narrowed session; this module
+ * carries the one act that needs the host: Done on a task a thread here
+ * worked, which is the owner accepting that work. LifeOS records the reason
+ * and the thread's link with the completion, as a send's completion does.
  */
+
+interface LinkRow {
+  host: string
+  threadId: string
+  title: string
+}
+
+/** Done on a task, as the owner: with the newest of this host's threads that worked it, else plainly. */
+export async function taskDone(ctx: WorkCtx, taskId: string): Promise<TasksDone> {
+  const owner = ctx.lifeos.owner()
+  const links = await owner.query<LinkRow[]>('workLinks:byEntity', { entity: { table: 'tasks', id: taskId } })
+  // A link another host made, or one to a thread this host no longer has, names no work accepted here.
+  const link = [...links].reverse().find((l) => l.host === ctx.host && ctx.scopeOf(l.threadId) !== null) ?? null
+  const args = link
+    ? { id: taskId, reason: `Accepted the work of "${link.title}"`.slice(0, 300), threadLink: { host: link.host, threadId: link.threadId, title: link.title } }
+    : { id: taskId }
+  const answer = await owner.mutation<{ nextId?: string } | null>('tasks:complete', args)
+  return { threadId: link?.threadId ?? null, nextId: answer?.nextId ?? null }
+}
+
 export const tasks: WorkModule = {
   id: 'tasks',
-  ensure() {}
+  ensure() {},
+  async handle(req, ctx) {
+    if (req.method !== 'work.tasks.done') return NOT_HANDLED
+    return handled(await taskDone(ctx, req.params.taskId))
+  }
 }

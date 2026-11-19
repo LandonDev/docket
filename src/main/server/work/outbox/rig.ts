@@ -65,7 +65,10 @@ export class FakeOutboxLifeos implements LifeosClient {
   watchers: { fn: string; args: Record<string, unknown>; on: (v: unknown) => void }[] = []
   connected = true
   /** these functions fail as if LifeOS did not have them */
-  missing = new Set<string>(['calendarOps:held', 'calendarOps:send', 'calendarOps:discard'])
+  missing = new Set<string>(['calendarOps:held', 'calendarOps:get', 'calendarOps:save', 'calendarOps:send', 'calendarOps:discard'])
+  /** `calendarOps` rows (milestone 24) and the events they name */
+  ops = new Map<string, Record<string, unknown>>()
+  events = new Map<string, Record<string, unknown>>()
   /** fail the next call of this function with this message */
   failNext = new Map<string, string>()
   completed: { sessionId: string; reason: string }[] = []
@@ -97,6 +100,28 @@ export class FakeOutboxLifeos implements LifeosClient {
     return id
   }
 
+  /** A calendar act a thread's key drafted, as `bot.agenda.draftCalendarOp` leaves it. */
+  calendarOp(over: { kind?: string; eventId?: string; account?: string; host?: string; threadId?: string; status?: string; plain?: boolean; payload?: Record<string, unknown>; calendarId?: string } = {}): string {
+    const id = `op_${++this.n}`
+    const at = Date.now()
+    this.ops.set(id, {
+      _id: id,
+      _creationTime: at,
+      sector: 'purdue',
+      kind: over.kind ?? 'accept',
+      status: over.status ?? 'draft',
+      route: 'google',
+      account: over.account ?? 'landon@purdue.edu',
+      editedAt: at,
+      payload: over.payload ?? {},
+      ...(over.eventId ? { eventId: over.eventId } : {}),
+      ...(over.calendarId ? { calendarId: over.calendarId } : {}),
+      ...(over.plain ? { plain: true } : {}),
+      origin: { app: 'tempcode', threadId: over.threadId ?? 't-work', host: over.host ?? 'env_box' }
+    })
+    return id
+  }
+
   /** What `outboxHeld.held({host})` answers now. */
   held(host: string): Record<string, unknown>[] {
     return [...this.rows.values()].filter((r) => (r.status === 'draft' || r.status === 'failed') && (r.origin as { host?: string } | undefined)?.host === host)
@@ -107,6 +132,8 @@ export class FakeOutboxLifeos implements LifeosClient {
     for (const w of this.watchers) {
       if (this.missing.has(w.fn)) continue
       if (w.fn === 'outboxHeld:held') w.on(this.held(String(w.args.host)))
+      if (w.fn === 'calendarOps:held') w.on([...this.ops.values()].filter((r) => (r.status === 'draft' || r.status === 'failed') && (r.origin as { host?: string }).host === w.args.host))
+      if (w.fn === 'calendarOps:list') w.on([...this.ops.values()])
     }
   }
 
@@ -142,6 +169,37 @@ export class FakeOutboxLifeos implements LifeosClient {
         this.fire()
         return args.id as T
       }
+      case 'calendarOps:get': {
+        const op = this.ops.get(String(args.id))
+        if (!op) throw new Error('not found')
+        return op as T
+      }
+      case 'calendarOps:send': {
+        const op = this.ops.get(String(args.id))
+        if (!op || (op.status !== 'draft' && op.status !== 'failed')) throw new Error('this calendar act is already on its way')
+        Object.assign(op, { status: 'queued', cause: args.cause, sentFrom: 'tempcode' })
+        this.fire()
+        return null as T
+      }
+      case 'calendarOps:save': {
+        const op = this.ops.get(String(args.id))
+        if (!op) throw new Error('not found')
+        Object.assign(op, { kind: args.kind, payload: args.payload, editedAt: Number(op.editedAt) + 1 })
+        this.fire()
+        return args.id as T
+      }
+      case 'calendarOps:discard': {
+        this.ops.delete(String(args.id))
+        this.fire()
+        return true as T
+      }
+      case 'events:get': {
+        const event = this.events.get(String(args.id))
+        if (!event) throw new Error('not found')
+        return event as T
+      }
+      case 'sources:list':
+        return [{ _id: 'src_gcal', kind: 'gcal', channel: 'landon@purdue.edu' }] as T
       case 'compose:discard': {
         this.rows.delete(String(args.id))
         this.fire()
