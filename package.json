@@ -236,9 +236,11 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
     "vitest": "^3.2.4",
-    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#75ff59bc8ad6a736e707a4bf76bf74d3bedc0632"
+    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#f3f053021178eaed59f6f862d738fbb848de3ba0"
   },
   "overrides": {
+    "@tiptap/pm": "3.34.0",
+    "prosemirror-model": "1.25.13",
     "yjs": "13.6.31"
   }
 }
