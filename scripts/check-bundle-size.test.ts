@@ -51,6 +51,26 @@ describe('checkBundle', () => {
     }
   })
 
+  describe("pdf.js's own svgFactory calls", () => {
+    const PDFJS = '/repo/node_modules/pdfjs-dist/build/pdf.mjs'
+    const CANVAS = '/repo/src/renderer/src/work/pdf/Column.tsx'
+    const chunk = (modules: string[]) => ({ type: 'chunk' as const, entry: false, bytes: 10, imports: [], dynamicImports: [], modules: Object.fromEntries(modules.map((id) => [id, 10])) })
+    const withChunks = (extra: Record<string, string[]>): BundleMap => ({ chunks: { ...map.chunks, ...Object.fromEntries(Object.entries(extra).map(([file, modules]) => [`assets/${file}`, chunk(modules)])) } })
+    const PDFJS_SOURCE = 'this.svgFactory.createElement("svg:rect");svgFactory.createElement("svg:line")'
+
+    it('pass a chunk that is pdf.js alone', () => {
+      expect(checkBundle(withChunks({ 'pdf-a.js': [PDFJS] }), 4096, [{ file: 'pdf-a.js', tags: badJsxTags(PDFJS_SOURCE) }]).ok).toBe(true)
+    })
+
+    it('still read our PDF canvas chunk, and a chunk where our code sits beside pdf.js', () => {
+      const ours = checkBundle(withChunks({ 'PdfCanvas-b.js': [CANVAS] }), 4096, [{ file: 'PdfCanvas-b.js', tags: ['current'] }])
+      expect(ours.badTags).toEqual(['PdfCanvas-b.js: current'])
+      const mixed = checkBundle(withChunks({ 'pdf-c.js': [PDFJS, CANVAS] }), 4096, [{ file: 'pdf-c.js', tags: badJsxTags(PDFJS_SOURCE + ';jsx("current")') }])
+      expect(mixed.ok).toBe(false)
+      expect(mixed.badTags).toContain('pdf-c.js: current')
+    })
+  })
+
   it('passes a clean bundle', () => {
     expect(checkBundle(map, 4096, []).ok).toBe(true)
   })

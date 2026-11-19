@@ -26,7 +26,7 @@
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { entryChunk, loadBundleMap, staticClosure } from './bundle-map'
+import { entryChunk, loadBundleMap, staticClosure, type BundleMap } from './bundle-map'
 
 /** Measured 2026-10-21 after the split: 4.56 MiB for the closure (8.07 MiB
  *  before). 5 MiB leaves room for ordinary growth of the surfaces that belong
@@ -159,6 +159,22 @@ export function badJsxTags(source: string): string[] {
   return [...bad]
 }
 
+/**
+ * Vendor builds whose own code passes "svg:rect" and the like to their own
+ * `createElement`: pdf.js's SVG factory makes its annotation icons with
+ * `svgFactory.createElement("svg:line")`, which is no JSX and renders no DOM
+ * tag. A chunk is passed over only when such a build is the whole of it, so
+ * any code of ours bundled beside it is still read (milestone 33).
+ */
+const VENDOR_STRING_TAGS = ['node_modules/pdfjs-dist/build/pdf.mjs']
+
+function vendorOnly(map: BundleMap, file: string): boolean {
+  const row = map.chunks[`assets/${file}`]
+  if (!row || row.type !== 'chunk') return false
+  const ids = Object.keys(row.modules)
+  return ids.length > 0 && ids.every((id) => VENDOR_STRING_TAGS.some((vendor) => id.endsWith(vendor)))
+}
+
 /** Each renderer chunk under `dir` with the bad tags it renders. */
 export function scanAssets(dir = resolve('out/renderer/assets')): { file: string; tags: string[] }[] {
   return readdirSync(dir)
@@ -190,6 +206,7 @@ export function checkBundle(map = loadBundleMap(), budget = BUDGET_BYTES, assets
   for (const l of leaked) lines.push(`FAIL: ${l} is in the entry chunk; a static import pulled a lazy surface or a part of Work back in`)
   const badTags: string[] = []
   for (const { file, tags } of assets) {
+    if (vendorOnly(map, file)) continue
     for (const tag of tags) {
       badTags.push(`${file}: ${tag}`)
       lines.push(`FAIL: ${file} renders "${tag}" as a DOM tag; a lowercase component binding was inlined into JSX (React Compiler)`)
