@@ -403,7 +403,7 @@ function Main({ view, slide, doc, width, height, itemTitle, source, shell }: { v
   const edits = change?.edits.filter((e) => e !== notesEdit) ?? [];
   return (
     <div data-slides-main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
-      <div className="flex shrink-0 justify-center px-4 pt-4">
+      <div className="flex shrink-0 justify-center border-b border-border bg-(--stage) p-4">
         <div data-slides-stage className="relative shrink-0" style={{ width: w }}>
           <Picture doc={doc} page={slide.page} width={w} ghost={slide.tint === "del"} title={slide.title} onPainted={(el) => setTone(toneOf(el))} />
           <div className="absolute inset-0">

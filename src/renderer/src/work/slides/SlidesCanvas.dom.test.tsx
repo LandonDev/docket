@@ -130,6 +130,15 @@ describe("the slides kind", () => {
     expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
   });
 
+  it("seats the slide on the stage ground, 16px in, with the notes under it on the canvas's own", async () => {
+    open(deckView({ slides: [slide(1, { notes: "Open with the turnout." })] }));
+    const ground = (await found("[data-slides-stage]")).parentElement!;
+    // A picture's ground is `stage` in both themes (docs/DESIGN.md "Canvas tints"), as a PDF's and an image's is.
+    expect(ground.className).toContain("bg-(--stage)");
+    expect(ground.className).toContain("p-4");
+    expect(screen.getByText("Open with the turnout.").closest('[class*="bg-(--stage)"]')).toBeNull();
+  });
+
   it("is one Tab stop, the slide on the stage, and the arrows down the strip, Home and End move the focus and the stage", async () => {
     open(deckView({ slides: Array.from({ length: 5 }, (_, i) => slide(i + 1)) }));
     await found("[data-slides-stage]");
