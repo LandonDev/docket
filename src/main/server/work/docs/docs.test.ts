@@ -173,7 +173,7 @@ describe('an agent writing a document', () => {
   it('a thread with no such item, or a path outside a .tcdoc, is told so', async () => {
     const r = await rig()
     expect(await r.tool('doc_read', { item: 'nope' })).toEqual({ text: 'This thread has no document nope in its canvas.', error: true })
-    expect((await r.tool('doc_read', { file: join(r.dir, 'notes.txt') })).text).toMatch(/LifeOS document or a .tcdoc/)
+    expect((await r.tool('doc_read', { file: join(r.dir, 'notes.txt') })).text).toMatch(/LifeOS document, a .tcdoc or a Google Doc/)
   })
 })
 

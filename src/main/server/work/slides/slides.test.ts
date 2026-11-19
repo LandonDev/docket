@@ -469,7 +469,7 @@ describe('the module, on a fake deck tool', () => {
     const web = openDeck({ at: 'microsoft', host: 'env_test', app: 'powerpoint', name: 'Web.pptx', ref: { kind: 'url', url: 'https://contoso.sharepoint.com/x.pptx' } }, 'Web')
     await expect(call('work.slides.open', { itemId: web.id })).rejects.toThrow('Web lives in PowerPoint on the web. Opening it from there is not built yet.')
     const g = openDeck({ at: 'google', account: 'a', fileId: 'f', mime: 'application/vnd.google-apps.presentation' }, 'G')
-    await expect(call('work.slides.open', { itemId: g.id })).rejects.toThrow('G lives in Google. Opening it from there is not built yet.')
+    await expect(call('work.slides.open', { itemId: g.id })).rejects.toThrow('G lives in Google: open it there.')
     const junk = join(dir, 'junk.pptx')
     writeFileSync(junk, 'hello')
     await expect(call('work.slides.open', { itemId: openDeck(fileSource(junk), 'J').id })).rejects.toThrow('junk.pptx is not a PowerPoint deck.')
