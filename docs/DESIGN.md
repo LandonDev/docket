@@ -152,7 +152,9 @@ Light is a theme of its own, not dark turned over. Its rules:
   both themes, a video's matte is black in both.
 
 The contrast contract, held for both themes by `lib/tokenContrast.test.ts`
-from the values in index.css (the four older tests fold into it):
+from the values in index.css (the status and chart contrast tests fold into
+it; `sidebarGroup` keeps the order of its steps and `typeTint` its hue
+distances):
 
 | Tier | What | Floor | On |
 | --- | --- | --- | --- |
