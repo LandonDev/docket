@@ -42,9 +42,19 @@ no groups (a negative pid throws, `detached` opens a console) and a child outliv
   run and add-on server is adopted.
 - Job Objects have no Node API. The helper is a few lines of C# (`JOB_HELPER_CS`) compiled once
   with the `csc.exe` of .NET Framework 4, which every Windows 10 and 11 carries, into the temp dir
-  (`tempcode-jobs-<hash>.exe`), and one helper holds every job. It reads `add <pid>` and
-  `end <pid>` on stdin; when the app goes its stdin closes, it exits, and Windows ends every job,
-  so nothing outlives a crash either. Without the helper a stop falls back to `taskkill /T /F`.
+  (`tempcode-jobs-<hash>.exe`), and one helper holds every job. It reads `add <pid>` (answers
+  `ok <pid>`; `JobHost.has` is true only then) and `end <pid>` on stdin; when the app goes its
+  stdin closes, it exits, and Windows ends every job, so nothing outlives a crash either. It starts
+  when procTree.ts is first imported (`warmJobHost`), so the first harness does not wait for csc or
+  for Defender's first scan of the new exe; a pid that exited before the helper took it is skipped.
+  A failed spawn or a lost compile race is tried again; a lost helper is logged with the number of
+  trees it took. Without the helper a stop falls back to `taskkill /T /F`.
+- **Git Bash's children leave the job.** msys starts its processes outside any job (seen in the
+  rig: a build's `sleep &` and a plain `node` both outlived the job), but they keep the console of
+  the root, and every child the app starts gets a hidden console of its own. So `end` first ends
+  every process attached to the root's console (`AttachConsole`, `GetConsoleProcessList`), then the
+  job. That needs the root alive: a stop does it; a root that already exited leaves only the job.
+  Never `JOB_OBJECT_LIMIT_BREAKAWAY_OK`: msys asks to break away whenever a job allows it.
 - `killTree(pid)` ends the pid's job and runs `taskkill /PID <pid> /T /F` (Windows has no gentle
   signal for a console program). Off Windows it is `process.kill(-pid, signal)`.
 - Why a job and not taskkill alone: Node (libuv) already puts its own plain children in a

@@ -47,11 +47,20 @@ describe('killTree', () => {
 function fakeHelper(): { proc: ChildProcess; lines: string[] } {
   const proc = new EventEmitter() as unknown as ChildProcess
   const stdin = new PassThrough()
+  const stdout = new PassThrough()
   const lines: string[] = []
-  stdin.on('data', (d: Buffer) => lines.push(...d.toString().split('\n').filter(Boolean)))
-  Object.assign(proc, { stdin, stdout: new PassThrough() })
+  // answers as the real helper does: `ok <pid>` once a pid is in its job, `err <pid> <code>` when it cannot be
+  stdin.on('data', (d: Buffer) => {
+    for (const line of d.toString().split('\n').filter(Boolean)) {
+      lines.push(line)
+      const [word, pid] = line.split(' ')
+      if (word === 'add') stdout.write(Number(pid) === 13 ? `err ${pid} 5\n` : `ok ${pid}\n`)
+    }
+  })
+  Object.assign(proc, { stdin, stdout })
   return { proc, lines }
 }
+const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 5))
 
 describe('JobHost', () => {
   it('compiles the helper once when missing, adds and ends jobs by pid', async () => {
@@ -63,11 +72,17 @@ describe('JobHost', () => {
     expect(compile).toHaveBeenCalledTimes(1)
     const ready = new JobHost({ exe: __filename, spawnHelper: () => proc, log: () => undefined })
     expect(await ready.add(10)).toBe(true)
+    // in a job only once the helper says so
+    await tick()
     expect(ready.has(10)).toBe(true)
+    expect(await ready.add(13)).toBe(true)
+    await tick()
+    expect(ready.has(13)).toBe(false)
+    expect(ready.end(13)).toBe(false)
     expect(ready.end(10)).toBe(true)
     expect(ready.end(10)).toBe(false)
     await new Promise((r) => setImmediate(r))
-    expect(lines).toEqual(['add 10', 'end 10'])
+    expect(lines).toEqual(['add 10', 'add 13', 'end 10'])
   })
 
   it("skips a child that exited while the helper was starting: its pid may be another's by then", async () => {

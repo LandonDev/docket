@@ -59,6 +59,8 @@ describe.runIf(win)('process trees on Windows', () => {
 
   it("ends an adopted child's whole job when the child exits", async () => {
     const host = new JobHost()
+    // started ahead, as the app does at boot (warmJobHost): the fixture's parent starts its grandchild at once
+    await host.start()
     const { parent, grandchild } = await parentWithGrandchild((c) => adoptTree(c, 'win32', () => host))
     strays.push(grandchild)
     // the helper compiles once (csc.exe), then takes the pid
@@ -67,6 +69,24 @@ describe.runIf(win)('process trees on Windows', () => {
     expect(alive(grandchild)).toBe(true)
     parent.kill()
     expect(await until(() => !alive(grandchild))).toBe(true)
+  }, 90_000)
+
+  it("ends what a Git Bash command started, in the background or not, when its job ends", async () => {
+    const sh = commandShell()
+    const host = new JobHost()
+    await host.start()
+    // native programs, as a build runs (node, bun, java); msys' own tools (sleep) are another story (windows-host.md)
+    const line = 'sleep 1; "$TC_NODE" -e "setInterval(() => {}, 1905)" & "$TC_NODE" -e "setInterval(() => {}, 1906)"'
+    const root = adoptTree(spawn(sh.file, sh.args(line), { ...treeSpawnOptions(), ...sh.options, stdio: 'ignore', env: { ...process.env, TC_NODE: process.execPath } }), 'win32', () => host)
+    expect(await until(() => host.has(root.pid!), 60_000)).toBe(true)
+    const kids = async (): Promise<number[]> => (await scanWinProcesses()).filter((p) => /setInterval\(\(\) => \{\}, 190[56]\)/.test(p.args) && /node(\.exe)?"?\s+-e/i.test(p.args)).map((p) => p.pid)
+    let seen: number[] = []
+    for (let i = 0; i < 40 && seen.length < 2; i++, await new Promise((r) => setTimeout(r, 250))) seen = await kids()
+    strays.push(...seen)
+    expect(seen.length).toBe(2)
+    // what a build's Cancel does (build.ts): its job is ended, and taskkill /T walks what parent ids still reach
+    expect(killTree(root.pid!, 'SIGTERM', { endJob: (pid) => host.end(pid) })).toBe(true)
+    expect(await until(() => seen.every((pid) => !alive(pid)))).toBe(true)
   }, 90_000)
 
   it('stops a tree with killTree, the root and what it started', async () => {

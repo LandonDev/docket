@@ -91,6 +91,11 @@ static class TcJobs {
   [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateJobObject(IntPtr job, uint code);
   [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
   [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr h);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool AttachConsole(int pid);
+  [DllImport("kernel32.dll")] static extern bool FreeConsole();
+  [DllImport("kernel32.dll")] static extern int GetConsoleProcessList(int[] list, int count);
+  [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr h, uint code);
+  [DllImport("kernel32.dll")] static extern int GetCurrentProcessId();
   [StructLayout(LayoutKind.Sequential)] struct Basic { public long A; public long B; public uint LimitFlags; public UIntPtr C; public UIntPtr D; public uint E; public UIntPtr F; public uint G; public uint H; }
   [StructLayout(LayoutKind.Sequential)] struct Io { public ulong A, B, C, D, E, F; }
   [StructLayout(LayoutKind.Sequential)] struct Ext { public Basic Basic; public Io Io; public UIntPtr A, B, C, D; }
@@ -105,8 +110,9 @@ static class TcJobs {
       if (parts[0] == "add") {
         job = CreateJobObject(IntPtr.Zero, IntPtr.Zero);
         var info = new Ext();
-        // KILL_ON_JOB_CLOSE, and BREAKAWAY_OK: a launcher that asks to leave (a browser opening a link) may.
-        info.Basic.LimitFlags = 0x2000 | 0x0800;
+        // KILL_ON_JOB_CLOSE alone. Never BREAKAWAY_OK: Git Bash's msys runtime asks to break away whenever a
+        // job allows it, and a build's background children then outlive it (seen in the rig).
+        info.Basic.LimitFlags = 0x2000;
         if (job == IntPtr.Zero || !SetInformationJobObject(job, 9, ref info, Marshal.SizeOf(typeof(Ext)))) {
           int code = Marshal.GetLastWin32Error();
           if (job != IntPtr.Zero) CloseHandle(job);
@@ -122,10 +128,27 @@ static class TcJobs {
         jobs[pid] = job;
         Console.WriteLine("ok " + pid);
       } else if (parts[0] == "end" && jobs.TryGetValue(pid, out job)) {
+        // Git Bash (msys) starts its children outside any job, but they keep the root's console, which is the
+        // root's own (a hidden one per child the app starts): end what is attached to it, then the job.
+        int swept = 0;
+        FreeConsole();
+        if (AttachConsole(pid)) {
+          var list = new int[4096];
+          int n = Math.Min(GetConsoleProcessList(list, list.Length), list.Length);
+          FreeConsole();
+          int self = GetCurrentProcessId();
+          for (int i = 0; i < n; i++) {
+            if (list[i] == self) continue;
+            var h = OpenProcess(0x0001, false, list[i]);
+            if (h == IntPtr.Zero) continue;
+            if (TerminateProcess(h, 1)) swept++;
+            CloseHandle(h);
+          }
+        }
         TerminateJobObject(job, 1);
         CloseHandle(job);
         jobs.Remove(pid);
-        Console.WriteLine("ended " + pid);
+        Console.WriteLine("ended " + pid + " " + swept);
       }
     }
   }
@@ -146,6 +169,8 @@ export class JobHost {
   private helper: ChildProcess | null = null
   private ready: Promise<ChildProcess | null> | null = null
   private readonly live = new Set<number>()
+  /** Pids the helper answered `ok` for: in a job now. */
+  private readonly held = new Set<number>()
 
   constructor(private readonly deps: JobHelperDeps = {}) {}
 
@@ -164,6 +189,7 @@ export class JobHost {
 
   /** End the job of `pid` and everything in it; false when it has none. */
   end(pid: number): boolean {
+    this.held.delete(pid)
     if (!this.live.delete(pid)) return false
     const stdin = this.helper?.stdin
     if (!stdin || stdin.destroyed) return false
@@ -171,8 +197,9 @@ export class JobHost {
     return true
   }
 
+  /** Whether the helper has put `pid` in its job (it answered `ok`). */
   has(pid: number): boolean {
-    return this.live.has(pid)
+    return this.held.has(pid)
   }
 
   /** Start the helper now (compiled on first use); the app calls it at boot so the first adoption does not wait. */
@@ -201,6 +228,7 @@ export class JobHost {
           this.helper = null
           this.ready = null
           this.live.clear()
+          this.held.clear()
         }
         helper.on('error', (err) => {
           log(`job helper: ${err.message}`)
@@ -208,7 +236,14 @@ export class JobHost {
         })
         helper.stdin?.on('error', () => undefined)
         helper.stdout?.on('data', (d: Buffer) => {
-          for (const line of d.toString().split('\n')) if (line.startsWith('err')) log(`job helper: ${line.trim()}`)
+          for (const line of d.toString().split('\n')) {
+            const [word, pid] = line.trim().split(' ')
+            if (word === 'ok' && this.live.has(Number(pid))) this.held.add(Number(pid))
+            if (word === 'err') {
+              this.live.delete(Number(pid))
+              log(`job helper: ${line.trim()}`)
+            }
+          }
         })
         helper.once('exit', (code) => lost(`exited (${code})`))
         this.helper = helper
