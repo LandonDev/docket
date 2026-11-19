@@ -1,19 +1,19 @@
 import { defineChunk } from "../../lib/lazyChunk";
 import { Dashboard } from "../icons";
-import type { CanvasKindDef } from "../canvas/kind";
+import { defineCanvasKind, type CanvasKindDef } from "../canvas/kind";
 
 /**
- * The dashboard kind of canvas item (docs/agents/work-dashboards.md). A stub: its
- * body says "Not built yet" until the dashboards pillar's milestone builds it
- * (`PILLAR_MILESTONE` in src/shared/work/ids.ts), which then points `chunk`
- * at its own module and corrects what the kind claims.
+ * The dashboard kind of canvas item (docs/agents/work-dashboards.md): a
+ * saved page of figures read from sheets. The body is its own chunk; this
+ * file rides the canvas chunk. A dashboard lives in the host's row behind
+ * the item (`{ at: 'thread' }`), so the kind claims no file.
  */
-export const dashboardCanvas: CanvasKindDef = {
+export const dashboardCanvas: CanvasKindDef = defineCanvasKind<undefined>({
   kind: "dashboard",
   label: "Dashboard",
   icon: Dashboard,
-  opens: { ext: ["tcdash"] },
+  opens: {},
   phone: "web",
   guestable: false,
-  chunk: defineChunk("work-dashboards-canvas", () => import("../canvas/NotBuilt")),
-};
+  chunk: defineChunk("work-dashboards-canvas", () => import("./DashboardCanvas")),
+});
