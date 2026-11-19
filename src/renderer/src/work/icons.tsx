@@ -25,7 +25,16 @@ import FullScreenIcon from "@hugeicons/core-free-icons/FullScreenIcon";
 import ZoomInAreaIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
 import ZoomOutAreaIcon from "@hugeicons/core-free-icons/ZoomOutAreaIcon";
 import Comment01Icon from "@hugeicons/core-free-icons/Comment01Icon";
+import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
+import FileExportIcon from "@hugeicons/core-free-icons/FileExportIcon";
+import TaskAdd01Icon from "@hugeicons/core-free-icons/TaskAdd01Icon";
 import { wrap } from "../chrome/icons";
+
+/** LifeOS's mark, as the approved prototypes draw it (`b-lifeos`): a ring with a meridian and two parallels. Hugeicons has no LifeOS, so it is drawn here in the same shape Hugeicons gives, and takes the one stroke. */
+const LifeosMark = [
+  ["circle", { cx: "12", cy: "12", r: "9", stroke: "currentColor", strokeWidth: "1.5", key: "0" }],
+  ["path", { d: "M12 3v18M4.5 8.5c4 2.5 11 2.5 15 0M4.5 15.5c4-2.5 11-2.5 15 0", stroke: "currentColor", strokeLinecap: "round", strokeWidth: "1.5", key: "1" }],
+] as const;
 
 export const Mail = wrap(Mail01Icon, "Mail");
 /** A document in the block editor. */
@@ -56,3 +65,11 @@ export const FullScreen = wrap(FullScreenIcon, "FullScreen");
 export const ZoomIn = wrap(ZoomInAreaIcon, "ZoomIn");
 export const ZoomOut = wrap(ZoomOutAreaIcon, "ZoomOut");
 export const Comment = wrap(Comment01Icon, "Comment");
+/** A task in LifeOS: what a meeting's task is once it is filed. */
+export const Lifeos = wrap(LifeosMark, "Lifeos");
+/** A task waiting to be made: a suggestion that is not in LifeOS yet, and "Make task". */
+export const TaskAdd = wrap(TaskAdd01Icon, "TaskAdd");
+/** A copy of the file saved to disk: Download recording, Save a copy. */
+export const Download = wrap(Download01Icon, "Download");
+/** The item written out in another form: Export transcript. */
+export const Export = wrap(FileExportIcon, "Export");

@@ -69,7 +69,8 @@ export function fakeHost(initial: CanvasItem[] = [], wire?: { pushes: Set<(push:
 }
 
 /** A kind whose body hands the test its `shell`, so the test feeds the frame as a real kind would. */
-export function drivenKinds(onShell: (shell: CanvasShell, props: CanvasBodyProps) => void, parts: { bar?: boolean; tabEnd?: boolean } = {}): Record<CanvasKind, CanvasKindDef> {
+/** `bar`: the kind's tools; `"empty"`, a `Bar` that renders nothing; `"end"`, one tool at the start and one sent to the slot's end. */
+export function drivenKinds(onShell: (shell: CanvasShell, props: CanvasBodyProps) => void, parts: { bar?: boolean | "empty" | "end"; tabEnd?: boolean } = {}): Record<CanvasKind, CanvasKindDef> {
   function Body(props: CanvasBodyProps) {
     const { shell } = props;
     useEffect(() => {
@@ -79,7 +80,22 @@ export function drivenKinds(onShell: (shell: CanvasShell, props: CanvasBodyProps
   }
   const module = {
     Body,
-    ...(parts.bar ? { Bar: () => <span data-testid="kind-tools">Zoom</span> } : {}),
+    ...(parts.bar === "empty"
+      ? { Bar: () => null }
+      : parts.bar === "end"
+        ? {
+            Bar: () => (
+              <>
+                <span data-testid="kind-tools">Zoom</span>
+                <span data-testid="kind-end" className="ms-auto">
+                  Find
+                </span>
+              </>
+            ),
+          }
+        : parts.bar
+          ? { Bar: () => <span data-testid="kind-tools">Zoom</span> }
+          : {}),
     ...(parts.tabEnd ? { TabEnd: () => <span data-testid="tab-end">Excel</span> } : {}),
   };
   const chunk = defineChunk("test-kind", () => Promise.resolve(module));

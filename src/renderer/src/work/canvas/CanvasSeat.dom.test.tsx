@@ -9,7 +9,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import { contextChipsOf, resetContextChips } from "./chips";
+import { X } from "../../chrome/icons";
 import { openMenus } from "../../chrome/menuRows";
+import { BAR_TOOLS_ONLY } from "./KindBar";
 import type { CanvasShell, ReviewAdapter } from "./kind";
 import { canvasItem, drivenKinds, fakeHost } from "./testkit";
 
@@ -244,6 +246,50 @@ describe("the frame a kind drives through its shell", () => {
     // The kind's slot in the tab row sits before More.
     const actions = container.querySelector("[data-view-actions]")!;
     expect([...actions.children].map((el) => el.getAttribute("data-testid") ?? el.getAttribute("aria-label"))).toEqual(["tab-end", "More", "Conversation"]);
+  });
+
+  it("draws no bar while a kind's Bar renders nothing and nothing else is fed, and draws it once something is", async () => {
+    const { shell, container } = await driven({ bar: "empty" });
+    // The Bar stays mounted, so it can fill the bar later; the bar is hidden while its tools slot is empty.
+    const bar = container.querySelector("[data-canvas-bar]")!;
+    expect(bar.className).toContain(BAR_TOOLS_ONLY);
+    expect(bar.querySelector("[data-canvas-tools]:empty")).not.toBeNull();
+    expect(bar.matches(":has([data-canvas-tools]:empty)")).toBe(true);
+    act(() => shell.mode({ value: "writes" }));
+    expect(container.querySelector("[data-canvas-bar]")!.className).not.toContain(BAR_TOOLS_ONLY);
+  });
+
+  it("lets the kind's tools take the free room, so a tool can sit at the end before the stepper", async () => {
+    const { shell, container } = await driven({ bar: "end" });
+    act(() => shell.review(review()));
+    const tools = container.querySelector("[data-canvas-tools]")!;
+    expect(tools.className).toContain("flex-1");
+    expect(within(tools as HTMLElement).getByTestId("kind-end").className).toContain("ms-auto");
+    // A bar with tools that render is drawn whatever else is fed.
+    expect(container.querySelector("[data-canvas-bar]")!.className).not.toContain(BAR_TOOLS_ONLY);
+    const order = [...container.querySelectorAll("[data-canvas-bar] [data-testid], [data-canvas-bar] [role='toolbar']")].map((el) => el.getAttribute("data-testid") ?? el.getAttribute("aria-label"));
+    expect(order).toEqual(["kind-tools", "kind-end", "Review changes"]);
+  });
+
+  it("puts a kind's own verbs first in More, runs the one picked, and takes them back with null", async () => {
+    const { shell } = await driven();
+    const exported = vi.fn();
+    act(() => {
+      shell.review(review());
+      shell.more!([
+        { id: "export", label: "Export transcript", icon: X, run: exported },
+        { id: "download", label: "Download recording", icon: X, disabled: true, run: vi.fn() },
+      ]);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent);
+    expect(rows).toEqual(["Export transcript", "Download recording", "Accept all", "Reject all", "Close", "Close others"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Export transcript" }));
+    await waitFor(() => expect(exported).toHaveBeenCalledTimes(1));
+    act(() => shell.more!(null));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Export transcript" })).toBeNull());
+    expect(screen.getByRole("menuitem", { name: "Close" })).toBeTruthy();
   });
 
   it("switches the mode from its menu, and shows a mode that cannot be switched as words", async () => {

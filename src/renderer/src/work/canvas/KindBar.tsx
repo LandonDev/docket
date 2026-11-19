@@ -9,10 +9,17 @@ import type { CanvasMode, Presence, ReviewAdapter, WrittenLine } from "./kind";
 
 export const MODE_WORDS = { suggests: "Agent suggests", writes: "Agent writes" } as const;
 
-/** Whether the bar has anything to hold: a kind that feeds it nothing gets no bar at all. */
+/**
+ * Whether the bar holds anything besides the kind's own tools. A kind
+ * that feeds it nothing gets no bar; one whose `Bar` renders nothing gets
+ * none either (`KindBar`), though its `Bar` stays mounted to fill it later.
+ */
 export function barShown(feeds: Feeds, tools: boolean, history: boolean): boolean {
   return feeds.presence.length > 0 || feeds.mode !== null || tools || history || (feeds.review !== null && feeds.review.count > 0) || feeds.written !== null;
 }
+
+/** The bar's class while the kind's tools are all it could hold: it is drawn only once they render something. */
+export const BAR_TOOLS_ONLY = "has-[[data-canvas-tools]:empty]:hidden";
 
 /**
  * The kind's own bar, in the one order every kind keeps (docs/DESIGN.md
@@ -21,21 +28,28 @@ export function barShown(feeds: Feeds, tools: boolean, history: boolean): boolea
  * or the line that says what the agent last wrote.
  */
 export function KindBar({ feeds, tools, onHistory }: { feeds: Feeds; tools?: ReactNode; onHistory?: () => void }) {
-  if (!barShown(feeds, !!tools, !!onHistory)) return null;
+  const others = barShown(feeds, false, !!onHistory);
+  if (!others && !tools) return null;
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
     <TooltipProvider>
-      <div data-canvas-bar className="flex h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground">
+      <div
+        data-canvas-bar
+        className={`flex h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others ? "" : BAR_TOOLS_ONLY}`}
+      >
         <People people={feeds.presence} />
         {feeds.mode ? <Mode mode={feeds.mode} /> : null}
-        {tools ? <div className="flex min-w-0 items-center gap-0.5">{tools}</div> : null}
-        {onHistory ? (
-          <Button variant="ghost" size="xs" onClick={onHistory}>
-            <History />
-            History
-          </Button>
-        ) : null}
-        <div className="ms-auto flex min-w-0 shrink-0 items-center">{review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}</div>
+        {/* The kind's tools take the free room, so a tool given `ms-auto` sits at the end, before History and the stepper. */}
+        {tools ? <div data-canvas-tools className="flex min-w-0 flex-1 items-center gap-0.5">{tools}</div> : null}
+        <div className="ms-auto flex min-w-0 shrink-0 items-center gap-2">
+          {onHistory ? (
+            <Button variant="ghost" size="xs" onClick={onHistory}>
+              <History />
+              History
+            </Button>
+          ) : null}
+          {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}
+        </div>
       </div>
     </TooltipProvider>
   );

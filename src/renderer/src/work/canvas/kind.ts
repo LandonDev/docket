@@ -77,6 +77,19 @@ export interface CanvasShell {
   openHistory(): void;
   /** Opens a held act of this item where held acts are shown (the Outbox). */
   held(ref: HeldRef): void;
+  /** The kind's own verbs in the pane's More (Export transcript, Download recording), first, above the frame's own. The pane always gives it; it is optional only so a stand-in shell written before it (a proof page's) still types. */
+  more?(entries: MoreEntry[] | null): void;
+}
+
+/** One of a kind's own rows in the pane's More: a 14px glyph and a verb, as every menu row is. */
+export interface MoreEntry {
+  /** Unique among the kind's entries. */
+  id: string;
+  label: string;
+  icon: IconComponent;
+  disabled?: boolean;
+  /** A failure is said once, in the thread's toast stack. */
+  run(): void | Promise<void>;
 }
 
 /** One way to review an agent's changes, whatever the kind: a document's suggestions, a sheet's cells, a deck's slides. */

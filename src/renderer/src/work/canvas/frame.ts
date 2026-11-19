@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { CanvasItem } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
-import type { CanvasMode, CanvasSelection, CanvasShell, Presence, ReviewAdapter, StatusLine, WrittenLine } from "./kind";
+import type { CanvasMode, CanvasSelection, CanvasShell, MoreEntry, Presence, ReviewAdapter, StatusLine, WrittenLine } from "./kind";
 import { openHeld } from "./held";
 import { openItem } from "./store";
 
@@ -14,10 +14,11 @@ export interface Feeds {
   status: StatusLine | null;
   written: WrittenLine | null;
   detail: string | null;
+  more: readonly MoreEntry[] | null;
 }
 
 const NO_PEOPLE: readonly Presence[] = [];
-export const NO_FEEDS: Feeds = { review: null, selection: null, presence: NO_PEOPLE, mode: null, status: null, written: null, detail: null };
+export const NO_FEEDS: Feeds = { review: null, selection: null, presence: NO_PEOPLE, mode: null, status: null, written: null, detail: null, more: null };
 
 /** An error a person should see once, in the thread's toast stack. */
 export function sayError(error: unknown, fallback: string): void {
@@ -50,6 +51,7 @@ export function useFrame(environmentId: string, sessionId: string, item: CanvasI
       statusLine: feed("status"),
       written: feed("written"),
       detail: feed("detail"),
+      more: (entries) => feed("more")(entries && entries.length > 0 ? entries : null),
       openHistory: () => {
         if (!source || !title || kind === "history") return;
         openItem(environmentId, sessionId, { kind: "history", source, title }).catch((error: unknown) => sayError(error, "Couldn't open the history"));

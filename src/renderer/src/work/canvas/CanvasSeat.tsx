@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { CanvasKind } from "@shared/work";
+import { Check, X } from "../../chrome/icons";
 import type { MenuRow } from "../../chrome/menuRows";
 import { addContextChip } from "./chips";
 import type { Session } from "../../lib/session";
@@ -10,6 +11,9 @@ import { sayError, useFrame } from "./frame";
 import type { CanvasKindDef, CanvasSelection } from "./kind";
 import { CANVAS } from "./registry";
 import { closeItem, reorderItems, selectItem, setFolded, useCanvas, useKeptState } from "./store";
+
+/** A kind's own row in More is named apart from the frame's. */
+const KIND_ROW = "kind:";
 
 /** The item's share of the pane while the thread shows: it takes the room, and the thread keeps its 360px. */
 export const ITEM_SPLIT = 70;
@@ -55,19 +59,30 @@ export function CanvasSeat({
   };
 
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
+  const own = feeds.more ?? [];
+  // The kind's own verbs first, then the verbs on every pending change, then the tab's.
   const rows: MenuRow[] = [
+    ...own.map((entry): MenuRow => ({ kind: "item", id: KIND_ROW + entry.id, label: entry.label, icon: entry.icon, disabled: entry.disabled })),
+    ...(own.length > 0 ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
     ...(review
       ? ([
-          { kind: "item", id: "accept-all", label: "Accept all" },
-          { kind: "item", id: "reject-all", label: "Reject all" },
+          { kind: "item", id: "accept-all", label: "Accept all", icon: Check },
+          { kind: "item", id: "reject-all", label: "Reject all", icon: X },
           { kind: "sep" },
         ] satisfies MenuRow[])
       : []),
-    { kind: "item", id: "close", label: "Close" },
-    ...(view.items.length > 1 ? ([{ kind: "item", id: "close-others", label: "Close others" }] satisfies MenuRow[]) : []),
+    { kind: "item", id: "close", label: "Close", icon: X },
+    ...(view.items.length > 1 ? ([{ kind: "item", id: "close-others", label: "Close others", icon: X }] satisfies MenuRow[]) : []),
   ];
   const pick = (id: string): void => {
     if (!shown) return;
+    const entry = id.startsWith(KIND_ROW) ? own.find((e) => KIND_ROW + e.id === id) : undefined;
+    if (entry) {
+      Promise.resolve()
+        .then(() => entry.run())
+        .catch((error: unknown) => sayError(error, `Couldn't ${entry.label.charAt(0).toLowerCase()}${entry.label.slice(1)}`));
+      return;
+    }
     if (id === "close") close(shown.id);
     if (id === "close-others") view.items.filter((item) => item.id !== shown.id).forEach((item) => close(item.id));
     if (review && (id === "accept-all" || id === "reject-all")) {

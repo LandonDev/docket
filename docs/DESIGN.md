@@ -863,7 +863,9 @@ thread; nothing answers inside the canvas.
   the person sees; the mode says which.
 - **The review stepper**: Previous, "2/6" tabular, Next, Reject (ghost),
   Accept (secondary). It is the one place to accept or reject inside the
-  item; Accept all and Reject all live in ⋯. The current change is
+  item; Accept all and Reject all live in ⋯, under the kind's own verbs
+  on the item (Export transcript, Download recording), each row a glyph
+  and a verb. The current change is
   outlined. A move counts as one change, tinted where it lands and where
   it leaves. After a direct write the stepper's slot holds the settled
   line ("Wrote 2 sections, 2:04 PM") with Undo.
