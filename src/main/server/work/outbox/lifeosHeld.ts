@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, NotBuilt, type HeldRef } from '@shared/work'
 import type { ActKindDef, WorkCtx } from '../modules'
+import { outgoingHtml } from '../mail/outgoing'
 import { ActStale } from './kinds'
 import type { LifeosHeld, Outbox } from './outbox'
 import { INTERRUPTED } from './store'
@@ -510,7 +511,8 @@ export const mailSendKind: ActKindDef<MailSendPayload, MailSendMatcher> = {
     const now = await owner.query<{ row: OutboxDoc } | null>(LIFEOS_HELD_FNS.mailGet, { id: p.id })
     if (!now?.row) throw new ActStale('LifeOS no longer has this mail')
     if (now.row.status === 'failed') await owner.mutation(LIFEOS_HELD_FNS.mailRetry, { id: p.id })
-    else if (now.row.status === 'draft') await owner.mutation(LIFEOS_HELD_FNS.mailSend, { id: p.id, message: p.message, cause })
+    // The outgoing rules clean the HTML first: Outlook takes it as it is, and a draft can carry a raw signature.
+    else if (now.row.status === 'draft') await owner.mutation(LIFEOS_HELD_FNS.mailSend, { id: p.id, message: { ...p.message, html: outgoingHtml(p.message.html) }, cause })
     else if (!['queued', 'sending', 'sent'].includes(now.row.status)) throw new ActStale(`LifeOS holds this mail as ${now.row.status}`)
     // Already queued, sending or sent: it went by another hand (LifeOS's own app); nothing is sent twice.
     return { summary: mailWords(p).summary.replace(/^Send to/, 'Sent to'), ref: { at: 'lifeos', table: 'outbox', id: p.id } }
