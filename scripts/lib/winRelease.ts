@@ -6,14 +6,15 @@
  * only the builder's own. With `npmRebuild: false` and `asar: false` a Windows
  * build made on a Mac or the box would carry that machine's `claude` and no
  * `claude.exe`. So the win32 package is fetched by the version and checksum
- * bun.lock already holds, laid into the Windows pack by electron-builder.yml,
+ * bun.lock already holds, laid into the Windows pack by build/electron-builder.win.yml,
  * and the packed app is checked before anything is uploaded.
  */
 
 /** The platform package the Windows build needs. */
 export const WIN_CLI_PACKAGE = '@anthropic-ai/claude-agent-sdk-win32-x64'
 export const SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk'
-/** Where scripts/win-stage.ts lays it; electron-builder.yml's `win.files` maps this folder onto node_modules. */
+/** Where scripts/win-stage.ts lays it; build/electron-builder.win.yml maps this folder onto node_modules. */
+export const WIN_CONFIG = 'build/electron-builder.win.yml'
 export const STAGE_DIR = 'artifacts/win-stage/node_modules'
 
 /** A name like `@scope/pkg-darwin-arm64`: the platform it was built for, null for an ordinary package. */

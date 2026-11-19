@@ -2,6 +2,9 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// These keys are a Mac's (⌃D): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
+vi.mock("../../lib/platform", () => ({ IS_MAC: true }));
+
 const { controller, openFileAt } = vi.hoisted(() => ({
   controller: {
     step: vi.fn(),

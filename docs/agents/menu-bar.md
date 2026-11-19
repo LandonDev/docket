@@ -15,7 +15,9 @@ focused tab is split, idle rows greyed) and main rebuilds the menu
 from the focused window's state when it changes. A `pageKey` row (New
 Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar
 (chrome/MenuBar.tsx, `inAppMenus`) mounts only in web mode off macOS: a
-desktop window off macOS has the native bar. It is a `menubar` named "Menu
+desktop window on Linux has the native bar, and one on Windows has none
+(windows.ts hides it, so Alt reveals nothing; the menu's accelerators still
+run, Ctrl where the Mac has ⌘: [windows-build.md](windows-build.md)). It is a `menubar` named "Menu
 bar": a lone Alt focuses its first title, Left, Right, Home and End move
 between the titles (one tab stop; while a menu is open Left and Right open
 its neighbour), and Escape with no menu open, or Alt again, closes it and

@@ -17,7 +17,11 @@ import {
   stagedBundlePath,
   stalePaths,
   updaterCacheDirName,
-  RELEASE_FEED
+  RELEASE_FEED,
+  installBlockers,
+  parseProcessTable,
+  staleWindowsPaths,
+  type ProcRow
 } from './updateInstall'
 
 // The real log of the failed 1.0.205 install (2026-10-10), two attempts.
@@ -156,5 +160,70 @@ describe('feedFallback', () => {
   it('names the public repo for a bundle shipped without the file', () => {
     expect(feedFallback(false)).toEqual({ provider: 'github', owner: 'LandonDev', repo: 'temp-code' })
     expect(feedFallback(false)).toBe(RELEASE_FEED)
+  })
+})
+
+describe('Windows: the child tree before an install', () => {
+  const EXE = 'C:\\Users\\me\\AppData\\Local\\Programs\\TempCode\\TempCode.exe'
+  const DIR = 'C:\\Users\\me\\AppData\\Local\\Programs\\TempCode'
+  const CLI = `${DIR}\\resources\\app\\node_modules\\@anthropic-ai\\claude-agent-sdk-win32-x64\\claude.exe`
+  const row = (pid: number, ppid: number, exe: string | null, startedAt = pid): ProcRow => ({ pid, ppid, exe, startedAt })
+  const self = { pid: 100, exe: EXE, appDir: DIR }
+
+  it('ends what the app started, down the tree, and leaves its own processes to the quit', () => {
+    const rows = [
+      row(4, 0, null),
+      row(100, 50, EXE),
+      row(110, 100, EXE), // a renderer
+      row(120, 100, EXE), // the exec broker, a utility process
+      row(121, 120, 'C:\\Program Files\\Git\\cmd\\git.exe'), // its child
+      row(130, 100, CLI), // a warm harness
+      row(131, 130, 'C:\\Program Files\\Git\\bin\\bash.exe'), // the CLI's shell
+      row(140, 100, 'C:\\Windows\\System32\\conhost.exe'), // a terminal's console host
+      row(900, 800, 'C:\\Windows\\explorer.exe') // a stranger
+    ]
+    expect(installBlockers(rows, self).sort((a, b) => a - b)).toEqual([121, 130, 131, 140])
+  })
+
+  it('ends a process running out of the install folder even when its parent is gone', () => {
+    const rows = [row(100, 50, EXE), row(300, 77, CLI), row(301, 77, 'C:\\Windows\\notepad.exe')]
+    expect(installBlockers(rows, self)).toEqual([300])
+  })
+
+  it('compares paths as Windows does, without case', () => {
+    const rows = [row(100, 50, EXE), row(110, 100, EXE.toUpperCase()), row(300, 77, CLI.toLowerCase())]
+    expect(installBlockers(rows, { ...self, appDir: `${DIR}\\` })).toEqual([300])
+  })
+
+  it('does not believe a parent younger than its child: Windows reuses ids', () => {
+    // 100 started at t=5000; a process naming 100 as its parent but started at t=10 belonged to an earlier 100.
+    const rows = [row(100, 50, EXE, 5000), row(200, 100, 'C:\\Windows\\notepad.exe', 10), row(201, 100, 'C:\\Windows\\notepad.exe', 6000)]
+    expect(installBlockers(rows, self)).toEqual([201])
+  })
+
+  it('never names itself, and survives a table it cannot read', () => {
+    expect(installBlockers([row(100, 100, EXE)], self)).toEqual([])
+    expect(installBlockers(parseProcessTable('not json'), self)).toEqual([])
+  })
+
+  it('reads the process table PowerShell prints, in either date form, one row or many', () => {
+    const table = JSON.stringify([
+      { ProcessId: 100, ParentProcessId: 50, ExecutablePath: EXE, CreationDate: '/Date(1763500000000)/' },
+      { ProcessId: 130, ParentProcessId: 100, ExecutablePath: null, CreationDate: '2026-11-19T01:00:00.000Z' },
+      { ProcessId: 'x', ParentProcessId: 1 }
+    ])
+    expect(parseProcessTable(table)).toEqual([
+      { pid: 100, ppid: 50, exe: EXE, startedAt: 1763500000000 },
+      { pid: 130, ppid: 100, exe: null, startedAt: Date.parse('2026-11-19T01:00:00.000Z') }
+    ])
+    expect(parseProcessTable(JSON.stringify({ ProcessId: 7, ParentProcessId: 1, ExecutablePath: EXE }))).toEqual([
+      { pid: 7, ppid: 1, exe: EXE, startedAt: 0 }
+    ])
+  })
+
+  it("a retry drops electron-updater's download and nothing of Squirrel's", () => {
+    const paths = staleWindowsPaths('/local', 'temp-code-updater')
+    expect(paths).toHaveLength(1)
+    expect(paths[0]).toMatch(/temp-code-updater[\\/]pending$/)
   })
 })

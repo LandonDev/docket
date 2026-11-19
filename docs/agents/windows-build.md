@@ -1,0 +1,164 @@
+# The Windows build: install, update, frame and keys
+
+TempCode on Windows 11 as a desktop app: an installer that needs no admin, an updater, the
+Windows frame and Ctrl keys (milestone 12 of the Work plan). The host core under it (shells,
+process trees, links, the path fence) is milestone 13's, and a Windows host linked to the box is
+milestone 41's. **Work in progress (2026-11-19):** the build, the silent install and the bundled
+CLI are proven in the rig; the window does not open yet, because the server's boot stops at a
+symlink a standard Windows user may not make (`SkillMaterializer.swapIfWanted`, milestone 13's
+link helpers), so the frame, the keys and the update are written and unit-tested but not yet seen
+running. Every Windows branch is behind a platform check; the Mac's build, release and updater
+are meant to be as they were, and that has not been proven on a Mac yet.
+
+## The build
+
+- **Config.** `electron-builder.yml` holds the `win` block (an `nsis` installer and a `zip`, both
+  x64, the icon, the signing hook) and the `nsis` block (`oneClick: true`, `perMachine: false`).
+  `build/electron-builder.win.yml` extends it with the file rules only a Windows pack needs, and
+  **every Windows build passes it**: `electron-builder --win --config build/electron-builder.win.yml`.
+  Never put a string under `win.files` in the main config: electron-builder folds the top-level
+  `files` strings into one file set and a platform's strings become a second, wider one, whose
+  union undoes every exclusion (the first Windows pack carried `src/`, `docs/` and `ios/`). Two
+  configs joined by `extends` merge into one set.
+- **Where it is built.** On the Mac beside the Mac's zip (`release:publish --win`), or on the box.
+  electron-builder makes the NSIS installer anywhere, but it writes the uninstaller by running
+  the half-built installer once: on a Mac it reads it out of the file in JavaScript instead
+  (`UninstallerReader`), as LifeOS's release does, and on Linux it wants wine. The box has no
+  wine, and electron-builder's own bundle (`toolsets.wine: 1.0.1`) does not start there (it
+  carries no Windows DLLs of its own: `failed to load ntdll.dll`). So the box's build
+  (scripts/e2e-updater-win.ts `wineStandIn`) puts a `wine` first on PATH that calls the same
+  `UninstallerReader` the Mac's build uses.
+- **The Claude CLI.** The Claude Agent SDK ships its CLI as one optional package per platform, and
+  a package manager installs only the builder's. With `npmRebuild: false` and `asar: false` a
+  Windows build made on a Mac would carry a Mach-O `claude` and no `claude.exe`. So
+  `bun scripts/win-stage.ts stage` downloads `@anthropic-ai/claude-agent-sdk-win32-x64` at the
+  version the installed SDK asks for, checks it against the sha512 `bun.lock` already holds, and
+  unpacks it under `artifacts/win-stage/` (ignored by git); the Windows config lays it into
+  `node_modules` and keeps every `*-darwin-*` and `*-linux-*` package out. `@muse-code/sdk` is
+  plain JavaScript (the `muse` binary is the person's own install), so there is nothing to stage;
+  the check fails the day it gains a platform package.
+- **The release check.** `bun scripts/win-stage.ts check-app [dir]` judges a packed app
+  (`dist/win-unpacked`): `claude.exe` there, a 64-bit Windows executable, the version the SDK
+  wants; no other platform's package; node-pty's win32-x64 prebuild; no Mac helper under
+  `resources/native`. `check-files <dist> <1.0.N>` judges the four release files and that
+  `latest.yml` names the installer with its size and checksum. The rules are
+  scripts/lib/winRelease.ts (`packedAppProblems`, `winFilesProblems`, `winReleaseFiles`).
+- **Unsigned.** `scripts/sign-win.mjs` is the signing hook and it is empty. SmartScreen asks once
+  on a download (More info, Run anyway). A certificate goes in the hook only if a machine refuses
+  the build; LifeOS's hook (jsign with Azure Artifact Signing) is the pattern.
+
+## The release
+
+`bun run release:publish --win` (or `TEMP_CODE_WIN=1`) adds the Windows pass to the `sign` phase:
+stage the CLI, one more electron-builder call on the Windows config, `check-app`, the feed config
+in `resources/app-update.yml`, `check-files`; then the upload carries four more files and the feed
+step reads `latest.yml` too. Without the flag the script does what it always did. The files:
+
+| File | What |
+|---|---|
+| `temp-code-1.0.N-setup.exe` | the installer, about 300 MB |
+| `temp-code-1.0.N-setup.exe.blockmap` | its block map, for differential downloads |
+| `TempCode-1.0.N-win-x64.zip` | the app unpacked, for a PC that refuses the installer; a copy made this way does not update itself |
+| `latest.yml` | the feed file a Windows install reads, beside the Mac's `latest-mac.yml` |
+
+A release published without `--win` has no `latest.yml`, and a Windows install's check of it fails
+quietly until the next one that has. Turn the flag on for every publish once a Windows host is in use.
+
+## Install
+
+One click, per user: the installer writes `%LOCALAPPDATA%\Programs\TempCode` and asks for no
+admin. `build/installer.nsh` names the folder after the product (electron-builder's default for
+this mode is the package name, `temp-code`); an update keeps the folder the first install chose.
+Silent: `temp-code-1.0.N-setup.exe /S`. The Start menu and the desktop get a shortcut, and the
+shortcut's AppUserModelId is the app id (`dev.landon.tempcode`), which the app sets too
+(`APP_USER_MODEL_ID` in src/main/windowFrame.ts) so toasts and the taskbar group find it.
+
+The data (the database, checkpoints, logs) is `%LOCALAPPDATA%\TempCode`, not Electron's default
+`%APPDATA%`: a managed PC copies the roaming profile at sign-out and this folder runs to gigabytes
+(`localUserData`, set in src/main/index.ts before anything reads the path). electron-updater's
+downloads are `%LOCALAPPDATA%\temp-code-updater`.
+
+**The vault stays on a key file.** aliax-core has a Keychain mode (macOS) and a key-file mode;
+it has no DPAPI mode, so on Windows the vault's key is a file in the data folder, protected by
+the profile's own access rules and nothing more, as on the box.
+
+## Update
+
+electron-updater's NSIS path: the same feed (`latest.yml`), the same check, download and
+"Restart to update" as the Mac, and `quitAndInstall` runs the downloaded installer, which shows
+its own progress window and starts the app again. What differs (src/main/update.ts,
+updateInstall.ts):
+
+- **No Squirrel.** ShipIt's log, its staged bundle and its launchd job are read and cleared only
+  on a Mac. Off the Mac the attempt record (`update-attempt.json`) alone says an install did not
+  land, and a retry drops electron-updater's `pending` download.
+- **The child tree is stopped first.** The app is unpacked, the installer replaces thousands of
+  plain files, and Windows will not replace one a running process holds open: a bundled
+  `claude.exe` kept warm fails the update. A child does not die with its parent on Windows. So
+  "Restart to update" runs the app's own shutdown ahead of the installer (`beforeInstall`: the
+  mid-turn threads recorded for the next boot, the terminals, the server, the helpers), then
+  `stopChildTree` reads one process table (`Get-CimInstance Win32_Process`) and ends every
+  descendant that is not the app's own executable, and anything else running out of the install
+  folder (`installBlockers`: a parent id counts only when the parent is older than the child,
+  since Windows reuses ids). A quit with a downloaded release waiting does the same sweep after
+  its shutdown. Milestone 13's `procTree.ts` and its Job Objects can take this over.
+
+## The frame
+
+src/main/windowFrame.ts (`frameOptions`), used by windows.ts:
+
+- `titleBarStyle: 'hidden'` with a title bar overlay: Windows draws its own minimise, maximise and
+  close over the page's bar, so Snap Layouts, the hover states and the red close are the system's.
+  The overlay is clear and 40px tall, the bar's height; `window:set-zoom` rescales it with the page.
+- The renderer leaves that corner empty: `chrome/WindowControls.tsx` draws a spacer as wide as
+  the system says the buttons are (`env(titlebar-area-width)`), and no controls of ours. Linux
+  and the /ui page keep the drawn ones. The bar is the drag region, as on the Mac.
+- The glyphs take the ink of the app's theme. Only the page knows its theme, so it writes the
+  shell colour to its `theme-color` and main reads `did-change-theme-color` (`isDarkColor`).
+- No menu bar (`setMenuBarVisibility(false)`), so Alt reveals nothing; the menu still exists and
+  its accelerators run, Ctrl where the Mac has ⌘.
+- **No Mica.** The plan named it; docs/DESIGN.md has one neutral palette and no glass, and it wins.
+  The shell is the opaque `sidebar` tone on every platform.
+- The lock and sleep come from `powerMonitor` (`screenOfIdleState` for the state at boot); the
+  display is kept awake while threads work, as on a Mac (`powerSaveBlocker`).
+
+## Keys
+
+One key map, `src/renderer/src/lib/keys.ts`:
+
+- `modKey(e)`: the command modifier, ⌘ on a Mac and Ctrl elsewhere, one of the two alone. For the
+  chords where Ctrl on a Mac means something else: ⌘Enter in the composer, ⌘click on Send, ⌘P.
+- `modOrCtrl(e)`: either key, which most chords have always taken on every platform.
+- `ctrlOnly`, `altOnly`, `macCommand`, `chordKey`, `bareKey` for the rest.
+- `keyHint("mod+shift+M")` is `⌘⇧M` on a Mac and `Ctrl+Shift+M` elsewhere; `keyCaps` gives the
+  caps one by one. `lib/settings.ts`'s key list, the in-app menu bar and every tooltip go through them.
+
+`lib/keysGuard.test.ts` holds it: no renderer file but `lib/keys.ts` reads `metaKey`, and none
+types a key glyph outside a comment (Appshots, a Mac-only feature, is the one exception). A test
+whose keys are a Mac's says so with `vi.mock("…/lib/platform", () => ({ IS_MAC: true }))`.
+
+A Windows host's glyph is a desktop (`hostKind` in lib/hostPlatform.ts, `chrome/HostGlyph.tsx`).
+
+## Proof
+
+Seen in the rig on 2026-11-19 (1.0.346): the installer ran silently over SSH as the standard user
+and exited 0 (279 s), the app landed in `%LOCALAPPDATA%\Programs\TempCodeE2E` with nothing under
+Program Files and a Start menu shortcut, the bundled `claude.exe --version` answered
+`2.1.280 (Claude Code)`, and the app's database appeared under `%LOCALAPPDATA%`. Not yet seen: a
+window (the boot stops as said at the top), so every step after it.
+
+`bun scripts/e2e-updater.ts --win` (scripts/e2e-updater-win.ts), on the box: builds 1.0.N-1 and
+1.0.N as `TempCodeE2E` with the harness block, serves the new one from a local feed, and in the
+rig, as the standard user, installs the old one silently over SSH, starts it on the desktop, checks
+the frame, Ctrl+, and the hints over CDP, runs the bundled `claude.exe --version`, and drives
+check → download → restart until the folder holds 1.0.N and the relaunched app answers. `--busy`
+keeps a terminal with a bundled `claude.exe` alive across the restart; `--reuse` keeps the builds;
+`--rig-up` uses a rig that is already up. The guest reaches the feed and the box reaches the
+guest's CDP port through one SSH connection (`-R` and `-L`): Chromium's debug port listens on the
+guest's own loopback, where QEMU's forward does not reach.
+
+Unit tests: `src/main/windowFrame.test.ts` (window options per platform, the data folder),
+`scripts/winRelease.test.ts` (the release file list, the config, the release check),
+`src/main/updateInstall.test.ts` (the child sweep), `src/main/presence.test.ts` (the lock at boot),
+`src/renderer/src/lib/keys.test.ts` and `keysGuard.test.ts`, `chrome/WindowControls.dom.test.tsx`,
+`chrome/HostGlyph.dom.test.tsx`.

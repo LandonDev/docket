@@ -134,7 +134,14 @@ Two separate steps, on purpose, over one gate.
    `TEMP_CODE_DMG=1`) builds and uploads the dmg too, for a fresh install;
    both for a release someone else will download. `--dry-run` runs every
    local phase with its timing on any commit and pushes, releases and
-   uploads nothing; `--pack-only [dir]` is the tarball alone. It refuses a
+   uploads nothing; `--pack-only [dir]` is the tarball alone. `--win` (or
+   `TEMP_CODE_WIN=1`) adds the Windows files inside the `sign` phase: the
+   win32 Claude CLI staged, a second electron-builder call on
+   build/electron-builder.win.yml, the packed app and the four files checked
+   (scripts/win-stage.ts), the installer with its blockmap, the zip and
+   `latest.yml` uploaded and that feed read back; off by default, and without
+   it the script does what it always did
+   ([windows-build.md](windows-build.md)). It refuses a
    version the feed already serves. Apple silicon only; Intel is out of
    scope for now. The box's `box-update v1.0.N` lays that tarball in
    instead of building (docs/box.md "Build once"). docs/release-gate.md

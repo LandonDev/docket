@@ -73,7 +73,8 @@ env -u ELECTRON_RUN_AS_NODE \
   extraMetadata) carries the same three TEMP_CODE_* keys into an app that
   Squirrel's ShipIt relaunches without our environment (src/main/harness.ts).
   Its Squirrel state lives in `~/Library/Caches/dev.landon.tempcode.e2e.ShipIt`.
-  Nothing of this touches /Applications/TempCode.app or its caches.
+  Nothing of this touches /Applications/TempCode.app or its caches. `--win` is
+  the Windows pass, run on the box against the rig (docs/agents/windows-build.md).
 
 ## The user dogfoods master on the prod data
 `bun run dev:prod` runs master against the prod userData (CDP on 9220).
@@ -141,6 +142,13 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   drift, harness and memory sync, the Mac bridge, dev servers, process guard,
   threads across hosts, the relay, devices, restart resume, backups.
   [docs/agents/linux-agent-host.md](docs/agents/linux-agent-host.md)
+- **The Windows build** — an NSIS installer and a zip for x64, unsigned, per user with no admin
+  (`%LOCALAPPDATA%\Programs\TempCode`, data in `%LOCALAPPDATA%\TempCode`); every Windows build
+  passes `--config build/electron-builder.win.yml` and stages the win32 Claude CLI first
+  (scripts/win-stage.ts); `release:publish --win`; the frame (src/main/windowFrame.ts), the
+  updater's Windows path, one key map (`modKey`, `keyHint` in src/renderer/src/lib/keys.ts);
+  `bun scripts/e2e-updater.ts --win` proves it in the rig.
+  [docs/agents/windows-build.md](docs/agents/windows-build.md)
 - **The Windows rig** — one Windows 11 evaluation machine on the box for the
   Windows port, run by `agents` under QEMU/KVM, files under /srv/agents/win-vm;
   `up.sh`, `ssh.sh`, `scp.sh`, `run-in-session.sh` (a program on the logged-on

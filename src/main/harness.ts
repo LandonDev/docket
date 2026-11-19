@@ -9,8 +9,10 @@ import { join } from 'path'
  * extraMetadata, written by scripts/e2e-updater.ts): the updater's ShipIt
  * relaunches an installed bundle with a clean environment, and without the
  * baked block a relaunched test app would come up as a plain packaged app on
- * the real userData. The environment wins over the block; a build without
- * the block has nothing to apply.
+ * the real userData. A Windows test build (scripts/e2e-updater-win.ts) bakes
+ * the same block for the same reason: the NSIS installer starts the updated
+ * app, and nothing of the driver's environment reaches it. The environment
+ * wins over the block; a build without the block has nothing to apply.
  */
 export const HARNESS_KEYS = [
   'TEMP_CODE_USER_DATA',

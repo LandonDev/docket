@@ -1,0 +1,24 @@
+# The Windows build's config: electron-builder.yml, plus the file rules only a Windows pack needs.
+# Every Windows build passes it (`electron-builder --win --config build/electron-builder.win.yml`,
+# from the repo's root); the Mac build never reads it, so nothing here can change the Mac's
+# bundle, and it lives under build/, which no app carries.
+#
+# Why a second file: electron-builder folds the top-level `files` strings into one file set, and a
+# string under `win.files` then becomes a second, wider set whose union with the first undoes
+# every exclusion above it (the first Windows pack carried src/, docs/ and ios/). Two configs
+# joined by `extends` merge their file sets into one, which is the only form that composes.
+extends: ./electron-builder.yml
+files:
+  # A package manager installs one platform's binaries: the builder's. None of those belong in a
+  # Windows app: the Claude Agent SDK's own CLI (a Mach-O or ELF `claude`), and the native halves
+  # of build tools that ride along (lightningcss, Tailwind's oxide).
+  - '!node_modules/**/*-{darwin,linux}-{x64,arm64}{,-gnu,-musl}/**'
+  # On a Windows builder the SDK's win32 CLI is installed too; the staged copy below is the one
+  # that ships, checked against bun.lock.
+  - '!node_modules/@anthropic-ai/claude-agent-sdk-win32-*/**'
+  - '!node_modules/node-pty/prebuilds/darwin-*/**'
+  # Mac-only helpers (Mach-O). M42 adds the Windows computer-use service's own line.
+  - '!resources/native/{appshot-helper,tc-computer,tc-computer.stamp}'
+  # The win32 Claude CLI, staged by scripts/win-stage.ts from the checksum bun.lock holds.
+  - from: artifacts/win-stage/node_modules
+    to: node_modules

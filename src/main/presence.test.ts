@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { COVERED_RECHECK_MS, MacPresenceWatcher, macScreenReader, parseConsoleUsers, parseLockedTime, presenceFromEnv, staticPresence, type PowerMonitorLike } from './presence'
+import { COVERED_RECHECK_MS, MacPresenceWatcher, macScreenReader, parseConsoleUsers, parseLockedTime, presenceFromEnv, screenOfIdleState, staticPresence, type PowerMonitorLike } from './presence'
 
 const plist = (users: string): string =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n\t<key>IOConsoleLocked</key>\n\t<false/>\n\t<key>IOConsoleUsers</key>\n\t${users}\n\t<key>IORegistryEntryName</key>\n\t<string>Root</string>\n</dict>\n</plist>\n`
@@ -247,5 +247,29 @@ describe('a covered screen is read again until it is not', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('Windows: the lock at boot', () => {
+  it("reads powerMonitor's idle state: locked is the lock screen, active and idle a desktop, anything else unknown", () => {
+    expect(screenOfIdleState('locked')).toBe('locked')
+    expect(screenOfIdleState('active')).toBe('unlocked')
+    expect(screenOfIdleState('idle')).toBe('unlocked')
+    expect(screenOfIdleState('unknown')).toBe('unknown')
+  })
+
+  it('with no reader the lock and unlock notices alone carry the screen, and a lock is always a lock', () => {
+    const handlers = new Map<string, () => void>()
+    const watcher = new MacPresenceWatcher({ initial: { screen: 'unknown', power: 'awake' } })
+    watcher.set({ screen: screenOfIdleState('active') })
+    watcher.attach({ on: (event, listener) => handlers.set(event, listener) })
+    handlers.get('lock-screen')!()
+    expect(watcher.snapshot()).toMatchObject({ screen: 'locked', power: 'awake' })
+    expect(watcher.snapshot().saver).toBeUndefined()
+    handlers.get('unlock-screen')!()
+    expect(watcher.snapshot().screen).toBe('unlocked')
+    handlers.get('suspend')!()
+    expect(watcher.snapshot().power).toBe('asleep')
+    watcher.dispose()
   })
 })

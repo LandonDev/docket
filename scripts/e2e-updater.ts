@@ -7,6 +7,8 @@
  *   bun run script:e2e-updater --reuse    # keep the builds under ROOT, redrive
  *   bun run script:e2e-updater --busy     # restart while a thread is running
  *   bun run script:e2e-updater --still-running  # a second instance blocks ShipIt
+ *   bun scripts/e2e-updater.ts --win            # the Windows update path, in the rig on the box
+ *                                               # (scripts/e2e-updater-win.ts has its own account)
  *
  * --still-running keeps a second copy of the old app (same bundle, its own
  * userData) alive across the restart. ShipIt then waits for every instance to
@@ -76,6 +78,10 @@ import {
   tryRun,
   waitForReleaseTrain
 } from './lib/packagedApp'
+
+// The Windows pass is its own driver, run on the box against the rig (scripts/e2e-updater-win.ts).
+// It ends the process itself; nothing below runs.
+if (process.argv.includes('--win')) await import('./e2e-updater-win')
 
 const ROOT = '/private/tmp/tc-updater-e2e'
 const APP_ID = 'dev.landon.tempcode.e2e'

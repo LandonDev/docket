@@ -78,7 +78,9 @@ mac:
     - NSAppleEventsUsageDescription: TempCode restarts your terminal sessions after switching accounts.
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
-# Windows: built unsigned, on the Mac or the box, by `release:publish --win` (docs/agents/windows-build.md).
+# Windows: built unsigned, on the Mac or the box, with `--config build/electron-builder.win.yml` (that file
+# adds the file rules only a Windows pack needs; `release:publish --win` and the updater proof pass
+# it; docs/agents/windows-build.md).
 win:
   icon: build/icon.ico
   target:
@@ -94,15 +96,6 @@ win:
   signtoolOptions:
     signingHashAlgorithms: [sha256]
     sign: ./scripts/sign-win.mjs
-  files:
-    # The Claude Agent SDK ships its CLI as one optional package per platform, and a build made on
-    # a Mac or the box has only that machine's. The win32 one is staged by scripts/win-stage.ts
-    # and laid in here; the builder's own (a Mach-O or ELF `claude`) stays out.
-    - '!node_modules/@anthropic-ai/claude-agent-sdk-{darwin,linux,win32}-*/**'
-    - from: artifacts/win-stage/node_modules
-      to: node_modules
-    # Mac-only helpers (Mach-O). M42 adds the Windows computer-use service's line here.
-    - '!resources/native/{appshot-helper,tc-computer,tc-computer.stamp}'
 # Per user, no admin: one click into %LOCALAPPDATA%\Programs\TempCode (build/installer.nsh names
 # the folder after the product), and electron-updater runs the same installer silently to update.
 nsis:

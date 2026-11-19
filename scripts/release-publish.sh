@@ -25,6 +25,10 @@
 #               else will download; needs the notary Keychain profile
 #   --dmg       or TEMP_CODE_DMG=1       build and upload the dmg too, for
 #               a fresh install (the README's download link)
+#   --win       or TEMP_CODE_WIN=1       build, check and upload the Windows
+#               files too: the unsigned installer with its blockmap, the
+#               zip and latest.yml (docs/agents/windows-build.md). Off by
+#               default: without it this script does what it always did
 #   --pack-only [dist-dir]               the box packing step alone, from
 #               the out/ already built: nothing signed or uploaded
 #   --dry-run                            every local phase (install, gate, build, sign,
@@ -53,14 +57,16 @@ export PATH="$HOME/.bun/bin:/opt/homebrew/bin:$PATH"
 
 NOTARIZE=${TEMP_CODE_NOTARIZE:-0}
 DMG=${TEMP_CODE_DMG:-0}
+WIN=${TEMP_CODE_WIN:-0}
 DRY=0
 while [ $# -gt 0 ]; do
   case $1 in
     --pack-only) exec scripts/release-pack-out.sh --dist "${2:-dist}" ;;
     --notarize) NOTARIZE=1 ;;
     --dmg) DMG=1 ;;
+    --win) WIN=1 ;;
     --dry-run) DRY=1 ;;
-    *) echo "usage: $0 [--notarize] [--dmg] [--dry-run] | --pack-only [dist-dir]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--notarize] [--dmg] [--win] [--dry-run] | --pack-only [dist-dir]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -151,7 +157,7 @@ else
     echo "v$VERSION is already published — commit something and let the train bump first" >&2
     exit 1
   fi
-  echo "publishing $VERSION ($(git rev-parse --short HEAD)) signed as $IDENTITY, $([ "$NOTARIZE" = 1 ] && echo notarized || echo 'not notarized'), $([ "$DMG" = 1 ] && echo 'zip and dmg' || echo 'zip only')"
+  echo "publishing $VERSION ($(git rev-parse --short HEAD)) signed as $IDENTITY, $([ "$NOTARIZE" = 1 ] && echo notarized || echo 'not notarized'), $([ "$DMG" = 1 ] && echo 'zip and dmg' || echo 'zip only')$([ "$WIN" = 1 ] && echo ', and the Windows installer')"
 
   # Push the source first: GitHub creates the v1.0.N tag at master's remote tip
   # the moment the release leaves draft, so master must already be there or the
@@ -257,6 +263,34 @@ if [ ! -f dist/latest-mac.yml ]; then
     "$VERSION" "$(basename "$ZIP")" "$SHA512" "$SIZE" "$(basename "$ZIP")" "$SHA512" "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'" \
     >dist/latest-mac.yml
 fi
+
+# The Windows files, with --win: a second electron-builder call, on the
+# Windows config (build/electron-builder.win.yml: the Mac's plus the file
+# rules a Windows pack needs), packs the
+# same out/ for win32 x64 into dist/win-unpacked and makes the one-click
+# installer (with its blockmap), the zip and latest.yml, the feed file a
+# Windows install reads. Unsigned: scripts/sign-win.mjs is the empty hook.
+# The Claude Agent SDK ships its CLI as one optional package per platform and
+# this machine has only its own, so the win32 one is staged first
+# (scripts/win-stage.ts, checked against bun.lock's checksum), and the packed
+# app is refused without a claude.exe, with another platform's package in it,
+# or without the feed config. Nothing here touches the Mac's files above.
+if [ "$WIN" = 1 ]; then
+  echo "building the Windows installer and zip (unsigned)"
+  bun scripts/win-stage.ts stage >"$STAGE/win.log" 2>&1 || { tail -20 "$STAGE/win.log" >&2; exit 1; }
+  bunx electron-builder --win --x64 --publish never --config build/electron-builder.win.yml \
+    -c.extraMetadata.tempcodeBuild.sha="$SHA" \
+    >>"$STAGE/win.log" 2>&1 || { tail -40 "$STAGE/win.log" >&2; exit 1; }
+  bun scripts/win-stage.ts check-app dist/win-unpacked ||
+    { echo "REFUSING TO PUBLISH $VERSION: the Windows app is not fit to ship" >&2; exit 1; }
+  WIN_FEED_FILE=dist/win-unpacked/resources/app-update.yml
+  for want in "provider: github" "owner: LandonDev" "repo: temp-code"; do
+    grep -qx "$want" "$WIN_FEED_FILE" 2>/dev/null ||
+      { echo "REFUSING TO PUBLISH $VERSION: the Windows app's resources/app-update.yml does not say '$want'" >&2; exit 1; }
+  done
+  bun scripts/win-stage.ts check-files dist "$VERSION" ||
+    { echo "REFUSING TO PUBLISH $VERSION: the Windows files are not all there" >&2; exit 1; }
+fi
 end
 
 # Before anything reaches the feed: check the zip the way Squirrel's ShipIt
@@ -306,7 +340,7 @@ PACK_PID=
 
 if [ "$DRY" = 1 ]; then
   echo "phase ✓ total $(fmt $(( $(now) - T0 ))) $VERSION"
-  echo "dry run of $VERSION done: dist/ holds the zip, latest-mac.yml and the box tarball; nothing left this machine"
+  echo "dry run of $VERSION done: dist/ holds the zip, latest-mac.yml and the box tarball$([ "$WIN" = 1 ] && echo ', and the Windows installer, zip and latest.yml'); nothing left this machine"
   exit 0
 fi
 
@@ -323,6 +357,11 @@ if [ "$DMG" = 1 ]; then
   set -- "$@" "dist/TempCode-$VERSION-arm64.dmg" "dist/TempCode-arm64.dmg"
   [ -f "dist/TempCode-$VERSION-arm64.dmg.blockmap" ] && set -- "$@" "dist/TempCode-$VERSION-arm64.dmg.blockmap"
 fi
+if [ "$WIN" = 1 ]; then
+  # The four names scripts/lib/winRelease.ts checks (winReleaseFiles).
+  set -- "$@" "dist/temp-code-$VERSION-setup.exe" "dist/temp-code-$VERSION-setup.exe.blockmap" \
+    "dist/TempCode-$VERSION-win-x64.zip" dist/latest.yml
+fi
 gh release upload "v$VERSION" --repo "$REPO" --clobber "$@" >"$STAGE/upload.log" 2>&1 ||
   { tail -10 "$STAGE/upload.log" >&2; exit 1; }
 gh release edit "v$VERSION" --repo "$REPO" --draft=false >/dev/null
@@ -338,6 +377,13 @@ FEED_VERSION=$(curl -sL "https://github.com/$REPO/releases/latest/download/lates
   echo "feed still serves '$FEED_VERSION', expected '$VERSION'" >&2
   exit 1
 }
+if [ "$WIN" = 1 ]; then
+  WIN_FEED_VERSION=$(curl -sL "https://github.com/$REPO/releases/latest/download/latest.yml" | sed -n 's/^version: //p')
+  [ "$WIN_FEED_VERSION" = "$VERSION" ] || {
+    echo "the Windows feed still serves '$WIN_FEED_VERSION', expected '$VERSION'" >&2
+    exit 1
+  }
+fi
 end
 
 echo "phase ✓ total $(fmt $(( $(now) - T0 ))) $VERSION"
