@@ -14,7 +14,7 @@ the server, with their fence and their preamble
 ([work-scope.md](work-scope.md)); the hold on what a Work thread does that
 leaves the machine ([work-outbox.md](work-outbox.md)); and the screens that
 make them visible: the rail's Work heading and Work Chats, the Work column
-with its five views, linking a workspace to a sector, and Settings → Work
+with its six views, linking a workspace to a sector, and Settings → Work
 ("The screens" below). Every pillar is built; each has its own account in
 `docs/agents/work-<pillar>.md`.
 
@@ -105,8 +105,9 @@ Settings → Work.
   `ensureCreated` sends on `session.create`.
 - **The column** (chrome/Sidebar.tsx, WorkspaceSessions.tsx): a Work
   workspace offers no New project and no Orchestration; a linked one shows
-  `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Agenda and
-  Docs from `WORK_VIEWS`, then the project cards. Those are LifeOS's,
+  `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Agenda,
+  Docs and Files (Teams files, [work-files.md](work-files.md)) from
+  `WORK_VIEWS`, then the project cards. Those are LifeOS's,
   live: the head keeps `projects:list {sector}` (backlog, active, paused)
   in `setLifeosProjects`, and `withLifeosCards` (lib/workspaceSessions.ts)
   adds a `lifeos:<id>` card for each one no project mirrors yet; its first
@@ -125,7 +126,7 @@ Settings → Work.
   its sector, `lifeos` (a session narrowed to that sector) and
   `startThread(chip)`, which opens a new thread's composer in the workspace
   with the chip in it (`addContextChip`, work/canvas/chips.ts). A fifth
-  row, Routines, follows Docs ([work-routines.md](work-routines.md)); a
+  row, Routines, follows Files ([work-routines.md](work-routines.md)); a
   view opens a thread through `workOpenPort` (lib/workSwitch.ts, App
   registers it). Signed out,
   the frame draws the sign-in instead of the view; unreachable, one state
