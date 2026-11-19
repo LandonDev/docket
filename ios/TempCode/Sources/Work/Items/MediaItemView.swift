@@ -45,9 +45,13 @@ private struct Preparing: View {
             Text("Preparing for the phone").textStep(.meta).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Every two seconds until the host's answer replaces this view: a task runs once per appearance,
+        // and a single reload left a proxy still being cut on this screen for good.
         .task {
-            try? await Task.sleep(for: .seconds(2))
-            reload()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                reload()
+            }
         }
     }
 }

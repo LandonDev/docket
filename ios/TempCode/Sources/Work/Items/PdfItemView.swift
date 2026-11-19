@@ -183,7 +183,8 @@ private struct PdfKitView: UIViewRepresentable {
             NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: view, queue: .main) { [weak self, weak view] _ in
                 MainActor.assumeIsolated { if let view { self?.report(view) } }
             }
-            report(view)
+            // After this update: a state write from inside makeUIView is dropped, and the capsule kept "1 of 1".
+            Task { @MainActor [weak self, weak view] in if let view { self?.report(view) } }
         }
 
         private func report(_ view: PDFView) {
