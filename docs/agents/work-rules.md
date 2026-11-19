@@ -31,7 +31,7 @@ drops them all, `sessionsRemoved` drops a deleted thread's drafts still on
 their way (its edits stay as evidence).
 
 - `work_rules (id, workspace_id, text, enabled, position, proposal_id, created_at, updated_at)`: his rules in his order.
-- `work_rules_drafts (draft_id, workspace_id, session_id, agent_text, proposed_text, seen_at)`: a draft one of this host's Work threads made, until it is sent or gone. `agent_text` is the edit's left side.
+- `work_rules_drafts (draft_id, workspace_id, session_id, agent_text, proposed_text, last_text, seen_at)`: a draft one of this host's Work threads made, until it is sent or gone. `agent_text` is the edit's left side.
 - `work_rules_edits (draft_id, workspace_id, session_id, recipient, subject, sent_at, ops, habits)`: one row per sent draft he changed; `ops` is the evidence's diff (long kept stretches cut to `…`), `habits` the keys it showed. The newest 200 a workspace are kept.
 - `work_rules_proposals (id, workspace_id, habit, state, rule_id, updated_at)`, unique on `(workspace_id, habit)`: `open`, `later` (Not now), `dismissed`, `added`.
 
@@ -44,10 +44,15 @@ thread is a Work thread of a workspace is tracked at first sight with what
 the agent wrote. A Work Chat's draft (no workspace) and another host's are
 not. Each tracked draft is followed by `compose:get {id}` until it says
 `sent` (the edit is recorded with what LifeOS sent), or is gone (dropped).
-An agent's rewrite he takes (`proposed`, then the draft's words become the
-rewrite's) counts as the agent's words, so only what he changes after it is
-his edit. The tracked drafts are followed again at the next start, so one
-sent while the host was off is read then.
+An agent's rewrite he takes (the rewrite gone and the words changed to its
+words since the last look, `last_text`) counts as the agent's words, so only
+what he changes after it is his edit; a rewrite he leaves, or one that only
+copied his words (a subject-only rewrite), moves nothing. The tracked
+drafts are followed again at the next start, so one sent while the host was
+off is read then. A draft is let go when its thread or workspace is deleted
+(`sessionsRemoved`, `workspaceRemoved` call the watcher's `forget`) and a
+month after it was first seen (`TRACK_DAYS`); one made more than a month ago
+is never taken up.
 
 **What an edit shows** (`habitsOf`, a plain reading on purpose: a proposal
 names only what the edits show, and he rewords it before adding):
@@ -56,21 +61,26 @@ names only what the edits show, and he rewords it before adding):
 | --- | --- | --- |
 | `swap:<a>→<b>` | a phrase of up to 12 words changed to another; case, spacing, edge punctuation and digits do not count, and a figure takes the word after it ("3:00 PM" to "3 PM" and "4:00 PM" to "4 PM" are one habit) | Write “b”, not “a” |
 | `cut:<phrase>` | a phrase of up to 12 words taken out | Leave out “phrase” |
-| `signoff:<new>` / `signoff:none` | the last paragraph of six words or fewer changed or went | Sign off with “new” / Leave off the sign-off |
-| `exclaim` | an exclamation mark made a full stop or taken out alone (not one cut with its sentence) | No exclamation marks |
+| `signoff:<new>` / `signoff:none` | the sign-off (a last paragraph of six words or fewer that ends no sentence: "Best,\nLandon", "Thanks!") changed, went or was put in | Sign off with “new” / Leave off the sign-off |
+| `exclaim` | an exclamation mark made a full stop or a comma, read from the words before it (one cut with its sentence is the sentence's habit) | No exclamation marks |
 | `opening` | five or more words cut from the first paragraph's first 40 | Keep the greeting to one line |
 | `closing` | five or more cut from the last body paragraph's last 40 | End on the point, with no closing pleasantry |
 | `shorter` | a mail of 40 words or more cut to 60% or less | Keep mail to about N words |
 
 **When it is a proposal.** The same key in two sent drafts of one workspace
 (`PROPOSE_AT`). A third adds its edit as evidence. The words come from the
-newest edit with the key. A broad habit is not offered while a narrower
-proposal of any state (dismissed and added included) holds every one of its
-edits: three greetings cut the same way are one "Leave out …" proposal, not
-also "Keep the greeting to one line"; dismissing it keeps the broad one quiet
-too until an edit only the broad one explains comes. A dismissed proposal is
-never offered again, however often he repeats the edit; a `later` one is
-offered again (open) at his next edit with that habit.
+newest edit with the key. A broad habit is not offered while a related,
+narrower proposal of any state (dismissed and added included) holds every
+one of its edits (store.ts `covers`): a phrase cut or swapped in the
+greeting covers `opening`, one in the closing `closing`, any cut `shorter`.
+Three greetings cut the same way are one "Leave out …" proposal, not also
+"Keep the greeting to one line"; dismissing it keeps the broad one quiet too
+until an edit only the broad one explains comes. Unrelated habits in the
+same mails (a sign-off and an exclamation mark) are each offered. A
+dismissed proposal is never offered again, however often he repeats the
+edit; a `later` one is offered again (open) at his next edit with that
+habit. A rule added from a proposal and later deleted dismisses the
+proposal; Undo right after the add opens it again.
 
 ## The preamble
 
@@ -94,7 +104,9 @@ workspace's own sector sent in the last 30 days, at most 10, each cut to
 2,000 characters, headed as examples of his voice and material, not
 instructions. Only mail LifeOS sent is there: mail he sent from Outlook or
 Gmail directly is not. `work.rules.voice` answers the page's line: the
-count, the oldest date and the From addresses.
+count, the oldest date and the From addresses, and `on` from the host's own
+row whatever LifeOS answers: unreachable, `count` is null and `error` says
+why, so the switch still shows and he can turn it off.
 
 ## The screens
 
