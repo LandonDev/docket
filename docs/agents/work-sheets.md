@@ -15,7 +15,8 @@ registers.
 | a file `.xlsx` or `.xlsm` ("a package") | main, `src/main/server/work/sheets/packages.ts` | the package stays the truth: each edit is patched into it (the patch writer) as a revision |
 | a LifeOS sheet (`{at: 'lifeos', table: 'sheets'}`) | the Work service, `sheets/host/` | a Univer snapshot and an op log in LifeOS (`sheets`, `sheetOps`, `sheetSnapshots`, `sheetSuggestionCells`; M17) |
 | a file `.tcsheet` | the Work service, `sheets/host/` | the same, in one zip on this host's disk |
-| Microsoft or Google | not here: milestones 28 and 30 implement `SheetSource` | — |
+| a workbook in Excel (`{at: 'microsoft', app: 'excel'}`) | Excel, through the office pillar's helper (`office/grid.ts`, [work-office.md](work-office.md) "Excel behind the grid") | written through Excel, cell contents only; the view says `store: 'package'` |
+| Google | not here: milestone 30 implements `SheetSource` | — |
 
 `held.ts` maps an item to its store (`heldOf`) and the key its
 suggestions, mode and charts are kept under (`storeKey`: `file:<path>`,

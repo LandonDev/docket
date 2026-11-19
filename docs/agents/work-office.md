@@ -1,3 +1,200 @@
 # Work: the Office tools
 
-Not built. Milestone 28 of the Work plan writes this file; [work.md](work.md) says what is mounted for the `office` pillar and how it registers.
+Milestone 28 of the Work plan (architecture §9.2, §10; the sheet research
+`reports/nJLC5WoplSWf.md` §4 and its `excel-as-the-truth-paths` file). One
+tool set lets agents use the Office files and the Outlook the owner has open,
+carried out on the host that has the apps. A workbook that lives in Excel
+opens in the sheet canvas with Excel as its truth. [work.md](work.md) says
+how the `office` pillar is mounted; [work-sheets.md](work-sheets.md) covers
+the sheet canvas.
+
+## Files
+
+| File | What |
+|---|---|
+| `src/shared/contract-work-office.ts` | the wire: `work.office.status` (read), `read` (read), `write` (operate), `switch` (operate) |
+| `office/carrier.ts` | `OfficeCarrier`, the one interface every carrier fills: workbooks and ranges, documents, decks, Outlook mail and calendar, `open` |
+| `office/osa.ts` | one osascript run (`runOsa`), and osascript's errors in words (`osaError`: -1743 refused, -1744 needs his click, -600 not open, -1728 no such item) |
+| `office/mac.ts` | the Mac carrier: one JXA script per verb (`SCRIPTS`), arguments as one JSON string, the answer JSON |
+| `office/fake.ts` | `FakeOffice`, an Office in memory that logs every call: the recorded carrier for the box's tests |
+| `office/excel.ts` | `ExcelHelper`: Excel as the truth behind a grid |
+| `office/grid.ts` | what the sheets pillar asks for an item whose source is `{at: 'microsoft', app: 'excel'}` |
+| `office/tools.ts` | the tool set, and how a call reaches the host that has Office |
+| `office/held.ts` | the held acts `office.mail.send` and `office.calendar.op`, and `cleanMailHtml` |
+| `office/route.ts` | `OutlookRoute`: LifeOS's Outlook-account mail and calendar acts, carried by this host's Outlook |
+| `office/index.ts` | the module: tables, wire, tools, acts, the Excel trigger source, the route's start |
+
+Tables: `work_office_undo` (the helper's undo log), `work_office_journal`
+(the route's sends not yet acked), `work_office_sources` (the LifeOS source
+id per Outlook address). Suggestions over a workbook use the sheets pillar's
+`work_sheets_suggestions` under `excel:<key>`.
+
+## Carriers
+
+A carrier is what drives the apps. Only the Mac's exists now; Outlook on the
+web on the box is M38's and COM on Windows is M44's. `index.ts` picks
+`macCarrier()` on darwin and none elsewhere (`setCarrier` in tests).
+
+**The Mac.** Each verb is one JXA script run by `/usr/bin/osascript -l
+JavaScript -`. A range is one Apple Event each way, never one per cell. The
+names come from the apps' own dictionaries (`sdef`), checked against Excel
+16.102 and Outlook 16.115 on the owner's Mac. Word and PowerPoint were not
+installed there; their scripts follow the published dictionaries and are
+unproven. A verb on an app that is not running answers "not open". It never
+starts the app unseen. The one exception is `open`, the switch (`open -a
+"Microsoft Excel" <path>`, or `ms-excel:ofe|u|<url>`).
+
+macOS charges osascript's Apple Events to TempCode, so the Automation prompt
+reads "TempCode wants to control Microsoft Excel", once per app. **TempCode
+cannot get that prompt yet.** The packaged app has no
+`NSAppleEventsUsageDescription` and no
+`com.apple.security.automation.apple-events` entitlement. Under the hardened
+runtime, macOS refuses its Apple Events (-1743) without asking. Adding both
+in the build config is a need for the master (M28.md). Until then every
+Office call from the installed app answers "TempCode may not control …".
+
+`apps()` reports each app as installed, running and allowed. macOS will not
+say whether an app is allowed without asking, so `allowed` is what the last
+call found, and `unknown` before any call.
+
+## The tools
+
+One set for Claude, Codex and Muse (architecture §10):
+
+| Tool | Does | Held |
+|---|---|---|
+| `office_files` | apps, open workbooks (sheets, used sizes), documents, decks, each with its `key` (a path, or a URL for a file in OneDrive, SharePoint or Teams) | no |
+| `office_range_read` | values, formulas and the block's `hash` | no |
+| `office_range_write` | a block, with `base` the hash read; stale answers `conflict` and writes nothing; answers a `writeId` | no; the rule below |
+| `office_range_undo` | puts back one of its writes, only while the cells hold what it wrote | no |
+| `office_doc_read`, `office_doc_edit` | paragraphs; insert at start or end, or find and replace | no; the rule below |
+| `office_slides_read`, `office_slides_replace` | each slide's text; replace text | no; the rule below |
+| `office_mail_list`, `office_mail_read` | Outlook's inbox, sent or drafts | no |
+| `office_mail_draft` | a draft left in Outlook's Drafts; nothing is sent | no |
+| `office_mail_send` | send, reply (`replyTo`), forward (`forward`), HTML body | **yes**: `office.mail.send` |
+| `office_calendar_list` | events by start | no |
+| `office_calendar_create` | with nobody invited, a hold on his own calendar, made at once | with `attendees`, **yes**: `office.calendar.op` |
+| `office_calendar_answer` | accept, decline, tentative | **yes**: `office.calendar.op` |
+
+**The rule for a file others can open.** A file named by a URL is shared.
+On a shared file, a change he asked for in so many words is written: the
+tool carries `because: "asked"` and a `quote`, and the host finds the quote
+in his own messages (`ctx.threads.ownerSaid`). Otherwise the change waits
+for him (`judgeWrite`, `shared/work/because.ts`). On a workbook it waits as
+suggestions; in Word, as a tracked change. PowerPoint keeps no suggestions,
+so the tool refuses and says so. On his own files every write is direct.
+
+**Where a tool runs.** On the host that has a carrier, the tool runs there.
+Elsewhere (the box), it goes to the first host in the workspace's
+`mayUseDesktop` ("May use this Mac") through
+`ctx.peer(host).call('office', 'read' | 'write', {tool, args, asked?, by?})`.
+That host runs the same tool through `work.office.read` (only a tool that
+changes nothing) or `work.office.write`, under its bridge policy for the
+caller (peer.ts: `read` lets only reads through). The calling host checks
+the owner's words and sends the result as `asked`; the far host takes it
+from there.
+
+## What is held
+
+`office.mail.send` and `office.calendar.op` are host-store act kinds
+(`held.ts`, registered through `WorkModule.acts`). A tool only ever calls
+`ctx.held.create`; Outlook is called in the kind's `execute`, which the
+Outbox runs once, after his press or a grant he made from one of these. A
+send that comes over the peer link is held on the host that has Outlook,
+with no thread (`sessionId: null`), and is pressed there. Each act carries
+its `host` and refuses to run anywhere else. A mail grant fits when the
+account matches and every recipient is named, or sits in a named domain.
+Calendar acts take no grant. The payload's HTML goes through
+`cleanMailHtml` (no script, style, frame, object, form, base, meta or link
+element, no `on…` handler, no `javascript:` link) before it reaches Outlook.
+
+## LifeOS mail through Outlook
+
+`route.ts` makes this host one of the machines LifeOS's local route sends
+through (M22 section 4, M24 section 8). It starts only while LifeOS is
+connected and Outlook is installed (checked every 5 minutes):
+
+- **beat**, every minute: each Outlook address once through
+  `sources:register` (channel `outlook-local:<host id>`), then
+  `sources:heartbeat`.
+- **pump**, every 20 seconds: `outbox:localDue {host}`, then for each row
+  `localClaim`, a journal row, `sendMail` from the row's account (HTML
+  through `cleanMailHtml`; plain text as HTML when there is none), then
+  `localSent` with Outlook's id, or `localFailed` with the reason. Then
+  `calendarOps:localDue {accounts}`: `create` makes the event and sends the
+  invitation; `accept`, `decline` and `tentative` find the event by its
+  calendar UID (`eventByUid`) and answer it; `update`, `propose` and
+  `cancel` fail with "do it in Outlook".
+- **the journal.** A row is journaled before Outlook is called and cleared
+  after LifeOS's ack. Each pass first acks what is still in it: a lost ack
+  becomes a late ack, never a second send. The Purdue PC's sender works the
+  same way.
+
+## Excel behind the grid
+
+`ExcelHelper` (excel.ts) holds each watched block's cells and hash
+(work-kit's `hashCells`: formula, else value):
+
+- **A write** reads the cells again first (the safety re-read). With a
+  `base` that no longer matches, it answers `conflict` and writes nothing.
+  Otherwise it logs what the cells held to `work_office_undo`, writes the
+  block in one call, and reads it back: Excel types what it is given, so its
+  copy is the truth.
+- **Undo** puts the old contents back only while the cells still hash to
+  what the write left. Excel's own undo does not cover scripted writes.
+- **The safety pass** (every 15 s while anything is watched) reads each
+  watched block again. AppleScript reports no changes, so on the Mac this
+  pass is the main loop. Someone else's change arrives as a re-read block
+  (`by: 'excel'`). A changed cell turns its pending suggestion `conflict`.
+  A block whose rows moved by one to ten (a row inserted in Teams;
+  `shiftOf`) orphans every suggestion on the workbook. The helper's own
+  writes reach watchers as `by: 'tempcode'`.
+- `source(book)` is the workbook as work-kit's `SheetSource`, with
+  `formulas: 'store'`. Sheets are named by their tab names. One read and
+  one write per sheet, over the bounding box of the cells.
+
+**In the sheet canvas.** `heldOf` (sheets/held.ts) maps a source `{at:
+'microsoft', app: 'excel'}` to `{at: 'excel'}`, and the sheets pillar asks
+`grid.ts`:
+
+- `load` gets a Univer snapshot read from Excel. Each sheet's id is its tab
+  name, and a big sheet loads only as far as one read reaches (50,000
+  cells).
+- Every change Excel shows moves the workbook's `rev`. The canvas is told
+  through `announce`, and `since` answers `reload`: Excel gives cells, not
+  mutations.
+- `edit` writes the grid's cell contents through the helper and refuses
+  formatting and rows or columns, as for an opened package. The view says
+  `store: 'package'`, so the canvas treats it the same way, with `reach`
+  offering the switch to Excel.
+- Accepting a suggestion writes it only while its cell holds what the agent
+  saw.
+- History, compare and restore say Excel keeps them.
+- The switch brings Excel forward (`work.sheets.switch`).
+- Only the host that has Excel serves the item.
+
+**The trigger source.** For a routine's `file` trigger on an Excel source,
+the pillar fires when the safety pass hears someone else's change.
+
+## Testing
+
+On the box, everything runs against `FakeOffice`. That covers the tools,
+the held acts (`tools.test.ts`: every verb that sends answers a held act,
+and Outlook sends nothing), the helper (`excel.test.ts`), the canvas path
+(`grid.test.ts`), the route with a LifeOS in memory (`route.test.ts`) and
+the wire (`index.test.ts`). `mac.test.ts` runs each JXA script in a node
+sandbox against stand-ins for Excel's and Outlook's objects, and the carrier
+against a recorded osascript.
+
+## Not proven
+
+None of this has run against real Excel or Outlook. The test is written out
+in M28.md, "The live test". It needs the build change above and his one
+click per app. Also unproven:
+
+- new Outlook's answer to the legacy dictionary;
+- Word and PowerPoint, which were not installed;
+- a reply through the route, which does not thread under the original: the
+  route sends it as a new mail with its subject;
+- a sheet that grows past the block watched when the canvas opened it,
+  which is not watched further until the canvas opens it again.
