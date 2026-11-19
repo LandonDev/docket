@@ -163,10 +163,11 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   live `computer.act` item, and carries it out on these sessions at his
   press. The canvas finds it as it finds a Mac browser's.
 - **The canvas** opens for a box thread (`browser_open` is host-neutral)
-  but has no live picture: the preview stream is the Mac's computer host's
-  (`ComputerPreviews` in index.ts), and the service answers
-  `capture.stream.start` with `capture_failed`. A held submit shows its
-  picture in the Outbox.
+  and draws the page live while the thread uses it: Chromium's screencast
+  through the host's preview relay, built over the box's sessions by
+  index.ts; the box's rows reach the desktop in the `computer` push, and
+  Take over stops them (§28.5). A held submit shows its picture in the
+  Outbox.
 
 ## Logins
 

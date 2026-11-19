@@ -6,6 +6,7 @@ import { ComputerResultInputSchema } from '@shared/computer/tools'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import type { MacThreadTokens } from '../macTools'
 import type { ComputerBridge } from './bridge'
+import type { ComputerSessions } from './sessions'
 import { computerAnswer, computerToolList, type ComputerHost } from './mcp'
 import { PendingCalls } from './pending'
 import { refusal, type ComputerToolOutcome } from './result'
@@ -56,6 +57,8 @@ export class ComputerRpc {
   private readonly holds = new Map<string, string>()
   private readonly shown = new Map<string, string>()
   private readonly timings: HeldTimings
+  /** the box's own browser sessions (work/browser/box), once wired: listed and stopped here beside this host's */
+  private box: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'> | null = null
 
   constructor(
     private readonly host: ComputerHost | null,
@@ -64,11 +67,7 @@ export class ComputerRpc {
     private readonly opts: ComputerRpcOptions = {}
   ) {
     this.timings = opts.timings ?? heldTimings()
-    // a row that moved may be a hold that began or ended: every waiting reader looks again
-    const moved = (): void => {
-      this.schedule()
-      for (const s of this.sockets) s.poke()
-    }
+    const moved = (): void => this.moved()
     if (host) {
       this.stops.push(host.sessions.onRows(moved))
       this.stops.push(host.service.onState(() => this.schedule()))
@@ -76,14 +75,28 @@ export class ComputerRpc {
     if (bridged) this.stops.push(bridged.bridge.onRows(moved))
   }
 
+  /** A row that moved may be a hold that began or ended: every waiting reader looks again. */
+  private moved(): void {
+    this.schedule()
+    for (const s of this.sockets) s.poke()
+  }
+
+  /** The box browser's sessions, set once when it is wired (index.ts): their rows go out with this host's, and Stop reaches them. */
+  setBox(sessions: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>): void {
+    this.box = sessions
+    this.stops.push(sessions.onRows(() => this.moved()))
+    this.moved()
+  }
+
   sessions(): ComputerSessionsAnswer {
-    const mirrored = this.bridged?.bridge.rows() ?? []
+    const mirrored = [...(this.bridged?.bridge.rows() ?? []), ...(this.box?.rows() ?? [])]
     if (!this.host) return { service: { ...OFF, reason: this.unavailableReason() ?? OFF.reason }, sessions: mirrored }
     const own = this.host.sessions.rows().filter((r) => !parseMacComputerKey(r.threadId))
     return { service: this.host.service.state(), sessions: [...own, ...mirrored] }
   }
 
   async stop(sessionId: string): Promise<{ stopped: boolean }> {
+    if (this.box?.rows().some((r) => r.threadId === sessionId)) return { stopped: await this.box.stop(sessionId) }
     if (this.bridged?.bridge.rows().some((r) => r.threadId === sessionId)) return { stopped: await this.bridged.bridge.stop(sessionId) }
     return { stopped: this.host ? await this.host.sessions.stop(sessionId) : false }
   }

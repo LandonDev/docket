@@ -8,6 +8,9 @@ import type { EnvLink } from './connection/link'
 import { nativePlatform } from './native'
 import { isWebMode } from './nativeWeb'
 
+/** The bundle id the box's browser service names its Chromium by (work/browser/box/service.ts `BOX_BROWSER_APP`). */
+export const BOX_BROWSER_BUNDLE = 'org.chromium.Chromium'
+
 /**
  * Each connected host's live computer sessions (docs/computer-protocol.md
  * "The host"; docs/box.md "Computer use from a box thread"): read once per
@@ -146,6 +149,10 @@ export function entriesOf(rows: readonly ComputerSessionRow[], tree: ReadonlySet
     if (!tree.has(row.threadId)) return []
     const entry: ComputerEntry = { host: threadHost, row, previewable: false }
     if (!ctx.macDesktop) return [entry]
+    // The box's own browser (work/browser/box): the session lives on the thread's own host, which streams it.
+    if (threadHost !== LOCAL_ENVIRONMENT_ID && !row.macPeer && row.apps.some((a) => a.bundleId === BOX_BROWSER_BUNDLE)) {
+      return [{ ...entry, previewable: true, previewHost: threadHost, previewKey: row.threadId }]
+    }
     if (threadHost === LOCAL_ENVIRONMENT_ID && !row.macPeer) {
       return [{ ...entry, previewable: true, previewHost: LOCAL_ENVIRONMENT_ID, previewKey: row.threadId }]
     }

@@ -172,6 +172,7 @@ export class BoxComputerService {
   /** Reads frames from `input` and answers on `output` until EOF or `shutdown`. */
   serve(input: Readable, output: Writable): Promise<void> {
     const write = (frame: object) => output.write(`${JSON.stringify(frame)}\n`)
+    this.notify = (method, params) => write({ jsonrpc: '2.0', method, params })
     return new Promise((resolve) => {
       const lines = createInterface({ input })
       const end = () => {
@@ -188,6 +189,7 @@ export class BoxComputerService {
           return void write({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } })
         }
         if (frame.method === '$/cancel') return void this.running.get(Number(frame.params?.id))?.abort()
+        if (frame.method === 'capture.stream.ack') return void this.acked(String(frame.params?.stream ?? ''))
         if (frame.id === undefined || !frame.method) return
         const id = frame.id
         void this.answer(frame.method, frame.params ?? {}, id).then((reply) => {
@@ -238,7 +240,9 @@ export class BoxComputerService {
       }
       case 'shutdown':
       case 'escape.watch':
+        return {} as ComputerResult<M>
       case 'capture.stream.stop':
+        await this.stopStream(String(params.stream))
         return {} as ComputerResult<M>
       case 'permissions.get':
       case 'permissions.request':
@@ -264,7 +268,7 @@ export class BoxComputerService {
         } as ComputerResult<M>
       }
       case 'capture.stream.start':
-        return refuse('capture_failed', 'the box browser has no live stream yet; read the page or take a screenshot')
+        return (await this.startStream(params as ComputerParams<'capture.stream.start'>)) as ComputerResult<M>
       case 'apps.list': {
         const pages = await this.pages()
         return { apps: [this.appInfo(pages, (params as ComputerParams<'apps.list'>).windows === true)] } as ComputerResult<M>
@@ -294,9 +298,64 @@ export class BoxComputerService {
   }
 
   close(): void {
+    for (const id of [...this.streams.keys()]) void this.stopStream(id)
     for (const a of this.running.values()) a.abort()
     this.cdp?.close()
     this.cdp = null
+  }
+
+  // ── the live picture (§6, the host's preview relay) ──────────────────
+
+  private notify: (method: string, params: object) => void = () => {}
+  private readonly streams = new Map<string, { cdp: Cdp; sid: string; off: () => void; unacked: number; seq: number }>()
+
+  /**
+   * A page's live picture: Chromium's screencast, a frame forwarded at most
+   * `fps` a second and never more than two ahead of the host's acks; every
+   * frame of Chromium's is acked at once, so it keeps drawing.
+   */
+  private async startStream(q: ComputerParams<'capture.stream.start'>): Promise<{ stream: string; width: number; height: number }> {
+    this.appOf(q.app)
+    await this.stopStream(q.stream)
+    const page = await this.pageOf(q.window, q.session)
+    if (closedToAgents(page.url)) refuse('open_refused', CLOSED)
+    const { cdp, sid } = await this.on(page)
+    const edge = q.maxEdge ?? 960
+    const gap = 1000 / (q.fps ?? 4)
+    const m = await cdp.send<{ cssVisualViewport: { clientWidth: number; clientHeight: number } }>('Page.getLayoutMetrics', {}, sid)
+    const size = (w: number, h: number) => {
+      const k = Math.min(1, edge / Math.max(w, h, 1))
+      return { width: Math.max(1, Math.round(w * k)), height: Math.max(1, Math.round(h * k)) }
+    }
+    let last = 0
+    const s = { cdp, sid, off: () => {}, unacked: 0, seq: 0 }
+    s.off = cdp.on('Page.screencastFrame', (p, from) => {
+      if (from !== sid) return
+      void cdp.send('Page.screencastFrameAck', { sessionId: p.sessionId }, sid).catch(() => {})
+      const now = this.now()
+      if (now - last < gap || s.unacked >= 2) return
+      last = now
+      s.unacked++
+      const meta = p.metadata as { deviceWidth: number; deviceHeight: number }
+      this.notify('capture/frame', { stream: q.stream, seq: ++s.seq, ts: now, ...size(meta.deviceWidth, meta.deviceHeight), format: 'jpeg', data: p.data })
+    })
+    this.streams.set(q.stream, s)
+    await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: edge, maxHeight: edge, everyNthFrame: 1 }, sid)
+    return { stream: q.stream, ...size(m.cssVisualViewport.clientWidth, m.cssVisualViewport.clientHeight) }
+  }
+
+  private acked(stream: string): void {
+    const s = this.streams.get(stream)
+    if (s && s.unacked > 0) s.unacked--
+  }
+
+  private async stopStream(stream: string): Promise<void> {
+    const s = this.streams.get(stream)
+    if (!s) return
+    this.streams.delete(stream)
+    s.off()
+    if ([...this.streams.values()].some((o) => o.sid === s.sid)) return
+    await s.cdp.send('Page.stopScreencast', {}, s.sid).catch(() => {})
   }
 
   // ── the browser ──────────────────────────────────────────────────────

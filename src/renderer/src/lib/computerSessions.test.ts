@@ -101,6 +101,12 @@ describe('entriesOf', () => {
     expect(e).toMatchObject({ host: 'env_box', previewable: true, previewHost: 'local', previewKey: 'env_box:s1' })
   })
 
+  it("previews the box's own browser on the box's link by the thread's id, and no other app of another host", () => {
+    const box = row('s1', { apps: [{ name: 'Chromium', bundleId: 'org.chromium.Chromium', window: 'Expense portal' }] })
+    expect(entriesOf([box], tree, 'env_box', mac)[0]).toMatchObject({ previewable: true, previewHost: 'env_box', previewKey: 's1' })
+    expect(entriesOf([row('s1', { apps: [{ name: 'TextEdit', bundleId: 'com.apple.TextEdit', window: null }] })], tree, 'env_box', mac)[0].previewable).toBe(false)
+  })
+
   it("never previews another Mac's session, a box row before this Mac's id is known, or anything off the Mac desktop", () => {
     expect(entriesOf([row('s1', { macPeer: 'env_other' })], tree, 'env_box', mac)[0].previewable).toBe(false)
     expect(entriesOf([row('s1', { macPeer: 'env_mac' })], tree, 'env_box', { macDesktop: true, localId: null })[0].previewable).toBe(false)

@@ -1428,7 +1428,8 @@ export async function startServer(
     }
   }
   computerHooks.current = computer
-  const previews = computer ? new ComputerPreviews(computer) : null
+  // (the box's browser sets its own once it is wired, below)
+  let previews = computer ? new ComputerPreviews(computer) : null
   const holds = computer ? new SessionHolds({ ...computer, banner: () => computerBannerHooks.current }) : null
   // Wire slot.onHolder(holds.holder) here once the tier scheduler lands.
   // Computer use through the Mac bridge, the box side (computer/bridge.ts): where it cannot run here, a
@@ -1460,7 +1461,13 @@ export async function startServer(
   // The box's own browser for Work threads, on its own computer sessions (work/browser/box); loaded apart, as all of Work is.
   if (computerWhy && process.platform === 'linux')
     void import('./work/browser/box').then(
-      (m) => m.wireBoxBrowser({ registry, store, dataDir: options.dataDir ?? dirname(dbPath) }),
+      (m) => {
+        const box = m.wireBoxBrowser({ registry, store, dataDir: options.dataDir ?? dirname(dbPath) })
+        // Watch and Take over draw a box thread's page: its preview relay and its rows, on this host that has no computer use of its own.
+        if (!box) return
+        previews ??= new ComputerPreviews({ service: box.service, sessions: box.sessions })
+        computerRpc.setBox(box.sessions)
+      },
       (err) => console.log(`[box browser] did not load: ${String(err)}`)
     )
   computerBridgeHooks.current = computerBridge

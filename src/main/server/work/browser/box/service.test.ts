@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline'
 import type { PassThrough } from 'node:stream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseObservation } from '@shared/computer/observation'
-import { COMPUTER_PROTOCOL, resultFrameSchema, RpcErrorResponseSchema, type ComputerMethod, type ComputerResult, type Observation } from '@shared/computer/protocol'
+import { COMPUTER_PROTOCOL, ComputerNotificationSchema, resultFrameSchema, type ComputerNotification, RpcErrorResponseSchema, type ComputerMethod, type ComputerResult, type Observation } from '@shared/computer/protocol'
 import { BoxChromium, findChromium } from './chromium'
 import { BoxComputerService, inProcessSpawn } from './service'
 import { serveTestSite, type TestSite } from './testSite'
@@ -29,6 +29,8 @@ d('the box computer service speaks the wire', () => {
   let site: TestSite
   let child: { stdin: PassThrough; stdout: PassThrough; kill(): boolean }
   const answers = new Map<number, (f: Frame) => void>()
+  /** the service's notifications, each held to the wire's schema */
+  const notes: ComputerNotification[] = []
   let next = 0
 
   const call = (method: string, params: Record<string, unknown> = {}): Promise<Frame> => {
@@ -58,7 +60,8 @@ d('the box computer service speaks the wire', () => {
     createInterface({ input: child.stdout }).on('line', (line) => {
       const f = JSON.parse(line) as Frame
       expect((f as { jsonrpc?: string }).jsonrpc).toBe('2.0')
-      answers.get(f.id)?.(f)
+      if ((f as { method?: string }).method) notes.push(ComputerNotificationSchema.parse(f))
+      else answers.get(f.id)?.(f)
     })
   }, 30_000)
 
@@ -93,7 +96,6 @@ d('the box computer service speaks the wire', () => {
     await ok('escape.watch', { on: true })
     await ok('input.restoreSession', {})
     await ok('input.probe', { session: 's1', app: { app: 'Chromium' } })
-    expect((await no('capture.stream.start', { session: 's1', app: { app: 'Chromium' }, stream: 'x' })).data?.kind).toBe('capture_failed')
   })
 
   it('opens the test site and reads it in the observation grammar, with frames and a picture', async () => {
@@ -196,7 +198,14 @@ d('the box computer service speaks the wire', () => {
     const sub = await ok('state.get', { session: 's1', app: { app: 'Chromium' }, window: portal, element: form, epoch })
     expect(sub.kind).toBe('subtree')
     await ok('session.close', { session: 's1' })
-    await ok('capture.stream.stop', { stream: 'x' })
+    // the live picture: frames as notifications, paced by the host's acks, until the stop
+    const started = await ok('capture.stream.start', { session: 's1', app: { app: 'Chromium' }, window: portal, stream: 'pv_1', fps: 4, maxEdge: 480 })
+    expect(Math.max(started.width, started.height)).toBe(480)
+    for (let i = 0; i < 50 && !notes.some((n) => n.method === 'capture/frame'); i++) await new Promise((r) => setTimeout(r, 100))
+    const frame = notes.find((n) => n.method === 'capture/frame')
+    expect(frame?.params).toMatchObject({ stream: 'pv_1', seq: 1, format: 'jpeg' })
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'capture.stream.ack', params: { stream: 'pv_1', seq: 1 } })}\n`)
+    await ok('capture.stream.stop', { stream: 'pv_1' })
     await ok('shutdown')
   })
 })

@@ -2170,8 +2170,14 @@ be complete and its address and element count to hold still for `quietMs`.
 
 ### 28.5 What it does not serve
 
-`capture.stream.start` answers `capture_failed`: the live preview is the
-Mac's computer host's, and the box browser has no stream yet.
+`capture.stream.start` streams the page with `Page.startScreencast` (JPEG,
+at most `maxEdge` on a side): a `capture/frame` at most `fps` a second and
+never more than two ahead of the host's `capture.stream.ack`; every frame
+Chromium draws is acked to it at once. index.ts builds the host's preview
+relay (`ComputerPreviews`) over the box's sessions where computer use is not
+local, and `ComputerRpc.setBox` lists their rows and stops them, so Watch
+and Take over draw a box thread's page; the desktop marks a Chromium row on
+a non-Mac host drawable on that host's link (lib/computerSessions.ts).
 `escape.watch`, `input.probe` and `input.restoreSession` answer at once
 (there is no person's input to watch or restore); `clipboard.state` never
 changes. No notification is sent.
