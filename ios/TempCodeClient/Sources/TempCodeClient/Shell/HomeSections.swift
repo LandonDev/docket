@@ -21,9 +21,12 @@ public struct HomeHostInput: Sendable, Hashable {
     /// The carrier's environment id for a host reached through another (the
     /// Mac through the box); nil for a host paired directly.
     public var via: String?
+    /// The host's Work switch (`WorkHost.isOn`): its Work workspaces and Work Chats show only while it is on.
+    public var workOn: Bool
 
-    public init(environmentId: String, name: String, troubled: Bool = false, hasShell: Bool = true, floor: Int = 0, workspaces: [WorkspaceMeta] = [], projects: [ProjectMeta] = [], sessions: [SessionMeta] = [], seen: [String: SeenMark] = [:], notes: [HomeNote] = [], via: String? = nil) {
+    public init(environmentId: String, name: String, troubled: Bool = false, hasShell: Bool = true, floor: Int = 0, workspaces: [WorkspaceMeta] = [], projects: [ProjectMeta] = [], sessions: [SessionMeta] = [], seen: [String: SeenMark] = [:], notes: [HomeNote] = [], via: String? = nil, workOn: Bool = false) {
         self.via = via
+        self.workOn = workOn
         self.environmentId = environmentId
         self.name = name
         self.troubled = troubled
@@ -223,6 +226,8 @@ public enum HomeSections {
         public enum Kind: Sendable, Hashable {
             case workspace(HomeWorkspace)
             case chats
+            /// Work Chats: Work threads outside every Work workspace (milestone 46).
+            case workChats
         }
 
         /// The workspace's key (`ProjectPairs.key`), or `chatsKey`.
@@ -250,9 +255,37 @@ public enum HomeSections {
     public struct Home: Sendable, Hashable {
         public var entries: [Entry]
         public var hosts: [HostLines]
+        /// The Work band (milestone 46): Work Chats, then a Work workspace per job.
+        /// Empty while every host's Work switch is off, so Home is what it was.
+        public var work: [Entry] = []
     }
 
-    public nonisolated static func home(hosts: [HomeHostInput]) -> Home {
+    /// Work Chats' entry key.
+    public static let workChatsKey = "work-chats"
+
+    /// A workspace is Work's when its row says so; a thread is Work's when its scope does (never the switch).
+    nonisolated static func isWork(_ workspace: WorkspaceMeta) -> Bool { workspace.kind == .work }
+    nonisolated static func isWork(_ session: SessionMeta) -> Bool { session.scope == .work }
+
+    /// A host as the code half of Home reads it: no Work workspace and no Work thread.
+    nonisolated static func codeHalf(_ host: HomeHostInput) -> HomeHostInput {
+        var host = host
+        host.workspaces.removeAll(where: isWork)
+        host.sessions.removeAll(where: isWork)
+        return host
+    }
+
+    /// A host as the Work band reads it, or nil while its switch is off.
+    nonisolated static func workHalf(_ host: HomeHostInput) -> HomeHostInput? {
+        guard host.workOn else { return nil }
+        var host = host
+        host.workspaces.removeAll { !isWork($0) }
+        host.sessions.removeAll { !isWork($0) }
+        return host
+    }
+
+    public nonisolated static func home(hosts all: [HomeHostInput]) -> Home {
+        let hosts = all.map(codeHalf)
         // A host the box relays folds under the box's own row while the box is in trouble:
         // one card says the box is down, not one per host behind it.
         let troubledIds = Set(hosts.filter(\.troubled).map(\.environmentId))
@@ -279,7 +312,22 @@ public enum HomeSections {
             }
             entries.append(Entry(id: workspace.id, kind: .workspace(workspace), status: status(threads, hosts: hosts), environmentIds: workspace.members.map(\.environmentId)))
         }
-        return Home(entries: entries, hosts: lines)
+        return Home(entries: entries, hosts: lines, work: work(all.compactMap(workHalf)))
+    }
+
+    /// The Work band: Work Chats (always, so a first Work Chat has a place to
+    /// start from), then each Work workspace, each with its status.
+    nonisolated static func work(_ hosts: [HomeHostInput]) -> [Entry] {
+        guard !hosts.isEmpty else { return [] }
+        let chats = hosts.flatMap { roots($0, workspaceId: nil) }
+        var entries = [Entry(id: workChatsKey, kind: .workChats, status: status(chats, hosts: hosts), environmentIds: hosts.map(\.environmentId))]
+        for workspace in workspaces(of: hosts) {
+            let threads = workspace.members.flatMap { member in
+                hosts.first { $0.environmentId == member.environmentId }.map { roots($0, workspaceId: member.workspace.id) } ?? []
+            }
+            entries.append(Entry(id: workspace.id, kind: .workspace(workspace), status: status(threads, hosts: hosts), environmentIds: workspace.members.map(\.environmentId)))
+        }
+        return entries
     }
 
     // MARK: Level 2, a workspace: its project cards, then the stray chats
@@ -307,8 +355,10 @@ public enum HomeSections {
 
     /// The workspace screen for an entry's key; nil when no host lists it.
     /// `shown` is the thread on screen, which no card reads as unread.
-    public nonisolated static func workspace(_ key: String, hosts: [HomeHostInput], shown: (environmentId: String, sessionId: String)? = nil) -> WorkspaceScreen? {
-        if key == chatsKey {
+    public nonisolated static func workspace(_ key: String, hosts all: [HomeHostInput], shown: (environmentId: String, sessionId: String)? = nil) -> WorkspaceScreen? {
+        // Chats is code's; Work Chats is Work's; a workspace's own threads are what its row says.
+        let hosts = key == workChatsKey ? all.compactMap(workHalf) : key == chatsKey ? all.map(codeHalf) : all
+        if key == chatsKey || key == workChatsKey {
             let chats = hosts.map { host in
                 (host.environmentId, ThreadGroups.group(host.sessions, projects: host.projects, workspaces: host.workspaces, workspaceId: nil, seen: host.seen, floor: host.floor).chats)
             }

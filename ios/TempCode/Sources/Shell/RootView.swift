@@ -79,6 +79,7 @@ struct RootView: View {
         .onChange(of: size.width, initial: true) { for navigator in navigators { navigator.windowWidth = size.width } }
         .onAppear {
             let registry = model.registry
+            OutboxPresses.shared.attach { registry.client($0) }
             for navigator in navigators {
                 navigator.hosts = { HomeRows.inputs(registry.ordered, current: true) }
                 navigator.lists = { registry.client($0)?.completeLists ?? 0 }
@@ -135,7 +136,16 @@ struct RootView: View {
         .onChange(of: router.lists) { reportVisibility() }
         // A thread opened bare before its host listed it moves into its shell when the list lands.
         .onChange(of: navigators.map(\.awaitsListing)) { for navigator in navigators { navigator.placeListed() } }
-        .onChange(of: scenePhase) { reportVisibility() }
+        .onChange(of: scenePhase) {
+            reportVisibility()
+            // A Send waiting its five seconds goes now rather than hang while the app is away.
+            if scenePhase != .active { OutboxPresses.shared.flush() }
+        }
+        // Away ended on a host while the app was not in front: one notice on the lock screen (milestone 46).
+        .onChange(of: model.registry.ordered.compactMap(\.work.awayEnd)) { _, ends in
+            guard !ends.isEmpty, scenePhase != .active else { return }
+            AwayEnds.notify(OutboxModel.awayLine(AwayEnds.counts(model.registry.ordered)) ?? "Nothing waits for you.")
+        }
         // A notification or Live Activity tap: Home's sidebar at its root, the thread in its project's
         // shell in the detail, on its card.
         .onChange(of: router.pending) { _, route in
@@ -144,6 +154,8 @@ struct RootView: View {
             LaunchRestore.end()
             tab = .home
             home.sidebarPath = []
+            // A held act's notice: the item over the Outbox, so Back is the list.
+            if case .outboxItem = route { home.open(.outbox) }
             home.open(route)
             router.pending = nil
         }
@@ -206,7 +218,18 @@ struct RootView: View {
     }
 
     /// Home's slots with the fleet switches: what every screen of the Home stack reads.
-    private var shellSlots: HomeSlots { FleetSwitches.homeSlots(homeSlots) }
+    private var shellSlots: HomeSlots {
+        var slots = FleetSwitches.homeSlots(homeSlots)
+        // Away as a check item in the host menu, beside the fleet switches (milestone 46).
+        let fleet = slots.hostMenu
+        slots.hostMenu = { client in
+            AnyView(Group {
+                AwayMenuItem(client: client)
+                fleet?(client)
+            })
+        }
+        return slots
+    }
 
     /// What sibling features plug into Home; every slot optional.
     private var homeSlots: HomeSlots {
@@ -248,6 +271,12 @@ struct RootView: View {
             SettingsView()
         case .hosts:
             HostsView()
+        case .outbox:
+            OutboxScreen()
+        case .outboxItem(let environmentId, let ref):
+            OutboxItemScreen(environmentId: environmentId, refKey: ref)
+        case .workSettings:
+            WorkSettingsScreen()
         }
     }
 
@@ -271,6 +300,18 @@ struct RootView: View {
             tab = .search
         case "settings":
             home.open(.settings)
+        case "outbox", "outbox-item":
+            // Milestone 46's proof: the Outbox, or its first held item, once a host has listed it.
+            for _ in 0..<100 where OutboxEntries.of(model.registry.ordered).isEmpty {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            home.open(.outbox)
+            if route == "outbox-item", let entry = OutboxModel.bands(OutboxEntries.of(model.registry.ordered)).first?.entries.first {
+                home.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(entry.item.ref)))
+            }
+        case "work-settings":
+            home.open(.settings)
+            home.detailStack.append(Route.workSettings)
         case "hosts":
             home.open(.settings)
             home.detailStack.append(Route.hosts)

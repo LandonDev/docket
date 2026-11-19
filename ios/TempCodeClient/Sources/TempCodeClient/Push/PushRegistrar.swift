@@ -9,11 +9,15 @@ public struct PushTarget: Sendable, Hashable {
     public var environmentId: String
     public var sessionId: String
     public var seq: Int?
+    /// An act held for the owner's press (`tc.held`): the tap opens this item
+    /// in the Outbox (`OutboxModel.key`), never a Send of its own.
+    public var held: String?
 
-    public init(environmentId: String, sessionId: String, seq: Int? = nil) {
+    public init(environmentId: String, sessionId: String, seq: Int? = nil, held: String? = nil) {
         self.environmentId = environmentId
         self.sessionId = sessionId
         self.seq = seq
+        self.held = held
     }
 
     /// The `tc` object of a hub notification; a payload without a thread (a host down) is nil.
@@ -21,7 +25,16 @@ public struct PushTarget: Sendable, Hashable {
         guard let tc = userInfo["tc"] as? [AnyHashable: Any],
               let environmentId = tc["environmentId"] as? String, !environmentId.isEmpty,
               let sessionId = tc["threadId"] as? String, !sessionId.isEmpty else { return nil }
-        self.init(environmentId: environmentId, sessionId: sessionId, seq: PushTarget.int(tc["seq"]))
+        self.init(environmentId: environmentId, sessionId: sessionId, seq: PushTarget.int(tc["seq"]), held: PushTarget.held(tc["held"]))
+    }
+
+    /// `tc.held` as a held item's key; nil when absent or not a ref this build knows.
+    private static func held(_ value: Any?) -> String? {
+        guard let object = value as? [String: Any], JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let ref = try? JSONDecoder().decode(HeldRef.self, from: data) else { return nil }
+        if case .unknown = ref { return nil }
+        return OutboxModel.key(ref)
     }
 
     /// `tempcode://thread/<environment>/<session>?seq=<n>`, as the Live Activity's widgetURL.

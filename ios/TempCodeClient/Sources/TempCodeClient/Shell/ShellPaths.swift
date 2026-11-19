@@ -14,9 +14,9 @@ public enum ShellColumn: Sendable, Hashable {
 public enum ShellPaths {
     public static func column(of route: Route) -> ShellColumn {
         switch route {
-        case .workspace, .archivedThreads, .archivedProjects:
+        case .workspace, .archivedThreads, .archivedProjects, .outbox:
             return .sidebar
-        case .project, .thread, .settings, .hosts:
+        case .project, .thread, .settings, .hosts, .outboxItem, .workSettings:
             return .detail
         }
     }

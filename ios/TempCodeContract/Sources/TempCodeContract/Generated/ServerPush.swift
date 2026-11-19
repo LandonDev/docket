@@ -244,30 +244,10 @@ public struct WorkLifeosPush: Codable, Hashable, Sendable {
 }
 
 public struct AwayPush: Codable, Hashable, Sendable {
-    public struct Decided: Codable, Hashable, Sendable {
-        public struct Thread: Codable, Hashable, Sendable {
-            public let sessionId: String
-            public let count: Int
-
-            public init(sessionId: String, count: Int) {
-                self.sessionId = sessionId
-                self.count = count
-            }
-        }
-
-        public let since: Double
-        public let threads: [Thread]
-
-        public init(since: Double, threads: [Thread]) {
-            self.since = since
-            self.threads = threads
-        }
-    }
-
     public let state: AwayState
-    public let decided: Decided
+    public let decided: AwayDecided
 
-    public init(state: AwayState, decided: Decided) {
+    public init(state: AwayState, decided: AwayDecided) {
         self.state = state
         self.decided = decided
     }

@@ -21,6 +21,12 @@ public enum Route: Hashable, Codable, Sendable {
     case archivedProjects(environmentId: String, workspaceId: String)
     case settings
     case hosts
+    /// The Outbox: every Work host's held items in bands (milestone 46).
+    case outbox
+    /// One held item; `ref` is `OutboxModel.key(_:)` of its `HeldRef`.
+    case outboxItem(environmentId: String, ref: String)
+    /// Settings → Work: the switch, LifeOS, grants and tool rules, per host.
+    case workSettings
 }
 
 /// The three tabs.

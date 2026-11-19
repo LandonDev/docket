@@ -24,7 +24,8 @@ enum HomeRows {
                 sessions: current ? client.currentSessions : client.listedSessions,
                 seen: current ? client.currentSeen : client.seen,
                 notes: notes(client),
-                via: client.environment.via
+                via: client.environment.via,
+                workOn: client.work.isOn
             )
         }
     }

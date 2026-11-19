@@ -35,14 +35,30 @@ struct HomeView: View {
             } else {
                 List {
                     hostLines(home.hosts)
+                    AwayEndNote()
                     Section {
-                        ForEach(home.entries) { entry in
+                        // Work (milestone 46): the Outbox leads while any host has Work on; Work Chats follows Chats.
+                        if !home.work.isEmpty {
+                            OutboxHomeRow(count: OutboxEntries.count(clients))
+                        }
+                        ForEach(home.entries + home.work.filter { $0.kind == .workChats }) { entry in
                             WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
                         }
                         if home.entries.isEmpty {
                             ForEach(home.hosts.filter(\.nothing)) { host in
                                 NothingRow(host: host)
                             }
+                        }
+                    }
+                    let jobs = home.work.filter { $0.kind != .workChats }
+                    if !jobs.isEmpty {
+                        Section {
+                            ForEach(jobs) { entry in
+                                WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
+                            }
+                        } header: {
+                            SectionHeader("Work")
+                                .listRowInsets(EdgeInsets())
                         }
                     }
                     if clients.count > 1 {
@@ -221,6 +237,7 @@ private struct WorkspaceEntryRow: View {
         switch entry.kind {
         case .workspace(let workspace): workspace.name
         case .chats: "Chats"
+        case .workChats: "Work Chats"
         }
     }
 
@@ -232,7 +249,10 @@ private struct WorkspaceEntryRow: View {
 
     @ViewBuilder
     private var mark: some View {
-        if let lead {
+        if let lead, lead.workspace.kind == .work {
+            // A Work workspace is led by its sector's dot in the mark slot, never a tile.
+            SectorDot(sector: lead.workspace.sector)
+        } else if let lead {
             WorkspaceIconView(client: lead.client, workspace: lead.workspace, size: icon)
         } else {
             Image(systemName: "bubble.left.and.bubble.right")

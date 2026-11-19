@@ -66,6 +66,14 @@ struct SettingsView: View {
                 Text(clients.isEmpty ? "Pair a desktop or the agent host to see its threads here." : "Threads from every paired host appear on Home.")
             }
 
+            // Work (milestone 46): the switch, LifeOS, grants and tool rules of each host that has Work.
+            if clients.contains(where: { $0.work.settings != nil }) {
+                Section {
+                    NavigationLink(value: Route.workSettings) { Text("Work") }
+                        .accessibilityIdentifier("work-settings-row")
+                }
+            }
+
             Section {
                 // One row: the switch, with the registration's state beside it.
                 Toggle(isOn: pushBinding) {

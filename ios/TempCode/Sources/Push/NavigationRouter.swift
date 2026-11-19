@@ -25,6 +25,11 @@ final class NavigationRouter {
 
     /// Open the thread and land on the card the push named.
     func open(_ target: PushTarget) {
+        // A held act's notice opens the item it names, where Send, Edit and Discard are (milestone 46).
+        if let held = target.held {
+            pending = .outboxItem(environmentId: target.environmentId, ref: held)
+            return
+        }
         pending = .thread(environmentId: target.environmentId, sessionId: target.sessionId, seq: target.seq)
     }
 

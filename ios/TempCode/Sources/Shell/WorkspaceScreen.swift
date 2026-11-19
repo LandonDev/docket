@@ -25,6 +25,11 @@ struct WorkspaceScreen: View {
         // The needs-you and failed lines read their cue ("Approve: run bun test") as the rows did.
         let rows = (screen?.projects ?? []).flatMap(cueRows) + (screen?.chats ?? [])
         List {
+            if let note = lifeosNote {
+                QuietNote(text: note)
+                    .listRowInsets(Layout.rowInsets)
+                    .listRowSeparator(.hidden)
+            }
             if let screen {
                 ForEach(screen.projects) { card in
                     ProjectCardView(card: card, selected: pose.isSplit && card.holdsShown, cues: cues, slots: slots, newThread: presenter.compose)
@@ -78,7 +83,7 @@ struct WorkspaceScreen: View {
         // The desktop's breadcrumb popover: the title is a menu of every workspace and the Chats
         // entry, the current one checked, in both shapes (one tap to switch a workspace folded too).
         // Omitted with one entry: a menu of one is a dead chevron.
-        .modifier(WorkspaceTitleMenu(key: key, entries: HomeSections.home(hosts: HomeRows.inputs(model.registry.ordered)).entries))
+        .modifier(WorkspaceTitleMenu(key: key, entries: titleEntries))
         .toolbar {
             if let lead {
                 ToolbarItem(placement: .primaryAction) {
@@ -110,14 +115,31 @@ struct WorkspaceScreen: View {
 
     /// The copy a new thread starts on: the first host in registry order.
     private var lead: (client: EnvironmentClient, workspace: WorkspaceMeta)? {
-        guard key != HomeSections.chatsKey,
+        guard key != HomeSections.chatsKey, key != HomeSections.workChatsKey,
               let workspace = HomeSections.workspaces(of: HomeRows.inputs(model.registry.ordered)).first(where: { $0.id == key }),
               let first = workspace.members.first, let client = model.registry.client(first.environmentId) else { return nil }
         return (client: client, workspace: first.workspace)
     }
 
+    /// Every entry of Home, the Work band's after the code ones.
+    private var titleEntries: [HomeSections.Entry] {
+        let home = HomeSections.home(hosts: HomeRows.inputs(model.registry.ordered))
+        return home.entries + home.work
+    }
+
+    /// A Work workspace whose host cannot reach LifeOS says so once, above its threads.
+    private var lifeosNote: String? {
+        guard let lead, lead.workspace.kind == .work, let status = lead.client.work.lifeos else { return nil }
+        switch status.lifeos {
+        case .signedOut, .refused: return "Sign in to LifeOS on \(lead.client.environment.name) to see this job’s mail, tasks and agenda."
+        case .unreachable: return "Can’t reach LifeOS. Retrying…"
+        default: return nil
+        }
+    }
+
     private func title(_ screen: HomeSections.WorkspaceScreen?) -> String {
         if key == HomeSections.chatsKey { return "Chats" }
+        if key == HomeSections.workChatsKey { return "Work Chats" }
         return screen?.workspace?.name ?? ""
     }
 }
@@ -156,6 +178,7 @@ private struct WorkspaceTitleMenu: ViewModifier {
         switch entry.kind {
         case .workspace(let workspace): workspace.name
         case .chats: "Chats"
+        case .workChats: "Work Chats"
         }
     }
 }

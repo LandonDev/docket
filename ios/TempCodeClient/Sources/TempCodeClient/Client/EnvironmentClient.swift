@@ -428,6 +428,8 @@ public final class EnvironmentClient {
     public let subscriptions: Subscriptions
     /// The host detail's Activity sections (Client/HostExtras.swift, iOS 21).
     public let extras: HostExtras
+    /// Work on this host: the switch, the Outbox, LifeOS's state and Away (Work/Shell/WorkHost.swift, milestone 46).
+    public let work: WorkHost
     /// The phone's push registrar, when the registry gave it one: told at every open (thread L6).
     public internal(set) var push: PushRegistrar?
     /// Called with every session meta the host sent (the Live Activity follows a thread's status through it).
@@ -503,6 +505,7 @@ public final class EnvironmentClient {
         self.socket = TempCodeSocket(environment: environment, keys: keys, api: api, connect: connect, clock: clock, configuration: configuration)
         self.subscriptions = Subscriptions(socket: socket)
         self.extras = HostExtras(socket: socket, environment: environment, clock: clock)
+        self.work = WorkHost(socket: socket, environment: environment)
         ingress.land = { [weak self] items in self?.land(items) }
     }
 
@@ -1095,6 +1098,8 @@ public final class EnvironmentClient {
                 guard let self else { return }
                 await self.resources.loadAll(self)
             }
+            // Work's switch, Outbox and Away, off the open handler too.
+            Task { [weak self] in await self?.work.connected() }
             for (id, model) in models where subscriptions.has(id) {
                 let live = subscriptions.isLive(id)
                 model.mutate {
@@ -1285,7 +1290,9 @@ public final class EnvironmentClient {
             extras.applyPush(push) // iOS 21: devices and the deploy log (Client/HostExtras.swift)
         case .batch(let value):
             applyBatch(value.state) // iOS 16: a master's batch, coalesced (Client/Batches.swift)
-        case .queue, .builds, .macBridgeHeld, .unknown:
+        case .work, .workOutbox, .workLifeos, .away:
+            work.applyPush(push) // milestone 46: Work on the phone (Work/Shell/WorkHost.swift)
+        case .queue, .builds, .macBridgeHeld, .workOutboxResult, .unknown:
             break
         }
     }
