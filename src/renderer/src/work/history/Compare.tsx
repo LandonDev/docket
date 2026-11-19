@@ -40,14 +40,14 @@ function styled(run: Pick<DiffRun, "styles" | "href" | "kind">, text: ReactNode,
 const plain = (runs: readonly DiffRun[]): ReactNode => runs.map((r, i) => styled(r, r.text, i));
 
 /** A changed block's words: on a side, only that side's runs; in one column, both, the taken first. */
-function changed(segments: readonly InlineSegment[], side: Side): ReactNode {
+function changed(segments: readonly InlineSegment[], side: Side, cur: boolean): ReactNode {
   return segments
     .filter((s) => side === "both" || (side === "left" ? s.op !== "+" : s.op !== "-"))
     .map((s, i) => {
       const inner = styled(s, s.text, i);
       if (s.op === "=") return inner;
       return (
-        <span key={i} className={s.op === "+" ? INS : DEL}>
+        <span key={i} className={cn(s.op === "+" ? INS : DEL, cur && CUR)}>
           {inner}
         </span>
       );
@@ -55,7 +55,7 @@ function changed(segments: readonly InlineSegment[], side: Side): ReactNode {
 }
 
 /** A table, cell by cell: a changed cell shows its words' change. */
-function Table({ block, other, row, side, compact }: { block: DiffBlock; other: DiffBlock | null; row: DiffRow | null; side: Side; compact: boolean }) {
+function Table({ block, other, row, side, compact, cur }: { block: DiffBlock; other: DiffBlock | null; row: DiffRow | null; side: Side; compact: boolean; cur: boolean }) {
   const cells = block.table ?? [];
   return (
     <table className={cn("mt-2 w-full border-collapse", compact ? "text-[13px] leading-5" : "text-sm leading-5")}>
@@ -64,9 +64,11 @@ function Table({ block, other, row, side, compact }: { block: DiffBlock; other: 
           <tr key={r}>
             {cellsOfRow.map((cell, c) => {
               const ops = row?.cells?.[r]?.[c] ?? null;
-              const left = side === "right" ? (other?.table?.[r]?.[c] ?? []) : cell;
-              const right = side === "right" ? cell : (other?.table?.[r]?.[c] ?? cell);
-              const content = ops ? changed(inlineSegments(left, right, ops), side) : plain(cell);
+              // `block` is the newer side unless this is the left column of a pair.
+              const theirs = other?.table?.[r]?.[c] ?? cell;
+              const left = side === "left" ? cell : theirs;
+              const right = side === "left" ? theirs : cell;
+              const content = ops ? changed(inlineSegments(left, right, ops), side, cur) : plain(cell);
               const Cell = r === 0 ? "th" : "td";
               return (
                 <Cell key={c} className={cn("border border-border text-start align-top", compact ? "px-2 py-1" : "px-3 py-1.5", r === 0 && "bg-muted font-semibold")}>
@@ -101,22 +103,24 @@ interface BlockProps {
   compact: boolean;
   /** the number a numbered item shows */
   number: number;
+  /** the stepper is on this block's change: its changed words are outlined (the block, when no word changed) */
+  cur: boolean;
 }
 
-function Block({ block, other, row, mark, side, compact, number }: BlockProps) {
+function Block({ block, other, row, mark, side, compact, number, cur }: BlockProps) {
   const level = Number(block.props.level ?? 1);
   const indent = { paddingInlineStart: `${block.depth * 24}px` };
   if (block.type === "table")
     return (
-      <div style={indent} className={cn(mark === "add" && INS, mark === "del" && DEL)}>
-        <Table block={block} other={other} row={row} side={side} compact={compact} />
+      <div style={indent} className={cn(mark === "add" && INS, mark === "del" && DEL, cur && (mark || !row?.cells) && CUR)}>
+        <Table block={block} other={other} row={row} side={side} compact={compact} cur={cur && !mark} />
       </div>
     );
   if (block.type === "pageBreak") return <hr style={indent} className="my-4 border-border" />;
   // A changed block draws its words' change: the older side's runs against the newer's.
   const ops = !mark && other ? row?.inline : undefined;
-  const words = ops ? changed(side === "left" ? inlineSegments(block.runs, other!.runs, ops) : inlineSegments(other!.runs, block.runs, ops), side) : plain(block.runs);
-  const text = mark ? <span className={mark === "add" ? INS : DEL}>{words}</span> : words;
+  const words = ops ? changed(side === "left" ? inlineSegments(block.runs, other!.runs, ops) : inlineSegments(other!.runs, block.runs, ops), side, cur) : plain(block.runs);
+  const text = mark ? <span className={cn(mark === "add" ? INS : DEL, cur && CUR)}>{words}</span> : words;
   const media = ["image", "video", "audio", "file"].includes(block.type);
   const lead =
     block.type === "bulletListItem" ? (
@@ -138,6 +142,8 @@ function Block({ block, other, row, mark, side, compact, number }: BlockProps) {
           block.type === "quote" && "ps-4 text-muted-foreground italic",
           block.type === "codeBlock" && "rounded-md bg-muted px-3 py-2 font-mono text-[13px] leading-5 whitespace-pre-wrap",
           media && "text-muted-foreground",
+          // A change with no words of its own (a type, a colour, a move): the block is what is outlined.
+          cur && !mark && !ops && CUR,
         )}
       >
         {lead}
@@ -177,8 +183,8 @@ function OneLine({ line, rows, current, number }: { line: DiffLine; rows: readon
   const block = line.right ?? line.left!;
   const mark = line.right && line.left ? null : line.row === null ? null : line.right ? "add" : "del";
   return (
-    <div data-row={line.row ?? undefined} className={cn(line.row !== null && line.row === current && CUR)}>
-      <Block block={block} other={line.right && line.left ? line.left : null} row={row} mark={mark} side="both" compact={false} number={number} />
+    <div data-row={line.row ?? undefined}>
+      <Block block={block} other={line.right && line.left ? line.left : null} row={row} mark={mark} side="both" compact={false} number={number} cur={line.row !== null && line.row === current} />
     </div>
   );
 }
@@ -210,7 +216,7 @@ export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; 
     if (!block) return <Gap />;
     const row = line.row === null ? null : rows[line.row]!;
     const mark = other ? null : line.row === null ? null : side === "left" ? "del" : "add";
-    return <Block block={block} other={other} row={row} mark={mark} side={side} compact number={(side === "left" ? left : right)[i]!} />;
+    return <Block block={block} other={other} row={row} mark={mark} side={side} compact number={(side === "left" ? left : right)[i]!} cur={line.row !== null && line.row === current} />;
   };
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] pb-12 text-sm leading-[22px] [overflow-wrap:anywhere] select-text">
@@ -218,10 +224,10 @@ export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; 
       <div className="border-s border-border px-4 pt-5 text-base leading-6 font-semibold tracking-[-0.01em]">{title}</div>
       {lines.map((line, i) => (
         <div key={`${line.id}:${i}`} className="contents">
-          <div data-row={line.row ?? undefined} className={cn("px-4", line.row !== null && line.row === current && line.left && CUR)}>
+          <div data-row={line.row ?? undefined} className="px-4">
             {cell(line, i, "left")}
           </div>
-          <div data-row={line.row ?? undefined} className={cn("border-s border-border px-4", line.row !== null && line.row === current && line.right && CUR)}>
+          <div data-row={line.row ?? undefined} className="border-s border-border px-4">
             {cell(line, i, "right")}
           </div>
         </div>

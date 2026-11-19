@@ -14,8 +14,15 @@ import { openMenus } from "../../chrome/menuRows";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 
 const p = (id: string, text: string, type = "paragraph"): BlockLike => ({ id, type, props: type === "heading" ? { level: 2 } : {}, content: [{ type: "text", text, styles: {} }], children: [] });
-const OLD = [p("h", "Morning", "heading"), p("a", "8:00 AM Setup crew at the loading dock", "bulletListItem"), p("b", "9:00 AM Doors open")];
-const NEW = [p("h", "Morning", "heading"), p("a", "7:30 AM Setup crew at the loading dock", "bulletListItem"), p("n", "8:30 AM Check-in opens", "bulletListItem"), p("b", "9:00 AM Doors open")];
+const table = (who: string): BlockLike => ({
+  id: "t",
+  type: "table",
+  props: {},
+  content: { type: "tableContent", rows: [{ cells: [[{ type: "text", text: "Role", styles: {} }], [{ type: "text", text: "Who", styles: {} }]] }, { cells: [[{ type: "text", text: "Stage", styles: {} }], [{ type: "text", text: who, styles: {} }]] }] },
+  children: [],
+});
+const OLD = [p("h", "Morning", "heading"), p("a", "8:00 AM Setup crew at the loading dock", "bulletListItem"), p("b", "9:00 AM Doors open"), table("Alex Kim")];
+const NEW = [p("h", "Morning", "heading"), p("a", "7:30 AM Setup crew at the loading dock", "bulletListItem"), p("n", "8:30 AM Check-in opens", "bulletListItem"), p("b", "9:00 AM Doors open"), table("Sam Ortiz")];
 const AGENT = "agent:env_box:t1";
 const VERSIONS: HistoryVersion[] = [
   { id: "v2", at: Date.now() - 60_000, cause: "agent-turn", by: [AGENT], kept: "snapshot" },
@@ -110,12 +117,17 @@ describe("the history canvas", () => {
     expect(changed.querySelector(".line-through")!.textContent).toBe("8:00");
     expect(changed.querySelector(".bg-\\(--add-bg\\)")!.textContent).toBe("7:30");
     expect(container.querySelector('[data-row="1"]')!.textContent).toBe("8:30 AM Check-in opens");
+    // A table's changed cell, older words struck and newer added, the right way round.
+    expect(container.querySelector('[data-row="2"] td .line-through')!.textContent).toBe("Alex Kim");
+    expect(container.querySelector('[data-row="2"] td .bg-\\(--add-bg\\)')!.textContent).toBe("Sam Ortiz");
     // The bar: back to History, the two pickers, who made the change and the count.
     expect(bar().textContent).toContain("Venue for the spring LAN");
-    expect(within(bar()).getByText("1/2")).toBeTruthy();
+    expect(within(bar()).getByText("1/3")).toBeTruthy();
     fireEvent.click(within(bar()).getByRole("button", { name: "Next change" }));
-    await waitFor(() => expect(within(bar()).getByText("2/2")).toBeTruthy());
-    expect(container.querySelector('[data-row="1"]')!.className).toContain("outline-1");
+    await waitFor(() => expect(within(bar()).getByText("2/3")).toBeTruthy());
+    // The current change is outlined where it is written: the added block's words, and nothing of the first change.
+    expect(container.querySelector('[data-row="1"] .outline-1')!.textContent).toBe("8:30 AM Check-in opens");
+    expect(container.querySelector('[data-row="0"] .outline-1')).toBeNull();
   });
 
   it("side by side: the older words left, the newer right, a blank where a side has nothing", async () => {
@@ -144,7 +156,7 @@ describe("the history canvas", () => {
     host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: Date.now(), diff }];
     const { container } = await seat();
     await waitFor(() => expect(screen.getByText("Waiting for you")).toBeTruthy());
-    fireEvent.click(screen.getByText("2 changes"));
+    fireEvent.click(screen.getByText("3 changes"));
     const bar = () => container.querySelector("[data-canvas-bar]") as HTMLElement;
     await waitFor(() => expect(within(bar()).getByRole("button", { name: "Accept" })).toBeTruthy());
     fireEvent.click(within(bar()).getByRole("button", { name: "Accept" }));

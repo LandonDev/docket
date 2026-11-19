@@ -37,6 +37,8 @@ export interface HistoryState {
   picked?: string[];
   /** the change the stepper is on */
   current?: number;
+  /** the layout the body last drew, so the bar knows where the pickers go */
+  shown?: Layout;
 }
 
 /** Side by side from 420px a side. */
@@ -294,9 +296,24 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
     shell.statusLine(compare.error ? { tone: "failed", word: "The compare did not load", detail: compare.error, action: { label: "Retry", run: compare.retry } } : null);
   }, [shell, compare.error, compare.retry]);
   useEffect(() => bringIntoView(ref.current, current), [ref, current, layout, compare.value]);
+  useEffect(() => {
+    if (state?.shown !== layout) setState({ ...state, shown: layout });
+  }, [layout, state, setState]);
   const diff = compare.value?.diff;
+  const v = versions.value;
   return (
     <div ref={ref} className="min-h-full">
+      {layout === "sxs" && v ? (
+        // Side by side, each version is named over its own column.
+        <div className="sticky top-0 z-10 grid h-7 grid-cols-2 border-b border-border bg-background text-xs text-muted-foreground">
+          <div className="flex min-w-0 items-center px-2">
+            <Picker label="Older" value={from ?? "live"} versions={v.versions} names={v.names} onPick={(id) => set({ from: id, current: 0 })} />
+          </div>
+          <div className="flex min-w-0 items-center border-s border-border px-2">
+            <Picker label="Newer" value={to ?? "live"} versions={v.versions} names={v.names} onPick={(id) => set({ to: id, current: 0 })} />
+          </div>
+        </div>
+      ) : null}
       {!diff ? (
         compare.error ? null : (
           <CompareSkeleton layout={layout} />
@@ -401,6 +418,7 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
   const view = state?.view ?? "list";
   const versions = useVersions(env, source);
   const compare = useCompare(env, source, view === "compare" ? (state?.from ?? null) : null, view === "compare" ? (state?.to ?? null) : null);
+  const branches = useBranches(env, source);
   const set = (patch: Partial<HistoryState>) => setState({ ...state, ...patch });
   const back = (
     <Button variant="ghost" size="xs" className="shrink-0 font-normal text-muted-foreground" onClick={() => set({ view: "list" })}>
@@ -410,7 +428,6 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
   );
   if (view === "list") {
     const picked = state?.picked ?? [];
-    if (picked.length === 0) return null;
     const list = versions.value?.versions ?? [];
     // The older of the two on the left.
     const [a, b] = [...picked].sort((x, y) => list.findIndex((v) => v.id === y) - list.findIndex((v) => v.id === x));
@@ -420,7 +437,17 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
       </Button>
     );
   }
-  if (view === "review") return back;
+  if (view === "review") {
+    const branch = branches.value?.branches.find((b) => b.id === state?.branchId);
+    const restoring = branch?.label.match(/^Restore (\d+)$/);
+    const what = !branch ? null : restoring ? `Restoring the ${dayTime(Number(restoring[1]))} version` : `Suggested by ${whoWords(branch.authors, branches.value?.names ?? {})}`;
+    return (
+      <>
+        {back}
+        {what ? <span className="min-w-0 truncate">{what}</span> : null}
+      </>
+    );
+  }
   const v = versions.value;
   const names = { ...v?.names, ...compare.value?.names };
   const rows = compare.value?.diff.rows ?? [];
@@ -429,7 +456,7 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
   return (
     <>
       {back}
-      {v ? (
+      {v && state?.shown !== "sxs" ? (
         <span className="flex shrink-0 items-center gap-1">
           <Picker label="Older" value={state?.from ?? "live"} versions={v.versions} names={names} onPick={(id) => set({ from: id, current: 0 })} />
           <span>to</span>
