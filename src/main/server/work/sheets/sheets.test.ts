@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, utimesSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -224,5 +224,48 @@ describe('a package in the canvas', () => {
     const chart = { id: 'c1', sheet: 'sheet1', range: 'A1:B5', title: 'Totals', row: 2, col: 4 }
     expect((await call<SheetView>('work.sheets.chart', { itemId, chart })).charts).toEqual([chart])
     expect((await call<SheetView>('work.sheets.chart', { itemId, chart, remove: true })).charts).toEqual([])
+  })
+})
+
+describe('a .csv in the canvas, and the model writer', () => {
+  /** The Work service's sheet host, in this process: main's calls go to it as they would over the socket. */
+  const serve = async (): Promise<void> => {
+    const { SheetHost } = await import('./host/host')
+    const { TcsheetBackend } = await import('./host/backends')
+    const host = new SheetHost((ref) => new TcsheetBackend((ref as { tcsheet: string }).tcsheet))
+    const service = (work.ctx as unknown as { service: { internal: (route: string, body: Record<string, never>) => Promise<unknown> } }).service
+    service.internal = async (route, b: Record<string, never>) => {
+      const op = route.split('/').pop()!
+      const call = host as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>
+      if (op === 'open') return call.open(b.sheet)
+      if (op === 'snapshot') return call.snapshot(b.sheet, b.rev, b.offset, b.length)
+      if (op === 'apply') return call.apply(b.sheet, b.baseRev, b.mutations, b.by)
+      throw new Error(`not in this test: ${op}`)
+    }
+  }
+
+  it('opens a .csv as a sheet of its own, and saves it back as .csv and out as .xlsx', async () => {
+    await serve()
+    const csv = join(dir, 'People.csv')
+    writeFileSync(csv, 'name,age\r\nAda,36\r\n')
+    const id = canvasStoreOf(db).open('t1', { kind: 'sheet', source: file(csv), title: 'People.csv' }).id
+    const view = await call<SheetView>('work.sheets.open', { itemId: id })
+    expect(view).toMatchObject({ store: 'csv', rev: 0, name: 'People.csv' })
+    await call('work.sheets.edit', { itemId: id, baseRev: 0, mutations: [{ id: SET_RANGE_VALUES, params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 2: { 0: { v: 'Grace' }, 1: { v: 45 } } } } }] })
+    const back = await call<{ path: string }>('work.sheets.export', { itemId: id, format: 'csv' })
+    expect(back.path).toBe(csv)
+    expect(readFileSync(csv, 'utf8')).toBe('name,age\r\nAda,36\r\nGrace,45\r\n')
+    const x = await call<{ path: string }>('work.sheets.export', { itemId: id, format: 'xlsx' })
+    expect(x.path).toBe(join(dir, 'People.xlsx'))
+    const { workbook } = importXlsx(new Uint8Array(readFileSync(x.path)))
+    expect(workbook.sheets[workbook.sheetOrder[0]]?.cellData?.[2]?.[1]?.v).toBe(45)
+    expect((await call<{ path: string }>('work.sheets.export', { itemId: id, format: 'xlsx' })).path).toBe(join(dir, 'People (2).xlsx'))
+  })
+
+  it('writes one sheet of an opened package as .csv beside it, and refuses to write it as .xlsx', async () => {
+    const out = await call<{ path: string }>('work.sheets.export', { itemId, format: 'csv', sheet: 'Data' })
+    expect(out.path).toBe(join(dir, 'Budget.csv'))
+    expect(readFileSync(out.path, 'utf8').split('\r\n')[1]).toMatch(/^1,/)
+    await expect(call('work.sheets.export', { itemId, format: 'xlsx' })).rejects.toThrow(/Excel file already/)
   })
 })

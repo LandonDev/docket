@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto'
-import { closeSync, existsSync, mkdtempSync, openSync, readSync, statSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, extname, isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import type { SheetChart, SheetMutationJson, SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { FenceError } from '../../remote/fence'
@@ -9,7 +9,9 @@ import { Toolchain } from '../formats/tools'
 import type { Caller, WorkCtx } from '../modules'
 import { excelStore } from '../office/excel'
 import { excelRefOf, type ExcelRef } from '../office/grid'
+import { gz, writeTcsheet } from './host/backends'
 import type { HostAnswer, HostAsk, SheetRef } from './host/wire'
+import { readCsv } from './writer'
 import { cellsOfMutations, PackageStore } from './packages'
 import { SuggestionStore } from './suggestions'
 import type { SheetJobs } from './workerClient'
@@ -22,19 +24,21 @@ import type { SheetJobs } from './workerClient'
  * its socket.
  */
 
-export type Held = { at: 'package'; path: string } | { at: 'service'; ref: SheetRef } | { at: 'excel'; ref: ExcelRef }
+export type Held = { at: 'package'; path: string } | { at: 'service'; ref: SheetRef; csv?: string } | { at: 'excel'; ref: ExcelRef }
 
 export const PACKAGE_EXT = new Set(['.xlsx', '.xlsm'])
 
 /** The store an item names. */
-export function heldOf(item: Pick<CanvasItem, 'source' | 'title'>): Held {
+export function heldOf(item: Pick<CanvasItem, 'source' | 'title'>, dataDir?: string): Held {
   const s = item.source
   if (s.at === 'lifeos' && s.table === 'sheets') return { at: 'service', ref: { lifeos: s.id } }
   if (s.at === 'file') {
     const ext = extname(s.path).toLowerCase()
     if (PACKAGE_EXT.has(ext)) return { at: 'package', path: s.path }
     if (ext === '.tcsheet') return { at: 'service', ref: { tcsheet: s.path } }
-    throw new Error(`${basename(s.path)} is not a workbook this canvas opens (.xlsx, .xlsm or .tcsheet).`)
+    // A .csv opens as a sheet of our own, read from it once: saving writes it back, or out as .xlsx.
+    if (ext === '.csv' && dataDir) return { at: 'service', ref: { tcsheet: csvSheetPath(dataDir, s.path) }, csv: s.path }
+    throw new Error(`${basename(s.path)} is not a workbook this canvas opens (.xlsx, .xlsm, .tcsheet or .csv).`)
   }
   // A workbook that lives in Excel: Excel is the truth, the office pillar's helper reads and writes it (milestone 28).
   const excel = excelRefOf(s)
@@ -47,10 +51,22 @@ export const storeKey = (h: Held): string =>
   h.at === 'package' ? `file:${h.path}` : h.at === 'excel' ? excelStore(h.ref.book) : 'lifeos' in h.ref ? `lifeos:${h.ref.lifeos}` : `tcsheet:${h.ref.tcsheet}`
 
 /** A file path an agent names: absolute, a workbook, there. */
-export function heldOfPath(path: string): Exclude<Held, { at: 'excel' }> {
+export function heldOfPath(path: string, dataDir: string): Exclude<Held, { at: 'excel' }> {
   if (!isAbsolute(path)) throw new Error(`${path} is not an absolute path.`)
   if (!existsSync(path)) throw new Error(`There is no file at ${path}.`)
-  return heldOf({ source: { at: 'file', host: '', path }, title: basename(path) }) as Exclude<Held, { at: 'excel' }>
+  return heldOf({ source: { at: 'file', host: '', path }, title: basename(path) }, dataDir) as Exclude<Held, { at: 'excel' }>
+}
+
+/** Where the sheet read from a .csv is kept: one per CSV path, under this host's data. */
+export const csvSheetPath = (dataDir: string, csv: string): string => join(dataDir, 'sheets', 'csv', `${createHash('sha256').update(csv).digest('hex').slice(0, 24)}.tcsheet`)
+
+/** Makes the sheet a .csv opens as, the first time: the CSV's cells as its first snapshot. */
+export function ensureCsvSheet(held: Held): void {
+  if (held.at !== 'service' || !held.csv || !('tcsheet' in held.ref) || existsSync(held.ref.tcsheet)) return
+  mkdirSync(dirname(held.ref.tcsheet), { recursive: true })
+  const title = basename(held.csv)
+  const wb = readCsv(readFileSync(held.csv, 'utf8'), 'workbook', title)
+  writeTcsheet(held.ref.tcsheet, { meta: { title, rev: 0, snapRev: 0 }, snapshots: new Map([[0, gz(wb)]]), ops: [], suggestions: [] })
 }
 
 /** What every caller of the pillar shares: one package store, one suggestion store, one worker. */
@@ -128,7 +144,8 @@ export function setChart(ctx: WorkCtx, store: string, chart: SheetChart, remove:
 
 /** The view a canvas draws: the store's state, with this host's suggestions, mode, written line and charts. */
 export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
-  const held = heldOf(item)
+  const held = heldOf(item, s.ctx.dataDir)
+  ensureCsvSheet(held)
   const key = storeKey(held)
   const shared = s.ctx.scopeOf(item.sessionId)?.shared(item.source) ?? false
   const base = { itemId: item.id, sessionId: item.sessionId, mode: s.suggestions.mode(key), charts: chartsOf(s.ctx, key) }
@@ -168,7 +185,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   return {
     ...base,
     name: st.title,
-    store: 'lifeos' in held.ref ? 'lifeos' : 'tcsheet',
+    store: 'lifeos' in held.ref ? 'lifeos' : held.csv ? 'csv' : 'tcsheet',
     rev: st.rev,
     shared: shared || st.shared,
     suggestions: st.suggestions,

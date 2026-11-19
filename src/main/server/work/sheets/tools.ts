@@ -5,7 +5,7 @@ import { agentPrincipal, workText, type CanvasItem, type Principal, type WorkToo
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { parseA1 } from './a1'
-import { heldOf, heldOfPath, host, sheetsOf, storeKey, type Held, type Sheets } from './held'
+import { ensureCsvSheet, heldOf, heldOfPath, host, sheetsOf, storeKey, type Held, type Sheets } from './held'
 import type { A1Cell } from './host/wire'
 import { mutationsOf } from './mutations'
 import { PACKAGE_UNIT } from './packages'
@@ -51,15 +51,16 @@ async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Prom
   if (a.item) {
     item = ctx.canvas.get(a.item)
     if (!item || item.kind !== 'sheet' || item.sessionId !== ctx.canvas.paneOf(ctx.sessionId)) throw new Error(`This thread has no sheet ${a.item} in its canvas.`)
-    const h = heldOf(item)
+    const h = heldOf(item, ctx.dataDir)
     if (h.at === 'excel') throw new Error(`${item.title} lives in Excel: read and write it with office_range_read and office_range_write.`)
     held = h
     source = item.source
   } else {
     if (!a.file) throw new Error('Pass `item` (a sheet open in the canvas) or `file` (an absolute path).')
-    held = heldOfPath(a.file)
+    held = heldOfPath(a.file, ctx.dataDir)
     source = { at: 'file', host: ctx.host, path: a.file }
   }
+  ensureCsvSheet(held)
   const stored = held.at === 'service' ? (await host(ctx, 'open', { sheet: held.ref })).shared : false
   return { held, item, shared: stored || ctx.scope.shared(source) }
 }

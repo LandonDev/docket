@@ -6,6 +6,7 @@ import { rangeCells, READ_MAX_CELLS, type A1Range } from './a1'
 import { patchXlsx, type EditSpec, type Report } from './patch/patch'
 import { diffWorkbooks } from './diff'
 import { graft } from './graft'
+import { writeCsv } from './writer'
 import type { StructuralOp } from './structural'
 import { ironcalc } from './patch/recalc'
 import { readText, readZip } from './patch/zip'
@@ -178,6 +179,11 @@ export function graftPackage(original: string, written: string, output: string, 
   const g = graft(new Uint8Array(readFileSync(original)), new Uint8Array(readFileSync(written)), ops)
   writeFileSync(output, g.bytes)
   return g.notes
+}
+
+/** One sheet of a package as CSV (writer.ts). */
+export function packageCsv(path: string, sheet?: string): string {
+  return writeCsv(importPackage(path).workbook, sheet)
 }
 
 export function comparePackages(from: string, to: string, max: number): { cells: SheetCellDiff[]; truncated: boolean } {

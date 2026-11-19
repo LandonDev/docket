@@ -30,8 +30,8 @@ export interface SheetMutationJson {
 }
 const MutationSchema = z.object({ id: z.string().min(1).max(200), params: z.unknown() })
 
-/** Where a sheet lives: an opened Excel package, a `.tcsheet` file, or a LifeOS sheet. */
-export type SheetStoreKind = 'package' | 'tcsheet' | 'lifeos'
+/** Where a sheet lives: an opened Excel package, a `.tcsheet` file, a LifeOS sheet, or a sheet read from a .csv (saved back with export). */
+export type SheetStoreKind = 'package' | 'tcsheet' | 'lifeos' | 'csv'
 
 /** `pending`: waits for the owner. `conflict`: the cell no longer holds what the agent saw. `orphaned`: its row, column or sheet is gone. */
 export type SheetSuggestionState = 'pending' | 'conflict' | 'orphaned' | 'accepted' | 'rejected'
@@ -193,8 +193,13 @@ export const SheetsRequestSchemas = [
   request('work.sheets.chart', z.object({ itemId, chart: ChartSchema, remove: z.boolean().default(false) })),
   /** → { opened: true }: opens the file in the app `SheetView.reach.to` names (desktop Excel for a package); refused where that app is not on this host */
   request('work.sheets.switch', z.object({ itemId })),
-  /** → { path }: a LifeOS sheet or a `.tcsheet` written out as an .xlsx beside the thread's files */
-  request('work.sheets.export', z.object({ itemId }))
+  /**
+   * → { path }: the sheet written out. `xlsx`: a new package from the sheet (a LifeOS sheet, a
+   * `.tcsheet`, a sheet read from a .csv), beside the .csv or among the item's own files. `csv`: one
+   * sheet (`sheet`, else the first), back over the .csv it was read from, else beside the file or
+   * among the item's files. An opened package is its own .xlsx.
+   */
+  request('work.sheets.export', z.object({ itemId, format: z.enum(['xlsx', 'csv']).default('xlsx'), sheet: z.string().max(200).optional() }))
 ] as const
 
 /** Something landed on a sheet: new ops (another person, an agent) or a changed view. */

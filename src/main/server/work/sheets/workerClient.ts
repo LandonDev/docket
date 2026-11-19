@@ -16,6 +16,7 @@ export type WorkerAsk = { id: number } & (
   | { op: 'save'; path: string; output: string; edits: EditSpec[]; ironcalcDir: string | null }
   | { op: 'compare'; from: string; to: string; max: number }
   | { op: 'graft'; original: string; written: string; output: string; ops: StructuralOp[] }
+  | { op: 'csv'; path: string; sheet?: string }
 )
 export type WorkerAnswer = { id: number; ok: true; value: unknown } | { id: number; ok: false; error: string }
 
@@ -27,6 +28,8 @@ export interface SheetJobs {
   compare(from: string, to: string, max: number): Promise<{ cells: SheetCellDiff[]; truncated: boolean }>
   /** writes LibreOffice's package with what it drops put back; answers what was put back */
   graft(original: string, written: string, output: string, ops: StructuralOp[]): Promise<string[]>
+  /** one sheet of a package as CSV */
+  csv(path: string, sheet?: string): Promise<string>
   stop(): void
 }
 
@@ -85,6 +88,7 @@ export function workerJobs(fork: () => Child): SheetJobs {
     save: (path, output, edits, ironcalcDir) => call({ op: 'save', path, output, edits, ironcalcDir }),
     compare: (from, to, max) => call({ op: 'compare', from, to, max }),
     graft: (original, written, output, ops) => call({ op: 'graft', original, written, output, ops }),
+    csv: (path, sheet) => call({ op: 'csv', path, ...(sheet === undefined ? {} : { sheet }) }),
     stop() {
       child?.kill()
       child = null
@@ -94,7 +98,7 @@ export function workerJobs(fork: () => Child): SheetJobs {
 
 /** The same jobs in this process: for tests, and for a host that has no utility processes. */
 export async function localJobs(): Promise<SheetJobs> {
-  const { comparePackages, graftPackage, importPackage, inspect, readWorkbookRange, savePackage } = await import('./jobs')
+  const { comparePackages, graftPackage, importPackage, inspect, packageCsv, readWorkbookRange, savePackage } = await import('./jobs')
   const { colName } = await import('./a1')
   const { writeFileSync } = await import('node:fs')
   return {
@@ -107,6 +111,7 @@ export async function localJobs(): Promise<SheetJobs> {
     },
     compare: async (from, to, max) => comparePackages(from, to, max),
     graft: async (original, written, output, ops) => graftPackage(original, written, output, ops),
+    csv: async (path, sheet) => packageCsv(path, sheet),
     stop() {}
   }
 }

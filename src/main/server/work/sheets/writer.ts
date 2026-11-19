@@ -1,0 +1,383 @@
+import type { ICellData, IStyleData, IWorkbookData, IWorksheetData } from '@univerjs/core'
+import { toFileFormula } from './patch/formula'
+import { readZip, writeZip } from './patch/zip'
+import { colName, esc, escText } from './patch/xml'
+
+/**
+ * The model writer (architecture §9.1): a sheet made here (a LifeOS sheet, a
+ * `.tcsheet`) written out as a new .xlsx, or one of its sheets as .csv. It
+ * covers what our grid makes: values, formulas with their last values,
+ * fonts, fills, borders, number formats, alignment and wrap, merges, column
+ * widths and row heights, frozen panes, hidden sheets. An opened package is
+ * never written by this: it stays its own truth.
+ */
+
+const enc = new TextEncoder()
+const EMPTY_ZIP = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)])
+const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+const CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml'
+
+/** Univer's CellValueType */
+const T_STRING = 1
+const T_BOOLEAN = 3
+const T_FORCE_STRING = 4
+
+interface Pools {
+  fonts: string[]
+  fills: string[]
+  borders: string[]
+  numFmts: Map<string, number>
+  xfs: string[]
+}
+
+const rgb = (c: { rgb?: string | null } | null | undefined | unknown): string | null => {
+  const v = (c as { rgb?: string | null } | null | undefined)?.rgb?.replace('#', '')
+  if (!v) return null
+  if (/^[0-9a-f]{6}$/i.test(v)) return `FF${v.toUpperCase()}`
+  if (/^[0-9a-f]{3}$/i.test(v))
+    return `FF${[...v]
+      .map((x) => x + x)
+      .join('')
+      .toUpperCase()}`
+  return null
+}
+const at = (pool: string[], xml: string): number => {
+  const i = pool.indexOf(xml)
+  return i >= 0 ? i : pool.push(xml) - 1
+}
+const BORDER_STYLE: Record<number, string> = {
+  1: 'thin',
+  2: 'hair',
+  3: 'dotted',
+  4: 'dashed',
+  5: 'dashDot',
+  6: 'dashDotDot',
+  7: 'double',
+  8: 'medium',
+  9: 'mediumDashed',
+  10: 'mediumDashDot',
+  11: 'mediumDashDotDot',
+  12: 'slantDashDot',
+  13: 'thick'
+}
+
+/** The cellXfs index for a Univer style; 0 for none. */
+function xfOf(style: IStyleData | null | undefined, pools: Pools): number {
+  if (!style || !Object.keys(style).length) return 0
+  const font = `<font>${style.bl ? '<b/>' : ''}${style.it ? '<i/>' : ''}${style.st?.s ? '<strike/>' : ''}${style.ul?.s ? '<u/>' : ''}<sz val="${style.fs ?? 11}"/>${rgb(style.cl) ? `<color rgb="${rgb(style.cl)}"/>` : ''}<name val="${esc(style.ff ?? 'Calibri')}"/></font>`
+  const bg = rgb(style.bg)
+  const fill = bg
+    ? `<fill><patternFill patternType="solid"><fgColor rgb="${bg}"/><bgColor indexed="64"/></patternFill></fill>`
+    : null
+  const side = (name: string, b?: { s?: number; cl?: { rgb?: string | null } } | null) =>
+    b?.s
+      ? `<${name} style="${BORDER_STYLE[b.s] ?? 'thin'}">${rgb(b.cl) ? `<color rgb="${rgb(b.cl)}"/>` : '<color auto="1"/>'}</${name}>`
+      : `<${name}/>`
+  const bd = style.bd as { l?: never; r?: never; t?: never; b?: never } | undefined
+  const border = bd
+    ? `<border>${side('left', bd.l)}${side('right', bd.r)}${side('top', bd.t)}${side('bottom', bd.b)}<diagonal/></border>`
+    : null
+  const pattern = style.n?.pattern
+  let numFmt = 0
+  if (pattern) {
+    numFmt = pools.numFmts.get(pattern) ?? 164 + pools.numFmts.size
+    pools.numFmts.set(pattern, numFmt)
+  }
+  const h = ({ 1: 'left', 2: 'center', 3: 'right', 4: 'justify' } as Record<number, string>)[
+    style.ht ?? 0
+  ]
+  const v = ({ 1: 'top', 2: 'center', 3: 'bottom' } as Record<number, string>)[style.vt ?? 0]
+  const wrap = style.tb === 3
+  const align =
+    h || v || wrap
+      ? `<alignment${h ? ` horizontal="${h}"` : ''}${v ? ` vertical="${v}"` : ''}${wrap ? ' wrapText="1"' : ''}/>`
+      : ''
+  const fontId = at(pools.fonts, font)
+  const fillId = fill ? at(pools.fills, fill) : 0
+  const borderId = border ? at(pools.borders, border) : 0
+  const xf = `<xf numFmtId="${numFmt}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0"${numFmt ? ' applyNumberFormat="1"' : ''}${fontId ? ' applyFont="1"' : ''}${fillId ? ' applyFill="1"' : ''}${borderId ? ' applyBorder="1"' : ''}${align ? ` applyAlignment="1">${align}</xf>` : '/>'}`
+  return at(pools.xfs, xf)
+}
+
+function cellXml(ref: string, cell: ICellData, s: number): string {
+  const sAttr = s ? ` s="${s}"` : ''
+  const v = cell.v
+  if (cell.f) {
+    const f = `<f>${esc(toFileFormula(cell.f))}</f>`
+    if (typeof v === 'number') return `<c r="${ref}"${sAttr}>${f}<v>${v}</v></c>`
+    if (typeof v === 'boolean') return `<c r="${ref}"${sAttr} t="b">${f}<v>${v ? 1 : 0}</v></c>`
+    if (typeof v === 'string' && v !== '')
+      return `<c r="${ref}"${sAttr} t="str">${f}<v>${escText(v)}</v></c>`
+    return `<c r="${ref}"${sAttr}>${f}</c>`
+  }
+  if (v === undefined || v === null || v === '') return s ? `<c r="${ref}"${sAttr}/>` : ''
+  if (typeof v === 'boolean' || (cell.t === T_BOOLEAN && (v === 1 || v === 0)))
+    return `<c r="${ref}"${sAttr} t="b"><v>${v ? 1 : 0}</v></c>`
+  if (typeof v === 'number' && cell.t !== T_STRING && cell.t !== T_FORCE_STRING)
+    return `<c r="${ref}"${sAttr}><v>${v}</v></c>`
+  const text = String(v)
+  return `<c r="${ref}"${sAttr} t="inlineStr"><is><t${/^\s|\s$|\n/.test(text) ? ' xml:space="preserve"' : ''}>${escText(text)}</t></is></c>`
+}
+
+const styleOf = (wb: IWorkbookData, s: ICellData['s']): IStyleData | null =>
+  typeof s === 'string' ? (wb.styles?.[s] ?? null) : (s ?? null)
+const sorted = (o: object): number[] =>
+  Object.keys(o)
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n >= 0)
+    .sort((a, b) => a - b)
+
+function sheetXml(wb: IWorkbookData, sh: IWorksheetData, pools: Pools): string {
+  const rows: string[] = []
+  let maxR = 0
+  let maxC = 0
+  const data = sh.cellData ?? {}
+  const rowData = (sh.rowData ?? {}) as Record<number, { h?: number; hd?: number } | undefined>
+  for (const r of [
+    ...new Set([...sorted(data), ...sorted(rowData).filter((r) => rowData[r]?.h || rowData[r]?.hd)])
+  ].sort((a, b) => a - b)) {
+    const cells: string[] = []
+    const line = (data[r] ?? {}) as Record<number, ICellData | null | undefined>
+    for (const c of sorted(line)) {
+      const cell = line[c]
+      if (!cell) continue
+      const xml = cellXml(`${colName(c + 1)}${r + 1}`, cell, xfOf(styleOf(wb, cell.s), pools))
+      if (!xml) continue
+      cells.push(xml)
+      maxR = Math.max(maxR, r)
+      maxC = Math.max(maxC, c)
+    }
+    const info = rowData[r]
+    const ht = info?.h ? ` ht="${Math.round(info.h * 0.75 * 100) / 100}" customHeight="1"` : ''
+    const hidden = info?.hd ? ' hidden="1"' : ''
+    if (cells.length || ht || hidden)
+      rows.push(`<row r="${r + 1}"${ht}${hidden}>${cells.join('')}</row>`)
+  }
+  const colData = (sh.columnData ?? {}) as Record<number, { w?: number; hd?: number } | undefined>
+  const cols = sorted(colData)
+    .filter((c) => colData[c]?.w || colData[c]?.hd)
+    .map(
+      (c) =>
+        `<col min="${c + 1}" max="${c + 1}" width="${Math.max(0, Math.round((((colData[c]!.w ?? 64) - 5) / 7) * 100) / 100)}" customWidth="1"${colData[c]!.hd ? ' hidden="1"' : ''}/>`
+    )
+  const fz = sh.freeze as
+    { xSplit?: number; ySplit?: number; startRow?: number; startColumn?: number } | undefined
+  const frozen = fz && ((fz.xSplit ?? 0) > 0 || (fz.ySplit ?? 0) > 0)
+  const pane = frozen
+    ? `<pane${fz!.xSplit ? ` xSplit="${fz!.xSplit}"` : ''}${fz!.ySplit ? ` ySplit="${fz!.ySplit}"` : ''} topLeftCell="${colName((fz!.startColumn ?? fz!.xSplit ?? 0) + 1)}${(fz!.startRow ?? fz!.ySplit ?? 0) + 1}" activePane="${fz!.xSplit && fz!.ySplit ? 'bottomRight' : fz!.ySplit ? 'bottomLeft' : 'topRight'}" state="frozen"/>`
+    : ''
+  const merges = (sh.mergeData ?? []).map(
+    (m) =>
+      `<mergeCell ref="${colName(m.startColumn + 1)}${m.startRow + 1}:${colName(m.endColumn + 1)}${m.endRow + 1}"/>`
+  )
+  return (
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="${NS}" xmlns:r="${R}">` +
+    `<dimension ref="A1${maxR || maxC ? `:${colName(maxC + 1)}${maxR + 1}` : ''}"/>` +
+    `<sheetViews><sheetView workbookViewId="0">${pane}</sheetView></sheetViews>` +
+    `<sheetFormatPr defaultRowHeight="15"/>` +
+    (cols.length ? `<cols>${cols.join('')}</cols>` : '') +
+    `<sheetData>${rows.join('')}</sheetData>` +
+    (merges.length ? `<mergeCells count="${merges.length}">${merges.join('')}</mergeCells>` : '') +
+    `<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>`
+  )
+}
+
+/** A sheet name as Excel takes it: no []:*?/\, 31 characters, unique. */
+function excelName(name: string, taken: Set<string>): string {
+  let base =
+    name
+      .replace(/[[\]:*?/\\]/g, ' ')
+      .trim()
+      .slice(0, 31) || 'Sheet'
+  let out = base
+  for (let i = 2; taken.has(out.toLowerCase()); i++)
+    out = `${base.slice(0, 31 - String(i).length - 1)} ${i}`
+  taken.add(out.toLowerCase())
+  base = out
+  return base
+}
+
+export function writeXlsx(wb: IWorkbookData): Uint8Array {
+  const pools: Pools = {
+    fonts: ['<font><sz val="11"/><name val="Calibri"/></font>'],
+    fills: [
+      '<fill><patternFill patternType="none"/></fill>',
+      '<fill><patternFill patternType="gray125"/></fill>'
+    ],
+    borders: ['<border><left/><right/><top/><bottom/><diagonal/></border>'],
+    numFmts: new Map(),
+    xfs: ['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>']
+  }
+  const files = new Map<string, Uint8Array>()
+  const taken = new Set<string>()
+  const sheets = wb.sheetOrder.map((id) => wb.sheets[id]).filter((s): s is IWorksheetData => !!s)
+  const entries = sheets.map((sh, i) => {
+    files.set(`xl/worksheets/sheet${i + 1}.xml`, enc.encode(sheetXml(wb, sh, pools)))
+    return `<sheet name="${esc(excelName(sh.name ?? `Sheet${i + 1}`, taken))}" sheetId="${i + 1}"${sh.hidden ? ' state="hidden"' : ''} r:id="rId${i + 1}"/>`
+  })
+  const numFmts = [...pools.numFmts].map(
+    ([code, id]) => `<numFmt numFmtId="${id}" formatCode="${esc(code)}"/>`
+  )
+  files.set(
+    'xl/styles.xml',
+    enc.encode(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="${NS}">` +
+        (numFmts.length ? `<numFmts count="${numFmts.length}">${numFmts.join('')}</numFmts>` : '') +
+        `<fonts count="${pools.fonts.length}">${pools.fonts.join('')}</fonts><fills count="${pools.fills.length}">${pools.fills.join('')}</fills><borders count="${pools.borders.length}">${pools.borders.join('')}</borders>` +
+        `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${pools.xfs.length}">${pools.xfs.join('')}</cellXfs>` +
+        `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`
+    )
+  )
+  files.set(
+    'xl/workbook.xml',
+    enc.encode(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="${NS}" xmlns:r="${R}"><bookViews><workbookView/></bookViews><sheets>${entries.join('')}</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`
+    )
+  )
+  files.set(
+    'xl/_rels/workbook.xml.rels',
+    enc.encode(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+        sheets
+          .map(
+            (_, i) =>
+              `<Relationship Id="rId${i + 1}" Type="${R}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`
+          )
+          .join('') +
+        `<Relationship Id="rId${sheets.length + 1}" Type="${R}/styles" Target="styles.xml"/></Relationships>`
+    )
+  )
+  files.set(
+    '_rels/.rels',
+    enc.encode(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/officeDocument" Target="xl/workbook.xml"/></Relationships>`
+    )
+  )
+  files.set(
+    '[Content_Types].xml',
+    enc.encode(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>` +
+        `<Override PartName="/xl/workbook.xml" ContentType="${CT}.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="${CT}.styles+xml"/>` +
+        sheets
+          .map(
+            (_, i) =>
+              `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="${CT}.worksheet+xml"/>`
+          )
+          .join('') +
+        `</Types>`
+    )
+  )
+  // [Content_Types].xml first, as Office writes it.
+  const order = [
+    '[Content_Types].xml',
+    '_rels/.rels',
+    'xl/workbook.xml',
+    'xl/_rels/workbook.xml.rels',
+    'xl/styles.xml',
+    ...sheets.map((_, i) => `xl/worksheets/sheet${i + 1}.xml`)
+  ]
+  return writeZip(
+    readZip(EMPTY_ZIP),
+    new Map(),
+    new Set(),
+    new Map(order.map((n) => [n, files.get(n)!]))
+  )
+}
+
+/** One sheet as CSV (RFC 4180, CRLF): what each cell shows as a value; a formula gives its last value. */
+export function writeCsv(wb: IWorkbookData, sheetName?: string): string {
+  const id =
+    sheetName === undefined
+      ? wb.sheetOrder[0]
+      : wb.sheetOrder.find((s) => wb.sheets[s]?.name === sheetName)
+  if (!id)
+    throw new Error(
+      sheetName === undefined
+        ? 'The workbook has no sheets.'
+        : `There is no sheet named ${sheetName}.`
+    )
+  const data = wb.sheets[id]?.cellData ?? {}
+  const rows = sorted(data)
+  const last = rows.length ? rows[rows.length - 1] : -1
+  let width = 0
+  for (const r of rows)
+    for (const c of sorted(data[r] ?? {}))
+      if (data[r]?.[c]?.v !== undefined && data[r]?.[c]?.v !== null) width = Math.max(width, c + 1)
+  const field = (v: unknown): string => {
+    if (v === undefined || v === null) return ''
+    const s = typeof v === 'boolean' ? (v ? 'TRUE' : 'FALSE') : String(v)
+    return /[",\r\n]|^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const out: string[] = []
+  for (let r = 0; r <= last; r++) {
+    const line: string[] = []
+    for (let c = 0; c < width; c++) {
+      const cell = data[r]?.[c]
+      line.push(field(cell?.t === T_BOOLEAN && typeof cell.v === 'number' ? cell.v === 1 : cell?.v))
+    }
+    out.push(line.join(','))
+  }
+  return out.length ? `${out.join('\r\n')}\r\n` : ''
+}
+
+/** A CSV file read as a workbook of one sheet: numbers as numbers, the rest as text (RFC 4180 quoting). */
+export function readCsv(text: string, id: string, name: string): IWorkbookData {
+  const body = text.replace(/^﻿/, '')
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let quoted = false
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]
+    if (quoted) {
+      if (ch === '"' && body[i + 1] === '"') {
+        field += '"'
+        i++
+      } else if (ch === '"') quoted = false
+      else field += ch
+    } else if (ch === '"' && field === '') quoted = true
+    else if (ch === ',') {
+      row.push(field)
+      field = ''
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && body[i + 1] === '\n') i++
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else field += ch
+  }
+  if (field !== '' || row.length) {
+    row.push(field)
+    rows.push(row)
+  }
+  const cellData: Record<number, Record<number, ICellData>> = {}
+  let columns = 0
+  rows.forEach((cells, r) => {
+    columns = Math.max(columns, cells.length)
+    cells.forEach((v, c) => {
+      if (v === '') return
+      const n = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v.trim()) ? Number(v) : NaN
+      ;(cellData[r] ??= {})[c] =
+        Number.isFinite(n) && !/^0\d/.test(v.trim()) ? { v: n, t: 2 } : { v, t: T_STRING }
+    })
+  })
+  return {
+    id,
+    name,
+    appVersion: '1.5.2',
+    locale: 'enUS' as IWorkbookData['locale'],
+    styles: {},
+    sheetOrder: ['sheet1'],
+    sheets: {
+      sheet1: {
+        id: 'sheet1',
+        name: name.replace(/\.csv$/i, '').slice(0, 31) || 'Sheet1',
+        rowCount: Math.max(1000, rows.length + 100),
+        columnCount: Math.max(26, columns + 5),
+        cellData
+      }
+    }
+  } as IWorkbookData
+}

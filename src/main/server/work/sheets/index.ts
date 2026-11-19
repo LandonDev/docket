@@ -1,10 +1,14 @@
 import { spawn } from 'node:child_process'
-import { mkdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
-import { SHEET_COMPARE_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, extname, join } from 'node:path'
+import type { IWorkbookData } from '@univerjs/core'
+import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
 import { handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
+import { canvasItemDir } from '../canvas/store'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
-import { afterEdit, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Sheets } from './held'
+import type { SheetRef } from './host/wire'
+import { writeCsv, writeXlsx } from './writer'
+import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Sheets } from './held'
 import { ensurePackageTables, type Moved } from './packages'
 import { mapCell, STRUCTURAL_CONVERTERS } from './structural'
 import { ensureSuggestionTables, type Which } from './suggestions'
@@ -39,7 +43,7 @@ export async function announce(s: Sheets, item: CanvasItem, withView = true): Pr
 }
 
 async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: SheetMutationJson[], by: Caller): Promise<{ rev: number } | { conflict: true; rev: number }> {
-  const held = heldOf(item)
+  const held = heldOf(item, s.ctx.dataDir)
   const who = principalOf(s.ctx, by)
   if (held.at === 'excel') return (await import('../office/grid')).edit(s.ctx, held.ref, baseRev, mutations, who)
   if (held.at === 'package') {
@@ -84,12 +88,15 @@ export const sheets: WorkModule = {
     const s = await sheetsOf(ctx)
     const named = (req as { params?: { itemId?: unknown } }).params?.itemId
     const item = typeof named === 'string' ? itemOf(ctx, named) : null
-    if (item) fence(ctx, by, item, req.method)
+    if (item) {
+      fence(ctx, by, item, req.method)
+      ensureCsvSheet(heldOf(item, ctx.dataDir))
+    }
     switch (req.method) {
       case 'work.sheets.open':
         return handled(await viewOf(s, item!))
       case 'work.sheets.load': {
-        const held = heldOf(item!)
+        const held = heldOf(item!, ctx.dataDir)
         const { rev, offset, length } = req.params
         if (held.at === 'package') return handled({ ...readRange(s.packages.fileAt(held.path, rev), offset, length), rev, format: 'xlsx' as const })
         if (held.at === 'excel') {
@@ -100,7 +107,7 @@ export const sheets: WorkModule = {
         return handled({ data: got.data, size: got.size, rev, format: 'snapshot' as const })
       }
       case 'work.sheets.since': {
-        const held = heldOf(item!)
+        const held = heldOf(item!, ctx.dataDir)
         if (held.at === 'excel') {
           const rev = (await import('../office/grid')).revOf(held.ref)
           return handled(rev === req.params.rev ? { rev, ops: [] } : { rev, reload: true as const })
@@ -113,7 +120,7 @@ export const sheets: WorkModule = {
         return handled(got)
       }
       case 'work.sheets.review': {
-        const held = heldOf(item!)
+        const held = heldOf(item!, ctx.dataDir)
         const key = storeKey(held)
         if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
         else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
@@ -122,12 +129,12 @@ export const sheets: WorkModule = {
         return handled(await viewOf(s, item!))
       }
       case 'work.sheets.mode': {
-        s.suggestions.setMode(storeKey(heldOf(item!)), req.params.mode)
+        s.suggestions.setMode(storeKey(heldOf(item!, ctx.dataDir)), req.params.mode)
         await announce(s, item!)
         return handled(await viewOf(s, item!))
       }
       case 'work.sheets.undo': {
-        const held = heldOf(item!)
+        const held = heldOf(item!, ctx.dataDir)
         if (held.at !== 'package') throw new Error('Take it back with Undo in the sheet, or restore from History.')
         await s.packages.undo(held.path, req.params.writeId)
         s.suggestions.setWritten(storeKey(held), null)
@@ -135,16 +142,16 @@ export const sheets: WorkModule = {
         return handled(await viewOf(s, item!))
       }
       case 'work.sheets.history': {
-        const held = notExcel(heldOf(item!))
+        const held = notExcel(heldOf(item!, ctx.dataDir))
         return handled(held.at === 'package' ? { revisions: s.packages.history(held.path) } : await host(ctx, 'history', { sheet: held.ref }))
       }
       case 'work.sheets.compare': {
-        const held = notExcel(heldOf(item!))
+        const held = notExcel(heldOf(item!, ctx.dataDir))
         const { from, to } = req.params
         return handled(held.at === 'package' ? await s.packages.compare(held.path, from, to, SHEET_COMPARE_MAX) : await host(ctx, 'compare', { sheet: held.ref, from, to, max: SHEET_COMPARE_MAX }))
       }
       case 'work.sheets.restore': {
-        const held = notExcel(heldOf(item!))
+        const held = notExcel(heldOf(item!, ctx.dataDir))
         if (held.at === 'package') {
           await s.packages.restore(held.path, req.params.rev, principalOf(ctx, by))
           s.suggestions.orphanAll(storeKey(held))
@@ -155,12 +162,12 @@ export const sheets: WorkModule = {
       case 'work.sheets.create':
         return handled({ itemId: (await createSheet(s, req.params.sessionId, req.params.title)).id })
       case 'work.sheets.chart': {
-        setChart(ctx, storeKey(heldOf(item!)), req.params.chart, req.params.remove)
+        setChart(ctx, storeKey(heldOf(item!, ctx.dataDir)), req.params.chart, req.params.remove)
         await announce(s, item!)
         return handled(await viewOf(s, item!))
       }
       case 'work.sheets.switch': {
-        const held = heldOf(item!)
+        const held = heldOf(item!, ctx.dataDir)
         if (held.at === 'excel') {
           await (await import('../office/grid')).bringForward(ctx, item!.source)
           return handled({ opened: true as const })
@@ -170,7 +177,7 @@ export const sheets: WorkModule = {
         return handled({ opened: true as const })
       }
       case 'work.sheets.export':
-        throw new Error('not built: writing a sheet out as an .xlsx (milestone 27 left it; the model writer is not in yet)')
+        return handled({ path: await exportSheet(s, item!, req.params.format, req.params.sheet) })
     }
     return NOT_HANDLED
   },
@@ -204,6 +211,60 @@ async function reviewPackage(s: Sheets, path: string, key: string, which: Which,
 }
 
 const sameCell = (a: SheetCellJson | null, b: SheetCellJson | null): boolean => (a?.f ?? null) === (b?.f ?? null) && (a?.f ? true : (a?.v ?? null) === (b?.v ?? null))
+
+/** A name not yet taken in its folder: `Budget.xlsx`, then `Budget (2).xlsx`. */
+function free(path: string): string {
+  const ext = extname(path)
+  let out = path
+  for (let i = 2; existsSync(out); i++) out = `${path.slice(0, -ext.length)} (${i})${ext}`
+  return out
+}
+
+/** The workbook a service-held sheet stands at now, read in frames. */
+async function workbookOf(ctx: WorkCtx, ref: SheetRef): Promise<IWorkbookData> {
+  const { rev } = await host(ctx, 'open', { sheet: ref })
+  const parts: Buffer[] = []
+  for (let offset = 0, size = Infinity; offset < size; ) {
+    const got = await host(ctx, 'snapshot', { sheet: ref, rev, offset, length: SHEET_LOAD_MAX })
+    const part = Buffer.from(got.data, 'base64')
+    parts.push(part)
+    size = got.size
+    offset += part.length
+    if (!part.length) break
+  }
+  return JSON.parse(Buffer.concat(parts).toString('utf8')) as IWorkbookData
+}
+
+/**
+ * Writes a sheet out (the model writer, writer.ts): a held sheet to a new .xlsx, or one of its sheets
+ * to .csv. A sheet read from a .csv saves back over it as .csv, and as .xlsx beside it; a package
+ * gives .csv beside itself; anything else lands among the item's own files.
+ */
+export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string): Promise<string> {
+  const held = heldOf(item, s.ctx.dataDir)
+  const base = item.title.replace(/\.(xlsx|xlsm|tcsheet|csv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
+  const own = (): string => {
+    const dir = canvasItemDir(s.ctx.dataDir, item.sessionId, item.id)
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+  if (held.at === 'excel') throw new Error(`${item.title} lives in Excel: save or export it there.`)
+  if (held.at === 'package') {
+    if (format === 'xlsx') throw new Error('This is an Excel file already: every edit is saved into it.')
+    const path = free(join(dirname(held.path), `${base}.csv`))
+    writeFileSync(path, await s.jobs.csv(held.path, sheet))
+    return path
+  }
+  const wb = await workbookOf(s.ctx, held.ref)
+  if (format === 'csv') {
+    const path = held.csv ?? join(own(), `${base}.csv`)
+    writeFileSync(path, writeCsv(wb, sheet))
+    return path
+  }
+  const path = held.csv ? free(join(dirname(held.csv), `${base}.xlsx`)) : join(own(), `${base}.xlsx`)
+  writeFileSync(path, writeXlsx(wb))
+  return path
+}
 
 /** A new sheet in a thread's canvas: a LifeOS sheet when its workspace has a sector, else a `.tcsheet` among this host's files. */
 export async function createSheet(s: Sheets, sessionId: string, title: string): Promise<CanvasItem> {
