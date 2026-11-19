@@ -378,39 +378,34 @@ describe("the frame a kind drives through its shell", () => {
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
   });
 
-  it("takes its narrow form under 560px of canvas: the group's name goes, History is its glyph, Reject and Accept stay whole", async () => {
-    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
-      return this.hasAttribute("data-canvas-bar") ? 440 : 0;
-    });
-    try {
-      let shell: CanvasShell | null = null;
-      const kinds = drivenKinds((s) => (shell = s), { bar: true });
-      const view = await seat([DOC, SHEET], { ...kinds, document: { ...kinds.document, history: true } });
-      await waitFor(() => expect(shell).not.toBeNull());
-      act(() =>
-        shell!.review(
-          review({
-            groups: [
-              { id: "a", label: "Venue for the spring LAN", by: "agent:box:t1", count: 2 },
-              { id: "b", label: "Dana Lee", by: "external:Dana Lee", count: 4 },
-            ],
-            index: 3,
-          }),
-        ),
-      );
-      const bar = view.container.querySelector<HTMLElement>("[data-canvas-bar]")!;
-      expect(bar.hasAttribute("data-narrow")).toBe(true);
-      const stepper = screen.getByRole("toolbar", { name: "Review changes" });
-      expect(within(stepper).queryByText("Dana Lee")).toBeNull();
-      // History keeps its name for a screen reader and its tooltip, and drops the word.
-      const history = within(bar).getByRole("button", { name: "History" });
-      expect(history.textContent).toBe("");
-      for (const verb of ["Reject", "Accept"]) expect(within(stepper).getByRole("button", { name: verb })).toBeTruthy();
-      // The kind's tools are clipped to their room rather than painted over History.
-      expect(view.container.querySelector("[data-canvas-tools]")!.className).toContain("overflow-hidden");
-    } finally {
-      width.mockRestore();
-    }
+  it("takes its narrow form under 560px of canvas by a container query: the group's name goes, History is its glyph, Reject and Accept stay whole", async () => {
+    let shell: CanvasShell | null = null;
+    const kinds = drivenKinds((s) => (shell = s), { bar: true });
+    const view = await seat([DOC, SHEET], { ...kinds, document: { ...kinds.document, history: true } });
+    await waitFor(() => expect(shell).not.toBeNull());
+    act(() =>
+      shell!.review(
+        review({
+          groups: [
+            { id: "a", label: "Venue for the spring LAN", by: "agent:box:t1", count: 2 },
+            { id: "b", label: "Dana Lee", by: "external:Dana Lee", count: 4 },
+          ],
+          index: 3,
+        }),
+      ),
+    );
+    const bar = view.container.querySelector<HTMLElement>("[data-canvas-bar]")!;
+    // The same form wherever the bar is drawn, a static render included: CSS decides, not a measurement.
+    expect(bar.className).toContain("@container/bar");
+    const stepper = screen.getByRole("toolbar", { name: "Review changes" });
+    expect(within(stepper).getByText("Dana Lee").className).toContain("@max-[560px]/bar:hidden");
+    // History keeps its name for a screen reader, and only its word hides.
+    const history = within(bar).getByRole("button", { name: "History" });
+    expect(within(history).getByText("History").className).toContain("@max-[560px]/bar:hidden");
+    // Reject and Accept never shrink; the end group gives up room after the tools, which are clipped to theirs.
+    expect(stepper.className).toContain("shrink-0");
+    for (const verb of ["Reject", "Accept"]) expect(within(stepper).getByRole("button", { name: verb })).toBeTruthy();
+    expect(view.container.querySelector("[data-canvas-tools]")!.className).toContain("overflow-hidden");
   });
 
   it("shows one change already in hand as its two verbs alone: nowhere to step", async () => {

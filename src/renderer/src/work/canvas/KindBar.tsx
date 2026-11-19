@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -21,23 +21,13 @@ export function barShown(feeds: Feeds, tools: boolean, history: boolean): boolea
 /** The bar's class while the kind's tools are all it could hold: it is drawn only once they render something. */
 export const BAR_TOOLS_ONLY = "has-[[data-canvas-tools]:empty]:hidden";
 
-/** Under this width of canvas the bar takes its narrow form: the stepper drops its group's name and History is its glyph alone. */
+/**
+ * Under this width of canvas the bar takes its narrow form: the stepper drops its group's name and History is its glyph
+ * alone. A container query on the bar (`NARROW_HIDE`), so the form is the same wherever the bar is drawn, a static render
+ * included.
+ */
 export const BAR_NARROW = 560;
-
-/** Whether the element, while drawn, is under `below` px wide; false until it has been measured. */
-function useNarrow(ref: React.RefObject<HTMLElement | null>, below: number, drawn: boolean): boolean {
-  const [narrow, setNarrow] = useState(false);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || !drawn) return;
-    const read = (): void => setNarrow(el.clientWidth > 0 && el.clientWidth < below);
-    read();
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref, below, drawn]);
-  return narrow;
-}
+const NARROW_HIDE = "@max-[560px]/bar:hidden";
 
 /**
  * The kind's own bar, in the one order every kind keeps (docs/DESIGN.md
@@ -48,37 +38,28 @@ function useNarrow(ref: React.RefObject<HTMLElement | null>, below: number, draw
  * clipped before Reject and Accept give up any room.
  */
 export function KindBar({ feeds, tools, onHistory }: { feeds: Feeds; tools?: ReactNode; onHistory?: () => void }) {
-  const ref = useRef<HTMLDivElement | null>(null);
   const others = barShown(feeds, false, !!onHistory);
-  const narrow = useNarrow(ref, BAR_NARROW, others || !!tools);
   if (!others && !tools) return null;
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
     <TooltipProvider>
       <div
-        ref={ref}
         data-canvas-bar
-        data-narrow={narrow || undefined}
-        className={`flex h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others ? "" : BAR_TOOLS_ONLY}`}
+        className={`@container/bar flex h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others ? "" : BAR_TOOLS_ONLY}`}
       >
         <People people={feeds.presence} />
         {feeds.mode ? <Mode mode={feeds.mode} /> : null}
         {/* The kind's tools take the free room, and are clipped to it: a tool given `ms-auto` sits at the end, before History and the stepper. */}
         {tools ? <div data-canvas-tools className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">{tools}</div> : null}
-        <div className="ms-auto flex shrink-0 items-center gap-2">
+        {/* It gives up room only after the tools: the written line's words truncate, Undo, Reject and Accept stay whole. */}
+        <div className="ms-auto flex min-w-0 items-center gap-2">
           {onHistory ? (
-            narrow ? (
-              <Step label="History" onClick={onHistory}>
-                <History />
-              </Step>
-            ) : (
-              <Button variant="ghost" size="xs" onClick={onHistory}>
-                <History />
-                History
-              </Button>
-            )
+            <Button variant="ghost" size="xs" aria-label="History" className="shrink-0" onClick={onHistory}>
+              <History />
+              <span className={NARROW_HIDE}>History</span>
+            </Button>
           ) : null}
-          {review ? <Stepper review={review} narrow={narrow} /> : feeds.written ? <Written line={feeds.written} /> : null}
+          {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}
         </div>
       </div>
     </TooltipProvider>
@@ -153,13 +134,13 @@ function Mode({ mode }: { mode: CanvasMode }) {
 }
 
 /** The one stepper: Previous, where the caret is among the changes, Next, then Reject and Accept for that change. */
-function Stepper({ review, narrow }: { review: ReviewAdapter; narrow: boolean }) {
+function Stepper({ review }: { review: ReviewAdapter }) {
   const [pending, setPending] = useState<"accept" | "reject" | null>(null);
   const { index, count } = review;
   const none = index < 0;
   // The group the current change is in, named only when there is more than one to tell apart.
   let group: string | null = null;
-  if (review.groups.length > 1 && !none && !narrow) {
+  if (review.groups.length > 1 && !none) {
     let seen = 0;
     for (const g of review.groups) {
       seen += g.count;
@@ -179,8 +160,8 @@ function Stepper({ review, narrow }: { review: ReviewAdapter; narrow: boolean })
   // One change, already the current one: there is nowhere to step, so only the verbs show.
   const steps = !(count === 1 && index === 0);
   return (
-    <div role="toolbar" aria-label="Review changes" aria-busy={busy || undefined} className="flex items-center gap-1">
-      {group ? <span className="max-w-40 min-w-0 truncate pe-1">{group}</span> : null}
+    <div role="toolbar" aria-label="Review changes" aria-busy={busy || undefined} className="flex shrink-0 items-center gap-1">
+      {group ? <span className={`max-w-40 min-w-0 truncate pe-1 ${NARROW_HIDE}`}>{group}</span> : null}
       {steps ? (
         <>
           <Step label="Previous change" disabled={busy || index <= 0} onClick={() => review.step(index - 1)}>
