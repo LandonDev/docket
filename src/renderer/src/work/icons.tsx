@@ -18,6 +18,13 @@ import Table01Icon from "@hugeicons/core-free-icons/Table01Icon";
 import TaskDone01Icon from "@hugeicons/core-free-icons/TaskDone01Icon";
 import TextSelectionIcon from "@hugeicons/core-free-icons/TextSelectionIcon";
 import WorkHistoryIcon from "@hugeicons/core-free-icons/WorkHistoryIcon";
+import Video01Icon from "@hugeicons/core-free-icons/Video01Icon";
+import VolumeHighIcon from "@hugeicons/core-free-icons/VolumeHighIcon";
+import VolumeOffIcon from "@hugeicons/core-free-icons/VolumeOffIcon";
+import FullScreenIcon from "@hugeicons/core-free-icons/FullScreenIcon";
+import ZoomInAreaIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
+import ZoomOutAreaIcon from "@hugeicons/core-free-icons/ZoomOutAreaIcon";
+import Comment01Icon from "@hugeicons/core-free-icons/Comment01Icon";
 import { wrap } from "../chrome/icons";
 
 export const Mail = wrap(Mail01Icon, "Mail");
@@ -41,3 +48,11 @@ export const Selection = wrap(TextSelectionIcon, "Selection");
 export const History = wrap(WorkHistoryIcon, "History");
 /** Ask: the selection goes to the thread. */
 export const Ask = wrap(BubbleChatIcon, "Ask");
+/** The media kind's own: a video, sound on and off, full screen, zoom, a comment. */
+export const Video = wrap(Video01Icon, "Video");
+export const Volume = wrap(VolumeHighIcon, "Volume");
+export const VolumeOff = wrap(VolumeOffIcon, "VolumeOff");
+export const FullScreen = wrap(FullScreenIcon, "FullScreen");
+export const ZoomIn = wrap(ZoomInAreaIcon, "ZoomIn");
+export const ZoomOut = wrap(ZoomOutAreaIcon, "ZoomOut");
+export const Comment = wrap(Comment01Icon, "Comment");

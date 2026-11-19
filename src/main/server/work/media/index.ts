@@ -1,11 +1,108 @@
+import { basename } from 'node:path'
+import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkModule } from '../modules'
+import { MEDIA_CONVERTERS } from './prepare'
+import { ensureMediaTables } from './store'
+import { mediaTools } from './tools'
+import { itemRow, liveOf, mediaItem, ownerOrAgent, preparerOf, pushSoon, stopMedia, viewOf } from './view'
 
 /**
- * The media pillar's server module (docs/agents/work-media.md). A stub:
- * `PILLAR_MILESTONE` in src/shared/work/ids.ts names the milestone that
- * fills it. Its tables are made here, in `ensure`.
+ * The media pillar's server module (docs/agents/work-media.md): an image or a
+ * video beside a Work thread, probed and, where the viewer cannot decode it,
+ * proxied on the host; its versions; the notes on it, keyed by frame; the
+ * agent's tools. A file is the pillar's own source; a review service plugs in
+ * through `registerMediaSource` (sources.ts).
  */
 export const media: WorkModule = {
   id: 'media',
-  ensure() {}
+  ensure: ensureMediaTables,
+  convert: MEDIA_CONVERTERS,
+  start(ctx) {
+    liveOf(ctx)
+    return () => stopMedia(ctx)
+  },
+  async handle(req, ctx, by) {
+    const { store } = liveOf(ctx)
+    const after = async (itemId: string) => {
+      pushSoon(ctx, itemId)
+      return handled(await viewOf(ctx, itemId))
+    }
+    switch (req.method) {
+      case 'work.media.view':
+        return handled(await viewOf(ctx, req.params.itemId, req.params.plays ?? undefined))
+      case 'work.media.note': {
+        const { itemId, kind, anchor, body, parentId } = req.params
+        itemRow(ctx, mediaItem(ctx, itemId))
+        const note = store.addNote(itemId, { kind, anchor, body, by: ownerOrAgent(ctx, by.kind === 'model' ? by.sessionId : undefined), ...(parentId ? { parentId } : {}) })
+        pushSoon(ctx, itemId)
+        return handled(note)
+      }
+      case 'work.media.edit': {
+        const { noteId, body, resolved } = req.params
+        const note = store.editNote(noteId, { ...(body !== undefined ? { body } : {}), ...(resolved !== undefined ? { resolved } : {}) })
+        pushSoon(ctx, note.itemId)
+        return handled(note)
+      }
+      case 'work.media.remove': {
+        const note = store.note(req.params.noteId)
+        if (note) {
+          store.removeNote(note.id)
+          pushSoon(ctx, note.itemId)
+        }
+        return handled(null)
+      }
+      case 'work.media.decide': {
+        const { itemId, which, accept } = req.params
+        const waiting = store.notes(itemId).filter((n) => n.state === 'suggested' && (which === 'all' || n.id === which))
+        if (which !== 'all' && waiting.length === 0) throw new Error('that note is not waiting for you')
+        // Accepted, an agent's note is the person's: his words on his file from now on.
+        for (const n of waiting) accept ? store.editNote(n.id, { state: 'kept', by: 'owner' }) : store.removeNote(n.id)
+        return after(itemId)
+      }
+      case 'work.media.mode': {
+        itemRow(ctx, mediaItem(ctx, req.params.itemId))
+        store.setMode(req.params.itemId, req.params.mode)
+        return after(req.params.itemId)
+      }
+      case 'work.media.undo': {
+        const { itemId, writeId } = req.params
+        const row = itemRow(ctx, mediaItem(ctx, itemId))
+        if (row.lastWrite?.id !== writeId) throw new Error('that write can no longer be taken back')
+        store.removeWrite(itemId, writeId)
+        store.setLastWrite(itemId, null)
+        return after(itemId)
+      }
+      case 'work.media.version': {
+        const { itemId, source } = req.params
+        itemRow(ctx, mediaItem(ctx, itemId))
+        if (source.at !== 'file') throw new Error('a version is a file on a host')
+        store.addVersion(itemId, { source, name: basename(source.path), by: 'owner' })
+        return after(itemId)
+      }
+      case 'work.media.segment': {
+        const { itemId, versionId, index } = req.params
+        mediaItem(ctx, itemId)
+        const url = (await preparerOf(ctx)).segmentUrl(versionId, index)
+        if (!url) throw new Error(`segment ${index} is not there yet`)
+        return handled({ url })
+      }
+      case 'work.media.tile': {
+        const { itemId, versionId, level, x, y } = req.params
+        mediaItem(ctx, itemId)
+        const data = (await preparerOf(ctx)).tile(versionId, level, x, y)
+        if (!data) throw new Error('no such tile')
+        return handled({ data: data.toString('base64') })
+      }
+    }
+    return NOT_HANDLED
+  },
+  tools: () => mediaTools,
+  sessionsRemoved(ids, ctx) {
+    const versions = liveOf(ctx).store.removeSessions(ids)
+    void preparerOf(ctx)
+      .then((p) => p.forget(versions))
+      .catch(() => undefined)
+  },
+  // Nothing: a deleted workspace's threads are removed too, and `sessionsRemoved` clears their rows.
+  workspaceRemoved() {}
 }
