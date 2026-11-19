@@ -61,7 +61,7 @@ export async function docMirror(ctx: WorkCtx, g: Google, source: GoogleSource): 
   const row = g.files.get(source.account, source.fileId)
   if (row?.mirror && existsSync(row.mirror)) {
     if (row.version === file.version) return row.mirror
-    if ((await unsent(ctx, g, row.mirror, row.base)) > 0) {
+    if ((await unsentEdits(ctx, g, row.mirror, row.base)) > 0) {
       g.files.update(source.account, source.fileId, { behind: file.version })
       return row.mirror
     }
@@ -91,7 +91,7 @@ async function importDoc(ctx: WorkCtx, g: Google, api: GoogleApi, source: Google
 }
 
 /** How many blocks his edits changed, added or removed since the mirror last matched Google. */
-async function unsent(ctx: WorkCtx, g: Google, mirror: string, base: DocBase | null): Promise<number> {
+export async function unsentEdits(ctx: WorkCtx, g: Google, mirror: string, base: DocBase | null): Promise<number> {
   if (!base) return 0
   const blocks = [...everyBlock(await g.blocksOf(ctx, mirror))]
   const seen = new Set(blocks.map((b) => b.id))

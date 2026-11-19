@@ -7,6 +7,7 @@ import { editsOf } from '../sheets/mutations'
 import { SuggestionStore, type Which } from '../sheets/suggestions'
 import { GOOGLE_MIME, type GoogleSheetJson } from './client'
 import { googleOf } from './google'
+import { watch } from './poll'
 
 /**
  * A Google Sheet in the sheet canvas (docs/agents/work-google.md "Sheets"):
@@ -61,6 +62,7 @@ function entry(ref: GoogleSheetRef): Open {
 export function follow(ref: GoogleSheetRef, itemId: string, onChange: () => void): number {
   const o = entry(ref)
   o.listeners.set(itemId, onChange)
+  watch(ref.account, ref.fileId, ref.name, itemId)
   return o.rev
 }
 

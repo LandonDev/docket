@@ -62,7 +62,7 @@ export async function sourcePath(ctx: Ctx, item: CanvasItem, own: string): Promi
     return path
   }
   if (source.at === 'microsoft') throw new ItemFileError(`${item.title} lives in PowerPoint on the web. Opening it from there is not built yet.`, 'not-built')
-  if (source.at === 'google') throw new ItemFileError(`${item.title} lives in Google. Opening it from there is not built yet.`, 'not-built')
+  if (source.at === 'google') throw new ItemFileError(`${item.title} lives in Google: open it there. Agents read it and revise a copy with the google tools.`, 'not-built')
   throw new ItemFileError(`${item.title} is not a file.`)
 }
 

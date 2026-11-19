@@ -179,6 +179,13 @@ export class FakeGoogle {
       f.permissions.push(p)
       return reply(200, { id: p.id })
     }
+    if ((m = path.match(/^\/drive\/v3\/files\/([^/]+)\/permissions\/([^/]+)$/)) && method === 'DELETE') {
+      const f = reach(decodeURIComponent(m[1]))
+      const at = f?.permissions.findIndex((p) => p.id === decodeURIComponent(m![2])) ?? -1
+      if (!f || at < 0) return notFound()
+      f.permissions.splice(at, 1)
+      return new Response(null, { status: 204 })
+    }
     if (path === '/upload/drive/v3/files' && method === 'POST') {
       const raw = Buffer.from(init!.body as Uint8Array).toString('latin1')
       const meta = JSON.parse(raw.match(/\r\n\r\n(\{.*?\})\r\n/)![1]) as { name: string; mimeType: string }
