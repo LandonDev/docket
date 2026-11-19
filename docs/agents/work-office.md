@@ -55,10 +55,14 @@ box `owa`.
 
 A carrier may also offer `changes(fn)`: the app itself tells of a change to
 a sheet (Windows' Excel does). The module hands those to
-`ExcelHelper.heard`, as it does the add-in's. `OfficeError`'s `busy` code is
-an app turning a call away for now (a dialog open, a cell in edit): nothing
-was done, and the agent may try again. The route takes it as a plain
-refusal, so a LifeOS row fails in words rather than waiting as sent.
+`ExcelHelper.heard`, as it does the add-in's, and `stop()`, called when the
+module stops. Two `OfficeError` codes came with Windows: `busy` (the app
+turned a step away for now, a dialog open or a cell in edit: that step was
+not done, and the agent may try again) and `refused` (the app would not make
+what was asked, a mail or an invitation, before anything was sent). The
+route takes both as plain refusals, so a LifeOS row fails in words. A
+calendar op that ends unclear once Outlook was asked to send stays
+journaled and is acked as done, as a mail is.
 
 **The Mac.** Each verb is one JXA script run by `/usr/bin/osascript -l
 JavaScript -`. A range is one Apple Event each way, never one per cell. The
@@ -95,8 +99,15 @@ Framework 4), into `%TEMP%\tempcode-office-<hash>.exe`, as the job helper is
 app; it also exits when its stdin closes. One helper serves the app's life;
 one that stops is started again on the next call, and one that does not
 answer within two minutes (Office on a modal dialog) is stopped and
-replaced. Its calls and Excel's events run on one STA thread with a message
-loop; stdin is read beside it.
+replaced. A send waits up to thirty minutes, since Outlook may be showing
+him a prompt; past that it says to look in Sent before sending again (the
+Outbox lets him press a failed act again). The carrier sends one request at
+a time, as the helper runs them, so a call's time starts when it is taken
+up. Its calls and Excel's events run on one STA thread with a message loop;
+stdin is read beside it. After each request it lets go of every app but an
+Excel whose events are wanted, so an app he closes ends; an app kept alive
+hidden by something else (`Visible` false, or Outlook with no window) is
+not his, and answers "not open".
 
 - **It drives only what he started.** It attaches with `GetActiveObject` and
   checks the process first, as LifeOS's `outlook.ps1` does, so a verb on an
@@ -115,7 +126,8 @@ loop; stdin is read beside it.
   text in UTC, as the Mac gives it, and goes back as a date; an error cell as
   its text, `#DIV/0!`), `Formula2` (or `Formula` on an Excel without it), and
   `NumberFormat`, read by row and then by cell where the cells differ (COM
-  answers null for those). Excel's `SheetChange` reaches `changes` with its
+  answers null for those). A date in a block with formulas goes in as its
+  serial, so a date-formatted cell stays a date. Excel's `SheetChange` reaches `changes` with its
   range for his own typing; the helper drops the events its own writes
   raise. A co-author's edits raise no `SheetChange` (Microsoft: "the default
   behavior of not firing change events"); Excel says it merged them by the
@@ -130,15 +142,24 @@ loop; stdin is read beside it.
   walks `Find.Execute` and sets each hit's text (Word's own replace takes at
   most 255 characters), with Track Changes as the tool asks and put back
   after. PowerPoint replaces with `TextRange.Replace`, which keeps each run's
-  formatting.
+  formatting. His last Find dialog's settings are cleared first, a `^` is
+  found as itself, and the window shows the final text with no markup while
+  it runs, so no tracked deletion is found again.
 - **Outlook**, as `outlook.ps1` does it: addresses by `PR_SMTP_ADDRESS` and
   `PR_SENDER_SMTP_ADDRESS`, then the Exchange user, then the address itself;
   lists sorted and stopped (no date filter for mail); a reply or forward
   puts our HTML just inside the body, above Outlook's quoted original; the
-  account by `SendUsingAccount`; recipients resolved before a send. Events
-  are sorted, recurrences expanded, then restricted to the window.
-  `eventByUid` matches `GlobalAppointmentID` in hex, or the `vCal-Uid` an
-  invitation made elsewhere carries in it. A send answers no id.
+  account by `SendUsingAccount`. Every recipient must resolve before a send,
+  or it is refused with their names. Whatever fails before `Send` answers
+  `refused` (nothing went); `Send` itself turned away answers `busy` or
+  `not-allowed`, and anything else from it is `failed` with "it may have
+  gone". An invitation is sent before it is saved (Send saves it), so one
+  Outlook turns away leaves no meeting behind. Events are sorted,
+  recurrences expanded, then restricted to the window. `eventByUid` matches
+  `GlobalAppointmentID` in hex with the occurrence date taken out, or the
+  `vCal-Uid` an invitation made elsewhere carries in it. An occurrence of a
+  series is answered as the series (its EntryID is the master's). A send
+  answers no id.
 - New Outlook (`olk.exe`) has no COM: only classic Outlook is reached.
 
 **Outlook on the web** (`owa/`, milestone 38). Mail and calendar only:
