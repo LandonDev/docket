@@ -212,6 +212,7 @@ export class Docservice {
     await this.exited
     clearTimeout(killed)
     rmSync(this.socket, { force: true })
+    rmSync(join(this.socket, '..', 'docservice.pid'), { force: true })
   }
 
   /** A docservice a run of ours left behind (the app was killed): stopped before another starts on its socket. */

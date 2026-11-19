@@ -15,7 +15,7 @@ import { BASE_HEADERS, refuseUpgrade, sendText, type PublicRoute, type RouteCtx 
  * token's prefix in `X-Forwarded-Host` so the editor's links come back here.
  */
 
-const FOUND_MS = 5000
+const FOUND_MS = 2000
 const MISSING_MS = 1000
 const looked = new Map<string, { at: number; found: FullLookup | null }>()
 
