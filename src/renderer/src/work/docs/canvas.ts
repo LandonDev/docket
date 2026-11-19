@@ -6,10 +6,11 @@ import type { DocState } from "./DocumentCanvas";
 /**
  * The document kind of canvas item (docs/agents/work-docs.md): the shared
  * block editor on a LifeOS document, a LifeOS project note that is one, or a
- * `.tcdoc`. Its versions open beside it (`history`). It claims Word and
- * Google documents too, which its body cannot open yet: import (milestone
- * 21) and Google (milestone 30) bring those in, and until then the item says
- * so on its state line.
+ * `.tcdoc`. Its versions open beside it (`history`). It claims Word,
+ * OpenDocument and RTF files too: the body makes such a file a `.tcdoc`
+ * beside it and the item reopens on that (work/formats, milestone 21).
+ * Google documents (milestone 30) say on the state line that they cannot
+ * open yet.
  */
 export const documentCanvas = defineCanvasKind<DocState>({
   kind: "document",
@@ -18,7 +19,7 @@ export const documentCanvas = defineCanvasKind<DocState>({
   opens: {
     sources: [{ at: "lifeos", table: "docs" }, { at: "lifeos", table: "projectDocs" }, { at: "microsoft", app: "word" }],
     mime: ["application/vnd.google-apps.document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-    ext: ["tcdoc", "docx"],
+    ext: ["tcdoc", "docx", "odt", "rtf"],
   },
   phone: "web",
   guestable: true,

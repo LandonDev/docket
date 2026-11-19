@@ -19,6 +19,11 @@ import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
 import { addContextChip } from "../canvas/chips";
 import type { CanvasBodyProps, CanvasShell, Presence } from "../canvas/kind";
+import { mailSafeCopy } from "work-kit/formats/clipboard";
+import { ExportDialog } from "../formats/ExportDialog";
+import { DropImport, ImportBody } from "../formats/Import";
+import { importsFirst } from "../formats/model";
+import { Export } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { docHost, servedBy, type DocHost } from "./host";
 import { decided, reviewOf } from "./review";
@@ -171,22 +176,29 @@ function TitleField({ text, rename }: { text: string; rename(title: string): Pro
   );
 }
 
-export function Body({ item, source, env, state, setState, shell }: CanvasBodyProps<DocState>) {
+/** A Word, OpenDocument or RTF file becomes a `.tcdoc` first (work/formats, milestone 21); the rest open as they are. */
+export function Body(props: CanvasBodyProps<DocState>) {
+  return importsFirst(props.source) ? <ImportBody {...(props as CanvasBodyProps<unknown>)} /> : <DocBody {...props} />;
+}
+
+function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<DocState>) {
   const [attempt, setAttempt] = useState(0);
   const opened = useOpened(env, source, attempt);
   useEffect(() => {
     shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Did not open", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);
   return (
-    <Scroller scrollTop={state?.scrollTop ?? 0} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
-      {(width) =>
-        opened && "open" in opened ? (
-          <Opened key={`${opened.host.env}|${opened.open.doc}`} host={opened.host} open={opened.open} shell={shell} width={width} sessionId={item.sessionId} />
-        ) : (
-          <Loading title={opened ? null : item.title} />
-        )
-      }
-    </Scroller>
+    <DropImport env={env} sessionId={item.sessionId} editor={null}>
+      <Scroller scrollTop={state?.scrollTop ?? 0} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
+        {(width) =>
+          opened && "open" in opened ? (
+            <Opened key={`${opened.host.env}|${opened.open.doc}`} host={opened.host} open={opened.open} shell={shell} width={width} sessionId={item.sessionId} />
+          ) : (
+            <Loading title={opened ? null : item.title} />
+          )
+        }
+      </Scroller>
+    </DropImport>
   );
 }
 
@@ -252,6 +264,13 @@ function Opened({ host, open, shell, width, sessionId }: { host: DocHost; open: 
   const [editor, setEditor] = useState<AnyEditor | null>(null);
   const review = useDocReview(host, open, shell, editor);
 
+  // The document's own verb in the pane's More: Export, a dialog with one choice (work/formats).
+  const [exporting, setExporting] = useState(false);
+  useEffect(() => {
+    shell.more?.([{ id: "export", label: "Export…", icon: Export, run: () => setExporting(true) }]);
+    return () => shell.more?.(null);
+  }, [shell]);
+
   const onAsk = (selection: DocumentSelection): void => {
     const words = selection.text.replace(/\s+/g, " ").trim();
     addContextChip(sessionId, { kind: "selection", label: `“${words.length > 40 ? `${words.slice(0, 40)}…` : words}”, ${open.title}`, ref: open.source, quote: selection.text });
@@ -261,17 +280,23 @@ function Opened({ host, open, shell, width, sessionId }: { host: DocHost; open: 
   };
 
   return (
-    <DocumentFrame
-      doc={doc}
-      open={open}
-      margin={margin}
-      onStatus={(status) => shell.statusLine(statusLineOf(status))}
-      onPresence={(people) => shell.presence(presenceOf(people))}
-      onAsk={onAsk}
-      review={review.state}
-      onReviewPick={review.pick}
-      onEditor={setEditor}
-    />
+    // A copy is written as mail clients and sheets read it, after the editor wrote its own (work-kit/formats/clipboard).
+    <div onCopy={(e) => mailSafeCopy(e.nativeEvent)} onCut={(e) => mailSafeCopy(e.nativeEvent)}>
+      <DocumentFrame
+        doc={doc}
+        open={open}
+        margin={margin}
+        onStatus={(status) => shell.statusLine(statusLineOf(status))}
+        onPresence={(people) => shell.presence(presenceOf(people))}
+        onAsk={onAsk}
+        review={review.state}
+        onReviewPick={review.pick}
+        onEditor={setEditor}
+      />
+      {exporting ? (
+        <ExportDialog target={{ env: host.env, source: open.source, title: open.title, editor, suggestions: review.hooks?.count ?? 0 }} onClose={() => setExporting(false)} />
+      ) : null}
+    </div>
   );
 }
 
