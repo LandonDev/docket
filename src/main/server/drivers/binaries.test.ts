@@ -16,7 +16,8 @@ vi.mock('./harness/child', async () => ({
 const { checkProvider, harnessEnv } = await import('./binaries')
 
 describe('the doctor row for Muse Code', () => {
-  it('names the version the launcher prints when the binary is installed', async () => {
+  // A sh script as the launcher: POSIX hosts only.
+  it.skipIf(process.platform === 'win32')('names the version the launcher prints when the binary is installed', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'muse-doctor-'))
     const bin = join(dir, 'muse')
     writeFileSync(bin, '#!/bin/sh\necho "Muse Code 1.4.14 (1.4.14-R7309.1)"\n')
@@ -52,9 +53,9 @@ describe('the environment a harness child gets', () => {
 describe('finding a binary on win32', () => {
   it('tries the name with each PATHEXT extension, in its order; the name alone elsewhere', async () => {
     const { binaryCandidates } = await import('./binaries')
-    expect(binaryCandidates('/d', 'codex', 'linux')).toEqual(['/d/codex'])
-    expect(binaryCandidates('/d', 'codex', 'win32', '.COM;.EXE;.CMD').map((p) => p.slice(3))).toEqual(['codex.com', 'codex.exe', 'codex.cmd'])
-    expect(binaryCandidates('/d', 'node.exe', 'win32', '.EXE').map((p) => p.slice(3))).toEqual(['node.exe'])
+    expect(binaryCandidates('/d', 'codex', 'linux')).toEqual([join('/d', 'codex')])
+    expect(binaryCandidates('/d', 'codex', 'win32', '.COM;.EXE;.CMD')).toEqual(['codex.com', 'codex.exe', 'codex.cmd'].map((n) => join('/d', n)))
+    expect(binaryCandidates('/d', 'node.exe', 'win32', '.EXE')).toEqual([join('/d', 'node.exe')])
   })
 
   it("resolves npm's codex.cmd to the codex.exe its platform package carries", async () => {

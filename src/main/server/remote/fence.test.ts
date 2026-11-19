@@ -21,8 +21,10 @@ beforeAll(() => {
   mkdirSync(outside, { recursive: true })
   writeFileSync(join(root, 'src', 'a.ts'), 'a')
   writeFileSync(join(outside, 'secret'), 's')
-  symlinkSync(join(outside, 'secret'), join(root, 'link-out'))
-  symlinkSync(root, join(dir, 'alias'))
+  // A standard Windows user may make a junction but no symlink: both links are junctions there, the one out to the folder.
+  if (process.platform === 'win32') symlinkSync(outside, join(root, 'link-out'), 'junction')
+  else symlinkSync(join(outside, 'secret'), join(root, 'link-out'))
+  symlinkSync(root, join(dir, 'alias'), 'junction')
 })
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 

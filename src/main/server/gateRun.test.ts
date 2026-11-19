@@ -30,7 +30,8 @@ describe('gateRun', () => {
     expect(gate.log.split('\n').at(-1)).toBe('✓ build 3s')
   })
 
-  it("the child's env drops the hook's GIT_* and puts bun's directory ahead of a PATH without it", () => {
+  // POSIX: Windows has no /usr/bin to stand bun ahead of, and the stub child is a sh script.
+  it.skipIf(process.platform === 'win32')("the child's env drops the hook's GIT_* and puts bun's directory ahead of a PATH without it", () => {
     const home = mkdtempSync(join(tmpdir(), 'tc-gate-env-'))
     const bin = join(home, '.bun', 'bin')
     mkdirSync(bin, { recursive: true })
@@ -50,7 +51,7 @@ describe('gateRun', () => {
     expect(gateEnv({ HOME: home, PATH: already }).PATH).toBe(already)
   })
 
-  it('keeps the first error line past the tail, from a stub and from a child', async () => {
+  it.skipIf(process.platform === 'win32')('keeps the first error line past the tail, from a stub and from a child', async () => {
     const early = 'src/early.ts(1,1): error TS2322: early'
     const log = [early, ...Array.from({ length: 300 }, (_, i) => `line ${i}`)].join('\n')
     const stub = JSON.stringify([{ step: 'typecheck', ok: false, log }])

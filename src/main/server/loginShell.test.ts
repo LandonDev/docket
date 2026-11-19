@@ -15,7 +15,8 @@ describe('loginShell', () => {
   })
 })
 
-describe('withToolPath', () => {
+// Runs the prelude in /bin/sh: POSIX hosts only (the Windows run is procTree.win32.test.ts, in Git Bash).
+describe.skipIf(process.platform === 'win32')('withToolPath', () => {
   const run = (command: string, platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string =>
     execFileSync('/bin/sh', ['-c', withToolPath(command, platform)], { env, encoding: 'utf8' })
 

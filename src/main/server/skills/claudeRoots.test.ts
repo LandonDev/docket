@@ -59,7 +59,8 @@ function pointAt(scope: ScopeKey, gen: string, skills: string[]): string {
 const ensure = (scope: ScopeKey = 'global', pointer = join(root, 'claude', 'scope', scope)): string =>
   ensureClaudeRoot({ root, scope, pointer, personDir: person, personJson, log: (l) => logs.push(l) })
 
-describe('the owned Claude root', () => {
+// Symlinks: a standard Windows user may not make them, so these run off win32; the Windows layout is the copies block below.
+describe.skipIf(process.platform === 'win32')('the owned Claude root', () => {
   it('holds a link per store skill through the pointer, the synced bucket, .claude.json and every other entry of the person\'s dir', () => {
     mkdirSync(join(person, 'skills', 'synced', 'brand'), { recursive: true })
     const pointer = pointAt('global', 'global@aaaaaaaaaaaa', ['alpha', 'beta'])
@@ -154,7 +155,7 @@ describe('the owned Claude root', () => {
   })
 })
 
-describe('the driver\'s seam', () => {
+describe.skipIf(process.platform === 'win32')('the driver\'s seam', () => {
   it('is null unconfigured; configured, it makes the scope\'s root, names its generation and relinks on a move', () => {
     expect(claudeSkillRootFor({ workspaceId: null, projectId: null, cwd: tmp })).toBeNull()
     expect(claudeSkillsGeneration(null)).toBeNull()

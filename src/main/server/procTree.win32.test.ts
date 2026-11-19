@@ -26,8 +26,14 @@ const until = async (ok: () => boolean, ms = 10_000): Promise<boolean> => {
   return ok()
 }
 
-/** A node that starts a node grandchild (printing its pid) and then waits forever. */
-const PARENT = `const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); console.log(c.pid); setInterval(() => {}, 1000)`
+/**
+ * A node that starts a node grandchild (printing its pid) and then waits
+ * forever. Detached: Node (libuv) puts a plain child in a kill-on-close job of
+ * its own, so it dies with its parent anyway; a harness CLI's tools are not
+ * all started that way (a shell's children, a detached server), and those are
+ * what a Job Object of ours has to catch.
+ */
+const PARENT = `const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', detached: true }); console.log(c.pid); setInterval(() => {}, 1000)`
 
 function parentWithGrandchild(adopt: (child: ChildProcess) => ChildProcess): Promise<{ parent: ChildProcess; grandchild: number }> {
   const parent = adopt(spawn(process.execPath, ['-e', PARENT], { ...treeSpawnOptions(), stdio: ['ignore', 'pipe', 'ignore'] }))
@@ -43,6 +49,7 @@ describe.runIf(win)('process trees on Windows', () => {
   it('lets a grandchild outlive its parent with no job: the reason for one', async () => {
     const { parent, grandchild } = await parentWithGrandchild((c) => c)
     strays.push(grandchild)
+    expect(alive(grandchild)).toBe(true)
     parent.kill()
     await until(() => !alive(parent.pid!))
     await new Promise((r) => setTimeout(r, 1_000))
@@ -56,6 +63,7 @@ describe.runIf(win)('process trees on Windows', () => {
     // the helper compiles once (csc.exe), then takes the pid
     expect(await until(() => host.has(parent.pid!), 60_000)).toBe(true)
     await new Promise((r) => setTimeout(r, 500))
+    expect(alive(grandchild)).toBe(true)
     parent.kill()
     expect(await until(() => !alive(grandchild))).toBe(true)
   }, 90_000)
@@ -63,6 +71,7 @@ describe.runIf(win)('process trees on Windows', () => {
   it('stops a tree with killTree, the root and what it started', async () => {
     const { parent, grandchild } = await parentWithGrandchild((c) => c)
     strays.push(grandchild)
+    expect(alive(grandchild)).toBe(true)
     expect(killTree(parent.pid!, 'SIGTERM')).toBe(true)
     expect(await until(() => !alive(parent.pid!) && !alive(grandchild))).toBe(true)
   })
@@ -94,7 +103,8 @@ describe.runIf(win)('the command shell on Windows', () => {
     expect(code).toBe(3)
     const [cwd, first] = out.trim().split(/\r?\n/)
     expect(cwd!.toLowerCase()).toBe(dir.replaceAll('\\', '/').toLowerCase())
-    expect(first).toMatch(/\.bun\/bin$/)
+    // withToolPath leads with a tool dir the PATH lacked (both, when it had neither)
+    expect(first).toMatch(/\/\.(bun|local)\/bin$/)
   })
 })
 
@@ -108,7 +118,10 @@ describe.runIf(win)('a terminal on Windows', () => {
     term.onData((d) => (out += d))
     term.write('echo tc-$((6*7))\r')
     expect(await until(() => out.includes('tc-42'), 20_000)).toBe(true)
-    killTree(term.pid, 'SIGKILL')
-    expect(await until(() => !alive(term.pid))).toBe(true)
+    const pid = term.pid
+    killTree(pid, 'SIGKILL')
+    expect(await until(() => !alive(pid))).toBe(true)
+    // node-pty keeps its console reader alive until the pty itself is closed
+    term.kill()
   }, 30_000)
 })
