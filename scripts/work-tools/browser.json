@@ -1,0 +1,338 @@
+{
+  "pillar": "browser",
+  "tools": [
+    {
+      "name": "screen-relay",
+      "version": "0.1.2",
+      "licence": "Apache-2.0 AND GPL-2.0-or-later AND MIT",
+      "licenceNote": "Vercel Labs' screen-relay 0.1.2 (Apache-2.0): its engine, relay-engine, built on this host from the published npm package, unmodified, against Ubuntu 24.04's own packages unpacked beside it with no root: x264 (GPL-2.0-or-later), libwebsockets (MIT), zlib (Zlib), OpenSSL (Apache-2.0), libcap (BSD-3-Clause OR GPL-2.0-only), libev (BSD-2-Clause OR GPL-2.0-or-later), libuv (MIT) and the X client libraries (MIT), found by pkgconf (ISC). With it the X.Org server and its dummy video driver (MIT) for the box browser's private display, and xclip (GPL-2.0-or-later) for his paste. Each runs only as a separate, unmodified process the browser pillar starts on the box; none is linked into our code, bundled, or shipped in the app. The wire the engine speaks is ported into the app under screen-relay's Apache-2.0 notice (src/shared/video/nsl1.ts).",
+      "homepage": "https://github.com/vercel-labs/screen-relay",
+      "platforms": {
+        "linux-x64": {
+          "kind": "build",
+          "files": [
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/p/pkgconf/pkgconf_1.8.1-2build1_amd64.deb",
+              "sha256": "834a58031069d97d7cfb8b2f5bfd5effc69cecf7f30cc362071875f1f8dc1828",
+              "size": 16790,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/p/pkgconf/pkgconf-bin_1.8.1-2build1_amd64.deb",
+              "sha256": "7a812f05ee1610154b433e2ad54f6e4163fcbb306b9fb31afe959afb2e5e1545",
+              "size": 20730,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/p/pkgconf/libpkgconf3_1.8.1-2build1_amd64.deb",
+              "sha256": "fc3a57e8f931ec06cb7c51acc56878f1fec247ff02a7adcab26905c2faeb2792",
+              "size": 30652,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/universe/x/x264/libx264-dev_0.164.3108+git31e19f9-1_amd64.deb",
+              "sha256": "8afbd0e460c11a9b6bee90e09116aae1b1d5f5ba038bbdc3408f16083c7c1356",
+              "size": 666936,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/universe/libw/libwebsockets/libwebsockets-dev_4.3.3-1.1build3_amd64.deb",
+              "sha256": "21ca07613333a9a284eec89a62f96d6da56f71ad02f84fabc9d6ead463d8862a",
+              "size": 588384,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/o/openssl/libssl-dev_3.0.13-0ubuntu3.16_amd64.deb",
+              "sha256": "2b4734df0475e305ac03abb0a2cc5659651ed37ef02d967a1c4033a154cf714b",
+              "size": 2408684,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libc/libcap2/libcap-dev_2.66-5ubuntu2.4_amd64.deb",
+              "sha256": "07f2462867569a2119a2ad0f1593232663f2d1612b791c230d22a8d73a15abee",
+              "size": 595634,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/universe/libe/libev/libev-dev_4.33-2.1build1_amd64.deb",
+              "sha256": "9c5c8da05f611efeeaa566a5d5ec3885b48a9aa339d042bbd4b5e38e6677ef41",
+              "size": 123486,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libu/libuv1/libuv1-dev_1.48.0-1.1build1_amd64.deb",
+              "sha256": "fbb84f374b3aa516c7fe897db9abe1263dc8cd93b619d82e0efa7d7676297962",
+              "size": 135986,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/z/zlib/zlib1g-dev_1.3.dfsg-3.1ubuntu2.3_amd64.deb",
+              "sha256": "419902a649e1078f24596cdf31ced9c839519828790f59888056fcdcd58e8a28",
+              "size": 894134,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libx11/libx11-dev_1.8.7-1ubuntu0.1_amd64.deb",
+              "sha256": "467e28dafc2a51a59bf8615325e2e6bd42da63d3e346580a5baf14fdfde8a8e1",
+              "size": 732278,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxext/libxext-dev_1.3.4-1build2_amd64.deb",
+              "sha256": "b5bdb6724f228cb8eee8cf39cbbe1289dd3f8f06dd022748312df7844c94dcf2",
+              "size": 83470,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxdamage/libxdamage-dev_1.1.6-1build1_amd64.deb",
+              "sha256": "63067acaa7248dd46e67496154a030f38c86aa1cc192116265a8039c358ee20a",
+              "size": 5270,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxfixes/libxfixes-dev_6.0.0-2build1_amd64.deb",
+              "sha256": "069723527566ef0fc12738f63b789110c211b85bf96c3dbe9a94d9e77f5c479b",
+              "size": 12132,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxtst/libxtst-dev_1.2.3-1.1ubuntu0.1_amd64.deb",
+              "sha256": "a59f1bb1522be2fde29d6b676b860f66c8af1c4f21e8d677ae112fd9dbdfb538",
+              "size": 15782,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxi/libxi-dev_1.8.1-1build1_amd64.deb",
+              "sha256": "a1f0f0b4a8c1c43e5300871464080920859d3fa466ef46a584fec800fe890860",
+              "size": 193540,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/x/xorgproto/x11proto-dev_2023.2-1_all.deb",
+              "sha256": "3bf13a2ffb79ecd4014d438936014e5863f79eb59ebf76e8f43356271c90e7ce",
+              "size": 602398,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/x/xtrans/xtrans-dev_1.4.0-1_all.deb",
+              "sha256": "45277c51d5d83db351b61859314b59595c9626ac372fbb2fc0d5542e169d9086",
+              "size": 68900,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxau/libxau-dev_1.0.9-1build6_amd64.deb",
+              "sha256": "46783c6af2d87c06394d55dfaa21dac07396f13cfc5ea6afbd9313ab49fc0e50",
+              "size": 9570,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxcb/libxcb1-dev_1.15-1ubuntu2_amd64.deb",
+              "sha256": "1bafe3432feafc9e57f858721da524dfb3ee1f6fc4ef6b0c73023e79eadb9c28",
+              "size": 85790,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxdmcp/libxdmcp-dev_1.1.3-0ubuntu6_amd64.deb",
+              "sha256": "ba2f2230b391c292f5f399d6e04d48181be6b3100556f7870591ca95c9d00667",
+              "size": 26546,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libp/libpthread-stubs/libpthread-stubs0-dev_0.4-1build3_amd64.deb",
+              "sha256": "b8f278da7b1907d3014c01f9bc89748208a8cd3b770f0f55f1528afcc98dc6c0",
+              "size": 4746,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/universe/x/x264/libx264-164_0.164.3108+git31e19f9-1_amd64.deb",
+              "sha256": "7a410be6797c32357a2b7f0cc68ee14ae0e3b652bb17d16cdc941e4d830c7842",
+              "size": 603814,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/universe/libw/libwebsockets/libwebsockets19t64_4.3.3-1.1build3_amd64.deb",
+              "sha256": "31a0ac48e4f81092c7272e8bc7e6ef38dd78daf403f96baa232667aa999c5eea",
+              "size": 229104,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/universe/libe/libev/libev4t64_4.33-2.1build1_amd64.deb",
+              "sha256": "efc04482efadbc5b95a9386131190015c206fdae324caffdd129e602196b0757",
+              "size": 30996,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libu/libuv1/libuv1t64_1.48.0-1.1build1_amd64.deb",
+              "sha256": "72a1856b30af1e533494ab90742a2446f4491b15ddebcade6661a6e8d61b4359",
+              "size": 97288,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/o/openssl/libssl3t64_3.0.13-0ubuntu3.16_amd64.deb",
+              "sha256": "219f43b1cd836a4da550938db5fda93160d269d39a4edcf1f1ce698a470db797",
+              "size": 1945300,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libc/libcap2/libcap2_2.66-5ubuntu2.4_amd64.deb",
+              "sha256": "23c627c77c66552a658e62852f244f4946dc543898e0ec5428d5dc6bffde2d6a",
+              "size": 30500,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.3_amd64.deb",
+              "sha256": "376249c8de139568221dbb242318cc8cb8f02299e3a62b7432948e1754fbddf9",
+              "size": 63158,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libx11/libx11-6_1.8.7-1ubuntu0.1_amd64.deb",
+              "sha256": "9102f73477081a9a57994c80587ca9760341f644ed51bdfa46f2248083d418b3",
+              "size": 653072,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxext/libxext6_1.3.4-1build2_amd64.deb",
+              "sha256": "45783969a9ece9d7b7b733b8c60981584c53c6bc5ee3b42d295d2f80d1285679",
+              "size": 30406,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxdamage/libxdamage1_1.1.6-1build1_amd64.deb",
+              "sha256": "6891faf325e996ebd28ef53ebb9c043dc96f67327500490affc3e89d366d35ed",
+              "size": 6150,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxfixes/libxfixes3_6.0.0-2build1_amd64.deb",
+              "sha256": "0ee1015cccd063249e01c0cd0bf45f513c8ac9a1e5e485070c12e69192455e4a",
+              "size": 10764,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxtst/libxtst6_1.2.3-1.1ubuntu0.1_amd64.deb",
+              "sha256": "2340688e034d5dd3f5ec180b1bed32407de16db1679ce85cec3e2d34625f50dd",
+              "size": 12556,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxi/libxi6_1.8.1-1build1_amd64.deb",
+              "sha256": "0ea7acb5e8a8ce4d6653b30e03a319bfe136db7bfb5ee7cad34c2aa1272ea8d9",
+              "size": 32404,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxau/libxau6_1.0.9-1build6_amd64.deb",
+              "sha256": "e40d29f1d1a62393bacaedebe0da3d9006084152a9f7e5e029293f08ce1c5c80",
+              "size": 7160,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxcb/libxcb1_1.15-1ubuntu2_amd64.deb",
+              "sha256": "e1c6611d11ad7398326f1bf028afc34c3b14c51d917a3426b966ed4b9687fa58",
+              "size": 47730,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxdmcp/libxdmcp6_1.1.3-0ubuntu6_amd64.deb",
+              "sha256": "bcd336fce11ce2a45f34d0f95e6980af22529f22147e8f98c156e5cee8ee42bb",
+              "size": 10254,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/x/xorg-server/xserver-xorg-core_21.1.12-1ubuntu1.9_amd64.deb",
+              "sha256": "75e1cfb00bdba255ddba089c9ef0f45e56a3665a483ed8fbcee80f29046c11ba",
+              "size": 1476450,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.4.0-1build1_amd64.deb",
+              "sha256": "8a8b5ce3e7a9bbc37808d82261363d47ec71783d5d659a990529ab6fcc07d9f1",
+              "size": 10730,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/libx/libxcvt/libxcvt0_0.1.2-1build1_amd64.deb",
+              "sha256": "73215b31e1585e042aa2b9dc97cf4dfcfc6287fb0f6eca8bcab0b1f30a51c8e7",
+              "size": 5684,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/x/xorg-server/xserver-common_21.1.12-1ubuntu1.9_all.deb",
+              "sha256": "ceeac76b9c94973c71e4e6566fa9ff5d3caae9716775d840810a4e1ad749a737",
+              "size": 35008,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/universe/x/xclip/xclip_0.13-3_amd64.deb",
+              "sha256": "bb98b6b3c9f7338f1e1e7b56aad3c7dfec0f1b6032bda9546061c2469aa93910",
+              "size": 17586,
+              "into": "sys"
+            },
+            {
+              "url": "https://registry.npmjs.org/screen-relay/-/screen-relay-0.1.2.tgz",
+              "integrity": "sha512-4aAW6NGTengvkZxrdSoS2gmLDk8BR9jMgpWIVg4b1LcjV7B9Ki3H+NQ1sVy/41tx7b3SRxAewmq0jUkpRORV6Q==",
+              "into": "pkg",
+              "strip": 1
+            }
+          ],
+          "bin": "pkg/relay-engine",
+          "bins": {
+            "xorg": "sys/usr/lib/xorg/Xorg",
+            "xclip": "sys/usr/bin/xclip"
+          },
+          "check": [
+            "pkg/dist/viewer/index.html",
+            "sys/usr/lib/xorg/modules/drivers/dummy_drv.so",
+            "sys/usr/lib/x86_64-linux-gnu/libxcvt.so.0",
+            "sys/usr/lib/x86_64-linux-gnu/libx264.so.164"
+          ],
+          "build": [
+            {
+              "run": [
+                "sh",
+                "-c",
+                "set -e; D=\"$1\"; L=\"$D/sys/usr/lib/x86_64-linux-gnu\"; export PATH=\"$D/sys/usr/bin:$PATH\" LD_LIBRARY_PATH=\"$L\" PKG_CONFIG_LIBDIR=\"$L/pkgconfig:$D/sys/usr/share/pkgconfig\" PKG_CONFIG_SYSROOT_DIR=\"$D/sys\" CPPFLAGS=\"-I$D/sys/usr/include/x86_64-linux-gnu\"; export LDLIBS=\"-Wl,-rpath,'\\$\\$ORIGIN/../sys/usr/lib/x86_64-linux-gnu'\"; exec make -C \"$D/pkg\" relay-engine BACKENDS=x11",
+                "build",
+                "{dir}"
+              ],
+              "expectFile": "{dir}/pkg/relay-engine",
+              "timeoutMs": 900000
+            }
+          ]
+        }
+      },
+      "probe": {
+        "steps": [
+          {
+            "run": [
+              "{bin}",
+              "--help"
+            ],
+            "expect": "Compiled backends: .*x11"
+          },
+          {
+            "run": [
+              "{bin:xorg}",
+              "-version"
+            ],
+            "env": {
+              "LD_LIBRARY_PATH": "{dir}/sys/usr/lib/x86_64-linux-gnu"
+            },
+            "expect": "X\\.Org X Server"
+          },
+          {
+            "run": [
+              "{bin:xclip}",
+              "-version"
+            ],
+            "env": {
+              "LD_LIBRARY_PATH": "{dir}/sys/usr/lib/x86_64-linux-gnu"
+            },
+            "expect": "xclip version"
+          }
+        ]
+      }
+    }
+  ]
+}

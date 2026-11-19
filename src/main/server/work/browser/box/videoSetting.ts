@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { BROWSER_VIDEO_SETTING, browserVideoOn } from '@shared/video/settings'
 import { Toolchain } from '../../formats/tools'
@@ -20,8 +21,10 @@ export interface VideoTools {
   xorg: string
   /** xclip: his paste goes to the display's clipboard through it */
   xclip: string
-  /** the tool's own folder: libraries, the dummy driver, the viewer folder the engine wants */
-  root: string
+  /** the folder the packages were unpacked into: `usr/lib/x86_64-linux-gnu` holds the libraries, `usr/lib/xorg/modules` the server's */
+  sys: string
+  /** the viewer folder the engine wants to exist, though nothing of it is ever served */
+  viewer: string
 }
 
 /** The setting as this host's database holds it. A database with no settings table reads as on. */
@@ -45,8 +48,13 @@ export function videoToolsAt(dataDir: string): VideoTools | null {
   let chain = toolchains.get(dataDir)
   if (!chain) toolchains.set(dataDir, (chain = new Toolchain(dataDir)))
   const engine = chain.bin(VIDEO_TOOL)
-  const xorg = chain.bin(VIDEO_TOOL, 'Xorg')
+  const xorg = chain.bin(VIDEO_TOOL, 'xorg')
   const xclip = chain.bin(VIDEO_TOOL, 'xclip')
-  const root = chain.bin(VIDEO_TOOL, 'root')
-  return engine && xorg && xclip && root ? { engine, xorg, xclip, root } : null
+  if (!engine || !xorg || !xclip) return null
+  // <tool>/pkg/relay-engine: the packages sit beside the package, in <tool>/sys
+  const root = dirname(dirname(engine))
+  return { engine, xorg, xclip, sys: join(root, 'sys'), viewer: join(root, 'pkg', 'dist', 'viewer') }
 }
+
+/** The environment a program of the tool tree runs with: its own libraries ahead of the host's. */
+export const videoToolsEnv = (tools: VideoTools): { LD_LIBRARY_PATH: string } => ({ LD_LIBRARY_PATH: join(tools.sys, 'usr', 'lib', 'x86_64-linux-gnu') })

@@ -24,7 +24,13 @@ describe('third-party notices', () => {
   })
 
   it('names every tool run beside the app', () => {
-    for (const id of ['libreoffice', 'ffmpeg', 'onlyoffice', 'pymupdf4llm']) expect(text).toContain(`| ${id} |`)
+    for (const id of ['libreoffice', 'ffmpeg', 'onlyoffice', 'pymupdf4llm', 'screen-relay']) expect(text).toContain(`| ${id} |`)
+  })
+
+  it('says what we carry of screen-relay, and that its engine and x264 never ship', () => {
+    expect(text).toContain('src/shared/video/nsl1.ts')
+    expect(text).toMatch(/screen-relay[^\n]*Apache-2\.0/)
+    expect(text).toMatch(/x264 \(GPL-2\.0-or-later\)/)
   })
 
   it('reads an SPDX expression as the licence asks', () => {

@@ -249,6 +249,114 @@ describe.skipIf(process.platform === 'win32')('the toolchain installer', () => {
     expect(again.state.tools.venv.bytes).toBe(state.tools.venv.bytes)
   })
 
+  // A tool compiled on the host (the `build` kind): its packages and sources put in place, then its own steps.
+  const buildTool = (name: string, files: object[], steps: object[]): object => ({
+    name,
+    version: '1.0.0',
+    licence: 'MIT',
+    licenceNote: 'a separate process',
+    homepage: 'https://example.test/',
+    platforms: { [platform]: { kind: 'build', files, bin: 'out/greet', check: ['sys/usr/share/greeting'], build: steps } },
+    probe: { steps: [{ run: ['{bin}'], expect: '^hello from the tree, built in place$' }] }
+  })
+  /** A source tarball whose `make.sh <dir>` writes out/greet from the greeting a package left under sys/. */
+  function sources(name: string): { url: string; sha256: string; size: number } {
+    const src = join(root, 'src', name)
+    mkdirSync(join(src, 'pkg'), { recursive: true })
+    writeFileSync(join(src, 'pkg', 'make.sh'), '#!/bin/sh\nset -e\nmkdir -p "$1/out"\nprintf \'#!/bin/sh\\necho "%s, built in %s"\\n\' "$(cat "$1/sys/usr/share/greeting")" "$2" > "$1/out/greet"\nchmod +x "$1/out/greet"\n')
+    const file = join(root, 'src', `${name}.tar.gz`)
+    execFileSync('tar', ['-czf', file, '-C', src, 'pkg'])
+    const body = readFileSync(file)
+    const url = `https://downloads.test/${name}.tar.gz`
+    served.set(url, body)
+    return { url, sha256: createHash('sha256').update(body).digest('hex'), size: body.length }
+  }
+  /** A .deb holding usr/share/greeting, made with dpkg-deb. */
+  function deb(name: string): { url: string; sha256: string; size: number } {
+    const tree = join(root, 'src', `${name}-deb`)
+    mkdirSync(join(tree, 'DEBIAN'), { recursive: true })
+    mkdirSync(join(tree, 'usr', 'share'), { recursive: true })
+    writeFileSync(join(tree, 'DEBIAN', 'control'), `Package: ${name}\nVersion: 1.0\nArchitecture: all\nMaintainer: nobody <nobody@example.test>\nDescription: a test package\n`)
+    writeFileSync(join(tree, 'usr', 'share', 'greeting'), 'hello from the tree')
+    const file = join(root, 'src', `${name}_1.0_all.deb`)
+    execFileSync('dpkg-deb', ['--root-owner-group', '-b', tree, file], { stdio: 'ignore' })
+    const body = readFileSync(file)
+    const url = `https://downloads.test/pool/${name}_1.0_all.deb`
+    served.set(url, body)
+    return { url, sha256: createHash('sha256').update(body).digest('hex'), size: body.length }
+  }
+  const hasDpkg = (() => {
+    try {
+      execFileSync('dpkg-deb', ['--version'], { stdio: 'ignore' })
+      return true
+    } catch {
+      return false
+    }
+  })()
+
+  it.skipIf(!hasDpkg)('builds a tool on the host: its packages unpacked beside its sources with no root, its steps run where it will live', async () => {
+    const dir = join(root, 'manifests')
+    const steps = [{ run: ['sh', '{dir}/pkg/make.sh', '{dir}', 'place'], expectFile: '{dir}/out/greet' }]
+    manifest(dir, 'p.json', 'pillar', [buildTool('built', [{ ...deb('greeting'), into: 'sys' }, sources('built')], steps)])
+    const { state, failed } = await install(opts(dir))
+    expect(failed).toEqual([])
+    expect(state.tools.built).toMatchObject({ ok: true, dir: join('built', '1.0.0'), bin: 'out/greet', probed: 'hello from the tree, built in place' })
+    const home = join(root, 'data', 'work-tools', 'built', '1.0.0')
+    // the package's files and nothing of its control data; the sources beside them; the downloads gone
+    expect(readFileSync(join(home, 'sys', 'usr', 'share', 'greeting'), 'utf8')).toBe('hello from the tree')
+    expect(existsSync(join(home, 'sys', 'DEBIAN'))).toBe(false)
+    expect(existsSync(join(home, 'pkg', 'make.sh'))).toBe(true)
+    expect(readdirSync(join(root, 'data', 'work-tools', 'downloads'))).toEqual([])
+    // the step ran in the tool's own folder, the one it stays in
+    expect(readFileSync(join(home, 'out', 'greet'), 'utf8')).toContain('built in place')
+    fetched = []
+    await install(opts(dir))
+    expect(fetched).toEqual([])
+  })
+
+  it.skipIf(!hasDpkg)('a build step that fails, or leaves nothing, installs nothing', async () => {
+    const dir = join(root, 'manifests')
+    const files = () => [{ ...deb('greeting'), into: 'sys' }, sources('built')]
+    manifest(dir, 'p.json', 'pillar', [
+      buildTool('broken', files(), [{ run: ['sh', '-c', 'echo no compiler here >&2; exit 3'] }]),
+      buildTool('empty', files(), [{ run: ['true'], expectFile: '{dir}/out/greet' }]),
+      buildTool('stepless', files(), [])
+    ])
+    const { state, failed } = await install(opts(dir))
+    expect(failed.sort()).toEqual(['broken', 'empty', 'stepless'])
+    expect(state.tools.broken.error).toMatch(/^build: sh exited 3: no compiler here/)
+    expect(state.tools.empty.error).toMatch(/^build: true left no greet/)
+    expect(state.tools.stepless.error).toMatch(/names its build steps/)
+    for (const name of ['broken', 'empty', 'stepless']) expect(existsSync(join(root, 'data', 'work-tools', name, '1.0.0'))).toBe(false)
+  })
+
+  it('the browser pillar names the engine, pinned by hash, built with no root on the box alone', () => {
+    const tool = loadManifests(join(import.meta.dirname)).find((t) => t.name === 'screen-relay')!
+    expect(tool).toMatchObject({ pillar: 'browser', file: 'browser.json', version: '0.1.2' })
+    expect(Object.keys(tool.platforms)).toEqual(['linux-x64'])
+    const entry = tool.platforms['linux-x64']!
+    expect(entry.kind).toBe('build')
+    // the engine's own sources are the published package, by npm's integrity; every package by its sha256 and size, from a dated snapshot
+    const pkg = entry.files.filter((f) => f.url.startsWith('https://registry.npmjs.org/'))
+    expect(pkg).toEqual([expect.objectContaining({ url: 'https://registry.npmjs.org/screen-relay/-/screen-relay-0.1.2.tgz', into: 'pkg', strip: 1, integrity: expect.stringMatching(/^sha512-/) })])
+    const debs = entry.files.filter((f) => !pkg.includes(f))
+    expect(debs.length).toBeGreaterThan(30)
+    for (const f of debs) {
+      expect(f.url).toMatch(/^https:\/\/snapshot\.ubuntu\.com\/ubuntu\/\d{8}T\d{6}Z\/pool\/(main|universe)\/.+\.deb$/)
+      expect(f.sha256).toMatch(/^[0-9a-f]{64}$/)
+      expect(f.size).toBeGreaterThan(0)
+      expect(f.into).toBe('sys')
+    }
+    for (const name of ['libx264-164', 'libx264-dev', 'libwebsockets19t64', 'xserver-xorg-core', 'xserver-xorg-video-dummy', 'libxcvt0', 'xclip']) expect(debs.some((f) => f.url.includes(`/${name}_`)), name).toBe(true)
+    // x264 and xclip are GPL: separate processes, never linked, and never in the app
+    expect(tool.licence).toContain('GPL-2.0-or-later')
+    expect(tool.licenceNote).toMatch(/separate, unmodified process/)
+    expect(tool.licenceNote).toMatch(/none is linked into our code, bundled, or shipped in the app/)
+    // the build uses the host's compiler against the tree, with a library path that follows the folder
+    expect(entry.build?.[0].run.join(' ')).toContain('ORIGIN/../sys/usr/lib/x86_64-linux-gnu')
+    expect(tool.probe.steps[0].expect).toBe('Compiled backends: .*x11')
+  })
+
   it('refuses a pip line with no hashes and a file that would land outside its folder', () => {
     const pip = (packages: string[]) => ({ pillar: 'p', tools: [{ ...(tool('pp', '1.0.0', { url: 'https://x.test/a.tgz', sha256: 'a'.repeat(64) }) as Record<string, unknown>), platforms: { [platform]: { kind: 'pip', packages, bin: 'bin/python' } } }] })
     expect(ToolManifestSchema.safeParse(pip(['python-pptx==1.0.2'])).success).toBe(false)

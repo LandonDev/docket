@@ -160,9 +160,11 @@ export function render(pkgs = shippedPackages()): string {
     '',
     'pdf.js\'s character maps, two standard fonts and two image decoders ship as lazy assets, each beside its own licence notice (`src/renderer/src/work/pdf/pdfjsData.ts`). The JetBrains Mono font ships under the SIL Open Font License 1.1 (`src/renderer/src/assets/fonts/JetBrainsMono-OFL.txt`). Electron carries its own notices for Chromium and Node.js inside the app (`LICENSES.chromium.html`).',
     '',
+    'Live video speaks screen-relay\'s wire (github.com/vercel-labs/screen-relay, version 0.1.2, Apache-2.0, given below). `src/shared/video/nsl1.ts` is ported from its `src/protocol/index.ts` and PROTOCOL.md and says in its head what was changed: only the frame, the ack and the input message are kept, and a frame encoder is added. screen-relay\'s engine itself is not in the app: it is a tool, below.',
+    '',
     '## Tools run as separate processes',
     '',
-    'The host installs these on demand under `<userData>/work-tools/` (scripts/work-tools/*.json) and runs each as its own process; none is linked into TempCode, bundled with it or changed. ONLYOFFICE (AGPL-3.0), PyMuPDF (AGPL-3.0) and ffmpeg (GPL-3.0) are among them: each runs unmodified as a separate program, and ONLYOFFICE\'s editor is never offered to a guest.',
+    'The host installs these on demand under `<userData>/work-tools/` (scripts/work-tools/*.json) and runs each as its own process; none is linked into TempCode, bundled with it or changed. ONLYOFFICE (AGPL-3.0), PyMuPDF (AGPL-3.0), ffmpeg (GPL-3.0) and x264 (GPL-2.0-or-later, behind screen-relay\'s engine on the box) are among them: each runs unmodified as a separate program, and ONLYOFFICE\'s editor is never offered to a guest.',
     '',
     '| Tool | Version | Licence | Pillar | How it is used |',
     '|---|---|---|---|---|'

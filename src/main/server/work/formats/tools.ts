@@ -45,6 +45,17 @@ const ToolFileSchema = z
   })
   .refine((f) => !!f.sha256 !== !!f.integrity, 'a file has a sha256 or an integrity, one of the two')
 
+/** One probe or build step. Placeholders: `{bin}`, `{bin:<other bin or tool>}`, `{dir}`, `{tmp}`, `{tmpUrl}` (file URL), `{node}` (the installer's own runtime). */
+const ProbeStepSchema = z.object({
+  run: z.array(z.string()).min(1),
+  env: z.record(z.string(), z.string()).optional(),
+  /** a regular expression the output (stdout and stderr) must match */
+  expect: z.string().optional(),
+  /** a file the step must leave behind */
+  expectFile: z.string().optional(),
+  timeoutMs: z.number().int().positive().optional()
+})
+
 /**
  * How a tool lands on one platform.
  * - `archive`: each file unpacked (tar.gz, tar.xz, zip) into the tool's folder; an entry a later file also holds is replaced, not merged
@@ -53,9 +64,12 @@ const ToolFileSchema = z
  * - `npm`: package tarballs, each into `node_modules/<name>`
  * - `venv`: a Python environment made by the tool `needs` names
  * - `pip`: packages added to the venv the tool `needs` names
+ * - `build`: a tool compiled on the host against a library tree of its own. Each file is put in place (a
+ *   `.deb` extracted with `dpkg-deb -x`, an archive unpacked, a raw file kept), then the `build` steps run
+ *   in the tool's folder with the host's own compiler. Nothing is installed on the system and no root is used.
  */
 const PlatformEntrySchema = z.object({
-  kind: z.enum(['archive', 'debs', 'dmg', 'npm', 'venv', 'pip']),
+  kind: z.enum(['archive', 'debs', 'dmg', 'npm', 'venv', 'pip', 'build']),
   files: z.array(ToolFileSchema).default([]),
   /** dmg: the app bundle to copy out */
   app: z.string().optional(),
@@ -76,18 +90,9 @@ const PlatformEntrySchema = z.object({
   /** its other programs by name (ffmpeg's `ffprobe`) */
   bins: z.record(z.string(), z.string()).optional(),
   /** files that must exist inside the folder (LibreOffice's Carlito and Caladea) */
-  check: z.array(z.string()).optional()
-})
-
-/** One probe step. Placeholders: `{bin}`, `{bin:<other bin or tool>}`, `{dir}`, `{tmp}`, `{tmpUrl}` (file URL), `{node}` (the installer's own runtime). */
-const ProbeStepSchema = z.object({
-  run: z.array(z.string()).min(1),
-  env: z.record(z.string(), z.string()).optional(),
-  /** a regular expression the output (stdout and stderr) must match */
-  expect: z.string().optional(),
-  /** a file the step must leave behind */
-  expectFile: z.string().optional(),
-  timeoutMs: z.number().int().positive().optional()
+  check: z.array(z.string()).optional(),
+  /** build: the steps that make the tool, run after its files are in place and before the check and the probe */
+  build: z.array(ProbeStepSchema).optional()
 })
 
 export const ToolSchema = z.object({

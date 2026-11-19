@@ -256,6 +256,16 @@ async function installOne(tool: PlannedTool, entry: ToolPlatformEntry, state: To
       case 'debs':
         for (const bundle of fetched) await unpackDebs(bundle, partial, run)
         break
+      case 'build':
+        // Packages first, in the order named, then the sources: a later file replaces what an earlier one left.
+        for (const [i, file] of entry.files.entries()) {
+          const into = join(partial, file.into ?? '')
+          mkdirSync(into, { recursive: true })
+          if (nameOf(file.url).endsWith('.deb')) await extractDeb(fetched[i], into, run, await hasDpkgDeb(run))
+          else if (file.raw) cpSync(fetched[i], join(into, nameOf(file.url)))
+          else await unpack(fetched[i], into, file.strip ?? 0, run)
+        }
+        break
       case 'dmg':
         if (!entry.app) throw new Error('a dmg tool names its app')
         for (const image of fetched) await copyFromDmg(image, entry.app, partial, run)
@@ -275,6 +285,12 @@ async function installOne(tool: PlannedTool, entry: ToolPlatformEntry, state: To
       if (!python) throw new Error('a venv tool needs a python tool')
       const r = await run(python, ['-I', '-m', 'venv', final], { timeoutMs: 10 * 60_000 })
       if (r.code !== 0) throw new Error(`python -m venv failed: ${tail(r.out)}`)
+    }
+    // A build runs where the tool will live, so a path it compiles in stays true.
+    if (entry.kind === 'build') {
+      if (!entry.build?.length) throw new Error('a build tool names its build steps')
+      const built = await probed({ name: tool.name, probe: { steps: entry.build } }, entry, final, state, opts, run, 'build')
+      if (!built.ok) throw new Error(built.error)
     }
     for (const rel of entry.check ?? []) if (!existsSync(join(final, rel))) throw new Error(`missing ${rel}`)
     const result = await probed(tool, entry, final, state, opts, run)
@@ -395,23 +411,32 @@ async function unpackDebs(bundle: string, dest: string, run: Run): Promise<void>
     if (r.code !== 0) throw new Error(`unpacking ${basename(bundle)} failed: ${tail(r.out)}`)
     const debs = walk(tmp).filter((f) => f.endsWith('.deb'))
     if (!debs.length) throw new Error(`${basename(bundle)} holds no .deb`)
-    const hasDpkg = (await run('dpkg-deb', ['--version']).catch(() => ({ code: 1, out: '' }))).code === 0
-    for (const deb of debs) {
-      if (hasDpkg) {
-        const x = await run('dpkg-deb', ['-x', deb, dest])
-        if (x.code !== 0) throw new Error(`dpkg-deb -x ${basename(deb)} failed: ${tail(x.out)}`)
-        continue
-      }
-      const parts = join(tmp, `ar-${randomBytes(4).toString('hex')}`)
-      mkdirSync(parts)
-      const a = await run('ar', ['x', deb], { cwd: parts })
-      const data = readdirSync(parts).find((f) => f.startsWith('data.tar'))
-      if (a.code !== 0 || !data) throw new Error(`ar x ${basename(deb)} failed: ${tail(a.out)}`)
-      const t = await run('tar', ['-xf', join(parts, data), '-C', dest])
-      if (t.code !== 0) throw new Error(`unpacking ${basename(deb)} failed: ${tail(t.out)}`)
-    }
+    const hasDpkg = await hasDpkgDeb(run)
+    for (const deb of debs) await extractDeb(deb, dest, run, hasDpkg)
   } finally {
     rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+const hasDpkgDeb = async (run: Run): Promise<boolean> => (await run('dpkg-deb', ['--version']).catch(() => ({ code: 1, out: '' }))).code === 0
+
+/** One .deb extracted into `dest` with dpkg-deb, or ar and tar where dpkg-deb is missing: its files only, nothing registered. */
+async function extractDeb(deb: string, dest: string, run: Run, hasDpkg: boolean): Promise<void> {
+  if (hasDpkg) {
+    const x = await run('dpkg-deb', ['-x', deb, dest])
+    if (x.code !== 0) throw new Error(`dpkg-deb -x ${basename(deb)} failed: ${tail(x.out)}`)
+    return
+  }
+  const parts = `${dest}.ar-${randomBytes(4).toString('hex')}`
+  mkdirSync(parts, { recursive: true })
+  try {
+    const a = await run('ar', ['x', deb], { cwd: parts })
+    const data = readdirSync(parts).find((f) => f.startsWith('data.tar'))
+    if (a.code !== 0 || !data) throw new Error(`ar x ${basename(deb)} failed: ${tail(a.out)}`)
+    const t = await run('tar', ['-xf', join(parts, data), '-C', dest])
+    if (t.code !== 0) throw new Error(`unpacking ${basename(deb)} failed: ${tail(t.out)}`)
+  } finally {
+    rmSync(parts, { recursive: true, force: true })
   }
 }
 
@@ -532,9 +557,17 @@ async function bytesOf(dir: string): Promise<number> {
   return total
 }
 
-/** Run the tool's probe in a fresh temp folder: every step must exit 0 and show what it expects. */
-export async function probed(tool: Pick<ToolDef, 'name' | 'probe'>, entry: ToolPlatformEntry, dir: string, state: ToolchainState, opts: Pick<InstallOptions, 'dataDir' | 'nodeBin'>, run: Run): Promise<{ ok: boolean; probed?: string; error?: string }> {
-  const tmp = join(toolsRoot(opts.dataDir), `.probe-${tool.name}-${randomBytes(4).toString('hex')}`)
+/** Run the tool's probe (or, as `build`, the steps that make it) in a fresh temp folder: every step must exit 0 and show what it expects. */
+export async function probed(
+  tool: Pick<ToolDef, 'name' | 'probe'>,
+  entry: ToolPlatformEntry,
+  dir: string,
+  state: ToolchainState,
+  opts: Pick<InstallOptions, 'dataDir' | 'nodeBin'>,
+  run: Run,
+  what: 'probe' | 'build' = 'probe'
+): Promise<{ ok: boolean; probed?: string; error?: string }> {
+  const tmp = join(toolsRoot(opts.dataDir), `.${what}-${tool.name}-${randomBytes(4).toString('hex')}`)
   mkdirSync(tmp, { recursive: true })
   try {
     for (const [name, text] of Object.entries(tool.probe.write ?? {})) writeFileSync(join(tmp, name), text)
@@ -548,25 +581,25 @@ export async function probed(tool: Pick<ToolDef, 'name' | 'probe'>, entry: ToolP
         const other = key.slice(4)
         if (entry.bins?.[other]) return join(dir, entry.bins[other])
         const t = state.tools[other]
-        if (!t?.ok || !t.dir || !t.bin) throw new Error(`the probe names ${other}, which is not installed`)
+        if (!t?.ok || !t.dir || !t.bin) throw new Error(`the ${what} names ${other}, which is not installed`)
         return join(toolsRoot(opts.dataDir), t.dir, t.bin)
       })
     let first: string | undefined
     for (const step of tool.probe.steps) {
       const [cmd, ...args] = step.run.map(fill)
       const env = Object.fromEntries(Object.entries(step.env ?? {}).map(([k, v]) => [k, fill(v)]))
-      const r = await run(cmd, args, { env, timeoutMs: step.timeoutMs ?? 60_000, cwd: tmp })
-      if (r.code !== 0) return { ok: false, error: `probe: ${basename(cmd)} exited ${r.code}: ${tail(r.out)}` }
-      if (step.expect && !new RegExp(step.expect, 'm').test(r.out)) return { ok: false, error: `probe: ${basename(cmd)} said ${JSON.stringify(tail(r.out))}, not /${step.expect}/` }
+      const r = await run(cmd, args, { env, timeoutMs: step.timeoutMs ?? 60_000, cwd: what === 'build' ? dir : tmp })
+      if (r.code !== 0) return { ok: false, error: `${what}: ${basename(cmd)} exited ${r.code}: ${tail(r.out)}` }
+      if (step.expect && !new RegExp(step.expect, 'm').test(r.out)) return { ok: false, error: `${what}: ${basename(cmd)} said ${JSON.stringify(tail(r.out))}, not /${step.expect}/` }
       if (step.expectFile) {
         const f = fill(step.expectFile)
-        if (!existsSync(f) || statSync(f).size === 0) return { ok: false, error: `probe: ${basename(cmd)} left no ${basename(f)}: ${tail(r.out)}` }
+        if (!existsSync(f) || statSync(f).size === 0) return { ok: false, error: `${what}: ${basename(cmd)} left no ${basename(f)}: ${tail(r.out)}` }
       }
       first ??= r.out.split('\n').map((l) => l.trim()).find(Boolean)
     }
     return { ok: true, ...(first ? { probed: first.slice(0, 200) } : {}) }
   } catch (err) {
-    return { ok: false, error: `probe: ${err instanceof Error ? err.message : String(err)}` }
+    return { ok: false, error: `${what}: ${err instanceof Error ? err.message : String(err)}` }
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
