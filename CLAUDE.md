@@ -241,5 +241,5 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   only through `WorkCtx` (`ctx.canvas.get`/`paneOf`, `ctx.dataDir`, the
   listener's path fence `ctx.reaches`, `push(p, { path })`;
   `work/pillarReach.test.ts`).
-  [docs/agents/work.md](docs/agents/work.md). Each pillar's own account (a stub until
+  [docs/agents/work.md](docs/agents/work.md); the Work service is [work-service.md](docs/agents/work-service.md). Each pillar's own account (a stub until
   its milestone): [outbox](docs/agents/work-outbox.md), [canvas](docs/agents/work-canvas.md), [lifeos](docs/agents/work-lifeos.md), [routines](docs/agents/work-routines.md), [rules](docs/agents/work-rules.md), [mail](docs/agents/work-mail.md), [tasks](docs/agents/work-tasks.md), [agenda](docs/agents/work-agenda.md), [docs](docs/agents/work-docs.md), [history](docs/agents/work-history.md), [formats](docs/agents/work-formats.md), [sheets](docs/agents/work-sheets.md), [office](docs/agents/work-office.md), [google](docs/agents/work-google.md), [guests](docs/agents/work-guests.md), [pdf](docs/agents/work-pdf.md), [slides](docs/agents/work-slides.md), [media](docs/agents/work-media.md), [frameio](docs/agents/work-frameio.md), [meetings](docs/agents/work-meetings.md), [forms](docs/agents/work-forms.md), [dashboards](docs/agents/work-dashboards.md), [browser](docs/agents/work-browser.md)
