@@ -16,10 +16,12 @@ export const WORK_MENTION_WAIT_MS = 120
 
 export interface WorkMentions {
   result: WorkMentionResult | null
+  /** the text `result` answers; another than the one typed while the next answer is on its way */
+  answered: string | null
   loading: boolean
 }
 
-const NONE: WorkMentions = { result: null, loading: false }
+const NONE: WorkMentions = { result: null, answered: null, loading: false }
 
 export function useWorkMentions(o: { open: boolean; query: string; env: string; sessionId: string | undefined; draft: MentionDraft | undefined; enabled: boolean }): WorkMentions {
   const { open, query, env, sessionId, enabled } = o
@@ -27,7 +29,8 @@ export function useWorkMentions(o: { open: boolean; query: string; env: string; 
   const [answer, setAnswer] = useState<{ key: string; query: string; result: WorkMentionResult } | null>(null)
   const draftRef = useRef(o.draft)
   draftRef.current = o.draft
-  const key = `${env}:${sessionId ?? ''}`
+  // A thread's answers are its own, and so are a draft's at each place it may move to.
+  const key = `${env}:${sessionId ?? ''}:${JSON.stringify(o.draft ?? null)}`
   useEffect(() => {
     if (!active || !sessionId) return
     let cancelled = false
@@ -51,5 +54,5 @@ export function useWorkMentions(o: { open: boolean; query: string; env: string; 
   }, [active, env, key, query, sessionId])
   if (!active) return NONE
   const mine = answer?.key === key ? answer : null
-  return { result: mine?.result ?? null, loading: !mine }
+  return { result: mine?.result ?? null, answered: mine?.query ?? null, loading: !mine }
 }

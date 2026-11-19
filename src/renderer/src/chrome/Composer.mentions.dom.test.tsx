@@ -103,6 +103,20 @@ describe("@ in a Work thread", () => {
     expect(field.textContent).toBe("");
   });
 
+  it("keeps an earlier answer's rows that still match while the next is on its way", async () => {
+    sessionStore.adopt(meta("w4", { scope: "work" }));
+    setWorkOn("env_a", true);
+    search.mockResolvedValueOnce(answer).mockReturnValue(new Promise(() => {}));
+    const { container } = render(<Composer {...props("w4")} />);
+    const field = container.querySelector<HTMLElement>("[data-composer-input]")!;
+    field.focus();
+    type(field, "@ball");
+    await waitFor(() => expect(container.querySelectorAll("[data-mention]")).toHaveLength(3));
+    type(field, "r");
+    // "Reply to Dana" does not hold "ballr"; the two that do stay until the host answers "ballr".
+    expect([...container.querySelectorAll("[data-mention]")].map((r) => r.getAttribute("data-mention"))).toEqual(["task", "mail"]);
+  });
+
   it("says so in one muted row when LifeOS could not be searched", async () => {
     sessionStore.adopt(meta("w2", { scope: "work" }));
     setWorkOn("env_a", true);

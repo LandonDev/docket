@@ -371,12 +371,15 @@ export function Composer({
   const workHosts = useWorkHosts()
   const workspaces = useWorkspaces()
   const mentionDraft = useMemo(() => {
-    if (!whereKey) return undefined
-    const [scope, workspaceId, ownProject] = JSON.parse(whereKey) as [string | null, string | null, string | null]
+    // A draft has no meta yet: its place is the draft session's own, read when the list opens.
+    const draftSession = !whereKey && mentionOpen && sessionId ? sessionStore.get(sessionId) : undefined
+    const key = whereKey ?? (draftSession ? JSON.stringify([draftSession.scope ?? null, draftSession.workspaceId ?? null, draftSession.projectId ?? null]) : null)
+    if (!key) return undefined
+    const [scope, workspaceId, ownProject] = JSON.parse(key) as [string | null, string | null, string | null]
     const workspace = workspaces.find((w) => w.id === (projects.find((p) => p.id === ownProject)?.workspaceId ?? workspaceId))
     if (scope !== 'work' && workspace?.kind !== 'work' && !workspace?.sector) return undefined
-    return { projectId: ownProject, workspaceId, work: scope === 'work' }
-  }, [projects, whereKey, workspaces])
+    return { projectId: ownProject, workspaceId, work: scope === 'work' || workspace?.kind === 'work' }
+  }, [mentionOpen, projects, sessionId, whereKey, workspaces])
   const workMentions = useWorkMentions({
     open: mentionOpen,
     query: live?.query ?? '',
@@ -403,7 +406,11 @@ export function Composer({
     )
     const noteHits: AtMatch[] = rankNoteFiles(notes, live.query).map((file) => ({ kind: 'note', file }))
     const work = workMentions.result
-    const workHits: AtMatch[] = (work?.rows ?? []).map((row) => ({ kind: 'work', row }))
+    // An answer to earlier words keeps only the rows whose label still holds every word typed, until the next lands.
+    const words = workMentions.answered === live.query ? [] : live.query.toLowerCase().split(/\s+/).filter(Boolean)
+    const workHits: AtMatch[] = (work?.rows ?? [])
+      .filter((row) => words.every((word) => row.hit.chip.label.toLowerCase().includes(word)))
+      .map((row) => ({ kind: 'work', row }))
     const loading = looksLikeProject(executionCwd) && filesFor !== executionCwd
     // A Work thread is about mail, tasks and the rest more than its folder's files: those lead there.
     const rows = mentionDraft?.work ? [...workHits, ...fileHits, ...threadHits, ...noteHits] : [...fileHits, ...threadHits, ...noteHits, ...workHits]
@@ -414,7 +421,8 @@ export function Composer({
   // Mounted from the first `/` or `@` on, so its close keeps its fade.
   const [menuUsed, setMenuUsed] = useState(false)
   if (live && !menuUsed) setMenuUsed(true)
-  const selectionKey = live ? `${live.mode}:${live.query}` : ''
+  // A Work answer landing moves the rows under the same words: the highlight starts again at the top, never on another row.
+  const selectionKey = live ? `${live.mode}:${live.query}:${workMentions.answered ?? ''}` : ''
   const active =
     selection.key === selectionKey ? Math.min(selection.index, Math.max(0, rows - 1)) : 0
   const setActive = (index: number) => setSelection({ key: selectionKey, index })

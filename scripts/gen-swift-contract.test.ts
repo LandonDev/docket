@@ -117,6 +117,9 @@ describe('the subset', () => {
     // a second and third inline object take their own cases (`object2`, `object3`), so the enum still compiles
     expect(types).toContain('if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "item", let value = try? container.decode(RefCase2.self) { self = .object2(value); return }')
     expect(types).toContain('if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }')
+    // Every guarded branch is tried before the open one: CanvasSource keeps any `at` as `.unknown`, so after it `item` would never be reached.
+    const decode = types.slice(types.indexOf('public enum Ref: Codable'))
+    expect(decode.indexOf('self = .object3(value)')).toBeLessThan(decode.indexOf('self = .canvasSource(value)'))
     // the rule touches no other union: a branch with no literal field, and a named one, decode as they did
     const guarded = Object.values(files).join('\n').match(/if let probe = try\? container\.decode\(JSONValue\.self\)/g) ?? []
     expect(guarded).toHaveLength(3)

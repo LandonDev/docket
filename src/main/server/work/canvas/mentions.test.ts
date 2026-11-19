@@ -173,27 +173,27 @@ describe("Work's own things", () => {
     expect(await routine.search('sweep', chat, ctx)).toEqual([])
   })
 
-  it("offers the workspace's items, not a history view or a LifeOS document twice; a Work Chat its own pane's", async () => {
+  it("offers the thread's own pane's items, open and closed, not a history view, a LifeOS document twice or another thread's", async () => {
     const db = new DatabaseSync(':memory:')
     ensureCanvasTables(db)
     const sessions: Record<string, { id: string; workspaceId: string | null; scope: 'work'; parentId: null }> = {
       t1: { id: 't1', workspaceId: 'ws-purdue', scope: 'work', parentId: null },
-      t2: { id: 't2', workspaceId: 'ws-cosmic', scope: 'work', parentId: null },
-      c1: { id: 'c1', workspaceId: null, scope: 'work', parentId: null }
+      t2: { id: 't2', workspaceId: 'ws-purdue', scope: 'work', parentId: null }
     }
     const store = new CanvasStore({ db, dataDir: mkdtempSync(join(tmpdir(), 'tc-mentions-')), session: (id) => sessions[id] ?? null, push: () => {}, log: () => {} } as never)
     setCanvasStore(db, store)
     const file = (path: string) => ({ at: 'file' as const, host: 'h', path })
-    store.open('t1', { kind: 'sheet', source: file('/w/budget.xlsx'), title: 'Budget' })
+    const sheet = store.open('t1', { kind: 'sheet', source: file('/w/budget.xlsx'), title: 'Budget' })
+    store.open('t1', { kind: 'pdf', source: file('/w/budget.pdf'), title: 'Budget contract' })
     store.open('t1', { kind: 'history', source: file('/w/budget.xlsx'), title: 'Budget history' })
     store.open('t1', { kind: 'document', source: { at: 'lifeos', table: 'docs', id: 'd1' }, title: 'Budget notes' })
     store.open('t2', { kind: 'sheet', source: file('/w/other.xlsx'), title: 'Budget elsewhere' })
-    store.open('c1', { kind: 'pdf', source: file('/w/contract.pdf'), title: 'Budget contract' })
-    const ctx = ctxWith({ db, canvas: { forSession: (id: string) => store.list(id), paneOf: (id: string) => id } as unknown as WorkCtx['canvas'] })
+    store.close(sheet.id)
+    const ctx = ctxWith({ db, canvas: { paneOf: (id: string) => id } })
     const [items] = canvasMentions
     const hits = await items.search('budget', purdue, ctx)
-    expect(hits.map((h) => [h.chip.label, h.detail])).toEqual([['Budget', 'Sheet']])
+    expect(Object.fromEntries(hits.map((h) => [h.chip.label, h.detail]))).toEqual({ Budget: 'Sheet', 'Budget contract': 'PDF' })
     expect(hits[0].chip.ref).toMatchObject({ at: 'item' })
-    expect((await items.search('budget', chat, ctx)).map((h) => h.chip.label)).toEqual(['Budget contract'])
+    expect(await items.search('budget', { ...purdue, sessionId: null }, ctx)).toEqual([])
   })
 })

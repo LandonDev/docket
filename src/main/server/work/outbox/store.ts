@@ -334,7 +334,7 @@ export class HeldStore {
     return ref.at === 'host' ? this.get(ref.id) : this.byRunKey(lifeosRunKey(ref.table, ref.id))
   }
 
-  list(q: { show?: 'waiting' | 'decided' | 'all'; workspaceId?: string; sessionId?: string; limit?: number } = {}): HeldRow[] {
+  list(q: { show?: 'waiting' | 'decided' | 'all'; workspaceId?: string | null; sessionId?: string; limit?: number } = {}): HeldRow[] {
     const show = q.show ?? 'waiting'
     const where: string[] = []
     const args: (string | number)[] = []
@@ -345,7 +345,9 @@ export class HeldStore {
       where.push(`state NOT IN (${marks(WAITING)})`)
       args.push(...WAITING)
     }
-    if (q.workspaceId !== undefined) {
+    // null: the acts outside every workspace (a Work Chat's).
+    if (q.workspaceId === null) where.push('workspace_id IS NULL')
+    else if (q.workspaceId !== undefined) {
       where.push('workspace_id = ?')
       args.push(q.workspaceId)
     }
@@ -533,7 +535,9 @@ export class HeldStore {
     const where: string[] = []
     const args: string[] = []
     if (!q.all) where.push('removed_at IS NULL')
-    if (q.workspaceId !== undefined) {
+    // null: the acts outside every workspace (a Work Chat's).
+    if (q.workspaceId === null) where.push('workspace_id IS NULL')
+    else if (q.workspaceId !== undefined) {
       where.push('workspace_id = ?')
       args.push(q.workspaceId)
     }

@@ -80,17 +80,21 @@ const KIND_WORDS: Partial<Record<CanvasKind, string>> = {
 }
 
 /**
- * The canvas's own kind: the items of the thread's workspace (a Work Chat:
- * its own pane's), open or closed, last touched first. A history view and a
- * browser window are not things to talk about, and a LifeOS document is the
- * `doc` kind's, so neither is offered twice.
+ * The canvas's own kind: the items of the thread's pane, open and closed,
+ * last touched first. Only the pane's: an item of another thread cannot be
+ * opened by id from this one, by the window or by the model's canvas_open.
+ * A history view and a browser window are not things to talk about, and a
+ * LifeOS document is the `doc` kind's, so neither is offered twice. A draft
+ * has no pane yet.
  */
 export const canvasMentions: MentionSource[] = [
   {
     kind: 'item',
     async search(text, reach, ctx) {
-      const store = canvasStoreOf(ctx.db)
-      const items = reach.workspaceId ? store.ofWorkspace(reach.workspaceId) : reach.sessionId ? ctx.canvas.forSession(ctx.canvas.paneOf(reach.sessionId)) : []
+      if (!reach.sessionId) return []
+      const items = canvasStoreOf(ctx.db)
+        .rowsFor([ctx.canvas.paneOf(reach.sessionId)])
+        .sort((a, b) => b.updatedAt - a.updatedAt)
       return items
         .filter((item) => KIND_WORDS[item.kind] && !(item.source.at === 'lifeos' && item.source.table === 'docs'))
         .filter((item) => mentionMatches(text, item.title, KIND_WORDS[item.kind]))

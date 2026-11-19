@@ -183,6 +183,13 @@ struct ItemChip: View {
         case .task: Symbol.tasks
         case .mail: Symbol.mail
         case .event: Symbol.agenda
+        case .project: "briefcase"
+        case .person: "person"
+        case .doc: "doc.text"
+        case .item: "square.stack"
+        case .held: "tray.and.arrow.up"
+        case .routine: "clock"
+        case .card: "rectangle.split.3x1"
         case .selection, .unknown: "text.quote"
         }
     }

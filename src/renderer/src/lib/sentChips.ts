@@ -17,6 +17,8 @@ export interface SentChip {
 }
 
 const HEAD = /^About this ([a-z][a-z ]{0,30}): (.+) \(([^()\n]+)\)$/;
+/** What a chip's reference looks like (`refWords`): a LifeOS row, a canvas item, a pillar's row, a path, a source as JSON. Words in brackets that are none of these are his. */
+const REF = /^(?:LifeOS [A-Za-z]+ \S+|canvas item \S+|Work [a-z]+ \S+|\/\S.*|\{.*\})$/;
 
 /** Reads chip lines from the start of `lines`; answers the chips and the first line after them, or null when there are none. */
 function readChips(lines: readonly string[], from: number): { chips: SentChip[]; next: number } | null {
@@ -24,7 +26,7 @@ function readChips(lines: readonly string[], from: number): { chips: SentChip[];
   let at = from;
   while (at < lines.length) {
     const head = HEAD.exec(lines[at]);
-    if (!head) break;
+    if (!head || !REF.test(head[3])) break;
     chips.push({ noun: head[1], label: head[2], ref: head[3] });
     at++;
     while (at < lines.length && lines[at].startsWith("> ")) at++;
@@ -43,9 +45,11 @@ export function sentChipsOf(text: string): { chips: SentChip[]; text: string } {
   }
   // After a slash command: his words, a blank line, then the lines to the end.
   if (text.startsWith("/")) {
-    const blank = lines.indexOf("");
-    const tail = blank > 0 ? readChips(lines, blank + 1) : null;
-    if (tail && tail.next === lines.length) return { chips: tail.chips, text: lines.slice(0, blank).join("\n") };
+    // The last blank line that only chip lines follow: his words may hold blank lines of their own.
+    for (let blank = lines.lastIndexOf(""); blank > 0; blank = lines.lastIndexOf("", blank - 1)) {
+      const tail = readChips(lines, blank + 1);
+      if (tail && tail.next === lines.length) return { chips: tail.chips, text: lines.slice(0, blank).join("\n") };
+    }
   }
   return { chips: [], text };
 }

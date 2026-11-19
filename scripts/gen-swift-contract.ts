@@ -1029,7 +1029,9 @@ function untaggedUnion(
     '',
     'public init(from decoder: any Decoder) throws {',
     '    let container = try decoder.singleValueContainer()',
-    ...cases.map(
+    // A guarded branch takes only the values its literals name, so it is tried first: an open branch after it
+    // (a union that keeps any tag as `.unknown`) would otherwise take a shape the guarded one knows.
+    ...[...cases.filter((c) => c.guard), ...cases.filter((c) => !c.guard)].map(
       (c) =>
         `    if ${c.guard}let value = try? container.decode(${c.type}.self) { self = .${c.name}(value); return }`
     ),

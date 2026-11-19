@@ -53,7 +53,8 @@ export const lifeosMentions: MentionSource[] = [
   ),
   source<MailThread>(
     'mail',
-    async (ctx, text) => (text ? q(ctx, 'mail:search', { text }) : (await q<{ page: MailThread[] }>(ctx, 'mail:threads', { paginationOpts: { numItems: 25, cursor: null } })).page),
+    // Mail takes no sector here: a page wide enough that a sector's own newest threads are in it, kept to the reach below.
+    async (ctx, text) => (text ? q(ctx, 'mail:search', { text }) : (await q<{ page: MailThread[] }>(ctx, 'mail:threads', { paginationOpts: { numItems: 100, cursor: null } })).page),
     // LifeOS's search reads bodies too, so a thread it found is kept whatever its subject says.
     (m, reach) => reads(reach, m.sector),
     (m) => ({
@@ -68,7 +69,7 @@ export const lifeosMentions: MentionSource[] = [
       const now = Date.now()
       const rows = await q<Event[]>(ctx, 'events:range', { from: now - 14 * DAY, to: now + 90 * DAY, ...asked(reach) })
       // What is coming reads first, soonest first; then what has passed, latest first.
-      const today = now - (now % DAY)
+      const today = new Date(now).setHours(0, 0, 0, 0)
       const coming = rows.filter((e) => e.startsAt >= today).sort((a, b) => a.startsAt - b.startsAt)
       const passed = rows.filter((e) => e.startsAt < today).sort((a, b) => b.startsAt - a.startsAt)
       return [...coming, ...passed]
@@ -91,7 +92,7 @@ export const lifeosMentions: MentionSource[] = [
   ),
   source<Doc>(
     'doc',
-    async (ctx, _text, reach) => (await q<{ page: Doc[] }>(ctx, 'docs:list', { ...asked(reach), paginationOpts: { numItems: 50, cursor: null } })).page,
+    async (ctx, _text, reach) => (await q<{ page: Doc[] }>(ctx, 'docs:list', { ...asked(reach), paginationOpts: { numItems: 25, cursor: null } })).page,
     (d, reach, text) => reads(reach, d.sector) && mentionMatches(text, d.title),
     (d) => ({ chip: { kind: 'doc', label: d.title || 'Untitled', ref: { at: 'lifeos', table: 'docs', id: d._id } }, at: d.editedAt })
   )

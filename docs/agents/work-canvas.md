@@ -275,7 +275,8 @@ until the composer sends:
   Settings → Keybindings lists it in the Work group while Work is on.
 
 The sent bubble draws the chips back from their lines (`sentChipsOf`,
-lib/sentChips.ts; `SentChips`, work/canvas/SentChips.tsx) over his words,
+lib/sentChips.ts, which takes a line only when its brackets hold a
+reference `refWords` writes; `SentChips`, work/canvas/SentChips.tsx) over his words,
 the lines and their quoted words gone from the text and Copy still copying
 the message whole. Until the work-canvas chunk lands the row is the same
 boxes with the labels alone. A chip opens what it names when this window can
@@ -288,7 +289,7 @@ anything in a Work Chat that needs a workspace's view are labels.
 
 The composer's `@` offers Work's things beside files, threads and notes:
 LifeOS's tasks, mail threads, events, projects, people and documents, the
-workspace's canvas items, the held acts waiting in the Outbox and the
+thread's own canvas items, the held acts waiting in the Outbox and the
 workspace's routines. A pick becomes a chip, and the message carries its
 line with a short excerpt quoted under it (`chipLine`), so the model gets a
 reference it can open with its tools and a few words of what it says.
@@ -300,14 +301,16 @@ where it will be made (`mentionReachOf`, work/scope.ts, `ctx.mentionReach`):
 
 | Thread | Offered |
 |---|---|
-| a Work workspace's | its sector's LifeOS things; the workspace's items, held acts and routines |
+| a Work workspace's | its sector's LifeOS things; its own pane's items; the workspace's held acts and routines |
 | a Work Chat | every sector's LifeOS things; its own pane's items; the held acts outside every workspace |
 | a code thread of a linked workspace | that sector's LifeOS things, nothing of Work's own |
 | an unlinked code thread, a loose chat, a Work thread with no Work home | nothing |
 
 The host reads LifeOS as the owner, so the sector is the fence on the
 host: a LifeOS row is kept only when its sector is in reach, whatever
-LifeOS answered, and a workspace with no sector reads none.
+LifeOS answered, and a workspace with no sector reads none. Items are the
+pane's alone (open and closed): another thread's item cannot be opened by
+id from this one, by the window or by `canvas_open`.
 
 **The wire.** `work.canvas.mentions {sessionId, draft?, text, kinds?}` →
 `MentionAnswer {hits, failed}` (src/shared/work/mentions.ts). It needs

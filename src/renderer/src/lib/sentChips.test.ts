@@ -22,7 +22,8 @@ describe("a sent message's chips", () => {
   });
 
   it("leave a message alone that only looks like one", () => {
-    for (const text of ["About this task: no reference here", "About this task: X (LifeOS tasks k1)\nand words with no blank line", "Hello\n\nAbout this task: X (LifeOS tasks k1)"]) {
+    expect(sentChipsOf("/review the plan\n\nfirst part\n\nAbout this task: X (LifeOS tasks k1)").chips).toHaveLength(1);
+    for (const text of ["About this task: no reference here", "About this bug: login fails (see logs)\n\nIt started Monday.", "About this task: X (LifeOS tasks k1)\nand words with no blank line", "Hello\n\nAbout this task: X (LifeOS tasks k1)"]) {
       expect(sentChipsOf(text)).toEqual({ chips: [], text });
     }
   });

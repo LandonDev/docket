@@ -1,4 +1,4 @@
-import { MENTION_PER_KIND, mentionExcerpt, mentionMatches } from '@shared/work'
+import { MENTION_PER_KIND, mentionMatches } from '@shared/work'
 import type { MentionSource } from '../modules'
 import { HeldStore } from './store'
 
@@ -11,11 +11,11 @@ export const outboxMentions: MentionSource[] = [
   {
     kind: 'held',
     async search(text, reach, ctx) {
-      const rows = new HeldStore(ctx.db).list({ show: 'waiting', ...(reach.workspaceId ? { workspaceId: reach.workspaceId } : {}) })
-      return rows
-        .filter((row) => (reach.workspaceId ? true : row.workspaceId === null) && mentionMatches(text, row.summary, row.verb))
+      return new HeldStore(ctx.db)
+        .list({ show: 'waiting', workspaceId: reach.workspaceId })
+        .filter((row) => mentionMatches(text, row.summary, row.verb))
         .slice(0, MENTION_PER_KIND)
-        .map((row) => ({ chip: { kind: 'held', label: row.summary, ref: { at: 'work', pillar: 'outbox', id: row.id }, excerpt: mentionExcerpt(`Item ${row.n}, waiting for the owner's press.`) }, detail: row.verb, at: row.createdAt }))
+        .map((row) => ({ chip: { kind: 'held', label: row.summary, ref: { at: 'work', pillar: 'outbox', id: row.id } }, detail: row.verb, at: row.createdAt }))
     }
   }
 ]
