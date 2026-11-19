@@ -3,9 +3,13 @@ import { ConvexProvider } from "convex/react";
 import { Mailbox, MailClientProvider, MailKitProvider, opening, useMailClient, type ComposeState, type InboxView, type MailNav, type MailTaskRequest, type OutboxView } from "work-kit/mail";
 import "work-kit/mail/styles.css";
 import "./mail.css";
+import { ChevronLeft } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
+import { cn } from "../../lib/cn";
 import { openWorkView } from "../../lib/workSwitch";
 import { SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
+import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
 import { mailClientFor, tempcodeMailKit } from "./kit";
 import { mailChip } from "./model";
@@ -15,7 +19,12 @@ import { mailChip } from "./model";
  * LifeOS's own mail client, on a session narrowed to the workspace's
  * sector, so it lists that sector's mail and no other. Send goes through
  * the host. The header carries Start thread for the open mail and Compose.
+ * Under 640px of pane the list and the open mail take turns: opening a mail
+ * shows it alone, and its Mail row goes back to the list.
  */
+
+/** The list beside the reading pane, 300px; narrow (under 640px of pane), the list alone at full width. Literal, so Tailwind finds it. */
+const LIST = "flex w-[300px] shrink-0 flex-col border-r border-border @max-[40rem]/mail:w-full @max-[40rem]/mail:border-r-0";
 
 interface MailPage {
   account: string | null;
@@ -53,7 +62,8 @@ const NO_TASKS: ReadonlySet<string> = new Set();
 export function View(props: WorkViewProps) {
   const { lifeos, env } = props;
   const convex = lifeos.client;
-  if (!convex) return <SurfaceSkeleton kind="page" label="Loading Mail" />;
+  // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
+  if (!convex) return sessionWaits(lifeos) ? <MailBones /> : null;
   return (
     <ConvexProvider client={convex}>
       <MailClientProvider client={mailClientFor(env, convex.url)}>
@@ -98,18 +108,58 @@ function MailPageBody({ workspace }: WorkViewProps) {
     },
     [actions, id],
   );
+  // Narrow, the pane shows only once a mail is open or a new one is being written.
+  const reading = page.threadId !== null || page.compose?.full === true;
+  const back = page.threadId !== null;
   const frame = useCallback(
-    ({ list, pane }: { list: ReactNode; pane: ReactNode }) => (
-      <div className="flex h-full min-h-0">
-        <div className="flex w-[300px] shrink-0 flex-col border-r border-border">{list}</div>
-        <div className="flex min-w-0 flex-1 flex-col">{pane}</div>
-      </div>
-    ),
-    [],
+    ({ list, pane }: { list: ReactNode; pane: ReactNode }) => <MailFrame list={list} pane={pane} reading={reading} onBack={back ? () => patch(id, { threadId: null }) : null} />,
+    [id, reading, back],
   );
   return (
-    <div className="tc-mail h-full min-h-0">
+    <div data-mail-kit className="tc-mail h-full min-h-0">
       <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} />
+    </div>
+  );
+}
+
+/** The list beside the reading pane; narrow, one of the two, with a Mail row back to the list while a mail is open. */
+export function MailFrame({ list, pane, reading, onBack }: { list: ReactNode; pane: ReactNode; reading: boolean; onBack: (() => void) | null }) {
+  return (
+    <div className="@container/mail flex h-full min-h-0">
+      <div data-mail-list="" className={cn(LIST, reading && "@max-[40rem]/mail:hidden")}>
+        {list}
+      </div>
+      <div data-mail-pane="" className={cn("flex min-w-0 flex-1 flex-col", !reading && "@max-[40rem]/mail:hidden")}>
+        {onBack ? (
+          <div className="hidden shrink-0 px-4 pt-2 @max-[40rem]/mail:block">
+            <Button variant="ghost" size="xs" onClick={onBack}>
+              <ChevronLeft className="size-3.5" />
+              Mail
+            </Button>
+          </div>
+        ) : null}
+        {pane}
+      </div>
+    </div>
+  );
+}
+
+/** While the session opens: the list's rows beside the reading pane's head and lines, the frame Mail lands in. */
+export function MailBones() {
+  return (
+    <div role="status" aria-label="Loading Mail" aria-busy className="@container/mail flex h-full min-h-0 select-none">
+      <div className={LIST}>
+        <SurfaceSkeleton kind="rows" count={8} />
+      </div>
+      <div className="min-w-0 flex-1 px-8 pt-8 @max-[40rem]/mail:hidden">
+        <Skeleton className="h-4 w-64 max-w-full" />
+        <Skeleton className="mt-2 h-3 w-40" />
+        <div className="mt-6 flex flex-col gap-3">
+          <Skeleton className="h-3 w-[88%]" />
+          <Skeleton className="h-3 w-[72%]" />
+          <Skeleton className="h-3 w-[80%]" />
+        </div>
+      </div>
     </div>
   );
 }

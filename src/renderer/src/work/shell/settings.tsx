@@ -61,7 +61,7 @@ export function WorkSettingsBody() {
     <>
       <PageSection title="LifeOS">
         {hosts.map((host) => (
-          <LifeosHostRow key={host.id} environmentId={host.id} name={hosts.length > 1 ? host.name : "LifeOS"} />
+          <LifeosHostRow key={host.id} environmentId={host.id} name={host.name} />
         ))}
         {home ? <SectorsRow environmentId={home} /> : null}
       </PageSection>

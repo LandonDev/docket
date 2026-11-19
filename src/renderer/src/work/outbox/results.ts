@@ -65,6 +65,9 @@ export function useResults(environmentId: string, sessionId: string, enabled: bo
   return entry;
 }
 
+/** What the right panel counts to list Results: its rows, or one while a read failed with none, so the error and Retry show. */
+export const resultsListed = (r: Pick<Entry, "rows" | "error">): number => r.rows.length || (r.error ? 1 : 0);
+
 export async function undoResult(row: HostResult): Promise<WorkResult> {
   const done = await registry.linkOf(row.environmentId).request<WorkResult>("work.outbox.undo", { id: row.id });
   applyResult(row.environmentId, done);

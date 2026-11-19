@@ -4,10 +4,19 @@
  * answered from memory: the lead and the groups, Start thread with the task
  * as a chip, and Done through the client.
  */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeTasksClient, type Task } from "work-kit/views";
-import { Tasks } from "./TasksView";
+
+vi.mock("../../lib/tcserver/store", async (original) => ({
+  ...(await original<object>()),
+  // The window knows one thread, running: the one a link names for "Send Dana the budget".
+  useSessionMeta: (id: string | null | undefined) => (id === "th1" ? { id: "th1", status: "running" } : null),
+}));
+
+const { Tasks } = await import("./TasksView");
+const { newestOpenThread } = await import("./links");
+const { workOpenPort } = await import("../../lib/workSwitch");
 
 afterEach(cleanup);
 
@@ -51,6 +60,28 @@ describe("the Tasks view", () => {
     expect(open.hasAttribute("data-row-open")).toBe(true);
     expect(open.closest("[role=listitem]")?.contains(screen.getByRole("checkbox", { name: "Mark Send Dana the budget done" }))).toBe(true);
     expect(open.contains(screen.getByText("Send Dana the budget"))).toBe(false);
+  });
+
+  it("a task a thread works on shows the thread's mark and Open thread in Start's place", () => {
+    const opened: string[] = [];
+    workOpenPort.set((id) => void opened.push(id));
+    const startThread = vi.fn();
+    render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} useThread={(id) => (id === "t2" ? "th1" : id === "t3" ? "gone" : null)} />);
+    const row = screen.getByRole("button", { name: "Open Send Dana the budget" }).closest("[role=listitem]") as HTMLElement;
+    expect(row.querySelector("[data-task-thread=working]")).toBeTruthy();
+    fireEvent.click(within(row).getByRole("button", { name: "Open thread" }));
+    expect(opened).toEqual(["th1"]);
+    expect(startThread).not.toHaveBeenCalled();
+    // A link to a thread this window does not know keeps Start.
+    const waiting = screen.getByRole("button", { name: "Open Approve the scrim schedule" }).closest("[role=listitem]") as HTMLElement;
+    expect(within(waiting).getByRole("button", { name: "Start" })).toBeTruthy();
+    workOpenPort.set(null);
+  });
+
+  it("names the newest open link's thread, and none once its links are done", () => {
+    expect(newestOpenThread([{ threadId: "a", state: "open", at: 1 }, { threadId: "b", state: "open", at: 2 }, { threadId: "c", state: "done", at: 3 }])).toBe("b");
+    expect(newestOpenThread([{ threadId: "c", state: "done", at: 3 }])).toBeNull();
+    expect(newestOpenThread(undefined)).toBeNull();
   });
 
   it("says when nothing is open", () => {

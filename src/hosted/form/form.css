@@ -11,7 +11,10 @@
   --primary-foreground: oklch(0.99 0 0);
   --destructive: oklch(0.55 0.2 27);
   --ring: oklch(0.6 0.16 255);
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* The app's motion tokens (src/renderer/src/index.css), so this page moves as TempCode does. */
+  --dur-hover: 60ms;
+  --dur-fast: 120ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -104,7 +107,7 @@ h1 {
   background: var(--background);
   color: inherit;
   font: inherit;
-  transition: border-color 150ms var(--ease-out);
+  transition: border-color var(--dur-fast) var(--ease-out);
 }
 .fm-f.long {
   height: 72px;
@@ -163,10 +166,17 @@ h1 {
   font: inherit;
   font-weight: 500;
   cursor: pointer;
-  transition: transform 150ms var(--ease-out), opacity 150ms var(--ease-out);
+  /* A press is a fill step, nothing scales (DESIGN.md "Motion values"): it steps at once and eases back on release. */
+  transition: background-color var(--dur-hover) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
 }
-.fm-send:active {
-  transform: scale(0.97);
+@media (hover: hover) {
+  .fm-send:not(:disabled):hover {
+    background: color-mix(in oklab, var(--primary) 92%, var(--primary-foreground));
+  }
+}
+.fm-send:not(:disabled):active {
+  background: color-mix(in oklab, var(--primary) 84%, var(--primary-foreground));
+  transition: none;
 }
 .fm-send:disabled {
   opacity: 0.6;

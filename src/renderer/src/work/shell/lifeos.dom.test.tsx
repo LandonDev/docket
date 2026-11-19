@@ -4,7 +4,7 @@ import { act } from "@testing-library/react";
 import { mountProbe } from "../../test/renderProbe";
 import { registry } from "../../lib/connection";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { resetLifeos, setLifeosStatus, useLifeosSession } from "./lifeos";
+import { resetLifeos, sessionWaits, setLifeosStatus, useLifeosQuery, useLifeosSession } from "./lifeos";
 
 /** One fake Convex client per session the screens open; the test reads what each was asked. */
 const clients = vi.hoisted(() => [] as { url: string; closed: boolean; auth: (() => Promise<string | null>) | null }[]);
@@ -95,6 +95,30 @@ describe("a screen's LifeOS session", () => {
     });
     expect(clients).toHaveLength(0);
     expect(probe.container.querySelector("[data-state]")?.getAttribute("data-state")).toBe("signed-out");
+    probe.unmount();
+    answer = () => Promise.resolve({ ok: true, jwt: "jwt-1", expiresAt: 2, url: "https://lifeos.test" });
+  });
+
+  it("draws bones only while a session is on its way, and fails a query once it cannot read", async () => {
+    expect(sessionWaits({ client: null, state: "connecting" })).toBe(true);
+    expect(sessionWaits({ client: null, state: "connected" })).toBe(true);
+    expect(sessionWaits({ client: null, state: "unreachable" })).toBe(false);
+    expect(sessionWaits({ client: null, state: "signed-out" })).toBe(false);
+    // The host says connected, but the JWT goes unanswered: the session is unreachable and so is every query on it.
+    fakeHost();
+    answer = () => Promise.reject(new Error("socket closed"));
+    setLifeosStatus("env_box", connected);
+    function Query() {
+      const session = useLifeosSession("env_box", "purdue");
+      const q = useLifeosQuery<unknown>(session, "tasks:list", {});
+      return <span data-session={session.state} data-query={q.status} data-error={q.status === "failed" ? q.error : ""} />;
+    }
+    const probe = mountProbe(<Query />);
+    await act(flush);
+    const span = probe.container.querySelector("span")!;
+    expect(span.getAttribute("data-session")).toBe("unreachable");
+    expect(span.getAttribute("data-query")).toBe("failed");
+    expect(span.getAttribute("data-error")).toBe("LifeOS did not answer");
     probe.unmount();
     answer = () => Promise.resolve({ ok: true, jwt: "jwt-1", expiresAt: 2, url: "https://lifeos.test" });
   });

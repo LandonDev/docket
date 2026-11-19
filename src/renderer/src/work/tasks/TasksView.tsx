@@ -19,6 +19,13 @@ import { type Task, type TaskActions, type TasksClient, viewsClients } from "./c
 import { useMinute } from "./minute";
 import { NewTaskDialog } from "./NewTaskDialog";
 import { shared, useShared } from "./store";
+import { sessionWaits } from "../shell/lifeos";
+import { StatusMark } from "../../components/ui/status";
+import { useSessionMeta } from "../../lib/tcserver/store";
+import { rowState } from "../../lib/sidebarRows";
+import { marksAtRest } from "../../lib/threadStripModel";
+import { workOpenPort } from "../../lib/workSwitch";
+import { useLinkedThread } from "./links";
 import { TaskSheet } from "./TaskSheet";
 
 /**
@@ -27,7 +34,9 @@ import { TaskSheet } from "./TaskSheet";
  * verbs, then Today, This week, Later and Waiting. Start thread puts the task
  * in a new thread's composer as a chip and runs nothing; Done is the owner
  * accepting the work, so a task a thread here worked completes with that
- * thread's link. The rows come through the shared task client
+ * thread's link. A task a thread already works on shows that thread's mark,
+ * and Open thread takes Start's place everywhere, so a second press never
+ * makes a second thread (prototype workspace.html). The rows come through the shared task client
  * (work-kit's views) on the workspace's narrowed session.
  */
 
@@ -51,10 +60,11 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
   const adding = useShared(newTask);
   useEffect(() => () => newTask.set(false), []);
-  if (!lifeos.client) return <TasksSkeleton />;
+  // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
+  if (!lifeos.client) return sessionWaits(lifeos) ? <TasksSkeleton /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
-      <Tasks client={clients.tasks} startThread={startThread} />
+      <Tasks client={clients.tasks} startThread={startThread} useThread={useLinkedThread} />
       {adding ? <NewTaskDialog sector={sector} onClose={() => newTask.set(false)} /> : null}
     </ConvexProvider>
   );
@@ -62,7 +72,22 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
 
 const chipOf = (task: Task): ContextChip => ({ kind: "task", label: task.title, ref: { at: "lifeos", table: "tasks", id: task._id } });
 
-export function Tasks({ client, startThread }: { client: TasksClient; startThread: (about: ContextChip) => void }) {
+/** No thread lookup (a test, a preview): every task offers Start. */
+const noThread = (): string | null => null;
+
+/** A task's thread as a row draws it: its id and its state in the one vocabulary; null when no thread this window knows works on it. */
+export type TaskThread = { id: string; state: ReturnType<typeof rowState> } | null;
+type UseThread = (taskId: string) => string | null;
+
+function useTaskThread(useThread: UseThread, taskId: string): TaskThread {
+  const id = useThread(taskId);
+  const meta = useSessionMeta(id);
+  return id && meta ? { id, state: rowState({ status: meta.status }) } : null;
+}
+
+const openThread = (thread: NonNullable<TaskThread>): void => workOpenPort.get()?.(thread.id);
+
+export function Tasks({ client, startThread, useThread = noThread }: { client: TasksClient; startThread: (about: ContextChip) => void; useThread?: UseThread }) {
   const tasks = client.useOpenTasks();
   const projects = client.useProjectsById();
   const actions = client.useTaskActions();
@@ -83,7 +108,7 @@ export function Tasks({ client, startThread }: { client: TasksClient; startThrea
   const meta = (task: Task) => metaOf(task, projects?.get(task.projectId ?? "")?.name);
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
-      {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} /> : null}
+      {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} useThread={useThread} /> : null}
       {rest.map(({ g, rows }, i) => (
         <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{TASK_GROUP_LABELS[g]}</h2>
@@ -97,11 +122,12 @@ export function Tasks({ client, startThread }: { client: TasksClient; startThrea
               actions={actions}
               onStart={start}
               onOpen={open}
+              useThread={useThread}
             />
           ))}
         </section>
       ))}
-      <TaskSheet task={shown} project={shown ? projects?.get(shown.projectId ?? "")?.name : undefined} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} />
+      <TaskSheet task={shown} project={shown ? projects?.get(shown.projectId ?? "")?.name : undefined} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} useThread={useThread} />
     </div>
   );
 }
@@ -112,11 +138,31 @@ function metaOf(task: Task, project: string | undefined): string | undefined {
   return project ?? task.source?.sender;
 }
 
-function Lead({ task, meta, now, actions, onStart, onOpen }: { task: Task; meta: string | undefined; now: number; actions: TaskActions; onStart: (task: Task) => void; onOpen: (task: Task) => void }) {
+function Lead({
+  task,
+  meta,
+  now,
+  actions,
+  onStart,
+  onOpen,
+  useThread,
+}: {
+  task: Task;
+  meta: string | undefined;
+  now: number;
+  actions: TaskActions;
+  onStart: (task: Task) => void;
+  onOpen: (task: Task) => void;
+  useThread: UseThread;
+}) {
   const overdue = task.dueAt !== undefined && task.dueAt < now;
+  const thread = useTaskThread(useThread, task._id);
   return (
     <div className="flex flex-col gap-1 px-3">
-      <h1 className="text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{task.title}</h1>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <h1 className="min-w-0 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{task.title}</h1>
+        {thread && marksAtRest(thread.state) ? <StatusMark state={thread.state} word={false} className="shrink-0" /> : null}
+      </div>
       {meta || task.dueAt !== undefined ? (
         <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
           {meta ? <span className="min-w-0 truncate">{meta}</span> : null}
@@ -124,9 +170,15 @@ function Lead({ task, meta, now, actions, onStart, onOpen }: { task: Task; meta:
         </p>
       ) : null}
       <div className="mt-3 flex items-center gap-2">
-        <Button size="sm" onClick={() => onStart(task)}>
-          Start thread
-        </Button>
+        {thread ? (
+          <Button size="sm" onClick={() => openThread(thread)}>
+            Open thread
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => onStart(task)}>
+            Start thread
+          </Button>
+        )}
         <Button size="sm" variant="secondary" onClick={() => actions.complete(task)}>
           Done
         </Button>
@@ -164,6 +216,7 @@ const TaskRow = memo(function TaskRow({
   actions,
   onStart,
   onOpen,
+  useThread,
 }: {
   task: Task;
   meta: string | undefined;
@@ -172,8 +225,10 @@ const TaskRow = memo(function TaskRow({
   actions: TaskActions;
   onStart: (task: Task) => void;
   onOpen: (task: Task) => void;
+  useThread: UseThread;
 }) {
   const [ticked, setTicked] = useState(false);
+  const thread = useTaskThread(useThread, task._id);
   // A Done that failed (its toast says so) puts the row back as it was.
   const complete = () => void Promise.resolve(actions.complete(task)).then((r) => r === undefined && setTicked(false));
   const done = useRef(complete);
@@ -193,15 +248,26 @@ const TaskRow = memo(function TaskRow({
           <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
           {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
         </span>
+        {thread && marksAtRest(thread.state) ? (
+          <span data-task-thread={thread.state} className={cn("flex h-5 shrink-0 items-center", ROW_SHOWS, yields("row"))}>
+            <StatusMark state={thread.state} word={false} />
+          </span>
+        ) : null}
         {due ? <span className={cn("shrink-0 text-xs leading-5 tabular-nums", ROW_SHOWS, overdue ? "text-destructive" : "text-muted-foreground", yields("row"))}>{due}</span> : null}
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true, overlay: true }))}>
-          <Button size="xs" variant="ghost" onClick={() => onStart(task)}>
-            Start
-          </Button>
+          {thread ? (
+            <Button size="xs" variant="ghost" onClick={() => openThread(thread)}>
+              Open thread
+            </Button>
+          ) : (
+            <Button size="xs" variant="ghost" onClick={() => onStart(task)}>
+              Start
+            </Button>
+          )}
         </span>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>
+        {thread ? <ContextMenuItem onClick={() => openThread(thread)}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
         <ContextMenuItem onClick={() => onOpen(task)}>Open</ContextMenuItem>
         <ContextMenuItem onClick={() => setTicked(true)}>Done</ContextMenuItem>
         <ContextMenuSeparator />

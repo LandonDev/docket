@@ -446,15 +446,26 @@ function pastTense(act: string, verb: string): string {
 
 // ── the detail ────────────────────────────────────────────────────────────
 
-/** Who, where and when, over the act's name. */
-function DetailHead({ item, facts, menu }: { item: HostItem; facts: string[]; menu?: React.ReactNode }) {
+/**
+ * Who, where and when, over the act's name. `narrowOnly` facts (a held
+ * item's workspace) show only in the narrow stack: wide, the list's group
+ * heading beside the detail already names them.
+ */
+function DetailHead({ item, facts, narrowOnly = [], menu }: { item: HostItem; facts: string[]; narrowOnly?: string[]; menu?: React.ReactNode }) {
   const { act } = splitSummary(item.summary);
   return (
     <header className="flex flex-col">
       <div className="flex min-h-7 items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1 text-xs text-muted-foreground">
           <SectorDot sector={item.sector} className="-ms-1 size-4" />
-          <Facts parts={facts} className="min-w-0" />
+          {narrowOnly.length ? (
+            <>
+              <Facts parts={facts} className="min-w-0 @max-[40rem]/outbox:hidden" />
+              <Facts parts={[...narrowOnly, ...facts]} className="hidden min-w-0 @max-[40rem]/outbox:inline-flex" />
+            </>
+          ) : (
+            <Facts parts={facts} className="min-w-0" />
+          )}
         </span>
         {menu}
       </div>
@@ -506,7 +517,7 @@ function HeldDetail({ item, workspace, host, onOpenSession, onPressed }: { item:
     <>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
-          <DetailHead item={item} facts={[workspace, threadWords(item) ?? "", timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
+          <DetailHead item={item} narrowOnly={[workspace]} facts={[threadWords(item) ?? "", timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
           {item.state === "failed" ? (
             <div role="alert" className="flex items-start gap-2 text-[13px] leading-5">
               <StatusMark state="failed" word={false} />
@@ -515,6 +526,8 @@ function HeldDetail({ item, workspace, host, onOpenSession, onPressed }: { item:
           ) : null}
           {item.kind === "computer.act" ? <p className="text-[13px] leading-5 text-muted-foreground">Takes {host}'s screen for a moment.</p> : null}
           <ActView item={item} env={item.environmentId} />
+          {/* What his press approves: the window as the host read it, above the verbs. */}
+          {item.kind === "computer.act" ? <KeptPicture item={item} /> : null}
         </div>
       </div>
       <VerbBar>
@@ -680,7 +693,8 @@ function DetailSkeleton() {
 }
 
 /**
- * A computer act's Sent record keeps the window as it was read (DESIGN.md
+ * A computer act's kept picture: the window as it was read, in the held
+ * detail (what his press approves) and in its Sent record (DESIGN.md
  * "Around the canvas"). The list leaves the picture's bytes out, so the
  * whole act is read for it; an act that kept none draws nothing, and a read
  * that failed says so with Retry.

@@ -200,6 +200,35 @@ export function useLifeosSession(environmentId: string, sector: SectorKey | null
   return session ?? { environmentId, sector, client: null, state };
 }
 
+/**
+ * Whether a session with no client is still on its way (the host is
+ * connecting, or connected and its first JWT is out), so a screen draws its
+ * bones. Any other state is a failure the view frame's line or its sign-in
+ * says, and a screen draws nothing under it, never bones that pulse for ever.
+ */
+export function sessionWaits(session: Pick<LifeosSession, "client" | "state">): boolean {
+  return !session.client && (session.state === "connecting" || session.state === "connected");
+}
+
+/** What a session that cannot read says, in words: a query's error and the frame's line read it. */
+export function sessionFailure(state: LifeosStateName): string {
+  return state === "unreachable" ? "LifeOS did not answer" : state === "refused" ? "LifeOS refused this host's sign-in" : "Not signed in to LifeOS";
+}
+
+/**
+ * Retry on the view frame's line: the host's status asked afresh, then, if
+ * it says connected, the session's JWT asked again. The JWT can fail while
+ * the host says connected, and a status that did not change starts nothing.
+ */
+export async function reopenLifeos(environmentId: string, sector: SectorKey | null): Promise<void> {
+  await refreshLifeos(environmentId);
+  if (statuses.get(environmentId)?.lifeos.state !== "connected") return;
+  const key = keyOf(environmentId, sector);
+  const was = sessions.get(key);
+  if (was && !was.client) putSession({ ...was, state: "connected" });
+  await openSession(environmentId, sector);
+}
+
 /** A session by hand: a test's or a preview's seam. */
 export function setLifeosSession(session: LifeosSession): void {
   putSession(session);
@@ -208,14 +237,15 @@ export function setLifeosSession(session: LifeosSession): void {
 /** What a live query has: its rows, still loading, or the error LifeOS gave. */
 export type LifeosQuery<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "failed"; error: string };
 
-/** A live query as the session's owner, `name` as LifeOS names it (`projects:list`). */
+/** A live query as the session's owner, `name` as LifeOS names it (`projects:list`). Loading only while the session is on its way; a session that cannot read fails the query. */
 export function useLifeosQuery<T>(session: LifeosSession, name: string, args: Record<string, unknown>): LifeosQuery<T> {
   const argsKey = JSON.stringify(args);
   const [result, setResult] = useState<LifeosQuery<T>>({ status: "loading" });
+  const waits = sessionWaits(session);
   useEffect(() => {
     const client = session.client;
     if (!client) {
-      setResult({ status: "loading" });
+      setResult(waits ? { status: "loading" } : { status: "failed", error: sessionFailure(session.state) });
       return;
     }
     const watch = client.watchQuery(makeFunctionReference<"query">(name), JSON.parse(argsKey) as Record<string, unknown>);
@@ -229,7 +259,7 @@ export function useLifeosQuery<T>(session: LifeosSession, name: string, args: Re
     };
     read();
     return watch.onUpdate(read);
-  }, [session.client, name, argsKey]);
+  }, [session.client, session.state, waits, name, argsKey]);
   return result;
 }
 

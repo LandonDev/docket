@@ -15,6 +15,7 @@ import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/clie
 import { useMinute } from "../tasks/minute";
 import { shared, useShared } from "../tasks/store";
 import { NewEventDialog } from "./NewEventDialog";
+import { sessionWaits } from "../shell/lifeos";
 import "./agenda.css";
 import type { WorkViewProps } from "../views/registry";
 
@@ -72,7 +73,8 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   const { adding } = useShared(state);
   // Each visit opens on today's list.
   useEffect(() => () => state.set({ view: "list", day: startOfDay(Date.now()), adding: null }), []);
-  if (!lifeos.client) return <AgendaSkeleton />;
+  // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
+  if (!lifeos.client) return sessionWaits(lifeos) ? <AgendaSkeleton /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
       <Agenda client={clients.agenda} startThread={startThread} />

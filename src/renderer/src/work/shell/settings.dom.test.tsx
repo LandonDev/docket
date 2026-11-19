@@ -3,12 +3,24 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry } from "../../lib/connection";
+import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { resetLifeos, setLifeosStatus } from "./lifeos";
-import { LifeosHostRow } from "./settings";
+
+vi.mock("../../lib/connection", async (original) => ({
+  ...(await original<object>()),
+  useEnvironments: () => [{ id: "env_box", name: "The box", platform: "linux" }],
+}));
+// The rows under LifeOS are what this test reads; the sections after it stand still.
+vi.mock("../formats/ToolchainRow", () => ({ ToolchainRow: () => null }));
+vi.mock("../office/AddinRow", () => ({ AddinRow: () => null }));
+vi.mock("../guests/GuestLinksSection", () => ({ GuestLinksSection: () => null }));
+
+const { LifeosHostRow, WorkSettingsBody } = await import("./settings");
 
 afterEach(() => {
   cleanup();
   resetLifeos();
+  workSwitch.reset();
   vi.restoreAllMocks();
 });
 
@@ -34,5 +46,14 @@ describe("a host's LifeOS row", () => {
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(screen.getByText(/^LifeOS did not answer/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("titles the row with the host's name, with one host as with two, never a second LifeOS under the heading", () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({})), onPush: () => () => {}, onOpen: () => () => {} } as never);
+    setWorkOn("env_box", true);
+    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
+    render(<WorkSettingsBody />);
+    expect(screen.getByText("The box")).toBeTruthy();
+    expect(screen.getAllByText("LifeOS")).toHaveLength(1);
   });
 });

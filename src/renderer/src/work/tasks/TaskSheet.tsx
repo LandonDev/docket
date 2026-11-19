@@ -4,6 +4,8 @@ import { Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { Skeleton } from "../../components/ui/skeleton";
 import { openUrl } from "../../lib/native";
+import { useSessionMeta } from "../../lib/tcserver/store";
+import { workOpenPort } from "../../lib/workSwitch";
 import { formatDue } from "work-kit/views/lib/format";
 import type { Task } from "./client";
 
@@ -18,16 +20,29 @@ type Detail = { task: Task & { description?: string; source?: Task["source"] & {
 
 const get = makeFunctionReference<"query">("tasks:get");
 
-export function TaskSheet({ task, project, onClose, onStart, onDone }: { task: Task | null; project: string | undefined; onClose: () => void; onStart: (task: Task) => void; onDone: (task: Task) => void }) {
+type Props = {
+  project: string | undefined;
+  onClose: () => void;
+  onStart: (task: Task) => void;
+  onDone: (task: Task) => void;
+  /** The thread a link names for a task, if one works on it: Open thread takes Start thread's place. */
+  useThread?: (taskId: string) => string | null;
+};
+
+const noThread = (): string | null => null;
+
+export function TaskSheet({ task, ...props }: Props & { task: Task | null }) {
   return (
-    <Sheet open={task !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right">{task ? <Body task={task} project={project} onClose={onClose} onStart={onStart} onDone={onDone} /> : null}</SheetContent>
+    <Sheet open={task !== null} onOpenChange={(open) => !open && props.onClose()}>
+      <SheetContent side="right">{task ? <Body task={task} {...props} /> : null}</SheetContent>
     </Sheet>
   );
 }
 
-function Body({ task, project, onClose, onStart, onDone }: { task: Task; project: string | undefined; onClose: () => void; onStart: (task: Task) => void; onDone: (task: Task) => void }) {
+function Body({ task, project, onClose, onStart, onDone, useThread = noThread }: Props & { task: Task }) {
   const detail = useQuery(get, { id: task._id }) as Detail | undefined;
+  const threadId = useThread(task._id);
+  const thread = useSessionMeta(threadId) ? threadId : null;
   const full = detail?.task ?? task;
   const source = detail?.task.source;
   const rows: { label: string; value: string }[] = [];
@@ -67,9 +82,15 @@ function Body({ task, project, onClose, onStart, onDone }: { task: Task; project
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-5 py-3">
-        <Button size="sm" onClick={() => (onClose(), onStart(full))}>
-          Start thread
-        </Button>
+        {thread ? (
+          <Button size="sm" onClick={() => (onClose(), workOpenPort.get()?.(thread))}>
+            Open thread
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => (onClose(), onStart(full))}>
+            Start thread
+          </Button>
+        )}
         <Button size="sm" variant="secondary" onClick={() => (onClose(), onDone(full))}>
           Done
         </Button>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { errorText } from "../../chrome/ConfirmDialog";
+import { confirmAction, errorText } from "../../chrome/ConfirmDialog";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { reveal } from "../../components/ui/reveal";
@@ -19,7 +19,8 @@ import { guestsCall, isLive, ROLE_WORDS, shortDay, type GuestLinkRow } from "./a
  * that serves LifeOS's documents, so in practice one host answers; a host
  * that says another serves them is asked there, once. A host that does not
  * answer is its own red line with Retry, and the others' links stay. A
- * live row's Copy new address and Revoke show on hover.
+ * live row's Replace address… (asked first: the old address stops opening)
+ * and Revoke show on hover.
  */
 export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
   const [rows, setRows] = useState<{ env: string; link: GuestLinkRow }[] | null>(null);
@@ -54,14 +55,21 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
     return () => offs.forEach((off) => off());
   }, [key, load]);
 
-  // The address is never kept: copying makes a new one, and the one before stops opening.
-  const copyNew = async (env: string, id: string): Promise<void> => {
+  // The address is never kept: a new one is made and copied, and the one before stops opening, so he is asked first.
+  const replace = async (env: string, id: string, name: string): Promise<void> => {
+    const ok = await confirmAction({
+      title: "Replace the address?",
+      body: `The address ${name} has stops opening. The new one is copied for you to send.`,
+      action: "Replace",
+      danger: true,
+    });
+    if (!ok) return;
     setRevoking(`copy:${id}`);
     try {
       const { url } = await registry.linkOf(env).request<{ url: string }>("work.guests.rekey", { linkId: id });
       await copyText(url);
       const toast = await loadToast();
-      toast.success("Copied a new address. The one before no longer opens.");
+      toast.success("Copied the new address");
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -101,11 +109,11 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
       {rows?.map(({ env, link }) => {
         const live = isLive(link);
         return (
-          <PageRow key={link.id} media={<Avatar name={link.name} />} title={link.name} description={describe(link, live)} className={live ? undefined : "opacity-60"}>
+          <PageRow key={link.id} media={<Avatar name={link.name} size="list" />} title={link.name} description={describe(link, live)} className={live ? undefined : "opacity-60"}>
             {live ? (
               <div data-guest-actions="" className={cn("flex shrink-0 items-center gap-1", revoking?.endsWith(link.id) ? "opacity-100" : reveal("item", { row: true }))}>
-                <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void copyNew(env, link.id)}>
-                  <BusyLabel busy={revoking === `copy:${link.id}`} label="Copy new address" />
+                <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void replace(env, link.id, link.name)}>
+                  <BusyLabel busy={revoking === `copy:${link.id}`} label="Replace address…" />
                 </Button>
                 <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void revoke(env, link.id)}>
                   <BusyLabel busy={revoking === link.id} label="Revoke" />

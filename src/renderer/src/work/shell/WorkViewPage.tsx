@@ -11,7 +11,7 @@ import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
 import { WORK_VIEWS, type WorkViewId, type WorkViewProps } from "../views/registry";
 import { openWorkSettings } from "./open";
-import { refreshLifeos, useLifeosSession, useLifeosStatus } from "./lifeos";
+import { reopenLifeos, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { clockTime } from "../../lib/duration";
 
@@ -40,7 +40,7 @@ export function WorkViewSurface() {
   return <ViewFrame key={`${workspace.id}:${def.id}`} view={def.id} environmentId={workspace.environmentId} workspaceId={workspace.id} sector={workspace.sector as SectorKey} />;
 }
 
-function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkViewId; environmentId: string; workspaceId: string; sector: SectorKey }) {
+export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkViewId; environmentId: string; workspaceId: string; sector: SectorKey }) {
   const def = WORK_VIEWS[view];
   const workspace = useWorkspaces().find((w) => w.id === workspaceId)!;
   const status = useLifeosStatus(environmentId);
@@ -59,11 +59,13 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
   );
   const View = useMemo(() => lazy(() => def.chunk.load().then((m) => ({ default: m.View }))), [def]);
   const Icon = def.icon;
-  const signedOut = state === "signed-out" || state === "refused";
+  // The session's own state counts too: its JWT can be refused or go unanswered while the host says connected.
+  const signedOut = state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused";
+  const unreachable = state === "unreachable" || session.state === "unreachable";
   const [retrying, setRetrying] = useState(false);
   const retry = (): void => {
     setRetrying(true);
-    refreshLifeos(environmentId)
+    reopenLifeos(environmentId, sector)
       .catch((err: unknown) => void loadToast().then((toast) => toast.error("LifeOS did not answer", { description: errorText(err) })))
       .finally(() => setRetrying(false));
   };
@@ -77,11 +79,15 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
         <span className="flex-1" />
         {Head && !signedOut ? <Head {...props} /> : null}
       </div>
-      {status?.lifeos.state === "unreachable" ? (
-        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-4 text-[13px]">
-          <StatusMark state="failed" word={false} />
-          <span className="font-medium text-destructive">LifeOS did not answer</span>
-          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">As of {clockTime(status.lifeos.since)}</span>
+      {unreachable && !signedOut ? (
+        // The state line's shape (DESIGN.md "The state line"): 32px, glyph, the word in its tone, a muted detail, one action.
+        <div data-view-state="failed" role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
+          <StatusMark
+            state="failed"
+            word="LifeOS did not answer"
+            detail={status?.lifeos.state === "unreachable" ? `As of ${clockTime(status.lifeos.since)}` : undefined}
+            className="min-w-0 flex-1"
+          />
           <Button variant="ghost" size="xs" disabled={retrying} onClick={retry}>
             <BusyLabel busy={retrying} label="Retry" />
           </Button>

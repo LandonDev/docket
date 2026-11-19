@@ -264,6 +264,15 @@ describe("the Outbox", () => {
     expect(facts.closest("header")!.textContent).not.toContain("·");
   });
 
+  it("names a held item's workspace in its head only in the narrow stack, where the list's heading is gone", async () => {
+    await open();
+    const [wide, narrow] = [...document.querySelectorAll("header [data-slot=facts]")] as HTMLElement[];
+    expect(wide!.className).toContain("@max-[40rem]/outbox:hidden");
+    expect(wide!.textContent).not.toContain("A Work workspace");
+    expect(narrow!.className).toContain("@max-[40rem]/outbox:inline-flex");
+    expect(narrow!.textContent).toContain("A Work workspace");
+  });
+
   it("says a rewrite waits once, in the mail's own view, not again over it", async () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { proposed: true } as Partial<OutboxItem>)]);
     await open();
@@ -291,6 +300,10 @@ describe("the Outbox", () => {
     await waitFor(() => expect(screen.getAllByText("Click Send in Mail").length).toBeGreaterThan(0));
     await waitFor(() => expect(screen.getByText(/screen for a moment\./)).toBeTruthy());
     expect(screen.queryByText(/this host's screen/)).toBeNull();
+    // Held, the picture he approves sits above the verbs.
+    const held = (await screen.findByRole("img")) as HTMLImageElement;
+    expect(held.src).toBe("data:image/png;base64,AAAA");
+    expect(held.compareDocumentPosition(screen.getByRole("button", { name: "Send" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
     fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
     const picture = (await screen.findByRole("img")) as HTMLImageElement;

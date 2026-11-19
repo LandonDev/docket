@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicForm } from '@shared/contract-work-forms'
 import { mount } from './page'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 /** The public form page as a filler's browser runs it, against a stand-in for the Work service. */
 
@@ -108,5 +110,13 @@ describe('the form page', () => {
     await vi.waitFor(() => expect(root.querySelector('h1')!.textContent).toBe('Spring LAN registration'))
     await mount(root, '/f/abcdefghijklmnop', async () => Promise.reject(new TypeError('offline')))
     expect(root.querySelector('button')!.textContent).toBe('Retry')
+  })
+
+  it('presses Send by a fill step on the app\'s duration tokens, never a scale or a hard-coded time', () => {
+    const css = readFileSync(join(dirname(__filename), 'form.css'), 'utf8')
+    expect(css).not.toMatch(/scale\(/)
+    expect(css).not.toMatch(/\d+ms var\(/)
+    expect(css).toMatch(/\.fm-send:not\(:disabled\):active \{\s*background: color-mix/)
+    expect(css).toContain('--dur-hover: 60ms')
   })
 })

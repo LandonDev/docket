@@ -1067,7 +1067,7 @@ export type RailTopRowId = "search" | "inbox" | "outbox" | "read" | "notes" | "c
  *  never at /ui). */
 export function railTopRows(facts: { chats: boolean; notes: boolean; aliax: boolean; workChats?: boolean; outbox?: boolean }): RailTopRowId[] {
   const rows: RailTopRowId[] = ["search", "inbox"];
-  // Work's twins sit beside their code ones: the Outbox (while something waits) after Inbox, Work Chats after Chats.
+  // Work's twins sit beside their code ones: the Outbox (whenever Work is on: Sent and the grants are reached from it with nothing waiting) after Inbox, Work Chats after Chats.
   if (facts.outbox) rows.push("outbox");
   rows.push("read");
   if (facts.notes) rows.push("notes");

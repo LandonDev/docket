@@ -4,6 +4,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { Modal, ModalBody } from "../../chrome/Modal";
 import { StatusMark } from "../../components/ui/status";
+import { TruncateTip } from "../../components/tip";
 import { loadToast } from "../../components/ui/toaster";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { useEnvironments } from "../../lib/connection";
@@ -152,7 +153,14 @@ function Row({ title, line, tone, media, children }: { title: string; line?: str
       {tone ? <StatusMark state="failed" word={false} /> : media ? <span className="flex size-3.5 shrink-0 items-center justify-center">{media}</span> : null}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[13px] leading-5">{title}</span>
-        {line ? <span className={tone ? "truncate text-xs leading-4 text-destructive" : "truncate text-xs leading-4 text-muted-foreground"}>{line}</span> : null}
+        {line ? (
+          // A line cut short says the rest on hover: a failed act's reason is this list's whole point.
+          <TruncateTip text={line}>
+            <span data-row-line="" className={tone ? "truncate text-xs leading-4 text-destructive" : "truncate text-xs leading-4 text-muted-foreground"}>
+              {line}
+            </span>
+          </TruncateTip>
+        ) : null}
       </span>
       {children ? <span className="flex shrink-0 items-center">{children}</span> : null}
     </div>

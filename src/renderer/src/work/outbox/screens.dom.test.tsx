@@ -36,6 +36,8 @@ vi.mock("../../lib/connection", async (original) => {
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { AwayReturnWork, gatherAway } from "./AwayList";
 import { ResultsSection } from "./ResultsSection";
+import { resultsListed } from "./results";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { resetOutboxStore } from "./store";
 
 const result = (id: string, summary: string, undo: boolean, extra: Partial<WorkResult> = {}): WorkResult => ({
@@ -76,6 +78,14 @@ describe("Results", () => {
   });
 });
 
+describe("Results in the panel", () => {
+  it("is listed while a read failed with no rows, so its error and Retry show", () => {
+    expect(resultsListed({ rows: [], error: null })).toBe(0);
+    expect(resultsListed({ rows: [], error: "The host did not answer" })).toBe(1);
+    expect(resultsListed({ rows: [{} as never, {} as never], error: null })).toBe(2);
+  });
+});
+
 describe("the return from Away", () => {
   it("gathers held, failed, decided and the writes since Away began, sends left out", async () => {
     const found = await gatherAway([{ environmentId: "box", decided: { since: 1_500, threads: [{ sessionId: "t1", count: 2 }] } }], 3_000);
@@ -87,6 +97,13 @@ describe("the return from Away", () => {
     const found = await gatherAway([{ environmentId: "box", decided: { since: 1_500, threads: [{ sessionId: "t1", count: 2 }] } }], 3_000);
     const onOpenSession = vi.fn();
     const onOpenOutbox = vi.fn();
+    // Every line measures as cut, so each takes its tooltip.
+    const width = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
     render(<AwayReturnWork report={found!.report} onClose={() => undefined} onOpenSession={onOpenSession} onOpenOutbox={onOpenOutbox} />);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getAllByRole("region").map((r) => r.getAttribute("aria-label"))).toEqual(["Held", "Failed", "Decided without you", "Written on your files"]);
@@ -100,6 +117,10 @@ describe("the return from Away", () => {
     expect(onOpenOutbox).toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Open" }));
     expect(onOpenSession).toHaveBeenCalledWith("t1", "box");
+    // A failed act's reason that is cut short says the rest on hover.
+    await waitFor(() => expect(within(within(dialog).getByRole("region", { name: "Failed" })).getByText("Slack did not answer").getAttribute("data-slot")).toBe("tooltip-trigger"));
+    width.mockRestore();
+    client.mockRestore();
     // Held is never amber
     expect(dialog.querySelector('[data-state="waiting"]')).toBeNull();
   });

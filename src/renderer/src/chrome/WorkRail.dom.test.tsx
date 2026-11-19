@@ -125,7 +125,7 @@ describe("the rail with Work on", () => {
     expect(loads.shell).toBeGreaterThan(0);
   });
 
-  it("puts Work Chats after Chats, and the Outbox only while something waits", async () => {
+  it("puts Work Chats after Chats, and draws no Outbox row with no page for it to open", async () => {
     setWorkOn("local", true);
     const root = await mountRail([CODE]);
     const names = labels(root);
@@ -142,6 +142,8 @@ describe("the rail's Outbox row", () => {
     setWorkOn("local", true);
     const root = await mountRail([CODE], { onOpenOutbox: () => {} });
     const row = () => [...root.querySelectorAll("nav button")].find((b) => b.textContent?.includes("Outbox"))!;
+    // Whenever Work is on, with nothing waiting too: Sent and the grants are reached from it.
+    expect(row()).toBeTruthy();
     await probe.act(async () => setOutboxWaiting(3));
     expect(row().textContent).toContain("3");
     await probe.act(async () => setOutboxFailed(1));
