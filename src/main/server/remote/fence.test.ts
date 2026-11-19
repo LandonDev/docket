@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
@@ -116,7 +116,7 @@ describe('FENCED_PARAMS', () => {
     expect(fencedPaths(req('fs.readText', { path: '/a' }))).toEqual(['/a'])
     expect(fencedPaths(req('fs.statFiles', { paths: ['/a', '/b'] }))).toEqual(['/a', '/b'])
     expect(fencedPaths(req('fs.copyPath', { from: '/a', destParent: '/b' }))).toEqual(['/a', '/b'])
-    expect(fencedPaths(req('fs.createPath', { parent: '/r', name: '../x', isDir: false }))).toEqual(['/r', '/x'])
+    expect(fencedPaths(req('fs.createPath', { parent: '/r', name: '../x', isDir: false }))).toEqual(['/r', resolve('/x')])
     expect(fencedPaths(req('fs.renamePath', { path: '/r/a', name: 'b' }))).toEqual(['/r/a', '/r/b'])
     expect(fencedPaths(req('git.log', { cwd: '/r' }))).toEqual(['/r'])
     expect(fencedPaths(req('git.clone', { url: 'https://x/y', parent: '/p' }))).toEqual(['/p'])
@@ -218,7 +218,7 @@ describe('fenceRequest', () => {
     writeFileSync(join(history, 't1', 'log.jsonl'), '{}')
     writeFileSync(join(history, 't1', 'steps', '1.jpg'), 'jpg')
     writeFileSync(join(data, 'computer', 'beside.txt'), 'x')
-    symlinkSync(data, join(outside, 'data-link'))
+    symlinkSync(data, join(outside, 'data-link'), 'junction')
     const roots = [root, outside]
     const picture = join(history, 't1', 'steps', '1.jpg')
     // without the denied directory the roots admit it: that is what the fence closes
@@ -273,7 +273,7 @@ describe('fenceRequest', () => {
     // file.read is fenced to the app's own directories by its handler; the history inside one is still not its to read,
     // by its real place or through a link to it
     expect(() => check('file.read', { path: join(history, 't1', 'steps', '1.txt') })).toThrow(FenceError)
-    symlinkSync(history, join(root, 'linked-history'))
+    symlinkSync(history, join(root, 'linked-history'), 'junction')
     expect(() => check('file.read', { path: join(root, 'linked-history', 't1', 'steps', '1.txt') })).toThrow(FenceError)
     expect(() => check('file.read', { path: join(data, 'computer', 'beside.txt') })).not.toThrow()
     // a path of several lines, or of great length, that normalizes into the history is the same place

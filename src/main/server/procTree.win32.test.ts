@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -42,7 +42,8 @@ function parentWithGrandchild(adopt: (child: ChildProcess) => ChildProcess): Pro
 
 const strays: number[] = []
 afterAll(() => {
-  for (const pid of strays) killTree(pid, 'SIGKILL')
+  // Waited for: a stray left alive holds the run's inherited output handles, and the run would never end.
+  for (const pid of strays) if (alive(pid)) execFileSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
 })
 
 describe.runIf(win)('process trees on Windows', () => {
