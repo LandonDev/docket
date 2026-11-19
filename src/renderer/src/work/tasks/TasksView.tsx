@@ -2,8 +2,6 @@ import { ConvexProvider } from "convex/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { ContextChip } from "@shared/work";
 import { groupTasks, SNOOZE_CHOICES, SNOOZE_LABELS, TASK_GROUP_LABELS, TASK_GROUPS, type SnoozeChoice } from "work-kit/lifeos/tasks";
-import type { TaskActions, TasksClient } from "work-kit/views";
-import type { Task } from "work-kit/views";
 import { formatDue } from "work-kit/views/lib/format";
 import { ChevronDown } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
@@ -15,7 +13,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
-import { viewsClients } from "./client";
+import { type Task, type TaskActions, type TasksClient, viewsClients } from "./client";
 import { useMinute } from "./minute";
 
 /**
@@ -25,7 +23,7 @@ import { useMinute } from "./minute";
  * in a new thread's composer as a chip and runs nothing; Done is the owner
  * accepting the work, so a task a thread here worked completes with that
  * thread's link. The rows come through the shared task client
- * (`work-kit/views`) on the workspace's narrowed session.
+ * (work-kit's views) on the workspace's narrowed session.
  */
 
 /** How long a ticked row holds so the tick reads, before it leaves (LifeOS's own). */

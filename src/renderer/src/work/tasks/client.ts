@@ -5,7 +5,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 
 /**
- * The shared task and agenda clients (`work-kit/views`), on a workspace's
+ * The shared task and agenda clients (work-kit's views), on a workspace's
  * narrowed LifeOS session. Done goes through the host (`work.tasks.done`), so
  * a task a thread here worked completes with the thread's reason and link.
  * Each write says what it did in one toast, with Undo where LifeOS has one.
@@ -30,3 +30,11 @@ export function viewsClients(env: string, sector: SectorKey) {
     complete: (task) => registry.linkOf(env).request<TasksDone>("work.tasks.done", { taskId: task._id }),
   });
 }
+
+/** The clients' types, read off the maker so the renderer names no other work-kit module. */
+type Clients = ReturnType<typeof createLifeosViewsClients>;
+export type TasksClient = Clients["tasks"];
+export type AgendaClient = Clients["agenda"];
+export type TaskActions = ReturnType<TasksClient["useTaskActions"]>;
+export type Task = NonNullable<ReturnType<TasksClient["useOpenTasks"]>>[number];
+export type AgendaEvent = NonNullable<ReturnType<AgendaClient["useEvents"]>>[number];

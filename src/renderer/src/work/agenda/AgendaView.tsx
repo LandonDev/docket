@@ -1,7 +1,6 @@
 import { ConvexProvider } from "convex/react";
 import { memo, useMemo, useRef } from "react";
 import type { ContextChip } from "@shared/work";
-import type { AgendaClient, AgendaEvent } from "work-kit/views";
 import { addDays, endOf, groupByDay, leaveAt, startOfDay } from "work-kit/views/lib/agenda";
 import { formatDayHeading, formatLeave, formatTime } from "work-kit/views/lib/format";
 import { Button } from "../../components/ui/button";
@@ -9,7 +8,7 @@ import { reveal } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
-import { viewsClients } from "../tasks/client";
+import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/client";
 import { useMinute } from "../tasks/minute";
 import type { WorkViewProps } from "../views/registry";
 

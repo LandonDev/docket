@@ -57,6 +57,15 @@
 @source "../../../node_modules/work-kit/src/editor/use-mounted.ts";
 @source "../../../node_modules/work-kit/src/editor/viewer.ts";
 @source "../../../node_modules/work-kit/src/formats/diff/index.ts";
+@source "../../../node_modules/work-kit/src/lifeos/api.ts";
+@source "../../../node_modules/work-kit/src/lifeos/index.ts";
+@source "../../../node_modules/work-kit/src/lifeos/mail-client.ts";
+@source "../../../node_modules/work-kit/src/lifeos/optimistic.ts";
+@source "../../../node_modules/work-kit/src/lifeos/outlook.ts";
+@source "../../../node_modules/work-kit/src/lifeos/tasks.ts";
+@source "../../../node_modules/work-kit/src/lifeos/time.ts";
+@source "../../../node_modules/work-kit/src/lifeos/types.ts";
+@source "../../../node_modules/work-kit/src/lifeos/views-client.ts";
 @source "../../../node_modules/work-kit/src/sheet/engine/dedup-rtree.ts";
 @source "../../../node_modules/work-kit/src/sheet/engine/dependency-generator.ts";
 @source "../../../node_modules/work-kit/src/sheet/engine/dependency-manager.ts";
@@ -107,3 +116,5 @@
 @source "../../../node_modules/work-kit/src/ui/toggle-group.tsx";
 @source "../../../node_modules/work-kit/src/ui/toggle.tsx";
 @source "../../../node_modules/work-kit/src/ui/tooltip.tsx";
+@source "../../../node_modules/work-kit/src/views/lib/agenda.ts";
+@source "../../../node_modules/work-kit/src/views/lib/format.ts";
