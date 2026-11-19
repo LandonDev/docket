@@ -90,7 +90,7 @@ export type EventAnswer = 'accept' | 'decline' | 'tentative'
 export type DocEdit = { insert: string; at: 'start' | 'end' } | { find: string; replace: string }
 
 export interface OfficeCarrier {
-  readonly kind: 'mac' | 'fake'
+  readonly kind: 'mac' | 'fake' | 'addin'
   apps(): Promise<OfficeAppState[]>
 
   workbooks(): Promise<WorkbookInfo[]>

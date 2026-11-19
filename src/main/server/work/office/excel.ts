@@ -251,6 +251,22 @@ export class ExcelHelper {
     }
   }
 
+  /**
+   * Someone changed `address` on a sheet, as our Office add-in heard it (milestone 29): the watched
+   * blocks it touches are read again now rather than on the next pass. An address with no cells
+   * in it (a whole row or column) reads every block on the sheet.
+   */
+  heard(book: string, sheet: string, address: string): Promise<void> {
+    let r: A1Range | null
+    try {
+      r = parseAddress(address)
+    } catch {
+      r = null
+    }
+    const hit = [...this.watched.values()].filter((w) => w.book === book && w.sheet === sheet && (!r || overlaps(w.range, r)))
+    return Promise.all(hit.map((w) => this.serial(book, () => this.refresh(w, true)).catch(() => undefined))).then(() => undefined)
+  }
+
   private async refresh(w: Watched, others: boolean): Promise<void> {
     const block = await this.read(w.book, w.sheet, w.range)
     if (block.hash === w.hash) return

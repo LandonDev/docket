@@ -29,9 +29,9 @@ export interface OfficeAppState {
   allowed: OfficeAllowed
 }
 
-/** What this host can carry out: `mac` by osascript, null where no carrier runs (Linux, Windows until milestone 44). */
+/** What this host can carry out: `mac` by osascript, `addin` by our Office add-in alone (milestone 29), null where no carrier runs (Linux, Windows until milestone 44). */
 export interface OfficeStatus {
-  carrier: 'mac' | 'fake' | null
+  carrier: 'mac' | 'fake' | 'addin' | null
   apps: OfficeAppState[]
   /** the Outlook addresses this host reports to LifeOS's local route, and when it last did */
   route: { accounts: string[]; beatAt: number | null; error: string | null }
@@ -50,8 +50,30 @@ export const OfficeRequestSchemas = [
   /** any other tool; `asked`: the calling host found the owner's words for this change; `by`: the calling thread, as a principal */
   request('work.office.write', ToolCall.extend({ asked: z.boolean().default(false), by: z.string().regex(/^agent:[^:]+:.+$/).optional() })),
   /** brings the app forward with the file: the switch for a Microsoft file */
-  request('work.office.switch', z.object({ source: CanvasSourceSchema }))
+  request('work.office.switch', z.object({ source: CanvasSourceSchema })),
+  /** a short code for pairing our Office add-in with this host, good for five minutes (the owner's, never an agent's) */
+  request('work.office.addin.pair', z.object({})),
+  /** the add-ins paired with this host, and which are connected now */
+  request('work.office.addin.list', z.object({})),
+  /** forgets an add-in's key and closes it */
+  request('work.office.addin.remove', z.object({ id: z.string().max(64) }))
 ] as const
+
+/** A pairing code as TempCode shows it. */
+export interface OfficeAddinCode {
+  code: string
+  expiresAt: number
+}
+
+/** A paired add-in: `app` is excel, word or powerpoint; `live` while it is connected. */
+export interface OfficeAddinKey {
+  id: string
+  name: string
+  app: string
+  createdAt: number
+  seenAt: number | null
+  live: boolean
+}
 
 export type OfficePush = never
 
@@ -59,6 +81,9 @@ export const OFFICE_CAPS = {
   'work.office.status': 'read',
   'work.office.read': 'read',
   'work.office.write': 'operate',
-  'work.office.switch': 'operate'
+  'work.office.switch': 'operate',
+  'work.office.addin.pair': 'operate',
+  'work.office.addin.list': 'read',
+  'work.office.addin.remove': 'operate'
 } satisfies CapsOf<typeof OfficeRequestSchemas>
 export const OFFICE_RELAY = {} satisfies RelayOf<typeof OfficeRequestSchemas>

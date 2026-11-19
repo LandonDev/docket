@@ -8,9 +8,11 @@ import type { OfficeCarrier } from './carrier'
 import { ensureExcelTables, ExcelHelper } from './excel'
 import { unfollowAll } from './grid'
 import { officeActs } from './held'
+import { addinHandle, addinHub, addinTools, ensureAddinTables, startAddin } from './addin'
+import { withAddin } from './addin/carrier'
 import { macCarrier } from './mac'
 import { ensureRouteTables, OutlookRoute } from './route'
-import { officeTool, runHere, workTools, type Env } from './tools'
+import { officeTool, runHere, type Env } from './tools'
 
 /**
  * The office pillar's server module (docs/agents/work-office.md): one Office
@@ -20,7 +22,7 @@ import { officeTool, runHere, workTools, type Env } from './tools'
  * Outlook after his press. Sends are held acts (held.ts).
  */
 
-let carrierFor: () => OfficeCarrier | null = () => (process.platform === 'darwin' ? macCarrier() : null)
+let carrierFor: () => OfficeCarrier | null = () => withAddin(process.platform === 'darwin' ? macCarrier() : null, addinHub)
 /** A test hands its own carrier (a `FakeOffice`); null: this host has none. */
 export const setCarrier = (fn: () => OfficeCarrier | null): void => {
   carrierFor = fn
@@ -77,9 +79,11 @@ export const office: WorkModule = {
     ensureSuggestionTables(db)
     ensureExcelTables(db)
     ensureRouteTables(db)
+    ensureAddinTables(db)
   },
   async handle(req, ctx, by) {
     if (!req.method.startsWith('work.office.')) return NOT_HANDLED
+    if (req.method.startsWith('work.office.addin.')) return addinHandle(req, ctx, by)
     const here = hereOf(ctx)
     switch (req.method) {
       case 'work.office.status': {
@@ -110,7 +114,7 @@ export const office: WorkModule = {
     }
     return NOT_HANDLED
   },
-  tools: () => workTools({ here: hereOf }),
+  tools: () => addinTools(hereOf),
   acts: officeActs({ carrier: () => (started ? (hereOf(started)?.carrier ?? null) : null) }),
   triggers: [excelChanges(() => started)],
   preamble: () =>
@@ -122,6 +126,7 @@ export const office: WorkModule = {
     let timer: ReturnType<typeof setInterval> | null = null
     // The route runs while LifeOS is connected and Outlook is here; it says nothing new until either changes.
     let said = ''
+    const stopAddin = startAddin(ctx, (book, sheet, address) => void hereOf(ctx)?.excel.heard(book, sheet, address))
     const check = () => {
       void (async () => {
         const outlook = here && (await here.carrier.apps().catch(() => [])).find((a) => a.app === 'outlook')
@@ -142,6 +147,7 @@ export const office: WorkModule = {
       timer.unref?.()
     }
     return () => {
+      stopAddin()
       if (timer) clearInterval(timer)
       stopRoute?.()
       here?.excel.stop()

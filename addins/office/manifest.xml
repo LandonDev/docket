@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TempCode's Office add-in (docs/agents/work-office.md "The add-in"). Sideload this file; its pages come from the Work service. -->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:type="TaskPaneApp">
+  <Id>4d4a9aee-3258-405a-bd8a-a18fc1d298b4</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>TempCode</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="TempCode" />
+  <Description DefaultValue="Lets your TempCode agents read and write this file, and tells TempCode when it changes." />
+  <IconUrl DefaultValue="https://tempcode.landonhale.com/w/addin/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://tempcode.landonhale.com/w/addin/icon-64.png" />
+  <SupportUrl DefaultValue="https://tempcode.landonhale.com/w/addin/taskpane.html" />
+  <AppDomains>
+    <AppDomain>https://tempcode.landonhale.com</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Workbook" />
+    <Host Name="Document" />
+    <Host Name="Presentation" />
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://tempcode.landonhale.com/w/addin/taskpane.html" />
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+</OfficeApp>
