@@ -112,12 +112,13 @@ blocks left as they were keep their ids and comments.
 The rule (architecture §6.7, §8.4): `because: "asked"` writes at once only
 when its `quote` is in one of the owner's own messages in the thread
 (`ctx.threads.ownerSaid`), else it is the agent's own idea and the reply
-says so; `"routine"` only in a routine's run; `"own"` on a shared document,
+says so; `"routine"` only in a routine's run, and on his own document; `"own"` on a shared document,
 or one set to suggest, waits as a branch; on his own document it is
 written as one version and the bar shows it with Undo. The verdict is
 this host's: the service is told `asked`, `routine` or `own` after the
 check, never the model's word. `doc_suggest` always waits. `doc_comment`
-makes the thread, then marks the first place the words stand (a table's
+is refused on a shared document (others would read it before he did); on
+his own it makes the thread, then marks the first place the words stand (a table's
 cell included); words that are not there make no thread.
 
 The LifeOS worker's own write route (`/internal/doc/write`, M17's

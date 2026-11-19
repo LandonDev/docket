@@ -165,8 +165,13 @@ matcher})`), and its matcher must fit that item. It fits later acts of the
 same workspace and kind, made after it. A grant made from a routine's act
 carries that routine and fits its runs alone; a routine's act fits no other
 grant. A thread acts for the nearest routine run above it, by parent or
-starter, so a run's subagent is the run (`routineRunOf`). For an add-on call the host seals the server's digest into the
-matcher, and a matcher that names arguments fixes the rest: a call that
+starter, so a run's subagent is the run (`routineRunOf`). A thread whose
+line this host cannot follow to its end (a parent on another host, or more
+than 32 links) acts for an unknown run (`ROUTINE_UNKNOWN`) and takes no
+grant. For an add-on call the host seals the server's digest and the tool's
+(its description and input as listed, `toolDigest`) into the call and the
+matcher: a server that redefines the tool gets neither the grant nor the
+press, and a matcher that names arguments fixes the rest: a call that
 carries an argument the grant neither names nor leaves `free` (a `bcc`, a
 second channel) does not fit it. A matcher with no arguments fits any call
 of the tool. For mail, every recipient (copied and blind-copied too) must be a
@@ -227,7 +232,12 @@ lock screen could answer.
 write marked `own` is a suggestion; `asked` writes only when the host finds
 the quote in the owner's own messages (`ctx.threads.ownerSaid`); `routine`
 only when a grant of that run's routine covers it. A pillar's write tool
-calls it.
+calls it. No grant covers a write today, so a routine's run writes directly
+only on what he alone sees, and suggests on a shared document or sheet. An
+agent's comment on a shared document is refused: its other readers would
+read it before he did. LifeOS's bot routes (`/internal/doc/*`,
+`/internal/sheet/write`) take a bot's `asked` and `routine` as its own idea:
+only main can check his words.
 
 ## Results
 
@@ -271,7 +281,9 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   together. The detail is who, where and when, the act's name, then its
   payload exactly as it goes (`work/acts/ActView.tsx`: the kind's own view
   from `ACT_VIEWS`, else `GenericActView`, its fields and its body as
-  plain text), over one bar: Discard, Edit, and a split Send whose menu
+  plain text; where the payload has html the body is read from it, every
+  link with its target and every image with its source (`htmlWords`), and
+  an add-on call's arguments are shown whole), over one bar: Discard, Edit, and a split Send whose menu
   makes the grant ("Send and stop holding" › the grant's name;
   `grantFor` in model.ts: a mail fixes its account and every recipient, an
   add-on call its server and tool, a computer act takes none). Sent groups

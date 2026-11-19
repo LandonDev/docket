@@ -44,9 +44,13 @@ Publishing shares a link anyone can answer, so it is an outward act:
   whatever the mode, so nothing reaches the public page without him. Before
   that, the mode decides ("Agent suggests", the default, or "Agent writes").
   His own edits go live at once.
-- **Close and reopen are not held**: they stop or restart answers on his own
-  form (`work.forms.close {itemId, open}`, `form_close`). Answers already in
-  stay.
+- **His close and reopen are not held**: they stop or restart answers on
+  his own form (`work.forms.close {itemId, open}`). An agent's close
+  (`form_close` with `open: false`) runs at once; its reopen shares the link
+  again, so it is held as `form.publish` like the first. Answers already in
+  stay. A held publish carries the form in words (`content`: the
+  description, each question with its kind and options), which the Outbox
+  shows.
 
 ## The page
 
