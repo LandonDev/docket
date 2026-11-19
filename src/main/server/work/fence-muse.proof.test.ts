@@ -113,6 +113,7 @@ interface Case {
   inventory: string[]
   hooks: number
   skills: string[]
+  bundled: number
 }
 
 /** One `muse serve` through the driver's host (harness/museHost.ts), one echo turn, then what the session mounted. */
@@ -154,9 +155,10 @@ async function runCase(label: string, opts: { cwd: string; configDir: string; da
       spawned: spawned(),
       inventory: inventory.map((x) => x.name).sort(),
       hooks: hooks.length,
-      skills: skills.filter((k) => k.source !== 'bundled' && k.source !== 'plugin').map((k) => k.selector)
+      skills: skills.filter((k) => k.source !== 'bundled' && k.source !== 'plugin').map((k) => k.selector),
+      bundled: skills.filter((k) => k.source === 'bundled').length
     }
-    console.log(`[muse fence proof] ${label.padEnd(26)} spawned: ${c.spawned.join(' ')} | inventory: ${c.inventory.join(' ')} | hooks: ${c.hooks} | skills: ${c.skills.join(' ')}`)
+    console.log(`[muse fence proof] ${label.padEnd(26)} spawned: ${c.spawned.join(' ')} | inventory: ${c.inventory.join(' ')} | hooks: ${c.hooks} | skills: ${c.skills.join(' ')} (+${c.bundled} bundled)`)
     return c
   } finally {
     await host.close()
@@ -239,6 +241,8 @@ describe('Muse Code: a planted server in every source', () => {
       expect(c.inventory, `${label}: the inventory lists only app`).toEqual(['app'])
       expect(c.hooks, `${label}: no hook`).toBe(0)
       expect(c.skills, `${label}: the store's skill reaches the thread`).toContain('store-skill')
+      // The data dir's muse/skills was removed; Muse extracts its bundled skills there again.
+      expect(c.bundled, `${label}: the bundled skills still load`).toBeGreaterThan(0)
     }
     // The reset touched nothing of the person's.
     expect(JSON.parse(readFileSync(join(pm, 'settings.json'), 'utf8')).mcpServers).toHaveProperty('user_settings')

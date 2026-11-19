@@ -340,7 +340,7 @@ the spike behind it are in `.temp-code/plans/landed/M06/muse-sources.md`.
 | Source | Loads for a code thread | Cut for a Work thread by |
 |---|---|---|
 | the person's `settings.json` servers and hooks (linked into a code thread's config dir) | yes | the Work config dir's own `settings.json`, `{"schema_version":1}` |
-| a plugin installed in the data dir and approved in `settings.json` | yes | the Work data dir, its `muse/plugins` removed; no approvals in the Work `settings.json` |
+| a plugin installed in the data dir and approved in `settings.json` | yes | the Work data dir, its `muse/plugins` (and `muse/skills`) removed; no approvals in the Work `settings.json` |
 | `.mcp.json` in the folder and up to its git root | yes | the folder is an extra root; the primary root is an empty app-owned repo |
 | servers, hooks or a plugin an agent wrote into the Work dirs, a `.mcp.json` in the root, a repo made above it | n/a | the dirs and the root are put back before every `muse serve` |
 | inherited `MUSE_*` / `TBH_*` switches | yes | dropped from a Work thread's env |
@@ -357,7 +357,13 @@ Work row, start and resume, and again at the sandbox restart:
   `recaptureMuseDir` reads an account's Work copies back as it does a code
   thread's.
 - **The Work data dir**, `<userData>/muse-work/data/`, as `XDG_DATA_HOME`:
-  kept, so `session/resume` finds its sessions; `muse/plugins` removed.
+  kept, so `session/resume` finds its sessions. It is shared by every Work
+  thread of every workspace, so `muse/plugins` and `muse/skills`
+  (`MUSE_WORK_DATA_DROP`) are removed, a link there unlinked and not
+  followed. Muse extracts its bundled skills into `skills/bundled` again at
+  each serve. A skill planted anywhere under `muse/skills` did not load in
+  1.4.24 (only the bundled ones live there), so the removal guards a later
+  version and leaves the agent nowhere to keep one.
 - **The primary root**, `<userData>/muse-work/roots/<thread>/`: removed,
   made empty and `git init`ed (`--template=`, no `GIT_*`), so the
   `.mcp.json` walk stops there. It is the process cwd and `workspaceRoot`;

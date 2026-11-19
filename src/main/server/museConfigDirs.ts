@@ -272,7 +272,8 @@ export function recaptureMuseDir(account: string | null): boolean {
  *       settings.json `{"schema_version":1}` and `skills` → the store's
  *       scope; every other entry is removed, nothing of the person's linked.
  *   data/                                    XDG_DATA_HOME: kept, so
- *       `session/resume` finds its sessions; `muse/plugins` removed.
+ *       `session/resume` finds its sessions; `muse/plugins` and
+ *       `muse/skills` removed (MUSE_WORK_DATA_DROP).
  *   roots/<thread>/                          the primary root and the
  *       process cwd: removed, made empty and `git init`ed, so the
  *       `.mcp.json` walk stops at it. The thread's folder rides
@@ -292,6 +293,14 @@ export interface MuseWorkDirs {
 
 /** The Work config dir's whole settings.json. */
 export const MUSE_WORK_SETTINGS = '{"schema_version":1}\n'
+
+/**
+ * What a Work serve removes from the shared data dir's `muse/`: installed
+ * plugins (servers and hooks) and data-home skills (instructions every Work
+ * thread of every workspace would read). Muse extracts its bundled skills
+ * into `skills/bundled` again at each serve. `sessions/` stays, for resume.
+ */
+export const MUSE_WORK_DATA_DROP = ['plugins', 'skills'] as const
 
 /** `<userData>/muse-work`, beside `<userData>/muse-accounts`. */
 export const museWorkRoot = (accountsRoot: string): string => join(dirname(accountsRoot), 'muse-work')
@@ -331,7 +340,8 @@ export function museWorkDirs(threadId: string, account: string | null, scope: Sc
   writeFileSync(join(museDir, 'settings.json'), MUSE_WORK_SETTINGS, { flag: 'wx', mode: 0o600 })
   if (skillsPointer !== null) symlinkSync(join(skillsPointer, 'skills'), join(museDir, 'skills'))
   const dataDir = realDir(work, 'data')
-  rmSync(join(realDir(work, 'data', 'muse'), 'plugins'), { recursive: true, force: true })
+  const dataMuse = realDir(work, 'data', 'muse')
+  for (const name of MUSE_WORK_DATA_DROP) rmSync(join(dataMuse, name), { recursive: true, force: true })
   const root = join(realDir(work, 'roots'), rootName(threadId))
   rmSync(root, { recursive: true, force: true })
   mkdirSync(root, { mode: 0o700 })

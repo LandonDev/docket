@@ -233,6 +233,8 @@ describe('the Work fence', () => {
     rmSync(join(cfg, 'muse', 'skills'))
     symlinkSync(join(userDir, 'skills'), join(cfg, 'muse', 'skills'))
     mkdirSync(join(work(), 'data', 'muse', 'plugins', 'p'), { recursive: true })
+    mkdirSync(join(work(), 'data', 'muse', 'skills', 'planted'), { recursive: true })
+    writeFileSync(join(work(), 'data', 'muse', 'skills', 'planted', 'SKILL.md'), '---\nname: planted\ndescription: x\n---\nbody\n')
     mkdirSync(join(work(), 'data', 'muse', 'sessions'), { recursive: true })
     writeFileSync(join(work(), 'data', 'muse', 'sessions', 's.jsonl'), 'kept')
     writeFileSync(join(threadRoot, '.mcp.json'), '{"mcpServers":{"planted":{"command":"x"}}}')
@@ -256,6 +258,7 @@ describe('the Work fence', () => {
     // The data dir keeps its sessions and loses its plugins.
     expect(d.dataDir).toBe(join(work(), 'data'))
     expect(existsSync(join(d.dataDir, 'muse', 'plugins'))).toBe(false)
+    expect(existsSync(join(d.dataDir, 'muse', 'skills'))).toBe(false)
     expect(readFileSync(join(d.dataDir, 'muse', 'sessions', 's.jsonl'), 'utf8')).toBe('kept')
     // The root is new, empty and a repo of its own, so the .mcp.json walk stops there.
     expect(d.root).toBe(join(work(), 'roots', 't1'))
@@ -279,7 +282,7 @@ describe('the Work fence', () => {
     expect(saved).toEqual([`${ME}:${blobOf(ME, 'dca:rotated')}`])
   })
 
-  it('never writes through a link an agent planted: a linked muse dir, settings.json, data dir or roots dir is removed, not followed', () => {
+  it('never writes through a link an agent planted: a linked muse dir, settings.json, data dir, data-home skills or roots dir is removed, not followed', () => {
     const d = museWorkDirs('t3', null, 'global', null)
     const m = join(d.configDir, 'muse')
     // settings.json a link to the person's file
@@ -288,7 +291,13 @@ describe('the Work fence', () => {
     museWorkDirs('t3', null, 'global', null)
     expect(readFileSync(join(userDir, 'settings.json'), 'utf8')).toBe('{"schema_version":1}')
     expect(lstatSync(join(m, 'settings.json')).isSymbolicLink()).toBe(false)
-    // the whole muse dir, the data dir and the roots dir links to the person's
+    // the data dir's skills, then the whole muse dir, the data dir and the roots dir links to the person's
+    const personSkills = join(base, 'person-skills')
+    mkdirSync(join(personSkills, 'theirs'), { recursive: true })
+    symlinkSync(personSkills, join(d.dataDir, 'muse', 'skills'))
+    museWorkDirs('t3', null, 'global', null)
+    expect(existsSync(join(personSkills, 'theirs'))).toBe(true)
+    expect(existsSync(join(d.dataDir, 'muse', 'skills'))).toBe(false)
     rmSync(m, { recursive: true })
     symlinkSync(userDir, m)
     const personData = join(base, 'person-data')
