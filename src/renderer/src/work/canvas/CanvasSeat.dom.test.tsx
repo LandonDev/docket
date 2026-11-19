@@ -290,7 +290,7 @@ describe("the frame a kind drives through its shell", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent);
-    expect(rows).toEqual(["Export transcript", "Download recording", "Accept all", "Reject all", "Close", "Close others"]);
+    expect(rows).toEqual(["Export transcript", "Download recording", "Accept all", "Reject all", "Open from Google…", "Close", "Close others"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Export transcript" }));
     await waitFor(() => expect(exported).toHaveBeenCalledTimes(1));
     act(() => shell.more!(null));

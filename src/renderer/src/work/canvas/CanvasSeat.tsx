@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import type { CanvasKind } from "@shared/work";
-import { Check, X } from "../../chrome/icons";
+import { Check, FolderOpen, X } from "../../chrome/icons";
 import type { MenuRow } from "../../chrome/menuRows";
 import { addContextChip } from "./chips";
 import type { Session } from "../../lib/session";
@@ -11,6 +11,9 @@ import { sayError, useFrame } from "./frame";
 import type { CanvasKindDef, CanvasSelection } from "./kind";
 import { CANVAS } from "./registry";
 import { closeItem, reorderItems, selectItem, setFolded, useCanvas, useKeptState } from "./store";
+
+/** Google's Picker, loaded when asked for (work/google). */
+const PickDialog = lazy(() => import("../google/PickDialog").then((m) => ({ default: m.PickDialog })));
 
 /** A kind's own row in More is named apart from the frame's. */
 const KIND_ROW = "kind:";
@@ -47,6 +50,7 @@ export function CanvasSeat({
   const module = useKindModule((shown ? kinds[shown.kind] : kinds.document).chunk);
   const TabEnd = shown ? module?.TabEnd : undefined;
   const [kept, keep] = useKeptState(shown?.id ?? "");
+  const [picking, setPicking] = useState(false);
 
   const close = (itemId: string): void => void closeItem(environmentId, sessionId, itemId).catch((error: unknown) => sayError(error, "Couldn't close the item"));
   const ask = (selection: CanvasSelection): void => {
@@ -71,6 +75,8 @@ export function CanvasSeat({
           { kind: "sep" },
         ] satisfies MenuRow[])
       : []),
+    { kind: "item", id: "google-open", label: "Open from Google…", icon: FolderOpen },
+    { kind: "sep" },
     { kind: "item", id: "close", label: "Close", icon: X },
     ...(view.items.length > 1 ? ([{ kind: "item", id: "close-others", label: "Close others", icon: X }] satisfies MenuRow[]) : []),
   ];
@@ -83,6 +89,7 @@ export function CanvasSeat({
         .catch((error: unknown) => sayError(error, `Couldn't ${entry.label.charAt(0).toLowerCase()}${entry.label.slice(1)}`));
       return;
     }
+    if (id === "google-open") setPicking(true);
     if (id === "close") close(shown.id);
     if (id === "close-others") view.items.filter((item) => item.id !== shown.id).forEach((item) => close(item.id));
     if (review && (id === "accept-all" || id === "reject-all")) {
@@ -92,34 +99,41 @@ export function CanvasSeat({
   };
 
   return (
-    <SplitShell
-      hasBoard={shown !== null}
-      collapsed={view.folded}
-      onToggleChat={(open) => setFolded(sessionId, !open)}
-      splitState={split}
-      held={held}
-      lead={
-        shown ? (
-          <CanvasTabs
-            items={view.items}
-            selected={shown.id}
-            detail={feeds.detail}
-            onSelect={(itemId) => selectItem(sessionId, itemId)}
-            onClose={close}
-            kinds={kinds}
-            onReorder={(order) => void reorderItems(environmentId, sessionId, order).catch((error: unknown) => sayError(error, "Couldn't move the tab"))}
-          />
-        ) : undefined
-      }
-      actions={
-        shown ? (
-          <CanvasMore rows={rows} onPick={pick}>
-            {TabEnd ? <TabEnd item={shown} source={shown.source} env={environmentId} state={kept} setState={keep} shell={shell} /> : null}
-          </CanvasMore>
-        ) : undefined
-      }
-      board={shown ? <CanvasPane key={shown.id} item={shown} environmentId={environmentId} feeds={feeds} shell={shell} onAsk={ask} kinds={kinds} /> : null}
-      chat={children}
-    />
+    <>
+      {picking ? (
+        <Suspense fallback={null}>
+          <PickDialog env={environmentId} sessionId={sessionId} onClose={() => setPicking(false)} />
+        </Suspense>
+      ) : null}
+      <SplitShell
+        hasBoard={shown !== null}
+        collapsed={view.folded}
+        onToggleChat={(open) => setFolded(sessionId, !open)}
+        splitState={split}
+        held={held}
+        lead={
+          shown ? (
+            <CanvasTabs
+              items={view.items}
+              selected={shown.id}
+              detail={feeds.detail}
+              onSelect={(itemId) => selectItem(sessionId, itemId)}
+              onClose={close}
+              kinds={kinds}
+              onReorder={(order) => void reorderItems(environmentId, sessionId, order).catch((error: unknown) => sayError(error, "Couldn't move the tab"))}
+            />
+          ) : undefined
+        }
+        actions={
+          shown ? (
+            <CanvasMore rows={rows} onPick={pick}>
+              {TabEnd ? <TabEnd item={shown} source={shown.source} env={environmentId} state={kept} setState={keep} shell={shell} /> : null}
+            </CanvasMore>
+          ) : undefined
+        }
+        board={shown ? <CanvasPane key={shown.id} item={shown} environmentId={environmentId} feeds={feeds} shell={shell} onAsk={ask} kinds={kinds} /> : null}
+        chat={children}
+      />
+    </>
   );
 }

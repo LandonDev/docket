@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DocMode, DocOpen, DocWritten } from "@shared/contract-work-docs";
 import type { CanvasSource, Principal } from "@shared/work";
 import {
@@ -18,13 +18,14 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
 import { addContextChip } from "../canvas/chips";
-import type { CanvasBodyProps, CanvasShell, Presence } from "../canvas/kind";
+import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { ExportDialog } from "../formats/ExportDialog";
 import { DropImport, ImportBody } from "../formats/Import";
 import { importsFirst } from "../formats/model";
 import { Export } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
+import { useGoogleDoc } from "../google/docMore";
 import { docHost, servedBy, type DocHost } from "./host";
 import { decided, reviewOf } from "./review";
 import { docThreads, type DocThreads } from "./threads";
@@ -190,6 +191,9 @@ export function Body(props: CanvasBodyProps<DocState>) {
 function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<DocState>) {
   const [attempt, setAttempt] = useState(0);
   const opened = useOpened(env, source, attempt);
+  // A Google Doc's own verbs (work/google): Write to Google, Read again, Open in Google.
+  const reopen = useCallback(() => setAttempt((n) => n + 1), []);
+  const google = useGoogleDoc(env, item, reopen);
   useEffect(() => {
     shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Did not open", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);
@@ -198,7 +202,7 @@ function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<
       <Scroller scrollTop={state?.scrollTop ?? 0} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
         {(width) =>
           opened && "open" in opened ? (
-            <Opened key={`${opened.host.env}|${opened.open.doc}`} host={opened.host} open={opened.open} shell={shell} width={width} sessionId={item.sessionId} />
+            <Opened key={`${opened.host.env}|${opened.open.doc}`} host={opened.host} open={opened.open} shell={shell} width={width} sessionId={item.sessionId} more={google} />
           ) : (
             <Loading title={opened ? null : item.title} />
           )
@@ -234,8 +238,10 @@ export function Scroller({ scrollTop, onScroll, children }: { scrollTop: number;
   );
 }
 
+const NO_MORE: MoreEntry[] = [];
+
 /** The open document: the editor and everything it tells the pane. */
-function Opened({ host, open, shell, width, sessionId }: { host: DocHost; open: DocOpen; shell: CanvasShell; width: number; sessionId: string }) {
+function Opened({ host, open, shell, width, sessionId, more = NO_MORE }: { host: DocHost; open: DocOpen; shell: CanvasShell; width: number; sessionId: string; more?: MoreEntry[] }) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
 
@@ -273,9 +279,9 @@ function Opened({ host, open, shell, width, sessionId }: { host: DocHost; open: 
   // The document's own verb in the pane's More: Export, a dialog with one choice (work/formats).
   const [exporting, setExporting] = useState(false);
   useEffect(() => {
-    shell.more?.([{ id: "export", label: "Export…", icon: Export, run: () => setExporting(true) }]);
+    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => setExporting(true) }]);
     return () => shell.more?.(null);
-  }, [shell]);
+  }, [shell, more]);
 
   const onAsk = (selection: DocumentSelection): void => {
     const words = selection.text.replace(/\s+/g, " ").trim();
