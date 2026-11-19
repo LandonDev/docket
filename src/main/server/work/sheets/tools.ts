@@ -34,7 +34,7 @@ const CellSchema = z.object({
 })
 
 interface Target {
-  held: Held
+  held: Exclude<Held, { at: 'excel' }>
   item: CanvasItem | null
   /** others can edit it */
   shared: boolean
@@ -46,12 +46,14 @@ interface Target {
  */
 async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Promise<Target> {
   let item: CanvasItem | null = null
-  let held: Held
+  let held: Exclude<Held, { at: 'excel' }>
   let source: CanvasItem['source']
   if (a.item) {
     item = ctx.canvas.get(a.item)
     if (!item || item.kind !== 'sheet' || item.sessionId !== ctx.canvas.paneOf(ctx.sessionId)) throw new Error(`This thread has no sheet ${a.item} in its canvas.`)
-    held = heldOf(item)
+    const h = heldOf(item)
+    if (h.at === 'excel') throw new Error(`${item.title} lives in Excel: read and write it with office_range_read and office_range_write.`)
+    held = h
     source = item.source
   } else {
     if (!a.file) throw new Error('Pass `item` (a sheet open in the canvas) or `file` (an absolute path).')

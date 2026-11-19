@@ -17,6 +17,12 @@ import { sheetTools, writeAccepted } from './tools'
  * (tools.ts); on a shared sheet an agent's own idea waits as a suggestion.
  */
 
+/** A workbook in Excel keeps its history in Excel (File → Browse Version History), not here. */
+function notExcel<H extends ReturnType<typeof heldOf>>(held: H): Exclude<H, { at: 'excel' }> {
+  if (held.at === 'excel') throw new Error('Excel keeps this workbook\'s history: open it there with File → Browse Version History.')
+  return held as Exclude<H, { at: 'excel' }>
+}
+
 function itemOf(ctx: WorkCtx, itemId: string): CanvasItem {
   const item = ctx.canvas.get(itemId)
   if (!item) throw new Error(`There is no canvas item ${itemId}.`)
@@ -34,6 +40,7 @@ export async function announce(s: Sheets, item: CanvasItem, withView = true): Pr
 async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: SheetMutationJson[], by: Caller): Promise<{ rev: number } | { conflict: true; rev: number }> {
   const held = heldOf(item)
   const who = principalOf(s.ctx, by)
+  if (held.at === 'excel') return (await import('../office/grid')).edit(s.ctx, held.ref, baseRev, mutations, who)
   if (held.at === 'package') {
     // A refusal (NotSaved) is said once over the grid: the edit stays in the grid, and the file keeps what it had.
     const got = await s.packages.edit(held.path, baseRev, mutations, who)
@@ -63,11 +70,19 @@ export const sheets: WorkModule = {
         const held = heldOf(item!)
         const { rev, offset, length } = req.params
         if (held.at === 'package') return handled({ ...readRange(s.packages.fileAt(held.path, rev), offset, length), rev, format: 'xlsx' as const })
+        if (held.at === 'excel') {
+          const all = await (await import('../office/grid')).snapshot(ctx, held.ref, rev)
+          return handled({ data: all.subarray(offset, offset + length).toString('base64'), size: all.length, rev, format: 'snapshot' as const })
+        }
         const got = await host(ctx, 'snapshot', { sheet: held.ref, rev, offset, length })
         return handled({ data: got.data, size: got.size, rev, format: 'snapshot' as const })
       }
       case 'work.sheets.since': {
         const held = heldOf(item!)
+        if (held.at === 'excel') {
+          const rev = (await import('../office/grid')).revOf(held.ref)
+          return handled(rev === req.params.rev ? { rev, ops: [] } : { rev, reload: true as const })
+        }
         return handled(held.at === 'package' ? s.packages.since(held.path, req.params.rev) : await host(ctx, 'since', { sheet: held.ref, rev: req.params.rev }))
       }
       case 'work.sheets.edit': {
@@ -79,6 +94,7 @@ export const sheets: WorkModule = {
         const held = heldOf(item!)
         const key = storeKey(held)
         if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
+        else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
         else await host(ctx, 'review', { sheet: held.ref, which: req.params.which, verdict: req.params.verdict })
         await announce(s, item!)
         return handled(await viewOf(s, item!))
@@ -97,16 +113,16 @@ export const sheets: WorkModule = {
         return handled(await viewOf(s, item!))
       }
       case 'work.sheets.history': {
-        const held = heldOf(item!)
+        const held = notExcel(heldOf(item!))
         return handled(held.at === 'package' ? { revisions: s.packages.history(held.path) } : await host(ctx, 'history', { sheet: held.ref }))
       }
       case 'work.sheets.compare': {
-        const held = heldOf(item!)
+        const held = notExcel(heldOf(item!))
         const { from, to } = req.params
         return handled(held.at === 'package' ? await s.packages.compare(held.path, from, to, SHEET_COMPARE_MAX) : await host(ctx, 'compare', { sheet: held.ref, from, to, max: SHEET_COMPARE_MAX }))
       }
       case 'work.sheets.restore': {
-        const held = heldOf(item!)
+        const held = notExcel(heldOf(item!))
         if (held.at === 'package') {
           await s.packages.restore(held.path, req.params.rev, principalOf(ctx, by))
           s.suggestions.orphanAll(storeKey(held))
@@ -123,6 +139,10 @@ export const sheets: WorkModule = {
       }
       case 'work.sheets.switch': {
         const held = heldOf(item!)
+        if (held.at === 'excel') {
+          await (await import('../office/grid')).bringForward(ctx, item!.source)
+          return handled({ opened: true as const })
+        }
         if (held.at !== 'package') throw new Error('This sheet opens only here for now.')
         await openInExcel(held.path)
         return handled({ opened: true as const })

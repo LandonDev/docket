@@ -93,7 +93,7 @@ function outlook(log: string[]) {
     ToRecipient: (x: unknown) => x,
     CcRecipient: (x: unknown) => x,
     BccRecipient: (x: unknown) => x,
-    replyTo: (m: unknown, p: { openingWindow: boolean }) => (log.push(`reply window=${p.openingWindow}`), message(8)),
+    replyTo: (_m: unknown, p: { openingWindow: boolean }) => (log.push(`reply window=${p.openingWindow}`), message(8)),
     send: () => log.push('SENT')
   }
 }

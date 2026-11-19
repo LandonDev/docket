@@ -6,6 +6,7 @@ import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
 import type { OfficeCarrier } from './carrier'
 import { ensureExcelTables, ExcelHelper } from './excel'
+import { unfollowAll } from './grid'
 import { officeActs } from './held'
 import { macCarrier } from './mac'
 import { ensureRouteTables, OutlookRoute } from './route'
@@ -62,7 +63,7 @@ const excelChanges = (ctx: () => WorkCtx | null): TriggerSource => ({
     const book = t.source.ref.kind === 'path' ? t.source.ref.path : t.source.ref.url
     const name = t.source.name
     return here.excel.source(book, 'owner').subscribe((change) => {
-      if (change.kind === 'cells') fire(`${name} changed in Excel${change.shifted ? ' (rows moved)' : ''}`)
+      if (change.kind === 'cells' && change.by === 'excel') fire(`${name} changed in Excel${change.shifted ? ' (rows moved)' : ''}`)
     })
   }
 })
@@ -140,6 +141,7 @@ export const office: WorkModule = {
       if (timer) clearInterval(timer)
       stopRoute?.()
       here?.excel.stop()
+      unfollowAll()
       started = null
     }
   },

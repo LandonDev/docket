@@ -82,13 +82,15 @@ describe('the Excel helper', () => {
     expect(suggestions.open(excelStore(BOOK)).map((s) => s.state)).toEqual(['orphaned'])
   })
 
-  it('does not report its own writes to a watcher as someone else\'s', async () => {
+  it("tells a watcher of its own writes as ours, never as someone else's, and leaves suggestions on other cells waiting", async () => {
+    suggest(2, 1)
     const heard: SheetChange[] = []
     excel.watch(BOOK, 'Sheet1', parseAddress('A1:B4'), (c) => heard.push(c))
     await excel.pass()
     await excel.write(BOOK, 'Sheet1', parseAddress('B2'), [[1300]], { by: 'owner' })
     await excel.pass()
-    expect(heard).toEqual([])
+    expect(heard.map((c) => c.kind === 'cells' && c.by)).toEqual(['tempcode'])
+    expect(suggestions.open(excelStore(BOOK)).map((s) => s.state)).toEqual(['pending'])
   })
 
   it('is a SheetSource: the outline first, cell writes against the base hash, conflict when stale', async () => {

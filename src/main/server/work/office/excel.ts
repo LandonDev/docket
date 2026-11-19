@@ -106,7 +106,7 @@ export class ExcelHelper {
     this.db
       .prepare('INSERT INTO work_office_undo (id, book, sheet, address, before, after_hash, by, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(writeId, book, sheet, now.address, JSON.stringify(cellsOf(now).map((row) => row.map(writable))), after.hash, o.by, this.now())
-    this.settle(book, sheet, range, now, after, false)
+    await this.settle(book, sheet, range, now, after)
     return { ok: true, writeId, hash: after.hash }
   }
 
@@ -121,7 +121,7 @@ export class ExcelHelper {
     if (now.hash !== row.after_hash) return { conflict: true }
     const after = await this.put(row.book, row.sheet, range, JSON.parse(row.before) as OfficeCell[][])
     this.db.prepare('DELETE FROM work_office_undo WHERE id = ?').run(writeId)
-    this.settle(row.book, row.sheet, range, now, after, false)
+    await this.settle(row.book, row.sheet, range, now, after)
     return { ok: true }
   }
 
@@ -139,22 +139,22 @@ export class ExcelHelper {
   }
 
   /**
-   * Suggestions over cells a write changed no longer hold, and the watched blocks it touched move to
-   * what Excel holds now. `others`: the change came from someone else (the safety pass).
+   * Suggestions over cells our write changed no longer hold, and the watched blocks it touched move
+   * to what Excel holds now (their watchers hear it as ours, `by: 'tempcode'`).
    */
-  private settle(book: string, sheet: string, range: A1Range, before: ExcelBlock, after: ExcelBlock, others: boolean): void {
+  private async settle(book: string, sheet: string, range: A1Range, before: ExcelBlock, after: ExcelBlock): Promise<void> {
     const touched = new Set<string>()
     const a = cellsOf(before)
     const b = cellsOf(after)
     for (let i = 0; i < b.length; i++)
       for (let j = 0; j < b[i].length; j++) if (JSON.stringify(a[i]?.[j] ?? null) !== JSON.stringify(b[i][j])) touched.add(`${sheet}:${range.startRow + i}:${range.startColumn + j}`)
     if (touched.size) this.suggestions.conflictOn(excelStore(book), touched)
-    for (const w of this.watched.values()) if (w.book === book && w.sheet === sheet && overlaps(w.range, range)) void this.refresh(w, others)
+    for (const w of [...this.watched.values()]) if (w.book === book && w.sheet === sheet && overlaps(w.range, range)) await this.refresh(w, false).catch(() => undefined)
   }
 
   /**
-   * Watches a block: `onChange` hears of every change Excel shows in it that this helper did not
-   * make, on the next safety pass. Returns its off; the pass stops when nothing is watched.
+   * Watches a block: `onChange` hears of every change to it, someone else's on the next safety pass
+   * (`by: 'excel'`), this helper's own as it writes (`by: 'tempcode'`). Returns its off; the pass stops when nothing is watched.
    */
   watch(book: string, sheet: string, range: A1Range, onChange: (c: SheetChange) => void): () => void {
     const key = `${book}\u0000${sheet}\u0000${addressOf(range)}`
@@ -191,16 +191,16 @@ export class ExcelHelper {
     const old = w.cells
     w.cells = cells
     w.hash = block.hash
-    if (first || !others) return
-    const shifted = shiftOf(old, cells)
+    if (first) return
+    const shifted = others && shiftOf(old, cells)
     const store = excelStore(w.book)
     if (shifted) this.suggestions.orphanAll(store)
-    else {
+    else if (others) {
       const touched = new Set<string>()
       cells.forEach((row, i) => row.forEach((c, j) => JSON.stringify(old[i]?.[j] ?? null) !== JSON.stringify(c) && touched.add(`${w.sheet}:${w.range.startRow + i}:${w.range.startColumn + j}`)))
       this.suggestions.conflictOn(store, touched)
     }
-    const change: SheetChange = { kind: 'cells', ranges: [{ sheet: w.sheet, ...w.range }], ...(shifted ? { shifted: true } : {}), by: 'excel' }
+    const change: SheetChange = { kind: 'cells', ranges: [{ sheet: w.sheet, ...w.range }], ...(shifted ? { shifted: true } : {}), by: others ? 'excel' : 'tempcode' }
     for (const fn of w.listeners) fn(change)
   }
 
@@ -251,7 +251,11 @@ export class ExcelHelper {
           if (!live) return
           onChange(o)
           if (o.kind !== 'outline') return
-          for (const s of o.sheets) offs.push(helper.watch(book, s.id, { startRow: 0, startColumn: 0, endRow: s.rowCount - 1, endColumn: s.columnCount - 1 }, onChange))
+          // A big sheet is watched as far as one read reaches.
+          for (const s of o.sheets) {
+            const rows = Math.min(s.rowCount, Math.max(1, Math.floor(EXCEL_MAX_CELLS / s.columnCount)))
+            offs.push(helper.watch(book, s.id, { startRow: 0, startColumn: 0, endRow: rows - 1, endColumn: s.columnCount - 1 }, onChange))
+          }
         })
         return () => {
           live = false

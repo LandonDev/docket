@@ -6,6 +6,8 @@ import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } fro
 import { FenceError } from '../../remote/fence'
 import { Toolchain } from '../formats/tools'
 import type { Caller, WorkCtx } from '../modules'
+import { excelStore } from '../office/excel'
+import { excelRefOf, type ExcelRef } from '../office/grid'
 import type { HostAnswer, HostAsk, SheetRef } from './host/wire'
 import { cellsOfMutations, PackageStore } from './packages'
 import { SuggestionStore } from './suggestions'
@@ -19,7 +21,7 @@ import type { SheetJobs } from './workerClient'
  * its socket.
  */
 
-export type Held = { at: 'package'; path: string } | { at: 'service'; ref: SheetRef }
+export type Held = { at: 'package'; path: string } | { at: 'service'; ref: SheetRef } | { at: 'excel'; ref: ExcelRef }
 
 export const PACKAGE_EXT = new Set(['.xlsx', '.xlsm'])
 
@@ -33,17 +35,21 @@ export function heldOf(item: Pick<CanvasItem, 'source' | 'title'>): Held {
     if (ext === '.tcsheet') return { at: 'service', ref: { tcsheet: s.path } }
     throw new Error(`${basename(s.path)} is not a workbook this canvas opens (.xlsx, .xlsm or .tcsheet).`)
   }
-  throw new Error(`${item.title} lives in ${s.at}: its sheet opens there (milestones 28 and 30).`)
+  // A workbook that lives in Excel: Excel is the truth, the office pillar's helper reads and writes it (milestone 28).
+  const excel = excelRefOf(s)
+  if (excel) return { at: 'excel', ref: excel }
+  throw new Error(`${item.title} lives in ${s.at}: its sheet opens there (milestone 30).`)
 }
 
 /** The key suggestions, the mode and charts are kept under. */
-export const storeKey = (h: Held): string => (h.at === 'package' ? `file:${h.path}` : 'lifeos' in h.ref ? `lifeos:${h.ref.lifeos}` : `tcsheet:${h.ref.tcsheet}`)
+export const storeKey = (h: Held): string =>
+  h.at === 'package' ? `file:${h.path}` : h.at === 'excel' ? excelStore(h.ref.book) : 'lifeos' in h.ref ? `lifeos:${h.ref.lifeos}` : `tcsheet:${h.ref.tcsheet}`
 
 /** A file path an agent names: absolute, a workbook, there. */
-export function heldOfPath(path: string): Held {
+export function heldOfPath(path: string): Exclude<Held, { at: 'excel' }> {
   if (!isAbsolute(path)) throw new Error(`${path} is not an absolute path.`)
   if (!existsSync(path)) throw new Error(`There is no file at ${path}.`)
-  return heldOf({ source: { at: 'file', host: '', path }, title: basename(path) })
+  return heldOf({ source: { at: 'file', host: '', path }, title: basename(path) }) as Exclude<Held, { at: 'excel' }>
 }
 
 /** What every caller of the pillar shares: one package store, one suggestion store, one worker. */
@@ -128,6 +134,20 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       ...(st.inspected.date1904 ? { date1904: true } : {}),
       ...(st.saveError ? { saveError: st.saveError } : {}),
       ...(st.missing ? { missing: true } : {})
+    }
+  }
+  if (held.at === 'excel') {
+    const grid = await import('../office/grid')
+    return {
+      ...base,
+      name: held.ref.name,
+      // In the canvas it is a file whose cell contents save and nothing else, as an opened package.
+      store: 'package',
+      rev: await grid.follow(s.ctx, held.ref, () => void import('./index').then((m) => m.announce(s, item))),
+      shared,
+      suggestions: s.suggestions.open(key),
+      ...(written ? { written } : {}),
+      reach: { parts: ['formatting', 'inserting rows and columns'], to: 'excel' }
     }
   }
   const st = await host(s.ctx, 'open', { sheet: held.ref })
