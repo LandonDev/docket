@@ -259,35 +259,74 @@ function ClosedLine({ at, reopen }: { at: number; reopen(): Promise<void> }) {
 
 const SAVE_AFTER = 500;
 
+/**
+ * His edits go to the host half a second after the last one, one save at a
+ * time, each at the rev the host last answered (read when it goes, never
+ * when it was typed). A save that fails drops only the edit it carried. A
+ * pending edit is sent at once when the half closes.
+ */
+function useSaver(host: FormHost, store: FormStore, setEdits: (f: (now: FormBody | null) => FormBody | null) => void): { later(next: FormBody): void } {
+  const state = useRef<{ timer: ReturnType<typeof setTimeout> | null; waiting: FormBody | null; busy: boolean; queued: FormBody | null } | null>(null);
+  state.current ??= { timer: null, waiting: null, busy: false, queued: null };
+  const s = state.current;
+  const send = useCallback(
+    (next: FormBody): void => {
+      if (s.busy) {
+        s.queued = next;
+        return;
+      }
+      const rev = store.get().view?.rev;
+      if (rev === undefined) return;
+      s.busy = true;
+      host
+        .save(rev, next)
+        .then(
+          (v) => store.set({ view: v }),
+          (e: unknown) => sayError(e, "Couldn't save the form"),
+        )
+        .finally(() => {
+          setEdits((now) => (now === next ? null : now));
+          s.busy = false;
+          const queued = s.queued;
+          s.queued = null;
+          if (queued) send(queued);
+        });
+    },
+    [host, store, setEdits, s],
+  );
+  useEffect(
+    () => () => {
+      if (!s.timer || !s.waiting) return;
+      clearTimeout(s.timer);
+      s.timer = null;
+      send(s.waiting);
+    },
+    [s, send],
+  );
+  return {
+    later(next) {
+      s.waiting = next;
+      if (s.timer) clearTimeout(s.timer);
+      s.timer = setTimeout(() => {
+        s.timer = null;
+        s.waiting = null;
+        send(next);
+      }, SAVE_AFTER);
+    },
+  };
+}
+
 function Questions({ view, host, store, current, onStep }: { view: FormView; host: FormHost; store: FormStore; current: number; onStep(n: number): void }) {
   // His edits stand over the host's view until the save that carries them answers.
   const [edits, setEdits] = useState<FormBody | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saver = useSaver(host, store, setEdits);
   const body = edits ?? view.body;
   const editable = view.state !== "closed";
-
-  const save = useCallback(
-    (next: FormBody) => {
-      host.save(view.rev, next).then(
-        (v) => {
-          store.set({ view: v });
-          setEdits((now) => (now === next ? null : now));
-        },
-        (e: unknown) => {
-          sayError(e, "Couldn't save the form");
-          setEdits(null);
-        },
-      );
-    },
-    [host, store, view.rev],
-  );
   const edit = (next: FormBody): void => {
     setEdits(next);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => save(next), SAVE_AFTER);
+    saver.later(next);
   };
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
 
   const shown = useMemo(() => shownQuestions(body, edits ? [] : view.suggestions), [body, edits, view.suggestions]);
   const list = useRef<HTMLDivElement>(null);

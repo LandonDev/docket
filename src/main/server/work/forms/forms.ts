@@ -197,10 +197,11 @@ export async function publish(ctx: ActCtx, p: FormPublish): Promise<{ summary: s
     const made = await makeSheet(ctx, row)
     next = store.update(row.itemId, { sheet: made.source, sheetRef: made.ref })
   }
-  const columns = mergeColumns(next.columns, next.body.questions)
-  next = store.update(row.itemId, { columns, publicId: next.publicId ?? newPublicId(), state: 'open', publishedAt: Date.now(), closedAt: null, held: null })
-  await writeHeader(ctx, next)
-  writeCopy(ctx, next)
+  // The sheet's header and the service's copy first: a write that fails leaves the form a draft he can publish again.
+  const live: FormRow = { ...next, columns: mergeColumns(next.columns, next.body.questions), publicId: next.publicId ?? newPublicId(), state: 'open', publishedAt: Date.now(), closedAt: null, held: null }
+  await writeHeader(ctx, live)
+  writeCopy(ctx, live)
+  next = store.update(row.itemId, { columns: live.columns, publicId: live.publicId, state: 'open', publishedAt: live.publishedAt, closedAt: null, held: null })
   announce(ctx, next)
   const link = linkOf(ctx, next.publicId!)
   return { summary: `Published ${next.body.title}`, ref: { itemId: row.itemId, link } }

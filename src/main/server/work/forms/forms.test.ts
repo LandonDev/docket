@@ -33,7 +33,7 @@ vi.mock('../scope', async (orig) => ({
     admitSession: () => {}
   })
 }))
-const rc = vi.hoisted(() => ({ ctx: null as unknown }))
+const rc = vi.hoisted(() => ({ ctx: null as unknown, failCells: false }))
 vi.mock('../service/ctx', async (orig) => {
   const real = await orig<typeof import('../service/ctx')>()
   const { INTERNAL_ROUTES } = await import('../service/routes/index')
@@ -46,6 +46,7 @@ vi.mock('../service/ctx', async (orig) => {
         internal: async (route: string, body: unknown) => {
           const r = INTERNAL_ROUTES.find((x) => x.path === route)
           if (!r) throw new Error(`no route ${route}`)
+          if (rc.failCells && route === '/internal/sheet/cells') throw new Error('the sheet host did not answer')
           return r.run(body as Record<string, unknown>, rc.ctx as RouteCtx)
         }
       }
@@ -250,6 +251,32 @@ describe('a form', () => {
     expect(after.suggestions).toEqual([])
     expect(after.body.questions[0].label).toBe('Full name')
     expect(after.written?.text).toBe('Changed a question')
+  })
+
+  it('stays a draft he can publish again when the press fails part way', async () => {
+    const { itemId } = await made()
+    await tool('form_publish', { item: itemId })
+    const held = (await call<FormView>('work.forms.open', { itemId })).held!
+    rc.failCells = true
+    try {
+      expect((await call<OutboxItem>('work.outbox.send', { ref: held.ref })).state).toBe('failed')
+    } finally {
+      rc.failCells = false
+    }
+    expect(await call<FormView>('work.forms.open', { itemId })).toMatchObject({ state: 'draft', link: null })
+    expect(existsSync(join(dir, 'work-service', 'forms'))).toBe(false)
+    expect((await publish(itemId)).state).toBe('open')
+  })
+
+  it('lets junk use up only its own sender, never the form', async () => {
+    const { itemId } = await made()
+    const live = await publish(itemId)
+    const [name, game] = live.body.questions.map((q) => q.id)
+    const statuses: number[] = []
+    for (let i = 0; i < 11; i++) statuses.push((await post(publicId(live), {}, { 'CF-Connecting-IP': '198.51.100.7' })).status)
+    expect(statuses.slice(0, 10).every((s) => s === 400)).toBe(true)
+    expect(statuses[10]).toBe(429)
+    expect((await post(publicId(live), { [name]: 'Ava', [game]: 'Valorant' }, { 'CF-Connecting-IP': '198.51.100.8' })).status).toBe(201)
   })
 
   it('does not publish a form that changed after it was held', async () => {

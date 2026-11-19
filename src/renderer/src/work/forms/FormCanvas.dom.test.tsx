@@ -178,6 +178,37 @@ describe("the form kind", () => {
     }
   });
 
+  it("sends an edit made while a save is out after it, at the rev the host answered, and sends a pending one when the half closes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(view());
+      await found("[data-form]");
+      let answer: (() => void) | null = null;
+      const save = formHost.save.getMockImplementation()!;
+      formHost.save.mockImplementationOnce((rev, body) => new Promise((done) => (answer = () => done(save(rev, body) as never))));
+      fireEvent.click(document.querySelector('[data-q="name"]')!);
+      const input = await waitFor(() => screen.getByRole("textbox", { name: "Question" }));
+      fireEvent.change(input, { target: { value: "Full name" } });
+      await act(async () => void vi.advanceTimersByTime(600));
+      expect(formHost.save).toHaveBeenCalledTimes(1);
+      fireEvent.change(input, { target: { value: "Your full name" } });
+      await act(async () => void vi.advanceTimersByTime(600));
+      // The first is still out: the second waits for it.
+      expect(formHost.save).toHaveBeenCalledTimes(1);
+      await act(async () => answer!());
+      await waitFor(() => expect(formHost.save).toHaveBeenCalledTimes(2));
+      expect(formHost.save.mock.calls[1][0]).toBe(2);
+      expect(formHost.save.mock.calls[1][1].questions[0].label).toBe("Your full name");
+      // An edit, then straight to Responses: it is sent, not lost.
+      fireEvent.change(screen.getByRole("textbox", { name: "Question" }), { target: { value: "Name" } });
+      fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
+      await waitFor(() => expect(formHost.save).toHaveBeenCalledTimes(3));
+      expect(formHost.save.mock.calls[2][1].questions[0].label).toBe("Name");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows the responses: one summary line, the choice's bars and the table, newest first", async () => {
     open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
     await found("[data-form]");

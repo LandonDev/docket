@@ -30,7 +30,7 @@ vi.mock('../scope', async (orig) => ({
     admitSession: () => {}
   })
 }))
-const rc = vi.hoisted(() => ({ ctx: null as unknown }))
+const rc = vi.hoisted(() => ({ ctx: null as unknown, failRead: false }))
 vi.mock('../service/ctx', async (orig) => {
   const real = await orig<typeof import('../service/ctx')>()
   const { INTERNAL_ROUTES } = await import('../service/routes/index')
@@ -40,7 +40,10 @@ vi.mock('../service/ctx', async (orig) => {
       service: {
         url: (route: string) => `http://127.0.0.1:7${route}`,
         token: async () => 'x',
-        internal: async (route: string, body: unknown) => INTERNAL_ROUTES.find((x) => x.path === route)!.run(body as Record<string, unknown>, rc.ctx as RouteCtx)
+        internal: async (route: string, body: unknown) => {
+          if (rc.failRead && route === '/internal/sheet/range') throw new Error('the sheet host did not answer')
+          return INTERNAL_ROUTES.find((x) => x.path === route)!.run(body as Record<string, unknown>, rc.ctx as RouteCtx)
+        }
       }
     })
   }
@@ -183,6 +186,29 @@ describe('a dashboard', () => {
     expect((await call<DashboardView>('work.dashboards.open', { itemId: item }, phone as never)).blocks).toHaveLength(1)
     await tool('dashboard_add', { item, block: { kind: 'figures', figures: [{ label: 'Nov', sheet: sheetPath, range: 'B4', counts: 'Paid in November' }] } })
     await expect(call('work.dashboards.open', { itemId: item }, phone as never)).rejects.toThrow('outside app-managed roots')
+    // Its pushes say so too: they go only to sockets that could name the file.
+    const { announce, dashRow } = await import('./dash')
+    const sent: unknown[] = []
+    const ctx = { db, host: 'env_test', canvas: { get: () => null }, log: () => {}, service: { internal: async () => ({ rev: 0 }) }, push: (_p: unknown, to: unknown) => sent.push(to) }
+    await announce(ctx as never, dashRow(ctx as never, { id: item, title: 'x' } as never))
+    expect(sent).toEqual([{ path: [sheetPath] }])
+  })
+
+  it('keeps a page as it was when a refresh cannot read it, a service figure included', async () => {
+    const item = await board()
+    await tool('dashboard_add', { item, block: { kind: 'figures', figures: [{ label: 'Balance', service: 'Stripe', counts: 'Balance on the account', value: '$2,180' }, { label: 'Nov', sheet: sheetPath, range: 'B4', counts: 'Paid in November' }] } })
+    const fig = (await call<DashboardView>('work.dashboards.open', { itemId: item })).blocks[0]
+    const id = fig.kind === 'figures' ? fig.figures[0].id : ''
+    rc.failRead = true
+    let r: Awaited<ReturnType<typeof tool>>
+    try {
+      r = await tool('dashboard_refresh', { item, values: [{ figure: id, value: '$9,000' }] })
+    } finally {
+      rc.failRead = false
+    }
+    expect(r.isError).toBe(true)
+    const after = (await call<DashboardView>('work.dashboards.open', { itemId: item })).blocks[0]
+    expect(after.kind === 'figures' && after.figures[0].value).toBe('$2,180')
   })
 })
 

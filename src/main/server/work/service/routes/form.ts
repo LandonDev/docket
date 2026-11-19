@@ -63,8 +63,15 @@ const publicOf = (f: PublishedForm): PublicForm => ({ title: f.title, descriptio
 const callerOf = (req: IncomingMessage): string => String(req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? '?')
 
 const sent = new Map<string, number[]>()
+/** Callers past this many, those with nothing in the window are let go: a caller that keeps changing address leaves nothing behind. */
+const KEYS_MAX = 5000
+function recent(key: string, now: number): number[] {
+  if (sent.size > KEYS_MAX) for (const [k, times] of sent) if (!times.some((t) => now - t < WINDOW_MS)) sent.delete(k)
+  return (sent.get(key) ?? []).filter((t) => now - t < WINDOW_MS)
+}
+/** Whether `key` has room under `max`, and counts this one when it has. */
 function allowed(key: string, max: number, now: number): boolean {
-  const times = (sent.get(key) ?? []).filter((t) => now - t < WINDOW_MS)
+  const times = recent(key, now)
   if (times.length >= max) {
     sent.set(key, times)
     return false
@@ -73,6 +80,7 @@ function allowed(key: string, max: number, now: number): boolean {
   sent.set(key, times)
   return true
 }
+const full = (key: string, max: number, now: number): boolean => recent(key, now).length >= max
 
 /** The answers checked against the form; a refusal names the question in the filler's words. */
 export function checkAnswers(form: Pick<PublicForm, 'questions'>, raw: unknown): { ok: Record<string, string> } | { error: string; question?: string } {
@@ -122,8 +130,13 @@ async function record(ctx: RouteCtx, form: PublishedForm, ok: Record<string, str
     const at = submittedAt(new Date())
     const cells: A1Cell[] = [{ at: `A${row}`, v: at }, ...form.columns.flatMap((id, i) => (ok[id] ? [{ at: `${letter(i + 1)}${row}`, v: ok[id] }] : []))]
     await hostOf(ctx).cells(form.sheet, cells, `form:${form.publicId}`, false)
-    appendFileSync(logPath(ctx, form.publicId), `${JSON.stringify({ row, at })}\n`, { mode: 0o600 })
+    // The row is taken once the sheet has it, whatever happens to the note of it.
     rows.set(form.publicId, row - 1)
+    try {
+      appendFileSync(logPath(ctx, form.publicId), `${JSON.stringify({ row, at })}\n`, { mode: 0o600 })
+    } catch (err) {
+      ctx.log(`form ${form.publicId}: row ${row} was written but not noted: ${String(err)}`)
+    }
   })
   queue.set(form.publicId, run)
   await run
@@ -168,8 +181,10 @@ export const formRoute: PublicRoute = {
     if (method !== 'POST') return sendText(res, 405, 'Not allowed.')
     if (!form.open) return send(res, 410, { error: 'This form is closed.' })
     if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) return send(res, 415, { error: 'Send the answers as JSON.' })
+    // One caller's every post counts against it; the form's own limit counts only answers it takes, so junk cannot use it up.
     const now = Date.now()
-    if (!allowed(`${form.publicId}|${callerOf(req)}`, PER_CALLER, now) || !allowed(form.publicId, PER_FORM, now)) return send(res, 429, { error: 'Too many answers from here. Try again in a few minutes.' })
+    if (full(form.publicId, PER_FORM, now)) return send(res, 429, { error: 'This form is taking too many answers. Try again in a few minutes.' })
+    if (!allowed(`${form.publicId}|${callerOf(req)}`, PER_CALLER, now)) return send(res, 429, { error: 'Too many answers from here. Try again in a few minutes.' })
     const text = await readBody(req)
     if (text === null) return send(res, 413, { error: 'That is too much to send.' })
     let raw: unknown
@@ -183,6 +198,7 @@ export const formRoute: PublicRoute = {
     if (!now2?.open) return send(res, 410, { error: 'This form is closed.' })
     const checked = checkAnswers(now2, raw)
     if ('error' in checked) return send(res, 400, checked)
+    if (!allowed(form.publicId, PER_FORM, Date.now())) return send(res, 429, { error: 'This form is taking too many answers. Try again in a few minutes.' })
     try {
       await record(ctx, now2, checked.ok)
     } catch (err) {

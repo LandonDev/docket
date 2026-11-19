@@ -130,8 +130,13 @@ async function readBlock(ctx: Ctx, b: StoredBlock): Promise<StoredBlock> {
   return b
 }
 
-/** Reads every block again, as one read: "as of" is when it finished. A read that fails keeps what was there and says why. */
-export async function refresh(ctx: Ctx, item: CanvasItem, blocks?: StoredBlock[]): Promise<DashRow> {
+/**
+ * Reads every block again, as one read: "as of" is when it finished. A read
+ * that fails says why and keeps the page as it was, so no number shows under
+ * an "as of" it was not read at; `keep: 'list'` keeps `blocks` instead (a
+ * block just proposed stays, unread).
+ */
+export async function refresh(ctx: Ctx, item: CanvasItem, blocks?: StoredBlock[], keep: 'row' | 'list' = 'row'): Promise<DashRow> {
   const store = new DashStore(ctx.db)
   const row = dashRow(ctx, item)
   const list = blocks ?? row.blocks
@@ -144,7 +149,7 @@ export async function refresh(ctx: Ctx, item: CanvasItem, blocks?: StoredBlock[]
     return store.update(item.id, { blocks: read, asOf: Date.now(), revs, failed: null })
   } catch (err) {
     const failed = err instanceof Error ? err.message : String(err)
-    return store.update(item.id, { blocks: list, failed })
+    return store.update(item.id, { blocks: keep === 'list' ? list : row.blocks, failed })
   }
 }
 
@@ -166,15 +171,19 @@ export async function viewOf(ctx: Ctx, row: DashRow): Promise<DashboardView> {
   return { itemId: row.itemId, rev: row.rev, title: row.title, blocks: row.blocks, asOf: row.asOf, stale: row.asOf !== null && (await staleOf(ctx, row)), failed: row.failed }
 }
 
+/** The files a page reads: a push about it reaches only the sockets whose caller could name every one (`PushTo.path`). */
+export const filesOf = (row: DashRow): string[] => row.blocks.flatMap(sourcesOf).flatMap((f) => (f.sheet.at === 'file' ? [f.sheet.path] : []))
+
 export async function announce(ctx: Ctx, row: DashRow): Promise<DashboardView> {
   const view = await viewOf(ctx, row)
-  ctx.push({ push: 'work.dashboards', sessionId: row.sessionId, itemId: row.itemId, view })
+  const files = filesOf(row)
+  ctx.push({ push: 'work.dashboards', sessionId: row.sessionId, itemId: row.itemId, view }, files.length ? { path: files } : undefined)
   return view
 }
 
 /** A remote key sees a dashboard only when it could name every file the page reads itself. */
 export function fenceDash(ctx: Pick<WorkCtx, 'reaches'>, by: Caller, row: DashRow, method: string): void {
-  for (const b of row.blocks) for (const f of sourcesOf(b)) if (f.sheet.at === 'file' && !ctx.reaches(by, f.sheet.path)) throw new FenceError(method)
+  for (const path of filesOf(row)) if (!ctx.reaches(by, path)) throw new FenceError(method)
 }
 
 // ── what the owner decides ───────────────────────────────────────────

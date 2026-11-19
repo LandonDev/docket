@@ -146,7 +146,7 @@ export const dashboardsTools: WorkTool[] = [
         const block = await blockOf(ctx, a.block, { by: agentPrincipal(ctx.host, ctx.sessionId), reason: a.reason, at: Date.now() })
         const at = a.after ? row.blocks.findIndex((b) => b.id === a.after) + 1 : row.blocks.length
         const blocks = [...row.blocks.slice(0, at || row.blocks.length), block, ...row.blocks.slice(at || row.blocks.length)]
-        const next = await refresh(ctx, it, blocks)
+        const next = await refresh(ctx, it, blocks, 'list')
         await announce(ctx, next)
         if (next.failed) return fail(`The block was added, but the page could not be read: ${next.failed}`)
         return workText(`Proposed; it waits for his Accept.\n\n${outline(next)}`)
