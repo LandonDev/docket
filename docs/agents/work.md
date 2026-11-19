@@ -95,8 +95,8 @@ Settings → Work.
   asks for a name. A code workspace's row menu gains **LifeOS sector ›**
   (None and the six) while Work is on; `work.lifeos.link` writes it and
   the host's `workspaces` push tells every client. **Work Chats** sits
-  after Chats, **Outbox** after Inbox while `setOutboxWaiting(n)` is above
-  0 (the Outbox's milestone, 14, sets it and owns its page).
+  after Chats, **Outbox** after Inbox whenever Work is on, with the waiting
+  count from `setOutboxWaiting(n)` (the Outbox, milestone 14, owns its page).
 - **Work Chats**: `WORK_CHATS` (`"~work"`, lib/tcserver/workspaces.ts) is
   their key as `"~"` is the code chats': `workspaceIdOf` and
   `workspacePathOfSession` answer it for a row with `scope: "work"` and no

@@ -887,8 +887,9 @@ thread; nothing answers inside the canvas.
   apart, 8px from the box's edge. A chip alone can be sent.
 - **Avatars** are initials on `muted` on `image-outline`, 20px in the bar,
   24px in lists, overlapping 6px with a 2px `background` ring.
-- **History and Share** are 320px popovers from the bar (rows 28px or
-  more, the current version by weight, Compare and Revoke shown on hover);
+- **Share** is a 320px popover from the bar (rows 28px or more, Revoke
+  shown on hover); **History** opens the item's history as a tab of its own
+  ("Compare and History" below);
   Export is a dialog with one choice (the format, a `FieldRow` with its
   select; one muted line under it only when comments or suggestions stay
   behind or go with it). A file dragged over a document's surface draws a

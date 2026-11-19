@@ -1304,7 +1304,7 @@ The thread's composer gains a chip row inside its box, above the field,
 shared with the file attachments: one 24px chip per item the message is
 about.
 
-The rail gains Outbox after Inbox (only while something waits) and Work
+The rail gains Outbox after Inbox (whenever Work is on, with its count) and Work
 Chats after Chats, and a second heading, Work, whose + lists the sectors
 with no workspace yet; a Work workspace's row leads with its sector's
 8px dot where a code workspace's leads with its glyph. The Work column
