@@ -29,6 +29,13 @@ const until = async (ok: () => boolean, ms = 3_000) => {
     await new Promise((r) => setTimeout(r, 10))
   }
 }
+/** A number the kernel just handed out and this test let go: free a moment ago, never a fixed number the box may hold. */
+const freedPort = async (): Promise<number> => {
+  const probe = createServer()
+  const port = await listenOn(probe)
+  await new Promise<void>((resolve) => probe.close(() => resolve()))
+  return port
+}
 const fetchText = (port: number, path = '/'): Promise<{ status: number; body: string }> =>
   new Promise((resolve, reject) => {
     get({ host: '127.0.0.1', port, path, agent: false }, (res) => {
@@ -126,23 +133,44 @@ describe('allocation of the Mac number', () => {
     const holder = createServer()
     const busy = await listenOn(holder)
     cleanups.push(() => holder.close())
+    // "The next free one" is busy + 1 unless another process on the box holds that too: read what was taken.
     const a = createServer()
     cleanups.push(() => a.close())
-    expect(await allocate(a, busy, { taken: new Set(), isFree: portIsFree })).toBe(busy + 1)
+    const first = await allocate(a, busy, { taken: new Set(), isFree: portIsFree })
+    expect(first).toBeGreaterThan(busy)
+    expect((a.address() as AddressInfo).port).toBe(first)
     const b = createServer()
     cleanups.push(() => b.close())
-    expect(await allocate(b, busy, { taken: new Set([busy + 1]), isFree: portIsFree })).toBe(busy + 2)
+    const second = await allocate(b, busy, { taken: new Set([first!]), isFree: portIsFree })
+    expect(second).toBeGreaterThan(busy)
+    expect(second).not.toBe(first)
+    expect((b.address() as AddressInfo).port).toBe(second)
   })
 
   it('prefers the number it had before a reconnect', async () => {
-    const s = createServer()
-    cleanups.push(() => s.close())
-    const free = await allocate(s, 40_000, { prefer: 40_010, taken: new Set(), isFree: async (p) => p !== 40_000 })
-    expect(free).toBe(40_010)
+    // A number just freed, never a fixed one another process on the box may hold; a few tries, in case one is taken in between.
+    let prefer = 0
+    let free: number | null = null
+    for (let attempt = 0; attempt < 5 && free !== prefer; attempt++) {
+      prefer = await freedPort()
+      const s = createServer()
+      cleanups.push(() => s.close())
+      free = await allocate(s, prefer - 10, { prefer, taken: new Set(), isFree: async (p) => p !== prefer - 10 })
+    }
+    expect(free).toBe(prefer)
   })
 
   it('reads a port something answers on over v6 as taken', async () => {
-    expect(await allocate(createServer(), 40_100, { taken: new Set(), isFree: async (p) => p > 40_102 })).toBe(40_103)
+    // The three numbers under a freed one answer over v6; the freed one is the first it may take.
+    let target = 0
+    let got: number | null = null
+    for (let attempt = 0; attempt < 5 && got !== target; attempt++) {
+      target = await freedPort()
+      const s = createServer()
+      cleanups.push(() => s.close())
+      got = await allocate(s, target - 3, { taken: new Set(), isFree: async (p) => p >= target })
+    }
+    expect(got).toBe(target)
   })
 })
 
@@ -154,13 +182,16 @@ describe('the forward', () => {
     host.macRegistered(MAC)
     await until(() => host.forwardsOf('r1').length === 1)
     const [fwd] = host.forwardsOf('r1')
-    // The box and the Mac share this machine in the test: the dev server holds the number, so the forward moves up.
-    expect(fwd).toMatchObject({ environmentId: MAC, hostName: 'Landon Mac', macPort: port + 1, error: null })
-    expect(forwardedLine(port, [fwd])).toBe(`Forwarded to http://localhost:${port + 1} on the Mac (${port} is taken there)`)
+    // The box and the Mac share this machine in the test: the dev server holds the number, so the forward moves up, to
+    // the next free number (port + 1 unless another process on the box holds that): read the one it took.
+    expect(fwd).toMatchObject({ environmentId: MAC, hostName: 'Landon Mac', error: null })
+    const macPort = fwd!.macPort!
+    expect(macPort).toBeGreaterThan(port)
+    expect(forwardedLine(port, [fwd])).toBe(`Forwarded to http://localhost:${macPort} on the Mac (${port} is taken there)`)
 
-    expect(await fetchText(port + 1, '/a?b=1')).toEqual({ status: 200, body: 'hello from /a?b=1' })
+    expect(await fetchText(macPort, '/a?b=1')).toEqual({ status: 200, body: 'hello from /a?b=1' })
 
-    const ws = new WebSocket(`ws://127.0.0.1:${port + 1}/hmr`)
+    const ws = new WebSocket(`ws://127.0.0.1:${macPort}/hmr`)
     const reply = await new Promise<string>((resolve, reject) => {
       ws.on('open', () => ws.send('ping'))
       ws.on('message', (m) => resolve(String(m)))
