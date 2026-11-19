@@ -29,8 +29,23 @@ const target = {
 
 type TargetArgs = { item?: string; doc?: string; file?: string }
 
-/** The sectors a thread may reach: its workspace's one, or every sector for a Work Chat (which reads through its own key). */
-const sectorsOf = (ctx: ToolCtx): string[] | 'all' => (ctx.scope.sector ? [ctx.scope.sector] : 'all')
+/**
+ * A Work thread with no Work home (work-scope.md, "A thread with no Work home"): its row names a
+ * workspace or project that is not a Work workspace's. Its scope has no workspace, as a Work Chat's
+ * has none, but it keeps its fence and reaches no sector.
+ */
+function orphaned(ctx: ToolCtx): boolean {
+  if (ctx.scope.workspaceId) return false
+  try {
+    const row = ctx.db.prepare('SELECT workspace_id AS w, project_id AS p FROM sessions WHERE id = ?').get(ctx.sessionId) as { w?: string | null; p?: string | null } | undefined
+    return !!(row?.w || row?.p)
+  } catch {
+    return false
+  }
+}
+
+/** The sectors a thread may reach: its workspace's one; none for a workspace with no sector or a thread with no Work home; every sector for a Work Chat (which reads through its own key). */
+const sectorsOf = (ctx: ToolCtx): string[] | 'all' => (ctx.scope.sector ? [ctx.scope.sector] : ctx.scope.workspaceId || orphaned(ctx) ? [] : 'all')
 
 async function resolve(ctx: ToolCtx, a: TargetArgs): Promise<{ t: DocTarget; shared: boolean; fence: string[] | 'all' }> {
   let source: CanvasSource
@@ -154,11 +169,16 @@ const findInput = z.object({
  */
 async function find(ctx: ToolCtx, a: z.infer<typeof findInput>): Promise<WorkToolResult> {
   const { findDocs } = await import('./find')
+  if (orphaned(ctx)) return fail('This thread has no Work workspace, so it has no documents to find.')
   const ids = ctx.scope.workspaceId
     ? [ctx.scope.workspaceId]
     : (ctx.db.prepare("SELECT id FROM workspaces WHERE kind = 'work'").all() as { id: string }[]).map((r) => r.id)
   const by = { kind: 'model' as const, caps: [], sessionId: ctx.sessionId }
-  const answers = await Promise.all(ids.map((workspaceId) => findDocs(ctx, by, { workspaceId, query: a.query })))
+  // One workspace that does not answer leaves the others' answers standing.
+  const settled = await Promise.allSettled(ids.map((workspaceId) => findDocs(ctx, by, { workspaceId, query: a.query })))
+  const answers = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
+  const failed = settled.flatMap((r) => (r.status === 'rejected' ? [errorText(r.reason)] : []))
+  if (!answers.length && failed.length) return fail(failed[0]!)
   const projects = new Map(answers.flatMap((x) => x.projects.map((p) => [p.id, p.name] as const)))
   const filter: FindFilter = {
     ...(a.kinds ? { kinds: a.kinds } : {}),
@@ -183,7 +203,7 @@ async function find(ctx: ToolCtx, a: z.infer<typeof findInput>): Promise<WorkToo
   const found = findIn(answers.flatMap((x) => x.entries), { query: a.query ?? '', filter, sort: a.sort ?? 'edited' }, hits)
   const limit = a.limit ?? 20
   const missing = answers.map((x) => x.lifeos).find(Boolean)
-  const head = missing ? `LifeOS did not answer (${missing}), so its documents are not in this list.\n` : ''
+  const head = `${missing ? `LifeOS did not answer (${missing}), so its documents are not in this list.\n` : ''}${failed.length ? `${failed.length} workspace${failed.length === 1 ? '' : 's'} did not answer (${failed[0]}).\n` : ''}`
   if (!found.length) return workText(`${head}Nothing matches.`)
   const more = found.length > limit ? `\n${found.length - limit} more match; narrow the search or raise \`limit\`.` : ''
   return workText(`${head}${found.slice(0, limit).map((e) => foundLine(e, projects)).join('\n')}${more}\nOpen one with canvas_open and its source; a LifeOS document or a .tcdoc also reads with doc_read.`)

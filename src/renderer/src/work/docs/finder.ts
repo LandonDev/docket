@@ -99,16 +99,12 @@ export function chipOf(e: FindEntry): ContextChip | null {
   return { kind: "selection", label: e.title.slice(0, 500), ref: e.source };
 }
 
-/** Picking a row: alone it toggles; with shift, every row from the anchor to it takes the anchor's new state. */
+/** Picking a row: alone it toggles and becomes the anchor; with shift, the pick is every row from the anchor to it. */
 export function pick(order: readonly string[], s: Pick<FinderState, "selected" | "anchor">, key: string, range: boolean): Pick<FinderState, "selected" | "anchor"> {
-  const next = new Set(s.selected);
   const from = range && s.anchor ? order.indexOf(s.anchor) : -1;
   const to = order.indexOf(key);
-  if (from >= 0 && to >= 0) {
-    const on = s.selected.has(s.anchor!);
-    for (let i = Math.min(from, to); i <= Math.max(from, to); i++) on ? next.add(order[i]!) : next.delete(order[i]!);
-    return { selected: next, anchor: s.anchor };
-  }
+  if (from >= 0 && to >= 0) return { selected: new Set(order.slice(Math.min(from, to), Math.max(from, to) + 1)), anchor: s.anchor };
+  const next = new Set(s.selected);
   next.has(key) ? next.delete(key) : next.add(key);
   return { selected: next, anchor: key };
 }

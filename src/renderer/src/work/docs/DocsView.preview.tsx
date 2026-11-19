@@ -1,6 +1,7 @@
 import type { FindAnswer } from "@shared/contract-work-docs";
 import type { FindEntry, FindSpec } from "@shared/work/docFind";
 import { Doc } from "../icons";
+import type { WorkViewProps } from "../views/registry";
 import { Head, View } from "./DocsView";
 import { setFinder, setFound } from "./finder";
 
@@ -56,7 +57,7 @@ export function DocsPreview({ state = "list" }: { state?: string }) {
   const ws = `preview-${state}`;
   setFinder(ws, (f) => ({ spec: { ...f.spec, ...s.spec }, selected: new Set(s.picked ?? []) }));
   setFound(ws, { answer: ANSWER, hits: new Map(s.hits ?? []), hitsFor: s.spec.query ?? "" });
-  const props = { env: "box", workspace: { id: ws, environmentId: "box" }, sector: "purdue", lifeos: {}, startThread: () => {} } as never;
+  const props = { env: "box", workspace: { id: ws, environmentId: "box" }, sector: "purdue", lifeos: {}, startThread: () => {} } as unknown as WorkViewProps;
   return (
     <div className="flex w-[864px] flex-col bg-background">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">

@@ -4,8 +4,8 @@ import type { WorkViewDef } from "../views/registry";
 
 /**
  * The Docs row of a linked Work workspace and its view (docs/agents/work-docs.md
- * "The Docs view"): the sector's LifeOS documents by project, each opening in
- * the shared editor there. The row has no fact: a count of documents is not
+ * "The Docs view"): everything the workspace holds, searched, filtered and
+ * grouped, a document opening in the shared editor there. The row has no fact: a count of documents is not
  * worth a glance.
  */
 export const docsView: WorkViewDef = {

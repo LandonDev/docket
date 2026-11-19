@@ -31,14 +31,22 @@ import { fileRows } from './threads'
  * the text matches with the words around each.
  */
 
-/** How deep and how wide the folder walk goes. */
+/** How deep and how wide the folder walk goes: files listed, and entries looked at on the way. */
 const WALK_DEPTH = 4
 const WALK_MOST = 2000
+const WALK_SEEN_MOST = 20_000
 /** How many files' text a search reads, and how much of each. */
 const TEXT_MOST = 200
 const TEXT_BYTES = 512 * 1024
 /** A folder walk is kept this long, so typing does not walk it again. */
 const WALK_FRESH_MS = 10_000
+/** The text kept for searches, at most, across the host's folders; the least read goes first. */
+const TEXT_CACHE_BYTES = 32 * 1024 * 1024
+/** LifeOS's catalog is kept this long; the view asks afresh (`refresh`) when it opens, comes back, or LifeOS says it changed. */
+const CATALOG_FRESH_MS = 30_000
+/** Rows of each LifeOS table the host reads, a page at a time. */
+const CATALOG_MOST = 300
+const CATALOG_PAGE = 50
 
 interface CatalogRow {
   table: 'docs' | 'sheets'
@@ -61,8 +69,10 @@ interface FileRow {
 }
 
 // Keyed by the host's database, as docs/state.ts keeps its state.
-const walks = new WeakMap<object, Map<string, { at: number; files: FileRow[]; complete: boolean }>>()
+type Walk = { files: FileRow[]; complete: boolean }
+const walks = new WeakMap<object, Map<string, { at: number; walk: Promise<Walk> }>>()
 const texts = new WeakMap<object, Map<string, { mtime: number; text: string }>>()
+const catalogs = new WeakMap<object, Map<string, { at: number; read: Promise<{ rows: CatalogRow[]; complete: boolean }> }>>()
 const cacheOf = <T>(map: WeakMap<object, Map<string, T>>, key: object): Map<string, T> => {
   let m = map.get(key)
   if (!m) map.set(key, (m = new Map()))
@@ -70,9 +80,10 @@ const cacheOf = <T>(map: WeakMap<object, Map<string, T>>, key: object): Map<stri
 }
 
 /** The files under a folder whose kind a canvas opens: hidden folders and dependencies skipped, bounded in depth and count. */
-export async function walkFolder(root: string): Promise<{ files: FileRow[]; complete: boolean }> {
+export async function walkFolder(root: string, most = { files: WALK_MOST, seen: WALK_SEEN_MOST }): Promise<Walk> {
   const files: FileRow[] = []
   let complete = true
+  let seen = 0
   const visit = async (dir: string, depth: number): Promise<void> => {
     let names: import('node:fs').Dirent[]
     try {
@@ -81,7 +92,8 @@ export async function walkFolder(root: string): Promise<{ files: FileRow[]; comp
       return
     }
     for (const e of names) {
-      if (files.length >= WALK_MOST) {
+      // A folder of many directories and few documents (a cloned repo, a photo library) stops here too.
+      if (files.length >= most.files || ++seen > most.seen) {
         complete = false
         return
       }
@@ -106,13 +118,60 @@ export async function walkFolder(root: string): Promise<{ files: FileRow[]; comp
   return { files, complete }
 }
 
-async function folderFiles(ctx: WorkCtx, root: string): Promise<{ files: FileRow[]; complete: boolean }> {
+/** The folder's walk: a fresh one kept, and one already on its way shared, so two asks walk once. */
+function folderFiles(ctx: WorkCtx, root: string): Promise<Walk> {
   const cache = cacheOf(walks, ctx.db)
   const kept = cache.get(root)
-  if (kept && Date.now() - kept.at < WALK_FRESH_MS) return kept
-  const walked = { at: Date.now(), ...(await walkFolder(root)) }
-  cache.set(root, walked)
-  return walked
+  if (kept && Date.now() - kept.at < WALK_FRESH_MS) return kept.walk
+  const walk = walkFolder(root)
+  cache.set(root, { at: Date.now(), walk })
+  walk.catch(() => cache.delete(root))
+  return walk
+}
+
+/** Keeps a read text, dropping the least read past the cap. A Map keeps insertion order: a hit goes to the end. */
+export function keepText(cache: Map<string, { mtime: number; text: string }>, path: string, entry: { mtime: number; text: string }, most = TEXT_CACHE_BYTES): void {
+  cache.delete(path)
+  cache.set(path, entry)
+  let bytes = 0
+  for (const v of cache.values()) bytes += v.text.length
+  for (const [key, v] of cache) {
+    if (bytes <= most) break
+    cache.delete(key)
+    bytes -= v.text.length
+  }
+}
+
+/** A sector's LifeOS catalog, read a page at a time up to its cap; kept a short while, and shared while on its way. */
+function lifeosCatalog(ctx: WorkCtx, sector: string, refresh: boolean): Promise<{ rows: CatalogRow[]; complete: boolean }> {
+  const cache = cacheOf(catalogs, ctx.db)
+  const kept = cache.get(sector)
+  if (kept && !refresh && Date.now() - kept.at < CATALOG_FRESH_MS) return kept.read
+  const read = (async () => {
+    const rows: CatalogRow[] = []
+    let complete = true
+    for (const table of ['docs', 'sheets'] as const) {
+      let cursor: string | null = null
+      let got = 0
+      for (;;) {
+        const page: { rows: CatalogRow[]; isDone: boolean; continueCursor: string } = await ctx.lifeos
+          .owner()
+          .query('catalog:list', { sector, table, paginationOpts: { numItems: CATALOG_PAGE, cursor } })
+        rows.push(...page.rows)
+        got += page.rows.length
+        if (page.isDone) break
+        if (got >= CATALOG_MOST) {
+          complete = false
+          break
+        }
+        cursor = page.continueCursor
+      }
+    }
+    return { rows: rows.sort((a, b) => b.editedAt - a.editedAt), complete }
+  })()
+  cache.set(sector, { at: Date.now(), read })
+  read.catch(() => cache.delete(sector))
+  return read
 }
 
 /** A file's text for a search: a `.tcdoc` through the Work service, a `.csv` from disk; '' for any other kind or a read that failed. */
@@ -121,7 +180,10 @@ async function fileText(ctx: WorkCtx, f: FileRow): Promise<string> {
   if (ext !== 'tcdoc' && ext !== 'csv') return ''
   const cache = cacheOf(texts, ctx.db)
   const kept = cache.get(f.path)
-  if (kept && kept.mtime === f.editedAt) return kept.text
+  if (kept && kept.mtime === f.editedAt) {
+    keepText(cache, f.path, kept)
+    return kept.text
+  }
   let text = ''
   try {
     if (ext === 'csv') text = (await readFile(f.path, 'utf8')).slice(0, TEXT_BYTES)
@@ -132,7 +194,7 @@ async function fileText(ctx: WorkCtx, f: FileRow): Promise<string> {
   } catch {
     return ''
   }
-  cache.set(f.path, { mtime: f.editedAt, text })
+  keepText(cache, f.path, { mtime: f.editedAt, text })
   return text
 }
 
@@ -145,26 +207,29 @@ function fileComments(db: DatabaseSync, path: string): number {
   }
 }
 
-/** What a canvas item's source keys to, so a file the folder walk found and the same file open in a thread are one entry. */
-export function keyOf(source: CanvasSource, itemId?: string): string {
+/**
+ * What a source keys to, so a file the folder walk found and the same file open in a thread are
+ * one entry: a path as its real path, and one on another host with that host.
+ */
+export function keyOf(source: CanvasSource, itemId?: string, host?: string): string {
   if (source.at === 'lifeos') return `lifeos:${source.table}:${source.id}`
-  if (source.at === 'file') return `file:${source.path}`
+  if (source.at === 'file') return source.host === host || host === undefined ? `file:${canonicalPathOr(source.path) ?? source.path}` : `file:${source.host}:${source.path}`
   if (source.at === 'google') return `google:${source.fileId}`
   if (source.at === 'microsoft') return `microsoft:${source.ref.kind === 'path' ? source.ref.path : source.ref.url}`
   return `item:${itemId ?? ''}`
 }
 
-/** An item a thread holds that lives outside LifeOS and the folder, as an entry. */
-function itemEntry(item: CanvasItem): FindEntry | null {
+/** An item a thread holds that lives outside LifeOS and the folder, as an entry; a file outside the folder counts as the thread's. */
+function itemEntry(item: CanvasItem, host: string): FindEntry | null {
   const s = item.source
   if (!(FIND_KINDS as readonly string[]).includes(item.kind)) return null
   if (s.at !== 'google' && s.at !== 'microsoft' && s.at !== 'thread' && s.at !== 'file') return null
   const kind = (s.at === 'google' ? kindOfMime(s.mime) : null) ?? (item.kind as FindKind)
   return {
-    key: keyOf(s, item.id),
+    key: keyOf(s, item.id, host),
     title: item.title,
     kind,
-    where: s.at === 'file' ? 'folder' : s.at,
+    where: s.at === 'file' ? 'thread' : s.at,
     source: s,
     sessionId: item.sessionId,
     editedAt: item.updatedAt,
@@ -177,7 +242,7 @@ function itemEntry(item: CanvasItem): FindEntry | null {
   }
 }
 
-/** Held acts that name an entry: an act still waiting (or failed) whose payload holds its id, path or file id. */
+/** Held acts that name an entry: an act still waiting (or failed) whose payload holds its id, path or file id as a whole value. */
 function heldCounts(db: DatabaseSync, workspaceId: string, sector: string | null, entries: FindEntry[]): void {
   let payloads: string[]
   try {
@@ -190,7 +255,9 @@ function heldCounts(db: DatabaseSync, workspaceId: string, sector: string | null
   if (!payloads.length) return
   for (const e of entries) {
     const s = e.source
-    const needle = s.at === 'lifeos' ? s.id : s.at === 'file' ? JSON.stringify(s.path).slice(1, -1) : s.at === 'google' ? s.fileId : null
+    const value = s.at === 'lifeos' ? s.id : s.at === 'file' ? s.path : s.at === 'google' ? s.fileId : s.at === 'microsoft' && s.ref.kind === 'path' ? s.ref.path : null
+    // Quoted, so /a/b.pdf does not count an act naming /a/b.pdf.bak.
+    const needle = value ? JSON.stringify(value) : null
     if (needle) e.held = payloads.filter((p) => p.includes(needle)).length
   }
 }
@@ -220,7 +287,7 @@ export function workspaceOf(ctx: WorkCtx, workspaceId: string): WorkspaceRow {
  * Everything a Work workspace lists, and with `query` what is written inside that matches.
  * A remote key that cannot reach the folder is shown none of its files.
  */
-export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: string; query?: string }): Promise<FindAnswer> {
+export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: string; query?: string; refresh?: boolean }): Promise<FindAnswer> {
   const ws = workspaceOf(ctx, o.workspaceId)
   const terms = queryTerms(o.query ?? '')
   const entries = new Map<string, FindEntry>()
@@ -240,7 +307,7 @@ export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: strin
     try {
       const q = ctx.lifeos.owner()
       const [catalog, list, found] = await Promise.all([
-        q.query<{ rows: CatalogRow[]; complete: boolean }>('catalog:list', { sector }),
+        lifeosCatalog(ctx, sector, !!o.refresh),
         q.query<{ _id: string; name: string }[]>('projects:list', { sector }),
         terms.length ? q.query<{ table: 'docs'; id: string; snippet: string }[]>('catalog:search', { sector, text: terms.join(' ') }) : Promise.resolve([])
       ])
@@ -275,8 +342,10 @@ export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: strin
   const folder = canonicalPathOr(ws.path)
   const folderPart = (async () => {
     if (!folder || !ctx.reaches(by, folder)) return
-    const walked = await folderFiles(ctx, folder)
-    complete &&= walked.complete
+    const all = await folderFiles(ctx, folder)
+    complete &&= all.complete
+    // The fence's denied folders lie inside its roots: each file is judged, not the folder alone.
+    const walked = { files: by.kind === 'local' ? all.files : all.files.filter((f) => ctx.reaches(by, f.path)) }
     for (const f of walked.files) {
       const key = `file:${f.path}`
       entries.set(key, {
@@ -312,7 +381,7 @@ export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: strin
 
   // Items threads hold that neither place listed. A file outside the folder shows only if this caller could name it.
   for (const item of ctx.canvas.forWorkspace(o.workspaceId)) {
-    const e = itemEntry(item)
+    const e = itemEntry(item, ctx.host)
     if (!e || entries.has(e.key)) continue
     if (item.source.at === 'file' && !ctx.reaches(by, item.source.path)) continue
     entries.set(e.key, e)

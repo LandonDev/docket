@@ -18,15 +18,18 @@ describe("the Docs view's rules", () => {
     expect(chipOf(e({ source: { at: "thread" } }))).toBeNull();
   });
 
-  it("pick a row alone, or a range from the anchor in its state", () => {
+  it("pick a row alone, or every row from the anchor to it, shrinking as it comes back", () => {
     const order = ["a", "b", "c", "d"];
     let s = pick(order, { selected: new Set(), anchor: null }, "b", false);
     expect([...s.selected]).toEqual(["b"]);
     s = pick(order, s, "d", true);
-    expect([...s.selected].sort()).toEqual(["b", "c", "d"]);
-    s = pick(order, s, "b", false);
+    expect([...s.selected]).toEqual(["b", "c", "d"]);
     s = pick(order, s, "c", true);
-    expect([...s.selected]).toEqual(["d"]);
+    expect([...s.selected]).toEqual(["b", "c"]);
+    s = pick(order, s, "a", true);
+    expect([...s.selected]).toEqual(["a", "b"]);
+    s = pick(order, s, "d", false);
+    expect([...s.selected]).toEqual(["a", "b", "d"]);
   });
 
   it("count a spec as the same when only empty filters or spaces differ", () => {

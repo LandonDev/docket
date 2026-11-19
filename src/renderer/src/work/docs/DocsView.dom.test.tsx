@@ -150,6 +150,46 @@ describe("the Docs view", () => {
     expect(screen.queryByText("2 selected")).toBeNull();
   });
 
+  it("drops the searching line when the query is cleared before the host answers", async () => {
+    answers["work.docs.find"] = async (p) => (p.query ? new Promise(() => {}) : ANSWER);
+    both();
+    await settle();
+    setSpec("ws-docs", { filter: { kinds: ["slides"] } });
+    const search = screen.getByRole("textbox", { name: "Search documents" });
+    fireEvent.change(search, { target: { value: "venue" } });
+    expect(screen.getByText("Searching…")).toBeTruthy();
+    fireEvent.keyDown(search, { key: "Escape" });
+    await settle();
+    expect(screen.queryByText("Searching…")).toBeNull();
+    expect(screen.getByText("No matches")).toBeTruthy();
+  });
+
+  it("never lets an older, slower reply put back an older list", async () => {
+    let first: (a: FindAnswer) => void = () => {};
+    let n = 0;
+    answers["work.docs.find"] = () => (n++ === 0 ? new Promise<FindAnswer>((r) => (first = r)) : Promise.resolve({ ...ANSWER, entries: [ANSWER.entries[0]!] }));
+    both();
+    await settle();
+    act(() => void window.dispatchEvent(new Event("focus")));
+    await settle();
+    first(ANSWER);
+    await settle();
+    expect(screen.queryByRole("button", { name: /Event budget/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Kickoff brief/ })).toBeTruthy();
+  });
+
+  it("leaves a row the filters hide out of the pick", async () => {
+    answers["work.docs.find"] = async () => ANSWER;
+    both();
+    await settle();
+    fireEvent.keyDown(screen.getByRole("button", { name: /Kickoff brief/ }), { key: " " });
+    fireEvent.keyDown(screen.getByRole("button", { name: /Event budget/ }), { key: " " });
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    act(() => setSpec("ws-docs", { filter: { kinds: ["sheet"] } }));
+    await settle();
+    expect(screen.getByText("1 selected")).toBeTruthy();
+  });
+
   it("opens a document here, and starts a thread about anything else", async () => {
     answers["work.docs.find"] = async () => ANSWER;
     both();

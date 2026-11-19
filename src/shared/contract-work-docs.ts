@@ -152,8 +152,8 @@ export const DocsRequestSchemas = [
   request('work.docs.dismiss', z.object({ source: CanvasSourceSchema })),
   /** → { source, title }: a new LifeOS document in the sector, or in a project */
   request('work.docs.create', z.object({ sector: z.string().min(1).max(32), projectId: z.string().min(1).max(64).optional(), title: z.string().min(1).max(200) })),
-  /** → FindAnswer (main/server/work/docs/find.ts): what a Work workspace lists, and with `query` the text matches */
-  request('work.docs.find', z.object({ workspaceId: id, query: z.string().max(500).optional() })),
+  /** → FindAnswer (main/server/work/docs/find.ts): what a Work workspace lists, and with `query` the text matches; `refresh` reads LifeOS's catalog afresh */
+  request('work.docs.find', z.object({ workspaceId: id, query: z.string().max(500).optional(), refresh: z.boolean().optional() })),
   /** → { views: SavedFindView[] } */
   request('work.docs.views', z.object({ workspaceId: id })),
   /** → SavedFindView: a new view, or one renamed and rewritten */

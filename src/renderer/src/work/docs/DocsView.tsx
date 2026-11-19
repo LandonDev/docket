@@ -145,6 +145,8 @@ function SearchField({ workspaceId }: { workspaceId: string }) {
       if (e.key !== "/" || chordKey(e)) return;
       const at = document.activeElement as HTMLElement | null;
       if (at && (at.tagName === "INPUT" || at.tagName === "TEXTAREA" || at.isContentEditable)) return;
+      // Only while nothing else holds focus, or focus is in this view: "/" elsewhere is that place's own.
+      if (at && at !== document.body && !input.current?.closest('[role="region"]')?.contains(at)) return;
       e.preventDefault();
       input.current?.focus();
     };
@@ -193,7 +195,7 @@ export function filterRows(f: FindFilter, entries: readonly FindEntry[], project
       ...(loose ? [check("project", "", "No project", !!f.projects?.includes(""))] : []),
     ]),
     ...sub("where", "Place", present(FIND_WHERE, (e) => e.where, f.where).map((w) => check("where", w, FIND_WHERE_WORDS[w], !!f.where?.includes(w)))),
-    ...sub("by", "Last edited by", FIND_BY.map((b) => check("by", b, FIND_BY_WORDS[b], !!f.by?.includes(b)))),
+    ...sub("by", "Last edited by", present(FIND_BY, (e) => e.lastBy, f.by).map((b) => check("by", b, FIND_BY_WORDS[b], !!f.by?.includes(b)))),
     ...sub("within", "Edited", [
       { kind: "item", id: "within:", label: "Any time", checked: !f.within },
       ...EDITED_WITHIN.map((w): MenuRow => ({ kind: "item", id: `within:${w}`, label: EDITED_WITHIN_WORDS[w], checked: f.within === w })),
@@ -443,40 +445,50 @@ function NewDoc({ env, workspace, sector }: WorkViewProps) {
  * Reads the workspace's list from its host: at once, again when LifeOS's catalog changes (its live
  * query is the signal) or the window comes back, and the text matches as he types, once typing rests.
  */
+/** Per workspace, the last reply asked and the last applied: a slower, older reply never puts back an older list. */
+const replies = new Map<string, { asked: number; applied: number }>();
+
 function useLoad({ env, workspace, sector, lifeos }: WorkViewProps, attempt: number): void {
   const workspaceId = workspace.id;
   const { spec } = useFinder(workspaceId);
   const query = spec.query.trim();
-  const live = useLifeosQuery<unknown>(lifeos, "catalog:list", { sector });
-  const changed = live.status === "ready" ? live.value : null;
+  // A cheap signal (the sector's newest edit), not the catalog itself: the host reads the catalog.
+  const live = useLifeosQuery<unknown>(lifeos, "catalog:stamp", { sector });
+  const changed = live.status === "ready" ? JSON.stringify(live.value) : null;
   const read = useCallback(
-    (q: string) =>
-      request<FindAnswer>(env, "work.docs.find", { workspaceId, ...(q ? { query: q } : {}) }).then(
+    (q: string, refresh: boolean) => {
+      const order = replies.get(workspaceId) ?? { asked: 0, applied: 0 };
+      replies.set(workspaceId, order);
+      const n = ++order.asked;
+      return request<FindAnswer>(env, "work.docs.find", { workspaceId, ...(q ? { query: q } : {}), ...(refresh ? { refresh: true } : {}) }).then(
         (answer) => {
-          // A later search may have been asked meanwhile: only the one in hand keeps its matches.
           const now = finderOf(workspaceId).spec.query.trim();
-          setFound(workspaceId, (f) => ({
-            answer,
-            error: null,
-            ...(q === now ? { hits: new Map(answer.hits.map((h) => [h.key, h.snippet])), hitsFor: q, searching: false } : {}),
-            ...(q === "" && now === "" ? { hits: new Map(), hitsFor: "" } : {}),
-            searching: q === now ? false : f.searching,
-          }));
+          const newest = n > order.applied;
+          if (newest) order.applied = n;
+          setFound(workspaceId, {
+            ...(newest ? { answer, error: null } : {}),
+            // The matches of the query in hand are kept whatever order replies come in.
+            ...(q && q === now ? { hits: new Map(answer.hits.map((h) => [h.key, h.snippet])), hitsFor: q, searching: false } : {}),
+          });
         },
         (err: unknown) => setFound(workspaceId, (f) => ({ error: f.answer ? f.error : refusalWords(err) || "The host did not answer", searching: false })),
-      ),
+      );
+    },
     [env, workspaceId],
   );
   useEffect(() => {
-    void read("");
-    const again = () => void read(finderOf(workspaceId).spec.query.trim());
+    void read(finderOf(workspaceId).spec.query.trim(), true);
+    const again = () => void read(finderOf(workspaceId).spec.query.trim(), true);
     window.addEventListener("focus", again);
     return () => window.removeEventListener("focus", again);
   }, [read, workspaceId, attempt, changed]);
   useEffect(() => {
-    if (!query) return;
+    if (!query) {
+      setFound(workspaceId, { searching: false, hits: new Map(), hitsFor: "" });
+      return;
+    }
     setFound(workspaceId, { searching: true });
-    const t = setTimeout(() => void read(query), SEARCH_REST_MS);
+    const t = setTimeout(() => void read(query, false), SEARCH_REST_MS);
     return () => clearTimeout(t);
   }, [query, read, workspaceId]);
 }
@@ -490,8 +502,19 @@ function DocList(props: WorkViewProps) {
   const shown = useShown(workspaceId);
   const groups = useMemo(() => (shown ? groupRows(shown.rows, spec.group, shown.projects) : null), [shown, spec.group]);
   const order = useMemo(() => (groups ? groups.flatMap((g) => g.rows.map((r) => r.key)) : []), [groups]);
+  // A row the search or a filter hides leaves the pick: Ask is about what he sees picked.
+  useEffect(() => {
+    if (!groups) return;
+    const { selected: picked } = finderOf(workspaceId);
+    const shownKeys = new Set(order);
+    if ([...picked].some((k) => !shownKeys.has(k))) setFinder(workspaceId, { selected: new Set([...picked].filter((k) => shownKeys.has(k))) });
+  }, [groups, order, workspaceId]);
 
-  if (!found.answer && found.error) return <EmptyState title="Docs did not load" line={found.error} action={{ label: "Retry", onClick: () => setAttempt((n) => n + 1) }} />;
+  const retry = () => {
+    setFound(workspaceId, { error: null });
+    setAttempt((n) => n + 1);
+  };
+  if (!found.answer && found.error) return <EmptyState title="Docs did not load" line={found.error} action={{ label: "Retry", onClick: retry }} />;
   if (!groups || !shown)
     return (
       <div aria-busy className="mx-auto flex max-w-[720px] flex-col gap-3 px-6 py-5">
@@ -509,7 +532,8 @@ function DocList(props: WorkViewProps) {
   ) : null;
   if (!shown.rows.length) {
     if (found.searching) return <LoadingLine label="Searching…" />;
-    if (!narrowed) return <EmptyState title="No documents" line={found.answer?.lifeos} />;
+    // Nothing listed because LifeOS did not answer is not "no documents".
+    if (!narrowed) return found.answer?.lifeos ? <EmptyState title="LifeOS did not answer" line={found.answer.lifeos} action={{ label: "Retry", onClick: retry }} /> : <EmptyState title="No documents" />;
     return (
       <EmptyState
         title="No matches"
@@ -531,9 +555,9 @@ function DocList(props: WorkViewProps) {
       e.preventDefault();
       const next = rows[at + (e.key === "ArrowDown" ? 1 : -1)];
       if (next) next.focus();
-      else if (e.key === "ArrowUp") document.querySelector<HTMLInputElement>('[role="search"] input')?.focus();
+      else if (e.key === "ArrowUp") (e.currentTarget.closest('[role="region"]') ?? document).querySelector<HTMLInputElement>('[role="search"] input')?.focus();
       if (e.shiftKey && key && next?.dataset.findRow) {
-        if (!finderOf(workspaceId).selected.has(key)) onPick(key, false);
+        if (!finderOf(workspaceId).anchor) onPick(key, false);
         onPick(next.dataset.findRow, true);
       }
     } else if ((e.key === " " || e.key === "x") && key) {

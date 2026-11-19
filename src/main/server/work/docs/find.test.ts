@@ -9,7 +9,7 @@ import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { ensureGuestTables, GuestStore } from '../guests/store'
 import { ensureOutboxTables, HELD_TABLE } from '../outbox/store'
 import { canonicalPath } from '../service/ctx'
-import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, listViews, saveView, VIEWS_MOST, walkFolder } from './find'
+import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, keepText, listViews, saveView, VIEWS_MOST, walkFolder } from './find'
 import { docTools } from './tools'
 
 /* Finding documents: the host's merge of LifeOS's catalog, the workspace folder and the threads' items, and the agent's doc_find. */
@@ -42,6 +42,10 @@ function rig(o: { lifeos?: 'down'; reaches?: (path: string) => boolean; items?: 
   db.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?)').run('w1', folder, 'purdue', 'work')
   db.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?)').run('w2', join(dir, 'Other'), 'life', 'work')
   db.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?)').run('code', dir, null, null)
+  db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT, project_id TEXT)')
+  db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run('t1', 'w1', null)
+  db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run('chat', null, null)
+  db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run('orphan', 'code', null)
   ensureViewsTable(db)
   ensureGuestTables(db)
   ensureOutboxTables(db)
@@ -61,10 +65,10 @@ function rig(o: { lifeos?: 'down'; reaches?: (path: string) => boolean; items?: 
     lifeos: {
       connected: () => true,
       owner: () => ({
-        query: async (fn: string, args: { sector: string; text?: string }) => {
-          calls.push(`${fn} ${args.sector}${args.text ? ` ${args.text}` : ''}`)
+        query: async (fn: string, args: { sector: string; text?: string; table?: string }) => {
+          calls.push(`${fn} ${args.sector}${args.text ? ` ${args.text}` : ''}${args.table ? ` ${args.table}` : ''}`)
           if (o.lifeos === 'down') throw new Error('LifeOS is unreachable')
-          if (fn === 'catalog:list') return { rows: catalog[args.sector] ?? [], complete: true }
+          if (fn === 'catalog:list') return { rows: (catalog[args.sector] ?? []).filter((r) => (r as { table: string }).table === args.table), isDone: true, continueCursor: '' }
           if (fn === 'projects:list') return args.sector === 'purdue' ? [{ _id: 'p1', name: 'Fall Invitational' }] : []
           if (fn === 'catalog:search') return args.sector === 'purdue' && args.text === 'venue' ? [{ table: 'docs', id: 'd1', snippet: '…book the venue by…' }] : []
           throw new Error(fn)
@@ -105,6 +109,7 @@ describe('work.docs.find', () => {
       ]
     })
     new GuestStore(db).create({ name: 'Ana', source: { at: 'lifeos', table: 'docs', id: 'd1' }, title: 'Kickoff brief', role: 'comment', expiresAt: NOW + DAY, bySession: null })
+    db.prepare(`INSERT INTO ${HELD_TABLE} (id, workspace_id, kind, origin, summary, payload, state, run_key, created_at, updated_at) VALUES ('h2', 'w1', 'mail.send', 'agent', 'x', ?, 'held', 'k2', 1, 1)`).run(JSON.stringify({ attach: [`${join(folder, 'sub', 'scan.pdf')}.bak`] }))
     db.prepare(`INSERT INTO ${HELD_TABLE} (id, workspace_id, kind, origin, summary, payload, state, run_key, created_at, updated_at) VALUES ('h1', 'w1', 'mail.send', 'agent', 'x', ?, 'held', 'k1', 1, 1)`).run(JSON.stringify({ attach: [{ at: 'lifeos', table: 'sheets', id: 's1' }] }))
 
     const got = await findDocs(ctx, LOCAL, { workspaceId: 'w1' })
@@ -117,6 +122,8 @@ describe('work.docs.find', () => {
     expect(byKey.get(`file:${join(folder, 'Plan.tcdoc')}`)).toMatchObject({ title: 'Plan', kind: 'document', where: 'folder' })
     expect(byKey.get('google:g1')).toMatchObject({ kind: 'sheet', where: 'google', shared: true })
     expect(byKey.get('item:i2')).toMatchObject({ kind: 'form', where: 'thread', sessionId: 't1' })
+    // A path that only begins like the file's counts nothing against it.
+    expect(byKey.get(`file:${join(folder, 'sub', 'scan.pdf')}`)!.held).toBe(0)
     expect(got.projects).toEqual([{ id: 'p1', name: 'Fall Invitational' }])
     expect(got.complete).toBe(true)
     expect(got.hits).toEqual([])
@@ -129,6 +136,22 @@ describe('work.docs.find', () => {
     expect(got.hits.find((h) => h.key.endsWith('Plan.tcdoc'))!.snippet).toContain('The venue holds two hundred.')
     await findDocs(ctx, LOCAL, { workspaceId: 'w1', query: 'venue' })
     expect(calls.filter((c) => c.startsWith('/internal/docs/read'))).toEqual(['/internal/docs/read /Plan.tcdoc'])
+  })
+
+  it('reads LifeOS\'s catalog once for a run of searches, and afresh when asked', async () => {
+    const { ctx, calls } = rig()
+    await findDocs(ctx, LOCAL, { workspaceId: 'w1' })
+    await findDocs(ctx, LOCAL, { workspaceId: 'w1', query: 'venue' })
+    expect(calls.filter((c) => c.startsWith('catalog:list'))).toEqual(['catalog:list purdue docs', 'catalog:list purdue sheets'])
+    await findDocs(ctx, LOCAL, { workspaceId: 'w1', refresh: true })
+    expect(calls.filter((c) => c.startsWith('catalog:list'))).toHaveLength(4)
+  })
+
+  it('holds a remote key to the fence file by file, past the folder\'s denied parts', async () => {
+    const { ctx, folder } = rig({ reaches: (p) => !p.includes('/sub') })
+    const got = await findDocs(ctx, { kind: 'remote', caps: ['read'] }, { workspaceId: 'w1', query: 'venue' })
+    expect(got.entries.filter((e) => e.where === 'folder').map((e) => e.key)).toEqual([`file:${join(folder, 'Plan.tcdoc')}`])
+    expect(got.hits.some((h) => h.key.includes('/sub'))).toBe(false)
   })
 
   it('shows a caller the folder only when it may reach it, and keeps the folder when LifeOS is down', async () => {
@@ -150,6 +173,19 @@ describe('work.docs.find', () => {
     const { files, complete } = await walkFolder(folder)
     expect(files.map((f) => f.path.slice(folder.length)).sort()).toEqual(['/Plan.tcdoc', '/sub/costs.csv', '/sub/scan.pdf'])
     expect(complete).toBe(true)
+    // Many entries and few documents: the look stops, and says the list is not whole.
+    expect((await walkFolder(folder, { files: 100, seen: 3 })).complete).toBe(false)
+  })
+})
+
+describe('the text kept for searches', () => {
+  it('drops the least read past its cap', () => {
+    const cache = new Map<string, { mtime: number; text: string }>()
+    keepText(cache, 'a', { mtime: 1, text: 'x'.repeat(4) }, 10)
+    keepText(cache, 'b', { mtime: 1, text: 'x'.repeat(4) }, 10)
+    keepText(cache, 'a', cache.get('a')!, 10)
+    keepText(cache, 'c', { mtime: 1, text: 'x'.repeat(4) }, 10)
+    expect([...cache.keys()]).toEqual(['a', 'c'])
   })
 })
 
@@ -177,7 +213,7 @@ describe('saved views', () => {
 describe('doc_find', () => {
   const tool = docTools.find((t) => t.name === 'doc_find')!
   const run = (ctx: WorkCtx, args: Record<string, unknown>, scope: Partial<WorkScope> = { workspaceId: 'w1', sector: 'purdue' }) =>
-    tool.run(args, { ...ctx, sessionId: 't1', scope: { sessionId: 't1', host: 'env_box', away: false, routineRunId: null, shared: () => false, workspaceId: null, sector: null, ...scope }, signal: new AbortController().signal } as ToolCtx)
+    tool.run(args, { ...ctx, sessionId: scope.workspaceId ? 't1' : 'chat', scope: { sessionId: scope.workspaceId ? 't1' : 'chat', host: 'env_box', away: false, routineRunId: null, shared: () => false, workspaceId: null, sector: null, ...scope }, signal: new AbortController().signal } as ToolCtx)
 
   it('finds "the budget sheet from last month" in its own workspace only', async () => {
     const { ctx } = rig()
@@ -194,6 +230,12 @@ describe('doc_find', () => {
     const { ctx } = rig()
     expect((await run(ctx, { project: 'fall' })).content[0]).toMatchObject({ text: expect.stringContaining('Event budget') })
     expect((await run(ctx, { project: 'spring' })).content[0]).toMatchObject({ text: 'No project is named "spring". The projects are: Fall Invitational.' })
+  })
+
+  it('refuses a thread with no Work home: it reaches no sector', async () => {
+    const { ctx } = rig()
+    const got = await tool.run({ query: 'budget' }, { ...ctx, sessionId: 'orphan', scope: { sessionId: 'orphan', host: 'env_box', away: false, routineRunId: null, shared: () => false, workspaceId: null, sector: null }, signal: new AbortController().signal } as ToolCtx)
+    expect(got).toMatchObject({ isError: true, content: [{ text: 'This thread has no Work workspace, so it has no documents to find.' }] })
   })
 
   it('searches every Work workspace from a Work Chat, and refuses a date it cannot read', async () => {
