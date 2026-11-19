@@ -111,8 +111,7 @@ describe('AccountSync as a host', () => {
     expect(sync.handleReleased('env_other', { service: 'claude-code', accountId: 'u1' })).toEqual({ ok: false, reason: 'not-held' })
     expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u9' })).toEqual({ ok: false, reason: 'unknown-account' })
     expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u1' })).toEqual({ ok: true })
-    await new Promise((r) => setTimeout(r, 10))
-    expect(activate).toHaveBeenCalledWith('claude-code', 'a@x', expect.any(String))
+    await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('claude-code', 'a@x', expect.any(String)), { timeout: 10_000, interval: 10 })
     expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_box', static: false })
     expect(sync.handleReleased('env_mac', { service: 'claude-code', accountId: 'u1' })).toEqual({ ok: true })
     expect(nudge).toHaveBeenCalled()
@@ -174,8 +173,7 @@ describe('AccountSync as a host', () => {
     const [t] = (await sync.handlePull('env_mac', { service: 'claude-code', name: 'mine', takeOver: true })).transfers
     expect(hasRefresh('claude-code', t.blob)).toBe(true)
     nudge.mockClear()
-    await new Promise((r) => setTimeout(r, 80))
-    expect(nudge).toHaveBeenCalled()
+    await vi.waitFor(() => expect(nudge).toHaveBeenCalled(), { timeout: 10_000, interval: 10 })
     expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_box' })
     expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'mine')!)).toBe(true)
     expect(sync.handleConfirm('env_mac', { service: 'claude-code', accountId: 'u1', refreshFingerprint: fpOf(t)! })).toEqual({ ok: false, reason: 'not-released' })
@@ -636,8 +634,7 @@ describe('removals', () => {
     expect(refreshNow).toHaveBeenCalledTimes(1)
     // The same word as a push and as a call.
     sync.onPeerPush('env_mac', { push: 'accounts-removed', from: 'env_mac', removed: [tomb('u2')] })
-    await new Promise((r) => setTimeout(r, 20))
-    expect(names()).toEqual(['live', 'mine', 'old'])
+    await vi.waitFor(() => expect(names()).toEqual(['live', 'mine', 'old']), { timeout: 10_000, interval: 10 })
     expect(await sync.handleRemoved('env_mac', { removed: [tomb('u7')] })).toEqual({ dropped: 1 })
     expect(names()).toEqual(['live', 'mine'])
     // A tombstone from a host that is not the copy's owner means nothing for it.
@@ -662,7 +659,7 @@ describe('removals', () => {
     expect(out).toEqual({ ok: true, removal: { service: 'claude-code', accountId: 'u1', name: 'mine', static: false, at: clock } })
     expect(names()).toEqual(['copy', 'tok'])
     expect(refreshNow).toHaveBeenCalledTimes(1)
-    await new Promise((r) => setTimeout(r, 10))
+    await vi.waitFor(() => expect(box.request).toHaveBeenCalledWith('accounts.removed', { from: 'env_mac', removed: [out.ok && out.removal] }), { timeout: 10_000, interval: 10 })
     expect(box.request).toHaveBeenCalledWith('accounts.removed', { from: 'env_mac', removed: [out.ok && out.removal] })
     expect(pushes).toEqual([{ push: 'accounts-removed', from: 'env_mac', removed: [out.ok && out.removal] }])
     expect(sync.tombstones()).toEqual([out.ok && out.removal])

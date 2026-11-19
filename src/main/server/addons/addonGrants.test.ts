@@ -565,6 +565,8 @@ describe('AddonGrants: the view and its push', () => {
     grants.start()
     await grants.setFields('ad_k', { 'X-Api-Key': 'SENTINEL-KEY-VALUE' })
     ownHere('ad_o', oauth({ accessToken: 'SENTINEL-AT', refreshToken: 'SENTINEL-RT', clientSecret: 'SENTINEL-CS' }), { 'X-Team': 'SENTINEL-TEAM' })
+    // The burst's one push, however long the box takes to send it; then as long again for a second that must not come.
+    await vi.waitFor(() => expect(pushes.length).toBeGreaterThan(0), { timeout: 10_000, interval: 10 })
     await new Promise((r) => setTimeout(r, 60))
     expect(pushes).toHaveLength(1)
     const json = JSON.stringify(grantRpc(grants) && grants.list())

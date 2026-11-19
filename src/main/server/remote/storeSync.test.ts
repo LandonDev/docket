@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
 import { AddonStore } from '../addonStore'
 import { SkillStore } from '../skillStore'
@@ -222,7 +222,7 @@ describe('forward', () => {
     let release!: () => void
     link.hold = new Promise<void>((r) => (release = r))
     const pull = sync.syncWith(BOX)
-    for (let i = 0; i < 20 && link.hold; i++) await new Promise((r) => setTimeout(r, 0))
+    await vi.waitFor(() => expect(link.hold).toBeNull(), { timeout: 10_000, interval: 5 })
     expect(link.hold).toBeNull()
     await sync.forward('addons.set', { addon: { ...addon({ description: 'two' }), id: first.id } }, null)
     expect(mac.addons.get(first.id)?.description).toBe('two')

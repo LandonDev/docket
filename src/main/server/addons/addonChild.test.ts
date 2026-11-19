@@ -89,18 +89,20 @@ describe('runAddonChild', () => {
 
   it('a client that throws reads failed and the others keep serving; a cancel aborts the call', async () => {
     let aborted = false
+    let started = false
     const quiet: DownstreamLike = {
       start: () => {},
       close: async () => {},
       restart: async () => {},
       grantsDropped: async () => {},
       call: (_t, _a, { signal }) =>
-        new Promise<AddonCallResult>((resolve) =>
+        new Promise<AddonCallResult>((resolve) => {
+          started = true
           signal?.addEventListener('abort', () => {
             aborted = true
             resolve({ content: [], isError: true })
           })
-        )
+        })
     }
     const h = harness({
       make: (deps) => {
@@ -113,7 +115,8 @@ describe('runAddonChild', () => {
     expect(h.events[0]).toMatchObject({ e: 'status', addonId: 'ad_bad', status: { state: 'failed', detail: "The add-on's client failed: broken client" } })
     expect(child!.running()).toEqual(['ad_good'])
     const slow = h.ask({ m: 'call', addonId: 'ad_good', tool: 'slow', arguments: {}, callId: 'c9', timeoutMs: 5_000 })
-    await new Promise((r) => setTimeout(r, 20))
+    // The cancel must find the call in flight: wait until the client has it.
+    await until(() => started)
     await h.ask({ m: 'cancel', callId: 'c9' })
     await slow
     expect(aborted).toBe(true)

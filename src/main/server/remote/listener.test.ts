@@ -173,9 +173,17 @@ const upgradeStatus = async (
   }
 }
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+/**
+ * Waits until `test` holds, polling every 25 ms for up to `ms` of real time, well inside the 20 s test timeout; the
+ * caller's expect then says what never happened. A count of ticks is no deadline on a loaded box.
+ */
+const waitFor = async (test: () => boolean, ms = 10_000): Promise<void> => {
+  const end = Date.now() + ms
+  while (!test() && Date.now() < end) await sleep(25)
+}
 /** The hello frame, however loaded the test worker is. */
 const firstFrame = async (sock: Socket): Promise<any> => {
-  for (let i = 0; i < 200 && sock.frames.length === 0; i++) await sleep(25)
+  await waitFor(() => sock.frames.length > 0)
   return sock.frames[0]
 }
 
@@ -317,7 +325,7 @@ describe('bearer keys', () => {
     })
     expect(await sock.closed).toMatchObject({ code: 4001 })
     // The server's close handler runs a tick after the client sees the close frame.
-    for (let i = 0; i < 20 && server.remote!.sockets.has(key.id); i++) await sleep(10)
+    await waitFor(() => !server.remote!.sockets.has(key.id))
     expect(server.remote!.sockets.has(key.id)).toBe(false)
     expect((await call('POST', '/api/ticket', { headers: bearer(token) })).status).toBe(401)
   })
@@ -680,7 +688,13 @@ describe('local sockets', () => {
       }
       await sleep(100)
     }
-    await sleep(400)
+    // The last reading of every thread reaches every socket; how long that takes is the box's business.
+    const lastTokens = (sock: Socket, id: string): number | undefined =>
+      sock.frames
+        .flatMap((f) => (f.push === 'sessions' ? f.sessions : f.push === 'session' ? [f.session] : []))
+        .filter((m: { id: string }) => m.id === id)
+        .at(-1)?.context?.tokens
+    await waitFor(() => sockets.every((sock) => ids.every((id, n) => lastTokens(sock, id) === 13_000 - ((13_000 - n) % ids.length))))
     for (const [i, sock] of sockets.entries()) {
       const metaFrames = sock.frames.slice(marks[i]).filter((f) => f.push === 'session' || f.push === 'sessions')
       expect(metaFrames.length).toBeGreaterThan(0)
@@ -726,11 +740,11 @@ describe('session.focus', () => {
     expect(live()).toEqual(['focus-master', 'focus-child', 'focus-other'])
     b.ws.close()
     await b.closed
-    for (let i = 0; i < 40 && server.isInteractive('focus-master'); i++) await sleep(25)
+    await waitFor(() => !server.isInteractive('focus-master'))
     expect(live()).toEqual(['focus-other'])
     a.ws.close()
     await a.closed
-    for (let i = 0; i < 40 && server.isInteractive('focus-other'); i++) await sleep(25)
+    await waitFor(() => !server.isInteractive('focus-other'))
     expect(live()).toEqual([])
   })
 
@@ -783,9 +797,11 @@ describe('live edits', () => {
     edit('b.ts', ['edit-b'])
     // A subagent's edit names its root too: a socket on the root hears it.
     edit('sub.ts', ['sub-of-a', 'edit-a'])
-    await sleep(400)
     const paths = (sock: Socket): string[] =>
       sock.frames.flatMap((f) => (f.push === 'live-edits' ? f.items.map((i: { edit: { path: string } }) => i.edit.path) : f.push === 'live-edit' ? [f.edit.path] : []))
+    await waitFor(() => paths(watchingA).length >= 2)
+    // and long enough after for a push that should not come to have come
+    await sleep(200)
     expect(paths(watchingA)).toEqual(['a.ts', 'sub.ts'])
     expect(paths(watchingNone)).toEqual([])
     for (const sock of [watchingA, watchingNone]) sock.ws.close()
@@ -812,7 +828,7 @@ describe('session.events with subscribe', () => {
       remote.frames.flatMap((f) =>
         f.push === 'events' && f.sessionId === id ? f.rows.map((r: { seq: number }) => r.seq) : f.push === 'event' && f.row.sessionId === id ? [f.row.seq] : []
       )
-    for (let i = 0; i < 80 && pushed().length === 0; i++) await sleep(25)
+    await waitFor(() => pushed().length > 0)
     expect(pushed()).toEqual([4])
     // Without the flag the page says nothing, and the socket hears nothing new.
     const plain = await open(`ws://127.0.0.1:${server.port}/?profile=remote`)
@@ -831,7 +847,7 @@ describe('remote.settings.set', () => {
     const local = await open(`ws://127.0.0.1:${server.port}`)
     const off = await local.request('remote.settings.set', { enabled: false })
     expect(off.ok).toBe(true)
-    for (let i = 0; i < 50 && server.remote !== null; i++) await sleep(20)
+    await waitFor(() => server.remote === null)
     expect(server.remote).toBeNull()
     expect((await local.request('remote.status')).result).toMatchObject({
       enabled: false,
@@ -841,7 +857,7 @@ describe('remote.settings.set', () => {
     await expect(fetch(base + '/healthz')).rejects.toThrow()
     const on = await local.request('remote.settings.set', { enabled: true })
     expect(on.ok).toBe(true)
-    for (let i = 0; i < 50 && !(server.remote && server.remote.port > 0); i++) await sleep(20)
+    await waitFor(() => !!(server.remote && server.remote.port > 0))
     expect(server.remote!.port).toBeGreaterThan(0)
     base = `http://127.0.0.1:${server.remote!.port}`
     expect((await call('GET', '/healthz')).body).toBe('ok')
@@ -858,9 +874,7 @@ describe('the relay (remote/relay.ts): a lane to another host through this one',
   const MAC = 'env_relayMac000000000000a'
   const wsBase = (): string => base.replace('http', 'ws')
   const ticketFor = async (token: string): Promise<string> => (await call('POST', '/api/ticket', { headers: bearer(token) })).body.ticket
-  const until = async (test: () => boolean): Promise<void> => {
-    for (let i = 0; i < 200 && !test(); i++) await sleep(25)
-  }
+  const until = (test: () => boolean): Promise<void> => waitFor(test)
 
   it('refuses a lane to a host that is not registered with 503, and names hosts in /api/hello to a known caller only', async () => {
     const { token } = await server.remoteAuth.createKey({ name: 'phone-relay-0', audience: 'client', caps: ['operate'], createdBy: 'local' })

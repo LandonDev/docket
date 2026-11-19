@@ -70,6 +70,14 @@ const text = (r: AddonCallResult) => (r.content[0] as { text: string }).text
 const call = (d: Downstream, tool: string, args: Record<string, unknown> = {}, opts: { signal?: AbortSignal; timeoutMs?: number } = {}) =>
   d.call(tool, args, { timeoutMs: 30_000, ...opts })
 const logged = () => readFileSync(LOG, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>)
+/** How many calls of `tool` the fake server has taken (its log): a test that must act while one is in flight waits for it, not for a guess in milliseconds. */
+const received = (tool: string): number => {
+  try {
+    return logged().filter((e) => e.tool === tool && !e.cancelled).length
+  } catch {
+    return 0
+  }
+}
 
 describe('redact', () => {
   it('replaces every value of four characters or more, longest first', () => {
@@ -140,8 +148,9 @@ describe('a stdio add-on', () => {
     grant = fields({ FAKE_TOKEN: TOKEN })
     await t.down.grantsDropped()
     // A grant rotated during a slow call: the late error names the old token, redacted.
+    const before = received('slow')
     const slow = call(t.down, 'slow', { ms: 300, fail: true })
-    await new Promise((r) => setTimeout(r, 50))
+    await until(() => received('slow') > before)
     grant = fields({ FAKE_TOKEN: 'rotated-token-2b81' })
     const regranted = t.down.grantsDropped()
     const late = await slow
@@ -175,8 +184,9 @@ describe('a stdio add-on', () => {
     await t.down.grantsDropped()
     expect(t.down.current.state).toBe('ready')
     const firstPid = t.down.pid
+    const before = received('slow')
     const slow = call(t.down, 'slow', { ms: 300 })
-    await new Promise((r) => setTimeout(r, 30))
+    await until(() => received('slow') > before)
     grant = fields({ FAKE_TOKEN: 'two-value' })
     const regrant = t.down.grantsDropped()
     expect(text(await slow)).toBe('waited 300')
