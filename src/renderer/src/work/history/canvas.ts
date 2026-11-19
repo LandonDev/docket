@@ -1,19 +1,22 @@
 import { defineChunk } from "../../lib/lazyChunk";
 import { History } from "../icons";
-import type { CanvasKindDef } from "../canvas/kind";
+import { defineCanvasKind } from "../canvas/kind";
+import type { HistoryState } from "./HistoryCanvas";
 
 /**
- * The history kind of canvas item (docs/agents/work-history.md). A stub: its
- * body says "Not built yet" until the history pillar's milestone builds it
- * (`PILLAR_MILESTONE` in src/shared/work/ids.ts), which then points `chunk`
- * at its own module and corrects what the kind claims. Nothing claims it: the pane opens it by name, on the source of the item whose versions it shows.
+ * The history kind of canvas item (docs/agents/work-history.md): a
+ * document's versions, the compare of any two, and the review of a branch
+ * of suggestions. Nothing claims it: the pane opens it by name
+ * (`shell.openHistory`), on the source of the document whose versions it
+ * shows (a LifeOS document or a `.tcdoc`). It is its own history, so the
+ * pane draws no History for it.
  */
-export const historyCanvas: CanvasKindDef = {
+export const historyCanvas = defineCanvasKind<HistoryState>({
   kind: "history",
   label: "History",
   icon: History,
   opens: {},
   phone: "web",
   guestable: false,
-  chunk: defineChunk("work-history-canvas", () => import("../canvas/NotBuilt")),
-};
+  chunk: defineChunk("work-history-canvas", () => import("./HistoryCanvas")),
+});
