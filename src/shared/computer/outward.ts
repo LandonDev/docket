@@ -493,6 +493,33 @@ function elementAt(screen: Screen, point: readonly number[]): number | null {
   return best?.index ?? null
 }
 
+/** A name as the service matches it (NamedTarget.swift): trimmed, three dots read as an ellipsis, case-blind. */
+const nameKey = (name: string): string => name.trim().replace(/\.\.\./g, '…').toLowerCase()
+
+/** Every element a step's `named` may resolve to when it runs, in reading order: a line of text is named by its string. */
+function namedElements(screen: Screen, name: string): number[] {
+  const want = nameKey(name)
+  if (!want) return []
+  return [...screen.elements.values()]
+    .filter((e) => {
+      const own = e.role === 'text' ? (e.name ?? e.value) : e.name
+      return own !== undefined && nameKey(own) === want
+    })
+    .map((e) => e.index)
+    .sort((a, b) => a - b)
+}
+
+/** The one element a pointer is on: the element it was put on, what lies under its point, or the one control its name finds; null when nobody can tell. */
+function pointedAt(screen: Screen, p: PointerAt): number | null {
+  if (!p) return null
+  if ('element' in p) return screen.elements.has(p.element) ? p.element : null
+  if ('coordinate' in p) return elementAt(screen, p.coordinate)
+  const hits = namedElements(screen, p.named)
+  // Among several, the service takes the one that acts by itself.
+  const acting = hits.length > 1 ? hits.filter((i) => pressable(screen.elements.get(i)!)) : hits
+  return acting.length === 1 ? acting[0]! : null
+}
+
 const hostOf = (url: string): string | null => {
   try {
     return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase()
@@ -713,7 +740,12 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
     if (screen && acts) {
       const byPoint = a.element === undefined && a.coordinate !== undefined
       const lands = a.element ?? (a.coordinate ? elementAt(screen, a.coordinate) : targetless ? pointerOn : null)
-      const hit = lands !== null && lands !== undefined ? outwardControl(screen, lands) : null
+      // A name resolves when the step runs, to any element that bears it: an icon inside a Send ("paperplane") is held as
+      // the Send is. So is a press where the pointer was put by such a name.
+      const byName = a.element === undefined && a.coordinate === undefined ? (a.named ?? (targetless && pointerOn === null ? pointerName : null)) : null
+      const candidates = lands !== null && lands !== undefined ? [lands] : byName !== null ? namedElements(screen, byName) : []
+      let hit: ReturnType<typeof outwardControl> = null
+      for (const i of candidates) if ((hit = outwardControl(screen, i))) break
       if (hit) return { step, why: byPoint || targetless ? 'position' : 'control', label: cap(hit.verb), on: say(hit.element) }
       // `confirm` on a field commits it as Return does.
       if (a.action === 'perform' && a.name === 'confirm') {
@@ -722,7 +754,7 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
       }
       if (CLICKS.includes(a.action)) {
         pointerOn = lands ?? null
-        if (!targetless) pointerName = null
+        if (!targetless) pointerName = a.named ?? null
       }
     }
     if (screen && (a.action === 'key' || a.action === 'hold_key')) {
@@ -833,7 +865,7 @@ export function pointerAfter(steps: readonly ComputerAction[], before: PointerAt
 /** One element a held step acts on, said without its index: an index is the service session's, and that may not outlive the hold. */
 export interface HeldTarget {
   step: number
-  /** which parameter named it; `focus`: the element a key step goes to; `point`: what lies under a step's coordinate */
+  /** which parameter named it; `focus`: the element a key step goes to; `point`: what lies under a step's coordinate, or under the pointer for a click with no target */
   param: 'element' | 'start_element' | 'focus' | 'point'
   /** role, name and the roles and names above it */
   sig: string
@@ -855,8 +887,13 @@ function placeOf(screen: Screen, index: number): { sig: string; ordinal: number;
   return { sig, ordinal: same.indexOf(index), count: same.length }
 }
 
-/** The elements a call's steps act on, as the screen names them now. Null when a step names one the screen lacks, or clicks a point on none. */
-export function heldTargets(steps: readonly ComputerAction[], screen: Screen): HeldTarget[] | null {
+const targetlessClick = (a: ComputerAction): boolean => CLICKS.includes(a.action) && a.element === undefined && a.coordinate === undefined && a.named === undefined && a.menu === undefined
+
+/**
+ * The elements a call's steps act on, as the screen names them now. Null when a step names one the screen lacks, or
+ * clicks a point on none. `pointer` is where an earlier call left the pointer: a click with no target lands there.
+ */
+export function heldTargets(steps: readonly ComputerAction[], screen: Screen, pointer: PointerAt = null): HeldTarget[] | null {
   const out: HeldTarget[] = []
   for (const [step, a] of steps.entries()) {
     for (const param of ['element', 'start_element'] as const) {
@@ -872,6 +909,14 @@ export function heldTargets(steps: readonly ComputerAction[], screen: Screen): H
       if (!place) return null
       out.push({ step, param: 'point', ...place })
     }
+    // A click with no target lands wherever the pointer is when it runs: it must still be on what he was shown.
+    const at = targetlessClick(a) ? pointerAfter(steps.slice(0, step), pointer) : null
+    if (at) {
+      const index = pointedAt(screen, at)
+      const place = index !== null ? placeOf(screen, index) : null
+      if (!place) return null
+      out.push({ step, param: 'point', ...place })
+    }
   }
   // A key, a typed text or a paste with no target of its own goes to the focus: it must still be where it was.
   const blind = steps.findIndex((a) => ['key', 'hold_key', 'type', 'paste'].includes(a.action) && a.element === undefined && a.named === undefined)
@@ -882,13 +927,46 @@ export function heldTargets(steps: readonly ComputerAction[], screen: Screen): H
   return out
 }
 
-/** What the window holds that would go: the app, and every field's name and value as the screen reader prints them. */
+/** Controls whose surroundings say where a send goes. A reply or a comment sits beside every message of a list, whose words change as messages come. */
+const CONTEXT_VERBS: readonly string[] = RETURN_VERBS.filter((v) => !['reply', 'reply all', 'forward', 'comment'].includes(v))
+
+/**
+ * Who a send goes to, as the window says it beside its fields: every heading (a chat's header "Dana Lee"), and the
+ * lines of text around each control that sends: all of them in a small group or sheet it sits in, and the ones that
+ * stand straight in each larger container up to the window or page (a mail's To line drawn as text). A list's
+ * messages sit deeper and are left out, so a message coming in does not void a press.
+ */
+function sendContext(screen: Screen): string[] {
+  const kept = new Map<number, string>()
+  const keep = (e: ScreenElement): void => {
+    const words = e.role === 'heading' || e.role === 'text' ? (e.name ?? e.value) : undefined
+    if (words?.trim()) kept.set(e.index, `${e.role}|${words}`)
+  }
+  for (const e of screen.elements.values()) if (e.role === 'heading') keep(e)
+  const seen = new Set<number>()
+  for (const c of screen.elements.values()) {
+    if (!['button', 'link', 'menu button'].includes(c.role) || !sends(screen, c, CONTEXT_VERBS, true)) continue
+    for (const box of ancestors(screen, c.index)) {
+      if (!seen.has(box.index)) {
+        seen.add(box.index)
+        const inside = under(screen, box.index)
+        if (NEAR_ROLES.includes(box.role) && inside.length <= NEAR_MAX) inside.forEach(keep)
+        else for (const e of inside) if (e.parent === box.index) keep(e)
+      }
+      if (WIDE_ROLES.includes(box.role)) break
+    }
+  }
+  return [...kept].sort((a, b) => a[0] - b[0]).map(([, words]) => words)
+}
+
+/** What the window holds that would go: the app, every field's name and value as the screen reader prints them, and who it goes to (`sendContext`). */
 export function screenMark(screen: Screen): string {
   const fields = [...screen.elements.values()]
     .filter((e) => TEXT_ROLES.includes(e.role) && e.role !== 'search' && e.role !== 'password')
     .sort((a, b) => a.index - b.index)
     .map((e) => `${e.role}|${e.name ?? ''}|${e.value ?? ''}`)
-  return JSON.stringify([screen.app.bundleId ?? screen.app.name, fields])
+  const context = sendContext(screen)
+  return JSON.stringify(context.length ? [screen.app.bundleId ?? screen.app.name, fields, context] : [screen.app.bundleId ?? screen.app.name, fields])
 }
 
 /**
@@ -896,12 +974,16 @@ export function screenMark(screen: Screen): string {
  * found again by what it is, its index rewritten when the service numbered
  * the window anew. Null when the screen moved on: a field's text changed, a
  * target is gone or is no longer the only one of its kind where it was,
- * the focus or what lies under a click is something else.
+ * the focus or what lies under a click is something else. `pointer` is where
+ * the thread's calls have left the pointer since: a click with no target must
+ * still find it on what he was shown.
  */
-export function restage(steps: readonly ComputerAction[], targets: readonly HeldTarget[], mark: string, screen: Screen): ComputerAction[] | null {
+export function restage(steps: readonly ComputerAction[], targets: readonly HeldTarget[], mark: string, screen: Screen, pointer: PointerAt = null): ComputerAction[] | null {
   if (screenMark(screen) !== mark) return null
   const order = [...screen.elements.keys()].sort((a, b) => a - b)
   const out = steps.map((a) => ({ ...a }))
+  /** clicks with no target, checked once every index above them is rewritten */
+  const pointed: [number, number][] = []
   for (const t of targets) {
     const same = order.filter((i) => sigOf(screen, i) === t.sig)
     if (same.length !== t.count) return null
@@ -912,8 +994,10 @@ export function restage(steps: readonly ComputerAction[], targets: readonly Held
     if (t.param === 'focus') {
       if (screen.focused !== index) return null
     } else if (t.param === 'point') {
-      if (!step.coordinate || elementAt(screen, step.coordinate) !== index) return null
+      if (targetlessClick(step)) pointed.push([t.step, index])
+      else if (!step.coordinate || elementAt(screen, step.coordinate) !== index) return null
     } else step[t.param] = index
   }
+  for (const [step, index] of pointed) if (pointedAt(screen, pointerAfter(out.slice(0, step), pointer)) !== index) return null
   return out
 }

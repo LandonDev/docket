@@ -790,14 +790,16 @@ async function runChecked(
       }
       if (ctx.pressed) {
         // The owner pressed: the call runs as it was held, once the window still holds what he was shown. The targets are
-        // found again by what they are, since the service may have numbered the window anew since.
+        // found again by what they are, since the service may have numbered the window anew since. A click with no
+        // target must find the pointer, wherever the thread's calls have put it since, still on what he was shown.
         const obs = await fresh(false)
         const screen = obs ? screenOfObservation(obs.text, identity) : null
-        const staged = screen ? restage(steps, ctx.pressed.targets, ctx.pressed.mark, screen) : null
+        const staged = screen ? restage(steps, ctx.pressed.targets, ctx.pressed.mark, screen, t.pointer ?? null) : null
         if (!obs || !staged) return { ...refusal(HELD_STALE), stale: true } as ComputerToolOutcome
         remember(t, args.app!, obs)
         lookupApp(t, args.app!)!.needsFull = true
         steps.splice(0, steps.length, ...staged)
+        t.pointer = pointerAfter(staged, t.pointer ?? null)
       } else {
         const acting = steps.some(sendsInput)
         const pointer = t.pointer ?? null
@@ -826,7 +828,7 @@ async function runChecked(
           const obs = await fresh(true)
           const shown = (obs ? screenOfObservation(obs.text, identity) : null) ?? screen ?? { app: identity, focused: null, elements: new Map() }
           // Every step's target is kept by what it is, so the press runs on what he was shown or not at all.
-          const targets = heldTargets(steps, shown) ?? (screen ? heldTargets(steps, screen) : null)
+          const targets = heldTargets(steps, shown, pointer) ?? (screen ? heldTargets(steps, screen, pointer) : null)
           if (!targets) return refusal(HELD_UNPLACED)
           let picture: HeldComputerCall['picture'] = null
           if (obs?.shot) {

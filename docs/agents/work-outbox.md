@@ -196,11 +196,14 @@ step's target can be placed on the read; else it is refused
 (`HELD_UNPLACED`), so a press never runs a bare index or point on whatever
 took its place.
 
-A held call is a `live` row with the window's picture. On his press the
-host reads the window again, finds each target by what it is (role, name
-and the names above it), and runs the call only if every field's text and
-every target are what he was shown; else the row reads `stale` and nothing
-is sent. A restart, a deleted thread and a closed workspace make it stale.
+A click by name is judged against every element the name may find, so an
+icon inside a Send is held as the Send is. A held call is a `live` row with
+the window's picture. On his press the host reads the window again, finds
+each target by what it is (role, name and the names above it), and runs the
+call only if every field's text, who it goes to (every heading, and the text
+beside each Send: a chat's header, a To line drawn as text) and every target
+are what he was shown, and a click with no target still finds the pointer on
+the element it was on; else the row reads `stale` and nothing is sent. A restart, a deleted thread and a closed workspace make it stale.
 
 **What this cannot catch**, in the same class as the shell: a click by
 position on a control the screen reader gives no name (a canvas app, a

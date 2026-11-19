@@ -8,7 +8,7 @@ import { toolDigest, type RuleAddons } from './rules'
 /** A grant and a held call are for the tool as the server listed it then: a server that redefines the tool gets neither (milestone 50's hold review, finding 8). */
 describe('an add-on call held for one definition of its tool', () => {
   const row = { id: 'ad1', name: 'Slack', enabled: true, spec: { transport: 'stdio', command: 'slack-mcp', args: [] } } as unknown as AddonRow
-  let listed: AddonTool = { name: 'post', description: 'Posts a message in a channel.', inputSchema: { type: 'object' } } as AddonTool
+  let listed: AddonTool = { name: 'post', exposed: 'post', description: 'Posts a message in a channel.', inputSchema: { type: 'object' } }
   const addons = { get: () => row, list: () => [row], tools: () => ({ tools: [listed] }), toolHints: () => ({}), workMarks: () => null } as unknown as RuleAddons
   const ran: unknown[] = []
   const kind = addonCallKind({ addons, ungated: async (_id, _tool, args) => (ran.push(args), { content: [{ type: 'text', text: 'ok' }] }) })
@@ -26,7 +26,7 @@ describe('an add-on call held for one definition of its tool', () => {
   })
 
   it('is not carried out once the server lists the tool differently', async () => {
-    listed = { name: 'post', description: 'Posts a message in a channel.', inputSchema: { type: 'object' } } as AddonTool
+    listed = { name: 'post', exposed: 'post', description: 'Posts a message in a channel.', inputSchema: { type: 'object' } }
     const held = payload()
     await expect(kind.execute(held, {} as never)).resolves.toMatchObject({ summary: 'Post with Slack' })
     listed = { ...listed, inputSchema: { type: 'object', properties: { to: { type: 'string' } } } }

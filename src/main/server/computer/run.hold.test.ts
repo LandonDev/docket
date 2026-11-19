@@ -557,6 +557,29 @@ describe('the attacker under full access', () => {
     expect(acts(h)).toBe(1)
   })
 
+  it('answers stale and sends nothing when a later call moved the pointer a held targetless click lands on off Send', async () => {
+    useHold()
+    const { h } = await thread('work')
+    await h.run('computer_act', { app: 'TextEdit', action: 'mouse_move', element: SEND })
+    await h.run('computer_act', { app: 'TextEdit', action: 'left_click' })
+    expect(held[0].targets).toEqual([expect.objectContaining({ step: 0, param: 'point', sig: expect.stringMatching(/^button:Send < /) })])
+    await h.run('computer_act', { app: 'TextEdit', action: 'mouse_move', element: PLAIN })
+    expect(acts(h)).toBe(2)
+    expect(await held[0].carryOut()).toMatchObject({ stale: true, body: HELD_STALE })
+    expect(acts(h)).toBe(2)
+  })
+
+  it('clicks once on the press when the pointer is still on Send', async () => {
+    useHold()
+    const { h } = await thread('work')
+    await h.run('computer_act', { app: 'TextEdit', action: 'mouse_move', element: SEND })
+    await h.run('computer_act', { app: 'TextEdit', action: 'left_click' })
+    const out = await held[0].carryOut()
+    expect(out.isError).toBe(false)
+    expect(out.stale).toBeUndefined()
+    expect(acts(h)).toBe(2)
+  })
+
   it('holds a mouse down after an earlier call left the pointer on Send', async () => {
     useHold()
     const { h } = await thread('work')

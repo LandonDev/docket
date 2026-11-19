@@ -1080,3 +1080,73 @@ describe('readOutward: what the fourth round closed in mail', () => {
     expect(readOutward(steps({ action: 'key', text: 'super+Return' }), mail)).toBeNull()
   })
 })
+
+describe('readOutward, heldTargets and screenMark: what the fifth review closed', () => {
+  it('holds a click by a name that is only an icon inside a Send, as the same click by index is', () => {
+    const slack = screen(SLACK_TEXT, SLACK)
+    expect(readOutward(steps({ action: 'left_click', named: 'paperplane' }), slack)).toEqual({ step: 0, why: 'control', label: 'Send now', on: 'button "Send now"' })
+    // the service matches a name case-blind, and a press where the pointer was put by such a name lands there too
+    expect(readOutward(steps({ action: 'perform', name: 'press', named: 'Paperplane' }), slack)).toMatchObject({ label: 'Send now' })
+    expect(readOutward(steps({ action: 'mouse_move', named: 'paperplane' }, { action: 'left_click' }), slack)).toMatchObject({ step: 1, why: 'position', label: 'Send now' })
+    expect(readOutward(steps({ action: 'left_click', named: 'paperplane' }), null)).toBeNull()
+    expect(readOutward(steps({ action: 'left_click', named: 'Attach' }), slack)).toBeNull()
+  })
+
+  const CHAT = `app "Slack" · window "Slack" · 1280×800 · focused [7]
+[1] window "Slack"
+  [2] heading "Dana Lee"
+  [3] scroll area
+    [4] group
+      [5] text = "See you at 5"
+  [6] group "Composer"
+    [7] text area "Message" = "the wire details" focused caret 16
+    [8] button "Send"`
+
+  it('marks who a send goes to: a heading the press finds changed refuses, a message coming in does not', () => {
+    const s = steps({ action: 'left_click', element: 8 })
+    const now = screen(CHAT, SLACK)
+    const targets = heldTargets(s, now)!
+    const mark = screenMark(now)
+    expect(restage(s, targets, mark, screen(CHAT, SLACK))).toEqual(s)
+    expect(restage(s, targets, mark, screen(CHAT.replace('heading "Dana Lee"', 'heading "Sam Ortiz"'), SLACK))).toBeNull()
+    expect(restage(s, targets, mark, screen(CHAT.replace('      [5] text = "See you at 5"', '      [5] text = "See you at 5"\n      [9] text = "Running late"'), SLACK))).toEqual(s)
+  })
+
+  it("marks a mail's To line drawn as text beside the Send", () => {
+    const TO = `app "Mail" · window "New Message" · 800×600 · focused [5]
+[1] window "New Message"
+  [2] toolbar
+    [3] button "Send"
+  [4] text = "To: Dana Lee"
+  [5] text area "Body" = "Hi" focused caret 2`
+    const s = steps({ action: 'left_click', element: 3 })
+    const now = screen(TO, MAIL)
+    expect(restage(s, heldTargets(s, now)!, screenMark(now), screen(TO.replace('To: Dana Lee', 'To: Sam Ortiz'), MAIL))).toBeNull()
+  })
+
+  it('keeps what the pointer is on for a click with no target, and refuses the press when the pointer moved off it', () => {
+    const s = steps({ action: 'left_click' })
+    const now = screen(COMPOSE_TEXT, MAIL)
+    const mark = screenMark(now)
+    const targets = heldTargets(s, now, { coordinate: [30, 20] })!
+    expect(targets).toEqual([{ step: 0, param: 'point', sig: 'image:paperplane < button:Send < toolbar: < window:New Message', ordinal: 0, count: 1 }])
+    expect(restage(s, targets, mark, now, { coordinate: [30, 20] })).toEqual(s)
+    expect(restage(s, targets, mark, now, { element: 4 })).toEqual(s)
+    // the thread put the pointer on the unnamed button beside it since, or nobody knows where it is
+    expect(restage(s, targets, mark, now, { coordinate: [110, 20] })).toBeNull()
+    expect(restage(s, targets, mark, now, { element: 7 })).toBeNull()
+    expect(restage(s, targets, mark, now)).toBeNull()
+    // a pointer on nothing the read placed is no target he can be shown
+    expect(heldTargets(s, now, { coordinate: [900, 900] })).toBeNull()
+  })
+
+  it('checks a pointer this call puts on its target after the index is found again', () => {
+    const s = steps({ action: 'mouse_move', element: 3 }, { action: 'left_click' })
+    const now = screen(COMPOSE_TEXT, MAIL)
+    const targets = heldTargets(s, now, { element: 7 })!
+    expect(targets.map((t) => [t.step, t.param])).toEqual([[0, 'element'], [1, 'point']])
+    expect(restage(s, targets, screenMark(now), screen(COMPOSE_TEXT.replace(/\[(\d+)\]/g, (_, n: string) => `[${Number(n) + 100}]`), MAIL), { element: 107 })).toEqual(
+      steps({ action: 'mouse_move', element: 103 }, { action: 'left_click' })
+    )
+  })
+})
