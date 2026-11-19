@@ -32,11 +32,16 @@ Every change is written when it happens: a firing's run row and the
 routine's next due time go in one savepoint before the thread is asked
 for; a cursor moves as soon as a page is handled. So a kill at any point
 loses no schedule and never fires twice. At boot (`recover`) a run still
-`starting` reads failed ("the host stopped before its thread started"); a
-`running` run whose thread settled while the host was down settles now.
+`starting` reads failed ("the host stopped before its thread started")
+unless its thread was made before the stop; a `running` run whose thread
+settled while the host was down settles now. A thread left `stopped` stays
+its run's: the boot resumer or the owner may finish it, and firings fold
+into it until the next due time finds it still stopped, when it is closed
+as failed and a fresh run starts.
 
-Run states: `starting`, `running`, then `quiet` (nothing held, nothing
-asked, no failure: its thread is marked read), `held` (`Held N`: acts in
+Run states: `starting`, `running`, then, once its thread has worked and
+every thread under it is done, `quiet` (nothing held, nothing asked, no
+failure: its thread is marked read), `held` (`Held N`: acts in
 `work_held_acts` plus LifeOS drafts the tree made; unread), `asked`
 (unread), `failed` (unread), `fired` (a watch woke its thread), `skipped`
 (unused yet).
@@ -52,7 +57,12 @@ asked, no failure: its thread is marked read), `held` (`Held N`: acts in
   `tz` across clock changes. Due times missed while the host was down fold
   into one run (`folded` = missed − 1; its message says how many it
   covers); the next due time is the first after now. A firing due while the
-  routine's last run still works folds into that run. Resuming a paused
+  routine's last run still works folds into that run, and what it heard (a
+  mail, a read's answer) is told to that run's thread. A firing reads its
+  routine afresh: one paused, changed or removed since the pass looked fires
+  nothing (Run now fires a paused one). Nothing slow is awaited in a pass: a
+  read (60 s at most, `READ_TIMEOUT_MS`) or a thread's start runs on its
+  own, and a routine whose read has not answered is skipped. Resuming a paused
   routine starts its clock from now: the paused times are not owed.
 - **lifeos** (`{kinds}`): one `lifeosEvents:since({sector, after})`
   subscription per workspace (its sector), from the oldest cursor among its
@@ -96,10 +106,12 @@ whose thread is gone ends with a failed run.
   enabled, no due time). It runs nothing; the Routines view lists it first
   with Not now and Create…, which opens the form filled, and his Save makes
   it a routine.
-- `watch_create` (tool): only a tool he set to Runs, in the thread's
-  workspace or a global add-on allowed in Work; arguments fixed now; every
-  5 to 1440 minutes; ends on its day or at its first firing; at most 10
-  live per thread. It never starts a model run.
+- `watch_create` (tool): only a tool he set to Runs and its server calls
+  read-only, in the thread's workspace or a global add-on allowed in Work;
+  arguments fixed now; every 5 to 1440 minutes; ends on its day (at most 30
+  days on) or at its first firing; at most 10 live per thread. It never
+  starts a model run. The owner's own form may watch any tool he set to
+  Runs.
 - A routine's grant: `work.outbox.grant({routine: true})` from one of its
   own held acts (M10). Nothing is granted on the form.
 
@@ -120,8 +132,10 @@ the thread it was made in or wakes, then every run as a 32px row (time,
 mark, outcome) that opens its thread (`workOpenPort`, registered by App).
 The header's New routine and Edit open the form ("A form"): Name, What to
 do, Starts (Schedule, LifeOS, Read, File, each swapping its fields), Ends
-(Never, On a day, After one run). Read offers only tools set to Runs. Delete
-asks first.
+(Never, On a day, After one run). Read offers only tools set to Runs. A
+trigger he leaves untouched is saved as it was, so an agent's proposal the
+form cannot show exactly (every 5 minutes, Mon and Fri) is created as
+proposed. Delete asks first.
 
 Not built here: the week grid and "By what starts it" (the prototype's other
 two views), a scope menu across workspaces (the view is one workspace's),
