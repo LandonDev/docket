@@ -1,4 +1,5 @@
 import type { SheetChart, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
+import { isLightScheme } from "../../lib/appearance";
 import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
 
@@ -65,7 +66,8 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     chart: (chart, remove = false) => call("work.sheets.chart", { chart, remove }),
     exportAs: (format, sheet) => call("work.sheets.export", { format, ...(sheet ? { sheet } : {}) }),
     switchApp: async () => {
-      const { url } = await call<{ opened: true; url?: string }>("work.sheets.switch");
+      // The full editor is a page of its own: it opens in the theme this window wears.
+      const { url } = await call<{ opened: true; url?: string }>("work.sheets.switch", { scheme: isLightScheme() ? "light" : "dark" });
       if (url) await openUrl(url);
     },
     onPush: (listener) =>

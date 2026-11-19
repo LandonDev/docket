@@ -191,8 +191,8 @@ export const SheetsRequestSchemas = [
   request('work.sheets.create', z.object({ sessionId: z.string().min(1).max(100), title: z.string().min(1).max(200) })),
   /** → SheetView: adds or moves one of our charts, or with `remove` takes it off */
   request('work.sheets.chart', z.object({ itemId, chart: ChartSchema, remove: z.boolean().default(false) })),
-  /** → { opened: true, url? }: opens the file in the app `SheetView.reach.to` names (desktop Excel for a package; the full editor on the box answers its page's `url`, which the canvas opens); refused where that app is not on this host */
-  request('work.sheets.switch', z.object({ itemId })),
+  /** → { opened: true, url? }: opens the file in the app `SheetView.reach.to` names (desktop Excel for a package; the full editor on the box answers its page's `url`, which the canvas opens); refused where that app is not on this host. `scheme` is the theme the asking window wears: the full editor opens in it, and follows the browser's system where none is sent (the phone) */
+  request('work.sheets.switch', z.object({ itemId, scheme: z.enum(['dark', 'light']).optional() })),
   /**
    * → { path }: the sheet written out. `xlsx`: a new package from the sheet (a LifeOS sheet, a
    * `.tcsheet`, a sheet read from a .csv), beside the .csv or among the item's own files. `csv`: one

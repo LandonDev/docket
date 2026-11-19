@@ -82,13 +82,13 @@ export function fullEditorOrigin(ctx: Pick<WorkCtx, 'db'>, env: NodeJS.ProcessEn
  * the owner's own devices reach it by. Never for a thread, and never for a
  * key short of admin (a guest has none at all).
  */
-export async function openFull(ctx: WorkCtx, item: CanvasItem, path: string, by: Caller): Promise<string> {
+export async function openFull(ctx: WorkCtx, item: CanvasItem, path: string, by: Caller, scheme?: 'dark' | 'light'): Promise<string> {
   if (by.kind === 'model') throw new Error('The full editor is the owner\'s: a thread cannot open it.')
   if (by.kind === 'remote' && !by.caps.includes('admin')) throw new Error('The full editor opens only on the owner\'s own devices.')
   // The route is the Work service's: it must be running before a token is worth anything.
   const local = ctx.service.url('/w/full/')
   const origin = by.kind === 'local' ? local.replace(/\/w\/full\/$/, '') : fullEditorOrigin(ctx)
   if (!origin) throw new Error('The full editor has no address of its own on this host yet, so it opens only in a window on this host (docs/agents/work-sheets.md, "The full editor").')
-  const token = await fullEditorOf(ctx).open({ path, itemId: item.id, title: item.title })
+  const token = await fullEditorOf(ctx).open({ path, itemId: item.id, title: item.title, ...(scheme ? { scheme } : {}) })
   return `${origin}/w/full/${token}/`
 }

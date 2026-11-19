@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cacheControlOf, fullEditorRoute, forwardedHeaders } from '../../service/routes/fullEditor'
 import type { RouteCtx } from '../../service/routes/route'
-import { FullEditor, signHs256, verifyHs256, type FullOpen, type SavedTo } from './editor'
+import { FullEditor, signHs256, uiThemeOf, verifyHs256, type FullOpen, type SavedTo } from './editor'
 import { fullEditorOrigin, openFull } from './index'
 import { EDITOR_PATHS, FULL_ROUTE, editorPage, lookupSocketOf } from './wire'
 
@@ -165,6 +165,29 @@ describe.skipIf(process.platform !== 'linux')('the full editor', () => {
     const config = JSON.parse(/DocEditor\('editor', (.*)\)<\/script>/.exec(page.body)![1]!) as { document: { url: string } }
     expect(config.document.url).toMatch(/^http:\/\/127\.0\.0\.2:\d+\/file\/[0-9a-f]{48}$/)
     expect((await fetch(config.document.url)).status).toBe(200)
+  })
+
+  it('opens in the theme of the window that asked, and follows the browser\'s system when none is sent', async () => {
+    const path = workbook()
+    const themeOf = (token: string): unknown => {
+      const open = (fe as unknown as { opens: Map<string, FullOpen> }).opens.get(token)!
+      const signed = fe.configOf(open) as { token: string; editorConfig: { customization: { uiTheme: string } } }
+      // The theme is inside the signed config: the docservice takes it from nowhere else.
+      expect(JSON.parse(Buffer.from(signed.token.split('.')[1], 'base64url').toString()).editorConfig.customization.uiTheme).toBe(signed.editorConfig.customization.uiTheme)
+      return signed.editorConfig.customization.uiTheme
+    }
+    // The phone sends none.
+    const token = await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
+    expect(themeOf(token)).toBe('theme-system')
+    // The same file from a light window: the same session, in that window's theme the next time its page loads.
+    expect(await fe.open({ path, itemId: 'i1', title: 'Report.xlsx', scheme: 'light' })).toBe(token)
+    expect(themeOf(token)).toBe('theme-light')
+    expect(await fe.open({ path, itemId: 'i1', title: 'Report.xlsx', scheme: 'dark' })).toBe(token)
+    expect(themeOf(token)).toBe('theme-dark')
+    // A press that names no theme leaves the one it has.
+    await fe.open({ path, itemId: 'i1', title: 'Report.xlsx' })
+    expect(themeOf(token)).toBe('theme-dark')
+    expect([uiThemeOf('light'), uiThemeOf('dark'), uiThemeOf(undefined)]).toEqual(['theme-light', 'theme-dark', 'theme-system'])
   })
 
   it('a save lands in the file, keeping its mode; when everyone has left the token reaches nothing', async () => {

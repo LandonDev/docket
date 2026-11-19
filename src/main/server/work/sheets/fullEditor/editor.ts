@@ -77,7 +77,12 @@ export interface FullOpen {
   /** someone has had it open in the editor */
   seen: boolean
   users: number
+  /** the theme of the window that asked for it; absent, the editor follows the browser's system */
+  scheme?: 'dark' | 'light'
 }
+
+/** The editor's own name for the theme an open asked for (ONLYOFFICE's `uiTheme`). */
+export const uiThemeOf = (scheme: 'dark' | 'light' | undefined): string => (scheme ? `theme-${scheme}` : 'theme-system')
 
 /** Where a save from the editor went. */
 export interface SavedTo {
@@ -163,9 +168,11 @@ export class FullEditor {
   /**
    * Opens a workbook: starts what is not running and answers the open's
    * token. A file already open answers the same token, so two presses never
-   * make two sessions that would save over each other.
+   * make two sessions that would save over each other; it takes the theme of
+   * the latest press, which the editor wears the next time its page loads
+   * (the theme is read when the editor starts, never live).
    */
-  open(o: { path: string; itemId: string; title: string }): Promise<string> {
+  open(o: { path: string; itemId: string; title: string; scheme?: 'dark' | 'light' }): Promise<string> {
     return this.serial(() => this.openNow(o))
   }
 
@@ -175,12 +182,16 @@ export class FullEditor {
     return run
   }
 
-  private async openNow(o: { path: string; itemId: string; title: string }): Promise<string> {
+  private async openNow(o: { path: string; itemId: string; title: string; scheme?: 'dark' | 'light' }): Promise<string> {
     if (!this.deps.enabled()) throw new Error('Work is off on this host.')
     const toolDir = this.deps.toolDir()
     if (process.platform !== 'linux' || !toolDir) throw new Error('The full editor is not installed on this host.')
     const real = realpathSync(o.path)
-    for (const open of this.opens.values()) if (realOr(open.path) === real) return open.token
+    for (const open of this.opens.values()) {
+      if (realOr(open.path) !== real) continue
+      if (o.scheme) open.scheme = o.scheme
+      return open.token
+    }
     this.quietSince = this.now()
     await this.listen()
     await this.docservice(toolDir)
@@ -191,7 +202,7 @@ export class FullEditor {
     const snapshot = join(files, `${id}.${fileType}`)
     const stamp = stampOf(o.path)
     copyFileSync(o.path, snapshot)
-    const open: FullOpen = { token: newToken(), id, path: o.path, itemId: o.itemId, title: o.title, fileType, snapshot, stamp, at: this.now(), seen: false, users: 0 }
+    const open: FullOpen = { token: newToken(), id, path: o.path, itemId: o.itemId, title: o.title, fileType, snapshot, stamp, at: this.now(), seen: false, users: 0, ...(o.scheme ? { scheme: o.scheme } : {}) }
     this.opens.set(open.token, open)
     this.byId.set(open.id, open)
     this.deps.log(`[full-editor] opened ${basename(o.path)}`)
@@ -215,7 +226,7 @@ export class FullEditor {
         mode: 'edit',
         lang: 'en',
         user: { id: 'owner', name: 'Owner' },
-        customization: { forcesave: true, autosave: true, compactHeader: true, uiTheme: 'theme-system' }
+        customization: { forcesave: true, autosave: true, compactHeader: true, uiTheme: uiThemeOf(open.scheme) }
       },
       type: 'desktop',
       width: '100%',

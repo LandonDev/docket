@@ -180,7 +180,7 @@ export const sheets: WorkModule = {
         // Google's own editor, in the system browser.
         if (held.at === 'google') return handled({ opened: true as const, url: await (await import('../google/grid')).webLink(ctx, held.ref) })
         if (held.at !== 'package') throw new Error('This sheet opens only here for now.')
-        if (fullEditorHere(ctx.dataDir)) return handled({ opened: true as const, url: await openFull(ctx, item!, held.path, by) })
+        if (fullEditorHere(ctx.dataDir)) return handled({ opened: true as const, url: await openFull(ctx, item!, held.path, by, req.params.scheme) })
         await openInExcel(held.path)
         return handled({ opened: true as const })
       }
