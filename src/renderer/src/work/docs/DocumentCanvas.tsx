@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { DocMode, DocOpen, DocWritten } from "@shared/contract-work-docs";
 import type { CanvasSource, ContextChip, Principal } from "@shared/work";
 import {
@@ -168,9 +168,30 @@ export function TitleField({ text, rename }: { text: string; rename(title: strin
   );
 }
 
-/** The document's own tools on the kind's bar: Share (milestone 31), only on what can be shared. */
+/** The items whose document is open now: the bar's Share waits for it, so a document that did not open offers none. */
+const openNow = new Set<string>();
+const openWatchers = new Set<() => void>();
+
+export function markOpen(itemId: string, open: boolean): void {
+  if (openNow.has(itemId) === open) return;
+  if (open) openNow.add(itemId);
+  else openNow.delete(itemId);
+  for (const watcher of openWatchers) watcher();
+}
+
+function useOpenNow(itemId: string): boolean {
+  return useSyncExternalStore(
+    (watcher) => {
+      openWatchers.add(watcher);
+      return () => openWatchers.delete(watcher);
+    },
+    () => openNow.has(itemId),
+  );
+}
+
+/** The document's own tools on the kind's bar: Share (milestone 31), only on what can be shared, once it has opened. */
 export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
-  return <ShareButton env={env} source={source} title={item.title} />;
+  return useOpenNow(item.id) ? <ShareButton env={env} source={source} title={item.title} /> : null;
 }
 
 /** A Word, OpenDocument or RTF file becomes a `.tcdoc` first (work/formats, milestone 21); the rest open as they are. */
@@ -187,6 +208,10 @@ function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<
   useEffect(() => {
     shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Did not open", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);
+  useEffect(() => {
+    markOpen(item.id, !!opened && "open" in opened);
+    return () => markOpen(item.id, false);
+  }, [item.id, opened]);
   // A failed open is said once, on the state line with Retry; the body under it stays empty rather than pulse.
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>

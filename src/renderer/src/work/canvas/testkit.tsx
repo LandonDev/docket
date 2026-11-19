@@ -69,8 +69,8 @@ export function fakeHost(initial: CanvasItem[] = [], wire?: { pushes: Set<(push:
 }
 
 /** A kind whose body hands the test its `shell`, so the test feeds the frame as a real kind would. */
-/** `bar`: the kind's tools; `"empty"`, a `Bar` that renders nothing; `"end"`, one tool at the start and one sent to the slot's end. */
-export function drivenKinds(onShell: (shell: CanvasShell, props: CanvasBodyProps) => void, parts: { bar?: boolean | "empty" | "end"; tabEnd?: boolean } = {}): Record<CanvasKind, CanvasKindDef> {
+/** `bar`: the kind's tools; `"empty"`, a `Bar` that renders nothing; `"end"`, one tool at the start and one sent to the slot's end; `"narrow"`, a tool and one marked to go in the narrow form. */
+export function drivenKinds(onShell: (shell: CanvasShell, props: CanvasBodyProps) => void, parts: { bar?: boolean | "empty" | "end" | "narrow"; tabEnd?: boolean } = {}): Record<CanvasKind, CanvasKindDef> {
   function Body(props: CanvasBodyProps) {
     const { shell } = props;
     useEffect(() => {
@@ -82,6 +82,17 @@ export function drivenKinds(onShell: (shell: CanvasShell, props: CanvasBodyProps
     Body,
     ...(parts.bar === "empty"
       ? { Bar: () => null }
+      : parts.bar === "narrow"
+        ? {
+            Bar: () => (
+              <>
+                <span data-testid="kind-tools">Zoom</span>
+                <span data-testid="kind-wide" data-narrow-hide="">
+                  Notes and Transcript
+                </span>
+              </>
+            ),
+          }
       : parts.bar === "end"
         ? {
             Bar: () => (

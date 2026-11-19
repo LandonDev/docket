@@ -28,11 +28,19 @@ import { pushSample, releaseVelocity, rubber, suppressTextSelection, type DragSa
  * board yields first (DESIGN "Panels"). A view with something of its own to
  * lead the header (the canvas pane's tab row) passes `lead` in the title's
  * place: the header then sits on the strip's fill at the strip's inset. A
- * view that passes `narrowBelow` keeps its board whole in a shell narrower
- * than that: the board takes the full width, and the open chat lies over its
- * body under the header, so the board's header and the conversation toggle
- * never leave.
+ * view that passes `narrowFold` keeps its board whole in a shell narrower
+ * than `NARROW_FOLD`: the board takes the full width, and the open chat lies
+ * over its body under the header, so the board's header and the conversation
+ * toggle never leave. That layout is a container query on the shell, the same
+ * at run time and in a static render; only the board body's `inert` under the
+ * chat is measured.
  */
+
+/** Under this shell width a `narrowFold` view's chat lies over its board: the chat's 360px and the board's 320px. The classes below spell it. */
+export const NARROW_FOLD = 680;
+const FOLD_BOARD = "@max-[680px]/split:basis-full!";
+const FOLD_SASH = "@max-[680px]/split:hidden";
+const FOLD_CHAT = "@max-[680px]/split:absolute @max-[680px]/split:inset-x-0 @max-[680px]/split:bottom-0 @max-[680px]/split:min-w-0 @max-[680px]/split:bg-background";
 
 /** The split's bounds in percent of the shell. A fitted board drawn under
  *  30% keeps its own width as the lower bound for the drag that starts there. */
@@ -299,7 +307,7 @@ export function SplitShell({
   held,
   fit,
   splitState,
-  narrowBelow,
+  narrowFold = false,
   className = "",
 }: {
   /** The board's body; the header is drawn from `title`. */
@@ -328,15 +336,16 @@ export function SplitShell({
   /** The split, held by a view that unmounts the shell for a while (the master
    *  board's child pane) so the person's split is there when it comes back. */
   splitState?: SplitState;
-  /** Under this shell width (px) the board keeps the full width and the open chat lies over its body; absent, the board yields to the chat's 360px. */
-  narrowBelow?: number;
+  /** Under `NARROW_FOLD` of shell the board keeps the full width and the open chat lies over its body; absent, the board yields to the chat's 360px. */
+  narrowFold?: boolean;
   className?: string;
 }) {
   const ownSplit = useSplit(50);
   const { initial, split, setSplit, manual, setManual, dragging, rootRef, startDrag } = splitState ?? ownSplit;
   const fitted = fit !== undefined && !manual;
   const basis = fitted ? `min(${String(fit)}px, 50%)` : `${String(split)}%`;
-  const shellWidth = useShellWidth(rootRef, fitted || (hasBoard && narrowBelow !== undefined));
+  const fold = hasBoard && narrowFold;
+  const shellWidth = useShellWidth(rootRef, fitted || fold);
   // While a fit is drawn the keys move from the board as it stands, not from 50.
   const drawn = fitted && shellWidth > 0 ? Math.min((fit / shellWidth) * 100, 50) : split;
   const resetSplit = (): void => {
@@ -359,8 +368,8 @@ export function SplitShell({
   });
   const entered = useLiveEntry(hasBoard);
   const folded = hasBoard && collapsed;
-  // Too narrow for both: the chat, while open, lies over the board's body.
-  const over = hasBoard && !folded && narrowBelow !== undefined && shellWidth > 0 && shellWidth < narrowBelow;
+  // Too narrow for both: the chat, while open, lies over the board's body (the layout is CSS; this is for `inert`).
+  const over = fold && !folded && shellWidth > 0 && shellWidth < NARROW_FOLD;
   const header = title !== undefined || lead !== undefined;
   const chatRef = useRef<HTMLDivElement | null>(null);
   const width = useShownWidth(chatRef, !folded);
@@ -379,14 +388,14 @@ export function SplitShell({
     rootRef.current?.querySelector<HTMLElement>("[data-board] [aria-label='Conversation']")?.focus();
   }, [showHeld, rootRef]);
   return (
-    <div ref={rootRef} className={`relative flex min-h-0 min-w-0 flex-1 overflow-hidden ${className}`}>
+    <div ref={rootRef} className={`relative flex min-h-0 min-w-0 flex-1 overflow-hidden ${fold ? "@container/split" : ""} ${className}`}>
       {hasBoard ? (
         <div
           data-board
           className={`flex min-h-0 min-w-0 flex-col overflow-hidden transition-opacity duration-(--dur-base) ease-(--ease-out) [contain:layout_style] motion-reduce:transition-none ${
             entered ? "opacity-100" : "opacity-0"
-          }`}
-          style={{ flexBasis: folded || over ? "100%" : basis, flexGrow: 0, flexShrink: 1 }}
+          } ${fold ? FOLD_BOARD : ""}`}
+          style={{ flexBasis: folded ? "100%" : basis, flexGrow: 0, flexShrink: 1 }}
         >
           {header ? (
             <ViewHeader
@@ -416,13 +425,13 @@ export function SplitShell({
           </div>
         </div>
       ) : null}
-      {hasBoard && !folded && !over ? (
+      {hasBoard && !folded ? (
         <div
           {...sashKeys}
           onPointerDown={startDrag}
           className={`relative w-px shrink-0 cursor-col-resize outline-none focus-visible:bg-accent ${
             dragging ? "bg-foreground/12" : "bg-border hover:bg-foreground/7"
-          }`}
+          } ${fold ? FOLD_SASH : ""}`}
         >
           {/* The hairline is the sash; this widens the grab to 8px. */}
           <span className="absolute inset-y-0 -inset-x-1" />
@@ -437,8 +446,8 @@ export function SplitShell({
         className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${
           folded
             ? "invisible absolute inset-y-0 right-0"
-            : over
-              ? `absolute inset-x-0 bottom-0 bg-background ${header ? "top-9" : "top-0"}`
+            : fold
+              ? `relative min-w-90 flex-1 ${FOLD_CHAT} ${header ? "@max-[680px]/split:top-9" : "@max-[680px]/split:top-0"}`
               : hasBoard
                 ? "relative min-w-90 flex-1"
                 : "relative flex-1"

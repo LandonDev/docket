@@ -11,7 +11,8 @@ import type { CanvasItem } from "@shared/work";
 import { contextChipsOf, resetContextChips } from "./chips";
 import { X } from "../../chrome/icons";
 import { openMenus } from "../../chrome/menuRows";
-import { BAR_TOOLS_ONLY } from "./KindBar";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
+import { BAR_TOOLS_ONLY, NARROW_HIDE } from "./KindBar";
 import type { CanvasShell, ReviewAdapter } from "./kind";
 import { canvasItem, drivenKinds, fakeHost } from "./testkit";
 
@@ -402,10 +403,117 @@ describe("the frame a kind drives through its shell", () => {
     // History keeps its name for a screen reader, and only its word hides.
     const history = within(bar).getByRole("button", { name: "History" });
     expect(within(history).getByText("History").className).toContain("@max-[560px]/bar:hidden");
-    // Reject and Accept never shrink; the end group gives up room after the tools, which are clipped to theirs.
-    expect(stepper.className).toContain("shrink-0");
+    // The end group gives up room after the tools, which are clipped to theirs, and only through the group's name: the verbs never shrink.
+    expect(within(stepper).getByText("Dana Lee").className).toContain("truncate");
+    for (const verb of ["Reject", "Accept"]) expect(within(stepper).getByRole("button", { name: verb }).className).toContain("shrink-0");
     for (const verb of ["Reject", "Accept"]) expect(within(stepper).getByRole("button", { name: verb })).toBeTruthy();
     expect(view.container.querySelector("[data-canvas-tools]")!.className).toContain("overflow-hidden");
+  });
+
+  it("sheds in its narrow form, by the same query, until the stepper and its verbs fit: the people go, the mode is short, Previous and Next go and 1/3 stays", async () => {
+    let shell: CanvasShell | null = null;
+    const kinds = drivenKinds((s) => (shell = s), { bar: "narrow" });
+    const view = await seat([DOC, SHEET], { ...kinds, document: { ...kinds.document, history: true } });
+    await waitFor(() => expect(shell).not.toBeNull());
+    act(() => {
+      shell!.presence([{ id: "sam", name: "Sam Ortiz" }]);
+      shell!.mode({ value: "suggests", set: vi.fn() });
+      shell!.review(review({ index: 0, count: 3 }));
+    });
+    const bar = view.container.querySelector<HTMLElement>("[data-canvas-bar]")!;
+    const narrow = (el: Element) => expect(el.className).toContain(NARROW_HIDE);
+    // Nothing spills past the bar; the count and the verbs never shrink (measured in Chromium from 340px to 864px of bar, Accept ends 8px from the edge).
+    expect(bar.className).toContain("overflow-hidden");
+    narrow(within(bar).getByRole("group", { name: "Sam Ortiz" }));
+    // The mode keeps its full words as its name and in its menu; the bar shows the short word.
+    const mode = within(bar).getByRole("button", { name: "Agent suggests" });
+    expect(within(mode).getByText("Suggests").className).toContain("@max-[560px]/bar:inline");
+    expect(within(mode).getByText("Agent suggests").className).toContain("@max-[560px]/bar:sr-only");
+    const stepper = within(bar).getByRole("toolbar", { name: "Review changes" });
+    narrow(within(stepper).getByRole("button", { name: "Previous change" }));
+    narrow(within(stepper).getByRole("button", { name: "Next change" }));
+    expect(within(stepper).getByText("1/3").className).not.toContain(NARROW_HIDE);
+    expect(within(stepper).getByText("1/3").className).toContain("shrink-0");
+    for (const verb of ["Reject", "Accept"]) {
+      const button = within(stepper).getByRole("button", { name: verb });
+      expect(button.className).not.toContain(NARROW_HIDE);
+      expect(button.className).toContain("shrink-0");
+    }
+    // A tool its kind marks goes whole in the narrow form; one it does not stays, clipped to its room.
+    const tools = view.container.querySelector<HTMLElement>("[data-canvas-tools]")!;
+    expect(tools.className).toContain("@max-[560px]/bar:[&_[data-narrow-hide]]:hidden");
+    expect(within(tools).getByTestId("kind-wide").hasAttribute("data-narrow-hide")).toBe(true);
+  });
+
+  it("drops the marked tools whole while the slot cannot hold its tools, above the narrow form too, and brings them back once it can", async () => {
+    let room = 100;
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-canvas-tools") ? 180 : 0;
+    });
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-canvas-tools") ? room : 0;
+    });
+    try {
+      let shell: CanvasShell | null = null;
+      const view = await seat([DOC, SHEET], drivenKinds((s) => (shell = s), { bar: "narrow" }));
+      await waitFor(() => expect(shell).not.toBeNull());
+      const tools = () => view.container.querySelector<HTMLElement>("[data-canvas-tools]")!;
+      act(() => shell!.mode({ value: "writes" }));
+      expect(tools().hasAttribute("data-tight")).toBe(true);
+      expect(tools().className).toContain("data-tight:[&_[data-narrow-hide]]:hidden");
+      // Wider, but not as wide as the tools needed: still tight, so the tool does not come back to be cut.
+      room = 150;
+      act(() => shell!.mode({ value: "suggests" }));
+      expect(tools().hasAttribute("data-tight")).toBe(true);
+      room = 180;
+      act(() => shell!.mode({ value: "writes" }));
+      expect(tools().hasAttribute("data-tight")).toBe(false);
+    } finally {
+      scroll.mockRestore();
+      client.mockRestore();
+    }
+  });
+
+  async function historyIn(narrow: boolean) {
+    // The tooltips wake only once no control holds the focus and no press is held (an earlier test's composer and tab press may).
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.pointerUp(document);
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    let shell: CanvasShell | null = null;
+    const kinds = drivenKinds((s) => (shell = s));
+    const view = await seat([DOC, SHEET], { ...kinds, document: { ...kinds.document, history: true } });
+    await waitFor(() => expect(shell).not.toBeNull());
+    const history = within(view.container.querySelector<HTMLElement>("[data-canvas-bar]")!).getByRole("button", { name: "History" });
+    // The container query hides the word in a narrow bar; jsdom draws no CSS, so the test hides it as the query would.
+    if (narrow) within(history).getByText("History").style.display = "none";
+    for (const pass of [0, 1]) {
+      fireEvent.pointerEnter(history);
+      fireEvent.mouseEnter(history);
+      fireEvent.focus(history);
+      await act(async () => {});
+      fireEvent.pointerMove(history);
+      fireEvent.mouseMove(history);
+      if (pass === 0) {
+        fireEvent.pointerLeave(history);
+        fireEvent.mouseLeave(history);
+      }
+    }
+    return () => [...document.querySelectorAll('[data-slot="tooltip-content"]')].map((el) => el.textContent).find((t) => t === "History") ?? null;
+  }
+
+  it("gives History's glyph alone, in a narrow bar, the standard tip", async () => {
+    const tip = await historyIn(true);
+    await waitFor(() => expect(tip()).toBe("History"), { timeout: 2000 });
+  });
+
+  it("gives History no tip while its word shows", async () => {
+    const tip = await historyIn(false);
+    await new Promise((r) => setTimeout(r, 900));
+    expect(tip()).toBeNull();
   });
 
   it("shows one change already in hand as its two verbs alone: nowhere to step", async () => {

@@ -21,9 +21,6 @@ const KIND_ROW = "kind:";
 /** The item's share of the pane while the thread shows: it takes the room, and the thread keeps its 360px. */
 export const ITEM_SPLIT = 70;
 
-/** Under the thread's 360px and the item's 320px, the item keeps the pane and the open thread lies over it, under the tab row and its toggle. */
-export const NARROW_FOLD = 360 + 320;
-
 /**
  * A Work thread's view with its canvas beside it (docs/DESIGN.md "The canvas
  * pane"): the thread's open items at the left under their tab row, the
@@ -116,7 +113,8 @@ export function CanvasSeat({
         collapsed={view.folded}
         onToggleChat={(open) => setFolded(sessionId, !open)}
         splitState={split}
-        narrowBelow={NARROW_FOLD}
+        // Under the thread's 360px and the item's 320px, the item keeps the pane and the open thread lies over it, under the tab row and its toggle.
+        narrowFold
         held={held}
         lead={
           shown ? (

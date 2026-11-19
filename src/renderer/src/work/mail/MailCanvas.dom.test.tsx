@@ -6,6 +6,8 @@
  * agent's rewrite reads as taken and new words a space apart; the Mail row's
  * unread fact.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
@@ -24,7 +26,11 @@ vi.mock("convex/react", () => ({
 }));
 vi.mock("work-kit/mail", async (original) => ({
   ...(await original<object>()),
-  Mailbox: () => <div data-testid="mailbox">The mail it answers</div>,
+  Mailbox: () => (
+    <div data-testid="mailbox">
+      <p className="text-sm">The mail it answers</p>
+    </div>
+  ),
   MailClientProvider: ({ children }: { children: unknown }) => children,
   MailKitProvider: ({ children }: { children: unknown }) => children,
   useMailClient: () => ({ useComposeDoc: () => lifeos.doc, useMailAccounts: () => [] }),
@@ -34,6 +40,8 @@ vi.mock("../../lib/tcserver/store", () => ({ useSessionMeta: () => ({ workspaceI
 vi.mock("../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [{ id: "w1", sector: "unify" }] }));
 
 const { Body, Letter, keepRead, resetLastRead } = await import("./MailCanvas");
+// The stylesheet as it ships, read from disk: the test's CSS handling would hand an import an empty string.
+const MAIL_CSS = readFileSync(resolve(__dirname, "mail.css"), "utf8");
 const { unreadOf } = await import("./facts");
 const { View: MailAct } = await import("./MailAct");
 
@@ -93,6 +101,24 @@ describe("a waiting rewrite", () => {
     expect(rewrite.textContent).toContain("my own address.");
     // The answered mail first, the rewrite under it.
     expect(mailbox.compareDocumentPosition(rewrite) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the canvas's own 14px words out of mail.css's 13px step, which is work-kit's chrome alone", () => {
+    const style = document.createElement("style");
+    style.textContent = MAIL_CSS;
+    document.head.append(style);
+    try {
+      lifeos.state = "connected";
+      lifeos.doc = { status: "draft", message: { ...WORDS, text: "myself.", threadId: "mt_1" } };
+      lifeos.proposed = { text: "my own address." };
+      const { container } = body();
+      expect(getComputedStyle(screen.getByText("The mail it answers")).fontSize).toBe("13px");
+      const words = container.querySelector("[data-mail-rewrite] .text-sm") as HTMLElement;
+      expect(words.textContent).toContain("my own address.");
+      expect(getComputedStyle(words).fontSize).not.toBe("13px");
+    } finally {
+      style.remove();
+    }
   });
 
   it("on a new mail, with nothing answered, is the whole body", () => {

@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { animate } from "motion/react";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
-import { SplitShell, useSplit } from "./SplitShell";
+import { NARROW_FOLD, SplitShell, useSplit } from "./SplitShell";
 
 // A settle lands at once, so a test reads where it ends; the call is kept to read its spring.
 vi.mock("motion/react", async (original) => ({
@@ -328,36 +328,52 @@ describe("SplitShell's narrow fold", () => {
   afterEach(() => vi.restoreAllMocks());
   const board = () => document.querySelector("[data-board]") as HTMLElement;
   const chat = () => document.querySelector("[data-chat]") as HTMLElement;
+  const sash = () => screen.getByRole("separator", { name: "Resize" });
+  const q = `@max-[${NARROW_FOLD}px]/split:`;
 
-  it("under `narrowBelow`, the board keeps the whole pane and the open chat lies over its body, under the header and its toggle", () => {
+  it("lays itself out by a container query on the shell, the same at run time and in a static render: under it the board is whole and the open chat lies over its body, under the header", () => {
+    render(shell({ narrowFold: true }));
+    const root = board().parentElement!;
+    expect(root.className).toContain("@container/split");
+    expect(board().className).toContain(`${q}basis-full!`);
+    expect(sash().className).toContain(`${q}hidden`);
+    for (const c of ["absolute", "inset-x-0", "bottom-0", "top-9", "min-w-0", "bg-background"]) expect(chat().className).toContain(`${q}${c}`);
+    // Above it, the usual split: the chat keeps its 360px beside the board.
+    expect(chat().className).toContain("min-w-90");
+  });
+
+  it("with no header, the chat lies from the top", () => {
+    render(shell({ narrowFold: true, title: undefined }));
+    expect(chat().className).toContain(`${q}top-0`);
+  });
+
+  it("measured under the fold, the board's body under the chat takes no focus, while its header and the toggle stay live", () => {
     mockShell(500);
-    render(shell({ narrowBelow: 680 }));
-    expect(board().style.flexBasis).toBe("100%");
+    render(shell({ narrowFold: true }));
     expect(chat().hasAttribute("data-chat-over")).toBe(true);
-    expect(chat().className).toContain("top-9");
     expect(chat().hasAttribute("inert")).toBe(false);
-    // The board's body under the chat takes no focus; its header and the toggle stay.
     expect(document.querySelector("[data-board-body]")!.hasAttribute("inert")).toBe(true);
     expect(screen.getByRole("button", { name: "Conversation" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.queryByRole("separator")).toBeNull();
   });
 
   it("folded there, the board is whole and live, as any fold", () => {
     mockShell(500);
-    render(shell({ narrowBelow: 680, collapsed: true }));
+    render(shell({ narrowFold: true, collapsed: true }));
     expect(chat().hasAttribute("data-chat-over")).toBe(false);
     expect(chat().hasAttribute("inert")).toBe(true);
     expect(document.querySelector("[data-board-body]")!.hasAttribute("inert")).toBe(false);
   });
 
-  it("is the usual split when there is room, and for a view that does not ask for it", () => {
+  it("is the usual split with room, and for a view that does not ask for it: no query, nothing inert", () => {
     mockShell(900);
-    const view = render(shell({ narrowBelow: 680 }));
+    const view = render(shell({ narrowFold: true }));
     expect(chat().hasAttribute("data-chat-over")).toBe(false);
-    expect(screen.getByRole("separator", { name: "Resize" })).toBeTruthy();
+    expect(document.querySelector("[data-board-body]")!.hasAttribute("inert")).toBe(false);
     view.unmount();
     mockShell(500);
     render(shell());
+    expect(board().parentElement!.className).not.toContain("@container/split");
+    expect(chat().className).not.toContain("/split:");
     expect(chat().hasAttribute("data-chat-over")).toBe(false);
     expect(board().style.flexBasis).toBe("50%");
   });

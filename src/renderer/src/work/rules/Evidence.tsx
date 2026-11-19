@@ -12,7 +12,8 @@ import { dayTime } from "../../lib/duration";
  */
 
 const INS = "rounded-[2px] bg-(--add-bg) box-decoration-clone";
-const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-muted-foreground line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
+// Removed words keep 70% of the ink, so they read on the tint in both themes (docs/DESIGN.md "Canvas tints").
+const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-foreground/70 line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
 
 function Edit({ edit, large }: { edit: DraftEdit; large: boolean }) {
   return (

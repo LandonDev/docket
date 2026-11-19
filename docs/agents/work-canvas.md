@@ -171,6 +171,26 @@ What a kind should know:
   fill it later. A meeting with no recording yet has no bar.
 - The kind's tools slot takes the bar's free room, so a tool given
   `ms-auto` sits at the slot's end, just before History and the stepper.
+- The bar is a size container (`@container/bar`), and under `BAR_NARROW`
+  (560px of canvas) it takes its narrow form by CSS alone, the same at run
+  time and in a static render: the people go, the mode reads "Suggests" or
+  "Writes" (the full words stay its name and its menu's rows), History is
+  its glyph with a tip, and the stepper drops its group's name and
+  Previous and Next, keeping "1/3", Reject and Accept. The end group gives
+  up room only through words (the group's name, a written line); History,
+  the count and the verbs never shrink, and the bar clips rather than
+  spill. The narrow form starts when the bar's content box (its width less
+  its 20px of padding) is under 560px.
+- A tool is whole or hidden, never cut mid-word by the slot's clip. A kind
+  marks each tool that can go in the narrow form with `data-narrow-hide`
+  (any element in its `Bar`; a switch, a long label, a second verb), and
+  the tools slot hides it under `BAR_NARROW` (`TOOLS_NARROW` in
+  KindBar.tsx), and above it too while the slot cannot hold its tools
+  (the slot's `data-tight`, set by `useTight` from its scroll width, kept
+  until the slot is as wide as the tools needed). An unmarked tool is
+  clipped to the slot like any overflow, so what a narrow bar still needs
+  stays unmarked and must fit beside the stepper; the kind can also use
+  `NARROW_HIDE` on a part of a tool (its word beside a glyph).
 - `more(entries)` puts the kind's own verbs in the pane's More, first,
   over the frame's own (Accept all and Reject all, then Close and Close
   others): `{ id, label, icon, disabled?, run }`, each a 14px glyph and a

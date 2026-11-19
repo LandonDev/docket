@@ -30,11 +30,19 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.guests.create")
         return { link: { ...LINK, name: params.name, role: params.role, expiresAt: params.expiresAt }, url: "https://tempcode.landonhale.com/g/abc#k=secret" };
       if (method === "work.guests.revoke") return { ok: true };
+      if (method === "work.guests.rekey") return { url: "https://tempcode.landonhale.com/g/new#k=secret" };
       throw new Error(`unexpected ${method}`);
     },
   });
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, onLink: () => () => undefined } };
 });
+
+const confirm = vi.hoisted(() => ({ answer: true, asked: [] as { title: string; body?: string; action: string }[] }));
+vi.mock("../../chrome/ConfirmDialog", async (original) => ({
+  ...(await original<object>()),
+  confirmAction: async (request: { title: string; body?: string; action: string }) => (confirm.asked.push(request), confirm.answer),
+}));
+vi.mock("../../lib/clipboard", () => ({ copyText: async () => undefined }));
 
 const LINK: GuestLinkRow = {
   id: "abc",
@@ -145,6 +153,21 @@ describe("the held request and the audit list", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     await waitFor(() => expect(screen.queryByText("The host did not answer")).toBeNull());
     expect(screen.getByText("Sam Ortiz")).toBeTruthy();
+  });
+
+  it("Replace address… asks first, saying the old address stops opening, and rekeys only on Replace", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [LINK];
+    render(<GuestLinksSection hosts={["box"]} />);
+    await screen.findByText("Sam Ortiz");
+    expect((document.querySelector("[data-avatar]") as HTMLElement).getAttribute("data-avatar")).toBe("list");
+    confirm.answer = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
+    expect(confirm.asked.at(-1)!.body).toContain("stops opening");
+    expect(calls.list.some((c) => c.method === "work.guests.rekey")).toBe(false);
+    confirm.answer = true;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
+    expect(calls.list.filter((c) => c.method === "work.guests.rekey").map((c) => c.params)).toEqual([{ linkId: "abc" }]);
   });
 
   it("says an empty list in a plain line", async () => {

@@ -14,6 +14,7 @@ import Mail01Icon from "@hugeicons/core-free-icons/Mail01Icon";
 import Mic01Icon from "@hugeicons/core-free-icons/Mic01Icon";
 import Pdf01Icon from "@hugeicons/core-free-icons/Pdf01Icon";
 import Presentation01Icon from "@hugeicons/core-free-icons/Presentation01Icon";
+import Share08Icon from "@hugeicons/core-free-icons/Share08Icon";
 import Table01Icon from "@hugeicons/core-free-icons/Table01Icon";
 import TaskDone01Icon from "@hugeicons/core-free-icons/TaskDone01Icon";
 import TextSelectionIcon from "@hugeicons/core-free-icons/TextSelectionIcon";
@@ -73,3 +74,5 @@ export const TaskAdd = wrap(TaskAdd01Icon, "TaskAdd");
 export const Download = wrap(Download01Icon, "Download");
 /** The item written out in another form: Export transcript. */
 export const Export = wrap(FileExportIcon, "Export");
+/** Share on a document's or a sheet's bar: the prototype kit's `share` (Share08). */
+export const Share = wrap(Share08Icon, "Share");

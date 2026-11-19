@@ -1280,10 +1280,11 @@ Built: the frame below, every kind's body (docs/DESIGN.md "The canvas
 pane"), the rail's and the Work column's Work rows and Settings → Work.
 
 The canvas is `SplitShell` with an item in the board's place: the item on
-the left, the thread on the right at 360px or more. In a pane too narrow
-for both (`narrowBelow`), the item keeps its width and the open thread
-lies over its body under the tab row, so the item and the fold toggle
-never vanish. The item takes the
+the left, the thread on the right at 360px or more. In a pane under 680px
+(`narrowFold`, `NARROW_FOLD`: the thread's 360 and the item's 320), the
+item keeps the width and the open thread lies over its body under the tab
+row, so the item and the fold toggle never vanish; a container query on
+the shell draws it, so a static render shows it too. The item takes the
 rest by default: the split starts at 70% for the item (a board starts at
 50%), and the sash, its double-click reset and the fold work as on every
 split view. Top to bottom on the item's side:
@@ -1299,8 +1300,12 @@ split view. Top to bottom on the item's side:
    kind's tools, History, then the review stepper (Previous, "2/6", Next,
    Reject, Accept) at the end. A kind with nothing to put in it draws no
    bar, so a stub is the tab row and the body. Under 560px of item
-   (`BAR_NARROW`) the stepper's group label goes first and History turns
-   to its glyph; the kind's tools clip; Reject and Accept shrink last. With
+   (`BAR_NARROW`, a container query on the bar) the people go, the mode
+   reads "Suggests" or "Writes", tools a kind marks `data-narrow-hide` go,
+   History turns to its glyph with a tip, and the stepper drops its group
+   label, Previous and Next, keeping "1/3", Reject and Accept, which never
+   shrink; the bar clips rather than spill. Wider, a marked tool also goes
+   while the tools slot cannot hold it whole. With
    one change in hand the stepper is Reject and Accept alone. A state line for a source
    that cannot be reached sits under the bar, 32px.
 3. **The body**, on `background`, scrolling on its own. The selection bar

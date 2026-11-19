@@ -19,7 +19,7 @@ vi.mock("../../lib/connection", () => ({ registry: { onLink: () => () => undefin
 const toasts = vi.hoisted(() => [] as string[]);
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: (m: string) => void toasts.push(m) }) }));
 
-const { Body, Bar, TitleField, selectionChip } = await import("./DocumentCanvas");
+const { Body, Bar, TitleField, markOpen, selectionChip } = await import("./DocumentCanvas");
 
 afterEach(cleanup);
 
@@ -56,13 +56,37 @@ describe("the document's title", () => {
 });
 
 describe("the document's bar", () => {
-  it("draws Share only on a LifeOS document, which a guest link can reach", () => {
-    const { container, unmount } = render(<Bar item={ITEM} source={FILE} env="box" state={undefined} setState={() => {}} shell={{} as CanvasShell} />);
+  const LIFEOS = { at: "lifeos", table: "docs", id: "kd1" } as const;
+  const bar = (source: CanvasItem["source"]) => <Bar item={{ ...ITEM, source }} source={source} env="box" state={undefined} setState={() => {}} shell={{} as CanvasShell} />;
+
+  it("draws Share only on a LifeOS document, which a guest link can reach, once it has opened", () => {
+    const { container, unmount } = render(bar(FILE));
+    act(() => markOpen(ITEM.id, true));
     expect(container.innerHTML).toBe("");
     unmount();
-    const lifeos = { at: "lifeos", table: "docs", id: "kd1" } as const;
-    render(<Bar item={{ ...ITEM, source: lifeos }} source={lifeos} env="box" state={undefined} setState={() => {}} shell={{} as CanvasShell} />);
-    expect(screen.getByRole("button", { name: "Share" })).toBeTruthy();
+    act(() => markOpen(ITEM.id, false));
+    const view = render(bar(LIFEOS));
+    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+    act(() => markOpen(ITEM.id, true));
+    // Led by its glyph, as the bar's other tools are.
+    expect(screen.getByRole("button", { name: "Share" }).querySelector("svg")).not.toBeNull();
+    act(() => markOpen(ITEM.id, false));
+    expect(view.container.innerHTML).toBe("");
+  });
+
+  it("offers no Share on a document that did not open", async () => {
+    const lines: (StatusLine | null)[] = [];
+    const shell = { statusLine: (line: StatusLine | null) => void lines.push(line), more: () => {} } as unknown as CanvasShell;
+    const item = { ...ITEM, source: LIFEOS };
+    render(
+      <>
+        {bar(LIFEOS)}
+        <Body item={item} source={LIFEOS} env="box" state={undefined} setState={() => {}} shell={shell} />
+      </>,
+    );
+    await act(async () => opening.fail(new Error("not connected")));
+    await waitFor(() => expect(lines.at(-1)).toMatchObject({ word: "Did not open" }));
+    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
   });
 });
 

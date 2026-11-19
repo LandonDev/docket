@@ -154,7 +154,7 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
     // The rewrite takes only the composer's place: the mail it answers stays above it.
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="relative min-h-0 flex-1">
+        <div data-mail-kit className="relative min-h-0 flex-1">
           <Mailbox nav={nav} accounts={accounts} compose={null} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />
         </div>
         <div data-mail-rewrite className="flex max-h-[60%] min-h-0 shrink-0 flex-col border-t border-border">
@@ -165,7 +165,11 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
   }
   // A new mail on its way or gone keeps its words, read only.
   if (!open && !threadId) return <Letter draft={doc.message} lead={doc.status === "sent" ? "Sent to" : "Sending to"} />;
-  return <Mailbox nav={nav} accounts={accounts} compose={compose} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />;
+  return (
+    <div data-mail-kit className="contents">
+      <Mailbox nav={nav} accounts={accounts} compose={compose} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />
+    </div>
+  );
 }
 
 const INS = "rounded-[2px] bg-(--add-bg) box-decoration-clone";
@@ -190,7 +194,8 @@ export type MailWords = { subject: string; text: string; to: readonly { name?: s
 /**
  * A draft read only: whom it goes to and its words, with the agent's rewrite
  * in them when one waits. The subject is the tab's, so it shows here only
- * when the rewrite changes it. The words keep the composer's 14/22.
+ * when the rewrite changes it. The words are the composer's 14/22: mail.css's
+ * 13px step is for work-kit's chrome alone.
  */
 export function Letter({ draft, proposed, lead = "To" }: { draft: MailWords; proposed?: Proposal; lead?: string }) {
   const diff = proposed ? proposalDiff(draft, proposed) : null;
@@ -204,7 +209,7 @@ export function Letter({ draft, proposed, lead = "To" }: { draft: MailWords; pro
           <Runs ops={diff.subject} />
         </h2>
       ) : null}
-      <div className="mt-3 max-w-[70ch] text-[14px] leading-[22px] break-words whitespace-pre-wrap select-text">{diff?.body ? <Runs ops={diff.body} /> : draft.text}</div>
+      <div className="mt-3 max-w-[70ch] text-sm leading-[22px] break-words whitespace-pre-wrap select-text">{diff?.body ? <Runs ops={diff.body} /> : draft.text}</div>
     </div>
   );
 }

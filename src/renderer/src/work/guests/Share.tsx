@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { CanvasSource } from "@shared/work";
 import { Check, Copy } from "../../chrome/icons";
 import { SwapIcon } from "../../motion/IconSwap";
+import { Share as ShareGlyph } from "../icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
@@ -35,7 +36,10 @@ function Share({ env, target, title }: { env: string; target: GuestSource; title
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger render={<Button variant="ghost" size="xs" className="ms-auto" />}>Share</PopoverTrigger>
+        <PopoverTrigger render={<Button variant="ghost" size="xs" className="ms-auto" />}>
+          <ShareGlyph />
+          Share
+        </PopoverTrigger>
         <PopoverContent align="end" className="w-80 gap-0 p-1">
           <ItemLinks
             env={env}
@@ -120,10 +124,18 @@ function ItemLinks({ env, source, onNew }: { env: string; source: GuestSource; o
   );
 }
 
-export function Avatar({ name }: { name: string }) {
+/** Initials on `muted` (DESIGN.md "Avatars"): 20px in a bar, `list` 24px in a list. */
+export function Avatar({ name, size = "bar" }: { name: string; size?: "bar" | "list" }) {
   const words = name.trim().split(/\s+/);
   return (
-    <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)">
+    <span
+      aria-hidden
+      data-avatar={size}
+      className={cn(
+        "grid shrink-0 place-items-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
+        size === "list" ? "size-6" : "size-5",
+      )}
+    >
       {((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase()}
     </span>
   );

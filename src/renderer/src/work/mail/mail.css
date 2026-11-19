@@ -1,7 +1,10 @@
 /* The shared mail client on TempCode's scale (docs/DESIGN.md "Type scale": a
    mail's subject is the 16px title, rows and fields 13px, a field's label
    12px; the editor keeps its own 14px body). Loaded with the mail chunks
-   only; the menus' wash (`--ui-wash`) is index.css's, for every work-kit screen. */
+   only; the menus' wash (`--ui-wash`) is index.css's, for every work-kit screen.
+   The 13px step is work-kit's own chrome alone (`data-mail-kit`, round its
+   Mailbox): the canvas's own 14px text (a draft read only, its rewrite) keeps
+   Tailwind's `text-sm`. */
 
 .tc-mail .text-subject {
   font-size: 16px;
@@ -14,7 +17,8 @@
   line-height: 16px;
 }
 
-.tc-mail .text-sm {
+.tc-mail[data-mail-kit] .text-sm,
+.tc-mail [data-mail-kit] .text-sm {
   font-size: 13px;
   line-height: 20px;
 }
