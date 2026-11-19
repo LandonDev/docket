@@ -299,8 +299,24 @@ describe('with Work on', () => {
     fenced.ctx.push(about(join(inside, 'b.pdf')), { path: join(inside, 'b.pdf'), need: 'approve' })
     expect(got.window.map((p) => (p as unknown as { path: string }).path)).toEqual([join(inside, 'w9.pdf'), '/etc/passwd', join(inside, 'private', 'a.pdf'), join(inside, 'b.pdf')])
     expect(got.key.map((p) => (p as unknown as { path: string }).path)).toEqual([join(inside, 'w9.pdf')])
+    // a push about several files reaches a key only when it could name every one
+    fenced.ctx.push(about('both'), { path: [join(inside, 'w9.pdf'), join(inside, 'b.pdf')] })
+    fenced.ctx.push(about('one out'), { path: [join(inside, 'w9.pdf'), '/etc/passwd'] })
+    expect(got.key.map((p) => (p as unknown as { path: string }).path)).toEqual([join(inside, 'w9.pdf'), 'both'])
+    expect(got.window.slice(-2).map((p) => (p as unknown as { path: string }).path)).toEqual(['both', 'one out'])
     for (const off of offs) off()
     fenced.close()
+
+    // with no fence handed in (a test), a push that names a file reaches only this host's window
+    const window: WorkPush[] = []
+    const key: WorkPush[] = []
+    const offWindow = work.pushes.onPush((p) => window.push(p), LOCAL_PRINCIPAL)
+    const offKey = work.pushes.onPush((p) => key.push(p), remote(['read']))
+    work.ctx.push(about(join(inside, 'w9.pdf')), { path: join(inside, 'w9.pdf') })
+    expect(window).toHaveLength(1)
+    expect(key).toHaveLength(0)
+    offWindow()
+    offKey()
   })
 
   it('lists the tool to a Work thread through the one mount, and to no code thread', () => {

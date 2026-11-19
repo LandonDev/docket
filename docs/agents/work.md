@@ -253,10 +253,16 @@ once (work/ctx.ts `buildWorkCtx`). `db`, `host`, `dataDir`, `enabled`,
 - `push(p, to?)` reaches every client socket. `{ need: 'approve' }` sends
   it only to the sockets whose key holds that capability (this host's own
   window holds them all): what a read-only key should not see is pushed
-  with a need. `{ path }` sends it only to the sockets whose caller could
-  name that file (`reaches`), so a push about an item whose file is
-  outside a remote key's roots never reaches that key, admin or not. A
-  socket must pass both when both are given.
+  with a need. `{ path }` (one path, or a list) sends it only to the
+  sockets whose caller could name that file, or every file listed
+  (`reaches`), so a push about an item whose file is outside a remote
+  key's roots never reaches that key, admin or not. A socket must pass
+  both when both are given. The fence is asked once a push, and a fence
+  that throws sends the push to this host's windows alone. **A pillar
+  pushes what it says about one item's file with `{ path: <that file> }`**
+  (a `{ at: 'thread' }` item needs none), and answers a remote key's read
+  of that item by id only when `reaches` says yes: the two together keep
+  the file's contents from a key that could not name it.
 - `reaches(by, path)` is the listener's own path fence
   (remote/fence.ts `admitsPath`, over index.ts `managedRoots` and the
   folders it denies, handed in as `WorkDeps.remoteFence`), for a file a

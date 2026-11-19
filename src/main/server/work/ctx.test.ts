@@ -6,6 +6,7 @@ import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import { NotBuilt, PILLAR_IDS, PILLAR_MILESTONE, workToolNameProblem, type WorkScope } from '@shared/work'
 import { openDb, Store } from '../db'
+import { fenceRequest } from '../remote/fence'
 import type { SessionRegistry } from '../sessions'
 import { startWork, type Work } from './ctx'
 import { inputShapeOf, loadWorkModules, WORK_MODULES, type Caller } from './modules'
@@ -105,6 +106,19 @@ describe('the context', () => {
     // a symlink inside the roots that points out is out
     symlinkSync(tmpdir(), join(roots, 'out'))
     expect(reaches(key, join(roots, 'out', 'x.pdf'))).toBe(false)
+    // the listener's own fence says the same of every path: a work.* request naming the file in a CanvasSource
+    mkdirSync(join(roots, 'sub'))
+    const paths = [join(roots, 'w9.pdf'), join(roots, 'missing', 'tail.pdf'), `${roots}-sibling/x.pdf`, join(roots, 'out', 'x.pdf'), join(roots, 'private', 'a.pdf'), join(roots, 'sub', '..', 'w9.pdf'), '~/x.pdf', 'relative.pdf', '/etc/passwd']
+    for (const path of paths) {
+      const request = { id: '1', method: 'work.canvas.open', params: { sessionId: 't1', kind: 'pdf', title: 'A', source: { at: 'file', host: 'env_test', path } } } as unknown as ClientRequest
+      let listener = true
+      try {
+        fenceRequest(request, [roots], [], [join(roots, 'private')])
+      } catch {
+        listener = false
+      }
+      expect(reaches(key, path), path).toBe(listener)
+    }
     fenced.close()
     // with no roots handed in (a test), a remote key reaches nothing
     expect(work.ctx.reaches(key, join(roots, 'w9.pdf'))).toBe(false)

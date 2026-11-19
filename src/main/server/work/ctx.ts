@@ -228,10 +228,20 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   const settings = new WorkSettingsStore(deps.store)
   const sinks = new Map<(p: WorkPush) => void, SocketPrincipal>()
   const reaches = reachesOf(deps.remoteFence)
+  /** Whether a remote key could name every path a push names: one answer for every key, since no key has roots of its own. A fence that throws admits none. */
+  const remoteReaches = (path: string | readonly string[]): boolean => {
+    try {
+      return (typeof path === 'string' ? [path] : path).every((one) => reaches({ kind: 'remote', caps: [] }, one))
+    } catch (err) {
+      console.error('[work] the path fence did not answer; the push goes only to this host:', err)
+      return false
+    }
+  }
   const broadcast = (p: WorkPush, to?: PushTo): void => {
+    const remoteOk = to?.path === undefined || remoteReaches(to.path)
     for (const [send, principal] of [...sinks]) {
       if (to?.need && !allows(principalCaps(principal), to.need)) continue
-      if (to?.path !== undefined && !reaches(callerOf(principal), to.path)) continue
+      if (!remoteOk && principal.kind !== 'local') continue
       send(p)
     }
   }

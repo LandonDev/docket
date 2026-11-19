@@ -49,8 +49,8 @@ export type ActKindDef<P = unknown, M = unknown> = ActKindDefOf<P, M, ActCtx>
 export interface PushTo {
   /** only the sockets whose key holds that capability (this host's own window holds them all) */
   need?: Capability
-  /** only the sockets whose caller could name this file itself (`ctx.reaches`): a push about an item whose file is outside a remote key's roots never reaches that key */
-  path?: string
+  /** only the sockets whose caller could name this file itself, or every one of these files (`ctx.reaches`): a push about an item whose file is outside a remote key's roots never reaches that key */
+  path?: string | readonly string[]
 }
 export type WorkSend = (p: WorkPush, to?: PushTo) => void
 
@@ -112,7 +112,10 @@ export interface WorkCtx {
    * reaches through an id rather than a path in the params: whether `by`
    * could have named `path` itself. This host's window and a thread's own
    * call always could; a remote key only under the app-managed roots
-   * (index.ts `managedRoots`) and outside the denied folders.
+   * (index.ts `managedRoots`) and outside the denied folders. It answers
+   * for this call's caller alone: what a module later sends to sockets
+   * goes through `PushTo.path`, never on a model caller's yes, and a read
+   * by id answers a remote key only what this admits.
    */
   reaches(by: Caller, path: string): boolean
   /** milestone 6; null for a code thread */
