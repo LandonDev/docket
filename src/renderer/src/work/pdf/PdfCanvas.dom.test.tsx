@@ -187,10 +187,10 @@ describe("the PDF kind", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Find" }));
     const input = screen.getByRole("textbox", { name: "Find" });
     fireEvent.change(input, { target: { value: "deposit" } });
-    await waitFor(() => expect(document.querySelector("[data-pdf-find-count]")?.textContent).toBe("1 of 14"));
+    await waitFor(() => expect(document.querySelector("[data-pdf-find-count]")?.textContent).toBe("1/14"));
     expect(document.querySelector('[data-pdf-hit="current"]')).not.toBeNull();
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(document.querySelector("[data-pdf-find-count]")?.textContent).toBe("2 of 14"));
+    await waitFor(() => expect(document.querySelector("[data-pdf-find-count]")?.textContent).toBe("2/14"));
     fireEvent.keyDown(input, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Find" })).toBeNull());
   });

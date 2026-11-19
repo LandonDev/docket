@@ -34,7 +34,7 @@ describe("the document's body", () => {
     expect(screen.getByRole("heading", { name: "Run of show" })).toBeTruthy();
     expect(container.querySelectorAll("[data-slot=skeleton]").length).toBe(3);
     await act(async () => opening.fail(new Error("That file is not there any more")));
-    await waitFor(() => expect(lines.at(-1)).toMatchObject({ tone: "failed", word: "Did not open", detail: "That file is not there any more", action: { label: "Retry" } }));
+    await waitFor(() => expect(lines.at(-1)).toMatchObject({ tone: "failed", word: "Couldn't open this document", detail: "That file is not there any more", action: { label: "Retry" } }));
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
     expect(container.querySelector("[aria-busy]")).toBeNull();
   });
@@ -85,7 +85,7 @@ describe("the document's bar", () => {
       </>,
     );
     await act(async () => opening.fail(new Error("not connected")));
-    await waitFor(() => expect(lines.at(-1)).toMatchObject({ word: "Did not open" }));
+    await waitFor(() => expect(lines.at(-1)).toMatchObject({ word: "Couldn't open this document" }));
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
   });
 });

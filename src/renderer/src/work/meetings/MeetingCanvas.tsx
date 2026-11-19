@@ -89,7 +89,7 @@ function useFeeds(shell: CanvasShell, env: string, meeting: Meeting | null, curr
   const replay = unplayed?.retry;
   useEffect(() => {
     const failed = fileError;
-    if (unreadError && retry) shell.statusLine({ tone: "failed", word: "The host did not answer", detail: unreadError, action: { label: "Retry", run: retry } });
+    if (unreadError && retry) shell.statusLine({ tone: "failed", word: "Couldn't open this meeting", detail: unreadError, action: { label: "Retry", run: retry } });
     else if (failed) shell.statusLine({ tone: "failed", word: "Not filed in LifeOS", detail: failed.error, action: { label: "Retry", run: () => decide(failed.ids, "accept") } });
     else shell.statusLine(playError && replay ? { tone: "failed", word: "The recording did not play", detail: playError, action: { label: "Retry", run: replay } } : null);
     return () => shell.statusLine(null);
@@ -328,12 +328,13 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
   return (
     <>
       {notes && !view.find ? (
-        // The form's 24px switch, whole or not at all: under the narrow bar it goes, and Find stays.
+        // The form's 24px switch, whole or not at all: it gives way in a narrow bar only while tasks wait (they show at
+        // their turn in the transcript then), so Notes is always in reach otherwise.
         <Tabs
           value={view.tab}
           onValueChange={(tab) => setState({ ...view, tab: tab as MeetingState["tab"] })}
-          data-narrow-hide
-          className="mx-1 shrink-0 gap-0 @max-[560px]/bar:hidden"
+          data-narrow-hide={stepping || undefined}
+          className={`mx-1 shrink-0 gap-0 ${stepping ? "@max-[560px]/bar:hidden" : ""}`}
         >
           <TabsList aria-label="Show" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
             <TabsIndicator />

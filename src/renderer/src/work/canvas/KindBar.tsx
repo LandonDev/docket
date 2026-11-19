@@ -73,8 +73,8 @@ function useTight(ref: React.RefObject<HTMLElement | null>, drawn: boolean): boo
  * "The canvas pane"): the other people in the item, what the agent does to
  * it, the kind's own tools, History, then the changes to review at the end,
  * or the line that says what the agent last wrote. In a narrow canvas the
- * group's name goes first, then History's word; the kind's tools are
- * clipped before Reject and Accept give up any room.
+ * people go, the mode shortens, the group's name and History's word go; a
+ * kind's tool goes whole or stays whole, and Reject and Accept never clip.
  */
 export function KindBar({ feeds, tools, onHistory }: { feeds: Feeds; tools?: ReactNode; onHistory?: () => void }) {
   const slot = useRef<HTMLDivElement | null>(null);
@@ -181,7 +181,7 @@ function Mode({ mode }: { mode: CanvasMode }) {
         if (id === "suggests" || id === "writes") set(id);
       }}
       trigger={
-        <Button variant="ghost" size="xs" aria-label={MODE_WORDS[mode.value]} className="shrink-0 font-normal text-muted-foreground">
+        <Button variant="ghost" size="xs" aria-label={MODE_WORDS[mode.value]} className="-ms-2 shrink-0 font-normal text-muted-foreground">
           <ModeWords value={mode.value} />
           <ChevronDown />
         </Button>

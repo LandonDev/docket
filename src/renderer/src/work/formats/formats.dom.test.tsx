@@ -114,7 +114,7 @@ describe("Import", () => {
     const { container } = render(<ImportBody item={{ id: "i9", sessionId: "t1" } as CanvasItem} source={{ at: "file", host: "env_box", path: "/w/Gone.docx" }} env="env_box" state={undefined} setState={() => {}} shell={s.shell} />);
     expect(container.querySelector("[data-canvas-skeleton]")).not.toBeNull();
     await act(async () => fail(new Error("that file is not there any more")));
-    await waitFor(() => expect(s.lines.at(-1)).toMatchObject({ tone: "failed", word: "Did not open", detail: "that file is not there any more", action: { label: "Retry" } }));
+    await waitFor(() => expect(s.lines.at(-1)).toMatchObject({ tone: "failed", word: "Couldn't open this document", detail: "that file is not there any more", action: { label: "Retry" } }));
     expect(container.querySelector("[data-canvas-skeleton]")).toBeNull();
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
   });

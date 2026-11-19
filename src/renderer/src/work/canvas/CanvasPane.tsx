@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { TruncateTip } from "../../components/tip";
 import { ItemSkeleton } from "./ItemBones";
 import { StatusMark } from "../../components/ui/status";
 import type { Chunk } from "../../lib/lazyChunk";
@@ -29,13 +30,32 @@ export function useKindModule(chunk: Chunk<CanvasKindModule>): CanvasKindModule 
   return module;
 }
 
-/** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. */
+/** A transport's own words, said as a person would read them on the state line. */
+export function detailWords(detail: string): string {
+  if (/^not connected\.?$/i.test(detail.trim())) return "The host is not connected";
+  if (/timed? ?out/i.test(detail)) return "The host did not answer in time";
+  return detail;
+}
+
+/** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. A cut detail shows whole on hover. */
 function StateLine({ line }: { line: StatusLine }) {
   const [running, setRunning] = useState(false);
   const action = line.action;
+  const detail = typeof line.detail === "string" && line.detail ? detailWords(line.detail) : null;
   return (
     <div data-canvas-state={line.tone} role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
-      <StatusMark state={line.tone === "failed" ? "failed" : "waiting"} word={line.word} detail={line.detail} className="min-w-0 flex-1" />
+      <StatusMark
+        state={line.tone === "failed" ? "failed" : "waiting"}
+        word={line.word}
+        detail={
+          detail ? (
+            <TruncateTip text={detail}>
+              <span className="block truncate">{detail}</span>
+            </TruncateTip>
+          ) : null
+        }
+        className="min-w-0 flex-1"
+      />
       {action ? (
         <Button
           variant="ghost"

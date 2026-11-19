@@ -72,6 +72,15 @@ async function seat(items: CanvasItem[], kinds?: Parameters<typeof CanvasSeat>[0
   return view;
 }
 
+describe("the state line's words", () => {
+  it("says a transport's own words as a person reads them", async () => {
+    const { detailWords } = await import("./CanvasPane");
+    expect(detailWords("not connected")).toBe("The host is not connected");
+    expect(detailWords("request timed out after 15 s")).toBe("The host did not answer in time");
+    expect(detailWords("that file is not there any more")).toBe("that file is not there any more");
+  });
+});
+
 describe("a Work thread's canvas", () => {
   it("leaves the thread alone in the pane while no item is open", async () => {
     const { container } = await seat([]);

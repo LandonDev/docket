@@ -130,7 +130,16 @@ describe("the meeting canvas", () => {
     expect(within(container.querySelector("[data-canvas-bar]") as HTMLElement).getByText("1/3")).toBeTruthy();
   });
 
-  it("the Notes and Transcript switch is the form's 24px switch, and goes whole under the narrow bar", async () => {
+  it("the Notes and Transcript switch is the form's 24px switch, and stays in a narrow bar while no tasks wait", async () => {
+    const calm = await seat(sampleMeeting({ notes: { ...SAMPLE_NOTES, actions: SAMPLE_NOTES.actions.map((a) => ({ ...a, state: "filed" as const })) } }));
+    await screen.findByRole("tab", { name: "Notes" });
+    const kept = calm.container.querySelector("[data-canvas-bar] [role=tablist]")!.parentElement as HTMLElement;
+    expect(kept.hasAttribute("data-narrow-hide")).toBe(false);
+    expect(kept.className).not.toContain("@max-[560px]/bar:hidden");
+    calm.unmount();
+  });
+
+  it("the switch goes whole under the narrow bar while tasks wait to be stepped through", async () => {
     const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
     const notes = await screen.findByRole("tab", { name: "Notes" });
     const list = screen.getByRole("tablist", { name: "Show" });
@@ -348,7 +357,7 @@ describe("the meeting canvas", () => {
   it("a host that does not answer says so on the state line, with Retry, never as an empty meeting", async () => {
     host.down = true;
     const { container } = await seat(sampleMeeting());
-    await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("The host did not answer"));
+    await waitFor(() => expect(container.querySelector("[data-canvas-state=failed]")?.textContent).toContain("Couldn't open this meeting"));
     expect(container.querySelector("[data-meeting-empty]")).toBeNull();
     // The failure is the state line's alone: no skeleton pulses under it, and the bar holds no bone.
     expect(container.querySelector("[data-meeting-skeleton]")).toBeNull();

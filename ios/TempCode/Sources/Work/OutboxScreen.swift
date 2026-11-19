@@ -190,6 +190,11 @@ private struct OutboxRow: View {
     /// The failure's reason, else what the payload names first after the verb (a subject, a target).
     private var line: String? {
         if failed { return OutboxModel.checkFirst(item) ?? item.error ?? "Didn’t send" }
+        // A computer act's payload is the action's raw steps: its line is what the summary says it is about, as on the desktop.
+        if item.kind == .computerAct {
+            guard let at = item.summary.range(of: ": ") else { return nil }
+            return String(item.summary[at.upperBound...])
+        }
         let view = OutboxModel.payloadView(item.payload)
         let shown = view.fields.first { ["subject", "title", "channel"].contains($0.key) } ?? view.fields.first { $0.edit == .text }
         return shown?.value ?? view.body.map { $0.text.split(separator: "\n").first.map(String.init) ?? "" }

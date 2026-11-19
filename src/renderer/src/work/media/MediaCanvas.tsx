@@ -134,7 +134,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
       failed
         ? { tone: "failed", word: `${failed.name} could not be shown`, detail: unshowable(failed), action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
         : error
-          ? { tone: "failed", word: "The host did not answer", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
+          ? { tone: "failed", word: "Couldn't open this file", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
           : null,
     );
   }, [shell, shown, other, view?.versions, error, env, item.id]);

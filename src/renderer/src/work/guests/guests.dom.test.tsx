@@ -163,7 +163,7 @@ describe("the held request and the audit list", () => {
     expect((document.querySelector("[data-avatar]") as HTMLElement).getAttribute("data-avatar")).toBe("list");
     confirm.answer = false;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
-    expect(confirm.asked.at(-1)!.body).toContain("stops opening");
+    expect(confirm.asked.at(-1)!.body).toMatch(/^.+'s current address stops opening\. The new one is copied for you to send\.$/);
     expect(calls.list.some((c) => c.method === "work.guests.rekey")).toBe(false);
     confirm.answer = true;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));

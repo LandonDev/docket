@@ -973,7 +973,9 @@ The kinds, each a hand-made body built from components/ui:
   its tab is named for the item and the versions once, in the pickers.
   Side by side is the default from 420px a side. The list's rows are
   13/20, the time 12 muted, a section heading 13 semibold with its count
-  12 muted. A restore on a shared item becomes suggestions, and the mode
+  12 muted. A compared table keeps its full cell grid and filled header:
+  a change is a cell, so each cell needs its edge; it is the one table
+  that does not use row hairlines. A restore on a shared item becomes suggestions, and the mode
   button says so.
 - **Dashboard.** Figures, one chart and flat tables. A figure opens its
   source (sheet, range, the formula in words). "As of" is said once, in

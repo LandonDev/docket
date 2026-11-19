@@ -59,7 +59,7 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
       setFailed(true);
       shell.statusLine({
         tone: "failed",
-        word: "Did not open",
+        word: "Couldn't open this document",
         detail: err instanceof Error && err.message ? err.message : "It could not be read",
         action: { label: "Retry", run: () => setAttempt((n) => n + 1) },
       });

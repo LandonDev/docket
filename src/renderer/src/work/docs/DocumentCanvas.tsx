@@ -206,7 +206,7 @@ function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<
   const reopen = useCallback(() => setAttempt((n) => n + 1), []);
   const google = useGoogleDoc(env, item, reopen);
   useEffect(() => {
-    shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Did not open", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
+    shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Couldn't open this document", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);
   useEffect(() => {
     markOpen(item.id, !!opened && "open" in opened);

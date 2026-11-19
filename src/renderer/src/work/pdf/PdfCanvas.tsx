@@ -341,7 +341,7 @@ function FindField({ nav }: { nav: PdfNav }) {
     const wait = setTimeout(() => text !== nav.get().find.query && nav.query(text), 150);
     return () => clearTimeout(wait);
   }, [nav, text]);
-  const count = find.query.trim() ? (find.hits.length === 0 ? (find.searching ? "" : "No matches") : `${find.current + 1} of ${find.hits.length}`) : "";
+  const count = find.query.trim() ? (find.hits.length === 0 ? (find.searching ? "" : "None") : `${find.current + 1}/${find.hits.length}`) : "";
   return (
     <InputGroup
       role="search"

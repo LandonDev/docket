@@ -174,7 +174,7 @@ describe("the media canvas", () => {
         </div>
       </>,
     );
-    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "The host did not answer" })));
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't open this file" })));
     expect(document.querySelector("[data-media-failed]")).not.toBeNull();
     expect(document.querySelector("[data-media-loading]")).toBeNull();
     expect(document.querySelector('[data-slot="skeleton"]')).toBeNull();

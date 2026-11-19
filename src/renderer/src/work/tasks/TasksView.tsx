@@ -159,10 +159,8 @@ function Lead({
   const thread = useTaskThread(useThread, task._id);
   return (
     <div className="flex flex-col gap-1 px-3">
-      <div className="flex min-w-0 items-baseline gap-2">
-        <h1 className="min-w-0 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{task.title}</h1>
-        {thread && marksAtRest(thread.state) ? <StatusMark state={thread.state} word={false} className="shrink-0" /> : null}
-      </div>
+      {/* No mark beside the title (the owner's rule): the thread's state shows on its row and in Open thread. */}
+      <h1 className="min-w-0 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{task.title}</h1>
       {meta || task.dueAt !== undefined ? (
         <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
           {meta ? <span className="min-w-0 truncate">{meta}</span> : null}

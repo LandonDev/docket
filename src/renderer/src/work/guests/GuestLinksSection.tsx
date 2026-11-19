@@ -59,7 +59,7 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
   const replace = async (env: string, id: string, name: string): Promise<void> => {
     const ok = await confirmAction({
       title: "Replace the address?",
-      body: `The address ${name} has stops opening. The new one is copied for you to send.`,
+      body: `${name}'s current address stops opening. The new one is copied for you to send.`,
       action: "Replace",
       danger: true,
     });
