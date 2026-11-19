@@ -10,7 +10,7 @@ import { FADE_IN } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
 import { treeIds } from "../../lib/activity";
 import { drawable, useComputerSection } from "../../lib/computerSection";
-import { stopComputer, type ComputerEntry } from "../../lib/computerSessions";
+import { stopComputer, useComputerEntries, type ComputerEntry } from "../../lib/computerSessions";
 import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
 import { ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, streamSize, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
@@ -36,30 +36,37 @@ export interface Browser {
   held: OutboxItem | null;
   /** the session whose window the canvas follows; null when none is live or this desktop cannot draw it */
   entry: ComputerEntry | null;
+  /** every live session of the pane's tree on its host, drawable here or not: Take over stops them all */
   live: ComputerEntry[];
 }
 
 function useBrowser(env: string, pane: string): Browser {
   const state = useBrowserState(env, pane);
-  const acts = useHeldActs(env);
+  const acts = useHeldActs(env, pane);
   const metas = useSessionMetas();
   const treeKey = [...treeIds(pane, metas)].sort().join("\n");
   const tree = useMemo(() => new Set(treeKey.split("\n")), [treeKey]);
   const section = useComputerSection(pane);
   const held = useMemo(() => heldSubmitOf(acts, tree, state?.site ? state.since : 0), [acts, tree, state?.site, state?.since]);
+  const live = useComputerEntries(tree, env);
   const entries = useMemo(() => drawable(section.entries), [section.entries]);
-  return { state, held, entry: entries[0] ?? null, live: section.entries };
+  return { state, held, entry: entries[0] ?? null, live };
 }
 
-/** A press: one at a time, its failure said once in the thread's toast stack. */
+/** A press: one at a time (a second click before the re-render too), its failure said once in the thread's toast stack. */
 function usePress(): [string | null, (which: string, run: () => Promise<unknown>) => void] {
   const [busy, setBusy] = useState<string | null>(null);
+  const pressing = useRef(false);
   const press = (which: string, run: () => Promise<unknown>): void => {
-    if (busy) return;
+    if (pressing.current) return;
+    pressing.current = true;
     setBusy(which);
     void run()
       .catch((err: unknown) => sayError(err, "That did not go through"))
-      .finally(() => setBusy(null));
+      .finally(() => {
+        pressing.current = false;
+        setBusy(null);
+      });
   };
   return [busy, press];
 }
@@ -79,9 +86,9 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const [busy, press] = usePress();
   const takeOver = (): void =>
     press("take", async () => {
+      // The agent's hands come off first: every live session of the tree stops for its turn, then he holds the wheel.
+      await Promise.all(live.map((e) => stopComputer(e)));
       await setDriver(env, pane, "owner");
-      // The agent's computer use stops for its turn; it is told when he hands back.
-      await Promise.allSettled(live.map((e) => stopComputer(e)));
     });
   const handBack = (): void => press("back", () => setDriver(env, pane, "agent"));
   const host = siteHost(state);
@@ -151,9 +158,15 @@ function FaceEnd({
       const ref = face.item.ref;
       return (
         <span className="ms-auto flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="xs" className="max-[560px]:hidden" disabled={!!busy} onClick={takeOver}>
-            <BusyLabel busy={busy === "take"} label="Take over" />
-          </Button>
+          {face.owner ? (
+            <Button variant="ghost" size="xs" disabled={!!busy} onClick={handBack}>
+              <BusyLabel busy={busy === "back"} label="Hand back" />
+            </Button>
+          ) : (
+            <Button variant="ghost" size="xs" className="max-[560px]:hidden" disabled={!!busy} onClick={takeOver}>
+              <BusyLabel busy={busy === "take"} label="Take over" />
+            </Button>
+          )}
           <Button variant="ghost" size="xs" disabled={!!busy} onClick={() => press("discard", () => discardHeld(env, ref))}>
             <BusyLabel busy={busy === "discard"} label="Discard" />
           </Button>
@@ -170,13 +183,13 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
   const { env, shell } = props;
   const pane = paneOf(props);
   const fetched = useBrowser(env, pane);
-  const { state, held, entry } = props.data ?? fetched;
+  const { state, held, entry, live } = props.data ?? fetched;
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const stream = useLiveStream(entry, true, box, measure);
 
   // Where it runs, said once after the page's title: the Mac a box thread drives, else the thread's own host.
-  const where = entry?.row.macName ?? hostName(env);
+  const where = entry?.row.macName ?? live.find((e) => e.row.macName)?.row.macName ?? hostName(env);
   useEffect(() => {
     shell.detail(where === "this Mac" ? null : where);
     return () => shell.detail(null);
@@ -261,15 +274,15 @@ function Values({ values }: { values: PortalValue[] }) {
         <div
           key={`${v.label}-${i}`}
           role="row"
-          className="grid h-7 grid-cols-[112px_80px_minmax(0,1fr)] items-center gap-x-3 border-t border-border text-[13px] leading-5 first:border-t-0"
+          className="grid min-h-7 grid-cols-[112px_minmax(80px,max-content)_minmax(0,1fr)] items-center gap-x-3 border-t border-border py-1 text-[13px] leading-5 first:border-t-0"
         >
           <span role="cell" className="truncate font-medium">
             {v.label}
           </span>
-          <span role="cell" className="truncate tabular-nums">
+          <span role="cell" className="min-w-0 break-words tabular-nums">
             {v.value}
           </span>
-          <span role="cell" className="truncate text-xs text-muted-foreground">
+          <span role="cell" title={v.source ?? undefined} className="truncate text-xs text-muted-foreground">
             {v.source ?? ""}
           </span>
         </div>

@@ -36,17 +36,23 @@ export function useBrowserState(env: string, sessionId: string): BrowserState | 
   return state;
 }
 
-/** The thread host's held computer acts, kept current by the outbox's push. */
-export function useHeldActs(env: string): OutboxItem[] {
+/**
+ * The thread host's held computer acts: every waiting one (few), and the
+ * pane's last decided ones for the line after a press. Kept current by the
+ * outbox's push.
+ */
+export function useHeldActs(env: string, pane: string): OutboxItem[] {
   const [items, setItems] = useState<OutboxItem[]>([]);
   useEffect(() => {
     const link = registry.linkOf(env);
     let live = true;
-    const load = (): void =>
-      void link.request<{ items: OutboxItem[] }>("work.outbox.list", { show: "all", limit: 100 }).then(
-        (a) => live && setItems(a.items.filter((i) => i.kind === "computer.act")),
-        () => undefined,
+    const list = (params: Record<string, unknown>): Promise<OutboxItem[]> =>
+      link.request<{ items: OutboxItem[] }>("work.outbox.list", params).then(
+        (a) => a.items.filter((i) => i.kind === "computer.act"),
+        () => [],
       );
+    const load = (): void =>
+      void Promise.all([list({ show: "waiting" }), list({ show: "decided", sessionId: pane, limit: 10 })]).then(([waiting, decided]) => live && setItems([...waiting, ...decided]));
     load();
     const offPush = link.onPush((push) => {
       if (push.push !== "work.outbox" || !push.item || push.item.kind !== "computer.act") return;
@@ -59,7 +65,7 @@ export function useHeldActs(env: string): OutboxItem[] {
       offPush();
       offOpen();
     };
-  }, [env]);
+  }, [env, pane]);
   return items;
 }
 

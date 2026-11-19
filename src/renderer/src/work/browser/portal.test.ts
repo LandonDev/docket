@@ -37,6 +37,9 @@ describe("the held submit", () => {
     const items = [act({ ref: { at: "host", id: "a" }, createdAt: 1 }), act({ ref: { at: "host", id: "b" }, sessionId: "t1-sub", createdAt: 5 }), act({ ref: { at: "host", id: "c" }, sessionId: "other", createdAt: 9 })];
     expect(heldSubmitOf(items, tree, 0)?.ref).toEqual({ at: "host", id: "b" });
   });
+  it("is a browser's: a Send held in Mail is not this bar's", () => {
+    expect(heldSubmitOf([act({ payload: { app: { name: "Mail", bundleId: "com.apple.mail" }, label: "Send", mark: "" } })], tree, 0)).toBeNull();
+  });
   it("after the press, is the one decided since the site was opened, never an older one or a stale one", () => {
     expect(heldSubmitOf([act({ state: "sent", decidedAt: 300 })], tree, 100)?.state).toBe("sent");
     expect(heldSubmitOf([act({ state: "sent", decidedAt: 50 })], tree, 100)).toBeNull();
@@ -45,10 +48,13 @@ describe("the held submit", () => {
 });
 
 describe("the bar", () => {
-  it("names the one primary for the act and the site while a submit waits, whoever drives", () => {
-    expect(barFaceOf(state(), act({}))).toMatchObject({ face: "held", act: "Submit Report in Concur" });
+  it("names the one primary for the act and the site while a submit waits, with Hand back in reach while he drives", () => {
+    expect(barFaceOf(state(), act({}))).toMatchObject({ face: "held", act: "Submit Report in Concur", owner: false });
     expect(barFaceOf(state({ site: null }), act({}))).toMatchObject({ face: "held", act: "Submit Report in Google Chrome" });
-    expect(barFaceOf(state({ driver: "owner" }), act({ state: "held" }))).toMatchObject({ face: "held" });
+    expect(barFaceOf(state({ driver: "owner" }), act({ state: "held" }))).toMatchObject({ face: "held", owner: true });
+  });
+  it("after he took over and pressed, still offers Hand back rather than how it ended", () => {
+    expect(barFaceOf(state({ driver: "owner" }), act({ state: "sent", decidedAt: 300 }))).toEqual({ face: "owner" });
   });
   it("says who drives, and a page that needs him, once nothing waits", () => {
     expect(barFaceOf(null, null)).toEqual({ face: "loading" });

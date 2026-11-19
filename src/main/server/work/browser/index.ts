@@ -18,6 +18,20 @@ export const NOT_A_PERSON = 'refused: only a person takes over the browser or ha
 export const HANDED_BACK = 'He handed the browser back. Read the window again before you act: he may have changed the page. Then carry on.'
 export const OWNER_DRIVES = 'He is driving the browser now. Do not use computer use until he hands it back; end your turn and say where you will pick up.'
 
+export const NOT_WORK = 'refused: that is not a Work thread'
+
+/** Handing back wakes the thread that was driving (a subagent, say), else the pane's own; the wheel is his to give either way. */
+async function wake(ctx: WorkCtx, actor: string | null, pane: string): Promise<void> {
+  for (const id of actor && actor !== pane ? [actor, pane] : [pane]) {
+    try {
+      await ctx.threads.resume(id, HANDED_BACK)
+      return
+    } catch (err) {
+      ctx.log(`browser: could not tell ${id} the browser was handed back: ${String(err)}`)
+    }
+  }
+}
+
 const send = (ctx: WorkCtx, state: BrowserState): BrowserState => {
   ctx.push({ push: 'work.browser', state })
   return state
@@ -49,7 +63,7 @@ function tools(): WorkTool[] {
         const { url, name, title } = args as { url: string; name: string; title: string }
         const pane = ctx.canvas.paneOf(ctx.sessionId)
         openItem(ctx, pane, title)
-        const state = send(ctx, new DriveStore(ctx.db).open(pane, { url, name }))
+        const state = send(ctx, new DriveStore(ctx.db).open(pane, { url, name }, ctx.sessionId))
         return workText(state.driver === 'owner' ? OWNER_DRIVES : `The browser is open beside the thread on ${host(url)}.`)
       }
     },
@@ -61,7 +75,7 @@ function tools(): WorkTool[] {
       readOnly: false,
       async run(args, ctx) {
         const pane = ctx.canvas.paneOf(ctx.sessionId)
-        send(ctx, new DriveStore(ctx.db).needs(pane, (args as { needs: string }).needs))
+        send(ctx, new DriveStore(ctx.db).needs(pane, (args as { needs: string }).needs, ctx.sessionId))
         return workText('The browser asks him to take over. End your turn; you are told when he hands back.')
       }
     },
@@ -73,7 +87,7 @@ function tools(): WorkTool[] {
       readOnly: false,
       async run(args, ctx) {
         const pane = ctx.canvas.paneOf(ctx.sessionId)
-        const state = send(ctx, new DriveStore(ctx.db).sources(pane, (args as { values: z.infer<typeof PortalSourceSchema>[] }).values))
+        const state = send(ctx, new DriveStore(ctx.db).sources(pane, (args as { values: z.infer<typeof PortalSourceSchema>[] }).values, ctx.sessionId))
         return workText(`Noted ${state.sources.length === 1 ? 'one source' : `${state.sources.length} sources`}.`)
       }
     },
@@ -104,10 +118,12 @@ export const browser: WorkModule = {
       case 'work.browser.drive': {
         // The agent never hands itself the wheel, and never takes it from him.
         if (by.kind === 'model') throw new Error(NOT_A_PERSON)
+        const { sessionId, driver } = req.params
+        if (!ctx.scopeOf(sessionId)) throw new Error(NOT_WORK)
         const store = new DriveStore(ctx.db)
-        const was = store.get(req.params.sessionId)
-        const state = send(ctx, store.drive(req.params.sessionId, req.params.driver))
-        if (was.driver === 'owner' && state.driver === 'agent') await ctx.threads.resume(req.params.sessionId, HANDED_BACK)
+        const was = store.get(sessionId)
+        const state = send(ctx, store.drive(sessionId, driver))
+        if (was.driver === 'owner' && state.driver === 'agent') await wake(ctx, store.actor(sessionId), sessionId)
         return handled(state)
       }
       default:

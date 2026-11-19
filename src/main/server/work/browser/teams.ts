@@ -13,10 +13,10 @@ import { ActStale } from '../outbox/kinds'
  * The posting itself is the carrier's: the steps on Teams (bring it
  * forward, find the chat, type, Return) run through the thread's computer
  * session as the owner's press, so the computer hold does not hold them a
- * second time. index.ts sets it once at boot on a host that has computer
- * use; with none set, nothing here can post, and `teams_reply` refuses
- * before anything is held. A box thread's reply is refused the same way:
- * the box has no Teams to post with.
+ * second time. It is to be set once at boot beside the host's computer
+ * sessions (index.ts); nothing sets it yet (docs/agents/work-browser.md,
+ * "Teams"), so `teams_reply` refuses before anything is held. A box
+ * thread's reply is refused the same way: the box has no Teams to post with.
  */
 
 export const TeamsPostSchema = z.object({
@@ -74,13 +74,14 @@ export const teamsPostKind: ActKindDef<TeamsPost, never> = {
     if (!post) throw new ActStale(TEAMS_GONE)
     const { picture } = await post.post(p, { sessionId: act.item.sessionId })
     const rowId = act.item.ref.at === 'host' ? act.item.ref.id : String(act.item.createdAt)
-    let kept: { path: string; mimeType: string; width: number; height: number } | null = null
+    // The path stays on this host: it follows from the row and the type (`postedPicturePath`), so the result names neither.
+    let kept: { mimeType: string; width: number; height: number } | null = null
     if (picture) {
       const path = postedPicturePath(act.dataDir, rowId, picture.mimeType)
       try {
         mkdirSync(join(act.dataDir, 'work-browser', 'teams'), { recursive: true })
         writeFileSync(path, picture.data)
-        kept = { path, mimeType: picture.mimeType, width: picture.width, height: picture.height }
+        kept = { mimeType: picture.mimeType, width: picture.width, height: picture.height }
       } catch (err) {
         // The reply went; only its picture could not be kept.
         act.log(`browser: the picture of a posted Teams reply was not kept: ${String(err)}`)

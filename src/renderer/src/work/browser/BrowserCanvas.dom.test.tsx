@@ -13,6 +13,7 @@ import type { OutboxItem } from "@shared/contract-work-outbox";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell } from "../canvas/kind";
 
+const LIVE_ENTRIES = vi.hoisted(() => [{ host: "local", row: { threadId: "t1", since: 0, lastCallAt: 1, apps: [], running: null, tier: null }, previewable: false }]);
 const host = vi.hoisted(() => ({
   state: null as unknown as BrowserState,
   items: [] as OutboxItem[],
@@ -28,7 +29,7 @@ vi.mock("../../lib/connection", async (original) => {
       host.calls.push({ method, params });
       if (method === "work.browser.state") return host.state;
       if (method === "work.browser.drive") return (host.state = { ...host.state, driver: params.driver as BrowserState["driver"], needs: null });
-      if (method === "work.outbox.list") return { items: host.items, waiting: host.items.length };
+      if (method === "work.outbox.list") return params.show === "decided" ? { items: [], waiting: 0 } : { items: host.items, waiting: host.items.length };
       if (method === "work.outbox.get") return { ...host.items[0], payload: { ...(host.items[0]!.payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" } } };
       if (method === "work.outbox.send") return { ...host.items[0], state: "sent", decidedAt: Date.now() };
       if (method === "work.outbox.discard") return { ...host.items[0], state: "discarded", decidedAt: Date.now() };
@@ -42,10 +43,12 @@ vi.mock("../../lib/connection", async (original) => {
 });
 vi.mock("../../lib/computerSection", async (original) => ({
   ...(await original<typeof import("../../lib/computerSection")>()),
-  useComputerSection: () => ({ entries: [{ host: "local", row: { threadId: "t1", since: 0, lastCallAt: 1, apps: [], running: null, tier: null }, previewable: false }], keys: [], histories: {}, exists: true, loading: false, live: true }),
+  useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: true, loading: false, live: false }),
 }));
+// A session this desktop cannot draw (the box, the browser /ui): Take over still stops it.
 vi.mock("../../lib/computerSessions", async (original) => ({
   ...(await original<typeof import("../../lib/computerSessions")>()),
+  useComputerEntries: () => LIVE_ENTRIES,
   stopComputer: async (entry: { row: { threadId: string } }) => void host.stopped.push(entry.row.threadId),
 }));
 
@@ -122,6 +125,15 @@ describe("the browser's bar", () => {
     fireEvent.click(submit);
     await waitFor(() => expect(methods()).toEqual(["work.outbox.send"]));
     expect(host.calls.find((c) => c.method === "work.outbox.send")?.params).toEqual({ ref: { at: "host", id: "h1" } });
+  });
+
+  it("while he drives at a held submit, offers Hand back beside the primary, never a second Take over", async () => {
+    host.items = [HELD];
+    host.state = { ...host.state, driver: "owner" };
+    render(<Bar {...props()} />);
+    await screen.findByRole("button", { name: "Submit Report in Concur" });
+    expect(screen.getByRole("button", { name: "Hand back" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
   });
 });
 

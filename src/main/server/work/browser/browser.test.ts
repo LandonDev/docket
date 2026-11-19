@@ -10,8 +10,8 @@ import { outbox as outboxModule } from '../outbox/index'
 import { approveKey, cast, makeRig, readKey, type Rig } from '../outbox/rig'
 import { ActStale } from '../outbox/kinds'
 import { loadWorkModules } from '../modules'
-import { browser, HANDED_BACK, NOT_A_PERSON, OWNER_DRIVES } from './index'
-import { configureTeamsCarrier, TEAMS_UNAVAILABLE, type TeamsCarrier, type TeamsPost } from './teams'
+import { browser, HANDED_BACK, NOT_A_PERSON, NOT_WORK, OWNER_DRIVES } from './index'
+import { configureTeamsCarrier, postedPicturePath, TEAMS_UNAVAILABLE, type TeamsCarrier, type TeamsPost } from './teams'
 
 /**
  * The browser pillar on a real database, with the outbox and the canvas
@@ -63,11 +63,21 @@ describe('the live browser', () => {
     expect(await state()).toMatchObject({ driver: 'agent', needs: null, site: { url: 'https://arbitersports.com/availability', name: 'Arbiter' }, sources: [] })
   })
 
-  it("a subagent's browser shows in its root thread's pane", async () => {
+  it("a subagent's browser shows in its root thread's pane, and handing back wakes the subagent that was driving", async () => {
     rig.thread('t-sub', { scope: 'work', workspaceId: 'ws-purdue', parentId: 't-work' } as never)
-    await tool('browser_open', { url: 'https://example.test', name: 'Example', title: 'Form' }, 't-sub')
+    await tool('browser_open', { url: 'https://example.test/form?code=one-time#x', name: 'Example', title: 'Form' }, 't-sub')
     expect((await rig.rpc<{ items: CanvasItem[] }>('work.canvas.list', { sessionId: 't-work' })).items.map((i) => i.kind)).toEqual(['browser'])
-    expect((await state('t-work')).site?.name).toBe('Example')
+    // a sign-in link's code reaches no client
+    expect((await state('t-work')).site).toEqual({ url: 'https://example.test/form', name: 'Example' })
+    await tool('browser_needs_you', { needs: 'Example wants you to sign in' }, 't-sub')
+    await drive('owner')
+    await drive('agent')
+    expect(rig.woke).toEqual([{ sessionId: 't-sub', text: HANDED_BACK }])
+  })
+
+  it('takes over only a Work thread', async () => {
+    rig.thread('t-plain', { workspaceId: 'ws-code' } as never)
+    await expect(rig.rpc('work.browser.drive', { sessionId: 't-plain', driver: 'owner' })).rejects.toThrow(NOT_WORK)
   })
 
   it('takes over and hands back: a person drives, the thread is woken once he hands back, and every client hears it', async () => {
@@ -164,10 +174,13 @@ describe('a Teams reply', () => {
     // a second press, from another client, posts nothing more
     expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: item!.ref }, approveKey)).toMatchObject({ state: 'sent' })
     expect(posted).toHaveLength(1)
-    const full = await rig.rpc<OutboxItem & { result: { summary: string; ref: { chat: string; picture: { path: string; mimeType: string } } } }>('work.outbox.get', { ref: item!.ref })
-    expect(full.result).toMatchObject({ summary: 'Posted in Teams to Esports staff', ref: { chat: 'Esports staff', picture: { mimeType: 'image/png', width: 640, height: 400 } } })
-    expect(existsSync(full.result.ref.picture.path)).toBe(true)
-    expect(new Uint8Array(readFileSync(full.result.ref.picture.path))).toEqual(PNG)
+    const full = await rig.rpc<OutboxItem>('work.outbox.get', { ref: item!.ref })
+    expect(full.result).toEqual({ summary: 'Posted in Teams to Esports staff', ref: { chat: 'Esports staff', picture: { mimeType: 'image/png', width: 640, height: 400 } } })
+    // the file stays on this host: no client, a read key's list included, is told where it is
+    expect(JSON.stringify(await rig.rpc('work.outbox.list', { show: 'all' }, readKey))).not.toContain(rig.dir)
+    const path = postedPicturePath(rig.dir, item!.ref.at === 'host' ? item!.ref.id : '', 'image/png')
+    expect(existsSync(path)).toBe(true)
+    expect(new Uint8Array(readFileSync(path))).toEqual(PNG)
   })
 
   it('takes no grant: a second reply to the same chat waits for its own press', async () => {

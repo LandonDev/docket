@@ -1,5 +1,6 @@
 import type { BrowserState, PortalSource } from "@shared/contract-work-browser";
 import type { OutboxItem } from "@shared/contract-work-outbox";
+import { BROWSER_BUNDLES } from "@shared/computer/outward";
 
 /**
  * What the browser canvas reads off the held item and the pillar's state
@@ -57,15 +58,23 @@ export interface HeldSubmitPayload {
 /** States in which a press may still go: the live hold waits for him. */
 const WAITS = new Set(["held", "live"]);
 
-/** The submit the canvas shows: a waiting computer act of the thread's tree, newest first; else the last one decided since `since`. */
+const BROWSERS = new Set(BROWSER_BUNDLES.map((b) => b.toLowerCase()));
+/** A held act in a browser: a Send kept in Mail is the Outbox's, never this bar's. */
+const inBrowser = (item: OutboxItem): boolean => {
+  const bundle = (item.payload as Partial<HeldSubmitPayload> | null)?.app?.bundleId;
+  return !!bundle && BROWSERS.has(bundle.toLowerCase());
+};
+
+/** The submit the canvas shows: a waiting computer act in a browser, of the thread's tree, newest first; else the last one decided since `since`. */
 export function heldSubmitOf(items: readonly OutboxItem[], tree: ReadonlySet<string>, since: number): OutboxItem | null {
-  const mine = items.filter((i) => i.kind === "computer.act" && i.sessionId !== null && tree.has(i.sessionId)).sort((a, b) => b.createdAt - a.createdAt);
+  const mine = items.filter((i) => i.kind === "computer.act" && i.sessionId !== null && tree.has(i.sessionId) && inBrowser(i)).sort((a, b) => b.createdAt - a.createdAt);
   return mine.find((i) => WAITS.has(i.state)) ?? mine.find((i) => (i.decidedAt ?? 0) >= since && i.state !== "stale") ?? null;
 }
 
 export type BarFace =
   | { face: "loading" }
-  | { face: "held"; item: OutboxItem; act: string }
+  /** `owner`: he drives, so the bar offers Hand back where it would offer Take over */
+  | { face: "held"; item: OutboxItem; act: string; owner: boolean }
   | { face: "done"; words: string }
   | { face: "owner" }
   | { face: "needs"; words: string }
@@ -73,19 +82,19 @@ export type BarFace =
 
 const clock = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-/** What the kind's bar says, in one place: a held submit wins, then who drives. */
+/** What the kind's bar says, in one place: a held submit wins, then his driving (Hand back is never out of reach), then how a submit ended. */
 export function barFaceOf(state: BrowserState | null, held: OutboxItem | null): BarFace {
   if (!state) return { face: "loading" };
   if (held && WAITS.has(held.state)) {
     const payload = held.payload as Partial<HeldSubmitPayload> | null;
     const where = state.site?.name ?? payload?.app?.name ?? null;
-    return { face: "held", item: held, act: where ? `${held.verb} in ${where}` : held.verb };
+    return { face: "held", item: held, act: where ? `${held.verb} in ${where}` : held.verb, owner: state.driver === "owner" };
   }
+  if (state.driver === "owner") return { face: "owner" };
   if (held && held.decidedAt) {
     const word = held.state === "sent" ? "Submitted" : held.state === "discarded" ? "Left without submitting" : "Did not go through";
     return { face: "done", words: held.state === "discarded" ? word : `${word} ${clock(held.decidedAt)}` };
   }
-  if (state.driver === "owner") return { face: "owner" };
   if (state.needs) return { face: "needs", words: state.needs };
   return { face: "agent" };
 }

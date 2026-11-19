@@ -18,7 +18,8 @@ until he presses Post. [work.md](work.md) says how a pillar registers;
   10): the host reads the click on "Submit" as outward, whatever the model
   flagged, and keeps it with the window's picture and the fields' text. This
   pillar adds no hold and no flag of its own. The canvas finds the newest
-  waiting `computer.act` of the pane's tree and presses it with
+  waiting `computer.act` of the pane's tree held in a browser
+  (`BROWSER_BUNDLES`; a Send kept in Mail stays the Outbox's) and presses it with
   `work.outbox.send`; the press runs it once, only if the window still holds
   what he was shown. `portal.submit` stays in `ACT_KINDS` unregistered: the
   box's browser (milestone 38), which the Mac's classifier does not read,
@@ -34,7 +35,7 @@ until he presses Post. [work.md](work.md) says how a pillar registers;
 | Method | Cap | Answers |
 |---|---|---|
 | `work.browser.state {sessionId}` | read | `BrowserState`: `driver` (`agent` or `owner`), `needs`, `site`, `sources`, `since` |
-| `work.browser.drive {sessionId, driver}` | operate | `BrowserState`; a `model` caller is refused (`NOT_A_PERSON`). Taking over or handing back clears `needs`. Handing back (owner → agent) wakes the pane thread with `HANDED_BACK` through `ctx.threads.resume`, once. |
+| `work.browser.drive {sessionId, driver}` | operate | `BrowserState`; a `model` caller is refused (`NOT_A_PERSON`). Taking over or handing back clears `needs`. Handing back (owner → agent) wakes, once, with `HANDED_BACK` through `ctx.threads.resume`, the thread of the tree that last used a browser tool (a subagent, say), else the pane thread. Only a Work thread (`NOT_WORK`). |
 
 Push: `{ push: 'work.browser', state }` on every change.
 
@@ -45,7 +46,8 @@ subagent's browser shows in its root's pane.
 
 - `browser_open {url, name, title}`: opens one `browser` item in the pane
   (source `{at: 'browser', host, sessionId: pane}`; a second call shows the
-  same item), records the site, clears `needs`, and keeps the sources only
+  same item), records the site (its address without query or fragment, so a
+  sign-in link's code reaches no client), clears `needs`, and keeps the sources only
   while the agent stays on the same site (host). While he drives it answers `OWNER_DRIVES`.
 - `browser_needs_you {needs}`: a sign in, a password, a second factor, a
   captcha. The bar turns amber with his words and Take over. The agent never
@@ -64,8 +66,10 @@ subagent's browser shows in its root's pane.
 waits for its own press. On the press `execute` calls the carrier set with
 `configureTeamsCarrier`; the carrier posts by computer use and answers a
 picture of the posted message, which is kept at
-`<dataDir>/work-browser/teams/<row id>.<ext>` and returned as the result's
-`ref: { chat, picture: { path, mimeType, width, height } }` for Sent. A
+`<dataDir>/work-browser/teams/<row id>.<ext>` (`postedPicturePath`). The
+result's `ref` is `{ chat, picture: { mimeType, width, height } }`: the path
+follows from the row and never leaves the host, a read key's list included.
+Serving the bytes to Sent is milestone 14's. A
 carrier that posted nothing throws `ActStale` (the item reads stale); any
 other throw reads failed, "may or may not have gone". A host that lost its
 carrier between the hold and the press reads stale.
@@ -91,8 +95,11 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   are driving" in foreground and Hand back (secondary); a held submit's
   Take over and Discard (ghost) and the one primary named for the act
   ("Submit in Concur"), never counting down; after it, "Submitted 2:14 PM".
-  Take over sets the owner as driver and stops the tree's computer use for
-  the turn (`computer.stop`); the agent is told to wait by its next tool.
+  Take over first stops every live computer session of the tree on its
+  host (`computer.stop`; drawable here or not, so the box desktop and the
+  browser /ui stop it too), then sets him as driver. While he drives at a
+  held submit the ghost beside the primary is Hand back, and his driving
+  outranks the line after a press, so Hand back is never out of reach.
 - **The body**: the live window in its own shape, at most 720px wide, a
   skeleton until the first frame; at a held submit the values under it
   (label, value, source; the values are the host's read of the page's
@@ -106,6 +113,15 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
 - Holding a box thread's act on the Mac (a Mac-side row the box presses
   over the peer link): a box thread's computer act on the Mac is refused,
   not held (milestone 10). Yours, milestone 41.
+- **"He is driving" holds for one turn only.** `computer.stop` lasts until
+  the thread's next turn, and nothing in computer use reads
+  `work_browser_drive`: a turn that starts while he drives (his own message,
+  a decided act waking the thread) may use computer use again unless the
+  model heeds `browser_open`'s `OWNER_DRIVES`. The gate belongs in
+  computer/run.ts (a call that is not the owner's press, from a thread whose
+  pane he drives, refused), which this pillar does not own: a foundation
+  follow-up. Likewise the phone's `work.browser.drive` stops nothing: the
+  stop is the desktop's.
 - The Mac locked: the canvas shows no "As it was at" line for a locked Mac.
 - `teams.post`'s own Outbox view: it uses the generic one (`act.ts`,
   `chunk: null`); Sent's picture is milestone 14's to draw.
