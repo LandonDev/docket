@@ -6,9 +6,12 @@ import { join } from 'node:path'
 import {
   ConvexDocStore,
   convexHttp,
+  ConvexVersionStore,
   createCollabServer,
   createCollabVerifier,
+  createHistory,
   FileDocStore,
+  FileVersionStore,
   type CollabServer,
   type ConvexCall,
   type TrustedIssuer
@@ -121,9 +124,18 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     linkLive,
     log: io.log
   })
+  // Versions and branches are kept where the document is: LifeOS's rows, or inside the .tcdoc (milestone 19).
+  const lifeosVersions = new ConvexVersionStore(convex)
+  const fileVersions = new FileVersionStore()
+  const history = createHistory({
+    collab,
+    versionsFor: (name) => (name.startsWith('file:') ? fileVersions : (notServed ?? lifeosVersions)),
+    storeFor: (name) => (name.startsWith('file:') ? fileStore : (notServed ?? lifeosStore)),
+    log: io.log
+  })
   // Yjs updates are small; an import's bulk comes through the internal routes, never a socket.
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 })
-  const ctx: RouteCtx = { config: () => config, collab, convex, links: () => links, wss, log: io.log }
+  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, wss, log: io.log }
 
   // ── public ────────────────────────────────────────────────────────────
   const pathOf = (req: IncomingMessage): string | null => {
@@ -237,6 +249,7 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     },
     async stop() {
       clearInterval(recovery)
+      history.stop()
       for (const client of wss.clients) client.terminate()
       await collab.stop()
       await recovering

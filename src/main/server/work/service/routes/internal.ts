@@ -12,10 +12,10 @@ import { notServedWords } from '../config'
  * owner, so it holds the fence again.
  */
 
-type Fence = { botId?: string; sectors: string[] | 'all'; client?: string; draftOnly?: boolean }
+export type Fence = { botId?: string; sectors: string[] | 'all'; client?: string; draftOnly?: boolean }
 type DocRow = { _id: string; sector: string; seq: number; shared?: boolean; markdown?: string; plain?: string }
 
-const str = (body: Record<string, unknown>, key: string, max = 300): string => {
+export const str = (body: Record<string, unknown>, key: string, max = 300): string => {
   const v = body[key]
   if (typeof v !== 'string' || v.length === 0 || v.length > max) throw new RouteError(400, `${key} is missing or too long`)
   return v
@@ -23,14 +23,14 @@ const str = (body: Record<string, unknown>, key: string, max = 300): string => {
 
 const SAFE = /^[A-Za-z0-9_-]{1,128}$/
 
-function fenceOf(body: Record<string, unknown>): Fence {
+export function fenceOf(body: Record<string, unknown>): Fence {
   const f = body.fence as Fence | undefined
   if (!f || typeof f !== 'object' || (f.sectors !== 'all' && !(Array.isArray(f.sectors) && f.sectors.every((s) => typeof s === 'string'))))
     throw new RouteError(400, 'fence is missing')
   return f
 }
 
-const inFence = (fence: Fence, sector: string): boolean => fence.sectors === 'all' || fence.sectors.includes(sector)
+export const inFence = (fence: Fence, sector: string): boolean => fence.sectors === 'all' || fence.sectors.includes(sector)
 
 /** Who a write is credited to: the thread that asked, or the bot key (§8.1). */
 export function principalOf(body: Record<string, unknown>): string {
@@ -46,7 +46,7 @@ export function principalOf(body: Record<string, unknown>): string {
 }
 
 /** The row, through the owner's eyes, and only if the caller's fence holds its sector; else "not found". */
-async function docIn(ctx: RouteCtx, docId: string, fence: Fence): Promise<DocRow> {
+export async function docIn(ctx: RouteCtx, docId: string, fence: Fence): Promise<DocRow> {
   if (!/^[A-Za-z0-9]{1,64}$/.test(docId)) throw new RouteError(404, 'not found')
   const row = (await ctx.convex('query', 'docs:get', { id: docId }).catch((err: Error) => {
     if (/not found|ArgumentValidationError|Invalid argument/i.test(err.message)) return null
@@ -57,7 +57,7 @@ async function docIn(ctx: RouteCtx, docId: string, fence: Fence): Promise<DocRow
 }
 
 /** On a host that does not serve LifeOS's documents, every write is refused with the host that does. */
-function servingHere(ctx: RouteCtx): void {
+export function servingHere(ctx: RouteCtx): void {
   const lifeos = ctx.config().lifeos
   if (!lifeos.here) throw new RouteError(409, notServedWords(lifeos.host))
 }
@@ -90,10 +90,9 @@ export const internalDocRoutes: InternalRoute[] = [
       if (because !== 'asked' && because !== 'routine' && because !== 'own') throw new RouteError(400, 'because is asked, routine or own')
       const principal = principalOf(body)
       const row = await docIn(ctx, docId, fenceOf(body))
-      // An agent's own idea on a shared document is a suggestion (§8.4), which history and branches build.
-      if (row.shared && because === 'own') throw new RouteError(409, 'this document is shared, so an agent\'s own change to it is a suggestion, and suggestions are not built yet (milestone 19)')
-      await ctx.collab.writeMarkdown(docId, principal, markdown)
-      return { mode: 'direct' }
+      // Direct and one version, or, for an agent's own idea on a shared document, into its branch (§8.4, milestone 19).
+      const done = await ctx.history.write(docId, principal, markdown, { because, shared: !!row.shared })
+      return done.mode === 'branch' ? done : { mode: 'direct', ...(done.versionId ? { versionId: done.versionId } : {}) }
     }
   },
   {

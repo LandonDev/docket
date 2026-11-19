@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
-import type { CollabServer, ConvexCall } from 'work-kit/collab-server'
+import type { CollabServer, ConvexCall, History } from 'work-kit/collab-server'
 import type { WebSocketServer } from 'ws'
 import type { ServiceConfig, ServiceLink } from '../wire'
 
@@ -12,6 +12,8 @@ import type { ServiceConfig, ServiceLink } from '../wire'
 export interface RouteCtx {
   config(): ServiceConfig
   collab: CollabServer
+  /** versions, compare, restore and branches of the live documents (milestone 19) */
+  history: History
   /** LifeOS as the owner (an unfenced device JWT main hands over) */
   convex: ConvexCall
   /** guest links by id, as main last pushed them */

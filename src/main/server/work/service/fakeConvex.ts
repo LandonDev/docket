@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
  * A stand-in for LifeOS's Convex as the Work service calls it (M17.md): the
  * HTTP API's `/api/query|mutation`, `docs:get`, `docs:generateUploadUrl`, the
  * upload, `docs:store` (compare-and-set on `seq`), `docs:create`,
- * `docs:createThread` and `docs:remove`, with files kept in memory. For
+ * `docs:createThread`, `docs:remove`, and the versions and branches milestone 19 keeps, with files kept in memory. For
  * tests and the proof only; it checks the bearer is the one it was given.
  */
 
@@ -21,9 +21,37 @@ export interface FakeDoc {
   stateFile?: string
 }
 
+export interface FakeVersion {
+  _id: string
+  docId: string
+  at: number
+  cause: string
+  label?: string
+  clients: Record<string, string>
+  epoch: number
+  restoredFrom?: string
+  /** base64, as Convex's JSON carries bytes */
+  snapshot?: string
+  blocksFile?: string
+}
+
+export interface FakeBranch {
+  _id: string
+  docId: string
+  stateFile: string
+  baseVersionId: string
+  authors: string[]
+  label: string
+  state: 'pending' | 'merged' | 'dropped'
+  at: number
+  editedAt: number
+}
+
 export interface FakeConvex {
   url: string
   docs: Map<string, FakeDoc>
+  versions: FakeVersion[]
+  branches: FakeBranch[]
   files: Map<string, Uint8Array>
   threads: { docId: string; body: string; quote?: string; author?: string; threadId: string }[]
   calls: string[]
@@ -38,6 +66,8 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
   const docs = new Map<string, FakeDoc>()
   const files = new Map<string, Uint8Array>()
   const threads: FakeConvex['threads'] = []
+  const versions: FakeVersion[] = []
+  const branches: FakeBranch[] = []
   const calls: string[] = []
   let n = 0
   const state = { failStores: false }
@@ -99,6 +129,46 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
       case 'docs:remove':
         docs.delete(args.id as string)
         return json(200, ok(null))
+      // Versions and branches (M17's shapes; milestone 19 reads and writes them).
+      case 'docs:cutVersion': {
+        const id = `kv${++n}`
+        const { snapshot, ...rest } = args as { snapshot: { $bytes: string } } & Record<string, unknown>
+        versions.push({ ...rest, _id: id, at: Date.now(), epoch: (rest.epoch as number) ?? 0, snapshot: snapshot.$bytes } as FakeVersion)
+        return json(200, ok(id))
+      }
+      case 'docs:versions': {
+        const page = versions.filter((v) => v.docId === args.docId).reverse().map(({ snapshot, blocksFile: _b, ...v }) => ({ ...v, hasSnapshot: snapshot !== undefined }))
+        return json(200, ok({ page, isDone: true, continueCursor: '' }))
+      }
+      case 'docs:version': {
+        const v = versions.find((x) => x._id === args.id)
+        if (!v) return json(200, ok(null))
+        const { snapshot, blocksFile, ...rest } = v
+        return json(200, ok({ ...rest, ...(snapshot ? { snapshot: { $bytes: snapshot } } : {}), blocksUrl: blocksFile ? `${url}/files/${blocksFile}` : null }))
+      }
+      case 'docs:setVersionBlocks': {
+        const v = versions.find((x) => x._id === args.id)
+        if (!v) return json(200, fail('not found'))
+        delete v.snapshot
+        v.blocksFile = args.blocksFile as string
+        return json(200, ok(null))
+      }
+      case 'docs:branches':
+        return json(200, ok(branches.filter((b) => b.docId === args.docId).map((b) => ({ ...b, stateUrl: `${url}/files/${b.stateFile}` }))))
+      case 'docs:createBranch': {
+        if (!versions.some((v) => v._id === args.baseVersionId && v.docId === args.docId)) return json(200, fail("that version is not this doc's"))
+        const id = `kb${++n}`
+        branches.push({ ...(args as Omit<FakeBranch, '_id' | 'state' | 'at' | 'editedAt'>), _id: id, state: 'pending', at: Date.now(), editedAt: Date.now() })
+        return json(200, ok(id))
+      }
+      case 'docs:setBranch': {
+        const b = branches.find((x) => x._id === args.id)
+        if (!b) return json(200, fail('not found'))
+        if (args.state) b.state = args.state as FakeBranch['state']
+        if (args.stateFile) b.stateFile = args.stateFile as string
+        b.editedAt = Date.now()
+        return json(200, ok(null))
+      }
       default:
         return json(200, fail(`no function ${fn}`))
     }
@@ -116,6 +186,8 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
     docs,
     files,
     threads,
+    versions,
+    branches,
     calls,
     bump(id) {
       const doc = docs.get(id)
