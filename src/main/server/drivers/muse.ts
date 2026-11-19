@@ -82,7 +82,6 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
   const skills = museSkillsFor(session)
   // A Work thread runs fenced (museConfigDirs.ts museWorkDirs): its own config and data dirs, and an empty app-owned
   // git repo as the primary root and cwd, its folder an extra root. The dirs are put back before every `muse serve`.
-  // Muse is not in WORK_PROVIDERS (work/scope.ts) yet, so a Work row reaches here only if that changes.
   const work = sessionScopeOf(session) === 'work'
   const workRefusal = work ? museWorkRefusal() : null
   if (workRefusal) throw new Error(workRefusal)

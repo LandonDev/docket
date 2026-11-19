@@ -38,9 +38,9 @@ mismatch logs one `[muse]` line.
   would make every session start fail. A `scope: 'work'` row runs fenced
   instead: its own config and data dirs under `<userData>/muse-work/`, an
   empty git repo as cwd and primary root, its folder an extra root
-  (`museWorkDirs`, museConfigDirs.ts). Muse is not in `WORK_PROVIDERS` yet
-  ([work-scope.md](work-scope.md) "Muse Code: fenced at the harness, not yet
-  offered").
+  (`museWorkDirs`, museConfigDirs.ts). Muse is offered for Work threads
+  since F1 ([work-scope.md](work-scope.md) "Muse Code: fenced at the
+  harness, offered").
   `harness/museProtocol.ts` is the pure mapping: `safe` → `:ask-me` +
   `promptUnmatched`, `edits` → `:ask-me` + `onRequest`, `auto` →
   `:unrestricted` + `allowAll`; the app-tools bridge rides `session/start`'s

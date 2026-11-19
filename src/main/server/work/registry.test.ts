@@ -45,7 +45,7 @@ vi.mock('../drivers', () => {
       }
     }
   })
-  return { BUILT_IN_DRIVERS: { claude: fake('claude'), codex: fake('codex'), muse: fake('muse') } }
+  return { BUILT_IN_DRIVERS: { claude: fake('claude'), codex: fake('codex'), muse: fake('muse'), cursor: fake('cursor') } }
 })
 
 let root: string
@@ -168,27 +168,28 @@ describe('with the Work switch on', () => {
   it('refuses a Work thread that is a plan or a build, and one on a harness with no fence', async () => {
     const purdue = await workWorkspace('purdue')
     await expect(registry.create({ threadType: 'implementation', workspaceId: purdue.id })).rejects.toThrow(/chat or a research thread/)
-    await expect(registry.create({ threadType: 'chat', workspaceId: purdue.id, provider: 'muse', model: 'muse-wonder-full-1.0' })).rejects.toThrow(/not offered for Work/)
-    // Codex is offered: its bridge answers only as its own thread (docs/agents/app-bridge.md)
+    await expect(registry.create({ threadType: 'chat', workspaceId: purdue.id, provider: 'cursor', model: 'composer-2.5' })).rejects.toThrow(/not offered for Work/)
+    // Codex and Muse are offered: the bridge answers only as its own thread (docs/agents/app-bridge.md), and each harness is fenced
     expect(await registry.create({ threadType: 'chat', workspaceId: purdue.id, provider: 'codex', model: 'gpt-6.1-sol' })).toMatchObject({ scope: 'work', provider: 'codex' })
+    expect(await registry.create({ threadType: 'chat', workspaceId: purdue.id, provider: 'muse', model: 'muse-wonder-full-1.0' })).toMatchObject({ scope: 'work', provider: 'muse' })
     // nor does a Work thread become one later
     const thread = await registry.create({ threadType: 'chat', workspaceId: purdue.id })
     await expect(registry.retype(thread.id, 'implementation')).rejects.toThrow(WorkRefused)
     await registry.retype(thread.id, 'research')
     expect(registry.get(thread.id)?.threadType).toBe('research')
-    await expect(registry.send(thread.id, 'hi', { provider: 'muse', model: 'muse-wonder-full-1.0' })).rejects.toThrow(/not offered for Work/)
+    await expect(registry.send(thread.id, 'hi', { provider: 'cursor', model: 'composer-2.5' })).rejects.toThrow(/not offered for Work/)
     expect(registry.get(thread.id)?.provider).toBe('claude')
-    expect(booted.some((b) => b.startsWith('muse:'))).toBe(false)
+    expect(booted.some((b) => b.startsWith('cursor:'))).toBe(false)
   })
 
   it('a row that is Work on a harness with no fence boots nothing', async () => {
     const purdue = await workWorkspace('purdue')
     const thread = await registry.create({ threadType: 'chat', workspaceId: purdue.id })
     await new Promise((r) => setTimeout(r, 0))
-    db.prepare(`UPDATE sessions SET provider = 'muse', model = 'muse-wonder-full-1.0' WHERE id = ?`).run(thread.id)
+    db.prepare(`UPDATE sessions SET provider = 'cursor', model = 'composer-2.5' WHERE id = ?`).run(thread.id)
     ;(registry as unknown as { handles: Map<string, unknown> }).handles.delete(thread.id)
     await expect(registry.send(thread.id, 'hi')).rejects.toThrow(/not offered for Work/)
-    expect(booted.filter((b) => b.startsWith('muse:'))).toEqual([])
+    expect(booted.filter((b) => b.startsWith('cursor:'))).toEqual([])
   })
 
   describe('scope follows the parent', () => {

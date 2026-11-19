@@ -55,14 +55,18 @@ export const WORK_THREAD_TYPES: readonly ThreadType[] = ['chat', 'research']
  *    (apptools.ts bridgeCallRefusal), the code tools are not listed or
  *    answered (workBridgeRefusal), and skills, add-ons and the Mac are held
  *    to the workspace on the app's side, whichever harness asks.
- *  - **Muse Code**: see drivers/muse.ts for why it is or is not here.
+ *  - **Muse Code**: every source cut and shown cut the same way
+ *    (work/fence-muse.proof.test.ts), a real turn's subagent shown not to
+ *    read a `.mcp.json` the agent wrote (F1), and it shares the bridge.
  *  - No other harness has a fence at all.
  */
-export const WORK_PROVIDERS: readonly ProviderId[] = ['claude', 'codex']
+export const WORK_PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'muse']
 export const workProviderRefusal = (provider: ProviderId): string | null =>
   WORK_PROVIDERS.includes(provider)
     ? null
-    : `refused: Work threads run on ${WORK_PROVIDERS.map((p) => CATALOG[p]?.label ?? p).join(' or ')}. ${CATALOG[provider]?.label ?? provider} is not offered for Work: it cannot yet be kept inside a Work thread's fence.`
+    : `refused: Work threads run on ${orList(WORK_PROVIDERS.map((p) => CATALOG[p]?.label ?? p))}. ${CATALOG[provider]?.label ?? provider} is not offered for Work: it cannot yet be kept inside a Work thread's fence.`
+/** "a", "a or b", "a, b or c". */
+const orList = (names: readonly string[]): string => (names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`)
 
 /** The Work switch as the store holds it. */
 export const workEnabled = (store: { getSetting(key: string): string | null }): boolean => parseWorkSettings(store.getSetting(WORK_SETTING_KEY)).enabled

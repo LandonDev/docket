@@ -41,7 +41,7 @@ refused. It is never made a code thread.
 | a Work parent or starter asking `scope: 'code'` | `a thread a Work thread starts is a Work thread` |
 | `scope: 'work'` naming a code workspace or project | `… is not a Work workspace` |
 | a root Work thread that is not a chat or a research thread | `a Work thread is a chat or a research thread` |
-| a Work thread on a harness that is not offered | `Work threads run on Claude or Codex. … is not offered for Work …` |
+| a Work thread on a harness that is not offered | `Work threads run on Claude, Codex or Muse Code. … is not offered for Work …` |
 
 Code branches on the row (`session.scope === 'work'`), never on the switch.
 A Work row made while the switch was on keeps its fence with the switch
@@ -201,10 +201,10 @@ the loaded list, as work/threads.ts does for the preamble parts.
 ## The fence: no MCP server but the app's
 
 A harness is offered for Work only when every way out of the fence is shut
-for it (`WORK_PROVIDERS`, work/scope.ts). Today that is **Claude Code and
-Codex** (Codex since F1, below). A Work row on any other harness is refused
-at create and at a provider switch, and again before a process is made by
-every driver but Muse's, which runs it fenced (below).
+for it (`WORK_PROVIDERS`, work/scope.ts). Today that is **Claude Code,
+Codex and Muse Code** (Codex and Muse since F1, below). A Work row on any
+other harness is refused at create, at a provider switch and again before a
+process is made.
 
 `src/main/server/work/fence.proof.test.ts` is the proof for the sources,
 kept so a new one fails it (Muse's is its sibling, fence-muse.proof.test.ts). For Claude Code and for Codex it plants one
@@ -322,12 +322,12 @@ Proven by hand, with the owner's sign-in linked read-only, and not in the
 kept test: the account's apps and remote plugins load unfenced (937 tools)
 and not fenced. The kept test signs nothing in.
 
-### Muse Code: fenced at the harness, not yet offered
+### Muse Code: fenced at the harness, offered
 
-Muse is not in `WORK_PROVIDERS`, so a Work row is still refused on it at
-create and at a provider switch. The driver no longer refuses one itself:
-since F1 (2026-11-19) it runs a Work row fenced, and whether Muse is offered
-is decided apart from this.
+Muse is in `WORK_PROVIDERS` since F1 (2026-11-19): the driver runs a Work row
+fenced, every source below is shown cut on the real binary, a real turn's
+subagent did not read a `.mcp.json` the agent wrote mid-turn, and the stdio
+bridge it shares answers only as its own thread.
 
 Muse reads servers from its config dir's `settings.json` (hooks too), from
 plugins installed in its data dir and approved in that `settings.json`, and
@@ -399,12 +399,13 @@ servers; it does not read the root again. The same turn showed that the
 agent's file tool writes the extra root (the folder) without asking, and
 its shell, once allowed, writes both roots.
 
-What is left before Muse is offered: a new session on the same host reads
-a `.mcp.json` written after the host started (M6). The driver opens one
-session per host and puts the root back before the next, so only a Muse
-feature that opens a second root session on a live host would reach it;
-none was seen. Muse also shares the stdio bridge, which is shut (Codex,
-reason 1 above).
+What stands, as the Codex home race stands for Codex: a new session on the
+same host reads a `.mcp.json` written after the host started (M6). The
+driver opens one session per host and puts the root back before the next,
+so only a Muse feature that opens a second root session on a live host would
+reach it; none was seen (the subagent and the reminder child of a real turn
+did not). A Muse update that adds one would show in fence-muse.proof.test.ts
+only if it ran there.
 
 ### What the fence does not do
 

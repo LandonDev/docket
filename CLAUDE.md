@@ -217,10 +217,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **Work** — a job as a workspace, behind one switch per host, off by default
   (`work.get`, `work.set`). Built so far: the frame, and what a Work thread is
   on the server: `sessions.scope` stamped once at create and following a
-  thread's parent or starter, no MCP server but the app's own (Claude Code
-  and Codex; `work/fence.proof.test.ts` plants one in every source and runs
-  the real CLIs; Muse runs a Work row fenced but is not offered,
-  `work/fence-muse.proof.test.ts`), the Work preamble on every start path
+  thread's parent or starter, no MCP server but the app's own (Claude Code,
+  Codex and Muse; `work/fence.proof.test.ts` and `work/fence-muse.proof.test.ts`
+  plant one in every source and run the real CLIs), the Work preamble on every start path
   ([docs/agents/work-scope.md](docs/agents/work-scope.md)). The shared types
   (src/shared/work), the core columns (`workspaces.kind`, `sessions.scope`, …),
   `WORK_MODULES` and `WorkCtx` (src/main/server/work), one stub per pillar in
