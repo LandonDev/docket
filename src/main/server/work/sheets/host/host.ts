@@ -20,6 +20,7 @@ import type { A1Cell, HostAnswer, SheetRef, Which } from './wire'
  */
 
 interface Open {
+  key: string
   backend: SheetBackend
   engine: HeadlessSheet
   unitId: string
@@ -63,9 +64,18 @@ const toSuggestion = (s: StoredSuggestion): SheetSuggestion => ({
   ...(s.reason ? { reason: s.reason } : {})
 })
 
+/** Ops that landed on a sheet, by whoever wrote them: what the live route sends to the sockets on it. */
+export type Committed = { key: string; rev: number; by: string; mutations: SheetMutationJson[] }
+
 export class SheetHost {
   private sheets = new Map<string, Promise<Open>>()
   private lanes = new Map<string, Lane>()
+  private listeners = new Set<(c: Committed) => void>()
+
+  onCommit(fn: (c: Committed) => void): () => void {
+    this.listeners.add(fn)
+    return () => this.listeners.delete(fn)
+  }
 
   constructor(private backendOf: (ref: SheetRef) => SheetBackend) {}
 
@@ -97,7 +107,7 @@ export class SheetHost {
     const backend = this.backendOf(ref)
     const loaded = await backend.load()
     const engine = headlessSheet('work', loaded.snapshot)
-    const o: Open = { backend, engine, unitId: engine.workbook.getId(), title: loaded.title, shared: loaded.shared, sector: loaded.sector, rev: loaded.snapRev, snapRev: loaded.snapRev }
+    const o: Open = { key: refKey(ref), backend, engine, unitId: engine.workbook.getId(), title: loaded.title, shared: loaded.shared, sector: loaded.sector, rev: loaded.snapRev, snapRev: loaded.snapRev }
     this.replay(o, await backend.opsAfter(loaded.snapRev))
     await engine.settled()
     return o
@@ -144,6 +154,8 @@ export class SheetHost {
       return { conflict: true, rev: o.rev }
     }
     const all = ops.flatMap((op) => op.mutations)
+    let at = baseRev
+    for (const op of ops) for (const fn of this.listeners) fn({ key: o.key, rev: ++at, by: op.by, mutations: op.mutations })
     const open = await this.suggestionsOf(o)
     // Names as the formulas being moved wrote them: the sheets before these mutations.
     const names = new Map(o.engine.workbook.getSheets().map((s) => [s.getSheetName(), s.getSheetId()]))

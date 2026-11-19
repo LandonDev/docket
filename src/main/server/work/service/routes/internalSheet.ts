@@ -25,8 +25,8 @@ const SAFE = /^[A-Za-z0-9_-]{1,128}$/
 const MAX_CELLS = 1000
 
 let made: { host: SheetHost; ctx: RouteCtx } | null = null
-/** The service's one sheet host, made on first use. */
-function hostOf(ctx: RouteCtx): SheetHost {
+/** The service's one sheet host, made on first use; the live route (sheet.ts) shares it. */
+export function hostOf(ctx: RouteCtx): SheetHost {
   if (made?.ctx !== ctx) made = { host: new SheetHost((ref) => ('lifeos' in ref ? new LifeosBackend(ctx.convex, ref.lifeos) : new TcsheetBackend(ref.tcsheet))), ctx }
   return made.host
 }

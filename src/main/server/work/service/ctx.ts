@@ -1,7 +1,7 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { basename, dirname, join, resolve } from 'node:path'
-import { NotBuilt, type CanvasSource, type Principal } from '@shared/work'
+import type { CanvasSource, Principal } from '@shared/work'
 import { fileDocName, LIFEOS_COLLAB_AUDIENCE, MAX_TOKEN_SECONDS, type CollabClaims as KitClaims, type Jwk, type TrustedIssuer } from 'work-kit/collab-server'
 import { listEnvironments } from '../../remote/environments'
 import type { CtxPart, WorkPartDeps } from '../ctx'
@@ -138,7 +138,15 @@ export const servicePart: CtxPart<'service'> = (ctx, deps) => {
         running()
         const signer = supervisor.tokenSigner()
         if (!signer) throw new Error('the Work service is not running on this host')
-        if ('sheet' in claims.item) throw new NotBuilt('live sheets', 27)
+        if ('sheet' in claims.item) {
+          // A live sheet is a LifeOS sheet, served where LifeOS's documents are (routes/sheet.ts, milestone 27).
+          const server = lifeos()
+          if (!server.here) {
+            if (server.host === null) throw new Error('this isolated instance serves no LifeOS sheets (TEMP_CODE_WORK_LIFEOS_SERVER=here lets it)')
+            throw new ServedElsewhere(server.host)
+          }
+          return (await signer.sign({ sheet: claims.item.sheet, role: claims.role, principal: claims.principal } as KitClaims, Math.min(TOKEN_SECONDS, MAX_TOKEN_SECONDS))).token
+        }
         const kit: KitClaims = { doc: claims.item.doc, role: claims.role, principal: claims.principal }
         const source = claims.source
         if (source?.at === 'file') {

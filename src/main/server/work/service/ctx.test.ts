@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { NotBuilt } from '@shared/work'
 import { createCollaborationClient, type CollaborationClient } from 'work-kit/collab'
 import { fileDocName } from 'work-kit/collab-server'
 import { openDb, Store } from '../../db'
@@ -162,7 +161,8 @@ describe('ctx.service', () => {
     const client = createCollaborationClient({ documentName: doc, token, url: work.ctx.service.url(`/w/doc/${doc}`), offline: false })
     opened.clients.push(client)
     await until('synced', () => client.provider.isSynced)
-    await expect(work.ctx.service.token({ item: { sheet: 's1' }, role: 'edit', principal: 'owner' })).rejects.toBeInstanceOf(NotBuilt)
+    // A live sheet is a LifeOS sheet (milestone 27): served where LifeOS's documents are, here the box.
+    await expect(work.ctx.service.token({ item: { sheet: 's1' }, role: 'edit', principal: 'owner' })).rejects.toBeInstanceOf(ServedElsewhere)
     const elsewhere = await work.ctx.service.token({ item: { doc }, role: 'edit', principal: 'owner', source: { at: 'file', host: 'env_box', path } }).catch((e: unknown) => e)
     expect(elsewhere).toBeInstanceOf(ServedElsewhere)
     expect((elsewhere as ServedElsewhere).host).toBe('env_box')
