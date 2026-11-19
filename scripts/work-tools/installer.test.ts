@@ -208,17 +208,22 @@ describe.skipIf(process.platform === 'win32')('the toolchain installer', () => {
     expect(() => loadManifests(loop)).toThrow(/a cycle of needs/)
   })
 
-  it('the base manifest parses, names every tool the plan asks for, and records a licence for each', () => {
+  it("the base manifest names every tool the plan asks for, and every pillar's manifest beside it is sound", () => {
+    // loadManifests parses each *.json against ToolManifestSchema and refuses a name two manifests share or a need none names
     const tools = loadManifests(join(import.meta.dirname))
-    expect(tools.map((t) => t.name)).toEqual(['libreoffice', 'python', 'venv', 'ffmpeg', 'ironcalc'])
+    const base = tools.filter((t) => t.file === 'base.json')
+    expect(base.map((t) => t.name)).toEqual(['libreoffice', 'python', 'venv', 'ffmpeg', 'ironcalc'])
+    expect(base.every((t) => t.pillar === 'toolchain')).toBe(true)
+    // the box and the Mac get every base tool
+    for (const p of ['linux-x64', 'darwin-arm64'] as const) expect(base.every((t) => t.platforms[p])).toBe(true)
+    // a pillar's tools come from its own file, never the base's
+    for (const t of tools.filter((t) => t.file !== 'base.json')) expect(t.pillar).not.toBe('toolchain')
     for (const t of tools) {
       expect(t.licence.length).toBeGreaterThan(2)
       expect(t.licenceNote.length).toBeGreaterThan(10)
       for (const entry of Object.values(t.platforms)) for (const f of entry?.files ?? []) expect(f.url.startsWith('https://')).toBe(true)
     }
-    // the box and the Mac get every base tool
-    for (const p of ['linux-x64', 'darwin-arm64'] as const) expect(tools.every((t) => t.platforms[p])).toBe(true)
-    // GPL tools are separate processes, never loaded in process
+    // GPL and AGPL tools are separate processes, never loaded in process
     for (const t of tools.filter((t) => /GPL/.test(t.licence))) expect(t.licenceNote).toMatch(/separate/)
   })
 })
