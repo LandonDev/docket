@@ -11,7 +11,7 @@ name: TempCode
 options:
   bundleIdPrefix: dev.landon.tempcode
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "27.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
 settings:
@@ -27,12 +27,24 @@ settings:
     CODE_SIGNING_REQUIRED: NO
     AD_HOC_CODE_SIGNING_ALLOWED: YES
     TARGETED_DEVICE_FAMILY: "1"
-    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    # One minimum with work-kit's LifeKit (landed/M45.md): SwiftPM refuses a package newer than its client.
+    IPHONEOS_DEPLOYMENT_TARGET: "27.0"
+    # convex-swift (under LifeKit) ships no x86_64 simulator slice.
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+    # LifeKit's ink reads the app's accent; without the asset it draws clear.
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 packages:
   TempCodeClient:
     path: ../TempCodeClient
   TempCodeContract:
     path: ../TempCodeContract
+  # work-kit's Swift half: LifeKit, LifeKitUI and LifeKitCore. The revision is the commit
+  # package.json pins for the JS half (scripts/workKitPin.test.ts holds them equal). Nothing
+  # links it yet: milestone 47 links LifeKit and LifeKitUI into the app, and a widget or an
+  # extension only ever links LifeKitCore.
+  WorkKit:
+    url: https://github.com/LandonDev/work-kit
+    revision: 73e6cadaf67567c8d61145e3c08ffe031c087d0a
 targets:
   TempCode:
     type: application
