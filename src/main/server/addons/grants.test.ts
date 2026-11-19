@@ -73,16 +73,21 @@ describe('the test seam', () => {
     try {
       expect(await source.read('ad_1')).toMatchObject({ addonId: 'ad_1', fields: { FAKE_TOKEN: 'one' } })
       expect(await source.read('ad_other')).toBeNull()
-      // Another length as well as another value: two writes inside one clock tick share an mtime.
-      writeFileSync(file, JSON.stringify({ fake: { fields: { FAKE_TOKEN: 'the second value' } } }))
-      const end = Date.now() + 8_000
-      while (changes === 0 && Date.now() < end) await new Promise((r) => setTimeout(r, 50))
+      // watchFile takes its first stat on its own time: a write that lands before it is that baseline, and is never a
+      // change. So write again, each time another length as well as another value (two writes inside one clock tick
+      // share an mtime), until the watcher calls back; the test's own timeout is the only deadline.
+      let value = ''
+      for (let n = 0; changes === 0; n++) {
+        value = `the second value${'!'.repeat(n)}`
+        writeFileSync(file, JSON.stringify({ fake: { fields: { FAKE_TOKEN: value } } }))
+        for (let waited = 0; changes === 0 && waited < 1_000; waited += 50) await new Promise((r) => setTimeout(r, 50))
+      }
       expect(changes).toBeGreaterThan(0)
-      expect(await source.read('ad_1')).toMatchObject({ fields: { FAKE_TOKEN: 'the second value' } })
+      expect(await source.read('ad_1')).toMatchObject({ fields: { FAKE_TOKEN: value } })
     } finally {
       source.close?.()
     }
-  }, 15_000)
+  }, 60_000)
 })
 
 describe('the vault source', () => {
