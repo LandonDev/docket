@@ -150,8 +150,8 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   get them only where the box has a Chromium. They refuse to act while he
   drives (`BOX_OWNER_DRIVES`; the Mac's computer use has no such gate yet).
 - **What the service refuses**, so a step runs only as the hold read it
-  (§28.4): a click on a control something else covers, a click into an
-  embedded frame (a frame shows as a group by its title), a step by menu
+  (§28.4): a click on a control something else covers, a click into a
+  frame not read yet or a plugin, a step by menu
   path, typing into something that takes no focus (never a click in its
   place), keys from the address bar into the page, and every page of his
   mailbox (`AGENT_CLOSED_HOSTS`: the imported sign-in serves every tab, and
@@ -168,6 +168,9 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   index.ts; the box's rows reach the desktop in the `computer` push, and
   Take over stops them (§28.5). A held submit shows its picture in the
   Outbox.
+- **Frames** are read in place (§28.3): a portal that draws its form in a
+  frame, of its own origin or another's, is read, filled, clicked and held
+  like any page (`hold.test.ts`).
 
 ## Logins
 

@@ -151,7 +151,7 @@ d('the hold on the box browser', () => {
       expect(site.posts).not.toContain('/sent')
     }, 60_000)
 
-    it("refuses a click on a control another lies over, and a click into a frame it cannot read", async () => {
+    it('refuses a click on a control another lies over, and holds a click on a frame named for an outward act', async () => {
       await fresh()
       const cancel = idOf(text, /button "Cancel"/)
       const r = await run(t, 'computer_act', { app: 'Chromium', action: 'left_click', element: cancel })
@@ -163,8 +163,8 @@ d('the hold on the box browser', () => {
       await new Promise((r) => setTimeout(r, 300))
       expect(site.posts).not.toContain('/paid')
       expect(site.posts).not.toContain('/sent')
-      // "Pay" is itself an outward word, so the hold keeps it; were it not, the service would refuse to click into the frame (service.test.ts)
-      expect(into.steps.join('\n') + (into.body ?? '')).toMatch(/embedded frame|^held:/)
+      // "Pay" is itself an outward word: the hold keeps the click on the frame whatever lies inside it
+      expect(into.body).toMatch(/^held:/)
     }, 60_000)
 
     it('keeps keys from the address bar out of the page, and his mailbox closed', async () => {
@@ -179,6 +179,53 @@ d('the hold on the box browser', () => {
       expect(site.posts).not.toContain('/sent')
     }, 60_000)
   })
+
+  it('reads, types into and holds a form drawn in frames, of this origin and of another, and the press submits each once', async () => {
+    metas.set('w4', { id: 'w4', permission: 'auto', scope: 'work' } as Partial<SessionMeta>)
+    const run4 = (tool: string, args: Record<string, unknown>) => sessions.run({ threadId: 'w4', permission: () => 'auto' }, tool, args)
+    await run4('computer_apps', { launch: 'Chromium', open: [site.url + '/frames'] })
+    let text = ''
+    // the other origin's frame comes in its own process: read until it is there
+    for (let i = 0; i < 30 && !/button "Pay now"/.test(text); i++) {
+      text = (await run4('computer_observe', { app: 'Chromium' })).body ?? ''
+      if (!/button "Pay now"/.test(text)) await new Promise((r) => setTimeout(r, 200))
+    }
+    expect(text).toMatch(/group "Comments"[\s\S]*input "Comment"[\s\S]*button "Post comment"/)
+    expect(text).toMatch(/group "Payment"[\s\S]*input "Card name"[\s\S]*password "Card PIN"[\s\S]*button "Pay now"/)
+    const filled = await run4('computer_batch', {
+      app: 'Chromium',
+      actions: [
+        { action: 'type', element: idOf(text, /input "Comment"/), text: 'Looks right' },
+        { action: 'type', element: idOf(text, /input "Card name"/), text: 'Dana Lee' }
+      ]
+    })
+    expect(filled.isError, filled.body ?? '').toBe(false)
+    expect(filled.body).toContain('input "Comment" = "Looks right"')
+    expect(filled.body).toContain('input "Card name" = "Dana Lee"')
+
+    // each submit leaves the page, so each is read and pressed in a thread of its own on a fresh page
+    for (const [thread, button, posted] of [['w4', /button "Post comment"/, '/commented'], ['w5', /button "Pay now"/, '/paid']] as const) {
+      metas.set(thread, { id: thread, permission: 'auto', scope: 'work' } as Partial<SessionMeta>)
+      const go = (tool: string, args: Record<string, unknown>) => sessions.run({ threadId: thread, permission: () => 'auto' }, tool, args)
+      if (thread === 'w5') await go('computer_apps', { launch: 'Chromium', open: [site.url + '/frames'] })
+      let now = ''
+      for (let i = 0; i < 30 && !button.test(now); i++) {
+        now = (await go('computer_observe', { app: 'Chromium' })).body ?? ''
+        if (!button.test(now)) await new Promise((r) => setTimeout(r, 200))
+      }
+      const before = held.length
+      const r = await go('computer_act', { app: 'Chromium', action: 'left_click', element: idOf(now, button) })
+      expect(r.body, r.steps.join('\n')).toMatch(/^held:/)
+      expect(held.length).toBe(before + 1)
+      await new Promise((r) => setTimeout(r, 300))
+      expect(site.posts).not.toContain(posted)
+      const pressed = await held.at(-1)!.carryOut()
+      expect(pressed.isError, `${pressed.body} ${pressed.steps.join(' ')}`).toBe(false)
+      expect(pressed.steps.join('\n')).not.toMatch(/failed/)
+      for (let i = 0; i < 20 && !site.posts.includes(posted); i++) await new Promise((r) => setTimeout(r, 100))
+      expect(site.posts.filter((p) => p === posted)).toEqual([posted])
+    }
+  }, 90_000)
 
   it("runs a code thread's submit: the hold is Work's", async () => {
     metas.set('c1', { id: 'c1', permission: 'auto' } as Partial<SessionMeta>)

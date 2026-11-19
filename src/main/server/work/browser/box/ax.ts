@@ -22,6 +22,8 @@ export interface AxNode {
   properties?: { name: string; value: AxValue }[]
   childIds?: string[]
   backendDOMNodeId?: number
+  /** the frame the node is in: '' for the page's own, else the frame's id (box/service.ts merges each frame's tree under its owner) */
+  frame?: string
 }
 
 /** Chromium's roles to the grammar's words; a role not here is a layout role and its children rise. */
@@ -86,7 +88,7 @@ const ROLES: Readonly<Record<string, string>> = {
   ColorWell: 'color well',
   meter: 'level',
   scrollbar: 'scroll area',
-  // an embedded frame shows as a group by its title: its contents are not read, so the model knows to open its page instead
+  // an embedded frame is a group by its title, its own page's tree read under it (box/service.ts `pageFrames`)
   Iframe: 'group',
   IframePresentational: 'group'
 }
@@ -95,16 +97,16 @@ const ROLES: Readonly<Record<string, string>> = {
 export class IndexBook {
   private next = 1
   private readonly byKey = new Map<string, number>()
-  /** the element's DOM node by index, for acting on it */
-  readonly nodes = new Map<number, { backend: number | null; key: string }>()
+  /** the element's DOM node by index, and the frame it is in, for acting on it */
+  readonly nodes = new Map<number, { backend: number | null; key: string; frame: string }>()
 
-  indexOf(key: string, backend: number | null): number {
+  indexOf(key: string, backend: number | null, frame = ''): number {
     let i = this.byKey.get(key)
     if (i === undefined) {
       i = this.next++
       this.byKey.set(key, i)
     }
-    this.nodes.set(i, { backend, key })
+    this.nodes.set(i, { backend, key, frame })
     return i
   }
   /** A page that went away: its elements are gone, their numbers never come back. */
@@ -123,8 +125,8 @@ const text = (v: AxValue | undefined): string => (v?.value === undefined || v.va
 export interface ReadOptions {
   /** the page's key in the book: its target id */
   page: string
-  /** the DOM nodes that are password fields (Chromium names their role `textbox`) */
-  passwords: ReadonlySet<number>
+  /** the DOM nodes that are password fields (Chromium names their role `textbox`), as `<frame>:<backend id>` */
+  passwords: ReadonlySet<string>
   /** only this element's subtree (`state.get` with `element`) */
   root?: number
 }
@@ -133,6 +135,8 @@ export interface ReadOptions {
 export interface Kept {
   line: ElementLine
   backend: number | null
+  /** the frame its node is in ('' for the page's own) */
+  frame: string
   parent: number | null
 }
 
@@ -148,11 +152,12 @@ export function readTree(nodes: readonly AxNode[], book: IndexBook, o: ReadOptio
   const roots = nodes.filter((n) => !childOf.has(n.nodeId))
   const kept: Kept[] = []
   let focused: number | null = null
-  const visit = (n: AxNode, depth: number, parent: number | null, parentText: string, rooted: boolean): void => {
+  const visit = (n: AxNode, depth: number, parent: number | null, parentText: readonly string[], rooted: boolean): void => {
     const raw = text(n.role)
     let role = n.ignored ? undefined : ROLES[raw]
     const backend = n.backendDOMNodeId ?? null
-    if (role === 'input' && backend !== null && o.passwords.has(backend)) role = 'password'
+    const frame = n.frame ?? ''
+    if (role === 'input' && backend !== null && o.passwords.has(`${frame}:${backend}`)) role = 'password'
     if (role === 'input' && prop(n, 'multiline') === true) role = 'text area'
     const name = text(n.name)
     let value = role && !['password', 'checkbox', 'switch', 'radio'].includes(role) ? text(n.value) : ''
@@ -160,14 +165,15 @@ export function readTree(nodes: readonly AxNode[], book: IndexBook, o: ReadOptio
     const states = role ? statesOf(n, role) : []
     const keep =
       !!role &&
-      !(role === 'text' && (!name || name === parentText)) &&
+      !(role === 'text' && (!name || parentText.includes(name))) &&
       !(role === 'group' && !name && !states.length) &&
       (!!name || !!value || hasRoleDefault(role) || states.length > 0 || STRUCTURAL_ROLES.has(role))
     let here = parent
     let inside = rooted
     let nextDepth = depth
     if (keep) {
-      const index = book.indexOf(`${o.page}:${backend ?? n.nodeId}`, backend)
+      // backend ids are per renderer process: a frame drawn in another one keys its nodes by its own id
+      const index = book.indexOf(`${o.page}:${frame ? `${frame}:` : ''}${backend ?? n.nodeId}`, backend, frame)
       inside = rooted || index === o.root
       if (inside) {
         const line: ElementLine = {
@@ -179,7 +185,7 @@ export function readTree(nodes: readonly AxNode[], book: IndexBook, o: ReadOptio
           states,
           actions: []
         }
-        kept.push({ line, backend, parent })
+        kept.push({ line, backend, frame, parent })
         if (states.includes('focused')) focused = index
         nextDepth = depth + 1
       }
@@ -187,10 +193,10 @@ export function readTree(nodes: readonly AxNode[], book: IndexBook, o: ReadOptio
     }
     for (const id of n.childIds ?? []) {
       const c = byId.get(id)
-      if (c) visit(c, inside ? nextDepth : depth, here, keep ? name || value : parentText, inside)
+      if (c) visit(c, inside ? nextDepth : depth, here, keep ? [name, text(n.value)].filter(Boolean) : parentText, inside)
     }
   }
-  for (const r of roots) visit(r, 0, null, '', o.root === undefined)
+  for (const r of roots) visit(r, 0, null, [], o.root === undefined)
   if (o.root !== undefined && kept.length) {
     const top = kept[0]!.line.depth
     for (const k of kept) k.line.depth -= top
@@ -212,8 +218,8 @@ export function withChrome(tree: ReadTree, book: IndexBook, page: string, title:
   const window = book.indexOf(`${page}:window`, null)
   const address = book.indexOf(`${page}:address`, null)
   const kept: Kept[] = [
-    { line: { depth: 0, index: window, role: 'window', ...(title ? { name: cutName(title) } : {}), states: [], actions: [] }, backend: null, parent: null },
-    { line: { depth: 1, index: address, role: 'input', name: ADDRESS_NAME, ...(url ? { value: cutValue(url) } : {}), states: addressFocused ? ['focused'] : [], actions: [] }, backend: null, parent: window },
+    { line: { depth: 0, index: window, role: 'window', ...(title ? { name: cutName(title) } : {}), states: [], actions: [] }, backend: null, frame: '', parent: null },
+    { line: { depth: 1, index: address, role: 'input', name: ADDRESS_NAME, ...(url ? { value: cutValue(url) } : {}), states: addressFocused ? ['focused'] : [], actions: [] }, backend: null, frame: '', parent: window },
     ...tree.kept.map((k) => ({ ...k, line: { ...k.line, depth: Math.min(k.line.depth + 1, OBSERVATION_TEXT.maxDepth) }, parent: k.parent ?? window }))
   ]
   if (addressFocused) for (const k of kept.slice(2)) k.line = { ...k.line, states: k.line.states.filter((s) => s !== 'focused') }

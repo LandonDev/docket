@@ -136,7 +136,7 @@ const NAMES: Record<ComputerToolName, string> = {
 }
 
 const LEAD =
-  "The box's own browser, Chromium, which runs on this host whatever Mac is awake: its app is \"Chromium\", each of its pages a window, and its address bar takes a web address and Return. Call browser_open first so the owner sees it beside the thread. A submit, a send or the like on its final screen is held for his press on its own: drive up to it and stop. Never type a password: call browser_needs_you. His mailbox (Outlook on the web) does not open here: use the office_* tools for his mail and calendar. A page inside an embedded frame shows as a group by its title and is not read: open its own page instead. Below, \"the Mac\" and \"computer_*\" mean this browser and these box_browser_* tools.\n\n"
+  "The box's own browser, Chromium, which runs on this host whatever Mac is awake: its app is \"Chromium\", each of its pages a window, and its address bar takes a web address and Return. Call browser_open first so the owner sees it beside the thread. A submit, a send or the like on its final screen is held for his press on its own: drive up to it and stop. Never type a password: call browser_needs_you. His mailbox (Outlook on the web) does not open here: use the office_* tools for his mail and calendar. A form drawn in an embedded frame is read, filled and clicked like the page around it: the frame is a group by its title, its controls under it. Below, \"the Mac\" and \"computer_*\" mean this browser and these box_browser_* tools.\n\n"
 
 /** The four computer tools, renamed for the box browser and run on its sessions. Listed only where the box has one. */
 export function boxBrowserTools(): WorkTool[] {

@@ -99,6 +99,15 @@ export interface BoxChromiumOptions {
   log?: (line: string) => void
 }
 
+const groupAlive = (pid: number): boolean => {
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export class BoxChromium {
   private child: ChildProcess | null = null
   private starting: Promise<string> | null = null
@@ -211,14 +220,18 @@ export class BoxChromium {
     this.ws = null
     this.clear()
     if (!child?.pid) return this.exiting
-    const exited = new Promise<void>((r) => (child.exitCode !== null || child.signalCode !== null ? r() : child.once('exit', () => r())))
+    const pid = child.pid
+    const main = new Promise<void>((r) => (child.exitCode !== null || child.signalCode !== null ? r() : child.once('exit', () => r())))
+    // Its helpers (zygote, renderers) outlive the browser for a moment and still hold the profile: the stop ends when the whole group has.
+    const exited = main.then(async () => {
+      for (let i = 0; i < 100 && groupAlive(pid); i++) await new Promise((r) => setTimeout(r, 50))
+    })
     this.exiting = exited
     try {
       process.kill(-child.pid, 'SIGTERM')
     } catch {
       child.kill('SIGTERM')
     }
-    const pid = child.pid
     setTimeout(() => {
       try {
         process.kill(-pid, 'SIGKILL')

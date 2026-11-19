@@ -2117,8 +2117,14 @@ grammar (`ax.ts`, `formatObservation`, so `parseObservation` takes every
 text back). Roles map to §4.1's words; layout roles drop and their children
 rise; a text node that repeats its parent's name drops; an `<input
 type=password>` (found in the DOM, since Chromium calls it `textbox`) is
-`password` and never shows a value; an embedded frame is a `group` by its
-title, its contents unread. Above the page, as Chrome on the Mac
+`password` and never shows a value. An embedded frame is a `group` by its
+title with its own page's tree read in under it (`pageFrames`): a frame of
+the page's process through the page's session (`getFullAXTree` with its
+`frameId`), a frame of another site through its own session, which
+`Target.setAutoAttach` hands over as the page loads; a frame's nodes are
+keyed by the frame, since backend ids are per process. An out-of-process
+frame's boxes are its own viewport's: the owner element's content box,
+read in its parent, is added. Above the page, as Chrome on the Mac
 reads, the observation draws the window and an address bar: `[i] window
 "<title>"`, `[j] input "Address and search bar" = "<url>"`, then the page's
 `web area`. The hold reads a page's site from that bar (outward.ts
@@ -2149,8 +2155,11 @@ reads it (§19.3, outward.ts):
 - a click lands on an element's box centre after
   `DOM.scrollIntoViewIfNeeded`, and only if the element itself (or a node
   inside it) is what lies there (`DOM.getNodeForLocation`); a control laid
-  over it answers `action_unsupported`. A point inside an embedded frame,
-  which the read does not show, answers `action_unsupported` too;
+  over it answers `action_unsupported`. The hit test follows the point into
+  each frame the read shows (into an out-of-process frame at the frame's
+  own coordinates); a frame not attached yet, or a plugin, answers
+  `action_unsupported`. A key's element is focused in its own frame's
+  session, and the focus check follows `activeElement` into frames;
 - the pointer moves exactly as `pointerAfter` reads it: clicks, presses,
   moves, drags and a scroll with a target move it; a step with no target
   lands where it was;

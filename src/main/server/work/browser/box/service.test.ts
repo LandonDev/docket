@@ -168,17 +168,41 @@ d('the box computer service speaks the wire', () => {
     expect(bad.steps[1]!.status === 'failed' && bad.steps[1]!.error.kind).toBe('open_refused')
   })
 
-  it('lands a click only on what the read showed: never under a covering control, never inside a frame', async () => {
+  it('lands a click only on what the read showed: never under a covering control; a frame is read and reached', async () => {
     await ok('apps.launch', { app: 'Chromium', open: [site.url + '/tricks'], session: 's1' })
     const read = await ok('state.get', { session: 's1', app: { app: 'Chromium' }, geometry: true, wait: { minMs: 0, quietMs: 150, maxMs: 3000, busyMaxMs: 3000 } })
     const frame = /\[\d+\] group "Pay"[^@]*@(\d+),(\d+) (\d+)×(\d+)/.exec(read.text)
     expect(frame, read.text).toBeTruthy()
     const run = (action: Record<string, unknown>) => ok('action.run', { session: 's1', app: { app: 'Chromium' }, epoch, tiers: ['process'], action, observe: { mode: 'none' } })
-    const into = await run({ action: 'left_click', coordinate: [Number(frame![1]) + 20, Number(frame![2]) + 20] })
-    expect(into.step).toMatchObject({ status: 'failed', error: { kind: 'action_unsupported', message: expect.stringMatching(/embedded frame/) } })
+    // the frame's own controls are read under it, and a point in it lands there (away from its button: this is no Work thread)
+    expect(read.text).toMatch(/\[\d+\] group "Pay"[^\n]*\n\s+\[\d+\] web area[^\n]*\n\s+\[\d+\] button "Pay now" @\d+,\d+/)
+    const into = await run({ action: 'left_click', coordinate: [Number(frame![1]) + Number(frame![3]) - 10, Number(frame![2]) + Number(frame![4]) - 10] })
+    expect(into.step).toMatchObject({ status: 'ok' })
     const covered = await run({ action: 'left_click', element: lineOf(read.text, /button "Cancel"/) })
     expect(covered.step).toMatchObject({ status: 'failed', error: { kind: 'action_unsupported', message: expect.stringMatching(/something else covers/) } })
     expect(site.posts).toEqual([])
+  })
+
+  it('reads frames of this origin and of another in place, and clicks inside both', async () => {
+    await ok('apps.launch', { app: 'Chromium', open: [site.url + '/frames'], session: 's1' })
+    let read = { text: '' } as Observation
+    for (let i = 0; i < 30 && !/button "Pay now"/.test(read.text); i++)
+      read = await ok('state.get', { session: 's1', app: { app: 'Chromium' }, geometry: true, wait: { minMs: 100, quietMs: 150, maxMs: 2000, busyMaxMs: 2000 } })
+    expect(() => parseObservation(read.text)).not.toThrow()
+    const box = (re: RegExp) => {
+      const m = new RegExp(`${re.source}[^\\n]*@(\\d+),(\\d+) (\\d+)×(\\d+)`).exec(read.text)
+      expect(m, `${re} in\n${read.text}`).toBeTruthy()
+      return m!.slice(1).map(Number)
+    }
+    const within = (inner: number[], outer: number[]) =>
+      inner[0]! >= outer[0]! && inner[1]! >= outer[1]! && inner[0]! + inner[2]! <= outer[0]! + outer[2]! && inner[1]! + inner[3]! <= outer[1]! + outer[3]!
+    expect(within(box(/button "Post comment"/), box(/group "Comments"/))).toBe(true)
+    expect(within(box(/button "Pay now"/), box(/group "Payment"/))).toBe(true)
+    for (const field of [/input "Comment"/, /input "Card name"/]) {
+      const r = await ok('action.run', { session: 's1', app: { app: 'Chromium' }, epoch, tiers: ['process'], action: { action: 'left_click', element: lineOf(read.text, field) }, observe: { mode: 'full' } })
+      expect(r.step, JSON.stringify(r.step)).toMatchObject({ status: 'ok' })
+      expect(r.observation!.text).toMatch(new RegExp(`${field.source} focused`))
+    }
   })
 
   it('refuses stale and unknown elements before anything runs', async () => {

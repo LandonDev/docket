@@ -150,6 +150,8 @@ export class BoxComputerService {
   private cdp: Cdp | null = null
   private connecting: Promise<Cdp> | null = null
   private readonly attached = new Map<string, string>()
+  /** frames drawn in a process of their own (out-of-process iframes), by frame id: their DevTools session */
+  private readonly oopifs = new Map<string, string>()
   private readonly windows = new Map<string, number>()
   private nextWindow = 1
   private mainTarget: string | null = null
@@ -378,6 +380,17 @@ export class BoxComputerService {
       })
       cdp.on('Target.detachedFromTarget', (p) => {
         for (const [t, s] of this.attached) if (s === p.sessionId) this.attached.delete(t)
+        for (const [f, s] of this.oopifs) if (s === p.sessionId) this.oopifs.delete(f)
+      })
+      // A frame of another site runs in its own process: auto-attach hands it over as a session of its own.
+      cdp.on('Target.attachedToTarget', (p) => {
+        const info = p.targetInfo as { type: string; targetId: string }
+        if (info.type !== 'iframe') return
+        const child = String(p.sessionId)
+        this.oopifs.set(info.targetId, child)
+        void Promise.all(['DOM.enable', 'Accessibility.enable', 'Runtime.enable'].map((m) => cdp.send(m, {}, child)))
+          .then(() => cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, child))
+          .catch(() => {})
       })
       this.cdp = cdp
       return cdp
@@ -472,8 +485,62 @@ export class BoxComputerService {
       sid = (await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId: page.targetId, flatten: true })).sessionId
       this.attached.set(page.targetId, sid)
       await Promise.all(['Page.enable', 'DOM.enable', 'Accessibility.enable', 'Runtime.enable'].map((m) => cdp.send(m, {}, sid)))
+      await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sid)
     }
     return { cdp, sid }
+  }
+
+  /**
+   * Every frame of the page, the page's own first: where its nodes are
+   * served (a frame of the page's process through the page's session, one
+   * of another site through its own), which element owns it, and where its
+   * pixels sit on the page (an out-of-process frame's boxes are its own
+   * viewport's). Password fields of every frame, keyed `<frame>:<backend>`.
+   */
+  private async pageFrames(page: Page): Promise<{ frames: FrameCtx[]; passwords: Set<string> }> {
+    const { cdp, sid } = await this.on(page)
+    const frames: FrameCtx[] = []
+    const passwords = new Set<string>()
+    const visit = async (session: string, key: string, parent: string | null, owner: number | null, offset: [number, number], depth: number): Promise<void> => {
+      frames.push({ key, sid: session, parent, owner, offset })
+      const { root } = await cdp.send<{ root: DomNode }>('DOM.getDocument', { depth: -1, pierce: true }, session)
+      const remote: { frame: string; owner: number; parent: string }[] = []
+      const walk = (n: DomNode, at: string) => {
+        if (n.nodeName === 'INPUT' && attr(n, 'type')?.toLowerCase() === 'password') passwords.add(`${at}:${n.backendNodeId}`)
+        if (n.frameId && (n.nodeName === 'IFRAME' || n.nodeName === 'FRAME')) {
+          if (n.contentDocument) {
+            frames.push({ key: n.frameId, sid: session, axFrame: n.frameId, parent: at, owner: n.backendNodeId, offset })
+            walk(n.contentDocument, n.frameId)
+          } else if (this.oopifs.has(n.frameId)) remote.push({ frame: n.frameId, owner: n.backendNodeId, parent: at })
+        }
+        for (const c of [...(n.children ?? []), ...(n.shadowRoots ?? [])]) walk(c, at)
+      }
+      walk(root, key)
+      if (depth >= 3) return
+      for (const r of remote) {
+        const box = await cdp.send<{ model: { content: number[] } }>('DOM.getBoxModel', { backendNodeId: r.owner }, session).catch(() => null)
+        if (box) await visit(this.oopifs.get(r.frame)!, r.frame, r.parent, r.owner, [offset[0] + box.model.content[0]!, offset[1] + box.model.content[1]!], depth + 1).catch(() => {})
+      }
+    }
+    await visit(sid, '', null, null, [0, 0], 0)
+    return { frames, passwords }
+  }
+
+  /** The page's tree with each frame's own read in under the element that owns it. */
+  private async frameNodes(cdp: Cdp, frames: FrameCtx[]): Promise<AxNode[]> {
+    const all: AxNode[] = []
+    const reads = await Promise.all(frames.map((f) => cdp.send<{ nodes: AxNode[] }>('Accessibility.getFullAXTree', f.axFrame ? { frameId: f.axFrame } : {}, f.sid).catch(() => ({ nodes: [] as AxNode[] }))))
+    for (const [i, f] of frames.entries()) {
+      const id = (n: string) => (f.key ? `${f.key}|${n}` : n)
+      const nodes = reads[i]!.nodes.map((n) => ({ ...n, nodeId: id(n.nodeId), childIds: (n.childIds ?? []).map(id), frame: f.key }))
+      if (f.owner !== null) {
+        const inner = new Set(nodes.flatMap((n) => n.childIds))
+        const owner = all.find((n) => n.frame === f.parent && n.backendDOMNodeId === f.owner)
+        if (owner) owner.childIds = [...(owner.childIds ?? []), ...nodes.filter((n) => !inner.has(n.nodeId)).map((n) => n.nodeId)]
+      }
+      all.push(...nodes)
+    }
+    return all
   }
 
   private session(id: string): SessionState {
@@ -522,19 +589,13 @@ export class BoxComputerService {
     const started = this.now()
     const s = this.session(sessionId)
     const { cdp, sid } = await this.on(page)
-    const [{ nodes }, doc, metrics, state] = await Promise.all([
-      cdp.send<{ nodes: AxNode[] }>('Accessibility.getFullAXTree', {}, sid),
-      cdp.send<{ root: DomNode }>('DOM.getDocument', { depth: -1, pierce: true }, sid),
+    const { frames: inPage, passwords } = await this.pageFrames(page)
+    const [nodes, metrics, state] = await Promise.all([
+      this.frameNodes(cdp, inPage),
       cdp.send<{ cssVisualViewport: { clientWidth: number; clientHeight: number } }>('Page.getLayoutMetrics', {}, sid),
       cdp.send<{ result: { value?: { ready: string; title: string; url: string } } }>('Runtime.evaluate', { expression: '({ready: document.readyState, title: document.title, url: location.href})', returnByValue: true }, sid)
     ])
     const facts = state.result.value ?? { ready: 'complete', title: page.title, url: page.url }
-    const passwords = new Set<number>()
-    const walk = (n: DomNode) => {
-      if (n.nodeName === 'INPUT' && attr(n, 'type')?.toLowerCase() === 'password') passwords.add(n.backendNodeId)
-      for (const c of [...(n.children ?? []), ...(n.shadowRoots ?? []), ...(n.contentDocument ? [n.contentDocument] : [])]) walk(c)
-    }
-    walk(doc.root)
     const addressHere = s.address.focused && s.address.page === page.targetId
     let tree: ReadTree = readTree(nodes, s.book, { page: page.targetId, passwords, ...(o.root !== undefined ? { root: o.root } : {}) })
     const subtree = o.root !== undefined
@@ -551,7 +612,7 @@ export class BoxComputerService {
     const height = Math.max(1, Math.round(metrics.cssVisualViewport.clientHeight))
     const pre = observationText({ app: BOX_BROWSER_APP.name, window: facts.title, width, height, loading: facts.ready !== 'complete', others: [] }, tree, null, o.budget)
     const picture = o.screenshot === 'always' || (o.screenshot === 'auto' && pre.thin)
-    const frames = o.geometry || picture ? await this.frames(cdp, sid, tree, width, height) : null
+    const frames = o.geometry || picture ? await this.frames(cdp, inPage, tree, width, height) : null
     const pages = await this.pages()
     const others = pages.filter((p) => p.targetId !== page.targetId).map((p) => p.title || p.url)
     const t = observationText({ app: BOX_BROWSER_APP.name, window: facts.title, width, height, loading: facts.ready !== 'complete', others }, tree, frames, o.budget)
@@ -585,18 +646,20 @@ export class BoxComputerService {
   }
 
   /** Each kept element's box in the page's pixels; the window and the address bar sit over the whole page and its top. */
-  private async frames(cdp: Cdp, sid: string, tree: ReadTree, width: number, height: number): Promise<Map<number, LineFrame>> {
+  private async frames(cdp: Cdp, inPage: FrameCtx[], tree: ReadTree, width: number, height: number): Promise<Map<number, LineFrame>> {
     const out = new Map<number, LineFrame>()
     const nodes = tree.kept.filter((k) => k.backend !== null).slice(0, 600)
     await Promise.all(
       nodes.map(async (k) => {
+        const f = inPage.find((c) => c.key === k.frame)
+        if (!f) return
         try {
-          const { model } = await cdp.send<{ model: { border: number[] } }>('DOM.getBoxModel', { backendNodeId: k.backend }, sid)
+          const { model } = await cdp.send<{ model: { border: number[] } }>('DOM.getBoxModel', { backendNodeId: k.backend }, f.sid)
           const xs = model.border.filter((_, i) => i % 2 === 0)
           const ys = model.border.filter((_, i) => i % 2 === 1)
-          const x = Math.round(Math.min(...xs))
-          const y = Math.round(Math.min(...ys))
-          out.set(k.line.index, { x, y, w: Math.max(0, Math.round(Math.max(...xs)) - x), h: Math.max(0, Math.round(Math.max(...ys)) - y) })
+          const x = Math.round(Math.min(...xs) + f.offset[0])
+          const y = Math.round(Math.min(...ys) + f.offset[1])
+          out.set(k.line.index, { x, y, w: Math.max(0, Math.round(Math.max(...xs) + f.offset[0]) - x), h: Math.max(0, Math.round(Math.max(...ys) + f.offset[1]) - y) })
         } catch {
           // not laid out: no frame
         }
@@ -646,6 +709,8 @@ export class BoxComputerService {
 
   private async shot(sessionId: string, page: Page, o: { maxEdge?: number; region?: number[]; format?: 'jpeg' | 'png' }): Promise<Shot> {
     const { cdp, sid } = await this.on(page)
+    // A tab behind another is never drawn: its capture would wait for a frame that does not come.
+    await cdp.send('Page.bringToFront', {}, sid).catch(() => {})
     const m = await cdp.send<{ cssVisualViewport: { clientWidth: number; clientHeight: number } }>('Page.getLayoutMetrics', {}, sid)
     const vw = Math.round(m.cssVisualViewport.clientWidth)
     const vh = Math.round(m.cssVisualViewport.clientHeight)
@@ -696,6 +761,9 @@ export class BoxComputerService {
     if (closedToAgents(page.url)) refuse('open_refused', CLOSED)
     const s = this.session(q.session)
     for (const i of named) if (!s.book.nodes.has(i)) refuse('no_such_element', `there is no element ${i}; read the window`, { element: i })
+    // Keys and text reach only the tab in front: another's capture may have left this one behind.
+    const { cdp: front, sid: frontSid } = await this.on(page)
+    await front.send('Page.bringToFront', {}, frontSid).catch(() => {})
     const tier: Tier = q.tiers.includes('process') ? 'process' : (q.tiers[0] ?? 'ax')
     const steps: StepResult[] = []
     let stopped = false
@@ -741,13 +809,23 @@ export class BoxComputerService {
     const node = s.book.nodes.get(index)
     if (!node) return refuse('no_such_element', `there is no element ${index}; read the window`, { element: index })
     if (node.backend === null || !node.key.startsWith(`${page.targetId}:`)) return refuse('stale_element', `element ${index} is not in this window`, { element: index, reason: 'gone' })
-    const { cdp, sid } = await this.on(page)
+    const { cdp } = await this.on(page)
     try {
-      await cdp.send('DOM.scrollIntoViewIfNeeded', { backendNodeId: node.backend }, sid)
-      const { model } = await cdp.send<{ model: { border: number[] } }>('DOM.getBoxModel', { backendNodeId: node.backend }, sid)
+      // A frame's owner comes into view first, then the element inside it; the offsets are read after the scrolls.
+      let inPage = (await this.pageFrames(page)).frames
+      for (let f = inPage.find((c) => c.key === node.frame); f && f.owner !== null; f = inPage.find((c) => c.key === f!.parent)) {
+        const parent = inPage.find((c) => c.key === f!.parent)
+        if (parent) await cdp.send('DOM.scrollIntoViewIfNeeded', { backendNodeId: f.owner }, parent.sid)
+      }
+      const at = inPage.find((c) => c.key === node.frame)
+      if (!at) throw new Error('frame gone')
+      await cdp.send('DOM.scrollIntoViewIfNeeded', { backendNodeId: node.backend }, at.sid)
+      inPage = (await this.pageFrames(page)).frames
+      const f = inPage.find((c) => c.key === node.frame)!
+      const { model } = await cdp.send<{ model: { border: number[] } }>('DOM.getBoxModel', { backendNodeId: node.backend }, f.sid)
       const xs = model.border.filter((_, i) => i % 2 === 0)
       const ys = model.border.filter((_, i) => i % 2 === 1)
-      return [Math.round((Math.min(...xs) + Math.max(...xs)) / 2), Math.round((Math.min(...ys) + Math.max(...ys)) / 2)]
+      return [Math.round((Math.min(...xs) + Math.max(...xs)) / 2 + f.offset[0]), Math.round((Math.min(...ys) + Math.max(...ys)) / 2 + f.offset[1])]
     } catch {
       return refuse('stale_element', `element ${index} is gone; read the window again`, { element: index, reason: 'gone' })
     }
@@ -756,34 +834,36 @@ export class BoxComputerService {
   /**
    * What a click at this point would land on must be what the hold judged:
    * the element itself (or something inside it), never a control laid over
-   * its centre; and never the inside of an embedded frame, whose controls
-   * the box's read does not show.
+   * its centre. The hit test follows the point into each frame the read
+   * shows; a frame it cannot follow (a plugin, one not attached yet) is
+   * refused.
    */
-  private async landsOn(cdp: Cdp, sid: string, [x, y]: [number, number], backend: number | null, index?: number): Promise<void> {
-    let hit: { backendNodeId: number; frameId?: string }
-    try {
-      hit = await cdp.send<{ backendNodeId: number; frameId?: string }>('DOM.getNodeForLocation', { x, y, includeUserAgentShadowDOM: false, ignorePointerEventsNone: true }, sid)
-    } catch {
-      return refuse('out_of_bounds', 'nothing on the page is at that point')
+  private async landsOn(page: Page, [x, y]: [number, number], node: { backend: number | null; frame: string } | null, index?: number): Promise<void> {
+    const { cdp } = await this.on(page)
+    const { frames: inPage } = await this.pageFrames(page)
+    let at = inPage[0]!
+    let hit: { backendNodeId: number; frameId?: string } | null = null
+    let where = at
+    for (let depth = 0; depth < 4; depth++) {
+      try {
+        hit = await cdp.send<{ backendNodeId: number; frameId?: string }>('DOM.getNodeForLocation', { x: Math.round(x - at.offset[0]), y: Math.round(y - at.offset[1]), includeUserAgentShadowDOM: false, ignorePointerEventsNone: true }, at.sid)
+      } catch {
+        return refuse('out_of_bounds', `nothing on the page is at ${x},${y}`, { coordinate: [x, y] })
+      }
+      // a frame of this session's process is reached by the hit test itself; its nodes say which
+      where = inPage.find((c) => c.sid === at.sid && c.axFrame !== undefined && c.axFrame === hit!.frameId) ?? at
+      const { node: under } = await cdp.send<{ node: { nodeName: string } }>('DOM.describeNode', { backendNodeId: hit.backendNodeId }, at.sid)
+      if (['OBJECT', 'EMBED'].includes(under.nodeName)) refuse('action_unsupported', 'that point is on an embedded plugin, which the box browser does not read')
+      if (under.nodeName !== 'IFRAME' && under.nodeName !== 'FRAME') break
+      const next = inPage.find((c) => c.owner === hit!.backendNodeId && c.parent === where.key && c.sid !== at.sid)
+      if (!next) refuse('action_unsupported', 'that point is inside an embedded frame the box browser has not read; read the window again')
+      at = next!
     }
-    const [{ node }, { frameTree }] = await Promise.all([
-      cdp.send<{ node: { nodeName: string } }>('DOM.describeNode', { backendNodeId: hit.backendNodeId }, sid),
-      cdp.send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree', {}, sid)
-    ])
-    // The hit test reaches into a frame drawn in the page's own process: a node of any frame but the page's is one the read never showed.
-    if ((hit.frameId !== undefined && hit.frameId !== frameTree.frame.id) || ['IFRAME', 'FRAME', 'OBJECT', 'EMBED'].includes(node.nodeName))
-      refuse('action_unsupported', "that point is inside an embedded frame, which the box browser does not read; open the frame's page itself or act on what it does read")
-    if (backend === null) return
-    const [{ object: target }, { object: under }] = await Promise.all([
-      cdp.send<{ object: { objectId: string } }>('DOM.resolveNode', { backendNodeId: backend }, sid),
-      cdp.send<{ object: { objectId: string } }>('DOM.resolveNode', { backendNodeId: hit.backendNodeId }, sid)
-    ])
-    const r = await cdp.send<{ result: { value?: boolean } }>(
-      'Runtime.callFunctionOn',
-      { objectId: target.objectId, functionDeclaration: 'function (n) { for (let x = n; x; x = x.parentNode || x.host) if (x === this) return true; return false }', arguments: [{ objectId: under.objectId }], returnByValue: true },
-      sid
-    )
-    if (r.result.value !== true) refuse('action_unsupported', `something else covers ${index !== undefined ? `[${index}]` : 'that element'} at its centre; read the window again`, index !== undefined ? { element: index } : {})
+    if (!node || node.backend === null || !hit) return
+    const inside = (n: DomNode): boolean => n.backendNodeId === hit!.backendNodeId || [...(n.children ?? []), ...(n.shadowRoots ?? []), ...(n.contentDocument ? [n.contentDocument] : [])].some(inside)
+    const own = inPage.find((c) => c.key === node.frame)
+    const tree = own && where.key === node.frame ? (await cdp.send<{ node: DomNode }>('DOM.describeNode', { backendNodeId: node.backend, depth: -1, pierce: true }, own.sid)).node : null
+    if (!tree || !inside(tree)) refuse('action_unsupported', `something else covers ${index !== undefined ? `[${index}]` : 'that element'} at its centre; read the window again`, index !== undefined ? { element: index } : {})
   }
 
   /** The focus is still on the element the host judged a call's keys by, or nothing runs. */
@@ -792,11 +872,35 @@ export class BoxComputerService {
       if (s.book.nodes.get(expect)?.key !== `${page.targetId}:address`) refuse('focus_moved', 'the focus is in the address bar now; read the window again', { element: expect })
       return
     }
-    const { cdp, sid } = await this.on(page)
-    const want = s.book.nodes.get(expect)?.backend
-    const { result } = await cdp.send<{ result: { objectId?: string } }>('Runtime.evaluate', { expression: 'document.activeElement' }, sid)
-    const now = result.objectId ? (await cdp.send<{ node: { backendNodeId: number } }>('DOM.describeNode', { objectId: result.objectId }, sid)).node.backendNodeId : null
-    if (want === undefined || want === null || now !== want) refuse('focus_moved', 'the focus moved since the window was read; read it again', { element: expect })
+    const { cdp } = await this.on(page)
+    const want = s.book.nodes.get(expect)
+    const { frames: inPage } = await this.pageFrames(page)
+    // The focus, followed into the frame that holds it.
+    let at = inPage[0]!
+    let key = ''
+    let expression = 'document.activeElement'
+    let now: number | null = null
+    for (let depth = 0; depth < 6; depth++) {
+      const { result } = await cdp.send<{ result: { objectId?: string } }>('Runtime.evaluate', { expression }, at.sid)
+      if (!result.objectId) break
+      const { node } = await cdp.send<{ node: { backendNodeId: number; nodeName: string } }>('DOM.describeNode', { objectId: result.objectId }, at.sid)
+      const inner = inPage.find((c) => c.owner === node.backendNodeId && c.parent === key)
+      if (!inner || (node.nodeName !== 'IFRAME' && node.nodeName !== 'FRAME')) {
+        now = node.backendNodeId
+        // Nothing focused: the body stands in, and the read names the page itself (its web area is the document).
+        if (node.nodeName === 'BODY' || node.nodeName === 'HTML') {
+          const doc = await cdp.send<{ result: { objectId?: string } }>('Runtime.evaluate', { expression: expression.replace(/\.activeElement$/, '') }, at.sid)
+          if (doc.result.objectId) now = (await cdp.send<{ node: { backendNodeId: number } }>('DOM.describeNode', { objectId: doc.result.objectId }, at.sid)).node.backendNodeId
+        }
+        break
+      }
+      key = inner.key
+      if (inner.sid !== at.sid) {
+        at = inner
+        expression = 'document.activeElement'
+      } else expression = `${expression}.contentDocument.activeElement`
+    }
+    if (!want || want.backend === null || want.frame !== key || now !== want.backend) refuse('focus_moved', 'the focus moved since the window was read; read it again', { element: expect })
   }
 
   /** A target by its words (§27.9): the first element of the last read whose name is that, a control first. */
@@ -813,6 +917,13 @@ export class BoxComputerService {
     const { cdp, sid } = await this.on(page)
     const isAddress = (i: number | undefined) => i !== undefined && s.book.nodes.get(i)?.key === `${page.targetId}:address`
     const inAddress = () => s.address.focused && s.address.page === page.targetId
+    /** the DevTools session that serves an element's node: its frame's */
+    const sidOf = async (i: number): Promise<string> => {
+      const frame = s.book.nodes.get(i)?.frame ?? ''
+      if (!frame) return sid
+      const f = (await this.pageFrames(page)).frames.find((c) => c.key === frame)
+      return f ? f.sid : refuse('stale_element', `element ${i}'s frame is gone; read the window again`, { element: i, reason: 'gone' })
+    }
     let element = a.element
     let resolved: number | undefined
     if (a.named !== undefined) {
@@ -823,15 +934,15 @@ export class BoxComputerService {
     /** Where a pointer step lands, checked to be what the hold judged. A step with no target lands where the last one left the pointer, as the hold reads it (outward.ts `pointerAfter`). */
     const at = async (): Promise<[number, number]> => {
       let p: [number, number]
-      let backend: number | null = null
+      let node: { backend: number | null; frame: string } | null = null
       if (element !== undefined) {
         p = await this.pointOf(s, page, element)
-        backend = s.book.nodes.get(element)?.backend ?? null
-        if (isAddress(element) || backend === null) return p
+        node = s.book.nodes.get(element) ?? null
+        if (isAddress(element) || node?.backend == null) return p
       } else if (a.coordinate) p = [a.coordinate[0]!, a.coordinate[1]!]
       else if (s.pointer) p = s.pointer
       else return refuse('out_of_bounds', 'name an element or a point')
-      await this.landsOn(cdp, sid, p, backend, element)
+      await this.landsOn(page, p, node, element)
       return p
     }
     const mouse = (type: string, [x, y]: [number, number], more: Record<string, unknown> = {}) => cdp.send('Input.dispatchMouseEvent', { type, x, y, modifiers: mods, ...more }, sid)
@@ -873,7 +984,7 @@ export class BoxComputerService {
       const node = s.book.nodes.get(i)
       if (node?.backend == null) return refuse('stale_element', `element ${i} is gone`, { element: i, reason: 'gone' })
       // Never a click in its place: a click on a control that takes no focus is one the hold never judged.
-      await cdp.send('DOM.focus', { backendNodeId: node.backend }, sid).catch(() => refuse('action_unsupported', `[${i}] can't take keyboard focus; click it instead`, { element: i }))
+      await cdp.send('DOM.focus', { backendNodeId: node.backend }, await sidOf(i)).catch(() => refuse('action_unsupported', `[${i}] can't take keyboard focus; click it instead`, { element: i }))
     }
     const type = async (text: string) => {
       if (element !== undefined) await focusOn(element)
@@ -972,7 +1083,8 @@ export class BoxComputerService {
         }
         const node = s.book.nodes.get(element)!
         if (node.backend === null) return refuse('action_unsupported', 'that element takes no value')
-        const { object } = await cdp.send<{ object: { objectId: string } }>('DOM.resolveNode', { backendNodeId: node.backend }, sid).catch(() => refuse('stale_element', `element ${element} is gone`, { element, reason: 'gone' }))
+        const nodeSid = await sidOf(element)
+        const { object } = await cdp.send<{ object: { objectId: string } }>('DOM.resolveNode', { backendNodeId: node.backend }, nodeSid).catch(() => refuse('stale_element', `element ${element} is gone`, { element, reason: 'gone' }))
         await cdp.send(
           'Runtime.callFunctionOn',
           {
@@ -981,7 +1093,7 @@ export class BoxComputerService {
               'function (v) { this.focus(); const p = Object.getPrototypeOf(this); const d = Object.getOwnPropertyDescriptor(p, "value"); if (d && d.set) d.set.call(this, v); else this.value = v; this.dispatchEvent(new Event("input", { bubbles: true })); this.dispatchEvent(new Event("change", { bubbles: true })) }',
             arguments: [{ value: a.value ?? '' }]
           },
-          sid
+          nodeSid
         )
         return { input: { via: 'ax-value' }, ...(resolved ? { resolved } : {}) }
       }
@@ -1027,9 +1139,24 @@ export class BoxComputerService {
   }
 }
 
+/** One frame of a page (`pageFrames`): '' is the page's own. */
+interface FrameCtx {
+  key: string
+  /** the DevTools session that serves its nodes */
+  sid: string
+  /** a frame of the page's process: its id, for reading its own tree through the page's session */
+  axFrame?: string
+  /** the frame its owner element is in, and that element */
+  parent: string | null
+  owner: number | null
+  /** where its viewport's (0, 0) is on the page */
+  offset: [number, number]
+}
+
 interface DomNode {
   nodeName: string
   backendNodeId: number
+  frameId?: string
   attributes?: string[]
   children?: DomNode[]
   shadowRoots?: DomNode[]

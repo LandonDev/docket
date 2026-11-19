@@ -40,6 +40,14 @@ export const SITE_PAGES: Record<string, string> = {
      <ul aria-label="Messages" style="height:80px;overflow:auto"><li>one</li><li>two</li><li>three</li><li>four</li><li>five</li><li>six</li></ul>
      <iframe title="Pay" style="width:300px;height:120px" srcdoc="<form action='/paid' method='post' target='_top'><button>Pay now</button></form>"></iframe>`
   ),
+  // A portal whose form is in frames: one of this origin, one of another (localhost, so Chromium runs it in its own process).
+  '/frames': page(
+    'Frames',
+    `<h1>Checkout</h1>
+     <iframe title="Comments" style="width:360px;height:90px" srcdoc="<form action='/commented' method='post' target='_top'><input aria-label='Comment' name='c'><button>Post comment</button></form>"></iframe>
+     <iframe title="Payment" style="width:360px;height:90px" src="{{OTHER}}/inner"></iframe>`
+  ),
+  '/inner': page('Card', `<form action="/paid" method="post" target="_top"><input aria-label="Card name" name="n"><input aria-label="Card PIN" name="p" type="password"><button>Pay now</button></form>`),
   '/done': page('Expense submitted', '<h1>Submitted</h1><p>Your expense was submitted.</p>')
 }
 
@@ -55,7 +63,7 @@ export function serveTestSite(pages: Record<string, string> = SITE_PAGES): Promi
   const server: Server = createServer((req, res) => {
     const path = (req.url ?? '/').split('?')[0]!
     if (req.method === 'POST') posts.push(path)
-    const html = pages[path]
+    const html = pages[path]?.replace('{{OTHER}}', `http://localhost:${(server.address() as { port: number }).port}`)
     res.writeHead(html ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' })
     res.end(html ?? 'not found')
   })
