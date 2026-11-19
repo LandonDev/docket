@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { setWorkOn } from "../../lib/workSwitch";
 import { CATALOG } from "@server/shared/catalog";
 import { DEFAULT_PLAN_SETTINGS } from "@server/shared/plans";
 import { DEFAULT_REVIEW_SETTINGS } from "@server/shared/review";
@@ -235,6 +236,13 @@ function prepare(next: HostMode, answers: Record<string, unknown> = {}, service:
   workspaceStore.attach(link);
 }
 
+/** The page as it reads once a host has Work on: a theme for each kind of place. */
+function WithWorkOn({ children }: { children: ReactNode }) {
+  useState(() => setWorkOn("local", true));
+  useEffect(() => () => setWorkOn("local", false), []);
+  return children;
+}
+
 const PAGES: Record<
   string,
   { title: string; description?: string; body: () => ReactNode; answers?: Record<string, unknown>; service?: ComputerServiceState }
@@ -242,6 +250,7 @@ const PAGES: Record<
   general: { title: "General", body: () => <GeneralPage onOpenWhatsNew={() => {}} /> },
   defaults: { title: "Thread defaults", body: () => <ThreadDefaultsPage /> },
   appearance: { title: "Appearance", body: () => <AppearancePage /> },
+  "appearance-work": { title: "Appearance", body: () => <WithWorkOn><AppearancePage /></WithWorkOn> },
   editor: { title: "Editor", body: () => <EditorPage /> },
   keybindings: { title: "Keybindings", body: () => <KeybindingsPage /> },
   providers: { title: "Providers", body: () => <ProvidersPage /> },

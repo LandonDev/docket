@@ -758,13 +758,26 @@ html:not(.is-mac) #root {
   background-color: var(--scrollbar-thumb-active);
 }
 
-/* A theme flip changes nearly every colour at once; lib/appearance.ts sets
- * this class for one frame so the switch snaps instead of every transition
- * firing together. */
+/* A theme change turns nearly every colour at once. lib/placeScheme.ts holds
+ * this class while it happens, so no element's own transition fires: a colour
+ * animating by itself smears. Where the window can, the change dissolves
+ * instead: one cross-fade of the whole window's picture into the new theme,
+ * opacity only, over --dur-fast (docs/DESIGN.md "Appearance by place"). The
+ * dissolve is a picture over the page, so it takes no input: a click or a key
+ * during it lands on the place under it. Reduced motion and a hidden window
+ * get no dissolve at all (changeScheme sets the class at once). */
 html.theme-switching *,
 html.theme-switching *::before,
 html.theme-switching *::after {
   transition: none !important;
+}
+html.theme-switching::view-transition {
+  pointer-events: none;
+}
+html.theme-switching::view-transition-old(root),
+html.theme-switching::view-transition-new(root) {
+  animation-duration: var(--dur-fast);
+  animation-timing-function: var(--ease-out);
 }
 
 /* The rail's and the content's fills until S3 and A1 move them to tokens. */

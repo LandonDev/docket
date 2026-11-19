@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  applyThemePreference,
   EDITOR_FONT_CHANGE_EVENT,
   EDITOR_FONT_SIZE_DEFAULT,
   editorFontOptions,
   initAppearance,
   loadEditorFontSize,
+  loadPlaceKind,
   saveEditorFontSize,
+  savePlaceKind,
 } from "./appearance";
 
 const root = document.documentElement;
@@ -70,6 +71,8 @@ describe("initAppearance", () => {
     localStorage.setItem("monocode.editorFontSize", "14");
     initAppearance();
     expect(Object.keys(localStorage).sort()).toEqual(["monocode.colorScheme", "monocode.editorFontSize"]);
+    // The theme is the place's, set by lib/placeScheme.ts: this sets no class of its own.
+    expect(root.classList.contains("theme-light")).toBe(false);
     expect(root.style.getPropertyValue("--font-size-code")).toBe("14px");
     expect(root.classList.contains("glass")).toBe(false);
   });
@@ -82,22 +85,21 @@ describe("initAppearance", () => {
   });
 });
 
-describe("theme flip", () => {
-  it("turns transitions off for one frame", () => {
-    const frames: FrameRequestCallback[] = [];
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
-      frames.push(cb);
-      return frames.length;
-    });
-    applyThemePreference("light");
-    expect(root.classList.contains("theme-light")).toBe(true);
-    expect(root.classList.contains("theme-switching")).toBe(true);
-    frames.forEach((cb) => cb(0));
-    expect(root.classList.contains("theme-switching")).toBe(false);
-  });
+describe("the kind of place a window opens on", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
 
-  it("leaves transitions alone when the scheme does not change", () => {
-    applyThemePreference("dark");
-    expect(root.classList.contains("theme-switching")).toBe(false);
+  it("is the one in the window's own address, else the last one saved, else code", () => {
+    expect(loadPlaceKind()).toBe("code");
+    savePlaceKind("work");
+    expect(localStorage.getItem("monocode.placeKind")).toBe("work");
+    expect(loadPlaceKind()).toBe("work");
+    // Each window's address wins over what another window saved last.
+    window.history.replaceState(null, "", "/?place=code");
+    expect(loadPlaceKind()).toBe("code");
+    savePlaceKind("code");
+    window.history.replaceState(null, "", "/?place=work");
+    expect(loadPlaceKind()).toBe("work");
+    window.history.replaceState(null, "", "/?place=elsewhere");
+    expect(loadPlaceKind()).toBe("code");
   });
 });

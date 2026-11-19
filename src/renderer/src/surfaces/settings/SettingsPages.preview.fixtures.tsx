@@ -5,6 +5,7 @@ const PAGES = [
   "general",
   "defaults",
   "appearance",
+  "appearance-work",
   "editor",
   "keybindings",
   "providers",

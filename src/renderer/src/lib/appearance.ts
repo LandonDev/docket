@@ -2,6 +2,8 @@ import { IS_MAC } from "./platform";
 
 const PROJECT_RAIL_OPEN_KEY = "monocode.projectRailOpen";
 const SCHEME_KEY = "monocode.colorScheme";
+const WORK_SCHEME_KEY = "monocode.colorScheme.work";
+const PLACE_KIND_KEY = "monocode.placeKind";
 const PROJECT_RAIL_WIDTH_KEY = "monocode.projectRailWidth";
 const TRANSCRIPT_ANCHOR_KEY = "monocode.transcriptAnchor";
 const EDITOR_FONT_SIZE_KEY = "monocode.editorFontSize";
@@ -25,6 +27,11 @@ const RETIRED_KEYS = [
 
 export type ColorScheme = "dark" | "light";
 export type ThemePreference = ColorScheme | "system";
+/** The two kinds of place a window can be on, each with a theme of its own
+ *  (docs/DESIGN.md "Appearance by place"): a code workspace or Chats, and a
+ *  Work workspace or Work Chats. */
+export type PlaceKind = "code" | "work";
+const SCHEME_KEYS: Record<PlaceKind, string> = { code: SCHEME_KEY, work: WORK_SCHEME_KEY };
 
 export const THEME_PREFERENCE_DEFAULT: ThemePreference = "dark";
 
@@ -91,11 +98,11 @@ function writeFlag(key: string, value: boolean) {
   }
 }
 
+/** The class, the retired keys and the editor's type size. The theme is the
+ *  place's: lib/placeScheme.ts `initPlaceScheme` sets it, right after this. */
 export function initAppearance() {
   document.documentElement.classList.toggle("is-mac", IS_MAC);
   clearRetiredKeys();
-  applyThemePreference(loadThemePreference());
-  watchSystemColorScheme();
   applyEditorFontSize(loadEditorFontSize());
 }
 
@@ -111,24 +118,53 @@ function isThemePreference(value: unknown): value is ThemePreference {
   return value === "dark" || value === "light" || value === "system";
 }
 
-export function loadThemePreference(): ThemePreference {
+/** The theme chosen for a kind of place. Code is Dark until it is chosen;
+ *  Work follows Code until it has a choice of its own. */
+export function loadThemePreference(kind: PlaceKind = "code"): ThemePreference {
   try {
-    const raw = localStorage.getItem(SCHEME_KEY);
-    return isThemePreference(raw) ? raw : THEME_PREFERENCE_DEFAULT;
+    const own = localStorage.getItem(SCHEME_KEYS[kind]);
+    if (isThemePreference(own)) return own;
+    const code = kind === "work" ? localStorage.getItem(SCHEME_KEY) : null;
+    return isThemePreference(code) ? code : THEME_PREFERENCE_DEFAULT;
   } catch {
     return THEME_PREFERENCE_DEFAULT;
   }
 }
 
-export function saveThemePreference(value: ThemePreference) {
+export function saveThemePreference(kind: PlaceKind, value: ThemePreference) {
   try {
-    localStorage.setItem(SCHEME_KEY, value);
+    localStorage.setItem(SCHEME_KEYS[kind], value);
   } catch {
     // private mode / quota
   }
 }
 
-function systemQuery(): MediaQueryList | null {
+/** True for a storage key that holds a theme: another window changed a setting. */
+export function isThemeKey(key: string | null): boolean {
+  return key === SCHEME_KEY || key === WORK_SCHEME_KEY;
+}
+
+/** The kind of place this window opens on: the one main put in its address
+ *  (each window has its own), else the last any window saved, which serves
+ *  the web /ui and a first launch. boot.js reads the same two. */
+export function loadPlaceKind(): PlaceKind {
+  try {
+    const named = new URLSearchParams(window.location.search).get("place") ?? localStorage.getItem(PLACE_KIND_KEY);
+    return named === "work" ? "work" : "code";
+  } catch {
+    return "code";
+  }
+}
+
+export function savePlaceKind(kind: PlaceKind) {
+  try {
+    localStorage.setItem(PLACE_KIND_KEY, kind);
+  } catch {
+    // private mode / quota
+  }
+}
+
+export function systemQuery(): MediaQueryList | null {
   if (typeof window === "undefined" || !window.matchMedia) return null;
   return window.matchMedia("(prefers-color-scheme: light)");
 }
@@ -143,33 +179,6 @@ export function resolveColorScheme(value: ThemePreference): ColorScheme {
 
 export function isLightScheme(): boolean {
   return document.documentElement.classList.contains("theme-light");
-}
-
-export function applyThemePreference(value: ThemePreference): ColorScheme {
-  const next = resolveColorScheme(value);
-  const root = document.documentElement;
-  if (root.classList.contains("theme-light") !== (next === "light")) {
-    // Every colour changes at once; with transitions on, the flip smears.
-    // Off for one frame, a forced style read so the swap lands without them.
-    root.classList.add("theme-switching");
-    root.classList.toggle("theme-light", next === "light");
-    void getComputedStyle(root).opacity;
-    requestAnimationFrame(() => root.classList.remove("theme-switching"));
-  }
-  window.dispatchEvent(
-    new CustomEvent<ColorScheme>(SCHEME_CHANGE_EVENT, { detail: next }),
-  );
-  return next;
-}
-
-/** Keeps the "system" preference in sync when the OS flips appearance. */
-export function watchSystemColorScheme() {
-  const query = systemQuery();
-  if (!query) return;
-  query.addEventListener("change", () => {
-    const preference = loadThemePreference();
-    if (preference === "system") applyThemePreference(preference);
-  });
 }
 
 export function loadProjectRailOpen(): boolean {

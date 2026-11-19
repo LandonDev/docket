@@ -3,6 +3,7 @@ import {
   loadTranscriptAnchor,
   saveTranscriptAnchor,
   TRANSCRIPT_ANCHOR_DEFAULT,
+  isThemeKey,
   loadThemePreference,
   saveThemePreference,
   resolveColorScheme,
@@ -80,10 +81,46 @@ describe("theme preference setting", () => {
 
   it("persists each preference", () => {
     for (const value of ["system", "light", "dark"] as const) {
-      saveThemePreference(value);
+      saveThemePreference("code", value);
       expect(localStorage.getItem(SCHEME_KEY)).toBe(value);
       expect(loadThemePreference()).toBe(value);
+      expect(loadThemePreference("code")).toBe(value);
     }
+  });
+
+  it("still loads a Code choice saved before there were two", () => {
+    localStorage.setItem(SCHEME_KEY, "light");
+    expect(loadThemePreference("code")).toBe("light");
+  });
+
+  it("has Work follow Code until Work has a choice of its own", () => {
+    expect(loadThemePreference("work")).toBe("dark");
+    saveThemePreference("code", "light");
+    expect(loadThemePreference("work")).toBe("light");
+    saveThemePreference("code", "system");
+    expect(loadThemePreference("work")).toBe("system");
+    saveThemePreference("work", "dark");
+    expect(localStorage.getItem("monocode.colorScheme.work")).toBe("dark");
+    expect(loadThemePreference("work")).toBe("dark");
+    // Work's own choice never moves Code's, and Code's no longer moves Work's.
+    expect(loadThemePreference("code")).toBe("system");
+    saveThemePreference("code", "light");
+    expect(loadThemePreference("work")).toBe("dark");
+    localStorage.removeItem("monocode.colorScheme.work");
+  });
+
+  it("ignores an unknown stored value for Work and follows Code", () => {
+    saveThemePreference("code", "light");
+    localStorage.setItem("monocode.colorScheme.work", "sepia");
+    expect(loadThemePreference("work")).toBe("light");
+    localStorage.removeItem("monocode.colorScheme.work");
+  });
+
+  it("knows the two keys that hold a theme", () => {
+    expect(isThemeKey(SCHEME_KEY)).toBe(true);
+    expect(isThemeKey("monocode.colorScheme.work")).toBe(true);
+    expect(isThemeKey("monocode.placeKind")).toBe(false);
+    expect(isThemeKey(null)).toBe(false);
   });
 
   it("ignores unknown stored values", () => {
