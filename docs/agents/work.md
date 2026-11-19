@@ -11,11 +11,13 @@ the core columns, the shared types, the module list, the context the modules
 share, one stub per pillar in every closed list, the tool mount and the two
 build entries; and on that, Work workspaces, Work Chats and Work threads on
 the server, with their fence and their preamble
-([work-scope.md](work-scope.md)); and the screens that make them visible:
-the rail's Work heading and Work Chats, the Work column with its four views,
-linking a workspace to a sector, and Settings → Work ("The screens" below).
-A pillar's method is refused by name until the milestone that builds it
-lands. A pillar's own account goes in `docs/agents/work-<pillar>.md`.
+([work-scope.md](work-scope.md)); the hold on what a Work thread does that
+leaves the machine ([work-outbox.md](work-outbox.md)); and the screens that
+make them visible: the rail's Work heading and Work Chats, the Work column
+with its four views, linking a workspace to a sector, and Settings → Work
+("The screens" below). A pillar's method is refused by name until the
+milestone that builds it lands. A pillar's own account goes in
+`docs/agents/work-<pillar>.md`.
 
 ## The switch
 
@@ -192,6 +194,7 @@ zod schema beside each type a request carries.
 
 | File | Names |
 |---|---|
+| `because.ts` | `Because`, `WriteReason`, `judgeWrite`: whether a write to a shared item lands or becomes a suggestion |
 | `ids.ts` | `HostId`, `SectorKey`, `PILLAR_IDS`, `PillarId`, `PILLAR_MILESTONE`, `Principal`, `WorkspaceKind`, `SessionScope`, `WORK_HOME` (`"~work"`), `LifeosOrigin`, `Handled`, `Verdict`, `NotBuilt`, `notBuilt` |
 | `canvas.ts` | `CANVAS_KINDS`, `CanvasKind`, `CANVAS_PILLAR`, `CanvasSource`, `canvasSourcePath`, `CanvasItem`, `ContextChip` |
 | `acts.ts` | `ACT_KINDS`, `ActKind`, `ACT_PILLAR`, `HeldRef`, `HeldItem`, `HELD_STATES`, `ActResult`, `UndoSpec`, `ActKindDefOf` |
@@ -370,7 +373,7 @@ and edits nothing else:
 | `peer` | work/peer.ts (built) | 6 |
 | `lifeos`, `links` | work/lifeos/ctx.ts (built: [work-lifeos.md](work-lifeos.md)) | 7 |
 | `canvas` | work/canvas/ctx.ts | 9 |
-| `held` | work/outbox/ctx.ts | 10 |
+| `held` | work/outbox/ctx.ts (built: [work-outbox.md](work-outbox.md)) | 10 |
 | `results` | work/outbox/results.ts (and `ensureResults`, which the outbox module's `ensure` calls) | 14 |
 | `convert` | work/formats/jobs.ts (built: [work-formats.md](work-formats.md)) | 15 |
 | `service` | work/service/ctx.ts (built: [work-service.md](work-service.md)) | 18 |

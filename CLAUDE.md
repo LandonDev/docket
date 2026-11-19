@@ -231,7 +231,10 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   thread's parent or starter, no MCP server but the app's own (Claude Code,
   Codex and Muse; `work/fence.proof.test.ts` and `work/fence-muse.proof.test.ts`
   plant one in every source and run the real CLIs), the Work preamble on every start path
-  ([docs/agents/work-scope.md](docs/agents/work-scope.md)). The shared types
+  ([docs/agents/work-scope.md](docs/agents/work-scope.md)); and the hold: a Work
+  thread's add-on call runs only when the owner set that tool to Runs, its outward
+  computer acts and LifeOS drafts wait for his press (`work.outbox.*`), Away
+  releases none (the outbox account below). The shared types
   (src/shared/work), the core columns (`workspaces.kind`, `sessions.scope`, …),
   `WORK_MODULES` and `WorkCtx` (src/main/server/work), one stub per pillar in
   every closed list (`contract-work-<pillar>.ts`, `work/<pillar>/index.ts`), the

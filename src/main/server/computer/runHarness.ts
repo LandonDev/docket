@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AppRef } from '@shared/computer/protocol'
 import type { PermissionPolicy, SessionMeta, SessionStatus } from '@shared/events'
+import type { SessionScope } from '@shared/work/ids'
 import type { ApprovalRequest } from '../drivers/types'
 import { ComputerHistory, historyRoot } from './history'
 import { renderText, type ComputerToolOutcome } from './result'
@@ -48,7 +49,7 @@ export function computerHarness(
     setSetting: (k: string, v: string | null) => void (v === null ? rows.delete(k) : rows.set(k, v)),
     settingsWithPrefix: (p: string) => new Map([...rows].filter(([k]) => k.startsWith(p)))
   }
-  const metas = new Map<string, { status: SessionStatus; permission: PermissionPolicy; provider?: string; model?: string }>()
+  const metas = new Map<string, { status: SessionStatus; permission: PermissionPolicy; provider?: string; model?: string; scope?: SessionScope }>()
   const cards: Card[] = []
   let away = false
   const registry = {
@@ -81,7 +82,7 @@ export function computerHarness(
     ...(history ? { history } : {})
   })
   if (opts.makeGate) gate = opts.makeGate({ service, sessions })
-  const set = (threadId: string, meta: Partial<{ status: SessionStatus; permission: PermissionPolicy; provider: string; model: string }>): void => {
+  const set = (threadId: string, meta: Partial<{ status: SessionStatus; permission: PermissionPolicy; provider: string; model: string; scope: SessionScope }>): void => {
     const next = { status: 'running' as SessionStatus, permission: 'auto' as PermissionPolicy, ...metas.get(threadId), ...meta }
     metas.set(threadId, next)
     sessions.onMeta({ id: threadId, archived: false, ...next } as unknown as SessionMeta)

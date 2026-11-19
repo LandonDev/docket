@@ -5,6 +5,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { ReadBuffer, serializeMessage } from '@modelcontextprotocol/sdk/shared/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+import { toolHintsOf } from '@shared/addons'
 import type { AddonState, AddonStatus } from '@shared/contract-addons'
 import {
   ADDON_CONNECT_TIMEOUT_MS,
@@ -447,7 +448,15 @@ export class Downstream {
         total++
         if (tools.length >= ADDON_MAX_TOOLS) continue
         const readOnly = t.annotations?.readOnlyHint
-        tools.push({ name: t.name, description: t.description ?? '', inputSchema: t.inputSchema as Record<string, unknown>, ...(readOnly !== undefined ? { readOnly } : {}) })
+        // Every hint the server gave rides with the tool for the rules card (docs/agents/work-outbox.md); none of them decides anything.
+        const hints = toolHintsOf(t.annotations, (t as { title?: unknown }).title)
+        tools.push({
+          name: t.name,
+          description: t.description ?? '',
+          inputSchema: t.inputSchema as Record<string, unknown>,
+          ...(readOnly !== undefined ? { readOnly } : {}),
+          ...(hints ? { hints } : {})
+        })
       }
       cursor = answer.nextCursor
       if (!cursor) break

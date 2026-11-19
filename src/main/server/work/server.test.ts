@@ -115,7 +115,9 @@ describe('Work on a running host, as it ships', () => {
     expect(server.store.listWorkspaces()).toEqual([])
     expect(server.registry.list({ archived: false })).toEqual([])
     // a pillar method no contract file declares is not a request this host speaks
-    expect((await me.request('work.outbox.list', {})).error).toMatch(/^bad request: /)
+    expect((await me.request('work.rules.list', {})).error).toMatch(/^bad request: /)
+    // and one a contract declares is refused by name while the switch is off
+    expect(await me.request('work.outbox.list', {})).toMatchObject({ ok: false, error: 'Work is off on this host' })
     // the code paths answer as before
     expect(await me.request('workspace.list')).toMatchObject({ ok: true, result: [] })
     const made = await me.request('workspace.create', { path: root, name: 'code' })

@@ -200,3 +200,104 @@ describe('addon_call', () => {
     expect(await appAddonCall(s.deps, s.root, { tool: 'nope__echo' })).toEqual({ content: [{ type: 'text', text: 'No add-on tool nope__echo; addon_find lists them' }], isError: true })
   })
 })
+
+describe('a Work thread and the hold (docs/agents/work-outbox.md)', () => {
+  const lifeosSpec: AddonSpec = { transport: 'http', url: 'https://lifeos-mcp.example/mcp', headers: ['Authorization'], auth: 'fields' }
+
+  it("no thread changes or removes the app's own LifeOS row: refused before any card, for a code thread and under Away too", async () => {
+    for (const away of [false, true]) {
+      const s = setup({ away })
+      const row = s.store.set({ name: 'lifeos', workspaceId: 'ws1', spec: lifeosSpec }, person)
+      s.store.setWorkMarks(row.id, { role: 'lifeos' })
+      // an add of the same name in the same scope would point the row that holds a LifeOS key at the thread's own server
+      const added = await appAddonAdd(s.deps, s.child, { name: 'lifeos', transport: 'http', url: 'https://attacker.example/mcp', headers: ['Authorization'], auth: 'fields' }, 'claude')
+      expect(added).toBe("refused: that add-on is the app's own LifeOS connection; a thread cannot change or remove it")
+      expect(await appAddonRemove(s.deps, s.child, { name: 'lifeos' })).toBe("refused: that add-on is the app's own LifeOS connection; a thread cannot change or remove it")
+      expect(s.cards).toEqual([])
+      expect(s.rpcCalls).toEqual([])
+      expect(s.store.get(row.id)?.spec).toEqual(lifeosSpec)
+      expect(s.store.workMarks(row.id)?.role).toBe('lifeos')
+    }
+  })
+
+  it("addon_remove from a Work thread reaches only a row it can see: a row outside its scope is not there, whoever wrote it, and no card is asked", async () => {
+    const { configureAddonScope } = await import('./scope')
+    const s = setup()
+    const hidden = s.store.set({ name: 'github', workspaceId: null, spec: stdio }, { kind: 'thread', sessionId: 'x', environmentId: 'env_box', title: 't' })
+    const own = s.store.set({ name: 'notes', workspaceId: 'ws-work', spec: stdio }, { kind: 'thread', sessionId: 'x', environmentId: 'env_box', title: 't' })
+    const work = { ...s.root, id: 'w', scope: 'work', projectId: null, workspaceId: 'ws-work' } as SessionMeta
+    configureAddonScope({ scopeOf: (session) => (session.scope === 'work' ? 'ws-work' : null), isWork: (id) => id === 'ws-work', forWork: () => false })
+    try {
+      // a global row a thread wrote last would have been removed with no card
+      expect(await appAddonRemove(s.deps, work, { name: 'github', scope: 'global' })).toBe('refused: no add-on github here; addon_list shows them')
+      expect(await appAddonRemove(s.deps, work, { name: 'github' })).toBe('refused: no add-on github here; addon_list shows them')
+      expect(s.store.get(hidden.id)).not.toBeNull()
+      expect(s.cards).toEqual([])
+      // its own workspace's row goes as before
+      expect(JSON.parse(await appAddonRemove(s.deps, work, { name: 'notes' }))).toMatchObject({ removed: 'notes' })
+      expect(s.store.get(own.id)).toBeNull()
+      // a code thread removes a global row as it always could
+      expect(JSON.parse(await appAddonRemove(s.deps, s.root, { name: 'github', scope: 'global' }))).toMatchObject({ removed: 'github' })
+    } finally {
+      configureAddonScope(null)
+    }
+  })
+
+  it("addon_call from a Work thread names its caller to the add-on host, and asks no card for a call the catch will hold or refuse", async () => {
+    const { configureAddonScope } = await import('./scope')
+    for (const permission of ['safe', 'edits', 'auto'] as const) {
+      const s = setup({ permission })
+      const row = s.store.set({ name: 'slack', workspaceId: 'ws-work', spec: stdio }, person)
+      s.ready(row.id, [tool('slack', 'post', 'Post a message'), tool('slack', 'search', 'Search', true), tool('slack', 'delete', 'Delete')])
+      const seen: unknown[] = []
+      const verdicts: Record<string, 'run' | 'hold' | 'refuse'> = { post: 'hold', search: 'run', delete: 'refuse' }
+      s.deps.host = {
+        call: async (_addonId, toolName, args, opts) => {
+          seen.push({ tool: toolName, args, sessionId: opts?.sessionId, work: opts?.work })
+          return { content: [{ type: 'text', text: verdicts[toolName] === 'hold' ? 'Held as item 1' : 'done' }] }
+        },
+        verdict: (_id, toolName, by) => (by.work ? verdicts[toolName]! : 'run')
+      }
+      const work = { ...s.root, id: 'w', scope: 'work', projectId: null, workspaceId: 'ws-work', permission } as SessionMeta
+      configureAddonScope({ scopeOf: (session) => (session.scope === 'work' ? 'ws-work' : null), isWork: (id) => id === 'ws-work', forWork: () => false })
+      try {
+        await appAddonCall(s.deps, work, { tool: 'slack__post', arguments: { text: 'x' } })
+        await appAddonCall(s.deps, work, { tool: 'slack__delete' })
+        // held and refused: no card in any mode; the host is still the one that answers
+        expect(s.cards, permission).toEqual([])
+        await appAddonCall(s.deps, work, { tool: 'slack__search' })
+        // a tool he set to Runs asks only in safe: never because its server calls it read-only or not
+        expect(s.cards.map((c) => c.toolName), permission).toEqual(permission === 'safe' ? ['slack__search'] : [])
+        expect(seen).toEqual([
+          { tool: 'post', args: { text: 'x' }, sessionId: 'w', work: true },
+          { tool: 'delete', args: {}, sessionId: 'w', work: true },
+          { tool: 'search', args: {}, sessionId: 'w', work: true }
+        ])
+      } finally {
+        configureAddonScope(null)
+      }
+    }
+  })
+
+  it("a code thread's addon_call names itself too, as a code thread, and asks exactly as before", async () => {
+    const s = setup({ permission: 'edits' })
+    const row = s.store.set({ name: 'slack', workspaceId: 'ws1', spec: stdio }, person)
+    s.ready(row.id, [tool('slack', 'post', 'Post'), tool('slack', 'search', 'Search', true)])
+    const seen: unknown[] = []
+    s.deps.host = {
+      call: async (_id, toolName, _args, opts) => {
+        seen.push({ tool: toolName, sessionId: opts?.sessionId, work: opts?.work })
+        return { content: [] }
+      },
+      verdict: () => 'hold'
+    }
+    await appAddonCall(s.deps, s.child, { tool: 'slack__search' })
+    await appAddonCall(s.deps, s.child, { tool: 'slack__post' })
+    // the catch's verdict is never asked for a code thread: the card comes as it did
+    expect(s.cards.map((c) => c.toolName)).toEqual(['slack__post'])
+    expect(seen).toEqual([
+      { tool: 'search', sessionId: 'child', work: false },
+      { tool: 'post', sessionId: 'child', work: false }
+    ])
+  })
+})

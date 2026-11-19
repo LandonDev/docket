@@ -26,7 +26,7 @@
   tool cards in safe and edits, the add-on and skill cards (`addon_add`
   too: the host stands in for the admin), every computer card and the
   session step's card (Run now). One kind is still denied: a computer act
-  the model flagged `pay` or `subscribe` (`awayAllowsKind`,
+  the model flagged `pay` or `subscribe` (`awayVerdict`,
   `AWAY_DENIED_KINDS` in src/shared/away.ts, read off the call's own
   `confirm`, never a card's input; computer/run.ts raises that card with
   `ApprovalRequest.awayDenies`), with `AWAY_APPROVAL_REPLY`. An allow
@@ -64,3 +64,14 @@
   away, awaySync, sessions-away, macBridge, macBridgeWrite, macJobs,
   macTools, peerCalls, macComputer, computer/bridge, approval, schedule,
   the drivers' allows and denials, AwayRow.dom, AwayReturn.dom.
+- **A Work thread** (docs/agents/work-outbox.md) decides and carries on,
+  and nothing it does leaves. `awayVerdict(ask, scope)` (src/shared/away.ts)
+  answers by the scope of the thread that asks: a code thread as above; a
+  Work thread's `addon_add` and `addon_remove` cards are denied
+  (`awayAllows` in sessions.ts, at `requestApproval`, `interceptAway` and
+  the flip's `answerWaitingCards`), its computer act the host reads as
+  outward or the model flagged is held for the owner's press and asks no
+  card, and text into a password field is denied. Away never releases a
+  held act and never makes a grant: neither is a card. On the Mac bridge a
+  Work thread's command on the always-ask list stays a prompt, under Away
+  and at the flip (`workMustAsk`, `awayKeeps`).

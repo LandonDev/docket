@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { nanoid } from 'nanoid'
-import { addonProblem, visibleRows, type Writer } from '@shared/addons'
+import { addonProblem, visibleRows, type ToolHints, type Writer } from '@shared/addons'
 import { AddonInputSchema, type AddonInput, type AddonRow, type AddonSpec, type AddonStatus, type AddonTool } from '@shared/contract-addons'
 import { sha256Hex } from '@shared/sha256'
 
@@ -44,6 +44,22 @@ export const specDigest = (spec: AddonSpec): string => sha256Hex(canonical(spec)
 
 const scopeKey = (workspaceId: string | null): string => workspaceId ?? ''
 
+/** The answer to a write that would point the app's own LifeOS row somewhere else. */
+export const LIFEOS_ROW_REFUSAL = "refused: this add-on is the app's own LifeOS connection and cannot be pointed anywhere else; unlink the workspace to remove it"
+
+/**
+ * Whether a spec is the one the host writes for LifeOS (work/outbox/ctx.ts
+ * sets it at boot from the address the host signs in to). The row marked
+ * `role: 'lifeos'` holds a LifeOS key as its grant and is the one add-on a
+ * Work thread's calls are never held on, so nothing may point it elsewhere.
+ * Unset (Work's mount did not come up, a test of the bare store), no spec
+ * passes: a marked row's spec cannot change at all.
+ */
+let lifeosSpecOk: ((spec: AddonSpec) => boolean) | null = null
+export function configureLifeosRow(ok: ((spec: AddonSpec) => boolean) | null): void {
+  lifeosSpecOk = ok
+}
+
 export class AddonStore {
   private readonly changeListeners = new Set<() => void>()
   private readonly statusListeners = new Set<() => void>()
@@ -74,6 +90,9 @@ export class AddonStore {
         fetched_at  INTEGER NOT NULL
       );
     `)
+    // Every hint a server gave of its tools (ToolHints), by tool name, for the card where the owner sets each
+    // tool's rule in Work threads (docs/agents/work-outbox.md). A column of its own: the tools a client lists are unchanged.
+    if (!db.prepare(`SELECT 1 FROM pragma_table_info('addon_tool_cache') WHERE name = 'hints'`).get()) db.exec(`ALTER TABLE addon_tool_cache ADD COLUMN hints TEXT`)
     // Work's two columns (docs/agents/work.md), defaulted so an older build still reads and writes
     // the table: `role` is 'lifeos' on the row TempCode makes for LifeOS, `for_work` marks a global
     // add-on the person allowed in Work threads. Neither is part of the row that syncs.
@@ -137,6 +156,8 @@ export class AddonStore {
     const id = existing?.id ?? input.id ?? mintAddonId()
     const clash = this.byName(input.workspaceId, input.name)
     if (clash && clash.id !== id) throw new Error(`refused: an add-on named ${input.name} already exists there`)
+    // The app's own LifeOS row keeps the address the host gave it, whoever writes: a person, a thread's approved add, the sync.
+    if (existing && this.lifeosRowMoved(existing, input.spec)) throw new Error(LIFEOS_ROW_REFUSAL)
     const now = this.now()
     const row: AddonRow = {
       id,
@@ -165,6 +186,8 @@ export class AddonStore {
     if (existing && canonical(existing) === canonical(row)) return false
     const clash = this.byName(row.workspaceId, row.name)
     if (clash && clash.id !== row.id) this.delete(clash.id)
+    // The home's row is taken as it stands, but a LifeOS row it pointed elsewhere is no longer this host's LifeOS row: the mark goes, so nothing trusts it.
+    if (existing && this.lifeosRowMoved(existing, row.spec)) this.db.prepare(`UPDATE addons SET role = NULL WHERE id = ?`).run(row.id)
     this.write(row, existing)
     this.emit(this.changeListeners)
     return true
@@ -206,13 +229,27 @@ export class AddonStore {
     }
   }
 
-  /** The registry core's tools/list for an add-on, under its current spec. */
-  setTools(id: string, tools: AddonTool[], at = this.now()): void {
+  /** The registry core's tools/list for an add-on, under its current spec. `hints`: what the server said of each tool, by its own name. */
+  setTools(id: string, tools: AddonTool[], at = this.now(), hints: Record<string, ToolHints> = {}): void {
     const row = this.get(id)
     if (!row) return
     this.db
-      .prepare(`INSERT OR REPLACE INTO addon_tool_cache (addon_id, spec_digest, tools, fetched_at) VALUES (?, ?, ?, ?)`)
-      .run(id, specDigest(row.spec), JSON.stringify(tools), at)
+      .prepare(`INSERT OR REPLACE INTO addon_tool_cache (addon_id, spec_digest, tools, fetched_at, hints) VALUES (?, ?, ?, ?, ?)`)
+      .run(id, specDigest(row.spec), JSON.stringify(tools), at, JSON.stringify(hints))
+  }
+
+  /** Each listed tool's hints by name, while the add-on's spec is the one they were listed under; {} when none are kept. */
+  toolHints(id: string): Record<string, ToolHints> {
+    const row = this.get(id)
+    if (!row) return {}
+    const cache = this.db.prepare(`SELECT spec_digest, hints FROM addon_tool_cache WHERE addon_id = ?`).get(id) as unknown as { spec_digest: string; hints: string | null } | undefined
+    if (!cache?.hints || cache.spec_digest !== specDigest(row.spec)) return {}
+    try {
+      const parsed = JSON.parse(cache.hints) as unknown
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, ToolHints>) : {}
+    } catch {
+      return {}
+    }
   }
 
   /** This host's status of every add-on the registry core has reported. */
@@ -260,6 +297,13 @@ export class AddonStore {
         row.updatedAt
       )
     if (existing && specDigest(existing.spec) !== specDigest(row.spec)) this.db.prepare(`DELETE FROM addon_tool_cache WHERE addon_id = ?`).run(row.id)
+  }
+
+  /** Whether a write would point the row marked as LifeOS's at a spec that is not LifeOS's. */
+  private lifeosRowMoved(existing: AddonRow, next: AddonSpec): boolean {
+    if (this.workMarks(existing.id)?.role !== 'lifeos') return false
+    if (specDigest(existing.spec) === specDigest(next)) return false
+    return !lifeosSpecOk?.(next)
   }
 
   private delete(id: string): boolean {

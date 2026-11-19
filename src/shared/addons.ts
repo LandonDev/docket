@@ -176,7 +176,14 @@ export function exposedNames(addon: string, tools: readonly { name: string }[]):
 
 // ── the approval cards ──────────────────────────────────────────────────
 
-/** Cards only a person with an admin key may allow, or the host itself while the person is away (sessions.ts requestApproval allows without passing through mayAllow); a model or a lesser key never may. */
+/**
+ * Cards only a person with an admin key may allow; a model or a lesser key
+ * never may. While the person is away the host itself allows one raised by
+ * a code thread (sessions.ts requestApproval allows without passing through
+ * mayAllow) and never one raised by a Work thread (`awayVerdict`,
+ * src/shared/away.ts): an away Work agent could otherwise add a server of
+ * its own choosing.
+ */
 export const ADMIN_APPROVALS = ['addon_add'] as const
 /** What the card shows in Allow's place on a socket without admin. */
 export const ADDON_ADMIN_LINE = 'Needs an admin key'
@@ -258,6 +265,60 @@ export function addonRemoveCard(row: { name: string; addedBy: Writer }, ctx: { w
 
 /** Whether removing a row asks the person: it does unless a thread wrote it last. */
 export const removeAsks = (row: { writtenBy: Writer }): boolean => row.writtenBy.kind !== 'thread'
+
+// ── a tool's hints and the rule the owner sets (docs/agents/work-outbox.md) ──
+
+/**
+ * What a downstream server says of one of its own tools (MCP annotations).
+ * The server's word, so untrusted: it is shown on the card where the owner
+ * sets the tool's rule and it suggests a class there. It never decides
+ * whether a Work thread's call runs.
+ */
+export interface ToolHints {
+  readOnly?: boolean
+  destructive?: boolean
+  openWorld?: boolean
+  idempotent?: boolean
+  /** the server's display name for the tool */
+  title?: string
+}
+
+/** A tool's rule in Work threads, set by the owner per add-on tool. No rule is `held`. */
+export const TOOL_RULES = ['runs', 'held', 'off'] as const
+export type ToolRule = (typeof TOOL_RULES)[number]
+
+/**
+ * The class a tool's hints suggest on the rules card: Runs only for a tool
+ * its server calls read-only and neither destructive nor open-world;
+ * Held for everything else, a tool with no hints included.
+ */
+export function suggestedRule(hints: ToolHints | null | undefined): 'runs' | 'held' {
+  return hints?.readOnly === true && hints.destructive !== true && hints.openWorld !== true ? 'runs' : 'held'
+}
+
+/** The hints of an MCP tool listing's `annotations`, the unknown and the mistyped left out. */
+export function toolHintsOf(annotations: unknown, title?: unknown): ToolHints | undefined {
+  const a = annotations && typeof annotations === 'object' ? (annotations as Record<string, unknown>) : {}
+  const out: ToolHints = {}
+  if (typeof a.readOnlyHint === 'boolean') out.readOnly = a.readOnlyHint
+  if (typeof a.destructiveHint === 'boolean') out.destructive = a.destructiveHint
+  if (typeof a.openWorldHint === 'boolean') out.openWorld = a.openWorldHint
+  if (typeof a.idempotentHint === 'boolean') out.idempotent = a.idempotentHint
+  const name = typeof a.title === 'string' && a.title.trim() ? a.title : typeof title === 'string' && title.trim() ? title : null
+  if (name) out.title = name.trim().slice(0, 200)
+  return Object.keys(out).length ? out : undefined
+}
+
+/** `send_message` or `sendMessage` as words: "Send message". The fallback for a tool whose server gave no title. */
+export function toolWords(tool: string): string {
+  const words = tool
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return words ? words[0]!.toUpperCase() + words.slice(1) : tool
+}
 
 // ── the tools threads get (section 7 of the schema plan) ────────────────
 // The registry core registers these on the claude path and the bridge;

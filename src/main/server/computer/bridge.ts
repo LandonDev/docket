@@ -11,6 +11,7 @@ import {
   COMPUTER_ROW_MS,
   ComputerPeerAnswerSchema,
   ComputerPeerProgressSchema,
+  MAC_COMPUTER_HOLD_OFFER,
   MAC_COMPUTER_OFFER,
   askingWords,
   bridgedDeadlineMs,
@@ -31,7 +32,7 @@ import type { MacThreadTokens } from '../macTools'
 import { OfflineError } from '../threadResources'
 import { isSoftCancel, type CallReader } from './pending'
 import { refusal, type ComputerToolOutcome, type LandedShot } from './result'
-import { abortedLine, checkComputerCall, type ComputerToolContext } from './run'
+import { abortedLine, AWAY_PASSWORD, checkComputerCall, type ComputerToolContext } from './run'
 import { landShotBytes, nextShotNumber } from './shots'
 import { bridgeLegs, bridgeOverhead, timingLine, type BridgeStamps } from '@shared/computer/bridgeTiming'
 import { currentLag, recordComputerSpan } from '../stalls'
@@ -158,6 +159,10 @@ interface ThreadBridge {
   holdEpoch: number
 }
 
+/** A Work thread's act on a Mac whose app cannot judge it. */
+export const WORK_MAC_TOO_OLD =
+  "refused: the app on that Mac is older than the hold on a Work thread's sends, so it would carry out this step unjudged. Update the Mac's app; until then this thread can read the Mac's screen and nothing more."
+
 export class ComputerBridge {
   private readonly threads = new Map<string, ThreadBridge>()
   private readonly rowListeners = new Set<(rows: ComputerSessionRow[]) => void>()
@@ -276,6 +281,10 @@ export class ComputerBridge {
     const mac = this.deps.macPeerOf(id)!
     const meta = this.deps.sessions.get(id)
     const permission = ctx.permission?.() ?? meta?.permission ?? 'safe'
+    // A Work thread's act is judged by the Mac's own read of the screen, whatever the model flagged (docs/agents/work-outbox.md).
+    // A Mac from before that would run it unjudged, so to such a Mac a Work thread sends reads and nothing else.
+    const work = meta?.scope === 'work'
+    if (work && tool !== 'computer_observe' && !this.deps.calls.online(mac, MAC_COMPUTER_HOLD_OFFER)) return refusal(WORK_MAC_TOO_OLD)
     const call = { tool, args, threadId: id, permission } as ComputerToolCall
     const now = this.clock.now()
     t.macPeer = mac
@@ -313,7 +322,7 @@ export class ComputerBridge {
         return this.deps.calls.call<unknown>(
           mac,
           'mac.computer',
-          { thread: { id, title: meta?.title ?? '', permission }, args: { call, turn: `${this.boot}:${t.turn}`, rootId: this.deps.pause.rootOf(id), features: [...BOX_READS] } } as never,
+          { thread: { id, title: meta?.title ?? '', permission }, args: { call, turn: `${this.boot}:${t.turn}`, rootId: this.deps.pause.rootOf(id), features: [...BOX_READS], ...(work ? { hold: { work: true } } : {}) } } as never,
           bridgedDeadlineMs(call),
           { callId, onProgress: (frame) => this.progress(t, inflight, frame.chunk) }
         )
@@ -463,6 +472,11 @@ export class ComputerBridge {
     if (message === MAC_AWAY_REFUSAL || message === MAC_AWAY_REFUSAL_LEGACY) {
       this.awayNotice(t.id, call, 'approval')
       return refusal(message === MAC_AWAY_REFUSAL ? hostErrorLine('away') : message)
+    }
+    // a Work thread's text into a password field, which Away denied on the Mac
+    if (message === AWAY_PASSWORD) {
+      this.awayNotice(t.id, call, 'approval')
+      return refusal(message)
     }
     if (err instanceof PeerOfflineError) return refusal(COMPUTER_MAC_WENT_OFFLINE)
     if (message === CANCELLED_PAUSED || message === CANCELLED_STOPPED) return refusal(message)

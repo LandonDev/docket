@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
-import { AddonStore, specDigest } from './addonStore'
+import { AddonStore, configureLifeosRow, LIFEOS_ROW_REFUSAL, specDigest } from './addonStore'
 import type { AddonInput, AddonRow, AddonSpec, AddonTool } from '@shared/contract-addons'
 
 const you = { kind: 'person' } as const
@@ -154,11 +154,92 @@ describe("AddonStore: Work's marks", () => {
     clock = 2_000
     store.set(input({ id: row.id, description: 'edited', enabled: false }), thread)
     expect(store.workMarks(row.id)).toEqual({ role: 'lifeos', forWork: true })
-    store.set(input({ spec: { ...spec, args: ['-y', 'other'] } }), you)
-    expect(store.workMarks(row.id)).toEqual({ role: 'lifeos', forWork: true })
     expect(store.put({ ...store.get(row.id)!, description: 'from the home', updatedAt: 3_000 })).toBe(true)
     expect(store.workMarks(row.id)).toEqual({ role: 'lifeos', forWork: true })
     expect(store.get(row.id)).toMatchObject({ description: 'from the home', updatedAt: 3_000 })
+    // a row that is not LifeOS's keeps its mark across a change of its spec too
+    const other = store.set(input({ name: 'slack' }), you)
+    store.setWorkMarks(other.id, { forWork: true })
+    store.set(input({ name: 'slack', spec: { ...spec, args: ['-y', 'other'] } }), you)
+    expect(store.workMarks(other.id)).toEqual({ role: null, forWork: true })
+  })
+
+  describe("the app's own LifeOS row keeps LifeOS's address, whoever writes", () => {
+    const lifeosSpec: AddonSpec = { transport: 'http', url: 'https://lifeos-mcp.example/mcp', headers: ['Authorization'], auth: 'fields' }
+    const elsewhere: AddonSpec = { transport: 'http', url: 'https://attacker.example/mcp', headers: ['Authorization'], auth: 'fields' }
+    const isLifeos = (s: AddonSpec): boolean => s.transport === 'http' && s.url === lifeosSpec.url
+    afterEach(() => configureLifeosRow(null))
+
+    it("refuses a person's edit and a thread's approved add that would point it at another server, and leaves the row whole", () => {
+      configureLifeosRow(isLifeos)
+      const row = store.set(input({ name: 'lifeos', spec: lifeosSpec }), you)
+      store.setWorkMarks(row.id, { role: 'lifeos' })
+      // by id (the settings page) and by scope and name (addon_add)
+      expect(() => store.set(input({ id: row.id, name: 'lifeos', spec: elsewhere }), you)).toThrow(LIFEOS_ROW_REFUSAL)
+      expect(() => store.set(input({ name: 'lifeos', spec: elsewhere }), thread)).toThrow(LIFEOS_ROW_REFUSAL)
+      // and at this machine, where an agent's own server could be listening
+      expect(() => store.set(input({ name: 'lifeos', spec: { ...lifeosSpec, url: 'http://127.0.0.1:9/mcp' } }), you)).toThrow(LIFEOS_ROW_REFUSAL)
+      expect(store.get(row.id)).toEqual(row)
+      expect(store.workMarks(row.id)?.role).toBe('lifeos')
+    })
+
+    it('takes a write that keeps the spec, and one that is still LifeOS', () => {
+      configureLifeosRow(isLifeos)
+      const row = store.set(input({ name: 'lifeos', spec: lifeosSpec }), you)
+      store.setWorkMarks(row.id, { role: 'lifeos' })
+      expect(store.set(input({ id: row.id, name: 'lifeos', spec: lifeosSpec, description: 'held to purdue' }), you).description).toBe('held to purdue')
+      expect(store.set(input({ id: row.id, name: 'lifeos', spec: { ...lifeosSpec, platforms: ['linux'] } }), you).spec.platforms).toEqual(['linux'])
+    })
+
+    it('with no rule set (Work did not come up), refuses every change of its spec', () => {
+      const row = store.set(input({ name: 'lifeos', spec: lifeosSpec }), you)
+      store.setWorkMarks(row.id, { role: 'lifeos' })
+      expect(() => store.set(input({ id: row.id, name: 'lifeos', spec: { ...lifeosSpec, platforms: ['linux'] } }), you)).toThrow(LIFEOS_ROW_REFUSAL)
+    })
+
+    it("takes the home's row from the sync as it stands, and drops the mark of one the home pointed elsewhere: nothing trusts it then", () => {
+      configureLifeosRow(isLifeos)
+      const row = store.set(input({ name: 'lifeos', spec: lifeosSpec }), you)
+      store.setWorkMarks(row.id, { role: 'lifeos', forWork: true })
+      expect(store.put({ ...row, spec: elsewhere, updatedAt: 9_000 })).toBe(true)
+      expect(store.get(row.id)?.spec).toEqual(elsewhere)
+      expect(store.workMarks(row.id)).toEqual({ role: null, forWork: true })
+    })
+
+    it('leaves every other row free to change', () => {
+      configureLifeosRow(isLifeos)
+      const row = store.set(input(), you)
+      expect(store.set(input({ id: row.id, spec: elsewhere }), you).spec).toEqual(elsewhere)
+    })
+  })
+
+  describe("a tool's hints", () => {
+    const tools: AddonTool[] = [
+      { name: 'search', exposed: 'github__search', description: 'Search', inputSchema: {}, readOnly: true },
+      { name: 'post', exposed: 'github__post', description: 'Post', inputSchema: {} }
+    ]
+    it('are kept beside the tool cache, by tool name, and are no part of the tools a client lists', () => {
+      const row = store.set(input(), you)
+      store.setTools(row.id, tools, 5, { search: { readOnly: true, title: 'Search issues' }, post: { readOnly: true, openWorld: true, destructive: false, idempotent: false } })
+      expect(store.toolHints(row.id)).toEqual({ search: { readOnly: true, title: 'Search issues' }, post: { readOnly: true, openWorld: true, destructive: false, idempotent: false } })
+      expect(store.tools(row.id)?.tools).toEqual(tools)
+    })
+    it('are none for a list kept without them, and void once the spec changes', () => {
+      const row = store.set(input(), you)
+      store.setTools(row.id, tools)
+      expect(store.toolHints(row.id)).toEqual({})
+      store.setTools(row.id, tools, 5, { search: { readOnly: true } })
+      store.set(input({ id: row.id, spec: { ...spec, args: ['-y', 'other'] } }), you)
+      expect(store.toolHints(row.id)).toEqual({})
+    })
+    it('are added to a database made before them', () => {
+      const old = new DatabaseSync(':memory:')
+      old.exec(`CREATE TABLE addon_tool_cache (addon_id TEXT PRIMARY KEY, spec_digest TEXT NOT NULL, tools TEXT NOT NULL, fetched_at INTEGER NOT NULL)`)
+      const s = new AddonStore(old)
+      const row = s.set(input(), you)
+      s.setTools(row.id, tools, 5, { search: { readOnly: true } })
+      expect(s.toolHints(row.id)).toEqual({ search: { readOnly: true } })
+    })
   })
 
   it('are not part of the row a client lists or the sync carries, and a change of one tells the listeners once', () => {

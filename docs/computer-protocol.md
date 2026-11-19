@@ -1561,7 +1561,7 @@ Each text exists in two shapes with the same facts: `anthropic`, in Anthropic's 
 
 ### 19.3 The confirmations policy
 
-The model flags; the host asks. `computer_act`, `computer_batch` and every per-verb tool that sends input take `confirm: { kind, what }` (`ConfirmSchema`, `src/shared/computer/policy.ts`). With it the host shows one card in every permission mode, full access included, and acts only on Allow; Away allows it, unless its kind is `pay` or `subscribe` (`awayAllowsKind`, read off the call's own flag, never the card's). An act without the flag runs, and the prompt says a missed flag is the model's error.
+The model flags; the host asks. `computer_act`, `computer_batch` and every per-verb tool that sends input take `confirm: { kind, what }` (`ConfirmSchema`, `src/shared/computer/policy.ts`). With it the host shows one card in every permission mode, full access included, and acts only on Allow; Away allows it, unless its kind is `pay` or `subscribe` (`awayVerdict`, read off the call's own flag, never the card's). An act without the flag runs, and the prompt says a missed flag is the model's error.
 
 | `kind` | Card label | The person's words may pre-approve it |
 |---|---|---|
@@ -1597,6 +1597,28 @@ What the host enforces whatever the model flagged (`src/main/server/computer/pol
 - **Opening**: `computer_apps` with `open` asks in `safe` and `edits` (`Open report.pdf in Preview`), takes `confirm` like `computer_act` and then asks in every mode, and refuses an item of another scheme before the card (`refusedOpenItem`); the service checks the items and the resolved app against `refuse` before any item is sent (§23.2).
 
 **The card** (`computerApprovalTitle`): a flagged call leads with its kind, `Send in Mail: Reply to Ana accepting Friday's lunch (click button "Send")`, the step words dropped past 160 characters; the input carries `confirm: { kind, label, what }` beside `{ app, window, actions }`.
+
+#### The hold in a Work thread
+
+In a thread whose row says `scope: 'work'` (docs/agents/work-outbox.md) the model's flag is not what decides. The **host** classes every `computer_act`, `computer_batch` and flagged `computer_apps` call before anything runs (`readOutward`, `src/shared/computer/outward.ts`; `runChecked` in `run.ts`), since a tricked model is the one that will not flag its click.
+
+| The step | Held when |
+|---|---|
+| a click, double or triple click, a mouse down or up, `perform` (but `raise`, `show menu`, `scroll to visible`) | its element, or a pressable element it sits in, is named for an outward act (`OUTWARD_VERBS`: Send, Reply, Forward, Post, Publish, Share, Submit, Sign, Pay, Buy, Order, Checkout, Confirm, Accept, Approve, Decline, Delete, Remove, Invite, Book, Subscribe, Transfer and their kin; a button may run on for twelve words, a link for two, plain text not at all); by `named`; by a `menu` path any part of which is such a name, outside Edit, Format, View and the other menus that only change what is in front; by position, when the host's read has frames; with no target, where the pointer was last put (in this call or the thread's last) |
+| `key` Return or a typed line break, `perform confirm` | the focus is a chat app's or chat page's message box (`CHAT_APP_BUNDLES`, `CHAT_HOSTS`, read from the address bar); a multi-line box whose own surroundings hold a Send; a field whose near surroundings hold a submit (`RETURN_VERBS`); a sheet or dialog with no plainly safe default; or nobody knows where the focus is and the window holds an outward control. Shift or Option with Return is a new line. In a mail app or page plain Return is a new line |
+| Command or Control with Return; ⇧⌘D in a mail app | wherever that sends: a chat or mail place, or a field beside a submit |
+| Space or Return with the focus on a control | the control is named for an outward act |
+| any call with `confirm` | always |
+
+The screen the host judges from is the thread's book of the window, or one fresh full read with frames (`state.get`, `geometry: true`) when a step lands by position, goes to the focus, or names an element the book lacks (`needsFreshRead`). The model never sees that read, so the app's next read is full. If it fails, the call is refused (`HELD_UNREAD`) and nothing runs: the host never judges against a stale book or an empty screen.
+
+A call judged outward is **kept, not run**: the host takes the window's picture, records what the window's fields hold (`screenMark`) and each target by what it is (`heldTargets`: role, name and the names above it), and hands the call to the hold (`configureComputerHold`), which writes a `live` row. A step whose element or point the read cannot place is never held as written: the call is refused (`HELD_UNPLACED`). The tool's answer is the hold's line, not an error. No card is asked and no five-minute deny applies; Away changes nothing. On the owner's press the same call runs again through the thread's queue (`ctx.rerun` in `sessions.ts`, `ctx.pressed`): one fresh read, every target found again by what it is (the service may have numbered the window anew), and the call goes only if the mark and the targets still hold, else it answers `stale` and sends nothing. A press skips the card and the `no_observation` checks and is not refused by a Stop of the turn, which stays in force for the thread's own calls.
+
+A call that is not outward goes on as for any thread: its card in `safe` and `edits`, none in full access. Under Away a Work thread's password card is denied.
+
+**What the hold cannot catch**, in the class of the unfenced shell: a click by position on a control the screen reader gives no name (a canvas app, a remote desktop, a picture of a button); a control named off the list; an act split so that no single call reads as outward; a web address opened with `computer_apps` whose page acts on being fetched. A wrong match costs one press.
+
+**Across the bridge.** A box sends `hold: { work: true }` beside a Work thread's call, and only to a Mac that offers `computer-hold` (`MAC_COMPUTER_HOLD_OFFER`); to any other Mac it sends that thread's reads and refuses its acts (`WORK_MAC_TOO_OLD`). The Mac judges the call the same way; it has no Outbox for a box thread, so an outward call answers `HELD_UNAVAILABLE` and nothing runs. Under Away the Mac denies the run's own `awayDenies` card (a Work thread's text into a password field) as it does a money act's, and answers `AWAY_PASSWORD`.
 
 ### 19.4 Error lines
 

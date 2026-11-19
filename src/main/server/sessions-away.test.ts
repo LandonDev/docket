@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, SessionMeta } from '@shared/events'
+import { WORK_SETTING_KEY } from '@shared/work'
 import { openDb, Store } from './db'
 import type { ApprovalRequest } from './drivers/types'
 import { SessionRegistry } from './sessions'
@@ -398,6 +399,85 @@ describe('the host answers for an away person', () => {
     expect(rows(run).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)).toEqual(['allowed'])
     expect(rows(pay).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)).toEqual(['approval'])
     expect(away.count).toHaveBeenCalledWith(pay)
+  })
+})
+
+describe('the host answers for an away person, in a Work thread', () => {
+  // A Work thread decides and carries on, and nothing it does leaves (docs/agents/work-outbox.md): Away allows its
+  // ordinary cards and never the ones that change which servers it can reach.
+  async function startWorkThread(provider: 'claude' | 'codex' = 'claude'): Promise<string> {
+    store.setSetting(WORK_SETTING_KEY, JSON.stringify({ enabled: true }))
+    const path = join(root, 'Work', 'purdue')
+    await mkdir(path, { recursive: true })
+    const purdue = registry.listWorkspaces().find((w) => w.kind === 'work') ?? (await registry.createWorkspace(path, 'purdue', { kind: 'work', sector: 'purdue' }))
+    const s = await registry.create({ threadType: 'chat', workspaceId: purdue.id, provider })
+    expect(s.scope).toBe('work')
+    await registry.send(s.id, 'draft the reply')
+    await flush()
+    return s.id
+  }
+  const noticeKinds = (id: string): (string | undefined)[] => rows(id).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)
+
+  it('never allows addon_add or addon_remove: the card is denied with the skipped row, by either name, on either path', async () => {
+    const id = await startWorkThread()
+    running(id)
+    away.enabled = true
+    // the app tools' own gate (Muse, in process, the bridge): requestApproval
+    await expect(ctx(id).requestApproval({ toolName: 'addon_add', title: 'Add the add-on exfil', input: { runs: 'https://attacker.example/mcp' } })).resolves.toBe(false)
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__app__addon_remove', title: 'Remove the add-on lifeos', input: {} })).resolves.toBe(false)
+    // a driver's own card for the same tool
+    ctx(id).emit({ type: 'approval-request', requestId: 'a1', toolName: 'mcp__app__addon_add', input: {}, title: 'Add the add-on exfil' })
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    await flush()
+    expect(approvals).toMatchObject([{ sessionId: id, requestId: 'a1', allow: false }])
+    expect(approvals[0]!.reason).toBeTruthy()
+    expect(noticeKinds(id)).toEqual(['approval', 'approval', 'approval'])
+    expect(rows(id).some((e) => e.type === 'approval-request')).toBe(false)
+  })
+
+  it('allows its other cards as for any thread: a shell command, an add-on tool (which the catch judges for itself)', async () => {
+    const id = await startWorkThread('codex')
+    running(id)
+    away.enabled = true
+    await expect(ctx(id).requestApproval({ toolName: 'slack__post_message', title: 'Use post_message from slack', input: {} })).resolves.toBe(true)
+    ctx(id).emit(approval('a1'))
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    await flush()
+    expect(approvals).toEqual([{ sessionId: id, requestId: 'a1', allow: true, reason: undefined }])
+    expect(noticeKinds(id)).toEqual(['allowed', 'allowed'])
+  })
+
+  it('still denies a card raised with awayDenies', async () => {
+    const id = await startWorkThread()
+    running(id)
+    away.enabled = true
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__app__computer_act', input: {}, title: 'Type into a password field', awayDenies: true })).resolves.toBe(false)
+  })
+
+  it('at the flip to away, denies an addon_add card that was already waiting, and a code thread\'s is allowed as before', async () => {
+    const work = await startWorkThread()
+    const code = await startThread()
+    running(work)
+    running(code)
+    const fromWork = ctx(work).requestApproval({ requestId: 'w1', toolName: 'addon_add', title: 'Add the add-on exfil', input: {} })
+    const fromCode = ctx(code).requestApproval({ requestId: 'c1', toolName: 'addon_add', title: 'Add the add-on github', input: {} })
+    await flush()
+    away.enabled = true
+    registry.awayChanged(true)
+    await expect(fromWork).resolves.toBe(false)
+    await expect(fromCode).resolves.toBe(true)
+    expect(noticeKinds(work)).toEqual(['approval'])
+    expect(noticeKinds(code)).toEqual(['allowed'])
+  })
+
+  it('while he is here, asks the card as for any thread', async () => {
+    const id = await startWorkThread()
+    running(id)
+    const asked = ctx(id).requestApproval({ requestId: 'w1', toolName: 'addon_add', title: 'Add the add-on x', input: {} })
+    await flush()
+    expect(rows(id).some((e) => e.type === 'approval-request')).toBe(true)
+    await registry.approve(id, 'w1', true)
+    await expect(asked).resolves.toBe(true)
   })
 })
 

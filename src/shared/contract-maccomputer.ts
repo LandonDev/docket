@@ -22,6 +22,8 @@ import { BridgeTimingSchema } from './computer/bridgeTiming'
 
 /** The offer a Mac adds to peer.register for a host whose computer use is on and possible. */
 export const MAC_COMPUTER_OFFER = 'computer'
+/** The offer of a Mac that judges a Work thread's acts itself when a call says `hold.work` (computer/run.ts). */
+export const MAC_COMPUTER_HOLD_OFFER = 'computer-hold'
 export const MAC_COMPUTER_PEER_METHODS = ['mac.computer', 'mac.computerEnd', 'mac.computerReader'] as const
 export type MacComputerPeerMethod = (typeof MAC_COMPUTER_PEER_METHODS)[number]
 export const isMacComputerPeerMethod = (m: string): m is MacComputerPeerMethod =>
@@ -88,7 +90,15 @@ export const MacComputerCallArgsSchema = z.object({
   /** The box thread's root: the scheduler's rootId on the Mac is macComputerKey(env, rootId). */
   rootId: z.string().min(1).max(200),
   /** What the box parses beyond the first wire (§26, decision 14): `front` on a row's tier. An older box sends none. */
-  features: z.array(z.string().max(40)).max(8).optional()
+  features: z.array(z.string().max(40)).max(8).optional(),
+  /**
+   * The call is a Work thread's (docs/agents/work-outbox.md): the Mac judges
+   * each act from its own read of the screen, whatever the model flagged,
+   * and carries out none it reads as outward. A box sends it only to a Mac
+   * that offers MAC_COMPUTER_HOLD_OFFER; an older Mac would drop the key and
+   * run the act unjudged, so to one the box sends no act of a Work thread.
+   */
+  hold: z.object({ work: z.literal(true) }).optional()
 })
 export type MacComputerCallArgs = z.infer<typeof MacComputerCallArgsSchema>
 

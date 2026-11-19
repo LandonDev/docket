@@ -298,6 +298,7 @@ export class MacTools {
       id: session.id,
       title: session.title,
       permission: session.permission,
+      ...(session.scope === 'work' ? { scope: 'work' as const } : {}),
       ...(isMacRead(method) && this.pause.isPaused(session.id) ? { paused: true } : {})
     }
     if (method === 'mac.writeFile')

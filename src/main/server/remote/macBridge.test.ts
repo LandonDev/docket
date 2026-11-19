@@ -829,6 +829,34 @@ describe('MacBridge while the person is away', () => {
     expect(b.mb.rules.list()).toEqual([])
   })
 
+  it("a Work thread's command on the always-ask list stays a prompt for the owner: neither full access nor Away admits it, and the flip to Away leaves it waiting", async () => {
+    const away = { on: true }
+    const b = bridge({ away })
+    b.mb.setPolicy('env_box', 'read+run')
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const work = { id: 'w1', title: 'a Work thread', permission: 'auto', scope: 'work' }
+    // full access and away at once: `osascript` drives Mail, so it still asks
+    const asked = b.mb.handle('mac.run', { thread: work, args: { argv: ['/usr/bin/osascript', '-e', 'return 1'], cwd: shared } } as never, ctx)
+    const card = await b.nextRequest()
+    expect(card).toMatchObject({ kind: 'run', status: 'pending' })
+    expect(card.quiet).toBeFalsy()
+    // turning Away on (again) answers every other waiting prompt and leaves this one
+    b.mb.awayChanged(true)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(b.requests().find((r) => r.id === card.id)?.status).toBe('pending')
+    b.mb.decide(card.id, false, false)
+    await expect(asked).rejects.toThrow()
+    // its ordinary commands run as any full-access thread's do
+    const plain = (await b.mb.handle('mac.run', { thread: work, args: { argv: ['/bin/echo', 'plain'], cwd: shared } } as never, ctx)) as MacRunResult
+    expect(plain.stdout).toBe('plain\n')
+    // and a code thread's osascript is admitted as before: full access asks nothing
+    const code = { id: 's9', title: 'auto thread', permission: 'auto' }
+    const lines = b.lines.length
+    await b.mb.handle('mac.run', { thread: code, args: { argv: ['/usr/bin/osascript', '-e', 'return 1'], cwd: shared } } as never, ctx).catch(() => undefined)
+    expect(b.lines.slice(lines).some((l) => l.includes('mac.run → allowed (full access'))).toBe(true)
+    expect(b.lines.some((l) => l.includes('w1') && l.includes('allowed (full access') && l.includes('osascript'))).toBe(false)
+  })
+
   it('runs what needs no prompt: a remembered command, a read inside the shared roots, a full-access thread', async () => {
     const away = { on: false }
     const b = bridge({ away })
@@ -1326,7 +1354,7 @@ describe('MacBridge: computer use for a host', () => {
     await on.mb.linkUp('env_box')
     on.mb.setPolicy('env_box', 'read')
     await new Promise((ok) => setTimeout(ok, 0))
-    expect(on.offers()).toEqual([['mac-bridge'], ['mac-bridge'], ['mac-bridge', 'computer']])
+    expect(on.offers()).toEqual([['mac-bridge'], ['mac-bridge'], ['mac-bridge', 'computer', 'computer-hold']])
     const missing = linked({ unavailable: 'no tc-computer here' })
     missing.mb.setPolicy('env_box', 'full')
     missing.mb.setComputer('env_box', true)
@@ -1345,7 +1373,7 @@ describe('MacBridge: computer use for a host', () => {
     await new Promise((ok) => setTimeout(ok, 0))
     mb.setShared('env_box', [])
     await new Promise((ok) => setTimeout(ok, 0))
-    expect(offers()).toEqual([['mac-bridge'], ['mac-bridge', 'computer'], ['mac-bridge']])
+    expect(offers()).toEqual([['mac-bridge'], ['mac-bridge', 'computer', 'computer-hold'], ['mac-bridge']])
   })
 
   it('the switch with no link registers nothing', () => {

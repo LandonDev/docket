@@ -74,6 +74,43 @@ export async function addonBaseEnv(): Promise<Record<string, string>> {
 
 const goneError = () => new WireGone('the add-on host')
 
+/** Who makes a call, beside how long it may take. */
+export interface AddonCallOpts {
+  signal?: AbortSignal
+  timeoutMs?: number
+  /** the calling thread; absent or null: the host's own call (a watch), which no thread asked for */
+  sessionId?: string | null
+  /** the caller's own row says it is a Work thread: with no gate on this host the call is refused, never run */
+  work?: boolean
+}
+
+/** One call as the gate reads it. */
+export interface GatedCall {
+  row: AddonRow
+  tool: string
+  args: Record<string, unknown>
+  sessionId: string | null
+  work: boolean
+}
+
+/** The gate's answer: run it (with these arguments, when the gate changed them), or answer this instead and send nothing downstream. */
+export type GateAnswer = { run: true; args?: Record<string, unknown> } | { run: false; result: AddonCallResult }
+
+/**
+ * The hold's catch (docs/agents/work-outbox.md). Every add-on call from
+ * every harness passes `AddonHost.call`, so this is the one place a Work
+ * thread's call is run, held for the owner's press, or refused. `peek`
+ * answers what `decide` would do and changes nothing: the callers that ask
+ * a card first use it to skip a card for a call that will be held anyway.
+ */
+export interface AddonGate {
+  decide(call: GatedCall): GateAnswer | Promise<GateAnswer>
+  peek(call: Omit<GatedCall, 'args'>): 'run' | 'hold' | 'refuse'
+}
+
+/** The answer to a Work thread's call on a host where nothing can hold it. */
+export const WORK_CALL_UNGATED = 'refused: Work is not running on this host, so nothing can hold this call for the owner; it was not made'
+
 export class AddonHost {
   private child: ChildState | null = null
   private launches: AddonLaunch[] = []
@@ -106,8 +143,48 @@ export class AddonHost {
     this.options.grants.close?.()
   }
 
-  /** One downstream tool call. Throws `refused: <add-on> is <state>: <detail>` when the add-on is not ready here; a host that goes away mid-call answers isError naming the add-on. */
-  async call(addonId: string, tool: string, args: Record<string, unknown>, opts: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<AddonCallResult> {
+  private gate: AddonGate | null = null
+
+  /**
+   * Install the hold's catch (work/outbox/ctx.ts, once at boot). The answer
+   * is the one door past it: the call the owner pressed Send on. Only the
+   * installer holds that door, so no other caller can skip the gate.
+   */
+  setGate(gate: AddonGate | null): { ungated: (addonId: string, tool: string, args: Record<string, unknown>, opts?: { signal?: AbortSignal; timeoutMs?: number }) => Promise<AddonCallResult> } {
+    this.gate = gate
+    return { ungated: (addonId, tool, args, opts = {}) => this.send(addonId, tool, args, opts) }
+  }
+
+  /** What the gate would do with a call, changing nothing: `run` for a code thread and on a host with no gate and no Work caller. */
+  verdict(addonId: string, tool: string, by: { sessionId?: string | null; work?: boolean } = {}): 'run' | 'hold' | 'refuse' {
+    const row = this.options.store.get(addonId)
+    if (!row) return 'run'
+    if (!this.gate) return by.work ? 'refuse' : 'run'
+    return this.gate.peek({ row, tool, sessionId: by.sessionId ?? null, work: by.work === true })
+  }
+
+  /**
+   * One downstream tool call, through the gate. A call the gate holds or
+   * refuses never reaches the server: its answer says so. Throws `refused:
+   * <add-on> is <state>: <detail>` when the add-on is not ready here; a host
+   * that goes away mid-call answers isError naming the add-on.
+   */
+  async call(addonId: string, tool: string, args: Record<string, unknown>, opts: AddonCallOpts = {}): Promise<AddonCallResult> {
+    const row = this.options.store.get(addonId)
+    if (!row) throw new Error(`refused: no add-on ${addonId} here`)
+    const work = opts.work === true
+    if (!this.gate) {
+      // A Work thread's call with nothing here to hold it: fail closed.
+      if (work) return errorResult(WORK_CALL_UNGATED)
+      return this.send(addonId, tool, args, opts)
+    }
+    const answer = await this.gate.decide({ row, tool, args, sessionId: opts.sessionId ?? null, work })
+    if (!answer.run) return answer.result
+    return this.send(addonId, tool, answer.args ?? args, opts)
+  }
+
+  /** The call itself, past the gate: `call` for one it let run, the installer's door for one the owner pressed. */
+  private async send(addonId: string, tool: string, args: Record<string, unknown>, opts: { signal?: AbortSignal; timeoutMs?: number }): Promise<AddonCallResult> {
     const row = this.options.store.get(addonId)
     if (!row) throw new Error(`refused: no add-on ${addonId} here`)
     const status = this.options.store.status()[addonId]
@@ -274,7 +351,9 @@ export class AddonHost {
           const names = exposedNames(row.name, event.tools)
           this.options.store.setTools(
             row.id,
-            event.tools.map((t) => ({ name: t.name, exposed: names.get(t.name)!, description: t.description, inputSchema: t.inputSchema, ...(t.readOnly !== undefined ? { readOnly: t.readOnly } : {}) }))
+            event.tools.map((t) => ({ name: t.name, exposed: names.get(t.name)!, description: t.description, inputSchema: t.inputSchema, ...(t.readOnly !== undefined ? { readOnly: t.readOnly } : {}) })),
+            undefined,
+            Object.fromEntries(event.tools.flatMap((t) => (t.hints ? [[t.name, t.hints]] : [])))
           )
           this.emit(row.id)
         } else {

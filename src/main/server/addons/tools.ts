@@ -50,8 +50,15 @@ export interface AddonToolDeps {
     status(): Record<string, AddonStatus>
     tools(id: string): { tools: AddonTool[] } | null
     onStatus(fn: () => void): () => void
+    /** Work's marks on a row (addonStore.ts); absent in a test's bare store */
+    workMarks?(id: string): { role: 'lifeos' | null; forWork: boolean } | null
   }
-  host: { call(addonId: string, tool: string, args: Record<string, unknown>, opts?: { signal?: AbortSignal }): Promise<AddonCallResult> }
+  host: {
+    /** `sessionId` and `work` name the caller to the hold's catch (addonHost.ts) */
+    call(addonId: string, tool: string, args: Record<string, unknown>, opts?: { signal?: AbortSignal; sessionId?: string | null; work?: boolean }): Promise<AddonCallResult>
+    /** what the catch would do with the call; absent: it runs */
+    verdict?(addonId: string, tool: string, by: { sessionId?: string | null; work?: boolean }): 'run' | 'hold' | 'refuse'
+  }
   /** storeRpc.ts: addons.set and addons.remove, forwarded to the home on a Mac. */
   rpc: { handle(req: StoreRequest, principal: Principal): Promise<unknown> }
   environmentId: string
@@ -70,6 +77,9 @@ const rootOf = (deps: AddonToolDeps, session: SessionMeta): SessionMeta => {
 const whereOf = (deps: AddonToolDeps, workspaceId: string | null): string => scopeWords(workspaceId ? (deps.workspaceName(workspaceId) ?? workspaceId) : null)
 const runsOf = (spec: AddonSpec): string => addonCard(spec, { name: '' }, { workspaceName: null, replaces: false }).input.runs
 const stateOf = (deps: AddonToolDeps, row: AddonRow): AddonStatus | null => (row.enabled ? (deps.store.status()[row.id] ?? null) : null)
+/** The row the app made for LifeOS (`role: 'lifeos'`): it holds a LifeOS key, so no thread changes or removes it. */
+const isLifeosRow = (deps: AddonToolDeps, row: AddonRow | null): boolean => !!row && deps.store.workMarks?.(row.id)?.role === 'lifeos'
+export const LIFEOS_ROW_THREAD_REFUSAL = "refused: that add-on is the app's own LifeOS connection; a thread cannot change or remove it"
 
 export function appAddonList(deps: AddonToolDeps, caller: SessionMeta, lane: Lane): string {
   const workspaceId = workspaceIdOf(deps.sessions, caller)
@@ -131,6 +141,8 @@ export async function appAddonAdd(deps: AddonToolDeps, caller: SessionMeta, raw:
   const callerWorkspace = workspaceIdOf(deps.sessions, caller)
   const workspaceId = args.scope === 'global' ? null : callerWorkspace
   const existing = deps.store.byName(workspaceId, args.name)
+  // Before any card: an approved add would otherwise point the row that holds a LifeOS key at a server of the thread's choosing.
+  if (isLifeosRow(deps, existing)) return LIFEOS_ROW_THREAD_REFUSAL
   const card = addonCard(spec, { name: args.name }, { workspaceName: workspaceId ? (deps.workspaceName(workspaceId) ?? workspaceId) : null, replaces: !!existing })
   const allowed = await deps.sessions.requestApproval(caller.id, { toolName: 'addon_add', title: card.title, input: card.input })
   if (!allowed) return 'refused: the person did not allow it; nothing was added'
@@ -182,7 +194,11 @@ export async function appAddonRemove(deps: AddonToolDeps, caller: SessionMeta, a
   const workspaceId = workspaceIdOf(deps.sessions, caller)
   const local = workspaceId ? deps.store.byName(workspaceId, args.name) : null
   const row = args.scope === 'global' ? deps.store.byName(null, args.name) : args.scope === 'workspace' ? local : (local ?? deps.store.byName(null, args.name))
-  if (!row) return `refused: no add-on ${args.name} here; addon_list shows them`
+  // A Work thread removes only what it can see: its own workspace's rows and the global ones marked for Work. A row
+  // outside that is not there for it, whoever wrote it, and the check comes before the approval rule.
+  const hidden = !!row && caller.scope === 'work' && !visibleAddons(deps.store, workspaceId).some((v) => v.id === row.id)
+  if (!row || hidden) return `refused: no add-on ${args.name} here; addon_list shows them`
+  if (isLifeosRow(deps, row)) return LIFEOS_ROW_THREAD_REFUSAL
   const where = whereOf(deps, row.workspaceId)
   if (removeAsks(row)) {
     const card = addonRemoveCard(row, { workspaceName: row.workspaceId ? (deps.workspaceName(row.workspaceId) ?? row.workspaceId) : null })
@@ -243,11 +259,16 @@ export async function appAddonCall(
     return errorResult(`No add-on tool ${args.tool}; addon_find lists them`)
   }
   const input = args.arguments ?? {}
-  const asks = caller.permission === 'safe' || (caller.permission === 'edits' && !hit.tool.readOnly)
+  const work = caller.scope === 'work'
+  const by = { sessionId: caller.id, work }
+  // A Work thread's call the catch will hold or refuse asks no card first: the hold is the stronger ask, and one ask is enough.
+  const verdict = work ? (deps.host.verdict?.(hit.row.id, hit.tool.name, by) ?? 'run') : 'run'
+  // In a Work thread a tool runs because the owner set it to Runs, never because its own server calls it read-only: only safe asks there.
+  const asks = verdict === 'run' && (caller.permission === 'safe' || (!work && caller.permission === 'edits' && !hit.tool.readOnly))
   if (asks && !(await deps.sessions.requestApproval(caller.id, { toolName: hit.tool.exposed, title: `Use ${hit.tool.name} from ${hit.row.name}`, input })))
     return errorResult('The person did not allow it')
   try {
-    return await deps.host.call(hit.row.id, hit.tool.name, input, { signal })
+    return await deps.host.call(hit.row.id, hit.tool.name, input, { signal, ...by })
   } catch (error) {
     return errorResult((error as Error).message)
   }

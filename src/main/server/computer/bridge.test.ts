@@ -16,6 +16,7 @@ import {
 import { READER_ACK_MS } from '@shared/computer/heldCalls'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY } from '../awayPrompts'
+import { AWAY_PASSWORD } from './run'
 import { CANCELLED_PAUSED, MacPause } from '../macPause'
 import { PeerCalls, handlePeerRequest } from '../remote/peerCalls'
 import { COMPUTER_SPAN_MS, ComputerBridge, MAC_SILENT_CANCEL, STOP_REPLY_MS } from './bridge'
@@ -186,6 +187,37 @@ describe('ComputerBridge: one call', () => {
     expect(b.ofMethod('mac.computer')[2].params.args.turn).not.toBe(c1.params.args.turn)
     b.reply(b.ofMethod('mac.computer')[2].callId, answer())
     await third
+  })
+
+  it("a Work thread's act goes only to a Mac that judges it: one that does not offer the hold gets its reads and nothing else", async () => {
+    const b = box()
+    b.sessions.set('t1', meta('t1', { scope: 'work', permission: 'auto' } as Partial<SessionMeta>))
+    // a Mac from before the hold would drop the mark and run the click unjudged: the box sends it no act
+    const refused = await b.run('computer_act', click)
+    expect(refused).toMatchObject({ isError: true })
+    expect(refused.body).toContain("older than the hold on a Work thread's sends")
+    expect(await b.run('computer_apps', { launch: 'Mail', open: ['https://example.com/?q=secret'] })).toMatchObject({ isError: true })
+    expect(b.ofMethod('mac.computer')).toEqual([])
+    // a read still goes, marked as a Work thread's
+    const read = b.run('computer_observe', observe)
+    await b.until(() => b.ofMethod('mac.computer').length === 1, 'the read')
+    expect((b.ofMethod('mac.computer')[0]!.params.args as { hold?: unknown }).hold).toEqual({ work: true })
+    b.reply(b.ofMethod('mac.computer')[0]!.callId, answer())
+    await read
+    // once the Mac offers the hold, the act is sent, marked, for the Mac to judge
+    b.register(['mac-bridge', 'computer', 'computer-hold'])
+    const act = b.run('computer_act', click)
+    await b.until(() => b.ofMethod('mac.computer').length === 2, 'the act')
+    expect((b.ofMethod('mac.computer')[1]!.params.args as { hold?: unknown }).hold).toEqual({ work: true })
+    b.reply(b.ofMethod('mac.computer')[1]!.callId, answer())
+    await act
+    // a code thread's call carries no mark and needs no offer of the hold
+    b.register(['mac-bridge', 'computer'])
+    const code = b.run('computer_act', click, 't2')
+    await b.until(() => b.ofMethod('mac.computer').length === 3, 'a code thread')
+    expect('hold' in (b.ofMethod('mac.computer')[2]!.params.args as object)).toBe(false)
+    b.reply(b.ofMethod('mac.computer')[2]!.callId, answer())
+    await code
   })
 
   it('refuses bad arguments with no peer call', async () => {
@@ -390,7 +422,12 @@ describe('ComputerBridge: pause, Stop, Away, offline', () => {
     await b.until(() => b.out.length === 3, 'out')
     b.fail(b.out[2].callId, MAC_AWAY_REFUSAL_LEGACY)
     expect((await r).body).toBe(MAC_AWAY_REFUSAL_LEGACY)
-    expect(b.away.map(([, kind]) => kind)).toEqual(['allowed', 'approval', 'approval'])
+    // a Work thread's text into a password field, which Away denied on the Mac
+    const w = b.run('computer_act', click)
+    await b.until(() => b.out.length === 4, 'out')
+    b.fail(b.out[3].callId, AWAY_PASSWORD)
+    expect((await w).body).toBe(AWAY_PASSWORD)
+    expect(b.away.map(([, kind]) => kind)).toEqual(['allowed', 'approval', 'approval', 'approval'])
   })
 
   it("a Mac refusal is the Mac's line as written", async () => {

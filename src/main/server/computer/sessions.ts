@@ -134,7 +134,10 @@ export class ComputerSessions {
       const runFrom = this.clock.now()
       try {
         if (t.ended) return refusal(hostErrorLine('cancelled', 'the thread ended'))
-        return await runComputerTool(this.host, t, timing ? { ...ctx, timing } : ctx, tool, args, signal, (entry, target) => (journaled = { entry, target }))
+        // A call the hold keeps for the owner's press (run.ts, a Work thread) comes back through this queue as its own call.
+        const rerun = (pressed: NonNullable<ComputerToolContext['pressed']>): Promise<ComputerToolOutcome> =>
+          this.run({ threadId: ctx.threadId, ...(ctx.rootId ? { rootId: ctx.rootId } : {}), ...(ctx.work ? { work: true } : {}), pressed }, tool, args)
+        return await runComputerTool(this.host, t, { ...ctx, ...(timing ? { timing } : {}), rerun }, tool, args, signal, (entry, target) => (journaled = { entry, target }))
       } finally {
         if (timing && !ctx.timing) {
           const now = this.clock.now()

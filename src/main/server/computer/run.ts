@@ -21,14 +21,16 @@ import {
 } from '@shared/computer/protocol'
 import { buildPrior, lastInputEffect } from '@shared/computer/batchStop'
 import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
-import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type AppsOutcome, type TitleContext } from '@shared/computer/words'
+import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, computerHeldTitle, needsApproval, type AppsOutcome, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
 import { FAILED_WORDS, maskedTexts, planWords, plannedSteps, readSummary, settledSteps, type PlannedStep } from '@shared/computer/historyWords'
 import { approvalLine } from '@shared/approvalLine'
+import { CONFIRM_KIND_INFO, type ConfirmNeed } from '@shared/computer/policy'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
-import { awayAllowsKind } from '@shared/away'
+import { awayVerdict } from '@shared/away'
+import { heldTargets, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './batchPlan'
@@ -95,7 +97,64 @@ export interface ComputerToolContext {
   timing?: CallTiming
   /** a bridged call's turn, as its box named it: the journal groups the thread's calls by it (computer/history.ts) */
   turn?: string
+  /**
+   * The call is a Work thread's, said by the host that owns the thread (a
+   * box thread's call on this Mac, remote/macComputer.ts). A thread of this
+   * host is read from its own row; nothing here is the model's to set.
+   */
+  work?: boolean
+  /**
+   * The owner pressed Send on this call, which the hold had kept (below).
+   * It runs as it was held, with no card and no second judging, once the
+   * window still holds what he was shown. Set only by the hold's own rerun.
+   */
+  pressed?: { mark: string; targets: HeldTarget[] }
+  /** Runs this same call again through the thread's queue (sessions.ts sets it): how a held call is carried out on the press. */
+  rerun?: (pressed: { mark: string; targets: HeldTarget[] }) => Promise<ComputerToolOutcome>
 }
+
+// ── the hold on a Work thread's acts (docs/agents/work-outbox.md, docs/computer-protocol.md §19.3) ──
+
+/** One computer call the host kept for the owner's press. */
+export interface HeldComputerCall {
+  threadId: string
+  tool: ComputerToolName
+  args: Record<string, unknown>
+  app: { name: string; bundleId: string | null }
+  window: string | null
+  /** `screen`: the host read the act as outward; `flag`: the model flagged it */
+  why: 'screen' | 'flag'
+  /** the act's own word: "Send" */
+  label: string
+  /** the whole call in the card's words */
+  title: string
+  /** what the host read on the screen; null for a call held on the model's flag alone */
+  read: OutwardRead | null
+  /** what the window must still hold when he presses, and the elements the steps act on */
+  mark: string
+  targets: HeldTarget[]
+  /** the window as it was read; null without Screen Recording */
+  picture: { path: string; mimeType: string; width: number; height: number } | null
+  /** Carries out exactly this call. Answers how it went; a window that moved on answers `stale`. */
+  carryOut(): Promise<ComputerToolOutcome & { stale?: true }>
+}
+
+/** Where a held call goes: the Outbox writes the row and answers the line the model reads. */
+export interface ComputerHold {
+  hold(call: HeldComputerCall): string
+}
+let computerHold: ComputerHold | null = null
+/** Set once at boot by Work's outbox part. Unset, a Work thread's outward act is refused: nothing can hold it. */
+export function configureComputerHold(hold: ComputerHold | null): void {
+  computerHold = hold
+}
+
+export const HELD_UNAVAILABLE =
+  "held: this step sends, posts, pays, deletes or the like, and it cannot be kept for the owner's press from here, so it was not carried out. Do not reach the same effect another way; say what is ready to go and carry on with the rest."
+export const HELD_STALE = 'the window no longer holds what was shown when this was held'
+export const HELD_UNREAD = 'refused: the window could not be read just now, and in a Work thread nothing acts on a window the host has not read. Read it with computer_observe and try again.'
+export const HELD_UNPLACED = "refused: a step names an element or a point the window does not have, so it cannot be kept for the owner's press as it would run. Read the window and name what to act on."
+export const AWAY_PASSWORD = 'denied: the person is away, and text goes into a password field only with them there; finish around it and name it in your report'
 
 export interface ComputerRegistry {
   get(sessionId: string): SessionMeta | null
@@ -152,6 +211,8 @@ export interface ThreadComputer {
   nextShot: number | null
   /** steals the front guard undid after their call answered (apps/frontRestored): said once, in the thread's next result */
   pendingFront: string[]
+  /** where the thread's last pointer step left the pointer: a later press with no target lands there (outward.ts) */
+  pointer?: PointerAt
 }
 
 export interface RunHost {
@@ -193,6 +254,8 @@ interface CallNote {
   launched?: AppsOutcome
   /** why the tier gate refused a step, by the step's index: the journal words a Skip, a locked screen, a sleeping Mac as what they were */
   gate?: Record<number, string>
+  /** the call was kept for the owner's press: nothing of it ran, and the journal says what was asked */
+  held?: true
 }
 
 /** A finished call's journal entry and the window to picture, handed to the thread's queue (sessions.ts). */
@@ -349,7 +412,7 @@ export async function runComputerTool(
           ...(note.front ? { front: note.front } : {}),
           person: note.person ?? null,
           ...(note.menusLeftOpen ? { menusLeftOpen: note.menusLeftOpen } : {}),
-          ...(!out || (out.isError && !note.error && (note.threw || !note.results?.some((r) => r.status !== 'not-run')))
+          ...(!out || note.held || (out.isError && !note.error && (note.threw || !note.results?.some((r) => r.status !== 'not-run')))
             ? { refused: { ...(out?.refused ? { kind: out.refused } : {}), line: out?.body ?? '' } }
             : {}),
           ...(note.error ? { error: note.error } : {}),
@@ -377,12 +440,15 @@ export async function runComputerTool(
   }
 
   // 2. refusals before anything
-  const meta = host.registry.get(ctx.threadId)
+  // The owner's press on a held call is his own decision: a Stop he gave the thread's turn, or a pause, does not refuse
+  // it. The Stop itself stands for the thread's own calls: nothing here clears it.
+  const meta = ctx.pressed ? null : host.registry.get(ctx.threadId)
+  const stopped = t.stopped && !ctx.pressed
   const aborted = abortedLine(signal)
-  const unavailable = aborted || t.stopped || meta?.status === 'paused' ? null : host.service.unavailableReason()
+  const unavailable = aborted || stopped || meta?.status === 'paused' ? null : host.service.unavailableReason()
   const early = aborted
     ? refusal(aborted)
-    : t.stopped
+    : stopped
       ? refused('stopped')
       : meta?.status === 'paused'
         ? refused('paused')
@@ -437,12 +503,13 @@ async function runChecked(
   // read first: an element, or text, needs a read of the app in this thread
   const named =
     tool === 'computer_observe' ? (args.element !== undefined ? [args.element as number] : []) : steps.flatMap(actionElements)
-  if (named.length && !app()) return refused('no_observation', noObservationLine(named[0], args.app!))
-  if (steps.some((s) => s.action === 'type' || s.action === 'paste') && !app()) return refused('no_observation', noReadForTextLine(args.app!))
+  // (a call the owner pressed reads the window itself and finds its targets again, below: the thread's session may have closed since it was held)
+  if (!ctx.pressed && named.length && !app()) return refused('no_observation', noObservationLine(named[0], args.app!))
+  if (!ctx.pressed && steps.some((s) => s.action === 'type' || s.action === 'paste') && !app()) return refused('no_observation', noReadForTextLine(args.app!))
   // text with no target goes to the window the thread read: the service judges a named window by its live titles (§27.6)
   const blindText = steps.some((s) => (s.action === 'type' || s.action === 'paste') && s.element === undefined && s.named === undefined)
   // with no window read (it closed), the service has no id to hold text into a named window to: refused as before
-  if (args.window && blindText && !app()?.window) return refused('no_observation', noReadForTextLine(args.app!, args.window))
+  if (!ctx.pressed && args.window && blindText && !app()?.window) return refused('no_observation', noReadForTextLine(args.app!, args.window))
 
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
   if (tool === 'computer_apps') {
@@ -452,8 +519,9 @@ async function runChecked(
   }
 
   // 3. the card, the permission read now: safe and edits ask for every act, every mode for a flag or a password field
-  const permission = ctx.permission?.() ?? host.registry.get(threadId)?.permission ?? 'safe'
-  const ask = ctx.approve ?? ((req: ApprovalRequest) => host.registry.requestApproval(threadId, req))
+  // A call the owner pressed: his press is every card's answer, the tier gate's own included, and the gate asks at once.
+  const permission = ctx.pressed ? 'safe' : (ctx.permission?.() ?? host.registry.get(threadId)?.permission ?? 'safe')
+  const ask = ctx.pressed ? async (): Promise<boolean> => true : (ctx.approve ?? ((req: ApprovalRequest) => host.registry.requestApproval(threadId, req)))
   /** The row's held line while a wait of the call's own lasts; a line the gate set meanwhile is left alone. */
   const holding = async <T>(line: string, wait: () => Promise<T>): Promise<T> => {
     const live = t.live
@@ -521,8 +589,14 @@ async function runChecked(
       ...(ctx.reader ? { reader: ctx.reader } : {})
     }
   }
-  const need = needsApproval(tool, args, permission, hostNeed)
-  if (need.ask) {
+  // A Work thread's acts are judged by the host, whatever the model flagged (below, once the app is pinned): one the
+  // host reads as outward, or the model flagged, is kept for the owner's press and asks no card. So the flag is no card here.
+  const work = ctx.work === true || host.registry.get(threadId)?.scope === 'work'
+  const flag = (tool !== 'computer_observe' ? (args.confirm as { kind: ConfirmNeed['kind']; what: string } | undefined) : undefined) ?? null
+  const need = needsApproval(tool, work ? ({ ...args, confirm: undefined } as typeof args) : args, permission, hostNeed)
+  /** The card, where the call needs one: null to go on, else the answer of a call that was not allowed. */
+  const askCard = async (): Promise<ComputerToolOutcome | null> => {
+    if (!need.ask) return null
     // a step expected to take the session tier says so on the card, and its Allow covers that tier too
     const bundleId = app()?.bundleId ?? null
     const session = steps.some(
@@ -535,8 +609,9 @@ async function runChecked(
       host.service.serves?.('front') === true &&
       steps.some((a) => sendsInput(a) && (host.verdicts.needsFront(bundleId, a) || needsKeyWindowFront(host, bundleId, a)))
     const words = titleCtx()
-    // Away allows every card but a money act, read off the model's own flag: the card's confirm may be the host's `password`
-    const awayDenies = !awayAllowsKind((args.confirm as { kind?: string } | undefined)?.kind)
+    // Away allows every card but a money act, read off the model's own flag: the card's confirm may be the host's `password`.
+    // In a Work thread it also denies text into a password field (the flagged and the outward never reach this card).
+    const awayDenies = awayVerdict({ what: 'computer', kind: work ? null : flag?.kind, password: hostNeed !== null }, work ? 'work' : 'code') === 'deny'
     const allowed = await approve({
       toolName: `mcp__app__${tool}`,
       input: computerApprovalInput(tool, args, words, need.confirm),
@@ -547,11 +622,19 @@ async function runChecked(
     })
     if (!allowed) {
       const stopped = abortedLine(signal)
-      return stopped ? refusal(stopped) : refused(awayDenies && host.registry.awayOn() ? 'away' : 'denied')
+      if (stopped) return refusal(stopped)
+      if (awayDenies && host.registry.awayOn()) return work ? { ...refusal(AWAY_PASSWORD), refused: 'denied' } : refused('away')
+      return refused('denied')
     }
     const after = abortedLine(signal)
     if (after) return refusal(after)
     if (session) host.gate().cardAllowed?.(gateCtx([]), host.now())
+    return null
+  }
+  // A code thread's card comes here, before anything is asked of the service, as it always did.
+  if (!work) {
+    const notAllowed = await askCard()
+    if (notAllowed) return notAllowed
   }
 
   const asked = new Set<PermissionName>()
@@ -611,6 +694,38 @@ async function runChecked(
   }
   try {
     if (tool === 'computer_apps') {
+      if (work && !ctx.pressed) {
+        // Opening items into an app that the model flagged is kept as any flagged act is; an unflagged open asks its card as before.
+        if (flag) {
+          const rerun = ctx.rerun
+          if (!computerHold || !rerun || ctx.work === true) return refusal(HELD_UNAVAILABLE)
+          const label = CONFIRM_KIND_INFO[flag.kind].label
+          try {
+            const line = computerHold.hold({
+              threadId,
+              tool,
+              args: { ...args },
+              app: { name: typeof args.launch === 'string' ? args.launch : titleCtx().appName, bundleId: null },
+              window: null,
+              why: 'flag',
+              label,
+              title: computerHeldTitle(tool, args, titleCtx(), null, flag),
+              read: null,
+              mark: '',
+              targets: [],
+              picture: null,
+              carryOut: () => rerun({ mark: '', targets: [] })
+            })
+            note.held = true
+            return { steps: [], shots: [], body: line, isError: false }
+          } catch (e) {
+            host.log(`a call could not be held in ${threadId}: ${(e as Error).message}`)
+            return refusal(HELD_UNAVAILABLE)
+          }
+        }
+        const notAllowed = await askCard()
+        if (notAllowed) return notAllowed
+      }
       const apps = await runApps(call, args, t, note)
       return abortedLine(signal) ? refusal(abortedLine(signal)!) : apps
     }
@@ -624,6 +739,117 @@ async function runChecked(
     note.person = person
     const offLimits = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
     if (offLimits) return refusalOf(offLimits)
+    if (work && tool !== 'computer_observe') {
+      const identity = { bundleId: pin.app.bundleId, name: pin.app.name }
+      /** The window as it is now, whole and with frames. The model never sees this read, so the app's next read is full: no diff is taken against it. */
+      const fresh = async (picture: boolean): Promise<Observation | null> => {
+        const st = app()
+        const window = args.window ? { title: args.window } : st?.window ? { id: st.window.id } : undefined
+        try {
+          const obs = await call('state.get', {
+            session: t.serviceSession,
+            app: { pid: pin.app.pid },
+            ...(window ? { window } : {}),
+            launch: false,
+            tabs: 'background',
+            mode: 'full',
+            geometry: true,
+            screenshot: picture ? 'always' : 'never',
+            wait: COMPUTER_WAIT.observe
+          })
+          const now = app()
+          if (now) now.needsFull = true
+          return obs
+        } catch {
+          return null
+        }
+      }
+      if (ctx.pressed) {
+        // The owner pressed: the call runs as it was held, once the window still holds what he was shown. The targets are
+        // found again by what they are, since the service may have numbered the window anew since.
+        const obs = await fresh(false)
+        const screen = obs ? screenOfObservation(obs.text, identity) : null
+        const staged = screen ? restage(steps, ctx.pressed.targets, ctx.pressed.mark, screen) : null
+        if (!obs || !staged) return { ...refusal(HELD_STALE), stale: true } as ComputerToolOutcome
+        remember(t, args.app!, obs)
+        lookupApp(t, args.app!)!.needsFull = true
+        steps.splice(0, steps.length, ...staged)
+      } else {
+        const acting = steps.some(sendsInput)
+        const pointer = t.pointer ?? null
+        const st = app()
+        let screen: Screen | null = st && st.book.size > 0 ? screenOfBook(st.book, identity) : null
+        // A step that lands by position needs the window's frames; a key goes to wherever the focus is now, which the
+        // book knows only as of the thread's last read; and an app this thread never read has no book at all.
+        // And a step that names an element the book lacks (one the host's own reads numbered and the model never saw)
+        // is judged from a fresh read too: nothing acts on a control the host has not read.
+        const unread = !!screen && steps.some((s) => actionElements(s).some((i) => !screen!.elements.has(i)))
+        if (acting && (!screen || unread || needsFreshRead(steps, pointer))) {
+          const obs = await fresh(false)
+          const now = obs ? screenOfObservation(obs.text, identity) : null
+          // Never judged against a stale book or an empty screen: a read that failed holds nothing back, so nothing runs.
+          if (!now) return refusal(HELD_UNREAD)
+          screen = now
+        }
+        const read = acting ? readOutward(steps, screen, pointer) : null
+        if (read || flag) {
+          // Kept for the owner's press: nothing of the call runs.
+          const rerun = ctx.rerun
+          // A thread of another host (a box thread on this Mac) has no Outbox here to keep the call in, and with no hold
+          // set nothing can keep it: refused before anything more is read.
+          if (!computerHold || !rerun || ctx.work === true) return refusal(HELD_UNAVAILABLE)
+          // He is shown the window as it is now.
+          const obs = await fresh(true)
+          const shown = (obs ? screenOfObservation(obs.text, identity) : null) ?? screen ?? { app: identity, focused: null, elements: new Map() }
+          // Every step's target is kept by what it is, so the press runs on what he was shown or not at all.
+          const targets = heldTargets(steps, shown) ?? (screen ? heldTargets(steps, screen) : null)
+          if (!targets) return refusal(HELD_UNPLACED)
+          let picture: HeldComputerCall['picture'] = null
+          if (obs?.shot) {
+            try {
+              const dir = host.landing(threadId)
+              t.nextShot ??= await nextShotNumber(dir)
+              const landed = await landShot(obs.shot, dir, t.nextShot, 'held', 'observation')
+              t.nextShot = landed.n + 1
+              picture = { path: landed.path, mimeType: landed.mimeType, width: landed.width, height: landed.height }
+            } catch (e) {
+              host.log(`a held call's picture was not kept in ${threadId}: ${(e as Error).message}`)
+            }
+          }
+          const gaveUp = abortedLine(signal)
+          if (gaveUp) return refusal(gaveUp)
+          const mark = screenMark(shown)
+          let line: string
+          try {
+            line = computerHold.hold({
+              threadId,
+              tool,
+              args: { ...args },
+              app: identity,
+              window: titleCtx().window,
+              why: read ? 'screen' : 'flag',
+              label: read?.label ?? CONFIRM_KIND_INFO[flag!.kind].label,
+              title: computerHeldTitle(tool, args, titleCtx(), read?.label ?? null, flag),
+              read,
+              mark,
+              targets,
+              picture,
+              // (the Outbox calls this once per press it claimed: store.ts `claim`)
+              carryOut: () => rerun({ mark, targets })
+            })
+          } catch (e) {
+            host.log(`a call could not be held in ${threadId}: ${(e as Error).message}`)
+            return refusal(HELD_UNAVAILABLE)
+          }
+          note.held = true
+          return { steps: [], shots: [], body: line, isError: false }
+        }
+        const notAllowed = await askCard()
+        if (notAllowed) return notAllowed
+        // Where this call leaves the pointer: a later press with no target of its own lands there.
+        t.pointer = pointerAfter(steps, pointer)
+      }
+    }
     const a = app()
     const bound = !args.window && a?.window ? { id: a.window.id } : undefined
     // text with no target in a call that names no window is pinned to the window the thread read, by id; a named

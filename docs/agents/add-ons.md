@@ -66,11 +66,24 @@ plan-8YMm3ynnFZYs.md (grants) and plan-vJP8mPAPorvc.md (pages).
   `addon_add`, `addon_remove` (deferred on Claude, always on the bridge),
   `addon_find`, `addon_call`. `addon_add` always asks, and only a person
   with an admin key may allow it (`assertMayAnswer`: "forbidden: approving
-  an add-on needs a person with an admin key"; a deny always passes), or
-  the host itself while Away is on; a model never may.
-  `addon_remove` asks only over an add-on a person wrote last; `addon_call`
+  an add-on needs a person with an admin key"; a deny always passes), or,
+  for a code thread, the host itself while Away is on; a model never may,
+  and Away never allows a Work thread's `addon_add` or `addon_remove`.
+  `addon_remove` asks only over an add-on a person wrote last, and from a
+  Work thread reaches only a row that thread can see; `addon_call`
   follows the permission (auto runs, edits runs a read-only tool, safe
-  asks), its card `Use <tool> from <addon>?`.
+  asks), its card `Use <tool> from <addon>?`. No thread changes or removes
+  the row the app made for LifeOS (`role: 'lifeos'`), and the store
+  refuses any write that would point it elsewhere.
+- **The gate.** Every call from every harness passes `AddonHost.call`,
+  which asks the hold's gate first (`setGate`, `AddonGate`): Claude's
+  exposed tools and the bridge's `addon_call` both hand it the calling
+  thread. A code thread's call runs as before. A Work thread's call runs
+  only when the owner set that tool to Runs; else it is held for his
+  press or refused, and nothing reaches the server. A server's hints are
+  kept beside the tool cache (`AddonStore.toolHints`) for the card where
+  he sets the rules; they decide nothing.
+  [work-outbox.md](work-outbox.md)
 - **Grants.** One aliax-core profile of the `addon` service per add-on
   (aliax-core/src/adapters/addon.ts at the commit package.json pins,
   80345ae), `internal`, so no account page lists it. Static when its blob

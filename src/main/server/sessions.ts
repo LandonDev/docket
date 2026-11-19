@@ -30,6 +30,7 @@ import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessi
 import { ThreadScheduler, type QueuedLine } from './scheduler'
 import type { Admission } from './admission'
 import type { AwayService } from './away'
+import { awayVerdict } from '@shared/away'
 import { AWAY_APPROVAL_REPLY, AWAY_MECHANICS, AWAY_QUESTION_REPLY, awayBlock } from './awayPrompts'
 import { approvalLine } from '@shared/approvalLine'
 import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
@@ -3880,9 +3881,10 @@ export class SessionRegistry {
   requestApproval(sessionId: string, req: ApprovalRequest): Promise<boolean> {
     if (this.closed) return Promise.resolve(false)
     // Nobody is there to answer: allowed at once (denied for a computer act
-    // that spends money), one quiet row says what was decided. No card.
+    // that spends money, and for what a Work thread may not do without the
+    // owner: awayVerdict), one quiet row says what was decided. No card.
     if (this.awayOn()) {
-      const allow = !req.awayDenies
+      const allow = !req.awayDenies && this.awayAllows(sessionId, req.toolName)
       this.awayNotice(sessionId, allow ? 'allowed' : 'approval', approvalLine(req.toolName, req.input, req.title))
       return Promise.resolve(allow)
     }
@@ -5808,10 +5810,24 @@ export class SessionRegistry {
       const replies = event.questions.map(() => [AWAY_QUESTION_REPLY])
       this.decideAway(sessionId, event, (handle) => handle.answer?.(event.requestId, replies) ?? false)
     } else {
-      this.awayNotice(sessionId, 'allowed', approvalLine(event.toolName, event.input, event.title))
-      this.decideAway(sessionId, event, (handle) => handle.approve?.(event.requestId, true) ?? false)
+      const allow = this.awayAllows(sessionId, event.toolName)
+      this.awayNotice(sessionId, allow ? 'allowed' : 'approval', approvalLine(event.toolName, event.input, event.title))
+      this.decideAway(sessionId, event, (handle) => handle.approve?.(event.requestId, allow, allow ? undefined : AWAY_APPROVAL_REPLY) ?? false)
     }
     return true
+  }
+
+  /**
+   * Whether Away answers a tool's card with Allow, by the scope of the
+   * thread that raised it (@shared/away awayVerdict). A code thread's card
+   * is allowed, as it always was. A Work thread's is too, but for the cards
+   * that change which servers it can reach (`addon_add`, `addon_remove`):
+   * those wait for the owner, so an away agent cannot add a server of its
+   * own choosing. A held act is no card and never comes here: Away does not
+   * release one.
+   */
+  private awayAllows(sessionId: string, toolName: string): boolean {
+    return awayVerdict({ what: 'tool', tool: toolName }, this.get(sessionId)?.scope) === 'allow'
   }
 
   /** The drivers register a request's resolver right after its emit: answer
@@ -5886,7 +5902,7 @@ export class SessionRegistry {
           this.awayNotice(sessionId, 'question', questionLine(req.questions))
           void this.answer(sessionId, req.requestId, req.questions.map(() => [AWAY_QUESTION_REPLY]))
         } else {
-          const allow = !this.pendingAwayDenies.has(`${sessionId}\0${req.requestId}`)
+          const allow = !this.pendingAwayDenies.has(`${sessionId}\0${req.requestId}`) && this.awayAllows(sessionId, req.toolName)
           this.awayNotice(sessionId, allow ? 'allowed' : 'approval', approvalLine(req.toolName, req.input, req.title))
           void this.approve(sessionId, req.requestId, allow, allow ? undefined : AWAY_APPROVAL_REPLY)
         }

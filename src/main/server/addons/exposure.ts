@@ -24,7 +24,8 @@ export interface McpServerLike {
   ): { remove(): void }
 }
 
-export type AddonCaller = (addonId: string, tool: string, args: Record<string, unknown>, opts: { signal?: AbortSignal }) => Promise<AddonCallResult>
+/** A thread's call: its id and whether its row says it is a Work thread ride to the add-on host, where the hold's catch reads them (addonHost.ts). */
+export type AddonCaller = (addonId: string, tool: string, args: Record<string, unknown>, opts: { signal?: AbortSignal; sessionId: string; work: boolean }) => Promise<AddonCallResult>
 
 export interface ExposureDeps {
   store: ScopeStore & { onChange(fn: () => void): () => void }
@@ -50,7 +51,7 @@ export function inputSchemaOf(json: Record<string, unknown>): z.ZodType {
 }
 
 type Binding = { addonId: string; tool: string; key: string; register: () => { remove(): void } }
-type Attachment = { sessionId: string; instance: McpServerLike; listed: Map<string, { binding: Binding; handle: { remove(): void } }>; released: boolean }
+type Attachment = { sessionId: string; work: boolean; instance: McpServerLike; listed: Map<string, { binding: Binding; handle: { remove(): void } }>; released: boolean }
 
 export class AddonExposure {
   private readonly attached = new Map<string, Attachment>()
@@ -63,7 +64,7 @@ export class AddonExposure {
 
   /** Register the thread's add-on tools on its app server and keep them in step; a later attach for the same session replaces this one. The answer releases this attachment only. */
   attach(session: SessionMeta, instance: McpServerLike): () => void {
-    const a: Attachment = { sessionId: session.id, instance, listed: new Map(), released: false }
+    const a: Attachment = { sessionId: session.id, work: session.scope === 'work', instance, listed: new Map(), released: false }
     this.attached.set(session.id, a)
     this.sync(a)
     return () => {
@@ -131,7 +132,7 @@ export class AddonExposure {
             },
             async (args, extra) => {
               try {
-                return await this.deps.call(addonId, tool.name, args, { signal: extra.signal })
+                return await this.deps.call(addonId, tool.name, args, { signal: extra.signal, sessionId: a.sessionId, work: a.work })
               } catch (error) {
                 return { content: [{ type: 'text', text: (error as Error).message }], isError: true }
               }

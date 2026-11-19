@@ -52,7 +52,7 @@ async function appServer() {
 function setup() {
   const store = new AddonStore(new DatabaseSync(':memory:'))
   const listeners = new Set<(id: string) => void>()
-  const calls: { addonId: string; tool: string; args: Record<string, unknown>; signal?: AbortSignal }[] = []
+  const calls: { addonId: string; tool: string; args: Record<string, unknown>; signal?: AbortSignal; sessionId?: string; work?: boolean }[] = []
   let answer: (call: (typeof calls)[number]) => Promise<{ content: unknown[]; isError?: boolean }> = async (c) => ({ content: [{ type: 'text', text: `${c.addonId}:${JSON.stringify(c.args)}` }] })
   const workspace = new Map<string, string | null>()
   const exposure = new AddonExposure({
@@ -60,7 +60,7 @@ function setup() {
     host: { onChange: (fn) => (listeners.add(fn), () => listeners.delete(fn)) },
     workspaceOf: (id) => workspace.get(id) ?? null,
     call: (addonId, tool, args, opts) => {
-      const c = { addonId, tool, args, signal: opts.signal }
+      const c = { addonId, tool, args, signal: opts.signal, sessionId: opts.sessionId, work: opts.work }
       calls.push(c)
       return answer(c)
     }
@@ -117,6 +117,24 @@ describe('AddonExposure', () => {
     s.state(row.id, 'failed')
     await until(() => app.changes() > before)
     expect(await names(app.client)).toEqual(['addon_list', 'app_ping'])
+  })
+
+  it("every call names the thread that made it and whether its row says Work, for the hold's catch: a model's arguments name neither", async () => {
+    const s = setup()
+    const row = s.store.set({ name: 'fake', workspaceId: null, spec }, person)
+    s.ready(row.id, [echo('fake__echo')])
+    const code = await appServer()
+    const work = await appServer()
+    s.exposure.attach(session('t-code'), code.instance)
+    s.exposure.attach({ id: 't-work', scope: 'work' } as SessionMeta, work.instance)
+    await code.client.callTool({ name: 'fake__echo', arguments: { text: 'a', sessionId: 't-other', work: false } })
+    await work.client.callTool({ name: 'fake__echo', arguments: { text: 'b', sessionId: 't-code', work: false } })
+    expect(s.calls.map((c) => [c.sessionId, c.work])).toEqual([
+      ['t-code', false],
+      ['t-work', true]
+    ])
+    // the arguments pass through as given: they are the tool's, and say nothing of who calls
+    expect(s.calls[1]!.args).toEqual({ text: 'b', sessionId: 't-code', work: false })
   })
 
   it('a workspace row shadows the global one even with identical tools, and the global one comes back when it goes', async () => {

@@ -118,6 +118,35 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('a held act', () => {
+  it("is one notice on the thread's root, said in the owner's words, with no approval a lock screen could answer", () => {
+    reg.add('t1', { title: 'Reply to Dana about the budget' })
+    reg.add('c1', { parentId: 't1' })
+    notifier.start()
+    notifier.held('c1', 'Held: Send to Dana Lee: Re: budget', { at: 'lifeos', table: 'outbox', id: 'ob_1' })
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatchObject({
+      event: 'needs_you',
+      kind: 'waiting',
+      threadId: 't1',
+      title: 'Reply to Dana about the budget',
+      body: 'Held: Send to Dana Lee: Re: budget',
+      held: { at: 'lifeos', table: 'outbox', id: 'ob_1' }
+    })
+    // not an approval: nothing to Allow from a notification
+    expect(notices[0]!.requestId).toBeUndefined()
+    expect(notices[0]!.choices).toBeUndefined()
+    // never a raw tool name
+    expect(notices[0]!.body).not.toMatch(/send_mail|compose|mcp__|__/)
+  })
+
+  it('for a thread this host no longer has says nothing', () => {
+    notifier.start()
+    notifier.held('gone', 'Held: Send', { at: 'host', id: 'ha_1' })
+    expect(notices).toEqual([])
+  })
+})
+
 describe('needs_you', () => {
   it('a computer step held for the Mac carries its Run now and Skip choices; any other approval none', () => {
     reg.add('t1', { title: 'Save the draft in TextEdit' })

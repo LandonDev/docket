@@ -1,4 +1,4 @@
-import { andList } from '@shared/addons'
+import { andList, type ToolHints } from '@shared/addons'
 import type { AddonSpec, AddonStatus } from '@shared/contract-addons'
 import type { Reply } from '../gatewayWire'
 
@@ -42,6 +42,8 @@ export interface DownstreamTool {
   description: string
   inputSchema: Record<string, unknown>
   readOnly?: boolean
+  /** every hint the server gave (@shared/addons ToolHints): kept beside the tool cache for the rules card, never decisive */
+  hints?: ToolHints
 }
 
 /** An MCP CallToolResult, passed through whole (text, image, audio, resource parts; isError; structuredContent). */

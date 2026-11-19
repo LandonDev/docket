@@ -157,6 +157,19 @@ why and the measured headline.
   first (`TargetResolver`), and TempCode itself and the system's password
   and Touch ID prompts are refused (`refused_app`). Service errors read
   through `errorLine` (src/shared/computer/errorWords.ts).
+- **The hold in a Work thread** (docs/computer-protocol.md §19.3 "The hold
+  in a Work thread", [work-outbox.md](work-outbox.md)). The host classes
+  each call from the screen, whatever the model flagged
+  (src/shared/computer/outward.ts `readOutward`): a click on a control
+  named Send and its kin, Return in a chat's message box, a send chord, or
+  any flagged call is kept for the owner's press (`configureComputerHold`
+  in run.ts) and none of it runs. The model reads `Held as item N …`. The
+  press runs the call through the thread's own queue (`ctx.rerun`,
+  `ctx.pressed`) once a fresh read shows the window as he was shown it,
+  else it is stale. A code thread is untouched. A box thread's act is
+  judged on the Mac (`hold.work` on `mac.computer`) and answers
+  `HELD_UNAVAILABLE` when outward; the box sends such an act only to a Mac
+  that offers `computer-hold`.
 - **The page.** Settings → Computer use (surfaces/settings/Computer.tsx;
   Mac desktop only, `macOnly` in lib/settings.ts): the service with Try
   again while down, Take the screen after (`computer.sessionIdleMs`, in

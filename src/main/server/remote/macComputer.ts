@@ -34,10 +34,10 @@ import {
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ComputerToolCall } from '@shared/computer/tools'
 import { needsApproval } from '@shared/computer/words'
-import { awayAllowsKind } from '@shared/away'
+import { awayVerdict } from '@shared/away'
 import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import type { ComputerToolOutcome } from '../computer/result'
-import { abortedLine, type ComputerToolContext } from '../computer/run'
+import { abortedLine, AWAY_PASSWORD, type ComputerToolContext } from '../computer/run'
 import { serviceSessionId } from '../computer/sessions'
 import type { ApprovalRequest } from '../drivers/types'
 
@@ -141,10 +141,12 @@ interface CallState {
   controller: AbortController
   /** a card was allowed because the person is away: the answer says `away` and the box writes the allowed row */
   away: boolean
-  /** the model flagged the call pay or subscribe (@shared/away awayAllowsKind): Away denies its cards */
+  /** the model flagged the call pay or subscribe (@shared/away awayVerdict): Away denies its cards */
   awayDenies: boolean
-  /** a card was denied because the person is away: the call ends in MAC_AWAY_REFUSAL */
+  /** a card was denied because the person is away: the call ends in MAC_AWAY_REFUSAL, or AWAY_PASSWORD for a Work thread's password text */
   awayDenied: boolean
+  /** the denied card was the run's own (`req.awayDenies`: a Work thread's text into a password field), not a money act */
+  awayPassword?: boolean
   /** the call's own progress sender */
   progress: RowSender | null
   /** someone on the box reads this call (mac.computerReader); while false its next request waits */
@@ -353,7 +355,7 @@ export class MacComputer {
     const startedAt = this.clock.now()
     const parsed = MacComputerCallArgsSchema.safeParse(raw)
     if (!parsed.success) throw new Error(`refused: the call did not parse (${parsed.error.issues[0]?.message ?? 'bad arguments'})`)
-    const { call, turn, rootId, features } = parsed.data
+    const { call, turn, rootId, features, hold } = parsed.data
     if (call.threadId !== thread.id) throw new Error('refused: the call names another thread')
     const key = macComputerKey(env.id, thread.id)
     const line = (decision: string): void => this.log(`${env.name} (${env.id}) thread=${thread.id} mac.computer ${call.tool} → ${decision}`)
@@ -374,7 +376,7 @@ export class MacComputer {
       throw new Error(computerUnavailableOnMac(why ?? 'the computer host is not running'))
     }
     // Away allows every card but a money act's: that one is refused before anything waits
-    const awayDenies = !awayAllowsKind((call.args as { confirm?: { kind?: string } }).confirm?.kind)
+    const awayDenies = awayVerdict({ what: 'computer', kind: (call.args as { confirm?: { kind?: string } }).confirm?.kind }, 'code') === 'deny'
     if (awayDenies && this.deps.bridge.away() && needsApproval(call.tool, call.args as Parameters<typeof needsApproval>[1], call.permission).ask) {
       line('refused (away, spends money)')
       throw new Error(MAC_AWAY_REFUSAL)
@@ -410,6 +412,8 @@ export class MacComputer {
           signal,
           approve: (req) => this.ask(env, thread, st, own, req, ctx.deadlineAt - budget, callId, line),
           reader: readerOf(own),
+          // a Work thread's call, by its own box's word: this Mac judges each act from the screen and carries out none it reads as outward (run.ts)
+          ...(hold?.work ? { work: true } : {}),
           timing: tally,
           // the journal groups the box thread's calls by its own turn, whatever this Mac's session saw of it
           turn
@@ -418,7 +422,7 @@ export class MacComputer {
         call.args
       )
       // a money card Away denied: the box writes the skipped row from this refusal (computer/bridge.ts)
-      if (own.awayDenied) throw new Error(MAC_AWAY_REFUSAL)
+      if (own.awayDenied) throw new Error(own.awayPassword ? AWAY_PASSWORD : MAC_AWAY_REFUSAL)
       const shotsFrom = this.clock.now()
       const images = await this.readShots(outcome)
       const shotsTo = this.clock.now()
@@ -515,10 +519,16 @@ export class MacComputer {
     callId: string,
     line: (decision: string) => void
   ): Promise<boolean> {
+    // the run's own denial counts as the model's flag does: a Work thread's text into a password field (run.ts askCard)
+    const denies = own.awayDenies || req.awayDenies === true
+    const deny = (): void => {
+      own.awayDenied = true
+      if (!own.awayDenies) own.awayPassword = true
+    }
     if (this.deps.bridge.away()) {
-      if (own.awayDenies) {
-        own.awayDenied = true
-        line('card denied (away, spends money)')
+      if (denies) {
+        deny()
+        line(own.awayDenies ? 'card denied (away, spends money)' : 'card denied (away, password field)')
         return false
       }
       own.away = true
@@ -541,7 +551,7 @@ export class MacComputer {
       },
       until,
       callId,
-      own.awayDenies ? { awayDenies: true } : {}
+      denies ? { awayDenies: true } : {}
     )
     st.asking = approvalLine('computer', input, req.title)
     own.progress?.poke()
@@ -557,7 +567,7 @@ export class MacComputer {
       // decided by Away turning on while it waited (MacBridge.awayChanged)
       if ('byAway' in decision && decision.byAway) {
         if (decision.allow) own.away = true
-        else own.awayDenied = true
+        else deny()
       }
       line(`card ${decision.outcome}${'byAway' in decision && decision.byAway ? ' (away turned on)' : ''}`)
       return decision.allow

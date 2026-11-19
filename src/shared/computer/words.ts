@@ -252,6 +252,21 @@ export function computerApprovalTitle(
   return `${steps.length} actions in ${where(ctx)}${using}: ${steps.join(', ')}`
 }
 
+/**
+ * A call the host keeps for the owner's press in a Work thread
+ * (computer/run.ts, docs/agents/work-outbox.md), in his words:
+ * `Send in Mail, window "Re: budget" (click button "Send")` for one the
+ * host read on the screen, the flag's own title for one the model flagged.
+ * `label` is the act's word as the control says it.
+ */
+export function computerHeldTitle(tool: ComputerToolName, args: ToolArgs, ctx: TitleContext, label: string | null, confirm: ConfirmNeed | null = null): string {
+  if (!label) return computerApprovalTitle(tool, args, ctx, confirm)
+  const steps = actingSteps(tool, args).map((a) => actionWords(a, ctx))
+  const head = `${label} in ${where(ctx)}`
+  const whole = steps.length ? `${head} (${steps.join(', ')})` : head
+  return whole.length <= 200 ? whole : head
+}
+
 /** The card tier scheduling raises for a held step: a tool name no harness calls. */
 export const COMPUTER_SESSION_TOOL = 'computer_session'
 

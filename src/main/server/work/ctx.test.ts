@@ -127,8 +127,6 @@ describe('the context', () => {
   it('answers "not built" from every member a later milestone builds, naming that milestone', () => {
     const { ctx } = work
     const calls: [string, number, () => unknown][] = [
-      ['ctx.held.create', 10, () => ctx.held.create({ kind: 'addon.call', sessionId: 's', payload: {} })],
-      ['ctx.held.onDecided', 10, () => ctx.held.onDecided(() => {})],
       ['ctx.results.add', 14, () => ctx.results.add({ sessionId: 's', kind: 'task', summary: 'Added a task' })]
     ]
     for (const [what, milestone, call] of calls) {
@@ -185,8 +183,8 @@ describe('the router, as the stubs ship', () => {
   it('with Work on, a pillar method no module answers says "not built" and the milestone, for every pillar', async () => {
     expect(await work.handle(req('work.set', { enabled: true }), LOCAL_PRINCIPAL)).toEqual({ handled: true, result: { enabled: true } })
     for (const id of PILLAR_IDS) {
-      // The canvas answers its own `work.canvas.list` (milestone 9).
-      if (id !== 'canvas') await expect(work.handle(req(`work.${id}.list`, {}), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: work.${id}.list (milestone ${PILLAR_MILESTONE[id]})`)
+      // The canvas answers its own `work.canvas.list` (milestone 9), the outbox its `work.outbox.list` (milestone 10).
+      if (id !== 'canvas' && id !== 'outbox') await expect(work.handle(req(`work.${id}.list`, {}), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: work.${id}.list (milestone ${PILLAR_MILESTONE[id]})`)
       const bridge = `app.work${id[0].toUpperCase()}${id.slice(1)}List`
       await expect(work.handle(req(bridge, { sessionId: 't1', token: work.tools.tokenFor('t1') }), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: ${bridge} (milestone ${PILLAR_MILESTONE[id]})`)
       // a pillar's bridge method is a thread's own call: without that thread's token it is refused before any module is asked

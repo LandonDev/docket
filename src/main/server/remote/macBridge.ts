@@ -41,12 +41,12 @@ import {
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
 import { insideRoots, realSpelling } from './fence'
 import { isSecretPath } from './harnessSet'
-import { MacBridgeRuleBook, readRemembers, runOffer, runRememberKind } from './macBridgeRules'
+import { alwaysAsks, MacBridgeRuleBook, readRemembers, runOffer, runRememberKind } from './macBridgeRules'
 import { runMacCommand, type RunningCommand } from './macRunner'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
 import type { MacWriteFileResult } from '@shared/contract-macbridge'
-import { threadRunsUnattended, type MacCallThread } from '@shared/contract-macbridge'
+import { threadRunsUnattended, workMustAsk, type MacCallThread } from '@shared/contract-macbridge'
 import type { MacBridgeActivity, MacBridgeCall, MacCancelArgs, MacCancelResult, MacHeldArgs } from '@shared/contract-macbridge'
 import { isMacJobPeerMethod, isMacPausePeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
 import { isCrossHostPeerMethod } from '@shared/contract-crosshost'
@@ -61,6 +61,7 @@ import {
   COMPUTER_SWITCH_PREFIX,
   MAC_BRIDGE_DEFAULT_MAX_COMPUTER,
   MAC_BRIDGE_MAX_COMPUTER_CAP,
+  MAC_COMPUTER_HOLD_OFFER,
   MAC_COMPUTER_OFFER,
   MAX_COMPUTER_PREFIX,
   isMacComputerPeerMethod
@@ -351,6 +352,8 @@ interface Pending {
   decide: (allow: boolean, remember: Remember, byAway?: boolean) => void
   /** Away denies this card instead of allowing it at the flip: a computer act the model flagged as spending money (macComputer.ts). */
   awayDenies?: boolean
+  /** Away leaves this card waiting for the owner: a Work thread's command on the always-ask list. */
+  awayKeeps?: boolean
   stop?: () => void
   timer: NodeJS.Timeout
   /** The box's `peer.call` id this request serves: what a `mac.cancel` names. */
@@ -631,7 +634,7 @@ export class MacBridge {
         from: this.deps.environmentId,
         offers: [
           MAC_BRIDGE_OFFER,
-          ...(this.computerOffered(envId) ? [MAC_COMPUTER_OFFER] : []),
+          ...(this.computerOffered(envId) ? [MAC_COMPUTER_OFFER, MAC_COMPUTER_HOLD_OFFER] : []),
           ...(this.deps.offers?.() ?? [])
         ],
         home: this.home,
@@ -832,7 +835,7 @@ export class MacBridge {
   awayChanged(enabled: boolean): void {
     if (!enabled) return
     for (const p of [...this.pendingById.values()]) {
-      if (p.request.status !== 'pending' || p.request.quiet) continue
+      if (p.request.status !== 'pending' || p.request.quiet || p.awayKeeps) continue
       this.log(`${p.request.hostName}: ${p.request.method} ${p.awayDenies ? 'denied' : 'allowed'} (away turned on)`)
       p.decide(!p.awayDenies, false, true)
     }
@@ -848,7 +851,7 @@ export class MacBridge {
     until: number,
     quiet = false,
     callId?: string,
-    opts: { awayDenies?: boolean } = {}
+    opts: { awayDenies?: boolean; awayKeeps?: boolean } = {}
   ): {
     id: string
     answer: Promise<MacAnswer>
@@ -881,6 +884,7 @@ export class MacBridge {
           timer,
           ...(callId ? { callId } : {}),
           ...(opts.awayDenies ? { awayDenies: true } : {}),
+          ...(opts.awayKeeps ? { awayKeeps: true } : {}),
           decide: (allow, remember, byAway) => {
             if (settled) return
             settled = true
@@ -1142,10 +1146,12 @@ export class MacBridge {
     )
     if (askUntil <= Date.now()) throw new Error('the call left no time to ask the Mac')
     const rule = this.rules.runAllowed(env.id, thread.id, spec)
+    // A Work thread's command on the always-ask list stays a prompt for the owner: neither full access nor Away admits it.
+    const mustAsk = workMustAsk(thread, alwaysAsks(spec, this.home))
     // Full access on the box: decided at once, as a remembered command is.
-    const unattended = threadRunsUnattended(thread)
+    const unattended = threadRunsUnattended(thread) && !mustAsk
     // Away: what would prompt is admitted the same way, always quiet, and never remembered.
-    const away = !rule && !unattended && this.awayOn()
+    const away = !rule && !unattended && !mustAsk && this.awayOn()
     const shown = runPresentation({
       remembered: !!rule,
       unattended: unattended || away,
@@ -1168,7 +1174,8 @@ export class MacBridge {
       },
       askUntil,
       !shown.prompt && (shown.quiet || away),
-      callId
+      callId,
+      mustAsk ? { awayKeeps: true } : {}
     )
     const remembered = !shown.prompt
     const decision = remembered
@@ -1225,9 +1232,9 @@ export class MacBridge {
   /** mac.run background: true and the calls on its job; the card is mac.run's, marked interactive. */
   get jobs(): MacJobs {
     this.jobsInstance ??= new MacJobs({
-      ask: (shape, until, remembered, callId, markAway) => {
-        // Away admits what would prompt as a remembered job is, always quiet, remembering nothing.
-        const away = !remembered && this.awayOn()
+      ask: (shape, until, remembered, callId, markAway, mustAsk) => {
+        // Away admits what would prompt as a remembered job is, always quiet, remembering nothing. Not a Work thread's always-ask command.
+        const away = !remembered && !mustAsk && this.awayOn()
         if (away) {
           this.log(`${shape.hostName}: mac.jobStart allowed (away)`)
           markAway?.()
@@ -1238,7 +1245,8 @@ export class MacBridge {
           shape,
           until,
           away || (remembered && !this.showRunningOf(shape.environmentId)),
-          callId
+          callId,
+          mustAsk ? { awayKeeps: true } : {}
         )
         if (remembered || away) this.pendingById.get(asked.id)?.decide(true, false)
         return {

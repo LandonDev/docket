@@ -52,6 +52,13 @@ export interface Notice {
   hostName?: string
   /** A desktop window shows this thread to its person right now: the person-facing sinks (hub, APNs, relay) skip it. */
   onScreen?: true
+  /**
+   * The notice is for an act held for the owner's press (the Outbox,
+   * docs/agents/work-outbox.md): which item. It reads "Held", then the act
+   * in his words. Never an approval: it carries no `requestId`, so no
+   * client offers Send from a lock screen; it opens the item.
+   */
+  held?: { at: 'host'; id: string } | { at: 'lifeos'; table: 'outbox' | 'calendarOps'; id: string }
 }
 
 export type NoticeSink = (notice: Notice) => void | Promise<void>
@@ -486,13 +493,30 @@ export class Notifier {
     }
   }
 
+  /**
+   * An act of a thread was held for the owner's press. One notice per held
+   * item, said in his words ("Held: Send to Dana Lee: Re: budget"), on the
+   * thread's root. It waits on him as a prompt does, so it goes out as
+   * `needs_you`; its kind is `waiting`, which no client turns into Allow and
+   * Deny buttons. Away changes nothing here: a held act is told whether or
+   * not he is at the computer, since only he can press.
+   */
+  held(sessionId: string, body: string, ref: NonNullable<Notice['held']>): void {
+    const reg = this.options.registry
+    if (!reg.get(sessionId)) return
+    const root = reg.rootSessionOf(sessionId)
+    const seq = this.threads.get(root)?.lastRowSeq ?? 0
+    this.emit(root, 'needs_you', 'waiting', cut(oneLine(body), BODY_CHARS), seq, {}, ref)
+  }
+
   private emit(
     id: string,
     event: NoticeEvent,
     kind: NoticeKind,
     body: string,
     seq: number,
-    prompt: Pick<Notice, 'requestId' | 'choices'> = {}
+    prompt: Pick<Notice, 'requestId' | 'choices'> = {},
+    held?: Notice['held']
   ): void {
     const meta = this.options.registry.get(id)
     if (!meta) return
@@ -514,7 +538,8 @@ export class Notifier {
       ...(prompt.requestId === undefined ? {} : { requestId: prompt.requestId }),
       ...(prompt.choices ? { choices: prompt.choices } : {}),
       ...(hostName ? { hostName: cut(oneLine(hostName), 80) } : {}),
-      ...(this.options.onScreen?.(id) ? { onScreen: true as const } : {})
+      ...(this.options.onScreen?.(id) ? { onScreen: true as const } : {}),
+      ...(held ? { held } : {})
     }
     this.log(`${event} ${id} "${notice.title}": ${body}${notice.onScreen ? ' (on screen)' : ''}`)
     for (const sink of this.sinks) {

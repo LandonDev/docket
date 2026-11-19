@@ -38,9 +38,49 @@ export const NOTE_DECISION_MAX_CHARS = 500
 export const decidedTotal = (decided: AwayDecided): number =>
   decided.threads.reduce((sum, t) => sum + t.count, 0)
 
-/** Flagged computer acts Away still denies: they spend money. Everything else that would ask the person is allowed while away. */
+/** Flagged computer acts Away still denies: they spend money. Everything else that would ask the person is allowed while away, in a code thread. */
 export const AWAY_DENIED_KINDS = ['pay', 'subscribe'] as const
 
-/** Whether Away allows a computer call by the model's own flag (`args.confirm?.kind`), never a card's input. */
-export const awayAllowsKind = (kind: string | null | undefined): boolean =>
-  !(AWAY_DENIED_KINDS as readonly string[]).includes(kind ?? '')
+/** Tool cards Away never answers for a Work thread: each changes which servers a thread can reach, which only the owner decides. */
+export const AWAY_WORK_DENIED_TOOLS = ['addon_add', 'addon_remove'] as const
+
+/** What Away does with something that would ask the person: allow it, deny it, or hold it for the owner's press. */
+export type AwayVerdict = 'allow' | 'deny' | 'hold'
+
+/**
+ * What is being asked while the person is away.
+ *  - `computer`: a computer call's card. `kind` is the model's own flag
+ *    (`args.confirm?.kind`), never a card's input. `outward`: the host's own
+ *    reading of the screen says the act sends, posts, pays or the like
+ *    (src/shared/computer/outward.ts). `password`: the host's own rule, text
+ *    going into a password field.
+ *  - `tool`: any other card, by the tool that raised it (`addon_add`, bare
+ *    or as `mcp__app__addon_add`; `Bash`; an add-on's tool).
+ */
+export type AwayAsk =
+  | { what: 'computer'; kind?: string | null; outward?: boolean; password?: boolean }
+  | { what: 'tool'; tool: string }
+
+const bare = (tool: string): string => tool.replace(/^mcp__app__/, '')
+
+/**
+ * Away's answer, by the scope of the thread that asks (`sessions.scope`).
+ *
+ * A code thread, as before Work: every card is allowed but a computer act
+ * the model flagged `pay` or `subscribe`.
+ *
+ * A Work thread decides and carries on, and nothing it does leaves: a
+ * computer act the host reads as outward, or the model flagged at all, is
+ * held for the owner's press; text into a password field is denied; adding
+ * or removing an add-on is denied; every other card (a file edit, a shell
+ * command, an add-on's tool, which the hold's catch judges for itself) is
+ * allowed. Away never releases a held act and never makes a grant: neither
+ * is a card, so neither is asked here.
+ */
+export function awayVerdict(ask: AwayAsk, scope: 'code' | 'work' | null | undefined): AwayVerdict {
+  if (scope !== 'work') return ask.what === 'computer' && (AWAY_DENIED_KINDS as readonly string[]).includes(ask.kind ?? '') ? 'deny' : 'allow'
+  if (ask.what === 'tool') return (AWAY_WORK_DENIED_TOOLS as readonly string[]).includes(bare(ask.tool)) ? 'deny' : 'allow'
+  if (ask.outward || ask.kind) return 'hold'
+  if (ask.password) return 'deny'
+  return 'allow'
+}

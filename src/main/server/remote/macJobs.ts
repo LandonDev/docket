@@ -1,4 +1,4 @@
-import { readRemembers } from './macBridgeRules'
+import { alwaysAsks, readRemembers } from './macBridgeRules'
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -12,7 +12,7 @@ import {
   type MacBridgeRequest,
   type MacCallThread
 } from '@shared/contract-macbridge'
-import { threadRunsUnattended } from '@shared/contract-macbridge'
+import { threadRunsUnattended, workMustAsk } from '@shared/contract-macbridge'
 import {
   MAC_JOB_IDLE_MS,
   MAC_JOB_MAX_PER_THREAD,
@@ -254,7 +254,9 @@ export interface MacJobsDeps {
     /** The box's `peer.call` id the start serves (a `mac.cancel` names it). */
     callId?: string,
     /** The start was allowed because the person is away: its reply is marked. */
-    markAway?: () => void
+    markAway?: () => void,
+    /** A Work thread's command on the always-ask list: Away leaves its card for the owner. */
+    mustAsk?: boolean
   ) => {
     id: string
     answer: Promise<{ allow: boolean; remember: MacDecideRemember; outcome: MacBridgeOutcome }>
@@ -388,7 +390,9 @@ export class MacJobs {
     const key = JSON.stringify([args.argv ?? null, args.argv ? null : (args.command ?? null), cwd])
     const memory = this.remembered.get(this.threadKey(env.id, thread.id)) ?? new Set<string>()
     // Remembered, or the thread runs in full access on its box: no prompt, the card shows it running.
-    const remembered = memory.has(key) || threadRunsUnattended(thread)
+    // A Work thread's command on the always-ask list stays a prompt for the owner, whatever was remembered.
+    const mustAsk = workMustAsk(thread, alwaysAsks(spec))
+    const remembered = !mustAsk && (memory.has(key) || threadRunsUnattended(thread))
     const until = Math.min(Date.now() + MAC_APPROVAL_WAIT_MS, deadlineAt - REPLY_MARGIN_MS)
     if (until <= Date.now()) throw new Error('the call left no time to ask the Mac')
     const { id: cardId, answer } = this.deps.ask(
@@ -406,7 +410,8 @@ export class MacJobs {
       until,
       remembered,
       callId,
-      markAway
+      markAway,
+      mustAsk
     )
     const decision = await answer
     if (!decision.allow) {

@@ -19,6 +19,7 @@ import type { ComputerToolCall } from '@shared/computer/tools'
 import { needsApproval } from '@shared/computer/words'
 import type { PermissionPolicy } from '@shared/events'
 import { MAC_AWAY_REFUSAL } from '../awayPrompts'
+import { AWAY_PASSWORD } from '../computer/run'
 import type { ComputerToolOutcome, LandedShot } from '../computer/result'
 import type { ComputerToolContext } from '../computer/run'
 import { MacBridge, POLICY_PREFIX } from './macBridge'
@@ -41,6 +42,8 @@ function fakeHost() {
   const listeners = new Set<(rows: ComputerSessionRow[]) => void>()
   const turns: string[] = []
   let away = false
+  /** the run raises its card with awayDenies, as run.ts does for a Work thread's text into a password field */
+  let passwordCard = false
   let behave: (r: Run) => Promise<ComputerToolOutcome> = async () => ({ steps: [], shots: [], body: 'TextEdit "Untitled"', isError: false })
   const emit = (): void => {
     for (const fn of listeners) fn([...rows.values()])
@@ -66,7 +69,8 @@ function fakeHost() {
           toolName: `mcp__app__${tool}`,
           input: { app: String(args.app), window: (args.window as string) ?? null, actions: ['click button "Save"'] },
           title: `Click button "Save" in ${String(args.app)}`,
-          signal: ctx.signal
+          signal: ctx.signal,
+          ...(passwordCard ? { awayDenies: true as const } : {})
         })
         if (!ok) return { steps: [], shots: [], body: away ? 'denied: the person is away' : 'denied: the person did not allow it', isError: true }
       }
@@ -103,6 +107,7 @@ function fakeHost() {
     rows,
     turns,
     setAway: (on: boolean) => (away = on),
+    setPasswordCard: (on: boolean) => (passwordCard = on),
     behave: (fn: (r: Run) => Promise<ComputerToolOutcome>) => (behave = fn)
   }
 }
@@ -141,7 +146,7 @@ function setup(opts: { unavailable?: string | null; away?: { on: boolean }; poli
   const progress: { thread: string; row: ComputerSessionRow }[] = []
   let callSeq = 0
   const call = (
-    args: { tool?: ComputerToolCall['tool']; args?: Record<string, unknown>; permission?: PermissionPolicy; turn?: string; thread?: string; deadlineMs?: number; callId?: string } = {}
+    args: { tool?: ComputerToolCall['tool']; args?: Record<string, unknown>; permission?: PermissionPolicy; turn?: string; thread?: string; deadlineMs?: number; callId?: string; hold?: unknown } = {}
   ): Promise<ComputerPeerAnswer> => {
     const thread = args.thread ?? 's1'
     const callId = args.callId ?? `c${++callSeq}`
@@ -152,7 +157,8 @@ function setup(opts: { unavailable?: string | null; away?: { on: boolean }; poli
         args: {
           call: { tool: args.tool ?? 'computer_observe', args: args.args ?? { app: 'TextEdit' }, threadId: thread, permission: args.permission ?? 'auto' },
           turn: args.turn ?? 'boot:1',
-          rootId: thread
+          rootId: thread,
+          ...(args.hold !== undefined ? { hold: args.hold } : {})
         }
       } as never,
       {
@@ -232,6 +238,18 @@ describe('MacComputer: what refuses a call', () => {
 describe('MacComputer: the card', () => {
   const click = { tool: 'computer_act' as const, args: { app: 'TextEdit', action: 'left_click', coordinate: [5, 5] }, permission: 'safe' as const }
 
+  it("a call its box marks as a Work thread's runs here as one, so this Mac judges each act itself; a mark the model could have written is no mark", async () => {
+    const s = setup()
+    await s.call({ ...click, permission: 'auto', hold: { work: true } })
+    await s.call({ ...click, permission: 'auto' })
+    expect(s.fake.runs.map((r) => (r.ctx as { work?: boolean }).work)).toEqual([true, undefined])
+    // the mark is the box's own field beside the call, never one of the tool's arguments
+    await s.call({ tool: 'computer_act', args: { ...click.args, work: true, hold: { work: true } } as never, permission: 'auto' })
+    expect((s.fake.runs[2]!.ctx as { work?: boolean }).work).toBeUndefined()
+    // and nothing but `true` is a mark
+    await expect(s.call({ ...click, hold: { work: 'yes' } })).rejects.toThrow('the call did not parse')
+  })
+
   it('full access never asks', async () => {
     const s = setup()
     expect((await s.call({ ...click, permission: 'auto' })).isError).toBe(false)
@@ -295,6 +313,20 @@ describe('MacComputer: the card', () => {
     s.away.on = true
     await s.end('settled', 's0')
     expect(await p).toEqual({ ok: false, error: MAC_AWAY_REFUSAL })
+    expect(s.cards()).toHaveLength(0)
+  })
+
+  it("Away denies a card the run raised with awayDenies (a Work thread's text into a password field), as it is made and at the flip", async () => {
+    const s = setup({ away: { on: true } })
+    s.fake.setPasswordCard(true)
+    expect(await s.settle(s.call(click))).toEqual({ ok: false, error: AWAY_PASSWORD })
+    expect(s.lines.some((l) => l.includes('card denied (away, password field)'))).toBe(true)
+    s.away.on = false
+    const waiting = s.settle(s.call({ ...click, thread: 's2' }))
+    await until(() => s.cards().length === 1, 'the card')
+    s.away.on = true
+    s.mb.awayChanged(true)
+    expect(await waiting).toEqual({ ok: false, error: AWAY_PASSWORD })
     expect(s.cards()).toHaveLength(0)
   })
 
