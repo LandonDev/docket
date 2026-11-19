@@ -109,7 +109,7 @@ import { threadToken } from '../lib/threadMentions'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import { nativeModelId } from '../lib/models'
 import type { SessionMeta, ThreadType } from '../lib/tcserver/types'
-import { useProjects, useWorkspaces } from '../lib/tcserver/workspaces'
+import { useProjects } from '../lib/tcserver/workspaces'
 import { useWorkHosts } from '../lib/workSwitch'
 import { useWorkMentions } from './useWorkMentions'
 
@@ -178,8 +178,6 @@ const DRAFT_SAVE_DELAY_MS = 300
 
 const metaEnvironment = (meta: SessionMeta): string => meta.environmentId
 const metaProvider = (meta: SessionMeta): string => meta.provider
-/** Where a thread is, as one primitive: its scope, workspace and project. */
-const metaWhere = (meta: SessionMeta): string => JSON.stringify([meta.scope ?? null, meta.workspaceId ?? null, meta.projectId ?? null])
 
 export function Composer({
   enabled = true,
@@ -289,7 +287,6 @@ export function Composer({
   const metaEnvironmentId = useSessionMetaValue(sessionId, metaEnvironment)
   const threadProvider = useSessionMetaValue(sessionId, metaProvider)
   const compactable = useSessionMetaValue(sessionId, canCompact) ?? false
-  const whereKey = useSessionMetaValue(sessionId, metaWhere)
   const draft = useDraftRow(sessionId, shell)
   // A draft's first send remounts the composer in the docked footer (the
   // empty screen and the thread's view are different trees). The new one
@@ -366,28 +363,8 @@ export function Composer({
       repaintFrame.current = null
     }
   }, [scheduleRepaint])
-  // A Work thread, a Work Chat's draft, or a thread of a workspace linked to a sector may mention Work's things,
-  // while its host has Work on; the host still decides what each one may read (work.canvas.mentions).
-  const workHosts = useWorkHosts()
-  const workspaces = useWorkspaces()
-  const mentionDraft = useMemo(() => {
-    // A draft has no meta yet: its place is the draft session's own, read when the list opens.
-    const draftSession = !whereKey && mentionOpen && sessionId ? sessionStore.get(sessionId) : undefined
-    const key = whereKey ?? (draftSession ? JSON.stringify([draftSession.scope ?? null, draftSession.workspaceId ?? null, draftSession.projectId ?? null]) : null)
-    if (!key) return undefined
-    const [scope, workspaceId, ownProject] = JSON.parse(key) as [string | null, string | null, string | null]
-    const workspace = workspaces.find((w) => w.id === (projects.find((p) => p.id === ownProject)?.workspaceId ?? workspaceId))
-    if (scope !== 'work' && workspace?.kind !== 'work' && !workspace?.sector) return undefined
-    return { projectId: ownProject, workspaceId, work: scope === 'work' || workspace?.kind === 'work' }
-  }, [mentionOpen, projects, sessionId, whereKey, workspaces])
-  const workMentions = useWorkMentions({
-    open: mentionOpen,
-    query: live?.query ?? '',
-    env: environmentId,
-    sessionId,
-    draft: mentionDraft,
-    enabled: !!mentionDraft && workHosts.has(environmentId)
-  })
+  // Work's things, for a thread the work-canvas chunk says may mention them (useWorkMentions).
+  const workMentions = useWorkMentions(mentionOpen, live?.query ?? '', environmentId, sessionId, useWorkHosts().has(environmentId))
   // `@path` has to end on whitespace, so files with spaces cannot be mentioned.
   const mentionable = useMemo(
     () => files.filter((file) => !file.isDir && !/\s/.test(file.relative)),
@@ -405,18 +382,12 @@ export function Composer({
       (session) => ({ kind: 'thread', session })
     )
     const noteHits: AtMatch[] = rankNoteFiles(notes, live.query).map((file) => ({ kind: 'note', file }))
-    const work = workMentions.result
-    // An answer to earlier words keeps only the rows whose label still holds every word typed, until the next lands.
-    const words = workMentions.answered === live.query ? [] : live.query.toLowerCase().split(/\s+/).filter(Boolean)
-    const workHits: AtMatch[] = (work?.rows ?? [])
-      .filter((row) => words.every((word) => row.hit.chip.label.toLowerCase().includes(word)))
-      .map((row) => ({ kind: 'work', row }))
+    const workHits: AtMatch[] = workMentions.rows.map((row) => ({ kind: 'work', row }))
     const loading = looksLikeProject(executionCwd) && filesFor !== executionCwd
     // A Work thread is about mail, tasks and the rest more than its folder's files: those lead there.
-    const rows = mentionDraft?.work ? [...workHits, ...fileHits, ...threadHits, ...noteHits] : [...fileHits, ...threadHits, ...noteHits, ...workHits]
-    // Until Work's first answer lands, one muted row says so under what is here (or in place of "No matches").
-    return { mode: 'file', rows, loading, note: workMentions.loading ? 'Loading…' : (work?.failed ?? undefined) }
-  }, [commands, commandsFailed, commandsLoaded, executionCwd, filesFor, live, mentionDraft, mentionable, metas, notes, projectId, sessionId, workMentions])
+    const rows = workMentions.lead ? [...workHits, ...fileHits, ...threadHits, ...noteHits] : [...fileHits, ...threadHits, ...noteHits, ...workHits]
+    return { mode: 'file', rows, loading, note: workMentions.note }
+  }, [commands, commandsFailed, commandsLoaded, executionCwd, filesFor, live, mentionable, metas, notes, projectId, sessionId, workMentions.rows, workMentions.lead, workMentions.note])
   const rows = matches?.rows.length ?? 0
   // Mounted from the first `/` or `@` on, so its close keeps its fade.
   const [menuUsed, setMenuUsed] = useState(false)

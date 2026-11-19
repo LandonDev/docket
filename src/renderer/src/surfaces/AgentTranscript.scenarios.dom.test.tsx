@@ -16,6 +16,7 @@ import { setEditorConfigForTest } from "../lib/editorConfig";
 import { sessionStore } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { revealDrainForTest } from "./revealDrain";
+import { questionChunk } from "./chunks";
 import { installTranscriptLayout, phaseLog, scene, settle, settleUntil, watch, type Scene } from "./transcriptScenario.testkit";
 
 const motion = vi.hoisted(() => ({ reduce: false }));
@@ -27,7 +28,11 @@ vi.mock("motion/react", async (importOriginal) => ({
 }));
 
 installTranscriptLayout();
-beforeAll(() => setEditorConfigForTest(null));
+beforeAll(async () => {
+  setEditorConfigForTest(null);
+  // The question card's chunk is warm by the time a question comes, as the first thread warms it.
+  await questionChunk.load();
+});
 beforeEach(() => {
   // Motion's frames finish at once on jsdom's clock; the transcript's own rules are what is judged.
   MotionGlobalConfig.skipAnimations = true;

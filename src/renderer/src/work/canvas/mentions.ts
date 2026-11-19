@@ -1,5 +1,7 @@
 import type { ChipKind, MentionAnswer, MentionHit } from "@shared/work";
 import { registry } from "../../lib/connection";
+import { sessionStore } from "../../lib/tcserver/store";
+import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { addContextChip } from "./chips";
 import { CHIP_GLYPH } from "./ComposerChips";
 import { Layers, type IconComponent } from "../../chrome/icons";
@@ -24,6 +26,8 @@ export interface WorkMentionRow {
 
 export interface WorkMentionResult {
   rows: WorkMentionRow[];
+  /** a Work thread: its Work rows lead the `@` list */
+  lead: boolean;
   /** one muted line for the kinds that could not be searched, or null */
   failed: string | null;
 }
@@ -63,13 +67,42 @@ export interface MentionDraft {
   work?: boolean;
 }
 
-/** The host's answer for `text`, as rows. Throws when the host could not be asked. */
-export async function searchWorkMentions(env: string, sessionId: string, text: string, draft?: MentionDraft): Promise<WorkMentionResult> {
-  const answer = await registry.linkOf(env).request<MentionAnswer>("work.canvas.mentions", { sessionId, text, ...(draft ? { draft } : {}) });
-  return resultOf(answer);
+/**
+ * Where a thread is, if it may mention Work's things: a Work thread, a Work
+ * Chat's draft, or a thread of a workspace linked to a sector. A draft has no
+ * meta yet, so its place is the draft session's own. The host still decides
+ * what each may read (work.canvas.mentions).
+ */
+export function mentionPlace(sessionId: string): MentionDraft | null {
+  const where = sessionStore.metaOf(sessionId) ?? sessionStore.get(sessionId);
+  if (!where) return null;
+  const { projects, workspaces } = workspaceStore.getSnapshot();
+  const workspaceId = (where.projectId ? projects.find((p) => p.id === where.projectId)?.workspaceId : null) ?? where.workspaceId ?? null;
+  const workspace = workspaces.find((w) => w.id === workspaceId);
+  const work = where.scope === "work" || workspace?.kind === "work";
+  if (!work && !workspace?.sector) return null;
+  return { projectId: where.projectId ?? null, workspaceId: where.workspaceId ?? null, work };
 }
 
-export function resultOf(answer: MentionAnswer, now = Date.now()): WorkMentionResult {
+/** The host's answer for `text`, as rows; null for a thread that may not mention Work's things. */
+export async function askWorkMentions(env: string, sessionId: string, text: string): Promise<WorkMentionResult | null> {
+  const draft = mentionPlace(sessionId);
+  if (!draft) return null;
+  try {
+    const answer = await registry.linkOf(env).request<MentionAnswer>("work.canvas.mentions", { sessionId, text, draft });
+    return resultOf(answer, draft.work);
+  } catch {
+    return { rows: [], lead: !!draft.work, failed: "Couldn't search Work" };
+  }
+}
+
+/** An earlier answer's rows whose label still holds every word typed, until the next answer lands. */
+export function rowsStillMatching(rows: readonly WorkMentionRow[], text: string): WorkMentionRow[] {
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  return rows.filter((row) => words.every((word) => row.hit.chip.label.toLowerCase().includes(word)));
+}
+
+export function resultOf(answer: MentionAnswer, lead = false, now = Date.now()): WorkMentionResult {
   const rows = answer.hits.map((hit) => ({
     hit,
     group: GROUP[hit.chip.kind] ?? "More",
@@ -77,7 +110,7 @@ export function resultOf(answer: MentionAnswer, now = Date.now()): WorkMentionRe
     ...(hit.at ? { when: whenWords(hit.at, now) } : {}),
   }));
   const failed = answer.failed.length === 0 ? null : answer.failed.every((k) => LIFEOS_KINDS.includes(k)) ? "Couldn't reach LifeOS" : "Couldn't search everything";
-  return { rows, failed };
+  return { rows, lead, failed };
 }
 
 /** The pick: the thing goes in the thread's composer as a chip. */

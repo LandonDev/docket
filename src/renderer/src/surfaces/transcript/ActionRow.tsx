@@ -9,7 +9,6 @@ import { useOpenAgentDetail } from "../agentDetailContext";
 import { SpawnedAgentMarks } from "../AgentSpawnRow";
 import { CallPortLink } from "../CallPortLink";
 import { FileRefMenu } from "../FileRefMenu";
-import { QuestionCard } from "../QuestionCard";
 import { ReconnectChip, SubagentSteps } from "../ToolChips";
 import { ToolDetails } from "../ToolDetails";
 import { inputOf } from "../../lib/toolDetails";
@@ -22,6 +21,10 @@ import { ToolGlyph } from "./ToolGlyph";
 import { useGroupHand } from "./groupHand";
 import { openedLive } from "./workingOpen";
 import type { ApprovalHandler } from "./types";
+import { questionChunk } from "../chunks";
+
+/** The question card is its own chunk (surfaces/chunks.ts), warmed when the first thread opens. */
+const QuestionCard = questionChunk.surface("QuestionCard");
 
 /**
  * One call as one quiet line. A read opens its file; a command, a search,

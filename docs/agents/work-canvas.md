@@ -278,11 +278,12 @@ until the composer sends:
   Settings → Keybindings lists it in the Work group while Work is on.
 
 The sent bubble draws the chips back from their lines (`sentChipsOf`,
-lib/sentChips.ts, which takes a line only when its brackets hold a
+work/canvas/sentChips.ts, which takes a line only when its brackets hold a
 reference `refWords` writes; `SentChips`, work/canvas/SentChips.tsx) over his words,
 the lines and their quoted words gone from the text and Copy still copying
-the message whole. Until the work-canvas chunk lands the row is the same
-boxes with the labels alone. A chip opens what it names when this window can
+the message whole. Only a message that may hold chip lines (it opens with
+"About this ", or has one after a blank line) asks for the work-canvas
+chunk; until it lands the words show as they went. A chip opens what it names when this window can
 show it: a LifeOS document or a canvas item in the thread's pane, a held act
 in the Outbox, a task, mail, event or routine in its workspace's view (the
 view, not the row in it). A person, a project, a selection's file and
@@ -339,9 +340,11 @@ one of the chip's (`{at: 'lifeos', table}`, a `CanvasSource`, `{at:
 'item', id}`, `{at: 'work', pillar, id}`); a sent chip opens only what
 `openerOf` (SentChips.tsx) knows.
 
-**The list** (chrome/useWorkMentions.ts, chrome/CommandPopover.tsx): the
-text is asked a beat (120 ms) after the last key, the first ask at once,
-through the work-canvas chunk, which loads the first time. The last answer
+**The list** (chrome/useWorkMentions.ts, chrome/CommandPopover.tsx): on a
+host with Work on, the text is asked a beat (120 ms) after the last key,
+the first ask at once, through the work-canvas chunk (`askWorkMentions`),
+which loads the first time and decides whether the thread may mention
+Work's things at all (`mentionPlace`). The last answer
 stays on screen until the next lands, so the list never empties under the
 typing; until the first, one muted row says Loading…, and a kind that could
 not be searched says so in one muted row ("Couldn't reach LifeOS"). Each
@@ -359,10 +362,12 @@ holds a chip or asks `@` for Work's things, and by a bubble that went with
 chips; each kind's body is its own chunk behind that. The first paint
 carries only the chip port (`lib/contextChips.ts`, a type from
 `@shared/work` and no value), a few lines in the composer, the `@` hook
-(chrome/useWorkMentions.ts), the sent-chip parser and the bubble's bones
-(lib/sentChips.ts, UserMessage.tsx) and the seat's mount in `ThreadView`:
-1.8 kB of the entry chunk before mentions, about 3 kB more with them
-(estimated from the files minified, not measured in a build).
+(chrome/useWorkMentions.ts: the timing and nothing else), a few lines in
+the bubble (UserMessage.tsx `useSentChips`) and the seat's mount in
+`ThreadView`. Who may mention, the rows, the stale-row filter, the
+sent-chip parser and the chips themselves are the chunk's. Measured in
+the build that moved them there (with the question card's own chunk,
+surfaces/chunks.ts `questionChunk`), the entry is in the commit that says so.
 
 ## The store
 

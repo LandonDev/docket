@@ -18,7 +18,12 @@ vi.mock("../lib/contextCache", () => ({ useContextReading: () => null }));
 vi.mock("../lib/tcserver/slashCommands", () => ({ useSlashCommands: () => ({ commands: [], loaded: true, failed: false }) }));
 vi.mock("../work/canvas/mentions", async (importOriginal) => {
   const real = await importOriginal<typeof import("../work/canvas/mentions")>();
-  return { ...real, searchWorkMentions: (env: string, sessionId: string, text: string, draft: unknown) => search(env, sessionId, text, draft).then(real.resultOf) };
+  // The host is the fake; where the thread is and the rows are the chunk's own.
+  const askWorkMentions = async (env: string, sessionId: string, text: string) => {
+    const draft = real.mentionPlace(sessionId);
+    return draft ? real.resultOf(await search(env, sessionId, text, draft), !!draft.work) : null;
+  };
+  return { ...real, askWorkMentions };
 });
 
 import { Composer } from "./Composer";

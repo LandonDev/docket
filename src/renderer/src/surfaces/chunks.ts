@@ -76,6 +76,8 @@ export const virtualChunk = defineChunk("virtual", () => import("../chrome/railV
 export const messageListChunk = defineChunk("messageList", () => import("./TranscriptOutlineList"));
 /** A review's notice in the transcript: its line, or the held review's card (ReviewCard). */
 export const reviewChunk = defineChunk("review", () => import("./ReviewCard"));
+/** A harness's question in the transcript (QuestionCard): its card, asked for by the row that holds one and warmed with the first thread. */
+export const questionChunk = defineChunk("question", () => import("./QuestionCard"));
 
 /** The right panel's Computer section: the window live or as it was, and the thread's steps (threads/computer/). */
 export const computerChunk = defineChunk("computer", () => import("./threads/computer"));
@@ -127,6 +129,7 @@ export const allChunks = {
   virtualChunk,
   messageListChunk,
   reviewChunk,
+  questionChunk,
   computerChunk,
   workCanvasChunk,
   failureCardChunk,

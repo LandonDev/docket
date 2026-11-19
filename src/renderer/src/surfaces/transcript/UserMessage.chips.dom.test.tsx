@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 /**
  * A sent message's chips (docs/agents/work-canvas.md "Mentions"): the lines
- * the model read are drawn as chips over his words, the same boxes before
- * Work's chunk lands as after, and a chip that names something this window
- * can show opens it.
+ * the model read are drawn as chips over his words, and
+ * a chip that names something this window can show opens it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
@@ -61,11 +60,10 @@ describe("a sent message's chips", () => {
   it("are drawn over his words, the lines and their quotes gone from the text, the copy still whole", async () => {
     const { container } = mount();
     const bubble = container.querySelector<HTMLElement>("[data-user-bubble]")!;
-    // Before and after Work's chunk lands, the same labels in the same order.
-    const labels = () => [...bubble.querySelectorAll('[aria-label="About"] li')].map((li) => li.textContent);
-    expect(labels()).toEqual(["Book the ballroom", "Reply to Dana", "Budget", "Dana Ruiz"]);
+    // Read back by the work-canvas chunk, asked for only because the message may hold chip lines.
     await waitFor(() => expect(bubble.querySelector("[data-sent-chips]")).not.toBeNull());
-    expect(labels()).toEqual(["Book the ballroom", "Reply to Dana", "Budget", "Dana Ruiz"]);
+    const labels = [...bubble.querySelectorAll("[data-sent-chips] li")].map((li) => li.textContent);
+    expect(labels).toEqual(["Book the ballroom", "Reply to Dana", "Budget", "Dana Ruiz"]);
     expect(bubble.querySelector("pre")?.textContent).toBe("Say what the insurance must cover.");
     for (const li of bubble.querySelectorAll("[data-sent-chips] li")) expect(li.querySelector("svg")).not.toBeNull();
   });

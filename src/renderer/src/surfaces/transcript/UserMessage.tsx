@@ -12,7 +12,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { sentChipsOf, type SentChip } from "../../lib/sentChips";
 import { workCanvasChunk } from "../chunks";
 import { AttachmentChip, openAttachmentImages } from "../../chrome/AttachmentChip";
 import { SecondOpinionCard } from "../../chrome/SecondOpinionCard";
@@ -101,7 +100,7 @@ export function UserMessageBlock({
   const note = block.noteCard;
   const full = card && card.kind !== "handoff" ? "" : block.text;
   // What the message was about went as lines the model reads; here they are chips, and the rest his words.
-  const sent = useMemo(() => sentChipsOf(full), [full]);
+  const sent = useSentChips(full);
   const text = sent.text;
   const sessionId = useTranscriptSession();
 
@@ -160,7 +159,7 @@ export function UserMessageBlock({
         ) : null}
         {sent.chips.length > 0 ? (
           <div className={text || card || note ? "mb-2" : ""}>
-            <SentChipRow chips={sent.chips} sessionId={sessionId} environmentId={environmentId} />
+            {sessionId ? <SentChips chips={sent.chips} sessionId={sessionId} environmentId={environmentId} /> : null}
           </div>
         ) : null}
         {note ? (
@@ -226,37 +225,22 @@ function SecondOpinionLine({ card }: { card: SecondOpinionMeta }) {
 }
 
 const SentChips = workCanvasChunk.surface("SentChips");
-const BONE = "flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground";
+const NO_CHIPS = { chips: [] as const };
 
 /**
- * The chips a message went with (work/canvas/SentChips.tsx, which opens each
- * one). Work is not in the first paint: until its chunk lands the row is the
- * same boxes with the labels alone, so nothing moves when the glyphs come.
+ * The chips a message went with, read back from its lines by the
+ * work-canvas chunk (work/canvas/sentChips.ts), which draws and opens them
+ * (SentChips.tsx). Only a message that may hold chip lines asks for the
+ * chunk; until it lands the words show as they went.
  */
-function SentChipRow({ chips, sessionId, environmentId }: { chips: readonly SentChip[]; sessionId: string | undefined; environmentId: string }) {
-  const [ready, setReady] = useState(() => !!workCanvasChunk.loaded());
+function useSentChips(full: string) {
+  const maybe = full.startsWith("About this ") || full.includes("\n\nAbout this ");
+  const [, landed] = useState(0);
   useEffect(() => {
-    if (ready) return;
-    let live = true;
-    void workCanvasChunk.load().then(
-      () => live && setReady(true),
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [ready]);
-  if (ready && sessionId) return <SentChips chips={chips} sessionId={sessionId} environmentId={environmentId} />;
-  return (
-    <ul aria-label="About" className="flex flex-wrap gap-1">
-      {chips.map((chip, index) => (
-        <li key={`${index}:${chip.ref}`} className={BONE}>
-          <span className="size-3 shrink-0" />
-          <span className="min-w-0 truncate">{chip.label}</span>
-        </li>
-      ))}
-    </ul>
-  );
+    if (maybe && !workCanvasChunk.loaded()) void workCanvasChunk.load().then(() => landed((n) => n + 1), () => undefined);
+  }, [maybe]);
+  const parse = maybe ? workCanvasChunk.loaded()?.sentChipsOf : undefined;
+  return useMemo(() => (parse ? parse(full) : { ...NO_CHIPS, text: full }), [full, parse]);
 }
 
 /**
