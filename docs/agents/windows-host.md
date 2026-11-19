@@ -74,6 +74,8 @@ no groups (a negative pid throws, `detached` opens a console) and a child outliv
   row's log falls back to the call's named file or its output.
 - `stopChildTree` in update.ts stays: the installer must not meet any process running out of the
   install folder, whoever started it.
+- The Office helper, `tc-office.exe`, is compiled with csc.exe and adopted the same way as the job
+  helper; it drives Office by COM in his session ([work-office.md](work-office.md) "Windows").
 
 ## Links and config dirs
 
