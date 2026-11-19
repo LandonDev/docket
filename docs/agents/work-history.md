@@ -74,7 +74,10 @@ author), shown as suggestions.
 An agent's own idea on a shared document (§8.4): `/internal/doc/write` with
 `because: 'own'` on a row with `shared` goes into that agent's pending
 branch, made on its first write from a `before-agent` version; later writes
-rewrite the same branch.
+rewrite the same branch. That route is the LifeOS worker's, and a bot key's
+`asked` or `routine` counts as `own` there (only main can check either);
+TempCode's own agents write through `/internal/docs/write`, which takes
+main's verdict ([work-docs.md](work-docs.md) "The tools").
 
 - A branch is a fork of the live state, with the same item ids, kept as a
   Yjs state (a Convex file, or `branches/<id>.yjs` in the `.tcdoc`).
@@ -88,6 +91,11 @@ rewrite the same branch.
   after the nearest block before it that the document has; a moved one goes
   where the branch has it), then forks the branch again from the new live
   state with the rows left, so the next merge never doubles words.
+- **Pieces of a row** (milestone 20): a changed block's words are cut into
+  the changes a reader takes one at a time (`inlinePieces`), named
+  `<block id>#<n>`. Accepting a piece writes the block with only that piece
+  (`withPieces`), and the block stays pending for the rest; rejecting one
+  keeps the others as the branch's goal for that block.
   **Reject** drops rows the same way, or the whole branch.
 - Several branches stay pending at once and do not touch each other: each
   merges into the live document on its own.
@@ -115,7 +123,7 @@ doubled words (a test). Later versions carry the next `epoch`. Nothing calls
 | `work.history.cut {source, label?}` | operate | the version |
 | `work.history.restore {source, versionId}` | operate | `{mode: 'direct', versionId?}` or `{mode: 'branch', branchId, versionId}` |
 | `work.history.branches {source}` | read | `{branches: [{…row, diff}], names}` |
-| `work.history.decide {source, branchId, which, accept}` | operate | `{left}` (`which` is block ids or `all`) |
+| `work.history.decide {source, branchId, which, accept}` | operate | `{left}` (`which` is block ids, `<block id>#<n>` pieces, or `all`) |
 
 A source is `{at: 'lifeos', table: 'docs', id}` or a `.tcdoc`
 (`{at: 'file', host, path}`) on this host: a file whose host is another and
