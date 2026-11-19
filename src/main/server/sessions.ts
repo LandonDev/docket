@@ -2851,10 +2851,10 @@ export class SessionRegistry {
     return this.get(created.id) ?? created
   }
 
-  /** `session.create`: with a first message, the one-step start. */
-  async createSession(raw: CreateSessionInput): Promise<SessionMeta> {
+  /** `session.create`: with a first message, the one-step start. `by` is who sent it: the owner's own first message counts as his words (`ownerSaid`). */
+  async createSession(raw: CreateSessionInput, by?: UserTextBy): Promise<SessionMeta> {
     const { firstMessage, ...spec } = raw
-    return firstMessage ? this.startWith(spec, firstMessage) : this.create(spec)
+    return firstMessage ? this.startWith(spec, firstMessage, by ? { by } : {}) : this.create(spec)
   }
 
   async create(raw: CreateSessionInput, internal: { handoff?: boolean; routineRunId?: string; farWork?: boolean } = {}): Promise<SessionMeta> {

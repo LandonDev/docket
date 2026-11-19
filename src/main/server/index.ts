@@ -2951,7 +2951,7 @@ export async function startServer(
           case 'session.create': {
             // A create that asks for Work is admitted or refused by work/scope.ts; one that does not never reaches Work's code.
             if (req.params.scope === 'work' || req.params.about) work.admitSession(req.params, workCaller(principal))
-            const session = await registry.createSession(req.params)
+            const session = await registry.createSession(req.params, userTextByOf(principal))
             sendFrame({ id: req.id, ok: true, result: session })
             break
           }

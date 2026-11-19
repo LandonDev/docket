@@ -133,4 +133,12 @@ describe('startWith', () => {
     await expect(registry.createSession({ cwd: root, provider: 'claude', title: 'Refused', firstMessage: 'x' })).rejects.toThrow('refused')
     expect(registry.list().map((s) => s.title).sort()).toEqual(['Bare', 'With brief'])
   })
+
+  it("the first message carries who sent it: the owner's own counts as his words, the app's when nobody is named", async () => {
+    const byOf = (id: string) => store.eventsAfter(id, 0).map((row) => row.event).find((e) => e.type === 'user-text')
+    const his = await registry.createSession({ cwd: root, provider: 'claude', title: 'His', firstMessage: 'move it to 9:30' }, { kind: 'owner' })
+    expect(byOf(his.id)).toMatchObject({ text: 'move it to 9:30', by: { kind: 'owner' } })
+    const app = await registry.createSession({ cwd: root, provider: 'claude', title: 'App', firstMessage: 'go' })
+    expect(byOf(app.id)).toMatchObject({ by: { kind: 'app' } })
+  })
 })
