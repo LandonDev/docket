@@ -20,7 +20,7 @@ import { docs } from './index'
 import { createRelay, SOCKETS_MAX } from './relay'
 import { stopDocs } from './state'
 import { fromLifeos } from './threads'
-import { changedParts, docTools } from './tools'
+import { changedParts, docTools, SHARED_COMMENT } from './tools'
 
 /*
  * The docs pillar on this host: the Work service in process (its socket
@@ -210,6 +210,13 @@ describe('comments', () => {
     expect(rows[0]!.comments[0]!.authorMemberId).toBe('agent:env_box:t1')
     expect(names['agent:env_box:t1']).toBe('Northside PT kickoff')
     expect((await r.tool('doc_read', { item: 'i1' })).text).toContain('Open comments:\n- on “front desk”: Which desk?')
+  })
+
+  it('is refused on a shared document, which others read before he would', async () => {
+    const r = await rig({ shared: true })
+    expect(await r.tool('doc_comment', { item: 'i1', quote: 'front desk', body: 'Which desk?' })).toEqual({ text: SHARED_COMMENT, error: true })
+    const { rows } = await r.ask<{ rows: DocThreadRow[] }>('work.docs.threads', { source: r.source })
+    expect(rows).toEqual([])
   })
 
   it('words that are not there make no thread', async () => {

@@ -162,13 +162,16 @@ export const docTools: WorkTool[] = [
   },
   {
     name: 'doc_comment',
-    description: 'Comments on words in a document: `quote` is the words, exactly as they stand (the first place they stand is marked); `body` is the comment, plain text.',
+    description:
+      'Comments on words in a document only the owner sees: `quote` is the words, exactly as they stand (the first place they stand is marked); `body` is the comment, plain text. A shared document refuses it: others would read it before he did.',
     input: z.object({ ...target, quote: z.string().min(1).max(2000), body: z.string().min(1).max(20_000) }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as TargetArgs & { quote: string; body: string }
       try {
         const { t, shared, fence } = await resolve(ctx, a)
+        // A comment on a shared document reaches its other readers at once, with no press of his (milestone 50's hold review, finding 7).
+        if (shared) return fail(SHARED_COMMENT)
         const principal = agentPrincipal(ctx.host, ctx.sessionId)
         const made = (await changeThread(ctx, t, { op: 'create', body: commentBody(a.body), quote: a.quote }, principal)) as { thread?: { publicId: string } }
         const threadId = made.thread?.publicId
@@ -186,6 +189,8 @@ export const docTools: WorkTool[] = [
     }
   }
 ]
+
+export const SHARED_COMMENT = "Others read this document's comments, so yours would reach them before the owner saw it. Tell him in the thread, or suggest the change with doc_suggest."
 
 /** A comment's body as the editor keeps it: BlockNote block JSON. */
 export const commentBody = (text: string): string =>

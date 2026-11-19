@@ -135,7 +135,9 @@ export const internalDocRoutes: InternalRoute[] = [
       const anchorText = str(body, 'anchorText', 2000)
       const text = str(body, 'body', 20_000)
       const principal = principalOf(body)
-      await docIn(ctx, docId, fenceOf(body))
+      const row = await docIn(ctx, docId, fenceOf(body))
+      // A bot's comment on a shared document would reach its other readers before Landon saw it (milestone 50's hold review).
+      if (row.shared) throw new RouteError(403, "others read this document's comments: a bot comments only on a document Landon alone sees")
       // Found first where the mark goes, so no thread is made that cannot be anchored.
       if (!(await ctx.collab.hasQuote(docId, anchorText))) throw new RouteError(400, 'those words are not in the document')
       const { threadId } = (await ctx.convex('mutation', 'docs:createThread', { docId, body: commentBody(text), quote: anchorText, author: principal })) as { threadId: string }

@@ -357,6 +357,11 @@ describe('the internal document routes', () => {
     expect(JSON.parse(r.convex.threads[0]!.body)[0].content[0].text).toBe('Is Monday right?')
     await until('the mark reaches the editor', () => a.client.document.getXmlFragment(DOCUMENT_FRAGMENT).toString().includes(String(commented.body.threadId)))
     expect((await call(r.config.socketPath, '/internal/doc/comment', { docId: 'kd8', anchorText: 'not there', body: 'x', botId: 'key1', fence })).status).toBe(400)
+    // A bot's comment on a shared document is refused: it would reach the other readers before Landon saw it.
+    r.convex.docs.get('kd8')!.shared = true
+    expect((await call(r.config.socketPath, '/internal/doc/comment', { docId: 'kd8', anchorText: 'due Monday', body: 'Again?', botId: 'key1', fence })).status).toBe(403)
+    expect(r.convex.threads).toHaveLength(1)
+    r.convex.docs.get('kd8')!.shared = false
     // Another sector's document is not found, whatever the route.
     for (const route of ['/internal/doc/read', '/internal/doc/write', '/internal/doc/comment'])
       expect((await call(r.config.socketPath, route, { docId: 'kd9', markdown: 'x', because: 'asked', anchorText: 'x', body: 'x', botId: 'key1', fence })).status, route).toBe(404)
