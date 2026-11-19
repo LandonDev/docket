@@ -580,6 +580,15 @@ describe('the attacker under full access', () => {
     expect(acts(h)).toBe(2)
   })
 
+  it('refuses to hold a flagged click with no target while nobody knows where the pointer is, and runs nothing', async () => {
+    useHold()
+    const { h } = await thread('work')
+    const o = await h.run('computer_act', { app: 'TextEdit', action: 'left_click', confirm: { kind: 'send', what: 'the note to Dana' } })
+    expect(o).toMatchObject({ isError: true, body: HELD_UNPLACED })
+    expect(held).toHaveLength(0)
+    expect(acts(h)).toBe(0)
+  })
+
   it('holds a mouse down after an earlier call left the pointer on Send', async () => {
     useHold()
     const { h } = await thread('work')

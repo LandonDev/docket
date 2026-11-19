@@ -1150,3 +1150,42 @@ describe('readOutward, heldTargets and screenMark: what the fifth review closed'
     )
   })
 })
+
+describe('heldTargets and restage: what the review of the fifth round closed', () => {
+  const TO_DANA = `app "Slack" · window "Slack" · 1280×800 · focused [3]
+[1] window "Slack"
+  [2] group "Composer"
+    [3] text area "Message" = "the wire details" focused caret 16
+    [4] button "Send to Dana"
+      [5] image "paperplane"`
+
+  it('binds a held click by name to the element the name found, and refuses the press when it now sits in another Send', () => {
+    const s = steps({ action: 'left_click', named: 'paperplane' })
+    const now = screen(TO_DANA, SLACK)
+    const targets = heldTargets(s, now)!
+    expect(targets).toEqual([{ step: 0, param: 'point', sig: 'image:paperplane < button:Send to Dana < group:Composer < window:Slack', ordinal: 0, count: 1 }])
+    const mark = screenMark(now)
+    expect(restage(s, targets, mark, screen(TO_DANA, SLACK))).toEqual(s)
+    const toEve = screen(TO_DANA.replace('Send to Dana', 'Send to Eve'), SLACK)
+    expect(screenMark(toEve)).toBe(mark)
+    expect(restage(s, targets, mark, toEve)).toBeNull()
+    // a second element of that name beside it: the name no longer finds the one he was shown
+    expect(restage(s, targets, mark, screen(`${TO_DANA}\n    [6] button "paperplane"`, SLACK))).toBeNull()
+  })
+
+  it('refuses to hold a click by a name that finds no element, or several, on the read', () => {
+    const now = screen(TO_DANA, SLACK)
+    expect(heldTargets(steps({ action: 'left_click', named: 'Send' }), now)).toBeNull()
+    expect(heldTargets(steps({ action: 'left_click', named: 'paperplane' }), screen(`${TO_DANA}\n  [6] image "paperplane"`, SLACK))).toBeNull()
+    // an exact name before a case-blind one, as the service picks
+    expect(heldTargets(steps({ action: 'left_click', named: 'paperplane' }), screen(`${TO_DANA}\n  [6] image "PaperPlane"`, SLACK))).toEqual([expect.objectContaining({ sig: 'image:paperplane < button:Send to Dana < group:Composer < window:Slack' })])
+  })
+
+  it('refuses to hold a click with no target when nobody knows where the pointer is', () => {
+    const now = screen(COMPOSE_TEXT, MAIL)
+    expect(heldTargets(steps({ action: 'left_click' }), now)).toBeNull()
+    expect(heldTargets(steps({ action: 'left_mouse_down' }, { action: 'left_mouse_up' }), now)).toBeNull()
+    // a pointer this call puts on a control first is known
+    expect(heldTargets(steps({ action: 'mouse_move', element: 3 }, { action: 'left_click' }), now)).toHaveLength(2)
+  })
+})

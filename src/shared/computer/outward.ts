@@ -493,20 +493,33 @@ function elementAt(screen: Screen, point: readonly number[]): number | null {
   return best?.index ?? null
 }
 
-/** A name as the service matches it (NamedTarget.swift): trimmed, three dots read as an ellipsis, case-blind. */
-const nameKey = (name: string): string => name.trim().replace(/\.\.\./g, '…').toLowerCase()
+/** A name as the service matches it (NamedTarget.swift): trimmed, three dots read as an ellipsis; `nameKey` case-blind. */
+const nameExact = (name: string): string => name.trim().replace(/\.\.\./g, '…')
+const nameKey = (name: string): string => nameExact(name).toLowerCase()
+/** A line of text is named by its string. */
+const ownName = (e: ScreenElement): string | undefined => (e.role === 'text' ? (e.name ?? e.value) : e.name)
 
-/** Every element a step's `named` may resolve to when it runs, in reading order: a line of text is named by its string. */
+/** Every element a step's `named` may resolve to when it runs, in reading order. */
 function namedElements(screen: Screen, name: string): number[] {
   const want = nameKey(name)
   if (!want) return []
   return [...screen.elements.values()]
     .filter((e) => {
-      const own = e.role === 'text' ? (e.name ?? e.value) : e.name
+      const own = ownName(e)
       return own !== undefined && nameKey(own) === want
     })
     .map((e) => e.index)
     .sort((a, b) => a - b)
+}
+
+/** The one element a name finds as the service picks it: an exact name before a case-blind one, among several the one that acts by itself; null for none, or still several. */
+function namedTarget(screen: Screen, name: string): number | null {
+  const hits = namedElements(screen, name)
+  const exact = hits.filter((i) => nameExact(ownName(screen.elements.get(i)!)!) === nameExact(name))
+  const pool = exact.length ? exact : hits
+  const acting = pool.filter((i) => pressable(screen.elements.get(i)!))
+  const one = acting.length ? acting : pool
+  return one.length === 1 ? one[0]! : null
 }
 
 /** The one element a pointer is on: the element it was put on, what lies under its point, or the one control its name finds; null when nobody can tell. */
@@ -514,10 +527,7 @@ function pointedAt(screen: Screen, p: PointerAt): number | null {
   if (!p) return null
   if ('element' in p) return screen.elements.has(p.element) ? p.element : null
   if ('coordinate' in p) return elementAt(screen, p.coordinate)
-  const hits = namedElements(screen, p.named)
-  // Among several, the service takes the one that acts by itself.
-  const acting = hits.length > 1 ? hits.filter((i) => pressable(screen.elements.get(i)!)) : hits
-  return acting.length === 1 ? acting[0]! : null
+  return namedTarget(screen, p.named)
 }
 
 const hostOf = (url: string): string | null => {
@@ -865,7 +875,7 @@ export function pointerAfter(steps: readonly ComputerAction[], before: PointerAt
 /** One element a held step acts on, said without its index: an index is the service session's, and that may not outlive the hold. */
 export interface HeldTarget {
   step: number
-  /** which parameter named it; `focus`: the element a key step goes to; `point`: what lies under a step's coordinate, or under the pointer for a click with no target */
+  /** which parameter named it; `focus`: the element a key step goes to; `point`: what lies under a step's coordinate, what a click's `named` finds, or what lies under the pointer for a click with no target */
   param: 'element' | 'start_element' | 'focus' | 'point'
   /** role, name and the roles and names above it */
   sig: string
@@ -888,10 +898,13 @@ function placeOf(screen: Screen, index: number): { sig: string; ordinal: number;
 }
 
 const targetlessClick = (a: ComputerAction): boolean => CLICKS.includes(a.action) && a.element === undefined && a.coordinate === undefined && a.named === undefined && a.menu === undefined
+/** A click or a press by name: the name is found again when the step runs. */
+const namedClick = (a: ComputerAction): boolean => (CLICKS.includes(a.action) || a.action === 'perform') && a.named !== undefined && a.element === undefined && a.coordinate === undefined
 
 /**
- * The elements a call's steps act on, as the screen names them now. Null when a step names one the screen lacks, or
- * clicks a point on none. `pointer` is where an earlier call left the pointer: a click with no target lands there.
+ * The elements a call's steps act on, as the screen names them now. Null when a step names one the screen lacks,
+ * clicks a point on none, clicks by a name that finds no one element, or clicks with no target where nobody knows the
+ * pointer is. `pointer` is where an earlier call left the pointer: a click with no target lands there.
  */
 export function heldTargets(steps: readonly ComputerAction[], screen: Screen, pointer: PointerAt = null): HeldTarget[] | null {
   const out: HeldTarget[] = []
@@ -909,10 +922,10 @@ export function heldTargets(steps: readonly ComputerAction[], screen: Screen, po
       if (!place) return null
       out.push({ step, param: 'point', ...place })
     }
-    // A click with no target lands wherever the pointer is when it runs: it must still be on what he was shown.
-    const at = targetlessClick(a) ? pointerAfter(steps.slice(0, step), pointer) : null
-    if (at) {
-      const index = pointedAt(screen, at)
+    // A click by name, or with no target where the pointer is, finds its element when it runs: it must find the one he
+    // was shown (a "paperplane" still inside "Send to Dana"). With no pointer known the click could land anywhere.
+    if (namedClick(a) || targetlessClick(a)) {
+      const index = namedClick(a) ? namedTarget(screen, a.named!) : pointedAt(screen, pointerAfter(steps.slice(0, step), pointer))
       const place = index !== null ? placeOf(screen, index) : null
       if (!place) return null
       out.push({ step, param: 'point', ...place })
@@ -995,7 +1008,9 @@ export function restage(steps: readonly ComputerAction[], targets: readonly Held
       if (screen.focused !== index) return null
     } else if (t.param === 'point') {
       if (targetlessClick(step)) pointed.push([t.step, index])
-      else if (!step.coordinate || elementAt(screen, step.coordinate) !== index) return null
+      else if (namedClick(step)) {
+        if (namedTarget(screen, step.named!) !== index) return null
+      } else if (!step.coordinate || elementAt(screen, step.coordinate) !== index) return null
     } else step[t.param] = index
   }
   for (const [step, index] of pointed) if (pointedAt(screen, pointerAfter(out.slice(0, step), pointer)) !== index) return null
