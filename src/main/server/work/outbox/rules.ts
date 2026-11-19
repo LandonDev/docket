@@ -30,10 +30,15 @@ export interface RuleAddons {
 /** A tool as it was listed, as one string: what a rule was set for. */
 export const toolDigest = (tool: Pick<AddonTool, 'description' | 'inputSchema'>): string => sha256Hex(canonical({ description: tool.description, inputSchema: tool.inputSchema }))
 
-/** Whether a stored rule still stands for the add-on as it is and the tool as it is listed now. A tool this host has not listed (the server is down) keeps a rule set under the same spec. */
+/**
+ * Whether a stored rule still stands for the add-on as it is and the tool as it is listed now. A tool this host does
+ * not list (the server is down, or dropped it) keeps a Held or Off rule set under the same spec, which only tightens;
+ * Runs stands only for the tool listed as it was set for, so a call to an unlisted tool is held, and a watch's refused.
+ */
 export function stands(rule: StoredRule, row: AddonRow, tool: AddonTool | null): boolean {
   if (rule.specDigest !== specDigest(row.spec)) return false
-  return tool === null || rule.toolDigest === toolDigest(tool)
+  if (tool === null) return rule.rule !== 'runs'
+  return rule.toolDigest === toolDigest(tool)
 }
 
 /** The rule that stands for one tool, or null: none was set, or the one that was set was for another server or another definition of the tool. */

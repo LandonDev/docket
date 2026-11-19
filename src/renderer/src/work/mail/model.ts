@@ -24,10 +24,12 @@ export interface MailActView {
   files: string[];
   /** an agent's rewrite waits in the draft */
   proposed: boolean;
+  /** the mail a reply answers, in words, as it goes under the body; null when there is none */
+  quote: string | null;
 }
 
 export function mailActView(payload: unknown): MailActView {
-  const p = (payload ?? {}) as { message?: Record<string, unknown>; proposed?: unknown };
+  const p = (payload ?? {}) as { message?: Record<string, unknown>; proposed?: unknown; quote?: unknown };
   const m = p.message ?? {};
   const list = (key: string): Address[] => (Array.isArray(m[key]) ? (m[key] as Address[]).filter((a) => typeof a?.address === "string") : []);
   const from = m.from && typeof (m.from as Address).address === "string" ? [m.from as Address] : [];
@@ -41,5 +43,6 @@ export function mailActView(payload: unknown): MailActView {
   const files = Array.isArray(m.attachments) ? (m.attachments as Array<{ name?: unknown }>).flatMap((a) => (typeof a?.name === "string" ? [a.name] : [])) : [];
   // The html is what goes when there is one, so the view reads from it (the hold review's finding 11).
   const body = typeof m.html === "string" && m.html.trim() ? htmlWords(m.html) : typeof m.text === "string" ? m.text.trim() : "";
-  return { rows, body, files, proposed: !!p.proposed };
+  const quote = typeof p.quote === "string" && p.quote.trim() ? htmlWords(p.quote) || null : null;
+  return { rows, body, files, proposed: !!p.proposed, quote };
 }

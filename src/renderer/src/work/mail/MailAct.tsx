@@ -10,7 +10,7 @@ import { mailActView } from "./model";
  * left in the draft beside the thread, never here.
  */
 export function View({ item }: ActViewProps) {
-  const { rows, body, files, proposed } = mailActView(item.payload);
+  const { rows, body, files, proposed, quote } = mailActView(item.payload);
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
@@ -37,6 +37,8 @@ export function View({ item }: ActViewProps) {
         ))}
       </dl>
       {body ? <div className="whitespace-pre-wrap break-words border-t border-border pt-4 text-sm leading-[22px] text-foreground">{body}</div> : null}
+      {/* What LifeOS puts under a reply goes too: shown in its place, muted, as a mail client quotes. */}
+      {quote ? <div data-mail-quote className="whitespace-pre-wrap break-words text-[13px] leading-5 text-muted-foreground">{quote}</div> : null}
       {files.length ? (
         <div className="flex flex-wrap gap-2">
           {files.map((name) => (

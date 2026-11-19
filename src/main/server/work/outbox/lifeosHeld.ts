@@ -51,7 +51,9 @@ export const MailSendPayloadSchema = z.object({
   /** why LifeOS's last send of it failed */
   error: z.string().optional(),
   /** an agent's rewrite waits in the draft (`outbox.proposed`): subject, text and who proposed it */
-  proposed: z.looseObject({ subject: z.string().optional(), text: z.string().optional(), by: z.string().optional() }).optional()
+  proposed: z.looseObject({ subject: z.string().optional(), text: z.string().optional(), by: z.string().optional() }).optional(),
+  /** the mail a reply answers, as LifeOS puts it under the body (`compose.get`'s quote, html); read with the item, so the Outbox shows all that goes */
+  quote: z.string().optional()
 })
 export type MailSendPayload = z.infer<typeof MailSendPayloadSchema>
 
@@ -281,9 +283,9 @@ export class LifeosHeldItems implements LifeosHeld {
       await this.titlesFor([row])
       return this.calendarItem(row)
     }
-    let got: { row: OutboxDoc } | null
+    let got: { row: OutboxDoc; quote?: string } | null
     try {
-      got = await this.deps.ctx.lifeos.owner().query<{ row: OutboxDoc } | null>(LIFEOS_HELD_FNS.mailGet, { id: ref.id })
+      got = await this.deps.ctx.lifeos.owner().query<{ row: OutboxDoc; quote?: string } | null>(LIFEOS_HELD_FNS.mailGet, { id: ref.id })
     } catch (err) {
       // An id LifeOS cannot read is no held item; LifeOS out of reach is said as it is.
       if (/validat|invalid|not found|does not match/i.test(errorText(err))) return null
@@ -292,7 +294,8 @@ export class LifeosHeldItems implements LifeosHeld {
     const row = got?.row
     // Only this host's own: a press through this host never reaches a draft another host's thread, or no thread, made.
     if (!row || row.origin?.host !== this.deps.ctx.host) return null
-    return this.mailItem(row)
+    // The quote goes under a reply's body (milestone 50's hold review, 28): the item read for his eyes carries it.
+    return this.mailItem(row, got?.quote)
   }
 
   async discard(ref: LifeosRef): Promise<void> {
@@ -424,9 +427,9 @@ export class LifeosHeldItems implements LifeosHeld {
     }
   }
 
-  private mailItem(row: OutboxDoc): OutboxItem | null {
+  private mailItem(row: OutboxDoc, quote?: string): OutboxItem | null {
     if (row.message?.kind !== 'mail' || (row.status !== 'draft' && row.status !== 'failed')) return null
-    const payload = MailSendPayloadSchema.safeParse({ id: row._id, status: row.status, message: row.message, ...(row.error ? { error: row.error } : {}), ...(row.proposed ? { proposed: row.proposed } : {}) })
+    const payload = MailSendPayloadSchema.safeParse({ id: row._id, status: row.status, message: row.message, ...(row.error ? { error: row.error } : {}), ...(row.proposed ? { proposed: row.proposed } : {}), ...(quote ? { quote } : {}) })
     if (!payload.success) return null
     const words = mailWords(payload.data)
     const session = row.origin?.threadId ? this.deps.session(row.origin.threadId) : null

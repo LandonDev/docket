@@ -75,6 +75,8 @@ export class FakeOutboxLifeos implements LifeosClient {
   private n = 0
 
   /** A draft a thread's key made, as `bot.mail.draft` leaves it. */
+  /** what LifeOS keeps under a reply's body, by draft id (`outboxQuotes`) */
+  quotes = new Map<string, string>()
   draft(over: { to?: string[]; cc?: string[]; subject?: string; text?: string; threadId?: string; host?: string; sector?: string; status?: string; accountId?: string; routineRunId?: string; workspaceId?: string; at?: number } = {}): string {
     const id = `ob_${++this.n}`
     const at = over.at ?? Date.now()
@@ -149,7 +151,7 @@ export class FakeOutboxLifeos implements LifeosClient {
     const row = typeof args.id === 'string' ? this.rows.get(args.id) : undefined
     switch (fn) {
       case 'compose:get':
-        return (row ? { row, urls: {} } : null) as T
+        return (row ? { row, ...(this.quotes.has(row._id) ? { quote: this.quotes.get(row._id) } : {}), urls: {} } : null) as T
       case 'compose:send': {
         if (!row) throw new Error('not found')
         if (row.status !== 'draft') throw new Error('This mail is no longer a draft.')

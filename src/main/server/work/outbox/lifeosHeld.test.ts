@@ -78,6 +78,16 @@ describe('a draft a Work thread made in LifeOS', () => {
     expect(sends()).toEqual([])
   })
 
+  it("carries a reply's quote when read for his eyes, since LifeOS sends it under the body", async () => {
+    const id = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Attached.' })
+    rig.lifeos.quotes.set(id, '<p>On Tue, Dana wrote:</p><p>Can you send the budget?</p>')
+    rig.lifeos.fire()
+    await settled()
+    const [listed] = (await list()).items
+    const read = await rig.rpc<OutboxItem>('work.outbox.get', { ref: listed!.ref })
+    expect((read.payload as MailSendPayload).quote).toBe('<p>On Tue, Dana wrote:</p><p>Can you send the budget?</p>')
+  })
+
   it('stays held while he is away', async () => {
     rig.away.enabled = true
     rig.lifeos.draft()

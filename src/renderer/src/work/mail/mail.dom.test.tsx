@@ -116,6 +116,11 @@ describe("a held mail in the Outbox", () => {
     expect(screen.getByText("A rewrite waits in the draft beside its thread.")).toBeTruthy();
   });
 
+  it("shows the mail a reply answers, which goes under the body", () => {
+    render(<MailAct item={item({ ...payload, quote: "<p>On Tue, Marisol wrote:</p><p>Can you resend invoice 1042?</p>" })} env="box" />);
+    expect(document.querySelector("[data-mail-quote]")!.textContent).toBe("On Tue, Marisol wrote:\n\nCan you resend invoice 1042?");
+  });
+
   it("reads its words from the html that goes, not a text that says otherwise", () => {
     const view = mailActView({ message: { ...payload.message, text: "Nothing to see.", html: '<p>Pay <a href="https://pay.example">here</a>.</p>' } });
     expect(view.body).toBe("Pay here (https://pay.example).");
@@ -123,7 +128,7 @@ describe("a held mail in the Outbox", () => {
 
   it("names a mail with no subject and no rewrite plainly", () => {
     const view = mailActView({ message: { kind: "mail", to: [{ address: "a@b.co" }], cc: [], bcc: [], subject: " ", text: "" } });
-    expect(view).toEqual({ rows: [{ label: "To", people: [{ address: "a@b.co" }] }, { label: "Subject", text: "(no subject)" }], body: "", files: [], proposed: false });
+    expect(view).toEqual({ rows: [{ label: "To", people: [{ address: "a@b.co" }] }, { label: "Subject", text: "(no subject)" }], body: "", files: [], proposed: false, quote: null });
   });
 });
 
