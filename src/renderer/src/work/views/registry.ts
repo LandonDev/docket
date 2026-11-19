@@ -41,6 +41,8 @@ export interface WorkViewDef {
   order: number;
   /** The row's one muted trailing fact ("4 unread", "2:00 PM"), or null for none. */
   fact(workspace: WorkspaceMeta): string | null;
+  /** The fact as a hook, for one that reads LifeOS live; called once per row on every column render, in place of `fact`. */
+  useFact?: (workspace: WorkspaceMeta, sector: SectorKey) => string | null;
   chunk: Chunk<WorkViewModule>;
 }
 

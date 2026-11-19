@@ -139,6 +139,7 @@
 @source "../../../node_modules/work-kit/src/ui/avatar.tsx";
 @source "../../../node_modules/work-kit/src/ui/button.tsx";
 @source "../../../node_modules/work-kit/src/ui/calendar.tsx";
+@source "../../../node_modules/work-kit/src/ui/checkbox.tsx";
 @source "../../../node_modules/work-kit/src/ui/cn.ts";
 @source "../../../node_modules/work-kit/src/ui/collapsible.tsx";
 @source "../../../node_modules/work-kit/src/ui/combobox.tsx";
@@ -150,6 +151,7 @@
 @source "../../../node_modules/work-kit/src/ui/input.tsx";
 @source "../../../node_modules/work-kit/src/ui/internal/joined-script.ts";
 @source "../../../node_modules/work-kit/src/ui/internal/trackpad-swipe.ts";
+@source "../../../node_modules/work-kit/src/ui/item.tsx";
 @source "../../../node_modules/work-kit/src/ui/kbd.tsx";
 @source "../../../node_modules/work-kit/src/ui/popover.tsx";
 @source "../../../node_modules/work-kit/src/ui/scroll-area.tsx";
@@ -163,5 +165,15 @@
 @source "../../../node_modules/work-kit/src/ui/toggle-group.tsx";
 @source "../../../node_modules/work-kit/src/ui/toggle.tsx";
 @source "../../../node_modules/work-kit/src/ui/tooltip.tsx";
+@source "../../../node_modules/work-kit/src/views/agenda/agenda-list.tsx";
+@source "../../../node_modules/work-kit/src/views/agenda/agenda-month.tsx";
+@source "../../../node_modules/work-kit/src/views/agenda/agenda-week.tsx";
+@source "../../../node_modules/work-kit/src/views/agenda/client.tsx";
+@source "../../../node_modules/work-kit/src/views/index.ts";
+@source "../../../node_modules/work-kit/src/views/kit.tsx";
 @source "../../../node_modules/work-kit/src/views/lib/agenda.ts";
 @source "../../../node_modules/work-kit/src/views/lib/format.ts";
+@source "../../../node_modules/work-kit/src/views/lib/use-now.ts";
+@source "../../../node_modules/work-kit/src/views/tasks/client.tsx";
+@source "../../../node_modules/work-kit/src/views/tasks/task-list.tsx";
+@source "../../../node_modules/work-kit/src/views/testing.tsx";

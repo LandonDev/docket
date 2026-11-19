@@ -1,8 +1,12 @@
 import { ConvexProvider } from "convex/react";
-import { memo, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import type { ContextChip } from "@shared/work";
-import { addDays, endOf, groupByDay, leaveAt, startOfDay } from "work-kit/views/lib/agenda";
+import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
+import { addDays, endOf, formatPeriod, groupByDay, leaveAt, localeWeekStart, shiftPeriod, startOfDay, viewRange } from "work-kit/views/lib/agenda";
 import { formatDayHeading, formatLeave, formatTime } from "work-kit/views/lib/format";
+import { SectorDot } from "../../chrome/WorkspaceGlyph";
+import { ChevronLeft, ChevronRight, Plus } from "../../chrome/icons";
+import { ChoiceToggle } from "../../components/choice-toggle";
 import { Button } from "../../components/ui/button";
 import { reveal } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -10,38 +14,106 @@ import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/client";
 import { useMinute } from "../tasks/minute";
+import { shared } from "../tasks/store";
+import { NewEventDialog } from "./NewEventDialog";
 import type { WorkViewProps } from "../views/registry";
 
 /**
  * A Work workspace's Agenda (prototype workspace.html, "Four rows"): its
- * sector's next two weeks from LifeOS, by day, each event at its time with
- * where it is and when to leave. Prepare starts a thread about the event,
- * with the event in the composer as a chip; nothing runs until he sends.
+ * sector's calendar from LifeOS as a List (two weeks by day, each event at
+ * its time with where it is and when to leave), a Week or a Month, the
+ * latter two LifeOS's own (work-kit's views). Prepare starts a thread about
+ * an event, with the event in the composer as a chip; nothing runs until he
+ * sends. New event is a calendar act LifeOS holds until he presses Add.
  */
 
 const DAYS = 14;
+type AgendaView = "list" | "week" | "month";
+const VIEWS = [
+  { value: "list", label: "List" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+] as const;
+const weekStart = localeWeekStart();
+
+/** What the header and the body share: the view, the day it is on, and the New event dialog (null: closed; a slot's start or `now`). */
+const state = shared<{ view: AgendaView; day: number; adding: number | "now" | null }>({ view: "list", day: startOfDay(Date.now()), adding: null });
+const go = (patch: Partial<ReturnType<typeof state.get>>) => state.set({ ...state.get(), ...patch });
+
+export function Head(_props: WorkViewProps) {
+  const { view, day } = state.use();
+  return (
+    <>
+      {view !== "list" ? (
+        <>
+          <span className="text-[13px] text-muted-foreground tabular-nums">{formatPeriod(view, day, weekStart)}</span>
+          <Button variant="ghost" size="sm" onClick={() => go({ day: startOfDay(Date.now()) })}>
+            Today
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view}`} onClick={() => go({ day: shiftPeriod(view, day, -1) })}>
+            <ChevronLeft />
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label={`Next ${view}`} onClick={() => go({ day: shiftPeriod(view, day, 1) })}>
+            <ChevronRight />
+          </Button>
+        </>
+      ) : null}
+      <ChoiceToggle label="Show as" value={view} options={VIEWS} onChange={(next) => go({ view: next })} />
+      <Button variant="ghost" size="sm" onClick={() => go({ adding: "now" })}>
+        <Plus />
+        New event
+      </Button>
+    </>
+  );
+}
 
 export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
+  const { adding } = state.use();
+  // Each visit opens on today's list.
+  useEffect(() => () => state.set({ view: "list", day: startOfDay(Date.now()), adding: null }), []);
   if (!lifeos.client) return <AgendaSkeleton />;
   return (
     <ConvexProvider client={lifeos.client}>
       <Agenda client={clients.agenda} startThread={startThread} />
+      {adding !== null ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} onClose={() => go({ adding: null })} /> : null}
     </ConvexProvider>
   );
 }
 
+/** What the shared week and month draw with in TempCode: the sector's dot, no faces, no copy reference. */
+const kit: ViewsKit = {
+  SectorMark: ({ sector, className }) => <SectorDot sector={sector} className={className} />,
+  Face: () => null,
+  openTask: () => {},
+};
+
 function Agenda({ client, startThread }: { client: AgendaClient; startThread: (about: ContextChip) => void }) {
+  const { view, day } = state.use();
   const now = useMinute();
-  const from = startOfDay(now);
-  const to = addDays(from, DAYS);
+  const range = view === "list" ? { from: day, to: addDays(day, DAYS) } : viewRange(view, day, weekStart);
+  const { from, to } = range;
   const events = client.useEvents(from, to);
   const latest = useRef(startThread);
   latest.current = startThread;
   const prepare = useMemo(() => (event: AgendaEvent) => latest.current({ kind: "event", label: event.title, ref: { at: "lifeos", table: "events", id: event._id } }), []);
-  const days = useMemo(() => (events ? groupByDay(events, from, to) : null), [events, from, to]);
-  if (!days) return <AgendaSkeleton />;
-  if (!days.length) return <EmptyState title="Nothing scheduled" />;
+  const days = useMemo(() => (events && view === "list" ? groupByDay(events, from, to) : null), [events, view, from, to]);
+  if (!events) return <AgendaSkeleton />;
+  // An event or a day picked in the week or month opens that day's list, where Prepare is.
+  const toDay = (ms: number) => go({ view: "list", day: startOfDay(ms) });
+  if (view !== "list")
+    return (
+      <ViewsKitProvider kit={kit}>
+        <div className="h-full px-6 pt-2 pb-6">
+          {view === "week" ? (
+            <AgendaWeek events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onCreate={(at) => go({ adding: at ?? "now" })} />
+          ) : (
+            <AgendaMonth events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onPickDay={toDay} />
+          )}
+        </div>
+      </ViewsKitProvider>
+    );
+  if (!days?.length) return <EmptyState title="Nothing scheduled" />;
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-6 py-6">
       {days.map(({ day, events: rows }) => (

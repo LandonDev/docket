@@ -4,7 +4,7 @@ import { RailRow } from "../../chrome/RailRow";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { openWorkView, setLifeosProjects, useWorkView, workColumnPort, workStartPort, type LifeosProjectRow } from "../../lib/workSwitch";
 import { addContextChip } from "../canvas/chips";
-import { workViewList } from "../views/registry";
+import { type WorkViewDef, workViewList } from "../views/registry";
 import { openLifeosProject } from "./actions";
 import { useLifeosQuery, useLifeosSession } from "./lifeos";
 
@@ -53,18 +53,25 @@ export function WorkColumnHead({ workspace }: { workspace: WorkspaceMeta }) {
   return (
     <div className="flex flex-col gap-1 px-2 pt-2 pb-2">
       {workViewList().map((view) => (
-        <RailRow
-          key={view.id}
-          icon={view.icon}
-          label={view.label}
-          trailing={view.fact(workspace)}
-          selected={shown?.workspaceId === workspace.id && shown.view === view.id}
-          // The row again closes it: the threads come back.
-          onClick={() => openWorkView(shown?.workspaceId === workspace.id && shown.view === view.id ? null : { workspaceId: workspace.id, view: view.id })}
-          intent={{ onPointerEnter: view.chunk.preload, onFocus: view.chunk.preload }}
-        />
+        <ViewRow key={view.id} view={view} workspace={workspace} sector={sector} selected={shown?.workspaceId === workspace.id && shown.view === view.id} />
       ))}
     </div>
+  );
+}
+
+/** One view's row; its own component, so a view's live fact (`useFact`) is a hook of its own. */
+function ViewRow({ view, workspace, sector, selected }: { view: WorkViewDef; workspace: WorkspaceMeta; sector: SectorKey; selected: boolean }) {
+  const fact = view.useFact ? view.useFact(workspace, sector) : view.fact(workspace);
+  return (
+    <RailRow
+      icon={view.icon}
+      label={view.label}
+      trailing={fact}
+      selected={selected}
+      // The row again closes it: the threads come back.
+      onClick={() => openWorkView(selected ? null : { workspaceId: workspace.id, view: view.id })}
+      intent={{ onPointerEnter: view.chunk.preload, onFocus: view.chunk.preload }}
+    />
   );
 }
 

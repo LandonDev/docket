@@ -1,6 +1,7 @@
 import { defineChunk } from "../../lib/lazyChunk";
 import { Calendar } from "../icons";
 import type { WorkViewDef } from "../views/registry";
+import { useNextEvent } from "../tasks/facts";
 
 /**
  * The Agenda row of a linked Work workspace and its view (docs/agents/work-agenda.md):
@@ -12,5 +13,6 @@ export const agendaView: WorkViewDef = {
   icon: Calendar,
   order: 2,
   fact: () => null,
+  useFact: useNextEvent,
   chunk: defineChunk("work-agenda-view", () => import("./AgendaView")),
 };
