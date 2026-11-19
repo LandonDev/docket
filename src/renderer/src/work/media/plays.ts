@@ -1,4 +1,5 @@
-import { playFor, VIEWER_DEFAULT_PLAYS, type MediaPlay, type MediaVersion } from "@shared/contract-work-media";
+import { playFor, VIEWER_DEFAULT_PLAYS } from "@shared/mediaFrames";
+import type { MediaPlay, MediaVersion } from "@shared/contract-work-media";
 
 /**
  * What this viewer's `<video>` decodes, asked of the element itself, so the

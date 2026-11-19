@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { clock, frameStart, frameTimecode, type FrameTable, type MediaAnchor, type MediaNote, type MediaRegion, type MediaVersion, type MediaView } from "@shared/contract-work-media";
+import { clock, frameStart, frameTimecode } from "@shared/mediaFrames";
+import type { FrameTable, MediaAnchor, MediaNote, MediaRegion, MediaVersion, MediaView } from "@shared/contract-work-media";
 import type { ContextChip } from "@shared/work";
 import { RowsMenu } from "../../chrome/menuRows";
 import { ChevronDown, X } from "../../chrome/icons";

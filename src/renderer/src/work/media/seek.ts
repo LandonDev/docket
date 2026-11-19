@@ -1,4 +1,5 @@
-import { frameAt, frameCentre, frameCount, tableFps, type FrameTable } from "@shared/contract-work-media";
+import { frameAt, frameCentre, frameCount, tableFps } from "@shared/mediaFrames";
+import type { FrameTable } from "@shared/contract-work-media";
 
 /**
  * Frame-accurate seeking on a `<video>` (docs/agents/work-media.md).

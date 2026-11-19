@@ -1,4 +1,5 @@
-import { clock, frameStart, type FrameTable, type MediaNote } from "@shared/contract-work-media";
+import { clock, frameStart } from "@shared/mediaFrames";
+import type { FrameTable, MediaNote } from "@shared/contract-work-media";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Author, authorOf } from "./parts";
 

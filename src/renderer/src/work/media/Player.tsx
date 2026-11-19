@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { clock, frameCentre, frameCount, frameStart, tableDuration, tableFps, type FrameTable, type MediaNote, type MediaRegion, type MediaVersion } from "@shared/contract-work-media";
+import { clock, frameCentre, frameCount, frameStart, tableDuration, tableFps } from "@shared/mediaFrames";
+import type { FrameTable, MediaNote, MediaRegion, MediaVersion } from "@shared/contract-work-media";
 import { RowsMenu } from "../../chrome/menuRows";
 import { Pause, Play } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";

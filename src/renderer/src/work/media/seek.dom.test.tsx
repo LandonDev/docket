@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { frameAt, frameCentre, frameStart, type FrameTable } from "@shared/contract-work-media";
+import { frameAt, frameCentre, frameStart } from "@shared/mediaFrames";
+import type { FrameTable } from "@shared/contract-work-media";
 import { frameOfMediaTime, seekToFrame, stepFrame, watchFrames } from "./seek";
 
 const table: FrameTable = { kind: "cfr", start: 0, rate: { num: 24, den: 1 }, count: 120 };
