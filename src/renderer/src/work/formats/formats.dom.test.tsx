@@ -107,13 +107,16 @@ describe("Import", () => {
     expect(requests[0]).toEqual({ env: "env_box", method: "work.formats.import", params: { sessionId: "t1", itemId: "i1", from: { at: "source", source: word } } });
   });
 
-  it("when it cannot, the state line says why with Retry", async () => {
-    answer = async () => {
-      throw new Error("that file is not there any more");
-    };
+  it("when it cannot, the state line says why with Retry, and the bones stop: a failure is not drawn as loading", async () => {
+    let fail: (error: Error) => void = () => {};
+    answer = () => new Promise((_, reject) => (fail = reject));
     const s = shell();
-    render(<ImportBody item={{ id: "i9", sessionId: "t1" } as CanvasItem} source={{ at: "file", host: "env_box", path: "/w/Gone.docx" }} env="env_box" state={undefined} setState={() => {}} shell={s.shell} />);
+    const { container } = render(<ImportBody item={{ id: "i9", sessionId: "t1" } as CanvasItem} source={{ at: "file", host: "env_box", path: "/w/Gone.docx" }} env="env_box" state={undefined} setState={() => {}} shell={s.shell} />);
+    expect(container.querySelector("[data-canvas-skeleton]")).not.toBeNull();
+    await act(async () => fail(new Error("that file is not there any more")));
     await waitFor(() => expect(s.lines.at(-1)).toMatchObject({ tone: "failed", word: "Did not open", detail: "that file is not there any more", action: { label: "Retry" } }));
+    expect(container.querySelector("[data-canvas-skeleton]")).toBeNull();
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
   });
 
   it("a file dropped on a document opens as a document; a picture is left to the editor", async () => {

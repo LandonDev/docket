@@ -27,7 +27,11 @@ import { pushSample, releaseVelocity, rubber, suppressTextSelection, type DragSa
  * the same frame the chat takes the width. Beside the board the chat never goes under 360px: the
  * board yields first (DESIGN "Panels"). A view with something of its own to
  * lead the header (the canvas pane's tab row) passes `lead` in the title's
- * place: the header then sits on the strip's fill at the strip's inset.
+ * place: the header then sits on the strip's fill at the strip's inset. A
+ * view that passes `narrowBelow` keeps its board whole in a shell narrower
+ * than that: the board takes the full width, and the open chat lies over its
+ * body under the header, so the board's header and the conversation toggle
+ * never leave.
  */
 
 /** The split's bounds in percent of the shell. A fitted board drawn under
@@ -295,6 +299,7 @@ export function SplitShell({
   held,
   fit,
   splitState,
+  narrowBelow,
   className = "",
 }: {
   /** The board's body; the header is drawn from `title`. */
@@ -323,13 +328,15 @@ export function SplitShell({
   /** The split, held by a view that unmounts the shell for a while (the master
    *  board's child pane) so the person's split is there when it comes back. */
   splitState?: SplitState;
+  /** Under this shell width (px) the board keeps the full width and the open chat lies over its body; absent, the board yields to the chat's 360px. */
+  narrowBelow?: number;
   className?: string;
 }) {
   const ownSplit = useSplit(50);
   const { initial, split, setSplit, manual, setManual, dragging, rootRef, startDrag } = splitState ?? ownSplit;
   const fitted = fit !== undefined && !manual;
   const basis = fitted ? `min(${String(fit)}px, 50%)` : `${String(split)}%`;
-  const shellWidth = useShellWidth(rootRef, fitted);
+  const shellWidth = useShellWidth(rootRef, fitted || (hasBoard && narrowBelow !== undefined));
   // While a fit is drawn the keys move from the board as it stands, not from 50.
   const drawn = fitted && shellWidth > 0 ? Math.min((fit / shellWidth) * 100, 50) : split;
   const resetSplit = (): void => {
@@ -352,6 +359,9 @@ export function SplitShell({
   });
   const entered = useLiveEntry(hasBoard);
   const folded = hasBoard && collapsed;
+  // Too narrow for both: the chat, while open, lies over the board's body.
+  const over = hasBoard && !folded && narrowBelow !== undefined && shellWidth > 0 && shellWidth < narrowBelow;
+  const header = title !== undefined || lead !== undefined;
   const chatRef = useRef<HTMLDivElement | null>(null);
   const width = useShownWidth(chatRef, !folded);
   // Continue or Stop on the held row takes the row away with the focus in
@@ -376,9 +386,9 @@ export function SplitShell({
           className={`flex min-h-0 min-w-0 flex-col overflow-hidden transition-opacity duration-(--dur-base) ease-(--ease-out) [contain:layout_style] motion-reduce:transition-none ${
             entered ? "opacity-100" : "opacity-0"
           }`}
-          style={{ flexBasis: folded ? "100%" : basis, flexGrow: 0, flexShrink: 1 }}
+          style={{ flexBasis: folded || over ? "100%" : basis, flexGrow: 0, flexShrink: 1 }}
         >
-          {title !== undefined || lead !== undefined ? (
+          {header ? (
             <ViewHeader
               title={title}
               detail={detail}
@@ -400,10 +410,13 @@ export function SplitShell({
               {held}
             </div>
           ) : null}
-          {board}
+          {/* Under the chat that lies over it, the body takes no focus. */}
+          <div data-board-body inert={over || undefined} className="contents">
+            {board}
+          </div>
         </div>
       ) : null}
-      {hasBoard && !folded ? (
+      {hasBoard && !folded && !over ? (
         <div
           {...sashKeys}
           onPointerDown={startDrag}
@@ -420,8 +433,15 @@ export function SplitShell({
         data-chat
         inert={folded || undefined}
         style={folded && width ? { width } : undefined}
+        data-chat-over={over || undefined}
         className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${
-          folded ? "invisible absolute inset-y-0 right-0" : hasBoard ? "relative min-w-90 flex-1" : "relative flex-1"
+          folded
+            ? "invisible absolute inset-y-0 right-0"
+            : over
+              ? `absolute inset-x-0 bottom-0 bg-background ${header ? "top-9" : "top-0"}`
+              : hasBoard
+                ? "relative min-w-90 flex-1"
+                : "relative flex-1"
         }${hasBoard ? " [contain:layout_style]" : ""}`}
       >
         <div

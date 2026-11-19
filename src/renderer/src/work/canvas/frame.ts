@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { CanvasItem } from "@shared/work";
+import { useMemo, useRef, useState } from "react";
+import type { CanvasItem, ContextChip } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
 import type { CanvasMode, CanvasSelection, CanvasShell, MoreEntry, Presence, ReviewAdapter, StatusLine, WrittenLine } from "./kind";
 import { openHeld } from "./held";
@@ -30,9 +30,12 @@ export function sayError(error: unknown, fallback: string): void {
  * The frame's state for the item shown, and the `shell` its kind talks to.
  * The feeds belong to one item: another item shown starts from nothing, and
  * a call that arrives from the body of an item no longer shown is dropped.
+ * `ask` is the seat's Ask, which a kind's own selection menu goes through.
  */
-export function useFrame(environmentId: string, sessionId: string, item: CanvasItem | null): { feeds: Feeds; shell: CanvasShell } {
+export function useFrame(environmentId: string, sessionId: string, item: CanvasItem | null, ask?: (chip: ContextChip) => void): { feeds: Feeds; shell: CanvasShell } {
   const id = item?.id ?? null;
+  const asking = useRef(ask);
+  asking.current = ask;
   const [state, setState] = useState<{ id: string | null; feeds: Feeds }>({ id, feeds: NO_FEEDS });
   if (state.id !== id) setState({ id, feeds: NO_FEEDS });
   const kind = item?.kind;
@@ -46,6 +49,7 @@ export function useFrame(environmentId: string, sessionId: string, item: CanvasI
     return {
       review: feed("review"),
       selection: feed("selection"),
+      ask: (chip) => asking.current?.(chip),
       presence: (people) => feed("presence")(people.length === 0 ? NO_PEOPLE : people),
       mode: feed("mode"),
       statusLine: feed("status"),

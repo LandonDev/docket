@@ -323,3 +323,42 @@ describe("SplitShell with a lead in the title's place", () => {
     expect(board.style.flexBasis).toBe("70%");
   });
 });
+
+describe("SplitShell's narrow fold", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const board = () => document.querySelector("[data-board]") as HTMLElement;
+  const chat = () => document.querySelector("[data-chat]") as HTMLElement;
+
+  it("under `narrowBelow`, the board keeps the whole pane and the open chat lies over its body, under the header and its toggle", () => {
+    mockShell(500);
+    render(shell({ narrowBelow: 680 }));
+    expect(board().style.flexBasis).toBe("100%");
+    expect(chat().hasAttribute("data-chat-over")).toBe(true);
+    expect(chat().className).toContain("top-9");
+    expect(chat().hasAttribute("inert")).toBe(false);
+    // The board's body under the chat takes no focus; its header and the toggle stay.
+    expect(document.querySelector("[data-board-body]")!.hasAttribute("inert")).toBe(true);
+    expect(screen.getByRole("button", { name: "Conversation" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("separator")).toBeNull();
+  });
+
+  it("folded there, the board is whole and live, as any fold", () => {
+    mockShell(500);
+    render(shell({ narrowBelow: 680, collapsed: true }));
+    expect(chat().hasAttribute("data-chat-over")).toBe(false);
+    expect(chat().hasAttribute("inert")).toBe(true);
+    expect(document.querySelector("[data-board-body]")!.hasAttribute("inert")).toBe(false);
+  });
+
+  it("is the usual split when there is room, and for a view that does not ask for it", () => {
+    mockShell(900);
+    const view = render(shell({ narrowBelow: 680 }));
+    expect(chat().hasAttribute("data-chat-over")).toBe(false);
+    expect(screen.getByRole("separator", { name: "Resize" })).toBeTruthy();
+    view.unmount();
+    mockShell(500);
+    render(shell());
+    expect(chat().hasAttribute("data-chat-over")).toBe(false);
+    expect(board().style.flexBasis).toBe("50%");
+  });
+});

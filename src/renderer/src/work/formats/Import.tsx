@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ImportAnswer } from "@shared/contract-work-formats";
 import type { AnyEditor } from "work-kit/editor";
-import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { DROP_MAX_BYTES, importable, isHtml, toBase64, warningsLine } from "./model";
 
@@ -39,12 +39,14 @@ const sayWarnings = (a: ImportAnswer): void => {
   if (line) void loadToast().then((toast) => toast(line));
 };
 
-/** The body of a Word file's item while it becomes a document: the editor's bones, or the one state line when it cannot. */
+/** The body of a Word file's item while it becomes a document: the editor's bones, or, when it cannot, the one state line over nothing. */
 export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown>) {
   const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
   const said = useRef(false);
   useEffect(() => {
     let live = true;
+    setFailed(false);
     shell.statusLine(null);
     importOnce(env, `${item.id}#${attempt}`, { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source } }).then(
       (a) => {
@@ -54,6 +56,7 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
       },
       (err: unknown) => {
       if (!live) return;
+      setFailed(true);
       shell.statusLine({
         tone: "failed",
         word: "Did not open",
@@ -66,14 +69,7 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
       live = false;
     };
   }, [env, item.id, item.sessionId, source, shell, attempt]);
-  return (
-    <div aria-busy className="flex flex-col gap-2.5 px-6 pt-8" style={{ paddingLeft: 76, maxWidth: 52 + 672 + 24 }}>
-      <Skeleton className="h-3 w-1/3" />
-      <Skeleton className="mt-4 h-3 w-[92%]" />
-      <Skeleton className="h-3 w-[78%]" />
-      <Skeleton className="h-3 w-[44%]" />
-    </div>
-  );
+  return failed ? null : <ItemSkeleton />;
 }
 
 /** A dropped file as the import's `from`: HTML read into blocks here, anything else its bytes. */

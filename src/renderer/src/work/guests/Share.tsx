@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { CanvasSource } from "@shared/work";
-import { Copy } from "../../chrome/icons";
+import { Check, Copy } from "../../chrome/icons";
+import { SwapIcon } from "../../motion/IconSwap";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
@@ -21,31 +22,32 @@ import { dayOf, ENDS, guestsCall, guestSource, isLive, ROLE_WORDS, shortDay, typ
  * "History and Share"): a 320px popover of the item's guest links, Revoke on
  * hover, and New guest link…, which opens one small dialog: who it is for,
  * what they can do, the day it ends. The link is then shown once, to copy.
+ * Only a LifeOS document or sheet can be shared; any other source draws no Share.
  */
 export function ShareButton({ env, source, title }: { env: string; source: CanvasSource; title: string }) {
+  const target = guestSource(source);
+  return target ? <Share env={env} target={target} title={title} /> : null;
+}
+
+function Share({ env, target, title }: { env: string; target: GuestSource; title: string }) {
   const [open, setOpen] = useState(false);
   const [making, setMaking] = useState(false);
-  const target = guestSource(source);
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger render={<Button variant="ghost" size="xs" className="ms-auto" />}>Share</PopoverTrigger>
         <PopoverContent align="end" className="w-80 gap-0 p-1">
-          {target ? (
-            <ItemLinks
-              env={env}
-              source={target}
-              onNew={() => {
-                setOpen(false);
-                setMaking(true);
-              }}
-            />
-          ) : (
-            <p className="px-2 py-1.5 text-[13px] text-muted-foreground">Move it to LifeOS to share it.</p>
-          )}
+          <ItemLinks
+            env={env}
+            source={target}
+            onNew={() => {
+              setOpen(false);
+              setMaking(true);
+            }}
+          />
         </PopoverContent>
       </Popover>
-      {making && target ? <NewLinkDialog env={env} source={target} title={title} onClose={() => setMaking(false)} /> : null}
+      {making ? <NewLinkDialog env={env} source={target} title={title} onClose={() => setMaking(false)} /> : null}
     </>
   );
 }
@@ -55,6 +57,7 @@ function ItemLinks({ env, source, onNew }: { env: string; source: GuestSource; o
   const [error, setError] = useState<string | null>(null);
   const [home, setHome] = useState(env);
   const load = useCallback(() => {
+    setError(null);
     guestsCall<GuestLinkRow[]>(env, "work.guests.forItem", { source }).then(
       (got) => {
         setHome(got.env);
@@ -98,7 +101,16 @@ function ItemLinks({ env, source, onNew }: { env: string; source: GuestSource; o
           </span>
         </div>
       ))}
-      {error ? <ErrorLine error={error} /> : null}
+      {error ? (
+        <div className="flex min-h-9 items-center gap-2 px-2">
+          <div className="min-w-0 flex-1">
+            <ErrorLine error={error} />
+          </div>
+          <Button variant="ghost" size="xs" onClick={load}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       <div className="mt-1 border-t border-border pt-1">
         <Button variant="ghost" size="sm" className="w-full justify-start" onClick={onNew}>
           New guest link…
@@ -159,7 +171,7 @@ function NewLinkDialog({ env, source, title, onClose }: { env: string; source: G
               <div className="flex h-9 min-w-0 items-center gap-2 rounded-lg border border-input ps-3 pe-1">
                 <span className="min-w-0 flex-1 truncate font-mono text-xs select-all">{made.url}</span>
                 <Button variant="ghost" size="xs" onClick={() => void copy()}>
-                  <Copy />
+                  <SwapIcon swapped={copied} from={<Copy />} to={<Check />} />
                   {copied ? "Copied" : "Copy"}
                 </Button>
               </div>

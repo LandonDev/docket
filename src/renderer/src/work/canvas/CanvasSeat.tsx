@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
-import type { CanvasKind } from "@shared/work";
+import type { CanvasKind, ContextChip } from "@shared/work";
 import { Check, FolderOpen, X } from "../../chrome/icons";
 import type { MenuRow } from "../../chrome/menuRows";
 import { addContextChip } from "./chips";
@@ -20,6 +20,9 @@ const KIND_ROW = "kind:";
 
 /** The item's share of the pane while the thread shows: it takes the room, and the thread keeps its 360px. */
 export const ITEM_SPLIT = 70;
+
+/** Under the thread's 360px and the item's 320px, the item keeps the pane and the open thread lies over it, under the tab row and its toggle. */
+export const NARROW_FOLD = 360 + 320;
 
 /**
  * A Work thread's view with its canvas beside it (docs/DESIGN.md "The canvas
@@ -46,7 +49,14 @@ export function CanvasSeat({
   const view = useCanvas(environmentId, sessionId);
   const split = useSplit(ITEM_SPLIT);
   const shown = view.items.find((item) => item.id === view.selected) ?? view.items[0] ?? null;
-  const { feeds, shell } = useFrame(environmentId, sessionId, shown);
+  // Ask, from the selection bar or a kind's own menu: the chip goes in, the thread unfolds, and its composer takes the caret once it is back in its slot.
+  const putChip = (chip: ContextChip): void => {
+    addContextChip(sessionId, chip);
+    window.getSelection()?.removeAllRanges();
+    setFolded(sessionId, false);
+    requestAnimationFrame(() => split.rootRef.current?.querySelector<HTMLElement>("[data-chat] [data-composer-input]")?.focus());
+  };
+  const { feeds, shell } = useFrame(environmentId, sessionId, shown, putChip);
   const module = useKindModule((shown ? kinds[shown.kind] : kinds.document).chunk);
   const TabEnd = shown ? module?.TabEnd : undefined;
   const [kept, keep] = useKeptState(shown?.id ?? "");
@@ -54,12 +64,8 @@ export function CanvasSeat({
 
   const close = (itemId: string): void => void closeItem(environmentId, sessionId, itemId).catch((error: unknown) => sayError(error, "Couldn't close the item"));
   const ask = (selection: CanvasSelection): void => {
-    addContextChip(sessionId, selection.chip);
     shell.selection(null);
-    window.getSelection()?.removeAllRanges();
-    setFolded(sessionId, false);
-    // The composer takes the caret once the thread is back in its slot.
-    requestAnimationFrame(() => split.rootRef.current?.querySelector<HTMLElement>("[data-chat] [data-composer-input]")?.focus());
+    putChip(selection.chip);
   };
 
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
@@ -110,6 +116,7 @@ export function CanvasSeat({
         collapsed={view.folded}
         onToggleChat={(open) => setFolded(sessionId, !open)}
         splitState={split}
+        narrowBelow={NARROW_FOLD}
         held={held}
         lead={
           shown ? (

@@ -378,6 +378,73 @@ describe("the frame a kind drives through its shell", () => {
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
   });
 
+  it("takes its narrow form under 560px of canvas: the group's name goes, History is its glyph, Reject and Accept stay whole", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-canvas-bar") ? 440 : 0;
+    });
+    try {
+      let shell: CanvasShell | null = null;
+      const kinds = drivenKinds((s) => (shell = s), { bar: true });
+      const view = await seat([DOC, SHEET], { ...kinds, document: { ...kinds.document, history: true } });
+      await waitFor(() => expect(shell).not.toBeNull());
+      act(() =>
+        shell!.review(
+          review({
+            groups: [
+              { id: "a", label: "Venue for the spring LAN", by: "agent:box:t1", count: 2 },
+              { id: "b", label: "Dana Lee", by: "external:Dana Lee", count: 4 },
+            ],
+            index: 3,
+          }),
+        ),
+      );
+      const bar = view.container.querySelector<HTMLElement>("[data-canvas-bar]")!;
+      expect(bar.hasAttribute("data-narrow")).toBe(true);
+      const stepper = screen.getByRole("toolbar", { name: "Review changes" });
+      expect(within(stepper).queryByText("Dana Lee")).toBeNull();
+      // History keeps its name for a screen reader and its tooltip, and drops the word.
+      const history = within(bar).getByRole("button", { name: "History" });
+      expect(history.textContent).toBe("");
+      for (const verb of ["Reject", "Accept"]) expect(within(stepper).getByRole("button", { name: verb })).toBeTruthy();
+      // The kind's tools are clipped to their room rather than painted over History.
+      expect(view.container.querySelector("[data-canvas-tools]")!.className).toContain("overflow-hidden");
+    } finally {
+      width.mockRestore();
+    }
+  });
+
+  it("shows one change already in hand as its two verbs alone: nowhere to step", async () => {
+    const { shell } = await driven();
+    act(() => shell.review(review({ groups: [{ id: "rewrite", label: "Rewrite", by: "agent:box:t1", count: 1 }], index: 0, count: 1 })));
+    const stepper = screen.getByRole("toolbar", { name: "Review changes" });
+    expect(within(stepper).queryByRole("button", { name: "Previous change" })).toBeNull();
+    expect(within(stepper).queryByText("1/1")).toBeNull();
+    expect(within(stepper).getAllByRole("button").map((b) => b.textContent)).toEqual(["Reject", "Accept"]);
+  });
+
+  it("spins the state line's action while it runs", async () => {
+    const { shell, container } = await driven();
+    let done: () => void = () => {};
+    act(() => shell.statusLine({ tone: "failed", word: "Did not open", action: { label: "Retry", run: () => new Promise<void>((r) => (done = r)) } }));
+    const retry = within(container.querySelector<HTMLElement>("[data-canvas-state]")!).getByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+    expect(retry.hasAttribute("disabled")).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => done());
+    expect(retry.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("takes a kind's own Ask through the frame: the chip goes in, a folded thread unfolds, its composer takes the caret", async () => {
+    const { shell, container } = await driven();
+    fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+    expect(canvasOf("t1").folded).toBe(true);
+    const chip = { kind: "selection" as const, label: "“Doors at noon”, Run of show", ref: DOC.source, quote: "Doors at noon" };
+    act(() => shell.ask?.(chip));
+    expect(contextChipsOf("t1")).toEqual([chip]);
+    expect(canvasOf("t1").folded).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(container.querySelector("[data-composer-input]")));
+  });
+
   it("opens an item's versions beside it as a history item on the same source", async () => {
     const { shell } = await driven();
     await act(async () => shell.openHistory());

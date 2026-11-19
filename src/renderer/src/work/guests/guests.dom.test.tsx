@@ -11,7 +11,7 @@ import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEdit
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[] }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -21,6 +21,10 @@ vi.mock("../../lib/connection", async (original) => {
       calls.list.push({ env, method, params });
       // The Mac does not serve LifeOS's documents: it names the box, as the host does.
       if (env === "mac") throw new Error("served elsewhere: box");
+      if (calls.failOnce && method === "work.guests.forItem") {
+        calls.failOnce = false;
+        throw new Error("LifeOS did not answer");
+      }
       if (method === "work.guests.forItem" || method === "work.guests.list") return calls.links;
       if (method === "work.guests.create")
         return { link: { ...LINK, name: params.name, role: params.role, expiresAt: params.expiresAt }, url: "https://tempcode.landonhale.com/g/abc#k=secret" };
@@ -79,11 +83,10 @@ describe("Share", () => {
     expect(screen.getByText(/shown only now/)).toBeTruthy();
   });
 
-  it("offers a sheet view or edit only, and a file the move to LifeOS", async () => {
+  it("offers a sheet view or edit only, and draws no Share on what cannot be shared", async () => {
     const { ShareButton } = await import("./Share");
-    const { unmount } = render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/x/a.tcdoc" }} title="a" />);
-    fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    await screen.findByText("Move it to LifeOS to share it.");
+    const { container, unmount } = render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/x/a.tcdoc" }} title="a" />);
+    expect(container.innerHTML).toBe("");
     unmount();
     render(<ShareButton env="box" source={{ at: "lifeos", table: "sheets", id: "ks1" }} title="Budget" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
@@ -91,6 +94,17 @@ describe("Share", () => {
     await screen.findByPlaceholderText("Name");
     expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+  });
+  it("says a list that did not load with Retry, which asks again", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.links = [LINK];
+    calls.failOnce = true;
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByText("LifeOS did not answer");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByText("Sam Ortiz");
+    expect(screen.queryByText("LifeOS did not answer")).toBeNull();
   });
 });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DocMode, DocOpen, DocWritten } from "@shared/contract-work-docs";
-import type { CanvasSource, Principal } from "@shared/work";
+import type { CanvasSource, ContextChip, Principal } from "@shared/work";
 import {
   DOCUMENT_LADDER,
   DocumentEditor,
@@ -14,10 +14,10 @@ import {
   type EditorAdapters,
   type ReviewChange,
 } from "work-kit/editor";
-import { Skeleton } from "../../components/ui/skeleton";
+import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
-import { addContextChip } from "../canvas/chips";
+import { ItemBones } from "../canvas/ItemBones";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { ExportDialog } from "../formats/ExportDialog";
@@ -121,18 +121,6 @@ function useWidth(): [React.RefObject<HTMLDivElement | null>, number] {
   return [ref, width];
 }
 
-/** The document's name in its title step, and the editor's bones while it opens. */
-function Loading({ title }: { title: string | null }) {
-  return (
-    <div aria-busy className="flex flex-col gap-2.5" style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }}>
-      {title ? <Title text={title} /> : <Skeleton className="h-3 w-1/3" />}
-      <Skeleton className="mt-4 h-3 w-[92%]" />
-      <Skeleton className="h-3 w-[78%]" />
-      <Skeleton className="h-3 w-[44%]" />
-    </div>
-  );
-}
-
 const TITLE_STYLE = { fontSize: DOCUMENT_LADDER.title.size, lineHeight: `${DOCUMENT_LADDER.title.leading}px`, fontWeight: DOCUMENT_LADDER.title.weight };
 
 function Title({ text }: { text: string }) {
@@ -143,8 +131,8 @@ function Title({ text }: { text: string }) {
   );
 }
 
-/** A LifeOS document's title, renamed in place: Enter or leaving the field keeps it, Escape puts it back. */
-function TitleField({ text, rename }: { text: string; rename(title: string): Promise<void> }) {
+/** A LifeOS document's title, renamed in place: Enter or leaving the field keeps it, Escape puts it back. A refused rename puts it back and says why, once. */
+export function TitleField({ text, rename }: { text: string; rename(title: string): Promise<void> }) {
   const [value, setValue] = useState(text);
   const [kept, setKept] = useState(text);
   const keep = async (): Promise<void> => {
@@ -153,9 +141,11 @@ function TitleField({ text, rename }: { text: string; rename(title: string): Pro
     setKept(next);
     try {
       await rename(next);
-    } catch {
+    } catch (err) {
       setKept(kept);
       setValue(kept);
+      const toast = await loadToast();
+      toast.error(err instanceof Error && err.message ? err.message : "Couldn't rename the document");
     }
   };
   return (
@@ -178,7 +168,7 @@ function TitleField({ text, rename }: { text: string; rename(title: string): Pro
   );
 }
 
-/** The document's own tools on the kind's bar: Share (milestone 31). */
+/** The document's own tools on the kind's bar: Share (milestone 31), only on what can be shared. */
 export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   return <ShareButton env={env} source={source} title={item.title} />;
 }
@@ -197,15 +187,16 @@ function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<
   useEffect(() => {
     shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Did not open", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);
+  // A failed open is said once, on the state line with Retry; the body under it stays empty rather than pulse.
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>
       <Scroller scrollTop={state?.scrollTop ?? 0} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
         {(width) =>
-          opened && "open" in opened ? (
-            <Opened key={`${opened.host.env}|${opened.open.doc}`} host={opened.host} open={opened.open} shell={shell} width={width} sessionId={item.sessionId} more={google} />
-          ) : (
-            <Loading title={opened ? null : item.title} />
-          )
+          opened === null ? (
+            <ItemBones title={<Title text={item.title} />} />
+          ) : "open" in opened ? (
+            <Opened key={`${opened.host.env}|${opened.open.doc}`} host={opened.host} open={opened.open} shell={shell} width={width} more={google} />
+          ) : null
         }
       </Scroller>
     </DropImport>
@@ -241,7 +232,7 @@ export function Scroller({ scrollTop, onScroll, children }: { scrollTop: number;
 const NO_MORE: MoreEntry[] = [];
 
 /** The open document: the editor and everything it tells the pane. */
-function Opened({ host, open, shell, width, sessionId, more = NO_MORE }: { host: DocHost; open: DocOpen; shell: CanvasShell; width: number; sessionId: string; more?: MoreEntry[] }) {
+function Opened({ host, open, shell, width, more = NO_MORE }: { host: DocHost; open: DocOpen; shell: CanvasShell; width: number; more?: MoreEntry[] }) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
 
@@ -283,13 +274,8 @@ function Opened({ host, open, shell, width, sessionId, more = NO_MORE }: { host:
     return () => shell.more?.(null);
   }, [shell, more]);
 
-  const onAsk = (selection: DocumentSelection): void => {
-    const words = selection.text.replace(/\s+/g, " ").trim();
-    addContextChip(sessionId, { kind: "selection", label: `“${words.length > 40 ? `${words.slice(0, 40)}…` : words}”, ${open.title}`, ref: open.source, quote: selection.text });
-    window.getSelection()?.removeAllRanges();
-    // The composer takes the caret, as the pane's own Ask does.
-    requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-chat] [data-composer-input]")?.focus());
-  };
+  // Through the frame, as the pane's own Ask: the chip goes in, a folded thread unfolds and its composer takes the caret.
+  const onAsk = (selection: DocumentSelection): void => shell.ask?.(selectionChip(selection.text, open));
 
   return (
     // A copy is written as mail clients and sheets read it, after the editor wrote its own (work-kit/formats/clipboard).
@@ -310,6 +296,12 @@ function Opened({ host, open, shell, width, sessionId, more = NO_MORE }: { host:
       ) : null}
     </div>
   );
+}
+
+/** A selection as the composer's chip: its first 40 characters in quotes, then the document's name. */
+export function selectionChip(text: string, open: Pick<DocOpen, "title" | "source">): ContextChip {
+  const words = text.replace(/\s+/g, " ").trim();
+  return { kind: "selection", label: `“${words.length > 40 ? `${words.slice(0, 40)}…` : words}”, ${open.title}`, ref: open.source, quote: text };
 }
 
 export interface DocumentHandle {

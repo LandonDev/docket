@@ -42,7 +42,12 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   }, [shell, unreachable, env]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
   if (lifeos.state === "signed-out" || lifeos.state === "refused") return <EmptyState title="Sign in to LifeOS" action={{ label: "Sign in", onClick: openWorkSettings }} />;
-  if (!lifeos.client) return <SurfaceSkeleton kind="column" label="Loading the mail" />;
+  // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
+  if (!lifeos.client) {
+    if (!unreachable) return <SurfaceSkeleton kind="column" label="Loading the mail" />;
+    const kept = lastRead.get(source.id);
+    return kept ? <Letter draft={kept} /> : null;
+  }
   return (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(env, lifeos.client.url)}>
@@ -61,6 +66,19 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
 function SentLine({ env, id }: { env: string; id: string }) {
   const doc = useMailClient().useComposeDoc(id);
   return doc?.status === "sent" ? <RuleLine env={env} draftId={id} className="shrink-0 border-t border-border px-5 py-2" /> : null;
+}
+
+/** The last copy of each draft this window read, so a LifeOS that stops answering leaves it on screen, read only. */
+const lastRead = new Map<string, MailWords>();
+
+/** Keeps the copy of a draft just read. */
+export function keepRead(id: string, words: MailWords): void {
+  lastRead.set(id, words);
+}
+
+/** Forgets every kept copy (tests). */
+export function resetLastRead(): void {
+  lastRead.clear();
 }
 
 const NO_TASKS: ReadonlySet<string> = new Set();
@@ -119,6 +137,10 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
     return () => shell.review(null);
   }, [shell, waiting, proposed?.by, settle]);
 
+  useEffect(() => {
+    if (doc) keepRead(id, doc.message);
+  }, [doc, id]);
+
   const nav = useMemo<MailNav>(
     () => ({ account: null, inboxView: "everything", setInboxView: () => {}, threadId: shownThread, setThreadId: setShownThread, view: "inbox", sheetOpen: false }),
     [shownThread],
@@ -126,22 +148,36 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
 
   if (doc === undefined) return <SurfaceSkeleton kind="column" label="Loading the mail" />;
   if (doc === null) return <EmptyState title="This draft is gone" line="It was discarded in LifeOS." />;
-  if (waiting && proposed) return <Rewrite draft={doc.message} proposed={proposed} />;
-  if (!open && !threadId) {
-    const sent = doc.status === "sent";
-    return <EmptyState title={sent ? "Sent" : "Sending"} line={`To ${who(doc.message.to)}`} />;
+  if (waiting && proposed) {
+    const rewrite = <Letter draft={doc.message} proposed={proposed} />;
+    if (!threadId) return rewrite;
+    // The rewrite takes only the composer's place: the mail it answers stays above it.
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="relative min-h-0 flex-1">
+          <Mailbox nav={nav} accounts={accounts} compose={null} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />
+        </div>
+        <div data-mail-rewrite className="flex max-h-[60%] min-h-0 shrink-0 flex-col border-t border-border">
+          {rewrite}
+        </div>
+      </div>
+    );
   }
+  // A new mail on its way or gone keeps its words, read only.
+  if (!open && !threadId) return <Letter draft={doc.message} lead={doc.status === "sent" ? "Sent to" : "Sending to"} />;
   return <Mailbox nav={nav} accounts={accounts} compose={compose} setCompose={putCompose} openTaskIds={NO_TASKS} onTask={() => {}} frame={paneOnly} />;
 }
 
 const INS = "rounded-[2px] bg-(--add-bg) box-decoration-clone";
-const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-muted-foreground line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
+// Removed words keep 70% of the ink, so they read on the tint in both themes.
+const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-foreground/70 line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
 
-function Runs({ ops }: { ops: InlineOp[] }) {
+/** Words taken out struck, words put in washed; taken words then new ones read as two, a space's width apart, as Compare draws them. */
+export function Runs({ ops }: { ops: InlineOp[] }) {
   return (
     <>
       {ops.map((op, i) => (
-        <span key={i} className={cn(op.op === "+" && INS, op.op === "-" && DEL)}>
+        <span key={i} className={cn(op.op === "+" && INS, op.op === "-" && DEL, op.op === "+" && ops[i - 1]?.op === "-" && "ms-1.5")}>
           {op.text}
         </span>
       ))}
@@ -149,14 +185,26 @@ function Runs({ ops }: { ops: InlineOp[] }) {
   );
 }
 
-/** The draft with the agent's rewrite in it: words it takes out struck, words it puts in washed, as every review draws them. */
-function Rewrite({ draft, proposed }: { draft: { subject: string; text: string; to: readonly { name?: string | undefined; address: string }[] }; proposed: Proposal }) {
-  const diff = proposalDiff(draft, proposed);
+export type MailWords = { subject: string; text: string; to: readonly { name?: string | undefined; address: string }[] };
+
+/**
+ * A draft read only: whom it goes to and its words, with the agent's rewrite
+ * in them when one waits. The subject is the tab's, so it shows here only
+ * when the rewrite changes it. The words keep the composer's 14/22.
+ */
+export function Letter({ draft, proposed, lead = "To" }: { draft: MailWords; proposed?: Proposal; lead?: string }) {
+  const diff = proposed ? proposalDiff(draft, proposed) : null;
   return (
     <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pt-3 pb-4">
-      <p className="text-xs leading-5 text-muted-foreground">To {who(draft.to)}</p>
-      <h2 className="mt-1 text-subject font-semibold text-balance">{diff.subject ? <Runs ops={diff.subject} /> : draft.subject || "(no subject)"}</h2>
-      <div className="mt-3 max-w-[70ch] whitespace-pre-wrap break-words text-sm leading-[22px] select-text">{diff.body ? <Runs ops={diff.body} /> : draft.text}</div>
+      <p className="text-xs leading-5 text-muted-foreground">
+        {lead} {who(draft.to)}
+      </p>
+      {diff?.subject ? (
+        <h2 className="mt-1 text-subject font-semibold text-balance">
+          <Runs ops={diff.subject} />
+        </h2>
+      ) : null}
+      <div className="mt-3 max-w-[70ch] text-[14px] leading-[22px] break-words whitespace-pre-wrap select-text">{diff?.body ? <Runs ops={diff.body} /> : draft.text}</div>
     </div>
   );
 }

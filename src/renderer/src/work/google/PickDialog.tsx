@@ -80,8 +80,11 @@ function Body({ env, sessionId, onClose }: { env: string; sessionId: string; onC
       }}
     >
       <ModalBody>
-        {accounts ? (
-          <FieldRow label="Account" description={blocked ?? undefined}>
+        {/* With no account to pick from, one muted line says what is missing, never an empty select. */}
+        {blocked ? (
+          <p className="text-[13px] leading-5 text-muted-foreground">{blocked}</p>
+        ) : accounts ? (
+          <FieldRow label="Account">
             <ChoiceSelect label="Account" value={account} options={ready.map((a) => ({ value: a.account, label: a.account }))} onChange={setAccount} />
           </FieldRow>
         ) : error ? null : (
@@ -91,7 +94,7 @@ function Body({ env, sessionId, onClose }: { env: string; sessionId: string; onC
         )}
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel="Choose files" disabled={!account || !!blocked} />
+      <DialogFooter onCancel={onClose} {...(blocked ? {} : { confirmLabel: "Choose files", disabled: !account })} />
     </form>
   );
 }

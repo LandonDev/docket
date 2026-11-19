@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -21,34 +21,64 @@ export function barShown(feeds: Feeds, tools: boolean, history: boolean): boolea
 /** The bar's class while the kind's tools are all it could hold: it is drawn only once they render something. */
 export const BAR_TOOLS_ONLY = "has-[[data-canvas-tools]:empty]:hidden";
 
+/** Under this width of canvas the bar takes its narrow form: the stepper drops its group's name and History is its glyph alone. */
+export const BAR_NARROW = 560;
+
+/** Whether the element, while drawn, is under `below` px wide; false until it has been measured. */
+function useNarrow(ref: React.RefObject<HTMLElement | null>, below: number, drawn: boolean): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !drawn) return;
+    const read = (): void => setNarrow(el.clientWidth > 0 && el.clientWidth < below);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, below, drawn]);
+  return narrow;
+}
+
 /**
  * The kind's own bar, in the one order every kind keeps (docs/DESIGN.md
  * "The canvas pane"): the other people in the item, what the agent does to
  * it, the kind's own tools, History, then the changes to review at the end,
- * or the line that says what the agent last wrote.
+ * or the line that says what the agent last wrote. In a narrow canvas the
+ * group's name goes first, then History's word; the kind's tools are
+ * clipped before Reject and Accept give up any room.
  */
 export function KindBar({ feeds, tools, onHistory }: { feeds: Feeds; tools?: ReactNode; onHistory?: () => void }) {
+  const ref = useRef<HTMLDivElement | null>(null);
   const others = barShown(feeds, false, !!onHistory);
+  const narrow = useNarrow(ref, BAR_NARROW, others || !!tools);
   if (!others && !tools) return null;
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
     <TooltipProvider>
       <div
+        ref={ref}
         data-canvas-bar
+        data-narrow={narrow || undefined}
         className={`flex h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others ? "" : BAR_TOOLS_ONLY}`}
       >
         <People people={feeds.presence} />
         {feeds.mode ? <Mode mode={feeds.mode} /> : null}
-        {/* The kind's tools take the free room, so a tool given `ms-auto` sits at the end, before History and the stepper. */}
-        {tools ? <div data-canvas-tools className="flex min-w-0 flex-1 items-center gap-0.5">{tools}</div> : null}
-        <div className="ms-auto flex min-w-0 shrink-0 items-center gap-2">
+        {/* The kind's tools take the free room, and are clipped to it: a tool given `ms-auto` sits at the end, before History and the stepper. */}
+        {tools ? <div data-canvas-tools className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">{tools}</div> : null}
+        <div className="ms-auto flex shrink-0 items-center gap-2">
           {onHistory ? (
-            <Button variant="ghost" size="xs" onClick={onHistory}>
-              <History />
-              History
-            </Button>
+            narrow ? (
+              <Step label="History" onClick={onHistory}>
+                <History />
+              </Step>
+            ) : (
+              <Button variant="ghost" size="xs" onClick={onHistory}>
+                <History />
+                History
+              </Button>
+            )
           ) : null}
-          {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}
+          {review ? <Stepper review={review} narrow={narrow} /> : feeds.written ? <Written line={feeds.written} /> : null}
         </div>
       </div>
     </TooltipProvider>
@@ -123,13 +153,13 @@ function Mode({ mode }: { mode: CanvasMode }) {
 }
 
 /** The one stepper: Previous, where the caret is among the changes, Next, then Reject and Accept for that change. */
-function Stepper({ review }: { review: ReviewAdapter }) {
+function Stepper({ review, narrow }: { review: ReviewAdapter; narrow: boolean }) {
   const [pending, setPending] = useState<"accept" | "reject" | null>(null);
   const { index, count } = review;
   const none = index < 0;
   // The group the current change is in, named only when there is more than one to tell apart.
   let group: string | null = null;
-  if (review.groups.length > 1 && !none) {
+  if (review.groups.length > 1 && !none && !narrow) {
     let seen = 0;
     for (const g of review.groups) {
       seen += g.count;
@@ -146,18 +176,24 @@ function Stepper({ review }: { review: ReviewAdapter }) {
       .finally(() => setPending(null));
   };
   const busy = pending !== null;
+  // One change, already the current one: there is nowhere to step, so only the verbs show.
+  const steps = !(count === 1 && index === 0);
   return (
-    <div role="toolbar" aria-label="Review changes" aria-busy={busy || undefined} className="flex min-w-0 items-center gap-1">
+    <div role="toolbar" aria-label="Review changes" aria-busy={busy || undefined} className="flex items-center gap-1">
       {group ? <span className="max-w-40 min-w-0 truncate pe-1">{group}</span> : null}
-      <Step label="Previous change" disabled={busy || index <= 0} onClick={() => review.step(index - 1)}>
-        <ChevronLeft />
-      </Step>
-      <span className="min-w-6 text-center text-foreground tabular-nums select-none">
-        {index + 1}/{count}
-      </span>
-      <Step label="Next change" disabled={busy || index >= count - 1} onClick={() => review.step(index + 1)}>
-        <ChevronRight />
-      </Step>
+      {steps ? (
+        <>
+          <Step label="Previous change" disabled={busy || index <= 0} onClick={() => review.step(index - 1)}>
+            <ChevronLeft />
+          </Step>
+          <span className="min-w-6 text-center text-foreground tabular-nums select-none">
+            {index + 1}/{count}
+          </span>
+          <Step label="Next change" disabled={busy || index >= count - 1} onClick={() => review.step(index + 1)}>
+            <ChevronRight />
+          </Step>
+        </>
+      ) : null}
       <Button variant="ghost" size="xs" disabled={busy || none} onClick={() => decide("reject")}>
         <BusyLabel busy={pending === "reject"} label="Reject" />
       </Button>
@@ -168,7 +204,7 @@ function Stepper({ review }: { review: ReviewAdapter }) {
   );
 }
 
-function Step({ label, disabled, onClick, children }: { label: string; disabled: boolean; onClick(): void; children: ReactNode }) {
+function Step({ label, disabled = false, onClick, children }: { label: string; disabled?: boolean; onClick(): void; children: ReactNode }) {
   return (
     <Tooltip>
       <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} disabled={disabled} onClick={onClick} />}>{children}</TooltipTrigger>

@@ -36,6 +36,12 @@ const host = vi.hoisted(() => ({
   calls: [] as { method: string; params: Record<string, unknown> }[],
   branches: [] as unknown[],
   restore: { mode: "direct" } as Record<string, unknown>,
+  failBranches: false,
+  failRestore: false,
+  toasts: [] as string[],
+}));
+vi.mock("../../components/ui/toaster", () => ({
+  loadToast: async () => Object.assign((m: string) => void host.toasts.push(m), { error: (m: string) => void host.toasts.push(`error: ${m}`) }),
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -51,8 +57,14 @@ vi.mock("../../lib/connection", async (original) => {
         for (const row of diff.rows) row.by = [AGENT];
         return { diff, names };
       }
-      if (method === "work.history.branches") return { branches: host.branches, names };
-      if (method === "work.history.restore") return host.restore;
+      if (method === "work.history.branches") {
+        if (host.failBranches) throw new Error("The box did not answer");
+        return { branches: host.branches, names };
+      }
+      if (method === "work.history.restore") {
+        if (host.failRestore) throw new Error("That version is gone");
+        return host.restore;
+      }
       if (method === "work.history.decide") {
         host.branches = [];
         return { left: 0 };
@@ -68,7 +80,7 @@ vi.mock("../../lib/connection", async (original) => {
 
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { canvasOf, keepState, resetCanvasStore } from "../canvas/store";
-import type { HistoryState } from "./HistoryCanvas";
+import { layoutOf, type HistoryState } from "./HistoryCanvas";
 
 const ITEM: CanvasItem = canvasItem("h1", { kind: "history", title: "Spring LAN run of show", source: { at: "file", host: "local", path: "/work/Run of show.tcdoc" } });
 
@@ -84,6 +96,9 @@ beforeEach(async () => {
   host.calls = [];
   host.branches = [];
   host.restore = { mode: "direct" };
+  host.failBranches = false;
+  host.failRestore = false;
+  host.toasts = [];
   await new Promise<void>((done) => openMenus(done));
 });
 afterEach(cleanup);
@@ -170,5 +185,57 @@ describe("the history canvas", () => {
     // The host now has nothing waiting: the views ask again and the review gives way to the list.
     await waitFor(() => expect(screen.getByText("Wrote the morning")).toBeTruthy());
     expect(screen.queryByText("Waiting for you")).toBeNull();
+  });
+
+  it("keeps Compare in the bar from the first frame, waiting for two ticks, so a tick never pushes the list", async () => {
+    const { container } = await seat();
+    await waitFor(() => expect(screen.getByText("Wrote the morning")).toBeTruthy());
+    const compare = within(container.querySelector("[data-canvas-bar]") as HTMLElement).getByRole("button", { name: "Compare" });
+    expect(compare.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /Pick the .* version/, hidden: true })[0]!);
+    expect(compare.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("says suggestions that did not load on the state line with Retry, the versions still listed", async () => {
+    host.failBranches = true;
+    const { container } = await seat();
+    await waitFor(() => expect(container.querySelector("[data-canvas-state='failed']")?.textContent).toContain("Suggestions did not load"));
+    // The versions still list under it.
+    expect(screen.getByText("Wrote the morning")).toBeTruthy();
+    host.failBranches = false;
+    fireEvent.click(within(container.querySelector("[data-canvas-state]") as HTMLElement).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(container.querySelector("[data-canvas-state]")).toBeNull());
+  });
+
+  it("says suggestions that did not load on a review's state line, and draws no bones under it", async () => {
+    host.failBranches = true;
+    const review = await seat({ view: "review", branchId: "b1" });
+    await waitFor(() => expect(review.container.querySelector("[data-canvas-state='failed']")?.textContent).toContain("The suggestions did not load"));
+    expect(review.container.querySelector("[data-canvas-body] [data-slot=skeleton]")).toBeNull();
+  });
+
+  it("says a refused restore once, as a toast, and leaves the state line to a source that cannot be reached", async () => {
+    host.failRestore = true;
+    const { container } = await seat();
+    await waitFor(() => expect(screen.getByText("Wrote the morning")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("button", { name: "Restore", hidden: true })[0]!);
+    await waitFor(() => expect(host.toasts).toEqual(["error: That version is gone"]));
+    expect(container.querySelector("[data-canvas-state]")).toBeNull();
+  });
+
+  it("draws a waiting branch as one list button, with the item's focus ring", async () => {
+    host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: Date.now(), diff: diffBlocks(OLD, NEW) }];
+    await seat();
+    const row = (await screen.findByText("3 changes")).closest("button")!;
+    expect(row.getAttribute("data-slot")).toBe("item");
+    expect(row.className).toContain("focus-ring");
+  });
+
+  it("draws one column under two 420px sides, whatever was chosen", () => {
+    expect(layoutOf({ layout: "sxs" }, 600)).toBe("one");
+    expect(layoutOf({ layout: "sxs" }, 900)).toBe("sxs");
+    expect(layoutOf(undefined, 900)).toBe("sxs");
+    // A body not yet measured keeps the choice.
+    expect(layoutOf({ layout: "sxs" }, 0)).toBe("sxs");
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { HistoryBranch, HistoryCompare, HistoryVersions, HistoryWrite } from "@shared/contract-work-history";
 import type { CanvasSource } from "@shared/work";
 import { registry } from "../../lib/connection";
@@ -60,7 +60,12 @@ function useAsked<T>(env: string, source: CanvasSource, what: string | null, met
     // `params` is named by `what`, which is part of the key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return { ...entry, retry: () => key && void ask(env, key, method, { source, ...params }) };
+  // Stable for a key, so an effect that names it (a state line's Retry) runs only when the error changes.
+  const retry = useCallback(() => {
+    if (key) void ask(env, key, method, { source, ...params });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return { ...entry, retry };
 }
 
 export const useVersions = (env: string, source: CanvasSource) => useAsked<HistoryVersions>(env, source, "versions", "work.history.versions", {});

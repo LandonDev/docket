@@ -1,4 +1,5 @@
 import { Paperclip } from "../../chrome/icons";
+import { Attachment, AttachmentContent, AttachmentMedia, AttachmentTitle } from "../../components/ui/attachment";
 import type { ActViewProps } from "../acts/registry";
 import { mailActView } from "./model";
 
@@ -39,10 +40,14 @@ export function View({ item }: ActViewProps) {
       {files.length ? (
         <div className="flex flex-wrap gap-2">
           {files.map((name) => (
-            <span key={name} className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border px-2.5 text-[13px]">
-              <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate">{name}</span>
-            </span>
+            <Attachment key={name} size="sm">
+              <AttachmentMedia>
+                <Paperclip className="size-3.5" />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{name}</AttachmentTitle>
+              </AttachmentContent>
+            </Attachment>
           ))}
         </div>
       ) : null}

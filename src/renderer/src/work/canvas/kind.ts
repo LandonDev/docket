@@ -63,6 +63,8 @@ export interface CanvasShell {
   review(adapter: ReviewAdapter | null): void;
   /** What the person selected: feeds the floating bar. Ask puts the chip in the thread's composer. */
   selection(selection: CanvasSelection | null): void;
+  /** Ask from the kind's own selection menu (a document's): the chip goes in the thread's composer, a folded thread unfolds, the composer takes the caret. Optional only so a stand-in shell written before it still types. */
+  ask?(chip: ContextChip): void;
   /** The other people in the item now: 20px avatars at the bar's start. */
   presence(people: Presence[]): void;
   /** What the agent does to this item. null (a kind's default): no mode, as a compare has none. */

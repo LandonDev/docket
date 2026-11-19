@@ -6,11 +6,14 @@ import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { reveal, yields } from "../../components/ui/reveal";
 import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
+import { ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { dayTime } from "../../lib/duration";
+import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { TypeGlyph } from "../../surfaces/threads/TypeGlyph";
+import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, MoreEntry } from "../canvas/kind";
 import { History } from "../icons";
 import { CompareDoc, CompareSkeleton, type Layout } from "./Compare";
@@ -125,7 +128,8 @@ async function restoreTo(target: HistoryVersion, actions: ReturnType<typeof hist
     const back = done.beforeVersionId;
     shell.written({ text: `Restored the ${dayTime(target.at)} version`, ...(back ? { undo: async () => void (await actions.restore(back)) } : {}) });
   } catch (err) {
-    shell.statusLine({ tone: "failed", word: "The restore did not go through", detail: err instanceof Error ? err.message : String(err) });
+    // A refused press is said once, as a toast: the state line is for a source that cannot be reached.
+    sayError(err, "The restore did not go through");
   }
 }
 
@@ -164,7 +168,7 @@ function BranchRow({ b, names, onOpen }: { b: HistoryBranch; names: Record<strin
   const who = whoWords(b.authors, names);
   const n = b.diff.rows.length;
   return (
-    <button type="button" onClick={onOpen} className="flex min-h-[52px] w-full items-center gap-3 rounded-lg p-2 text-start hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]">
+    <ItemButton onClick={onOpen} className="min-h-[52px] flex-nowrap p-2 text-[13px] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]">
       <span className="w-4 shrink-0" />
       <Face principal={b.authors[0]} name={who} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
@@ -172,7 +176,7 @@ function BranchRow({ b, names, onOpen }: { b: HistoryBranch; names: Record<strin
         <span className="truncate text-xs leading-4 text-muted-foreground">{n === 1 ? "1 change" : `${n} changes`}</span>
       </span>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{dayTime(b.editedAt)}</span>
-    </button>
+    </ItemButton>
   );
 }
 
@@ -207,20 +211,19 @@ function List({ env, source, state, setState, shell }: CanvasBodyProps<HistorySt
   const set = (patch: Partial<HistoryState>) => setState({ ...state, ...patch });
 
   useEffect(() => {
-    shell.statusLine(versions.error ? { tone: "failed", word: "History did not load", detail: versions.error, action: { label: "Retry", run: versions.retry } } : null);
-  }, [shell, versions.error, versions.retry]);
+    shell.statusLine(
+      versions.error
+        ? { tone: "failed", word: "History did not load", detail: versions.error, action: { label: "Retry", run: versions.retry } }
+        : branches.error
+          ? { tone: "failed", word: "Suggestions did not load", detail: branches.error, action: { label: "Retry", run: branches.retry } }
+          : null,
+    );
+  }, [shell, versions.error, versions.retry, branches.error, branches.retry]);
 
   const v = versions.value;
   if (!v) return versions.error ? null : <ListSkeleton />;
   const pending = branches.value?.branches ?? [];
-  if (v.versions.length === 0 && pending.length === 0)
-    return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyTitle>No versions yet</EmptyTitle>
-        </EmptyHeader>
-      </Empty>
-    );
+  if (v.versions.length === 0 && pending.length === 0) return <EmptyState title="No versions yet" />;
   const names = { ...v.names, ...branches.value?.names };
   const restore = (target: HistoryVersion) => restoreTo(target, actions, shell, set);
   return (
@@ -255,19 +258,25 @@ function List({ env, source, state, setState, shell }: CanvasBodyProps<HistorySt
 
 // ── the compare and the review ───────────────────────────────────────
 
-/** The layout shown: the person's choice, else side by side once there is room. */
-const layoutOf = (state: HistoryState | undefined, width: number): Layout => state?.layout ?? (width >= SIDE_BY_SIDE_FROM ? "sxs" : "one");
+/** Too narrow for two sides of 420px: one column, whatever was chosen. 0 is a body not yet measured. */
+const tooNarrow = (width: number): boolean => width > 0 && width < SIDE_BY_SIDE_FROM;
 
-function useLayoutEntry(shell: CanvasShell, layout: Layout, set: (patch: Partial<HistoryState>) => void, extra: MoreEntry[] = []) {
+/** The layout shown: the person's choice where both sides fit, else side by side once there is room. */
+export const layoutOf = (state: HistoryState | undefined, width: number): Layout => (tooNarrow(width) ? "one" : (state?.layout ?? (width >= SIDE_BY_SIDE_FROM ? "sxs" : "one")));
+
+function useLayoutEntry(shell: CanvasShell, layout: Layout, set: (patch: Partial<HistoryState>) => void, extra: MoreEntry[], width: number) {
+  const narrow = tooNarrow(width);
   useEffect(() => {
     shell.more?.([
-      layout === "one" ? { id: "sxs", label: "Side by side", icon: PanelRight, run: () => set({ layout: "sxs" }) } : { id: "one", label: "One column", icon: FileText, run: () => set({ layout: "one" }) },
+      layout === "one"
+        ? { id: "sxs", label: "Side by side", icon: PanelRight, disabled: narrow, run: () => set({ layout: "sxs" }) }
+        : { id: "one", label: "One column", icon: FileText, run: () => set({ layout: "one" }) },
       ...extra,
     ]);
     return () => shell.more?.(null);
-    // `set` and `extra` are rebuilt each render; the entries follow the layout and the sides.
+    // `set` and `extra` are rebuilt each render; the entries follow the layout, the room and the sides.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shell, layout, extra.map((e) => e.id).join()]);
+  }, [shell, layout, narrow, extra.map((e) => e.id).join()]);
 }
 
 function CompareView({ env, source, item, state, setState, shell }: CanvasBodyProps<HistoryState>) {
@@ -295,6 +304,7 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
           },
         ]
       : [],
+    width,
   );
   useEffect(() => {
     shell.statusLine(compare.error ? { tone: "failed", word: "The compare did not load", detail: compare.error, action: { label: "Retry", run: compare.retry } } : null);
@@ -343,7 +353,10 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
   const set = (patch: Partial<HistoryState>) => setState({ ...state, ...patch });
   const current = Math.min(state?.current ?? 0, Math.max(0, (branch?.diff.rows.length ?? 1) - 1));
   const actions = useMemo(() => historyActions(env, source), [env, source]);
-  useLayoutEntry(shell, layout, set);
+  useLayoutEntry(shell, layout, set, [], width);
+  useEffect(() => {
+    shell.statusLine(branches.error ? { tone: "failed", word: "The suggestions did not load", detail: branches.error, action: { label: "Retry", run: branches.retry } } : null);
+  }, [shell, branches.error, branches.retry]);
   // A branch that is done (accepted or rejected whole) leaves the list.
   useEffect(() => {
     if (branches.value && !branch) setState({ ...state, view: "list", branchId: undefined });
@@ -369,7 +382,7 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
   useEffect(() => bringIntoView(ref.current, current), [ref, current, layout, branch]);
   return (
     <div ref={ref} className="flex min-h-full flex-col">
-      {branch ? <CompareDoc diff={branch.diff} layout={layout} current={current} title={item.title} /> : <CompareSkeleton layout={layout} />}
+      {branch ? <CompareDoc diff={branch.diff} layout={layout} current={current} title={item.title} /> : branches.error ? null : <CompareSkeleton layout={layout} />}
     </div>
   );
 }
@@ -432,9 +445,9 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
   );
   if (view === "list") {
     const picked = state?.picked ?? [];
-    // Shown once a version is ticked, waiting for the second.
-    if (picked.length === 0) return null;
     const list = versions.value?.versions ?? [];
+    // There from the first frame, so ticking a version never pushes the list down; waiting for two ticks. Gone only when there are not two versions to compare.
+    if (versions.value && list.length < 2) return null;
     // The older of the two on the left.
     const [a, b] = [...picked].sort((x, y) => list.findIndex((v) => v.id === y) - list.findIndex((v) => v.id === x));
     return (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
-import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { BusyLabel, Button } from "../../components/ui/button";
+import { ItemSkeleton } from "./ItemBones";
 import { StatusMark } from "../../components/ui/status";
 import type { Chunk } from "../../lib/lazyChunk";
 import type { Feeds } from "./frame";
@@ -29,23 +29,6 @@ export function useKindModule(chunk: Chunk<CanvasKindModule>): CanvasKindModule 
   return module;
 }
 
-/** A loading item, in a document's shape: a title, its line, two short sections. */
-function ItemSkeleton() {
-  return (
-    <div data-canvas-skeleton aria-busy="true" aria-label="Loading" className="mx-auto flex w-full max-w-[672px] flex-col gap-3 px-8 py-6">
-      <Skeleton className="h-5 w-[46%]" />
-      <Skeleton className="h-3 w-[28%]" />
-      <Skeleton className="mt-3 h-4 w-[22%]" />
-      <Skeleton className="h-3.5 w-[86%]" />
-      <Skeleton className="h-3.5 w-[78%]" />
-      <Skeleton className="h-3.5 w-[64%]" />
-      <Skeleton className="mt-3 h-4 w-[20%]" />
-      <Skeleton className="h-3.5 w-[92%]" />
-      <Skeleton className="h-3.5 w-[70%]" />
-    </div>
-  );
-}
-
 /** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. */
 function StateLine({ line }: { line: StatusLine }) {
   const [running, setRunning] = useState(false);
@@ -63,7 +46,7 @@ function StateLine({ line }: { line: StatusLine }) {
             void Promise.resolve(action.run()).finally(() => setRunning(false));
           }}
         >
-          {action.label}
+          <BusyLabel busy={running} label={action.label} />
         </Button>
       ) : null}
     </div>
