@@ -70,7 +70,7 @@ Each later milestone fills its own file and edits no other; a stub answers
 | `…/g/*` | `routes/guests.ts` | 31 |
 | `wss …/w/office`, `GET …/w/addin/*` | `routes/office.ts` | 29 |
 | `…/f/*` | `routes/form.ts` | 36 |
-| `…/w/full/*` | `routes/fullEditor.ts` | 40 |
+| `…/w/full/<token>/*` | `routes/fullEditor.ts` | **40, built** ([work-sheets.md](work-sheets.md) "The full editor") |
 | internal `/internal/doc/{read,write,create,comment}` | `routes/internal.ts` | 18, built |
 | internal `/internal/sheet/{read,write}` and main's `/internal/sheet/<op>` | `routes/internalSheet.ts` | **27, built** |
 

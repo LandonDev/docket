@@ -173,11 +173,93 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   runs (`changeRuns`), a conflict alone, orphaned cells last.
 - The switch: when `view.reach` is set (macros, pivot tables, charts, Power
   Query, data connections, links to other workbooks, form controls,
-  slicers, what-if tables), "TempCode | Excel" sits in the tab row; Excel
-  opens the file in desktop Excel where it is installed (`work.sheets.switch`).
+  slicers, what-if tables), "TempCode | Excel" or "TempCode | Full editor"
+  sits in the tab row (`reach.to`). Excel opens the file in desktop Excel
+  where it is installed; Full editor opens it in ONLYOFFICE on the box (next
+  section), and its side spins until the host answers the page, which opens
+  in the browser (`work.sheets.switch` answers `{ opened, url? }`).
 - Our own charts (`work.sheets.chart`, `work_sheets_charts`): plain neutral
   bars over a range, made from a selection through More.
 - No formatting toolbar in the bar (the approved page has none).
+
+## The full editor
+
+Milestone 40. ONLYOFFICE Docs Community 10.0.0, run on the box as the
+switch for an opened `.xlsx` or `.xlsm` our grid cannot fully edit: the
+owner's alone, unmodified, a separate server (architecture §12.1). Code in
+`src/main/server/work/sheets/fullEditor/`, the route in
+`work/service/routes/fullEditor.ts`.
+
+- **Installed** by its own manifest, `scripts/work-tools/onlyoffice.json`
+  (linux-x64 only; AGPL-3.0, the licence and how it may run in its
+  `licenceNote`): the vendor's .deb is fetched by hash and kept raw, and the
+  probe unpacks it with `dpkg-deb -x` and runs the vendor's own postinst
+  steps (fonts, themes, the JS cache, `api.js` copied from its template),
+  then converts a CSV with `x2t`. 2.1 GB under
+  `<userData>/work-tools/onlyoffice/10.0.0/`. Nothing of it is in the app,
+  work-kit or the guest page.
+- **Offered** where `fullEditorHere(dataDir)` says so: a Linux host (the box)
+  with the tool installed. There `reach.to` is `'full'` for a package; on
+  the Mac and Windows it stays `'excel'`. LifeOS sheets and `.tcsheet`
+  files carry no `reach`, so the switch is not offered for them (the model
+  writer could write one out for it, but leaves out conditional formats,
+  validations and names, so that is not wired).
+- **Started** on the first press while Work is on (`openFull`): never for a
+  thread (`by.kind === 'model'`) or a remote key short of admin. The
+  `docservice` runs as this user from the toolchain's tree with a config we
+  write under `<userData>/full-editor/conf` (the vendor's files with paths
+  moved, and a `local.json` with one fresh secret for every token it signs
+  and checks). Its "port" is a Unix socket in a 0700 folder
+  (`full-editor/run/ds.sock`): it has no TCP listener at all. It has no
+  database and no queue server (in-memory editor data); its cache under
+  `full-editor/data` is wiped at each start. Its log is
+  `full-editor/docservice.log`; `TEMP_CODE_FULL_EDITOR_LOG=info` makes it say
+  what each request did.
+- **Each open** copies the file as it is (the docservice fetches that copy
+  from a storage server main runs on 127.0.0.1) and mints a token of 32
+  random bytes in hex. A second press on the same file answers the same
+  token. The document key is hex too: the converter takes a key starting
+  with `-` for a flag, and the docservice escapes `_` in the links it writes.
+- **The route** `…/w/full/<token>/` asks main what the token opens, over the
+  Unix socket beside the service's own (`work-service.sock.full`, 0600;
+  cached two seconds), and answers 404 for anything else. `/` is our page
+  (a nonce CSP, `frame-ancestors 'none'`), which loads ONLYOFFICE's `api.js`
+  with the config main signed. Everything under it goes to the docservice's
+  socket, its editor paths only (`EDITOR_PATHS`: no info, admin, command,
+  converter or builder endpoints), WebSocket upgrades included, with
+  `X-Forwarded-Host: <host>/w/full/<token>` so the editor's own links come
+  back through the route, the caller's cookies and credentials dropped,
+  and `X-Frame-Options: SAMEORIGIN` so its frames load here only. A
+  window on the box opens `http://127.0.0.1:<service port>/w/full/<token>/`;
+  the owner's other devices open it on the host's public address, which
+  reaches the service only once the owner applies M18's `/w/` tunnel rule.
+- **Saves** come to the storage server's callback, signed by the
+  docservice (checked HS256, the document's key matched). The status-6
+  save made with Save and the status-2 save made after everyone leaves are
+  fetched from the docservice's own socket and put in the file as one
+  change from outside (a temp file renamed over it, its mode kept): the
+  package store makes it a revision of its own (`by: 'file'`), suggestions
+  over the file are orphaned, and the canvas reloads. If the file changed
+  outside the editor since it was opened, the save goes beside it
+  (`<name> (full editor <date time>).xlsx`) and the grid says so where it
+  says a failed save. A save the editor cannot make (status 3 or 7) is
+  said there too, and the file is left as it was.
+- **Stopped** when Work turns off (the module's `start` return), when
+  nothing has been open for ten minutes, or when its process group holds
+  more than its cap (2 GiB, `TEMP_CODE_FULL_EDITOR_MEMORY_MB`): a watchdog
+  adds up the RSS of every process in the group every ten seconds, since
+  the box gives this user no cgroup of its own. An open nobody loaded in
+  fifteen minutes is let go; none lives past a day. Stopping kills the
+  whole group; a docservice an earlier run left (the app was killed) is
+  stopped before the next starts.
+- **The live proof**, `fullEditor/live.test.ts`, runs only with
+  `FULL_EDITOR_LIVE=1` and `FULL_EDITOR_PLAYWRIGHT` naming a playwright-core
+  whose Chromium is installed: a workbook with pivot tables and a chart
+  (`fixtures/pivot-chart.xlsx`, made by ONLYOFFICE's docbuilder from
+  `pivot-chart.docbuilder.js`) opens from the switch, a cell typed there
+  comes back as revision 1 with the pivot parts byte for byte and the chart
+  kept, and the corpus's LibreOffice-written `pivot.xlsx` shows its failed
+  save over the grid.
 
 ## Not built
 
@@ -185,7 +267,7 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   rows or columns) in one.
 - The model writer leaves out conditional formats, validations, defined
   names, notes and our charts.
-- The full editor (M40), Excel behind the grid (M28), Google (M30), the
+- Excel behind the grid (M28), Google (M30), the
   guest page that uses the live route (M31), presence on the canvas.
 - Keeping IronCalc's model in memory between saves: each save loads the
   package afresh, which on the 100,000-row file is tens of seconds.
@@ -206,3 +288,13 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
 - A `.tcsheet` is rewritten whole on every op.
 - work-kit's `was` chip in the formula bar is not struck through on the
   delete tint as the prototype draws it; work-kit owns it.
+- ONLYOFFICE 10.0 cannot save an edit to the corpus's `pivot.xlsx` (its
+  pivot written by LibreOffice): the converter fails ("Cannot read property
+  'Tm' of undefined") with the vendor's own setup too. The grid says so and
+  the file keeps what it had, but the edits made there are lost. A pivot
+  ONLYOFFICE wrote saves; one Excel wrote is untried (no Excel on the box).
+- ONLYOFFICE rewrites a chart's XML when it saves (the chart is kept).
+- The memory cap is a watchdog, not a kernel limit: a burst inside ten
+  seconds can pass it. Stopping over the cap loses edits not yet saved.
+- On a phone the page loads the desktop editor, cramped: Community's mobile
+  editor is view-only, so the config asks for the desktop one.
