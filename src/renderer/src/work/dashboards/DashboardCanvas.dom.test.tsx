@@ -156,6 +156,7 @@ describe("the dashboard kind", () => {
     const body = await found("[data-dashboard]");
     expect(body.getAttribute("data-stale")).toBe("true");
     expect(body.querySelector(".bg-\\(--chart-neutral-stale\\)")).not.toBeNull();
+    expect(body.querySelector("[data-figure] button span")?.className).toContain("text-muted-foreground");
     cleanup();
     open(page({ failed: "Invoices!Z9 is not a range" }));
     await waitFor(() => expect(screen.getByText("Couldn't read the figures")).toBeTruthy());
