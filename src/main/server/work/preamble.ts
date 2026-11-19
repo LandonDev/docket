@@ -31,6 +31,8 @@ export interface WorkPreambleFacts {
   child: boolean
   /** The owner's name, when the host knows it (`work.ownerName`); the rules read the same without it. */
   owner?: string | null
+  /** The thread's folder, named when the harness's shell starts elsewhere (Muse Code's fence: museConfigDirs.ts museWorkDirs). */
+  folder?: string | null
 }
 
 /** The setting that holds the owner's name for the preamble. Nothing sets it yet: the LifeOS sign-in or Settings → Work may. */
@@ -67,7 +69,8 @@ export function workPreambleHead(facts: WorkPreambleFacts): string {
   const name = facts.owner?.trim() || null
   const they = name ?? 'the owner'
   const their = name ? `${name}'s` : "the owner's"
-  return [who(name, facts.child), material(they, their), sending(they), SECRETS, drafts(they), where(facts, they)].join('\n\n')
+  const folder = facts.folder ? [`Your work folder is ${facts.folder}; your shell starts elsewhere, so cd there or use absolute paths.`] : []
+  return [who(name, facts.child), material(they, their), sending(they), SECRETS, drafts(they), where(facts, they), ...folder].join('\n\n')
 }
 
 /**

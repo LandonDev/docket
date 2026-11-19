@@ -14,8 +14,13 @@ import {
   museConfigDirFor,
   museDirKind,
   museSkillsFor,
+  museWorkDirs,
+  museWorkRefusal,
+  museWorkRoot,
+  MUSE_WORK_SETTINGS,
   recaptureMuseDir
 } from './museConfigDirs'
+import { execFileSync } from 'node:child_process'
 
 const blobOf = (email: string, token = 'dca:a') => JSON.stringify({ schema_version: 1, providers: { meta: { access_token: token, api_key: 'LLM|1|k', mechanism: 'oauth', user_email: email } } }, null, 2) + '\n'
 const ME = 'landon@example.com'
@@ -215,5 +220,101 @@ describe('migrateMuseDirs', () => {
     expect(readdirSync(join(userDir, 'skills'))).toEqual(['mine'])
     expect(readFileSync(join(userDir, 'settings.json'), 'utf8')).toBe('{"schema_version":1}')
     expect(logs.filter((l) => l.includes('old config dir removed')).length).toBe(2)
+  })
+})
+
+describe('the Work fence', () => {
+  const work = (): string => museWorkRoot(root)
+  /** What an agent in a Work thread could have left: servers and hooks in the config dir, a plugin in the data dir, a `.mcp.json` in its root and a git repo above it. */
+  const tamper = (cfg: string, threadRoot: string): void => {
+    writeFileSync(join(cfg, 'muse', 'settings.json'), '{"schema_version":1,"mcpServers":{"planted":{"command":"x"}}}')
+    mkdirSync(join(cfg, 'muse', 'hooks'), { recursive: true })
+    writeFileSync(join(cfg, 'muse', 'trust.json'), '{}')
+    rmSync(join(cfg, 'muse', 'skills'))
+    symlinkSync(join(userDir, 'skills'), join(cfg, 'muse', 'skills'))
+    mkdirSync(join(work(), 'data', 'muse', 'plugins', 'p'), { recursive: true })
+    mkdirSync(join(work(), 'data', 'muse', 'sessions'), { recursive: true })
+    writeFileSync(join(work(), 'data', 'muse', 'sessions', 's.jsonl'), 'kept')
+    writeFileSync(join(threadRoot, '.mcp.json'), '{"mcpServers":{"planted":{"command":"x"}}}')
+    execFileSync('git', ['init', '-q', join(work(), 'roots')])
+    writeFileSync(join(work(), 'roots', '.mcp.json'), '{}')
+  }
+
+  it('an own Work dir holds the person\'s auth.json as a link, its own settings.json and the store\'s skills, and nothing else; put back after an agent wrote into it', () => {
+    writeFileSync(join(userDir, 'auth.json'), blobOf('live@x'))
+    const first = museWorkDirs('t1', null, 'ws-w1', pointer)
+    expect(first.configDir).toBe(join(work(), 'config', MUSE_OWN, 'ws-w1'))
+    expect(first.credentialFile).toBe(false)
+    tamper(first.configDir, first.root)
+    const d = museWorkDirs('t1', null, 'ws-w1', pointer)
+    const m = join(d.configDir, 'muse')
+    expect(readdirSync(m).sort()).toEqual(['auth.json', 'settings.json', 'skills'])
+    expect(readlinkSync(join(m, 'auth.json'))).toBe(join(userDir, 'auth.json'))
+    expect(readFileSync(join(m, 'settings.json'), 'utf8')).toBe(MUSE_WORK_SETTINGS)
+    expect(lstatSync(join(m, 'settings.json')).isSymbolicLink()).toBe(false)
+    expect(readlinkSync(join(m, 'skills'))).toBe(join(pointer, 'skills'))
+    // The data dir keeps its sessions and loses its plugins.
+    expect(d.dataDir).toBe(join(work(), 'data'))
+    expect(existsSync(join(d.dataDir, 'muse', 'plugins'))).toBe(false)
+    expect(readFileSync(join(d.dataDir, 'muse', 'sessions', 's.jsonl'), 'utf8')).toBe('kept')
+    // The root is new, empty and a repo of its own, so the .mcp.json walk stops there.
+    expect(d.root).toBe(join(work(), 'roots', 't1'))
+    expect(readdirSync(d.root)).toEqual(['.git'])
+    expect(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: d.root, encoding: 'utf8' }).trim()).toBe(d.root)
+    // Nothing of the person's was touched.
+    expect(readdirSync(join(userDir, 'skills'))).toEqual(['mine'])
+    expect(readFileSync(join(userDir, 'settings.json'), 'utf8')).toBe('{"schema_version":1}')
+  })
+
+  it('an account\'s Work dir holds the vault\'s copy at 0600 and reads its login from the file; a copy the CLI rotated there is saved back', () => {
+    const d = museWorkDirs('t2', ME, 'global', pointer)
+    expect(d.configDir).toBe(join(work(), 'config', MUSE_ACCOUNTS, ME, 'global'))
+    expect(d.credentialFile).toBe(true)
+    const auth = join(d.configDir, 'muse', 'auth.json')
+    expect(readFileSync(auth, 'utf8')).toBe(blobs[ME])
+    expect(statSync(auth).mode & 0o777).toBe(0o600)
+    expect(readdirSync(join(d.configDir, 'muse')).sort()).toEqual(['.auth-seed', 'auth.json', 'settings.json', 'skills'])
+    writeFileSync(auth, blobOf(ME, 'dca:rotated'))
+    expect(recaptureMuseDir(ME)).toBe(true)
+    expect(saved).toEqual([`${ME}:${blobOf(ME, 'dca:rotated')}`])
+  })
+
+  it('never writes through a link an agent planted: a linked muse dir, settings.json, data dir or roots dir is removed, not followed', () => {
+    const d = museWorkDirs('t3', null, 'global', null)
+    const m = join(d.configDir, 'muse')
+    // settings.json a link to the person's file
+    rmSync(join(m, 'settings.json'))
+    symlinkSync(join(userDir, 'settings.json'), join(m, 'settings.json'))
+    museWorkDirs('t3', null, 'global', null)
+    expect(readFileSync(join(userDir, 'settings.json'), 'utf8')).toBe('{"schema_version":1}')
+    expect(lstatSync(join(m, 'settings.json')).isSymbolicLink()).toBe(false)
+    // the whole muse dir, the data dir and the roots dir links to the person's
+    rmSync(m, { recursive: true })
+    symlinkSync(userDir, m)
+    const personData = join(base, 'person-data')
+    mkdirSync(join(personData, 'muse', 'plugins', 'theirs'), { recursive: true })
+    rmSync(join(work(), 'data'), { recursive: true })
+    symlinkSync(personData, join(work(), 'data'))
+    const elsewhere = join(base, 'elsewhere')
+    mkdirSync(join(elsewhere, 't3'), { recursive: true })
+    writeFileSync(join(elsewhere, 't3', 'keep'), '')
+    rmSync(join(work(), 'roots'), { recursive: true })
+    symlinkSync(elsewhere, join(work(), 'roots'))
+    const again = museWorkDirs('t3', null, 'global', null)
+    expect(lstatSync(m).isSymbolicLink()).toBe(false)
+    expect(readdirSync(m)).toEqual(['settings.json'])
+    expect(readdirSync(userDir).sort()).toEqual(['.auth.json.lock', 'hooks', 'settings.json', 'skills'])
+    expect(existsSync(join(personData, 'muse', 'plugins', 'theirs'))).toBe(true)
+    expect(existsSync(join(elsewhere, 't3', 'keep'))).toBe(true)
+    expect(lstatSync(join(work(), 'roots')).isSymbolicLink()).toBe(false)
+    expect(readdirSync(again.root)).toEqual(['.git'])
+  })
+
+  it('a thread id that is not a plain name becomes a digest, and a host with no dirs refuses', () => {
+    expect(museWorkDirs('../x', null).root).toMatch(/roots\/[0-9a-f]{32}$/)
+    expect(museWorkRefusal()).toBeNull()
+    configureMuseDirs(null)
+    expect(museWorkRefusal()).toMatch(/no data folder/)
+    expect(() => museWorkDirs('t1', null)).toThrow(/no data folder/)
   })
 })

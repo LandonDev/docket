@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -18,7 +18,7 @@ vi.mock('./harness/child', async () => ({
   ...(await vi.importActual<typeof import('./harness/child')>('./harness/child')),
   resolveMuseBinary: async () => ({ path: fakeBin })
 }))
-vi.mock('./binaries', () => ({ harnessEnv: async () => ({ PATH: process.env.PATH, FAKE_MUSE_SANDBOX: process.env.FAKE_MUSE_SANDBOX }) }))
+vi.mock('./binaries', () => ({ harnessEnv: async () => ({ PATH: process.env.PATH, FAKE_MUSE_SANDBOX: process.env.FAKE_MUSE_SANDBOX, FAKE_MUSE_RECORD: process.env.FAKE_MUSE_RECORD, TBH_MANAGED_HOOKS_PATH: process.env.TBH_MANAGED_HOOKS_PATH }) }))
 vi.mock('../apptools', () => ({ bridgeMcpConfig: () => ({ command: '/usr/bin/node', args: ['/app/bridge.mjs'], env: { TEMP_CODE_SESSION: 's1', TEMP_CODE_PORT: '1' } }) }))
 
 const { museDriver, FIRST_OUTPUT_MS } = await import('./muse')
@@ -358,6 +358,60 @@ describe('the muse driver over the fake host', () => {
       expect(e2.TBH_CREDENTIAL_BACKEND).toBe('file')
       expect(e2.GH_CONFIG_DIR).toBeTruthy()
     } finally {
+      configureMuseDirs(null)
+      configureMuseSkills(null)
+    }
+  })
+
+  it.skipIf(process.platform !== 'linux')('a Work thread serves fenced: its Work dirs, cwd its empty root, its folder an extra root, no inherited TBH_*; a code thread as before', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'muse-work-drv-'))
+    const root = join(base, 'muse-accounts')
+    const folder = join(base, 'folder')
+    mkdirSync(folder)
+    const record = join(base, 'record.jsonl')
+    configureMuseDirs({ root, readBlob: () => null, userConfigDir: join(base, 'cfg', 'muse') })
+    configureMuseSkills({ scopeOf: () => null, pointers: { path: () => join(base, 'scope', 'global') } })
+    process.env.FAKE_MUSE_RECORD = record
+    process.env.TBH_MANAGED_HOOKS_PATH = '/planted'
+    const environ = (pid: number): Record<string, string> =>
+      Object.fromEntries(readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean).map((kv) => [kv.slice(0, kv.indexOf('=')), kv.slice(kv.indexOf('=') + 1)]))
+    const recorded = () => readFileSync(record, 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+    try {
+      const work = ctxFor({ id: 'w1', cwd: folder, scope: 'work' } as Partial<SessionMeta>)
+      const h = await museDriver.start(work.ctx)
+      handles.push(h)
+      const pid = h.pid!()!
+      const threadRoot = join(base, 'muse-work', 'roots', 'w1')
+      expect(readlinkSync(`/proc/${pid}/cwd`)).toBe(realpathSync(threadRoot))
+      expect(readdirSync(threadRoot)).toEqual(['.git'])
+      const argv = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0')
+      expect(argv.slice(argv.indexOf('serve'))).toEqual(['serve', '--trust-workspace', ''])
+      const env = environ(pid)
+      expect(env.XDG_CONFIG_HOME).toBe(join(base, 'muse-work', 'config', 'own', 'global'))
+      expect(env.XDG_DATA_HOME).toBe(join(base, 'muse-work', 'data'))
+      expect(env.TBH_MANAGED_HOOKS_PATH).toBeUndefined()
+      expect(readFileSync(join(env.XDG_CONFIG_HOME, 'muse', 'settings.json'), 'utf8')).toBe('{"schema_version":1}\n')
+      expect(recorded()).toEqual([{ workspaceRoot: realpathSync(threadRoot), workspaceRoots: [realpathSync(threadRoot), realpathSync(folder)] }])
+      // An agent's .mcp.json in the root is gone at the next start.
+      writeFileSync(join(threadRoot, '.mcp.json'), '{}')
+      await h.dispose()
+      const again = await museDriver.start(ctxFor({ id: 'w1', cwd: folder, scope: 'work' } as Partial<SessionMeta>).ctx)
+      handles.push(again)
+      expect(existsSync(join(threadRoot, '.mcp.json'))).toBe(false)
+
+      // A code thread: its folder is the cwd and the one root, the person's data home and switches as they are.
+      const code = await museDriver.start(ctxFor({ id: 'c1', cwd: folder } as Partial<SessionMeta>).ctx)
+      handles.push(code)
+      const cpid = code.pid!()!
+      expect(readlinkSync(`/proc/${cpid}/cwd`)).toBe(realpathSync(folder))
+      const cenv = environ(cpid)
+      expect(cenv.XDG_CONFIG_HOME).toBe(join(root, 'own', 'global'))
+      expect(cenv.XDG_DATA_HOME).toBeUndefined()
+      expect(cenv.TBH_MANAGED_HOOKS_PATH).toBe('/planted')
+      expect(recorded().at(-1)).toEqual({ workspaceRoot: folder, workspaceRoots: null })
+    } finally {
+      delete process.env.FAKE_MUSE_RECORD
+      delete process.env.TBH_MANAGED_HOOKS_PATH
       configureMuseDirs(null)
       configureMuseSkills(null)
     }

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, relative, sep } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { dirname, join, relative, sep } from 'node:path'
 import { isSharedMuseEntry, museAccountDirName } from '@shared/museSettings'
 import { scopeKeyOf, type ScopeKey, type SkillPointers } from './skills/pointers'
 
@@ -215,15 +216,17 @@ export function recaptureMuseDir(account: string | null): boolean {
   const stored = deps.readBlob(account)
   if (!stored) return false
   const candidates: { museDir: string; text: string; mtime: number }[] = []
-  const accountRoot = museAccountRoot(deps.root, account)
-  let scopes: string[] = []
-  try {
-    scopes = readdirSync(accountRoot)
-  } catch {
-    // no scope dirs yet
+  // A code thread's scope dirs and a Work thread's (museWorkDirs) both hold copies of the account's login.
+  const scopeDirs: string[] = []
+  for (const accountRoot of [museAccountRoot(deps.root, account), join(museWorkRoot(deps.root), 'config', MUSE_ACCOUNTS, museAccountDirName(account))]) {
+    try {
+      for (const scope of readdirSync(accountRoot)) scopeDirs.push(join(accountRoot, scope))
+    } catch {
+      // no scope dirs yet
+    }
   }
-  for (const scope of scopes) {
-    const museDir = join(accountRoot, scope, 'muse')
+  for (const scopeDir of scopeDirs) {
+    const museDir = join(scopeDir, 'muse')
     const text = readText(join(museDir, AUTH))
     if (text === null || sha256(text) === readText(join(museDir, SEED))) continue
     let mtime = 0
@@ -251,6 +254,91 @@ export function recaptureMuseDir(account: string | null): boolean {
   deps.saveBlob(account, best.text)
   deps.log?.(`[muse] account ${account}: auth.json changed on disk; saved back to the vault`)
   return true
+}
+
+// ── the Work fence (docs/agents/work-scope.md "Muse Code") ─────────────────
+
+/**
+ * A Work thread loads no MCP server but the app's own bridge. Muse 1.4.24
+ * reads servers from its config dir's `settings.json` (and hooks there),
+ * from plugins installed in its data dir and approved in that settings
+ * file, and from a `.mcp.json` at the session's `workspaceRoot` and every
+ * folder up to its git root, re-read at each session load. So a Work
+ * thread's `muse serve` gets, made again before every serve (start and
+ * resume), under `<userData>/muse-work/`:
+ *
+ *   config/<accounts/<acct>|own>/<scope>/   XDG_CONFIG_HOME: `muse/` holds
+ *       auth.json (the account's copy, or a link to the person's own),
+ *       settings.json `{"schema_version":1}` and `skills` → the store's
+ *       scope; every other entry is removed, nothing of the person's linked.
+ *   data/                                    XDG_DATA_HOME: kept, so
+ *       `session/resume` finds its sessions; `muse/plugins` removed.
+ *   roots/<thread>/                          the primary root and the
+ *       process cwd: removed, made empty and `git init`ed, so the
+ *       `.mcp.json` walk stops at it. The thread's folder rides
+ *       `workspaceRoots`, whose extra entries Muse reads no `.mcp.json` from.
+ *
+ * Every write replaces what is there and never goes through a link an
+ * agent planted: a dir on the way that is a link is removed and made real.
+ */
+export interface MuseWorkDirs {
+  configDir: string
+  dataDir: string
+  /** The primary root: `workspaceRoot`, the first `workspaceRoots` entry and the process cwd. */
+  root: string
+  /** The config dir is an account's (`TBH_CREDENTIAL_BACKEND=file`). */
+  credentialFile: boolean
+}
+
+/** The Work config dir's whole settings.json. */
+export const MUSE_WORK_SETTINGS = '{"schema_version":1}\n'
+
+/** `<userData>/muse-work`, beside `<userData>/muse-accounts`. */
+export const museWorkRoot = (accountsRoot: string): string => join(dirname(accountsRoot), 'muse-work')
+
+/** A thread id as one path segment: as it is when it is plain, else its digest. */
+const rootName = (threadId: string): string => (/^[A-Za-z0-9_-]{1,128}$/.test(threadId) ? threadId : sha256(threadId).slice(0, 32))
+
+/** `base/…parts` as real directories: any part that is a link or a file is removed first, so nothing below is reached through a link. */
+function realDir(base: string, ...parts: string[]): string {
+  let dir = base
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  for (const part of parts) {
+    dir = join(dir, part)
+    const st = lstatOrNull(dir)
+    if (st && !st.isDirectory()) rmSync(dir, { force: true })
+    if (!st || !st.isDirectory()) mkdirSync(dir, { mode: 0o700 })
+  }
+  return dir
+}
+
+/** Why a Work thread cannot run on Muse here, or null. */
+export function museWorkRefusal(): string | null {
+  return deps ? null : "this host has no data folder for a Work thread's Muse dirs"
+}
+
+/** The Work dirs for a thread, put back as the fence keeps them (above). Throws when the host has none. */
+export function museWorkDirs(threadId: string, account: string | null, scope: ScopeKey = 'global', skillsPointer: string | null = null): MuseWorkDirs {
+  if (!deps) throw new Error(museWorkRefusal()!)
+  const work = museWorkRoot(deps.root)
+  const blob = account ? deps.readBlob(account) : null
+  const owner = account && blob ? [MUSE_ACCOUNTS, museAccountDirName(account)] : [MUSE_OWN]
+  const museDir = realDir(work, 'config', ...owner, scope, 'muse')
+  for (const name of readdirSync(museDir)) if (name !== AUTH) rmSync(join(museDir, name), { recursive: true, force: true })
+  if (account && blob) writeAuth(museDir, blob)
+  else linkOwnAuth(museDir, deps.userConfigDir ?? userMuseConfigDir())
+  // 'wx': made new, so a link planted since the sweep fails the spawn rather than take the write.
+  writeFileSync(join(museDir, 'settings.json'), MUSE_WORK_SETTINGS, { flag: 'wx', mode: 0o600 })
+  if (skillsPointer !== null) symlinkSync(join(skillsPointer, 'skills'), join(museDir, 'skills'))
+  const dataDir = realDir(work, 'data')
+  rmSync(join(realDir(work, 'data', 'muse'), 'plugins'), { recursive: true, force: true })
+  const root = join(realDir(work, 'roots'), rootName(threadId))
+  rmSync(root, { recursive: true, force: true })
+  mkdirSync(root, { mode: 0o700 })
+  // No templates (the person's init.templateDir) and none of this process's GIT_* (a GIT_DIR would put the repo elsewhere).
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+  execFileSync('git', ['init', '-q', '--template=', root], { env, stdio: 'ignore' })
+  return { configDir: dirname(museDir), dataDir, root: realpathSync(root), credentialFile: !!(account && blob) }
 }
 
 /** The account dirs under the new layout (one per account, each holding a dir per scope). */

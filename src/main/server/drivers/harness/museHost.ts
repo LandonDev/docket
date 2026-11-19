@@ -36,7 +36,9 @@ import { resolveMuseBinary } from './child'
  * login from the file there (`TBH_CREDENTIAL_BACKEND=file`, the one setting
  * the config-dir spike proved on both hosts); and since tool processes
  * inherit the owned `XDG_CONFIG_HOME`, `gh` is kept on the person's own
- * config (`GH_CONFIG_DIR`) or it would lose its login.
+ * config (`GH_CONFIG_DIR`) or it would lose its login. A Work thread also
+ * gets its data dir as `XDG_DATA_HOME`, and no `MUSE_*` or `TBH_*` of this
+ * process's (docs/agents/work-scope.md "Muse Code").
  */
 export interface MuseHostOptions {
   sessionId: string
@@ -45,6 +47,8 @@ export interface MuseHostOptions {
   configDir?: string | null
   /** The dir is an account's: its login is the file there, never the Keychain. */
   credentialFile?: boolean
+  /** A Work thread's data dir (museConfigDirs.ts museWorkDirs), handed over as `XDG_DATA_HOME`; set, no inherited `MUSE_*` or `TBH_*` reaches the child. */
+  dataDir?: string | null
   contributorMode?: boolean
   /** Extra variables, after the defaults (the app-tools bridge's). */
   env?: Record<string, string>
@@ -75,10 +79,14 @@ export function personGhConfigDir(env: NodeJS.ProcessEnv = process.env): string 
   return join(xdg && xdg.trim() ? xdg : join(homedir(), '.config'), 'gh')
 }
 
-export async function museEnv(opts: Pick<MuseHostOptions, 'sessionId' | 'configDir' | 'credentialFile' | 'contributorMode' | 'env'>): Promise<NodeJS.ProcessEnv> {
+/** Muse's own switches (`MUSE_ENABLE_SESSION_MCP`, `TBH_MANAGED_HOOKS_PATH`, …): a Work thread's child gets only those the driver sets. */
+const MUSE_OWN_ENV = /^(MUSE_|TBH_)/
+
+export async function museEnv(opts: Pick<MuseHostOptions, 'sessionId' | 'configDir' | 'credentialFile' | 'contributorMode' | 'env' | 'dataDir'>): Promise<NodeJS.ProcessEnv> {
+  const base: NodeJS.ProcessEnv = { ...(await harnessEnv()), ...guardInstanceEnv() }
+  if (opts.dataDir) for (const key of Object.keys(base)) if (MUSE_OWN_ENV.test(key)) delete base[key]
   const env: NodeJS.ProcessEnv = {
-    ...(await harnessEnv()),
-    ...guardInstanceEnv(),
+    ...base,
     [THREAD_MARK]: opts.sessionId,
     MUSE_CONTRIBUTOR_MODE: opts.contributorMode ? '1' : '0',
     ...(opts.env ?? {})
@@ -89,6 +97,7 @@ export async function museEnv(opts: Pick<MuseHostOptions, 'sessionId' | 'configD
     env.XDG_CONFIG_HOME = opts.configDir
     if (opts.credentialFile) env.TBH_CREDENTIAL_BACKEND = 'file'
   }
+  if (opts.dataDir) env.XDG_DATA_HOME = opts.dataDir
   return env
 }
 

@@ -45,6 +45,8 @@ export interface SessionFacts {
   permission: PermissionPolicy
   /** The app-tools bridge (apptools.ts bridgeMcpConfig), a stdio server the session gets through `config.mcpServers` (the `sessionMcp` grant). */
   bridge?: Record<string, unknown> | null
+  /** A Work thread's roots, real paths: its empty primary root, then its folder (museConfigDirs.ts museWorkDirs). Absent, the thread's cwd is the one root. */
+  roots?: string[]
 }
 
 export function mcpServersOf(bridge: Record<string, unknown> | null | undefined): Record<string, SessionMcpServerConfig> | undefined {
@@ -64,7 +66,8 @@ export function mcpServersOf(bridge: Record<string, unknown> | null | undefined)
 export function sessionStartParams(facts: SessionFacts): Omit<SessionStartParams, 'commandId'> {
   const mcpServers = mcpServersOf(facts.bridge)
   return {
-    workspaceRoot: facts.cwd,
+    // Muse reads `.mcp.json` from the primary root up to its git root, and from no extra root.
+    ...(facts.roots?.length ? { workspaceRoot: facts.roots[0], workspaceRoots: facts.roots } : { workspaceRoot: facts.cwd }),
     ...(facts.model ? { modelId: facts.model } : {}),
     permissionProfile: PROFILE[facts.permission],
     approvalMode: APPROVAL_MODE[facts.permission],

@@ -2,6 +2,7 @@
 // stdio, the frames shaped like the spike's recordings (fixtures/muse).
 // The text of a turn picks the scenario; nothing here reaches a model.
 import { createInterface } from 'node:readline'
+import { appendFileSync } from 'node:fs'
 
 const FINGERPRINT = 'sha256:c94c3d1f2f51e6424074b9ec43eac3eedcf532d3dcd77351ec1383a87d3049c6'
 const out = (frame) => process.stdout.write(JSON.stringify(frame) + '\n')
@@ -167,6 +168,7 @@ rl.on('line', async (line) => {
       const sid = `sess-${++seq}`
       sessions.set(sid, { params })
       process.stderr.write(`fake: start ${JSON.stringify({ profile: params.permissionProfile, mode: params.approvalMode, config: params.config ?? null, args: process.argv.slice(2) })}\n`)
+      if (process.env.FAKE_MUSE_RECORD) appendFileSync(process.env.FAKE_MUSE_RECORD, `${JSON.stringify({ workspaceRoot: params.workspaceRoot, workspaceRoots: params.workspaceRoots ?? null })}\n`)
       notify('session/started', { sessionId: sid })
       return reply(id, { session: { sessionId: sid, status: 'idle', workspaceRoot: params.workspaceRoot, permissionState: { profileId: params.permissionProfile ?? ':ask-me' } }, viewCursor: cursor(sid) })
     }

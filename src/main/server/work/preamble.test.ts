@@ -63,6 +63,9 @@ describe('the fixed head', () => {
     expect(workPreambleHead({ workspace: null, sector: null, child: true, owner: 'Landon' })).toContain("Another of Landon's Work threads started this one")
     // a blank name is no name
     expect(workPreambleHead({ workspace: 'Purdue RecWell', sector: 'purdue', child: false, owner: '  ' })).toBe(head)
+    // A harness whose shell starts elsewhere (Muse's fence) is told where its folder is, last.
+    expect(workPreambleHead({ workspace: 'Purdue RecWell', sector: 'purdue', child: false, folder: '/w/job' })).toBe(`${head}\n\nYour work folder is /w/job; your shell starts elsewhere, so cd there or use absolute paths.`)
+    expect(workPreambleHead({ workspace: 'Purdue RecWell', sector: 'purdue', child: false, folder: null })).toBe(head)
   })
 
   it('has no figure of speech to misread and no line a model could take as optional', () => {

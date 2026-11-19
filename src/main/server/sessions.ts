@@ -3480,7 +3480,7 @@ export class SessionRegistry {
     } catch (err) {
       console.error(`[work] ${meta.id}: the modules' preamble parts failed; the fixed head goes alone:`, err)
     }
-    return workPreamble({ workspace: workspace?.name ?? null, sector: workspace?.sector ?? null, child: from, owner: this.store.getSetting(WORK_OWNER_NAME_SETTING) }, parts)
+    return workPreamble({ workspace: workspace?.name ?? null, sector: workspace?.sector ?? null, child: from, owner: this.store.getSetting(WORK_OWNER_NAME_SETTING), folder: meta.provider === 'muse' ? meta.cwd : null }, parts)
   }
 
   /** The person's message as its user row. `stamp` is undefined for a

@@ -34,3 +34,17 @@ it('sets GH_CONFIG_DIR to the person\'s gh dir when unset, read before XDG_CONFI
   const kept = await museEnv({ sessionId: 's1', configDir: '/data/muse-accounts/own/global' })
   expect(kept.GH_CONFIG_DIR).toBe('/elsewhere/gh')
 })
+
+it('a Work thread gets its data dir as XDG_DATA_HOME and none of this process\'s MUSE_* or TBH_*; a code thread keeps them', async () => {
+  vi.stubEnv('MUSE_ENABLE_SESSION_MCP', '1')
+  vi.stubEnv('TBH_MANAGED_HOOKS_PATH', '/planted/hooks')
+  vi.stubEnv('XDG_DATA_HOME', '/home/me/.local/share')
+  const work = await museEnv({ sessionId: 's1', configDir: '/data/muse-work/config/accounts/me/global', credentialFile: true, dataDir: '/data/muse-work/data' })
+  expect(work.XDG_DATA_HOME).toBe('/data/muse-work/data')
+  expect(work.XDG_CONFIG_HOME).toBe('/data/muse-work/config/accounts/me/global')
+  expect(Object.keys(work).filter((k) => /^(MUSE_|TBH_)/.test(k)).sort()).toEqual(['MUSE_CONTRIBUTOR_MODE', 'TBH_CREDENTIAL_BACKEND'])
+  const code = await museEnv({ sessionId: 's1', configDir: '/data/muse-accounts/own/global' })
+  expect(code.MUSE_ENABLE_SESSION_MCP).toBe('1')
+  expect(code.TBH_MANAGED_HOOKS_PATH).toBe('/planted/hooks')
+  expect(code.XDG_DATA_HOME).toBe('/home/me/.local/share')
+})

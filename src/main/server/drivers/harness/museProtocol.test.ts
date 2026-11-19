@@ -31,6 +31,16 @@ describe('session params', () => {
     expect(sessionResumeParams('abc', { cwd: '/w', model: 'm', permission: 'edits', bridge })).toMatchObject({ sessionId: 'abc', modelId: 'm', permissionProfile: ':ask-me', config: { mcpServers: { app: { transport: 'stdio' } } } })
   })
 
+  it('a Work thread starts on its primary root with its folder as an extra root; its resume names no root', () => {
+    const facts = { cwd: '/w', model: 'm', permission: 'edits' as const, bridge, roots: ['/data/muse-work/roots/t1', '/w'] }
+    const start = sessionStartParams(facts)
+    expect(start.workspaceRoot).toBe('/data/muse-work/roots/t1')
+    expect(start.workspaceRoots).toEqual(['/data/muse-work/roots/t1', '/w'])
+    expect(start.config).toEqual(sessionStartParams({ ...facts, roots: undefined }).config)
+    expect(Object.keys(sessionResumeParams('abc', facts)).sort()).toEqual(['config', 'modelId', 'permissionProfile', 'sessionId'])
+    expect(sessionStartParams({ ...facts, roots: undefined })).not.toHaveProperty('workspaceRoots')
+  })
+
   it('turn input: the text first, images inline, other files named as paths', async () => {
     const parts = await turnInput('hi', [
       { path: '/no/such.png', name: 'such.png', kind: 'image', mime: 'image/png' } as never,

@@ -15,10 +15,12 @@ import type {
   TurnStartResult,
   UserInputRequestParams
 } from '@muse-code/sdk/dist/src/msp'
+import { realpathSync } from 'node:fs'
 import type { Attachment } from '@shared/events'
+import { sessionScopeOf } from '@shared/work/ids'
 import { bridgeMcpConfig } from '../apptools'
 import { expandSlashRefs } from '../slash'
-import { museConfigDirFor, museDirKind, museSkillsFor, recaptureMuseDir } from '../museConfigDirs'
+import { museConfigDirFor, museDirKind, museSkillsFor, museWorkDirs, museWorkRefusal, recaptureMuseDir, type MuseWorkDirs } from '../museConfigDirs'
 import { exitWords, spawnMuseHost, type MuseHost } from './harness/museHost'
 import {
   answersOf,
@@ -78,12 +80,22 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
   const translator = createTranslator(ctx)
   // One config dir per (account, skills scope), its skills the store's (museConfigDirs.ts).
   const skills = museSkillsFor(session)
-  // Muse Code is not offered for Work threads (work/scope.ts WORK_PROVIDERS): its app tools go through the stdio bridge,
-  // its fence needs an app-owned primary root, and a child runtime of its own delegation was not shown to leave an
-  // agent-written .mcp.json unread.
-  if (ctx.session.scope === 'work') throw new Error('Muse Code is not offered for Work threads')
-  const configDir = museConfigDirFor(ctx.route?.account ?? null, skills?.scope, skills?.pointer ?? null)
-  const facts: SessionFacts = { cwd: session.cwd, model: session.model, permission: session.permission, bridge: bridgeMcpConfig(session.id, { computerImages: 'parts' }) }
+  // A Work thread runs fenced (museConfigDirs.ts museWorkDirs): its own config and data dirs, and an empty app-owned
+  // git repo as the primary root and cwd, its folder an extra root. The dirs are put back before every `muse serve`.
+  const work = sessionScopeOf(session) === 'work'
+  const workRefusal = work ? museWorkRefusal() : null
+  if (workRefusal) throw new Error(workRefusal)
+  const account = ctx.route?.account ?? null
+  const workDirs = (): MuseWorkDirs => museWorkDirs(session.id, account, skills?.scope, skills?.pointer ?? null)
+  let fence = work ? workDirs() : null
+  const configDir = fence ? fence.configDir : museConfigDirFor(account, skills?.scope, skills?.pointer ?? null)
+  const facts: SessionFacts = {
+    cwd: session.cwd,
+    model: session.model,
+    permission: session.permission,
+    bridge: bridgeMcpConfig(session.id, { computerImages: 'parts' }),
+    ...(fence ? { roots: [fence.root, realpathSync(session.cwd)] } : {})
+  }
 
   let disposed = false
   let host: MuseHost | null = null
@@ -148,12 +160,17 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
   }
   let hostExit: Parameters<typeof exitWords>[0] | null = null
 
-  const spawn = async (args: string[]): Promise<MuseHost> =>
-    spawnMuseHost({
+  const spawn = async (args: string[]): Promise<MuseHost> => {
+    // The first serve's dirs were made above; every later one (the sandbox restart) puts them back again.
+    if (work && !fence) fence = workDirs()
+    const dirs = fence
+    fence = null
+    return spawnMuseHost({
       sessionId: session.id,
-      cwd: session.cwd,
+      cwd: dirs ? dirs.root : session.cwd,
       configDir,
-      credentialFile: museDirKind(configDir) === 'account',
+      credentialFile: dirs ? dirs.credentialFile : museDirKind(configDir) === 'account',
+      ...(dirs ? { dataDir: dirs.dataDir } : {}),
       args: [...SERVE_ARGS, ...args],
       onStderr,
       onExit: (exit) => {
@@ -161,6 +178,7 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
         onExit()
       }
     })
+  }
 
   // ── boot ────────────────────────────────────────────────────────
   emit({ type: 'phase', phase: 'cli-starting' })
