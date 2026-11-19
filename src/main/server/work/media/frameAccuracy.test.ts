@@ -280,7 +280,7 @@ async function run() {
     v.removeAttribute("src"); v.load();
     let feed: { destroy(): void } | null = null;
     if (c.hls) {
-      const f = attachSegments(v, { init: c.hls.init, segments: c.hls.segments.slice(0, 1), ended: false, mime: c.hls.mime }, async (i) => c.hls.files[i]);
+      const f = attachSegments(v, { init: c.hls.init, segments: c.hls.segments.slice(0, 1), ended: false, mime: c.hls.mime }, async (k) => (await fetch(k === "init" ? c.hls.init : c.hls.files[k])).arrayBuffer());
       feed = f;
       const err = await loaded();
       if (err) { r.error = err; f.destroy(); continue; }

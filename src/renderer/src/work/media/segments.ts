@@ -207,19 +207,16 @@ function bufferSink(source: MediaSource, buffer: SourceBuffer): Sink {
 }
 
 /**
- * Plays `source` in `video` through a MediaSource. `segmentUrl(i)` asks the
- * host for segment `i`'s URL (`work.media.segment`).
+ * Plays `source` in `video` through a MediaSource. `bytes(i)` asks the host
+ * for segment `i` (or the init segment) as bytes (`work.media.segment`): the
+ * app's content policy lets the renderer fetch no file URL, so nothing here
+ * fetches one.
  */
-export function attachSegments(video: HTMLVideoElement, source: SegmentSource, segmentUrl: (i: number) => Promise<string>): SegmentFeed {
+export function attachSegments(video: HTMLVideoElement, source: SegmentSource, bytes: (i: number | "init", signal: AbortSignal) => Promise<ArrayBuffer>): SegmentFeed {
   const media = new MediaSource();
   const objectUrl = URL.createObjectURL(media);
   let queue: Queue | null = null;
   let pending: { segments: Segment[]; ended: boolean } = { segments: source.segments, ended: source.ended };
-  const fetchBytes = async (url: string, signal: AbortSignal): Promise<ArrayBuffer> => {
-    const res = await fetch(url, { signal });
-    if (!res.ok) throw new Error(`a segment did not load (${res.status})`);
-    return res.arrayBuffer();
-  };
   const onSeeking = (): void => queue?.seek();
   const onTime = (): void => queue?.pump();
   media.addEventListener(
@@ -227,12 +224,13 @@ export function attachSegments(video: HTMLVideoElement, source: SegmentSource, s
     () => {
       const buffer = media.addSourceBuffer(source.mime);
       queue = segmentQueue({
-        init: source.init,
+        init: "init",
         ...pending,
         sink: bufferSink(media, buffer),
         now: () => video.currentTime,
-        segmentUrl,
-        fetch: fetchBytes,
+        // The queue speaks in keys; the host is asked for bytes by them.
+        segmentUrl: async (i) => String(i),
+        fetch: (key, signal) => bytes(key === "init" ? "init" : Number(key), signal),
         onError: (err) => console.error("[media] segments:", err)
       });
       queue.pump();

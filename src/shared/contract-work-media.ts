@@ -161,6 +161,8 @@ export interface MediaProbe {
   interlaced?: boolean
   rate?: FrameRate
   durationS?: number
+  /** the file's own start time (ffprobe's `format.start_time`), which ffmpeg counts a seek from; the video may start after it */
+  startS?: number
   frames?: number
   vfr?: boolean
   /** the `tmcd` track's start, or the stream's own tag */
@@ -182,6 +184,7 @@ export const MediaProbeSchema = z.object({
   interlaced: z.boolean().optional(),
   rate: FrameRateSchema.optional(),
   durationS: z.number().optional(),
+  startS: z.number().optional(),
   frames: z.number().optional(),
   vfr: z.boolean().optional(),
   timecode: z.string().optional(),
@@ -218,6 +221,8 @@ export interface MediaVersion {
   /** probing: ffprobe is reading it. preparing: a proxy, a conversion or tiles are being made. failed: `error` says why. */
   state: 'probing' | 'preparing' | 'ready' | 'failed'
   error?: string
+  /** The proxy could not be made: the original and its notes still stand, for a viewer that decodes it. */
+  proxyError?: string
   /** 0 to 1 while a proxy is made */
   progress?: number
   probe?: MediaProbe
@@ -359,8 +364,8 @@ export const MediaRequestSchemas = [
   request('work.media.undo', z.object({ itemId: z.string(), writeId: z.string() })),
   /** → MediaView: another file as the item's next version */
   request('work.media.version', z.object({ itemId: z.string(), source: CanvasSourceSchema })),
-  /** → { data }: one segment of a version's HLS proxy as base64, asked for as the player needs it */
-  request('work.media.segment', z.object({ itemId: z.string(), versionId: z.string(), index: z.number().int().nonnegative() })),
+  /** → { data }: one segment of a version's HLS proxy (or `'init'`, its init segment) as base64, asked for as the player needs it */
+  request('work.media.segment', z.object({ itemId: z.string(), versionId: z.string(), index: z.union([z.number().int().nonnegative(), z.literal('init')]) })),
   /** → { data }: one Deep Zoom tile as base64 JPEG; level 0 is 1×1 px, the last the full picture */
   request('work.media.tile', z.object({ itemId: z.string(), versionId: z.string(), level: z.number().int().nonnegative().max(40), x: z.number().int().nonnegative(), y: z.number().int().nonnegative() }))
 ] as const

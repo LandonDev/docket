@@ -75,6 +75,7 @@ export function parseProbe(json: ProbeJson, file: { size: number; mtimeMs: numbe
   const avg = rateOf(video.avg_frame_rate)
   const rate = r ?? avg
   const durationS = Number(video.duration ?? json.format?.duration ?? 0) || undefined
+  const startS = Number(json.format?.start_time)
   const nb = Number(video.nb_frames ?? 0) || undefined
   const tags = (video.tags as Record<string, string> | undefined) ?? {}
   const tmcd = streams.find((s) => (s.tags as Record<string, string> | undefined)?.timecode)
@@ -85,6 +86,7 @@ export function parseProbe(json: ProbeJson, file: { size: number; mtimeMs: numbe
     ...base,
     ...(rate ? { rate } : {}),
     ...(durationS ? { durationS } : {}),
+    ...(Number.isFinite(startS) ? { startS } : {}),
     ...(nb ? { frames: nb } : {}),
     ...(r && avg && r.num * avg.den !== avg.num * r.den ? { vfr: true } : {}),
     ...(timecode ? { timecode } : {}),

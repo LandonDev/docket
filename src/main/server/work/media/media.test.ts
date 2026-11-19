@@ -159,7 +159,7 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
   }
   const ffmpeg = (): string => new Toolchain(TOOLS!).bin('ffmpeg')!
   const make = async (name: string, args: string[]): Promise<string> => {
-    const out = join(dir, 'clips', name)
+    const out = join(dir, 'attachments', 'clips', name)
     const r = await runTool(ffmpeg(), ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-threads', '2', ...args, out], { timeoutMs: 120_000, gentle: true })
     if (r.code !== 0) throw new Error(r.out)
     return out
@@ -190,7 +190,8 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     const state = JSON.parse(readFileSync(statePath(TOOLS!), 'utf8')) as ToolchainState
     for (const t of Object.values(state.tools)) if (t.ok && t.dir && t.name === 'ffmpeg') symlinkSync(join(TOOLS!, 'work-tools', t.name), join(tools, t.name))
     copyFileSync(statePath(TOOLS!), statePath(dir))
-    mkdirSync(join(dir, 'clips'))
+    // The clips sit in the attachments folder, one of the folders a host shows.
+    mkdirSync(join(dir, 'attachments', 'clips'), { recursive: true })
     // The server serves media from its roots, the attachments folder among them; here, the test's folder.
     setMediaRoots(() => [dir])
     sessions.set('t1', { id: 't1', provider: 'claude', workspaceId: 'w1', scope: 'work' } as SessionMeta)
@@ -246,10 +247,12 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     expect(play.segments[0].start).toBeCloseTo(play.table.kind === 'cfr' ? play.table.start : 0)
     const { data } = await call<{ data: string }>('work.media.segment', { itemId: view.itemId, versionId: view.versions[0].id, index: 1 })
     expect(Buffer.from(data, 'base64').subarray(4, 8).toString('latin1')).toMatch(/styp|moof/)
+    const init = await call<{ data: string }>('work.media.segment', { itemId: view.itemId, versionId: view.versions[0].id, index: 'init' })
+    expect(Buffer.from(init.data, 'base64').subarray(4, 8).toString('latin1')).toBe('ftyp')
   }, 120_000)
 
   it('keeps a note at its frame, and an agent\'s note waits for the person in Suggests', async () => {
-    const path = join(dir, 'clips', 'a.mp4')
+    const path = join(dir, 'attachments', 'clips', 'a.mp4')
     const itemId = await open(path, 'A')
     const view = await settled(itemId)
     const versionId = view.versions[0].id
@@ -284,7 +287,7 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
   }, 60_000)
 
   it('shows the agent a frame and its facts', async () => {
-    const itemId = await open(join(dir, 'clips', 'a.mp4'), 'A')
+    const itemId = await open(join(dir, 'attachments', 'clips', 'a.mp4'), 'A')
     const info = await tool('media_info', { item: itemId })
     expect(info.content[0]).toMatchObject({ type: 'text' })
     expect((info.content[0] as { text: string }).text).toContain('48 frames (0 to 47)')
@@ -294,7 +297,7 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
   }, 60_000)
 
   it('adds a version; its notes stay on the version they were made on', async () => {
-    const itemId = await open(join(dir, 'clips', 'a.mp4'), 'A')
+    const itemId = await open(join(dir, 'attachments', 'clips', 'a.mp4'), 'A')
     const v2 = await make('a2.mp4', ['-f', 'lavfi', '-i', 'testsrc=s=320x180:r=24:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p'])
     await call('work.media.version', { itemId, source: { at: 'file', host: 'env_test', path: v2 } })
     const view = await settled(itemId)
@@ -316,7 +319,9 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
   it('shows the agent frame n itself, also from a stream whose timeline starts late', async () => {
     const mp4 = await make('luma.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x64:r=24:d=2,format=gray,geq=lum='min(255\\,5*N)'", '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24'])
     const ts = await make('luma.ts', ['-i', mp4, '-c', 'copy', '-f', 'mpegts'])
-    for (const path of [mp4, ts]) {
+    // Sound first: the video starts 0.3 s into the file, and runs at a varying rate for its first frames.
+    const av = await make('luma-av.mp4', ['-itsoffset', '0.3', '-f', 'lavfi', '-i', "color=c=black:s=64x64:r=24:d=2,format=gray,geq=lum='min(255\\,5*N)'", '-f', 'lavfi', '-i', 'sine=d=2.5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24', '-c:a', 'aac', '-use_editlist', '0'])
+    for (const path of [mp4, ts, av]) {
       const itemId = await open(path, `Luma ${path.slice(-2)}`)
       await settled(itemId)
       const frames = await tool('media_frames', { item: itemId, at: [0, 10, 25] })
@@ -350,13 +355,13 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
   }, 60_000)
 
   it('keeps a failure until the file changes, then starts over', async () => {
-    const path = join(dir, 'clips', 'broken.mp4')
+    const path = join(dir, 'attachments', 'clips', 'broken.mp4')
     writeFileSync(path, 'not a video')
     const itemId = await open(path, 'Broken')
     expect((await settled(itemId)).versions[0].state).toBe('failed')
     // Asked again, it does not start again: a viewer's every read would re-run it.
     expect((await call<MediaView>('work.media.view', { itemId, plays: ['h264'] })).versions[0].state).toBe('failed')
-    copyFileSync(join(dir, 'clips', 'a.mp4'), path)
+    copyFileSync(join(dir, 'attachments', 'clips', 'a.mp4'), path)
     const now = await settled(itemId)
     expect(now.versions[0]).toMatchObject({ state: 'ready', probe: { frames: 48 } })
   }, 60_000)
@@ -373,7 +378,7 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
 
   it('shows an iPhone-style HEIC (Apple\'s encoder, a 512 px tile grid, turned by its irot) as a JPEG the host made', async () => {
     // fixtures/*.heic: written on the Mac by `sips -s format heic` (ImageIO), 4032×3024 in 512 px tiles; portrait.heic carries irot 3.
-    const path = join(dir, 'clips', 'portrait.heic')
+    const path = join(dir, 'attachments', 'clips', 'portrait.heic')
     copyFileSync(join(FIXTURES, 'portrait.heic'), path)
     const itemId = await open(path, 'Portrait')
     const view = await settled(itemId)

@@ -54,13 +54,7 @@ function useSource(video: HTMLVideoElement | null, version: MediaVersion, action
   const init = hls?.init ?? null;
   useEffect(() => {
     if (!video || !init || !hls) return;
-    feed.current = attachSegments(video, { init, segments: hls.segments, ended: hls.ended, mime: hls.mime }, async (i) => {
-      // The host answers a segment's bytes; the feeder fetches a URL, so they ride a blob URL it is done with in a minute.
-      const bytes = Uint8Array.from(atob(await actions.segment(version.id, i)), (c) => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: "video/mp4" }));
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      return url;
-    });
+    feed.current = attachSegments(video, { init, segments: hls.segments, ended: hls.ended, mime: hls.mime }, async (i) => Uint8Array.from(atob(await actions.segment(version.id, i)), (c) => c.charCodeAt(0)).buffer);
     return () => {
       feed.current?.destroy();
       feed.current = null;

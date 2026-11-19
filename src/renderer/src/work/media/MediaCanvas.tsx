@@ -126,10 +126,12 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
     shell.written(w ? { text: `${w.text}, ${new Date(w.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`, undo: () => actions.undo(w.id) } : null);
   }, [shell, view?.lastWrite, actions]);
   useEffect(() => {
-    const failed = shown?.state === "failed" ? shown : (view?.versions ?? []).find((v) => v.state === "failed" && v.id === other?.id);
+    // A proxy that could not be made fails the version only for a viewer that needs it.
+    const unshowable = (v: MediaVersion | undefined): string | undefined => (!v ? undefined : v.state === "failed" ? v.error : !shownPlay(v) && v.proxyError ? v.proxyError : undefined);
+    const failed = [shown, other].find((v) => unshowable(v) !== undefined);
     shell.statusLine(
       failed
-        ? { tone: "failed", word: `${failed.name} could not be shown`, detail: failed.error, action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
+        ? { tone: "failed", word: `${failed.name} could not be shown`, detail: unshowable(failed), action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
         : error
           ? { tone: "failed", word: "The host did not answer", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
           : null,
@@ -230,11 +232,11 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
 /** While the host reads the file or makes what this viewer needs: the player's bones, and what is under way. */
 function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVersion }) {
   // A failure is the pane's state line alone: the body keeps its bones, with nothing under way.
-  const word = !version || version.state === "probing" || version.state === "failed" ? undefined : version.probe?.kind === "image" ? `Converting ${version.name}` : "Making a copy this viewer can play";
+  const word = version?.state !== "preparing" || version.proxyError ? undefined : version.probe?.kind === "image" ? `Converting ${version.name}` : "Making a copy this viewer can play";
   if (kind === "image")
     return (
       <div data-media-loading className="grid size-full place-items-center bg-(--stage)">
-        {word ? <Preparing word={word} progress={version?.progress} /> : version?.state === "failed" ? null : <Skeleton className="aspect-[4/5] w-[40%] rounded-[4px]" />}
+        {word ? <Preparing word={word} progress={version?.progress} /> : version && version.state !== "probing" ? null : <Skeleton className="aspect-[4/5] w-[40%] rounded-[4px]" />}
       </div>
     );
   return (
@@ -244,7 +246,7 @@ function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVe
         <div className="px-3 pt-1">
           <Preparing word={word} progress={version?.progress} />
         </div>
-      ) : version?.state === "failed" ? null : (
+      ) : version && version.state !== "probing" ? null : (
         <NotesSkeleton />
       )}
     </div>

@@ -64,16 +64,19 @@ viewer decodes (plays.ts asks its own `<video>`: `h264`, `h264-hi`, `hevc`,
 operate (or this window) starts work, a read-only key sees what is there.
 The host decides (plan.ts):
 
+- **Only from the folders this host shows** (every project's and
+  workspace's folder, and userData's attachments, as server/media.ts
+  serves them): a file anywhere else is refused with a sentence, converted
+  or not, and never linked or copied in, since the agent can name any path
+  and what is made from it is served to other desktops.
 - **The original** where the viewer decodes it, served from where it
-  lies. A picture or a video the media host would serve as it is, lying
-  outside the folders it shows (the projects, the workspaces, the
-  attachments), is refused with a sentence and never linked or copied in:
-  the agent can name any path, and the media host serves other desktops.
-  A video ffprobe reads that the media host would not serve as it is (MXF,
-  AVI, MTS) is shown from a proxy.
+  lies. A video ffprobe reads that the media host would not serve as it is
+  (MXF, AVI, MTS) is shown from a proxy.
 - **An H.264 proxy** for a viewer that cannot decode it (ProRes, DNxHR,
   HEVC off the Mac, H.264 at 10 bits on a viewer that says no, anything
-  interlaced): High 8-bit
+  interlaced). A proxy that cannot be made leaves the version standing for
+  the viewers that decode the original, and for the agent (`proxyError`).
+  The proxy is High 8-bit
   4:2:0, at most 1920 on the long side, CRF 23 capped at 10 Mb/s, a
   keyframe a second, AAC 192k, and `-fps_mode passthrough`. The host then
   probes the proxy and refuses it unless its frame count equals the
@@ -82,10 +85,11 @@ The host decides (plan.ts):
   4 s fMP4 segments, written as they are made, so it plays before it is
   done. Electron 39 has no HLS of its own: `attachSegments` (segments.ts)
   feeds Media Source, keeping 30 s ahead of the playhead and dropping what
-  is 30 s behind. `work.media.segment` answers a segment's bytes when the
-  player asks for it (a URL each would crowd the media host's token
-  table on a long proxy); the segments' times are on the fMP4's own
-  timeline.
+  is 30 s behind. `work.media.segment` answers a segment's bytes (or the
+  init segment's, `index: 'init'`) when the player asks for it: the app's
+  content policy lets the renderer fetch no file URL, and a URL each would
+  crowd the media host's token table on a long proxy. The segments' times
+  are on the fMP4's own timeline.
   **The HLS proxy has its own table**: its fMP4 starts two frames late (the
   encoder's B-frame delay, with no edit list), so the host probes the
   playlist for it, and while it is still being written uses the
@@ -157,8 +161,12 @@ The tools wait only for the probe, never for a proxy being made, and stop
 with the call's signal. A still is taken from the original: ffmpeg seeks
 well before the frame (an MPEG-TS seek lands on the keyframe after its
 point) and takes the first frame at or after half a frame before its
-start, so the agent sees frame n itself, from a file whose timeline starts
-late too.
+start, counted from the file's own start (`MediaProbe.startS`), so the
+agent sees frame n itself in an MP4 or MKV whose video starts late (sound
+first, a B-frame delay, a variable rate at the start). A transport stream
+whose sound starts before its video can still give a frame or two off
+(measured: two frames on a crafted clip); the canvas, which seeks by the
+frame table, is not affected.
 
 `media_info` (facts, versions, every note with frame and time),
 `media_frames` (up to 8 stills by frame or time, or spread over the clip;
@@ -244,6 +252,9 @@ frame and shows its region.
 ## Not yet
 
 - A file on another host plays only from a thread on that host.
+- A `{ at: 'thread' }` item (a file the thread made) is not shown yet.
+- Closing a canvas item keeps its media rows and cache; deleting the
+  thread clears them.
 - Shapes drawn by hand: the canvas draws what a note carries and takes a
   region, but has no pen yet.
 - WebCodecs stills (mediabunny), wipe and onion-skin compares, PSD

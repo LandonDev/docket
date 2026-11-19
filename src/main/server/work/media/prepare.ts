@@ -1,8 +1,8 @@
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, realpathSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
-import { frameStart, FrameTableSchema, tableFps, VIEWER_DEFAULT_PLAYS, type FrameTable, type MediaPlay, type MediaProbe, type MediaVersion } from '@shared/contract-work-media'
+import { frameStart, FrameTableSchema, VIEWER_DEFAULT_PLAYS, type FrameTable, type MediaPlay, type MediaProbe, type MediaVersion } from '@shared/contract-work-media'
 import { errorText, type HostId } from '@shared/work'
-import { classifyMedia, fsMedia, mediaUrl } from '../../media'
+import { classifyMedia, fsMedia, insideRealRoots, mediaUrl, serverMediaRoots } from '../../media'
 import type { ConvertJob, ConvertResult, Converter } from '../formats/jobs'
 import { runTool, tailOf } from '../formats/tools'
 import { frameArgs, proxyArgs, stillArgs, tileLevels, tilesArgs, TILE } from './encode'
@@ -49,14 +49,18 @@ interface Prep {
   original?: { file: string; mime: string }
   /** a viewer that cannot decode the original asked: make the proxy */
   wantProxy?: string
-  /** what the viewer that asked before the probe was done decodes */
-  asked?: readonly string[]
+  /** what each viewer that asked before the probe was done decodes */
+  asked: Array<readonly string[]>
+  /** the proxy could not be made; the version itself stands */
+  proxyError?: string
   proxy?: Proxy
   image?: { file: string; width: number; height: number; converted?: string }
   tiles?: { preview: string; width: number; height: number; levels: number; minLevel: number }
   adapter?: MediaPlay
-  /** this version's own stop, under Work's */
+  /** this version's own stop */
   abort: AbortController
+  /** its stop or Work's: what every job of the version runs under */
+  signal: AbortSignal
   /** settles once the probe is done (or failed) */
   probed: Promise<void>
   running: Promise<void> | null
@@ -142,12 +146,16 @@ export class Preparer {
   view(v: VersionRow, o: { plays?: readonly string[]; start?: boolean; retry?: boolean } = {}): MediaVersion {
     const plays = o.start ? (o.plays ?? VIEWER_DEFAULT_PLAYS) : undefined
     let prep = this.fresh(v)
+    // A version nobody who may operate has opened is only described: a read-only key starts nothing.
+    if (!prep && !o.start) return versionWire(v, { state: 'probing', plays: [] })
     if (!prep || (o.retry && prep.error)) prep = this.begin(v, plays)
+    else if (plays && !prep.probe) prep.asked.push(plays)
     else if (plays && prep.probe?.kind === 'video' && !prep.error && !prep.proxy) {
+      if (o.retry) prep.proxyError = undefined
       const plan = planVideo(prep.probe, plays)
       if (plan.via !== 'original') prep.wantProxy ??= plan.why
-      if (prep.wantProxy && !prep.running) this.run(v, prep)
-    } else if (plays && !prep.probe) prep.asked = plays
+      if (prep.wantProxy && !prep.proxyError && !prep.running) this.run(v, prep)
+    }
     return this.wire(v, prep)
   }
 
@@ -193,10 +201,10 @@ export class Preparer {
     const out = join(dir, `${frame ?? 'still'}-${maxSide}.jpg`)
     if (!existsSync(out)) {
       const t = prep.table
-      // An accurate seek drops every frame before the point, so it lands half a frame before frame n's start, counted from the stream's start.
-      const at = frame !== null && t ? Math.max(0, frameStart(t, frame) - frameStart(t, 0) - 0.5 / (tableFps(t) || 24)) : 0
+      // Half a frame before frame n's start, counted from the file's own start, which is where ffmpeg counts from: the video may begin after it (audio first, a B-frame delay, a transport stream's clock).
+      const at = frame !== null && t ? Math.max(0, frameStart(t, frame) - (prep.probe?.startS ?? frameStart(t, 0)) - (frameStart(t, frame + 1) - frameStart(t, frame)) / 2) : 0
       const args = frame === null ? stillArgs({ input, output: out, threads: 2, maxSide }) : frameArgs({ input, output: out, at, maxSide })
-      const r = await runTool(ffmpeg, args, { timeoutMs: 120_000, gentle: true, signal: AbortSignal.any([prep.abort.signal, ...(signal ? [signal] : [])]) })
+      const r = await runTool(ffmpeg, args, { timeoutMs: 120_000, gentle: true, signal: signal ? AbortSignal.any([prep.signal, signal]) : prep.signal })
       if (r.code !== 0 || !existsSync(out)) throw new Error(`ffmpeg could not take the frame: ${tailOf(r.out)}`)
     }
     return readFileSync(out)
@@ -210,12 +218,12 @@ export class Preparer {
   }
 
   /** One HLS segment's bytes, read when the player wants it (a token each would crowd the media host's table on a long proxy). */
-  segment(versionId: string, index: number): Buffer | null {
+  segment(versionId: string, index: number | 'init'): Buffer | null {
     const proxy = this.preps.get(versionId)?.proxy
     if (proxy?.via !== 'hls') return null
-    const seg = parsePlaylist(this.readPlaylist(proxy.dir)).segments[index]
-    if (!seg || !/^[\w.-]+$/.test(seg.name)) return null
-    const file = join(proxy.dir, seg.name)
+    const name = index === 'init' ? 'init.mp4' : parsePlaylist(this.readPlaylist(proxy.dir)).segments[index]?.name
+    if (!name || !/^[\w.-]+$/.test(name)) return null
+    const file = join(proxy.dir, name)
     return existsSync(file) ? readFileSync(file) : null
   }
 
@@ -225,7 +233,9 @@ export class Preparer {
   private fresh(v: VersionRow): Prep | null {
     const prep = this.preps.get(v.id)
     if (!prep) return null
-    if (v.source.at === 'file' && prep.sig && sigOf(v.source.path) !== prep.sig) {
+    // A file that changed is a new picture; one that was missing and is back is read at last.
+    const now = v.source.at === 'file' ? sigOf(v.source.path) : null
+    if (v.source.at === 'file' && !prep.running && (prep.sig ? now !== prep.sig : !!prep.error && now !== null)) {
       prep.abort.abort()
       this.preps.delete(v.id)
       return null
@@ -236,9 +246,8 @@ export class Preparer {
   private begin(v: VersionRow, plays?: readonly string[]): Prep {
     this.preps.get(v.id)?.abort.abort()
     const abort = new AbortController()
-    this.host.signal.addEventListener('abort', () => abort.abort(), { once: true })
     let probedDone!: () => void
-    const prep: Prep = { abort, probed: new Promise<void>((r) => (probedDone = r)), running: null, ...(plays ? { asked: plays } : {}) }
+    const prep: Prep = { abort, signal: AbortSignal.any([this.host.signal, abort.signal]), probed: new Promise<void>((r) => (probedDone = r)), running: null, asked: plays ? [plays] : [] }
     this.preps.set(v.id, prep)
     this.run(v, prep, probedDone)
     return prep
@@ -262,7 +271,7 @@ export class Preparer {
     if (v.source.at !== 'file') {
       const adapter = mediaSourceFor(v.source.at)
       if (!adapter) throw new Error(`a ${v.source.at} file cannot be shown here yet`)
-      const got = await adapter.resolve(v.source, this.host.ctx, prep.abort.signal)
+      const got = await adapter.resolve(v.source, this.host.ctx, prep.signal)
       if (got.probe) prep.probe = got.probe
       if ('table' in got.play) prep.table = got.play.table
       prep.adapter = got.play
@@ -281,23 +290,34 @@ export class Preparer {
       writeFileSync(join(dir, 'sig.json'), JSON.stringify({ sig: prep.sig }))
     }
     if (!prep.probe) {
-      const probed = await this.probe(path, dir, prep.abort.signal)
+      const probed = await this.probe(path, dir, prep.signal)
       prep.probe = probed.probe
       prep.table = probed.table
-      // Shown only from the folders this host serves: a picture or a video it would serve as it is, lying anywhere else, is refused, never linked in.
+      // Shown only from the folders this host shows, converted or not: the agent may name any path, and what is made from it is served to other desktops.
+      if (!this.shown(path)) throw new Error(OUTSIDE)
       const direct = await fsMedia(path)
       if (direct) prep.original = { file: path, mime: direct.mime }
-      else if (classifyMedia(path, headOf(path)) && planImage(probed.probe, extOf(path)).via === 'image') throw new Error(OUTSIDE)
-      else if (classifyMedia(path, headOf(path)) && probed.probe.kind === 'video') throw new Error(OUTSIDE)
     }
     probedDone?.()
     this.host.changed(v.itemId)
     if (prep.probe.kind === 'video') {
       // A video ffprobe reads but the media host would not serve (MXF, AVI, MTS) has no original to show: only a proxy.
       if (!prep.original) prep.wantProxy ??= `${extOf(path).toUpperCase()} is shown from a proxy`
-      const plan = prep.asked ? planVideo(prep.probe, prep.asked) : null
-      if (plan && plan.via !== 'original') prep.wantProxy ??= plan.why
-      if (prep.wantProxy && !prep.proxy) await this.makeProxy(v, prep, path, dir, prep.wantProxy)
+      for (const plays of prep.asked) {
+        const plan = planVideo(prep.probe, plays)
+        if (plan.via !== 'original') prep.wantProxy ??= plan.why
+      }
+      if (prep.wantProxy && !prep.proxy) {
+        // A proxy that fails leaves the version standing: its original and its frame table still serve the viewers that decode it, and the agent.
+        try {
+          await this.makeProxy(v, prep, path, dir, prep.wantProxy)
+        } catch (err) {
+          if (prep.signal.aborted) throw err
+          prep.proxyError = errorText(err)
+          if (!prep.original) throw err
+          this.host.ctx.log(`media: ${v.name}: no proxy: ${prep.proxyError}`)
+        }
+      }
     } else await this.image(prep, path, dir)
   }
 
@@ -309,6 +329,20 @@ export class Preparer {
     const probed = await probeFile(ffprobe, path, signal)
     writeFileSync(join(dir, 'probe.json'), JSON.stringify(probed))
     return probed
+  }
+
+  /** Inside the folders the media host serves from (server/media.ts): every project's and workspace's folder, and userData's attachments. */
+  private shown(path: string): boolean {
+    let real: string
+    try {
+      real = realpathSync(path)
+    } catch {
+      return false
+    }
+    const col = (sql: string): string[] => (this.host.ctx.db.prepare(sql).all() as Array<{ p: string }>).map((r) => r.p)
+    const roots = serverMediaRoots({ projects: col(`SELECT cwd AS p FROM projects`), workspaces: col(`SELECT path AS p FROM workspaces`), attachments: join(this.host.dataDir, 'attachments') })
+    // The pillar's own cache is under the attachments root, but a file there is never a source.
+    return insideRealRoots(real, roots) && !insideRealRoots(real, [join(this.host.dataDir, 'attachments', 'work-media')])
   }
 
   private inputOf(v: VersionRow): string {
@@ -337,14 +371,14 @@ export class Preparer {
         // An HLS proxy plays while it is written, once its first segment says where its timeline starts.
         if (hls && !prep.proxy && !shifting && existsSync(join(dir, 'hls', 'seg00001.m4s'))) {
           shifting = true
-          void firstPts(ffprobe, out, prep.abort.signal).then((start) => {
+          void firstPts(ffprobe, out, prep.signal).then((start) => {
             if (start !== null && !prep.proxy) prep.proxy = { via: 'hls', dir: join(dir, 'hls'), table: shifted(prep.table!, start), why }
             else shifting = false
           })
         }
       }, 2000)
       try {
-        await this.convert({ from: 'video', to: hls ? 'proxy.m3u8' : 'proxy.mp4', input: path, output: out, options: { probe, progress }, signal: prep.abort.signal })
+        await this.convert({ from: 'video', to: hls ? 'proxy.m3u8' : 'proxy.mp4', input: path, output: out, options: { probe, progress }, signal: prep.signal })
       } catch (err) {
         prep.proxy = undefined
         throw err
@@ -353,7 +387,7 @@ export class Preparer {
         rmSync(progress, { force: true })
       }
       // The proxy must have the original's frames, one for one: every note is a frame index.
-      const check = await probeFile(ffprobe, out, prep.abort.signal)
+      const check = await probeFile(ffprobe, out, prep.signal)
       const want = probe.frames ?? 0
       if (check.probe.frames !== want) {
         prep.proxy = undefined
@@ -375,14 +409,14 @@ export class Preparer {
     }
     if (plan.via === 'tiles') {
       const manifest = join(dir, 'tiles.json')
-      if (!existsSync(manifest)) await this.convert({ from: 'image', to: 'dzi', input: path, output: manifest, options: { width: probe.width, height: probe.height }, signal: prep.abort.signal })
+      if (!existsSync(manifest)) await this.convert({ from: 'image', to: 'dzi', input: path, output: manifest, options: { width: probe.width, height: probe.height }, signal: prep.signal })
       const t = readJson<{ width: number; height: number; levels: number; cut: number[] }>(manifest)!
       prep.tiles = { preview: join(dir, 'preview.jpg'), width: t.width, height: t.height, levels: t.levels, minLevel: Math.min(...t.cut) }
       return
     }
     const display = join(dir, 'display.jpg')
-    if (!existsSync(display)) await this.convert({ from: extOf(path) || 'image', to: 'jpg', input: path, output: display, signal: prep.abort.signal })
-    const shown = await probeFile(this.host.ffprobe()!, display, prep.abort.signal)
+    if (!existsSync(display)) await this.convert({ from: extOf(path) || 'image', to: 'jpg', input: path, output: display, signal: prep.signal })
+    const shown = await probeFile(this.host.ffprobe()!, display, prep.signal)
     prep.image = { file: display, width: shown.probe.width, height: shown.probe.height, converted: extOf(path).toUpperCase() }
   }
 
@@ -403,6 +437,7 @@ export class Preparer {
     return versionWire({ ...v, ...(prep.probe ? { probe: prep.probe } : {}) }, {
       state,
       ...(prep.error ? { error: prep.error } : {}),
+      ...(prep.proxyError ? { proxyError: prep.proxyError } : {}),
       ...(prep.progress !== undefined ? { progress: prep.progress } : {}),
       plays: this.playsOf(prep)
     })

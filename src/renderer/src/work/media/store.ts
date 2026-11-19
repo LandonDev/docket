@@ -76,7 +76,7 @@ export const mediaActions = (env: string, itemId: string) => ({
   mode: (mode: MediaView["mode"]) => andApply(call<MediaView>(env, "work.media.mode", { itemId, mode })),
   undo: (writeId: string) => andApply(call<MediaView>(env, "work.media.undo", { itemId, writeId })),
   /** One HLS segment's bytes, as base64. */
-  segment: async (versionId: string, index: number) => (await call<{ data: string }>(env, "work.media.segment", { itemId, versionId, index })).data,
+  segment: async (versionId: string, index: number | "init") => (await call<{ data: string }>(env, "work.media.segment", { itemId, versionId, index })).data,
   tile: async (versionId: string, level: number, x: number, y: number) => (await call<{ data: string }>(env, "work.media.tile", { itemId, versionId, level, x, y })).data,
 });
 export type MediaActions = ReturnType<typeof mediaActions>;
