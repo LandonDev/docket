@@ -59,7 +59,7 @@ const MAX_PIXELS = 16_777_216;
 const READ_CHUNK = 1024 * 1024;
 
 type Pdfjs = typeof import("pdfjs-dist");
-type Loaded = { pdfjs: Pdfjs; worker: InstanceType<Pdfjs["PDFWorker"]> };
+type Loaded = { pdfjs: Pdfjs; worker: InstanceType<Pdfjs["PDFWorker"]>; data: typeof import("./pdfjsData").ShippedData };
 let loading: Promise<Loaded> | null = null;
 
 /**
@@ -68,8 +68,10 @@ let loading: Promise<Loaded> | null = null;
  * as the shared `workerPort` would.
  */
 function loadPdfjs(): Promise<Loaded> {
-  loading ??= Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?worker")]).then(([pdfjs, Worker]) => ({
+  loading ??= Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?worker"), import("./pdfjsData")]).then(([pdfjs, Worker, shipped]) => ({
     pdfjs,
+    // pdf.js's CMaps, two standard fonts and image decoders, by name from the build's assets.
+    data: shipped.ShippedData,
     // pdf.js types `port` as a worker it made itself; any Worker is one.
     worker: new pdfjs.PDFWorker({ port: new Worker.default() as never }),
   }));
@@ -144,7 +146,7 @@ function textLayerStyle(): void {
 /** The real engine: pdf.js on the file's bytes, fetched by range as pages need them. */
 export const pdfjsEngine: PdfEngine = {
   async open({ size, read, password, onFail }) {
-    const { pdfjs, worker } = await loadPdfjs();
+    const { pdfjs, worker, data } = await loadPdfjs();
     textLayerStyle();
     const first = await read(0, Math.min(size, READ_CHUNK));
     const range = new pdfjs.PDFDataRangeTransport(size, first, first.length >= size);
@@ -173,7 +175,7 @@ export const pdfjsEngine: PdfEngine = {
     };
     // 256 KB a range, not pdf.js's 64: a file whose page dictionaries are spread through it (a classic xref) needs a quarter of the round trips
     // to open, though pdf.js may then read most of it before page 1 (34 MB in 4.3 s at 20 MB/s, against 21 MB in 7.1 s at 64 KB).
-    const task = pdfjs.getDocument({ range, worker, password, rangeChunkSize: 262_144, enableXfa: false, disableAutoFetch: false });
+    const task = pdfjs.getDocument({ range, worker, password, rangeChunkSize: 262_144, enableXfa: false, disableAutoFetch: false, BinaryDataFactory: data as never });
     let doc: Awaited<typeof task.promise>;
     try {
       doc = await Promise.race([task.promise, failed]);

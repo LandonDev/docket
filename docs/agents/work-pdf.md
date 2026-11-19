@@ -363,10 +363,24 @@ Not built here, and why: History in the bar (the `history` kind is
 milestone 19's, so the def does not ask the pane for it); Locate on a
 moved file (a path picker on a remote host is its own work); links inside a
 PDF are not clickable (the text layer is ours, not pdf.js's annotation
-layer); pdf.js's standard fonts, CMaps and wasm decoders are not shipped
-with the app, so a file that leans on a non-embedded CJK font or a JPEG
-2000 or JBIG2 image draws with substitutes or blanks there (the build's
-static assets are not this milestone's).
+layer).
+
+pdf.js's own files ship as assets of the PDF canvas (F2,
+src/renderer/src/work/pdf/pdfjsData.ts): every CMap (168 `.bcmap`, for
+text in a CJK font the file does not embed), the two standard fonts it
+never takes from the system (FoxitSymbol and FoxitDingbats, BSD-3), and the
+JPEG 2000 and JBIG2 decoders (`openjpeg.wasm` BSD-2, `jbig2.wasm`
+Apache-2.0). Each is its own hashed asset, never inlined, fetched only
+when a page asks for it through the `BinaryDataFactory` engine.ts hands
+`getDocument`; the module that names them loads with pdf.js, never in the
+first paint or the canvas chunk. They add about 1.5 MB to the app on disk
+(1,536 kB of files, their six licence notices and a 32 kB map) and nothing to what a window loads
+until a file needs one. Not shipped: the Liberation fonts (GPL with a
+font exception; pdf.js uses the system's fonts for Helvetica, Times and
+Courier anyway), the other Foxit fonts (read only with system fonts off),
+the ICC profile and qcms (pdf.js fetches those only from its worker by a
+base URL, which hashed assets cannot give; CMYK falls back to pdf.js's own
+conversion) and quickjs (form scripts, which the canvas never runs).
 
 ## What is proven
 
