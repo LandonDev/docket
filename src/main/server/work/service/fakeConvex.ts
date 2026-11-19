@@ -54,6 +54,8 @@ export interface FakeConvex {
   branches: FakeBranch[]
   files: Map<string, Uint8Array>
   threads: { docId: string; body: string; quote?: string; author?: string; threadId: string; replies?: { body: string; author?: string; commentId: string }[] }[]
+  /** LifeOS sheets by id, each its op log (milestone 31's live proof opens one on the guest's page) */
+  sheets: Map<string, { title: string; sector: string; ops: { rev: number; by: string; at: number; mutations: string }[] }>
   calls: string[]
   /** while true, every docs:store fails as a down backend would */
   failStores: boolean
@@ -69,6 +71,7 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
   const versions: FakeVersion[] = []
   const branches: FakeBranch[] = []
   const calls: string[] = []
+  const sheets: FakeConvex['sheets'] = new Map()
   let n = 0
   const state = { failStores: false }
   let url = ''
@@ -126,6 +129,23 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
         threads.push({ ...(args as { docId: string; body: string; quote?: string; author?: string }), threadId })
         return json(200, ok({ threadId, commentId: `c${n}` }))
       }
+      // A sheet as the service's sheet host reads it (M27): a row, its op log, and no suggestions.
+      case 'sheets:get': {
+        const sh = sheets.get(args.id as string)
+        return json(200, ok(sh ? { _id: args.id, title: sh.title, sector: sh.sector, rev: sh.ops.at(-1)?.rev ?? 0, snapshotRev: 0, shared: false, snapshotUrl: null } : null))
+      }
+      case 'sheets:ops':
+        return json(200, ok(sheets.get(args.sheetId as string)?.ops.filter((o) => o.rev > (args.after as number)) ?? []))
+      case 'sheets:appendOps': {
+        const sh = sheets.get(args.sheetId as string)
+        if (!sh) return json(200, fail('not found'))
+        const rev = sh.ops.at(-1)?.rev ?? 0
+        if (args.baseRev !== rev) return json(200, fail('stale', { code: 'stale-rev', rev }))
+        for (const o of args.ops as { by: string; mutations: string }[]) sh.ops.push({ rev: (sh.ops.at(-1)?.rev ?? 0) + 1, by: o.by, at: Date.now(), mutations: typeof o.mutations === 'string' ? o.mutations : JSON.stringify(o.mutations) })
+        return json(200, ok({ rev: sh.ops.at(-1)!.rev }))
+      }
+      case 'sheets:suggestions':
+        return json(200, ok([]))
       // A thread and its comments in M17's `docs.threads` shape (milestone 31's guest routes read and answer them).
       case 'docs:threads':
         return json(
@@ -206,6 +226,7 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
     docs,
     files,
     threads,
+    sheets,
     versions,
     branches,
     calls,

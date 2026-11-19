@@ -1,0 +1,174 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type DocumentStatus, type EditorAdapters } from "work-kit/editor";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
+import { Textarea } from "@renderer/components/ui/textarea";
+import { Comment } from "@renderer/work/icons";
+import type { Opened, Session } from "./session";
+import { guestThreads } from "./threads";
+
+/**
+ * A document on the hosted page: the owner's own editor (work-kit/editor),
+ * on the link's socket. An edit link writes; a comment link reads and
+ * comments on what it selects (the service marks the words); a view link
+ * reads. What a link may not do is not drawn.
+ */
+
+const MEASURE = 672;
+const MARGIN = 296;
+
+export function DocPage({ session, opened, scheme, onGone }: { session: Session; opened: Opened; scheme: "light" | "dark"; onGone(): void }) {
+  const doc = opened.doc!;
+  const threads = useMemo(() => (opened.role === "view" ? null : guestThreads(session, doc)), [session, doc, opened.role]);
+  const adapters = useMemo<Partial<EditorAdapters>>(
+    () => ({
+      collab: { url: session.socketUrl(opened), getToken: () => session.token(), offline: false },
+      threads: threads?.adapter ?? null,
+      identity: {
+        me: { id: opened.me, name: opened.name ?? "You", avatarUrl: null },
+        get people() {
+          return Object.entries(threads?.names() ?? {}).map(([id, name]) => ({ id, name, avatarUrl: null }));
+        },
+      },
+    }),
+    [session, opened, threads],
+  );
+  const wide = useWide(MEASURE + MARGIN + 64);
+  const frame = useRef<HTMLDivElement>(null);
+  // A refused socket is a link that went: the page asks once, and shows the end if it is gone.
+  const onStatus = (status: DocumentStatus | null): void => {
+    if (status?.kind === "refused") void session.refresh().catch(() => onGone());
+  };
+  return (
+    <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER }}>
+      <EditorAdaptersProvider adapters={adapters}>
+        <div ref={frame} className="relative mx-auto px-4 pt-6 pb-10 sm:px-8" style={{ maxWidth: MEASURE + (wide && threads ? MARGIN : 0) + 64 }}>
+          <h1 className="mb-4 text-lg leading-[26px] font-semibold tracking-[-0.01em] text-balance" style={{ maxWidth: MEASURE }}>
+            {opened.title}
+          </h1>
+          <div className="[--link:var(--accent)]" style={{ paddingRight: wide && threads ? MARGIN : 0 }}>
+            <DocumentEditor
+              documentName={doc}
+              editable={opened.role === "edit"}
+              canComment={opened.role !== "view"}
+              threadMargin={threads ? (wide ? "side" : "under") : undefined}
+              threadList={!!threads}
+              onStatus={onStatus}
+            />
+          </div>
+          {opened.role === "comment" ? <SelectionComment session={session} frame={frame} onMade={() => threads?.refresh()} /> : null}
+        </div>
+      </EditorAdaptersProvider>
+    </EditorKitProvider>
+  );
+}
+
+function useWide(px: number): boolean {
+  const [wide, setWide] = useState(() => window.innerWidth >= px);
+  useEffect(() => {
+    const q = window.matchMedia(`(min-width: ${px}px)`);
+    const on = () => setWide(q.matches);
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, [px]);
+  return wide;
+}
+
+/**
+ * A comment link's own selection bar: the editor draws none on a text that
+ * can only be read. Comment over the selected words, then a field; the
+ * words go to the service, which makes the thread and marks them.
+ */
+function SelectionComment({ session, frame, onMade }: { session: Session; frame: React.RefObject<HTMLDivElement | null>; onMade(): void }) {
+  const [at, setAt] = useState<{ quote: string; x: number; y: number } | null>(null);
+  const [writing, setWriting] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (writing) return;
+    const on = (): void => {
+      const sel = document.getSelection();
+      const root = frame.current?.querySelector(".ProseMirror");
+      if (!sel || sel.isCollapsed || !root || !sel.anchorNode || !root.contains(sel.anchorNode) || !sel.focusNode || !root.contains(sel.focusNode)) return setAt(null);
+      const quote = sel.toString().trim();
+      if (!quote || quote.length > 2000) return setAt(null);
+      const box = sel.getRangeAt(0).getBoundingClientRect();
+      const host = frame.current!.getBoundingClientRect();
+      setAt({ quote, x: box.left - host.left, y: box.top - host.top });
+    };
+    document.addEventListener("selectionchange", on);
+    return () => document.removeEventListener("selectionchange", on);
+  }, [frame, writing]);
+
+  if (!at) return null;
+  const close = (): void => {
+    setWriting(false);
+    setText("");
+    setError(null);
+    setAt(null);
+  };
+  const send = async (): Promise<void> => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await session.comment({ quote: at.quote, text: text.trim() });
+      onMade();
+      document.getSelection()?.removeAllRanges();
+      close();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That did not go through. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div
+      className="absolute z-(--layer-popover) rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay"
+      style={{ left: Math.max(0, at.x), top: Math.max(0, at.y - (writing ? 8 : 40)), transform: writing ? "translateY(-100%)" : undefined, width: writing ? 320 : undefined }}
+      onMouseDown={(e) => {
+        // The selection stays while the bar is pressed.
+        if (!writing) e.preventDefault();
+      }}
+    >
+      {writing ? (
+        <form
+          className="flex flex-col gap-2 p-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
+          }}
+        >
+          <Textarea
+            autoFocus
+            rows={3}
+            value={text}
+            maxLength={4000}
+            placeholder="Comment"
+            aria-label="Comment"
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") close();
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
+            }}
+          />
+          {error ? <p className="text-[13px] text-destructive">{error}</p> : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={close}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={!text.trim() || busy}>
+              <BusyLabel busy={busy} label="Comment" />
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <Button variant="ghost" size="xs" onClick={() => setWriting(true)}>
+          <Comment />
+          Comment
+        </Button>
+      )}
+    </div>
+  );
+}

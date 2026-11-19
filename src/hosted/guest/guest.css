@@ -1,0 +1,11 @@
+/* The hosted page (docs/agents/work-guests.md "The page"): the app's own
+   stylesheet, tokens and all, so the editor and the grid look as they do in
+   TempCode; Tailwind also reads this folder. */
+@import "../../renderer/src/index.css";
+@source "./";
+
+html,
+body,
+#root {
+  height: 100%;
+}
