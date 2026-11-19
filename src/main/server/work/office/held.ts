@@ -58,8 +58,10 @@ const list = (xs: string[]): string => (xs.length <= 2 ? xs.join(' and ') : `${x
  * as it is; an agent's or a signature's script, frame, form or handler does not (M22's note).
  */
 export function cleanMailHtml(html: string): string {
+  const tags = 'script|style|iframe|object|embed|form|base|meta|link'
   return html
-    .replace(/<(script|style|iframe|object|embed|form|base|meta|link)\b[\s\S]*?(<\/\1\s*>|\/?>)/gi, '')
+    .replace(new RegExp(`<(${tags})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi'), '')
+    .replace(new RegExp(`<\\/?(${tags})\\b[^>]*>`, 'gi'), '')
     .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\s+(href|src)\s*=\s*("\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, '')
 }
