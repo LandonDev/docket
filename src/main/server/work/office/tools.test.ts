@@ -111,6 +111,8 @@ describe('writes, by the rule for files others can open', () => {
 
     expect(sharedKey('C:\\Users\\owner\\OneDrive - Company\\Budget.docx')).toBe(true)
     expect(sharedKey('C:\\Users\\owner\\Documents\\Budget.docx')).toBe(false)
+    // a network share is others' to open
+    expect(sharedKey('\\\\fileserver\\team\\Plan.pptx')).toBe(true)
   })
 
   it('counts a name no open file answers to, or two do, as shared', async () => {

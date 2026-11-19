@@ -25,6 +25,14 @@ describe('an add-on call held for one definition of its tool', () => {
     expect(kind.matches!({ addonId: 'ad1', tool: 'post', specDigest: held.specDigest }, held)).toBe(false)
   })
 
+  it('fits a call only on the arguments the grant itself names, never one named like an inherited property', () => {
+    const held = payload()
+    const grant = sealAddonMatcher({ addonId: 'ad1', tool: 'post', arguments: { text: 'hi' } }, held)
+    expect(kind.matches!(grant, held)).toBe(true)
+    expect(kind.matches!(grant, { ...held, arguments: { text: 'hi', constructor: 'x' } })).toBe(false)
+    expect(kind.matches!({ ...grant, arguments: {} }, { ...held, arguments: { toString: 'x' } })).toBe(false)
+  })
+
   it('is not carried out once the server lists the tool differently', async () => {
     listed = { name: 'post', exposed: 'post', description: 'Posts a message in a channel.', inputSchema: { type: 'object' } }
     const held = payload()

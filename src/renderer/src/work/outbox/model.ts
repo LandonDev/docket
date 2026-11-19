@@ -83,7 +83,8 @@ const ENTITIES: Record<string, string> = {
   hyphen: "-", dash: "-", Tab: "\t", NewLine: "\n",
 };
 const attr = (tag: string, name: string): string | null => {
-  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
+  // Set off by a space, a slash or a quote, as HTML allows (`<a/href=…>`, `alt="x"src=…`).
+  const m = new RegExp(`[\\s/"']${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
   return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
 };
 // Numeric references need no semicolon, as HTML reads them (`u&#114l(`).

@@ -576,6 +576,8 @@ export const calendarOpKind: ActKindDef<CalendarOpPayload, CalendarOpMatcher> = 
     if (!now) throw new ActStale('LifeOS no longer has this calendar change')
     if (now.status === 'draft' || now.status === 'failed') {
       if (p.editedAt === undefined || now.editedAt !== p.editedAt) throw new ActStale('The calendar change was edited since it was shown')
+      // An act on an event goes only bound to that event as read: one whose event could not be read is refused (the hold review).
+      if (p.eventId && p.eventStartsAt === undefined) throw new ActStale("The event could not be read, so what this answers was not shown")
       if (p.eventId && p.eventStartsAt !== undefined) {
         const event = await owner.query<{ title?: string; startsAt?: number; endsAt?: number; location?: string } | null>(LIFEOS_HELD_FNS.eventGet, { id: p.eventId }).catch(() => null)
         if (!event || shownEvent({ eventTitle: event.title, eventStartsAt: event.startsAt, eventEndsAt: event.endsAt, eventLocation: event.location }) !== shownEvent(p))

@@ -52,7 +52,8 @@ const json = (v: unknown): WorkToolResult => workText(JSON.stringify(v, null, 1)
 /** Others can open it: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from there, on a Mac or under Windows. */
 export const sharedKey = (key: string): boolean => {
   const k = key.replace(/\\/g, '/')
-  return /^https?:\/\//i.test(k) || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(k)
+  // A network share (\\server\share\…) is others' to open as surely as OneDrive (milestone 50's hold review).
+  return /^https?:\/\//i.test(k) || k.startsWith('//') || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(k)
 }
 
 /**

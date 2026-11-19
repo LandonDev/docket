@@ -118,6 +118,17 @@ describe('a held calendar act', () => {
     expect(sends()).toEqual([])
   })
 
+  it('does not go bound to no event: an act on an event whose read failed is refused', async () => {
+    rig.lifeos.calendarOp({ kind: 'cancel', eventId: 'ev_1' })
+    rig.lifeos.fire()
+    await settled()
+    const def = rig.host.outbox.def('calendar.op')
+    const shown = (await list())[0]!.payload as CalendarOpPayload
+    const ctx = { ...rig.work.ctx, item: {} as never, decidedBy: 'owner' as const }
+    await expect(def.execute({ ...shown, eventStartsAt: undefined }, ctx)).rejects.toThrow('could not be read')
+    expect(sends()).toEqual([])
+  })
+
   it('does not go when its event moved after it was shown', async () => {
     const id = rig.lifeos.calendarOp({ kind: 'accept', eventId: 'ev_1' })
     rig.lifeos.fire()

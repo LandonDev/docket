@@ -218,8 +218,9 @@ export function addonCallKind(deps: { addons: RuleAddons; ungated(addonId: strin
       if (!m.toolDigest || m.toolDigest !== p.toolDigest) return false
       if (!m.arguments) return true
       const fixed = m.arguments
-      if (!Object.keys(p.arguments).every((key) => key in fixed || m.free?.includes(key))) return false
-      return Object.entries(fixed).every(([key, value]) => key in p.arguments && canonical(p.arguments[key]) === canonical(value))
+      // Own keys only: an argument named like an inherited property (`constructor`) is not one the grant fixed.
+      if (!Object.keys(p.arguments).every((key) => Object.hasOwn(fixed, key) || m.free?.includes(key))) return false
+      return Object.entries(fixed).every(([key, value]) => Object.hasOwn(p.arguments, key) && canonical(p.arguments[key]) === canonical(value))
     },
     async execute(p) {
       const row = deps.addons.get(p.addonId)

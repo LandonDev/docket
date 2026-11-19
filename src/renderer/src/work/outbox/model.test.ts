@@ -84,6 +84,9 @@ describe("htmlWords", () => {
     expect(htmlWords('<p style="background-image:u\\72l(https://e.test/q)">Hi</p>')).toBe("Hi\n[background image: https://e.test/q]");
     expect(htmlWords('<p style="background:url&lpar;https://e.test/r&rpar;">Hi</p>')).toBe("Hi\n[background image: https://e.test/r]");
     expect(htmlWords('<p style="background:u&#114l(https://e.test/s)">Hi</p>')).toBe("Hi\n[background image: https://e.test/s]");
+    // attributes set off by a slash or a quote, not a space
+    expect(htmlWords('<a/href="https://hidden.test/secret">Report</a>')).toBe("Report (https://hidden.test/secret)");
+    expect(htmlWords('<img alt="hello"src="https://hidden.test/pixel">')).toBe("[image hello: https://hidden.test/pixel]");
     expect(htmlWords('<ul><li>one</li><li>two &amp; three</li></ul><img alt="logo" src=\'/l.png\'>')).toBe("- one\n- two & three\n\n[image logo: /l.png]");
   });
 
