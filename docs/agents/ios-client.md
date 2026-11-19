@@ -845,7 +845,18 @@
   the proof folder): without them its Work workspaces land in `~/work` and
   its Work service would take the installed app's port. Its files go in
   the Purdue workspace's folder, the only place the path fence lets a key
-  name. Not seeded there: slides (no soffice to render a deck), history's
+  name. The media pillar runs the host's installed conversion tools, so
+  `/work-held`'s `tools` links this machine's ffmpeg into the server's
+  `work-tools`; the clip runs eleven minutes and the picture is 41
+  megapixels because the phone plays only HLS and tiles, which the host
+  cuts past ten minutes and 40 megapixels (media/plan.ts): a shorter clip
+  or a smaller picture stays on Preparing on the phone. Mail on LifeKit's
+  fixture day shows every sector (its fixture pager never ends, and a
+  narrowed list asked for pages forever), and a mail thread opens only
+  because the shown LifeOS screen's objects also ride on the shell's split
+  (`lifeHostEnvironment`): LifeKitUI's `SplitScreen` nests a
+  `NavigationStack` whose destination SwiftUI hoists out of `lifeChrome`.
+  Not seeded there: slides (no soffice to render a deck), history's
   versions (the Work service runs only under Electron, and the test server
   is node) and a guest link (only a LifeOS item is hosted). The app's hooks:
   the `work-workspace` and `work-view` routes, `TC_TEST_WORK_VIEW`,
