@@ -195,7 +195,9 @@ against an old book or an empty screen. A call is kept only when every
 step's target can be placed on the read (a click by name finds one element;
 a click with no target has a known pointer); else it is refused
 (`HELD_UNPLACED`), so a press never runs a bare index, point or name on
-whatever took its place.
+whatever took its place. A click with no target while the pointer is
+unknown (no call put it anywhere, or a menu pick since) is refused so
+before it is judged, held or not: the cursor may still sit on a Send.
 
 A click by name is judged against every element the name may find, so an
 icon inside a Send is held as the Send is. A held call is a `live` row with

@@ -167,7 +167,7 @@ both themes, unless the table gives two values.
 | --- | --- | --- |
 | `add-bg` | a change waiting on the person: added words, a filled cell, a suggested task | `success` 14% |
 | `add-bg-soft` | a sheet's cells just after the agent wrote them | `success` 8% |
-| `del-bg` | words or cells a change would remove (struck through, muted ink) | `destructive` 12% |
+| `del-bg` | words or cells a change would remove (struck through, `foreground` ink at 70%) | `destructive` 12% |
 | `sel-bg` | a selection the person made that an Ask or a comment will take; the current find hit, with the accent line | `accent` 22% |
 | `diff-gap` | the blank that holds a missing side's place in a compare | `foreground` 4% |
 | `border-strong` | a sheet's frozen-pane line | `foreground` 24% |
@@ -920,8 +920,8 @@ The kinds, each a hand-made body built from components/ui:
   leading gutter for the block handle, a 24px glyph rail in the trailing
   gutter when 24px is free, and a margin column (24px gap, 272px card)
   from 1104px of canvas; under that the outline wins on a long document
-  and the cards go under the text. In the margin form the stepper gives
-  way to the cards. The agent's words arrive by `REVEAL`. Underline and
+  and the cards go under the text. The margin cards hold comments; a
+  change is accepted only from the bar's stepper. The agent's words arrive by `REVEAL`. Underline and
   Strikethrough leave the selection bar under a 520px text width.
 - **PDF.** Paper on `stage`, 12px between sheets, a 24px side inset (12px
   narrow), fit-width zoom from 0.5 to 1.25, a 232px margin column 16px

@@ -82,8 +82,10 @@ reply's thread's computer session, every acting step a `pressed` call (no
 card, no second hold, and only if the window still holds what the step was
 read against): bring Microsoft Teams forward; read it; click the one chat
 named exactly as the reply says, counting a row and the text inside it as
-one (none, or more than one: stale, nothing posted); read again; the one
-message box, which must be empty (a draft of his: stale); type the reply
+one (none, or more than one: stale, nothing posted); read again; that chat
+must be the one open, by a heading of its exact name or the window's title
+(another chat still open: failed, nothing typed, a press may send it again);
+the one message box, which must be empty (a draft of his: stale); type the reply
 into it, a line break as Shift-Return (at most 9 lines), and Return; read
 once more with a picture. A box that still holds the reply after the Return
 reads failed. Proven on the fake computer service dressed as Teams

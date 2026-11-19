@@ -1280,7 +1280,10 @@ Built: the frame below, every kind's body (docs/DESIGN.md "The canvas
 pane"), the rail's and the Work column's Work rows and Settings → Work.
 
 The canvas is `SplitShell` with an item in the board's place: the item on
-the left, the thread on the right at 360px or more. The item takes the
+the left, the thread on the right at 360px or more. In a pane too narrow
+for both (`narrowBelow`), the item keeps its width and the open thread
+lies over its body under the tab row, so the item and the fold toggle
+never vanish. The item takes the
 rest by default: the split starts at 70% for the item (a board starts at
 50%), and the sash, its double-click reset and the fold work as on every
 split view. Top to bottom on the item's side:
@@ -1295,7 +1298,10 @@ split view. Top to bottom on the item's side:
    avatars (20px), the mode menu ("Agent suggests" or "Agent writes"), the
    kind's tools, History, then the review stepper (Previous, "2/6", Next,
    Reject, Accept) at the end. A kind with nothing to put in it draws no
-   bar, so a stub is the tab row and the body. A state line for a source
+   bar, so a stub is the tab row and the body. Under 560px of item
+   (`BAR_NARROW`) the stepper's group label goes first and History turns
+   to its glyph; the kind's tools clip; Reject and Accept shrink last. With
+   one change in hand the stepper is Reject and Accept alone. A state line for a source
    that cannot be reached sits under the bar, 32px.
 3. **The body**, on `background`, scrolling on its own. The selection bar
    floats over a selection in it (32px, Ask ⌘L first).
@@ -1309,7 +1315,7 @@ Chats after Chats, and a second heading, Work, whose + lists the sectors
 with no workspace yet; a Work workspace's row leads with its sector's
 8px dot where a code workspace's leads with its glyph. The Work column
 gains a first group of five `RailRow`s (Mail, Tasks, Agenda, Docs,
-Routines, one muted trailing fact each; `WORK_VIEWS`) 16px above the
+Routines, one muted trailing fact each, Mail's the sector's unread count; `WORK_VIEWS`) 16px above the
 project cards; an unlinked Work workspace has no view rows. A LifeOS
 project's card has no branch line. A view opens over the thread panes,
 under the strip, and the strip stays; picking a thread or the row again

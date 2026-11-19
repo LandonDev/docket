@@ -155,8 +155,12 @@ What a kind should know:
   `written({ text, undo? })` (what the agent last wrote directly, in the
   stepper's place), `detail` (one fact after a lone item's name: where a
   browser runs). The calls: `openHistory()` opens a `history` item on the
-  same source; `held(ref)` opens a held act where held acts are shown
+  same source; `ask(chip)` puts a chip in the thread's composer, unfolding
+  the thread first, as the selection bar's Ask does; `held(ref)` opens a held act where held acts are shown
   (`onOpenHeld` in work/canvas/held.ts, which the Outbox registers).
+- A kind's loading view uses `ItemBones` / `ItemSkeleton`
+  (work/canvas/ItemBones.tsx), the pane's own fallback shape, so nothing
+  moves when the chunk lands; a failed load shows its failure, never bones.
 - The bar is drawn only while the kind has something in it. Its order is
   fixed: people, the mode, the kind's `Bar`, History (drawn by the pane for
   a def with `history: true`), then the stepper or the written line.
