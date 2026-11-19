@@ -870,6 +870,15 @@ export function pointerAfter(steps: readonly ComputerAction[], before: PointerAt
   return at
 }
 
+/**
+ * Whether a step clicks with no target while nobody knows where the pointer is (no call of the thread put it
+ * anywhere, or a menu pick since left it unknown): the service's own cursor may still sit on a Send no read shows,
+ * so in a thread the hold applies to the click is refused before it is judged.
+ */
+export function clicksBlind(steps: readonly ComputerAction[], pointer: PointerAt = null): boolean {
+  return steps.some((a, step) => targetlessClick(a) && pointerAfter(steps.slice(0, step), pointer) === null)
+}
+
 // ── what a held act must still find on the screen when the owner presses ──
 
 /** One element a held step acts on, said without its index: an index is the service session's, and that may not outlive the hold. */

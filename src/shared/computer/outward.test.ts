@@ -5,6 +5,7 @@ import {
   CHAT_APP_BUNDLES,
   CHAT_APP_NAMES,
   OUTWARD_VERBS,
+  clicksBlind,
   heldTargets,
   landsByPosition,
   needsFreshRead,
@@ -1187,5 +1188,17 @@ describe('heldTargets and restage: what the review of the fifth round closed', (
     expect(heldTargets(steps({ action: 'left_mouse_down' }, { action: 'left_mouse_up' }), now)).toBeNull()
     // a pointer this call puts on a control first is known
     expect(heldTargets(steps({ action: 'mouse_move', element: 3 }, { action: 'left_click' }), now)).toHaveLength(2)
+  })
+})
+
+describe('clicksBlind', () => {
+  it('finds a click with no target while nobody knows where the pointer is', () => {
+    expect(clicksBlind(steps({ action: 'left_click' }))).toBe(true)
+    expect(clicksBlind(steps({ action: 'left_mouse_down' }), null)).toBe(true)
+    expect(clicksBlind(steps({ action: 'left_click' }), { element: 3 })).toBe(false)
+    // a step of the call that puts the pointer somewhere first, and a pick in a menu that leaves it unknown again
+    expect(clicksBlind(steps({ action: 'mouse_move', element: 3 }, { action: 'left_click' }))).toBe(false)
+    expect(clicksBlind(steps({ action: 'left_click', menu: 'Edit > Select All' }, { action: 'left_click' }), { element: 3 })).toBe(true)
+    expect(clicksBlind(steps({ action: 'left_click', element: 3 }, { action: 'key', text: 'Return' }))).toBe(false)
   })
 })

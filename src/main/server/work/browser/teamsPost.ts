@@ -3,7 +3,7 @@ import { heldTargets, screenMark, screenOfObservation, type Screen, type ScreenE
 import type { ComputerAction } from '@shared/computer/protocol'
 import type { ComputerToolOutcome } from '../../computer/result'
 import type { ComputerToolContext } from '../../computer/run'
-import { ActStale } from '../outbox/kinds'
+import { ActNotSent, ActStale } from '../outbox/kinds'
 import { configureTeamsCarrier, type TeamsCarrier, type TeamsPost } from './teams'
 
 /**
@@ -15,7 +15,8 @@ import { configureTeamsCarrier, type TeamsCarrier, type TeamsPost } from './team
  *
  * The steps: bring Teams forward; read it; click the one chat whose name is
  * exactly the reply's (none, or more than one, and nothing is posted); read
- * again; the one message box, empty; type the reply into it (a line break as
+ * again; the chat open is that one, by its header or the window's title; the
+ * one message box, empty; type the reply into it (a line break as
  * Shift-Return) and Return; read with a picture. Anything before the Return
  * that does not hold throws `ActStale`: nothing went.
  */
@@ -29,8 +30,8 @@ export interface TeamsComputer {
 export const TEAMS_APP = 'Microsoft Teams'
 type Pressed = NonNullable<ComputerToolContext['pressed']>
 
-/** Roles a chat is listed with; a text field, the window or the list itself never is. */
-const NOT_A_CHAT = new Set(['window', 'web area', 'list', 'table', 'outline', 'scroll area', 'group', 'input', 'text area', 'combo box', 'search', 'password', 'date'])
+/** Roles a chat is listed with; a text field, the window, the list itself or the open chat's header never is. */
+const NOT_A_CHAT = new Set(['window', 'web area', 'list', 'table', 'outline', 'scroll area', 'group', 'heading', 'input', 'text area', 'combo box', 'search', 'password', 'date'])
 const BOX_ROLES = new Set(['input', 'text area'])
 /** A reply of more lines than this is more Shift-Returns than one call carries. */
 const MAX_LINES = 9
@@ -46,6 +47,11 @@ export function chatsNamed(screen: Screen, name: string): ScreenElement[] {
     return false
   }
   return hits.filter((e) => !inside(e))
+}
+
+/** Whether the chat Teams shows open is `name`: a heading of exactly that name (the chat's header), or the window's title naming it between its bars ("Chat | Esports staff | Microsoft Teams"). */
+export function chatOpen(screen: Screen, name: string): boolean {
+  return [...screen.elements.values()].some((e) => (e.role === 'heading' && e.name === name) || (e.role === 'window' && (e.name ?? '').split(' | ').some((part) => part.trim() === name)))
 }
 
 /** The one box a message is typed into: the only text field, else the only one named for a message. */
@@ -103,8 +109,10 @@ export function teamsCarrierOn(computer: TeamsComputer, app = TEAMS_APP): TeamsC
       const opening = await act(screen, [{ action: 'left_click', element: chats[0]!.index } as ComputerAction])
       if (opening.isError) throw nothing(`The chat “${p.chat}” did not open${opening.body ? `: ${opening.body}` : '.'}`)
 
-      // The box: the one there is, holding no draft of his.
+      // The box: the one there is, in the chat he was shown, holding no draft of his. A click that landed while Teams
+      // still shows another chat would put the reply in that chat's box.
       screen = await read()
+      if (!chatOpen(screen, p.chat)) throw new ActNotSent(`Teams does not show the chat “${p.chat}” open. Nothing was posted.`)
       const box = messageBox(screen)
       if (!box) throw nothing(`Teams shows no single message box in “${p.chat}”.`)
       if (box.value?.trim()) throw nothing('The message box already holds a draft.')

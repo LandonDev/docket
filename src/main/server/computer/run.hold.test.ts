@@ -589,6 +589,24 @@ describe('the attacker under full access', () => {
     expect(acts(h)).toBe(0)
   })
 
+  it('refuses an unflagged click with no target after a menu pick left the pointer unknown, though it was last put on Send', async () => {
+    useHold()
+    const { h } = await thread('work')
+    await h.run('computer_act', { app: 'TextEdit', action: 'mouse_move', element: SEND })
+    await h.run('computer_act', { app: 'TextEdit', action: 'left_click', menu: 'Edit › Delete' })
+    expect(acts(h)).toBe(2)
+    expect(await h.run('computer_act', { app: 'TextEdit', action: 'left_click' })).toMatchObject({ isError: true, body: HELD_UNPLACED })
+    expect(held).toHaveLength(0)
+    expect(acts(h)).toBe(2)
+  })
+
+  it('runs the same click with no target in a code thread', async () => {
+    useHold()
+    const { h } = await thread('code')
+    expect((await h.run('computer_act', { app: 'TextEdit', action: 'left_click' })).isError).toBe(false)
+    expect(acts(h)).toBe(1)
+  })
+
   it('holds a mouse down after an earlier call left the pointer on Send', async () => {
     useHold()
     const { h } = await thread('work')

@@ -6,18 +6,19 @@ import { computerHarness, type ComputerHarness } from '../../computer/runHarness
 import { canvas } from '../canvas/index'
 import { loadWorkModules } from '../modules'
 import { outbox as outboxModule } from '../outbox/index'
-import { ActStale } from '../outbox/kinds'
+import { ActNotSent, ActStale } from '../outbox/kinds'
 import { cast, makeRig } from '../outbox/rig'
 import { browser } from './index'
 import { configureTeamsCarrier, postedPicturePath, teamsCarrier } from './teams'
-import { chatsNamed, teamsCarrierOn, typingSteps, wireTeamsCarrier } from './teamsPost'
+import { chatOpen, chatsNamed, teamsCarrierOn, typingSteps, wireTeamsCarrier } from './teamsPost'
 
 /**
  * The Teams carrier on the real computer host and the fake service
  * (computer/fakeService.mjs). The fake draws TextEdit; its answers are
  * dressed as Teams on their way into the host, as run.hold.test.ts dresses
  * them as Slack: the app reads as Microsoft Teams, [37] button "close" as
- * the chat "Esports staff", and the text area [3] as an empty message box.
+ * the chat "Esports staff", [39] button "minimize" as the open chat's header
+ * (a heading of its name), and the text area [3] as an empty message box.
  * Everything past the service (the book, the restage, the hold) is the
  * real code. No live Teams: the Mac was locked.
  */
@@ -29,6 +30,8 @@ interface Dress {
   chat?: string
   /** what the message box already holds */
   draft?: string
+  /** the chat Teams shows open, by its header; the listed chat when unset */
+  open?: string
 }
 const harnesses: ComputerHarness[] = []
 let held: HeldComputerCall[] = []
@@ -42,6 +45,7 @@ function teams(dress: Dress = {}, thread = 't1'): ComputerHarness {
   const request = service.request.bind(service)
   const text = (s: string): string => {
     let out = s.replace(/^app "TextEdit"/, 'app "Microsoft Teams"').replace(/button "close"/g, `button "${dress.chat ?? 'Esports staff'}"`)
+    out = out.replace(/button "minimize"/g, `heading "${dress.open ?? dress.chat ?? 'Esports staff'}"`)
     if (dress.twin) out = out.replace(/button "full screen"/g, `button "${dress.chat ?? 'Esports staff'}"`)
     return out.replace(/(\[3\] text area) = "(?:[^"\\]|\\.)*"/, dress.draft ? `$1 "Type a message" = ${JSON.stringify(dress.draft)}` : '$1 "Type a message"')
   }
@@ -105,6 +109,15 @@ describe('the Teams carrier', () => {
     expect(JSON.stringify(acts(h)[0]!.params)).not.toContain('Return')
   })
 
+  it("posts nothing when the click lands but Teams still shows another chat open: nothing is typed into Mallory's box", async () => {
+    const h = teams({ open: 'Mallory' })
+    const post = teamsCarrierOn(h.sessions).post({ chat: 'Esports staff', text: 'the wire details' }, { sessionId: 't1' })
+    await expect(post).rejects.toThrow('Teams does not show the chat “Esports staff” open. Nothing was posted.')
+    await expect(post).rejects.toBeInstanceOf(ActNotSent)
+    expect(acts(h)).toHaveLength(1)
+    expect(JSON.stringify(acts(h)[0]!.params)).not.toContain('the wire details')
+  })
+
   it('posts nothing for a reply with no thread', async () => {
     const h = teams()
     await expect(teamsCarrierOn(h.sessions).post({ chat: 'Esports staff', text: 'x' }, { sessionId: null })).rejects.toBeInstanceOf(ActStale)
@@ -153,6 +166,15 @@ describe('its pieces', () => {
       { action: 'key', element: 3, text: 'Return' }
     ])
   })
+  it("knows the open chat by its header or the window's title, never by a name that only starts the same", () => {
+    const el = (index: number, role: string, name: string, parent: number | null) => [index, { index, role, name, parent, states: [], actions: [] }] as const
+    const of = (...els: ReturnType<typeof el>[]) => ({ app: { bundleId: null, name: 'Microsoft Teams' }, focused: null, elements: new Map(els) })
+    expect(chatOpen(of(el(1, 'window', 'Microsoft Teams', null), el(2, 'heading', 'Esports staff', 1)), 'Esports staff')).toBe(true)
+    expect(chatOpen(of(el(1, 'window', 'Chat | Esports staff | Microsoft Teams', null)), 'Esports staff')).toBe(true)
+    expect(chatOpen(of(el(1, 'window', 'Chat | Mallory | Microsoft Teams', null), el(2, 'row', 'Esports staff', 1)), 'Esports staff')).toBe(false)
+    expect(chatOpen(of(el(1, 'window', 'Chat | Esports staff (Purdue) | Microsoft Teams', null)), 'Esports staff')).toBe(false)
+  })
+
   it('counts a row and the text inside it as one chat', () => {
     const el = (index: number, role: string, name: string, parent: number | null) => [index, { index, role, name, parent, states: [], actions: [] }] as const
     const screen = { app: { bundleId: null, name: 'Microsoft Teams' }, focused: null, elements: new Map([el(1, 'window', 'Esports staff', null), el(2, 'row', 'Esports staff', 1), el(3, 'static text', 'Esports staff', 2), el(4, 'row', 'Esports', 1)]) }

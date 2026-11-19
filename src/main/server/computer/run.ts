@@ -30,7 +30,7 @@ import { CONFIRM_KIND_INFO, type ConfirmNeed } from '@shared/computer/policy'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayVerdict } from '@shared/away'
-import { heldTargets, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
+import { clicksBlind, heldTargets, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './batchPlan'
@@ -803,6 +803,8 @@ async function runChecked(
       } else {
         const acting = steps.some(sendsInput)
         const pointer = t.pointer ?? null
+        // A click with no target where nobody knows the pointer is cannot be judged, nor kept for a press: refused.
+        if (clicksBlind(steps, pointer)) return refusal(HELD_UNPLACED)
         const st = app()
         let screen: Screen | null = st && st.book.size > 0 ? screenOfBook(st.book, identity) : null
         // A step that lands by position needs the window's frames; a key goes to wherever the focus is now, which the
