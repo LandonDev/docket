@@ -114,8 +114,8 @@ export class Run {
     this.undo.unshift({ label, fn })
   }
 
-  /** Launches the instance, attaches to its window, turns Work on. */
-  async start(): Promise<void> {
+  /** Launches the instance, attaches to its window, turns Work on (unless `work: false`). */
+  async start(opts: { work?: boolean } = {}): Promise<void> {
     this.port = await freePort()
     this.workPort = await freePort()
     if (await fetch(`http://127.0.0.1:${this.port}/json/version`).then(() => true, () => false)) throw new Error(`debug port ${this.port} is in use`)
@@ -160,7 +160,7 @@ export class Run {
     this.serverPort = (await this.page<number | null>('window.api.getServerPort()')) ?? 0
     await this.cdp.send('Page.enable')
     await this.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
-    await this.call('work.set', { enabled: true })
+    if (opts.work !== false) await this.call('work.set', { enabled: true })
     await this.until('environment.json', 30_000, () => existsSync(join(this.data, 'environment.json')))
     this.host = (JSON.parse(readFileSync(join(this.data, 'environment.json'), 'utf8')) as { id: string }).id
   }
@@ -273,10 +273,10 @@ export class Run {
     await this.page(`window.__monocode.open(${JSON.stringify(sessionId)})`)
     await sleep(2500)
   }
-  /** A real press (pointer down and up) at the middle of the first button whose text is `text`. */
-  async press(text: string, within = 'body'): Promise<boolean> {
+  /** A real press (pointer down and up) at the middle of the first control whose text is `text`; `rail` takes only the rail's. */
+  async press(text: string, where: 'any' | 'rail' = 'any'): Promise<boolean> {
     const at = await this.page<{ x: number; y: number } | null>(
-      `(() => { const el = [...document.querySelectorAll(${JSON.stringify(`${within} button`)})].find((e) => e.textContent.trim() === ${JSON.stringify(text)} && !e.disabled); if (!el) return null; el.scrollIntoView({ block: 'nearest' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`
+      `(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=link], [role=menuitem]')].find((e) => e.textContent.trim() === ${JSON.stringify(text)} && !e.disabled && e.offsetParent && (${where === 'rail'} ? e.getBoundingClientRect().left < 200 : true)); if (!el) return null; el.scrollIntoView({ block: 'nearest' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`
     )
     if (!at) return false
     await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y })
