@@ -77,6 +77,11 @@ review tints). The kind bar's stepper takes or leaves it through
 `compose.settleProposal`; then the composer opens again on what was
 decided. LifeOS refuses a take once the draft changed after the proposal.
 
+Once the draft is sent, a hairline strip at the item's foot (`SentLine`)
+shows the house rule his edit proposes, when it repeats one he made before
+([work-rules.md](work-rules.md) "The screens"); with no proposal it draws
+nothing.
+
 ## The Mail view
 
 `Mailbox` under `MailClientProvider` and TempCode's `MailKit`, on the
