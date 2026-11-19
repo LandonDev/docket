@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { HISTORY_CAPS, type HistoryBranch, type HistoryCompare, type HistoryVersion, type HistoryVersions } from '@shared/contract-work-history'
 import { handled, NOT_HANDLED, type CanvasSource } from '@shared/work'
 import { FenceError } from '../../remote/fence'
@@ -19,7 +20,8 @@ type Target = { docId: string } | { file: string; shared: boolean }
 export function targetOf(ctx: WorkCtx, by: Caller, method: string, source: CanvasSource): Target {
   if (source.at === 'lifeos' && source.table === 'docs') return { docId: source.id }
   if (source.at === 'file' && source.path.toLowerCase().endsWith('.tcdoc')) {
-    if (source.host !== ctx.host) throw new Error('that document is on another host; open its history there')
+    // A source names its host by environment id, or as this host saw it when it was opened (pdf/file.ts reads it the same way).
+    if (source.host !== ctx.host && !existsSync(source.path)) throw new Error('that document is on another host; open its history there')
     if (!ctx.reaches(by, source.path)) throw new FenceError(method)
     // A file is shared once a guest link names it (milestone 31); none can yet.
     return { file: canonicalPath(source.path), shared: false }
