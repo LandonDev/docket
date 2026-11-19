@@ -145,7 +145,7 @@ const call = async <T,>(method: string, params?: unknown): Promise<T> => {
   return (out.handled ? out.result : undefined) as T
 }
 const file = (path: string): CanvasSource => ({ at: 'file', host: 'env_test', path })
-const service = () => meetingsOf(db)
+const service = () => meetingsOf(work.ctx)
 const drop = (name: string, body: string | Uint8Array = 'audio'): string => {
   const path = join(dir, 'files', name)
   writeFileSync(path, body)

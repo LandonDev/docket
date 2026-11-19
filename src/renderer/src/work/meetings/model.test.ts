@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dueOf, findHits, markRuns, progressLine, proposedTasks, segmentAt, speakerName, stretchLabel, stretchOf, tasksByTurn, timeOf, turnOfAction, waveBars, WAVE_BARS } from "./model";
+import { dueOf, findHits, markRuns, progressLine, proposedTasks, segmentAt, speakerName, stretchLabel, stretchOf, tasksByTurn, timeOf, transcriptText, turnOfAction, waveBars, WAVE_BARS } from "./model";
 import { SAMPLE_NOTES, SAMPLE_SEGMENTS, sampleMeeting } from "./sample";
 
 describe("the meeting canvas's model", () => {
@@ -69,5 +69,13 @@ describe("the meeting canvas's model", () => {
     expect(dueOf("2026-11-20", now, "en-US")).toBe("Fri");
     expect(dueOf("2026-12-05", now, "en-US")).toBe("Dec 5");
     expect(dueOf(undefined, now)).toBe("");
+  });
+  it("writes the transcript as a text file says it: the title, then each turn's time and speaker over its words", () => {
+    const m = sampleMeeting();
+    const text = transcriptText(m);
+    const first = m.segments[0];
+    expect(text.startsWith(`${m.title}\n\n${timeOf(first.start, m)} ${speakerName(m.speakers, first.speaker)}\n${first.text.trim()}\n\n`)).toBe(true);
+    expect(text.split("\n\n")).toHaveLength(m.segments.length + 1);
+    expect(transcriptText({ ...m, segments: [{ id: "s1", speaker: null, start: 3725, end: null, text: " hello " }], durationSec: 4000 })).toBe(`${m.title}\n\n1:02:05 Unknown\nhello\n`);
   });
 });

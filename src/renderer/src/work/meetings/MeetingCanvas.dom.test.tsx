@@ -200,6 +200,43 @@ describe("the meeting canvas", () => {
     await waitFor(() => expect(container.querySelector("[data-meeting-empty]")).toBeTruthy());
     expect(container.querySelector("[data-meeting-empty]")!.textContent).toBe("Drop a recordingAudio, video or a transcript, from any meeting.Choose a file");
     expect(host.calls.some((c) => c.method === "work.meetings.start")).toBe(false);
+    // Nothing in the bar yet, so no bar is drawn: its Bar renders nothing (F2).
+    const bar = container.querySelector("[data-canvas-bar]");
+    expect(bar === null || bar.matches(":has([data-canvas-tools]:empty)")).toBe(true);
+    // and More holds the frame's rows alone
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect((await screen.findAllByRole("menuitem")).map((row) => row.textContent)).toEqual(["Close"]);
+  });
+
+  it("offers Export transcript first in More once there is a transcript, and saves the turns as text", async () => {
+    const clicked: { name: string; href: string }[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push({ name: this.download, href: this.href });
+    });
+    // jsdom has no object URLs
+    const made = vi.fn((_blob: Blob) => "blob:transcript");
+    const was = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    Object.assign(URL, { createObjectURL: made, revokeObjectURL: () => undefined });
+    try {
+      await seat(sampleMeeting({ title: "Staff sync.m4a" }));
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent);
+      expect(rows[0]).toBe("Export transcript");
+      fireEvent.click(screen.getByRole("menuitem", { name: "Export transcript" }));
+      await waitFor(() => expect(clicked).toEqual([{ name: "Staff sync.txt", href: "blob:transcript" }]));
+      expect(await (made.mock.calls[0][0] as Blob).text()).toMatch(/^Staff sync\.m4a\n\n10:52 Dana Lee\n/);
+    } finally {
+      click.mockRestore();
+      Object.assign(URL, { createObjectURL: was.create, revokeObjectURL: was.revoke });
+    }
+  });
+
+  it("marks a task that waits with the add-task glyph and a filed one with LifeOS's", async () => {
+    const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
+    await waitFor(() => expect(container.querySelector('[data-task="a1"]')).toBeTruthy());
+    expect(container.querySelector('[data-task="a1"] [aria-label="Waiting for you"]')).toBeTruthy();
+    const filed = container.querySelector('[data-task="a4"] [aria-label="In LifeOS"]')!;
+    expect(filed.querySelector("circle")?.getAttribute("r")).toBe("9");
   });
 
   it("an unnamed speaker whose voice is near a kept one shows the name offered at its first turn, never applied", async () => {

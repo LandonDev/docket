@@ -23,7 +23,7 @@ export const meetings: WorkModule = {
     registerMoveModule(db, tableMoveModule('meetings', 'work_meetings'))
   },
   async handle(req, ctx) {
-    const meetings = meetingsOf(ctx.db)
+    const meetings = meetingsOf(ctx)
     switch (req.method) {
       case 'work.meetings.get':
         return handled({ meeting: meetings.get(ctx, req.params.itemId) })
@@ -48,12 +48,12 @@ export const meetings: WorkModule = {
   convert: meetingConverters(),
   preamble: () => MEETINGS_PREAMBLE,
   start(ctx) {
-    const meetings = meetingsOf(ctx.db)
+    const meetings = meetingsOf(ctx)
     // What a process that is gone left mid-transcription says so, with Try again.
     meetings.recover(ctx)
     return () => meetings.stopAll(`It stopped when Work was turned off on ${ctx.host}. The recording is fine.`)
   },
   sessionsRemoved(ids, ctx) {
-    meetingsOf(ctx.db).removeSessions(ids)
+    meetingsOf(ctx).removeSessions(ids)
   }
 }

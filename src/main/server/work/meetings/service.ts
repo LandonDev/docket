@@ -5,7 +5,6 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { Meeting, MeetingVoice } from '@shared/contract-work-meetings'
 import { errorText, type CanvasItem, type CanvasSource } from '@shared/work'
 import { attachmentDir } from '../../attachmentDir'
-import { canvasStoreOf } from '../canvas/store'
 import type { WorkCtx } from '../modules'
 import { onPipelineEvents } from './events'
 import { fileTask, taskExists } from './filing'
@@ -29,7 +28,7 @@ const TRANSCRIPT_MAX_BYTES = 32 * 1024 * 1024
 /** How often a running transcription writes what it has and tells the pane. */
 const TELL_EVERY_MS = 2000
 
-/** The canvas items a meeting hangs on: the canvas store's two reads. */
+/** The canvas items a meeting hangs on: `ctx.canvas`'s two reads. */
 export interface MeetingItems {
   get(itemId: string): CanvasItem | null
   /** the thread whose pane a thread's items show in: its root */
@@ -74,7 +73,7 @@ export class Meetings {
 
   constructor(
     db: DatabaseSync,
-    private readonly items: MeetingItems = { get: (id) => canvasStoreOf(db).get(id), paneOf: (id) => canvasStoreOf(db).paneOf(id) }
+    private readonly items: MeetingItems
   ) {
     this.store = new MeetingStore(db)
     this.voices = new Voices(db)
@@ -499,8 +498,8 @@ function sentenceOf(err: unknown, host: string): string {
 
 /** One `Meetings` per database, made on first use: the module's methods and the tools share its running jobs. */
 const services = new WeakMap<DatabaseSync, Meetings>()
-export function meetingsOf(db: DatabaseSync): Meetings {
-  let service = services.get(db)
-  if (!service) services.set(db, (service = new Meetings(db)))
+export function meetingsOf(ctx: Pick<WorkCtx, 'db' | 'canvas'>): Meetings {
+  let service = services.get(ctx.db)
+  if (!service) services.set(ctx.db, (service = new Meetings(ctx.db, ctx.canvas)))
   return service
 }

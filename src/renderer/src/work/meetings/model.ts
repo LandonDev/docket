@@ -48,6 +48,15 @@ export function speakerName(speakers: readonly MeetingSpeaker[], id: string | nu
   return s ? (s.name ?? s.label) : "Unknown";
 }
 
+/**
+ * The transcript as a text file says it: one paragraph a turn, its time and
+ * speaker over its words, in the canvas's own times and names.
+ */
+export function transcriptText(m: Pick<Meeting, "title" | "durationSec" | "speakers" | "segments">): string {
+  const turns = m.segments.map((s) => `${timeOf(s.start, m)} ${speakerName(m.speakers, s.speaker)}\n${s.text.trim()}`);
+  return `${m.title}\n\n${turns.join("\n\n")}\n`;
+}
+
 /** The turn a task was said in: its first cited turn, else the turn its moment falls in. */
 export function turnOfAction(action: MeetingAction, segments: readonly MeetingSegment[]): string | null {
   const ref = action.refs.find((id) => segments.some((s) => s.id === id));

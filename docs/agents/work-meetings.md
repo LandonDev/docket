@@ -311,8 +311,8 @@ claimed by no kind, unless either is opened as a meeting (`meeting_open`).
   playing sits on `muted`. A speaker with an offered name says "Sounds like
   Dana Lee" at its first turn; the popover offers Use, and Forget this voice
   once a voice is kept under the name.
-- **Tasks** sit under their turn on `--add-bg` until accepted, then show the
-  task glyph untinted. The pane's stepper steps through those waiting (the
+- **Tasks** sit under their turn on `--add-bg` with the add-task glyph
+  (`TaskAdd`) until accepted, then show LifeOS's mark (`Lifeos`) untinted. The pane's stepper steps through those waiting (the
   player and the list move to each), Accept files the current one, and the
   pane's More holds Accept all and Reject all. A filing that failed is the
   state line, with Try again.
@@ -321,7 +321,8 @@ claimed by no kind, unless either is opened as a meeting (`meeting_open`).
   any summary lines, then Decided, To do and Open questions, each line ending
   in its minute, an accent link that plays that moment. "Wrote notes, Mon
   10:52 AM" with Undo takes the stepper's place when no task waits.
-- **Find** in the bar: hits on `--find-hit`, the current one on `--sel-bg`
+- **Find** at the bar's end (the kind's tools slot takes the free room, so
+  `ms-auto` puts it there): hits on `--find-hit`, the current one on `--sel-bg`
   with an accent line, Enter and Shift+Enter to step, Escape to close.
 - **A stretch:** a selection across turns tints them as one block and its
   span on the wave; the selection bar offers Ask ("15:02 to 15:41, Staff
@@ -334,6 +335,11 @@ claimed by no kind, unless either is opened as a meeting (`meeting_open`).
   stays.
 - **Mode:** "Agent writes", fixed: the agent's notes are a direct write, its
   tasks always suggestions.
+- **More** holds Export transcript first once there is a transcript
+  (`shell.more`): the title, then each turn's time and speaker over its
+  words, saved as `<title>.txt` (`transcriptText`, model.ts).
+- **No bar** while the meeting has nothing in it (Drop a recording): its
+  `Bar` renders nothing, so the pane draws none.
 
 Preview: `bun run ui:preview src/renderer/src/work/meetings/MeetingCanvas.preview.tsx#MeetingPreview --width 864`
 (eight moments, both themes). Tests: `model.test.ts`,
@@ -346,13 +352,9 @@ states).
 - The Notes and Transcript switch is drawn once notes exist. The pick has no
   notes in the canvas, but a decision must be a click away from its moment,
   and the design report offers the notes as the transcript's own tab.
-- The pane fixes the bar's order (the mode, the kind's tools, then the
-  stepper), so Find sits after the mode, not at the bar's end.
 - "Agent writes" is a fixed word, not a menu: there is no suggest mode for
   notes on his own recording.
-- A filed task shows Work's task glyph: there is no LifeOS glyph in
-  `work/icons.tsx`, which this pillar does not own.
 - Not built: Make task in the selection bar (it should open LifeOS's task
-  sheet, milestone 25), Export transcript and Download recording (the pane's
-  More has no slot for a kind's entries), topics, and aligning a transcript
-  file with a recording dropped beside it.
+  sheet, milestone 25), Download recording (the canvas reaches only the
+  player's small mono copy; the original needs a host method of its own),
+  topics, and aligning a transcript file with a recording dropped beside it.

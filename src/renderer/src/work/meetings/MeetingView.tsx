@@ -1,13 +1,13 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import type { Meeting, MeetingAction, MeetingNote, MeetingSegment, MeetingSpeaker } from "@shared/contract-work-meetings";
-import { ListPlus, Pause, Play } from "../../chrome/icons";
+import { Pause, Play } from "../../chrome/icons";
 import { RowsMenu } from "../../chrome/menuRows";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
-import { Task } from "../icons";
+import { Lifeos, TaskAdd } from "../icons";
 import { dueOf, markRuns, progressLine, speakerName, timeOf, waveBars, type FindHit } from "./model";
 import { SPEEDS, type Player, type Speed } from "./player";
 
@@ -128,7 +128,7 @@ export function TaskRow({ action, current, doc = false, onPick, at }: { action: 
         doc ? "-mx-2 mt-1 text-[15px] leading-6" : "mt-1.5 text-[13px] leading-5"
       }`}
     >
-      {waiting ? <ListPlus aria-label="Waiting for you" className="size-3.5 shrink-0 text-muted-foreground" /> : <Task aria-label="In LifeOS" className="size-3.5 shrink-0 text-muted-foreground" />}
+      {waiting ? <TaskAdd aria-label="Waiting for you" className="size-3.5 shrink-0 text-muted-foreground" /> : <Lifeos aria-label="In LifeOS" className="size-3.5 shrink-0 text-muted-foreground" />}
       <span className={`min-w-0 ${doc ? "" : "truncate font-medium"}`}>
         {action.text}
         {doc && due ? `, ${due}` : null}

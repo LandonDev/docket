@@ -46,7 +46,7 @@ export function stateLine(m: Meeting): string {
 
 /** The thread's own meeting by item id, or the sentence that says it has none. */
 function mine(ctx: ToolCtx, itemId: string): Meeting | string {
-  const meetings = meetingsOf(ctx.db)
+  const meetings = meetingsOf(ctx)
   if (!meetings.owns(ctx.sessionId, itemId)) return `This thread has no meeting ${itemId}.`
   return meetings.get(ctx, itemId) ?? `Meeting ${itemId} has no recording yet; open a file with meeting_open.`
 }
@@ -65,7 +65,7 @@ export const meetingTools: WorkTool[] = [
       const a = args as { file: string; title?: string }
       if (!isAbsolute(a.file) || !existsSync(a.file)) return fail(`There is no file at ${a.file} on this host.`)
       if (!isRecording(a.file) && !isTranscript(a.file)) return fail('That is not a recording or a transcript this reads: it takes audio, video, a Teams or Zoom transcript, or an .srt file.')
-      const meetings = meetingsOf(ctx.db)
+      const meetings = meetingsOf(ctx)
       try {
         const item = ctx.canvas.open(meetings.paneOf(ctx.sessionId), 'meeting', { at: 'file', host: ctx.host, path: a.file }, a.title ?? titleOf(a.file))
         let meeting = await meetings.start(ctx, item.id)
@@ -92,8 +92,8 @@ export const meetingTools: WorkTool[] = [
       let m = mine(ctx, a.meeting)
       if (typeof m === 'string') return fail(m)
       if (m.status === 'transcribing') {
-        await meetingsOf(ctx.db).settled(a.meeting, ctx.signal, WAIT_MS)
-        m = meetingsOf(ctx.db).get(ctx, a.meeting) ?? m
+        await meetingsOf(ctx).settled(a.meeting, ctx.signal, WAIT_MS)
+        m = meetingsOf(ctx).get(ctx, a.meeting) ?? m
       }
       if (m.status !== 'ready') return workText(stateLine(m))
       const start = a.from ? m.segments.findIndex((s) => s.id === a.from) : 0
@@ -145,7 +145,7 @@ export const meetingTools: WorkTool[] = [
       const m = mine(ctx, id)
       if (typeof m === 'string') return fail(m)
       try {
-        const { meeting, dropped } = await meetingsOf(ctx.db).writeNotes(ctx, id, input)
+        const { meeting, dropped } = await meetingsOf(ctx).writeNotes(ctx, id, input)
         const n = meeting.notes!
         const waiting = n.actions.filter((a) => a.state === 'proposed').length
         const kept = `Kept ${n.summary.length} summary line${n.summary.length === 1 ? '' : 's'}, ${n.decisions.length} decision${n.decisions.length === 1 ? '' : 's'}, ${n.questions.length} question${n.questions.length === 1 ? '' : 's'} and ${n.actions.length} task${n.actions.length === 1 ? '' : 's'}.`

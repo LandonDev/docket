@@ -9,9 +9,10 @@ import { uploadAttachment } from "../../lib/attachmentUpload";
 import { dayTime } from "../../lib/duration";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
+import { Export } from "../icons";
 import { decideTasks, loadMeeting, startMeeting, startOnce, undoNotes, useMeeting } from "./data";
 import { Failed, NotesDoc, NothingYet, PlainName, PlayerRow, Progress, Turns, TurnsSkeleton } from "./MeetingView";
-import { findHits, proposedTasks, segmentAt, stretchLabel, stretchOf, tasksByTurn } from "./model";
+import { findHits, proposedTasks, segmentAt, stretchLabel, stretchOf, tasksByTurn, transcriptText } from "./model";
 import { usePlayer } from "./player";
 import { SpeakerName } from "./Speaker";
 
@@ -138,6 +139,26 @@ function useStretch(root: RefObject<HTMLDivElement | null>, shell: CanvasShell, 
   return selected;
 }
 
+/** The meeting's own verbs in the pane's More, once there is a transcript to export. */
+function useExport(shell: CanvasShell, meeting: Meeting | null): void {
+  const ready = meeting?.status === "ready" && meeting.segments.length > 0 ? meeting : null;
+  useEffect(() => {
+    if (!ready) return;
+    shell.more?.([{ id: "export-transcript", label: "Export transcript", icon: Export, run: () => saveText(`${ready.title.replace(/\.[A-Za-z0-9]{1,5}$/, "")}.txt`, transcriptText(ready)) }]);
+    return () => shell.more?.(null);
+  }, [shell, ready]);
+}
+
+/** Saves words as a file where the person keeps downloads. */
+function saveText(name: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export function Body({ item, source, env, state, shell }: CanvasBodyProps<MeetingState>) {
   const view = state ?? FIRST;
   const { meeting, loaded, error } = useMeeting(env, item.id);
@@ -171,6 +192,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null);
   const current = proposed.some((a) => a.id === task) ? task : (proposed[0]?.id ?? null);
   const selected = useStretch(turnsBox, shell, meeting, source);
+  useExport(shell, meeting);
 
   const hits = useMemo(() => (meeting && view.find ? findHits(meeting.segments, view.find.query) : []), [meeting, view.find]);
   const hit = view.find && hits.length ? hits[((view.find.index % hits.length) + hits.length) % hits.length] : null;
@@ -283,7 +305,7 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
         </Tabs>
       ) : null}
       {view.find ? (
-        <div data-meeting-find className="flex min-w-0 items-center gap-1">
+        <div data-meeting-find className="ms-auto flex min-w-0 items-center gap-1">
           <InputGroup className="h-6 w-56 rounded-md px-2 [&_svg:not([class*='size-'])]:size-3" leading={<Search />}>
             <GroupInput
               ref={input}
@@ -318,7 +340,7 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
           </Button>
         </div>
       ) : (
-        <Button variant="ghost" size="icon-xs" aria-label="Find" className="text-muted-foreground" onClick={() => setState({ ...view, tab: "transcript", find: { query: "", index: 0 } })}>
+        <Button variant="ghost" size="icon-xs" aria-label="Find" className="ms-auto text-muted-foreground" onClick={() => setState({ ...view, tab: "transcript", find: { query: "", index: 0 } })}>
           <Search />
         </Button>
       )}
