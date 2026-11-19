@@ -1,19 +1,19 @@
 import { defineChunk } from "../../lib/lazyChunk";
 import { Globe } from "../../chrome/icons";
-import type { CanvasKindDef } from "../canvas/kind";
+import { defineCanvasKind } from "../canvas/kind";
 
 /**
- * The browser kind of canvas item (docs/agents/work-browser.md). A stub: its
- * body says "Not built yet" until the browser pillar's milestone builds it
- * (`PILLAR_MILESTONE` in src/shared/work/ids.ts), which then points `chunk`
- * at its own module and corrects what the kind claims.
+ * The browser kind of canvas item (docs/agents/work-browser.md): computer
+ * use on the Mac beside a Work thread, at full size, with who drives it and
+ * a submit waiting on its final screen. It claims a browser session, which
+ * `browser_open` opens in the thread's pane.
  */
-export const browserCanvas: CanvasKindDef = {
+export const browserCanvas = defineCanvasKind({
   kind: "browser",
   label: "Browser",
   icon: Globe,
   opens: { sources: [{ at: "browser" }] },
   phone: "native",
   guestable: false,
-  chunk: defineChunk("work-browser-canvas", () => import("../canvas/NotBuilt")),
-};
+  chunk: defineChunk("work-browser-canvas", () => import("./BrowserCanvas")),
+});
