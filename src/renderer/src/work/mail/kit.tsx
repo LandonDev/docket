@@ -1,5 +1,5 @@
 import { Component, useEffect, useState, type ReactNode } from "react";
-import type { MailFaceProps, MailKit, MailSectorMarkProps, MailToastInput } from "work-kit/mail";
+import type { MailFaceProps, MailKit, MailOrigin, MailOriginLabel, MailSectorMarkProps, MailToastInput } from "work-kit/mail";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
@@ -17,6 +17,24 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 
 // ── the kit ────────────────────────────────────────────────────────────
 
+/**
+ * The bar of a wait he can still stop (a send inside its undo time): full at
+ * first, empty when the time is up. It runs once, on transform, for exactly
+ * the time the toast stays.
+ */
+function Countdown({ ms }: { ms: number }) {
+  const [running, setRunning] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setRunning(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return (
+    <span aria-hidden className="ms-2 inline-block h-[3px] w-11 overflow-hidden rounded-full bg-muted align-middle">
+      <span className="block h-full origin-left bg-foreground ease-linear motion-reduce:hidden" style={{ transform: running ? "scaleX(0)" : "scaleX(1)", transitionProperty: "transform", transitionDuration: `${ms}ms` }} />
+    </span>
+  );
+}
+
 const toast = (input: string | MailToastInput): void => {
   const t = typeof input === "string" ? { message: input } : input;
   void loadToast().then((api) => {
@@ -24,11 +42,32 @@ const toast = (input: string | MailToastInput): void => {
       ...(t.id ? { id: t.id } : {}),
       ...(t.action ? { action: { label: t.action.label, onClick: t.action.run } } : {}),
       ...(t.lifetime !== undefined ? { duration: t.lifetime ?? Number.POSITIVE_INFINITY } : {}),
+      // A wait ends by itself or by its action, never by a close of its own.
+      ...(t.countdown ? { closeButton: false, dismissible: false } : {}),
     };
-    if (t.state === "error") api.error(t.message, options);
-    else api(t.message, options);
+    const words =
+      t.countdown && t.lifetime ? (
+        <span className="inline-flex items-center">
+          {t.message}
+          <Countdown ms={t.lifetime} />
+        </span>
+      ) : (
+        t.message
+      );
+    if (t.state === "error") api.error(words, options);
+    else api(words, options);
   });
 };
+
+/**
+ * Who made a draft, in TempCode's words: the thread that wrote it, with a
+ * way to open it. The Mail view and the mail item set the namer once they
+ * can read threads; until then a draft with an origin is named plainly.
+ */
+let originNamer: ((origin: MailOrigin) => MailOriginLabel | undefined) | null = null;
+export function nameOrigins(namer: typeof originNamer): void {
+  originNamer = namer;
+}
 
 const initials = (name: string | undefined): string =>
   (name ?? "")
@@ -146,6 +185,9 @@ export const tempcodeMailKit: MailKit = {
   openFile: opened,
   saveFile: opened,
   print: () => {},
+  // A draft one of TempCode's threads made goes through the host's hold, which has no queue to pull a mail back from.
+  holdsSend: (origin) => origin.app === "tempcode",
+  originLabel: (origin) => originNamer?.(origin) ?? (origin.app === "tempcode" ? { label: "Drafted in a thread" } : undefined),
   fetchImage: async (url) => (await fetch(url)).blob(),
   Boundary,
 };

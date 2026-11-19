@@ -75,7 +75,9 @@
 @source "../../../node_modules/work-kit/src/mail/client.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/attachment-strip.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/composer.tsx";
+@source "../../../node_modules/work-kit/src/mail/compose/format-bar.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/from-select.tsx";
+@source "../../../node_modules/work-kit/src/mail/compose/held-send.ts";
 @source "../../../node_modules/work-kit/src/mail/compose/outbox-list.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/quote-frame.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/recipient-field.tsx";
@@ -108,6 +110,7 @@
 @source "../../../node_modules/work-kit/src/mail/lib/print.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/quote.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/reply.ts";
+@source "../../../node_modules/work-kit/src/mail/lib/send-check.ts";
 @source "../../../node_modules/work-kit/src/mail/load-more.tsx";
 @source "../../../node_modules/work-kit/src/mail/mailbox.tsx";
 @source "../../../node_modules/work-kit/src/mail/message-body.tsx";
@@ -149,7 +152,6 @@
 @source "../../../node_modules/work-kit/src/sheet/xlsx/styles.ts";
 @source "../../../node_modules/work-kit/src/sheet/xlsx/xml.ts";
 @source "../../../node_modules/work-kit/src/sheet/xlsx/zip.ts";
-@source "../../../node_modules/work-kit/src/ui/attachment.tsx";
 @source "../../../node_modules/work-kit/src/ui/avatar.tsx";
 @source "../../../node_modules/work-kit/src/ui/button.tsx";
 @source "../../../node_modules/work-kit/src/ui/calendar.tsx";
@@ -171,7 +173,6 @@
 @source "../../../node_modules/work-kit/src/ui/scroll-area.tsx";
 @source "../../../node_modules/work-kit/src/ui/select.tsx";
 @source "../../../node_modules/work-kit/src/ui/separator.tsx";
-@source "../../../node_modules/work-kit/src/ui/sheet.tsx";
 @source "../../../node_modules/work-kit/src/ui/skeleton.tsx";
 @source "../../../node_modules/work-kit/src/ui/spinner.tsx";
 @source "../../../node_modules/work-kit/src/ui/tabs.tsx";

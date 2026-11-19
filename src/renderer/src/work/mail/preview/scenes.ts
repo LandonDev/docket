@@ -24,6 +24,10 @@ const FRAMES_READY = `${FRAMES_SHOWN} && ${FRAMES}.every((f) => !f.contentDocume
 /** A real click on the first element the selector finds, once it is there. */
 const press = (selector: string) => async (page: Page) => {
   await page.until(`document.querySelector(${JSON.stringify(selector)})`, selector);
+  // The thread is still settling as its frames are measured: press where the control comes to rest.
+  await page.until(FRAMES_SHOWN.replace(".length > 0 &&", ".length >= 0 &&"), "the frames");
+  await page.wait(250);
+  await page.eval(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({ block: "center" })`);
   const at = await page.centre(selector);
   if (at) await page.click(at.x, at.y);
 };
@@ -50,6 +54,9 @@ export const SCENES: Scene[] = [
   { name: "reader-plain-quotes", set: opened("c-frontdesk") },
   { name: "reader-inline", set: opened("c-logo"), ready: FRAMES_READY },
   { name: "reader-arabic", set: opened("c-arabic"), ready: FRAMES_READY },
+  { name: "reply", set: then(opened("c-invoice"), press("[data-mail-pane] button.mail-reply-row")), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
+  { name: "new-mail", set: async (page) => void (await page.eval(`window.__mail.compose({ open: { kind: "new" }, full: true })`)), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
+  { name: "held-draft", set: async (page) => void (await page.eval(`window.__mail.compose({ open: { kind: "row", id: "c-held" }, full: true })`)), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
   { name: "list", ready: `document.querySelectorAll("[data-mail-list] li").length > 5` },
   { name: "loading", query: "late=1" },
 ];
