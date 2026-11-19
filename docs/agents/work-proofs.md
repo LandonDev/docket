@@ -65,13 +65,13 @@ On the box (Linux, xvfb), 2026-11-19, on the branch's build over master with mil
 
 | Job | What it proves | Runs |
 |---|---|---|
-| triage | morning triage to held drafts to the owner's batch | 2 of 2 (20 checks each) |
-| report | a weekly report from a real .xlsx to a held mail | 2 of 2 (15) |
+| triage | morning triage to held drafts to the owner's batch | 2 of 2 (22 checks each) |
+| report | a weekly report from a real .xlsx to a held mail | 2 of 2 (19) |
 | document | a .docx through suggestions and a guest's edit to .docx, .odt, .md and PDF | 2 of 2 (17), and 2 of 2 on the Mac (17, guest leg left out) |
-| meeting | a recording to accepted tasks in LifeOS | 2 of 2 (13) |
-| routine | a routine that fires under Away and leaves a held item | 2 of 2 (15) |
-| switchoff | Work off is the app before Work | 2 of 2 (16) |
-| sweep | nothing a proof made is left in LifeOS | nothing left; 15 proof tasks found, all dropped |
+| meeting | a recording to accepted tasks in LifeOS | 2 of 2 (15) |
+| routine | a routine that fires under Away and leaves a held item | 2 of 2 (17) |
+| switchoff | Work off is the app before Work | 2 of 2 (17) |
+| sweep | nothing a proof made is left in LifeOS | nothing live left; 20 proof tasks in LifeOS, all dropped |
 | Windows hold | a Work thread's flagged submit on a Windows PC waits for his press | 2 of 2 in the rig |
 | Mac | the document job under the Mac's Electron | 2 of 2 |
 | Phone | the whole work set in the iOS simulator (45 shots), ios:test, ios:test:client | 2 of 2 |
