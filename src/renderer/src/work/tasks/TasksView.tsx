@@ -3,7 +3,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { ContextChip } from "@shared/work";
 import { groupTasks, SNOOZE_CHOICES, SNOOZE_LABELS, TASK_GROUP_LABELS, TASK_GROUPS, type SnoozeChoice } from "work-kit/lifeos/tasks";
 import { formatDue } from "work-kit/views/lib/format";
-import { ChevronDown } from "../../chrome/icons";
+import { ChevronDown, Plus } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../components/ui/context-menu";
@@ -15,6 +15,9 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { type Task, type TaskActions, type TasksClient, viewsClients } from "./client";
 import { useMinute } from "./minute";
+import { NewTaskDialog } from "./NewTaskDialog";
+import { shared } from "./store";
+import { TaskSheet } from "./TaskSheet";
 
 /**
  * A Work workspace's Tasks (prototype workspace.html, "Four rows"): its
@@ -30,12 +33,27 @@ import { useMinute } from "./minute";
 const HOLD_MS = 350;
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+/** The header's New task asks the view for its dialog. */
+const newTask = shared(false);
+
+export function Head(_props: WorkViewProps) {
+  return (
+    <Button variant="ghost" size="sm" onClick={() => newTask.set(true)}>
+      <Plus />
+      New task
+    </Button>
+  );
+}
+
 export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
+  const adding = newTask.use();
+  useEffect(() => () => newTask.set(false), []);
   if (!lifeos.client) return <TasksSkeleton />;
   return (
     <ConvexProvider client={lifeos.client}>
       <Tasks client={clients.tasks} startThread={startThread} />
+      {adding ? <NewTaskDialog sector={sector} onClose={() => newTask.set(false)} /> : null}
     </ConvexProvider>
   );
 }
@@ -51,15 +69,19 @@ export function Tasks({ client, startThread }: { client: TasksClient; startThrea
   const latest = useRef(startThread);
   latest.current = startThread;
   const start = useMemo(() => (task: Task) => latest.current(chipOf(task)), []);
+  const [opened, setOpened] = useState<string | null>(null);
+  const open = useMemo(() => (task: Task) => setOpened(task._id), []);
   const groups = useMemo(() => (tasks ? groupTasks(tasks, now, zone) : null), [tasks, now]);
   if (!groups) return <TasksSkeleton />;
+  // The open task as the list has it now; a task that left the list (done elsewhere) closes its sheet.
+  const shown = opened ? (tasks?.find((t) => t._id === opened) ?? null) : null;
   const lead = groups.today[0] ?? null;
   const rest = TASK_GROUPS.map((g) => ({ g, rows: g === "today" ? groups.today.slice(1) : groups[g] })).filter((x) => x.rows.length);
   if (!lead && !rest.length) return <EmptyState title="Nothing open" />;
   const meta = (task: Task) => metaOf(task, projects?.get(task.projectId ?? "")?.name);
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
-      {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} /> : null}
+      {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} /> : null}
       {rest.map(({ g, rows }, i) => (
         <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{TASK_GROUP_LABELS[g]}</h2>
@@ -72,10 +94,12 @@ export function Tasks({ client, startThread }: { client: TasksClient; startThrea
               overdue={task.dueAt !== undefined && task.dueAt < now}
               actions={actions}
               onStart={start}
+              onOpen={open}
             />
           ))}
         </section>
       ))}
+      <TaskSheet task={shown} project={shown ? projects?.get(shown.projectId ?? "")?.name : undefined} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} />
     </div>
   );
 }
@@ -86,7 +110,7 @@ function metaOf(task: Task, project: string | undefined): string | undefined {
   return project ?? task.source?.sender;
 }
 
-function Lead({ task, meta, now, actions, onStart }: { task: Task; meta: string | undefined; now: number; actions: TaskActions; onStart: (task: Task) => void }) {
+function Lead({ task, meta, now, actions, onStart, onOpen }: { task: Task; meta: string | undefined; now: number; actions: TaskActions; onStart: (task: Task) => void; onOpen: (task: Task) => void }) {
   const overdue = task.dueAt !== undefined && task.dueAt < now;
   return (
     <div className="flex flex-col gap-1 px-3">
@@ -117,6 +141,9 @@ function Lead({ task, meta, now, actions, onStart }: { task: Task; meta: string 
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        <Button size="sm" variant="ghost" onClick={() => onOpen(task)}>
+          Open
+        </Button>
       </div>
     </div>
   );
@@ -134,6 +161,7 @@ const TaskRow = memo(function TaskRow({
   overdue,
   actions,
   onStart,
+  onOpen,
 }: {
   task: Task;
   meta: string | undefined;
@@ -141,6 +169,7 @@ const TaskRow = memo(function TaskRow({
   overdue: boolean;
   actions: TaskActions;
   onStart: (task: Task) => void;
+  onOpen: (task: Task) => void;
 }) {
   const [ticked, setTicked] = useState(false);
   // A Done that failed (its toast says so) puts the row back as it was.
@@ -158,10 +187,10 @@ const TaskRow = memo(function TaskRow({
         render={<div role="listitem" className="group/row relative flex min-h-11 items-start gap-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-muted" />}
       >
         <Checkbox shape="round" className="mt-0.5" checked={ticked} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className={cn("truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
-          {meta ? <span className="truncate text-xs text-muted-foreground">{meta}</span> : null}
-        </span>
+        <button type="button" onClick={() => onOpen(task)} className="flex min-w-0 flex-1 flex-col text-left outline-none">
+          <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
+          {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
+        </button>
         {due ? <span className={cn("shrink-0 text-xs leading-5 tabular-nums", overdue ? "text-destructive" : "text-muted-foreground", yields("row"))}>{due}</span> : null}
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true, overlay: true }))}>
           <Button size="xs" variant="ghost" onClick={() => onStart(task)}>
@@ -171,6 +200,7 @@ const TaskRow = memo(function TaskRow({
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>
+        <ContextMenuItem onClick={() => onOpen(task)}>Open</ContextMenuItem>
         <ContextMenuItem onClick={() => setTicked(true)}>Done</ContextMenuItem>
         <ContextMenuSeparator />
         {SNOOZE_CHOICES.map((choice: SnoozeChoice) => (
