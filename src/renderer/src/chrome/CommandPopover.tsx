@@ -3,6 +3,7 @@ import { addonTitle } from "@shared/addonNames";
 import { SECTION_LABELS } from "../lib/composerTriggers";
 import type { ProjectFile } from "../lib/fs";
 import type { ProjectMeta, SessionMeta, SlashCommand } from "../lib/tcserver/types";
+import type { WorkMentionRow } from "../work/canvas/mentions";
 import { StatusMark, threadStateOf } from "../components/ui/status";
 import { MENU_ROW } from "../components/ui/menu-row";
 import { timeAgo } from "../lib/duration";
@@ -14,7 +15,9 @@ import { FileText, MessageSquare, StickyNote } from "./icons";
 /**
  * The composer's autocomplete, ported from temp-code's PromptBar: one flat
  * keyboard list rising above the box. `/` rows are the provider's commands
- * sectioned by source; `@` rows are project files, then threads, then notes.
+ * sectioned by source; `@` rows are project files, then threads, then notes,
+ * and in a thread that may mention Work's things, those grouped by kind (first
+ * in a Work thread): mail, tasks, events and the rest, each a chip once picked.
  * It is open while a `/` or `@` is being typed: with nothing to pick it holds
  * one muted row, "No matches", or "Loading…" while the project's files are
  * still on their way, so it never vanishes under the typing. It moves as every popup
@@ -32,7 +35,9 @@ export const POPUP_MOTION =
 export type AtMatch =
   | { kind: "file"; file: ProjectFile }
   | { kind: "thread"; session: SessionMeta }
-  | { kind: "note"; file: ProjectFile };
+  | { kind: "note"; file: ProjectFile }
+  /** A Work thing (work/canvas/mentions.ts): its group, glyph and muted facts come with it. */
+  | { kind: "work"; row: WorkMentionRow };
 
 export type PopoverMatches =
   | {
@@ -43,7 +48,18 @@ export type PopoverMatches =
       /** The host's last answer was no list: said, never "No matches". */
       failed?: boolean;
     }
-  | { mode: "file"; rows: AtMatch[]; /** The project's files are still being read. */ loading?: boolean };
+  | {
+      mode: "file";
+      rows: AtMatch[];
+      /** The project's files, or the first Work answer, are still on their way. */
+      loading?: boolean;
+      /** One muted line under the rows, or in place of "No matches": Work's answer still coming ("Loading…"), or the kinds it could not search. */
+      note?: string;
+    };
+
+/** A row's group: a Work thing's kind, else its own kind. */
+const groupOf = (m: AtMatch): string => (m.kind === "work" ? m.row.group : m.kind);
+const GROUP_LABEL: Record<string, string> = { file: "Files", thread: "Threads", note: "Notes" };
 
 /** A menu's row (MENU_ROW), its 8px radius concentric in the 12px popover's 4px inset. */
 const ROW = `${MENU_ROW} flex w-full cursor-default items-center rounded-lg text-left`;
@@ -130,7 +146,7 @@ export function CommandPopover({
       <div
         ref={listRef}
         role="listbox"
-        aria-label={rows.mode === "command" ? "Skills and commands" : "Files and threads"}
+        aria-label={rows.mode === "command" ? "Skills and commands" : "Mentions"}
         className="max-h-72 overflow-x-hidden overflow-y-auto overscroll-none rounded-xl p-1 [--scrollbar-inset:var(--radius-xl)]"
       >
         {rows.rows.length === 0 ? (
@@ -142,7 +158,7 @@ export function CommandPopover({
             aria-disabled
             className={`${ROW} ${!rows.loading && rows.mode === "command" && rows.failed ? "text-destructive" : "text-muted-foreground"}`}
           >
-            {rows.loading ? "Loading…" : rows.mode === "command" && rows.failed ? "Couldn't load commands" : "No matches"}
+            {rows.loading ? "Loading…" : rows.mode === "command" && rows.failed ? "Couldn't load commands" : (rows.mode === "file" && rows.note) || "No matches"}
           </div>
         ) : rows.mode === "command"
           ? rows.rows.map((c, n) => (
@@ -173,15 +189,31 @@ export function CommandPopover({
             ))
           : rows.rows.map((m, n) => {
               // Grouped render over one flat keyboard list: a quiet
-              // label where one kind ends and the next begins.
-              const prev = rows.rows[n - 1]?.kind;
-              const mixed = rows.rows.some((x) => x.kind !== m.kind);
+              // label where one group ends and the next begins. Files
+              // that lead the list need none.
+              const group = groupOf(m);
+              const prev = rows.rows[n - 1];
+              const mixed = rows.rows.some((x) => groupOf(x) !== group);
               const label =
-                mixed && prev !== m.kind && m.kind !== "file" ? (
+                mixed && (!prev || groupOf(prev) !== group) && !(n === 0 && m.kind === "file") ? (
                   <div className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
-                    {m.kind === "thread" ? "Threads" : "Notes"}
+                    {m.kind === "work" ? m.row.group : GROUP_LABEL[m.kind]}
                   </div>
                 ) : null;
+              if (m.kind === "work") {
+                const { hit, Glyph, when } = m.row;
+                return (
+                  <div key={`${hit.chip.kind}:${JSON.stringify(hit.chip.ref)}`}>
+                    {label}
+                    <div {...rowProps(n)} data-mention={hit.chip.kind}>
+                      <Glyph className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 truncate">{hit.chip.label}</span>
+                      {hit.detail ? <span className="min-w-0 shrink-[2] truncate text-xs text-muted-foreground">{hit.detail}</span> : null}
+                      {when ? <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums text-muted-foreground">{when}</span> : null}
+                    </div>
+                  </div>
+                );
+              }
               if (m.kind === "file" || m.kind === "note") {
                 const p = m.file.relative;
                 const base = m.kind === "note" ? m.file.name : p.split("/").pop();
@@ -224,6 +256,12 @@ export function CommandPopover({
                 </div>
               );
             })}
+        {rows.mode === "file" && rows.rows.length > 0 && rows.note ? (
+          // What is still coming, or could not be searched, says so in one muted row under what is here.
+          <div data-command-note role="option" aria-selected={false} aria-disabled className={`${ROW} text-muted-foreground`}>
+            {rows.note}
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -109,7 +109,9 @@ import { threadToken } from '../lib/threadMentions'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import { nativeModelId } from '../lib/models'
 import type { SessionMeta, ThreadType } from '../lib/tcserver/types'
-import { useProjects } from '../lib/tcserver/workspaces'
+import { useProjects, useWorkspaces } from '../lib/tcserver/workspaces'
+import { useWorkHosts } from '../lib/workSwitch'
+import { useWorkMentions } from './useWorkMentions'
 
 type Props = {
   enabled?: boolean
@@ -176,6 +178,8 @@ const DRAFT_SAVE_DELAY_MS = 300
 
 const metaEnvironment = (meta: SessionMeta): string => meta.environmentId
 const metaProvider = (meta: SessionMeta): string => meta.provider
+/** Where a thread is, as one primitive: its scope, workspace and project. */
+const metaWhere = (meta: SessionMeta): string => JSON.stringify([meta.scope ?? null, meta.workspaceId ?? null, meta.projectId ?? null])
 
 export function Composer({
   enabled = true,
@@ -285,6 +289,7 @@ export function Composer({
   const metaEnvironmentId = useSessionMetaValue(sessionId, metaEnvironment)
   const threadProvider = useSessionMetaValue(sessionId, metaProvider)
   const compactable = useSessionMetaValue(sessionId, canCompact) ?? false
+  const whereKey = useSessionMetaValue(sessionId, metaWhere)
   const draft = useDraftRow(sessionId, shell)
   // A draft's first send remounts the composer in the docked footer (the
   // empty screen and the thread's view are different trees). The new one
@@ -361,6 +366,25 @@ export function Composer({
       repaintFrame.current = null
     }
   }, [scheduleRepaint])
+  // A Work thread, a Work Chat's draft, or a thread of a workspace linked to a sector may mention Work's things,
+  // while its host has Work on; the host still decides what each one may read (work.canvas.mentions).
+  const workHosts = useWorkHosts()
+  const workspaces = useWorkspaces()
+  const mentionDraft = useMemo(() => {
+    if (!whereKey) return undefined
+    const [scope, workspaceId, ownProject] = JSON.parse(whereKey) as [string | null, string | null, string | null]
+    const workspace = workspaces.find((w) => w.id === (projects.find((p) => p.id === ownProject)?.workspaceId ?? workspaceId))
+    if (scope !== 'work' && workspace?.kind !== 'work' && !workspace?.sector) return undefined
+    return { projectId: ownProject, workspaceId, work: scope === 'work' }
+  }, [projects, whereKey, workspaces])
+  const workMentions = useWorkMentions({
+    open: mentionOpen,
+    query: live?.query ?? '',
+    env: environmentId,
+    sessionId,
+    draft: mentionDraft,
+    enabled: !!mentionDraft && workHosts.has(environmentId)
+  })
   // `@path` has to end on whitespace, so files with spaces cannot be mentioned.
   const mentionable = useMemo(
     () => files.filter((file) => !file.isDir && !/\s/.test(file.relative)),
@@ -378,9 +402,14 @@ export function Composer({
       (session) => ({ kind: 'thread', session })
     )
     const noteHits: AtMatch[] = rankNoteFiles(notes, live.query).map((file) => ({ kind: 'note', file }))
+    const work = workMentions.result
+    const workHits: AtMatch[] = (work?.rows ?? []).map((row) => ({ kind: 'work', row }))
     const loading = looksLikeProject(executionCwd) && filesFor !== executionCwd
-    return { mode: 'file', rows: [...fileHits, ...threadHits, ...noteHits], loading }
-  }, [commands, commandsFailed, commandsLoaded, executionCwd, filesFor, live, mentionable, metas, notes, projectId, sessionId])
+    // A Work thread is about mail, tasks and the rest more than its folder's files: those lead there.
+    const rows = mentionDraft?.work ? [...workHits, ...fileHits, ...threadHits, ...noteHits] : [...fileHits, ...threadHits, ...noteHits, ...workHits]
+    // Until Work's first answer lands, one muted row says so under what is here (or in place of "No matches").
+    return { mode: 'file', rows, loading, note: workMentions.loading ? 'Loading…' : (work?.failed ?? undefined) }
+  }, [commands, commandsFailed, commandsLoaded, executionCwd, filesFor, live, mentionDraft, mentionable, metas, notes, projectId, sessionId, workMentions])
   const rows = matches?.rows.length ?? 0
   // Mounted from the first `/` or `@` on, so its close keeps its fade.
   const [menuUsed, setMenuUsed] = useState(false)
@@ -653,6 +682,13 @@ export function Composer({
     } else {
       const m = matches.rows[index]
       if (!m) return
+      // A Work thing is a chip, not text: the typed `@words` go and the chip joins the row over the field.
+      if (m.kind === 'work') {
+        el.replaceRange(live.start, caret, { text: '' })
+        setTrigger(null)
+        if (sessionId) void workCanvasChunk.load().then((w) => w.pickWorkMention(sessionId, m.row))
+        return
+      }
       // A thread on another host than this draft's names its host (`env_…`), so the draft's host reads it there.
       const inserted =
         m.kind === 'thread'

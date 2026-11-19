@@ -6,7 +6,9 @@
  */
 export { CanvasSeat } from "./CanvasSeat";
 export { ComposerChips } from "./ComposerChips";
+export { SentChips } from "./SentChips";
 export { addContextChip } from "./chips";
+export { pickWorkMention, searchWorkMentions } from "./mentions";
 export { CANVAS, kindFor } from "./registry";
 export { onOpenHeld } from "./held";
 export { openItem } from "./store";
