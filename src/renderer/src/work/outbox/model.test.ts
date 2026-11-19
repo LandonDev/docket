@@ -77,6 +77,8 @@ describe("htmlWords", () => {
     );
     expect(htmlWords('<p style="background-image:u&#114;l(https://e.test/p)">Hi</p>')).toBe("Hi\n[background image: https://e.test/p]");
     expect(htmlWords('<p style="background-image:u\\72l(https://e.test/q)">Hi</p>')).toBe("Hi\n[background image: https://e.test/q]");
+    expect(htmlWords('<p style="background:url&lpar;https://e.test/r&rpar;">Hi</p>')).toBe("Hi\n[background image: https://e.test/r]");
+    expect(htmlWords('<p style="background:u&#114l(https://e.test/s)">Hi</p>')).toBe("Hi\n[background image: https://e.test/s]");
     expect(htmlWords('<ul><li>one</li><li>two &amp; three</li></ul><img alt="logo" src=\'/l.png\'>')).toBe("- one\n- two & three\n\n[image logo: /l.png]");
   });
 

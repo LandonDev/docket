@@ -13,6 +13,8 @@ export interface CalendarOp {
   calendarId?: string;
   eventId?: string;
   eventTitle?: string;
+  /** the event's start as the host bound it for the press; shown in place of a live read */
+  eventStartsAt?: number;
   payload?: {
     title?: string;
     startsAt?: number;
@@ -67,7 +69,7 @@ export function opFields(op: CalendarOp, event: DayEvent | null): { label: strin
   const rows: { label: string; value: string }[] = [];
   const title = p.title ?? event?.title ?? op.eventTitle;
   if (title) rows.push({ label: "Event", value: title });
-  const startsAt = p.startsAt ?? event?.startsAt;
+  const startsAt = p.startsAt ?? op.eventStartsAt ?? event?.startsAt;
   if (startsAt !== undefined) rows.push({ label: "When", value: whenWords(startsAt, p.endsAt ?? event?.endsAt, p.allDay ?? event?.allDay) });
   if (op.kind === "propose" && p.proposedStart !== undefined) rows.push({ label: "Instead", value: whenWords(p.proposedStart, p.proposedEnd) });
   const where = p.location ?? event?.location;
@@ -88,7 +90,7 @@ export function opFields(op: CalendarOp, event: DayEvent | null): { label: strin
 /** When the act lands: a proposal's new time, else the act's own start, else its event's. */
 export function opStart(op: CalendarOp, event: DayEvent | null): number | null {
   const p = op.payload ?? {};
-  return (op.kind === "propose" ? p.proposedStart : undefined) ?? p.startsAt ?? event?.startsAt ?? null;
+  return (op.kind === "propose" ? p.proposedStart : undefined) ?? p.startsAt ?? op.eventStartsAt ?? event?.startsAt ?? null;
 }
 
 export type DayLine = { key: string; at: string; sector: string | null; title: string; own: boolean; minute: number };

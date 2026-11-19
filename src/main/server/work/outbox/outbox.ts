@@ -34,6 +34,8 @@ export interface LifeosHeld {
   discard(ref: LifeosRef): Promise<void>
   /** Save a changed payload into the draft; answers the item as it now stands. */
   edit(ref: LifeosRef, payload: unknown): Promise<OutboxItem>
+  /** Put an item read now in place of its listed copy, and tell the screens: what they show catches up with LifeOS. */
+  relist?(item: OutboxItem): void
 }
 
 export interface OutboxDeps {
@@ -171,6 +173,16 @@ export class Outbox {
       if (opts.rev === undefined) throw new Error(REV_NEEDED)
       const live = await this.readLifeos(ref)
       if (live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
+      // A calendar act binds its event's start as it was listed to the screens: an event moved since is refused, and
+      // the listing catches up so the next look shows the new time (milestone 50's hold review, 29).
+      if (live.kind === 'calendar.op') {
+        const listed = this.lifeos?.items().find((i) => JSON.stringify(i.ref) === JSON.stringify(ref))
+        const startOf = (i: OutboxItem): unknown => (i.payload as { eventStartsAt?: number } | null)?.eventStartsAt
+        if (listed && startOf(listed) !== startOf(live)) {
+          this.lifeos?.relist?.(live)
+          throw new Error(CHANGED_SINCE)
+        }
+      }
       row = row ? (this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? this.store.get(row.id)) : this.adopt(live)
     }
     if (!row) throw new Error(NO_SUCH_ITEM)

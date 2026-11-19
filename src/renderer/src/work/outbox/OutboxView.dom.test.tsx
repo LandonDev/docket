@@ -16,6 +16,7 @@ const world = vi.hoisted(() => ({
   items: new Map<string, OutboxItem[]>(),
   grants: new Map<string, OutboxGrant[]>(),
   resultsDown: false,
+  quote: null as string | null,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -62,7 +63,7 @@ vi.mock("../../lib/connection", async (original) => {
           if (world.resultsDown) throw new Error("The host did not answer");
           return { results: [] };
         case "work.outbox.get":
-          return { ...find(), payload: { ...(find().payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" } } };
+          return { ...find(), payload: { ...(find().payload as object), picture: { mimeType: "image/png", width: 16, height: 10, data: "AAAA" }, ...(world.quote ? { quote: world.quote } : {}) } };
       }
       throw new Error(`unknown ${method}`);
     },
@@ -163,6 +164,18 @@ describe("the Outbox", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
     expect(sends()).toEqual([{ env: "box", method: "work.outbox.send", params: { ref: { at: "lifeos", table: "outbox", id: "o1" }, rev: 500 } }]);
     await waitFor(() => expect(screen.queryAllByText("Send to Dana Lee")).toEqual([]));
+  });
+
+  it("reads a LifeOS mail whole before it may go, so the quote LifeOS sends under a reply is shown", async () => {
+    world.quote = "<p>On Tue, Dana wrote:</p><p>Can you send the budget?</p>";
+    try {
+      await open();
+      await waitFor(() => expect(document.querySelector("[data-mail-quote]")?.textContent).toBe("On Tue, Dana wrote:\n\nCan you send the budget?"));
+      expect(world.calls.some((c) => c.method === "work.outbox.get")).toBe(true);
+      expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+    } finally {
+      world.quote = null;
+    }
   });
 
   it("discards, and edits what goes while it waits", async () => {

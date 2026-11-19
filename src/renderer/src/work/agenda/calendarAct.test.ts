@@ -57,4 +57,9 @@ describe("a calendar act's grant", () => {
     expect(grantFor({ kind: "calendar.op", payload: { id: "op", kind: "update", account: "a@b.c" } })).toBeNull();
     expect(grantFor({ kind: "calendar.op", payload: { id: "op", kind: "create", account: "a@b.c" } })).toBeNull();
   });
+
+  it("shows the event's start as the host bound it for the press, over a live read", () => {
+    const op: CalendarOp = { id: "o1", kind: "accept", eventId: "e1", eventStartsAt: at(9) };
+    expect(opStart(op, { ...call, startsAt: at(11) } as DayEvent)).toBe(at(9));
+  });
 });

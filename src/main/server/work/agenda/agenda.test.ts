@@ -73,6 +73,22 @@ describe('a held calendar act', () => {
     expect(sends()).toEqual([])
   })
 
+  it('a press refuses an event that moved since it was listed, and the listing catches up', async () => {
+    rig.lifeos.calendarOp({ kind: 'accept', eventId: 'ev_1' })
+    rig.lifeos.fire()
+    await settled()
+    const [item] = await list()
+    const shown = (item!.payload as CalendarOpPayload).eventStartsAt!
+    Object.assign(rig.lifeos.events.get('ev_1')!, { startsAt: shown + 7_200_000 })
+    await expect(rig.rpc('work.outbox.send', { ref: item!.ref, rev: item!.updatedAt })).rejects.toThrow('changed since')
+    expect(sends()).toEqual([])
+    const [again] = await list()
+    expect((again!.payload as CalendarOpPayload).eventStartsAt).toBe(shown + 7_200_000)
+    await rig.rpc('work.outbox.send', { ref: again!.ref, rev: again!.updatedAt })
+    await settled()
+    expect(sends()).toHaveLength(1)
+  })
+
   it('does not go when its event moved after it was shown', async () => {
     const id = rig.lifeos.calendarOp({ kind: 'accept', eventId: 'ev_1' })
     rig.lifeos.fire()

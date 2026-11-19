@@ -77,18 +77,24 @@ export type Field = { key: string; path: string[]; label: string; value: string;
 /** The body as it reads; `readOnly` when it is drawn from html with no text beside it to edit. */
 export type PayloadView = { fields: Field[]; body: { path: string[]; text: string; readOnly?: boolean } | null };
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", lpar: "(", rpar: ")", colon: ":", sol: "/", bsol: "\\", semi: ";", comma: ",",
+  period: ".", lowbar: "_", num: "#", excl: "!", quest: "?", equals: "=", plus: "+", percnt: "%", lsqb: "[", rsqb: "]", lcub: "{", rcub: "}",
+  hyphen: "-", dash: "-", Tab: "\t", NewLine: "\n",
+};
 const attr = (tag: string, name: string): string | null => {
   const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
   return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
 };
+// Numeric references need no semicolon, as HTML reads them (`u&#114l(`).
 const decode = (s: string): string =>
-  s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, e: string) => {
+  s.replace(/&(#x[0-9a-f]+;?|#\d+;?|[a-z]+;)/gi, (whole, raw: string) => {
+    const e = raw.replace(/;$/, "");
     if (e[0] === "#") {
       const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : whole;
     }
-    return ENTITIES[e.toLowerCase()] ?? whole;
+    return ENTITIES[e] ?? ENTITIES[e.toLowerCase()] ?? whole;
   });
 
 /** CSS's own escapes, `\\72` and `\\r`, read as the characters they stand for. */
@@ -112,6 +118,17 @@ export function htmlWords(html: string): string {
   const backgrounds: string[] = [];
   for (const m of plain.matchAll(/\sbackground\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) backgrounds.push((m[1] ?? m[2] ?? m[3] ?? "").trim());
   for (const m of plain.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)) backgrounds.push((m[1] ?? m[2] ?? m[3] ?? "").trim());
+  // Where a browser's own parser is at hand, its reading of every attribute and stylesheet counts too: it knows every reference.
+  if (typeof DOMParser !== "undefined") {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const css = [...doc.querySelectorAll("style")].map((s) => s.textContent ?? "");
+    for (const el of doc.querySelectorAll("[background], [style]")) {
+      const bg = el.getAttribute("background");
+      if (bg?.trim()) backgrounds.push(bg.trim());
+      css.push(el.getAttribute("style") ?? "");
+    }
+    for (const text of css) for (const m of cssUnescape(text).matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)) backgrounds.push((m[1] ?? m[2] ?? m[3] ?? "").trim());
+  }
   const out = html
     .replace(/<(script|style|head|title)\b[\s\S]*?<\/\1\s*>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
@@ -137,7 +154,7 @@ export function htmlWords(html: string): string {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
-    .concat(backgrounds.filter(Boolean).map((u) => `\n[background image: ${u}]`).join(""))
+    .concat([...new Set(backgrounds.filter(Boolean))].map((u) => `\n[background image: ${u}]`).join(""))
     .trim();
 }
 

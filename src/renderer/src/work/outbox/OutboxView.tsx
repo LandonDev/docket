@@ -493,7 +493,36 @@ const threadWords = (item: HostItem): string | null => {
   return title ? `from ${title}` : null;
 };
 
-function HeldDetail({ item, workspace, host, onOpenSession, onPressed }: { item: HostItem; workspace: string; host: string; onOpenSession?: Props["onOpenSession"]; onPressed: (item: HostItem) => void }) {
+/**
+ * A LifeOS mail is read whole before it may go: the list leaves out the quote
+ * LifeOS sends under a reply, and his press approves what he read (the hold
+ * review's finding 28). Other kinds show as listed.
+ */
+function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: boolean; retry(): void } {
+  const needs = item.kind === "mail.send";
+  const key = JSON.stringify([item.ref, item.updatedAt]);
+  const [read, setRead] = useState<{ key: string; item: HostItem | null } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!needs) return;
+    let live = true;
+    setRead(null);
+    fetchItem(item.environmentId, item.ref).then(
+      (whole) => live && setRead({ key, item: { ...whole, environmentId: item.environmentId } as HostItem }),
+      () => live && setRead({ key, item: null }),
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read again for another item, a change, or a Retry
+  }, [key, attempt]);
+  if (!needs) return { shown: item, ready: true, failed: false, retry: () => {} };
+  const mine = read?.key === key ? read : null;
+  return { shown: mine?.item ?? item, ready: !!mine?.item, failed: !!mine && !mine.item, retry: () => setAttempt((n) => n + 1) };
+}
+
+function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }: { item: HostItem; workspace: string; host: string; onOpenSession?: Props["onOpenSession"]; onPressed: (item: HostItem) => void }) {
+  const { shown: item, ready, failed: unread, retry } = useWhole(listed);
   const [busy, setBusy] = useState<"send" | "discard" | "grant" | null>(null);
   const [editing, setEditing] = useState(false);
   const grant = grantFor(item);
@@ -525,6 +554,14 @@ function HeldDetail({ item, workspace, host, onOpenSession, onPressed }: { item:
             </div>
           ) : null}
           {item.kind === "computer.act" ? <p className="text-[13px] leading-5 text-muted-foreground">Takes {host}'s screen for a moment.</p> : null}
+          {unread ? (
+            <p role="alert" className="flex items-baseline gap-2 text-[13px] leading-5">
+              <span className="text-destructive">The mail did not load</span>
+              <Button variant="ghost" size="xs" onClick={retry}>
+                Retry
+              </Button>
+            </p>
+          ) : null}
           <ActView item={item} env={item.environmentId} />
           {/* What his press approves: the window as the host read it, above the verbs. */}
           {item.kind === "computer.act" ? <KeptPicture item={item} /> : null}
@@ -543,18 +580,18 @@ function HeldDetail({ item, workspace, host, onOpenSession, onPressed }: { item:
           </Button>
         ) : null}
         {item.outcomeUnknown && waiting ? (
-          <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void press("again")}>
+          <Button variant="secondary" size="sm" disabled={!ready || busy !== null} onClick={() => void press("again")}>
             <BusyLabel busy={busy === "send"} label={`${item.verb} again`} />
           </Button>
         ) : (
           <span className="flex items-center">
-            <Button size="sm" disabled={!waiting || busy !== null} className={cn(grant && "rounded-e-none")} onClick={() => void press("send")}>
+            <Button size="sm" disabled={!waiting || !ready || busy !== null} className={cn(grant && "rounded-e-none")} onClick={() => void press("send")}>
               <BusyLabel busy={busy === "send" || busy === "grant"} label={item.state === "failed" ? `${item.verb} again` : item.verb} />
             </Button>
             {grant ? (
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  render={<Button size="icon-sm" disabled={!waiting || busy !== null} aria-label={`More ways to ${item.verb.toLowerCase()}`} className="rounded-s-none border-s border-primary-foreground/15" />}
+                  render={<Button size="icon-sm" disabled={!waiting || !ready || busy !== null} aria-label={`More ways to ${item.verb.toLowerCase()}`} className="rounded-s-none border-s border-primary-foreground/15" />}
                 >
                   <ChevronDown />
                 </DropdownMenuTrigger>

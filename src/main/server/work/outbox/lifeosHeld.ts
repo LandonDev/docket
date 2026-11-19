@@ -275,6 +275,14 @@ export class LifeosHeldItems implements LifeosHeld {
     return [...this.mail, ...this.calendar]
   }
 
+  relist(item: OutboxItem): void {
+    const key = keyOf(item.ref)
+    const swap = (list: OutboxItem[]): OutboxItem[] => list.map((i) => (keyOf(i.ref) === key ? item : i))
+    if (item.kind === 'calendar.op') this.calendar = swap(this.calendar)
+    else this.mail = swap(this.mail)
+    this.deps.outbox.changed(null)
+  }
+
   loaded(): boolean {
     return !this.first.mail
   }
