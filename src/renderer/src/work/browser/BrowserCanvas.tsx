@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { BrowserState } from "@shared/contract-work-browser";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 import type { HeldRef } from "@shared/work";
@@ -31,7 +31,7 @@ import { discardHeld, heldPicture, setDriver, submitHeld, useBrowserState, useHe
 /** The thread whose pane the item is in: the browser's state is kept by it. */
 const paneOf = ({ item, source }: Pick<CanvasBodyProps, "item" | "source">): string => (source.at === "browser" ? source.sessionId : item.sessionId);
 
-interface Browser {
+export interface Browser {
   state: BrowserState | null;
   held: OutboxItem | null;
   /** the session whose window the canvas follows; null when none is live or this desktop cannot draw it */
@@ -64,10 +64,17 @@ function usePress(): [string | null, (which: string, run: () => Promise<unknown>
   return [busy, press];
 }
 
-export function Bar(props: CanvasBodyProps) {
+/** A preview's stand-ins: what the host would answer, and the page in place of the live window. */
+export interface BrowserSeam {
+  data?: Browser;
+  picture?: ReactNode;
+}
+
+export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const { env } = props;
   const pane = paneOf(props);
-  const { state, held, live } = useBrowser(env, pane);
+  const fetched = useBrowser(env, pane);
+  const { state, held, live } = props.data ?? fetched;
   const face = barFaceOf(state, held);
   const [busy, press] = usePress();
   const takeOver = (): void =>
@@ -159,10 +166,11 @@ function FaceEnd({
   }
 }
 
-export function Body(props: CanvasBodyProps) {
+export function Body(props: CanvasBodyProps & BrowserSeam) {
   const { env, shell } = props;
   const pane = paneOf(props);
-  const { state, held, entry } = useBrowser(env, pane);
+  const fetched = useBrowser(env, pane);
+  const { state, held, entry } = props.data ?? fetched;
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const stream = useLiveStream(entry, true, box, measure);
@@ -180,7 +188,14 @@ export function Body(props: CanvasBodyProps) {
   return (
     <div ref={measure} data-slot="browser-view" className="flex h-full min-h-0 flex-col gap-3 overflow-x-hidden overflow-y-auto p-3">
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
-        {entry ? <LiveView stream={stream} box={box} label={liveLabel(entry)} /> : <StillView env={env} held={waiting} />}
+        {props.picture ??
+          (entry ? (
+            <LiveView stream={stream} box={box} label={liveLabel(entry)} />
+          ) : state ? (
+            <StillView env={env} held={waiting} />
+          ) : (
+            <Skeleton className="aspect-[16/10] w-full rounded-lg" />
+          ))}
         {values.length ? <Values values={values} /> : null}
       </div>
     </div>
