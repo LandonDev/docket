@@ -1,2 +1,13 @@
+//! tc-computer on Windows (docs/computer-protocol.md §29): the computer-use
+//! wire served over UI Automation. Everything but `platform::windows` is
+//! platform-free and tested on the box with `cargo test`.
+
+pub mod book;
+pub mod desktop;
 pub mod generated;
+pub mod locks;
+pub mod server;
+pub mod service;
+pub mod text;
+
 pub use generated::{contract, wire};
