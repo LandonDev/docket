@@ -13,6 +13,9 @@ struct HeldInline: View {
     let n: Int
     let act: String
     let client: EnvironmentClient
+    /// Inside a group's table the table is already the frame: the line takes the table's inset and the
+    /// opened act draws no frame of its own (never a card in a card).
+    var inTable = false
     @Environment(ShellNavigator.self) private var navigator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
@@ -57,6 +60,7 @@ struct HeldInline: View {
                     .transition(.opacity)
             }
         }
+        .padding(.horizontal, inTable ? TranscriptMetrics.tableInset : 0)
         .onChange(of: pending) { if pending { open = false } }
         #if DEBUG
         .task { if TestHooks.open == "held", item != nil { open = true } }
@@ -111,7 +115,10 @@ struct HeldInline: View {
                 .padding(.top, 2)
             }
         }
-        .padding(12)
-        .overlay(RoundedRectangle.fieldCorner.stroke(Surface.hairline, lineWidth: Hairline.thickness(scale: displayScale)))
+        .padding(inTable ? 0 : 12)
+        .padding(.bottom, inTable ? 8 : 0)
+        .overlay {
+            if !inTable { RoundedRectangle.fieldCorner.stroke(Surface.hairline, lineWidth: Hairline.thickness(scale: displayScale)) }
+        }
     }
 }

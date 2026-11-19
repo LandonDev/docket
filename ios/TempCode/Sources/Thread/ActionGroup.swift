@@ -299,7 +299,7 @@ private struct ToolStep: View {
                 .accessibilityValue(open ? "Expanded" : "Collapsed")
                 // A Work thread's call the host held (milestone 46): the held line, which opens in place.
                 if let held = heldLine {
-                    HeldInline(n: held.n, act: held.act, client: client)
+                    HeldInline(n: held.n, act: held.act, client: client, inTable: inTable)
                 }
                 if open {
                     StepBody(tool: tool, whole: whole, loading: loading, command: row.opens == .command)
