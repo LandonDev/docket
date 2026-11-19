@@ -78,10 +78,11 @@ private struct WorkHostSection: View {
                 ForEach(rules.filter { !$0.lifeos }, id: \.addonId) { card in
                     Section(card.name) {
                         ForEach(card.tools, id: \.tool) { row in
-                            Picker(selection: Binding(get: { row.rule?.rawValue ?? "held" }, set: { value in Task { await set(card, row.tool, value) } })) {
-                                Text("Runs").tag("runs")
-                                Text("Held").tag("held")
-                                Text("Off").tag("off")
+                            // A tool with no rule yet is held until he answers; no choice shows as made, so Held can be picked too.
+                            Picker(selection: Binding<String?>(get: { row.rule?.rawValue }, set: { value in if let value { Task { await set(card, row.tool, value) } } })) {
+                                Text("Runs").tag(String?.some("runs"))
+                                Text("Held").tag(String?.some("held"))
+                                Text("Off").tag(String?.some("off"))
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(row.words).textStep(.title)

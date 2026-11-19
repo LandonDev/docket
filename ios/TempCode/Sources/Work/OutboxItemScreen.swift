@@ -13,6 +13,7 @@ struct OutboxItemScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(ShellNavigator.self) private var navigator
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.shellPose) private var pose
     let environmentId: String
     let refKey: String
     @State private var fetched: OutboxItem?
@@ -199,7 +200,16 @@ struct OutboxItemScreen: View {
     /// Back to the list, where the press waits its five seconds with Undo.
     private func send(_ item: OutboxItem) {
         OutboxPresses.shared.send(OutboxModel.Entry(environmentId: environmentId, item: item))
-        dismiss()
+        close()
+    }
+
+    /// Off screen: popped in a stack; in the split the detail's root, which `dismiss` cannot pop, is cleared.
+    private func close() {
+        if pose.isSplit, navigator.detailRoot == .outboxItem(environmentId: environmentId, ref: refKey) {
+            navigator.detailRoot = nil
+        } else {
+            dismiss()
+        }
     }
 
     private func discard(_ item: OutboxItem, client: EnvironmentClient) async {
@@ -207,7 +217,7 @@ struct OutboxItemScreen: View {
         defer { busy = false }
         do {
             try await client.work.discard(item)
-            dismiss()
+            close()
         } catch {
             FleetToastCenter.shared.post(message: "Not discarded: \(ActionError.wrap(error).message)")
         }

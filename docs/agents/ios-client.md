@@ -790,15 +790,27 @@
   phone-outbox.html.
 - **A held notice opens its item**: the host's notice carries `tc.held`
   (apnsPayload.ts, carried through `relay.notice`), `PushTarget.held` reads
-  it, `NavigationRouter.open` routes to `.outboxItem` over `.outbox`. Its
-  category stays `tc.thread` (Open alone): nothing sends from the lock
-  screen.
+  it, `NavigationRouter.open` routes to `.outboxItem` over `.outbox`
+  (`ShellNavigator.openHeld`: the Outbox lands first, so Send returns to
+  the list and its Undo). Its category stays `tc.thread` (Open alone):
+  nothing sends from the lock screen. Only a host that posts to Apple
+  itself carries `tc.held`; through the hub (`hub.notify`, infra/hub) the
+  notice has no `held` and the tap opens the thread.
 - **Away's end**: `WorkHost` sets `awayEnd` when it sees Away go off live,
   or at an open when the host's stretch ended after the last one reviewed
   on this phone (`work.away.reviewed.<env>` in defaults; a first open
-  reviews nothing older). Home shows one note with Review; with the app
-  not in front, one local notification. Away is per host, kept in step by
-  the hosts' own peer leg, so `away.get`/`away.set` never cross a relay.
+  reviews nothing older); Away coming back on drops an end not yet
+  reviewed. Home shows one note with Review. A local notification goes
+  only when the end arrives on a live socket while the app is not in
+  front (a suspended app hears no push; on return the note is the notice).
+  Away is per host, kept in step by the hosts' own peer leg, so
+  `away.get`/`away.set` never cross a relay: a relayed Mac's end and its
+  decisions are not read, though the review lists every Work host's writes
+  since the stretch began. `WorkHost` keeps each host's switch in defaults
+  (`work.on.<env>`), so the cached paint has the Work band and a host that
+  does not answer `work.get` keeps its Work rows.
+- **Send waits in the app**: the waiting press goes at once when the app
+  goes to the background (not on a mere inactive moment).
 - **The proof**: `TC_PROOF_SET=work bun scripts/ios-sim-proof-local.ts`
   seeds Work through scripts/lib/ios-work-seeds.ts (the test server runs
   its add-ons in process with `TC_TEST_ADDONS=1`, and `POST /work-held`

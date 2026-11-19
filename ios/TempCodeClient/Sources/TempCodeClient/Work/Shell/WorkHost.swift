@@ -27,7 +27,10 @@ public final class WorkHost {
     }
 
     public let environment: PairedEnvironment
-    public private(set) var settings: WorkSettings?
+    /// The host's switch; the last one known (kept per host across launches) until the host answers.
+    public private(set) var settings: WorkSettings? {
+        didSet { if let settings { defaults.set(settings.enabled, forKey: switchKey) } }
+    }
     /// The Outbox's own count, as the host keeps it (`work.outbox`'s `waiting`).
     public private(set) var waiting = 0
     /// Add-on tools a Work thread can reach with no rule yet.
@@ -49,7 +52,11 @@ public final class WorkHost {
         self.socket = socket
         self.environment = environment
         self.defaults = defaults
+        // The cached paint has the Work band: the switch as last read, until this open's answer.
+        if let known = defaults.object(forKey: "work.on.\(environment.id)") as? Bool { settings = WorkSettings(enabled: known) }
     }
+
+    private var switchKey: String { "work.on.\(environment.id)" }
 
     public var isOn: Bool { settings?.enabled == true }
     public var awayOn: Bool { away?.state.enabled == true }
@@ -63,7 +70,8 @@ public final class WorkHost {
     public func connected() async {
         async let work = try? socket.request(Methods.WorkGet.self, .init())
         async let awayAnswer = try? socket.request(Methods.AwayGet.self, .init())
-        settings = await work
+        // A host that does not answer (asleep, a timeout) keeps the switch it had: its Work rows stay on Home.
+        if let answer = await work { settings = answer }
         if let answer = await awayAnswer { take(answer, live: false) }
         guard isOn else { return clear() }
         async let outbox: Void = refreshOutbox()
@@ -142,7 +150,8 @@ public final class WorkHost {
         let previous = away
         away = snapshot
         let state = snapshot.state
-        guard !state.enabled else { return }
+        // A new stretch: an end not yet reviewed belongs to the stretch before; the next end brings its own.
+        guard !state.enabled else { awayEnd = nil; return }
         let at = Int(state.at)
         let reviewed = defaults.object(forKey: reviewedKey) as? Int
         let ended = live ? previous?.state.enabled == true : (reviewed.map { at > $0 } ?? false)

@@ -139,7 +139,7 @@ struct RootView: View {
         .onChange(of: scenePhase) {
             reportVisibility()
             // A Send waiting its five seconds goes now rather than hang while the app is away.
-            if scenePhase != .active { OutboxPresses.shared.flush() }
+            if scenePhase == .background { OutboxPresses.shared.flush() }
         }
         // Away ended on a host while the app was not in front: one notice on the lock screen (milestone 46).
         .onChange(of: model.registry.ordered.compactMap(\.work.awayEnd)) { _, ends in

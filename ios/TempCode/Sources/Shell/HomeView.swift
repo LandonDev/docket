@@ -44,7 +44,7 @@ struct HomeView: View {
                         ForEach(home.entries + home.work.filter { $0.kind == .workChats }) { entry in
                             WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
                         }
-                        if home.entries.isEmpty {
+                        if home.entries.isEmpty && home.work.isEmpty {
                             ForEach(home.hosts.filter(\.nothing)) { host in
                                 NothingRow(host: host)
                             }

@@ -2348,8 +2348,9 @@ phone does everything the desktop does. What milestone 46 built:
   screen.
 - **Away** is a check item ("Away", `moon`) in the host menu beside the
   fleet switches. When it ends: one note at the top of Home ("Away ended.
-  7 held, 4 decided without you" and Review), and one notification "Away
-  ended" when the app is not in front. Review is a document sheet "While
+  7 held, 4 decided without you" and Review), and a notification "Away
+  ended" when the end reaches the app while it is not in front (a
+  suspended app hears nothing; the note is then the notice). Review is a document sheet "While
   You Were Away": the span, then Held (each with its verb), Failed,
   Decided without you (a thread and its count, which opens it), Written on
   your files (Undo where the write has a way back), each left out when

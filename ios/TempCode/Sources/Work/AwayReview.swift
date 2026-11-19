@@ -183,8 +183,8 @@ struct AwayReviewSheet: View {
     private func heldRow(_ entry: OutboxModel.Entry) -> some View {
         Button {
             dismiss()
-            navigator.open(.outbox)
-            navigator.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(entry.item.ref)))
+            // Over the Outbox, so Send returns to the list and its Undo (ShellNavigator.openHeld).
+            Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(entry.item.ref))) }
         } label: {
             HStack(spacing: Layout.rowGap) {
                 Image(systemName: WorkGlyph.of(entry.item.kind))
@@ -218,10 +218,13 @@ struct AwayReviewSheet: View {
     }
 
     /// Each host's writes since its stretch began, newest first.
+    /// Every Work host's writes since the stretch began: a host reached through another reads Away on
+    /// its carrier's lane, so the widest span the ended hosts give stands for all of them.
     private func loadWritten(_ ends: [EnvironmentClient]) async {
+        guard let since = ends.compactMap(\.work.awayEnd?.since).min() else { return }
         var rows: [(environmentId: String, result: WorkResult)] = []
-        for client in ends where client.work.isOn {
-            guard let since = client.work.awayEnd?.since, let results = try? await client.work.results(since: since) else { continue }
+        for client in model.registry.ordered where client.work.isOn {
+            guard let results = try? await client.work.results(since: since) else { continue }
             rows += results.map { (client.environment.id, $0) }
         }
         written = rows.sorted { $0.result.createdAt > $1.result.createdAt }
