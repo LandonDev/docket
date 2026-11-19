@@ -836,8 +836,9 @@ is the page, so Escape there closes it).
 #### The canvas pane
 
 What is built: the pane's frame (the tab row, the kind's bar, the fold,
-the review stepper, the selection bar and the composer's chip row), with
-every kind's body a "Not built yet" stub. Each kind's own surface below
+the review stepper, the selection bar and the composer's chip row), and
+the PDF, slides, images and video, and meeting bodies; every other kind's
+body is a "Not built yet" stub. Each kind's own surface below
 (the sheet grid, the document editor, the PDF page and the rest), the
 Outbox, Back from Away, routines, house rules and Settings → Work are the
 standard for the work that builds them, not yet in the app.
