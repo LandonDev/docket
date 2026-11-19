@@ -207,6 +207,8 @@ export async function removeGrant(grant: HostGrant): Promise<void> {
 /** Several at once, each its own press; answers how many went and the first refusal. */
 /** What a list press leaves for its own look: a reply carries the mail it quotes, which only its detail shows. */
 export const REPLY_NEEDS_A_LOOK = "Open it to send: it quotes the mail it answers, which shows only there";
+/** A computer act's picture of the window shows only in its detail, so it is pressed there. */
+export const ACT_NEEDS_A_LOOK = "Open it to send: the picture of the window it acts on shows only there";
 
 export async function sendMany(items: readonly HostItem[]): Promise<{ sent: number; failed: { item: HostItem; error: string }[] }> {
   // A LifeOS mail is read whole first; one that quotes the mail it answers waits for its own look (the hold review's finding 28).
@@ -221,7 +223,11 @@ export async function sendMany(items: readonly HostItem[]): Promise<{ sent: numb
   );
   const outcomes = await Promise.allSettled(
     items.map((item) =>
-      quoted.has(item) ? Promise.reject(new Error(REPLY_NEEDS_A_LOOK)) : registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt }),
+      item.kind === "computer.act"
+        ? Promise.reject(new Error(ACT_NEEDS_A_LOOK))
+        : quoted.has(item)
+          ? Promise.reject(new Error(REPLY_NEEDS_A_LOOK))
+          : registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt }),
     ),
   );
   for (const id of new Set(items.map((item) => item.environmentId))) void loadHost(id);

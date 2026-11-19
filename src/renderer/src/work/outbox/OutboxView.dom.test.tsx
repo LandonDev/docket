@@ -213,6 +213,15 @@ describe("the Outbox", () => {
     }
   });
 
+  it("a group's Send leaves a computer act for its own look, where its picture shows", async () => {
+    const click: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "c3" }, kind: "computer.act", summary: "Click Send in Mail", payload: { title: "Click Send in Mail", app: "Mail", picture: { mimeType: "image/png", width: 16, height: 10 } } };
+    const { sendMany, ACT_NEEDS_A_LOOK } = await import("./store");
+    const out = await sendMany([{ ...click, environmentId: "mac" } as never]);
+    expect(out.sent).toBe(0);
+    expect(out.failed.map((f) => f.error)).toEqual([ACT_NEEDS_A_LOOK]);
+    expect(sends()).toEqual([]);
+  });
+
   it("a send that may have gone offers no plain Send: a line to check Sent, his own Send again, and no group or tick takes it", async () => {
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "failed", error: "Outlook did not answer in time", outcomeUnknown: true }), mail("o2", "Sam Ortiz", "Scrims"), mail("o3", "Events booking", "Ballroom")]);
     await open();
@@ -329,6 +338,9 @@ describe("the Outbox", () => {
     // Held, the picture he approves sits above the verbs.
     const held = (await screen.findByRole("img")) as HTMLImageElement;
     expect(held.src).toBe("data:image/png;base64,AAAA");
+    // Send waits until the picture has drawn
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.load(held);
     expect(held.compareDocumentPosition(screen.getByRole("button", { name: "Send" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
     fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
@@ -351,7 +363,7 @@ describe("the Outbox", () => {
       expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
       world.getFails = false;
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      await screen.findByRole("img");
+      fireEvent.load(await screen.findByRole("img"));
       await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false));
     } finally {
       world.getFails = false;

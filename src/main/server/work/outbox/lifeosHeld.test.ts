@@ -160,7 +160,9 @@ describe("the owner's press on a LifeOS-held mail", () => {
     expect(rig.lifeos.completed).toEqual([])
     const waiting = (await list()).items
     expect(waiting).toMatchObject([{ state: 'failed', n: 1 }])
-    expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: item.ref, rev: item.updatedAt })).toMatchObject({ state: 'sent' })
+    // the failed row is listed with LifeOS's own revision, so a press from the list goes
+    expect(waiting[0]!.updatedAt).toBe(item.updatedAt)
+    expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: waiting[0]!.ref, rev: waiting[0]!.updatedAt })).toMatchObject({ state: 'sent' })
     expect(sends()).toHaveLength(2)
   })
 

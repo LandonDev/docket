@@ -4,7 +4,7 @@ import { errorText, NotBuilt, type HeldRef } from '@shared/work'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { outgoingHtml } from '../mail/outgoing'
 import { ActStale } from './kinds'
-import type { LifeosHeld, Outbox } from './outbox'
+import { shownEvent, type LifeosHeld, type Outbox } from './outbox'
 import { INTERRUPTED } from './store'
 
 /**
@@ -127,8 +127,10 @@ export const CalendarOpPayloadSchema = z.looseObject({
   editedAt: z.number().optional(),
   payload: z.looseObject(CalendarFieldsSchema.shape).optional(),
   eventTitle: z.string().optional(),
-  /** when the act's event starts, as read for the Outbox; the press refuses an event that moved since */
-  eventStartsAt: z.number().optional()
+  /** the act's event as read for the Outbox (start, end, place); the press refuses an event that changed since */
+  eventStartsAt: z.number().optional(),
+  eventEndsAt: z.number().optional(),
+  eventLocation: z.string().optional()
 })
 export type CalendarOpPayload = z.infer<typeof CalendarOpPayloadSchema>
 
@@ -250,8 +252,10 @@ export class LifeosHeldItems implements LifeosHeld {
   private first = { mail: true, calendar: true }
   /** the titles of the events calendar acts answer, read once each: an act holds only the event's id */
   private readonly eventTitles = new Map<string, string>()
-  /** when each act's event starts, as last read: what the press checks (milestone 50's hold review, 29) */
-  private readonly eventStarts = new Map<string, number>()
+  /** each act's event as last read: what the screens show and the press checks (milestone 50's hold review, 29) */
+  private readonly eventFacts = new Map<string, { startsAt?: number; endsAt?: number; location?: string }>()
+  /** times a calendar act was put back in front of the screens after its event changed: added to its revision, so an older view is refused */
+  private readonly bumps = new Map<string, number>()
 
   constructor(private readonly deps: LifeosHeldDeps) {}
 
@@ -277,7 +281,9 @@ export class LifeosHeldItems implements LifeosHeld {
 
   relist(item: OutboxItem): void {
     const key = keyOf(item.ref)
-    const swap = (list: OutboxItem[]): OutboxItem[] => list.map((i) => (keyOf(i.ref) === key ? item : i))
+    // The revision moves on, so a view still showing the old event is refused too.
+    const bumped = item.kind === 'calendar.op' ? (this.bumps.set(key, (this.bumps.get(key) ?? 0) + 1), { ...item, updatedAt: item.updatedAt + 1 }) : item
+    const swap = (list: OutboxItem[]): OutboxItem[] => list.map((i) => (keyOf(i.ref) === key ? bumped : i))
     if (item.kind === 'calendar.op') this.calendar = swap(this.calendar)
     else this.mail = swap(this.mail)
     this.deps.outbox.changed(null)
@@ -382,9 +388,9 @@ export class LifeosHeldItems implements LifeosHeld {
     const owner = this.deps.ctx.lifeos.owner()
     await Promise.all(
       ids.map(async (id) => {
-        const event = await owner.query<{ title?: string; startsAt?: number } | null>(LIFEOS_HELD_FNS.eventGet, { id }).catch(() => null)
+        const event = await owner.query<{ title?: string; startsAt?: number; endsAt?: number; location?: string } | null>(LIFEOS_HELD_FNS.eventGet, { id }).catch(() => null)
         if (event?.title) this.eventTitles.set(id, event.title)
-        if (typeof event?.startsAt === 'number') this.eventStarts.set(id, event.startsAt)
+        if (event) this.eventFacts.set(id, { startsAt: event.startsAt, endsAt: event.endsAt, location: event.location })
       })
     )
   }
@@ -486,8 +492,15 @@ export class LifeosHeldItems implements LifeosHeld {
     const at = typeof row.editedAt === 'number' ? row.editedAt : typeof row._creationTime === 'number' ? row._creationTime : 0
     const failed = row.status === 'failed'
     const eventTitle = typeof row.eventId === 'string' ? this.eventTitles.get(row.eventId) : undefined
-    const eventStartsAt = typeof row.eventId === 'string' ? this.eventStarts.get(row.eventId) : undefined
-    const payload = CalendarOpPayloadSchema.parse({ ...row, id, ...(eventTitle ? { eventTitle } : {}), ...(eventStartsAt !== undefined ? { eventStartsAt } : {}) })
+    const facts = typeof row.eventId === 'string' ? this.eventFacts.get(row.eventId) : undefined
+    const payload = CalendarOpPayloadSchema.parse({
+      ...row,
+      id,
+      ...(eventTitle ? { eventTitle } : {}),
+      ...(typeof facts?.startsAt === 'number' ? { eventStartsAt: facts.startsAt } : {}),
+      ...(typeof facts?.endsAt === 'number' ? { eventEndsAt: facts.endsAt } : {}),
+      ...(typeof facts?.location === 'string' ? { eventLocation: facts.location } : {})
+    })
     return {
       ref: { at: 'lifeos', table: 'calendarOps', id },
       kind: 'calendar.op',
@@ -508,18 +521,10 @@ export class LifeosHeldItems implements LifeosHeld {
       error: failed ? (text('error') ?? 'LifeOS could not carry it out') : null,
       result: null,
       routineRunId: origin.routineRunId ?? null,
-      // The revision a press names covers the event start the act is bound to, so a view from before the event moved is refused.
-      updatedAt: Math.round(at) + startMark(eventStartsAt)
+      // A view from before the act's event changed names an older revision: each time the screens are shown the change, it moves on.
+      updatedAt: Math.round(at) + (this.bumps.get(keyOf({ at: 'lifeos', table: 'calendarOps', id })) ?? 0)
     }
   }
-}
-
-/** A calendar act's revision moves with its event's start: up to 1,000,000 ms added, from a hash of the start (FNV-1a). */
-export function startMark(startsAt: number | undefined): number {
-  if (startsAt === undefined) return 0
-  let h = 0x811c9dc5
-  for (const c of String(startsAt)) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0
-  return (h % 1_000_000) + 1
 }
 
 const keyOf = (ref: HeldRef): string => (ref.at === 'lifeos' ? `${ref.table}:${ref.id}` : `host:${ref.id}`)
@@ -575,8 +580,9 @@ export const calendarOpKind: ActKindDef<CalendarOpPayload, CalendarOpMatcher> = 
     if (now.status === 'draft' || now.status === 'failed') {
       if (p.editedAt === undefined || now.editedAt !== p.editedAt) throw new ActStale('The calendar change was edited since it was shown')
       if (p.eventId && p.eventStartsAt !== undefined) {
-        const event = await owner.query<{ startsAt?: number } | null>(LIFEOS_HELD_FNS.eventGet, { id: p.eventId }).catch(() => null)
-        if (event?.startsAt !== p.eventStartsAt) throw new ActStale('The event moved since it was shown')
+        const event = await owner.query<{ title?: string; startsAt?: number; endsAt?: number; location?: string } | null>(LIFEOS_HELD_FNS.eventGet, { id: p.eventId }).catch(() => null)
+        if (!event || shownEvent({ eventTitle: event.title, eventStartsAt: event.startsAt, eventEndsAt: event.endsAt, eventLocation: event.location }) !== shownEvent(p))
+          throw new ActStale('The event changed since it was shown')
       }
       // LifeOS checks it again in the send's own transaction, so an edit after this read never goes on this press (milestone 50's hold review, 20).
       await owner.mutation(LIFEOS_HELD_FNS.calendarSend, { id: p.id, cause, editedAt: p.editedAt })

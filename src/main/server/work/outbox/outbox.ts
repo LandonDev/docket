@@ -64,6 +64,11 @@ const KEEPS: Partial<Record<ActKind, (old: unknown, next: unknown) => unknown>> 
   'addon.call': (old, next) => ({ ...(old as object), arguments: (next as { arguments?: unknown } | null)?.arguments ?? {} })
 }
 
+/** What a calendar act shows of its event, as one string: the press refuses a change to any of it. */
+type EventShown = { eventTitle?: string; eventStartsAt?: number; eventEndsAt?: number; eventLocation?: string }
+export const shownEvent = (p: EventShown | null | undefined): string =>
+  JSON.stringify([p?.eventTitle ?? null, p?.eventStartsAt ?? null, p?.eventEndsAt ?? null, p?.eventLocation ?? null])
+
 export const NO_SUCH_ITEM = 'no such held item on this host'
 export const CHANGED_SINCE = 'This item changed since you opened it. Look at it again before you decide.'
 export const MAY_HAVE_GONE = 'This may have gone already: the last send did not say how it ended. Check Sent first, and choose Send again only if it is not there.'
@@ -172,21 +177,16 @@ export class Outbox {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
       if (opts.rev === undefined) throw new Error(REV_NEEDED)
       const live = await this.readLifeos(ref)
-      if (live.updatedAt !== opts.rev) {
-        // The screens catch up with what LifeOS holds now (an event that moved), so the next look shows it.
-        if (live.kind === 'calendar.op') this.lifeos?.relist?.(live)
-        throw new Error(CHANGED_SINCE)
-      }
-      // A calendar act binds its event's start as it was listed to the screens: an event moved since is refused, and
-      // the listing catches up so the next look shows the new time (milestone 50's hold review, 29).
+      // A calendar act binds its event as it was listed to the screens: an event changed since is refused, and the listing
+      // catches up (its revision moves on, so every older view is refused too) (milestone 50's hold review, 29).
       if (live.kind === 'calendar.op') {
         const listed = this.lifeos?.items().find((i) => JSON.stringify(i.ref) === JSON.stringify(ref))
-        const startOf = (i: OutboxItem): unknown => (i.payload as { eventStartsAt?: number } | null)?.eventStartsAt
-        if (listed && startOf(listed) !== startOf(live)) {
+        if (listed && shownEvent(listed.payload as EventShown) !== shownEvent(live.payload as EventShown)) {
           this.lifeos?.relist?.(live)
           throw new Error(CHANGED_SINCE)
         }
       }
+      if (live.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
       row = row ? (this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? this.store.get(row.id)) : this.adopt(live)
     }
     if (!row) throw new Error(NO_SUCH_ITEM)
@@ -301,7 +301,14 @@ export class Outbox {
   /** This host's rows and the LifeOS-held items nobody here decided, as one list. */
   list(q: { show?: 'waiting' | 'decided' | 'all'; workspaceId?: string; sessionId?: string; limit?: number } = {}): { items: OutboxItem[]; waiting: number } {
     const show = q.show ?? 'waiting'
-    const rows = this.store.list(q).map((row) => this.wire(row))
+    // A LifeOS item recorded here (a send that failed) and still waiting is listed with LifeOS's own copy and revision,
+    // so a later press names what LifeOS holds now (milestone 50's hold review).
+    const rows = this.store.list(q).map((row) => {
+      const item = this.wire(row)
+      if (item.ref.at !== 'lifeos' || !PRESSABLE.includes(row.state)) return item
+      const there = this.lifeos?.items().find((i) => JSON.stringify(i.ref) === JSON.stringify(item.ref))
+      return there ? { ...item, payload: there.payload, updatedAt: there.updatedAt } : item
+    })
     const held = show === 'decided' ? [] : this.undecided().filter((i) => (q.workspaceId === undefined || i.workspaceId === q.workspaceId) && (q.sessionId === undefined || i.sessionId === q.sessionId))
     const items = [...rows, ...held]
     if (show === 'waiting') items.sort((a, b) => a.createdAt - b.createdAt)

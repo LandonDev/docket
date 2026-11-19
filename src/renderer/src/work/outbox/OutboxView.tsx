@@ -740,22 +740,25 @@ function DetailSkeleton() {
  * whole act is read for it; an act that kept none draws nothing, and a read
  * that failed says so with Retry.
  */
-type Picture = { kept: { width?: number; height?: number } | null | undefined; src: string | null | undefined | "failed"; retry(): void };
+type Picture = { kept: { width?: number; height?: number } | null | undefined; src: string | null | undefined | "failed"; loaded: boolean; retry(): void; onLoad(): void; onError(): void };
 
 /** The kept picture of a computer act, read whole: undefined while it comes, "failed" when the host did not answer, null when none was kept. */
 function usePicture(item: HostItem): Picture {
   const kept = item.kind === "computer.act" ? (item.payload as { picture?: { width?: number; height?: number } | null } | null)?.picture : null;
   const key = kept ? JSON.stringify(item.ref) : null;
   const [src, setSrc] = useState<string | null | undefined | "failed">(undefined);
+  const [loaded, setLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!key) return;
     let live = true;
     setSrc(undefined);
+    setLoaded(false);
     fetchItem(item.environmentId, item.ref).then(
       (whole) => {
         const picture = (whole.payload as { picture?: { data?: string; mimeType?: string } | null } | null)?.picture;
-        if (live) setSrc(picture?.data ? `data:${picture.mimeType ?? "image/jpeg"};base64,${picture.data}` : null);
+        // A picture the act kept but whose bytes did not come is a failure, never "none kept".
+        if (live) setSrc(picture?.data ? `data:${picture.mimeType ?? "image/jpeg"};base64,${picture.data}` : "failed");
       },
       () => live && setSrc("failed"),
     );
@@ -764,11 +767,11 @@ function usePicture(item: HostItem): Picture {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read again only for another act or a Retry
   }, [key, attempt]);
-  return { kept, src: key ? src : null, retry: () => setAttempt((n) => n + 1) };
+  return { kept, src: key ? src : null, loaded, retry: () => setAttempt((n) => n + 1), onLoad: () => setLoaded(true), onError: () => setSrc("failed") };
 }
 
-/** Whether what his press approves is all on screen: a computer act's kept picture has loaded, or none was kept. */
-const pictureShown = (p: Picture): boolean => p.src === null || (typeof p.src === "string" && p.src !== "failed");
+/** Whether what his press approves is all on screen: a computer act's kept picture has drawn, or none was kept. */
+const pictureShown = (p: Picture): boolean => p.src === null || (typeof p.src === "string" && p.src !== "failed" && p.loaded);
 
 function KeptPicture({ item, picture }: { item: HostItem; picture: Picture }) {
   const { kept, src } = picture;
@@ -785,5 +788,5 @@ function KeptPicture({ item, picture }: { item: HostItem; picture: Picture }) {
         </Button>
       </p>
     );
-  return <img src={src} alt={`The window as it was read, ${item.summary}`} draggable={false} className="h-auto w-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" style={{ aspectRatio: shape }} />;
+  return <img src={src} onLoad={picture.onLoad} onError={picture.onError} alt={`The window as it was read, ${item.summary}`} draggable={false} className="h-auto w-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" style={{ aspectRatio: shape }} />;
 }
