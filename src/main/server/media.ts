@@ -174,6 +174,27 @@ function servable(realPath: string): boolean {
   return insideRealRoots(realPath, allRoots()) && !insideRealRoots(realPath, deniedProvider())
 }
 
+/**
+ * The media host's fence as one question: whether it serves this file, by
+ * its real path (a link that points out is out), under the roots the
+ * server installed and outside every denied directory. False for a path
+ * that does not exist. A Work module asks it before it makes a URL for a
+ * file a person named (work/media/prepare.ts).
+ */
+export function mediaServes(path: string): boolean {
+  const real = realOrNull(resolve(path))
+  return real !== null && servable(real)
+}
+
+/**
+ * `<userData>/work-media`: what Work's media pillar makes from a version
+ * (proxies, stills, tiles, its HLS), one folder per version. The server
+ * lists it among the media roots so those URLs need no fence of their
+ * own; nothing in it is ever a source, and it is not an attachments
+ * folder, so the attachments' retention sweep never walks it.
+ */
+export const workMediaRoot = (dataDir: string): string => join(dataDir, 'work-media')
+
 // ── tokens ───────────────────────────────────────────────────────────────
 
 interface Entry {

@@ -30,8 +30,8 @@ frame a plan and a report already use:
   the sash, its double-click reset and the conversation toggle are
   `SplitShell`'s. The tab row is the header's `lead`: tabs in the strip's
   chip shape (`CanvasTabs`), one item alone as a title with one muted fact,
-  then the kind's `TabEnd`, More (Accept all, Reject all, Close, Close
-  others) and the toggle. Tabs reorder by drag (`work.canvas.reorder`),
+  then the kind's `TabEnd`, More (the kind's own entries, Accept all,
+  Reject all, Close, Close others) and the toggle. Tabs reorder by drag (`work.canvas.reorder`),
   close on a middle click, and the arrows move along the row.
 - Under the row, `CanvasPane` draws the kind's bar (`KindBar`), the one
   state line, the kind's body and the selection bar. Only the shown item's
@@ -156,6 +156,21 @@ What a kind should know:
 - The bar is drawn only while the kind has something in it. Its order is
   fixed: people, the mode, the kind's `Bar`, History (drawn by the pane for
   a def with `history: true`), then the stepper or the written line.
+- A `Bar` that renders nothing (null, or an empty fragment) leaves no bar
+  when nothing else is fed: the bar is then drawn only while its tools
+  slot (`[data-canvas-tools]`) has something in it, by a CSS rule
+  (`BAR_TOOLS_ONLY` in KindBar.tsx), and the `Bar` stays mounted so it can
+  fill it later. A meeting with no recording yet has no bar.
+- The kind's tools slot takes the bar's free room, so a tool given
+  `ms-auto` sits at the slot's end, just before History and the stepper.
+- `more(entries)` puts the kind's own verbs in the pane's More, first,
+  over the frame's own (Accept all and Reject all, then Close and Close
+  others): `{ id, label, icon, disabled?, run }`, each a 14px glyph and a
+  verb as every menu row is. A `run` that throws or rejects is said once
+  in the thread's toast stack. Like every feed it is forgotten when
+  another tab is shown; null takes the entries back. It is optional on
+  `CanvasShell` only so a stand-in shell written before it still types;
+  the pane always gives it.
 - `state` is undefined until the kind keeps something; it is one value for
   `Body`, `Bar` and `TabEnd`, held in memory while the window lives.
 - `ReviewAdapter.index` counts across all groups, from 0. With more than
@@ -273,7 +288,7 @@ Every change sends `{ push: 'work.canvas', sessionId, items, opened? }` through 
 
 ### How the module and the part share one store
 
-A module's `handle` gets the context and nothing else, but the store needs the session registry and the data dir, which only a part gets. So the part (`canvasPart` in ctx.ts) makes the database's one `CanvasStore` from `deps` at boot and leaves it in a `WeakMap` keyed by the database (`setCanvasStore`). The module and the tools find it with `canvasStoreOf(ctx.db)`. `ctx.canvas.open`, `close` and `forSession` are the same store's methods, so they push the same push.
+A module's `handle` gets the context and nothing else, but the store needs the session registry and the data dir, which only a part gets. So the part (`canvasPart` in ctx.ts) makes the database's one `CanvasStore` from `deps` at boot and leaves it in a `WeakMap` keyed by the database (`setCanvasStore`). The module and the tools find it with `canvasStoreOf(ctx.db)`. `ctx.canvas.open`, `close` and `forSession` are the same store's methods, so they push the same push. `ctx.canvas.get(itemId)` reads any item, open or closed (null when there is none), and `ctx.canvas.paneOf(sessionId)` is the thread whose pane a thread's items show in (its root thread). A pillar reads items through these two and never imports `canvasStoreOf` from canvas/store.
 
 ### The tools
 

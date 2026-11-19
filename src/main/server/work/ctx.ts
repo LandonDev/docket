@@ -29,6 +29,7 @@ import type { Store } from '../db'
 import type { CrossHostThreads } from '../remote/crossHostThreads'
 import type { MacBridge } from '../remote/macBridge'
 import type { Notifier } from '../remote/notifier'
+import { admitsPath } from '../remote/fence'
 import type { PeerCalls } from '../remote/peerCalls'
 import type { Peers } from '../remote/peers'
 import type { SessionMover } from '../remote/sessionMover'
@@ -75,6 +76,8 @@ export interface WorkDeps {
   environmentId: string
   /** <userData>: where a part keeps its files */
   dataDir: string
+  /** The listener's path fence for a remote key (index.ts `managedRoots` and the folders it denies): `ctx.reaches` and `PushTo.path` ask it. Absent only in a test, where a remote key then reaches no file. */
+  remoteFence?: { roots(): string[]; denied(): string[] }
   /** the links to other hosts, and the calls a registered host answers */
   peers?: Peers
   peerCalls?: PeerCalls
@@ -137,6 +140,8 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
   const ctx = {
     db: deps.db,
     host: deps.environmentId,
+    dataDir: deps.dataDir,
+    reaches: reachesOf(deps.remoteFence),
     enabled: () => settings.enabled(),
     log: deps.log ?? ((line: string) => console.log(`[work] ${line}`)),
     push,
@@ -166,6 +171,16 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
     part('service/ctx.ts', ['service'], () => servicePart(ctx, deps))
   )
   return { ctx, admission }
+}
+
+/**
+ * `ctx.reaches`: the listener's own answer (remote/fence.ts `admitsPath`,
+ * over the roots and denied folders the host hands in), asked of a file a
+ * module reaches through an id. Only a remote key is fenced, as at the
+ * listener; with no roots handed in (a test) it reaches nothing.
+ */
+export function reachesOf(fence: WorkDeps['remoteFence']): WorkCtx['reaches'] {
+  return (by, path) => by.kind !== 'remote' || (!!fence && admitsPath(path, fence.roots(), fence.denied()))
 }
 
 /** A member that answers one fault however it is used: called itself (`ctx.convert(job)`), or through any of its methods (`ctx.lifeos.jwt()`). */
@@ -212,8 +227,13 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   const sound = modules.filter((m) => !broken.has(m.id))
   const settings = new WorkSettingsStore(deps.store)
   const sinks = new Map<(p: WorkPush) => void, SocketPrincipal>()
+  const reaches = reachesOf(deps.remoteFence)
   const broadcast = (p: WorkPush, to?: PushTo): void => {
-    for (const [send, principal] of [...sinks]) if (!to?.need || allows(principalCaps(principal), to.need)) send(p)
+    for (const [send, principal] of [...sinks]) {
+      if (to?.need && !allows(principalCaps(principal), to.need)) continue
+      if (to?.path !== undefined && !reaches(callerOf(principal), to.path)) continue
+      send(p)
+    }
   }
   /** What the parts asked to run only while Work is on. */
   const whileOn: (() => (() => void) | void)[] = []

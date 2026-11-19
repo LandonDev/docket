@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -280,6 +280,27 @@ describe('with Work on', () => {
     expect(got.approver).toEqual([held, count])
     expect(got.admin).toEqual([held, count])
     for (const off of offs) off()
+  })
+
+  it("sends a push that names a file only to the sockets whose caller could name that file: this host's window, and a key whose roots hold it", () => {
+    const inside = join(dir, 'job')
+    mkdirSync(inside)
+    const fenced = startWork(
+      { db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {}, remoteFence: { roots: () => [inside], denied: () => [join(inside, 'private')] } },
+      [fakeModule(seen)]
+    )
+    const got = { window: [] as WorkPush[], key: [] as WorkPush[] }
+    const offs = [fenced.pushes.onPush((p) => got.window.push(p), LOCAL_PRINCIPAL), fenced.pushes.onPush((p) => got.key.push(p), remote(['read']))]
+    const about = (path: string) => ({ push: 'work.pdf', path }) as unknown as WorkPush
+    fenced.ctx.push(about(join(inside, 'w9.pdf')), { path: join(inside, 'w9.pdf') })
+    fenced.ctx.push(about('/etc/passwd'), { path: '/etc/passwd' })
+    fenced.ctx.push(about(join(inside, 'private', 'a.pdf')), { path: join(inside, 'private', 'a.pdf') })
+    // both rules at once: the file is inside, but the key does not hold approve
+    fenced.ctx.push(about(join(inside, 'b.pdf')), { path: join(inside, 'b.pdf'), need: 'approve' })
+    expect(got.window.map((p) => (p as unknown as { path: string }).path)).toEqual([join(inside, 'w9.pdf'), '/etc/passwd', join(inside, 'private', 'a.pdf'), join(inside, 'b.pdf')])
+    expect(got.key.map((p) => (p as unknown as { path: string }).path)).toEqual([join(inside, 'w9.pdf')])
+    for (const off of offs) off()
+    fenced.close()
   })
 
   it('lists the tool to a Work thread through the one mount, and to no code thread', () => {

@@ -14,6 +14,8 @@ import {
   serveMedia,
   serverMediaRoots,
   setMediaRoots,
+  mediaServes,
+  workMediaRoot,
   sniffMedia
 } from './media'
 
@@ -169,6 +171,21 @@ describe('the file host', () => {
     } finally {
       setMediaDenied(() => [])
     }
+  })
+
+  it('answers its fence as one question (mediaServes), the same as fsMedia: in a root, out of every denied folder, by the real path', async () => {
+    expect(mediaServes(join(root, 'img', 'a.png'))).toBe(true)
+    expect(mediaServes(join(outside, 'secret.png'))).toBe(false)
+    expect(mediaServes(join(root, 'img', 'link.png'))).toBe(false)
+    expect(mediaServes(join(root, 'img', 'missing.png'))).toBe(false)
+    setMediaDenied(() => [join(root, 'img')])
+    try {
+      expect(mediaServes(join(root, 'img', 'a.png'))).toBe(false)
+      expect(mediaServes(join(root, 'notes.md'))).toBe(true)
+    } finally {
+      setMediaDenied(() => [])
+    }
+    expect(workMediaRoot('/data')).toBe(join('/data', 'work-media'))
   })
 
   it('refuses a root spelled as a prefix of another directory', () => {

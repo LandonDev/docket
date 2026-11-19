@@ -142,7 +142,7 @@ import { migrateHousePreamble, seedHousePreamble } from './projectPreamble'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { workRoot } from './workRoot'
-import { readMediaRange, serverMediaRoots, setMediaDenied, setMediaHost, setMediaRoots } from './media'
+import { readMediaRange, serverMediaRoots, setMediaDenied, setMediaHost, setMediaRoots, workMediaRoot } from './media'
 import { setSearchDenied } from './search'
 import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
@@ -551,13 +551,15 @@ export async function startServer(
   // The file viewer's media host serves only files under these roots, and
   // names this host on every URL so another host's desktop reads from here.
   setMediaHost(environmentId)
-  setMediaRoots(() =>
-    serverMediaRoots({
+  setMediaRoots(() => [
+    ...serverMediaRoots({
       projects: registry.listProjects().map((p) => p.cwd),
       workspaces: registry.listWorkspaces().map((w) => w.path),
       attachments: dataAttachmentsRoot()
-    })
-  )
+    }),
+    // Work's media pillar's proxies and stills (work/media/store.ts)
+    workMediaRoot(options.dataDir ?? dirname(dbPath))
+  ])
   // The computer history's pictures are the person's windows (computer/history.ts): no media URL serves them and no
   // remote request names them, whatever root a workspace adds; this desktop reads them by `computer.history.step`.
   const computerHistoryRoot = historyRoot(join(options.dataDir ?? dirname(dbPath), 'computer'))
@@ -1801,6 +1803,8 @@ export async function startServer(
     registry,
     environmentId,
     dataDir: options.dataDir ?? dirname(dbPath),
+    // The listener's own fence, so a module that reaches a file through an id judges a remote key as the listener would.
+    remoteFence: { roots: () => managedRoots(), denied: () => [computerHistoryRoot] },
     peers,
     peerCalls,
     crossHostThreads,

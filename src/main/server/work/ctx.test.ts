@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +8,7 @@ import { NotBuilt, PILLAR_IDS, PILLAR_MILESTONE, workToolNameProblem, type WorkS
 import { openDb, Store } from '../db'
 import type { SessionRegistry } from '../sessions'
 import { startWork, type Work } from './ctx'
-import { inputShapeOf, loadWorkModules, WORK_MODULES } from './modules'
+import { inputShapeOf, loadWorkModules, WORK_MODULES, type Caller } from './modules'
 import { ensureWorkTables } from './schema'
 
 /** The frame as it ships: every pillar a stub, every member of the context a stub that says which milestone builds it. */
@@ -81,6 +81,34 @@ describe('the context', () => {
     expect(() => ctx.canvas.open('s', 'pdf', { at: 'thread' }, 'A')).toThrow('unknown thread: s')
     expect(() => ctx.canvas.open('t1', 'pdf', { at: 'thread' }, 'A')).toThrow('not a Work thread: t1')
     expect(() => ctx.canvas.close('i')).toThrow('no canvas item i')
+  })
+  it('names its data folder, and reads a canvas item by id and the pane a thread opens into', () => {
+    const { ctx } = work
+    expect(ctx.dataDir).toBe(dir)
+    expect(ctx.canvas.get('no-such-item')).toBeNull()
+    // a thread the registry does not know is its own pane
+    expect(ctx.canvas.paneOf('s')).toBe('s')
+  })
+  it("answers the listener's fence for a file reached by id: the window and a thread always, a remote key only under its roots and never in a denied folder", () => {
+    const roots = join(dir, 'job')
+    mkdirSync(join(roots, 'private'), { recursive: true })
+    const fenced = startWork({ db, store: new Store(db), registry: { get: () => null } as unknown as SessionRegistry, environmentId: 'env_test', dataDir: dir, log: () => {}, remoteFence: { roots: () => [roots], denied: () => [join(roots, 'private')] } })
+    const key: Caller = { kind: 'remote', caps: ['read'] }
+    const reaches = fenced.ctx.reaches
+    expect(reaches({ kind: 'local', caps: [] }, '/etc/passwd')).toBe(true)
+    expect(reaches({ kind: 'model', caps: [], sessionId: 't1' }, '/etc/passwd')).toBe(true)
+    expect(reaches(key, join(roots, 'w9.pdf'))).toBe(true)
+    expect(reaches(key, '/etc/passwd')).toBe(false)
+    expect(reaches(key, join(roots, 'private', 'w9.pdf'))).toBe(false)
+    // out by a way round
+    expect(reaches(key, join(roots, '..', 'test.db'))).toBe(false)
+    // a symlink inside the roots that points out is out
+    symlinkSync(tmpdir(), join(roots, 'out'))
+    expect(reaches(key, join(roots, 'out', 'x.pdf'))).toBe(false)
+    fenced.close()
+    // with no roots handed in (a test), a remote key reaches nothing
+    expect(work.ctx.reaches(key, join(roots, 'w9.pdf'))).toBe(false)
+    expect(work.ctx.reaches({ kind: 'local', caps: [] }, join(roots, 'w9.pdf'))).toBe(true)
   })
   it('answers "not built" from every member a later milestone builds, naming that milestone', () => {
     const { ctx } = work

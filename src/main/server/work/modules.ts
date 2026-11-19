@@ -45,9 +45,12 @@ export type WorkTool = WorkToolOf<ToolCtx>
 /** An act kind as a module registers it: `execute(p, ctx: ActCtx)`. */
 export type ActKindDef<P = unknown, M = unknown> = ActKindDefOf<P, M, ActCtx>
 
-/** Who a push is for. `need`: only the sockets whose key holds that capability (this host's own window holds them all); absent: every client socket. */
+/** Who a push is for; absent: every client socket. Both fields may be given, and a socket must pass both. */
 export interface PushTo {
+  /** only the sockets whose key holds that capability (this host's own window holds them all) */
   need?: Capability
+  /** only the sockets whose caller could name this file itself (`ctx.reaches`): a push about an item whose file is outside a remote key's roots never reaches that key */
+  path?: string
 }
 export type WorkSend = (p: WorkPush, to?: PushTo) => void
 
@@ -97,11 +100,21 @@ export interface Caller {
 export interface WorkCtx {
   db: DatabaseSync
   host: HostId
+  /** <userData> on this host: a module keeps its files under `<dataDir>/<its own folder>` (the canvas: `canvas/`, media: `work-media/`) */
+  dataDir: string
   /** the Work switch */
   enabled(): boolean
   log(line: string): void
   /** to every client socket, or only those `to` names */
   push(p: WorkPush, to?: PushTo): void
+  /**
+   * The listener's path fence (remote/fence.ts), for a file a module
+   * reaches through an id rather than a path in the params: whether `by`
+   * could have named `path` itself. This host's window and a thread's own
+   * call always could; a remote key only under the app-managed roots
+   * (index.ts `managedRoots`) and outside the denied folders.
+   */
+  reaches(by: Caller, path: string): boolean
   /** milestone 6; null for a code thread */
   scopeOf(sessionId: string): WorkScope | null
   settings: {
@@ -128,6 +141,10 @@ export interface WorkCtx {
     open(sessionId: string, kind: CanvasKind, source: CanvasSource, title: string): CanvasItem
     close(itemId: string): void
     forSession(sessionId: string): CanvasItem[]
+    /** any item by id, open or closed; null when there is none (or its row no longer parses) */
+    get(itemId: string): CanvasItem | null
+    /** the thread whose pane a thread's items show in: its root thread (a subagent has none of its own) */
+    paneOf(sessionId: string): string
   }
   /** milestone 10 */
   held: {

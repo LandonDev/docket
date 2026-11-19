@@ -244,11 +244,32 @@ the host exists, and that is the one door:
 ## The context
 
 `WorkCtx` is what one module may ask of the others. `startWork` builds it
-once (work/ctx.ts `buildWorkCtx`). `db`, `host`, `enabled`, `log`, `push`
-and `settings` are built. `push(p, to?)` reaches every client socket, or
-with `{ need: 'approve' }` only the sockets whose key holds that capability
-(this host's own window holds them all): what a read-only key should not
-see is pushed with a need. Every other member comes from a file its milestone
+once (work/ctx.ts `buildWorkCtx`). `db`, `host`, `dataDir`, `enabled`,
+`log`, `push`, `reaches` and `settings` are built.
+
+- `dataDir` is `<userData>`; a module keeps its files in a folder of its
+  own under it (the canvas: `canvas/`, media: `work-media/`), never in
+  the job runner's or another pillar's.
+- `push(p, to?)` reaches every client socket. `{ need: 'approve' }` sends
+  it only to the sockets whose key holds that capability (this host's own
+  window holds them all): what a read-only key should not see is pushed
+  with a need. `{ path }` sends it only to the sockets whose caller could
+  name that file (`reaches`), so a push about an item whose file is
+  outside a remote key's roots never reaches that key, admin or not. A
+  socket must pass both when both are given.
+- `reaches(by, path)` is the listener's own path fence
+  (remote/fence.ts `admitsPath`, over index.ts `managedRoots` and the
+  folders it denies, handed in as `WorkDeps.remoteFence`), for a file a
+  method reaches through an id rather than a path in its params: whether
+  `by` could have named the file itself. This host's window and a thread's
+  own call always could; a remote key only under the app-managed roots,
+  by the real path, outside the denied folders. A module that serves an
+  item's file to a remote key asks it first and throws `FenceError`
+  (remote/fence.ts) when it says no; a file in the item's own folder
+  (a `{ at: 'thread' }` source) names no path and needs no asking. In a
+  test that hands in no `remoteFence`, a remote key reaches nothing.
+
+Every other member comes from a file its milestone
 owns, a stub that throws `NotBuilt` until then; its owner fills that file
 and edits nothing else:
 

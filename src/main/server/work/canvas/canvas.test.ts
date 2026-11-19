@@ -209,6 +209,16 @@ describe('through the mount', () => {
       expect(work.ctx.canvas.forSession('t1').map((i) => i.id)).toEqual([item.id])
       work.ctx.canvas.close(item.id)
       expect(pushes.at(-1)).toEqual({ push: 'work.canvas', sessionId: 't1', items: [] })
+      // closed, it is still read by id
+      expect(work.ctx.canvas.get(item.id)).toMatchObject({ id: item.id, sessionId: 't1', kind: 'pdf', title: 'A' })
+      expect(work.ctx.canvas.get('nope')).toBeNull()
+    })
+
+    it("ctx.canvas.paneOf is a subagent's root thread, and a root thread's own", () => {
+      thread('t1-child', 'work', { parentId: 't1' })
+      thread('t1-grandchild', 'work', { parentId: 't1-child' })
+      expect(work.ctx.canvas.paneOf('t1-grandchild')).toBe('t1')
+      expect(work.ctx.canvas.paneOf('t1')).toBe('t1')
     })
 
     it('lists both tools to a Work thread and runs them for that thread alone', async () => {

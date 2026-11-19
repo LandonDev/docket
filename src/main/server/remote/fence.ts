@@ -199,6 +199,16 @@ export function workSourcePaths(req: ClientRequest): string[] | null {
 }
 
 /**
+ * The fence's one answer for one path: under a root and under no denied
+ * directory, by the real spelling. `fenceRequest` asks it of every path a
+ * remote request names; Work's context asks it for a file a module reaches
+ * through an id (`ctx.reaches`, work/ctx.ts), so both say the same.
+ */
+export function admitsPath(path: string, roots: readonly string[], denied: readonly string[] = []): boolean {
+  return insideRoots(path, roots) && !insideRoots(path, denied)
+}
+
+/**
  * Throw the typed error when a request names a path outside the roots.
  * `attachmentRoots` widen the roots for attachment paths only. `denied` are
  * directories no remote request may name even inside a root (the computer
@@ -206,7 +216,7 @@ export function workSourcePaths(req: ClientRequest): string[] | null {
  * contains the data directory, by a symlink too, does not open them.
  */
 export function fenceRequest(req: ClientRequest, roots: readonly string[], attachmentRoots: readonly string[] = [], denied: readonly string[] = []): void {
-  const admits = (p: unknown, within: readonly string[]): boolean => typeof p === 'string' && insideRoots(p, within) && !insideRoots(p, denied)
+  const admits = (p: unknown, within: readonly string[]): boolean => typeof p === 'string' && admitsPath(p, within, denied)
   const paths = fencedPaths(req)
   if (paths) for (const p of paths) if (!admits(p, roots)) throw new FenceError(req.method)
   // Work: the files named inside a CanvasSource, by the same roots and the same denied directories.
