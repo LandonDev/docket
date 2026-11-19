@@ -60,7 +60,7 @@ export const guestsTools: WorkTool[] = [
   {
     name: 'guest_link',
     description:
-      'Asks for a guest link: one named person outside may open one LifeOS document or sheet on a web page with no sign-in, to view, comment or edit, until the day it ends. It is held: nothing is made until the owner presses Create in the Outbox, and you are then told the address. Use it when he asks to send someone one of his documents.',
+      'Asks for a guest link: one named person outside may open one LifeOS document or sheet on a web page with no sign-in, to view, comment or edit, until the day it ends. It is held: nothing is made until the owner presses Create in the Outbox; you are then told the link is made, and he sends its address himself (you never see it). Use it when he asks to send someone one of his documents.',
     input: z.object({
       docId: z.string().optional().describe('A LifeOS document id (from the doc tools). Give this or sheetId.'),
       sheetId: z.string().optional().describe('A LifeOS sheet id. Give this or docId.'),
