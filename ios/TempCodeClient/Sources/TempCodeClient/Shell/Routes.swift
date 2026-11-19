@@ -29,6 +29,8 @@ public enum Route: Hashable, Codable, Sendable {
     case workSettings
     /// A Work workspace's house rules and their proposals (milestone 39's wire).
     case houseRules(environmentId: String, workspaceId: String)
+    /// A Work workspace's LifeOS view (`mail`, `tasks`, `agenda`) or its `routines` (milestone 47).
+    case workView(environmentId: String, workspaceId: String, view: String)
 }
 
 /// The three tabs.

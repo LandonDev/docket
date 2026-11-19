@@ -44,6 +44,8 @@ public enum ThreadKind: Hashable, Sendable {
 
 public enum ThreadSegment: String, CaseIterable, Identifiable, Sendable {
     case board, chat, plan, fleet, log, sources
+    /// A Work thread's item (milestone 47): the bar shows the item's own name.
+    case item
 
     public var id: String { rawValue }
 
@@ -55,6 +57,7 @@ public enum ThreadSegment: String, CaseIterable, Identifiable, Sendable {
         case .fleet: "Fleet"
         case .log: "Log"
         case .sources: "Sources"
+        case .item: "Item"
         }
     }
 
@@ -70,6 +73,14 @@ public enum ThreadSegment: String, CaseIterable, Identifiable, Sendable {
         case .master: [.board, .chat]
         case .subagent, .chat, .other: [.chat]
         }
+    }
+
+    /// A Work thread with an open item (milestone 47): a thread that is its transcript alone gains
+    /// the item as its hero, Item and Chat; a thread with a hero of its own keeps it.
+    public static func segments(for kind: ThreadKind, hasItems: Bool) -> [ThreadSegment] {
+        let plain = segments(for: kind)
+        guard hasItems, plain == [.chat], kind != .subagent else { return plain }
+        return [.item, .chat]
     }
 }
 

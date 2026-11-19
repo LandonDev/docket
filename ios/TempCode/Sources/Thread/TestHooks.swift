@@ -95,6 +95,10 @@ enum TestHooks {
     static let perf = env["TC_TEST_PERF"].flatMap(PerfRun.init(rawValue:))
     /// The test server's control panel: a performance run plays its own stream and load through it.
     static let controlURL = env["TC_TEST_CONTROL_URL"].flatMap(URL.init(string:))
+    /// The work set's LifeOS screens: LifeKit's own fixture day, since the test server has no LifeOS.
+    static let lifeFixtures = env["TC_TEST_LIFE_FIXTURES"] == "1"
+    /// The work set: a Work workspace's view to open over its screen (`mail`, `tasks`, `agenda`, `routines`).
+    static let workView = env["TC_TEST_WORK_VIEW"].flatMap { $0.isEmpty ? nil : $0 }
     #else
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
@@ -113,6 +117,8 @@ enum TestHooks {
     static let groupGlide: String? = nil
     static let perf: PerfRun? = nil
     static let controlURL: URL? = nil
+    static let lifeFixtures = false
+    static let workView: String? = nil
     #endif
     /// True once per key: a hook that several rows read fires on the first.
     static func once(_ key: String) -> Bool {

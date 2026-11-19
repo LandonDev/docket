@@ -100,7 +100,9 @@ struct ThreadScreen: View {
         let _ = PerfCounters.bump(.threadScreenBody)
         let session = client.session(sessionId)
         let kind = ThreadKind(session)
-        let segments = ThreadSegment.segments(for: kind)
+        // A Work thread's open items (milestone 47): with one, the item is the hero beside Chat.
+        let items = session?.scope == .work ? client.work.canvas.items(sessionId) : []
+        let segments = ThreadSegment.segments(for: kind, hasItems: !items.isEmpty)
         let held = client.thread(sessionId)
         // The frame's facts and the flags, never the state: this body runs when one of them moves, not at every row.
         let facts = held?.frame ?? FrameFacts()
@@ -175,6 +177,16 @@ struct ThreadScreen: View {
             starting = true
         }
         .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: sessionId))
+        // A Work thread's items, then each open the host announces shows its item.
+        .task(id: session?.scope == .work) {
+            if session?.scope == .work { await client.work.canvas.load(sessionId) }
+        }
+        .onChange(of: client.work.canvas.opened[sessionId]) {
+            guard let opened = client.work.canvas.opened[sessionId] else { return }
+            client.work.canvas.tookOpened(sessionId)
+            model.itemId = opened
+            select(.item)
+        }
         // Compact: the composer docks where the tab bar would float, the tabs wait behind the back
         // button. Split: the bar stays, since hiding it would hide the vertical rail for every tab.
         .toolbar(pose.isSplit ? .automatic : .hidden, for: .tabBar)
@@ -353,6 +365,12 @@ struct ThreadScreen: View {
     }
 
     /// A tap on the segment bar: the page moves with the drawer curve (a jump under reduced motion) and the pill rides with it.
+    /// The item the Item segment shows: the one chosen, else the first open.
+    private var shownItem: CanvasItem? {
+        let items = client.work.canvas.items(sessionId)
+        return items.first { $0.id == model.itemId } ?? items.first
+    }
+
     private func select(_ segment: ThreadSegment) {
         model.choose(segment)
         withAnimation(reduceMotion ? nil : Motion.drawer) { page = segment }
@@ -458,7 +476,7 @@ struct ThreadScreen: View {
             }
             if barShown {
                 // Leaves on the collapse curve and returns the way a row appears (folded landscape, the field focused).
-                SegmentBar(segments: segments, selected: segment, dot: model.dot(in: segments, phase: phase, shown: segment, mode: mode), progress: pageProgress ?? CGFloat(segments.firstIndex(of: segment) ?? 0)) { select($0) }
+                SegmentBar(segments: segments, selected: segment, dot: model.dot(in: segments, phase: phase, shown: segment, mode: mode), progress: pageProgress ?? CGFloat(segments.firstIndex(of: segment) ?? 0), itemTitle: shownItem?.title) { select($0) }
                     .transition(Motion.appear(reduced: reduceMotion))
             }
             if mode == .single {
@@ -650,6 +668,8 @@ struct ThreadScreen: View {
     private func body(for segment: ThreadSegment, kind: ThreadKind, session: SessionMeta?, phase: ThreadPhase, onScreen: Bool) -> some View {
         let held = client.thread(sessionId)
         switch segment {
+        case .item:
+            ItemPage(client: client, sessionId: sessionId, selected: Bindable(model).itemId, onAsk: { select(.chat) })
         case .chat, .log:
             transcript()
         case .board:
@@ -721,6 +741,8 @@ struct ThreadScreenRoute: Hashable {
 final class ThreadScreenModel {
     let sessionId: String
     private(set) var chosen: ThreadSegment?
+    /// The Work item the Item segment shows (milestone 47); nil is the first open.
+    var itemId: String?
     var visible = false
     private(set) var document: String?
     private var seenCard: [ThreadSegment: Int] = [:]

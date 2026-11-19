@@ -39,9 +39,9 @@ packages:
   TempCodeContract:
     path: ../TempCodeContract
   # work-kit's Swift half: LifeKit, LifeKitUI and LifeKitCore. The revision is the commit
-  # package.json pins for the JS half (scripts/workKitPin.test.ts holds them equal). Nothing
-  # links it yet: milestone 47 links LifeKit and LifeKitUI into the app, and a widget or an
-  # extension only ever links LifeKitCore.
+  # package.json pins for the JS half (scripts/workKitPin.test.ts holds them equal). The app
+  # links LifeKit and LifeKitUI (milestone 47: a Work workspace's Mail, Tasks and Agenda); a
+  # widget or an extension only ever links LifeKitCore.
   WorkKit:
     url: https://github.com/LandonDev/work-kit
     revision: c56e3637b21e43e004ed392f030f4de9a9177912
@@ -56,6 +56,10 @@ targets:
     dependencies:
       - package: TempCodeClient
         product: TempCodeClient
+      - package: WorkKit
+        product: LifeKit
+      - package: WorkKit
+        product: LifeKitUI
       - target: TempCodeActivity
       - target: TempCodeNotificationService
     entitlements:

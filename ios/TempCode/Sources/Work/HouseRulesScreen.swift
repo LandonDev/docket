@@ -14,6 +14,8 @@ struct HouseRulesScreen: View {
     @State private var page: Methods.WorkRulesList.Output?
     @State private var error: String?
     @State private var editing: RuleEdit?
+    /// The workspace's voice switch (milestone 47): drafts written in his voice. Nil until read.
+    @State private var voice: Bool?
 
     private var client: EnvironmentClient? { model.registry.client(environmentId) }
     private var canWrite: Bool { client?.work.canApprove == true }
@@ -51,6 +53,15 @@ struct HouseRulesScreen: View {
     private func list(_ page: Methods.WorkRulesList.Output, client: EnvironmentClient) -> some View {
         let proposals = page.proposals.filter { $0.state == .open || $0.state == .later }
         return List {
+            if let voice {
+                Section {
+                    Toggle("Write in My Voice", isOn: Binding(get: { voice }, set: { on in Task { await setVoice(on, client: client) } }))
+                        .disabled(!client.work.canAdmin)
+                        .accessibilityIdentifier("rules-voice")
+                } footer: {
+                    Text("Drafts read like the mail you send.")
+                }
+            }
             if !proposals.isEmpty {
                 Section("Proposed") {
                     ForEach(proposals, id: \.id) { proposal in
@@ -99,8 +110,20 @@ struct HouseRulesScreen: View {
         do {
             page = try await client.work.rules(workspaceId)
             error = nil
+            voice = try? await client.work.workspaceSettings(workspaceId).voice
         } catch {
             if page == nil { self.error = ActionError.wrap(error).message }
+        }
+    }
+
+    private func setVoice(_ on: Bool, client: EnvironmentClient) async {
+        let was = voice
+        voice = on
+        do {
+            voice = try await client.work.setVoice(workspaceId, on).voice
+        } catch {
+            voice = was
+            self.error = ActionError.wrap(error).message
         }
     }
 

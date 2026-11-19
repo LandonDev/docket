@@ -18,6 +18,8 @@ struct SegmentBar: View {
     let dot: ThreadSegment?
     /// The pager's offset in pages, 0 ... segments.count - 1, continuous.
     let progress: CGFloat
+    /// The Item segment's label: the item's name (milestone 47).
+    var itemTitle: String?
     let onSelect: (ThreadSegment) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
@@ -42,7 +44,7 @@ struct SegmentBar: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.pressable)
-                .accessibilityLabel(segment.title)
+                .accessibilityLabel(title(segment))
                 .accessibilityValue(segment == dot ? "Needs you" : "")
                 .accessibilityAddTraits(segment == selected ? [.isSelected] : [])
                 .accessibilityIdentifier("segment-\(segment.rawValue)")
@@ -64,11 +66,11 @@ struct SegmentBar: View {
     /// text's trailing edge so the text never moves when it appears.
     private func label(_ segment: ThreadSegment, weight: CGFloat) -> some View {
         ZStack {
-            Text(segment.title)
+            Text(title(segment))
                 .foregroundStyle(.secondary)
                 .opacity(1 - weight)
                 .accessibilityHidden(true)
-            Text(segment.title)
+            Text(title(segment))
                 .foregroundStyle(.primary)
                 .opacity(weight)
                 .accessibilityHidden(true)
@@ -90,6 +92,10 @@ struct SegmentBar: View {
     /// The selection: a capsule on the raised step with a soft offset
     /// shadow in light, the step alone in dark (a solid surface inside the
     /// glass, never glass on glass).
+    private func title(_ segment: ThreadSegment) -> String {
+        segment == .item ? ItemLabel.short(itemTitle ?? segment.title) : segment.title
+    }
+
     private var pill: some View {
         GeometryReader { geometry in
             let rect = SegmentRules.pillRect(progress: progress, count: segments.count, size: geometry.size, inset: Self.inset)

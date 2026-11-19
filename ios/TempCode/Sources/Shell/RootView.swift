@@ -282,6 +282,8 @@ struct RootView: View {
             WorkSettingsScreen()
         case .houseRules(let environmentId, let workspaceId):
             HouseRulesScreen(environmentId: environmentId, workspaceId: workspaceId)
+        case .workView(let environmentId, let workspaceId, let view):
+            WorkViewScreen(environmentId: environmentId, workspaceId: workspaceId, view: view)
         }
     }
 

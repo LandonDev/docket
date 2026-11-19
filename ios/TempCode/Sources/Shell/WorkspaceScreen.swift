@@ -32,6 +32,10 @@ struct WorkspaceScreen: View {
                     .listRowInsets(Layout.rowInsets)
                     .listRowSeparator(.hidden)
             }
+            // A Work workspace's Mail, Tasks, Agenda and Routines (milestone 47), then its house rules.
+            if let lead, lead.workspace.kind == .work {
+                WorkViewRows(client: lead.client, workspace: lead.workspace, dimmed: lifeosNote != nil)
+            }
             // A Work workspace's house rules: one row that opens the page (milestone 39's wire).
             if let lead, lead.workspace.kind == .work {
                 NavigationLink(value: Route.houseRules(environmentId: lead.client.environment.id, workspaceId: lead.workspace.id)) {
