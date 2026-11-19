@@ -150,6 +150,9 @@ const api = {
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized'),
     isFocused: (): Promise<boolean> => ipcRenderer.invoke('window:is-focused'),
     setTitle: (title: string): Promise<void> => ipcRenderer.invoke('window:set-title', title),
+    /** The theme this window wears and the kind of place it is on; main keeps them with the window's bounds. */
+    setAppearance: (appearance: { scheme: 'dark' | 'light'; kind: 'code' | 'work' }): void =>
+      ipcRenderer.send('appearance:scheme', appearance),
     hide: (): Promise<void> => ipcRenderer.invoke('window:hide'),
     destroy: (): Promise<void> => ipcRenderer.invoke('window:destroy'),
     create: (): Promise<void> => ipcRenderer.invoke('window:new'),

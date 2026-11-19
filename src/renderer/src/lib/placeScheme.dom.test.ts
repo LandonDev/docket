@@ -308,7 +308,7 @@ describe("a window wears the theme of its place", () => {
 
   it("tells main the theme and the kind on every move, and says nothing on a page with no main", () => {
     const setAppearance = vi.fn();
-    Object.defineProperty(window, "api", { value: { window: { setAppearance } }, configurable: true });
+    Object.defineProperty(window, "api", { value: { win: { setAppearance } }, configurable: true });
     launch(CODE, { code: "dark", work: "light" });
     expect(setAppearance).toHaveBeenLastCalledWith({ scheme: "dark", kind: "code" });
     project.setProjectCwd(WORK);

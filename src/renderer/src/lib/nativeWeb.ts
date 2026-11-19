@@ -124,6 +124,7 @@ export const webApi: Api = {
       document.title = title;
       return done();
     },
+    setAppearance: noop,
     hide: done,
     destroy: done,
     create: () => {

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { channels, resolve, themes } from '../renderer/src/lib/colourMath'
-import { APP_USER_MODEL_ID, CAPTION_HEIGHT, captionInk, captionOverlay, frameOptions, isDarkColor, localUserData, SYMBOL } from './windowFrame'
+import { APP_USER_MODEL_ID, BACKING, CAPTION_HEIGHT, captionInk, captionOverlay, frameOptions, isDarkColor, localUserData, readAppearance, SYMBOL, withPlace } from './windowFrame'
 
 /** A token of index.css in one theme, as the plain `#rrggbb` main can hand to Electron. */
 const app = themes(readFileSync(join(__dirname, '../renderer/src/index.css'), 'utf8'))
@@ -66,6 +66,34 @@ describe('the window frame per platform', () => {
     expect(isDarkColor('#FFFFFF')).toBe(false)
     expect(isDarkColor(null)).toBe(true)
     expect(isDarkColor('oklch(0.97 0 0)')).toBe(true)
+  })
+})
+
+describe("a window's theme and place, kept for its next launch", () => {
+  it("backs a light window with the app's light sidebar, and a dark one with the backing it always had", () => {
+    expect(BACKING).toEqual({ dark: '#171717', light: tokenHex('light', '--sidebar') })
+    for (const platform of ['darwin', 'win32', 'linux'] as const) {
+      expect(frameOptions(platform, { ...look, dark: false }).backgroundColor, platform).toBe(BACKING.light)
+      expect(frameOptions(platform, { ...look, dark: true }).backgroundColor, platform).toBe('#171717')
+    }
+    // main reads the backing as dark or light by the same rule it reads the page's theme colour.
+    expect(isDarkColor(BACKING.light)).toBe(false)
+    expect(isDarkColor(BACKING.dark)).toBe(true)
+  })
+
+  it('reads what the page says strictly: a theme and a kind it knows, or nothing', () => {
+    expect(readAppearance({ scheme: 'light', kind: 'work' })).toEqual({ scheme: 'light', kind: 'work' })
+    expect(readAppearance({ scheme: 'dark', kind: 'code', more: 1 })).toEqual({ scheme: 'dark', kind: 'code' })
+    for (const bad of [null, undefined, 'light', 7, {}, { scheme: 'light' }, { kind: 'work' }, { scheme: 'sepia', kind: 'work' }, { scheme: 'light', kind: 'play' }, { scheme: 1, kind: 2 }])
+      expect(readAppearance(bad), JSON.stringify(bad)).toBeNull()
+  })
+
+  it("puts the kind of place in the window's own address, and leaves the address alone for a window that never said", () => {
+    expect(withPlace('tempcode-app://renderer/index.html', { scheme: 'light', kind: 'work' })).toBe('tempcode-app://renderer/index.html?place=work')
+    expect(withPlace('http://localhost:5173/', { scheme: 'dark', kind: 'code' })).toBe('http://localhost:5173/?place=code')
+    expect(withPlace('http://localhost:5173/?x=1', { scheme: 'dark', kind: 'work' })).toBe('http://localhost:5173/?x=1&place=work')
+    expect(withPlace('tempcode-app://renderer/index.html', null)).toBe('tempcode-app://renderer/index.html')
+    expect(withPlace('tempcode-app://renderer/index.html', undefined)).toBe('tempcode-app://renderer/index.html')
   })
 })
 

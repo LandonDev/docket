@@ -9,6 +9,8 @@ const ROOT = '/app/Contents/Resources/app/out/renderer'
 describe('resolveAppPath', () => {
   it('serves files under the renderer root', () => {
     expect(resolveAppPath('tempcode-app://renderer/index.html', ROOT)).toBe(`${ROOT}/index.html`)
+    // A window's address names the kind of place it last showed (windowFrame.ts `withPlace`): the same file.
+    expect(resolveAppPath('tempcode-app://renderer/index.html?place=work', ROOT)).toBe(`${ROOT}/index.html`)
     expect(resolveAppPath('tempcode-app://renderer/assets/index-abc.js', ROOT)).toBe(
       `${ROOT}/assets/index-abc.js`
     )

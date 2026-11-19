@@ -10,7 +10,7 @@ import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { soakWindow } from './soakWindow'
 import { bootMark } from './server/boot'
-import { CAPTION_HEIGHT, captionInk, frameOptions, isDarkColor } from './windowFrame'
+import { CAPTION_HEIGHT, captionInk, frameOptions, isDarkColor, BACKING, readAppearance, withPlace, type WindowAppearance } from './windowFrame'
 
 /**
  * The window registry. Every window has a *slot*: a stable id that names
@@ -42,6 +42,10 @@ interface WindowState {
   width: number
   height: number
   maximized: boolean
+  /** The theme the window last wore and the kind of place it showed, as its page told us
+   *  (`appearance:scheme`): the next launch opens with that backing and that class. Absent
+   *  until a page has said. */
+  appearance?: WindowAppearance
 }
 
 interface StateFile {
@@ -61,9 +65,14 @@ function readWindowState(raw: Partial<WindowState>): WindowState {
     y: typeof raw.y === 'number' ? raw.y : undefined,
     width: Math.max(MIN_WIDTH, Number(raw.width) || DEFAULT_STATE.width),
     height: Math.max(MIN_HEIGHT, Number(raw.height) || DEFAULT_STATE.height),
-    maximized: raw.maximized === true
+    maximized: raw.maximized === true,
+    ...appearanceOf(readAppearance(raw.appearance))
   }
 }
+
+/** `{ appearance }` when there is one, for a spread. */
+const appearanceOf = (appearance: WindowAppearance | null | undefined): { appearance?: WindowAppearance } =>
+  appearance ? { appearance } : {}
 
 let stateFile: StateFile | null = null
 
@@ -106,7 +115,7 @@ function saveStateNow(): void {
   for (const { win, slot } of windows.values()) {
     if (win.isDestroyed()) continue
     const bounds = win.isMaximized() ? win.getNormalBounds() : win.getBounds()
-    file.windows[slot] = { ...bounds, maximized: win.isMaximized() }
+    file.windows[slot] = { ...bounds, maximized: win.isMaximized(), ...appearanceOf(file.windows[slot]?.appearance) }
   }
   const focused = entryOf(targetWindow())
   if (focused) file.focused = focused.slot
@@ -184,11 +193,13 @@ function releaseTransferFor(id: number): void {
 }
 
 /** Bounds for a window with no saved state: a step down and right from the
- *  one in front, so a new window does not hide the old one exactly. */
+ *  one in front, so a new window does not hide the old one exactly. It opens
+ *  in that window's theme, the nearest guess until its own page says. */
 function cascadeFrom(win: BrowserWindow | null): WindowState {
   if (!win || win.isDestroyed()) return { ...DEFAULT_STATE }
   const b = win.getBounds()
-  return { x: b.x + CASCADE, y: b.y + CASCADE, width: b.width, height: b.height, maximized: false }
+  const from = entryOf(win)
+  return { x: b.x + CASCADE, y: b.y + CASCADE, width: b.width, height: b.height, maximized: false, ...appearanceOf(from && loadStateFile().windows[from.slot]?.appearance) }
 }
 
 export function createWindow(opts: { slot?: string; from?: number } = {}): BrowserWindow {
@@ -202,7 +213,10 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
     minHeight: MIN_HEIGHT,
     show: false,
     // The frame per platform (windowFrame.ts): traffic lights on macOS, Windows' own caption buttons over the page.
-    ...frameOptions(process.platform, { dark: nativeTheme.shouldUseDarkColors, icon }),
+    // Its backing and its caption ink are the theme the window last wore; a window that never said takes the
+    // dark backing the app starts in and the system's ink.
+    ...frameOptions(process.platform, { dark: state.appearance ? state.appearance.scheme === 'dark' : nativeTheme.shouldUseDarkColors, icon }),
+    ...(state.appearance ? {} : { backgroundColor: BACKING.dark }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -283,11 +297,12 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    win.loadURL(withPlace(process.env['ELECTRON_RENDERER_URL'], state.appearance))
   } else {
     // The app scheme, not file://: Chromium keeps a V8 code cache for the
     // bundle only on a scheme registered with codeCache (appScheme.ts).
-    win.loadURL(appIndexUrl())
+    // The kind of place the window last showed rides in its address, for boot.js.
+    win.loadURL(withPlace(appIndexUrl(), state.appearance))
   }
 
   if (transfer && transfer.to === null && (opts.from === undefined || transfer.from === opts.from)) {
@@ -453,6 +468,19 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
   ipcMain.handle('window:buttons-visible', (e, visible: boolean) => {
     if (process.platform !== 'darwin') return
     windowOf(e)?.setWindowButtonVisibility(visible !== false)
+  })
+
+  // The page's theme and the kind of place it is on (lib/placeScheme.ts). The window's backing takes
+  // the theme's colour now, and both are kept with its bounds for the next launch.
+  ipcMain.on('appearance:scheme', (e: IpcMainEvent, payload: unknown) => {
+    const appearance = readAppearance(payload)
+    const entry = windows.get(e.sender.id)
+    if (!appearance || !entry || entry.win.isDestroyed()) return
+    const state = loadStateFile().windows[entry.slot]
+    if (state?.appearance?.scheme === appearance.scheme && state.appearance.kind === appearance.kind) return
+    entry.win.setBackgroundColor(BACKING[appearance.scheme])
+    if (state) state.appearance = appearance
+    saveStateSoon()
   })
 
   ipcMain.handle('window:set-zoom', (e, factor: number) => {

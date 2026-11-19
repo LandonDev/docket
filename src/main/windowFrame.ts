@@ -18,6 +18,36 @@ import type { BrowserWindowConstructorOptions, TitleBarOverlayOptions } from 'el
 /** Donor chrome: inset traffic lights. */
 const TRAFFIC_LIGHT = { x: 12, y: 13 }
 export const OPAQUE_BACKGROUND = '#171717'
+/** What the window is made of behind the page, per theme: seen at launch
+ *  before the page paints, and at a resize's edge. Light's is the app's
+ *  `sidebar` (windowFrame.test.ts holds it equal to index.css), so nothing
+ *  flashes dark behind a light window; dark's is held as it was. */
+export const BACKING = { dark: OPAQUE_BACKGROUND, light: '#f1f2f5' } as const
+
+/** The theme a window wears and the kind of place it is on, as the page tells
+ *  main (`appearance:scheme`) and as the window's saved state keeps them. */
+export interface WindowAppearance {
+  scheme: 'dark' | 'light'
+  kind: 'code' | 'work'
+}
+
+/** What the page sent, or what the state file holds, read strictly: null unless both fields are ones we know. */
+export function readAppearance(raw: unknown): WindowAppearance | null {
+  if (!raw || typeof raw !== 'object') return null
+  const { scheme, kind } = raw as Record<string, unknown>
+  if ((scheme !== 'dark' && scheme !== 'light') || (kind !== 'code' && kind !== 'work')) return null
+  return { scheme, kind }
+}
+
+/** A window's address with the kind of place it last showed, so boot.js sets
+ *  that kind's theme before the first paint. localStorage is shared by every
+ *  window; the address is this window's own. */
+export function withPlace(url: string, appearance: WindowAppearance | null | undefined): string {
+  if (!appearance) return url
+  const parsed = new URL(url)
+  parsed.searchParams.set('place', appearance.kind)
+  return parsed.toString()
+}
 
 /** The renderer's title bar is 40px tall (TitleBar.tsx `min-h-10`); the caption buttons fill it. */
 export const CAPTION_HEIGHT = 40
@@ -46,23 +76,24 @@ export function isDarkColor(color: string | null | undefined): boolean {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128
 }
 
-/** The frame's part of a window's options. `icon` is the window icon's path (Linux only: the others take it from the bundle). */
+/** The frame's part of a window's options. `dark` is the theme the window last wore, or the system's for a window that never said; `icon` is the window icon's path (Linux only: the others take it from the bundle). */
 export function frameOptions(
   platform: NodeJS.Platform,
   look: { dark: boolean; icon: string }
 ): BrowserWindowConstructorOptions {
+  const backgroundColor = look.dark ? BACKING.dark : BACKING.light
   if (platform === 'win32') {
     return {
       titleBarStyle: 'hidden',
       titleBarOverlay: captionOverlay(look.dark),
-      backgroundColor: OPAQUE_BACKGROUND
+      backgroundColor
     }
   }
   return {
     autoHideMenuBar: true,
     titleBarStyle: platform === 'darwin' ? 'hiddenInset' : 'default',
     ...(platform === 'darwin' ? { trafficLightPosition: TRAFFIC_LIGHT } : {}),
-    backgroundColor: OPAQUE_BACKGROUND,
+    backgroundColor,
     ...(platform === 'linux' ? { icon: look.icon } : {})
   }
 }

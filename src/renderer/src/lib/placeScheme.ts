@@ -45,7 +45,7 @@ const reducedMotion = (): boolean => !!window.matchMedia?.("(prefers-reduced-mot
  *  opens with that backing colour and that class (src/main/windows.ts). The
  *  web /ui has no main to tell. */
 function tellMain(scheme: ColorScheme): void {
-  (window as { api?: { window?: { setAppearance?: (appearance: { scheme: ColorScheme; kind: PlaceKind }) => void } } }).api?.window?.setAppearance?.({ scheme, kind });
+  (window as { api?: { win?: { setAppearance?: (appearance: { scheme: ColorScheme; kind: PlaceKind }) => void } } }).api?.win?.setAppearance?.({ scheme, kind });
 }
 
 /**
