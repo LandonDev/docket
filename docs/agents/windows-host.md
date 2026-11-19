@@ -109,7 +109,22 @@ A standard Windows user may make a junction but no symlink, file or directory (s
 ## Proof
 
 Unit tests beside each module, with platform and paths injected, run on Linux; the same files run
-in the rig on tcuser's desktop (`run-in-session.sh`), with the POSIX-only fixtures (symlinks, sh
-scripts) skipped there. procTree.win32.test.ts runs only on Windows: Job Objects, taskkill /T,
-CIM, netstat, Git Bash and a ConPTY PowerShell. The in-app proof (a Claude and a Codex thread
-running a turn, a terminal, Stop ending a tree) is in .temp-code/plans/landed/M13.md.
+in the rig on tcuser's desktop (`run-in-session.sh`; CIM and taskkill refuse a standard user over
+SSH), with the POSIX-only fixtures (symlinks, sh scripts) skipped there: 116 pass on Windows.
+procTree.win32.test.ts runs only on Windows: a detached grandchild outliving its parent with no
+job and dying with ours, Git Bash's background and foreground children ended with the job, taskkill
+/T, CIM, netstat, Git Bash's cwd and PATH, and a ConPTY PowerShell.
+
+In the app (a TempCodeE2E test build installed as the standard user, driven over its own socket and
+CDP from the guest, 2026-11-19): a Codex thread ran a shell tool (PowerShell) and answered, through
+the gateway's HTTPS port with the CA made by Git's openssl; a build ran in Git Bash in the project
+folder and Cancel left no process and read `cancelled`; Stop on a Codex turn whose command had
+started a detached grandchild left neither; killing the app-server alone took its command's tree
+with it (the job); a terminal ran PowerShell under ConPTY in the project folder, and its kill left
+no shell. A Claude thread's CLI started under the owned root (junctions and copies) and reached
+Anthropic, which answered with the account's weekly limit: a full Claude turn is not proven.
+Shots and the account in .temp-code/plans/landed/M13.md.
+
+Two things a proof on a fresh profile needs: the Codex account captured into the app's account
+store (Accounts, or `window.aliax.capture('codex')`; the gateway refuses an account it has not
+saved), and a desktop session for anything that reads CIM.
