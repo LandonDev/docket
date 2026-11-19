@@ -166,7 +166,7 @@ struct OutboxItemScreen: View {
     }
 
     private func bar(_ item: OutboxItem, client: EnvironmentClient, editable: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Button("Discard", role: .destructive) { confirmDiscard = true }
                 .font(.body)
                 .foregroundStyle(Tint.destructive)
