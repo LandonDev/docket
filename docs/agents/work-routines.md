@@ -42,7 +42,9 @@ as failed and a fresh run starts.
 Run states: `starting`, `running`, then, once its thread has worked and
 every thread under it is done, `quiet` (nothing held, nothing asked, no
 failure: its thread is marked read), `held` (`Held N`: acts in
-`work_held_acts` plus LifeOS drafts the tree made; unread), `asked`
+`work_held_acts` plus the LifeOS drafts still waiting whose origin names
+the run, read from the Outbox's own list while it watches LifeOS, else
+counted from the tree's transcripts; unread), `asked`
 (unread), `failed` (unread), `fired` (a watch woke its thread), `skipped`
 (unused yet).
 
