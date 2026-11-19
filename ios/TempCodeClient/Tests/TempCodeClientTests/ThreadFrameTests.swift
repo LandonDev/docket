@@ -51,8 +51,9 @@ private let pendingApproval: [AgentEvent] = [
     }
 
     @Test("titles and ids") func titlesAndIds() {
-        #expect(ThreadSegment.allCases.map(\.title) == ["Board", "Chat", "Plan", "Fleet", "Log", "Sources"])
+        #expect(ThreadSegment.allCases.map(\.title) == ["Board", "Chat", "Plan", "Fleet", "Log", "Sources", "Item"])
         #expect(ThreadSegment.sources.id == "sources")
+        #expect(ThreadSegment.item.id == "item")
     }
 }
 
