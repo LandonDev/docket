@@ -6,6 +6,7 @@ import type { ServerPush } from "@server/shared/contract";
 import { registry } from "../lib/connection/registry";
 import { isLightScheme, SCHEME_CHANGE_EVENT } from "../lib/appearance";
 import { fitTerminal } from "../lib/terminalLayout";
+import { TERMINAL_OPTIONS } from "../lib/terminalPalette";
 import { monoFont, terminalTheme } from "./TerminalView";
 import "@xterm/xterm/css/xterm.css";
 
@@ -51,8 +52,7 @@ export function DevConsole({ source, active }: { source: DevConsoleSource; activ
       fontSize: 13,
       lineHeight: 1,
       scrollback: 10_000,
-      allowTransparency: true,
-      smoothScrollDuration: 0,
+      ...TERMINAL_OPTIONS,
       theme: terminalTheme(isLightScheme()),
     });
     term.open(host);

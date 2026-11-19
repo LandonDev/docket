@@ -186,19 +186,22 @@
   /* Runner sprites keep their coin and star colours in both themes. */
   --composer-coin: #e8b923;
   --composer-star: #f4e27a;
-  /* Monaco completion kinds follow the editor syntax palette. */
+  /* Monaco's completion list (IDEA's popup). A kind's name is text on the
+     popover and on the highlighted row, a value per theme. A kind's badge is
+     a disc with a white letter: one fill in both themes, each dark enough to
+     carry the letter at 4.5:1 (lib/tokenContrast.test.ts). */
   --editor-type-name: #6c9edd;
   --editor-constant-name: #c0a85c;
-  --editor-keyword-name: #cc7832;
-  --editor-symbol-foreground: #fff;
+  --editor-keyword-name: #cf7b36;
+  --editor-symbol-foreground: #ffffff;
   --editor-symbol-text: #6b6e76;
-  --editor-symbol-class: #4a7cf0;
-  --editor-symbol-interface: #34a05a;
-  --editor-symbol-enum: #b07203;
-  --editor-symbol-method: #c75450;
-  --editor-symbol-field: #c77dbb;
-  --editor-symbol-variable: #4a9aa6;
-  --editor-symbol-keyword: #787878;
+  --editor-symbol-class: #3e6ee1;
+  --editor-symbol-interface: #0b8743;
+  --editor-symbol-enum: #a46700;
+  --editor-symbol-method: #c2504c;
+  --editor-symbol-field: #a35c98;
+  --editor-symbol-variable: #2c7f8b;
+  --editor-symbol-keyword: #757575;
   /* Motion: four durations and four curves, plus the layout spring as CSS
      (the layout duration and curve are SPRING_LAYOUT_CSS, critically damped,
      held equal by lib/ease.test.ts). Springs are in lib/ease.ts.
@@ -274,6 +277,8 @@ html.theme-light {
   --composer-coin: #e8b923;
   --composer-star: #f4e27a;
   --editor-type-name: #2a5fb0;
+  --editor-constant-name: #7f6815;
+  --editor-keyword-name: #a65500;
   /* Slate (docs/DESIGN.md "The light theme"): content and every floating
      layer white, chrome and the regions inside content stepping down from it
      in the dark theme's own hue. Every pair is held to the contrast contract

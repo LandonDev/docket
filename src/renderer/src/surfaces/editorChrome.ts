@@ -11,6 +11,7 @@ import { tags } from "@lezer/highlight";
 import { cspStyleNonce } from "../lib/csp";
 import { basename } from "../lib/fs";
 import type { ColorScheme } from "../lib/appearance";
+import { HIGHLIGHT_INKS } from "../lib/editorPalette";
 
 function editorThemeStyles(dark: boolean) {
   return EditorView.theme(
@@ -214,33 +215,22 @@ const HIGHLIGHT_TAGS = {
   ],
 };
 
-// Pastel-on-dark palette.
-const HIGHLIGHT_DARK = HighlightStyle.define([
-  { tag: HIGHLIGHT_TAGS.keyword, color: "#ff8ffd" },
-  { tag: HIGHLIGHT_TAGS.heading, color: "var(--color-markdown-heading)" },
-  { tag: HIGHLIGHT_TAGS.callable, color: "#a5d5fe" },
-  { tag: HIGHLIGHT_TAGS.string, color: "#b4fa72" },
-  { tag: HIGHLIGHT_TAGS.type, color: "#ff8272" },
-  { tag: HIGHLIGHT_TAGS.number, color: "#b4fa72" },
-  { tag: HIGHLIGHT_TAGS.comment, color: "#fefdc2" },
-  { tag: HIGHLIGHT_TAGS.property, color: "#d0d1fe" },
-  { tag: HIGHLIGHT_TAGS.meta, color: "#8e8e8e" },
-  { tag: tags.invalid, color: "#ffc4bd", textDecoration: "underline" },
-]);
+const highlightStyle = (inks: (typeof HIGHLIGHT_INKS)[ColorScheme]) =>
+  HighlightStyle.define([
+    { tag: HIGHLIGHT_TAGS.keyword, color: inks.keyword },
+    { tag: HIGHLIGHT_TAGS.heading, color: "var(--color-markdown-heading)" },
+    { tag: HIGHLIGHT_TAGS.callable, color: inks.callable },
+    { tag: HIGHLIGHT_TAGS.string, color: inks.string },
+    { tag: HIGHLIGHT_TAGS.type, color: inks.type },
+    { tag: HIGHLIGHT_TAGS.number, color: inks.number },
+    { tag: HIGHLIGHT_TAGS.comment, color: inks.comment },
+    { tag: HIGHLIGHT_TAGS.property, color: inks.property },
+    { tag: HIGHLIGHT_TAGS.meta, color: inks.meta },
+    { tag: tags.invalid, color: inks.invalid, textDecoration: "underline" },
+  ]);
 
-// One-Light-family palette tuned for a near-white canvas.
-const HIGHLIGHT_LIGHT = HighlightStyle.define([
-  { tag: HIGHLIGHT_TAGS.keyword, color: "#a626a4" },
-  { tag: HIGHLIGHT_TAGS.heading, color: "var(--color-markdown-heading)" },
-  { tag: HIGHLIGHT_TAGS.callable, color: "#4078f2" },
-  { tag: HIGHLIGHT_TAGS.string, color: "#50a14f" },
-  { tag: HIGHLIGHT_TAGS.type, color: "#c18401" },
-  { tag: HIGHLIGHT_TAGS.number, color: "#986801" },
-  { tag: HIGHLIGHT_TAGS.comment, color: "#8a9199" },
-  { tag: HIGHLIGHT_TAGS.property, color: "#e45649" },
-  { tag: HIGHLIGHT_TAGS.meta, color: "#5c6370" },
-  { tag: tags.invalid, color: "#cf222e", textDecoration: "underline" },
-]);
+const HIGHLIGHT_DARK = highlightStyle(HIGHLIGHT_INKS.dark);
+const HIGHLIGHT_LIGHT = highlightStyle(HIGHLIGHT_INKS.light);
 
 export function editorHighlightStyleFor(scheme: ColorScheme) {
   return scheme === "light" ? HIGHLIGHT_LIGHT : HIGHLIGHT_DARK;

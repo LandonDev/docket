@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { contrast, luminance, over, resolve, themes, type Theme } from "./colourMath";
+import { HIGHLIGHT_INKS } from "./editorPalette";
+import { DARCULA, LIGHT } from "./intellijTheme";
+import { ANSI } from "./terminalPalette";
 
 /**
  * The contrast contract (docs/DESIGN.md "The light theme"): every pair of
@@ -18,7 +21,8 @@ const SURFACES = ["--background", "--sidebar", "--card", "--popover", "--muted",
 const PAGE = ["--background", "--card"];
 const EDGE_GROUNDS = ["--background", "--sidebar", "--card"];
 
-const value = (theme: Theme, token: string): string => resolve(theme, `var(${token})`);
+/** A token's value in a theme; a literal colour (a palette table's ink) is itself. */
+const value = (theme: Theme, token: string): string => (token.startsWith("--") ? resolve(theme, `var(${token})`) : token);
 /** `ink` on `ground`: either may be thin, and is then laid over what is under it (`ground`, then `base`). */
 function ratio(theme: Theme, ink: string, ground: string, base = "--background"): number {
   const under = over(value(theme, ground), value(theme, base));
@@ -81,6 +85,33 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
 ];
 
 /**
+ * Code draws with palettes of its own (docs/DESIGN.md "The light theme"):
+ * the editor's two syntax themes, CodeMirror's two tables and the terminal's
+ * sixteen colours per theme, each on the pane, which is `background`. A
+ * comment may be missed (3:1); everything else is read (4.5:1). Monaco's
+ * completion list names a kind in colour on the popover and on its
+ * highlighted row (`muted`), and letters a kind's badge on a fill of its own.
+ */
+const SYNTAX = { dark: { intellij: DARCULA, codemirror: HIGHLIGHT_INKS.dark, ansi: ANSI.dark }, light: { intellij: LIGHT, codemirror: HIGHLIGHT_INKS.light, ansi: ANSI.light } };
+const QUIET_INKS = new Set(["comment", "docComment"]);
+// A program's black on a dark pane: under the floor by value, lifted by xterm as it draws
+// (TERMINAL_OPTIONS.minimumContrastRatio, held by TerminalView.dom.test.tsx).
+const ANSI_LIFTED = { dark: { black: 1.16, brightBlack: 3.84 }, light: {} } as Record<"dark" | "light", Record<string, number>>;
+const KIND_NAMES = ["--editor-type-name", "--editor-constant-name", "--editor-keyword-name"];
+const KIND_BADGES = ["text", "class", "interface", "enum", "method", "field", "variable", "keyword"].map((kind) => `--editor-symbol-${kind}`);
+
+function codePairs(name: "dark" | "light"): { label: string; ink: string; on: string; floor: number }[] {
+  const { intellij, codemirror, ansi } = SYNTAX[name];
+  return [
+    ...Object.entries(intellij).filter(([key]) => key !== "bg").map(([key, ink]) => ({ label: `intellij ${key}`, ink, on: "--background", floor: QUIET_INKS.has(key) ? 3 : 4.5 })),
+    ...Object.entries(codemirror).map(([key, ink]) => ({ label: `codemirror ${key}`, ink, on: "--background", floor: QUIET_INKS.has(key) ? 3 : 4.5 })),
+    ...Object.entries(ansi).filter(([key]) => !(key in ANSI_LIFTED[name])).map(([key, ink]) => ({ label: `ansi ${key}`, ink, on: "--background", floor: 4.5 })),
+    ...KIND_NAMES.flatMap((ink) => ["--popover", "--muted"].map((on) => ({ label: ink, ink, on, floor: 4.5 }))),
+    ...KIND_BADGES.map((on) => ({ label: "a badge's letter", ink: "--editor-symbol-foreground", on, floor: 4.5 })),
+  ];
+}
+
+/**
  * Named exceptions: colours that are someone else's or a picture's, one
  * value per person or sector wherever they are drawn. Each is held at its
  * measured ratio, so a change to one is seen here. None is the only cue:
@@ -117,6 +148,18 @@ describe("the contrast contract", () => {
         expect(under, `under ${tier.floor}:1`).toEqual([]);
       });
     }
+
+    it(`code: every syntax ink, ANSI colour, kind name and badge letter in the ${name} theme`, () => {
+      const measured = codePairs(name).map((p) => ({ ...p, ratio: ratio(theme, p.ink, p.on) }));
+      expect(measured.length).toBeGreaterThan(45);
+      if (process.env.TOKEN_CONTRAST_PRINT) {
+        const low = measured.reduce((a, b) => (b.ratio / b.floor < a.ratio / a.floor ? b : a));
+        console.log(`${name} code: lowest ${low.label} on ${low.on} ${low.ratio.toFixed(2)} (floor ${low.floor})`);
+      }
+      expect(measured.filter((p) => p.ratio < p.floor).map((p) => `${p.label} ${p.ink} on ${p.on}: ${p.ratio.toFixed(2)} under ${p.floor}`)).toEqual([]);
+      const lifted = Object.entries(ANSI_LIFTED[name]).map(([key, r]) => `${key}: ${r.toFixed(2)}`);
+      expect(Object.keys(ANSI_LIFTED[name]).map((key) => `${key}: ${ratio(theme, SYNTAX[name].ansi[key as keyof typeof ANSI.dark], "--background").toFixed(2)}`)).toEqual(lifted);
+    });
 
     it(`holds each named exception at its measured ratio in the ${name} theme`, () => {
       const measured = EXCEPTIONS.map((e) => `${e.ink} on ${e.on}: ${ratio(theme, e.ink, e.on).toFixed(2)}`);

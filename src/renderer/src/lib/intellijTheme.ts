@@ -4,7 +4,10 @@ import type { ThemeRegistration } from "shiki";
  * IntelliJ IDEA's editor palettes as TextMate themes (IntelliJ Light and
  * Darcula) for the Monaco editor, which overlays its workbench colors on
  * top (monaco/theme.ts). The transcript's code blocks use the neutral
- * transcriptCodeTheme.ts instead.
+ * transcriptCodeTheme.ts instead. The editor's ground is the app's
+ * `background`, not the palette's own `bg`: every ink reaches 4.5:1 on it
+ * (a comment 3:1), so IntelliJ Light's annotation gold is a step darker than
+ * IDEA's (lib/tokenContrast.test.ts).
  */
 
 export interface Tone {
@@ -20,6 +23,7 @@ export interface Tone {
   func: string;
   tag: string;
   attribute: string;
+  deleted: string;
 }
 
 export const DARCULA: Tone = {
@@ -35,6 +39,7 @@ export const DARCULA: Tone = {
   func: "#FFC66D",
   tag: "#E8BF6A",
   attribute: "#BABABA",
+  deleted: "#CF5B56",
 };
 
 export const LIGHT: Tone = {
@@ -45,11 +50,12 @@ export const LIGHT: Tone = {
   keyword: "#0033B3",
   string: "#067D17",
   number: "#1750EB",
-  annotation: "#9E880D",
+  annotation: "#897400",
   field: "#871094",
   func: "#00627A",
   tag: "#0033B3",
   attribute: "#174AD4",
+  deleted: "#C22D2D",
 };
 
 function theme(name: string, type: "light" | "dark", t: Tone): ThemeRegistration {
@@ -106,7 +112,7 @@ function theme(name: string, type: "light" | "dark", t: Tone): ThemeRegistration
       rule("entity.other.attribute-name", t.attribute),
       rule("markup.heading", t.keyword),
       rule("markup.inserted", t.string),
-      rule("markup.deleted", type === "dark" ? "#CF5B56" : "#C22D2D"),
+      rule("markup.deleted", t.deleted),
       { scope: "markup.italic", settings: { fontStyle: "italic" } },
       { scope: "markup.bold", settings: { fontStyle: "bold" } },
     ],

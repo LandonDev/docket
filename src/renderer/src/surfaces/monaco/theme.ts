@@ -128,9 +128,10 @@ export function readPalette(dark: boolean): Record<string, string> {
     "editorSuggestWidget.background": dark ? "#2B2D30" : "#F7F8FA",
     "editorSuggestWidget.border": dark ? "#1E1F22" : "#C9CCD6",
     "editorSuggestWidget.foreground": dark ? "#BCBEC4" : "#000000",
-    "editorSuggestWidget.selectedBackground": dark ? "#393B40" : "#D5E1FF",
-    "editorSuggestWidget.selectedForeground": dark ? "#FFFFFF" : "#080808",
-    "editorSuggestWidget.selectedIconForeground": dark ? "#FFFFFF" : "#080808",
+    // The highlighted row is the muted fill with foreground ink, as in every menu.
+    "editorSuggestWidget.selectedBackground": solid("--muted", mix(10)),
+    "editorSuggestWidget.selectedForeground": content,
+    "editorSuggestWidget.selectedIconForeground": content,
     "editorSuggestWidget.focusHighlightForeground": dark ? "#FFFFFF" : "#000000",
     "editorSuggestWidget.highlightForeground": dark ? "#FFFFFF" : "#000000",
     "editorHoverWidget.background": popover,

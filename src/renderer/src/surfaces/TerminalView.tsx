@@ -17,6 +17,7 @@ import {
   type TerminalMetaPatch,
 } from "../lib/terminalTab";
 import { isLightScheme, SCHEME_CHANGE_EVENT } from "../lib/appearance";
+import { ANSI, TERMINAL_FALLBACK, TERMINAL_OPTIONS } from "../lib/terminalPalette";
 import {
   applyTerminalChrome,
   fitTerminal,
@@ -47,51 +48,6 @@ function cssColor(expr: string, fallback: string): string {
   return color || fallback;
 }
 
-const ANSI_DARK = {
-  black: "#1d2428",
-  red: "#f87171",
-  green: "#4ade80",
-  yellow: "#fbbf24",
-  blue: "#60a5fa",
-  magenta: "#c084fc",
-  cyan: "#22d3ee",
-  white: "#e8eef2",
-  brightBlack: "#64748b",
-  brightRed: "#fca5a5",
-  brightGreen: "#86efac",
-  brightYellow: "#fde68a",
-  brightBlue: "#93c5fd",
-  brightMagenta: "#d8b4fe",
-  brightCyan: "#67e8f9",
-  brightWhite: "#f8fafc",
-};
-
-// One-Light-family palette tuned for a near-white canvas.
-const ANSI_LIGHT = {
-  black: "#383a42",
-  red: "#e45649",
-  green: "#50a14f",
-  yellow: "#c18401",
-  blue: "#4078f2",
-  magenta: "#a626a4",
-  cyan: "#0184bc",
-  white: "#fafafa",
-  brightBlack: "#7c8591",
-  brightRed: "#df6b60",
-  brightGreen: "#68b567",
-  brightYellow: "#d19a2f",
-  brightBlue: "#5c89f5",
-  brightMagenta: "#b54bb3",
-  brightCyan: "#1f9cc9",
-  brightWhite: "#ffffff",
-};
-
-// The chrome's colours are the tokens'; these are their values for a page without the stylesheet.
-const FALLBACK = {
-  dark: { foreground: "#e7e8ea", background: "#141516", accent: "#459bf7" },
-  light: { foreground: "#151618", background: "#ffffff", accent: "#0a77eb" },
-};
-
 /** xterm's three slider colours, each the scrollbar token of that state. */
 export const TERMINAL_SCROLLBAR_TOKENS = {
   scrollbarSliderBackground: "--scrollbar-thumb",
@@ -105,21 +61,23 @@ function terminalScrollbar(): Record<keyof typeof TERMINAL_SCROLLBAR_TOKENS, str
 }
 
 export function terminalTheme(light: boolean) {
-  const fallback = light ? FALLBACK.light : FALLBACK.dark;
+  const fallback = light ? TERMINAL_FALLBACK.light : TERMINAL_FALLBACK.dark;
+  const foreground = cssColor("var(--color-foreground)", fallback.foreground);
+  const ink = hexOf(foreground, fallback.foreground);
+  const ground = hexOf(cssColor("var(--color-background)", fallback.background), fallback.background);
   return {
-    background: "#00000000",
-    foreground: cssColor("var(--color-foreground)", fallback.foreground),
+    // The pane paints the ground. xterm is told its colour at zero alpha, so reverse video and
+    // the contrast floor (TERMINAL_OPTIONS) work from the colour on screen, not from black.
+    background: `${ground}00`,
+    foreground,
     cursor: cssColor("var(--color-accent)", fallback.accent),
-    cursorAccent: light ? "#ffffff" : "#000000",
-    selectionBackground: light
-      ? "rgba(0,0,0,0.18)"
-      : "rgba(255,255,255,0.18)",
-    selectionInactiveBackground: light
-      ? "rgba(0,0,0,0.08)"
-      : "rgba(255,255,255,0.08)",
+    cursorAccent: ground,
+    // A selection is the ink at 18%, and at 8% while the terminal is not focused.
+    selectionBackground: `${ink}2e`,
+    selectionInactiveBackground: `${ink}14`,
     // The app's scrollbar tokens (docs/DESIGN.md "Scrolling"); index.css sizes the bar.
     ...terminalScrollbar(),
-    ...(light ? ANSI_LIGHT : ANSI_DARK),
+    ...(light ? ANSI.light : ANSI.dark),
   };
 }
 
@@ -158,7 +116,7 @@ export function hexOf(color: string, fallback: string): string {
 /** OSC 10/11/12 replies, so CLIs (vim, tmux, …) see the colours on screen: the theme's text and cursor, the content background. */
 export function oscColors(light = isLightScheme()) {
   const theme = terminalTheme(light);
-  const fallback = light ? FALLBACK.light : FALLBACK.dark;
+  const fallback = light ? TERMINAL_FALLBACK.light : TERMINAL_FALLBACK.dark;
   return {
     fg: hexOf(theme.foreground, fallback.foreground),
     bg: hexOf(cssColor("var(--color-background)", fallback.background), fallback.background),
@@ -206,8 +164,7 @@ function ShellTerminal({ id, cwd, active, onMetaChange }: Props) {
       lineHeight: 1,
       letterSpacing: 0,
       scrollback: 5000,
-      allowTransparency: true,
-      smoothScrollDuration: 0,
+      ...TERMINAL_OPTIONS,
       theme: terminalTheme(isLightScheme()),
       macOptionIsMeta: IS_MAC,
     });
