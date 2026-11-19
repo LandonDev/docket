@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
-import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceDenied, fenceRequest, fencedPaths, insideRoots, requestBases, workSourcePaths } from './fence'
+import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceDenied, fenceRequest, fencedPaths, insideRoots, plainWindowsPath, requestBases, workSourcePaths } from './fence'
 import { isWorkMethod } from '@shared/work/wire'
 
 /** R2 H1/H2: the real-path fence every remote request passes before a handler runs. */
@@ -354,5 +354,30 @@ describe('Work: a file named inside a CanvasSource', () => {
   it('a Work workspace names no folder, so workspace.create fences only a path it is given', () => {
     expect(fencedPaths(req('workspace.create', { kind: 'work', name: 'Purdue', sector: 'purdue' }))).toEqual([])
     expect(fencedPaths(req('workspace.create', { path: '/w' }))).toEqual(['/w'])
+  })
+})
+
+describe('the fence on a Windows host', () => {
+  it('takes a drive path, a relative one and ~', () => {
+    for (const p of ['C:\\Users\\u\\work\\a.ts', 'c:/Users/u/work', 'work\\a.ts', '~\\work', '~']) expect(plainWindowsPath(p)).toBe(true)
+  })
+
+  it('refuses UNC shares, device paths, stream names, drive-relative paths and POSIX roots', () => {
+    for (const p of ['\\\\host\\share\\x', '//host/share/x', '\\\\?\\C:\\x', '\\\\.\\PhysicalDrive0', 'C:\\work\\a.txt:hidden', 'C:\\work\\a.txt::$DATA', 'C:work', '\\work', '/srv/agents/work']) {
+      expect(plainWindowsPath(p)).toBe(false)
+      expect(insideRoots(p, ['/'], 'win32')).toBe(false)
+    }
+  })
+
+  it('compares case-blind on win32 only', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'tc-fence-case-')))
+    mkdirSync(join(root, 'Work'))
+    try {
+      expect(insideRoots(join(root, 'Work', 'a'), [join(root, 'work')], 'linux')).toBe(false)
+      // A POSIX path cannot pass the win32 rules here, so the folding is checked through a relative path under the cwd.
+      expect(insideRoots('a', [process.cwd().toUpperCase()], 'win32')).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

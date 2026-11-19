@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { failedGateStep, gateFailureDetail, gateLine, gateReason, isErrorLine, typecheckErrorCount } from '@shared/gate'
-import { gateCommand, gateEnv, nodeBinary, parseGateStub, runGateStep, tailOf } from './gateRun'
+import { bunBinary, gateCommand, gateEnv, nodeBinary, parseGateStub, runGateStep, tailOf } from './gateRun'
 
 describe('gateRun', () => {
   it('names each step\'s command', () => {
@@ -136,5 +136,16 @@ describe('gate lines', () => {
     expect(gateLine({ step: 'typecheck', branch: 'b', ok: true, log: '', at: 1 })).toBe('Typecheck passed on b')
     expect(gateLine({ step: 'gate', branch: 'master', ok: false, log: '✗ vitest 1s failed', at: 1 })).toBe('Gate failed on master, at vitest')
     expect(gateLine({ step: 'release', branch: 'master', ok: false, log: '', at: 1 })).toBe('Release failed on master')
+  })
+})
+
+describe('the gate tools on win32', () => {
+  it("finds node.exe on Windows' Path and bun.exe under ~/.bun", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-gate-win-'))
+    writeFileSync(join(dir, 'node.exe'), '')
+    mkdirSync(join(dir, '.bun', 'bin'), { recursive: true })
+    writeFileSync(join(dir, '.bun', 'bin', 'bun.exe'), '')
+    expect(nodeBinary({ Path: `C:\\nowhere;${dir}` }, 'win32')).toBe(join(dir, 'node.exe'))
+    expect(bunBinary({ HOME: dir }, 'win32')).toBe(join(dir, '.bun', 'bin', 'bun.exe'))
   })
 })

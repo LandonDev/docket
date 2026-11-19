@@ -50,11 +50,27 @@ export function realSpelling(path: string): string {
   }
 }
 
-/** Strict containment on a segment boundary, real path against real root. */
-export function insideRoots(path: string, roots: readonly string[]): boolean {
-  const real = realSpelling(expandPath(path))
+/**
+ * A path a Windows host may take from a remote caller: a drive path (`C:\…`),
+ * a relative one or `~`. Never a UNC share or device path (`\\host\share`,
+ * `\\?\`, `\\.\`, `//host`), an alternate data stream (`file.txt:hidden`),
+ * a drive-relative `C:foo`, or a root with no drive (`\x`, the box's `/srv/…`).
+ */
+export function plainWindowsPath(path: string): boolean {
+  if (/^[\\/]/.test(path)) return false
+  const drive = /^[a-zA-Z]:/.test(path)
+  if (drive && !/^[a-zA-Z]:[\\/]/.test(path)) return false
+  return !(drive ? path.slice(2) : path).includes(':')
+}
+
+/** Strict containment on a segment boundary, real path against real root; on win32 also case-blind, and only for a plain Windows path. */
+export function insideRoots(path: string, roots: readonly string[], platform: NodeJS.Platform = process.platform): boolean {
+  if (platform === 'win32' && !plainWindowsPath(path)) return false
+  // NTFS names are case-blind: C:\Work and c:\work are one folder.
+  const fold = (p: string): string => (platform === 'win32' ? p.toLowerCase() : p)
+  const real = fold(realSpelling(expandPath(path)))
   return roots.some((root) => {
-    const r = realSpelling(resolve(root))
+    const r = fold(realSpelling(resolve(root)))
     return real === r || real.startsWith(r + sep)
   })
 }

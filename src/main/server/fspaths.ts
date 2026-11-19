@@ -175,7 +175,8 @@ function isPrivateDir(path: string): boolean {
 
 function isIndexableRoot(root: string): boolean {
   if (isPrivateDir(root) || dirname(root) === root) return false
-  const broad = [homedir(), '/Users', '/Applications', '/Volumes', '/home']
+  // Windows: the profiles folder (C:\Users) is as broad as /Users; a drive root is caught above.
+  const broad = [homedir(), '/Users', '/Applications', '/Volumes', '/home', ...(process.platform === 'win32' ? [dirname(homedir())] : [])]
   return !broad.some((item) => resolve(root) === resolve(item))
 }
 

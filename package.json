@@ -34,7 +34,7 @@
     "dev": "electron-vite dev",
     "dev:prod": "env -u ELECTRON_RUN_AS_NODE TEMP_CODE_USER_DATA=\"$HOME/Library/Application Support/temp-code\" TEMP_CODE_DEBUG_PORT=9220 electron-vite dev",
     "build": "npm run typecheck && electron-vite build && bun scripts/check-bundle-size.ts",
-    "postinstall": "electron-builder install-app-deps && chmod +x node_modules/node-pty/prebuilds/*/spawn-helper",
+    "postinstall": "electron-builder install-app-deps && node -e \"process.platform === 'win32' || require('child_process').execSync('chmod +x node_modules/node-pty/prebuilds/*/spawn-helper', { stdio: 'inherit' })\"",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac --publish never",

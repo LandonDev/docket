@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { X509Certificate } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileP = promisify(execFile)
@@ -30,7 +30,14 @@ export interface TlsMaterial {
 }
 
 export const ALIAX_TLS_DIR = join(homedir(), '.aliax', 'tls')
-const OPENSSL = ['/opt/homebrew/bin/openssl', '/usr/local/bin/openssl', '/usr/bin/openssl'].find(existsSync) ?? 'openssl'
+/** openssl: Homebrew's, the system's, or on Windows the one Git for Windows carries (native first; no other is there by default). */
+export function opensslPath(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, exists: (path: string) => boolean = existsSync): string {
+  if (platform !== 'win32') return ['/opt/homebrew/bin/openssl', '/usr/local/bin/openssl', '/usr/bin/openssl'].find(exists) ?? 'openssl'
+  const roots = [env.ProgramFiles, env.LOCALAPPDATA && win32.join(env.LOCALAPPDATA, 'Programs')].filter((r): r is string => !!r)
+  const found = roots.flatMap((r) => ['ucrt64', 'mingw64', 'usr'].map((d) => win32.join(r, 'Git', d, 'bin', 'openssl.exe'))).find(exists)
+  return found ?? 'openssl.exe'
+}
+const OPENSSL = opensslPath()
 const RENEW_WITHIN_MS = 7 * 86_400_000
 
 /** A readable, unexpired (for at least a week) cert/key/ca trio in `dir`, else null. */
@@ -96,7 +103,9 @@ export async function makeCertificate(dir: string, caName: string): Promise<void
     ].join('\n')
   )
   const ec = ['ecparam', '-name', 'prime256v1', '-genkey', '-noout']
-  const run = (args: string[]): Promise<unknown> => execFileP(OPENSSL, args, { timeout: 20_000 })
+  // Git's openssl on Windows has no default config where it looks: the CA's (prompt off, -subj overrides its name) stands in.
+  const env = process.platform === 'win32' ? { ...process.env, OPENSSL_CONF: at('ca.cnf') } : undefined
+  const run = (args: string[]): Promise<unknown> => execFileP(OPENSSL, args, { timeout: 20_000, ...(env ? { env, windowsHide: true } : {}) })
   try {
     await run([...ec, '-out', at('ca-key.pem')])
     await run(['req', '-x509', '-new', '-key', at('ca-key.pem'), '-out', at('ca.pem'), '-days', '3650', '-config', at('ca.cnf')])

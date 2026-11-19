@@ -3,7 +3,7 @@ import { X509Certificate } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { loadTls, makeCertificate, readTlsDir } from './tls'
+import { loadTls, makeCertificate, opensslPath, readTlsDir } from './tls'
 
 const root = mkdtempSync(join(tmpdir(), 'temp-code-tls-'))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -44,4 +44,14 @@ describe('tls material', () => {
     expect(made?.caPath).toBe(join(data, 'tls', 'ca.pem'))
     expect(new X509Certificate(require('node:fs').readFileSync(made!.caPath)).subject).toContain('TempCode Local CA')
   }, 30_000)
+})
+
+describe('opensslPath', () => {
+  it("takes Git for Windows' native openssl on win32, and the usual places elsewhere", () => {
+    const env = { ProgramFiles: 'C:\\Program Files' }
+    expect(opensslPath('win32', env, (p) => p === 'C:\\Program Files\\Git\\usr\\bin\\openssl.exe' || p === 'C:\\Program Files\\Git\\ucrt64\\bin\\openssl.exe')).toBe('C:\\Program Files\\Git\\ucrt64\\bin\\openssl.exe')
+    expect(opensslPath('win32', env, () => false)).toBe('openssl.exe')
+    expect(opensslPath('darwin', {}, (p) => p === '/opt/homebrew/bin/openssl')).toBe('/opt/homebrew/bin/openssl')
+    expect(opensslPath('linux', {}, () => false)).toBe('openssl')
+  })
 })

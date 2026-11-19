@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { pathOf } from './loginShell'
 import { GATE_LOG_TAIL, isErrorLine, type GateStep } from '@shared/gate'
 import { trackChild } from './spawnBudget'
 
@@ -61,10 +62,11 @@ export interface GateStubRule {
 export const DEFAULT_GATE_TIMEOUT_MS = 60 * 60_000
 
 /** bun as the app finds it: BUN_INSTALL, the user's ~/.bun, Homebrew, else PATH. */
-export function bunBinary(env: NodeJS.ProcessEnv = process.env): string {
+export function bunBinary(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  const bun = platform === 'win32' ? 'bun.exe' : 'bun'
   const candidates = [
-    env.BUN_INSTALL ? join(env.BUN_INSTALL, 'bin', 'bun') : null,
-    join(env.HOME ?? homedir(), '.bun', 'bin', 'bun'),
+    env.BUN_INSTALL ? join(env.BUN_INSTALL, 'bin', bun) : null,
+    join(env.HOME ?? homedir(), '.bun', 'bin', bun),
     '/opt/homebrew/bin/bun',
     '/usr/local/bin/bun'
   ]
@@ -72,8 +74,8 @@ export function bunBinary(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /** node as the app finds it when its own PATH has none: Homebrew, /usr/local, else nothing. */
-export function nodeBinary(env: NodeJS.ProcessEnv = process.env): string | null {
-  const onPath = (env.PATH ?? '').split(':').filter(Boolean).map((d) => join(d, 'node'))
+export function nodeBinary(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | null {
+  const onPath = pathOf(env, platform).split(platform === 'win32' ? ';' : ':').filter(Boolean).map((d) => join(d, platform === 'win32' ? 'node.exe' : 'node'))
   return [...onPath, '/opt/homebrew/bin/node', '/usr/local/bin/node'].find((c) => existsSync(c)) ?? null
 }
 
