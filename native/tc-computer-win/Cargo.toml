@@ -1,0 +1,36 @@
+[package]
+name = "tc-computer-win"
+version = "0.1.0"
+edition = "2021"
+description = "TempCode's computer-use service on Windows (docs/computer-protocol.md §29)"
+publish = false
+
+[[bin]]
+name = "tc-computer"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
+  "Win32_System_Threading",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_Storage_FileSystem",
+  "Win32_UI_Accessibility",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_Graphics_Gdi",
+] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
