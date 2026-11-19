@@ -64,9 +64,9 @@ d('the box computer service speaks the wire', () => {
 
   afterAll(async () => {
     child?.kill()
-    browser?.stop()
+    await browser?.stop()
     await site?.close()
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   })
 
   let epoch = ''

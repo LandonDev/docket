@@ -106,6 +106,8 @@ export class BoxChromium {
   private idle: ReturnType<typeof setTimeout> | null = null
   private watch: ReturnType<typeof setInterval> | null = null
   private readonly stopped = new Set<(why: string) => void>()
+  /** the last browser's exit: a new one never opens the profile while the old one still writes it */
+  private exiting: Promise<void> = Promise.resolve()
 
   constructor(private readonly opts: BoxChromiumOptions) {}
 
@@ -135,7 +137,7 @@ export class BoxChromium {
   /** Use: the idle stop waits ten minutes from now. */
   touch(): void {
     if (this.idle) clearTimeout(this.idle)
-    this.idle = setTimeout(() => (this.opts.busy?.() ? this.touch() : this.stop('idle')), this.opts.idleMs ?? IDLE_STOP_MS)
+    this.idle = setTimeout(() => (this.opts.busy?.() ? this.touch() : void this.stop('idle')), this.opts.idleMs ?? IDLE_STOP_MS)
     this.idle.unref?.()
   }
 
@@ -148,6 +150,7 @@ export class BoxChromium {
   private async start(): Promise<string> {
     const bin = (this.opts.bin ?? findChromium)()
     if (!bin) throw new Error('no Chromium on this host')
+    await this.exiting
     mkdirSync(this.profile, { recursive: true })
     const portFile = join(this.profile, 'DevToolsActivePort')
     rmSync(portFile, { force: true })
@@ -177,7 +180,7 @@ export class BoxChromium {
       await new Promise((r) => setTimeout(r, 100))
     }
     if (!this.ws) {
-      this.stop('asked')
+      void this.stop('asked')
       throw new Error('Chromium did not open DevTools in time')
     }
     this.opts.log?.(`box browser: started (pid ${child.pid})`)
@@ -186,20 +189,22 @@ export class BoxChromium {
       const mb = this.child?.pid ? (this.opts.rssMb ?? treeRssMb)(this.child.pid) : 0
       if (mb > cap) {
         this.opts.log?.(`box browser: ${mb} MB is over its ${cap} MB cap; stopped`)
-        this.stop('memory')
+        void this.stop('memory')
       }
     }, this.opts.watchMs ?? WATCH_MS)
     this.watch.unref?.()
     return this.ws
   }
 
-  /** Stops the whole browser, its renderers with it. */
-  stop(why: 'idle' | 'memory' | 'asked' = 'asked'): void {
+  /** Stops the whole browser, its renderers with it; resolves when it has exited. */
+  stop(why: 'idle' | 'memory' | 'asked' = 'asked'): Promise<void> {
     const child = this.child
     this.child = null
     this.ws = null
     this.clear()
-    if (!child?.pid) return
+    if (!child?.pid) return this.exiting
+    const exited = new Promise<void>((r) => (child.exitCode !== null || child.signalCode !== null ? r() : child.once('exit', () => r())))
+    this.exiting = exited
     try {
       process.kill(-child.pid, 'SIGTERM')
     } catch {
@@ -215,6 +220,7 @@ export class BoxChromium {
     }, 3_000).unref?.()
     this.opts.log?.(`box browser: stopped (${why})`)
     this.tell(why)
+    return exited
   }
 
   private clear(): void {

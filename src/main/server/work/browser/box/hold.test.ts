@@ -56,9 +56,9 @@ d('the hold on the box browser', () => {
 
   afterAll(async () => {
     configureComputerHold(null)
-    browser?.stop()
+    await browser?.stop()
     await site?.close()
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   })
 
   const run = (thread: string, tool: string, args: Record<string, unknown>) => sessions.run({ threadId: thread, permission: () => 'auto' }, tool, args)

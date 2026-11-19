@@ -115,6 +115,8 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
 
 export interface BoxServiceOptions {
   browser: BrowserLink
+  /** run on every use of the browser, after its connection is up: the login import's check */
+  use?: (cdp: Cdp) => Promise<unknown>
   now?: () => number
   log?: (line: string) => void
 }
@@ -276,6 +278,12 @@ export class BoxComputerService {
   // ── the browser ──────────────────────────────────────────────────────
 
   private async browser(): Promise<Cdp> {
+    const cdp = await this.connect()
+    await this.opts.use?.(cdp).catch((err) => this.opts.log?.(`box browser: ${(err as Error).message}`))
+    return cdp
+  }
+
+  private async connect(): Promise<Cdp> {
     this.opts.browser.touch()
     if (this.cdp?.alive) return this.cdp
     this.connecting ??= (async () => {

@@ -10,7 +10,7 @@ const tmp = () => {
   dirs.push(d)
   return d
 }
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
+afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })))
 
 describe('the box browser', () => {
   it('finds the newest Playwright Chromium when none is named or on PATH', () => {
@@ -59,7 +59,7 @@ describe('the box browser', () => {
     expect(b.running).toBe(false)
     expect(stops).toEqual(['idle'])
     expect(await b.endpoint()).not.toBe(a)
-    b.stop()
+    await b.stop()
   }, 30_000)
 
   it.runIf(!!bin && process.platform === 'linux')('is stopped when it passes its memory cap', async () => {
@@ -67,5 +67,6 @@ describe('the box browser', () => {
     const stopped = new Promise<string>((r) => b.onStop(r))
     await b.endpoint()
     expect(await stopped).toBe('memory')
+    await b.stop()
   }, 30_000)
 })

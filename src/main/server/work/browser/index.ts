@@ -3,7 +3,7 @@ import { configureOwnerDrives } from '../../computer/run'
 import { PortalSourceSchema, type BrowserState } from '@shared/contract-work-browser'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
 import type { ActKindDef, ToolCtx, WorkCtx, WorkModule, WorkTool } from '../modules'
-import { boxBrowserTools, boxHeldDecided } from './box'
+import { boxBrowserTools, startBoxBrowser } from './box'
 import { DriveStore, ensureBrowserTables } from './drive'
 import { TEAMS_UNAVAILABLE, teamsCarrier, TeamsPostSchema, teamsPostKind } from './teams'
 
@@ -137,7 +137,7 @@ export const browser: WorkModule = {
   start(ctx) {
     const gate = (threadId: string): string | null => (new DriveStore(ctx.db).get(ctx.canvas.paneOf(threadId)).driver === 'owner' ? OWNER_DRIVES : null)
     configureOwnerDrives(gate)
-    const stopBox = boxHeldDecided(ctx)
+    const stopBox = startBoxBrowser(ctx)
     return () => {
       configureOwnerDrives(null, gate)
       stopBox()

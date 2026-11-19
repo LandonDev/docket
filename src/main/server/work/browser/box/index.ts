@@ -11,6 +11,7 @@ import type { SettingsStore } from '../../../computer/verdicts'
 import type { WorkCtx, WorkTool } from '../../modules'
 import { DriveStore } from '../drive'
 import { BoxChromium } from './chromium'
+import { takeImports } from './logins'
 import { BoxComputerService, inProcessSpawn } from './service'
 
 /**
@@ -32,6 +33,18 @@ let host: BoxBrowserHost | null = null
 /** threads with a held step waiting on a page of the box browser: it is not stopped for idleness while one waits */
 const waiting = new Map<string, number>()
 const WAIT_MAX_MS = 24 * 3_600_000
+/** while a page asks for him or he drives, he may be signing in there: the browser stays up, for at most two hours */
+const ASKED_MAX_MS = 2 * 3_600_000
+let started: WorkCtx | null = null
+
+/** Something waits on a page of the box browser: a held step, or him. */
+function busy(): boolean {
+  const now = Date.now()
+  if ([...waiting.values()].some((at) => now - at < WAIT_MAX_MS)) return true
+  return !!started?.db
+    .prepare("SELECT 1 FROM work_browser_drive WHERE (driver = 'owner' OR needs IS NOT NULL) AND since > ? LIMIT 1")
+    .get(now - ASKED_MAX_MS)
+}
 
 export interface BoxRegistry extends ComputerRegistry {
   rootSessionOf(id: string): string
@@ -48,9 +61,9 @@ export interface BoxRegistry extends ComputerRegistry {
 export function wireBoxBrowser(o: { registry: BoxRegistry; store: SettingsStore; dataDir: string; log?: (line: string) => void }): BoxBrowserHost | null {
   const root = join(o.dataDir, 'work-browser', 'box')
   const log = o.log ?? ((line: string) => console.log(`[box browser] ${line}`))
-  const browser = new BoxChromium({ root, log, busy: () => [...waiting.values()].some((at) => Date.now() - at < WAIT_MAX_MS) })
+  const browser = new BoxChromium({ root, log, busy })
   if (browser.unavailable()) return null
-  const make = () => new BoxComputerService({ browser: { endpoint: () => browser.endpoint(), pid: () => browser.pid, touch: () => browser.touch() }, log })
+  const make = () => new BoxComputerService({ browser: { endpoint: () => browser.endpoint(), pid: () => browser.pid, touch: () => browser.touch() }, use: (cdp) => takeImports(root, cdp, log), log })
   const service = new ComputerService({
     dataDir: join(root, 'computer'),
     bin: () => 'box-browser',
@@ -78,11 +91,17 @@ export const setBoxBrowser = (h: BoxBrowserHost | null): void => {
   waiting.clear()
 }
 
-/** A held step was decided: its page may go when the browser is next idle. */
-export function boxHeldDecided(ctx: WorkCtx): () => void {
-  return ctx.held.onDecided((item) => {
+/** Work started on this host: a held step that is decided lets its page go when the browser is next idle. */
+export function startBoxBrowser(ctx: WorkCtx): () => void {
+  started = ctx
+  const off = ctx.held.onDecided((item) => {
     if (item.kind === 'computer.act' && item.sessionId) waiting.delete(item.sessionId)
   })
+  return () => {
+    off()
+    started = null
+    host?.browser.stop()
+  }
 }
 
 export const BOX_OWNER_DRIVES = 'He is driving the browser now. Do not use the box browser until he hands it back; end your turn and say where you will pick up.'
