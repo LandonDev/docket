@@ -4,7 +4,8 @@ import { nanoid } from 'nanoid'
 import type { DevRun, DevRunPush, DevTarget, DevServerStartResult } from '@shared/contract-devservers'
 import type { ForwardedPort, PortForwardInfo } from '@shared/contract-ports'
 import { detectDevTargets } from './devTargets'
-import { loginShell, withToolPath } from './loginShell'
+import { commandShell, shellLine } from './loginShell'
+import { adoptTree, killTree, treeSpawnOptions } from './procTree'
 import { trackChild } from './spawnBudget'
 import type { SharedScanner } from './threadPorts'
 import { announcedPorts, byPort, descendants, validPort } from './threadPortsParse'
@@ -201,7 +202,8 @@ export class DevRuns {
     this.prune(projectId, targetId)
     this.slots.set(s.run.id, s)
     const env = { ...(this.deps.env ? await this.deps.env() : process.env), BROWSER: 'none', FORCE_COLOR: '1' }
-    const child = trackChild(spawn(loginShell(), ['-lc', withToolPath(target.command)], { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }))
+    const shell = commandShell()
+    const child = trackChild(adoptTree(spawn(shell.file, shell.args(shellLine(target.command, shell)), { cwd, env, ...treeSpawnOptions(), ...shell.options, stdio: ['ignore', 'pipe', 'pipe'] })))
     s.child = child
     s.run.pid = child.pid ?? null
     this.log(`${p.name}: ${target.name} ${target.script} started (pid ${s.run.pid ?? '?'})`)
@@ -244,11 +246,7 @@ export class DevRuns {
     if (s.run.status !== 'running' || !pid) return this.view(s)
     s.stopping = true
     const signal = (sig: NodeJS.Signals): void => {
-      try {
-        process.kill(-pid, sig)
-      } catch {
-        s.child?.kill(sig)
-      }
+      if (!killTree(pid, sig)) s.child?.kill(sig)
     }
     signal('SIGTERM')
     s.killTimer = setTimeout(() => signal('SIGKILL'), KILL_GRACE_MS)

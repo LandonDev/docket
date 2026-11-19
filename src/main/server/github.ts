@@ -2,10 +2,10 @@ import { type ExecFileException } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { access, constants, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { harnessEnv, resolveBinary } from './drivers/binaries'
 import { execFileBudgeted } from './spawnBudget'
-import { loginShell } from './loginShell'
+import { loginShell, pathOf, withPath } from './loginShell'
 
 export type GitHubTaskKind = 'issue' | 'pr'
 
@@ -200,6 +200,8 @@ let interactivePathPromise: Promise<string | null> | null = null
 
 function interactiveShellPath(): Promise<string | null> {
   interactivePathPromise ??= (async () => {
+    // Windows keeps one user environment, this process's: no shell to ask.
+    if (process.platform === 'win32') return pathOf() || null
     const result = await runCommand(loginShell(), ['-lic', 'printenv PATH'], {
       env: process.env,
       timeout: LOGIN_SHELL_TIMEOUT_MS,
@@ -218,7 +220,7 @@ function ghSearchPath(): Promise<string> {
     const parts: string[] = []
     const add = (path: string | undefined): void => {
       if (!path) return
-      for (const part of path.split(':')) {
+      for (const part of path.split(delimiter)) {
         if (part && !parts.includes(part)) parts.push(part)
       }
     }
@@ -231,15 +233,15 @@ function ghSearchPath(): Promise<string> {
     add('/usr/bin')
     add('/bin')
     add('/snap/bin')
-    add(process.env.PATH)
-    return parts.join(':')
+    add(pathOf())
+    return parts.join(delimiter)
   })()
   return ghSearchPathPromise
 }
 
 async function isExecutable(path: string): Promise<boolean> {
   try {
-    await access(path, constants.X_OK)
+    await access(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK)
     return true
   } catch {
     return false
@@ -255,9 +257,9 @@ export function resolveGhBinary(): Promise<string | null> {
     if (override && (await isExecutable(override))) return override
     const existing = await resolveBinary('gh')
     if (existing) return existing
-    for (const dir of (await ghSearchPath()).split(':')) {
+    for (const dir of (await ghSearchPath()).split(delimiter)) {
       if (!dir) continue
-      const candidate = join(dir, 'gh')
+      const candidate = join(dir, process.platform === 'win32' ? 'gh.exe' : 'gh')
       if (await isExecutable(candidate)) return candidate
     }
     return null
@@ -267,8 +269,7 @@ export function resolveGhBinary(): Promise<string | null> {
 
 async function ghEnvironment(): Promise<NodeJS.ProcessEnv> {
   return {
-    ...(await harnessEnv()),
-    PATH: await ghSearchPath(),
+    ...withPath(await harnessEnv(), await ghSearchPath()),
     GIT_TERMINAL_PROMPT: '0',
     GH_PAGER: 'cat',
     GIT_PAGER: 'cat'

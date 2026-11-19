@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync
@@ -23,7 +24,7 @@ import { harnessEnv, resolveAppBridgeLaunch } from './drivers/binaries'
 import { CRASH_WINDOW_MS, StderrTail, erroredEntryHolds, expiredBuildMessage } from './lspHealth'
 
 import { execFileBudgeted as execFileP, spawnTracked as spawn } from './spawnBudget'
-import { loginShell } from './loginShell'
+import { commandPathArgv, loginShell } from './loginShell'
 
 /**
  * The language-server pool (docs/PLAN-3.md M13). Servers run here as child
@@ -193,7 +194,14 @@ export function discoverJdks(): Promise<JavaRuntime[]> {
     }
     try {
       const env = await harnessEnv()
-      const { stdout } = await execFileP(loginShell(), ['-lc', 'command -v java'], { env })
+      if (process.platform === 'win32') {
+        // where.exe's first java.exe, its home two levels up (…\jdk\bin\java.exe).
+        const [file, args] = commandPathArgv('java', env)
+        const { stdout } = await execFileP(file, args, { env, windowsHide: true })
+        const exe = stdout.trim().split(/\r?\n/)[0]
+        if (exe) homes.add(join(realpathSync(exe), '..', '..'))
+      }
+      const { stdout } = process.platform === 'win32' ? { stdout: '' } : await execFileP(loginShell(), ['-lc', 'command -v java'], { env })
       const bin = stdout.trim().split('\n').at(-1)
       if (bin?.startsWith('/')) {
         const { stdout: real } = await execFileP('readlink', ['-f', bin]).catch(() => ({

@@ -1,6 +1,7 @@
 import { access } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
-import { commandPathProbe, loginShell } from './server/loginShell'
+import { isAbsolute, win32 } from 'node:path'
+import { commandPathArgv, windowsCommand } from './server/loginShell'
 
 /**
  * Open a file in the user's editor: IntelliJ IDEA (`idea --line N path`),
@@ -142,10 +143,12 @@ export async function resolveEditorPath(
   platform: NodeJS.Platform = process.platform
 ): Promise<string | null> {
   const fromShell = await new Promise<string | null>((done) => {
-    const shell = loginShell(env, platform)
-    execFile(shell, ['-lc', commandPathProbe(editor, shell)], { timeout: 5_000 }, (err, stdout) => {
-      const line = String(stdout ?? '').trim().split('\n').pop() ?? ''
-      done(!err && line.startsWith('/') ? line : null)
+    const [file, args] = commandPathArgv(editor, env, platform)
+    execFile(file, args, { timeout: 5_000, windowsHide: true }, (err, stdout) => {
+      const lines = String(stdout ?? '').trim().split(/\r?\n/)
+      // where.exe lists every match, PATH order first; VS Code's bin holds a sh script `code` beside `code.cmd`.
+      const line = platform === 'win32' ? (lines.find((l) => /\.(exe|cmd|bat)$/i.test(l)) ?? '') : (lines.pop() ?? '')
+      done(!err && (platform === 'win32' ? win32.isAbsolute(line) : isAbsolute(line) && line.startsWith('/')) ? line : null)
     })
   })
   if (fromShell) return fromShell
@@ -156,7 +159,8 @@ export async function resolveEditorPath(
 /** Start the launcher and let it go: the editor outlives this process. */
 export function spawnDetached(command: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = execFile(command, args, { timeout: 15_000 }, (err) => {
+    const [file, argv, verbatim] = windowsCommand(command, args)
+    const child = execFile(file, argv, { timeout: 15_000, windowsHide: true, windowsVerbatimArguments: verbatim }, (err) => {
       if (err && (err as NodeJS.ErrnoException).code === 'ENOENT') reject(new Error(`${command}: not found`))
     })
     child.once('error', reject)

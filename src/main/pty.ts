@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
 import { harnessEnv } from './server/drivers/binaries'
+import { killTree } from './server/procTree'
 import {
   FlowControl,
   PTY_COALESCE_MS,
@@ -128,9 +129,13 @@ function onData(session: Session, data: string | Buffer): void {
   }
 }
 
-/** HUP/TERM the shell and its whole process group, then KILL a second later. */
+/** HUP/TERM the shell and its whole process group, then KILL a second later; on win32 the shell's tree at once (no gentler signal there). */
 function terminate(pid: number): void {
   if (!pid || pid <= 1) return
+  if (process.platform === 'win32') {
+    killTree(pid, 'SIGKILL')
+    return
+  }
   for (const signal of ['SIGHUP', 'SIGTERM'] as const) {
     try {
       process.kill(pid, signal)
@@ -172,6 +177,8 @@ async function ttyOf(session: Session): Promise<string | null> {
 }
 
 async function ttyName(pid: number): Promise<string | null> {
+  // ConPTY has no tty to read: a Windows tab shows its shell.
+  if (process.platform === 'win32') return null
   try {
     const { stdout } = await execFileP('ps', ['-p', String(pid), '-o', 'tty='])
     const name = stdout.trim()

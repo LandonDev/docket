@@ -19,7 +19,8 @@ import { harnessEnv } from './drivers/binaries'
 import { branches, checkouts, currentBranch } from './git'
 
 import { execFileBudgeted as execFileP, spawnBudgeted, trackChild } from './spawnBudget'
-import { loginShell, withToolPath } from './loginShell'
+import { commandShell, shellLine } from './loginShell'
+import { adoptTree, killTree, treeSpawnOptions } from './procTree'
 
 /**
  * The Build rail's engine: one build per project at a time, run in the
@@ -378,13 +379,17 @@ export class BuildRunner {
     this.emit(projectId, slot, [])
     const env = { ...(await harnessEnv()), NO_COLOR: '1', TERM: 'dumb' }
     // Its own group so cancel() can kill the whole tree; tracked so quit kills it too.
+    const shell = commandShell()
     const child = trackChild(
-      spawn(loginShell(), ['-lc', withToolPath(build.command)], {
-        cwd,
-        env,
-        detached: true,
-        stdio: ['ignore', 'pipe', 'pipe']
-      })
+      adoptTree(
+        spawn(shell.file, shell.args(shellLine(build.command, shell)), {
+          cwd,
+          env,
+          ...treeSpawnOptions(),
+          ...shell.options,
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+      )
     )
     slot.child = child
     const feed = (stream: NodeJS.ReadableStream | null): void => {
@@ -419,11 +424,7 @@ export class BuildRunner {
     if (!slot || slot.run.status !== 'running' || !pid) return
     slot.cancelling = true
     const signal = (sig: NodeJS.Signals): void => {
-      try {
-        process.kill(-pid, sig)
-      } catch {
-        slot.child?.kill(sig)
-      }
+      if (!killTree(pid, sig)) slot.child?.kill(sig)
     }
     signal('SIGTERM')
     slot.killTimer = setTimeout(() => signal('SIGKILL'), KILL_GRACE_MS)

@@ -3,7 +3,7 @@
  * credits and the foreground-process formatter can be tested directly.
  * Ported from MonoCode's `src-tauri/src/pty.rs`.
  */
-import { loginShell } from './server/loginShell'
+import { loginShell, whichWin } from './server/loginShell'
 
 /** A busy shell hands us reads far faster than a webview can paint them. */
 export const PTY_CHUNK = 32 * 1024
@@ -63,20 +63,23 @@ export class FlowControl {
 }
 
 export function loginArgs(shell: string): string[] {
-  const base = shell.split('/').pop() || shell
+  const base = basename(shell)
   return base === 'zsh' || base === 'bash' || base === 'sh' || base === 'fish' ? ['-l'] : []
 }
 
+/** The terminal's shell: the login shell; on win32 PowerShell 7 when it is on the PATH, else Windows PowerShell, which every Windows has (ConPTY runs either). */
 export function defaultShell(
   platform: string,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
+  exists?: (path: string) => boolean
 ): { shell: string; args: string[] } {
+  if (platform === 'win32') return { shell: whichWin('pwsh.exe', env, exists) ?? 'powershell.exe', args: ['-NoLogo'] }
   const shell = loginShell(env, platform as NodeJS.Platform)
   return { shell, args: loginArgs(shell) }
 }
 
 const INTERPRETERS = new Set(['node', 'nodejs', 'python', 'python3', 'ruby', 'deno', 'bun'])
-const SHELLS = new Set(['zsh', 'bash', 'sh', 'fish', 'nu', 'dash', 'ksh', 'tcsh', 'zsh5'])
+const SHELLS = new Set(['zsh', 'bash', 'sh', 'fish', 'nu', 'dash', 'ksh', 'tcsh', 'zsh5', 'pwsh', 'powershell', 'cmd'])
 
 export function isInterpreter(name: string): boolean {
   return INTERPRETERS.has(name)
@@ -106,8 +109,9 @@ export function commandLabel(args: string): string | null {
   return base
 }
 
+/** The last part of a path, either separator, without Windows' `.exe`. */
 function basename(path: string): string {
-  return path.split('/').pop() || path
+  return (path.split(/[\\/]/).pop() || path).replace(/\.exe$/i, '')
 }
 
 /**

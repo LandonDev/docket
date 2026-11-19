@@ -28,6 +28,7 @@ import {
 import { PhaseTracker, formatDuration } from '@shared/releasePhases'
 import { updatePhaseLine, type SelfUpdateOutcome } from '../updateTrigger'
 import { loginShell, withToolPath } from './loginShell'
+import { adoptTree, killTree, treeSpawnOptions } from './procTree'
 import { writeNotesFile } from './gateRun'
 import { trackChild } from './spawnBudget'
 
@@ -564,9 +565,7 @@ export class Publisher {
     this.log.append('== stop requested\n')
     const pid = child.pid
     const signal = (sig: NodeJS.Signals): void => {
-      try {
-        process.kill(-pid, sig)
-      } catch {
+      if (!killTree(pid, sig)) {
         try {
           child.kill(sig)
         } catch {
@@ -588,7 +587,7 @@ export class Publisher {
 
 function gitThroughShell(shell: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(shell, ['-lc', withToolPath('exec git "$@"'), 'git', ...args], { cwd, env, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(shell, ['-lc', withToolPath('exec git "$@"'), 'git', ...args], { cwd, env, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       if (err) reject(new Error(String(stderr || err.message).trim()))
       else resolve(String(stdout))
     })
@@ -619,12 +618,12 @@ function spawnReleaseScripts(opts: { cwd: string; notes: string; shell: string; 
   const file = opts.train ? writeNotesFile(opts.notes) : null
   try {
     const child = trackChild(
-      spawn(opts.shell, ['-lc', releaseCommand({ train: opts.train })], {
+      adoptTree(spawn(opts.shell, ['-lc', releaseCommand({ train: opts.train })], {
         cwd: opts.cwd,
         env: file ? { ...opts.env, TC_RELEASE_NOTES_FILE: file.path } : opts.env,
-        detached: true,
+        ...treeSpawnOptions(),
         stdio: ['ignore', 'pipe', 'pipe']
-      })
+      }))
     )
     if (file) child.once('close', file.remove)
     return child

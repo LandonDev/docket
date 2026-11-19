@@ -5,6 +5,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
 import { CLAUDE_CLIENT_ID, CLAUDE_TOKEN_URL, decodeJwtPayload, type Captured } from 'aliax-core'
+import { harnessEnv, resolveBinary } from '../server/drivers/binaries'
 import { commandPathProbe, loginShell } from '../server/loginShell'
 
 const exec = promisify(execFile)
@@ -157,14 +158,16 @@ export async function codexLogin(): Promise<void> {
   // `whence -p` / `type -P`, not `which`: our own shell integration wraps
   // codex in a function, and `which` prints that function's body instead
   // of a path.
-  const bin = await loginShellLine(`${commandPathProbe('codex')} || true`)
+  // Windows has no login shell to ask: the binary lookup there resolves npm's codex.cmd to the codex.exe it runs.
+  const win = process.platform === 'win32'
+  const bin = win ? await resolveBinary('codex') : await loginShellLine(`${commandPathProbe('codex')} || true`)
   if (!bin) throw new Error('codex CLI not found')
   // The npm/Homebrew `codex` is a node script (`#!/usr/bin/env node`). A GUI
   // app's PATH has no node, so spawning with our own environment made env fail
   // with the bare "exited 127". Hand it the login shell's PATH instead.
-  const PATH = await loginShellLine('echo "$PATH"')
+  const env = win ? await harnessEnv() : { ...process.env, PATH: await loginShellLine('echo "$PATH"') }
   await new Promise<void>((resolve, reject) => {
-    codexChild = spawn(bin, ['login'], { stdio: 'ignore', env: { ...process.env, PATH } })
+    codexChild = spawn(bin, ['login'], { stdio: 'ignore', env, windowsHide: true })
     codexChild.on('error', reject)
     codexChild.on('exit', (code) =>
       code === 0 ? resolve() : reject(new Error(code === null ? 'cancelled' : `codex login exited ${code}`))

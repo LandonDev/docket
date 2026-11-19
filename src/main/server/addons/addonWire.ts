@@ -91,7 +91,11 @@ export const ADDON_HOST_EXITS_BEFORE_DOWN = 3
 export const ADDON_HOST_RETRY_MS = 10 * 60_000 // a host that went down is tried once more after this
 export const ADDON_MARK = 'TEMP_CODE_ADDON' // env mark on every stdio server: the add-on's id
 /** What a stdio server inherits of the host's environment; anything else it needs is a grant field. */
-export const ADDON_BASE_ENV_KEYS = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TMPDIR', 'TZ', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME'] as const
+export const ADDON_BASE_ENV_KEYS = [
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TMPDIR', 'TZ', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME',
+  // Windows' own, as it spells them: a program there fails to start without SystemRoot, and finds nothing of the user's without the profile dirs.
+  'SystemRoot', 'windir', 'ComSpec', 'PATHEXT', 'USERPROFILE', 'USERNAME', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'ProgramFiles', 'ProgramData', 'HOMEDRIVE', 'HOMEPATH'
+] as const
 /** The codex first-turn gate may grow by at most this with add-ons in scope (the e2e's step 8). */
 export const ADDON_GATE_BUDGET_MS = 250
 

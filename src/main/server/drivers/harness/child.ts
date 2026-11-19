@@ -3,9 +3,9 @@ import { createReadStream } from 'node:fs'
 import { access, constants } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { harnessEnv as baseHarnessEnv, loginPath, resolveBinary } from '../binaries'
+import { binaryCandidates, harnessEnv as baseHarnessEnv, loginPath, resolveBinary } from '../binaries'
 import { loginShell } from '../../loginShell'
 
 /**
@@ -48,8 +48,10 @@ const LOGIN_ENV_KEYS = [
 
 let loginEnvP: Promise<Record<string, string>> | null = null
 /** The user's interactive-shell exports (`-lic`: .zshrc is where people
- *  put API keys), filtered to LOGIN_ENV_KEYS. Read once. */
+ *  put API keys), filtered to LOGIN_ENV_KEYS. Read once. Windows keeps one
+ *  user environment, which this process already has: nothing to read. */
 function loginEnv(): Promise<Record<string, string>> {
+  if (process.platform === 'win32') return Promise.resolve({})
   loginEnvP ??= run(loginShell(), ['-lic', 'printenv'], { timeoutMs: 10_000 })
     .then(({ stdout }) => {
       const env: Record<string, string> = {}
@@ -89,7 +91,7 @@ function run(
   opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number }
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, { cwd: opts.cwd, env: opts.env, stdio: ['ignore', 'pipe', 'pipe'] })
+    const proc = spawn(command, args, { cwd: opts.cwd, env: opts.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     let stdout = ''
     let stderr = ''
     proc.stdout!.on('data', (d) => (stdout += d))
@@ -136,7 +138,7 @@ export async function spawnChild(sessionId: string, command: string, args: strin
   const env = await harnessEnv()
   const previous = children.get(sessionId)
   if (previous) terminate(previous)
-  const proc = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+  const proc = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
   children.set(sessionId, proc)
   proc.stdin!.on('error', () => undefined)
   createInterface({ input: proc.stdout! }).on('line', (line) => watches.get(sessionId)?.onLine(line))
@@ -291,7 +293,7 @@ export function freeHarnessPort(): Promise<number> {
 // ── binaries ────────────────────────────────────────────────────────
 
 function executable(path: string): Promise<boolean> {
-  return access(path, constants.X_OK).then(
+  return access(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK).then(
     () => true,
     () => false
   )
@@ -304,8 +306,7 @@ function resolver(name: string, fallbackDirs: string[] = []): () => Promise<{ pa
     const found = await resolveBinary(name)
     if (found) return { path: found }
     for (const dir of fallbackDirs) {
-      const candidate = join(homedir(), dir, name)
-      if (await executable(candidate)) return { path: candidate }
+      for (const candidate of binaryCandidates(join(homedir(), dir), name)) if (await executable(candidate)) return { path: candidate }
     }
     throw new Error(`${name} not found on the login-shell PATH`)
   }
@@ -325,10 +326,9 @@ const FX_MARKERS = ['vercel-labs/fx', 'FX_MODEL', 'createFxAgent', 'fx acp']
 let fxP: Promise<{ path: string }> | null = null
 export function resolveFxBinary(): Promise<{ path: string }> {
   fxP ??= (async () => {
-    for (const dir of (await loginPath()).split(':')) {
+    for (const dir of (await loginPath()).split(delimiter)) {
       if (!dir) continue
-      const candidate = join(dir, 'fx')
-      if ((await executable(candidate)) && (await isFxAgent(candidate))) return { path: candidate }
+      for (const candidate of binaryCandidates(dir, 'fx')) if ((await executable(candidate)) && (await isFxAgent(candidate))) return { path: candidate }
     }
     throw new Error('fx (the Vercel agent) not found on the login-shell PATH')
   })()

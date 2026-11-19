@@ -6,6 +6,8 @@ import { ReadBuffer, serializeMessage } from '@modelcontextprotocol/sdk/shared/s
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { toolHintsOf } from '@shared/addons'
+import { windowsCommand } from '../loginShell'
+import { adoptTree, killTree, treeSpawnOptions } from '../procTree'
 import type { AddonState, AddonStatus } from '@shared/contract-addons'
 import {
   ADDON_CONNECT_TIMEOUT_MS,
@@ -78,7 +80,8 @@ export class ProcessTransport implements Transport {
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
       let spawned = false
-      const child = spawn(this.opts.command, this.opts.args, { env: this.opts.env, cwd: this.opts.cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe'] })
+      const [file, args, verbatim] = windowsCommand(this.opts.command, this.opts.args, this.opts.env)
+      const child = adoptTree(spawn(file, args, { env: this.opts.env, cwd: this.opts.cwd, ...treeSpawnOptions(), windowsVerbatimArguments: verbatim, stdio: ['pipe', 'pipe', 'pipe'] }))
       this.child = child
       child.once('spawn', () => {
         spawned = true
@@ -116,9 +119,7 @@ export class ProcessTransport implements Transport {
   private signal(sig: NodeJS.Signals): void {
     const pid = this.child?.pid
     if (!pid || this.exit) return
-    try {
-      process.kill(-pid, sig)
-    } catch {
+    if (!killTree(pid, sig)) {
       try {
         this.child!.kill(sig)
       } catch {

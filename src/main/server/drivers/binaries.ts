@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process'
-import { access, constants, realpath } from 'node:fs/promises'
+import { access, constants, readdir, readFile, realpath } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { ProviderId } from '@shared/catalog'
 import { hasAppBridge } from '../apptools'
-import { loginShell } from '../loginShell'
+import { commandShell, pathOf, shellLine, withPath } from '../loginShell'
 
 const execFileP = promisify(execFile)
 
@@ -32,19 +32,24 @@ const EXTRA_BIN_DIRS = [
   '.npm-global/bin'
 ].map((d) => join(homedir(), d))
 
+/** win32's per-user install dirs: npm's global prefix and Programs (the Windows environment already holds the rest). */
+const WIN_BIN_DIRS = (env: NodeJS.ProcessEnv): string[] =>
+  [env.APPDATA && join(env.APPDATA, 'npm'), env.LOCALAPPDATA && join(env.LOCALAPPDATA, 'Programs', 'nodejs')].filter((d): d is string => !!d)
+
 let loginPathP: Promise<string> | null = null
+/** The PATH a harness gets: the login shell's, or on win32 the Windows environment's (no login shell to ask), with the usual per-user dirs after it. */
 export function loginPath(): Promise<string> {
-  loginPathP ??= execFileP(loginShell(), ['-lc', 'echo -n "$PATH"'])
-    .then((r) => r.stdout.trim())
-    .catch(() => process.env.PATH ?? '')
+  const win = process.platform === 'win32'
+  loginPathP ??= (win ? Promise.resolve(pathOf()) : execFileP(commandShell().file, ['-lc', 'echo -n "$PATH"']).then((r) => r.stdout.trim()))
+    .catch(() => pathOf())
     .then(async (path) => {
-      const seen = new Set(path.split(':').filter(Boolean))
+      const seen = new Set(path.split(delimiter).filter(Boolean))
       const extra: string[] = []
-      for (const dir of EXTRA_BIN_DIRS) {
+      for (const dir of [...EXTRA_BIN_DIRS, ...(win ? WIN_BIN_DIRS(process.env) : [])]) {
         if (seen.has(dir)) continue
         if (await exists(dir)) extra.push(dir)
       }
-      return extra.length ? `${path}:${extra.join(':')}` : path
+      return extra.length ? [path, ...extra].join(delimiter) : path
     })
   return loginPathP
 }
@@ -66,7 +71,7 @@ function exists(path: string): Promise<boolean> {
  * what ships. ELECTRON_RUN_AS_NODE in particular breaks any Electron child.
  */
 export async function harnessEnv(): Promise<NodeJS.ProcessEnv> {
-  const env: NodeJS.ProcessEnv = { ...process.env, PATH: await loginPath() }
+  const env: NodeJS.ProcessEnv = withPath(process.env, await loginPath())
   for (const key of Object.keys(env)) {
     if (key.startsWith('ELECTRON_') || key.startsWith('npm_')) delete env[key]
   }
@@ -95,10 +100,12 @@ export function resolveBinary(name: string): Promise<string | null> {
   let p = binCache.get(name)
   if (!p) {
     p = (async () => {
-      for (const dir of (await loginPath()).split(':')) {
+      for (const dir of (await loginPath()).split(delimiter)) {
         if (!dir) continue
-        const candidate = join(dir, name)
-        if (await executable(candidate)) return candidate
+        for (const candidate of binaryCandidates(dir, name)) {
+          if (!(await executable(candidate))) continue
+          return process.platform === 'win32' && /\.cmd$/i.test(candidate) ? ((await npmShimExe(candidate, name)) ?? candidate) : candidate
+        }
       }
       return null
     })()
@@ -107,8 +114,44 @@ export function resolveBinary(name: string): Promise<string | null> {
   return p
 }
 
+/**
+ * The files a name can be in one PATH dir: the name itself, and on win32 the
+ * name with each of PATHEXT's extensions in its order (`claude.exe`, an npm
+ * `codex.cmd`).
+ */
+export function binaryCandidates(dir: string, name: string, platform: NodeJS.Platform = process.platform, pathext = process.env.PATHEXT): string[] {
+  if (platform !== 'win32') return [join(dir, name)]
+  const exts = (pathext || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+  return /\.[a-z0-9]+$/i.test(name) ? [join(dir, name)] : exts.map((ext) => join(dir, name + ext.toLowerCase()))
+}
+
+/**
+ * The native program behind an npm `.cmd` shim, when its package carries one:
+ * Node will not spawn a `.cmd` without a shell, and a shell would have to
+ * quote every argument. Codex's shim runs `node_modules/@openai/codex/bin/codex.js`,
+ * whose platform package holds `vendor/<triple>/bin/codex.exe`.
+ */
+export async function npmShimExe(shim: string, name: string): Promise<string | null> {
+  const text = await readFile(shim, 'utf8').catch(() => '')
+  const m = text.match(/%dp0%\\(node_modules\\.+?)\\bin\\[^"\\]+"/)
+  if (!m) return null
+  const pkg = join(dirname(shim), ...m[1].split('\\'))
+  const scopes = [pkg, ...(await readdir(join(pkg, 'node_modules'), { withFileTypes: true }).catch(() => [])).flatMap((e) => (e.isDirectory() ? [join(pkg, 'node_modules', e.name)] : []))]
+  for (const scope of scopes) {
+    const packages = scope === pkg ? [pkg] : (await readdir(scope).catch(() => [] as string[])).map((n) => join(scope, n))
+    for (const dir of packages) {
+      for (const triple of await readdir(join(dir, 'vendor')).catch(() => [] as string[])) {
+        const exe = join(dir, 'vendor', triple, 'bin', `${name}.exe`)
+        if (await exists(exe)) return exe
+      }
+    }
+  }
+  return null
+}
+
 function executable(path: string): Promise<boolean> {
-  return access(path, constants.X_OK).then(
+  // Windows has no execute bit: a file that is there runs.
+  return access(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK).then(
     () => true,
     () => false
   )
@@ -345,13 +388,14 @@ export async function updateProvider(provider: ProviderId): Promise<DoctorReport
     const path = await resolveBinary('codex')
     if (!path) throw new Error('codex not found on the login-shell PATH')
     const real = await realpath(path)
-    const cmd = real.includes('node_modules/@openai/codex')
+    const cmd = real.replaceAll('\\', '/').includes('node_modules/@openai/codex')
       ? 'npm install -g @openai/codex@latest'
       : real.includes('/Cellar/')
         ? 'brew upgrade codex'
         : null
     if (!cmd) throw new Error(`can't tell how codex was installed (${real}) — update it manually`)
-    await execFileP(loginShell(), ['-lc', cmd], opts).catch(fail)
+    const shell = commandShell()
+    await execFileP(shell.file, shell.args(shellLine(cmd, shell)), { ...opts, ...shell.options }).catch(fail)
   }
   // paths and versions may have moved — re-resolve everything
   binCache.clear()

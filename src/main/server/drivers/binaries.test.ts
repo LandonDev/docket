@@ -48,3 +48,28 @@ describe('the environment a harness child gets', () => {
     }
   })
 })
+
+describe('finding a binary on win32', () => {
+  it('tries the name with each PATHEXT extension, in its order; the name alone elsewhere', async () => {
+    const { binaryCandidates } = await import('./binaries')
+    expect(binaryCandidates('/d', 'codex', 'linux')).toEqual(['/d/codex'])
+    expect(binaryCandidates('/d', 'codex', 'win32', '.COM;.EXE;.CMD').map((p) => p.slice(3))).toEqual(['codex.com', 'codex.exe', 'codex.cmd'])
+    expect(binaryCandidates('/d', 'node.exe', 'win32', '.EXE').map((p) => p.slice(3))).toEqual(['node.exe'])
+  })
+
+  it("resolves npm's codex.cmd to the codex.exe its platform package carries", async () => {
+    const { npmShimExe } = await import('./binaries')
+    const { mkdirSync } = await import('node:fs')
+    const npm = mkdtempSync(join(tmpdir(), 'tc-npm-'))
+    const shim = join(npm, 'codex.cmd')
+    writeFileSync(shim, '@ECHO off\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n')
+    expect(await npmShimExe(shim, 'codex')).toBeNull()
+    const bin = join(npm, 'node_modules', '@openai', 'codex', 'node_modules', '@openai', 'codex-win32-x64', 'vendor', 'x86_64-pc-windows-msvc', 'bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, 'codex.exe'), '')
+    expect(await npmShimExe(shim, 'codex')).toBe(join(bin, 'codex.exe'))
+    const other = join(npm, 'npx.cmd')
+    writeFileSync(other, '"%_prog%" "%dp0%\\node_modules\\npm\\bin\\npx-cli.js" %*')
+    expect(await npmShimExe(other, 'npx')).toBeNull()
+  })
+})

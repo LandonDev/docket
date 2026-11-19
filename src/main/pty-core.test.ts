@@ -5,6 +5,7 @@ import {
   FlowControl,
   PTY_CHUNK,
   commandLabel,
+  isShellName,
   defaultShell,
   foregroundLabel,
   loginArgs,
@@ -62,6 +63,14 @@ describe('shell selection', () => {
       shell: '/bin/bash',
       args: ['-l']
     })
+  })
+
+  it('is PowerShell on win32: 7 when it is on the PATH, else the one Windows carries', () => {
+    const env = { PATH: 'C:\\Program Files\\PowerShell\\7' }
+    expect(defaultShell('win32', env, (p) => p === 'C:\\Program Files\\PowerShell\\7\\pwsh.exe')).toEqual({ shell: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', args: ['-NoLogo'] })
+    expect(defaultShell('win32', env, () => false)).toEqual({ shell: 'powershell.exe', args: ['-NoLogo'] })
+    expect(isShellName('pwsh')).toBe(true)
+    expect(commandLabel('C:\\nodejs\\node.exe C:\\x\\vite.js')).toBe('vite.js')
   })
 })
 
