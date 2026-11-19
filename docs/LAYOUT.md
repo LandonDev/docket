@@ -474,7 +474,7 @@ rest "Other", and a series that counts both providers (Top projects, Tools
 used, Cache hit rate, the Busiest hours ramp) the neutral gray; one hover
 readout per chart, 12px ticks, the tooltip on `px-3 rounded-xl`, and every
 chart colour reaches 3:1 on the page in both themes
-(`lib/chartContrast.test.ts`).
+(`lib/tokenContrast.test.ts`).
 
 ### The right side
 

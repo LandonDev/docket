@@ -40,9 +40,13 @@
      `HOST_WASH`). */
   --ui-wash: var(--muted);
   --ui-wash-foreground: var(--foreground);
-  /* Ink: foreground for what matters, muted for what supports it. */
+  /* Ink: foreground for what matters, muted for what supports it, faint for
+     what may be missed (a line number, ghost text, a done task). Text is one
+     of the three, never an opacity of foreground (docs/DESIGN.md "The light
+     theme"). */
   --foreground: oklch(0.93 0.003 270);
   --muted-foreground: oklch(0.68 0.006 270);
+  --faint-foreground: oklch(0.56 0.006 270);
   --card-foreground: var(--foreground);
   --popover-foreground: var(--foreground);
   --secondary-foreground: var(--foreground);
@@ -58,12 +62,15 @@
   /* The quiet primary: near-white on dark, near-black on light. */
   --primary: oklch(0.96 0 0);
   --primary-foreground: oklch(0.2 0 0);
-  /* Meaning: the one accent (links, focus, the rare CTA) and the status colours. */
+  /* Meaning: the one accent (focus, a selection's edge, the rare CTA), a
+     link's words, and the status colours. A solid fill names its ink: the
+     label on the accent and on red is near-black here, white in light. */
   --accent: hsl(211 92% 62%);
-  --accent-foreground: #ffffff;
+  --accent-foreground: oklch(0.2 0 0);
   --ring: var(--accent);
+  --link: #7dd3fc;
   --destructive: var(--thread-danger);
-  --destructive-foreground: #ffffff;
+  --destructive-foreground: oklch(0.2 0 0);
   --success: var(--thread-success);
   --warning: var(--thread-warning);
   --info: var(--thread-info);
@@ -109,13 +116,16 @@
   --track: color-mix(in srgb, var(--foreground) 14%, transparent);
   --wave: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
   --run-dot: color-mix(in srgb, var(--foreground) 55%, transparent);
-  /* The ground under a picture (an image, a PDF's sheets, a slide). */
+  /* The ground under a picture (an image, a PDF's sheets, a slide), and the
+     black under a video in both themes. */
   --stage: var(--sidebar);
+  --matte: #000000;
   /* One series on a canvas: a form's answer bars, a dashboard's bars beside
-     its current one (foreground), and that bar while the figures are stale. */
-  --chart-neutral: color-mix(in srgb, var(--foreground) 30%, transparent);
-  --chart-neutral-rest: color-mix(in srgb, var(--foreground) 22%, transparent);
-  --chart-neutral-stale: color-mix(in srgb, var(--foreground) 40%, transparent);
+     its current one (foreground), and that bar while the figures are stale.
+     A bar is a mark: each step reaches 3:1 on the page and on a card. */
+  --chart-neutral: color-mix(in srgb, var(--foreground) 44%, transparent);
+  --chart-neutral-rest: color-mix(in srgb, var(--foreground) 38%, transparent);
+  --chart-neutral-stale: color-mix(in srgb, var(--foreground) 55%, transparent);
   /* A picture keeps its own colours in both themes, and a tint laid on it
      takes the theme the picture is in: paper (a PDF or a document's page)
      takes the light theme's values, a dark picture (a dark slide) the dark
@@ -251,36 +261,47 @@ html.theme-light {
   --composer-coin: #e8b923;
   --composer-star: #f4e27a;
   --editor-type-name: #2a5fb0;
-  --sidebar: oklch(0.972 0.002 80);
+  /* Slate (docs/DESIGN.md "The light theme"): content and every floating
+     layer white, chrome and the regions inside content stepping down from it
+     in the dark theme's own hue. Every pair is held to the contrast contract
+     by lib/tokenContrast.test.ts: move a value, never the floor. */
+  --sidebar: oklch(0.962 0.004 264);
   --background: oklch(1 0 0);
-  --card: oklch(0.985 0.002 80);
+  --card: oklch(0.974 0.003 264);
   --popover: oklch(1 0 0);
-  --muted: oklch(0.955 0.002 80);
-  --secondary: oklch(0.94 0.003 80);
-  /* Light's selected step stops at L 0.940: amber text falls under 4.5:1 below it. */
-  --sidebar-group: oklch(0.961 0.002 80);
-  --sidebar-group-hover: oklch(0.95 0.002 80);
-  --sidebar-group-selected: oklch(0.94 0.002 80);
-  --input: rgb(0 0 0 / 0.12);
-  --border: rgb(0 0 0 / 0.08);
+  --muted: oklch(0.948 0.004 264);
+  --secondary: oklch(0.935 0.005 264);
+  --sidebar-group: oklch(0.948 0.004 264);
+  --sidebar-group-hover: oklch(0.936 0.005 264);
+  --sidebar-group-selected: oklch(0.922 0.006 264);
+  --input: rgb(15 23 42 / 0.18);
+  --border: rgb(15 23 42 / 0.1);
   --image-outline: rgb(0 0 0 / 0.1);
-  --foreground: oklch(0.2 0.004 270);
-  --muted-foreground: oklch(0.5 0.008 270);
-  --primary: oklch(0.2 0 0);
+  --foreground: oklch(0.2 0.012 264);
+  --muted-foreground: oklch(0.46 0.014 264);
+  --faint-foreground: oklch(0.58 0.012 264);
+  --primary: oklch(0.21 0.012 264);
   --primary-foreground: oklch(0.99 0 0);
-  --accent: hsl(211 92% 48%);
+  --accent: hsl(214 88% 44%);
+  --accent-foreground: #ffffff;
+  --link: hsl(214 90% 38%);
+  --destructive-foreground: #ffffff;
   --type-chat: #2563eb;
   --type-planning: #7c3aed;
-  --type-implementation: #059669;
+  --type-implementation: #04875f;
   --type-orchestration: #7d6700;
-  --type-research: #0891b2;
+  --type-research: #0784a3;
   --chart-1: #2a78d6;
-  --chart-2: #eb6834;
+  --chart-2: #de5a26;
   --chart-3: #16966a;
   --chart-4: #b47800;
-  --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.1);
+  --shadow-overlay: 0 12px 32px -12px rgb(15 23 42 / 0.22), 0 2px 6px -2px rgb(15 23 42 / 0.1);
   --scrim: rgb(0 0 0 / 0.18);
   --bone: color-mix(in srgb, var(--foreground) 7%, transparent);
+  /* A bar is a mark: each step reaches 3:1 on white and on a card. */
+  --chart-neutral: color-mix(in srgb, var(--foreground) 54%, transparent);
+  --chart-neutral-rest: color-mix(in srgb, var(--foreground) 48%, transparent);
+  --chart-neutral-stale: color-mix(in srgb, var(--foreground) 65%, transparent);
   --raise-primary:
     inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 1px 2px -0.5px rgb(255 255 255 / 0.12),
     inset 0 8px 24px -4px rgb(255 255 255 / 0.1), inset 0 -4px 12px -4px rgb(255 255 255 / 0.06),
@@ -326,6 +347,9 @@ html.theme-light {
   --color-popover-foreground: var(--popover-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-link: var(--link);
+  --color-matte: var(--matte);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-primary: var(--primary);
@@ -537,7 +561,6 @@ html.theme-light {
 }
 
 :root {
-  --link-color: #7dd3fc;
   --color-skill: #e8c547;
   --color-mention: #38bdf8;
   --color-markdown-heading: #f9a8c9;
@@ -571,16 +594,15 @@ html {
 }
 
 html.theme-light {
-  --link-color: hsl(211 92% 40%);
-  --color-skill: #a07c10;
-  --color-mention: #0284c7;
+  --color-skill: #8a6a0b;
+  --color-mention: #0270a8;
   --color-markdown-heading: #be185d;
-  /* Text as often as fills: each reaches 4.5:1 on the background, the
-     sidebar, a card and a selected (muted) row (lib/statusContrast.test.ts). */
-  --thread-success: #047857;
-  --thread-warning: #a8530b;
-  --thread-danger: #c81e1e;
-  --thread-info: #2563eb;
+  /* Text as often as fills: each reaches 4.5:1 on every surface, the
+     selected group step among them (lib/tokenContrast.test.ts). */
+  --thread-success: #046c4e;
+  --thread-warning: #92450a;
+  --thread-danger: #b91c1c;
+  --thread-info: #1d4ed8;
   --thread-violet: #7c3aed;
   --thread-cyan: #0891b2;
   color-scheme: light;

@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { contrast, oklab, resolve, themes } from "./colourMath";
+import { oklab, resolve, themes } from "./colourMath";
 
 /**
  * A group in the chrome (a project card in the workspace column) sits on its
  * own fill over the sidebar, a step darker or lighter when hovered and again
  * when selected (docs/DESIGN.md "Colour"). The steps keep their order in both
- * themes, selected the farthest from the sidebar, and both inks read on each.
+ * themes, selected the farthest from the sidebar. What reads on each step is
+ * lib/tokenContrast.test.ts's.
  */
 const { dark, light } = themes(readFileSync(join(__dirname, "../index.css"), "utf8"));
 
 const STEPS = ["--sidebar", "--sidebar-group", "--sidebar-group-hover", "--sidebar-group-selected"];
-const INKS = ["--foreground", "--muted-foreground"];
 const lightness = (theme: Map<string, string>, token: string): number => oklab(resolve(theme, `var(${token})`))[0];
 
 describe("sidebar group steps", () => {
@@ -28,13 +28,5 @@ describe("sidebar group steps", () => {
       expect(Math.max(...away)).toBe(away[STEPS.length - 1]);
     });
 
-    it(`carry both inks at 4.5:1 in the ${name} theme`, () => {
-      for (const step of STEPS.slice(1)) {
-        for (const ink of INKS) {
-          const ratio = contrast(resolve(theme, `var(${ink})`), resolve(theme, `var(${step})`));
-          expect({ step, ink, ok: ratio >= 4.5 }, `${ink} on ${step}: ${ratio.toFixed(2)}`).toEqual({ step, ink, ok: true });
-        }
-      }
-    });
   }
 });

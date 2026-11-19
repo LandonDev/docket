@@ -118,8 +118,8 @@ their ticks are 12px.
 The `sidebar-group` steps are a container's surface, never an item's: a
 thread row stays bare in every list. They are opaque steps away from
 `sidebar`, each at least 0.01 of OKLab L past the one before and the
-selected step the farthest, with both inks at 4.5:1 on each
-(`lib/sidebarGroup.test.ts`). Light's ladder runs 0.948, 0.936, 0.922: the
+selected step the farthest (`lib/sidebarGroup.test.ts`), with both inks at
+4.5:1 on each (`lib/tokenContrast.test.ts`). Light's ladder runs 0.948, 0.936, 0.922: the
 status colours are the darker steps that still reach 4.5:1 as text on the
 selected one, the info blue among them.
 
@@ -158,18 +158,19 @@ distances):
 
 | Tier | What | Floor | On |
 | --- | --- | --- | --- |
-| text | `foreground`, `muted-foreground`, `link`, the four status colours, the composer's skill and mention ink, each `-foreground` on its fill, the tooltip's pair | 4.5:1 | `background`, `sidebar`, `card`, `popover`, `muted`, `secondary` and the three `sidebar-group` steps (a `-foreground` on its own fill only) |
+| text | `foreground`, `muted-foreground`, `link`, the four status colours, the composer's skill and mention ink, each `-foreground` on its fill, the tooltip's pair | 4.5:1 | `background`, `sidebar`, `card`, `popover`, `muted`, `secondary` and the three `sidebar-group` steps (a `-foreground` on its own fill only; skill and mention ink on `background`, `card` and `popover`, where they are typed) |
 | quiet text | `faint-foreground` | 3:1 | the same surfaces |
-| mark | `accent` as a ring, the type tints, `chart-1..4`, a glyph in a status colour | 3:1 | the surfaces it is drawn on |
-| edge | `border`; `input` | 1.15:1; 1.4:1 | `background`, `sidebar`, `card` |
+| mark | `accent` as a ring, the type tints, `chart-1..4`, the three `chart-neutral` steps, a glyph in a status colour | 3:1 | the surfaces it is drawn on |
+| edge | `border`; `input` | 1.15:1; 1.4:1 | `background`, `sidebar`, `card`; `background`, `card` |
 | wash | `foreground` over each canvas tint laid on `background` and `card` | 4.5:1 | the mixed colour |
 | code | every ink of the editor's two syntax themes, CodeMirror's two tables and the terminal's sixteen colours per theme | 4.5:1 (a comment and a line number 3:1) | the editor's and the terminal's ground |
 
 Named exceptions, each recorded in the test with its measured ratio so a
 change to one is seen: the eight presence hues and their label inks (the
 shared editor's, one value in both themes), the six sector dots (LifeOS's,
-never the only cue: the sector's name is beside each) and the runner's
-coin and star.
+never the only cue: the sector's name is beside each), the runner's
+coin and star, and a field's border on the rail (1.37:1 in dark, a hair
+under its floor: dark moved only where a label on a solid fill failed).
 
 What draws with its own theme takes it from the tokens or carries a table
 per theme, and follows a change live:
@@ -231,12 +232,12 @@ colour's retune never moves a type.
 | `type-research` | research | `#22d3ee` | `#0784a3` |
 
 Orchestration was amber at v1.0.303, the same amber as Needs you; it now
-sits 31° (dark) and 42° (light) of OKLCH hue from `warning`. The rule, held
-by `lib/typeTint.test.ts`: each tint reaches 3:1 (the non-text bar) on
-`background`, `sidebar`, `card` and `muted` in both themes, and stands at
-least 30° of OKLCH hue from `warning` and `destructive`. Light
-implementation (3.60) and research (3.45) are under 4.5:1, which is why no
-text may take a type tint. A glyph is always tinted, on an active chip or
+sits 31° (dark) and 44° (light) of OKLCH hue from `warning`. The rule, held
+by `lib/tokenContrast.test.ts` and `lib/typeTint.test.ts`: each tint reaches
+3:1 (the non-text bar) on every surface in both themes, and stands at
+least 30° of OKLCH hue from `warning` and `destructive`. On the selected
+group step light implementation (3.60) and research (3.45) are under 4.5:1,
+which is why no text may take a type tint. A glyph is always tinted, on an active chip or
 an idle one; a row's own dimming (offline, disabled) dims it with the row,
 and it never brightens to mean active.
 
@@ -268,9 +269,9 @@ both themes, unless the table gives two values.
 | `wave` | a recording's wave; the part played is `foreground` | `muted-foreground` 55% |
 | `run-dot` | a routine's planned run in the week grid | `foreground` 55% |
 | `stage` | the ground under a picture: an image, a PDF's sheets, a slide | `sidebar` |
-| `chart-neutral` | a form's answer bars | `foreground` 30% |
-| `chart-neutral-rest` | a dashboard's bars beside the current one, which is `foreground` | `foreground` 22% |
-| `chart-neutral-stale` | that current bar while the figures are stale | `foreground` 40% |
+| `chart-neutral` | a form's answer bars | `foreground` 44% dark, 54% light |
+| `chart-neutral-rest` | a dashboard's bars beside the current one, which is `foreground` | `foreground` 38% dark, 48% light |
+| `chart-neutral-stale` | that current bar while the figures are stale | `foreground` 55% dark, 65% light |
 
 A comment is never amber: amber means the person is needed. A change
 never takes a bar or an edge; it is the tint alone. The current change
