@@ -40,7 +40,7 @@ function Body({ task, project, onClose, onStart, onDone }: { task: Task; project
       <SheetHeader>
         <SheetTitle>{full.title}</SheetTitle>
       </SheetHeader>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-4 pb-4">
         {detail === undefined ? (
           <div aria-hidden className="flex flex-col gap-2">
             <Skeleton className="h-3.5 w-1/3" />
