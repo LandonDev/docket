@@ -111,8 +111,9 @@ impl<D: Desktop> Service<D> {
                                 self.notify("capture/frame", params);
                             }
                             None => {
-                                // over the cap at every quality: dropped, with a log line
-                                guard(&s.gate).ack(seq);
+                                // over the cap at every quality: dropped once, with a log line, until the pixels change
+                                guard(&s.gate).drop_frame(seq);
+                                last = Some(print);
                                 eprintln!("stream {}: a frame stayed over {} bytes and was dropped", s.id, FRAME_JPEG_MAX);
                             }
                         }
@@ -121,8 +122,18 @@ impl<D: Desktop> Service<D> {
             }
             std::thread::sleep(period.saturating_sub(tick.elapsed()));
         };
-        guard(&self.streams).remove(&s.id);
-        self.notify("capture/streamEnded", json!({ "stream": s.id, "reason": reason.as_str() }));
+        // a stream started again under its id has replaced this one: the new one keeps the id, and no end is told for it
+        let mine = {
+            let mut streams = guard(&self.streams);
+            let mine = streams.get(&s.id).is_some_and(|x| Arc::ptr_eq(x, &s));
+            if mine {
+                streams.remove(&s.id);
+            }
+            mine
+        };
+        if mine {
+            self.notify("capture/streamEnded", json!({ "stream": s.id, "reason": reason.as_str() }));
+        }
     }
 
     fn frame_jpeg(&self, pic: &Image) -> Option<Vec<u8>> {

@@ -2286,8 +2286,11 @@ app's job object and ends with it.
   activation, and its window is waited for up to 10 s by exe name (a
   launcher hands its work to the app's own process). An app that takes the
   front anyway is sent back behind the person's window and the result says
-  `front: { raised: true, restored }`. `refuse` is checked against the exe
-  name; `open` refuses programs and scripts (`.exe`, `.bat`, `.cmd`,
+  `front: { raised: true, restored }` (watched for 500 ms after its window
+  shows). For a running app the window is a new one the item opened, else
+  its front window. `refuse` is checked against the exe's file name,
+  however the app was named (a path, no `.exe`), here and in the host's
+  `refusedLaunch`; `open` refuses programs and scripts (`.exe`, `.bat`, `.cmd`,
   `.ps1`, `.lnk`, `.msi` and the rest) as `open_refused { reason:
   'executable' }`. A name Windows cannot start is `app_not_found`.
 - The policy (computer/policy.ts) refuses acts, never reads, on Windows'
@@ -2392,7 +2395,7 @@ On an element, with no coordinate, modifier or duration; the result says
 | Tier | On Windows | Expresses |
 |---|---|---|
 | `process` | window messages posted to the control under the point (`ChildWindowFromPointEx` down to the deepest visible, enabled child; client coordinates) or, for keys, to the element's own control, else the window thread's focus when it lies in the window, else the window | every pointer verb with no `alt` or `super` held (`shift` and `ctrl` ride the message's key flags); `key` with no modifier; `type` (`WM_CHAR` per UTF-16 unit, a line break as Return, a tab as Tab); `paste` (`WM_PASTE`, which classic and RichEdit controls take and Chromium does not) |
-| `front` | the same posts, with the window brought forward for the step and the person's front window put back after it | as `process` |
+| `front` | the same posts, with the window brought forward for the step and the person's front window put back after it, under the session lock (one window forward at a time, here or in another service) | as `process` |
 | `session` | real input by `SendInput`: the window brought forward, the real pointer moved, keys to the focused element (UI Automation's SetFocus first for a step that names one) | every pointer and key verb, modifiers included; `paste` as Ctrl+V |
 
 - **Why no modifiers on posted keys**: an app reads its modifiers from the
@@ -2411,14 +2414,18 @@ On an element, with no coordinate, modifier or duration; the result says
   `SendInput` refused (an administrator's window has the input, or the
   secure desktop) is `session_unavailable { reason: 'secure' }`; whatever
   the step left down (the left button, Shift, Ctrl, Alt, the Windows key)
-  is let go. Each step says what it changed (`step.session`: the front app
+  is let go (that event's button, key and modifiers, never one the person
+  holds). Each step says what it changed (`step.session`: the front app
   and the pointer before and after); `input.restoreSession` puts back what
   the first session step since the last restore found.
 - **The person** stops a session step: any key or pointer event the
   service did not send, seen by the hooks while the step runs (between its
-  events, after the last, and through a `hold_key`'s whole hold), fails it
-  `interrupted { by: 'person' }` with its `session` change and sends
-  `session/interrupted`. Escape, while `escape.watch`'s lease runs, sends
+  events, after the last, and through a `hold_key`'s or a held click's
+  whole hold), fails it `interrupted { by: 'person' }` with its `session`
+  change and sends `session/interrupted`. A step that stops for any reason
+  (the person, a cancel, a refusal) first lets go of what it pressed and
+  had not released (a drag's button, a held key, their modifiers), at its
+  own tier. Escape, while `escape.watch`'s lease runs, sends
   `escape/pressed`.
 - **Typing**: `type` runs `ax-value` into an empty field at the `ax` tier;
   else keys at the event tier, in runs of at most 20 UTF-16 units never cut
@@ -2427,15 +2434,20 @@ On an element, with no coordinate, modifier or duration; the result says
   as that key (Caps Lock minded) and anything else as a Unicode packet: in
   the rig WinUI's Notepad once turned a run of Unicode packets into dots.
 - **Paste** (§5.3 on Windows): the clipboard lock, the person's copy held
-  off (`pasteQuietMs`), every clipboard format saved (memory formats; a
+  off (`pasteQuietMs`), a copy between the save and the write refused as
+  `clipboard_busy` with nothing written, every clipboard format saved (memory formats; a
   bitmap or palette Windows made from a DIB is left to Windows to make
   again; a metafile or an owner-drawn format is `clipboard_busy`, nothing
   written), the text written as `CF_UNICODETEXT` and, for `markdown` and
   `html`, as `HTML Format` too (markdown rendered by the service: headings,
   paragraphs, lists, fenced code, bold, italic, code, links); the paste;
-  500 ms for the app to read it; the saved formats put back only while the
-  sequence number is still the service's (`restored`), else
-  `kept-person-copy`. A plain-text app such as Notepad takes the plain
+  500 ms for the app to read it, never cut short by a cancel; the saved
+  formats put back on every exit (a failed write or paste included) while
+  the sequence number is still the service's (`restored`), else
+  `kept-person-copy`; a put-back that fails answers `clipboard_busy`. The
+  watch leaves the numbers the service's own writes move through alone.
+  Not built: delayed rendering, which would tell the service when the app
+  has read the clipboard rather than waiting 500 ms. A plain-text app such as Notepad takes the plain
   text, which for markdown is its source.
 - **The pointer**: points are the session space's (§6), mapped to the
   screen at the pixel's centre; an element's point is the centre of its
@@ -2445,6 +2457,10 @@ On an element, with no coordinate, modifier or duration; the result says
   `left_mouse_down` keeps the button for its session and app at its tier
   until `left_mouse_up`, `session.close`, `shutdown`, or 30 s; a pointer
   step at another tier meanwhile is `needs_tier { needed: <the held tier> }`.
+  A session-tier button keeps the machine's session lock until it is let
+  go, and is let go by real input (with the modifiers it went down with) as
+  soon as the person moves or types. Not built: the session owning the
+  app's action slot between calls while a button is held.
 - **The agent cursor** is per session and app: the last point a pointer
   step used, in the session's space; `cursor_position` reads it and a
   click with no target uses it.
@@ -2475,7 +2491,10 @@ On an element, with no coordinate, modifier or duration; the result says
   then 0.55 to stay under 380 KiB, dropped with a log line past that.
   Frames carry the agent cursor in their own pixels. A click-class step
   sends `capture/click` to each of its session's streams on the window.
-  `capture/streamEnded` says `stopped` or `window-closed`. Not built: the
+  `capture/streamEnded` says `stopped` or `window-closed`; a stream started
+  again under its id replaces the old one, which ends without a notice. A
+  frame over the cap at every quality is dropped once, its place freed, until
+  the pixels change. Not built: the
   click carried to a stream that starts within 2 s of it (`clickCarryMs`).
 
 ### 29.5 The words

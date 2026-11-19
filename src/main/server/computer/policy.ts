@@ -133,6 +133,10 @@ const promptsOf = (id: string): 'prompts' | 'windows-prompts' => (WINDOWS_PROMPT
 
 /** computer_apps { launch }: a query naming TempCode or a refused prompt is refused before the service hears it. */
 export function refusedLaunch(query: string): string | null {
+  // by the file's own name too, however the app was named: `C:\\Windows\\System32\\consent.exe`, `consent`
+  const base = lower(query).split(/[\\/]/).pop() ?? ''
+  const exe = base.endsWith('.exe') ? base : `${base}.exe`
+  if (exe !== lower(query) && (exe === TEMPCODE_WINDOWS_EXE || WINDOWS_PROMPT_EXES.includes(exe))) return refusedLaunch(exe)
   const q = lower(query)
   if (q === TEMPCODE_BUNDLE_ID || q === 'tempcode' || q === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
   if (WINDOWS_PROMPT_EXES.includes(q) || REFUSED_ACT_BUNDLES.some((b) => lower(b) === q)) return hostErrorLine('refused_app', promptsOf(q))

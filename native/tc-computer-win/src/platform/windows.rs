@@ -817,8 +817,8 @@ impl Desktop for WindowsDesktop {
         let own = element.and_then(|e| unsafe { own_hwnd(&e.0) });
         let r = io::tier_post(win.id, own, tier, event);
         if r.is_err() && tier == Tier::Session {
-            // nothing stays down after a failed step
-            io::release_all();
+            // nothing this event pressed stays down when Windows refused it partway
+            io::release_event(event);
         }
         r
     }

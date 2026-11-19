@@ -19,6 +19,21 @@ use crate::locks::{guard, lock_file, machine_lock_path, user_temp};
 use crate::service::{Held, Service};
 use crate::wire::*;
 
+/// One part of a step: an event to post, or a hold the person or a cancel cuts short.
+enum Part {
+    Post(Event),
+    Hold(Duration),
+}
+
+/// The event that lets go of a press: a button's up, a key's up.
+fn release_of(e: &Event) -> Option<Event> {
+    match e {
+        Event::Button { at, button, down: true, mods } => Some(Event::Button { at: *at, button: *button, down: false, mods: *mods }),
+        Event::Key { combo, phase: KeyPhase::Down } => Some(Event::Key { combo: *combo, phase: KeyPhase::Up }),
+        _ => None,
+    }
+}
+
 /// What one event step did, beyond its tier.
 #[derive(Default)]
 pub(crate) struct EventDone {
@@ -35,16 +50,6 @@ fn needs(tier: Tier, why: &str) -> ComputerError {
     ComputerError { needed: Some(tier), ..fail(ComputerErrorKind::NeedsTier, why) }
 }
 
-fn sleep_cancellable(ms: u64, cancel: &AtomicBool) -> bool {
-    let until = Instant::now() + Duration::from_millis(ms);
-    while Instant::now() < until {
-        if cancel.load(Ordering::SeqCst) {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(10).min(until - Instant::now()));
-    }
-    true
-}
 
 impl<D: Desktop> Service<D> {
     /// The session's space for a window: its last screenshot's, else a default screenshot's.
@@ -98,7 +103,7 @@ impl<D: Desktop> Service<D> {
         let at = self.point(session, pid, &win, &space, a.element, a.coordinate.as_ref())?;
         let need_at = || at.ok_or_else(|| fail(ComputerErrorKind::ActionUnsupported, "no point yet: name an element or a coordinate"));
         let mut done = EventDone::default();
-        let mut events: Vec<Event> = Vec::new();
+        let mut events: Vec<Part> = Vec::new();
         let button = match a.action {
             RightClick => Button::Right,
             MiddleClick => Button::Middle,
@@ -113,13 +118,23 @@ impl<D: Desktop> Service<D> {
                     _ => 1,
                 };
                 let hold = Duration::from_secs_f64(a.duration.unwrap_or(0.0).clamp(0.0, 10.0));
-                events.push(Event::Click { at: s, button, count, hold, mods });
+                if hold.is_zero() {
+                    events.push(Part::Post(Event::Click { at: s, button, count, hold, mods }));
+                } else {
+                    // the last press held as a wait the person or a cancel can cut short, its release always sent
+                    if count > 1 {
+                        events.push(Part::Post(Event::Click { at: s, button, count: count - 1, hold: Duration::ZERO, mods }));
+                    }
+                    events.push(Part::Post(Event::Button { at: s, button, down: true, mods }));
+                    events.push(Part::Hold(hold));
+                    events.push(Part::Post(Event::Button { at: s, button, down: false, mods }));
+                }
                 done.cursor = Some(p);
                 done.click = Some(p);
             }
             MouseMove => {
                 let (s, p) = need_at()?;
-                events.push(Event::Move { at: s });
+                events.push(Part::Post(Event::Move { at: s }));
                 done.cursor = Some(p);
             }
             LeftClickDrag => {
@@ -129,14 +144,14 @@ impl<D: Desktop> Service<D> {
                     None
                 };
                 let ((s0, _), (s1, p1)) = (start.ok_or_else(|| fail(ComputerErrorKind::ActionUnsupported, "a drag needs its start"))?, need_at()?);
-                events.push(Event::Move { at: s0 });
-                events.push(Event::Button { at: s0, button: Button::Left, down: true, mods });
+                events.push(Part::Post(Event::Move { at: s0 }));
+                events.push(Part::Post(Event::Button { at: s0, button: Button::Left, down: true, mods }));
                 // the drag in ten moves, so an app that tracks the pointer sees it travel
                 for k in 1..=10 {
                     let t = k as f64 / 10.0;
-                    events.push(Event::Move { at: (s0.0 + (s1.0 - s0.0) * t, s0.1 + (s1.1 - s0.1) * t) });
+                    events.push(Part::Post(Event::Move { at: (s0.0 + (s1.0 - s0.0) * t, s0.1 + (s1.1 - s0.1) * t) }));
                 }
-                events.push(Event::Button { at: s1, button: Button::Left, down: false, mods });
+                events.push(Part::Post(Event::Button { at: s1, button: Button::Left, down: false, mods }));
                 done.cursor = Some(p1);
             }
             LeftMouseDown | LeftMouseUp => {
@@ -145,7 +160,7 @@ impl<D: Desktop> Service<D> {
                 if down && held.is_some() {
                     return Err(fail(ComputerErrorKind::ActionUnsupported, "the button is already down; left_mouse_up first"));
                 }
-                events.push(Event::Button { at: s, button: Button::Left, down, mods });
+                events.push(Part::Post(Event::Button { at: s, button: Button::Left, down, mods }));
                 done.cursor = Some(p);
                 if down {
                     done.click = Some(p);
@@ -166,17 +181,19 @@ impl<D: Desktop> Service<D> {
                     Some(ScrollDirection::Right) => (n, 0),
                     _ => (0, n),
                 };
-                events.push(Event::Wheel { at: s, dx, dy, mods });
+                events.push(Part::Post(Event::Wheel { at: s, dx, dy, mods }));
                 done.cursor = Some(p);
             }
             Key | HoldKey => {
                 let combo = parse_combo(a.text.as_deref().unwrap_or("")).map_err(|e| fail(ComputerErrorKind::ActionUnsupported, e))?;
                 if a.action == Key {
                     for _ in 0..a.repeat.unwrap_or(1).clamp(1, 100) {
-                        events.push(Event::Key { combo, phase: KeyPhase::Tap });
+                        events.push(Part::Post(Event::Key { combo, phase: KeyPhase::Tap }));
                     }
                 } else {
-                    events.push(Event::Key { combo, phase: KeyPhase::Down });
+                    events.push(Part::Post(Event::Key { combo, phase: KeyPhase::Down }));
+                    events.push(Part::Hold(Duration::from_secs_f64(a.duration.unwrap_or(0.0).clamp(0.0, 300.0))));
+                    events.push(Part::Post(Event::Key { combo, phase: KeyPhase::Up }));
                 }
             }
             Type => {
@@ -185,12 +202,14 @@ impl<D: Desktop> Service<D> {
                 match keys {
                     Some(ps) => {
                         done.via = Some(InputVia::Keys);
-                        events.extend(ps.into_iter().map(|p| match p {
-                            Piece::Text(t) => Event::Text(t),
-                            Piece::Key(vk) => Event::Key { combo: input::Combo { mods: Mods::default(), key: input::Key::Vk(vk) }, phase: KeyPhase::Tap },
+                        events.extend(ps.into_iter().map(|p| {
+                            Part::Post(match p {
+                                Piece::Text(t) => Event::Text(t),
+                                Piece::Key(vk) => Event::Key { combo: input::Combo { mods: Mods::default(), key: input::Key::Vk(vk) }, phase: KeyPhase::Tap },
+                            })
                         }));
                     }
-                    None => return self.paste_step(session, &win, element.as_ref(), tier, &text, None, paste_quiet_ms, cancel),
+                    None => return self.paste_step(session, &win, element.as_ref(), tier, &text, None, paste_quiet_ms),
                 }
             }
             Paste => {
@@ -201,53 +220,68 @@ impl<D: Desktop> Service<D> {
                     _ => None,
                 };
                 let plain = if a.format == Some(PasteFormat::Html) { clip::html_text(&text) } else { text };
-                return self.paste_step(session, &win, element.as_ref(), tier, &plain, html.as_deref(), paste_quiet_ms, cancel);
+                return self.paste_step(session, &win, element.as_ref(), tier, &plain, html.as_deref(), paste_quiet_ms);
             }
             _ => return Err(fail(ComputerErrorKind::ActionUnsupported, format!("{} is not an input step", a.action.as_str()))),
         }
         let element = element.as_ref();
         let typing = input::is_keys(a.action);
-        let run = |tier: Tier| -> Result<(), ComputerError> {
-            if typing && tier == Tier::Session {
-                if let Some(h) = element {
-                    self.desktop.focus(h)?;
-                }
-            }
-            let person = || -> Result<(), ComputerError> {
-                if tier == Tier::Session && self.person.interrupted.load(Ordering::SeqCst) {
-                    return Err(ComputerError { by: Some(InterruptedBy::Person), ..fail(ComputerErrorKind::Interrupted, "the person used the PC") });
-                }
-                Ok(())
-            };
-            for e in &events {
-                person()?;
-                if cancel.load(Ordering::SeqCst) {
-                    return Err(fail(ComputerErrorKind::Cancelled, "cancelled"));
-                }
-                self.desktop.post(&win, element, tier, e)?;
-            }
-            person()?;
-            if a.action == HoldKey {
-                // held for its duration, let go at once when the call is cancelled or the person acts
-                let until = Instant::now() + Duration::from_secs_f64(a.duration.unwrap_or(0.0).clamp(0.0, 300.0));
-                while Instant::now() < until && !cancel.load(Ordering::SeqCst) && person().is_ok() {
-                    std::thread::sleep(Duration::from_millis(10).min(until.saturating_duration_since(Instant::now())));
-                }
-                if let Some(Event::Key { combo, .. }) = events.first() {
-                    self.desktop.post(&win, element, tier, &Event::Key { combo: *combo, phase: KeyPhase::Up })?;
-                }
-                person()?;
-                if cancel.load(Ordering::SeqCst) {
-                    return Err(fail(ComputerErrorKind::Cancelled, "cancelled"));
-                }
+        let person = |tier: Tier| -> Result<(), ComputerError> {
+            if tier == Tier::Session && self.person.interrupted.load(Ordering::SeqCst) {
+                return Err(ComputerError { by: Some(InterruptedBy::Person), ..fail(ComputerErrorKind::Interrupted, "the person used the PC") });
             }
             Ok(())
+        };
+        let run = |tier: Tier| -> Result<(), ComputerError> {
+            // what the step pressed and has not let go: on any failure it is let go, in reverse order
+            let mut pressed: Vec<Event> = Vec::new();
+            let mut go = || -> Result<(), ComputerError> {
+                if typing && tier == Tier::Session {
+                    if let Some(h) = element {
+                        self.desktop.focus(h)?;
+                    }
+                }
+                for part in &events {
+                    person(tier)?;
+                    if cancel.load(Ordering::SeqCst) {
+                        return Err(fail(ComputerErrorKind::Cancelled, "cancelled"));
+                    }
+                    match part {
+                        Part::Post(e) => {
+                            self.desktop.post(&win, element, tier, e)?;
+                            match e {
+                                Event::Button { down: true, .. } | Event::Key { phase: KeyPhase::Down, .. } => pressed.push(e.clone()),
+                                Event::Button { button, down: false, .. } => pressed.retain(|p| !matches!(p, Event::Button { button: b, .. } if b == button)),
+                                Event::Key { combo, phase: KeyPhase::Up } => pressed.retain(|p| !matches!(p, Event::Key { combo: c, .. } if c == combo)),
+                                _ => {}
+                            }
+                        }
+                        // held for its duration, cut short when the call is cancelled or the person acts
+                        Part::Hold(d) => {
+                            let until = Instant::now() + *d;
+                            while Instant::now() < until && !cancel.load(Ordering::SeqCst) && person(tier).is_ok() {
+                                std::thread::sleep(Duration::from_millis(10).min(until.saturating_duration_since(Instant::now())));
+                            }
+                        }
+                    }
+                }
+                person(tier)
+            };
+            let r = go();
+            if r.is_err() {
+                for e in pressed.iter().rev().filter_map(release_of) {
+                    let _ = self.desktop.post(&win, element, tier, &e);
+                }
+            }
+            r
         };
         done.session = self.at_tier(session, &win, tier, &run)?;
         // the held button: kept per session × app until its up, released after 30 s
         match a.action {
             LeftMouseDown => {
-                guard(&self.state).held.insert(key, Held { tier, window: win.id, at: done.cursor.unwrap_or((0, 0)), since: Instant::now() });
+                // a session-tier button keeps the PC: the machine's session lock until its up (§5.1)
+                let lock = (tier == Tier::Session).then(|| lock_file(&machine_lock_path(&user_temp(), "session"), Duration::from_millis(lock_limits::CLIPBOARD_WAIT_MS as u64)).ok().flatten().map(std::sync::Arc::new)).flatten();
+                guard(&self.state).held.insert(key, Held { tier, window: win.id, at: done.cursor.unwrap_or((0, 0)), mods, since: Instant::now(), _lock: lock });
             }
             LeftMouseUp => {
                 guard(&self.state).held.remove(&key);
@@ -269,6 +303,12 @@ impl<D: Desktop> Service<D> {
         match tier {
             Tier::Process => f(tier).map(|_| None),
             Tier::Front => {
+                // the front is one at a time: never in the middle of another step's front or session hold, here or in another service
+                let _front = guard(&self.front_lock);
+                let _lock = lock_file(&machine_lock_path(&user_temp(), "session"), Duration::from_millis(lock_limits::CLIPBOARD_WAIT_MS as u64))
+                    .ok()
+                    .flatten()
+                    .ok_or_else(|| ComputerError { reason: Some(ErrorReason::InUse), ..fail(ComputerErrorKind::SessionUnavailable, "another session has the PC") })?;
                 let before = self.desktop.front();
                 if !self.desktop.raise(win.id) {
                     return Err(ComputerError { reason: Some(ErrorReason::ActivationRefused), ..fail(ComputerErrorKind::SessionUnavailable, "Windows did not let the window come forward") });
@@ -297,6 +337,7 @@ impl<D: Desktop> Service<D> {
         if self.desktop.locked() {
             return Err(ComputerError { reason: Some(ErrorReason::Locked), ..fail(ComputerErrorKind::SessionUnavailable, "the screen is locked") });
         }
+        let _front = guard(&self.front_lock);
         let _lock = lock_file(&machine_lock_path(&user_temp(), "session"), Duration::from_millis(lock_limits::CLIPBOARD_WAIT_MS as u64))
             .ok()
             .flatten()
@@ -348,7 +389,7 @@ impl<D: Desktop> Service<D> {
     /// `paste`, and `type` past what keys take (§5.3): under the clipboard lock, the person's copy held off,
     /// every format saved, the content written, the target's paste, its change awaited, the clipboard put back.
     #[allow(clippy::too_many_arguments)]
-    fn paste_step(&self, session: &str, win: &Win, element: Option<&D::Handle>, tier: Tier, text: &str, html: Option<&str>, quiet_ms: Option<i64>, cancel: &AtomicBool) -> Result<(Tier, EventDone), ComputerError> {
+    fn paste_step(&self, session: &str, win: &Win, element: Option<&D::Handle>, tier: Tier, text: &str, html: Option<&str>, quiet_ms: Option<i64>) -> Result<(Tier, EventDone), ComputerError> {
         let busy = |reason: Option<ErrorReason>, why: &str| ComputerError { reason, ..fail(ComputerErrorKind::ClipboardBusy, why) };
         let _lock = lock_file(&machine_lock_path(&user_temp(), "clipboard"), Duration::from_millis(lock_limits::CLIPBOARD_WAIT_MS as u64))
             .ok()
@@ -360,10 +401,23 @@ impl<D: Desktop> Service<D> {
                 return Err(busy(Some(ErrorReason::RecentCopy), "the person copied something moments ago"));
             }
         }
-        let saved = self.desktop.clip_save()?;
-        self.desktop.clip_put(text, html)?;
-        self.clip.ours(self.desktop.clip_seq());
-        let mine = self.desktop.clip_seq();
+        // the watch leaves the numbers the service's own writes move through alone, until it has noted the last one
+        self.clip.writing.store(true, Ordering::SeqCst);
+        let before = self.desktop.clip_seq();
+        let saved = match self.desktop.clip_save() {
+            Ok(c) => c,
+            Err(e) => {
+                self.clip.writing.store(false, Ordering::SeqCst);
+                return Err(e);
+            }
+        };
+        // a copy between the save and the write would be lost under the write: refused, nothing written
+        if self.desktop.clip_seq() != before {
+            self.clip.writing.store(false, Ordering::SeqCst);
+            return Err(busy(None, "the clipboard changed while it was saved"));
+        }
+        let put = self.desktop.clip_put(text, html);
+        let mine = put.is_ok().then(|| self.desktop.clip_seq());
         let run = |tier: Tier| -> Result<(), ComputerError> {
             if tier == Tier::Session {
                 if let Some(h) = element {
@@ -372,17 +426,22 @@ impl<D: Desktop> Service<D> {
             }
             self.desktop.post(win, element, tier, &Event::Paste)
         };
-        let r = self.at_tier(session, win, tier, &run);
-        // the app reads the clipboard as it handles the paste: give it that, at most 500 ms
-        sleep_cancellable(500, cancel);
-        let outcome = if self.desktop.clip_seq() == mine {
-            let _ = self.desktop.clip_restore(&saved);
-            self.clip.ours(self.desktop.clip_seq());
-            ClipboardOutcome::Restored
-        } else {
-            ClipboardOutcome::KeptPersonCopy
-        };
+        let r = put.and_then(|_| self.at_tier(session, win, tier, &run));
+        if r.is_ok() {
+            // the app reads the clipboard as it handles the paste: 500 ms, never cut short (a cancel would hand it the person's copy)
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        // put back on every exit, unless the person copied since the write
+        let theirs = mine.is_some_and(|m| self.desktop.clip_seq() != m);
+        let restored = if theirs { None } else { Some(self.desktop.clip_restore(&saved)) };
+        self.clip.ours(self.desktop.clip_seq());
+        self.clip.writing.store(false, Ordering::SeqCst);
         let session_change = r?;
+        let outcome = match restored {
+            None => ClipboardOutcome::KeptPersonCopy,
+            Some(Ok(())) => ClipboardOutcome::Restored,
+            Some(Err(_)) => return Err(busy(None, "the paste ran but the clipboard could not be put back")),
+        };
         Ok((tier, EventDone { via: Some(InputVia::Paste), clipboard: Some(outcome), session: session_change, ..Default::default() }))
     }
 
@@ -400,21 +459,25 @@ impl<D: Desktop> Service<D> {
 
     /// Lets go of a held button (`session.close`, `shutdown`, 30 s with no up).
     pub(crate) fn release_held(&self, session: Option<&str>, older_than: Option<Duration>) {
+        self.release_where(|s, h| session.is_none_or(|x| x == s) && older_than.is_none_or(|d| h.since.elapsed() >= d));
+    }
+
+    /// Every session-tier button let go: the person acted while one was held between calls.
+    pub(crate) fn release_held_session(&self) {
+        self.release_where(|_, h| h.tier == Tier::Session);
+    }
+
+    fn release_where(&self, pick: impl Fn(&str, &Held) -> bool) {
         let gone: Vec<((String, i64), Held)> = {
             let mut st = guard(&self.state);
-            let keys: Vec<(String, i64)> = st
-                .held
-                .iter()
-                .filter(|((s, _), h)| session.is_none_or(|x| x == s) && older_than.is_none_or(|d| h.since.elapsed() >= d))
-                .map(|(k, _)| k.clone())
-                .collect();
+            let keys: Vec<(String, i64)> = st.held.iter().filter(|((s, _), h)| pick(s, h)).map(|(k, _)| k.clone()).collect();
             keys.into_iter().filter_map(|k| st.held.remove(&k).map(|h| (k, h))).collect()
         };
         for ((s, pid), h) in gone {
             let Ok(win) = self.desktop.window(pid, Some(&WindowRef { id: Some(h.window), title: None })) else { continue };
-            let space = self.space(&s, &win);
-            let at = to_screen(&win.frame, &space, h.at);
-            let _ = self.desktop.post(&win, None, if h.tier == Tier::Session { Tier::Process } else { h.tier }, &Event::Button { at, button: Button::Left, down: false, mods: Mods::default() });
+            let at = to_screen(&win.frame, &self.space(&s, &win), h.at);
+            // at its own tier: a session-tier button is real input and only real input lets it go, with its modifiers
+            let _ = self.desktop.post(&win, None, h.tier, &Event::Button { at, button: Button::Left, down: false, mods: h.mods });
         }
     }
 

@@ -47,6 +47,8 @@ pub struct Service<D: Desktop> {
     pub(crate) person: Person,
     pub(crate) clip: ClipWatch,
     pub(crate) streams: Mutex<HashMap<String, Arc<Stream>>>,
+    /// one window brought forward at a time in this process: front and session steps take it, front first, then the file lock
+    pub(crate) front_lock: Mutex<()>,
 }
 
 pub(crate) struct State<H> {
@@ -66,12 +68,16 @@ pub(crate) struct State<H> {
 }
 
 /// A left button held by `left_mouse_down`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Held {
     pub tier: Tier,
     pub window: i64,
     pub at: (i64, i64),
+    /// the modifiers the down pressed with it, let go with its up
+    pub mods: crate::input::Mods,
     pub since: Instant,
+    /// a session-tier button keeps the machine's session lock until it is let go
+    pub _lock: Option<Arc<FileLock>>,
 }
 
 /// The person watch: whether a session step runs, whether the person stopped it, and the Escape watch's lease.
@@ -170,6 +176,7 @@ impl<D: Desktop> Service<D> {
             person: Person::default(),
             clip: ClipWatch::new(started_at),
             streams: Mutex::default(),
+            front_lock: Mutex::new(()),
         }
     }
 
@@ -203,6 +210,10 @@ impl<D: Desktop> Service<D> {
             let Some(me) = weak.upgrade() else { return };
             if me.person.active.load(Ordering::SeqCst) {
                 me.person.interrupted.store(true, Ordering::SeqCst);
+            }
+            // a session-tier button held between calls is let go when the person acts (§5.1)
+            if guard(&me.state).held.values().any(|h| h.tier == Tier::Session) {
+                me.release_held_session();
             }
             if input == PersonInput::Escape && guard(&me.person.escape_until).is_some_and(|t| Instant::now() < t) {
                 me.notify("escape/pressed", json!({ "at": now_ms() }));
@@ -303,8 +314,9 @@ impl<D: Desktop> Service<D> {
                 let p: SessionRef = decode(params)?;
                 gate()?;
                 self.release_held(Some(&p.session), None);
-                for s in guard(&self.streams).values().filter(|s| s.session == p.session) {
-                    self.stream_stop(&s.id);
+                let ids: Vec<String> = guard(&self.streams).values().filter(|s| s.session == p.session).map(|s| s.id.clone()).collect();
+                for id in ids {
+                    self.stream_stop(&id);
                 }
                 let mut st = guard(&self.state);
                 st.sessions.close(&p.session);
@@ -456,12 +468,12 @@ impl<D: Desktop> Service<D> {
         let running = self.resolve(&AppRef { app: Some(p.app.clone()), pid: None });
         let exe = match &running {
             Ok(app) => app.bundle_id.clone().unwrap_or_default(),
-            Err(_) => {
-                let a = p.app.to_lowercase();
-                if a.ends_with(".exe") { a } else { format!("{a}.exe") }
-            }
+            Err(_) => p.app.clone(),
         };
-        if refused(&exe) {
+        // refused by the exe's own file name, however the app was named (a path included)
+        let name = exe.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+        let name = if name.ends_with(".exe") { name } else { format!("{name}.exe") };
+        if refused(&name) {
             return Err(fail(ComputerErrorKind::OpenRefused, format!("{exe} may not be launched")).into());
         }
         if let Ok(app) = &running {
@@ -477,28 +489,40 @@ impl<D: Desktop> Service<D> {
             Ok(app) => self.desktop.apps(true).ok().and_then(|a| a.into_iter().find(|x| x.pid == app.pid)).and_then(|a| a.windows).unwrap_or_default().iter().map(|w| w.id).collect(),
             Err(_) => HashSet::new(),
         };
+        // a new window of the app's, by its exe; for a running app that opened an item in a window it had, its front one at the end
         let mut found: Option<(i64, WindowInfo)> = None;
+        let mut fallback: Option<(i64, WindowInfo)> = None;
         while found.is_none() && Instant::now() < deadline {
             if let Ok(apps) = self.desktop.apps(true) {
-                found = apps
+                let windows: Vec<(i64, WindowInfo)> = apps
                     .iter()
-                    .filter(|a| a.pid == started || a.bundle_id.as_deref().is_some_and(|b| b.eq_ignore_ascii_case(&exe)))
+                    .filter(|a| a.pid == started || a.bundle_id.as_deref().is_some_and(|b| b.eq_ignore_ascii_case(&name)))
                     .flat_map(|a| a.windows.clone().unwrap_or_default().into_iter().map(move |w| (a.pid, w)))
-                    .find(|(_, w)| !known.contains(&w.id) || running.is_ok());
+                    .collect();
+                found = windows.iter().find(|(_, w)| !known.contains(&w.id)).cloned();
+                fallback = windows.iter().find(|(_, w)| w.main).or(windows.first()).cloned();
             }
             if found.is_none() {
                 std::thread::sleep(Duration::from_millis(100));
             }
         }
+        let found = found.or(if running.is_ok() { fallback } else { None });
         let pid = found.as_ref().map(|(pid, _)| *pid).or(running.as_ref().ok().map(|a| a.pid)).unwrap_or(started);
         // the front guard (§23.3): an app that took the front is sent back behind the person's window
-        let front = match (front_before, self.desktop.front()) {
-            (Some((before_pid, before)), Some((now_pid, _))) if now_pid == pid && before_pid != pid => {
-                let back = self.desktop.raise(before);
-                Some(FrontReport { raised: true, restored: Some(if back { FrontRestore::Restored } else { FrontRestore::Failed }), ms: None })
+        // watched for half a second: an app often takes the front a moment after its window shows
+        let mut front = None;
+        let watch_until = Instant::now() + Duration::from_millis(limits::FRONT_CHOICE_MS as u64);
+        while front.is_none() && Instant::now() < watch_until {
+            if let (Some((before_pid, before)), Some((now_pid, _))) = (front_before, self.desktop.front()) {
+                if now_pid == pid && before_pid != pid {
+                    let back = self.desktop.raise(before);
+                    front = Some(FrontReport { raised: true, restored: Some(if back { FrontRestore::Restored } else { FrontRestore::Failed }), ms: None });
+                }
             }
-            _ => None,
-        };
+            if front.is_none() {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
         let window = found.map(|(_, w)| LaunchedWindow { id: w.id, title: w.title });
         encode(AppsLaunchResult { pid, launched: running.is_err(), front, window, others: None })
     }

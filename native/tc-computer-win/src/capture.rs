@@ -168,6 +168,11 @@ impl FrameGate {
         }
     }
 
+    /// A frame that was never sent (over the size cap): its place freed, no other frame's.
+    pub fn drop_frame(&mut self, seq: i64) {
+        self.out.retain(|(s, _)| *s != seq);
+    }
+
     /// A frame has waited STARVE for its ack: stop capturing until one comes.
     pub fn starved(&self, now: Instant) -> bool {
         self.out.first().is_some_and(|(_, at)| now.duration_since(*at) >= STARVE)
@@ -296,8 +301,11 @@ mod tests {
         assert_eq!(g.take(t), None);
         g.ack(99); // never sent: ignored
         assert_eq!(g.take(t), None);
-        g.ack(2); // covers 1 too
+        g.drop_frame(2); // never sent: 1 is still out
         assert_eq!(g.take(t), Some(3));
+        assert_eq!(g.take(t), None);
+        g.ack(3); // covers 1 too
+        assert_eq!(g.take(t), Some(4));
         assert!(!g.starved(t + Duration::from_secs(4)));
         assert!(g.starved(t + STARVE));
     }

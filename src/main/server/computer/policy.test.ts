@@ -131,6 +131,11 @@ describe('refusedTarget', () => {
     }
     expect(refusedTarget({ pid: 8, bundleId: 'tempcode.exe' }, 'read', 7)).toBe("TempCode's own window is off limits to computer use")
     expect(refusedLaunch('TempCode.exe')).toBe("TempCode's own window is off limits to computer use")
+    // named by a path or without .exe, the file's own name decides
+    expect(refusedLaunch('C:\\Windows\\System32\\consent.exe')).toBe("Windows' password and consent prompts are the person's to answer")
+    expect(refusedLaunch('C:/Users/me/AppData/Local/Programs/TempCode/TempCode.exe')).toBe("TempCode's own window is off limits to computer use")
+    expect(refusedLaunch('consent')).toBe("Windows' password and consent prompts are the person's to answer")
+    expect(refusedLaunch('C:\\Windows\\notepad.exe')).toBeNull()
     expect(refusedOpenItem('C:\\Users\\me\\Total.txt')).toBeNull()
     expect(refusedOpenItem('C:/Users/me/Total.txt')).toBeNull()
   })

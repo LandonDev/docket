@@ -464,10 +464,26 @@ pub fn send_event(e: &Event) -> Result<(), ComputerError> {
     }
 }
 
-/// Lets go of what a session step may have left down: the three buttons and the modifiers.
-pub fn release_all() {
-    let mut v = vec![mouse_input(MOUSEEVENTF_LEFTUP, 0, None)];
-    v.extend([vk::SHIFT, vk::CONTROL, vk::MENU, vk::LWIN].iter().filter(|k| unsafe { GetAsyncKeyState(**k as i32) } as u16 & 0x8000 != 0).map(|k| key_input(*k, true)));
+/// Lets go of what one real-input event pressed when Windows refused it partway: its button, its key and the
+/// modifiers it pressed with them, and nothing else (never a key the person holds).
+pub fn release_event(e: &Event) {
+    let mut v = Vec::new();
+    match e {
+        Event::Click { button, mods, .. } | Event::Button { button, mods, down: true, .. } => {
+            v.push(mouse_input(button_flags(*button).1, 0, None));
+            v.extend(mods_inputs(mods, true));
+        }
+        Event::Wheel { mods, .. } => v.extend(mods_inputs(mods, true)),
+        Event::Key { combo, phase: KeyPhase::Tap | KeyPhase::Down } => {
+            let (key, mods, _) = resolve_key(combo);
+            if let Some(k) = key {
+                v.push(key_input(k, true));
+            }
+            v.extend(mods_inputs(&mods, true));
+        }
+        Event::Paste => v.extend([key_input(b'V' as u16, true), key_input(vk::CONTROL, true)]),
+        _ => {}
+    }
     send(&v);
 }
 
@@ -565,11 +581,16 @@ pub fn grab(id: i64, frame: (i32, i32, i32, i32)) -> Result<Image, ComputerError
                 let old = SelectObject(mem, HGDIOBJ(dib.0));
                 // PW_RENDERFULLCONTENT: DirectComposition content (Chromium, WinUI) too
                 let ok = PrintWindow(h, mem, PRINT_WINDOW_FLAGS(2)).as_bool();
-                let img = ok.then(|| {
+                let img = ok.then(|| -> Option<Image> {
                     let src = std::slice::from_raw_parts(bits as *const u8, (w * ht * 4) as usize);
                     let (fx, fy, fw, fh) = frame;
                     let (ox, oy) = ((fx - wr.left).clamp(0, w), (fy - wr.top).clamp(0, ht));
-                    let (cw, ch) = (fw.min(w - ox).max(1) as usize, fh.min(ht - oy).max(1) as usize);
+                    let (cw, ch) = (fw.min(w - ox), fh.min(ht - oy));
+                    // the frame lies outside the window's rectangle (an odd DWM state): nothing to crop
+                    if cw <= 0 || ch <= 0 {
+                        return None;
+                    }
+                    let (cw, ch) = (cw as usize, ch as usize);
                     let mut out = Image::new(cw, ch);
                     for y in 0..ch {
                         let row = ((oy as usize + y) * w as usize + ox as usize) * 4;
@@ -579,11 +600,15 @@ pub fn grab(id: i64, frame: (i32, i32, i32, i32)) -> Result<Image, ComputerError
                             out.bgr[d..d + 3].copy_from_slice(&src[s..s + 3]);
                         }
                     }
-                    out
+                    Some(out)
                 });
                 SelectObject(mem, old);
                 let _ = DeleteObject(HGDIOBJ(dib.0));
-                img.ok_or_else(|| failed("Windows could not draw the window"))
+                match img {
+                    Some(Some(i)) => Ok(i),
+                    Some(None) => Err(failed("the window's frame lies outside its rectangle")),
+                    None => Err(failed("Windows could not draw the window")),
+                }
             }
             Err(e) => Err(failed(&format!("no bitmap: {}", e.message()))),
         };

@@ -34,6 +34,8 @@ struct Fake {
     person_types: Arc<Mutex<bool>>,
     /// a frame counter, so a stream sees new pixels
     frames: Arc<Mutex<u8>>,
+    /// the person moves the pointer while a session step runs
+    person_moves: Arc<Mutex<bool>>,
 }
 
 const FRAME: Rect = Rect { x: 100.0, y: 50.0, w: 800.0, h: 600.0 };
@@ -82,6 +84,12 @@ impl Desktop for Fake {
         Ok(())
     }
     fn post(&self, _win: &Win, _element: Option<&&'static str>, tier: Tier, e: &Event) -> Result<(), ComputerError> {
+        if tier == Tier::Session && *self.person_moves.lock().unwrap() && matches!(e, Event::Button { down: true, .. }) {
+            if let Some(f) = self.watcher.lock().unwrap().as_ref() {
+                f(PersonInput::Pointer);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
         if tier == Tier::Session && *self.person_types.lock().unwrap() {
             if let Some(f) = self.watcher.lock().unwrap().as_ref() {
                 f(PersonInput::Key);
@@ -357,4 +365,64 @@ fn launch_starts_an_app_that_is_not_running_and_refuses_programs_as_items() {
     assert_eq!(w.kind("apps.launch", json!({ "app": "notepad", "refuse": ["notepad.exe"] })), "open_refused");
     assert_eq!(w.kind("apps.launch", json!({ "app": "nothing-here" })), "app_not_found");
     assert_eq!(INPUT_TAG, 0x7463_6370);
+}
+
+#[test]
+fn a_step_the_person_stops_lets_go_of_what_it_pressed_and_a_held_session_button_goes_when_they_move() {
+    let fake = Fake::default();
+    *fake.person_moves.lock().unwrap() = true;
+    let (mut w, epoch) = start(&fake);
+    // a drag stopped after its down: the down is let go at once
+    let r = w.ok("action.run", act(&epoch, json!(["session"]), json!({ "action": "left_click_drag", "start_coordinate": [10, 10], "coordinate": [200, 10], "text": "shift" })));
+    assert_eq!(r["step"]["error"]["kind"], json!("interrupted"), "{r}");
+    let last = fake.posted.lock().unwrap().last().cloned();
+    assert!(matches!(last, Some((Tier::Session, Event::Button { down: false, mods, .. })) if mods.shift), "{last:?}");
+    // a session-tier down kept between calls is let go, at the session tier, when the person acts
+    *fake.person_moves.lock().unwrap() = false;
+    w.ok("action.run", act(&epoch, json!(["session"]), json!({ "action": "mouse_move", "coordinate": [50, 50] })));
+    let r = w.ok("action.run", act(&epoch, json!(["session"]), json!({ "action": "left_mouse_down" })));
+    assert_eq!(r["step"]["tier"], json!("session"), "{r}");
+    fake.watcher.lock().unwrap().as_ref().unwrap()(PersonInput::Pointer);
+    std::thread::sleep(Duration::from_millis(50));
+    let last = fake.posted.lock().unwrap().last().cloned();
+    assert!(matches!(last, Some((Tier::Session, Event::Button { down: false, .. }))), "{last:?}");
+}
+
+#[test]
+fn a_click_held_for_a_duration_is_cut_short_by_a_cancel_and_still_released() {
+    let fake = Fake::default();
+    let (mut w, epoch) = start(&fake);
+    w.raw(&json!({ "jsonrpc": "2.0", "id": 900, "method": "action.run", "params": act(&epoch, json!(["process"]), json!({ "action": "left_click", "coordinate": [10, 10], "duration": 8 })) }).to_string());
+    std::thread::sleep(Duration::from_millis(200));
+    let started = Instant::now();
+    w.raw(&json!({ "jsonrpc": "2.0", "method": "$/cancel", "params": { "id": 900 } }).to_string());
+    let f = w.frame();
+    assert!(started.elapsed() < Duration::from_secs(3), "the hold ran on");
+    assert_eq!(f["result"]["step"]["error"]["kind"], json!("cancelled"), "{f}");
+    let last = fake.posted.lock().unwrap().last().cloned();
+    assert!(matches!(last, Some((Tier::Process, Event::Button { down: false, .. }))), "{last:?}");
+}
+
+#[test]
+fn closing_a_session_with_a_live_stream_answers_and_a_restarted_stream_keeps_its_id() {
+    let fake = Fake::default();
+    let (mut w, _) = start(&fake);
+    let start_stream = json!({ "session": "s", "app": { "app": "Notepad" }, "stream": "p1", "fps": 15 });
+    w.ok("capture.stream.start", start_stream.clone());
+    w.note("capture/frame");
+    // started again under its id: the first ends quietly, the second is the one stop ends
+    w.ok("capture.stream.start", start_stream);
+    std::thread::sleep(Duration::from_millis(300));
+    w.ok("clipboard.state", json!({}));
+    assert!(!w.notes.iter().any(|n| n["method"] == json!("capture/streamEnded")), "{:?}", w.notes);
+    w.ok("session.close", json!({ "session": "s" }));
+    assert_eq!(w.note("capture/streamEnded")["params"]["reason"], json!("stopped"));
+}
+
+#[test]
+fn a_launch_named_by_a_path_is_refused_by_its_file_name() {
+    let fake = Fake::default();
+    let (mut w, _) = start(&fake);
+    assert_eq!(w.kind("apps.launch", json!({ "app": "C:\\Windows\\System32\\consent.exe", "refuse": ["consent.exe"] })), "open_refused");
+    assert_eq!(w.kind("apps.launch", json!({ "app": "consent", "refuse": ["consent.exe"] })), "open_refused");
 }
