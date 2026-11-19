@@ -88,6 +88,13 @@ live in `db.ts` and `addonStore.ts`; nobody else appends to `db.ts`'s list.
   host: the fault is logged, that pillar is left out of everything (its
   `start`, its tools, its `handle`), and its methods answer `work: <pillar>
   could not make its tables: …`.
+- **Each `ensure` runs inside a savepoint the host owns** (`work_ensure`):
+  all of it lands or none of it does, and a fault leaves no half-made table
+  and no open transaction for the host's later writes to join. So an
+  `ensure` never runs `BEGIN`, `COMMIT` or `ROLLBACK` of its own. SQLite
+  refuses a `BEGIN` there, and a `COMMIT` or `ROLLBACK` that ends the host's
+  transaction is counted that pillar's fault. A step that must be atomic on
+  its own nests a `SAVEPOINT` (work/schema.test.ts has each case).
 
 ## The shared types
 
@@ -133,7 +140,7 @@ edits none of these.
 | Router | `work.handle(req, principal)` in the handler chain, `work.pushes.onPush(sendFrame, principal)` and its off, `startWork(deps)` (src/main/server/index.ts) | `handle`, `onPush`, `start` of its module |
 | Deleted threads and workspaces | the registry's `onRemoved` and `onWorkspaceDeleted`, heard in `startWork` | `sessionsRemoved`, `workspaceRemoved` of its module |
 | Database | `ensureWorkTables(db)` | `ensure` of its module |
-| Modules | `WORK_MODULES` (work/modules.ts) | `src/main/server/work/<pillar>/index.ts` |
+| Modules | `PILLAR_LOADERS` and `WORK_MODULES` (work/modules.ts) | `src/main/server/work/<pillar>/index.ts` |
 | Tools | `withWorkTools(options, session)` beside `withMacTools` for Claude; `app.workTools`, `app.workCall` and `app.workCancel` on the bridge for Codex and Muse | `tools` of its module |
 | Path fence | `workSourcePaths` in `fenceRequest` (remote/fence.ts) | none: it names files inside a `CanvasSource` |
 | Build | `MAIN_INPUTS.workService` and `hostedPages()` (electron.vite.config.ts) | none |
@@ -188,8 +195,37 @@ method's name and calls that module's `handle` alone, with the context and a
 capabilities) or `model` (an `app.work*` call from a thread's bridge, with
 the session id its token proved). A method its contract declares and no module answers throws
 `not built: <method> (milestone N)`. Nothing hangs and nothing passes
-silently. The capability gate and the path fence run before it, as for
+silently. `handle` also gets a `signal` as its fourth argument, which aborts
+when the caller's socket goes or Work is turned off: a handler that runs
+long hands it on. It hears no cancel of one request on a socket that stays
+open; a pillar that needs that declares its own cancel method. The capability gate and the path fence run before it, as for
 every method.
+
+### Loading: nothing of Work can stop the host
+
+No host file imports a pillar, a part of the context or the mount when it
+loads. `startServer` awaits `loadWork()` (work/load.ts) before anything of
+the host exists, and that is the one door:
+
+- **Each pillar is loaded on its own** by `loadWorkModules`
+  (work/modules.ts), through its entry in `PILLAR_LOADERS`. One whose code,
+  or whose dependency, throws while it loads (a native library this machine
+  lacks) is left out and named in `WORK_LOAD_FAULTS`; its methods answer
+  `work: <pillar> did not load: …` and the others run.
+- **`WORK_MODULES` is empty until that load has run** and is one array for
+  the life of the process, so a reader that holds it sees it filled.
+  `startWork(deps)` with no list throws before a load, since an empty
+  registry would otherwise pass for a host with no pillars. A test that
+  wants the whole registry awaits `loadWorkModules()` first; one that passes
+  its own list (`startWork(deps, [canvas])`) needs nothing.
+- **If the mount itself cannot load or start** (a part's file throws as it
+  loads), the host gets an inert Work: the switch reads off and cannot be
+  turned on, every other Work method answers why, no thread is listed a
+  tool, and everything that is not Work runs as it always did.
+- Host code reaches into `work/` only for types, `work/load.ts` and
+  `work/toolInput.ts` (`inputShapeOf`, which imports nothing of Work).
+  work/load.test.ts holds index.ts and apptools.ts to that. A pillar's own
+  `index.ts` may import what it likes: it is loaded behind the guard.
 
 ## The context
 
@@ -254,8 +290,10 @@ input that is not a `z.object` is left out and logged.
   as `app.workCancel`; each checks that the token is that thread's own.
   Without the token the bridge asks the app nothing new.
 - `run(args, ctx)` gets a `ToolCtx`: the context, the thread's `scope`, its
-  `sessionId` and a `signal` that aborts when the harness cancels the call
-  or its socket goes. Arguments that do not fit the input come back as the
+  `sessionId` and a `signal` that aborts when the harness cancels the call,
+  when its socket goes, or when Work is turned off: every call in flight,
+  from any harness, is aborted before the modules stop. A tool that waits or
+  loops must heed it. Arguments that do not fit the input come back as the
   tool's error.
 
 ## The build entries

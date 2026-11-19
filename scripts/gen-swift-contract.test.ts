@@ -104,6 +104,24 @@ describe('the subset', () => {
     // The switch's push is not the phone's yet: adding a case would break the client's exhaustive switch.
     expect(pushNames).not.toContain('work')
   })
+  it("tries a union's literal-pinned object branch only for the values it lists, so a known shape after it wins", () => {
+    // A chip's ref is a task, mail or event (`{at: 'lifeos', table: 'tasks' | …}`) or a CanvasSource. The enum
+    // Swift generates keeps unknown values, so unguarded the first branch took `{at: 'lifeos', table: 'docs'}` too.
+    const types = files['Types.swift']
+    expect(types).toContain(
+      'if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }'
+    )
+    expect(types).toContain('if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }')
+    // the rule touches no other union: a branch with no literal field, and a named one, decode as they did
+    const guarded = Object.values(files).join('\n').match(/if let probe = try\? container\.decode\(JSONValue\.self\)/g) ?? []
+    expect(guarded).toHaveLength(1)
+    const plain = [type('Either', z.union([z.object({ a: z.string() }), z.object({ b: z.number() })]))]
+    expect(Object.values(generate(plain)).join('\n')).not.toContain('let probe')
+    const pinned = [type('Pinned', z.union([z.object({ kind: z.literal('x'), mode: z.enum(['p', 'q']), note: z.enum(['m', 'n']).optional() }), z.object({ kind: z.string(), other: z.number() })]))]
+    expect(Object.values(generate(pinned)).join('\n')).toContain(
+      'if let probe = try? container.decode(JSONValue.self), probe["kind"]?.stringValue == "x", ["p", "q"].contains(probe["mode"]?.stringValue ?? ""), let value = try? container.decode(PinnedCase0.self) { self = .object(value); return }'
+    )
+  })
   it('emits a nullable method output as an optional typealias', () => {
     const methods = files['Methods.swift']
     expect(methods).toContain('public typealias Output = ProjectPlanState?')

@@ -1,5 +1,4 @@
 import type { DatabaseSync } from 'node:sqlite'
-import type { ZodType } from 'zod'
 import type { Capability } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { AddonRow } from '@shared/contract-addons'
@@ -26,37 +25,19 @@ import type {
 import type { ConvertJob, ConvertResult, Converter } from './formats/jobs'
 import type { LifeosClient, WorkLink } from './lifeos/ctx'
 import type { CollabClaims } from './service/ctx'
-import { outbox } from './outbox'
-import { canvas } from './canvas'
-import { lifeos } from './lifeos'
-import { routines } from './routines'
-import { rules } from './rules'
-import { mail } from './mail'
-import { tasks } from './tasks'
-import { agenda } from './agenda'
-import { docs } from './docs'
-import { history } from './history'
-import { formats } from './formats'
-import { sheets } from './sheets'
-import { office } from './office'
-import { google } from './google'
-import { guests } from './guests'
-import { pdf } from './pdf'
-import { slides } from './slides'
-import { media } from './media'
-import { frameio } from './frameio'
-import { meetings } from './meetings'
-import { forms } from './forms'
-import { dashboards } from './dashboards'
-import { browser } from './browser'
+import { errorText, PILLAR_IDS } from '@shared/work/ids'
 
 /**
  * Work's server modules (docs/agents/work.md). One module per pillar, in
  * its own folder, mounted here once. A pillar fills
  * `src/main/server/work/<pillar>/index.ts` and edits nothing in this file:
  * its tables come from its `ensure`, its methods from `handle`, its tools
- * from `tools`, and so on. `startWork` (work/ctx.ts) and `ensureWorkTables`
- * (work/schema.ts) are the two places the list is read.
+ * from `tools`, and so on.
+ *
+ * No pillar is imported when this file loads. Each is loaded on its own by
+ * `loadWorkModules`, once, at boot (work/load.ts), so a pillar whose code or
+ * whose dependency throws while it loads (a native library this machine
+ * lacks) is left out and named, and the host boots as it always did.
  */
 
 /** A tool as a module registers it: `run(args, ctx: ToolCtx)`. */
@@ -74,8 +55,13 @@ export interface WorkModule {
   id: PillarId
   /** `CREATE TABLE IF NOT EXISTS work_<id>_*`, and later columns behind a `pragma_table_info` check. Runs at every boot, Work on or off. */
   ensure(db: DatabaseSync): void
-  /** The pillar's own methods (`work.<id>.*`, `app.work<Id>*`); the router sends it no other. */
-  handle?(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Handled>
+  /**
+   * The pillar's own methods (`work.<id>.*`, `app.work<Id>*`); the router sends it no other.
+   * `signal` aborts when the caller's socket goes or Work is turned off: a handler that runs
+   * long (a conversion, a forwarded job) hands it on. The router always passes one; it is
+   * optional so a module, or a module calling another's handle, may leave it out.
+   */
+  handle?(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: AbortSignal): Promise<Handled>
   /** Subscribes the module's own source; what it sends reaches every client socket, or only those `to` names. Returns its off. */
   onPush?(send: WorkSend): () => void
   /** One tool set for Claude, Codex and Muse. */
@@ -185,35 +171,85 @@ export interface ActCtx extends WorkCtx {
   decidedBy: 'owner' | `grant:${string}`
 }
 
-/** A tool's input must be a `z.object`: Claude's server registers its shape. */
-export const inputShapeOf = (input: ZodType): Record<string, ZodType> | null => {
-  const shape = (input as { shape?: unknown }).shape
-  return shape && typeof shape === 'object' ? (shape as Record<string, ZodType>) : null
+export { inputShapeOf } from './toolInput'
+
+/**
+ * Every pillar that loaded, in `PILLAR_IDS`' order. Empty until
+ * `loadWorkModules` has run: the host awaits it before `startWork`, and a
+ * test that wants the whole registry awaits it first. The array is one
+ * object for the life of the process, so a reader that holds it sees it
+ * filled.
+ */
+export const WORK_MODULES: WorkModule[] = []
+
+/** Why a pillar is not in `WORK_MODULES`: it could not be loaded. `startWork` answers its methods with this. */
+export const WORK_LOAD_FAULTS = new Map<PillarId, string>()
+
+/** One import per pillar, each its own: the only place a pillar's module is named. */
+export type PillarLoaders = Record<PillarId, () => Promise<WorkModule>>
+export const PILLAR_LOADERS: PillarLoaders = {
+  outbox: () => import('./outbox').then((m) => m.outbox),
+  canvas: () => import('./canvas').then((m) => m.canvas),
+  lifeos: () => import('./lifeos').then((m) => m.lifeos),
+  routines: () => import('./routines').then((m) => m.routines),
+  rules: () => import('./rules').then((m) => m.rules),
+  mail: () => import('./mail').then((m) => m.mail),
+  tasks: () => import('./tasks').then((m) => m.tasks),
+  agenda: () => import('./agenda').then((m) => m.agenda),
+  docs: () => import('./docs').then((m) => m.docs),
+  history: () => import('./history').then((m) => m.history),
+  formats: () => import('./formats').then((m) => m.formats),
+  sheets: () => import('./sheets').then((m) => m.sheets),
+  office: () => import('./office').then((m) => m.office),
+  google: () => import('./google').then((m) => m.google),
+  guests: () => import('./guests').then((m) => m.guests),
+  pdf: () => import('./pdf').then((m) => m.pdf),
+  slides: () => import('./slides').then((m) => m.slides),
+  media: () => import('./media').then((m) => m.media),
+  frameio: () => import('./frameio').then((m) => m.frameio),
+  meetings: () => import('./meetings').then((m) => m.meetings),
+  forms: () => import('./forms').then((m) => m.forms),
+  dashboards: () => import('./dashboards').then((m) => m.dashboards),
+  browser: () => import('./browser').then((m) => m.browser)
 }
 
-/** Every pillar, mounted once, in `PILLAR_IDS`' order. */
-export const WORK_MODULES: WorkModule[] = [
-  outbox,
-  canvas,
-  lifeos,
-  routines,
-  rules,
-  mail,
-  tasks,
-  agenda,
-  docs,
-  history,
-  formats,
-  sheets,
-  office,
-  google,
-  guests,
-  pdf,
-  slides,
-  media,
-  frameio,
-  meetings,
-  forms,
-  dashboards,
-  browser
-]
+let loaded: Promise<Map<PillarId, string>> | null = null
+
+/** Whether the registry has been loaded (or is loading): `startWork` refuses the default list before that. */
+export const workModulesAsked = (): boolean => loaded !== null
+
+/**
+ * Loads every pillar, each behind its own guard, and fills `WORK_MODULES`
+ * with the ones that loaded. Never throws. Answers the pillars that did
+ * not load and why. Once per process: a second call answers the first's
+ * result. `loaders` is for a test (which then owns the registry's state:
+ * a call with loaders always loads again).
+ */
+export function loadWorkModules(loaders?: PillarLoaders): Promise<Map<PillarId, string>> {
+  if (loaded && !loaders) return loaded
+  const run = (async () => {
+    const use = loaders ?? PILLAR_LOADERS
+    const got = await Promise.all(
+      PILLAR_IDS.map(async (id): Promise<WorkModule | string> => {
+        try {
+          const module = await use[id]()
+          if (!module || module.id !== id || typeof module.ensure !== 'function') return `work: ${id} did not load: its module is not the ${id} pillar's`
+          return module
+        } catch (err) {
+          return `work: ${id} did not load: ${errorText(err)}`
+        }
+      })
+    )
+    WORK_LOAD_FAULTS.clear()
+    const modules: WorkModule[] = []
+    got.forEach((result, i) => {
+      if (typeof result !== 'string') return void modules.push(result)
+      console.error(`[work] ${result}`)
+      WORK_LOAD_FAULTS.set(PILLAR_IDS[i], result)
+    })
+    WORK_MODULES.splice(0, WORK_MODULES.length, ...modules)
+    return new Map(WORK_LOAD_FAULTS)
+  })()
+  loaded = run
+  return run
+}

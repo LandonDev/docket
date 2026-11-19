@@ -46,9 +46,13 @@ interface Seen {
   started: number
   stopped: number
   handled: { method: string; by: Caller; host: string }[]
+  /** a handler that waits on the signal the router gave it, and what it saw */
+  waiting: { started: number; aborted: number }
   ran: { args: unknown; sessionId: string; workspaceId: string | null; aborted: boolean }[]
   /** a tool call that waits on its signal, and what it saw */
   slow: { started: number; aborted: number }
+  /** how many slow calls had been aborted by the time the module was stopped */
+  abortedAtStop: number
   removed: { sessions: string[][]; workspaces: string[] }
   send: WorkSend | null
   subscribed: number
@@ -60,9 +64,15 @@ const fakeModule = (seen: Seen): WorkModule => ({
     seen.ensured++
     db.exec(`CREATE TABLE IF NOT EXISTS work_mail_fake (id TEXT PRIMARY KEY, note TEXT NOT NULL)`)
   },
-  async handle(req, ctx, by) {
+  async handle(req, ctx, by, signal) {
     const method = req.method as string
     if (method === 'work.mail.elsewhere') return NOT_HANDLED
+    if (method === 'work.mail.wait') {
+      seen.waiting.started++
+      await new Promise<void>((resolve) => signal!.addEventListener('abort', () => resolve(), { once: true }))
+      seen.waiting.aborted++
+      return handled('stopped')
+    }
     seen.handled.push({ method, by, host: ctx.host })
     return handled({ pong: (req as { params?: { n?: number } }).params?.n ?? 0 })
   },
@@ -109,12 +119,15 @@ const fakeModule = (seen: Seen): WorkModule => ({
   start(ctx: WorkCtx) {
     seen.started++
     ctx.log('mail started')
-    return () => void seen.stopped++
+    return () => {
+      seen.abortedAtStop = seen.slow.aborted
+      seen.stopped++
+    }
   },
   sessionsRemoved: (ids) => void seen.removed.sessions.push(ids),
   workspaceRemoved: (id) => void seen.removed.workspaces.push(id)
 })
-const fresh = (): Seen => ({ ensured: 0, started: 0, stopped: 0, handled: [], ran: [], slow: { started: 0, aborted: 0 }, removed: { sessions: [], workspaces: [] }, send: null, subscribed: 0, unsubscribed: 0 })
+const fresh = (): Seen => ({ ensured: 0, started: 0, stopped: 0, handled: [], waiting: { started: 0, aborted: 0 }, ran: [], slow: { started: 0, aborted: 0 }, abortedAtStop: -1, removed: { sessions: [], workspaces: [] }, send: null, subscribed: 0, unsubscribed: 0 })
 
 let dir: string
 let db: ReturnType<typeof openDb>
@@ -209,6 +222,30 @@ describe('with Work on', () => {
     await expect(work.handle(req('work.tasks.list', {}), LOCAL_PRINCIPAL)).rejects.toThrow('not built: work.tasks.list (milestone 25)')
     await expect(work.handle(req('work.mail.elsewhere', {}), LOCAL_PRINCIPAL)).rejects.toThrow('not built: work.mail.elsewhere (milestone 23)')
     expect(seen.handled).toHaveLength(3)
+  })
+
+  it("gives a handler a signal that aborts when the caller's socket goes, or when Work is turned off", async () => {
+    // the socket closes under a long request (a forwarded job whose caller went away)
+    const socket = new AbortController()
+    const first = work.handle(req('work.mail.wait', {}), remote(['read']), socket)
+    await vi.waitFor(() => expect(seen.waiting.started).toBe(1))
+    expect(seen.waiting.aborted).toBe(0)
+    socket.abort()
+    expect(await first).toEqual({ handled: true, result: 'stopped' })
+    // no socket handed over (a host-side caller): Work turning off still reaches it
+    const second = work.handle(req('work.mail.wait', {}), LOCAL_PRINCIPAL)
+    const third = work.handle(req('work.mail.wait', {}), LOCAL_PRINCIPAL, new AbortController())
+    await vi.waitFor(() => expect(seen.waiting.started).toBe(3))
+    work.settings.set({ enabled: false })
+    expect(await second).toEqual({ handled: true, result: 'stopped' })
+    expect(await third).toEqual({ handled: true, result: 'stopped' })
+    expect(seen.waiting.aborted).toBe(3)
+    // a module written before the signal, with three arguments, is called as it was
+    const old: WorkModule = { id: 'tasks', ensure() {}, handle: async (r, _ctx, by) => handled({ method: r.method, kind: by.kind }) }
+    const booted = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {} }, [old])
+    booted.settings.set({ enabled: true })
+    expect(await booted.handle(req('work.tasks.list', {}), LOCAL_PRINCIPAL)).toEqual({ handled: true, result: { method: 'work.tasks.list', kind: 'local' } })
+    booted.close()
   })
 
   it("delivers the module's push to every socket, and stops when the socket goes", () => {
@@ -329,6 +366,43 @@ describe('with Work on', () => {
     socket.abort()
     await second
     expect(seen.slow.aborted).toBe(2)
+  })
+
+  it('turned off, aborts the tool calls in flight, whichever harness made them, before it stops the modules', async () => {
+    scopes.set('t-work', scopeFor('t-work'))
+    const thread = session('t-work', 'work')
+    // Claude's call: its own signal from the SDK, held in no map of the bridge's
+    const claude = work.tools.call(thread, 'mail_fake_slow', {}, new AbortController().signal)
+    // Codex's or Muse's call, through the bridge
+    const bridge = work.handle(req('app.workCall', { sessionId: 't-work', token: work.tools.tokenFor('t-work'), call: 3, tool: 'mail_fake_slow', args: {} }), LOCAL_PRINCIPAL)
+    await vi.waitFor(() => expect(seen.slow.started).toBe(2))
+    expect(seen.slow.aborted).toBe(0)
+    await work.handle(req('work.set', { enabled: false }), LOCAL_PRINCIPAL)
+    expect(seen.slow.aborted).toBe(2)
+    // both were aborted by the time the module's own stop ran
+    expect(seen.abortedAtStop).toBe(2)
+    expect(await claude).toEqual({ content: [{ type: 'text', text: 'cancelled' }], isError: true })
+    expect(await bridge).toEqual({ handled: true, result: { content: [{ type: 'text', text: 'cancelled' }], isError: true } })
+    expect(seen.stopped).toBe(1)
+
+    // on again: a new call runs under a fresh period, and the caller's own signal still stops it alone
+    await work.handle(req('work.set', { enabled: true }), LOCAL_PRINCIPAL)
+    const harness = new AbortController()
+    const again = work.tools.call(thread, 'mail_fake_slow', {}, harness.signal)
+    await vi.waitFor(() => expect(seen.slow.started).toBe(3))
+    expect(seen.slow.aborted).toBe(2)
+    harness.abort()
+    await again
+    expect(seen.slow.aborted).toBe(3)
+  })
+
+  it('closing the host aborts the calls in flight too', async () => {
+    scopes.set('t-work', scopeFor('t-work'))
+    const call = work.tools.call(session('t-work', 'work'), 'mail_fake_slow', {}, new AbortController().signal)
+    await vi.waitFor(() => expect(seen.slow.started).toBe(1))
+    work.close()
+    await call
+    expect(seen.slow.aborted).toBe(1)
   })
 
   it('turned off again, stops the module and what the parts kept running, drops its push source and lists no tool', async () => {

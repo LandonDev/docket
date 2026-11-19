@@ -577,7 +577,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
 
         public init(from decoder: any Decoder) throws {
             let container = try decoder.singleValueContainer()
-            if let value = try? container.decode(RefCase0.self) { self = .object(value); return }
+            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }
             if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
             self = .unknown(try container.decode(JSONValue.self))
         }

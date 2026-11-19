@@ -1,14 +1,14 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import { NotBuilt, PILLAR_IDS, PILLAR_MILESTONE, workToolNameProblem, type WorkScope } from '@shared/work'
 import { openDb, Store } from '../db'
 import type { SessionRegistry } from '../sessions'
 import { startWork, type Work } from './ctx'
-import { inputShapeOf, WORK_MODULES } from './modules'
+import { inputShapeOf, loadWorkModules, WORK_MODULES } from './modules'
 import { ensureWorkTables } from './schema'
 
 /** The frame as it ships: every pillar a stub, every member of the context a stub that says which milestone builds it. */
@@ -16,6 +16,8 @@ import { ensureWorkTables } from './schema'
 let dir: string
 let db: ReturnType<typeof openDb>
 let work: Work
+// The registry is filled by a load (work/modules.ts), as the host does at boot.
+beforeAll(async () => void (await loadWorkModules()))
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'tc-work-ctx-'))
   db = openDb(join(dir, 'test.db'))

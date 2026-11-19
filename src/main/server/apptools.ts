@@ -17,7 +17,7 @@ import {
 import type { SessionMeta } from '@shared/events'
 import { WORK_TOOL_SERVER, workToolId } from '@shared/work/tools'
 import type { WorkToolMount } from './work/ctx'
-import { inputShapeOf } from './work/modules'
+import { inputShapeOf } from './work/toolInput'
 import {
   HTML_PREVIEW_TOOL_DESCRIPTION,
   HTML_PREVIEW_TOOL_NAME,

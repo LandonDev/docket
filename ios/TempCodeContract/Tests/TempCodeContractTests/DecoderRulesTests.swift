@@ -28,6 +28,31 @@ struct DecoderRulesTests {
         """
     }
 
+    /// A chip's ref is a task, a mail thread or an event, or a `CanvasSource`. Both may read `at: lifeos`; the
+    /// table says which, and a known document or sheet must not land in the entity case with an unknown table.
+    @Test func chipRefDecodesTheCaseItsTableNames() throws {
+        func chip(_ ref: String) throws -> ContextChip {
+            try roundTrip(ContextChip.self, #"{"kind":"selection","label":"L","ref":\#(ref)}"#)
+        }
+        guard case .canvasSource(.lifeos(let doc)) = try chip(#"{"at":"lifeos","table":"docs","id":"d1"}"#).ref else {
+            Issue.record("expected a LifeOS document to decode as a canvas source")
+            return
+        }
+        #expect(doc.table == .docs)
+        #expect(doc.id == "d1")
+        guard case .object(let task) = try chip(#"{"at":"lifeos","table":"tasks","id":"k1"}"#).ref else {
+            Issue.record("expected a task to decode as the entity case")
+            return
+        }
+        #expect(task.table == .tasks)
+        #expect(task.id == "k1")
+        guard case .canvasSource(.file(let file)) = try chip(#"{"at":"file","host":"env_1","path":"/w/a.pdf"}"#).ref else {
+            Issue.record("expected a file source")
+            return
+        }
+        #expect(file.path == "/w/a.pdf")
+    }
+
     @Test func unknownPushDecodesAndReEncodes() throws {
         let frame = try roundTrip(ServerFrame.self, #"{"push":"deploy-master","master":null}"#)
         guard case .push(.unknown(let value)) = frame else {

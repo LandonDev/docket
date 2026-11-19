@@ -146,6 +146,13 @@ export class NotBuilt extends Error {
     this.name = 'NotBuilt'
   }
 }
+/** What went wrong, in one line: the error's own word and, when it only wraps another, that one's too. */
+export function errorText(err: unknown): string {
+  if (!(err instanceof Error)) return String(err)
+  const cause = (err as { cause?: unknown }).cause
+  return cause instanceof Error && cause.message && !err.message.includes(cause.message) ? `${err.message}: ${cause.message}` : err.message
+}
+
 /** A stub member: any call throws `NotBuilt`. */
 export const notBuilt =
   (what: string, milestone: number) =>

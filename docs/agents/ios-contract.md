@@ -26,7 +26,11 @@
   `kind`, `sector` and `lifeosProjectId` fields, and `work.get` and
   `work.set`. The `work` push is not in `RemotePushSchema` yet: the
   client's switch over `ServerPush` is exhaustive, so the phone build that
-  reads a Work push adds its case with it. The
+  reads a Work push adds its case with it. A union's inline object
+  branch that pins a field to a literal is tried only for the values its
+  literal and enum fields list (`branchGuard`), since a generated enum
+  keeps a value it does not know and would take a later branch's known
+  shape: a chip's `{at: 'lifeos', table: 'docs'}` is a `CanvasSource`. The
   generator refuses a `local` method (`jsonSchemas` throws), names
   `BuildFacts` and `NoticeKind` once, and `scripts/gen-swift-contract.test.ts`
   pins its rules; `DecoderRulesTests.swift` proves the decoder on

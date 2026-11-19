@@ -859,6 +859,31 @@ function taggedUnion(
   return [`public enum ${name}: Codable, Hashable, Sendable {`, ...indent(body), '}']
 }
 
+/**
+ * What a union's inline object branch must hold before it is tried, as Swift
+ * conditions ahead of its decode. A generated enum keeps a value it does not
+ * know (`unknown(String)`) and a literal field decodes as any string, so an
+ * object branch that pins a field to a literal would otherwise take every
+ * object with its keys, a later branch's known shape included (a chip's
+ * `{at: 'lifeos', table: 'docs'}` is a `CanvasSource`, not a task, mail or
+ * event ref). Such a branch is tried only when its literal fields and its
+ * required enum fields hold values the schema lists. A branch with no
+ * literal field, a named branch and a union of one are left as they were.
+ */
+function branchGuard(branch: JS, branches: number): string {
+  if (branches < 2 || branch.$ref || branch.type !== 'object') return ''
+  const props = Object.entries(branch.properties ?? {})
+  if (!props.some(([, p]) => typeof p.const === 'string')) return ''
+  const required = new Set(branch.required ?? [])
+  const conditions: string[] = []
+  for (const [key, p] of props) {
+    if (typeof p.const === 'string') conditions.push(`probe[${JSON.stringify(key)}]?.stringValue == ${JSON.stringify(p.const)}`)
+    else if (required.has(key) && p.enum?.every((v) => typeof v === 'string'))
+      conditions.push(`[${p.enum.map((v) => JSON.stringify(v)).join(', ')}].contains(probe[${JSON.stringify(key)}]?.stringValue ?? "")`)
+  }
+  return `let probe = try? container.decode(JSONValue.self), ${conditions.join(', ')}, `
+}
+
 /** Branch types with no name of their own land in `parent` (the enclosing
  *  struct, so `ToolPreview.Line` beside `ToolPreview.Lines`), else inside. */
 function untaggedUnion(
@@ -888,7 +913,7 @@ function untaggedUnion(
             : b.type === 'boolean'
               ? 'bool'
               : (b.type ?? 'value')
-    return { name: ident(caseName), type: r.type }
+    return { name: ident(caseName), type: r.type, guard: branchGuard(b, branches.length) }
   })
   const body: Lines = []
   if (nested.length) body.push(...nested, '')
@@ -901,7 +926,7 @@ function untaggedUnion(
     '    let container = try decoder.singleValueContainer()',
     ...cases.map(
       (c) =>
-        `    if let value = try? container.decode(${c.type}.self) { self = .${c.name}(value); return }`
+        `    if ${c.guard}let value = try? container.decode(${c.type}.self) { self = .${c.name}(value); return }`
     ),
     '    self = .unknown(try container.decode(JSONValue.self))',
     '}',

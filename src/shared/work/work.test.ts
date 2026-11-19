@@ -176,7 +176,25 @@ describe('the types', () => {
     expect(parseWorkSettings('{broken')).toEqual(DEFAULT_WORK_SETTINGS)
     expect(parseWorkSettings('{"enabled":true}')).toEqual({ enabled: true })
     expect(parseWorkspaceWorkSettings(null)).toEqual({ mayUseDesktop: [], voice: false })
+    // each default is the caller's own: a list one caller changes is not the next caller's default
+    const mine = parseWorkspaceWorkSettings(null)
+    mine.mayUseDesktop.push('env_mac')
+    const broken = parseWorkspaceWorkSettings('{broken')
+    broken.mayUseDesktop.push('env_win')
+    expect(parseWorkspaceWorkSettings(null)).toEqual({ mayUseDesktop: [], voice: false })
+    expect(parseWorkspaceWorkSettings('{broken')).toEqual({ mayUseDesktop: [], voice: false })
+    expect(work.DEFAULT_WORKSPACE_WORK_SETTINGS).toEqual({ mayUseDesktop: [], voice: false })
+    expect(() => work.DEFAULT_WORKSPACE_WORK_SETTINGS.mayUseDesktop.push('env_x')).toThrow()
     expect(parseWorkspaceWorkSettings('{"mayUseDesktop":["env_mac"],"voice":true,"model":"m"}')).toEqual({ mayUseDesktop: ['env_mac'], voice: true, model: 'm' })
+  })
+})
+
+describe('a fault in one line', () => {
+  it("says the error's own word and, when it only wraps another, that one's too", () => {
+    expect(work.errorText(new Error('boom'))).toBe('boom')
+    expect(work.errorText('plain')).toBe('plain')
+    expect(work.errorText(new Error('could not mock', { cause: new Error('libx.so missing') }))).toBe('could not mock: libx.so missing')
+    expect(work.errorText(new Error('libx.so missing, again', { cause: new Error('libx.so missing') }))).toBe('libx.so missing, again')
   })
 })
 

@@ -211,7 +211,7 @@ import {
   setAppWork,
   setProjectPlans
 } from './apptools'
-import { startWork } from './work/ctx'
+import { loadWork } from './work/load'
 import { isWorkMethod } from '@shared/work/wire'
 import type { Caller as WorkCaller } from './work/modules'
 import { SkillMaterializer, configureMaterializedSkills } from './skills/materialize'
@@ -468,6 +468,9 @@ export async function startServer(
   bootMark('server-start')
   // First, before any helper runs: from here on no git, gh or ps forks from this process.
   if (options.spawnExecBroker) execBroker.install(options.spawnExecBroker)
+  // Work's code is loaded here, behind a guard, before anything of the host exists (work/load.ts): a pillar
+  // or a package it needs that throws while it loads is left out and named, and this boot goes on.
+  const workLoader = await loadWork()
   const db = openDb(dbPath)
   bootMark('db-open')
   // WAL checkpoints of both files run on a worker's own connection; the
@@ -1781,7 +1784,7 @@ export async function startServer(
   let workNotifier: Notifier | null = null
   // Work (docs/agents/work.md): every module's tables, the switch, the context the modules share and the
   // one mount of their methods, pushes and tools. Off by default; while off nothing of it starts or lists.
-  const work = startWork({
+  const work = workLoader.start({
     db,
     store,
     registry,

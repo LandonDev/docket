@@ -38,7 +38,7 @@ import type { storeRpc } from '../storeRpc'
 import { canvasPart } from './canvas/ctx'
 import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
-import { inputShapeOf, WORK_MODULES, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
+import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
 import { heldPart } from './outbox/ctx'
 import { resultsPart } from './outbox/results'
 import { peerPart } from './peer'
@@ -46,6 +46,7 @@ import { ensureWorkTables } from './schema'
 import { scopePart } from './scope'
 import { servicePart } from './service/ctx'
 import { WorkSettingsStore } from './settings'
+import { inputShapeOf } from './toolInput'
 import { threadsPart } from './threads'
 
 /**
@@ -181,7 +182,7 @@ export interface WorkToolMount {
   of(session: Pick<SessionMeta, 'id' | 'scope'>): { scope: WorkScope; tools: WorkTool[] } | null
   /** The same tools as the bridge lists them. */
   listing(session: Pick<SessionMeta, 'id' | 'scope'>): WorkToolListing[]
-  /** Runs one tool for the thread. Arguments that do not fit its input come back as the tool's error, never a throw. */
+  /** Runs one tool for the thread. Arguments that do not fit its input come back as the tool's error, never a throw. The tool's signal aborts on the caller's `signal` or when Work turns off. */
   call(session: Pick<SessionMeta, 'id' | 'scope'>, name: string, args: unknown, signal: AbortSignal): Promise<WorkToolResult>
   /** The thread's own bridge token: one thread's bridge never lists or calls as another. */
   tokenFor(sessionId: string): string
@@ -191,7 +192,7 @@ export interface WorkToolMount {
 export interface Work extends WorkAdmission {
   ctx: WorkCtx
   settings: WorkSettingsStore
-  /** One Work request: a method that is not Work's comes back unhandled; an unbuilt one throws `NotBuilt`. */
+  /** One Work request: a method that is not Work's comes back unhandled; an unbuilt one throws `NotBuilt`. `socket.signal` aborts when the caller's socket goes; a module's handler and a bridge's tool call both hear it. */
   handle(req: ClientRequest, principal: SocketPrincipal, socket?: { signal?: AbortSignal }): Promise<Handled>
   /** One socket's pushes: every Work push, less the ones that name a capability its principal lacks. */
   pushes: { onPush(send: (p: WorkPush) => void, principal?: SocketPrincipal): () => void }
@@ -202,8 +203,12 @@ export interface Work extends WorkAdmission {
 const callerOf = (principal: SocketPrincipal): Caller => (principal.kind === 'local' ? { kind: 'local', caps: CAPABILITIES } : { kind: 'remote', caps: principal.caps })
 
 export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES): Work {
+  // The registry is filled by a load, never by importing it: without one the default list would be silently empty.
+  if (modules === WORK_MODULES && !workModulesAsked()) throw new Error('work: the pillars are not loaded; await loadWorkModules() (work/modules.ts) before startWork, or pass the modules')
   // Tables first, Work on or off: they only add. A pillar whose tables could not be made is left out of everything below.
   const broken = ensureWorkTables(deps.db, modules)
+  // So is a pillar whose code could not be loaded at all (work/modules.ts): its methods answer why.
+  if (modules === WORK_MODULES) for (const [id, why] of WORK_LOAD_FAULTS) broken.set(id, why)
   const sound = modules.filter((m) => !broken.has(m.id))
   const settings = new WorkSettingsStore(deps.store)
   const sinks = new Map<(p: WorkPush) => void, SocketPrincipal>()
@@ -217,7 +222,16 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
 
   // ── start and stop with the switch ──────────────────────────────────
   let stops: (() => void)[] = []
+  /**
+   * The stretch Work is on. Every tool call's signal is joined with this one
+   * (`tools.call`), whichever harness made the call, so turning Work off
+   * stops what is running and not only what would start next. Aborted while
+   * Work is off; a fresh one each time it turns on.
+   */
+  let period = new AbortController()
+  period.abort()
   const startModules = (): void => {
+    period = new AbortController()
     // The parts first: a module's start may call what they bring up.
     for (const run of whileOn) {
       try {
@@ -238,6 +252,8 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
     }
   }
   const stopModules = (): void => {
+    // The calls in flight first: a tool stops before the module and the parts it calls into do.
+    period.abort()
     const running = stops
     stops = []
     for (const stop of running.reverse()) {
@@ -307,7 +323,8 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
       if (!mounted || !tool) throw new Error(`unknown tool: ${name}`)
       const parsed = tool.input.safeParse(args ?? {})
       if (!parsed.success) return { content: [{ type: 'text', text: `invalid arguments: ${parsed.error.message}` }], isError: true }
-      const toolCtx: ToolCtx = { ...ctx, scope: mounted.scope, sessionId: session.id, signal }
+      // The caller's signal (the harness's cancel, the bridge's socket) or Work turning off, whichever comes first.
+      const toolCtx: ToolCtx = { ...ctx, scope: mounted.scope, sessionId: session.id, signal: AbortSignal.any([signal, period.signal]) }
       return tool.run(parsed.data, toolCtx)
     },
     tokenFor,
@@ -371,7 +388,9 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
         ? { kind: 'model', caps: [], sessionId: bridgeSession((req as { params?: { sessionId?: unknown; token?: unknown } }).params).id }
         : callerOf(principal)
       const module = byId.get(pillar)
-      const answer = module?.handle ? await module.handle(req, ctx, by) : NOT_HANDLED
+      // The handler's signal: the caller's socket going, or Work turning off, whichever comes first.
+      const signal = socket?.signal ? AbortSignal.any([socket.signal, period.signal]) : period.signal
+      const answer = module?.handle ? await module.handle(req, ctx, by, signal) : NOT_HANDLED
       // A method its contract declares and no module answers never hangs and never passes: it says which milestone builds it.
       if (!answer.handled) throw new NotBuilt(req.method, PILLAR_MILESTONE[pillar])
       return answer

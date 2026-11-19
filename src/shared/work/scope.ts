@@ -35,15 +35,17 @@ export const WorkspaceWorkSettingsSchema = z.object({
   reasoning: z.string().optional(),
   voice: z.boolean().default(false)
 })
-export const DEFAULT_WORKSPACE_WORK_SETTINGS: WorkspaceWorkSettings = { mayUseDesktop: [], voice: false }
+export const DEFAULT_WORKSPACE_WORK_SETTINGS: WorkspaceWorkSettings = Object.freeze({ mayUseDesktop: Object.freeze([]) as unknown as HostId[], voice: false })
+/** The defaults as a value of the caller's own: a fresh list each time, so one caller's change is never another's default. */
+const defaultWorkspaceWorkSettings = (): WorkspaceWorkSettings => ({ mayUseDesktop: [], voice: false })
 
 /** Parse the stored JSON; a missing or broken value reads as the defaults. */
 export function parseWorkspaceWorkSettings(raw: string | null | undefined): WorkspaceWorkSettings {
-  if (!raw) return { ...DEFAULT_WORKSPACE_WORK_SETTINGS }
+  if (!raw) return defaultWorkspaceWorkSettings()
   try {
     return WorkspaceWorkSettingsSchema.parse(JSON.parse(raw))
   } catch {
-    return { ...DEFAULT_WORKSPACE_WORK_SETTINGS }
+    return defaultWorkspaceWorkSettings()
   }
 }
 
