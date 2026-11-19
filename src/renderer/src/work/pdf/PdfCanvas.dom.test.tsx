@@ -5,7 +5,7 @@
  * agent's values stepped from the bar, his own value, signing, the find, a
  * citation landing on its clause, a moved file and a locked one.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PdfView } from "@shared/contract-work-pdf";
 import type { CanvasItem } from "@shared/work";
@@ -67,6 +67,10 @@ async function open(view: PdfView, options: { password?: string } = {}) {
   return { ...r, doc };
 }
 
+// A loaded box (load 13) can take more than the default second to load the kind's chunk and open the file:
+// the waits keep their conditions, with a longer ceiling.
+configure({ asyncUtilTimeout: 5000 });
+
 beforeEach(async () => {
   HTMLElement.prototype.setPointerCapture ??= () => undefined;
   HTMLElement.prototype.releasePointerCapture ??= () => undefined;
@@ -95,14 +99,15 @@ const pages = () => [...document.querySelectorAll<HTMLElement>("[data-pdf-page]"
 describe("the PDF kind", () => {
   it("draws the pages near the top as paper and counts them in the pager", async () => {
     const { doc } = await open(pdfView());
+    // Each part arrives on its own beat (the column, the bar once the kind's chunk is in, the mode once the file opens): wait for each.
     await waitFor(() => expect(pages()[0]).toBe(1));
-    expect(pages().length).toBeLessThan(FILE.length);
-    expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1 / 14");
+    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1 / 14"));
     await waitFor(() => expect(doc.painted).toContain(1));
-    expect(document.querySelector('[data-pdf-page="1"]')?.textContent).toContain("Page 1");
-    // A file of 14 pages has no thumbnail rail; the mode is the agent's, switchable.
+    await waitFor(() => expect(document.querySelector('[data-pdf-page="1"]')?.textContent).toContain("Page 1"));
+    expect(await screen.findByRole("button", { name: /Agent suggests/ })).toBeTruthy();
+    // Settled: only a window of the 14 pages is mounted, and a file this short has no thumbnail rail.
+    expect(pages().length).toBeLessThan(FILE.length);
     expect(document.querySelector("[data-pdf-rail]")).toBeNull();
-    expect(screen.getByRole("button", { name: /Agent suggests/ })).toBeTruthy();
   });
 
   it("goes to the next page from the pager", async () => {
