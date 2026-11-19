@@ -85,13 +85,6 @@ describe('the context', () => {
   it('answers "not built" from every member a later milestone builds, naming that milestone', () => {
     const { ctx } = work
     const calls: [string, number, () => unknown][] = [
-      ['ctx.lifeos.connected', 7, () => ctx.lifeos.connected()],
-      ['ctx.lifeos.owner', 7, () => ctx.lifeos.owner()],
-      ['ctx.lifeos.jwt', 7, () => ctx.lifeos.jwt('purdue')],
-      ['ctx.lifeos.subscribe', 7, () => ctx.lifeos.subscribe('events.since', {}, () => {})],
-      ['ctx.links.link', 7, () => ctx.links.link({ kind: 'task', label: 'T', ref: { at: 'lifeos', table: 'tasks', id: 'k' } }, 's', 'T')],
-      ['ctx.links.forThread', 7, () => ctx.links.forThread('s')],
-      ['ctx.links.completeFor', 7, () => ctx.links.completeFor('s', 'sent')],
       ['ctx.held.create', 10, () => ctx.held.create({ kind: 'addon.call', sessionId: 's', payload: {} })],
       ['ctx.held.onDecided', 10, () => ctx.held.onDecided(() => {})],
       ['ctx.results.add', 14, () => ctx.results.add({ sessionId: 's', kind: 'task', summary: 'Added a task' })],
@@ -134,10 +127,10 @@ describe('before a create', () => {
     expect(() => work.admitSession({ provider: 'claude', model: 'm', about: { kind: 'task', label: 'T', ref: { at: 'lifeos', table: 'tasks', id: 'k' } } } as never, by)).toThrow('Work is off on this host')
     await expect(work.createWorkspace({ name: 'Purdue', sector: 'purdue' }, by)).rejects.toThrow('Work is off on this host')
   })
-  it('with it on, a create that asks for Work is admitted (the row is stamped where it is made), and one with a chip waits for the LifeOS link', () => {
+  it('with it on, a create that asks for Work is admitted (the row is stamped where it is made), and so is one with a chip, signed in to LifeOS or not (milestone 7 links it)', () => {
     work.settings.set({ enabled: true })
     expect(() => work.admitSession({ provider: 'claude', model: 'm', scope: 'work' } as never, by)).not.toThrow()
-    expect(() => work.admitSession({ provider: 'claude', model: 'm', about: { kind: 'task', label: 'T', ref: { at: 'lifeos', table: 'tasks', id: 'k' } } } as never, by)).toThrow('not built: session.create {about} (milestone 7)')
+    expect(() => work.admitSession({ provider: 'claude', model: 'm', about: { kind: 'task', label: 'T', ref: { at: 'lifeos', table: 'tasks', id: 'k' } } } as never, by)).not.toThrow()
   })
 })
 

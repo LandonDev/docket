@@ -257,7 +257,7 @@ and edits nothing else:
 | `scopeOf`, and the two admissions below | work/scope.ts (built: [work-scope.md](work-scope.md)) | 6 |
 | `threads` | work/threads.ts (built) | 6 |
 | `peer` | work/peer.ts (built) | 6 |
-| `lifeos`, `links` | work/lifeos/ctx.ts | 7 |
+| `lifeos`, `links` | work/lifeos/ctx.ts (built: [work-lifeos.md](work-lifeos.md)) | 7 |
 | `canvas` | work/canvas/ctx.ts | 9 |
 | `held` | work/outbox/ctx.ts | 10 |
 | `results` | work/outbox/results.ts (and `ensureResults`, which the outbox module's `ensure` calls) | 14 |
@@ -301,7 +301,8 @@ on this host`). With it on, the workspace is made (the app's own folder
 under `<work root>/Work`), and the create is admitted: its scope is stamped
 where the row is made (`stampScope`, called by `SessionRegistry.create`),
 which also refuses what Work cannot honour. A create with an `about` chip
-says `not built` until the LifeOS link lands. A create that does not ask
+is admitted whether or not LifeOS answers, and the thread is linked to the
+chip's row once it exists (`ctx.links.link`, [work-lifeos.md](work-lifeos.md)). A create that does not ask
 passes untouched, though the registry still stamps a thread of a Work
 workspace, or one a Work thread started, as a Work thread
 ([work-scope.md](work-scope.md)). The run that started a thread
