@@ -78,6 +78,8 @@ final class WorkLifeHost: LifeActions {
             let life = LifeClient(session: WorkLifeSession(deployment: token.deployment, tokens: tokens))
             let store = LifeStore(client: life, sectors: sectors)
             install(store)
+            // A query LifeOS refused: the token is spent or revoked, so ask the host again, at most twice a minute.
+            store.live.onUnauthenticated = { [weak self] in self?.recheck(life) }
             signIn = Task { [weak self] in
                 try? await life.signIn()
                 for await on in life.authenticated.values {
@@ -89,6 +91,15 @@ final class WorkLifeHost: LifeActions {
         } catch {
             phase = .unavailable("LifeOS did not answer.")
         }
+    }
+
+    @ObservationIgnored private var lastRecheck = Date.distantPast
+
+    private func recheck(_ life: LifeClient) {
+        guard Date().timeIntervalSince(lastRecheck) > 30 else { return }
+        lastRecheck = Date()
+        tokens.forget()
+        Task { try? await life.signIn() }
     }
 
     private func install(_ store: LifeStore) {
