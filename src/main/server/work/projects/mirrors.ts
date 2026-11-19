@@ -161,9 +161,10 @@ export function mirrorsPart(ctx: WorkCtx, deps: WorkPartDeps): void {
   const { registry } = deps
   deps.whileOn(() =>
     followMirrors(ctx, {
-      workspaces: () => registry.listWorkspaces(),
-      projects: () => registry.listProjects(),
-      busy: (projectId) => registry.listRaw({ projectId, archived: undefined }).some((s) => BUSY.has(s.status)),
+      // Each asked for only if the registry has it: a test's registry is often a few methods of the real one.
+      workspaces: () => registry.listWorkspaces?.() ?? [],
+      projects: () => registry.listProjects?.() ?? [],
+      busy: (projectId) => (registry.listRaw?.({ projectId, archived: undefined }) ?? []).some((s) => BUSY.has(s.status)),
       rename: (projectId, name) => registry.renameProject(projectId, name),
       archive: (projectId, archived) => registry.archiveProject(projectId, archived),
       onCatalog: (fn) => registry.onCatalog?.(fn) ?? (() => {}),

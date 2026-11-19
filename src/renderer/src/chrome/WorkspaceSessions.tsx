@@ -1146,7 +1146,8 @@ export const ProjectCard = memo(function ProjectCard({
       { kind: "item", id: "chat", label: "New chat", icon: MessageSquarePlus },
       ...(lifeos ? [] : [{ kind: "item", id: "rename", label: "Rename", icon: Pencil } as const]),
       { kind: "item", id: "settings", label: "Project settings", icon: Settings },
-      { kind: "item", id: "preamble", label: "Preamble…", icon: FileText },
+      // A Work project's rules are a part of its settings sheet.
+      ...(lifeos ? [] : [{ kind: "item", id: "preamble", label: "Preamble…", icon: FileText } as const]),
       { kind: "sep" },
     ];
     // The fleet switches over the project and every linked copy, confirms

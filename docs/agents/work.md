@@ -112,7 +112,8 @@ Settings → Work.
   in `setLifeosProjects`, and `withLifeosCards` (lib/workspaceSessions.ts)
   adds a `lifeos:<id>` card for each one no project mirrors yet; its first
   pick or New thread calls `work.project.open`, which makes the project
-  (`projects.lifeos_project_id`) in the card's place. The cards keep
+  (`projects.lifeos_project_id`) in the card's place: its mirror ("Mirrors
+  follow LifeOS" below). The cards keep
   LifeOS's order (its `order`, then name) whatever is picked, made or
   worked in; a project of the workspace that mirrors none of them follows,
   newest first (`railOrder` in the same file). A view row opens `WorkViewSurface` over
@@ -153,6 +154,79 @@ Settings → Work.
   and `work.workspace.set` (admin; a null model or reasoning goes back to
   the default), `work.project.open` (operate), and the `url` on
   `work.lifeos.jwt`'s answer. Tests: work/core.test.ts.
+- **A Work project's card menu** (chrome/WorkspaceSessions.tsx): New chat,
+  Project settings, the fleet's rows over its threads and Archive dormant
+  threads. No Rename, no Preamble, no Archive project, no Delete project:
+  LifeOS names and ends the project, and its rules are in its sheet.
+- **A Work project's settings** (work/shell/ProjectSettings.tsx,
+  `WorkProjectSettings`, a surface of the `work-shell` chunk that
+  `ProjectSettingsDialog` shows for a project whose workspace is
+  `kind: 'work'`, by the row and never by the switch). The sheet holds
+  what a Work project has and nothing of code:
+
+  | Part | What it sets | Where it is kept |
+  |---|---|---|
+  | Name | the project's name | LifeOS, `projects:update` on the workspace's own session (the screen's narrowed JWT); the mirror follows |
+  | State | Backlog, Active, Paused, Done, Dropped | LifeOS, the same call |
+  | Rules for its threads | the rules sent with a new thread's first message; Edit opens the rules dialog (`PreambleDialog`, with no `{{worktree}}` word for a Work project) | `projects.preamble` on the host |
+  | Accounts | which Claude, Codex or Meta account its threads use; drawn only when the host has an account to pick | `projects.account_pins` on the host |
+  | Delete project | at the foot's start, asked first; its tasks stay as tasks with no project | LifeOS, `projects:remove`; the host archives the mirror |
+
+  Save sends only what changed; a failed save keeps the sheet open with the
+  reason beside Retry. While LifeOS cannot be reached (signed out,
+  unreachable, refused) Name stands read-only on what the mirror holds,
+  State is drawn only if LifeOS told it earlier, Save and Delete are off,
+  and one line under the fields says why, with Retry where asking again can
+  help; the rules and accounts are the host's and stay editable. A project
+  of a Work workspace that mirrors nothing has a name of its own
+  (`project.rename`) and no State or Delete. No folder, mode, branch,
+  completed turn, review, plans or build is drawn, and none of their reads
+  is asked for.
+- **The server refuses code settings for a Work project**
+  (src/main/server/workProjectGate.ts, called once before the handlers in
+  index.ts, by the workspace's kind): `project.setBranch`,
+  `project.setStartOn`, `review.set`, `plans.set`, `build.set` and
+  `turnpass.set` for a project of a Work workspace, a `project.settings.set`
+  bundle whose review, plans, build, turn pass or start host is not null,
+  and a client's `project.create` in a Work workspace. Each answers a
+  sentence a screen can show ("A branch is not for a Work project").
+  Clearing an override (null) passes, and so do the bundle's name, archived
+  mark, rules and account pins, `project.rename`, `project.setAccounts`,
+  `project.setPreamble` and `work.project.open`. Tests:
+  workProjectGate.test.ts.
+
+## Mirrors follow LifeOS
+
+A mirror is the TempCode project that holds a Work workspace's threads
+about one LifeOS project (`projects.lifeos_project_id`). LifeOS owns the
+project; the mirror owns the threads, the rules and the account pins.
+`src/main/server/work/projects/mirrors.ts`, a part of the context with no
+member (as `routines/host.ts` is), running while Work is on:
+
+- **Made from LifeOS's row.** `work.project.open {workspaceId,
+  lifeosProjectId}` asks LifeOS as the owner for the workspace's own sector
+  (`projects:list {sector}`) and makes the mirror with the name the project
+  has there. A project of another sector, or one LifeOS does not have, is
+  refused ("LifeOS has no such project in Purdue's sector") and nothing is
+  made; so is an ask while the host cannot reach LifeOS, in the session's
+  own words. `name` on the request is what an older client still sends and
+  is not read. An existing mirror is answered at once, with no ask.
+- **Kept in step.** One live `projects:list` a linked Work workspace, on
+  the host's own LifeOS session, which takes it up again after a reconnect.
+  `mirrorMoves(rows, mirrors, busy)` is the whole rule: a mirror whose
+  project was renamed is renamed; a mirror whose project is done, dropped,
+  deleted or moved to another sector is archived, which only hides its card
+  and stops no thread, and only once none of its threads works or waits to
+  (`BUSY`: starting, running, queued, watching, waiting); a mirror whose
+  project is under way again comes back. A thread coming to rest, a new
+  mirror and a workspace linked or removed each settle again.
+- **Nothing moves until a list has answered**: a host that is signed out
+  or cannot reach LifeOS leaves its mirrors as they are, and a list that is
+  not a list moves nothing.
+
+Tests: work/projects/mirrors.test.ts (the rule, the follower on a host that
+stands in, and on the real registry with a LifeOS in memory),
+work/core.test.ts (`work.project.open`).
 
 ## The core columns
 

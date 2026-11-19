@@ -80,7 +80,8 @@ function PreambleEditor(props: EditorProps) {
     el?.setSelectionRange(el.value.length, el.value.length);
     return el ?? true;
   };
-  const title = scope.kind === "project" ? "Preamble" : "Workspace preamble";
+  // A Work project's threads have no worktree, and its sheet calls these rules.
+  const title = scope.kind !== "project" ? "Workspace preamble" : scope.workspace.kind === "work" ? "Rules for new threads" : "Preamble";
   const description =
     scope.kind === "project"
       ? `Opens every new thread in ${scope.project.name}.`
@@ -186,7 +187,7 @@ function PreambleForm({
         </div>
         <div className="flex items-center justify-between gap-2">
           <p className="flex gap-2 font-mono text-xs text-muted-foreground" data-preamble-variables>
-            {PREAMBLE_VARIABLES.map((v) => (
+            {PREAMBLE_VARIABLES.filter((v) => v.name !== "worktree" || scope.workspace.kind !== "work").map((v) => (
               <Tip key={v.name} label={`${v.meaning}, filled in when the thread starts`}>
                 <code
                   tabIndex={0}

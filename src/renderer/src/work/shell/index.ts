@@ -8,5 +8,6 @@ export { WorkRailHost } from "./WorkRailHost";
 export { WorkColumnHead } from "./WorkColumn";
 export { WorkViewSurface } from "./WorkViewPage";
 export { WorkSettingsBody, WorkWorkspacePage, CodeWorkspaceSector } from "./settings";
+export { WorkProjectSettings } from "./ProjectSettings";
 // The Outbox's count in the rail, from boot while a host has Work on (work/outbox/store.ts).
 import "../outbox/store";

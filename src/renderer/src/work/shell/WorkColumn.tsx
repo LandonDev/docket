@@ -42,12 +42,11 @@ export function WorkColumnHead({ workspace }: { workspace: WorkspaceMeta }) {
   useLayoutEffect(() => {
     workColumnPort.set({
       async openProject(_workspaceId, lifeosProjectId) {
-        const name = rows?.find((p) => p.id === lifeosProjectId)?.name ?? "Project";
-        return (await openLifeosProject(workspace, lifeosProjectId, name)).id;
+        return (await openLifeosProject(workspace, lifeosProjectId)).id;
       },
     });
     return () => workColumnPort.set(null);
-  }, [rows, workspace]);
+  }, [workspace]);
 
   if (!sector) return null;
   return (

@@ -74,11 +74,11 @@ const moreButton = (root: HTMLElement) =>
 const project = (id = 'p1') =>
   ({ environmentId: 'local', id, workspaceId: 'w1', name: `Project ${id}`, mode: 'local', branch: 'main', cwd: '/wt/p1', archived: false, createdAt: 1 }) as ProjectMeta
 
-type CardOpts = { selected?: boolean; archivedCount?: number; onSelect?: (id: string) => void; onRename?: (id: string, name: string) => void; requested?: number }
+type CardOpts = { selected?: boolean; archivedCount?: number; onSelect?: (id: string) => void; onRename?: (id: string, name: string) => void; requested?: number; project?: Partial<ProjectMeta> }
 
 const projectCard = (threads: ThreadRow[], opts: CardOpts = {}) => (
   <ProjectCard
-    group={{ project: project(), threads, latest: Date.now() - 3 * 60_000, archivedCount: opts.archivedCount ?? 0 }}
+    group={{ project: { ...project(), ...opts.project }, threads, latest: Date.now() - 3 * 60_000, archivedCount: opts.archivedCount ?? 0 }}
     selected={opts.selected ?? false}
     hosts="local"
     lastSeen={{}}
@@ -420,6 +420,35 @@ describe('a project card', () => {
     expect(fromRight).toBe(fromMore)
     expect(fromMore).toContain('New chat')
     expect(fromMore).toContain('Delete project…')
+    probe.unmount()
+  })
+
+  it("a Work project's menu has New chat, Project settings and the fleet rows: no Preamble, no rename, no archive, no delete", async () => {
+    resetMenus()
+    const probe = mountProbe(projectCard([], { project: { lifeosProjectId: 'lp_1', branch: null } }))
+    act(() => {
+      fireEvent.click(probe.container.querySelector<HTMLButtonElement>('button[aria-label="More"]')!)
+    })
+    const menu = await screen.findByRole('menu', { name: 'Project actions' })
+    const labels = [...menu.querySelectorAll('[role=menuitem]')].map((row) => row.textContent)
+    expect(labels.slice(0, 2)).toEqual(['New chat', 'Project settings'])
+    for (const gone of ['Preamble…', 'Rename', 'Archive project', 'Archive project…', 'Delete project…']) expect(labels).not.toContain(gone)
+    // The fleet's rows over its threads stay: archiving dormant threads is not archiving the project.
+    expect(labels).toContain('Archive dormant threads')
+    probe.unmount()
+  })
+
+  it("a code project's menu keeps Rename, Preamble and the project's archive and delete", async () => {
+    resetMenus()
+    const probe = mountProbe(projectCard([]))
+    act(() => {
+      fireEvent.click(probe.container.querySelector<HTMLButtonElement>('button[aria-label="More"]')!)
+    })
+    const menu = await screen.findByRole('menu', { name: 'Project actions' })
+    const labels = [...menu.querySelectorAll('[role=menuitem]')].map((row) => row.textContent)
+    expect(labels.slice(0, 4)).toEqual(['New chat', 'Rename', 'Project settings', 'Preamble…'])
+    expect(labels).toContain('Archive project')
+    expect(labels).toContain('Delete project…')
     probe.unmount()
   })
 })

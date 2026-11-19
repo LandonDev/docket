@@ -44,6 +44,7 @@ import {
   setProjectBranch,
 } from "../lib/tcserver/projects";
 import { archiveLinked, deleteLinked, liveHostFacts, useProjectHome } from "../lib/projectHome";
+import { workShellChunk } from "../surfaces/chunks";
 import type {
   BranchList,
   ProjectCleanup,
@@ -430,14 +431,31 @@ export function NewProjectDialog({
   );
 }
 
+// A Work project's sheet (work/shell/ProjectSettings.tsx): nothing of code in it, and none of it loaded for a code project.
+const WorkProjectSettings = workShellChunk.surface("WorkProjectSettings");
+
 /**
- * A project's settings. A linked project's live on its settings home (the
+ * A project's settings. A project of a Work workspace gets Work's own sheet,
+ * picked by the row's kind, never by the switch. A linked project's live on its settings home (the
  * box's copy, lib/projectHome.ts): every field but the branch is read from
  * that copy and saved to it over its host's link, the footer says where,
  * and a home out of reach disables Save with the reason. The branch and the
  * folder are this copy's own.
  */
 export function ProjectSettingsDialog({
+  project,
+  workspace,
+  onClose,
+}: {
+  project: ProjectMeta;
+  workspace: WorkspaceMeta;
+  onClose: () => void;
+}) {
+  if (workspace.kind === "work") return <WorkProjectSettings project={project} workspace={workspace} onClose={onClose} />;
+  return <CodeProjectSettings project={project} workspace={workspace} onClose={onClose} />;
+}
+
+function CodeProjectSettings({
   project,
   workspace,
   onClose,
