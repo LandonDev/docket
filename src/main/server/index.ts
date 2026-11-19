@@ -204,6 +204,7 @@ import {
   appUpdateNotes,
   appStartThread,
   setAppBridge,
+  bridgeCallRefusal,
   setAppCrossHost,
   setAppSkillTools,
   setAppToolsRegistry,
@@ -2111,6 +2112,9 @@ export async function startServer(
         if (need === 'local') return sendFrame({ id: req.id, ok: false, error: `forbidden: ${req.method} is local-only` })
         if (!allows(principal.caps, need)) return sendFrame({ id: req.id, ok: false, error: `forbidden: ${req.method} needs ${need}` })
       }
+      // An app.* call answers as the thread it names: only with that thread's own bridge token (apptools.ts).
+      const notOwn = bridgeCallRefusal(req.method, (raw as { params?: unknown }).params)
+      if (notOwn) return sendFrame({ id: req.id, ok: false, error: notOwn })
       const startedAt = Date.now()
       const requestKey = `${connection}:${req.id}`
       trackRequest(requestKey, req.method)
@@ -3624,7 +3628,7 @@ export async function startServer(
   const bridgeScript = resolve(options.appPath ?? process.cwd(), 'scripts', 'app-mcp-bridge.mjs')
   if (existsSync(bridgeScript)) {
     const launch = await resolveAppBridgeLaunch()
-    setAppBridge({ port, scriptPath: bridgeScript, command: launch.command, env: launch.env })
+    setAppBridge({ port, scriptPath: bridgeScript, command: launch.command, env: launch.env, tokens: MacThreadTokens.fromEnv(process.env, 'app-bridge', 'TEMP_CODE_APP_TOKEN_SEED') })
     if (launch.note) console.error(`[app-bridge] ${launch.note}`)
   } else {
     console.error(

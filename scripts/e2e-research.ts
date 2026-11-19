@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
+import { bridgeMcpConfig } from '../src/main/server/apptools'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-research-'))
@@ -156,7 +157,7 @@ check('no web or write approval was requested anywhere in the tree', approvals.l
 // ── the stdio bridge ─────────────────────────────────────────────────
 async function bridgeSession(sessionId: string): Promise<{ call: (msg: Record<string, unknown>) => Promise<Record<string, unknown>>; kill: () => void }> {
   const proc = spawn(process.execPath, ['scripts/app-mcp-bridge.mjs'], {
-    env: { ...process.env, TEMP_CODE_PORT: String(server.port), TEMP_CODE_SESSION: sessionId },
+    env: { ...process.env, TEMP_CODE_PORT: String(server.port), TEMP_CODE_SESSION: sessionId, TEMP_CODE_APP_TOKEN: (bridgeMcpConfig(sessionId)?.env as Record<string, string>).TEMP_CODE_APP_TOKEN },
     stdio: ['pipe', 'pipe', 'inherit']
   })
   const waiters: ((line: string) => void)[] = []

@@ -123,6 +123,10 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   turn's wait words, warm harnesses, GPT-6.2 Sol and Astra in the shared
   Codex catalog (defaults unchanged), the request shape trace and the codex
   model-metadata wait. [docs/agents/provider-traffic.md](docs/agents/provider-traffic.md)
+- **The app bridge** — scripts/app-mcp-bridge.mjs, Codex's and Muse's app
+  tools; every `app.*` call carries the thread's own `appToken`, checked by
+  `bridgeCallRefusal` (apptools.ts); undeclared arguments refused.
+  [docs/agents/app-bridge.md](docs/agents/app-bridge.md)
 - **Prompt overhead** — what a fresh thread's first request carries, measured
   per model by `bun run script:measure-first-request`; prompt byte budgets
   (src/shared/promptBudget.ts) and the thrash guard (`context_thrash`).

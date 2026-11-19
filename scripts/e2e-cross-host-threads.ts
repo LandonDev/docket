@@ -54,6 +54,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { E2E_APP_TOKEN_SEED, appTokenFor, withAppToken } from './lib/appToken'
 
 const REPO = resolve(import.meta.dir, '..')
 const KEEP = process.env.TC_XH_KEEP === '1'
@@ -133,6 +134,7 @@ function launch(inst: Inst): void {
     HOME: inst.home,
     TMPDIR: inst.tmp,
     TEMP_CODE_USER_DATA: inst.data,
+    TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED,
     TEMP_CODE_HEADLESS: '1',
     TEMP_CODE_REMOTE_PORT: String(inst.remote),
     TEMP_CODE_ALIAX_DATA_DIR: join(inst.data, 'aliax'),
@@ -177,7 +179,7 @@ async function rpc<T = unknown>(inst: Inst, method: string, params: unknown = {}
       ws.close()
       fail(new Error(`${inst.name}: no answer to ${method}`))
     }, timeoutMs)
-    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params })))
+    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params: withAppToken(method, params) })))
     ws.addEventListener('message', (ev) => {
       const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
       if (frame.id !== 'e2e') return
@@ -214,7 +216,7 @@ const eventsOf = (inst: Inst, sessionId: string): Promise<{ seq: number; event: 
 /** The codex stdio bridge, as codex would spawn it: initialize and tools/list. */
 async function codexTools(sessionId: string): Promise<{ name: string; inputSchema: { properties: Record<string, unknown>; required?: string[] } }[]> {
   const child = spawn('node', [join(REPO, 'scripts', 'app-mcp-bridge.mjs')], {
-    env: { PATH: process.env.PATH ?? '', TEMP_CODE_PORT: String(portOf(box)), TEMP_CODE_SESSION: sessionId },
+    env: { PATH: process.env.PATH ?? '', TEMP_CODE_PORT: String(portOf(box)), TEMP_CODE_SESSION: sessionId, TEMP_CODE_APP_TOKEN: appTokenFor(sessionId) },
     stdio: ['pipe', 'pipe', 'inherit']
   })
   const answers = new Map<number, unknown>()

@@ -5,7 +5,8 @@ import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 import { DEFAULT_RULES, type OrchestrationRules } from '@shared/rules'
 import { CATALOG } from '@shared/catalog'
-import { appNoteDecision, appStartThread, bridgeMcpConfig, remoteDigest, setAppBridge, writtenPathOf } from './apptools'
+import { appNoteDecision, appStartThread, bridgeCallRefusal, bridgeMcpConfig, remoteDigest, setAppBridge, writtenPathOf } from './apptools'
+import { MacThreadTokens } from './macTools'
 import { setOrchestrationRegistry } from './orchestration'
 
 afterEach(() => {
@@ -33,6 +34,26 @@ it('bridgeMcpConfig runs the script under a resolved node, with no Electron env'
   expect(config.env.ELECTRON_RUN_AS_NODE).toBeUndefined()
   expect(config.env.TEMP_CODE_PORT).toBe('4321')
   expect(config.env.TEMP_CODE_SESSION).toBe('session-1')
+})
+
+it("bridgeMcpConfig gives each thread its own app token, and only that token opens an app.* call as that thread", () => {
+  const tokens = new MacThreadTokens(null, 'app-bridge')
+  setAppBridge({ port: 4321, scriptPath: '/b.mjs', command: 'node', env: {}, tokens })
+  const mine = (bridgeMcpConfig('thread-a') as { env: Record<string, string> }).env.TEMP_CODE_APP_TOKEN
+  expect(mine).toBe(tokens.tokenFor('thread-a'))
+  expect(bridgeCallRefusal('app.listThreads', { sessionId: 'thread-a', appToken: mine })).toBeNull()
+  const refused = "forbidden: app.listThreads needs the calling thread's own app token"
+  expect(bridgeCallRefusal('app.listThreads', { sessionId: 'thread-b', appToken: mine })).toBe(refused)
+  expect(bridgeCallRefusal('app.listThreads', { sessionId: 'thread-a' })).toBe(refused)
+  expect(bridgeCallRefusal('app.listThreads', { sessionId: 'thread-a', appToken: 7 })).toBe(refused)
+  expect(bridgeCallRefusal('app.listThreads', undefined)).toBe(refused)
+  // another purpose's token for the same thread opens nothing here
+  expect(bridgeCallRefusal('app.listThreads', { sessionId: 'thread-a', appToken: new MacThreadTokens(null, 'computer').tokenFor('thread-a') })).toBe(refused)
+  // every other method is unchanged
+  expect(bridgeCallRefusal('session.send', { sessionId: 'thread-b' })).toBeNull()
+  // with no bridge, no app.* call answers at all
+  setAppBridge(null)
+  expect(bridgeCallRefusal('app.listThreads', { sessionId: 'thread-a', appToken: mine })).toBe(refused)
 })
 
 it('bridgeMcpConfig carries ELECTRON_RUN_AS_NODE only through the Electron fallback', () => {

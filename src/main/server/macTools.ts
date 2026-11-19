@@ -82,8 +82,9 @@ export class MacThreadTokens {
   ) {
     this.key = seed && /^[0-9a-f]{32,}$/i.test(seed) ? Buffer.from(seed, 'hex') : randomBytes(32)
   }
-  static fromEnv(env: NodeJS.ProcessEnv = process.env, purpose?: string): MacThreadTokens {
-    return new MacThreadTokens(env.TEMP_CODE_USER_DATA ? env.TEMP_CODE_MAC_TOKEN_SEED : null, purpose)
+  /** An isolated instance (TEMP_CODE_USER_DATA) may take its key from `seedVar`, so a proof script can make a thread's token; any other run draws a fresh key. */
+  static fromEnv(env: NodeJS.ProcessEnv = process.env, purpose?: string, seedVar = 'TEMP_CODE_MAC_TOKEN_SEED'): MacThreadTokens {
+    return new MacThreadTokens(env.TEMP_CODE_USER_DATA ? env[seedVar] : null, purpose)
   }
   tokenFor(sessionId: string): string {
     return createHmac('sha256', this.key).update(`${this.purpose}:${sessionId}`).digest('base64url')

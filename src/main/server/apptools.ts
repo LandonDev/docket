@@ -96,7 +96,7 @@ import { mergeReviews } from './mergeReview'
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
-import { macToolsHooks, toolUseIdOf } from './macTools'
+import { MacThreadTokens, macToolsHooks, toolUseIdOf } from './macTools'
 import { COMPUTER_APP_TOOLS, computerHooks, computerTools, eagerComputer, type ComputerHost } from './computer/mcp'
 import { computerBridgeHooks } from './computer/bridge'
 import { provenanceOf, renderComputerMechanics, wordsFor } from './computer/prompts'
@@ -237,14 +237,31 @@ export interface AppBridgeInfo {
   /** node, bun, or the Electron-as-node fallback — resolved once at boot. */
   command: string
   env: Record<string, string>
+  /** Each thread's own bridge token (TEMP_CODE_APP_TOKEN), checked on every app.* call by bridgeCallRefusal. */
+  tokens: MacThreadTokens
 }
 
 let bridge: AppBridgeInfo | null = null
-export function setAppBridge(info: AppBridgeInfo | null): void {
-  bridge = info
+/** The bridge's launch; with no `tokens` given, a fresh random key. */
+export function setAppBridge(info: (Omit<AppBridgeInfo, 'tokens'> & { tokens?: MacThreadTokens }) | null): void {
+  bridge = info && { ...info, tokens: info.tokens ?? new MacThreadTokens(null, 'app-bridge') }
 }
 export function hasAppBridge(): boolean {
   return bridge !== null
+}
+
+/**
+ * Why an app.* request is refused, or null. Every app.* method answers as the
+ * thread its `sessionId` names, so the request must carry that thread's own
+ * bridge token as `appToken`: only the bridge the app spawned for the thread
+ * holds it. A caller naming another thread's id, or none, is refused; with no
+ * bridge set up, every app.* call is. Other methods pass.
+ */
+export function bridgeCallRefusal(method: string, params: unknown, info: AppBridgeInfo | null = bridge): string | null {
+  if (!method.startsWith('app.')) return null
+  const { sessionId, appToken } = (params ?? {}) as { sessionId?: unknown; appToken?: unknown }
+  if (typeof sessionId === 'string' && info?.tokens.check(sessionId, appToken)) return null
+  return `forbidden: ${method} needs the calling thread's own app token`
 }
 
 /** A Work thread reaches a Mac's desktop (the bridge's tools, bridged computer use) only when its workspace may use that Mac; any other thread as its bridge says. */
@@ -301,6 +318,8 @@ export function bridgeMcpConfig(sessionId: string, opts: { computerImages?: 'par
       ...bridge.env,
       TEMP_CODE_PORT: String(bridge.port),
       TEMP_CODE_SESSION: sessionId,
+      // The thread's own token: the server answers an app.* call only for the thread it was made for (bridgeCallRefusal).
+      TEMP_CODE_APP_TOKEN: bridge.tokens.tokenFor(sessionId),
       // The Mac bridge's per-thread token, only while the thread's bridge is on (macTools.ts).
       ...(desktop ? (macToolsHooks.current?.bridgeEnv(sessionId) ?? {}) : {}),
       // Fixed at spawn: a scope that gains its first add-on or loses its last reboots the harness at its next turn (addons/scopeFlip.ts).

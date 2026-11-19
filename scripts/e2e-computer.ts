@@ -72,6 +72,7 @@ import type { ComputerMethod, Tier } from '../src/shared/computer/protocol'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 import { buildTcComputer } from './lib/tcComputerBuild'
 import { repoRoot } from './lib/repoRoot'
+import { appTokenFor } from './lib/appToken'
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
@@ -433,7 +434,7 @@ async function run(): Promise<void> {
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [join(ROOT, 'scripts/app-mcp-bridge.mjs')],
-      env: { ...(process.env as Record<string, string>), TEMP_CODE_PORT: String(port), TEMP_CODE_SESSION: 'proof-bridge', TEMP_CODE_COMPUTER_TOKEN: tokens.tokenFor('proof-bridge'), TEMP_CODE_COMPUTER_IMAGES: images }
+      env: { ...(process.env as Record<string, string>), TEMP_CODE_PORT: String(port), TEMP_CODE_SESSION: 'proof-bridge', TEMP_CODE_APP_TOKEN: appTokenFor('proof-bridge'), TEMP_CODE_COMPUTER_TOKEN: tokens.tokenFor('proof-bridge'), TEMP_CODE_COMPUTER_IMAGES: images }
     })
     const client = new Client({ name: 'e2e-computer', version: '1' })
     await client.connect(transport)

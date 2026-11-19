@@ -70,6 +70,8 @@ export async function harnessEnv(): Promise<NodeJS.ProcessEnv> {
   for (const key of Object.keys(env)) {
     if (key.startsWith('ELECTRON_') || key.startsWith('npm_')) delete env[key]
   }
+  // A proof's token seeds (macTools.ts MacThreadTokens.fromEnv): a child that read one could make any thread's token.
+  for (const key of Object.keys(env)) if (key.endsWith('_TOKEN_SEED')) delete env[key]
   delete env.NODE_ENV
   delete env.NODE_ENV_ELECTRON_VITE
   delete env.NODE

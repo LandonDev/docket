@@ -99,11 +99,11 @@ describe('the tools a Work thread is listed', () => {
     expect(batch.filter((n) => names(registry.get(work.id)!).includes(n))).toEqual(['adopt_thread', 'archive_threads'])
   })
 
-  it('a Work thread tells its bridge so; a code thread\'s bridge env is what it was', () => {
+  it('a Work thread tells its bridge so; a code thread\'s bridge env is what it was, with its own app token', () => {
     setAppBridge({ port: 1, scriptPath: '/b.mjs', command: 'node', env: {} })
     const env = (id: string): Record<string, string> => (bridgeMcpConfig(id) as { env: Record<string, string> }).env
     expect(env(work.id).TEMP_CODE_SCOPE).toBe('work')
-    expect(env(code.id)).toEqual({ TEMP_CODE_PORT: '1', TEMP_CODE_SESSION: code.id })
+    expect(env(code.id)).toEqual({ TEMP_CODE_PORT: '1', TEMP_CODE_SESSION: code.id, TEMP_CODE_APP_TOKEN: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) })
   })
 })
 

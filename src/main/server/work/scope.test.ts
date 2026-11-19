@@ -186,10 +186,13 @@ describe('the harnesses offered for Work', () => {
     expect(workProviderRefusal('claude')).toBeNull()
     for (const provider of ['codex', 'muse', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx'] as const) expect(workProviderRefusal(provider)).toMatch(/not offered for Work/)
   })
-  it('the bridge still sends the thread id where a tool argument can replace it: the reason Codex is withheld', () => {
-    // When this line of the bridge changes, look again at WORK_PROVIDERS (work/scope.ts).
-    const bridge = readFileSync(resolve(import.meta.dirname, '..', '..', '..', '..', 'scripts', 'app-mcp-bridge.mjs'), 'utf8')
-    expect(bridge).toContain('params: { sessionId: SESSION, ...params }')
+  it('the bridge sends its own thread and token after whatever a tool was given: no tool argument names another thread', async () => {
+    const bridge = (await import(resolve(import.meta.dirname, '..', '..', '..', '..', 'scripts', 'app-mcp-bridge.mjs'))) as {
+      callParams: (params: Record<string, unknown>, session: string, token: string) => Record<string, unknown>
+      argumentRefusal: (name: string, args: unknown) => string | null
+    }
+    expect(bridge.callParams({ threadId: 't', sessionId: 'another', appToken: 'another' }, 'mine', 'my-token')).toEqual({ threadId: 't', sessionId: 'mine', appToken: 'my-token' })
+    expect(bridge.argumentRefusal('app_start_thread', { threadType: 'chat', sessionId: 'another' })).toMatch(/^refused: app_start_thread has no argument "sessionId"/)
   })
 })
 

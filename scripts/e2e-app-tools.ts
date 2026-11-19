@@ -14,7 +14,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from '../src/main/server/index'
-import { appToolsMcp } from '../src/main/server/apptools'
+import { appToolsMcp, bridgeMcpConfig } from '../src/main/server/apptools'
 import type { AgentEvent, EventRow, SessionMeta } from '../src/shared/events'
 
 const server = await startServer(join(mkdtempSync(join(tmpdir(), 'tc-app-')), 'app.db'))
@@ -179,7 +179,8 @@ const bridge = spawn(process.execPath, ['scripts/app-mcp-bridge.mjs'], {
   env: {
     ...process.env,
     TEMP_CODE_PORT: String(server.port),
-    TEMP_CODE_SESSION: chat1.id
+    TEMP_CODE_SESSION: chat1.id,
+    TEMP_CODE_APP_TOKEN: (bridgeMcpConfig(chat1.id)?.env as Record<string, string>).TEMP_CODE_APP_TOKEN
   },
   stdio: ['pipe', 'pipe', 'inherit']
 })

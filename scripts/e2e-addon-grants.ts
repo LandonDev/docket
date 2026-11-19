@@ -48,6 +48,7 @@ import { startFakeOAuthServer } from './lib/fakeOAuthServer'
 import { proofElectron } from './lib/proofElectron'
 import { waitForGateBuild } from './lib/gateBuild'
 import { proofCleanup } from './lib/proofCleanup'
+import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
 
 const REPO = resolve(import.meta.dir, '..')
 const GATE = process.argv.includes('--gate')
@@ -124,6 +125,7 @@ function launch(inst: Inst): void {
     HOME: inst.home,
     TMPDIR: inst.tmp,
     TEMP_CODE_USER_DATA: inst.data,
+    TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED,
     TEMP_CODE_HEADLESS: '1',
     TEMP_CODE_REMOTE_PORT: String(inst.remote),
     TEMP_CODE_CLAIM_SHIM: '0',
@@ -170,7 +172,7 @@ async function rpc<T = unknown>(inst: Inst, method: string, params: unknown = {}
       ws.close()
       fail(new Error(`${inst.name}: no answer to ${method}`))
     }, timeoutMs)
-    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params })))
+    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params: withAppToken(method, params) })))
     ws.addEventListener('message', (ev) => {
       const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
       if (frame.id !== 'e2e') return

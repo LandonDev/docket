@@ -15,6 +15,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Cdp, REPO, attach, prepareEnv, sh, sleep } from './lib/packagedApp'
 import { PAIR_INVALID_LINE } from '../src/main/server/remote/pairPage'
+import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
 
 prepareEnv()
 const DEBUG_PORT = Number(process.env.TC_UI_DEBUG_PORT ?? 9228)
@@ -55,7 +56,7 @@ const pidsOn = async (port: number): Promise<number[]> =>
     .map((s) => Number(s.trim()))
     .filter((n) => n > 0)
 
-const env = { ...process.env, TEMP_CODE_USER_DATA: USER_DATA, TEMP_CODE_DEBUG_PORT: String(DEBUG_PORT), TEMP_CODE_REMOTE_PORT: String(REMOTE_PORT) } as Record<string, string>
+const env = { ...process.env, TEMP_CODE_USER_DATA: USER_DATA, TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED, TEMP_CODE_DEBUG_PORT: String(DEBUG_PORT), TEMP_CODE_REMOTE_PORT: String(REMOTE_PORT) } as Record<string, string>
 delete env.ELECTRON_RUN_AS_NODE
 const appLog = join(tmpdir(), `tc-remote-ui-app-${process.pid}.log`)
 const appOut = Bun.file(appLog)
@@ -91,7 +92,7 @@ try {
   writeFileSync(join(wsDir, 'README.md'), '# remote ui\n')
   await sh(['git', 'init', '-q', wsDir], { quiet: true })
   const desktopRequest = (method: string, params: unknown): Promise<unknown> =>
-    desk.eval(`window.__monocode.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+    desk.eval(`window.__monocode.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(withAppToken(method, params))})`)
   const workspace = (await desktopRequest('workspace.create', { path: wsDir, name: 'remote-ui-ws' })) as { id: string }
   check('desktop creates a workspace over its local socket', typeof workspace?.id === 'string')
   const status = (await desktopRequest('remote.status', {})) as { running: boolean; port: number }

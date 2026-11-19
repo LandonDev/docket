@@ -127,6 +127,7 @@ describe('app-mcp-bridge computer tools over stdio', () => {
         ...process.env,
         TEMP_CODE_PORT: String((server.address() as { port: number }).port),
         TEMP_CODE_SESSION: 'computer-thread',
+        TEMP_CODE_APP_TOKEN: 'app-token',
         TEMP_CODE_COMPUTER_TOKEN: undefined,
         TEMP_CODE_COMPUTER_IMAGES: undefined,
         TEMP_CODE_MAC_TOKEN: '',
@@ -168,6 +169,40 @@ describe('app-mcp-bridge computer tools over stdio', () => {
   const computerNames = (response: McpReply) => response.result.tools.filter((t) => t.name.startsWith('computer_'))
   const tokenEnv = { TEMP_CODE_COMPUTER_TOKEN: 'thread-token' }
 
+  it("sends every call as its own thread with its own token, and refuses an argument a tool does not declare", async () => {
+    const app = await startBridge((request, ws) => reply(ws, request, 'ok'), { TEMP_CODE_MAC_TOKEN: 'mac-token' })
+    await app.request(1, 'tools/call', { name: 'app_read_thread', arguments: { threadId: 't2' } })
+    await app.request(2, 'tools/call', { name: 'mac_list_dir', arguments: { path: '/tmp' } })
+    expect(app.requests.map((r) => [r.method, r.params.sessionId, r.params.appToken])).toEqual([
+      ['app.readThread', 'computer-thread', 'app-token'],
+      ['mac.listDir', 'computer-thread', 'app-token']
+    ])
+    for (const [name, args] of [
+      ['app_read_thread', { threadId: 't2', sessionId: 'another-thread' }],
+      ['app_list_threads', { appToken: 'another-token' }],
+      ['mac_list_dir', { path: '/tmp', sessionId: 'another-thread', token: 'another-token' }]
+    ] as const) {
+      const refused = await app.request(`${name}-refused`, 'tools/call', { name, arguments: args })
+      expect(refused.result.isError).toBe(true)
+      expect(refused.result.content[0].text).toMatch(new RegExp(`^refused: ${name} has no argument "(sessionId|appToken)"`))
+    }
+    expect((await app.request(3, 'tools/call', { name: 'list_agents', arguments: [] })).result.content[0].text).toBe("refused: list_agents's arguments must be an object")
+    expect(app.requests).toHaveLength(2)
+  })
+
+  it('will not start without its thread and token', async () => {
+    const child = spawn(process.execPath, [bridgePath], { env: { ...process.env, TEMP_CODE_PORT: '1', TEMP_CODE_SESSION: 's', TEMP_CODE_APP_TOKEN: '' }, stdio: ['pipe', 'pipe', 'pipe'] })
+    const [code] = await once(child, 'exit')
+    expect(code).toBe(1)
+  })
+
+  it('sends batch_rules\' fields under rules, as app.batchRules takes them', async () => {
+    const app = await startBridge((request, ws) => reply(ws, request, 'Rules set.'))
+    await app.request(1, 'tools/call', { name: 'batch_rules', arguments: { land: 'all-at-once', summary: 'ship it' } })
+    await app.request(2, 'tools/call', { name: 'batch_rules' })
+    expect(app.requests.map((r) => r.params.rules)).toEqual([{ land: 'all-at-once', summary: 'ship it' }, {}])
+  })
+
   it("returns update_notes' streak refusal verbatim", async () => {
     const app = await startBridge((request, ws) => reply(ws, request, NOTES_STREAK_STOP))
     const answer = await app.request(1, 'tools/call', { name: 'update_notes', arguments: { section: 'State', content: 'x' } })
@@ -198,7 +233,7 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     for (const list of lists) expect(computerNames(list)).toEqual(tools)
     expect(app.requests).toHaveLength(1)
     expect(app.requests[0]).toMatchObject({
-      method: 'app.computerTools', params: { sessionId: 'computer-thread', token: 'thread-token' }
+      method: 'app.computerTools', params: { sessionId: 'computer-thread', appToken: 'app-token', token: 'thread-token' }
     })
   })
 
@@ -215,7 +250,7 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     const response = await app.request('act-1', 'tools/call', { name: 'computer_act', arguments: args })
     expect(app.requests[0]).toMatchObject({
       method: 'app.computer',
-      params: { sessionId: 'computer-thread', call: 'act-1', tool: 'computer_act', args, token: 'thread-token', images: 'parts' }
+      params: { sessionId: 'computer-thread', appToken: 'app-token', call: 'act-1', tool: 'computer_act', args, token: 'thread-token', images: 'parts' }
     })
     expect(response.result).toEqual({
       content: [
@@ -244,7 +279,7 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     }), { ...tokenEnv, TEMP_CODE_COMPUTER_IMAGES: images })
     const response = await app.request(7, 'tools/call', { name: 'computer_act' })
     expect(app.requests[0].params).toEqual({
-      sessionId: 'computer-thread', call: 7, tool: 'computer_act', args: {}, token: 'thread-token', images: 'none'
+      sessionId: 'computer-thread', appToken: 'app-token', call: 7, tool: 'computer_act', args: {}, token: 'thread-token', images: 'none'
     })
     expect(response.result).toEqual({ content: [{ type: 'text', text: 'done' }], isError: false })
   })
@@ -278,7 +313,7 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     app.notify('notifications/cancelled', { requestId: id })
     await app.request('still-serving', 'tools/call', { name: 'app_list_threads' })
     expect(app.requests.filter((r) => r.method === 'app.computerCancel')).toEqual([
-      expect.objectContaining({ params: { sessionId: 'computer-thread', call: id, token: 'thread-token' } })
+      expect.objectContaining({ params: { sessionId: 'computer-thread', appToken: 'app-token', call: id, token: 'thread-token' } })
     ])
   })
 
@@ -296,7 +331,7 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     const args = { id: 'c4' }
     const response = await app.request('read-1', 'tools/call', { name: 'computer_result', arguments: args })
     expect(app.requests.find((r) => r.method === 'app.computer')).toMatchObject({
-      params: { sessionId: 'computer-thread', call: 'read-1', tool: 'computer_result', args, token: 'thread-token' }
+      params: { sessionId: 'computer-thread', appToken: 'app-token', call: 'read-1', tool: 'computer_result', args, token: 'thread-token' }
     })
     expect(response.result).toEqual({ content: [{ type: 'text', text: 'left_click · ax · changed' }], isError: false })
   })
@@ -317,7 +352,7 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     app.notify('notifications/cancelled', { requestId: 'read-9' })
     expect((await read).result.isError).toBe(true)
     expect(app.requests.filter((r) => r.method === 'app.computerCancel')).toEqual([
-      expect.objectContaining({ params: { sessionId: 'computer-thread', call: 'read-9', token: 'thread-token' } })
+      expect.objectContaining({ params: { sessionId: 'computer-thread', appToken: 'app-token', call: 'read-9', token: 'thread-token' } })
     ])
     const act = pending.get('act-9')!
     reply(act.ws, act.request, { text: 'done', images: [], isError: false })

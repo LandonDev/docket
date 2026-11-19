@@ -28,6 +28,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { E2E_APP_TOKEN_SEED, appTokenFor } from './lib/appToken'
 
 const REPO = resolve(import.meta.dir, '..')
 const KEEP = process.env.TC_MR_KEEP === '1'
@@ -99,6 +100,7 @@ async function launch(): Promise<void> {
     ...(process.env as Record<string, string>),
     TMPDIR: tmp,
     TEMP_CODE_USER_DATA: data,
+    TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED,
     TEMP_CODE_HEADLESS: '1',
     TEMP_CODE_REMOTE_PORT: String(await freePort()),
     TEMP_CODE_CLAIM_SHIM: '0',
@@ -207,7 +209,7 @@ const finalText = (rows: Row[]): string =>
 /** The codex stdio bridge, as codex would spawn it: tools/list. */
 async function bridgeTools(sessionId: string): Promise<string[]> {
   const bridge = spawn(process.execPath, [join(REPO, 'scripts', 'app-mcp-bridge.mjs')], {
-    env: { PATH: process.env.PATH ?? '', TEMP_CODE_PORT: String(portOf()), TEMP_CODE_SESSION: sessionId },
+    env: { PATH: process.env.PATH ?? '', TEMP_CODE_PORT: String(portOf()), TEMP_CODE_SESSION: sessionId, TEMP_CODE_APP_TOKEN: appTokenFor(sessionId) },
     stdio: ['pipe', 'pipe', 'pipe']
   })
   let out = ''

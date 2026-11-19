@@ -9,6 +9,10 @@
  *
  *   TEMP_CODE_PORT     the app's WS port (localhost-only)
  *   TEMP_CODE_SESSION  the calling thread's session id
+ *   TEMP_CODE_APP_TOKEN  that thread's own token: every app.* call carries
+ *                      it as `appToken`, and the server answers a call only
+ *                      for the thread the token was made for
+ *                      (bridgeCallRefusal, src/main/server/apptools.ts)
  *   TEMP_CODE_MAC_TOKEN  set only when the thread's Mac bridge is on: the
  *                      mac_* tools are listed and each call carries it
  *                      (src/main/server/macTools.ts, docs/box.md)
@@ -36,6 +40,7 @@ import { pathToFileURL } from 'node:url'
 
 const PORT = process.env.TEMP_CODE_PORT
 const SESSION = process.env.TEMP_CODE_SESSION
+const APP_TOKEN = process.env.TEMP_CODE_APP_TOKEN
 const MAC_TOKEN = process.env.TEMP_CODE_MAC_TOKEN
 const MAC_HOME = process.env.TEMP_CODE_MAC_HOME
 const ADDONS = process.env.TEMP_CODE_ADDONS === '1'
@@ -82,12 +87,17 @@ function connect() {
   return wsReady
 }
 
+/** A call's params: the bridge's own thread and token last, so nothing a tool is given can name another thread. */
+export function callParams(params, session = SESSION, appToken = APP_TOKEN) {
+  return { ...params, sessionId: session, appToken }
+}
+
 async function appRequest(method, params, timeoutMs = 120_000) {
   const ws = await connect()
   const id = `bridge-${nextWsId++}`
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject })
-    ws.send(JSON.stringify({ id, method, params: { sessionId: SESSION, ...params } }))
+    ws.send(JSON.stringify({ id, method, params: callParams(params) }))
     if (timeoutMs > 0) {
       setTimeout(() => {
         if (pending.delete(id)) reject(new Error('app server timeout'))
@@ -1021,7 +1031,34 @@ export function clientTimeoutMs(name, args) {
   return WAITS_ON_A_CARD.has(name) ? 0 : 120_000
 }
 
+/** Every tool this bridge can list, whatever this thread's tokens: the table undeclared arguments are checked against. */
+const ALL_LISTED = listedTools('any', true)
+
+/**
+ * Why a call to one of the bridge's own tools is refused, or null: its
+ * arguments must be an object naming only what the tool's schema declares.
+ * The app's computer and Work tools carry their arguments nested and are
+ * checked by the app against their own schemas.
+ */
+export function argumentRefusal(name, args, tools = ALL_LISTED) {
+  const tool = tools.find((t) => t.name === name)
+  if (!tool || args === undefined || args === null) return null
+  if (typeof args !== 'object' || Array.isArray(args)) return `refused: ${name}'s arguments must be an object`
+  const declared = tool.inputSchema?.properties ?? {}
+  const extra = Object.keys(args).filter((key) => !Object.hasOwn(declared, key))
+  if (extra.length === 0) return null
+  const takes = Object.keys(declared)
+  return `refused: ${name} has no argument ${extra.map((k) => JSON.stringify(k)).join(', ')}. ${takes.length ? `It takes ${takes.join(', ')}.` : 'It takes none.'}`
+}
+
+/** A tool's arguments as its app.* method takes them: batch_rules' flat fields ride under `rules` (contract.ts). */
+export function wireArgs(name, args) {
+  return name === 'batch_rules' ? { rules: args ?? {} } : (args ?? {})
+}
+
 async function callTool(name, args, id) {
+  const refused = argumentRefusal(name, args)
+  if (refused) return { content: [{ type: 'text', text: refused }], isError: true }
   if (name === 'update_plan') return { content: [{ type: 'text', text: 'task list updated' }] }
   if (COMPUTER_TOKEN && name?.startsWith('computer_')) {
     computerCalls.add(id)
@@ -1060,7 +1097,7 @@ async function callTool(name, args, id) {
   // wait_for_agent sleeps until the agent settles (0 = no deadline); an
   // explicit timeoutSeconds gets a small buffer on top.
   const timeoutMs = clientTimeoutMs(name, args)
-  const result = await appRequest(method, args ?? {}, timeoutMs)
+  const result = await appRequest(method, wireArgs(name, args), timeoutMs)
   if (name === 'app_read_thread' && result === null) {
     return { content: [{ type: 'text', text: 'refused: unknown thread id. app_list_threads shows valid ids.' }] }
   }
@@ -1073,8 +1110,8 @@ const out = (msg) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...ms
 
 // Only the codex-spawned process serves stdio; a test imports the tool table.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  if (!PORT || !SESSION) {
-    console.error('app-mcp-bridge: TEMP_CODE_PORT and TEMP_CODE_SESSION are required')
+  if (!PORT || !SESSION || !APP_TOKEN) {
+    console.error('app-mcp-bridge: TEMP_CODE_PORT, TEMP_CODE_SESSION and TEMP_CODE_APP_TOKEN are required')
     process.exit(1)
   }
   createInterface({ input: process.stdin }).on('line', (line) => {

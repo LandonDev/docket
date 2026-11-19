@@ -144,7 +144,8 @@ describe('Work on a running host, as it ships', () => {
     expect(await admin.request('work.set', { enabled: true })).toMatchObject({ ok: true, result: { enabled: true } })
     for (const sock of [me, phone, admin]) expect(await pushed(sock, 'work')).toEqual([{ push: 'work', settings: { enabled: true } }])
     expect((await me.request('work.get')).result).toEqual({ enabled: true })
-    expect(await me.request('app.workTools', { sessionId: 's', token: 'guess' })).toMatchObject({ ok: false, error: "forbidden: not this thread's Work token" })
+    // a bridge call needs the thread's own app token before its Work token is read (apptools.ts bridgeCallRefusal)
+    expect(await me.request('app.workTools', { sessionId: 's', token: 'guess' })).toMatchObject({ ok: false, error: "forbidden: app.workTools needs the calling thread's own app token" })
     // on: a Work workspace is the app's own folder under the work root (this test's own), and a create that only reads cannot make one
     server.store.setSetting('workspace.root', join(root, 'workroot'))
     expect(await phone.request('workspace.create', { kind: 'work', name: 'Purdue' })).toMatchObject({ ok: false })

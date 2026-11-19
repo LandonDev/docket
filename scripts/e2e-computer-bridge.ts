@@ -61,6 +61,7 @@ import { parseTimingLine } from '../src/shared/computer/bridgeTiming'
 import { proofElectron } from './lib/proofElectron'
 import { waitForGateBuild } from './lib/gateBuild'
 import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
+import { E2E_APP_TOKEN_SEED, appTokenFor, withAppToken } from './lib/appToken'
 
 const GATE = computerProofMode(process.argv).gate
 if (GATE) process.env.TC_PROOF_UNGATED = '1'
@@ -114,6 +115,7 @@ function launch(inst: Inst, extra: Record<string, string>): void {
     HOME: inst.home,
     TMPDIR: inst.tmp,
     TEMP_CODE_USER_DATA: inst.data,
+    TEMP_CODE_APP_TOKEN_SEED: E2E_APP_TOKEN_SEED,
     TEMP_CODE_HEADLESS: '1',
     TEMP_CODE_WARM_HARNESS: '0',
     TEMP_CODE_ALIAX_DATA_DIR: join(inst.data, 'aliax'),
@@ -146,7 +148,7 @@ async function rpc<T = unknown>(inst: Inst, method: string, params: unknown = {}
       ws.close()
       fail(new Error(`${inst.name}: no answer to ${method}`))
     }, 600_000)
-    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params })))
+    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'e2e', method, params: withAppToken(method, params) })))
     ws.addEventListener('message', (ev) => {
       const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
       if (frame.id !== 'e2e') return
@@ -211,7 +213,7 @@ function persistentRpc(inst: Inst): <T = unknown>(method: string, params: unknow
     const id = `p${++n}`
     return await new Promise<T>((ok, fail) => {
       waiting.set(id, (frame) => (frame.ok ? ok(frame.result as T) : fail(new Error(frame.error))))
-      ws.send(JSON.stringify({ id, method, params }))
+      ws.send(JSON.stringify({ id, method, params: withAppToken(method, params) }))
     })
   }
 }
@@ -348,6 +350,7 @@ class BridgeSession {
         PATH: process.env.PATH ?? '',
         TEMP_CODE_PORT: String(local),
         TEMP_CODE_SESSION: sessionId,
+        TEMP_CODE_APP_TOKEN: appTokenFor(sessionId),
         TEMP_CODE_MAC_TOKEN: tokenFor(seed, 'mac-bridge', sessionId),
         TEMP_CODE_COMPUTER_TOKEN: tokenFor(seed, 'computer', sessionId),
         TEMP_CODE_COMPUTER_IMAGES: images

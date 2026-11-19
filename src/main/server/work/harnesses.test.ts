@@ -10,6 +10,7 @@ import { WebSocket, WebSocketServer } from 'ws'
 import { z } from 'zod'
 import type { SessionMeta } from '@shared/events'
 import type { WorkScope, WorkToolListing, WorkToolResult } from '@shared/work'
+import { MacThreadTokens } from '../macTools'
 import { bridgeMcpConfig, setAppBridge, setAppToolsRegistry, setAppWork, withWorkTools } from '../apptools'
 import type { SessionRegistry } from '../sessions'
 import type { WorkToolMount } from './ctx'
@@ -114,7 +115,7 @@ describe('Codex and Muse', () => {
       })
     })
     const child = spawn(process.execPath, [bridgePath], {
-      env: { ...process.env, TEMP_CODE_MAC_TOKEN: '', TEMP_CODE_ADDONS: '', TEMP_CODE_COMPUTER_TOKEN: '', TEMP_CODE_WORK_TOKEN: '', ...env, TEMP_CODE_PORT: String((server.address() as { port: number }).port) },
+      env: { ...process.env, TEMP_CODE_MAC_TOKEN: '', TEMP_CODE_ADDONS: '', TEMP_CODE_COMPUTER_TOKEN: '', TEMP_CODE_WORK_TOKEN: '', TEMP_CODE_APP_TOKEN: 'app-token', ...env, TEMP_CODE_PORT: String((server.address() as { port: number }).port) },
       stdio: ['pipe', 'pipe', 'pipe']
     })
     const replies = new Map<number, (reply: McpReply) => void>()
@@ -156,8 +157,9 @@ describe('Codex and Muse', () => {
     return 'ok'
   }
 
+  const appTokens = new MacThreadTokens(null, 'app-bridge')
   const bridgeEnv = (sessionId: string, opts?: { computerImages?: 'parts' | 'none' }): Record<string, string> => {
-    setAppBridge({ port: 1, scriptPath: bridgePath, command: process.execPath, env: {} })
+    setAppBridge({ port: 1, scriptPath: bridgePath, command: process.execPath, env: {}, tokens: appTokens })
     return (bridgeMcpConfig(sessionId, opts) as { env: Record<string, string> }).env
   }
 
@@ -242,7 +244,7 @@ describe('Codex and Muse', () => {
       })
     })
     const child = spawn(process.execPath, [bridgePath], {
-      env: { ...process.env, TEMP_CODE_MAC_TOKEN: '', TEMP_CODE_ADDONS: '', TEMP_CODE_COMPUTER_TOKEN: '', TEMP_CODE_SESSION: 't-work', TEMP_CODE_WORK_TOKEN: 'token-of-t-work', TEMP_CODE_PORT: String((server.address() as { port: number }).port) },
+      env: { ...process.env, TEMP_CODE_MAC_TOKEN: '', TEMP_CODE_ADDONS: '', TEMP_CODE_COMPUTER_TOKEN: '', TEMP_CODE_SESSION: 't-work', TEMP_CODE_WORK_TOKEN: 'token-of-t-work', TEMP_CODE_APP_TOKEN: 'app-token', TEMP_CODE_PORT: String((server.address() as { port: number }).port) },
       stdio: ['pipe', 'pipe', 'pipe']
     })
     const lines = createInterface({ input: child.stdout })
