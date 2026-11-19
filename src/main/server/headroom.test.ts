@@ -7,6 +7,7 @@ import {
   OVERLOADED_MS,
   RATE_WINDOW_MS,
   THROTTLE_DEFAULT_MS,
+  impossibleSample,
   mergeViews,
   parseGoDuration,
   parseLimitHeaders,
@@ -326,4 +327,32 @@ it('a named weekly cooldown lifts at its reset without requiring a new poll', ()
     { label: '5h', usedPercent: 20 }, { label: 'Weekly', usedPercent: 100, resetsAt: NOW + 1000 }
   ] }])
   expect(store.view('claude-code', 'a').throttledUntil).toBeUndefined()
+})
+
+it('a 5h sample that resets days out is a mislabeled weekly limit: never evidence, dropped at load and merge', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tc-headroom-impossible-'))
+  const file = join(dir, 'headroom.json')
+  // What a promax plan's weekly 429 left behind before classify429 read limit_window_minutes.
+  const bogus = { label: '5h', usedPercent: 100, resetsAt: NOW + 95 * 3_600_000, at: NOW }
+  const week = { label: 'week', usedPercent: 4, resetsAt: NOW + 5 * 86_400_000, periodMs: 7 * 86_400_000, at: NOW + 1000 }
+  expect(impossibleSample(bogus)).toBe(true)
+  expect(impossibleSample(week)).toBe(false)
+  expect(impossibleSample({ label: '5h', resetsAt: NOW + 4 * 3_600_000, at: NOW })).toBe(false)
+  // The proof of a passed reset is stamped at 0 and stays.
+  expect(impossibleSample({ label: '5h', resetsAt: NOW - 1000, at: 0 })).toBe(false)
+  const obs = { seenAt: NOW + 1000, recent: [], throttles: [], usage: [bogus, week] }
+  try {
+    require('node:fs').writeFileSync(file, JSON.stringify({ version: 1, hosts: { mac: { 'codex:a': obs } } }))
+    const now = NOW + 2000
+    const mac = new HeadroomStore({ environmentId: 'mac', file, now: () => now })
+    expect(mac.own().hosts.mac['codex:a'].usage).toEqual([week])
+    expect(mac.reconcileUsage('codex', [{ profileName: 'a', windows: [] }])[0].windows.map((w) => w.label)).toEqual(['week'])
+    // A peer on an older build still sends it.
+    const box = new HeadroomStore({ environmentId: 'box', now: () => now })
+    box.merge('mac', { version: 1, hosts: { mac: { 'codex:a': obs } } })
+    expect(box.reconcileUsage('codex', [{ profileName: 'a', windows: [] }])[0].windows.map((w) => w.label)).toEqual(['week'])
+    // And a new one is refused.
+    mac.observeUsage('codex', 'a', { label: '5h', usedPercent: 100, resetsAt: now + 95 * 3_600_000 })
+    expect(mac.own().hosts.mac['codex:a'].usage).toEqual([week])
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 })

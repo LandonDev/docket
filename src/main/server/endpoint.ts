@@ -118,7 +118,7 @@ export interface RoutedEndpoint {
 /**
  * Proof seam (scripts/compare-computer-words.ts): `TEMP_CODE_DIRECT_PROVIDERS=codex`
  * leaves those CLIs on their own login and default base, never the shim or this
- * gateway. An unrouted codex thread otherwise gets a plain-http base it refuses.
+ * gateway.
  */
 const directProviders = (): string[] => (process.env.TEMP_CODE_DIRECT_PROVIDERS ?? '').split(',').filter(Boolean)
 
@@ -138,6 +138,9 @@ export async function routedEndpointFor(
     }
   }
   const endpoint = await endpointFor(service, d)
+  // Every supported codex refuses an http base ("workspace backend must use
+  // an HTTPS origin"): without a port of its own it keeps its config's base.
+  if (service === 'codex' && endpoint?.startsWith('http:')) return { url: null, account: null }
   if (!endpoint || !scope.route) return { url: endpoint, account: null }
   if (!(await scopedRoutesAt(endpoint, d))) {
     console.log(`[gateway] ${service} ${scope.thread}: owner has no scoped routes, sending unscoped`)

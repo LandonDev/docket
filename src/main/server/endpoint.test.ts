@@ -56,7 +56,7 @@ describe('endpointFor', () => {
     let now = 1_000_000
     const gatewayUrl = (s: string) => `http://127.0.0.1:5/${s}`
     const fetch = vi.fn(async (input: URL | RequestInfo) => (String(input).endsWith('/__aliax') ? json({ ok: true, features: ['scoped-routes'] }) : json({ ok: true })))
-    // No certificate: codex takes the shared path like claude.
+    // No certificate.
     const scopedCodexUrl = async () => null
     const deps = { shimInstalled: () => false, fetch, gatewayUrl, scopedCodexUrl, now: () => now }
     const route = { account: 'me@x.com', pin: false }
@@ -64,7 +64,8 @@ describe('endpointFor', () => {
     expect(await routedEndpointFor('claude', { thread: 'T', route, model: 'claude-opus-5-5[1m]' }, deps)).toEqual({ url: 'http://127.0.0.1:5/claude/~t=T;a=me%40x.com;m=claude-opus-5-5', account: 'me@x.com' })
     expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:5/claude/__aliax', expect.anything())
     now += 10_000
-    expect((await routedEndpointFor('codex', { thread: 'T', route }, deps)).url).toBe('http://127.0.0.1:5/codex/~t=T;a=me%40x.com')
+    // Codex refuses an http base, so without a port of its own it keeps its config's.
+    expect(await routedEndpointFor('codex', { thread: 'T', route }, deps)).toEqual({ url: null, account: null })
     expect(fetch).toHaveBeenCalledTimes(1)
     // No route: unscoped, no probe.
     expect(await routedEndpointFor('claude', { thread: 'T', route: null }, deps)).toEqual({ url: 'http://127.0.0.1:5/claude', account: null })
@@ -93,8 +94,8 @@ describe('endpointFor', () => {
     expect(scopedCodexUrl).toHaveBeenLastCalledWith('abc', { account: 'me', pin: true }, 'gpt-6.1-sol')
     // No shim probe, no feature probe: the port is ours.
     expect(fetch).not.toHaveBeenCalled()
-    // Without a route the thread shares the plain path (and the shim when it answers).
-    expect(await routedEndpointFor('codex', { thread: 'abc', route: null }, deps)).toEqual({ url: `${SHIM_URL}/codex`, account: null })
+    // Without a route the shared path is plain http, which codex refuses: it keeps its config's base.
+    expect(await routedEndpointFor('codex', { thread: 'abc', route: null }, deps)).toEqual({ url: null, account: null })
     // Claude never takes a codex port.
     forgetShimAnswer()
     const claude = await routedEndpointFor('claude', { thread: 'abc', route: { account: 'me', pin: false } }, { ...deps, shimInstalled: () => false, fetch: vi.fn(async () => json({ ok: true, features: ['scoped-routes'] })), gatewayUrl: () => 'http://127.0.0.1:5/claude' })

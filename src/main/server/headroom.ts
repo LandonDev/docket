@@ -194,6 +194,20 @@ export function throttleUntil(status: number, headers: Pick<Headers, 'get'>, fie
 
 const emptyObservation = (now: number): HostObservation => ({ seenAt: now, recent: [], throttles: [] })
 
+/** Window lengths for samples that carry no periodMs. */
+const WINDOW_MS: Record<string, number> = { '5h': 5 * 3_600_000 }
+
+/**
+ * A sample whose reset lies further out than its window is long is not that
+ * window: a 429 charged to the wrong label (a weekly limit filed as 5h). No
+ * poll ever reports that window again, so it would block the account until
+ * its bogus reset; it is never evidence.
+ */
+export function impossibleSample(w: { label: string; at: number; resetsAt?: number; periodMs?: number }): boolean {
+  const period = w.periodMs ?? WINDOW_MS[w.label]
+  return w.at > 0 && period !== undefined && w.resetsAt !== undefined && w.resetsAt - w.at > period + 60_000
+}
+
 export class HeadroomStore {
   private readonly hosts = new Map<string, Map<string, HostObservation>>()
   private saveTimer: NodeJS.Timeout | null = null
@@ -241,6 +255,7 @@ export class HeadroomStore {
 
   /** File a real provider sample. A cache hit or a failed poll must never call this. */
   observeUsage(service: ServiceId, account: string, window: UsageWindow): void {
+    if (impossibleSample({ ...window, at: this.now() })) return
     const key = accountKey(service, account)
     const prior = this.mine().get(key) ?? emptyObservation(this.now())
     const usage = [...(prior.usage ?? []).filter(w => w.label !== window.label), { ...window, at: this.now() }]
@@ -252,6 +267,8 @@ export class HeadroomStore {
   private windows(service: ServiceId, account: string): NonNullable<HostObservation['usage']> {
     const latest = new Map<string, NonNullable<HostObservation['usage']>[number]>()
     for (const rows of this.hosts.values()) for (const w of rows.get(accountKey(service, account))?.usage ?? []) {
+      // A peer on an older build may still hold one.
+      if (impossibleSample(w)) continue
       const prior = latest.get(w.label)
       // Equal clocks prefer the full window: ambiguity must never grant room.
       if (!prior || w.at > prior.at || (w.at === prior.at && w.usedPercent > prior.usedPercent)) latest.set(w.label, w)
@@ -428,10 +445,11 @@ function isObservation(v: unknown): v is HostObservation {
   return typeof o.seenAt === 'number' && Array.isArray(o.recent) && Array.isArray(o.throttles)
 }
 
-/** Drop what time has made worthless: answers outside the rate window, throttles that lifted an hour ago. */
+/** Drop what time has made worthless: answers outside the rate window, throttles that lifted an hour ago, impossible samples. */
 function trim(obs: HostObservation, now: number): HostObservation {
   return {
     ...obs,
+    ...(obs.usage ? { usage: obs.usage.filter((w) => !impossibleSample(w)) } : {}),
     recent: obs.recent.filter((t) => typeof t === 'number' && now - t < RATE_WINDOW_MS),
     throttles: obs.throttles.filter((t) => t && typeof t.until === 'number' && t.until > now - 3_600_000).slice(-THROTTLES_KEPT)
   }
