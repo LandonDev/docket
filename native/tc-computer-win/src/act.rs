@@ -228,12 +228,16 @@ impl<D: Desktop> Service<D> {
             }
             person()?;
             if a.action == HoldKey {
-                let ms = (a.duration.unwrap_or(0.0).clamp(0.0, 300.0) * 1000.0) as u64;
-                let whole = sleep_cancellable(ms, cancel);
+                // held for its duration, let go at once when the call is cancelled or the person acts
+                let until = Instant::now() + Duration::from_secs_f64(a.duration.unwrap_or(0.0).clamp(0.0, 300.0));
+                while Instant::now() < until && !cancel.load(Ordering::SeqCst) && person().is_ok() {
+                    std::thread::sleep(Duration::from_millis(10).min(until.saturating_duration_since(Instant::now())));
+                }
                 if let Some(Event::Key { combo, .. }) = events.first() {
                     self.desktop.post(&win, element, tier, &Event::Key { combo: *combo, phase: KeyPhase::Up })?;
                 }
-                if !whole {
+                person()?;
+                if cancel.load(Ordering::SeqCst) {
                     return Err(fail(ComputerErrorKind::Cancelled, "cancelled"));
                 }
             }
@@ -311,7 +315,8 @@ impl<D: Desktop> Service<D> {
             restorable: true,
             ..Default::default()
         };
-        guard(&self.state).restore = Some((front_before.map(|(_, h)| h), pointer_before));
+        // what the session tier took is what the first session step since the last restore found
+        guard(&self.state).restore.get_or_insert((front_before.map(|(_, h)| h), pointer_before));
         match r {
             Ok(()) => Ok(change),
             Err(mut e) => {

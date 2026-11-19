@@ -353,6 +353,37 @@ fn resolve_key(c: &Combo) -> (Option<u16>, Mods, Option<char>) {
     }
 }
 
+/// Text as real keys: a character the keyboard layout types with Shift alone goes as that key (Caps Lock
+/// minded), as a person types it; anything else (an accent the layout lacks, an emoji) as a Unicode packet.
+/// WinUI's Notepad turned a run of packets into dots once in the rig where its own keys never did.
+fn text_inputs(t: &str) -> Vec<INPUT> {
+    let caps = unsafe { GetKeyState(0x14) } & 1 != 0;
+    let mut v = Vec::new();
+    for ch in t.chars() {
+        let scan = if (ch as u32) <= 0xFFFF { unsafe { VkKeyScanW(ch as u16) } } else { -1 };
+        let shifts = (scan >> 8) & 0xFF;
+        if scan != -1 && shifts & !1 == 0 {
+            let key = (scan & 0xFF) as u16;
+            let shift = (shifts & 1 != 0) != (caps && ch.is_alphabetic());
+            if shift {
+                v.push(key_input(vk::SHIFT, false));
+            }
+            v.push(key_input(key, false));
+            v.push(key_input(key, true));
+            if shift {
+                v.push(key_input(vk::SHIFT, true));
+            }
+        } else {
+            let mut buf = [0u16; 2];
+            for u in ch.encode_utf16(&mut buf).iter() {
+                v.push(unicode_input(*u, false));
+                v.push(unicode_input(*u, true));
+            }
+        }
+    }
+    v
+}
+
 /// An event as real input: the pointer moves, keys go to whatever has the focus (the caller raised the window).
 pub fn send_event(e: &Event) -> Result<(), ComputerError> {
     match e {
@@ -428,10 +459,7 @@ pub fn send_event(e: &Event) -> Result<(), ComputerError> {
             }
             send_or_fail(&out)
         }
-        Event::Text(t) => {
-            let v: Vec<INPUT> = t.encode_utf16().flat_map(|u| [unicode_input(u, false), unicode_input(u, true)]).collect();
-            send_or_fail(&v)
-        }
+        Event::Text(t) => send_or_fail(&text_inputs(t)),
         Event::Paste => send_or_fail(&[key_input(vk::CONTROL, false), key_input(b'V' as u16, false), key_input(b'V' as u16, true), key_input(vk::CONTROL, true)]),
     }
 }
