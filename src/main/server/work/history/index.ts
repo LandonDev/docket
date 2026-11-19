@@ -4,6 +4,7 @@ import { handled, NOT_HANDLED, type CanvasSource } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { canonicalPath } from '../service/ctx'
+import { guestNameOf } from '../guests/store'
 
 /**
  * The history pillar's server module (docs/agents/work-history.md): a
@@ -35,7 +36,7 @@ const bodyOf = (target: Target, rest: Record<string, unknown> = {}) => ({ ...tar
 /**
  * The words a screen shows for each principal: "You" for the owner and his
  * own LifeOS apps, a thread's title for an agent of this host, and plain
- * words for the rest. A guest is named by M31's link rows when they exist.
+ * words for the rest. A guest is named by their link's row (milestone 31).
  */
 export function namesFor(ctx: WorkCtx, principals: Iterable<string>): Record<string, string> {
   const out: Record<string, string> = {}
@@ -44,7 +45,7 @@ export function namesFor(ctx: WorkCtx, principals: Iterable<string>): Record<str
     if (p === 'owner' || (p.startsWith('lifeos:') && !p.startsWith('lifeos:bot:'))) out[p] = 'You'
     else if (p.startsWith('lifeos:bot:')) out[p] = 'LifeOS'
     else if (p.startsWith('external:')) out[p] = p.slice('external:'.length) || 'Someone'
-    else if (p.startsWith('guest:')) out[p] = 'A guest'
+    else if (p.startsWith('guest:')) out[p] = guestNameOf(ctx.db, p) ?? 'A guest'
     else if (p.startsWith('agent:')) {
       const [, host, thread] = p.split(':')
       const row = host === ctx.host && thread ? (title.get(thread) as { title?: string } | undefined) : undefined

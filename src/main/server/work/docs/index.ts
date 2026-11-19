@@ -7,6 +7,7 @@ import { dismissWritten, docsOf, ensureModeTable, modeOf, setMode, stopDocs } fr
 import { lifeosRow, pathOf, targetOf, titleOf, type DocTarget } from './target'
 import { changeThread, ensureThreadTables, readThreads } from './threads'
 import { docTools } from './tools'
+import { guestNameOf } from '../guests/store'
 
 /**
  * The docs pillar's server module (docs/agents/work-docs.md): the document
@@ -34,7 +35,7 @@ export function namesFor(ctx: WorkCtx, principals: Iterable<string>): Record<str
     if (p === 'owner' || (p.startsWith('lifeos:') && !p.startsWith('lifeos:bot:'))) out[p] = owner
     else if (p.startsWith('lifeos:bot:')) out[p] = 'LifeOS'
     else if (p.startsWith('external:')) out[p] = p.slice('external:'.length) || 'Someone'
-    else if (p.startsWith('guest:')) out[p] = 'A guest'
+    else if (p.startsWith('guest:')) out[p] = guestNameOf(ctx.db, p) ?? 'A guest'
     else if (p.startsWith('agent:')) {
       const [, host, thread] = p.split(':')
       let row: { title?: string } | undefined

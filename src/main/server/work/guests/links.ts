@@ -1,0 +1,226 @@
+import { randomBytes } from 'node:crypto'
+import { guestRefusal, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource } from '@shared/contract-work-guests'
+import type { CollabClaims as KitClaims } from 'work-kit/collab-server'
+import type { WorkCtx } from '../modules'
+import { WORK_OWNER_NAME_SETTING } from '../preamble'
+import { serviceOf, ServedElsewhere } from '../service/ctx'
+import { GuestStore, hashSecret, isLive, sourceKey, type StoredLink } from './store'
+import { PASS_PREFIX, type GuestServiceLink } from './wire'
+
+/**
+ * Guest links on the host that serves LifeOS's documents (architecture §8.6,
+ * docs/agents/work-guests.md): made, revoked, listed, and told to the Work
+ * service. Main signs every token (the service holds no key); each live link
+ * and each open ticket carries one, re-signed before it runs out, and the
+ * service hands it out only after the secret checks. Revoking sends the list
+ * at once without the link: its document sockets close then, its sheet
+ * sockets at the next second's check.
+ */
+
+/** A guest's token lasts ten minutes and is signed again with five left. */
+export const GUEST_TOKEN_SECONDS = 10 * 60
+const RESIGN_MS = 5 * 60_000
+/** How often the list is looked over: tokens near their end, links that ended. */
+export const TICK_MS = 30_000
+/** A ticket opens within two minutes; the session it opens lasts eight hours. */
+export const TICKET_MS = 2 * 60_000
+export const PASS_MS = 8 * 60 * 60_000
+
+export const DEFAULT_ORIGIN = 'https://tempcode.landonhale.com'
+
+/** Where a guest reaches this host: the tunnel's hostname on the box's installed host; a proof's origin when one is named. */
+export function publicOrigin(ctx: Pick<WorkCtx, 'service'>, env: NodeJS.ProcessEnv = process.env): string {
+  if (env.TEMP_CODE_WORK_PUBLIC_ORIGIN) return env.TEMP_CODE_WORK_PUBLIC_ORIGIN.replace(/\/$/, '')
+  if (process.platform === 'linux' && !env.TEMP_CODE_USER_DATA) return DEFAULT_ORIGIN
+  try {
+    return ctx.service.url('/').replace(/\/$/, '')
+  } catch {
+    return DEFAULT_ORIGIN
+  }
+}
+
+export const guestUrl = (origin: string, id: string, secret: string): string => `${origin}/g/${id}#k=${secret}`
+
+type Seen = Record<string, { at: number; open: number }>
+
+interface Pass {
+  id: string
+  ticketHash: string
+  ticketUntil: number
+  until: number
+  source: GuestSource
+  title: string
+}
+
+/** What a guests module keeps while Work is on: tickets, and the tokens it has signed. */
+export class GuestRuntime {
+  private readonly passes = new Map<string, Pass>()
+  private readonly tokens = new Map<string, { token: string; exp: number; signer: unknown }>()
+  private lastTick = Date.now()
+  readonly store: GuestStore
+
+  constructor(private readonly ctx: WorkCtx) {
+    this.store = new GuestStore(ctx.db)
+  }
+
+  private ownerName(): string {
+    try {
+      return (this.ctx.db.prepare('SELECT value FROM settings WHERE key = ?').get(WORK_OWNER_NAME_SETTING) as { value?: string } | undefined)?.value?.trim() || 'The owner'
+    } catch {
+      return 'The owner'
+    }
+  }
+
+  /** Throws `served elsewhere: <env>` on a host that does not serve LifeOS's documents, as every docs method does. */
+  async servedHere(source: GuestSource): Promise<void> {
+    try {
+      await this.ctx.service.token({ item: itemOf(source), role: 'view', principal: 'owner' })
+    } catch (err) {
+      if (err instanceof ServedElsewhere) throw new Error(`served elsewhere: ${err.host}`)
+      throw err
+    }
+  }
+
+  /** The item exists in LifeOS, and its sector and title. */
+  async itemRow(source: GuestSource): Promise<{ sector: string; title: string }> {
+    const row = await this.ctx.lifeos
+      .owner()
+      .query<{ sector?: string; title?: string } | null>(source.table === 'docs' ? 'docs:get' : 'sheets:get', { id: source.id })
+      .catch(() => null)
+    if (!row || typeof row.sector !== 'string') throw new Error(`LifeOS has no such ${source.table === 'docs' ? 'document' : 'sheet'}`)
+    return { sector: row.sector, title: typeof row.title === 'string' && row.title.trim() ? row.title.trim() : 'Untitled' }
+  }
+
+  async create(o: { source: GuestSource; title: string; name: string; role: GuestRole; expiresAt: number; bySession: string | null }): Promise<GuestCreated> {
+    const refused = guestRefusal(o)
+    if (refused) throw new Error(refused)
+    await this.servedHere(o.source)
+    await this.itemRow(o.source)
+    const { link, secret } = this.store.create(o)
+    await this.setShared(o.source)
+    await this.sync()
+    this.ctx.push({ push: 'work.guests' })
+    return { link: this.rowOf(link, {}), url: guestUrl(publicOrigin(this.ctx), link.id, secret) }
+  }
+
+  async revoke(id: string): Promise<void> {
+    const link = this.store.get(id)
+    if (!link) throw new Error('no such guest link on this host')
+    if (!this.store.revoke(id)) return
+    // The service first: the link's sockets close now, whatever LifeOS does next.
+    await this.sync()
+    await this.setShared(link.source)
+    this.ctx.push({ push: 'work.guests' })
+  }
+
+  async list(source?: GuestSource): Promise<GuestLinkRow[]> {
+    const rows = source ? this.store.forSource(source) : this.store.listed()
+    const seen = await this.seen()
+    const now = Date.now()
+    return rows.map((l) => this.rowOf(l, seen)).sort((a, b) => Number(isLive(b, now)) - Number(isLive(a, now)) || b.createdAt - a.createdAt)
+  }
+
+  private rowOf(l: StoredLink, seen: Seen | null): GuestLinkRow {
+    const { secretHash: _h, bySession: _s, ...row } = l
+    return { ...row, lastOpenedAt: seen ? (seen[l.id]?.at ?? null) : null, open: seen?.[l.id]?.open ?? 0 }
+  }
+
+  /** When each link was last opened and how many sockets it holds, as the service counts them; null when it does not answer. */
+  private async seen(): Promise<Seen | null> {
+    try {
+      return ((await this.ctx.service.internal('/internal/guests/seen', {})) as { seen?: Seen }).seen ?? {}
+    } catch {
+      return null
+    }
+  }
+
+  /** A ticket for the owner's hosted editor: the address holds it, once. */
+  async ticket(source: GuestSource, title: string): Promise<{ url: string; expiresAt: number }> {
+    await this.servedHere(source)
+    const ticket = randomBytes(32).toString('base64url')
+    const now = Date.now()
+    const pass: Pass = { id: randomBytes(12).toString('base64url'), ticketHash: hashSecret(ticket), ticketUntil: now + TICKET_MS, until: now + PASS_MS, source, title }
+    this.passes.set(pass.id, pass)
+    await this.sync()
+    return { url: `${publicOrigin(this.ctx)}/w/open#t=${ticket}`, expiresAt: pass.ticketUntil }
+  }
+
+  /** LifeOS's `shared` on the item: on while any link to it is live. */
+  async setShared(source: GuestSource): Promise<void> {
+    const shared = this.store.live().some((l) => sourceKey(l.source) === sourceKey(source))
+    try {
+      await this.ctx.lifeos.owner().mutation(source.table === 'docs' ? 'docs:setShared' : 'sheets:setShared', { id: source.id, shared })
+    } catch (err) {
+      this.ctx.log(`guests: ${sourceKey(source)} shared=${shared} was not set: ${String(err)}`)
+    }
+  }
+
+  private async sign(key: string, claims: KitClaims): Promise<{ token: string; exp: number } | null> {
+    const signer = serviceOf(this.ctx)?.tokenSigner()
+    if (!signer) return null
+    const held = this.tokens.get(key)
+    if (held && held.signer === signer && held.exp - Date.now() > RESIGN_MS) return held
+    const got = await signer.sign(claims, GUEST_TOKEN_SECONDS)
+    const next = { token: got.token, exp: got.expiresAt, signer }
+    this.tokens.set(key, next)
+    return next
+  }
+
+  /** Tells the service every live link and open ticket, each with a token it may hand out. */
+  async sync(): Promise<void> {
+    const supervisor = serviceOf(this.ctx)
+    if (!supervisor) return
+    const now = Date.now()
+    const owner = this.ownerName()
+    const out: GuestServiceLink[] = []
+    const keep = new Set<string>()
+    for (const l of this.store.live(now)) {
+      const principal = `guest:${l.id}` as const
+      const t = await this.sign(l.id, { ...kitItem(l.source), role: l.role, principal, link: l.id })
+      if (!t) continue
+      keep.add(l.id)
+      out.push({
+        linkId: l.id,
+        item: itemOf(l.source),
+        role: l.role,
+        expiresAt: l.expiresAt,
+        revokedAt: null,
+        guest: { secretHash: l.secretHash, name: l.name, title: l.title, owner, token: t.token, tokenExp: t.exp }
+      })
+    }
+    for (const p of this.passes.values()) {
+      if (p.until <= now) {
+        this.passes.delete(p.id)
+        continue
+      }
+      const key = PASS_PREFIX + p.id
+      const t = await this.sign(key, { ...kitItem(p.source), role: 'edit', principal: 'owner' })
+      if (!t) continue
+      keep.add(key)
+      out.push({
+        linkId: key,
+        item: itemOf(p.source),
+        role: 'edit',
+        expiresAt: p.until,
+        revokedAt: null,
+        pass: { ticketHash: p.ticketHash, ticketUntil: p.ticketUntil, title: p.title, token: t.token, tokenExp: t.exp }
+      })
+    }
+    for (const key of this.tokens.keys()) if (!keep.has(key)) this.tokens.delete(key)
+    supervisor.setLinks(out)
+  }
+
+  /** Every 30 s: tokens signed again, and links that ended since the last look clear their item's `shared`. */
+  async tick(): Promise<void> {
+    const now = Date.now()
+    const ended = this.store.endedBetween(this.lastTick, now)
+    this.lastTick = now
+    await this.sync()
+    const items = new Map(ended.map((l) => [sourceKey(l.source), l.source]))
+    for (const source of items.values()) await this.setShared(source)
+    if (ended.length) this.ctx.push({ push: 'work.guests' })
+  }
+}
+
+export const itemOf = (s: GuestSource): { doc: string } | { sheet: string } => (s.table === 'docs' ? { doc: s.id } : { sheet: s.id })
+const kitItem = (s: GuestSource): { doc: string } | { sheet: string } => itemOf(s)
