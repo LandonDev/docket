@@ -339,6 +339,14 @@ struct RootView: View {
             // Milestone 47's work set: the first Work workspace's Mail, Tasks, Agenda or Routines (`TC_TEST_WORK_VIEW`).
             guard let workspace = client.workspaces.first(where: { $0.kind == .work }) else { return }
             home.open(.workView(environmentId: environmentId, workspaceId: workspace.id, view: TestHooks.workView ?? "mail"))
+        case "work-workspace":
+            // Milestone 47's work set: the first Work workspace's screen, with Mail, Tasks, Agenda and Routines at its head.
+            guard let workspace = client.workspaces.first(where: { $0.kind == .work }) else { return }
+            // A Work workspace is an entry of Home's Work band, not of its code entries.
+            let entry = HomeSections.home(hosts: HomeRows.inputs([client], current: true)).work.first {
+                if case .workspace(let home) = $0.kind { home.members.contains { $0.workspace.id == workspace.id } } else { false }
+            }
+            if let entry { home.open(.workspace(key: entry.id)) }
         case "work-chats":
             home.open(.workspace(key: HomeSections.workChatsKey))
         case "work-settings":

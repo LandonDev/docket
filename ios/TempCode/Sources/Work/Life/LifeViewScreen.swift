@@ -120,7 +120,19 @@ struct StartThreadSheet: View {
                     }
                 }
             }
-            .onAppear { focused = true }
+            .onAppear {
+                focused = true
+                #if DEBUG
+                // The work set: `TC_TEST_ACTION=start-thread` writes the words and presses Start.
+                if TestHooks.action == "start-thread", TestHooks.once("start-thread") {
+                    text = "Draft a reply that confirms the hold"
+                    Task {
+                        try? await Task.sleep(for: .seconds(3))
+                        await start()
+                    }
+                }
+                #endif
+            }
         }
         .tcSheet(.form)
     }

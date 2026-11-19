@@ -70,6 +70,7 @@ final class WorkLifeHost: LifeActions {
             var book = FixtureBook(now: Calendar.current.date(bySettingHour: 9, minute: 41, second: 0, of: Date()) ?? Date())
             book.addLifeKitFixtures()
             install(LifeStore(fixtures: book, sectors: sectors))
+            fixtureHooks()
             return
         }
         #endif
@@ -92,6 +93,20 @@ final class WorkLifeHost: LifeActions {
             phase = .unavailable("LifeOS did not answer.")
         }
     }
+
+    #if DEBUG
+    /// The work set on LifeKit's fixture day: `TC_TEST_OPEN=mail-thread` opens the Purdue thread
+    /// (th3), `TC_TEST_SHEET=start-thread-mail|start-thread-task` raises Start Thread on that thread
+    /// or the Purdue task t6, as the screens' own Start Thread does.
+    private func fixtureHooks() {
+        if TestHooks.open == "mail-thread" { scene?.mail = .init(thread: "th3") }
+        switch TestHooks.sheet {
+        case "start-thread-mail": startThread(about: LifeItem(kind: .thread, id: "th3", title: "Spring LAN arena hold", sector: .purdue))
+        case "start-thread-task": startThread(about: LifeItem(kind: .task, id: "t6", title: "Book the arena for the spring LAN", sector: .purdue))
+        default: break
+        }
+    }
+    #endif
 
     @ObservationIgnored private var lastRecheck = Date.distantPast
 

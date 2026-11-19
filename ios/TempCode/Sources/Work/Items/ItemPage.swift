@@ -17,7 +17,17 @@ struct ItemPage: View {
     @State private var failure: String?
 
     private var items: [CanvasItem] { client.work.canvas.items(sessionId) }
-    private var item: CanvasItem? { items.first { $0.id == selected } ?? items.first }
+    private var item: CanvasItem? { items.first { $0.id == selected } ?? testItem ?? items.first }
+
+    /// The work set: `TC_TEST_ITEM` names the item to show first, by kind or a part of its title.
+    private var testItem: CanvasItem? {
+        #if DEBUG
+        guard let want = TestHooks.item else { return nil }
+        return items.first { $0.kind.rawValue == want } ?? items.first { $0.title.localizedCaseInsensitiveContains(want) }
+        #else
+        return nil
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 0) {

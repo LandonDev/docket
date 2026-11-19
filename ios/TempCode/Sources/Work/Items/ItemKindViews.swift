@@ -89,6 +89,20 @@ struct BrowserItemView: View {
                 }
             }
             .refreshable { reload() }
+            .task {
+                #if DEBUG
+                // The work set: `TC_TEST_OPEN=browser-held` presses the held act once it shows.
+                guard TestHooks.open == "browser-held" else { return }
+                for _ in 0..<100 {
+                    if let act = held.first, TestHooks.once("browser-held") {
+                        try? await Task.sleep(for: .seconds(2))
+                        navigator.open(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref)))
+                        return
+                    }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                #endif
+            }
         }
         .accessibilityIdentifier("browser-item")
     }
@@ -236,6 +250,8 @@ private struct DashBlockView: View {
 struct HistoryItemView: View {
     let client: EnvironmentClient
     let source: CanvasSource
+    /// The work set (`TC_TEST_OPEN=compare`): the oldest version's compare, pushed once the list is in.
+    @State private var testCompare: String?
 
     var body: some View {
         ItemLoad(read: { try await client.work.canvas.versions(source) }) { history, _ in
@@ -255,6 +271,14 @@ struct HistoryItemView: View {
                 .accessibilityIdentifier("history-version")
             }
             .listStyle(.plain)
+            .navigationDestination(item: $testCompare) { versionId in
+                CompareView(client: client, source: source, versionId: versionId, names: history.names)
+            }
+            .task {
+                #if DEBUG
+                if TestHooks.open == "compare", TestHooks.once("history-compare") { testCompare = history.versions.last?.id }
+                #endif
+            }
         }
         .accessibilityIdentifier("history-item")
     }

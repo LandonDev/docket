@@ -99,6 +99,8 @@ enum TestHooks {
     static let lifeFixtures = env["TC_TEST_LIFE_FIXTURES"] == "1"
     /// The work set: a Work workspace's view to open over its screen (`mail`, `tasks`, `agenda`, `routines`).
     static let workView = env["TC_TEST_WORK_VIEW"].flatMap { $0.isEmpty ? nil : $0 }
+    /// The work set: the Item segment's item to show, by kind (`pdf`, `media`, …) or a part of its title.
+    static let item = env["TC_TEST_ITEM"].flatMap { $0.isEmpty ? nil : $0 }
     #else
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
@@ -119,6 +121,7 @@ enum TestHooks {
     static let controlURL: URL? = nil
     static let lifeFixtures = false
     static let workView: String? = nil
+    static let item: String? = nil
     #endif
     /// True once per key: a hook that several rows read fires on the first.
     static func once(_ key: String) -> Bool {

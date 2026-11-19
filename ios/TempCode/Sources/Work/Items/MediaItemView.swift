@@ -150,6 +150,14 @@ private struct VideoVersionView: View {
             }
         }
         player = AVPlayer(url: file)
+        #if DEBUG
+        // The work set: `TC_TEST_ACTION=media-comment:<words>` posts them at the frame three seconds in.
+        if let action = TestHooks.action, action.hasPrefix("media-comment:"), TestHooks.once("media-comment"), let player {
+            await player.seek(to: CMTime(seconds: 3, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+            comment = String(action.dropFirst("media-comment:".count))
+            await post()
+        }
+        #endif
     }
 
     private func post() async {
