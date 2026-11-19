@@ -25,6 +25,10 @@ describe('badJsxTags', () => {
     expect(badJsxTags(source)).toEqual([])
   })
 
+  it("passes a namespaced name, which only a DOM factory's call has (pdf.js's svg:line)", () => {
+    expect(badJsxTags('svgFactory.createElement("svg:line");svgFactory.createElement("svg:g")')).toEqual([])
+  })
+
   it('names each bad tag once', () => {
     expect(badJsxTags('jsx("current");jsx("current");jsx("lazy")')).toEqual(['current', 'lazy'])
   })

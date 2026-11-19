@@ -150,11 +150,13 @@ export const KNOWN_TAGS = new Set(
 const TAG_CALL = /\b(?:jsxs?|createElement)\("([^"]+)"/g
 
 /** The string tags in `source` that are neither a known element nor a custom
- *  element (a name with a dash). */
+ *  element (a name with a dash). A name with a namespace prefix (pdf.js's own
+ *  `svgFactory.createElement("svg:line")`) is a DOM call, never JSX: a
+ *  component binding cannot hold a colon. */
 export function badJsxTags(source: string): string[] {
   const bad = new Set<string>()
   for (const [, tag] of source.matchAll(TAG_CALL)) {
-    if (!tag.includes('-') && !KNOWN_TAGS.has(tag.toLowerCase())) bad.add(tag)
+    if (!tag.includes('-') && !tag.includes(':') && !KNOWN_TAGS.has(tag.toLowerCase())) bad.add(tag)
   }
   return [...bad]
 }
