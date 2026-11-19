@@ -56,7 +56,9 @@ function ViewFrame({ view, environmentId, workspaceId, sector }: { view: WorkVie
   const Icon = def.icon;
   const signedOut = state === "signed-out" || state === "refused";
   return (
-    <div role="region" aria-label={def.label} className="absolute inset-0 z-10 flex min-h-0 min-w-0 flex-col bg-background">
+    // Over every layer a thread's pane raises (its composer and queue reach z-30), under dialogs and menus (--layer-dialog 90):
+    // the draft composer must not float over a view's body.
+    <div role="region" aria-label={def.label} className="absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col bg-background">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
         <Icon className="size-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">{def.label}</span>
