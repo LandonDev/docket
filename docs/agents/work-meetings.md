@@ -266,6 +266,7 @@ the host and only ever suggest a name (voices.ts).
 | `work.meetings.undoNotes {itemId}` | operate | puts back the notes before the last write |
 | `work.meetings.voices` | read | the names with a kept voice, never the voice |
 | `work.meetings.forgetVoice {name}` | operate | |
+| `work.meetings.recording {itemId, offset, length}` | read | `{ name, size, dataBase64 }`: the original recording, read in ranges of at most 2 MB for Download recording. A remote key reads it only where the path fence lets it name the file (`ctx.reaches`, else `FenceError`); a transcript says "This meeting has no recording.", a file gone "<name> is not on <host> any more." |
 
 Every method runs on the host that holds the thread (`MEETINGS_RELAY` is
 empty). The path fence reads the file a `source` names. The push
@@ -337,7 +338,11 @@ claimed by no kind, unless either is opened as a meeting (`meeting_open`).
   tasks always suggestions.
 - **More** holds Export transcript first once there is a transcript
   (`shell.more`): the title, then each turn's time and speaker over its
-  words, saved as `<title>.txt` (`transcriptText`, model.ts).
+  words, saved as `<title>.txt` (`transcriptText`, model.ts). Then, for a
+  meeting made from a recording, whatever its state, Download recording:
+  the original as it was dropped, under its own name, read in ranges from
+  the host that holds it (`readRecording`, player.ts); while it comes the
+  row reads "Downloading… 40%" and takes no press.
 - **No bar** while the meeting has nothing in it (Drop a recording): its
   `Bar` renders nothing, so the pane draws none.
 
@@ -355,6 +360,5 @@ states).
 - "Agent writes" is a fixed word, not a menu: there is no suggest mode for
   notes on his own recording.
 - Not built: Make task in the selection bar (it should open LifeOS's task
-  sheet, milestone 25), Download recording (the canvas reaches only the
-  player's small mono copy; the original needs a host method of its own),
+  sheet, milestone 25),
   topics, and aligning a transcript file with a recording dropped beside it.

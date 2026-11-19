@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ATTACHMENT_CHUNK_BYTES } from './contract-attachments'
 import { CanvasSourceSchema } from './work/canvas'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
@@ -143,8 +144,22 @@ export const MeetingsRequestSchemas = [
   /** → { voices: MeetingVoice[] }: the names this host keeps a voice for */
   request('work.meetings.voices', z.object({}).optional()),
   /** Forgets the voice kept under a name on this host. → { voices } */
-  request('work.meetings.forgetVoice', z.object({ name: z.string().min(1).max(120) }))
+  request('work.meetings.forgetVoice', z.object({ name: z.string().min(1).max(120) })),
+  /**
+   * The original recording, read in ranges for the owner's own client to save
+   * (Download recording): `length` bytes from `offset`, at most one attachment
+   * chunk. A remote key reads it only where the path fence lets it name the
+   * file. → MeetingRecordingRange
+   */
+  request('work.meetings.recording', z.object({ itemId, offset: z.number().int().min(0), length: z.number().int().min(1).max(ATTACHMENT_CHUNK_BYTES) }))
 ] as const
+
+/** A range of a meeting's original recording: the file's name and whole size, and the bytes asked for. */
+export interface MeetingRecordingRange {
+  name: string
+  size: number
+  dataBase64: string
+}
 
 /** A meeting changed: the pane asks for it again when `rev` is past what it holds. */
 export type MeetingsPush = { push: 'work.meetings'; itemId: string; sessionId: string; rev: number; status: MeetingStatus }
@@ -158,7 +173,8 @@ export const MEETINGS_CAPS = {
   'work.meetings.decide': 'approve',
   'work.meetings.undoNotes': 'operate',
   'work.meetings.voices': 'read',
-  'work.meetings.forgetVoice': 'operate'
+  'work.meetings.forgetVoice': 'operate',
+  'work.meetings.recording': 'read'
 } satisfies CapsOf<typeof MeetingsRequestSchemas>
 /** Every method is carried to the host that holds the thread: a meeting's rows and files are that host's. */
 export const MEETINGS_RELAY = {} satisfies RelayOf<typeof MeetingsRequestSchemas>

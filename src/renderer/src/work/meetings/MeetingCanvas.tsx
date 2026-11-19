@@ -8,12 +8,12 @@ import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { uploadAttachment } from "../../lib/attachmentUpload";
 import { dayTime } from "../../lib/duration";
 import { sayError } from "../canvas/frame";
-import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
-import { Export } from "../icons";
+import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
+import { Download, Export } from "../icons";
 import { decideTasks, loadMeeting, startMeeting, startOnce, undoNotes, useMeeting } from "./data";
 import { Failed, NotesDoc, NothingYet, PlainName, PlayerRow, Progress, Turns, TurnsSkeleton } from "./MeetingView";
 import { findHits, proposedTasks, segmentAt, stretchLabel, stretchOf, tasksByTurn, transcriptText } from "./model";
-import { usePlayer } from "./player";
+import { readRecording, usePlayer } from "./player";
 import { SpeakerName } from "./Speaker";
 
 /**
@@ -139,19 +139,47 @@ function useStretch(root: RefObject<HTMLDivElement | null>, shell: CanvasShell, 
   return selected;
 }
 
-/** The meeting's own verbs in the pane's More, once there is a transcript to export. */
-function useExport(shell: CanvasShell, meeting: Meeting | null): void {
+/**
+ * The meeting's own verbs in the pane's More: Export transcript once there is
+ * one, and Download recording, the original as it was dropped, read from the
+ * host that holds it. While it comes the row says how far and takes no press.
+ */
+function useMore(shell: CanvasShell, env: string, meeting: Meeting | null): void {
   const ready = meeting?.status === "ready" && meeting.segments.length > 0 ? meeting : null;
+  const recording = meeting?.from === "recording" ? meeting.itemId : null;
+  const [fetched, setFetched] = useState<number | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => {
-    if (!ready) return;
-    shell.more?.([{ id: "export-transcript", label: "Export transcript", icon: Export, run: () => saveText(`${ready.title.replace(/\.[A-Za-z0-9]{1,5}$/, "")}.txt`, transcriptText(ready)) }]);
+    const entries: MoreEntry[] = [];
+    if (ready)
+      entries.push({ id: "export-transcript", label: "Export transcript", icon: Export, run: () => saveBlob(`${ready.title.replace(/\.[A-Za-z0-9]{1,5}$/, "")}.txt`, new Blob([transcriptText(ready)], { type: "text/plain;charset=utf-8" })) });
+    if (recording)
+      entries.push({
+        id: "download-recording",
+        label: fetched === null ? "Download recording" : `Downloading… ${Math.round(fetched * 100)}%`,
+        icon: Download,
+        disabled: fetched !== null,
+        run: async () => {
+          const signal = (abort.current = new AbortController()).signal;
+          setFetched(0);
+          try {
+            const { name, blob } = await readRecording(env, recording, setFetched, signal);
+            saveBlob(name, blob);
+          } finally {
+            if (!signal.aborted) setFetched(null);
+          }
+        },
+      });
+    if (entries.length === 0) return;
+    shell.more?.(entries);
     return () => shell.more?.(null);
-  }, [shell, ready]);
+  }, [shell, env, ready, recording, fetched]);
 }
 
-/** Saves words as a file where the person keeps downloads. */
-function saveText(name: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+/** Saves a file where the person keeps downloads. */
+function saveBlob(name: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
@@ -192,7 +220,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null);
   const current = proposed.some((a) => a.id === task) ? task : (proposed[0]?.id ?? null);
   const selected = useStretch(turnsBox, shell, meeting, source);
-  useExport(shell, meeting);
+  useMore(shell, env, meeting);
 
   const hits = useMemo(() => (meeting && view.find ? findHits(meeting.segments, view.find.query) : []), [meeting, view.find]);
   const hit = view.find && hits.length ? hits[((view.find.index % hits.length) + hits.length) % hits.length] : null;

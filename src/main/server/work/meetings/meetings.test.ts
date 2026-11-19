@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LOCAL_PRINCIPAL, METHOD_CAPABILITY } from '@shared/capabilities'
+import { LOCAL_PRINCIPAL, METHOD_CAPABILITY, type Principal } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
-import type { Meeting } from '@shared/contract-work-meetings'
+import type { Meeting, MeetingRecordingRange } from '@shared/contract-work-meetings'
 import type { SessionMeta } from '@shared/events'
 import type { CanvasSource, SectorKey, WorkScope } from '@shared/work'
 import { setAttachmentDirContext } from '../../attachmentDir'
@@ -140,8 +140,8 @@ const boot = (): void => {
   work = startWork({ db, store: new Store(db), registry, environmentId: 'env_test', dataDir: dir, log: () => {} }, [canvas, meetings])
   work.pushes.onPush((p) => pushes.push(p))
 }
-const call = async <T,>(method: string, params?: unknown): Promise<T> => {
-  const out = await work.handle(ClientRequestSchema.parse({ id: '1', method, params } as ClientRequest), LOCAL_PRINCIPAL)
+const call = async <T,>(method: string, params?: unknown, principal: Principal = LOCAL_PRINCIPAL): Promise<T> => {
+  const out = await work.handle(ClientRequestSchema.parse({ id: '1', method, params } as ClientRequest), principal)
   return (out.handled ? out.result : undefined) as T
 }
 const file = (path: string): CanvasSource => ({ at: 'file', host: 'env_test', path })
@@ -407,8 +407,8 @@ describe('notes and tasks', () => {
   })
 
   it('holds each method to its capability: deciding a task is the owner\'s press', () => {
-    const caps = ['get', 'start', 'cancel', 'speaker', 'decide', 'undoNotes', 'voices', 'forgetVoice'].map((v) => METHOD_CAPABILITY[`work.meetings.${v}` as keyof typeof METHOD_CAPABILITY])
-    expect(caps).toEqual(['read', 'operate', 'operate', 'operate', 'approve', 'operate', 'read', 'operate'])
+    const caps = ['get', 'start', 'cancel', 'speaker', 'decide', 'undoNotes', 'voices', 'forgetVoice', 'recording'].map((v) => METHOD_CAPABILITY[`work.meetings.${v}` as keyof typeof METHOD_CAPABILITY])
+    expect(caps).toEqual(['read', 'operate', 'operate', 'operate', 'approve', 'operate', 'read', 'operate', 'read'])
   })
 })
 
@@ -507,5 +507,35 @@ describe('after the review', () => {
     const again = await get(m.itemId)
     expect(again.status).toBe('ready')
     expect(again.notes!.actions).toEqual([expect.objectContaining({ state: 'filed', lifeosTaskId: 'task1', refs: [], at: null })])
+  })
+})
+
+describe('Download recording', () => {
+  const range = (itemId: string, offset: number, length: number, principal?: Principal) =>
+    call<MeetingRecordingRange>('work.meetings.recording', { itemId, offset, length }, principal)
+
+  it('serves the original, not the player copy, in ranges to the owner\'s window', async () => {
+    const body = new Uint8Array(3_000_000).map((_, i) => i % 251)
+    const item = openMeeting(drop('Staff sync.mov', body))
+    await call('work.meetings.start', { itemId: item.id })
+    await idle(item.id)
+    const first = await range(item.id, 0, 2 * 1024 * 1024)
+    expect(first).toMatchObject({ name: 'Staff sync.mov', size: 3_000_000 })
+    const second = await range(item.id, 2 * 1024 * 1024, 2 * 1024 * 1024)
+    const got = Buffer.concat([Buffer.from(first.dataBase64, 'base64'), Buffer.from(second.dataBase64, 'base64')])
+    expect(got.equals(Buffer.from(body))).toBe(true)
+  })
+
+  it('a remote key the path fence does not admit is refused; a transcript has no recording; a file gone says so', async () => {
+    const item = openMeeting(drop('Staff sync.m4a'))
+    await call('work.meetings.start', { itemId: item.id })
+    await idle(item.id)
+    const key = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: ['read'] } as Principal
+    await expect(range(item.id, 0, 1024, key)).rejects.toThrow(/work\.meetings\.recording/)
+    rmSync(join(dir, 'files', 'Staff sync.m4a'))
+    await expect(range(item.id, 0, 1024)).rejects.toThrow('Staff sync.m4a is not on env_test any more.')
+    const vtt = openMeeting(drop('Notes.vtt', 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Dana>Hi.</v>\n'), 'Notes')
+    await call('work.meetings.start', { itemId: vtt.id })
+    await expect(range(vtt.id, 0, 1024)).rejects.toThrow('This meeting has no recording.')
   })
 })

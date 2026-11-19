@@ -1,4 +1,8 @@
+import { basename } from 'node:path'
 import { handled, NOT_HANDLED } from '@shared/work'
+import type { MeetingRecordingRange } from '@shared/contract-work-meetings'
+import { readRange } from '../../attachmentUploads'
+import { FenceError } from '../../remote/fence'
 import { registerMoveModule, tableMoveModule } from '../../sessionMove'
 import type { WorkModule } from '../modules'
 import { meetingConverters } from './pipeline'
@@ -22,7 +26,7 @@ export const meetings: WorkModule = {
     // A thread that moves takes its meetings' rows. The voices stay: they are this host's, and their tables have no thread column.
     registerMoveModule(db, tableMoveModule('meetings', 'work_meetings'))
   },
-  async handle(req, ctx) {
+  async handle(req, ctx, by) {
     const meetings = meetingsOf(ctx)
     switch (req.method) {
       case 'work.meetings.get':
@@ -41,6 +45,15 @@ export const meetings: WorkModule = {
         return handled({ voices: meetings.listVoices() })
       case 'work.meetings.forgetVoice':
         return handled({ voices: meetings.forgetVoice(req.params.name) })
+      case 'work.meetings.recording': {
+        const { itemId, offset, length } = req.params
+        const path = meetings.recordingPath(ctx, itemId)
+        if (!ctx.reaches(by, path)) throw new FenceError(req.method)
+        const range = await readRange(path, offset, length).catch(() => {
+          throw new Error(`${basename(path)} is not on ${ctx.host} any more.`)
+        })
+        return handled({ name: basename(path), ...range } satisfies MeetingRecordingRange)
+      }
     }
     return NOT_HANDLED
   },

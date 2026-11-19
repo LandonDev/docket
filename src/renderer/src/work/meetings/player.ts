@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AttachmentRange } from "@server/shared/contract-attachments";
+import type { MeetingRecordingRange } from "@shared/contract-work-meetings";
 import { registry } from "../../lib/connection";
 
 /**
@@ -51,6 +52,23 @@ export async function readCopy(environmentId: string, path: string, bytes: numbe
     parts.push(bytesOf(dataBase64));
   }
   return new Blob(parts as BlobPart[], { type: "audio/mp4" });
+}
+
+/** The original recording (Download recording), read range by range from the host that holds it; `progress` gets 0 to 1 as it comes. */
+export async function readRecording(environmentId: string, itemId: string, progress: (done: number) => void, signal: AbortSignal): Promise<{ name: string; blob: Blob }> {
+  const link = registry.linkOf(environmentId);
+  const parts: Uint8Array[] = [];
+  let name = "";
+  let size = 1;
+  for (let offset = 0; offset < size; offset += RANGE) {
+    if (signal.aborted) throw new Error("cancelled");
+    const range = await link.request<MeetingRecordingRange>("work.meetings.recording", { itemId, offset, length: RANGE });
+    name = range.name;
+    size = range.size;
+    parts.push(bytesOf(range.dataBase64));
+    progress(size ? Math.min(1, (offset + RANGE) / size) : 1);
+  }
+  return { name, blob: new Blob(parts as BlobPart[]) };
 }
 
 export function usePlayer(environmentId: string, audio: { path: string; bytes: number } | undefined, durationSec: number): Player {

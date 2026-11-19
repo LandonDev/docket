@@ -22,6 +22,7 @@ const host = vi.hoisted(() => ({
   decide: null as null | ((params: Record<string, unknown>) => unknown),
   down: false,
   refuseStart: false,
+  recording: null as null | ((params: Record<string, unknown>) => unknown),
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -41,6 +42,7 @@ vi.mock("../../lib/connection", async (original) => {
       }
       if (method === "work.meetings.decide") return host.decide!(params);
       if (method === "work.meetings.voices") return { voices: [] };
+      if (method === "work.meetings.recording") return host.recording!(params);
       throw new Error(`unexpected ${method}`);
     },
     onPush: (listener: (push: never) => void) => (host.pushes.add(listener), () => host.pushes.delete(listener)),
@@ -225,6 +227,42 @@ describe("the meeting canvas", () => {
       fireEvent.click(screen.getByRole("menuitem", { name: "Export transcript" }));
       await waitFor(() => expect(clicked).toEqual([{ name: "Staff sync.txt", href: "blob:transcript" }]));
       expect(await (made.mock.calls[0][0] as Blob).text()).toMatch(/^Staff sync\.m4a\n\n10:52 Dana Lee\n/);
+    } finally {
+      click.mockRestore();
+      Object.assign(URL, { createObjectURL: was.create, revokeObjectURL: was.revoke });
+    }
+  });
+
+  it("Download recording saves the original as it was dropped, read in ranges, and takes no second press while it comes", async () => {
+    const clicked: { name: string; href: string }[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push({ name: this.download, href: this.href });
+    });
+    const made = vi.fn((_blob: Blob) => "blob:recording");
+    const was = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    Object.assign(URL, { createObjectURL: made, revokeObjectURL: () => undefined });
+    // two ranges; the second waits until the test lets it go
+    const body = "x".repeat(2 * 1024 * 1024) + "tail";
+    let release!: () => void;
+    const second = new Promise<void>((r) => (release = r));
+    host.recording = async (params) => {
+      const offset = params.offset as number;
+      if (offset > 0) await second;
+      const part = body.slice(offset, offset + (params.length as number));
+      return { name: "Staff sync.mov", size: body.length, dataBase64: btoa(part) };
+    };
+    try {
+      await seat(sampleMeeting({ title: "Staff sync.mov" }));
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      expect((await screen.findAllByRole("menuitem")).map((row) => row.textContent).slice(0, 2)).toEqual(["Export transcript", "Download recording"]);
+      fireEvent.click(screen.getByRole("menuitem", { name: "Download recording" }));
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      const busy = await screen.findByRole("menuitem", { name: /^Downloading… \d+%$/ });
+      expect(busy.getAttribute("aria-disabled") ?? busy.getAttribute("data-disabled")).not.toBeNull();
+      release();
+      await waitFor(() => expect(clicked).toEqual([{ name: "Staff sync.mov", href: "blob:recording" }]));
+      expect(await (made.mock.calls[0][0] as Blob).text()).toBe(body);
+      expect(host.calls.filter((c) => c.method === "work.meetings.recording").map((c) => c.params.offset)).toEqual([0, 2 * 1024 * 1024]);
     } finally {
       click.mockRestore();
       Object.assign(URL, { createObjectURL: was.create, revokeObjectURL: was.revoke });

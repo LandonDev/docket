@@ -104,6 +104,14 @@ export class Meetings {
     return this.items.paneOf(sessionId)
   }
 
+  /** Where the meeting's original recording is on this host; a sentence when it has none here. */
+  recordingPath(ctx: WorkCtx, itemId: string): string {
+    const row = this.need(itemId)
+    if (row.origin !== 'recording' || !row.source) throw new Error('This meeting has no recording.')
+    if (row.source.host !== ctx.host) throw new Error(`The recording is on ${row.source.host}.`)
+    return row.source.path
+  }
+
   /** Whether an item is a meeting of this thread's pane. */
   owns(sessionId: string, itemId: string): boolean {
     const item = this.items.get(itemId)
