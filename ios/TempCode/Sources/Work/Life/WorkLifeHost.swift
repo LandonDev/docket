@@ -69,7 +69,9 @@ final class WorkLifeHost: LifeActions {
         if TestHooks.lifeFixtures {
             var book = FixtureBook(now: Calendar.current.date(bySettingHour: 9, minute: 41, second: 0, of: Date()) ?? Date())
             book.addLifeKitFixtures()
-            install(LifeStore(fixtures: book, sectors: sectors))
+            // Every sector: LifeKit's fixture mail list ignores the cursor and never ends while it holds
+            // more threads than a page, so with one sector shown Mail's fill asked for pages forever.
+            install(LifeStore(fixtures: book, sectors: Sector.allCases))
             fixtureHooks()
             return
         }
@@ -96,10 +98,16 @@ final class WorkLifeHost: LifeActions {
 
     #if DEBUG
     /// The work set on LifeKit's fixture day: `TC_TEST_OPEN=mail-thread` opens the Purdue thread
-    /// (th3), `TC_TEST_SHEET=start-thread-mail|start-thread-task` raises Start Thread on that thread
+    /// (th3) once the list is up, `TC_TEST_SHEET=start-thread-mail|start-thread-task` raises Start Thread on that thread
     /// or the Purdue task t6, as the screens' own Start Thread does.
     private func fixtureHooks() {
-        if TestHooks.open == "mail-thread" { scene?.mail = .init(thread: "th3") }
+        // Three seconds after the list is up, as a tap on the row would open it.
+        if TestHooks.open == "mail-thread" {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                self?.scene?.mail = .init(thread: "th3")
+            }
+        }
         switch TestHooks.sheet {
         case "start-thread-mail": startThread(about: LifeItem(kind: .thread, id: "th3", title: "Spring LAN arena hold", sector: .purdue))
         case "start-thread-task": startThread(about: LifeItem(kind: .task, id: "t6", title: "Book the arena for the spring LAN", sector: .purdue))
@@ -204,5 +212,37 @@ nonisolated struct WorkLifeSession: LifeSession {
         } catch LifeToken.Refusal.host {
             throw LifeAuthError.refused
         }
+    }
+}
+
+/// The LifeOS screen on show, for the shell's split (`lifeHostEnvironment`). On the phone
+/// LifeKitUI's `SplitScreen` opens a mail thread through a `NavigationStack` of its own inside
+/// the shell's, and SwiftUI hoists that destination to the shell's stack, outside `lifeChrome`:
+/// without these objects there, opening a thread traps (no `LifeScene` in the environment).
+@MainActor @Observable
+final class ShownLifeHost {
+    static let shared = ShownLifeHost()
+    var host: WorkLifeHost?
+}
+
+extension View {
+    /// The shown LifeOS screen's store, scene, writes, clock and connection, optional so the tree never changes shape.
+    func lifeHostEnvironment() -> some View {
+        modifier(LifeHostEnvironment())
+    }
+}
+
+private struct LifeHostEnvironment: ViewModifier {
+    @State private var shown = ShownLifeHost.shared
+
+    func body(content: Content) -> some View {
+        let store = shown.host?.store
+        let scene = shown.host?.scene
+        content
+            .environment(store)
+            .environment(scene)
+            .environment(scene?.writes)
+            .environment(store?.clock)
+            .environment(store?.connection)
     }
 }

@@ -58,6 +58,8 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
                 .navigationDestination(for: HostDetailRoute.self) { HostDetailView(environmentId: $0.environmentId) }
             }
         }
+        // A LifeOS screen's mail thread is pushed onto the split's stack, hoisted out of LifeKitUI's own.
+        .lifeHostEnvironment()
         // The fold is the window's centre line; the split may start short of the window's leading edge.
         .onGeometryChange(for: CGFloat.self) { navigator.windowWidth / 2 - $0.frame(in: .global).minX } action: { foldX = $0 }
         .background { HingeWatch(halfOpen: $halfOpen) }

@@ -66,6 +66,7 @@ struct LifeViewScreen: View {
             navigator.open(.thread(environmentId: host.client.environment.id, sessionId: session.id, seq: nil))
         }
         .task { await host.prepare() }
+        .onAppear { ShownLifeHost.shared.host = host }
         .accessibilityIdentifier("life-\(view.rawValue)")
     }
 
