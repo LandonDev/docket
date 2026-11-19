@@ -252,3 +252,13 @@ describe('names and words', () => {
     expect(droppedWords({ imageInCell: 1, nestedTable: 2, zero: 0 })).toEqual(['1 picture inside a table cell left out', '2 tables inside a table kept as text'])
   })
 })
+
+describe('the print window', () => {
+  it('loads nothing but its own page and inline data: no network, no other file on this host', async () => {
+    const { mayLoad } = await import('./print')
+    expect(mayLoad('data:image/png;base64,AAAA')).toBe(true)
+    expect(mayLoad('file:///etc/passwd')).toBe(false)
+    expect(mayLoad('https://example.org/a.png')).toBe(false)
+    expect(mayLoad('blob:file:///x')).toBe(false)
+  })
+})
