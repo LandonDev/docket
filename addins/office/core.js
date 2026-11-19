@@ -11,6 +11,8 @@
   'use strict'
 
   var KEY = 'tempcode.addin.key'
+  /** PowerPoint's shape types that carry a text frame. */
+  var TEXT_SHAPES = ['GeometricShape', 'TextBox', 'Placeholder', 'Callout']
 
   function createAddin(env) {
     var Office = env.Office
@@ -141,9 +143,10 @@
       'word.edit': function (a) {
         return env.Word.run(function (context) {
           var doc = context.document
-          doc.load('changeTrackingMode')
+          // Track Changes needs WordApi 1.4: an untracked edit never asks for it.
+          if (a.tracked) doc.load('changeTrackingMode')
           return context.sync().then(function () {
-            var was = doc.changeTrackingMode
+            var was = a.tracked ? doc.changeTrackingMode : null
             if (a.tracked) doc.changeTrackingMode = env.Word.ChangeTrackingMode.trackAll
             var body = doc.body
             if ('insert' in a.edit) {
@@ -199,13 +202,27 @@
         var slides = context.presentation.slides
         slides.load('items')
         return context.sync().then(function () {
+          var framed = []
           var shapesOf = slides.items.map(function (s) {
-            s.shapes.load('items/textFrame/hasText')
+            s.shapes.load('items/type')
             return s.shapes
           })
           return context.sync().then(function () {
-            var ranges = shapesOf.map(function (shapes) {
-              return shapes.items
+            // A picture, group, table or chart has no text frame, and asking for one fails the whole sync.
+            framed = shapesOf.map(function (shapes) {
+              return shapes.items.filter(function (sh) {
+                return TEXT_SHAPES.indexOf(sh.type) >= 0
+              })
+            })
+            framed.forEach(function (list) {
+              list.forEach(function (sh) {
+                sh.textFrame.load('hasText')
+              })
+            })
+            return context.sync()
+          }).then(function () {
+            var ranges = framed.map(function (list) {
+              return list
                 .filter(function (sh) {
                   return sh.textFrame.hasText
                 })
@@ -275,8 +292,10 @@
         }
         var added = sheets.onAdded.add(outline)
         var deleted = sheets.onDeleted.add(outline)
+        // A renamed sheet's changes go by its new name (ExcelApi 1.17; older hosts read names again on the next add or delete).
+        var renamed = sheets.onNameChanged ? sheets.onNameChanged.add(outline) : null
         return context.sync().then(function () {
-          offChanged = [changed, added, deleted]
+          offChanged = [changed, added, deleted, renamed]
         })
       })
     }
@@ -287,6 +306,8 @@
       set('connecting', 'Connecting to TempCode…')
       var sock = new env.WebSocket(env.url)
       ws = sock
+      // A refused socket closes after its error; onclose decides what comes next.
+      sock.onerror = function () {}
       sock.onopen = function () {
         sock.send(JSON.stringify(first))
       }

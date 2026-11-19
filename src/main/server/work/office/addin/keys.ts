@@ -5,12 +5,14 @@ import type { DatabaseSync } from 'node:sqlite'
  * The add-in's keys (docs/agents/work-office.md "Pairing"). TempCode shows a
  * short code; the add-in sends it once and gets a key of its own, which it
  * keeps in its pane's storage. Only the key's hash is kept here. A code lives
- * five minutes, opens one pairing, and dies after five wrong tries; one code
- * at a time.
+ * five minutes and opens one pairing; one code at a time. A caller (by its
+ * address) gets five wrong tries a code, so nobody else can spend his code's
+ * tries; past a thousand wrong tries in all the code dies.
  */
 
 export const CODE_MS = 5 * 60_000
 export const CODE_TRIES = 5
+export const CODE_TRIES_ALL = 1000
 /** No 0/O, 1/I/L: read off a screen and typed. */
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 export const CODE_LENGTH = 8
@@ -37,7 +39,7 @@ export function ensureAddinTables(db: DatabaseSync): void {
 const hashOf = (key: string): string => createHash('sha256').update(key).digest('hex')
 
 export class AddinKeys {
-  private code: { code: string; expiresAt: number; tries: number } | null = null
+  private code: { code: string; expiresAt: number; tries: number; by: Map<string, number> } | null = null
 
   constructor(
     private readonly db: DatabaseSync,
@@ -48,19 +50,22 @@ export class AddinKeys {
   mint(): { code: string; expiresAt: number } {
     let code = ''
     for (let i = 0; i < CODE_LENGTH; i++) code += ALPHABET[randomInt(ALPHABET.length)]
-    this.code = { code, expiresAt: this.now() + CODE_MS, tries: 0 }
+    this.code = { code, expiresAt: this.now() + CODE_MS, tries: 0, by: new Map() }
     return { code, expiresAt: this.code.expiresAt }
   }
 
   /** Pairs an add-in with the code: its new key, or null (and a try spent) when the code is wrong or gone. */
-  pair(code: unknown, name: string, app: string): { id: string; key: string } | null {
+  pair(code: unknown, name: string, app: string, from = '?'): { id: string; key: string } | null {
     const c = this.code
     if (!c || c.expiresAt <= this.now()) {
       this.code = null
       return null
     }
+    const spent = c.by.get(from) ?? 0
+    if (spent >= CODE_TRIES) return null
     if (typeof code !== 'string' || code.toUpperCase() !== c.code) {
-      if (++c.tries >= CODE_TRIES) this.code = null
+      c.by.set(from, spent + 1)
+      if (++c.tries >= CODE_TRIES_ALL) this.code = null
       return null
     }
     this.code = null

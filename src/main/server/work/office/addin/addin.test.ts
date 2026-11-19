@@ -17,7 +17,7 @@ import { withAddin } from './carrier'
 import { FakeExcelHost } from './fakeOfficeJs'
 import { addinHandle, addinHub, carriedHere, ensureAddinTables, startAddin } from './index'
 import { AddinKeys, CODE_TRIES } from './keys'
-import { isMicrosoftUrl, plainChromeUa } from './web'
+import { isMicrosoftUrl, plainChromeUa, windowTitle } from './web'
 
 /**
  * The add-in end to end on the box: the Work service's relay route on a real
@@ -227,6 +227,37 @@ describe('the add-in through the relay', () => {
     expect(((await call('work.office.addin.list')).result as { keys: unknown[] }).keys).toEqual([])
   })
 
+  it('lets a caller hold four sockets that have not said hello, and refuses a call too big for one message', async () => {
+    const quiet = await Promise.all(
+      [1, 2, 3, 4].map(
+        () =>
+          new Promise<WebSocket>((resolve) => {
+            const ws = new WebSocket(`ws://${base}/w/office`)
+            ws.on('open', () => resolve(ws))
+            ws.on('error', () => undefined)
+          })
+      )
+    )
+    expect(await knock('/w/office', { t: 'hello', key: 'tca_x' })).toEqual({ status: 503 })
+    for (const ws of quiet) ws.close()
+    await new Promise((r) => setTimeout(r, 50))
+    const a = await paired()
+    const s = addinHub()!.sessionFor('excel', BOOK)!
+    await expect(addinHub()!.call(s.conn, 'excel.write', { sheet: 'Sheet1', address: 'A1', grid: [['x'.repeat(5 * 1024 * 1024)]] })).rejects.toThrow('in parts')
+    expect(addinHub()!.sessionFor('excel', BOOK)).toBeDefined()
+    a.stop()
+  })
+
+  it('closes the add-ins of a link another link took over, and they come back to the new one', async () => {
+    const a = await paired()
+    const intruder = new WebSocket(`ws://${base}/w/office/host`, { headers: { Authorization: `Bearer ${SECRET}` } })
+    await until(() => a.state().phase === 'offline')
+    intruder.close()
+    // Main links again on its own, and the pane says hello again with its key.
+    await until(() => a.state().phase === 'connected' && !!addinHub()?.sessionFor('excel', BOOK), 15_000)
+    a.stop()
+  }, 20_000)
+
   it('runs a tool here only for a file an add-in has open, where this host has no Office of its own', async () => {
     const alone = withAddin(null, addinHub)
     expect(carriedHere(alone, 'office_range_read', { workbook: BOOK })).toBe(false)
@@ -244,7 +275,7 @@ describe('the add-in through the relay', () => {
 })
 
 describe('pairing codes', () => {
-  it('opens one pairing, dies after five wrong tries and after five minutes', () => {
+  it('opens one pairing, stops a caller after five wrong tries without spending his, and dies after five minutes', () => {
     let now = 0
     const db = new DatabaseSync(':memory:')
     ensureAddinTables(db)
@@ -254,12 +285,13 @@ describe('pairing codes', () => {
     expect(keys.pair(code.toLowerCase(), 'Excel', 'excel')).toMatchObject({ key: expect.stringMatching(/^tca_/) })
     expect(keys.pair(code, 'Excel', 'excel')).toBeNull()
     const second = keys.mint().code
-    for (let i = 0; i < CODE_TRIES; i++) expect(keys.pair('AAAAAAAA', 'x', 'excel')).toBeNull()
-    expect(keys.pair(second, 'x', 'excel')).toBeNull()
+    for (let i = 0; i < CODE_TRIES; i++) expect(keys.pair('AAAAAAAA', 'x', 'excel', 'stranger')).toBeNull()
+    expect(keys.pair(second, 'x', 'excel', 'stranger')).toBeNull()
+    expect(keys.pair(second, 'Excel on Mac', 'excel', 'owner')).toMatchObject({ id: expect.any(String) })
     const third = keys.mint().code
     now += 5 * 60_000
     expect(keys.pair(third, 'x', 'excel')).toBeNull()
-    expect(keys.list()).toHaveLength(1)
+    expect(keys.list()).toHaveLength(2)
     expect(keys.check('tca_nothing')).toBeNull()
   })
 })
@@ -272,6 +304,10 @@ describe('Office on the web', () => {
     expect(isMicrosoftUrl('http://onedrive.live.com/')).toBe(false)
     expect(isMicrosoftUrl('https://evil-sharepoint.com.example.org/')).toBe(false)
     expect(isMicrosoftUrl('https://notmicrosoft.com/')).toBe(false)
+    expect(isMicrosoftUrl('https://someone.akamaized.net/page')).toBe(false)
+    expect(isMicrosoftUrl('https://someone.live.com/page')).toBe(false)
+    expect(windowTitle('Sign in to your account', 'https://login.purdue.edu/idp')).toBe('Sign in to your account — login.purdue.edu')
+    expect(windowTitle('', 'about:blank')).toBe('Office')
     expect(plainChromeUa('Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) TempCode/1.0.400 Chrome/142.0.0.0 Electron/39.2.0 Safari/537.36')).toBe(
       'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
     )

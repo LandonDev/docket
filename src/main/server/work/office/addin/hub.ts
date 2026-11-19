@@ -27,6 +27,8 @@ export interface LinkSocket {
 }
 
 export const CALL_MS = 30_000
+/** A call's arguments as JSON: a write past this goes in parts (the relay takes an add-in's 8 MiB, Excel on the web 5 MB). */
+export const CALL_MAX = 4 * 1024 * 1024
 
 const APPS: readonly AddinApp[] = ['excel', 'word', 'powerpoint']
 
@@ -62,30 +64,30 @@ export class AddinHub {
   }
 
   private toAddin(conn: number, m: unknown): void {
-    this.toRelay({ t: 'send', conn, data: JSON.stringify(m) })
+    this.toRelay({ t: 'send', conn, data: m })
   }
 
   /** One message from the relay. */
   receive(text: string): void {
-    let m: { t?: string; conn?: number; first?: Record<string, unknown>; data?: string }
+    let m: { t?: string; conn?: number; first?: Record<string, unknown>; from?: unknown; data?: unknown }
     try {
       m = JSON.parse(text) as typeof m
     } catch {
       return
     }
     if (typeof m.conn !== 'number') return
-    if (m.t === 'open' && m.first) return this.hello(m.conn, m.first)
+    if (m.t === 'open' && m.first) return this.hello(m.conn, m.first, typeof m.from === 'string' ? m.from : '?')
     if (m.t === 'close') return this.gone(m.conn)
-    if (m.t === 'msg' && typeof m.data === 'string') this.message(m.conn, m.data)
+    if (m.t === 'msg' && m.data && typeof m.data === 'object') this.message(m.conn, m.data as Record<string, unknown>)
   }
 
-  private hello(conn: number, first: Record<string, unknown>): void {
+  private hello(conn: number, first: Record<string, unknown>, from: string): void {
     const app = APPS.includes(first.app as AddinApp) ? (first.app as AddinApp) : 'other'
     const platform = typeof first.platform === 'string' ? first.platform.slice(0, 20) : 'unknown'
     let keyId: string | null
     let paired: { id: string; key: string } | null = null
     if (first.t === 'pair') {
-      paired = this.o.keys.pair(first.code, typeof first.name === 'string' ? first.name : `${app} on ${platform}`, app)
+      paired = this.o.keys.pair(first.code, typeof first.name === 'string' ? first.name : `${app} on ${platform}`, app, from)
       if (!paired) return this.toRelay({ t: 'refuse', conn, code: 4401, reason: 'That code did not work. Ask TempCode for a new one.' })
       keyId = paired.id
     } else {
@@ -100,15 +102,9 @@ export class AddinHub {
     this.o.log(`office add-in: ${app} on ${platform} ${paired ? 'paired' : 'connected'}`)
   }
 
-  private message(conn: number, data: string): void {
+  private message(conn: number, m: Record<string, unknown>): void {
     const s = this.sessions.get(conn)
     if (!s) return
-    let m: Record<string, unknown>
-    try {
-      m = JSON.parse(data) as Record<string, unknown>
-    } catch {
-      return
-    }
     if (m.t === 'result' && typeof m.id === 'number') {
       const c = this.calls.get(m.id)
       if (!c || c.conn !== conn) return
@@ -140,6 +136,7 @@ export class AddinHub {
   /** Runs `op` in the add-in on `conn`: its answer, or an `OfficeError` with the add-in's words. */
   call(conn: number, op: string, args: unknown): Promise<unknown> {
     if (!this.link || !this.sessions.has(conn)) return Promise.reject(new OfficeError('The add-in is not connected.', 'not-running'))
+    if (JSON.stringify(args ?? null).length > CALL_MAX) return Promise.reject(new OfficeError('That is too much for the add-in in one call: write it in parts.'))
     const id = this.nextCall++
     return new Promise((resolve, reject) => {
       const ms = this.o.callMs ?? CALL_MS
@@ -157,6 +154,11 @@ export class AddinHub {
     let best: AddinSession | undefined
     for (const s of this.sessions.values()) if (s.app === app && s.file?.key === key && (!best || s.since >= best.since)) best = s
     return best
+  }
+
+  /** Whether any add-in has a file open. */
+  anyFile(): boolean {
+    return [...this.sessions.values()].some((s) => s.file !== null)
   }
 
   /** Every file open in an add-in of this app, once each. */

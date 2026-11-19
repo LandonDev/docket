@@ -120,7 +120,7 @@ const fileOf = (args: unknown): { app: 'excel' | 'word' | 'powerpoint'; key: str
 export function carriedHere(carrier: OfficeCarrier, tool: string, args: unknown, h: AddinHub | null = hub): boolean {
   if (carrier.kind !== 'addin') return true
   if (!h) return false
-  if (tool === 'office_files') return h.sessions.size > 0
+  if (tool === 'office_files') return h.anyFile()
   const f = fileOf(args)
   return !!f && !!h.sessionFor(f.app, f.key)
 }

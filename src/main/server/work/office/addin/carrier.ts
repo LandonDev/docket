@@ -13,6 +13,8 @@ import { openOfficeWeb } from './web'
  * The switch opens a file by URL in Excel for the web, in a window of our own
  * (web.ts), where no desktop Office app is installed.
  */
+const FRESH_MS = 3000
+
 export function withAddin(desktop: OfficeCarrier | null, hub: () => AddinHub | null, web: (url: string) => Promise<void> = openOfficeWeb): OfficeCarrier {
   const via = (app: AddinApp, key: string) => {
     const h = hub()
@@ -45,12 +47,15 @@ export function withAddin(desktop: OfficeCarrier | null, hub: () => AddinHub | n
 
     async workbooks() {
       const h = hub()
-      const mine: WorkbookInfo[] = []
-      for (const s of h?.files('excel') ?? []) {
-        // Ask for the sheets now: their used ranges grow as he types.
-        const fresh = (await h!.call(s.conn, 'excel.workbook', {}).catch(() => null)) as { sheets?: WorkbookInfo['sheets'] } | null
-        mine.push({ key: s.file!.key, name: s.file!.name, sheets: fresh?.sheets ?? s.sheets })
-      }
+      // Ask each for its sheets now (their used ranges grow as he types), all at once, and take
+      // what it last said from one that does not answer in a few seconds.
+      const mine: WorkbookInfo[] = await Promise.all(
+        (h?.files('excel') ?? []).map(async (s) => {
+          const late = new Promise<null>((r) => setTimeout(() => r(null), FRESH_MS).unref?.())
+          const fresh = (await Promise.race([h!.call(s.conn, 'excel.workbook', {}).catch(() => null), late])) as { sheets?: WorkbookInfo['sheets'] } | null
+          return { key: s.file!.key, name: s.file!.name, sheets: fresh?.sheets ?? s.sheets }
+        })
+      )
       return merge(mine, await desktopFiles((c) => c.workbooks()))
     },
     async readRange(book, sheet, address) {

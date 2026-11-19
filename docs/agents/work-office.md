@@ -85,9 +85,14 @@ Excel with the add-in is reached through the box.
 **The relay** (`service/routes/office.ts`) judges nothing. Main connects to
 `/w/office/host` with the service's secret, from this machine only (a
 request carrying `CF-Connecting-IP` came through the tunnel and is refused).
-An add-in's first message, within 10 s and under 4 KiB, is `hello` with its
+An add-in's first message, within 5 s and under 4 KiB, is `hello` with its
 key or `pair` with a code; the relay hands it to main (`open`), and passes
-nothing more until main answers `admit` or `refuse`. With main away it
+nothing more until main answers `admit` or `refuse`. A caller holds four
+sockets that have not been let in, 32 in all, and 64 add-ins may be in. The
+relay's own sockets take 8 MiB from an add-in and 64 MiB from main; a call
+whose arguments pass 4 MiB is refused with "write it in parts". When a new
+link from main replaces the old one, the old one's add-ins are closed and
+say hello again. With main away it
 answers 503 at the upgrade; when main's link goes, every add-in closes 4503.
 The add-in's files are served without `X-Frame-Options` and with a
 `frame-ancestors` list of Office on the web's hosts, so Office can frame the
@@ -95,8 +100,10 @@ pane.
 
 **Pairing** (`addin/keys.ts`). Settings → Work, Where it runs, has an Office
 add-in row per host. Pair… shows an 8-letter code (no 0, O, 1, I or L) for
-five minutes; one code at a time, one pairing per code, dead after five wrong
-tries. The pane takes the code once and gets a key of its own (`tca_` and 32
+five minutes; one code at a time and one pairing per code. A caller (by its
+address, the tunnel's `CF-Connecting-IP`) gets five wrong tries a code, so a
+stranger cannot spend his; after a thousand wrong tries in all the code
+dies. The pane takes the code once and gets a key of its own (`tca_` and 32
 random bytes), which it keeps in the pane's `localStorage`, never in the
 workbook. The host keeps only the key's sha256. Each paired add-in is a row
 under it ("Excel on the web", connected or when it last was) with Remove,
@@ -133,10 +140,13 @@ Mac's scripts.
 is installed, the switch opens a file by URL (OneDrive, SharePoint, Teams)
 in a window of our own: one `WebContentsView` filling a `BrowserWindow`, a
 session apart (`persist:microsoft`), sandboxed with no Node, permissions
-refused but clipboard writes, `Electron/` dropped from the user agent so
-Microsoft's sign-in offers passkeys, and only Microsoft's own https sites
-reachable; any other link opens in his browser. A headless host says it
-has no screen.
+refused but clipboard writes, and `Electron/` dropped from the user agent so
+Microsoft's sign-in offers passkeys. It opens only a file on Microsoft's own
+https sites. Once open the page may go anywhere over https, since a school's
+or company's sign-in passes through its own site, and with no address bar
+the window's title always ends with the site it is on. A new window that is
+not Microsoft's opens in his browser. A headless host says it has no
+screen.
 
 **Sideloading.** Excel for the web (personal account): office.com → Excel →
 open a workbook → Home → Add-ins → More Settings → Upload My Add-in → the

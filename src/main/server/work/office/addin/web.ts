@@ -6,15 +6,17 @@ import { OfficeError } from '../carrier'
  * the sheet research, Part D §4). Microsoft's pages refuse to be framed, so
  * the file opens as a top-level page in a `WebContentsView` of a window of
  * our own: his own sign-in, a session apart from the app's (`persist:microsoft`),
- * no Node, sandboxed, and nowhere to go but Microsoft's sites. Anything else
- * it links to opens in his browser.
+ * no Node, sandboxed. It opens only a Microsoft file; once open, the page may
+ * go anywhere over https, since a school or company's sign-in passes through
+ * its own sign-in site, and the window's title always names the site it is
+ * on. A new window that is not Microsoft's opens in his browser.
  */
 
 export const MICROSOFT_PARTITION = 'persist:microsoft'
 
-const MICROSOFT = /(^|\.)(office\.com|office365\.com|officeapps\.live\.com|live\.com|microsoft\.com|microsoftonline\.com|microsoft365\.com|cloud\.microsoft|sharepoint\.com|onedrive\.com|msauth\.net|msftauth\.net|msauthimages\.net|msocdn\.com|akamaized\.net)$/i
+const MICROSOFT = /(^|\.)(office\.com|office365\.com|officeapps\.live\.com|microsoft\.com|microsoftonline\.com|microsoft365\.com|cloud\.microsoft|sharepoint\.com|onedrive\.com)$|^(login|onedrive|account)\.live\.com$/i
 
-/** Whether the view may go there: https on one of Microsoft's own sites. */
+/** Whether a file or a new window is Microsoft's: https on one of Microsoft's own sites. */
 export function isMicrosoftUrl(url: string): boolean {
   try {
     const u = new URL(url)
@@ -26,6 +28,18 @@ export function isMicrosoftUrl(url: string): boolean {
 
 /** Microsoft's sign-in hides passkeys from an `Electron/` agent: it sees plain Chrome. */
 export const plainChromeUa = (ua: string): string => ua.replace(/\s?Electron\/\S+/, '').replace(/\s?TempCode\/\S+/i, '')
+
+/** "Budget.xlsx — contoso.sharepoint.com": the page's own title can claim anything, the site cannot. */
+export function windowTitle(title: string, url: string): string {
+  let host = ''
+  try {
+    host = new URL(url).hostname
+  } catch {
+    host = ''
+  }
+  const words = title.trim().slice(0, 120)
+  return host ? (words ? `${words} — ${host}` : host) : words || 'Office'
+}
 
 let win: import('electron').BrowserWindow | null = null
 
@@ -63,12 +77,22 @@ export async function openOfficeWeb(url: string): Promise<void> {
     else if (/^https?:/i.test(to)) void shell.openExternal(to)
     return { action: 'deny' }
   })
-  view.webContents.on('will-navigate', (e, to) => {
-    if (isMicrosoftUrl(to)) return
-    e.preventDefault()
-    if (/^https?:/i.test(to)) void shell.openExternal(to)
+  // Sign-in may pass through his school's or company's own site; nothing goes over plain http.
+  const httpsOnly = (e: { preventDefault(): void }, to: string): void => {
+    if (!/^https:/i.test(to)) e.preventDefault()
+  }
+  view.webContents.on('will-navigate', httpsOnly)
+  view.webContents.on('will-redirect', httpsOnly)
+  view.webContents.on('will-frame-navigate', (e) => {
+    if (!/^(https:|about:|blob:|data:)/i.test(e.url)) e.preventDefault()
   })
-  view.webContents.on('page-title-updated', (_e, title) => win?.setTitle(title))
+  // There is no address bar: the title names the site the page is on.
+  const titled = (): void => {
+    if (!win || win.isDestroyed()) return
+    win.setTitle(windowTitle(view.webContents.getTitle(), view.webContents.getURL()))
+  }
+  view.webContents.on('page-title-updated', titled)
+  view.webContents.on('did-navigate', titled)
   fit()
   win.show()
   await view.webContents.loadURL(url)

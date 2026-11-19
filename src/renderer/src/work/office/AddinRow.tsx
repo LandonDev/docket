@@ -69,13 +69,13 @@ export function AddinRow({ link, title }: { link: Link | null | undefined; title
           </Button>
         </PageRow>
       ))}
-      {pairing && link ? <PairDialog link={link} known={keys.length} onPaired={reload} onClose={() => setPairing(false)} /> : null}
+      {pairing && link ? <PairDialog link={link} known={keys.map((k) => k.id)} onPaired={reload} onClose={() => setPairing(false)} /> : null}
     </>
   );
 }
 
 /** The code, its time left, and nothing to press: the dialog closes itself once the add-in has paired. */
-function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: number; onPaired: () => void; onClose: () => void }) {
+function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: readonly string[]; onPaired: () => void; onClose: () => void }) {
   const [code, setCode] = useState<OfficeAddinCode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -95,14 +95,14 @@ function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: num
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  // The add-in pairs with the host directly; a new key on the host means it is done.
+  // The add-in pairs with the host directly; a key the page did not know means it is done.
   useEffect(() => {
     if (!code) return;
     let live = true;
     const timer = window.setInterval(() => {
       link.request<{ keys: OfficeAddinKey[] }>("work.office.addin.list", {}).then(
         (answer) => {
-          if (!live || answer.keys.length <= known) return;
+          if (!live || answer.keys.every((k) => known.includes(k.id))) return;
           onPaired();
           closeThen(onClose);
         },
