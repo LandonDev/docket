@@ -168,6 +168,44 @@ describe("a Work thread's canvas", () => {
     expect(lists()).toBe(2);
   });
 
+  it("scrolls ten tabs in the row rather than over More and the toggle, fades the cut edge, and brings the selected tab into view", async () => {
+    const reveal = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = reveal;
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-canvas-tabs") ? 900 : 0;
+    });
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-canvas-tabs") ? 300 : 0;
+    });
+    try {
+      const ten = Array.from({ length: 10 }, (_, i) => canvasItem(`item${i}`, { title: `Item ${i}` }));
+      const { container } = await seat(ten);
+      const list = screen.getByRole("tablist", { name: "Open items" });
+      for (const c of ["overflow-x-auto", "scrollbar-none", "overscroll-none", "data-overflow-end:[--fade-end:24px]"]) expect(list.className).toContain(c);
+      // More and the toggle sit outside the scroller, in the header's fixed end.
+      const actions = container.querySelector("[data-view-actions]")!;
+      expect(list.contains(within(actions as HTMLElement).getByRole("button", { name: "More" }))).toBe(false);
+      expect(actions.contains(screen.getByRole("button", { name: "Conversation" }))).toBe(true);
+      // More past the right edge: that edge fades; none past the left.
+      expect(list.hasAttribute("data-overflow-end")).toBe(true);
+      expect(list.hasAttribute("data-overflow-start")).toBe(false);
+      // The last tab, chosen, comes into view.
+      reveal.mockClear();
+      fireEvent.pointerDown(within(list).getAllByRole("tab")[9], { button: 0 });
+      await waitFor(() => expect(reveal).toHaveBeenCalled());
+      expect((reveal.mock.instances.at(-1) as unknown as HTMLElement).getAttribute("data-canvas-tab")).toBe("item9");
+      expect(reveal).toHaveBeenLastCalledWith({ inline: "nearest", block: "nearest" });
+      // A mouse wheel turns sideways.
+      fireEvent.wheel(list, { deltaY: 120, deltaX: 0 });
+      expect(list.scrollLeft).toBe(120);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+      scroll.mockRestore();
+      client.mockRestore();
+    }
+  });
+
   it("closes a tab on a middle click, and from More", async () => {
     await seat([DOC, SHEET]);
     const [, second] = within(screen.getByRole("tablist")).getAllByRole("tab");

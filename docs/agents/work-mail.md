@@ -32,8 +32,10 @@ is wrapped by `sendThroughHost`: the draft is saved as he sees it
 `work.mail.send {id, seen, sendAt?}` (approve; a model caller is refused).
 The host reads the row as LifeOS holds it now (`compose:get`, as the owner)
 and refuses it when it no longer says what the composer saved (`seen`: who
-it goes to, the subject and the words; "The draft changed after you pressed
-Send…"):
+it goes to, the subject, the words, the HTML and the files, each attachment
+by storage id and name and a forward's parts as `part:<id>`; "The draft
+changed after you pressed Send…"). A `seen` with no HTML or no files (an
+older client) is refused for a row that has either, so nothing goes unseen:
 
 - **A draft one of this host's threads made** (`origin.app` tempcode,
   `origin.host` this host) goes through the hold: the mail module calls the

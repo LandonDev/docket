@@ -2987,18 +2987,32 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public struct Seen: Codable, Hashable, Sendable {
+                public struct Attachment: Codable, Hashable, Sendable {
+                    public let id: String
+                    public let name: String
+
+                    public init(id: String, name: String) {
+                        self.id = id
+                        self.name = name
+                    }
+                }
+
                 public let to: [String]
                 public let cc: [String]
                 public let bcc: [String]
                 public let subject: String
                 public let text: String
+                public let html: String?
+                public let attachments: [Attachment]?
 
-                public init(to: [String], cc: [String], bcc: [String], subject: String, text: String) {
+                public init(to: [String], cc: [String], bcc: [String], subject: String, text: String, html: String? = nil, attachments: [Attachment]? = nil) {
                     self.to = to
                     self.cc = cc
                     self.bcc = bcc
                     self.subject = subject
                     self.text = text
+                    self.html = html
+                    self.attachments = attachments
                 }
             }
 

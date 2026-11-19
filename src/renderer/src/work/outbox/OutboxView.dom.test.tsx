@@ -345,6 +345,10 @@ describe("the Outbox", () => {
     expect(canEdit(mail("o1", "Dana Lee", "Budget"))).toBe(true);
     expect(canEdit({ state: "live", payload: { title: "Click Send", app: "Mail" } })).toBe(false);
     expect(canEdit({ state: "held", payload: { id: "x", html: "<p>Only html</p>" } })).toBe(false);
+    // An Outlook reply: everything shown is the host's to keep, so Edit has nothing to offer.
+    const outlookReply = { host: "env_mac", account: "landon@purdue.edu", to: ["events@purdue.edu"], subject: "Re: Ballroom", replyTo: "AAMk", html: "<p>Yes</p>" };
+    expect(canEdit({ kind: "office.mail.send", state: "held", payload: outlookReply } as never)).toBe(false);
+    expect(canEdit({ kind: "office.mail.send", state: "held", payload: { ...outlookReply, replyTo: undefined } } as never)).toBe(true);
     world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "live" })]);
     await open();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
@@ -407,6 +411,20 @@ describe("the Outbox", () => {
     world.resultsDown = false;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     await waitFor(() => expect(screen.getByText("Sent mail cannot be taken back")).toBeTruthy());
+  });
+
+  it("narrow, a tick stays in the list; Review N opens the ticked rows and Waiting goes back with the ticks kept", async () => {
+    await open();
+    const list = document.querySelector("[data-outbox-list]") as HTMLElement;
+    const detail = () => document.querySelector("[data-outbox-detail]") as HTMLElement;
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" }));
+    expect(list.className).not.toContain("@max-[40rem]/outbox:hidden");
+    fireEvent.click(screen.getByRole("button", { name: "Review 1" }));
+    expect(list.className).toContain("@max-[40rem]/outbox:hidden");
+    expect(detail().className).not.toContain("@max-[40rem]/outbox:hidden");
+    fireEvent.click(within(detail()).getByRole("button", { name: "Waiting" }));
+    expect(list.className).not.toContain("@max-[40rem]/outbox:hidden");
+    expect((screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" }) as HTMLElement).getAttribute("aria-checked")).toBe("true");
   });
 
   it("narrow, shows the list until he picks an item, then the detail with a way back", async () => {

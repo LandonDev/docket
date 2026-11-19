@@ -87,6 +87,11 @@ struct AwayReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ShellNavigator.self) private var navigator
     @State private var written: [(environmentId: String, result: WorkResult)] = []
+    /// Still reading each host's writes: Written shows its spinner, and nothing says "Nothing happened" yet.
+    @State private var reading = true
+    /// Hosts whose writes did not come back: named under Written with Retry, which reads them alone.
+    @State private var unread: [String] = []
+    @State private var rereading = false
     @State private var undoing: Set<String> = []
 
     var body: some View {
@@ -132,8 +137,13 @@ struct AwayReviewSheet: View {
                         }
                     }
                 }
-                if !written.isEmpty {
+                if reading || !written.isEmpty || !unread.isEmpty {
                     Section("Written on your files") {
+                        if reading {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)
+                                .accessibilityLabel("Reading what was written")
+                        }
                         ForEach(written, id: \.result.id) { row in
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -158,9 +168,23 @@ struct AwayReviewSheet: View {
                             }
                             .frame(minHeight: Layout.rowHeight)
                         }
+                        // A partial read says so, by host, with Retry for the hosts that did not answer.
+                        if !reading, let line = OutboxModel.unreadLine(unread.map { id in clients.first { $0.environment.id == id }?.environment.name ?? "A host" }) {
+                            HStack(spacing: 12) {
+                                Text(line).textStep(.meta, tint: Tint.destructiveText)
+                                Spacer(minLength: 8)
+                                if rereading {
+                                    ProgressView()
+                                } else {
+                                    PillButton("Retry") { Task { await reread(ends) } }
+                                }
+                            }
+                            .frame(minHeight: Layout.rowHeight)
+                            .accessibilityElement(children: .combine)
+                        }
                     }
                 }
-                if held.isEmpty, failed.isEmpty, decided.isEmpty, written.isEmpty {
+                if !reading, unread.isEmpty, held.isEmpty, failed.isEmpty, decided.isEmpty, written.isEmpty {
                     Text("Nothing happened while you were away.")
                         .textStep(.meta)
                         .listRowSeparator(.hidden)
@@ -218,15 +242,35 @@ struct AwayReviewSheet: View {
             : "\(from.formatted(.dateTime.month(.abbreviated).day().hour().minute())) to \(to.formatted(time))"
     }
 
-    /// Each host's writes since its stretch began, newest first.
-    /// Every Work host's writes since the stretch began: a host reached through another reads Away on
-    /// its carrier's lane, so the widest span the ended hosts give stands for all of them.
+    /// Every Work host's writes in the stretch, newest first: a host reached through another reads Away
+    /// on its carrier's lane, so the widest span the ended hosts give stands for all of them. Cut at the
+    /// moment he came back and never a send (`OutboxModel.awayWrites`); a host that does not answer is
+    /// named, never read as having written nothing.
     private func loadWritten(_ ends: [EnvironmentClient]) async {
-        guard let since = ends.compactMap(\.work.awayEnd?.since).min() else { return }
-        var rows: [(environmentId: String, result: WorkResult)] = []
-        for client in model.registry.ordered where client.work.isOn {
-            guard let results = try? await client.work.results(since: since) else { continue }
-            rows += results.map { (client.environment.id, $0) }
+        defer { reading = false }
+        await read(model.registry.ordered.filter(\.work.isOn).map(\.environment.id), ends: ends)
+    }
+
+    /// Reads again only the hosts that did not answer.
+    private func reread(_ ends: [EnvironmentClient]) async {
+        rereading = true
+        defer { rereading = false }
+        let hosts = unread
+        unread = []
+        await read(hosts, ends: ends)
+    }
+
+    private func read(_ hosts: [String], ends: [EnvironmentClient]) async {
+        let stretches = ends.compactMap(\.work.awayEnd)
+        guard let since = stretches.map(\.since).min(), let until = stretches.map(\.until).max() else { return }
+        var rows = written
+        for id in hosts {
+            guard let client = model.registry.client(id) else { continue }
+            do {
+                rows += OutboxModel.awayWrites(try await client.work.results(since: since), until: until).map { (id, $0) }
+            } catch {
+                unread.append(id)
+            }
         }
         written = rows.sorted { $0.result.createdAt > $1.result.createdAt }
     }

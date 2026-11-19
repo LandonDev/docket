@@ -4,8 +4,9 @@ import type { HeldItem, WorkToolResult } from '@shared/work'
 import type { ActCtx, ToolCtx, WorkCtx } from '../modules'
 import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
 import { ensureExcelTables, excelStore, ExcelHelper } from './excel'
+import { ActStale } from '../outbox/kinds'
 import { FakeOffice } from './fake'
-import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeMailSchema, type OfficeMail } from './held'
+import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeMailSchema, type OfficeCalendarOp, type OfficeMail } from './held'
 import { OFFICE_TOOLS, sharedKey, workTools, type Env } from './tools'
 
 /**
@@ -200,6 +201,27 @@ describe('nothing is sent without his press', () => {
     expect(text(await run('office_calendar_answer', { id: 'ev-404', answer: 'accept' }))).toMatch(/no event with that id/)
   })
 
+  it("an answer keeps the invitation's end and place, and the press refuses one moved or placed elsewhere since, or a hold that kept neither", async () => {
+    office.calendar[0] = { ...office.calendar[0]!, end: new Date(Date.parse(office.calendar[0]!.start) + 7 * 864e5).toISOString(), location: 'Room 4' }
+    await run('office_calendar_answer', { id: 'ev-9', answer: 'accept' })
+    const p = held[0]!.payload as OfficeCalendarOp
+    expect(p).toMatchObject({ end: office.calendar[0]!.end, location: 'Room 4' })
+    const cal = officeActs({ carrier: () => office }).find((a) => a.kind === 'office.calendar.op')!
+    const actCtx = { host: 'env_mac' } as ActCtx
+    const was = office.calendar[0]!
+    office.calendar[0] = { ...was, end: new Date(Date.parse(was.end) + 3_600_000).toISOString() }
+    await expect(cal.execute(p, actCtx)).rejects.toThrow(ActStale)
+    office.calendar[0] = { ...was, location: 'Lawson 1142' }
+    await expect(cal.execute(p, actCtx)).rejects.toThrow('changed since it was shown')
+    // a hold made before the end and place were kept says nothing of them: refused, never answered blind
+    office.calendar[0] = was
+    const { end: _end, location: _place, ...older } = p as Extract<OfficeCalendarOp, { op: 'answer' }>
+    await expect(cal.execute(OfficeCalendarSchema.parse(older), actCtx)).rejects.toThrow('held before its time and place were kept')
+    expect(office.answers).toEqual([])
+    await cal.execute(p, actCtx)
+    expect(office.answers).toEqual([{ id: 'ev-9', answer: 'accept' }])
+  })
+
   it('a draft only leaves a draft, and a hold on his own calendar with nobody invited is made at once', async () => {
     await run('office_mail_draft', { to: ['dana@example.com'], subject: 'Plan', html: '<p>x</p>' })
     await run('office_calendar_create', { subject: 'Focus', start: '2026-11-20T15:00:00Z', end: '2026-11-20T17:00:00Z' })
@@ -225,11 +247,13 @@ describe('nothing is sent without his press', () => {
     expect(office.sent).toHaveLength(1)
 
     const cal = acts.find((a) => a.kind === 'office.calendar.op')!
-    await cal.execute(OfficeCalendarSchema.parse({ host: 'env_mac', op: 'answer', id: 'ev-9', subject: 'Standup', answer: 'decline' }), actCtx)
+    const { start, end, location } = office.calendar[0]!
+    const shown = { host: 'env_mac', op: 'answer', id: 'ev-9', subject: 'Standup', start, end, location }
+    await cal.execute(OfficeCalendarSchema.parse({ ...shown, answer: 'decline' }), actCtx)
     expect(office.answers).toEqual([{ id: 'ev-9', answer: 'decline' }])
     // an invitation that changed or went since it was shown is stale, and nothing is answered
-    await expect(cal.execute(OfficeCalendarSchema.parse({ host: 'env_mac', op: 'answer', id: 'ev-9', subject: 'Board meeting', answer: 'accept' }), actCtx)).rejects.toThrow('changed since it was shown')
-    await expect(cal.execute(OfficeCalendarSchema.parse({ host: 'env_mac', op: 'answer', id: 'ev-404', subject: 'Standup', answer: 'accept' }), actCtx)).rejects.toThrow('no longer in his calendar')
+    await expect(cal.execute(OfficeCalendarSchema.parse({ ...shown, subject: 'Board meeting', answer: 'accept' }), actCtx)).rejects.toThrow('changed since it was shown')
+    await expect(cal.execute(OfficeCalendarSchema.parse({ ...shown, id: 'ev-404', answer: 'accept' }), actCtx)).rejects.toThrow('no longer in his calendar')
     expect(office.answers).toHaveLength(1)
   })
 

@@ -1,5 +1,5 @@
 import { cn } from "../../lib/cn";
-import { payloadView, type Field } from "../outbox/model";
+import { payloadView } from "../outbox/model";
 import { kindRows } from "./kindRows";
 import type { ActViewProps } from "./registry";
 
@@ -11,14 +11,12 @@ import type { ActViewProps } from "./registry";
  * through the generic reader. A kind with a view of its own
  * (`work/<pillar>/act.ts`) never comes here.
  */
-/** A computer act's tool word ("left_click") under a title that already says what the click does: left out of its rows. */
-export const actFields = (kind: string, fields: Field[]): Field[] => (kind === "computer.act" ? fields.filter((f) => f.path.join(".") !== "args.action") : fields);
 
 export function GenericActView({ item }: ActViewProps) {
   const own = kindRows(item.kind, item.payload);
   const view = own ? null : payloadView(item.payload);
   const body = own ? (own.body === null ? null : { text: own.body }) : view!.body;
-  const fields = own ? own.fields.map((f) => ({ ...f, key: f.label })) : actFields(item.kind, view!.fields).map((f) => ({ ...f, key: f.path.join(".") }));
+  const fields = own ? own.fields.map((f) => ({ ...f, key: f.label })) : view!.fields.map((f) => ({ ...f, key: f.path.join(".") }));
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
       {fields.length ? (

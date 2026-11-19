@@ -51,11 +51,46 @@ export function decidedWords(item: Pick<OutboxItem, "decidedBy" | "verb">, grant
 }
 
 /** "Send" → "Sent", "Post" → "Posted", "Make link" → "Made link". */
+const PAST: Record<string, string> = {
+  send: "sent",
+  post: "posted",
+  make: "made",
+  accept: "accepted",
+  submit: "submitted",
+  share: "shared",
+  book: "booked",
+  run: "ran",
+  publish: "published",
+  decline: "declined",
+  reply: "replied",
+  pay: "paid",
+  buy: "bought",
+  put: "put",
+  set: "set",
+  upload: "uploaded",
+  forward: "forwarded",
+  answer: "answered",
+};
+/** One verb's past, its first letter's case kept: "Reply" → "Replied", "rename" → "renamed". */
+function pastWord(word: string): string {
+  const lower = word.toLowerCase();
+  const known = PAST[lower];
+  const past = known ?? (lower.endsWith("e") ? `${lower}d` : /[^aeiou]y$/.test(lower) ? `${lower.slice(0, -1)}ied` : `${lower}ed`);
+  return word[0] === word[0]!.toUpperCase() ? past[0]!.toUpperCase() + past.slice(1) : past;
+}
+
+/**
+ * "Send" → "Sent", "Reply" → "Replied", "Make link" → "Made link", "Answer
+ * maybe" → "Answered maybe", "Move or rename files" → "Moved or renamed
+ * files": the first word, and each verb joined to it by "or" or "and", take
+ * their past; the words after them stay.
+ */
 export function pastOf(verb: string): string {
-  const [head = verb, ...rest] = verb.split(" ");
-  const past: Record<string, string> = { Send: "Sent", Post: "Posted", Make: "Made", Accept: "Accepted", Submit: "Submitted", Share: "Shared", Book: "Booked", Run: "Ran", Publish: "Published", Decline: "Declined" };
-  const word = past[head] ?? (head.endsWith("e") ? `${head}d` : `${head}ed`);
-  return [word, ...rest].join(" ");
+  const words = verb.split(" ");
+  // A verb is the first word, or one that follows "or"/"and" right after another verb.
+  const verbAt = new Set<number>([0]);
+  for (let i = 2; i < words.length; i++) if ((words[i - 1] === "or" || words[i - 1] === "and") && verbAt.has(i - 2)) verbAt.add(i);
+  return words.map((w, i) => (verbAt.has(i) ? pastWord(w) : w)).join(" ");
 }
 
 // ── the payload, exactly as it will go ───────────────────────────────────
@@ -66,11 +101,11 @@ const isAddressList = (v: unknown): v is Address[] => Array.isArray(v) && v.leng
 export const addressWords = (list: readonly Address[]): string => list.map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(", ");
 
 /** Keys that are the host's bookkeeping, never what goes: `host` is the id of the host that holds an Outlook act, which the detail's place line already names. */
-const QUIET = new Set(["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host"]);
+const QUIET = new Set(["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host", "replyTo", "forward"]);
 /** Keys whose text is the body: drawn as one plain-text block, not a field. */
 const BODY_KEYS = ["text", "body", "message", "content"];
 
-const LABEL: Record<string, string> = { to: "To", cc: "Cc", bcc: "Bcc", from: "From", subject: "Subject", channel: "In", title: "Title", app: "App", window: "Window", label: "Act", url: "URL" };
+const LABEL: Record<string, string> = { to: "To", cc: "Cc", bcc: "Bcc", from: "From", subject: "Subject", channel: "In", title: "Title", app: "App", window: "Window", label: "Act", url: "URL", account: "From", outlookAdds: "Also goes" };
 const labelOf = (key: string): string => LABEL[key] ?? key.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
 
 export type Field = { key: string; path: string[]; label: string; value: string; edit: "text" | "addresses" | null };
@@ -119,7 +154,48 @@ const cssUnescape = (s: string): string =>
  * source, so nothing in the html hides from the preview. Plain text out;
  * React escapes it.
  */
-export function htmlWords(html: string): string {
+/**
+ * A tag's quoted values with their `<` and `>` written as references, so a tag is read whole wherever its quotes put
+ * them (`<a title="><span" href=…>`), as HTML reads it (the hold review). Text outside tags is left as it is.
+ */
+function quotedTagsSafe(html: string): string {
+  let out = "";
+  let i = 0;
+  while (i < html.length) {
+    const c = html[i]!;
+    if (c === "<" && /[a-z/!]/i.test(html[i + 1] ?? "")) {
+      let quote: string | null = null;
+      // the last character outside a value that was not a space: a quote opens a value only after `=`
+      let last = "<";
+      let j = i + 1;
+      out += "<";
+      for (; j < html.length; j++) {
+        const d = html[j]!;
+        if (quote) {
+          if (d === quote) quote = null;
+          out += d === ">" ? "&gt;" : d === "<" ? "&lt;" : d;
+        } else if (d === '"' || d === "'") {
+          quote = last === "=" ? d : null;
+          out += d;
+        } else if (d === ">") {
+          out += ">";
+          break;
+        } else {
+          out += d;
+          if (!/\s/.test(d)) last = d;
+        }
+      }
+      i = j + 1;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+export function htmlWords(raw: string): string {
+  const html = quotedTagsSafe(raw);
   // A background image goes with the mail as surely as an <img>: named first, before the tags go (the hold re-review's finding 23).
   // Read through character references and CSS escapes (`u&#114;l(`, `u\\72l(`), as the mail's reader will.
   const plain = cssUnescape(decode(html));
@@ -173,6 +249,15 @@ export function htmlWords(html: string): string {
  * view reads as the act, not as its wrapper. What the host keeps for itself
  * (ids, digests, html beside its text) is left out.
  */
+/**
+ * Whether the host keeps a field as it was held, whatever an edit says
+ * (office/held.ts `keepOfficeMail`): an Outlook mail's account and what
+ * Outlook adds always, and its subject on a reply or a forward. Shown, never
+ * offered for editing, so Edit has nothing to offer on a reply.
+ */
+const keptByHost = (key: string, obj: Record<string, unknown>): boolean =>
+  key === "account" || key === "outlookAdds" || (key === "subject" && (obj.replyTo !== undefined || obj.forward !== undefined));
+
 export function payloadView(payload: unknown): PayloadView {
   const fields: Field[] = [];
   let body: PayloadView["body"] = null;
@@ -202,7 +287,7 @@ export function payloadView(payload: unknown): PayloadView {
           continue;
         }
         if (!body && BODY_KEYS.includes(key) && (v.includes("\n") || v.length > 80)) body = { path: at, text: v };
-        else if (v.trim()) fields.push({ key, path: at, label: labelOf(key), value: v, edit: "text" });
+        else if (v.trim()) fields.push({ key, path: at, label: labelOf(key), value: v, edit: quiet && keptByHost(key, obj) ? null : "text" });
       } else if (typeof v === "number" || typeof v === "boolean") {
         fields.push({ key, path: at, label: labelOf(key), value: String(v), edit: null });
       } else if (isAddress(v)) {

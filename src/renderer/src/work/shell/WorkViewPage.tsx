@@ -57,11 +57,15 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
     () => ({ env: environmentId, workspace, sector, lifeos: session, startThread: (about) => startThreadAbout(about) }),
     [environmentId, workspace, sector, session],
   );
-  const View = useMemo(() => lazy(() => def.chunk.load().then((m) => ({ default: m.View }))), [def]);
+  // React.lazy keeps a rejection for good: the boundary's Retry makes a fresh one, which imports again.
+  const [attempt, setAttempt] = useState(0);
+  const View = useMemo(() => lazy(() => def.chunk.load().then((m) => ({ default: m.View }))), [def, attempt]);
   const Icon = def.icon;
+  // A view that reads the host alone (Routines) is never behind LifeOS's sign-in or its line.
+  const gated = def.readsLifeos !== false;
   // The session's own state counts too: its JWT can be refused or go unanswered while the host says connected.
-  const signedOut = state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused";
-  const unreachable = state === "unreachable" || session.state === "unreachable";
+  const signedOut = gated && (state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused");
+  const unreachable = gated && (state === "unreachable" || session.state === "unreachable");
   const [retrying, setRetrying] = useState(false);
   const retry = (): void => {
     setRetrying(true);
@@ -97,7 +101,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         {signedOut ? (
           <EmptyState title="Sign in to LifeOS" action={{ label: "Sign in", onClick: openWorkSettings }} />
         ) : (
-          <ViewBoundary label={def.label}>
+          <ViewBoundary label={def.label} onRetry={() => setAttempt((n) => n + 1)}>
             <Suspense fallback={<ViewSkeleton label={def.label} />}>
               <View {...props} />
             </Suspense>
@@ -118,7 +122,7 @@ function ViewSkeleton({ label }: { label: string }) {
 }
 
 /** A view that throws (a LifeOS read refused, a chunk that did not load) is the view's error with Retry, which mounts it again. */
-export class ViewBoundary extends Component<{ label: string; children: ReactNode }, { error: string | null; attempt: number }> {
+export class ViewBoundary extends Component<{ label: string; children: ReactNode; onRetry?: () => void }, { error: string | null; attempt: number }> {
   override state = { error: null as string | null, attempt: 0 };
   static getDerivedStateFromError(error: unknown): { error: string } {
     return { error: errorText(error) };
@@ -129,7 +133,13 @@ export class ViewBoundary extends Component<{ label: string; children: ReactNode
         <EmptyState
           title={`${this.props.label} did not load`}
           line={this.state.error}
-          action={{ label: "Retry", onClick: () => this.setState((s) => ({ error: null, attempt: s.attempt + 1 })) }}
+          action={{
+            label: "Retry",
+            onClick: () => {
+              this.props.onRetry?.();
+              this.setState((s) => ({ error: null, attempt: s.attempt + 1 }));
+            },
+          }}
         />
       );
     return <ViewAttempt key={this.state.attempt}>{this.props.children}</ViewAttempt>;

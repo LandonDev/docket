@@ -12,6 +12,8 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
 vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexReactClient: class {} }));
 
 const { ViewBoundary, ViewFrame } = await import("./WorkViewPage");
+const { WORK_VIEWS } = await import("../views/registry");
+const { defineChunk } = await import("../../lib/lazyChunk");
 
 afterEach(() => {
   cleanup();
@@ -69,5 +71,43 @@ describe("a view's boundary", () => {
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.getByText("The tasks")).toBeTruthy();
+  });
+});
+
+describe("views outside LifeOS's gate, and a view that did not import", () => {
+  it("draws Routines, its header and its body, while LifeOS is signed out: its data is the host's", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: "env_box",
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: vi.fn(async (method: string) => (method === "work.routines.list" ? { routines: [] } : { lifeos: { state: "signed-out" }, keys: [] })),
+    } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
+    render(<ViewFrame view="routines" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await vi.waitFor(() => expect(screen.getByText("No routines yet")).toBeTruthy(), { timeout: 5000 });
+    expect(screen.queryByText("Sign in to LifeOS")).toBeNull();
+    expect(screen.getByRole("button", { name: "New routine" })).toBeTruthy();
+  });
+
+  it("imports the view again on Retry after its import failed", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => ({})) } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    let tries = 0;
+    const was = WORK_VIEWS.docs.chunk;
+    WORK_VIEWS.docs.chunk = defineChunk("test-docs", async () => {
+      if (tries++ === 0) throw new Error("chunk missing");
+      return { View: () => <p>The docs</p> };
+    }) as never;
+    try {
+      render(<ViewFrame view="docs" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+      await vi.waitFor(() => expect(screen.getByText("Docs did not load")).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await vi.waitFor(() => expect(screen.getByText("The docs")).toBeTruthy());
+      expect(tries).toBe(2);
+    } finally {
+      WORK_VIEWS.docs.chunk = was;
+    }
   });
 });

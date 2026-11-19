@@ -318,7 +318,7 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       const item = env.ctx.held.create({
         kind: 'office.calendar.op',
         sessionId: env.sessionId,
-        payload: { host: env.ctx.host, op: 'answer', id: a.id, subject: event.subject, start: event.start, organizer: event.organizer, answer: a.answer, ...(a.comment ? { comment: a.comment } : {}) }
+        payload: { host: env.ctx.host, op: 'answer', id: a.id, subject: event.subject, start: event.start, end: event.end, location: event.location, organizer: event.organizer, answer: a.answer, ...(a.comment ? { comment: a.comment } : {}) }
       })
       return heldAnswer(item.state, item.summary)
     }

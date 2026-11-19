@@ -263,7 +263,8 @@ describe('held posts', () => {
     symlinkSync(join(rig.dir, 'secret.txt'), join(rig.dir, 'ws', 'cut_v4.mp4'))
     expect(text(await tool('frameio_add_version', { item: item.id, file: join(rig.dir, 'ws', 'cut_v4.mp4') }))).toContain('outside the folders this host shows')
     expect(text(await tool('frameio_add_version', { item: item.id, file }))).toBe(
-      `Held: Add ${file} as the next version of cut12_v2.mov in Frame.io. It waits in the Outbox for the person to post it; nothing went to Frame.io.`
+      // Named by the file's name, never its local path.
+      `Held: Add cut12_v3.mp4 as the next version of cut12_v2.mov in Frame.io. It waits in the Outbox for the person to post it; nothing went to Frame.io.`
     )
     // What goes is what was named when it was held: a rewrite after the hold does not reach Frame.io.
     writeFileSync(file, Buffer.alloc(5000, 9))

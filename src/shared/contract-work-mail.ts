@@ -13,13 +13,21 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
  * HTML is cleaned by the outgoing rules first.
  */
 
-/** What the composer saved and he pressed Send on: the host refuses a row that says anything else. */
+/** A file the mail carries, as the composer saved it: its storage id (a forwarded part's is `part:<id>`) and its name. */
+export const MailSeenFileSchema = z.object({ id: z.string().max(200), name: z.string().max(1_000) })
+
+/**
+ * What the composer saved and he pressed Send on: the host refuses a row that says anything else. `html` and
+ * `attachments` are optional so an older client still parses; the host then refuses a row that has either.
+ */
 export const MailSeenSchema = z.object({
   to: z.array(z.string().max(320)).max(500),
   cc: z.array(z.string().max(320)).max(500),
   bcc: z.array(z.string().max(320)).max(500),
   subject: z.string().max(2_000),
-  text: z.string().max(2_000_000)
+  text: z.string().max(2_000_000),
+  html: z.string().max(4_000_000).optional(),
+  attachments: z.array(MailSeenFileSchema).max(500).optional()
 })
 export type MailSeen = z.infer<typeof MailSeenSchema>
 

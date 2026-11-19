@@ -1294,7 +1294,10 @@ split view. Top to bottom on the item's side:
    name), then ⋯, a Microsoft file's TempCode/Excel or TempCode/PowerPoint
    switch beside it, and last the conversation toggle in its usual place.
    One item alone is its glyph, its 14px semibold name and one 12px muted
-   fact, as a board's header.
+   fact, as a board's header. More tabs than fit shrink to their glyph
+   (36px) and then scroll in the row as the title strip's settled row does
+   (no bar, a 24px fade at a cut edge, a wheel turned sideways), the
+   selected tab brought into view; ⋯ and the toggle stay put.
 2. **The kind's bar**, 32px on `background`, 12px muted, in a fixed order:
    avatars (20px), the mode menu ("Agent suggests" or "Agent writes"), the
    kind's tools, History, then the review stepper (Previous, "2/6", Next,

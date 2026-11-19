@@ -6,7 +6,8 @@ import Foundation
 /// from the one who approves it. Plain text out. Used for a LifeOS reply's
 /// `quote`, the answered mail that goes under his words.
 public enum HtmlWords {
-    public nonisolated static func of(_ html: String) -> String {
+    public nonisolated static func of(_ raw: String) -> String {
+        let html = quotedTagsSafe(raw)
         // A background goes with the mail as surely as an <img>: named before the tags go,
         // read through character references and CSS escapes as the mail's reader will.
         let plain = cssUnescape(decode(html))
@@ -73,8 +74,56 @@ public enum HtmlWords {
         }
     }
 
-    private nonisolated static func attr(_ tag: String, _ name: String) -> String? {
-        matches(#"\s\#(name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#, in: tag).first.map(\.firstGroup)
+    /// A tag's quoted values with their `<` and `>` written as references, so a tag is read whole
+    /// wherever its quotes put them (`<a title="><span" href=…>`), as HTML reads it (the desktop's
+    /// `quotedTagsSafe`). Text outside tags is left as it is.
+    nonisolated static func quotedTagsSafe(_ html: String) -> String {
+        let chars = Array(html)
+        var out = ""
+        var i = 0
+        while i < chars.count {
+            let c = chars[i]
+            if c == "<", i + 1 < chars.count, chars[i + 1].isASCII, chars[i + 1].isLetter || chars[i + 1] == "/" || chars[i + 1] == "!" {
+                var quote: Character?
+                // the last character outside a value that was not a space: a quote opens a value only after `=`
+                var last: Character = "<"
+                var j = i + 1
+                out.append("<")
+                while j < chars.count {
+                    let d = chars[j]
+                    if let open = quote {
+                        if d == open { quote = nil }
+                        out += d == ">" ? "&gt;" : d == "<" ? "&lt;" : String(d)
+                    } else if d == "\"" || d == "'" {
+                        quote = last == "=" ? d : nil
+                        out.append(d)
+                    } else if d == ">" {
+                        out.append(">")
+                        break
+                    } else {
+                        out.append(d)
+                        if !d.isWhitespace { last = d }
+                    }
+                    j += 1
+                }
+                i = j + 1
+                continue
+            }
+            out.append(c)
+            i += 1
+        }
+        return out
+    }
+
+    /// An attribute of a start tag, read as HTML reads it: names and values in order, a quoted value
+    /// read whole, so a value holding text like ` href='…'` is never taken for an attribute of its own
+    /// (the desktop's `attr`). Nil when absent.
+    nonisolated static func attr(_ tag: String, _ name: String) -> String? {
+        let body = replace(#"/?>$"#, in: replace(#"^<[^\s/>]+"#, in: tag) { _ in "" }) { _ in "" }
+        for m in matches(#"[\s/]*([^\s/>"'=]+)(?:\s*=\s*(?:"([^"]*)"?|'([^']*)'?|([^\s>]*)))?"#, in: body) where !m.whole.isEmpty {
+            if m.groups[0]?.lowercased() == name.lowercased() { return m.groups[1] ?? m.groups[2] ?? m.groups[3] ?? "" }
+        }
+        return nil
     }
 
     private struct Match {

@@ -12,7 +12,9 @@ import type { Opened, Session } from "./session";
  * read only. The service holds a guest to values, formats and rows. A refused
  * edit says so on one line over the grid ("Edit not saved" and why, in plain
  * words) while the sheet as it is reloads; so does an edit the line dropped
- * before the sheet answered it. The next edit the sheet takes clears it.
+ * before the sheet answered it. While the line is down the grid stays as it
+ * was, read only, under "Reconnecting"; an edit that slips in then is not
+ * kept, and is said. The next edit the sheet takes clears the line.
  */
 
 type Mutation = { id: string; params: Record<string, unknown> };
@@ -37,6 +39,8 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
   const [book, setBook] = useState<{ snapshot: Record<string, unknown>; key: number } | null>(null);
   // Set: an edit the sheet does not have, and why in his words (null: the word alone).
   const [refused, setRefused] = useState<{ why: string | null } | null>(null);
+  // The socket is down: the grid stays as it was, read only, under one line, until a fresh state comes.
+  const [offline, setOffline] = useState(false);
   const handle = useRef<SheetHandle | null>(null);
   const live = useRef<{ ws: WebSocket | null; rev: number; pending: Mutation[]; sent: string[]; unit: string; inflight: boolean; timer: ReturnType<typeof setTimeout> | null; n: number }>({ ws: null, rev: -1, pending: [], sent: [], unit: "", inflight: false, timer: null, n: 0 });
 
@@ -59,6 +63,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
         const msg = JSON.parse(String(e.data)) as Incoming;
         tries = 0;
         if (msg.t === "state") {
+          setOffline(false);
           // A reconnect that finds the sheet where the grid stands keeps the grid as it is.
           const snapshot = typeof msg.snapshot === "string" ? (JSON.parse(msg.snapshot) as Record<string, unknown>) : msg.snapshot;
           l.unit = typeof snapshot.id === "string" ? snapshot.id : "";
@@ -97,6 +102,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
         }
         l.inflight = false;
         if (stopped) return;
+        setOffline(true);
         if (e.code === 4403) return onGone();
         if (++tries > 5) return onDown();
         // 4401: the token ran out; anything else: the line dropped. Either way, again with a fresh token.
@@ -124,6 +130,11 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
   if (!book) return <SheetBones />;
   return (
     <>
+      {offline ? (
+        <div role="status" data-sheet-offline="" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
+          <StatusMark state="working" word="Reconnecting" detail="Read only until the sheet is back" className="min-w-0 flex-1" />
+        </div>
+      ) : null}
       {refused ? (
         <div role="alert" data-sheet-refused="" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
           <StatusMark state="failed" word="Edit not saved" detail={refused.why ?? undefined} className="min-w-0 flex-1" />
@@ -132,7 +143,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
       <SheetCanvas
         key={book.key}
         snapshot={book.snapshot as never}
-        readOnly={opened.role !== "edit"}
+        readOnly={opened.role !== "edit" || offline}
         onReady={(h) => {
           handle.current = h;
           if (!h || opened.role !== "edit") return;
@@ -141,6 +152,12 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
             // The sheet's own mutations only: the grid's cell editor runs a document of its own, and its steps are not the sheet's.
             const p = (m as unknown as Mutation).params as { unitId?: unknown };
             if (!m.id.startsWith("sheet.mutation.") || p?.unitId !== l.unit) return;
+            // An edit made while the line is down cannot reach the sheet: it is not kept, it is said, and the sheet's copy comes back on reconnect.
+            if (!l.ws || l.ws.readyState !== WebSocket.OPEN) {
+              setRefused({ why: refusedWords("lost") });
+              l.rev = -1;
+              return;
+            }
             l.pending.push(plainCells(m as unknown as Mutation));
             l.timer ??= setTimeout(flush, EDIT_WAIT);
           });

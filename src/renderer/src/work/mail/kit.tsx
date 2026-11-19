@@ -24,7 +24,7 @@ const heldSends = new Set<string>();
 
 /**
  * The composer's Send: the draft is saved as he sees it, then the host sends it (`work.mail.send`)
- * only if LifeOS's row still says what he saw; this window never sends. Undo on a mail the hold
+ * only if LifeOS's row still says what he saw (people, subject, words, HTML and files); this window never sends. Undo on a mail the hold
  * sent answers false, which the composer reads as "Already sent".
  */
 export function sendThroughHost(env: string, actions: OutboxActions): OutboxActions {
@@ -33,7 +33,9 @@ export function sendThroughHost(env: string, actions: OutboxActions): OutboxActi
     send: async (args) => {
       const id = await actions.save(args);
       const m = args.message;
-      const seen: MailSeen = { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text };
+      // Everything that goes, so the host refuses a row changed in any of it after this save: the HTML and the files too.
+      const attachments = [...(m.attachments ?? []).map((f) => ({ id: f.storageId, name: f.name })), ...(m.forwardParts ?? []).map((f) => ({ id: `part:${f.partId}`, name: f.name }))];
+      const seen: MailSeen = { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text, html: m.html ?? "", attachments };
       const answer = await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen, ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}) });
       if (answer.via === "hold") heldSends.add(id);
       return id;

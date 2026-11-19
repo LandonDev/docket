@@ -69,6 +69,9 @@ export const OfficeCalendarSchema = z.discriminatedUnion('op', [
     /** read from the event by its id when the act is made, never the model's word; the press checks the event still reads so */
     subject: z.string().max(255),
     start: z.string().max(40).optional(),
+    /** its end and place as read then; a hold made before they were kept has neither, and its press is refused */
+    end: z.string().max(40).optional(),
+    location: z.string().max(1_000).optional(),
     organizer: z.string().max(320).optional(),
     answer: z.enum(['accept', 'decline', 'tentative']),
     comment: z.string().max(10_000).optional()
@@ -152,7 +155,9 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     payload: OfficeCalendarSchema,
     words(p) {
       if (p.op === 'create') return { summary: `Invite ${list(p.event.attendees)} to ${p.event.subject}`, verb: 'Send invite' }
-      const verb = p.answer === 'accept' ? 'Accept' : p.answer === 'decline' ? 'Decline' : 'Maybe'
+      // A tentative answer reads as the act it is ("Answer maybe to …"), so its past is "Answered maybe", never "Maybed".
+      if (p.answer === 'tentative') return { summary: `Answer maybe to ${p.subject}`, verb: 'Answer maybe' }
+      const verb = p.answer === 'accept' ? 'Accept' : 'Decline'
       return { summary: `${verb} ${p.subject}`, verb }
     },
     async execute(p, ctx) {
@@ -164,7 +169,9 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       // The invitation he was shown, or nothing: an event gone or changed since is stale (milestone 50's hold review, 22).
       const event = await eventById(c, p.id)
       if (!event) throw new ActStale('the invitation is no longer in his calendar')
-      if (event.subject !== p.subject || (p.start !== undefined && event.start !== p.start) || (p.organizer !== undefined && event.organizer !== p.organizer))
+      // A hold that kept no start, end or place cannot say what he was shown: answer it again from the calendar.
+      if (p.start === undefined || p.end === undefined || p.location === undefined) throw new ActStale('it was held before its time and place were kept: ask for the answer again')
+      if (event.subject !== p.subject || event.start !== p.start || event.end !== p.end || event.location !== p.location || (p.organizer !== undefined && event.organizer !== p.organizer))
         throw new ActStale('the invitation changed since it was shown')
       await c.answerEvent(p.id, p.answer, p.comment)
       return { summary: `${p.answer === 'accept' ? 'Accepted' : p.answer === 'decline' ? 'Declined' : 'Answered maybe to'} ${p.subject}` }

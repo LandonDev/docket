@@ -26,7 +26,9 @@ class FakeSocket {
 }
 vi.stubGlobal("WebSocket", FakeSocket);
 
-vi.mock("work-kit/sheet", () => ({ SheetCanvas: ({ onReady }: { onReady?: (h: unknown) => void }) => (onReady?.(grid.handle), <div data-grid="" />) }));
+vi.mock("work-kit/sheet", () => ({
+  SheetCanvas: ({ onReady, readOnly }: { onReady?: (h: unknown) => void; readOnly?: boolean }) => (onReady?.(grid.handle), <div data-grid="" data-readonly={String(!!readOnly)} />),
+}));
 const grid = vi.hoisted(() => ({ handle: null as unknown, emit: null as ((m: unknown) => void) | null }));
 const { SheetPage, refusedWords } = await import("./SheetPage");
 
@@ -72,6 +74,31 @@ describe("the hosted sheet", () => {
     const line = screen.getByRole("alert");
     expect(line.textContent).toContain("Edit not saved");
     expect(line.textContent).toContain("The connection dropped before the sheet took it");
+    vi.useRealTimers();
+    grid.handle = null;
+  });
+
+  it("while the line is down, keeps the grid read only under Reconnecting, says an edit that slips in was not saved, and is editable again once the sheet is back", async () => {
+    grid.handle = { onMutation: (fn: (m: unknown) => void) => void (grid.emit = fn), apply: () => {} };
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} />);
+    await flush();
+    await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+    const first = FakeSocket.last!;
+    first.readyState = 3;
+    await act(async () => first.onclose?.({ code: 1006 }));
+    expect(document.querySelector("[data-sheet-offline]")!.textContent).toContain("Reconnecting");
+    expect(document.querySelector("[data-grid]")!.getAttribute("data-readonly")).toBe("true");
+    await act(async () => grid.emit!({ id: "sheet.mutation.set-range-values", params: { unitId: "u1", subUnitId: "s1", cellValue: {} } }));
+    expect(screen.getByRole("alert").textContent).toContain("The connection dropped before the sheet took it");
+    expect(first.sent.some((m) => m.includes('"t":"ops"'))).toBe(false);
+    // Back: a fresh state, the grid editable again; the unsaved line stays until an edit is taken.
+    await act(async () => void vi.advanceTimersByTime(2000));
+    await flush();
+    await act(async () => FakeSocket.last!.say({ t: "state", rev: 2, snapshot: { id: "u1" } }));
+    expect(screen.queryByText("Reconnecting")).toBeNull();
+    expect(document.querySelector("[data-grid]")!.getAttribute("data-readonly")).toBe("false");
+    expect(screen.getByRole("alert")).toBeTruthy();
     vi.useRealTimers();
     grid.handle = null;
   });

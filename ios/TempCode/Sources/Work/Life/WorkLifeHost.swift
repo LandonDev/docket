@@ -181,12 +181,17 @@ final class WorkLifeHost: LifeActions {
         guard HeldSendCheck.matches(pressedSubject: send.subject, pressedTo: send.to, subject: message.subject, to: to, cc: cc, bcc: bcc) else {
             throw HeldSendRefusal.changed
         }
+        // The HTML and the files too: the host refuses a draft whose HTML or files are not the ones named here.
+        let files = (message.attachments ?? []).map { Methods.WorkMailSend.Params.Seen.Attachment(id: $0.storageId, name: $0.name) }
+            + (message.forwardParts ?? []).map { Methods.WorkMailSend.Params.Seen.Attachment(id: "part:\($0.partId)", name: $0.name) }
         let seen = Methods.WorkMailSend.Params.Seen(
             to: to,
             cc: cc,
             bcc: bcc,
             subject: message.subject ?? "",
-            text: message.text ?? ""
+            text: message.text ?? "",
+            html: message.html ?? "",
+            attachments: files
         )
         let answer = try await client.work.sendMail(draftId: send.draftId, seen: seen, sendAt: send.sendAt)
         if answer.via == .hold { return "Waiting in the Outbox" }

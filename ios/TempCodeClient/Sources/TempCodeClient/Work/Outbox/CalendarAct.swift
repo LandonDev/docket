@@ -53,7 +53,9 @@ public extension OutboxModel {
                 if let account = string(e["account"]) { rows.append(("Calendar", account)) }
             } else {
                 if let subject = string(o["subject"]) { rows.append(("Event", subject)) }
-                if let start = iso(o["start"]) { rows.append(("When", when(start, nil, false))) }
+                // The host now keeps the event's end and place with the answer, and its press refuses a change to either.
+                if let start = iso(o["start"]) { rows.append(("When", when(start, iso(o["end"]), false))) }
+                if let place = string(o["location"]) { rows.append(("Where", place)) }
                 if let organizer = string(o["organizer"]) { rows.append(("From", organizer)) }
                 if let reply = string(o["answer"]).flatMap({ replies[$0] }) { rows.append(("Reply", reply)) }
                 if let note = string(o["comment"]) { rows.append(("Note", note)) }
@@ -69,10 +71,7 @@ public extension OutboxModel {
     nonisolated static func actView(_ item: OutboxItem) -> PayloadView {
         if let fields = calendarFields(kind: item.kind, payload: item.payload) { return PayloadView(fields: fields) }
         if let view = kindView(kind: item.kind, payload: item.payload) { return view }
-        var view = payloadView(item.payload)
-        // A computer act's tool word ("left_click") under a title that already says what the click does: left out.
-        if item.kind == .computerAct { view.fields.removeAll { $0.path == ["args", "action"] } }
-        return view
+        return payloadView(item.payload)
     }
 
     /// A calendar act's list line: when it lands ("Fri, Nov 20, 2:00 to 2:30 PM").

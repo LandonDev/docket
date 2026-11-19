@@ -375,6 +375,113 @@ describe("the form kind, round two", () => {
   });
 });
 
+describe("the form kind, round seven", () => {
+  const by = "agent:env:t1" as const;
+  const waitingChange = () => view({ suggestions: [{ id: "s1", op: "change", question: { ...BODY.questions[1], options: ["Valorant", "Marvel Rivals"] }, by, at: 1 }] });
+  /** More's rows as the menu draws them, the menu closed again. */
+  const moreRows = async (): Promise<string[]> => {
+    // The tab row's More comes first; an open question has a More of its own.
+    fireEvent.click(screen.getAllByRole("button", { name: "More" })[0]);
+    const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent ?? "");
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
+    return rows;
+  };
+  const edit = async (value: string): Promise<void> => {
+    fireEvent.click(document.querySelector('[data-q="name"]')!);
+    const input = await waitFor(() => screen.getByRole("textbox", { name: "Question" }));
+    fireEvent.change(input, { target: { value } });
+  };
+
+  it("offers no way to decide a change while his unsaved edits hide it, and brings the stepper back once the save lands", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(waitingChange());
+      await found("[data-form]");
+      await waitFor(() => expect(screen.getByRole("toolbar", { name: "Review changes" })).toBeTruthy());
+      expect(await moreRows()).toContain("Accept all");
+      let land: (() => void) | null = null;
+      const save = formHost.save.getMockImplementation()!;
+      formHost.save.mockImplementationOnce((rev, body) => new Promise((done) => (land = () => done(save(rev, body) as never))));
+      await edit("Full name");
+      // His words stand over the questions and the diff is gone: no stepper, no Accept all or Reject all in More.
+      await waitFor(() => expect(document.querySelector('[data-q="game"]')?.textContent).not.toContain("Marvel Rivals"));
+      await waitFor(() => expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull());
+      expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+      expect(await moreRows()).not.toContain("Accept all");
+      // The save goes out, and while it is out nothing changes.
+      await act(async () => void vi.advanceTimersByTime(600));
+      expect(formHost.save).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+      await act(async () => land!());
+      await waitFor(() => expect(screen.getByRole("toolbar", { name: "Review changes" })).toBeTruthy());
+      expect(document.querySelector('[data-q="game"]')?.textContent).toContain("Marvel Rivals");
+      expect(await moreRows()).toContain("Accept all");
+      expect(formHost.review).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the review away through a failed save, and gives it back once Retry lands the edit", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(waitingChange());
+      await found("[data-form]");
+      await waitFor(() => expect(screen.getByRole("toolbar", { name: "Review changes" })).toBeTruthy());
+      formHost.save.mockRejectedValueOnce(new Error("The host did not answer"));
+      await edit("Full name");
+      await act(async () => void vi.advanceTimersByTime(600));
+      await waitFor(() => expect(screen.getByText("Not saved")).toBeTruthy());
+      expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+      expect(await moreRows()).not.toContain("Reject all");
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await waitFor(() => expect(screen.queryByText("Not saved")).toBeNull());
+      await waitFor(() => expect(screen.getByRole("toolbar", { name: "Review changes" })).toBeTruthy());
+      expect(formHost.review).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds Publish until his latest edit has saved, and through a failed save until Retry lands it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(view());
+      await found("[data-form]");
+      const publish = () => screen.getByRole("button", { name: "Publish" });
+      expect(publish().hasAttribute("disabled")).toBe(false);
+      let land: (() => void) | null = null;
+      const save = formHost.save.getMockImplementation()!;
+      formHost.save.mockImplementationOnce((rev, body) => new Promise((done) => (land = () => done(save(rev, body) as never))));
+      // Queued: the host still holds the copy before this edit.
+      await edit("Full name");
+      await waitFor(() => expect(publish().hasAttribute("disabled")).toBe(true));
+      fireEvent.click(publish());
+      expect(formHost.publish).not.toHaveBeenCalled();
+      // Out: still off. Landed: on.
+      await act(async () => void vi.advanceTimersByTime(600));
+      expect(formHost.save).toHaveBeenCalledTimes(1);
+      expect(publish().hasAttribute("disabled")).toBe(true);
+      await act(async () => land!());
+      await waitFor(() => expect(publish().hasAttribute("disabled")).toBe(false));
+      // A save refused: off, with the save's error and Retry; on once Retry lands it.
+      formHost.save.mockRejectedValueOnce(new Error("The host did not answer"));
+      fireEvent.change(screen.getByRole("textbox", { name: "Question" }), { target: { value: "Your name" } });
+      await act(async () => void vi.advanceTimersByTime(600));
+      await waitFor(() => expect(screen.getByText("Not saved")).toBeTruthy());
+      expect(publish().hasAttribute("disabled")).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await waitFor(() => expect(publish().hasAttribute("disabled")).toBe(false));
+      fireEvent.click(publish());
+      await waitFor(() => expect(formHost.publish).toHaveBeenCalledTimes(1));
+      expect(formHost.save.mock.calls.at(-1)![1].questions[0].label).toBe("Your name");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("what the form canvas shows", () => {
   it("lays waiting changes over the questions where they land", () => {
     const shown = shownQuestions(BODY, [

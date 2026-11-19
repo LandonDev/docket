@@ -68,10 +68,12 @@ describe('Send from TempCode', () => {
   const sends = () => rig.lifeos.calls.filter((c) => c.fn === 'compose:send')
   const settled = () => new Promise((r) => setTimeout(r, 15))
 
-  /** What the composer saved: the row as it stands. */
+  type Files = { attachments?: { storageId: string; name: string }[]; forwardParts?: { partId: string; name: string }[] }
+  /** What the composer saved: the row as it stands, its HTML and files included, as kit.tsx says them. */
   const seenOf = (id: string) => {
-    const m = (rig.lifeos.rows.get(id) as { message: { to: { address: string }[]; cc: { address: string }[]; bcc: { address: string }[]; subject: string; text: string } }).message
-    return { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text }
+    const m = (rig.lifeos.rows.get(id) as { message: { to: { address: string }[]; cc: { address: string }[]; bcc: { address: string }[]; subject: string; text: string; html?: string } & Files }).message
+    const attachments = [...(m.attachments ?? []).map((f) => ({ id: f.storageId, name: f.name })), ...(m.forwardParts ?? []).map((f) => ({ id: `part:${f.partId}`, name: f.name }))]
+    return { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text, html: m.html ?? '', attachments }
   }
 
   beforeEach(async () => {
@@ -138,6 +140,35 @@ describe('Send from TempCode', () => {
     expect(sends()).toEqual([])
     expect(stillSeen({ kind: 'mail', to: [{ address: 'A@b.co' }], cc: [], bcc: [], subject: 'S', text: 'T\n' }, { to: ['a@b.co'], cc: [], bcc: [], subject: 'S', text: 'T' })).toBe(true)
     expect(stillSeen({ kind: 'mail', to: [{ address: 'a@b.co' }], cc: [], bcc: [], subject: 'S', text: 'T' }, { to: ['a@b.co'], cc: [], bcc: [], subject: 'S', text: 'U' })).toBe(false)
+  })
+
+  it('sends nothing when only the HTML or the files changed after his save, nor for a client that never said them', async () => {
+    const id = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Attached.' })
+    rig.lifeos.fire()
+    await settled()
+    const message = (rig.lifeos.rows.get(id) as { message: { html: string } & Files }).message
+    const seen = seenOf(id)
+    // the words stay; the link under them changes
+    message.html = '<p><a href="https://elsewhere.test/pay">Attached.</a></p>'
+    await expect(rig.rpc('work.mail.send', { id, seen })).rejects.toThrow(CHANGED)
+    // a file is added, or a forwarded part, with the HTML as he saw it
+    message.html = seen.html
+    message.attachments = [{ storageId: 'st_1', name: 'payroll.xlsx' }]
+    await expect(rig.rpc('work.mail.send', { id, seen })).rejects.toThrow(CHANGED)
+    message.attachments = []
+    message.forwardParts = [{ partId: 'p2', name: 'invoice.pdf' }]
+    await expect(rig.rpc('work.mail.send', { id, seen })).rejects.toThrow(CHANGED)
+    message.forwardParts = []
+    // an older client sends no HTML and no files: a row with HTML is refused, never approved unseen
+    const { html: _html, attachments: _files, ...older } = seen
+    await expect(rig.rpc('work.mail.send', { id, seen: older })).rejects.toThrow(CHANGED)
+    expect(sends()).toEqual([])
+    // what he saw, files and all, goes
+    message.attachments = [{ storageId: 'st_1', name: 'plan.pdf' }]
+    expect(await rig.rpc('work.mail.send', { id, seen: seenOf(id) })).toEqual({ id, via: 'hold' })
+    expect(sends()).toHaveLength(1)
+    // with neither HTML nor files on the row, the older client's word is enough
+    expect(stillSeen({ kind: 'mail', to: [], cc: [], bcc: [], subject: 'S', text: 'T' }, { to: [], cc: [], bcc: [], subject: 'S', text: 'T' })).toBe(true)
   })
 
   it("says so when the hold's send fails, never Sent", async () => {

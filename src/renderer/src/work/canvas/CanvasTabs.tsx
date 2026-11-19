@@ -1,9 +1,10 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import { useCallback, useEffect, useRef, type KeyboardEvent, type ReactNode, type WheelEvent } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { MoreHorizontal } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
+import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import type { CanvasKindDef } from "./kind";
 import { CANVAS } from "./registry";
@@ -13,8 +14,16 @@ import { CANVAS } from "./registry";
  * items as tabs in the strip's chip shape, each led by its kind's glyph. One
  * item alone is named as a split view's title is, with one muted fact after
  * it. The row is the lead of the split view's header (SplitShell `lead`), so
- * More and the conversation toggle end it.
+ * More and the conversation toggle end it. Past what fits, the tabs shrink to
+ * their glyph and then scroll, as the title strip's settled row does: no bar,
+ * a faded edge where there is more, a mouse wheel turned sideways, and the
+ * selected tab brought into view. More and the toggle never move.
  */
+
+/** Mouse wheels only emit deltaY; turn it sideways. Trackpad swipes keep native scrolling. (The title strip's `wheelToX`.) */
+function wheelToX(event: WheelEvent<HTMLDivElement>): void {
+  if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY;
+}
 export function CanvasTabs({
   items,
   selected,
@@ -36,6 +45,20 @@ export function CanvasTabs({
 }) {
   const ids = items.map((item) => item.id);
   const sortable = useSortable(ids, onReorder);
+  const edges = useOverflowEdges<HTMLDivElement>();
+  const list = useRef<HTMLDivElement | null>(null);
+  const setList = useCallback(
+    (el: HTMLDivElement | null) => {
+      list.current = el;
+      edges(el);
+    },
+    [edges],
+  );
+  // The selected tab comes into view when it changes, and when a tab opens or closes beside it.
+  useEffect(() => {
+    if (!selected) return;
+    list.current?.querySelector<HTMLElement>(`[data-canvas-tab="${CSS.escape(selected)}"]`)?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [selected, items.length]);
   if (items.length === 1) {
     const [item] = items;
     const Glyph = kinds[item.kind].icon;
@@ -68,7 +91,16 @@ export function CanvasTabs({
     event.currentTarget.querySelector<HTMLElement>(`[data-canvas-tab="${CSS.escape(ids[to])}"]`)?.focus();
   };
   return (
-    <div role="tablist" aria-label="Open items" data-canvas-tabs className="flex min-w-0 flex-1 items-center gap-0.5" onKeyDown={onKeyDown}>
+    <div
+      ref={setList}
+      role="tablist"
+      aria-label="Open items"
+      aria-orientation="horizontal"
+      data-canvas-tabs
+      className={`scrollbar-none flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none ${OVERFLOW_FADE}`}
+      onKeyDown={onKeyDown}
+      onWheel={wheelToX}
+    >
       {items.map((item, index) => {
         const Glyph = kinds[item.kind].icon;
         const active = item.id === selected;

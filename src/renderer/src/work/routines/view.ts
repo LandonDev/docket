@@ -13,5 +13,7 @@ export const routinesView: WorkViewDef = {
   icon: Clock,
   order: 4,
   fact: () => null,
+  // Its schedules and watches are the Work host's: signed out of LifeOS, he can still pause a run.
+  readsLifeos: false,
   chunk: defineChunk("work-routines-view", () => import("./RoutinesView")),
 };

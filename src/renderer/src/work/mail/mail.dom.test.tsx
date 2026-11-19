@@ -50,8 +50,31 @@ function fakeActions(id: string) {
   return { actions, log };
 }
 
-const args = { message: { to: [{ address: "me@example.com" }], cc: [], bcc: [{ address: "b@example.com" }], subject: "Hi", text: "Words" } } as unknown as SaveArgs;
-const seen = { to: ["me@example.com"], cc: [], bcc: ["b@example.com"], subject: "Hi", text: "Words" };
+const args = {
+  message: {
+    to: [{ address: "me@example.com" }],
+    cc: [],
+    bcc: [{ address: "b@example.com" }],
+    subject: "Hi",
+    text: "Words",
+    html: '<p><a href="https://a.test">Words</a></p>',
+    attachments: [{ storageId: "st_1", name: "plan.pdf", contentType: "application/pdf", size: 10 }],
+    forwardParts: [{ partId: "p2", name: "invoice.pdf", contentType: "application/pdf", size: 20 }],
+  },
+} as unknown as SaveArgs;
+// the host is told the HTML and the files too, so a change to either after this save makes it refuse
+const seen = {
+  to: ["me@example.com"],
+  cc: [],
+  bcc: ["b@example.com"],
+  subject: "Hi",
+  text: "Words",
+  html: '<p><a href="https://a.test">Words</a></p>',
+  attachments: [
+    { id: "st_1", name: "plan.pdf" },
+    { id: "part:p2", name: "invoice.pdf" },
+  ],
+};
 
 describe("Send", () => {
   it("saves the draft as shown, then asks the host to send it, and never sends from the window", async () => {

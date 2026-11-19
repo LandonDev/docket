@@ -177,7 +177,9 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     setSelected(keyOf(item));
     setOpened(true);
   };
-  const narrowDetail = opened || (tab === "waiting" && tickedItems.length > 0);
+  // Narrow, what shows is his to choose, apart from the ticks: a tick stays in the list, Waiting goes back to it with
+  // the ticks kept, and "Review N" opens the ticked rows again.
+  const narrowDetail = opened;
 
   // After a press the item leaves Waiting: the next one down takes the selection.
   const afterPress = (item: HostItem) => {
@@ -248,6 +250,11 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
                 </TabsTrigger>
               </TabsList>
             </Tabs>
+            {tab === "waiting" && tickedItems.length > 0 ? (
+              <Button variant="ghost" size="xs" className="ms-auto hidden @max-[40rem]/outbox:inline-flex" onClick={() => setOpened(true)}>
+                Review {tickedItems.length}
+              </Button>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
             {!outbox.loaded && list.length === 0 ? (

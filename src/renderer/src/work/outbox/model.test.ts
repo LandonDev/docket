@@ -30,6 +30,19 @@ describe("payloadView", () => {
     expect(body).toEqual({ path: ["message", "text"], text: "old" });
   });
 
+  it("reads an Outlook reply as From, To, Subject and Also goes, with no message id, and offers none of what the host keeps", () => {
+    const reply = { host: "env_mac", account: "landon@purdue.edu", to: ["events@purdue.edu"], cc: [], bcc: [], subject: "Re: Ballroom for April 10", replyTo: "AAMkAGI2NGVh", outlookAdds: "The mail from events@purdue.edu, under this one", html: "<p>Yes, booked.</p>" };
+    const { fields } = payloadView(reply);
+    expect(fields.map((f) => f.label)).toEqual(["From", "To", "Subject", "Also goes"]);
+    expect(JSON.stringify(fields)).not.toContain("AAMk");
+    // Account, the subject of a reply and what Outlook adds are the host's to keep: nothing here is editable.
+    expect(fields.filter((f) => f.edit !== null)).toEqual([]);
+    // A new Outlook mail offers its subject alone.
+    const fresh = { ...reply, replyTo: undefined, subject: "Ballroom for April 10" };
+    expect(payloadView(fresh).fields.filter((f) => f.edit !== null).map((f) => f.label)).toEqual(["Subject"]);
+    expect(payloadView({ ...reply, replyTo: undefined, forward: "AAMkF" }).fields.find((f) => f.label === "Subject")!.edit).toBeNull();
+  });
+
   it("shows an html-only mail's words, links and images, and does not offer them for editing", () => {
     const office = { host: "env_mac", to: ["dlee@purdue.edu"], cc: [], bcc: [], subject: "Budget", html: '<p>See <a href="https://evil.example/x">the sheet</a></p><img src="https://t.example/p.gif">' };
     const { fields, body } = payloadView(office);
@@ -87,6 +100,9 @@ describe("htmlWords", () => {
     // attributes set off by a slash or a quote, not a space
     expect(htmlWords('<a/href="https://hidden.test/secret">Report</a>')).toBe("Report (https://hidden.test/secret)");
     expect(htmlWords('<img alt="hello"src="https://hidden.test/pixel">')).toBe("[image hello: https://hidden.test/pixel]");
+    // a tag is read whole wherever its quotes put a ">"
+    expect(htmlWords(`<a title="><span" href="https://actual.test/private">Open</a>`)).toBe("Open (https://actual.test/private)");
+    expect(htmlWords(`<img alt="a>b" src="https://actual.test/p.png">`)).toBe("[image a>b: https://actual.test/p.png]");
     // a quoted value that holds text like an attribute is never read as one
     expect(htmlWords(`<a title=" href='https://shown.example'" href="https://actual.example">Review</a>`)).toBe("Review (https://actual.example)");
     expect(htmlWords(`<img alt=" src='https://shown.example/a.png'" src="https://actual.example/b.png">`)).toBe("[image src='https://shown.example/a.png': https://actual.example/b.png]");
@@ -148,6 +164,12 @@ describe("the lists", () => {
     expect(decidedWords({ decidedBy: "owner:remote", verb: "Post" })).toBe("Posted from another device");
     expect(decidedWords({ decidedBy: "grant:g1", verb: "Send" }, "Mail to Dana Lee")).toBe("Sent by the grant Mail to Dana Lee");
     expect(pastOf("Make link")).toBe("Made link");
+    expect(pastOf("Reply")).toBe("Replied");
+    expect(pastOf("Pay")).toBe("Paid");
+    expect(pastOf("Answer maybe")).toBe("Answered maybe");
+    expect(pastOf("Move or rename files")).toBe("Moved or renamed files");
+    expect(pastOf("Send invite")).toBe("Sent invite");
+    expect(pastOf("Upload")).toBe("Uploaded");
     expect(grantLine("mail.send", Date.now())).toBe("Made today from a held mail");
     const now = new Date(2026, 10, 19, 12).getTime();
     expect([dayOf(now - 3_600_000, now), dayOf(now - 86_400_000, now), dayOf(now - 3 * 86_400_000, now)]).toEqual(["Today", "Yesterday", "Earlier"]);

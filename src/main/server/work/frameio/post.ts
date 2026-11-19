@@ -45,7 +45,8 @@ export const FrameioPostSchema: z.ZodType<FrameioPost> = z.discriminatedUnion('w
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 export function postWords(p: FrameioPost): { summary: string; verb: string } {
-  if (p.what === 'version') return { summary: `Add ${p.from} as the next version of ${p.ontoName} in Frame.io`, verb: 'Upload' }
+  // The file by its name: the local path it came from is the host's business, never the title.
+  if (p.what === 'version') return { summary: `Add ${p.name} as the next version of ${p.ontoName} in Frame.io`, verb: 'Upload' }
   const lossy = p.shapes?.length ? annotationOf(p.shapes, p.height ?? 1080).lossy : []
   return { summary: `Comment on ${p.fileName}${p.clock ? ` at ${p.clock}` : ''}: “${clip(p.text, 60)}”${lossy.length ? ` (${lossy.join('; ')})` : ''}`, verb: 'Post' }
 }

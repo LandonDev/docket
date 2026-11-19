@@ -1,4 +1,5 @@
 import AVKit
+import Combine
 import ImageIO
 import SwiftUI
 import TempCodeClient
@@ -85,6 +86,9 @@ private struct VideoVersionView: View {
     @State private var player: AVPlayer?
     @State private var loaded = 0
     @State private var failure: String?
+    /// The file came down but would not play: Try Again fetches it afresh.
+    @State private var unplayable = false
+    @State private var round = 0
     @State private var comment = ""
     @State private var posting = false
     @State private var notes: [MediaPhoneNote] = []
@@ -94,10 +98,24 @@ private struct VideoVersionView: View {
     var body: some View {
         VStack(spacing: 0) {
             Group {
-                if let player {
+                if let failure {
+                    // A download or a player that fails says why, with Try Again; the notes and the comment field stay.
+                    ContentUnavailableView {
+                        Label("Can’t Play This", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(failure)
+                    } actions: {
+                        Button("Try Again", action: retry)
+                    }
+                    .accessibilityIdentifier("media-failed")
+                } else if let player {
                     VideoPlayer(player: player)
-                } else if let failure {
-                    ContentUnavailableView("Can’t Play This", systemImage: "exclamationmark.triangle", description: Text(failure))
+                        .onReceive(player.currentItem?.publisher(for: \.status).eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { status in
+                            guard status == .failed else { return }
+                            failure = player.currentItem?.error.map { ActionError.wrap($0).message } ?? "The video did not play."
+                            unplayable = true
+                            self.player = nil
+                        }
                 } else {
                     VStack(spacing: 8) {
                         if case .segments(_, let count) = source {
@@ -177,7 +195,17 @@ private struct VideoVersionView: View {
             }
         }
         .onAppear { notes = view.notes.filter { $0.anchor.versionId == versionId && $0.kind == .comment } }
-        .task { await load() }
+        .task(id: round) { await load() }
+    }
+
+    /// Try Again: the same read again; a file that came down but would not play is fetched afresh.
+    private func retry() {
+        if unplayable { try? FileManager.default.removeItem(at: MediaFiles.file(item: item.id, version: versionId)) }
+        unplayable = false
+        failure = nil
+        player = nil
+        loaded = 0
+        round += 1
     }
 
     /// The init segment and every media segment, joined: one fragmented MP4 the player reads from disk.

@@ -70,13 +70,40 @@ public enum OutboxModel {
         return (reason.hasSuffix(".") ? reason : reason + ".") + " \(check)."
     }
 
-    /// "Send" → "Sent", "Post" → "Posted", "Make link" → "Made link".
+    /// "Send" → "Sent", "Reply" → "Replied", "Move or rename files" → "Moved or renamed files": the
+    /// desktop's `pastOf`. A verb is the first word, or one that follows "or"/"and" right after another
+    /// verb; the words after them stay. An older Outlook tentative answer's verb, "Maybe", is said whole.
     public nonisolated static func pastOf(_ verb: String) -> String {
-        var words = verb.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        guard let head = words.first, !head.isEmpty else { return verb }
-        let irregular = ["Send": "Sent", "Post": "Posted", "Make": "Made", "Accept": "Accepted", "Submit": "Submitted", "Share": "Shared", "Book": "Booked", "Run": "Ran", "Publish": "Published", "Decline": "Declined"]
-        words[0] = irregular[head] ?? (head.hasSuffix("e") ? head + "d" : head + "ed")
-        return words.joined(separator: " ")
+        if verb == "Maybe" { return "Answered maybe" }
+        return turned(verb, pastWord)
+    }
+
+    private nonisolated static let past = ["send": "sent", "post": "posted", "make": "made", "accept": "accepted", "submit": "submitted", "share": "shared", "book": "booked", "run": "ran", "publish": "published", "decline": "declined", "reply": "replied", "pay": "paid", "buy": "bought", "put": "put", "set": "set", "upload": "uploaded", "forward": "forwarded", "answer": "answered"]
+    private nonisolated static let doubled = ["run": "running", "submit": "submitting", "put": "putting", "set": "setting"]
+
+    /// The verb words of a label turned by `word`, each keeping its first letter's case.
+    private nonisolated static func turned(_ verb: String, _ word: (String) -> String) -> String {
+        let words = verb.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        var verbAt: Set<Int> = [0]
+        if words.count > 2 { for i in 2..<words.count where (words[i - 1] == "or" || words[i - 1] == "and") && verbAt.contains(i - 2) { verbAt.insert(i) } }
+        return words.enumerated().map { i, w in verbAt.contains(i) && !w.isEmpty ? cased(word(w.lowercased()), like: w) : w }.joined(separator: " ")
+    }
+
+    private nonisolated static func cased(_ turned: String, like word: String) -> String {
+        word.first?.isUppercase == true ? turned.prefix(1).uppercased() + turned.dropFirst() : turned
+    }
+
+    private nonisolated static func pastWord(_ w: String) -> String {
+        if let known = past[w] { return known }
+        if w.hasSuffix("e") { return w + "d" }
+        if w.count > 1, w.hasSuffix("y"), let before = w.dropLast().last, !"aeiou".contains(before) { return w.dropLast() + "ied" }
+        return w + "ed"
+    }
+
+    private nonisolated static func progressiveWord(_ w: String) -> String {
+        if let known = doubled[w] { return known }
+        if w.hasSuffix("e"), !w.hasSuffix("ee"), w.count > 2 { return w.dropLast() + "ing" }
+        return w + "ing"
     }
 
     /// "Sending to events booking": the undo capsule's line while a press waits its five seconds.
@@ -119,12 +146,11 @@ public enum OutboxModel {
         people.count <= 2 ? people.joined(separator: " and ") : "\(people.prefix(2).joined(separator: ", ")) and \(people.count - 2) more"
     }
 
-    private nonisolated static func progressive(_ verb: String) -> String {
-        var words = verb.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        guard let head = words.first, !head.isEmpty else { return verb }
-        let irregular = ["Run": "Running", "Submit": "Submitting"]
-        words[0] = irregular[head] ?? (head.hasSuffix("e") ? String(head.dropLast()) + "ing" : head + "ing")
-        return words.joined(separator: " ")
+    /// "Send" → "Sending", "Answer maybe" → "Answering maybe", "Move or rename files" → "Moving or
+    /// renaming files": the undo capsule's verb, turned as `pastOf` turns it.
+    nonisolated static func progressive(_ verb: String) -> String {
+        if verb == "Maybe" { return "Answering maybe" }
+        return turned(verb, progressiveWord)
     }
 
     // MARK: - the payload, exactly as it will go
@@ -160,10 +186,10 @@ public enum OutboxModel {
     }
 
     /// Keys that are the host's bookkeeping, never what goes.
-    private nonisolated static let quiet: Set<String> = ["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host", "quote"]
+    private nonisolated static let quiet: Set<String> = ["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host", "quote", "replyTo", "forward"]
     /// Keys whose text is the body: drawn as one plain-text block, not a field.
     private nonisolated static let bodyKeys = ["text", "body", "message", "content"]
-    private nonisolated static let labels = ["to": "To", "cc": "Cc", "bcc": "Bcc", "from": "From", "subject": "Subject", "channel": "In", "title": "Title", "app": "App", "window": "Window", "label": "Act", "url": "URL", "chat": "In"]
+    private nonisolated static let labels = ["to": "To", "cc": "Cc", "bcc": "Bcc", "from": "From", "subject": "Subject", "channel": "In", "title": "Title", "app": "App", "window": "Window", "label": "Act", "url": "URL", "chat": "In", "account": "From", "outlookAdds": "Also goes"]
     /// A payload object has no key order once decoded: these lead, in a mail's order; the rest follow by name.
     private nonisolated static let leading = ["from", "to", "cc", "bcc", "subject", "channel", "title"]
 
@@ -204,6 +230,14 @@ public enum OutboxModel {
         let lead = leading.compactMap { key in object[key].map { (key, $0) } }
         let rest = object.filter { !leading.contains($0.key) }.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
         return lead + rest
+    }
+
+    /// A field the host keeps whatever an edit says (Outlook's `keepOfficeMail`): the account a mail goes
+    /// from, what Outlook adds under a reply, and a reply's or a forward's subject. Never offered in Edit,
+    /// so a reply has nothing to edit and Edit hides.
+    nonisolated static func kept(_ key: String, in object: [String: JSONValue]) -> Bool {
+        if key == "account" || key == "outlookAdds" { return true }
+        return key == "subject" && (object["replyTo"] != nil || object["forward"] != nil)
     }
 
     /// A value exactly as JSON writes it: `null`, `""`, an object or a list whole.
@@ -265,7 +299,7 @@ public enum OutboxModel {
                     if view.body == nil, bodyKeys.contains(key), topText || s.contains("\n") || s.count > 80 {
                         view.body = .init(path: at, text: s)
                     } else if !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        view.fields.append(Field(key: key, path: at, label: label(key), value: s, edit: .text))
+                        view.fields.append(Field(key: key, path: at, label: label(key), value: s, edit: quiet && kept(key, in: object) ? nil : .text))
                     }
                 case .number, .bool:
                     view.fields.append(Field(key: key, path: at, label: label(key), value: text(v), edit: nil))
@@ -477,6 +511,23 @@ public enum OutboxModel {
     }
 
     // MARK: - the return from Away
+
+    /// What Away's "Written on your files" lists from a host's results (the desktop's `writesOf`):
+    /// writes made in the stretch, cut at the moment he came back, never a send (a send's Result
+    /// carries `ref.held`, and the Held and Failed sections already speak for it).
+    public nonisolated static func awayWrites(_ results: [WorkResult], until: Int) -> [WorkResult] {
+        results.filter { result in
+            guard result.createdAt <= until else { return false }
+            if case .object(let ref)? = result.ref, let held = ref["held"], held != .null { return false }
+            return true
+        }
+    }
+
+    /// The line under Written when some hosts' writes did not come back: one host by name, else a count.
+    public nonisolated static func unreadLine(_ names: [String]) -> String? {
+        guard let first = names.first else { return nil }
+        return names.count == 1 ? "\(first) did not answer" : "\(names.count) hosts did not answer"
+    }
 
     public struct AwayCounts: Sendable, Hashable {
         public var held: Int

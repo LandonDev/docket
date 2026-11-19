@@ -19,7 +19,7 @@ export interface MailRow {
   _creationTime: number
   status: string
   editedAt?: number
-  message: { kind: string; html?: string; subject?: string } & Record<string, unknown>
+  message: { kind: string; html?: string; subject?: string; attachments?: { storageId?: unknown; name?: unknown }[]; forwardParts?: { partId?: unknown; name?: unknown }[] } & Record<string, unknown>
   origin?: { app?: string; threadId?: string; host?: string }
 }
 
@@ -32,15 +32,28 @@ type Address = { address?: unknown }
 const addresses = (list: unknown): string[] => (Array.isArray(list) ? (list as Address[]).map((a) => String(a?.address ?? '').trim().toLowerCase()) : [])
 const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i])
 
-/** Whether the row still says what he pressed Send on: the same people, subject and words. */
+/** The files a row carries, as the composer names them: its attachments by storage id, a forward's parts as `part:<id>`. */
+export const rowFiles = (message: MailRow['message']): string[] =>
+  [
+    ...(Array.isArray(message.attachments) ? message.attachments : []).map((f) => `${String(f?.storageId ?? '')}|${String(f?.name ?? '')}`),
+    ...(Array.isArray(message.forwardParts) ? message.forwardParts : []).map((f) => `part:${String(f?.partId ?? '')}|${String(f?.name ?? '')}`)
+  ].sort()
+
+/**
+ * Whether the row still says what he pressed Send on: the same people, subject, words, HTML and files. A client
+ * that sent no HTML or no files (an older one) saw none: a row that has some is refused, never sent unseen.
+ */
 export function stillSeen(message: MailRow['message'], seen: MailSeen): boolean {
   const norm = (list: readonly string[]) => list.map((x) => x.trim().toLowerCase())
+  const files = (seen.attachments ?? []).map((f) => `${f.id}|${f.name}`).sort()
   return (
     same(addresses(message.to), norm(seen.to)) &&
     same(addresses(message.cc), norm(seen.cc)) &&
     same(addresses(message.bcc), norm(seen.bcc)) &&
     String(message.subject ?? '') === seen.subject &&
-    String(message.text ?? '').trim() === seen.text.trim()
+    String(message.text ?? '').trim() === seen.text.trim() &&
+    String(message.html ?? '') === (seen.html ?? '') &&
+    same(rowFiles(message), files)
   )
 }
 

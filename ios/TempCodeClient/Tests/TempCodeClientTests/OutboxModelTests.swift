@@ -144,20 +144,95 @@ import TempCodeContract
         #expect(form.body?.readOnly == true)
 
         let share = OutboxModel.actView(item("g1", kind: .shareGoogle, payload: .object(["account": .string("a@b.edu"), "fileId": .string("1AbC"), "name": .string("Budget.xlsx"), "email": .string("dana@purdue.edu"), "role": .string("writer"), "notify": .bool(true)])))
-        #expect(share.fields.map(\.label) == ["Person", "Access", "Notice"])
-        #expect(share.fields.map(\.value) == ["dana@purdue.edu", "Can edit", "Tells them by mail"])
+        #expect(share.fields.map(\.label) == ["Person", "Access", "Account", "Notice"])
+        #expect(share.fields.map(\.value) == ["dana@purdue.edu", "Can edit", "a@b.edu", "Tells them by mail"])
         let quiet = OutboxModel.actView(item("g2", kind: .shareGoogle, payload: .object(["email": .string("dana@purdue.edu"), "role": .string("reader"), "notify": .bool(false)])))
         #expect(quiet.fields.map(\.value) == ["dana@purdue.edu", "Can view"])
 
-        let comment = OutboxModel.actView(item("p1", kind: .frameioPost, payload: .object(["what": .string("comment"), "account": .string("acc_1"), "fileId": .string("f_1"), "fileName": .string("cut.mp4"), "text": .string("Tighten the open"), "clock": .string("0:12"), "durationFrames": .number(48), "pin": .object(["x": .number(0.31), "y": .number(0.62)]), "shapes": .array([.object(["kind": .string("arrow")]), .object(["kind": .string("box")])]), "height": .number(1080)])))
+        let comment = OutboxModel.actView(item("p1", kind: .frameioPost, payload: .object(["what": .string("comment"), "account": .string("acc_1"), "fileId": .string("f_1"), "fileName": .string("cut.mp4"), "text": .string("Tighten the open"), "clock": .string("0:12"), "durationFrames": .number(48), "pin": .object(["x": .number(0.31), "y": .number(0.62)]), "shapes": .array([.object(["tool": .string("arrow")]), .object(["tool": .string("rect")])]), "height": .number(1080)])))
         #expect(comment.fields.map(\.label) == ["File", "At", "Marks"])
-        #expect(comment.fields.map(\.value) == ["cut.mp4", "0:12", "2 shapes"])
+        #expect(comment.fields.map(\.value) == ["cut.mp4", "0:12, for 48 frames", "A pin, an arrow and a box"])
+        let drawn = OutboxModel.marksWords(pin: nil, shapes: .array([.object(["tool": .string("ellipse")]), .object(["tool": .string("rect")]), .object(["tool": .string("rect")]), .object(["tool": .string("pen")])]))
+        #expect(drawn.words == "An oval, 2 boxes and a drawn line")
+        #expect(drawn.changes == "An oval as its box; a drawn line as straight lines")
         #expect(comment.body?.text == "Tighten the open")
 
         let version = OutboxModel.actView(item("p2", kind: .frameioPost, payload: .object(["what": .string("version"), "account": .string("acc_1"), "onto": .string("stk_1"), "ontoName": .string("cut.mp4"), "from": .string("~/Movies/cut v2.mp4"), "path": .string("/Users/l/Library/Application Support/TempCode/work-frameio/held/x"), "name": .string("cut v2.mp4"), "size": .number(734_003_200)])))
         #expect(version.fields.map(\.label) == ["On top of", "File", "Size", "From"])
         #expect(version.fields.map(\.value) == ["cut.mp4", "cut v2.mp4", "700 MB", "~/Movies/cut v2.mp4"])
         #expect(OutboxModel.megabytes(1.5 * 1024 * 1024) == "1.5 MB")
+    }
+
+    @Test func anOutlookReplyOffersNothingTheHostKeepsSoEditHides() {
+        let reply: JSONValue = .object(["host": .string("env_1"), "account": .string("landon@purdue.edu"), "to": .array([.string("events@purdue.edu")]),
+                                        "subject": .string("Re: Ballroom"), "replyTo": .string("AAMkAGI2NGVh"), "outlookAdds": .string("The mail from events@purdue.edu, under this one"),
+                                        "html": .string("<p>Yes, thanks.</p>")])
+        let view = OutboxModel.payloadView(reply)
+        #expect(view.fields.map(\.label) == ["To", "Subject", "From", "Also goes"])
+        #expect(view.fields.allSatisfy { $0.edit == nil })
+        #expect(view.body?.readOnly == true)
+        #expect(!view.fields.contains { $0.value.contains("AAMk") })
+
+        var fresh = reply
+        if case .object(var o) = fresh { o["replyTo"] = nil; o["outlookAdds"] = nil; fresh = .object(o) }
+        #expect(OutboxModel.payloadView(fresh).fields.filter { $0.edit != nil }.map(\.label) == ["Subject"])
+        // Inside an add-on call's arguments nothing is kept by the host: an account there is what goes.
+        let call = OutboxModel.payloadView(.object(["arguments": .object(["account": .string("ops")])]))
+        #expect(call.fields.first?.edit == .text)
+    }
+
+    @Test func aComputerActReadsAppWindowURLAndOnAlone() {
+        let act = OutboxModel.actView(item("c2", kind: .computerAct, payload: .object([
+            "tool": .string("computer"), "title": .string("Submit booking in Chromium"), "label": .string("Submit booking"),
+            "app": .object(["name": .string("Chromium"), "bundleId": .null]), "window": .string("Arena booking"),
+            "args": .object(["action": .string("left_click"), "element": .number(14), "url": .string("https://arena.example/book"), "app": .string("Chromium")]),
+            "read": .object(["step": .number(0), "why": .string("control"), "label": .string("Submit booking"), "on": .string("button \"Submit booking\"")]),
+        ])))
+        #expect(act.fields.map(\.label) == ["App", "Window", "URL", "On"])
+        #expect(act.fields.map(\.value) == ["Chromium", "Arena booking", "https://arena.example/book", "button \"Submit booking\""])
+    }
+
+    @Test func pastAndProgressiveTurnEveryVerbOfALabel() {
+        #expect(OutboxModel.pastOf("Reply") == "Replied")
+        #expect(OutboxModel.pastOf("Pay") == "Paid")
+        #expect(OutboxModel.pastOf("Answer maybe") == "Answered maybe")
+        #expect(OutboxModel.pastOf("Maybe") == "Answered maybe")
+        #expect(OutboxModel.pastOf("Move or rename files") == "Moved or renamed files")
+        #expect(OutboxModel.pastOf("Copy") == "Copied")
+        #expect(OutboxModel.pastOf("Play") == "Played")
+        #expect(OutboxModel.pastOf("Send invite") == "Sent invite")
+        #expect(OutboxModel.progressive("Answer maybe") == "Answering maybe")
+        #expect(OutboxModel.progressive("Maybe") == "Answering maybe")
+        #expect(OutboxModel.progressive("Move or rename files") == "Moving or renaming files")
+        #expect(OutboxModel.progressive("Submit") == "Submitting")
+        #expect(OutboxModel.progressive("Make link") == "Making link")
+        #expect(OutboxModel.progressive("Reply") == "Replying")
+    }
+
+    @Test func htmlWordsReadATagWholeWhereverItsQuotesPutAnAngle() {
+        #expect(HtmlWords.of(#"<a title="><span" href="https://actual.test/private">Open</a>"#) == "Open (https://actual.test/private)")
+        #expect(HtmlWords.of(#"<img alt="x>y" src="https://s.example/i.png">"#) == "[image x>y: https://s.example/i.png]")
+        #expect(HtmlWords.of(#"<a title="x href='https://fake.example'" href="https://real.example">Go</a>"#) == "Go (https://real.example)")
+        #expect(HtmlWords.attr(#"<a/href="https://a.example">"#, "href") == "https://a.example")
+    }
+
+    @Test func awayWritesAreTheStretchsWritesNeverASendOrLater() {
+        func result(_ id: String, at: Int, held: Bool = false) -> WorkResult {
+            WorkResult(id: id, sessionId: "s1", rootId: "s1", workspaceId: "w1", kind: "docs.edit", summary: id, account: nil, ref: held ? .object(["held": .object(["at": .string("host"), "id": .string("h1")])]) : nil, undo: nil, undoneAt: nil, createdAt: at)
+        }
+        let kept = OutboxModel.awayWrites([result("write", at: 50), result("send", at: 60, held: true), result("after", at: 200)], until: 100)
+        #expect(kept.map(\.id) == ["write"])
+        #expect(OutboxModel.unreadLine(["Box"]) == "Box did not answer")
+        #expect(OutboxModel.unreadLine(["Box", "Mac"]) == "2 hosts did not answer")
+        #expect(OutboxModel.unreadLine([]) == nil)
+    }
+
+    @Test func anOutlookAnswerSaysTheEndAndPlaceItKept() {
+        let answer: JSONValue = .object(["op": .string("answer"), "subject": .string("Board"), "start": .string("2026-11-20T14:00:00Z"), "end": .string("2026-11-20T15:00:00Z"),
+                                         "location": .string("Room 210"), "answer": .string("accept")])
+        let rows = OutboxModel.calendarFields(kind: .officeCalendarOp, payload: answer, locale: us, timeZone: utc) ?? []
+        #expect(rows.map(\.label) == ["Event", "When", "Where", "Reply"])
+        #expect(rows[1].value.hasPrefix("Fri, Nov 20, 2:00 to 3:00"))
     }
 
     @Test func aComputerActDropsItsToolWordAndSaysURL() {

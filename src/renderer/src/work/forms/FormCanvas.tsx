@@ -111,7 +111,7 @@ export function Body(props: Props) {
   }, [half, state?.half, setState]);
 
   const [current, setCurrent] = useState(0);
-  useFeeds(shell, host, store, view, half, current, setCurrent);
+  useFeeds(shell, host, store, view, half, current, setCurrent, slot.edits !== null);
   const saveError = slot.saveError;
   const responsesError = half === "responses" ? slot.responsesError : null;
   useEffect(() => {
@@ -153,7 +153,17 @@ const run = (work: Promise<FormView>, store: FormStore, fallback: string): Promi
   );
 
 /** What the body tells the pane: the mode, the stepper over waiting changes, the line after a direct write, More's own rows. */
-function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: FormView | null, half: Half, current: number, setCurrent: (n: number) => void): void {
+function useFeeds(
+  shell: CanvasShell,
+  host: FormHost,
+  store: FormStore,
+  view: FormView | null,
+  half: Half,
+  current: number,
+  setCurrent: (n: number) => void,
+  /** his edits stand unsaved (waiting, saving or refused), so the questions draw no suggested change (`Questions`) */
+  editing: boolean,
+): void {
   const mode = view?.mode;
   const published = view ? view.state !== "draft" : false;
   useEffect(() => {
@@ -165,19 +175,23 @@ function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: Fo
   }, [shell, host, store, mode, published]);
 
   const suggestions = view?.suggestions;
-  const shown = half === "questions";
+  // A change is decided only where it is drawn: on Questions, and only while no edit of his stands unsaved over them (the
+  // questions then draw his words, not the diffs, through a failed save too, until the save that carries them lands).
+  const shown = half === "questions" && !editing;
   useEffect(() => {
     // A change is a question: while Responses shows none is on screen, so the frame draws no stepper (no "0/N", no verbs
-    // waiting on nothing) and the bar's Questions control is the way back to them (`Bar`).
+    // waiting on nothing) and the bar's Questions control is the way back to them (`Bar`). The same while his edits hide them.
     if (!suggestions?.length || !shown) return shell.review(null);
+    // A press that reaches the adapter while his edits hide the diffs settles nothing he cannot see.
+    const hidden = (): boolean => store.get().edits !== null;
     const ids = (w: number | { group: string } | "all"): { ids: string[] } | "all" => (typeof w === "number" ? { ids: [suggestions[w]?.id].filter(Boolean) } : "all");
     const review: ReviewAdapter = {
       groups: [{ id: "form", label: "Questions", by: suggestions[0].by, count: suggestions.length }],
       index: Math.min(current, suggestions.length - 1),
       count: suggestions.length,
       step: setCurrent,
-      accept: (w) => run(host.review(ids(w), "accept"), store, "Couldn't accept the change"),
-      reject: (w) => run(host.review(ids(w), "reject"), store, "Couldn't reject the change"),
+      accept: (w) => (hidden() ? Promise.resolve() : run(host.review(ids(w), "accept"), store, "Couldn't accept the change")),
+      reject: (w) => (hidden() ? Promise.resolve() : run(host.review(ids(w), "reject"), store, "Couldn't reject the change")),
     };
     shell.review(review);
     return () => shell.review(null);
@@ -205,7 +219,7 @@ function useFeeds(shell: CanvasShell, host: FormHost, store: FormStore, view: Fo
 export function Bar(props: Props) {
   const host = hostFor(props);
   const store = storeOf(props.item.id, props.state?.half);
-  const { view, error, half, publishing } = useSlot(store);
+  const { view, error, half, publishing, edits } = useSlot(store);
   // While the form loads the bar holds one bone where the switch will be, so the body never moves under it.
   if (!view) return error ? null : <Skeleton data-form-bar-bone className="h-3 w-30" />;
   const publish = (): void => {
@@ -242,7 +256,9 @@ export function Bar(props: Props) {
         </Button>
       ) : null}
       {view.suggestions.length ? null : view.state === "draft" ? (
-        <Button size="xs" className="ms-auto" disabled={publishing} onClick={publish}>
+        // The host holds its last saved copy: Publish waits until his latest edit has saved, and stays off through a failed
+        // save until Retry lands it (the state line says why). It spins only for its own press.
+        <Button size="xs" className="ms-auto" disabled={publishing || edits !== null} onClick={publish}>
           <BusyLabel busy={publishing} label="Publish" />
         </Button>
       ) : view.state === "open" && view.link ? (

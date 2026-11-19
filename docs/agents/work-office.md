@@ -309,7 +309,7 @@ One set for Claude, Codex and Muse (architecture §10):
 | `office_mail_send` | send, reply (`replyTo`: to that mail's sender, read when the act is made, so the card and a grant judge the address Outlook uses), forward (`forward`); a reply or forward goes from the account its mail sits in, which the act is bound to, and another `account` asked for is refused, HTML body, cleaned when held; `outlookAdds` names the mail Outlook puts under a reply or forward, and an edit keeps the account, the mail answered, a reply's recipients and the subject (`keepOfficeMail`) | **yes**: `office.mail.send` |
 | `office_calendar_list` | events by start | no |
 | `office_calendar_create` | with nobody invited, a hold on his own calendar, made at once | with `attendees`, **yes**: `office.calendar.op` |
-| `office_calendar_answer` | accept, decline, tentative | **yes**: `office.calendar.op` |
+| `office_calendar_answer` | accept, decline, tentative; the invitation's subject, start, end, place and organizer are read from the event when the act is made, and the press refuses an event changed in any of them, or a hold made before its end and place were kept | **yes**: `office.calendar.op` |
 
 **The rule for a file others can open.** A file named by a URL, or one in a
 folder synced from OneDrive or SharePoint (`~/Library/CloudStorage/`, a

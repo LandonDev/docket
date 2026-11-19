@@ -23,10 +23,10 @@ describe("a computer act in the generic view", () => {
 });
 
 describe("a kind with its own rows", () => {
-  it("draws a Google share as Person and Access, with no file id", () => {
+  it("draws a Google share as Person, Access and Account, with no file id", () => {
     const payload = { account: "landon@x", fileId: "1AbC", name: "Budget.xlsx", email: "dana@purdue.edu", role: "commenter", notify: false };
     const { container } = render(<GenericActView item={{ kind: "share.google", payload } as never} env="box" />);
-    expect([...container.querySelectorAll("dt")].map((d) => d.textContent)).toEqual(["Person", "Access"]);
+    expect([...container.querySelectorAll("dt")].map((d) => d.textContent)).toEqual(["Person", "Access", "Account"]);
     expect(container.textContent).toContain("Can comment");
     expect(container.textContent).not.toContain("1AbC");
   });
