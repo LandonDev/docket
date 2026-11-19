@@ -94,7 +94,6 @@ describe('the context', () => {
       ['ctx.held.create', 10, () => ctx.held.create({ kind: 'addon.call', sessionId: 's', payload: {} })],
       ['ctx.held.onDecided', 10, () => ctx.held.onDecided(() => {})],
       ['ctx.results.add', 14, () => ctx.results.add({ sessionId: 's', kind: 'task', summary: 'Added a task' })],
-      ['ctx.convert', 15, () => ctx.convert({ from: 'odt', to: 'docx', input: '/a.odt' })],
       ['ctx.service.url', 18, () => ctx.service.url('/w/doc/d1')],
       ['ctx.service.token', 18, () => ctx.service.token({ item: { doc: 'd1' }, role: 'edit', principal: 'owner' })],
       ['ctx.service.internal', 18, () => ctx.service.internal('/internal/doc/read', {})]

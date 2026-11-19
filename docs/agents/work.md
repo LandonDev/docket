@@ -211,7 +211,7 @@ and edits nothing else:
 | `canvas` | work/canvas/ctx.ts | 9 |
 | `held` | work/outbox/ctx.ts | 10 |
 | `results` | work/outbox/results.ts (and `ensureResults`, which the outbox module's `ensure` calls) | 14 |
-| `convert` | work/formats/jobs.ts | 15 |
+| `convert` | work/formats/jobs.ts (built: [work-formats.md](work-formats.md)) | 15 |
 | `service` | work/service/ctx.ts | 18 |
 
 A part is a function `(ctx, deps) => members`. `deps` (`WorkDeps`) is what

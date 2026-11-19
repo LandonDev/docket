@@ -1,0 +1,262 @@
+{
+  "pillar": "toolchain",
+  "tools": [
+    {
+      "name": "libreoffice",
+      "version": "26.8.3",
+      "licence": "MPL-2.0",
+      "licenceNote": "The Document Foundation's official build, unpacked and unmodified; runs only as a separate soffice process. Carlito and Caladea (OFL-1.1) ship inside it.",
+      "homepage": "https://www.libreoffice.org/",
+      "platforms": {
+        "linux-x64": {
+          "kind": "debs",
+          "files": [
+            {
+              "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/deb/x86_64/LibreOffice_26.8.3_Linux_x86-64_deb.tar.gz",
+              "sha256": "e7cd3538e85818ff9dd9bb65386769fde927011242aace5a144989f4000dcabf",
+              "size": 221377373
+            }
+          ],
+          "bin": "opt/libreoffice26.8/program/soffice",
+          "check": ["opt/libreoffice26.8/share/fonts/truetype/Carlito-Regular.ttf", "opt/libreoffice26.8/share/fonts/truetype/Caladea-Regular.ttf"]
+        },
+        "darwin-arm64": {
+          "kind": "dmg",
+          "files": [
+            {
+              "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/aarch64/LibreOffice_26.8.3_MacOS_aarch64.dmg",
+              "sha256": "de943203795e5057785f65515063e2db5eb60b0bb6d8e2534fec59e5cc5fb988",
+              "size": 299927705
+            }
+          ],
+          "app": "LibreOffice.app",
+          "bin": "LibreOffice.app/Contents/MacOS/soffice",
+          "check": ["LibreOffice.app/Contents/Resources/fonts/truetype/Carlito-Regular.ttf", "LibreOffice.app/Contents/Resources/fonts/truetype/Caladea-Regular.ttf"]
+        },
+        "darwin-x64": {
+          "kind": "dmg",
+          "files": [
+            {
+              "url": "https://download.documentfoundation.org/libreoffice/stable/26.8.3/mac/x86_64/LibreOffice_26.8.3_MacOS_x86-64.dmg",
+              "sha256": "bb3c35d628780510915ad9e759d7ed898094d7985d01b2181bd1d4ecd94fd159",
+              "size": 309939485
+            }
+          ],
+          "app": "LibreOffice.app",
+          "bin": "LibreOffice.app/Contents/MacOS/soffice",
+          "check": ["LibreOffice.app/Contents/Resources/fonts/truetype/Carlito-Regular.ttf", "LibreOffice.app/Contents/Resources/fonts/truetype/Caladea-Regular.ttf"]
+        }
+      },
+      "probe": {
+        "write": { "probe.txt": "TempCode toolchain probe" },
+        "steps": [
+          { "run": ["{bin}", "--version"], "expect": "LibreOffice 26\\.8", "timeoutMs": 120000 },
+          {
+            "run": ["{bin}", "-env:UserInstallation={tmpUrl}/profile", "--headless", "--norestore", "--convert-to", "pdf", "--outdir", "{tmp}", "{tmp}/probe.txt"],
+            "expectFile": "{tmp}/probe.pdf",
+            "timeoutMs": 180000
+          }
+        ]
+      }
+    },
+    {
+      "name": "python",
+      "version": "3.12.16",
+      "licence": "PSF-2.0",
+      "licenceNote": "Astral's python-build-standalone build of CPython (20261110), unpacked and unmodified; the libraries inside it keep their own permissive licences.",
+      "homepage": "https://github.com/astral-sh/python-build-standalone",
+      "platforms": {
+        "linux-x64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.12.16%2B20261110-x86_64-unknown-linux-gnu-install_only.tar.gz",
+              "sha256": "c2f87d4b4e8db3abddb0f116c6ccfc503d0cbdbb9ee8faacddad1b679ec12e99",
+              "size": 68163679
+            }
+          ],
+          "bin": "python/bin/python3"
+        },
+        "darwin-arm64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.12.16%2B20261110-aarch64-apple-darwin-install_only.tar.gz",
+              "sha256": "e956e60bc9465d577ef8062059aa05cd3a2665b4b8678a2ed24e432368330b8f",
+              "size": 25371130
+            }
+          ],
+          "bin": "python/bin/python3"
+        },
+        "darwin-x64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.12.16%2B20261110-x86_64-apple-darwin-install_only.tar.gz",
+              "sha256": "83f2922437e6d546d0fcdb8c11f150a8e52787e8d9ea8651b1974e20908eb1bc",
+              "size": 25078514
+            }
+          ],
+          "bin": "python/bin/python3"
+        },
+        "win32-x64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.12.16%2B20261110-x86_64-pc-windows-msvc-install_only.tar.gz",
+              "sha256": "e23fe5b16926de1d81661b1a97352e89fb167549c55a6825796ccd0f32ec7f1b",
+              "size": 47438699
+            }
+          ],
+          "bin": "python/python.exe"
+        }
+      },
+      "probe": { "steps": [{ "run": ["{bin}", "-I", "-c", "import sys, ssl, sqlite3; print('Python', sys.version.split()[0])"], "expect": "^Python 3\\.12\\.16" }] }
+    },
+    {
+      "name": "venv",
+      "version": "3.12.16",
+      "licence": "PSF-2.0",
+      "licenceNote": "A virtual environment of the python tool, with the pip it bundles (MIT). Pillars add packages to it with a pip tool of their own; an AGPL package (PyMuPDF) runs only as a separate, unmodified Python process.",
+      "homepage": "https://docs.python.org/3/library/venv.html",
+      "needs": ["python"],
+      "platforms": {
+        "linux-x64": { "kind": "venv", "bin": "bin/python" },
+        "darwin-arm64": { "kind": "venv", "bin": "bin/python" },
+        "darwin-x64": { "kind": "venv", "bin": "bin/python" },
+        "win32-x64": { "kind": "venv", "bin": "Scripts/python.exe" }
+      },
+      "probe": { "steps": [{ "run": ["{bin}", "-I", "-c", "import sys, pip; print('venv', sys.prefix != sys.base_prefix, 'pip', pip.__version__)"], "expect": "^venv True pip " }] }
+    },
+    {
+      "name": "ffmpeg",
+      "version": "9.0.2",
+      "licence": "GPL-3.0-or-later",
+      "licenceNote": "Static release builds (Martin Riedl's for Linux and macOS, Gyan Doshi's essentials for Windows), built with GPL parts; run only as separate, unmodified ffmpeg and ffprobe processes, never linked into our code.",
+      "homepage": "https://ffmpeg.org/",
+      "platforms": {
+        "linux-x64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://ffmpeg.martin-riedl.de/download/linux/amd64/1789931100_9.0.2/ffmpeg.zip",
+              "sha256": "fa8ecf4abbd290d98f7d188b8649cc6b391ae209a98452be955a15aab1909d7f",
+              "size": 33326445
+            },
+            {
+              "url": "https://ffmpeg.martin-riedl.de/download/linux/amd64/1789931100_9.0.2/ffprobe.zip",
+              "sha256": "3f428c49070be3d24ec338602b76d412e401ffcb8a5641ef0e729181a232fc32",
+              "size": 33223234
+            }
+          ],
+          "bin": "ffmpeg",
+          "bins": { "ffprobe": "ffprobe" }
+        },
+        "darwin-arm64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip",
+              "sha256": "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924",
+              "size": 28395699
+            },
+            {
+              "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip",
+              "sha256": "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6",
+              "size": 28317701
+            }
+          ],
+          "bin": "ffmpeg",
+          "bins": { "ffprobe": "ffprobe" }
+        },
+        "darwin-x64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip",
+              "sha256": "7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4",
+              "size": 33816391
+            },
+            {
+              "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffprobe.zip",
+              "sha256": "2322438ed2f6319a691291b247d09c69dcaa3a982460d1f269a7e1af335cfdfd",
+              "size": 33719233
+            }
+          ],
+          "bin": "ffmpeg",
+          "bins": { "ffprobe": "ffprobe" }
+        },
+        "win32-x64": {
+          "kind": "archive",
+          "files": [
+            {
+              "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+              "sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+              "size": 114768076,
+              "strip": 1
+            }
+          ],
+          "bin": "bin/ffmpeg.exe",
+          "bins": { "ffprobe": "bin/ffprobe.exe" }
+        }
+      },
+      "probe": {
+        "steps": [
+          { "run": ["{bin}", "-hide_banner", "-version"], "expect": "^ffmpeg version 9\\.0\\.2" },
+          { "run": ["{bin:ffprobe}", "-hide_banner", "-version"], "expect": "^ffprobe version 9\\.0\\.2" },
+          { "run": ["{bin}", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=64x64:rate=5:duration=1", "-c:v", "libx264", "-y", "{tmp}/probe.mp4"], "expectFile": "{tmp}/probe.mp4", "timeoutMs": 60000 }
+        ]
+      }
+    },
+    {
+      "name": "ironcalc",
+      "version": "0.9.1",
+      "licence": "MIT OR Apache-2.0",
+      "licenceNote": "The IronCalc engine's native Node binding (@ironcalc/nodejs and its platform package), unmodified; permissive, so the host may load it in process.",
+      "homepage": "https://www.ironcalc.com/",
+      "platforms": {
+        "linux-x64": {
+          "kind": "npm",
+          "files": [
+            { "url": "https://registry.npmjs.org/@ironcalc/nodejs/-/nodejs-0.9.1.tgz", "integrity": "sha512-9CHeAJ7VouOXshFpvuVFyDkqUDVoWlly7jmvtgAuGQHVkLHE0d4uOjEdfds68fAqQIbwnU+lx54ECsmPoOAFHA==", "into": "node_modules/@ironcalc/nodejs" },
+            { "url": "https://registry.npmjs.org/@ironcalc/nodejs-linux-x64-gnu/-/nodejs-linux-x64-gnu-0.9.1.tgz", "integrity": "sha512-BItJP0XnOWLmxc1+pSJnUvRelyGltCbVoAblEgE9/+3OY3H/s/8sNqZlhoAFCrT5D1FiZ4+gv/mwF2HBGYI+6A==", "into": "node_modules/@ironcalc/nodejs-linux-x64-gnu" }
+          ],
+          "bin": "node_modules/@ironcalc/nodejs"
+        },
+        "darwin-arm64": {
+          "kind": "npm",
+          "files": [
+            { "url": "https://registry.npmjs.org/@ironcalc/nodejs/-/nodejs-0.9.1.tgz", "integrity": "sha512-9CHeAJ7VouOXshFpvuVFyDkqUDVoWlly7jmvtgAuGQHVkLHE0d4uOjEdfds68fAqQIbwnU+lx54ECsmPoOAFHA==", "into": "node_modules/@ironcalc/nodejs" },
+            { "url": "https://registry.npmjs.org/@ironcalc/nodejs-darwin-arm64/-/nodejs-darwin-arm64-0.9.1.tgz", "integrity": "sha512-Ht3n/C5l3hYZTJmqHIMt9zoSeyUOhkc4uUEg2xbQvtSdO2SOzK9BrmW7W2ZoU7rhywn2LNPQY3bA/QxJLOCiwA==", "into": "node_modules/@ironcalc/nodejs-darwin-arm64" }
+          ],
+          "bin": "node_modules/@ironcalc/nodejs"
+        },
+        "darwin-x64": {
+          "kind": "npm",
+          "files": [
+            { "url": "https://registry.npmjs.org/@ironcalc/nodejs/-/nodejs-0.9.1.tgz", "integrity": "sha512-9CHeAJ7VouOXshFpvuVFyDkqUDVoWlly7jmvtgAuGQHVkLHE0d4uOjEdfds68fAqQIbwnU+lx54ECsmPoOAFHA==", "into": "node_modules/@ironcalc/nodejs" },
+            { "url": "https://registry.npmjs.org/@ironcalc/nodejs-darwin-x64/-/nodejs-darwin-x64-0.9.1.tgz", "integrity": "sha512-/oTkx5L9smC6gnkOXxaJowhHO4J83YEwKvIzUHPOSPJzi8GKym8c3CyFZB2BO61JfZWQE3IfO355Tuo4PbeCHQ==", "into": "node_modules/@ironcalc/nodejs-darwin-x64" }
+          ],
+          "bin": "node_modules/@ironcalc/nodejs"
+        },
+        "win32-x64": {
+          "kind": "npm",
+          "files": [
+            { "url": "https://registry.npmjs.org/@ironcalc/nodejs/-/nodejs-0.9.1.tgz", "integrity": "sha512-9CHeAJ7VouOXshFpvuVFyDkqUDVoWlly7jmvtgAuGQHVkLHE0d4uOjEdfds68fAqQIbwnU+lx54ECsmPoOAFHA==", "into": "node_modules/@ironcalc/nodejs" },
+            { "url": "https://registry.npmjs.org/@ironcalc/nodejs-win32-x64-msvc/-/nodejs-win32-x64-msvc-0.9.1.tgz", "integrity": "sha512-gNxwtec10cW4+kZzsM/fX3ZS3SKAoECWd7FRsU4WfZYqExWjx5JOjpu9uyB67RLrlraxO7rR6mkBSAQ/ffPfGA==", "into": "node_modules/@ironcalc/nodejs-win32-x64-msvc" }
+          ],
+          "bin": "node_modules/@ironcalc/nodejs"
+        }
+      },
+      "probe": {
+        "steps": [
+          {
+            "run": ["{node}", "-e", "const { Model } = require(process.env.IRONCALC); const m = new Model('probe', 'en', 'UTC'); m.setUserInput(0, 1, 1, '=SUM(2,3)*7'); m.evaluate(); console.log('ironcalc', m.getFormattedCellValue(0, 1, 1))"],
+            "env": { "IRONCALC": "{bin}" },
+            "expect": "^ironcalc 35"
+          }
+        ]
+      }
+    }
+  ]
+}
