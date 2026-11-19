@@ -149,7 +149,7 @@ export function isThemeKey(key: string | null): boolean {
  *  the web /ui and a first launch. boot.js reads the same two. */
 export function loadPlaceKind(): PlaceKind {
   try {
-    const named = new URLSearchParams(window.location.search).get("place") ?? localStorage.getItem(PLACE_KIND_KEY);
+    const named = new URLSearchParams(window.location.search).get("place") || localStorage.getItem(PLACE_KIND_KEY);
     return named === "work" ? "work" : "code";
   } catch {
     return "code";

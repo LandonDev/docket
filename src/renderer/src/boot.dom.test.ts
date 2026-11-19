@@ -40,14 +40,14 @@ describe("boot.js", () => {
 
   it("sets the class lib/appearance.ts would, for every kind, choice and system", () => {
     let cases = 0;
-    for (const query of [null, "code", "work", "elsewhere"])
+    for (const query of [null, "", "code", "work", "elsewhere"])
       for (const saved of [null, "code", "work"])
         for (const code of CHOICES)
           for (const work of CHOICES)
             for (const os of ["dark", "light"] as const) {
               localStorage.clear();
               root.className = "";
-              window.history.replaceState(null, "", query ? `/?place=${query}` : "/");
+              window.history.replaceState(null, "", query === null ? "/" : `/?place=${query}`);
               if (saved) localStorage.setItem("monocode.placeKind", saved);
               if (code) localStorage.setItem("monocode.colorScheme", code);
               if (work) localStorage.setItem("monocode.colorScheme.work", work);
@@ -57,7 +57,7 @@ describe("boot.js", () => {
               expect(root.classList.contains("theme-light"), JSON.stringify({ query, saved, code, work, os })).toBe(wanted === "light");
               cases++;
             }
-    expect(cases).toBe(4 * 3 * 5 * 5 * 2);
+    expect(cases).toBe(5 * 3 * 5 * 5 * 2);
   });
 
   it("takes the kind in the window's own address over the one another window saved", () => {

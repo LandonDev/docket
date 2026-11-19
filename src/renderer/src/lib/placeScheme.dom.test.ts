@@ -95,22 +95,24 @@ describe("changeScheme", () => {
     const heard = vi.fn();
     window.addEventListener(SCHEME_CHANGE_EVENT, heard);
     changeScheme("light");
-    window.removeEventListener(SCHEME_CHANGE_EVENT, heard);
     expect(start).toHaveBeenCalledTimes(1);
-    // The old picture is taken first: nothing has changed yet.
+    // The old picture is taken first: nothing has changed yet, and nothing has been told.
     expect(light()).toBe(false);
+    expect(heard).not.toHaveBeenCalled();
     expect(root.classList.contains("theme-switching")).toBe(true);
     made[0].run();
     expect(light()).toBe(true);
+    // Editors and frames hear it inside the change, so the new picture has them re-themed.
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect((heard.mock.calls[0][0] as CustomEvent).detail).toBe("light");
     expect(root.classList.contains("theme-switching")).toBe(true);
     made[0].finish();
     await Promise.resolve();
     await Promise.resolve();
     expect(root.classList.contains("theme-switching")).toBe(false);
-    window.addEventListener(SCHEME_CHANGE_EVENT, heard);
-    made[0].run();
+    // Once, however many times the browser or the settle runs the change.
+    expect(heard).toHaveBeenCalledTimes(1);
     window.removeEventListener(SCHEME_CHANGE_EVENT, heard);
-    expect((heard.mock.calls[0][0] as CustomEvent).detail).toBe("light");
   });
 
   it("does nothing when the theme is the one already worn", () => {
@@ -137,6 +139,33 @@ describe("changeScheme", () => {
     made[1].finish();
     await Promise.resolve();
     await Promise.resolve();
+    expect(root.classList.contains("theme-switching")).toBe(false);
+  });
+
+  it("ends on the newest change when it comes before the first has set its class, by either road", async () => {
+    const { made } = stubTransitions();
+    // Light is asked for, then dark again before the browser ran the first change.
+    changeScheme("light");
+    changeScheme("dark");
+    expect(made[0].skipped).toBe(true);
+    // The browser still runs a skipped transition's change, late.
+    made[0].run();
+    made[1]?.run();
+    expect(light()).toBe(false);
+    for (const each of made) each.finish();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(light()).toBe(false);
+    expect(root.classList.contains("theme-switching")).toBe(false);
+    // The same with the second change made at once (a window that went hidden meanwhile).
+    changeScheme("light");
+    const pending = made[made.length - 1];
+    changeScheme("dark", true);
+    pending.run();
+    pending.finish();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(light()).toBe(false);
     expect(root.classList.contains("theme-switching")).toBe(false);
   });
 

@@ -34,6 +34,8 @@ export function placeKind(projectCwd: string, catalog: Pick<WorkspaceCatalog, "l
 }
 
 let kind: PlaceKind = "code";
+/** The theme the last change asked for: what every flip sets, so one that runs late (a skipped dissolve's) cannot undo a newer one. */
+let wanted: ColorScheme | null = null;
 let dissolve: { skipTransition(): void } | null = null;
 
 /** The kind of place this window is on. */
@@ -59,12 +61,15 @@ function tellMain(scheme: ColorScheme): void {
  */
 export function changeScheme(next: ColorScheme, instant = false): void {
   tellMain(next);
-  if (isLightScheme() === (next === "light")) return;
+  wanted = next;
+  // A dissolve under way has yet to set its class: it will set this one instead.
+  if (!dissolve && isLightScheme() === (next === "light")) return;
   const root = document.documentElement;
-  const set = (): void => void root.classList.toggle("theme-light", next === "light");
   const flip = (): void => {
-    set();
-    window.dispatchEvent(new CustomEvent<ColorScheme>(SCHEME_CHANGE_EVENT, { detail: next }));
+    const light = wanted === "light";
+    if (root.classList.contains("theme-light") === light) return;
+    root.classList.toggle("theme-light", light);
+    window.dispatchEvent(new CustomEvent<ColorScheme>(SCHEME_CHANGE_EVENT, { detail: light ? "light" : "dark" }));
   };
   dissolve?.skipTransition();
   dissolve = null;
@@ -78,7 +83,7 @@ export function changeScheme(next: ColorScheme, instant = false): void {
         // A later change owns the class by now if this one was skipped.
         if (dissolve !== transition) return;
         dissolve = null;
-        set();
+        flip();
         root.classList.remove("theme-switching");
       };
       transition.finished.then(done, done);
