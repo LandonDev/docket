@@ -137,13 +137,19 @@ export const formsTools: WorkTool[] = [
   },
   {
     name: 'form_close',
-    description: 'Closes a published form so it takes no more answers (`open: false`), or reopens it (`open: true`). The answers already in stay.',
+    description:
+      'Closes a published form so it takes no more answers (`open: false`). Reopening a closed form (`open: true`) shares its link again, so it is held like Publish: it opens only when the owner presses it. The answers already in stay.',
     input: z.object({ item, open: z.boolean() }),
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; open: boolean }
       try {
         const it = paneForm(ctx, a.item)
+        if (a.open && rowOf(ctx, it).state === 'closed') {
+          const { held } = hold(ctx, it)
+          if (held && held.state !== 'held') return workText(`${it.title} takes answers again.`)
+          return workText(`Held: Reopen ${it.title}. It takes answers again when he presses Publish.`)
+        }
         const view = setOpen(ctx, it, a.open)
         return workText(view.state === 'open' ? `${it.title} takes answers again at ${view.link}.` : `${it.title} is closed; it takes no more answers.`)
       } catch (err) {

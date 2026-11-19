@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import {
   FORM_SUBMITTED,
   type FormBody,
+  type FormQuestion,
   type FormPublish,
   type FormResponses,
   type FormSuggestion,
@@ -179,10 +180,28 @@ export function hold(ctx: Ctx, item: CanvasItem): { view: FormView; held: HeldIt
   if (row.state === 'open') throw new FormError(`${row.body.title} is published already.`)
   if (!answerable(row.body.questions).length) throw new FormError('A form needs a question before it is published.')
   if (row.held && row.held.rev === row.rev) return { view: viewOf(ctx, row), held: null }
-  const payload: FormPublish = { itemId: item.id, title: row.body.title, rev: row.rev, questions: answerable(row.body.questions).length }
+  const payload: FormPublish = { itemId: item.id, title: row.body.title, rev: row.rev, questions: answerable(row.body.questions).length, content: formWords(row.body) }
   const held = ctx.held.create({ kind: 'form.publish', sessionId: item.sessionId, payload })
   const next = held.state === 'held' ? store.update(item.id, { held: { ref: held.ref, rev: row.rev } }) : (store.get(item.id) ?? row)
   return { view: announce(ctx, next), held }
+}
+
+const TYPE_WORDS: Record<FormQuestion['type'], string> = { short: 'short answer', long: 'long answer', choice: 'choice', dropdown: 'dropdown', section: 'section' }
+
+/** The form in words, as the Outbox shows a held publish: the description, then each question in order with its kind, whether it is required, and its options. */
+export function formWords(body: FormBody): string {
+  const lines: string[] = []
+  if (body.description.trim()) lines.push(body.description.trim(), '')
+  let n = 0
+  for (const q of body.questions) {
+    if (q.type === 'section') {
+      lines.push('', q.label)
+      continue
+    }
+    lines.push(`${++n}. ${q.label} (${TYPE_WORDS[q.type]}${q.required ? ', required' : ''})`)
+    for (const o of q.options ?? []) lines.push(`   - ${o}`)
+  }
+  return lines.join('\n').trim()
 }
 
 /** What his press runs: the form as held goes live, its sheet made on the first publish. */

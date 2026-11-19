@@ -166,6 +166,10 @@ describe('a form', () => {
     expect(r.text).toContain('Held: Publish Spring LAN registration')
     const waiting = await call<{ items: OutboxItem[] }>('work.outbox.list', { show: 'waiting' })
     expect(waiting.items.map((i) => [i.kind, i.summary])).toEqual([['form.publish', 'Publish Spring LAN registration']])
+    // The Outbox shows the form's words as they will go live (the hold review's finding 12).
+    expect((waiting.items[0].payload as { content: string }).content).toBe(
+      'Saturday, April 10.\n\n1. Name (short answer, required)\n2. Game (choice, required)\n   - Valorant\n   - Rocket League\n3. Dietary needs (long answer)'
+    )
     const view = await call<FormView>('work.forms.open', { itemId })
     expect(view.state).toBe('draft')
     expect(view.held?.ref).toEqual(waiting.items[0].ref)
@@ -208,13 +212,18 @@ describe('a form', () => {
     expect(got.rows[0][3]).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d$/)
     expect(await call('work.forms.responses', { itemId, rev: got.rev })).toEqual({ same: true, rev: got.rev })
 
-    // Closing is not held: it stops answers on the next request.
+    // His own close and reopen are not held: closing stops answers on the next request.
     expect((await call<FormView>('work.forms.close', { itemId, open: false })).state).toBe('closed')
     expect((await call<{ items: OutboxItem[] }>('work.outbox.list', { show: 'waiting' })).items).toEqual([])
     expect((await post(id, { [name]: 'Late', [game]: 'Valorant' })).status).toBe(410)
     expect(((await (await fetch(`http://127.0.0.1:${port}/f/${id}/form`)).json()) as PublicForm).open).toBe(false)
+    // An agent's reopen shares the link again, so it waits for his press like Publish (the hold review's finding 2).
     const reopened = await tool('form_close', { item: itemId, open: true })
-    expect(reopened.text).toContain('takes answers again')
+    expect(reopened.text).toBe('Held: Reopen Spring LAN registration. It takes answers again when he presses Publish.')
+    expect((await post(id, { [name]: 'Late', [game]: 'Valorant' })).status).toBe(410)
+    const held = (await call<FormView>('work.forms.open', { itemId })).held!
+    expect((await call<OutboxItem>('work.outbox.send', { ref: held.ref })).state).toBe('sent')
+    expect(publicId(await call<FormView>('work.forms.open', { itemId }))).toBe(id)
     expect((await post(id, { [name]: 'Late', [game]: 'Valorant' })).status).toBe(201)
     expect((await call<FormResponses>('work.forms.responses', { itemId })).rows[0][0]).toBe('Late')
   })

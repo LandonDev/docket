@@ -144,5 +144,6 @@ export const FORMS_CAPS = {
 export const FORMS_RELAY = {} satisfies RelayOf<typeof FormsRequestSchemas>
 
 /** What `form.publish` holds: exactly the form at the rev he saw. */
-export const FormPublishSchema = z.object({ itemId, title: z.string().max(200), rev: z.number().int().min(0), questions: z.number().int().min(0) })
+/** A held publish. `content` is the form in words as it will go live (its description, then each question with its options), so the Outbox shows what he publishes; the press still checks `rev`. */
+export const FormPublishSchema = z.object({ itemId, title: z.string().max(200), rev: z.number().int().min(0), questions: z.number().int().min(0), content: z.string().max(60_000).optional() })
 export type FormPublish = z.infer<typeof FormPublishSchema>
