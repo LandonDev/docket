@@ -12,14 +12,14 @@ import type { Opened, Session } from "./session";
  */
 
 type Mutation = { id: string; params: Record<string, unknown> };
-type Incoming = { t: "state"; rev: number; snapshot: Record<string, unknown> } | { t: "ops"; rev: number; by: string; mutations: Mutation[] } | { t: "ack"; id: number; rev: number } | { t: "refused"; id: number; reason: string };
+type Incoming = { t: "state"; rev: number; snapshot: string | Record<string, unknown> } | { t: "ops"; rev: number; by: string; mutations: Mutation[] } | { t: "ack"; id: number; rev: number } | { t: "refused"; id: number; reason: string };
 
 const EDIT_WAIT = 150;
 
 export function SheetPage({ session, opened, onGone, onDown }: { session: Session; opened: Opened; onGone(): void; onDown(): void }) {
   const [book, setBook] = useState<{ snapshot: Record<string, unknown>; key: number } | null>(null);
   const handle = useRef<SheetHandle | null>(null);
-  const live = useRef<{ ws: WebSocket | null; rev: number; pending: Mutation[]; sent: string[]; timer: ReturnType<typeof setTimeout> | null; n: number }>({ ws: null, rev: -1, pending: [], sent: [], timer: null, n: 0 });
+  const live = useRef<{ ws: WebSocket | null; rev: number; pending: Mutation[]; sent: string[]; unit: string; inflight: boolean; timer: ReturnType<typeof setTimeout> | null; n: number }>({ ws: null, rev: -1, pending: [], sent: [], unit: "", inflight: false, timer: null, n: 0 });
 
   useEffect(() => {
     let stopped = false;
@@ -41,7 +41,9 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
         tries = 0;
         if (msg.t === "state") {
           // A reconnect that finds the sheet where the grid stands keeps the grid as it is.
-          if (msg.rev !== l.rev || !handle.current) setBook({ snapshot: msg.snapshot, key: msg.rev * 1000 + ++l.n });
+          const snapshot = typeof msg.snapshot === "string" ? (JSON.parse(msg.snapshot) as Record<string, unknown>) : msg.snapshot;
+          l.unit = typeof snapshot.id === "string" ? snapshot.id : "";
+          if (msg.rev !== l.rev || !handle.current) setBook({ snapshot, key: msg.rev * 1000 + ++l.n });
           l.rev = msg.rev;
         } else if (msg.t === "ops") {
           // Our own ops come back too. A guest's principal is its link's alone; the owner has other windows, so his are known by what was sent.
@@ -49,8 +51,11 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
           if (at >= 0) l.sent.splice(at, 1);
           if (at < 0 && !(msg.by === opened.me && opened.me.startsWith("guest:"))) handle.current?.apply(msg.mutations as never);
           l.rev = Math.max(l.rev, msg.rev);
-        } else if (msg.t === "ack") l.rev = Math.max(l.rev, msg.rev);
-        else if (msg.t === "refused") {
+        } else if (msg.t === "ack") {
+          l.rev = Math.max(l.rev, msg.rev);
+          l.inflight = false;
+          flush();
+        } else if (msg.t === "refused") {
           // The grid has an edit the sheet did not take: the sheet as it is replaces it.
           l.rev = -1;
           ws.close(1000);
@@ -58,6 +63,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
       };
       ws.onclose = (e) => {
         if (l.ws === ws) l.ws = null;
+        l.inflight = false;
         if (stopped) return;
         if (e.code === 4403) return onGone();
         if (++tries > 5) return onDown();
@@ -72,15 +78,16 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
     };
   }, [session, opened, onGone, onDown]);
 
-  const flush = (): void => {
+  // One batch in flight at a time, each from the revision the last one was acknowledged at.
+  function flush(): void {
     const l = live.current;
     l.timer = null;
-    if (!l.ws || l.ws.readyState !== WebSocket.OPEN || !l.pending.length) return;
+    if (l.inflight || !l.ws || l.ws.readyState !== WebSocket.OPEN || !l.pending.length) return;
+    l.inflight = true;
     const mutations = l.pending.splice(0, 500);
     l.sent = [...l.sent.slice(-20), JSON.stringify(mutations)];
     l.ws.send(JSON.stringify({ t: "ops", id: ++l.n, baseRev: l.rev, mutations }));
-    if (l.pending.length) l.timer = setTimeout(flush, EDIT_WAIT);
-  };
+  }
 
   if (!book) return <SheetBones />;
   return (
@@ -93,13 +100,41 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
         if (!h || opened.role !== "edit") return;
         h.onMutation((m) => {
           const l = live.current;
-          l.pending.push(m as unknown as Mutation);
+          // The sheet's own mutations only: the grid's cell editor runs a document of its own, and its steps are not the sheet's.
+          const p = (m as unknown as Mutation).params as { unitId?: unknown };
+          if (!m.id.startsWith("sheet.mutation.") || p?.unitId !== l.unit) return;
+          l.pending.push(plainCells(m as unknown as Mutation));
           l.timer ??= setTimeout(flush, EDIT_WAIT);
         });
       }}
       className="min-h-0 flex-1"
     />
   );
+}
+
+/**
+ * A typed cell as the service takes a guest's: a value, a formula, a style, a type. The grid's
+ * editor hands back rich text (`p`) for what was typed; its words become the value, a number
+ * when they read as one.
+ */
+export function plainCells(m: Mutation): Mutation {
+  if (m.id !== "sheet.mutation.set-range-values") return m;
+  const cells = (m.params.cellValue ?? {}) as Record<string, Record<string, Record<string, unknown> | null>>;
+  const out: typeof cells = {};
+  for (const [r, cols] of Object.entries(cells)) {
+    out[r] = {};
+    for (const [c, cell] of Object.entries(cols ?? {})) {
+      if (!cell || !("p" in cell) || cell.v != null || cell.f != null) {
+        out[r]![c] = cell;
+        continue;
+      }
+      const { p, ...rest } = cell as { p?: { body?: { dataStream?: string } } };
+      const words = (p?.body?.dataStream ?? "").replace(/\r?\n$/, "").replace(/\r/g, "");
+      const n = words.trim() !== "" && Number.isFinite(Number(words)) ? Number(words) : null;
+      out[r]![c] = { ...rest, v: n ?? words, ...(n !== null ? { t: 2 } : { t: 1 }) };
+    }
+  }
+  return { ...m, params: { ...m.params, cellValue: out } };
 }
 
 function SheetBones() {

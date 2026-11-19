@@ -9,3 +9,8 @@ body,
 #root {
   height: 100%;
 }
+
+/* The app's window turns text selection off; a page in a browser does not. */
+main {
+  user-select: text;
+}

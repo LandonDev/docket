@@ -3,7 +3,7 @@ import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvi
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { Comment } from "@renderer/work/icons";
-import type { Opened, Session } from "./session";
+import { OpenFailed, type Opened, type Session } from "./session";
 import { guestThreads } from "./threads";
 
 /**
@@ -19,9 +19,25 @@ const MARGIN = 296;
 export function DocPage({ session, opened, scheme, onGone }: { session: Session; opened: Opened; scheme: "light" | "dark"; onGone(): void }) {
   const doc = opened.doc!;
   const threads = useMemo(() => (opened.role === "view" ? null : guestThreads(session, doc)), [session, doc, opened.role]);
+  const goneRef = useRef(onGone);
+  goneRef.current = onGone;
+  const fresh = useMemo(
+    () => async () => {
+      try {
+        const o = await session.refresh();
+        return { token: o.token, expiresAt: o.tokenExp };
+      } catch (err) {
+        if (err instanceof OpenFailed && err.why === "gone") goneRef.current();
+        throw err;
+      }
+    },
+    [session],
+  );
   const adapters = useMemo<Partial<EditorAdapters>>(
     () => ({
-      collab: { url: session.socketUrl(opened), getToken: () => session.token(), offline: false },
+      // Every token the editor asks for (on connect, and every minute) asks the service again:
+      // a link revoked or ended answers "gone" there, and the page says so.
+      collab: { url: session.socketUrl(opened), getToken: () => fresh(), offline: false },
       threads: threads?.adapter ?? null,
       identity: {
         me: { id: opened.me, name: opened.name ?? "You", avatarUrl: null },
@@ -30,18 +46,30 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
         },
       },
     }),
-    [session, opened, threads],
+    [session, opened, threads, fresh],
   );
   const wide = useWide(MEASURE + MARGIN + 64);
   const frame = useRef<HTMLDivElement>(null);
-  // A refused socket is a link that went: the page asks once, and shows the end if it is gone.
-  const onStatus = (status: DocumentStatus | null): void => {
-    if (status?.kind === "refused") void session.refresh().catch(() => onGone());
+  // Anything wrong with the socket may be a link that went: the page asks once, and shows the end if it is gone.
+  const [status, setStatus] = useState<DocumentStatus | null>(null);
+  const onStatus = (next: DocumentStatus | null): void => {
+    setStatus(next);
+    if (next) void session.refresh().catch((err: unknown) => err instanceof OpenFailed && err.why === "gone" && goneRef.current());
   };
   return (
     <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER }}>
       <EditorAdaptersProvider adapters={adapters}>
         <div ref={frame} className="relative mx-auto px-4 pt-6 pb-10 sm:px-8" style={{ maxWidth: MEASURE + (wide && threads ? MARGIN : 0) + 64 }}>
+          {status ? (
+            <div role="status" className="mb-3 flex h-8 items-center gap-2 border-b border-border text-[13px]" style={{ maxWidth: MEASURE }}>
+              <span className="min-w-0 truncate text-muted-foreground">{status.message}</span>
+              {status.retry ? (
+                <Button variant="ghost" size="xs" className="ms-auto" onClick={status.retry}>
+                  Try again
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <h1 className="mb-4 text-lg leading-[26px] font-semibold tracking-[-0.01em] text-balance" style={{ maxWidth: MEASURE }}>
             {opened.title}
           </h1>
@@ -79,7 +107,7 @@ function useWide(px: number): boolean {
  * words go to the service, which makes the thread and marks them.
  */
 function SelectionComment({ session, frame, onMade }: { session: Session; frame: React.RefObject<HTMLDivElement | null>; onMade(): void }) {
-  const [at, setAt] = useState<{ quote: string; x: number; y: number } | null>(null);
+  const [at, setAt] = useState<{ quote: string; x: number; y: number; bottom: number } | null>(null);
   const [writing, setWriting] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -95,7 +123,7 @@ function SelectionComment({ session, frame, onMade }: { session: Session; frame:
       if (!quote || quote.length > 2000) return setAt(null);
       const box = sel.getRangeAt(0).getBoundingClientRect();
       const host = frame.current!.getBoundingClientRect();
-      setAt({ quote, x: box.left - host.left, y: box.top - host.top });
+      setAt({ quote, x: box.left - host.left, y: box.top - host.top, bottom: box.bottom - host.top });
     };
     document.addEventListener("selectionchange", on);
     return () => document.removeEventListener("selectionchange", on);
@@ -126,7 +154,8 @@ function SelectionComment({ session, frame, onMade }: { session: Session; frame:
   return (
     <div
       className="absolute z-(--layer-popover) rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay"
-      style={{ left: Math.max(0, at.x), top: Math.max(0, at.y - (writing ? 8 : 40)), transform: writing ? "translateY(-100%)" : undefined, width: writing ? 320 : undefined }}
+      // The bar sits over the words; the field opens under them, so it never runs off the top.
+      style={{ left: Math.max(0, at.x), top: writing ? at.bottom + 8 : Math.max(0, at.y - 40), width: writing ? 320 : undefined }}
       onMouseDown={(e) => {
         // The selection stays while the bar is pressed.
         if (!writing) e.preventDefault();
