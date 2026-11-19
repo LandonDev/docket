@@ -241,8 +241,12 @@ public class RecordedCom : ICom {
     });
   }
 
+  // One object per open workbook, as COM hands .NET the same wrapper for the same object.
+  readonly Dictionary<XBook, Obj> bookObjs = new Dictionary<XBook, Obj>();
   Obj BookObj(XBook b) {
-    return new Obj("Workbook").Prop("FullName", () => b.Key).Prop("Name", () => b.Name).Fn("Activate", a => { started.Add(Office.Obj("activate", b.Key)); return null; })
+    Obj o;
+    if (bookObjs.TryGetValue(b, out o)) return o;
+    return bookObjs[b] = new Obj("Workbook").Prop("FullName", () => b.Key).Prop("Name", () => b.Name).Fn("Activate", a => { started.Add(Office.Obj("activate", b.Key)); return null; })
       .Prop("Worksheets", () => Collection<XSheet>("Sheets", () => b.Sheets, SheetObj, (x, n) => x.Name == n));
   }
 
@@ -463,6 +467,8 @@ public class RecordedCom : ICom {
     guard = s.ContainsKey("guard") && Convert.ToBoolean(s["guard"]);
     // The apps stay the same objects across seeds, as a running Office does, and so does an event handler given to Excel.
     busy = 0; failMember = null;
+    // Seeded books are opened afresh: new objects, with no handlers of the old ones.
+    bookObjs.Clear(); remote.Clear();
     books.Clear(); docs.Clear(); decks.Clear(); accounts.Clear(); mail.Clear(); events.Clear(); sent.Clear(); answers.Clear(); started.Clear(); calls.Clear();
     foreach (Dictionary<string, object> b in List(s, "books")) {
       var book = new XBook { Key = (string)b["key"], Name = Leaf((string)b["key"]) };
