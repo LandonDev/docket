@@ -806,6 +806,14 @@
   push) feed a thread's Results sheet; `createWorkspace` and `newWorkChat`
   back the band's + and Work Chats' compose. `workspace.create` relays on
   the link.
+- **House rules and guest links** (milestones 39 and 31's wire): the
+  `work.rules` and `work.guests` pushes are in `RemotePushSchema`;
+  `WorkHost.rules/addRule/editRule/removeRule/orderRules/decide` back
+  Work/HouseRulesScreen.swift (route `.houseRules`), `rulesRev[workspaceId]`
+  reads it again; `guestLinks/rekey/revoke` and `guestsRev` back Settings →
+  Work's Guest links (only the host serving LifeOS's documents answers).
+  The `EditOp` enum's `=`, `-`, `+` are `kept`, `removed`, `added` in Swift
+  (gen-swift-contract.ts `CASE_NAMES`).
 - **Away's end**: `WorkHost` sets `awayEnd` when it sees Away go off live,
   or at an open when the host's stretch ended after the last one reviewed
   on this phone (`work.away.reviewed.<env>` in defaults; a first open

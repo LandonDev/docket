@@ -2382,11 +2382,24 @@ phone does everything the desktop does. What milestone 46 built:
   groups, Can undo (each with Undo or the pillar's own words) and Can't
   undo; an undone row stays, struck through, with "Undone".
 - **Settings → Work**: a tool with no rule reads "Not set" until he picks.
+  On the host that serves LifeOS's documents, **Guest links**: who and
+  what, the role and when it ends ("open now" while the guest is on it),
+  each with New Address (shown once, with Copy) and Revoke; ended ones
+  muted.
+- **House rules**: a Work workspace's screen leads with a "House Rules"
+  row. The page lists what is proposed (the sentence, "From N edits"
+  opening the edits as one paragraph each, what he took out struck through
+  in red and what he put in underlined), with Add Rule… (the sentence in a
+  sheet to adjust), Not Now and Dismiss; then the rules in order, each one
+  line with its switch, reworded in a sheet, deleted by swipe, reordered
+  with Edit; + adds one.
 
 Not yet on the phone, and whose: the workspace screen's four view rows
 (Mail, Tasks, Agenda, Docs), LifeOS's project cards and the Routines
-header (milestone 47, with LifeKit); the house rules page (milestone 39 has
-not landed); guest links in Settings (milestone 31).
+header, opening a document or sheet in the hosted editor
+(`work.guests.ticket`) and making a guest link from its Share, the
+proposal line under a sent mail (`work.rules.forDraft`) and the voice
+switch (milestone 47, with LifeKit and the canvas).
 
 ## Visual system
 
