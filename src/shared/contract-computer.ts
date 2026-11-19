@@ -80,6 +80,8 @@ export const ComputerSettingsSchema = z.object({
   activeApp: z.enum(ACTIVE_APP_MODES),
   /** one picture of the window is kept after each computer call, on this Mac only (computer/history.ts) */
   keepPictures: z.boolean(),
+  /** this machine's windows may be watched, as live video, from his other devices (video/settings.ts); off unless he turns it on */
+  videoRemote: z.boolean(),
   apps: z.array(ComputerAppVerdictSchema)
 })
 export type ComputerSettings = z.infer<typeof ComputerSettingsSchema>
@@ -89,7 +91,9 @@ export const ComputerSettingsPatchSchema = z.object({
   sessionIdleMs: z.number().int().min(SCHEDULE.sessionIdleMsMin).max(SCHEDULE.sessionIdleMsMax).optional(),
   activeApp: z.enum(ACTIVE_APP_MODES).optional(),
   /** off stops new pictures and removes the kept ones; the steps stay */
-  keepPictures: z.boolean().optional()
+  keepPictures: z.boolean().optional(),
+  /** off also closes every stream of this machine's windows that another host is watching */
+  videoRemote: z.boolean().optional()
 })
 export type ComputerSettingsPatch = z.infer<typeof ComputerSettingsPatchSchema>
 

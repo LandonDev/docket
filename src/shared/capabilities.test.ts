@@ -65,10 +65,6 @@ describe('METHOD_CAPABILITY', () => {
         // An add-on sign-in opens a browser on this machine (contract-addonGrants.ts).
         'addons.grant.signIn',
         'addons.grant.cancel',
-        // The computer preview shows the person's windows: the Mac desktop's own socket only.
-        'computer.preview.start',
-        'computer.preview.ack',
-        'computer.preview.stop',
         'computer.proofHold',
         // The computer history is pictures of the person's windows and the reads off them: this desktop's alone.
         'computer.history.read',
@@ -84,7 +80,23 @@ describe('METHOD_CAPABILITY', () => {
   })
   it('approve covers exactly the prompt-skipping methods', () => {
     // macBridge.thread.set lets a box thread call the Mac without a box prompt (the Mac still asks for itself).
-    expect(withCap('approve')).toEqual(['away.set', 'macBridge.thread.set', 'review.override', 'session.approve', 'session.permission'])
+    // The live picture and live video are the person's own to watch: a key needs approve, and a second rule
+    // (video/access.ts `mayWatch`) says which caller on which host.
+    expect(withCap('approve')).toEqual(
+      [
+        'away.set',
+        'macBridge.thread.set',
+        'review.override',
+        'session.approve',
+        'session.permission',
+        'computer.preview.start',
+        'computer.preview.ack',
+        'computer.preview.stop',
+        'video.open',
+        'video.close',
+        'video.paste'
+      ].sort()
+    )
   })
   it('admin covers settings writes and remote management', () => {
     expect(withCap('admin')).toEqual(
@@ -237,7 +249,7 @@ describe('computer use (contract-computer.ts)', () => {
     expect(METHOD_CAPABILITY['computer.sessions']).toBe('read')
     expect(METHOD_CAPABILITY['computer.stop']).toBe('operate')
     for (const m of ['app.computer', 'app.computerCancel', 'app.computerTools'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
-    for (const m of ['computer.preview.start', 'computer.preview.ack', 'computer.preview.stop', 'computer.proofHold'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
+    expect(METHOD_CAPABILITY['computer.proofHold']).toBe('local')
     for (const m of ['computer.history.read', 'computer.history.step'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
     for (const m of ['computer.settings.get', 'computer.settings.set', 'computer.verdicts.forget', 'computer.permissions', 'computer.service.retry'] as const)
       expect(METHOD_CAPABILITY[m]).toBe('local')

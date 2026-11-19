@@ -9,6 +9,8 @@ import { NewClientSchema, NewPairingSchema, PairBodySchema } from '@shared/contr
 import type { Store } from '../db'
 import type { BuildFacts } from '@shared/deployDrift'
 import { RELAY_HOST_QUERY, type HostPresence } from '@shared/contract-relay'
+import { VIDEO_PATH } from '@shared/contract-video'
+import { refuseVideoUpgrade, type VideoSockets } from '../video/sockets'
 import { COOKIE_NAME, RemoteAuth, RemoteAuthError, SESSION_TTL_MS, type Verified } from './auth'
 import { pairingOrigin, readRemoteSettings, writeRemoteSettings } from './handlers'
 
@@ -65,6 +67,8 @@ export interface RemoteListenerOptions {
   attach: (ws: WebSocket, principal: Principal & { kind: 'remote' }, host?: string) => void
   /** Whether `host` is registered with the relay offer right now; a `?host=` upgrade for one that is not answers 503. */
   relayOnline?: (envId: string) => boolean
+  /** Live video's own sockets (video/sockets.ts): `/video/<stream>?ticket=…`, ahead of the `/ws` check. */
+  video?: Pick<VideoSockets, 'upgrade'>
   /** The relayed hosts with their presence, for `/api/hello` to a caller the host knows. */
   hosts?: () => HostPresence[]
   ui?: UiHandler
@@ -350,6 +354,15 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
   server.on('upgrade', (req, socket, head) => {
     const base = describeRequest(req, boundPort)
     void (async () => {
+      // A live video stream's own socket: its single-use stream ticket is the whole credential.
+      if (options.video && base.path.startsWith(VIDEO_PATH)) {
+        if (auth.retryAfter(base.ip) > 0) return refuseVideoUpgrade(socket, 429)
+        const refused = options.video.upgrade(req, socket, head, 'remote')
+        if (refused === null) return
+        if (refused === 401) auth.recordFailure(base.ip)
+        log(`video upgrade refused from ${base.ip}: ${refused}`)
+        return refuseVideoUpgrade(socket, refused)
+      }
       if (base.path !== '/ws') return refuseUpgrade(socket, 404, 'Not Found')
       if (auth.retryAfter(base.ip) > 0) return refuseUpgrade(socket, 429, 'Too Many Requests')
       let principal: (Principal & { kind: 'remote' }) | null = null

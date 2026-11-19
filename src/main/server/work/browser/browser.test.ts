@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { BrowserState } from '@shared/contract-work-browser'
+import { BROWSER_CAPS, type BrowserState, type BrowserVideo } from '@shared/contract-work-browser'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { CanvasItem } from '@shared/work'
 import { awayVerdict } from '@shared/away'
@@ -11,7 +11,7 @@ import { outbox as outboxModule } from '../outbox/index'
 import { approveKey, cast, makeRig, readKey, type Rig } from '../outbox/rig'
 import { ActStale } from '../outbox/kinds'
 import { loadWorkModules } from '../modules'
-import { browser, HANDED_BACK, NOT_A_PERSON, NOT_WORK, OWNER_DRIVES } from './index'
+import { browser, HANDED_BACK, NOT_A_PERSON, NOT_A_PERSON_SETS, NOT_WORK, OWNER_DRIVES } from './index'
 import { configureTeamsCarrier, postedPicturePath, TEAMS_UNAVAILABLE, type TeamsCarrier, type TeamsPost } from './teams'
 
 /**
@@ -148,6 +148,16 @@ describe('the live browser', () => {
     await drive('owner')
     browser.sessionsRemoved!(['t-work'], rig.work.ctx)
     expect(await state()).toMatchObject({ driver: 'agent', site: null, since: 0 })
+  })
+
+  it('the video setting is on until an admin turns it off, and is no model’s nor a lesser key’s to set', async () => {
+    expect(await rig.rpc<BrowserVideo>('work.browser.video', {})).toEqual({ on: true, tools: false })
+    expect(await rig.rpc<BrowserVideo>('work.browser.video', { on: false })).toEqual({ on: false, tools: false })
+    expect(await rig.rpc<BrowserVideo>('work.browser.video', {})).toEqual({ on: false, tools: false })
+    // the socket's gate holds a key to the method's row before the pillar is asked
+    expect(BROWSER_CAPS['work.browser.video']).toBe('admin')
+    await expect(browser.handle!({ id: '1', method: 'work.browser.video', params: { on: true } } as never, rig.work.ctx, { kind: 'model', sessionId: 't-work' } as never)).rejects.toThrow(NOT_A_PERSON_SETS)
+    expect(await rig.rpc<BrowserVideo>('work.browser.video', { on: true })).toEqual({ on: true, tools: false })
   })
 
   it('a read key reads who drives', async () => {

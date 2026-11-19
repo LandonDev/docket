@@ -1,6 +1,7 @@
 import type { ComputerAppVerdict, ComputerServiceState, ComputerSettings, ComputerSettingsPatch, ComputerSettingsPush } from '@shared/contract-computer'
 import { PermissionsSchema, type Permissions } from '@shared/computer/protocol'
 import { ACTIVE_APP_SETTING, SESSION_IDLE_SETTING, activeApp, sessionIdleMs } from '@shared/computer/scheduleRules'
+import { VIDEO_REMOTE_SETTING, videoRemoteOn } from '@shared/video/settings'
 import { execFileBudgeted, oneShotBudget, withBudget } from '../spawnBudget'
 import { computerBinaryPath } from './binary'
 import { KEEP_PICTURES_SETTING } from './history'
@@ -36,6 +37,8 @@ export interface ComputerSettingsRpcOptions {
   bin?: () => string
   /** the threads' journal (history.ts): the pictures switch going off removes the kept ones */
   history?: { dropPictures(): Promise<void> } | null
+  /** "Watch from my other devices" changed: off closes the streams other hosts are watching */
+  videoRemoteChanged?: (on: boolean) => void
 }
 
 export class ComputerSettingsRpc {
@@ -60,6 +63,8 @@ export class ComputerSettingsRpc {
       activeApp: activeApp(this.opts.store.getSetting(ACTIVE_APP_SETTING)),
       // on unless turned off
       keepPictures: this.opts.store.getSetting(KEEP_PICTURES_SETTING) !== '0',
+      // off unless turned on
+      videoRemote: videoRemoteOn(this.opts.store.getSetting(VIDEO_REMOTE_SETTING)),
       apps
     }
   }
@@ -78,6 +83,12 @@ export class ComputerSettingsRpc {
       // the journal reads the setting at every picture, so off holds from the next one; the kept ones go now
       this.opts.store.setSetting(KEEP_PICTURES_SETTING, patch.keepPictures ? '1' : '0')
       if (!patch.keepPictures) void this.opts.history?.dropPictures()
+      this.schedule()
+    }
+    if (patch.videoRemote !== undefined) {
+      // every publish reads the setting when it is asked; the streams already out end now
+      this.opts.store.setSetting(VIDEO_REMOTE_SETTING, patch.videoRemote ? '1' : '0')
+      this.opts.videoRemoteChanged?.(patch.videoRemote)
       this.schedule()
     }
     return this.get()

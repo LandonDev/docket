@@ -14,6 +14,7 @@ import {
   type RemoteSession,
   type WebhookEvent
 } from '@shared/contract-remote'
+import { mayWatch } from '@shared/video/access'
 import { checkWebhookUrl, loopbackWebhooksAllowed, type WebhookTarget } from './webhooks'
 import type { GuardOptions } from './addressGuard'
 
@@ -168,6 +169,20 @@ interface Ticket {
   expiresAt: number
 }
 
+/** What a stream ticket lets its socket do: watch, send his pointer and keys too, or publish a stream from another host. */
+export type StreamScope = 'watch' | 'drive' | 'publish'
+/** Who asked for a stream: a key, or the desktop's own socket (by the connection's id, since the local socket has no key). */
+export type StreamHolder = { keyId: string } | { local: string }
+/** What a stream ticket was minted for, given back when it is consumed. */
+export interface StreamClaim {
+  stream: string
+  scope: StreamScope
+  holder: StreamHolder
+}
+interface StreamTicket extends StreamClaim {
+  expiresAt: number
+}
+
 export interface Verified {
   principal: Principal & { kind: 'remote' }
   /** The browser session behind a cookie caller, with whether its cookie should be re-set. */
@@ -216,6 +231,7 @@ export class RemoteAuth {
   /** sha256(token) → key id, so a key pays scrypt once per process; dropped on revoke. */
   private readonly memo = new Map<string, string>()
   private readonly tickets = new Map<string, Ticket>()
+  private readonly streamTickets = new Map<string, StreamTicket>()
   private readonly failures = new Map<string, number[]>()
   private readonly revokeListeners = new Set<(keyId: string) => void>()
   /** last_used_at is written at most once a minute per key. */
@@ -322,6 +338,7 @@ export class RemoteAuth {
     this.db.prepare(`UPDATE remote_sessions SET revoked_at = ? WHERE key_id = ? AND revoked_at IS NULL`).run(now, id)
     for (const [digest, keyId] of this.memo) if (keyId === id) this.memo.delete(digest)
     for (const [digest, ticket] of this.tickets) if (ticket.keyId === id) this.tickets.delete(digest)
+    for (const [digest, ticket] of this.streamTickets) if ('keyId' in ticket.holder && ticket.holder.keyId === id) this.streamTickets.delete(digest)
     for (const listener of this.revokeListeners) listener(id)
     return true
   }
@@ -413,6 +430,7 @@ export class RemoteAuth {
     this.db.prepare(`DELETE FROM remote_pairings WHERE expires_at < ? OR consumed_at < ?`).run(now - 24 * 60 * 60_000, now - 24 * 60 * 60_000)
     this.db.prepare(`DELETE FROM remote_sessions WHERE expires_at < ? OR revoked_at < ?`).run(now, now - 24 * 60 * 60_000)
     for (const [digest, ticket] of this.tickets) if (ticket.expiresAt <= now) this.tickets.delete(digest)
+    for (const [digest, ticket] of this.streamTickets) if (ticket.expiresAt <= now) this.streamTickets.delete(digest)
     for (const [ip, times] of this.failures) {
       const live = times.filter((t) => t > now - FAILURE_WINDOW_MS)
       if (live.length === 0) this.failures.delete(ip)
@@ -584,6 +602,37 @@ export class RemoteAuth {
     if (!row || row.revoked_at) return null
     this.touchKey(row.id)
     return this.principalOf(row)
+  }
+
+  /**
+   * A 30-second single-use ticket for one live video socket (`/video/<stream>`):
+   * bound to that stream, to what its socket may do, and to who asked. The key
+   * never rides in a URL; this is all that does.
+   */
+  mintStreamTicket(claim: StreamClaim): { ticket: string; expiresIn: number } {
+    const ticket = randomBytes(32).toString('base64url')
+    this.streamTickets.set(sha256(ticket), { ...claim, expiresAt: this.now() + TICKET_TTL_MS })
+    return { ticket, expiresIn: TICKET_TTL_MS / 1000 }
+  }
+
+  /**
+   * What a stream ticket was minted for, consuming it whatever the answer: null
+   * for an unknown, spent or expired one, for another stream's, and for a key
+   * that was revoked, lost `approve` or is not a client's in the window.
+   */
+  consumeStreamTicket(ticket: string, stream: string): StreamClaim | null {
+    const digest = sha256(ticket)
+    const entry = this.streamTickets.get(digest)
+    this.streamTickets.delete(digest)
+    if (!entry || entry.expiresAt <= this.now() || entry.stream !== stream) return null
+    if ('keyId' in entry.holder) {
+      const row = this.keyRow(entry.holder.keyId)
+      if (!row || row.revoked_at) return null
+      // a publishing host's key is its admin link; a viewer's must still be one that may watch
+      if (entry.scope !== 'publish' && !mayWatch(this.principalOf(row), { desktop: false })) return null
+      this.touchKey(row.id)
+    }
+    return { stream: entry.stream, scope: entry.scope, holder: entry.holder }
   }
 
   // ── failure limiter ───────────────────────────────────────────────────

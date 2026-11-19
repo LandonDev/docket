@@ -169,6 +169,7 @@ const COMPUTER_SETTINGS: ComputerSettings = {
   sessionIdleMs: 120_000,
   activeApp: "brief",
   keepPictures: true,
+  videoRemote: false,
   apps: [
     { bundleId: "com.apple.TextEdit", name: "TextEdit", classes: { click: "process", type: "process" }, updatedAt: 1 },
     { bundleId: "com.google.Chrome", name: "Google Chrome", classes: { click: "session", scroll: "session", type: "session" }, updatedAt: 1 },

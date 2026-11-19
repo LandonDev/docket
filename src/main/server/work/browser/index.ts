@@ -1,10 +1,11 @@
 import { z } from 'zod'
 import { configureOwnerDrives } from '../../computer/run'
-import { PortalSourceSchema, type BrowserState } from '@shared/contract-work-browser'
+import { PortalSourceSchema, type BrowserState, type BrowserVideo } from '@shared/contract-work-browser'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
 import type { ActKindDef, ToolCtx, WorkCtx, WorkModule, WorkTool } from '../modules'
 import { boxBrowserTools, startBoxBrowser } from './box'
 import { DriveStore, ensureBrowserTables } from './drive'
+import { browserVideoSetting, setBrowserVideo, videoToolsAt } from './box/videoSetting'
 import { TEAMS_UNAVAILABLE, teamsCarrier, TeamsPostSchema, teamsPostKind } from './teams'
 
 /**
@@ -21,6 +22,7 @@ export const HANDED_BACK = 'He handed the browser back. Read the window again be
 export const OWNER_DRIVES = 'He is driving the browser now. Do not use computer use until he hands it back; end your turn and say where you will pick up.'
 
 export const NOT_WORK = 'refused: that is not a Work thread'
+export const NOT_A_PERSON_SETS = 'refused: only a person changes how the browser runs'
 
 /** Handing back wakes the thread that was driving (a subagent, say), else the pane's own; the wheel is his to give either way. */
 async function wake(ctx: WorkCtx, actor: string | null, pane: string): Promise<void> {
@@ -127,6 +129,12 @@ export const browser: WorkModule = {
         const state = send(ctx, store.drive(sessionId, driver))
         if (was.driver === 'owner' && state.driver === 'agent') await wake(ctx, store.actor(sessionId), sessionId)
         return handled(state)
+      }
+      case 'work.browser.video': {
+        if (by.kind === 'model') throw new Error(NOT_A_PERSON_SETS)
+        if (req.params.on !== undefined) setBrowserVideo(ctx.db, req.params.on)
+        const answer: BrowserVideo = { on: browserVideoSetting(ctx.db), tools: videoToolsAt(ctx.dataDir) !== null }
+        return handled(answer)
       }
       default:
         return NOT_HANDLED

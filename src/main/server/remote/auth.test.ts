@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { Capability } from '@shared/capabilities'
 import { openDb } from '../db'
 import {
   FAILURE_LIMIT,
@@ -214,6 +215,47 @@ describe('tickets', () => {
     auth.revokeKey(principal.keyId)
     expect(auth.consumeTicket(third)).toBeNull()
   }, 20_000)
+})
+
+describe('stream tickets', () => {
+  const watcher = async (caps: Capability[] = ['approve'], audience: 'client' | 'mcp' = 'client') =>
+    (await auth.verifyToken((await auth.createKey({ name: 'viewer', audience, caps, createdBy: 'local' })).token))!
+  it('are single use, live 30 seconds, and give back the stream, the scope and who asked', async () => {
+    const { keyId } = await watcher()
+    const { ticket, expiresIn } = auth.mintStreamTicket({ stream: 's1', scope: 'watch', holder: { keyId } })
+    expect(expiresIn).toBe(30)
+    expect(auth.consumeStreamTicket(ticket, 's1')).toEqual({ stream: 's1', scope: 'watch', holder: { keyId } })
+    expect(auth.consumeStreamTicket(ticket, 's1')).toBeNull()
+    const late = auth.mintStreamTicket({ stream: 's1', scope: 'drive', holder: { keyId } }).ticket
+    clock += TICKET_TTL_MS
+    expect(auth.consumeStreamTicket(late, 's1')).toBeNull()
+  }, 20_000)
+  it('open only their own stream, and are spent by a try at another', async () => {
+    const { keyId } = await watcher()
+    const { ticket } = auth.mintStreamTicket({ stream: 's1', scope: 'watch', holder: { keyId } })
+    expect(auth.consumeStreamTicket(ticket, 's2')).toBeNull()
+    expect(auth.consumeStreamTicket(ticket, 's1')).toBeNull()
+  }, 20_000)
+  it('die with their key, and are not a socket ticket nor the other way round', async () => {
+    const principal = await watcher()
+    const { ticket } = auth.mintStreamTicket({ stream: 's1', scope: 'watch', holder: { keyId: principal.keyId } })
+    expect(auth.consumeTicket(ticket)).toBeNull()
+    expect(auth.consumeStreamTicket(auth.mintTicket(principal).ticket, 's1')).toBeNull()
+    const doomed = auth.mintStreamTicket({ stream: 's1', scope: 'watch', holder: { keyId: principal.keyId } }).ticket
+    auth.revokeKey(principal.keyId)
+    expect(auth.consumeStreamTicket(doomed, 's1')).toBeNull()
+  }, 20_000)
+  it('are refused for a key that may not watch: an mcp key, or one without approve', async () => {
+    const bot = await watcher(['operate'], 'mcp')
+    expect(auth.consumeStreamTicket(auth.mintStreamTicket({ stream: 's1', scope: 'watch', holder: { keyId: bot.keyId } }).ticket, 's1')).toBeNull()
+    const reader = await watcher(['operate'])
+    expect(auth.consumeStreamTicket(auth.mintStreamTicket({ stream: 's1', scope: 'watch', holder: { keyId: reader.keyId } }).ticket, 's1')).toBeNull()
+  }, 20_000)
+  it("carry the desktop's own socket, which has no key", () => {
+    const { ticket } = auth.mintStreamTicket({ stream: 's9', scope: 'drive', holder: { local: 'c7' } })
+    expect(auth.consumeStreamTicket(ticket, 's9')).toEqual({ stream: 's9', scope: 'drive', holder: { local: 'c7' } })
+    expect(auth.consumeStreamTicket(ticket, 's9')).toBeNull()
+  })
 })
 
 describe('failure limiter', () => {

@@ -459,10 +459,15 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // Computer use (contract-computer.ts): the live sessions are anyone's to see; Stop is an act.
   'computer.sessions': 'read',
   'computer.stop': 'operate',
-  // The live preview shows the person's windows: the Mac desktop's own socket only, never a key.
-  'computer.preview.start': 'local',
-  'computer.preview.ack': 'local',
-  'computer.preview.stop': 'local',
+  // The live preview and live video (contract-video.ts `mayWatch`): `approve` on a client key reaches the
+  // box's browser, the picture and the video; a Mac's or a PC's own windows stay its desktop's, whatever the
+  // key (computer/preview.ts `previewRefusal`), and leave it as video only by `computer.video.remote`.
+  'computer.preview.start': 'approve',
+  'computer.preview.ack': 'approve',
+  'computer.preview.stop': 'approve',
+  'video.open': 'approve',
+  'video.close': 'approve',
+  'video.paste': 'approve',
   'computer.proofHold': 'local',
   // The thread's computer history: pictures of the person's windows and what was read off them, this desktop's alone.
   'computer.history.read': 'local',

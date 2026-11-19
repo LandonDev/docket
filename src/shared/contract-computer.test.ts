@@ -42,8 +42,8 @@ describe('Settings → Computer use wire', () => {
   it('carries an app with no name and only the classes it learned', () => {
     const app = { bundleId: 'com.apple.TextEdit', name: null, classes: { click: 'session' }, updatedAt: 1 }
     expect(ComputerAppVerdictSchema.parse(app)).toEqual(app)
-    expect(ComputerSettingsSchema.safeParse({ sessionIdleMs: 120_000, activeApp: 'brief', keepPictures: true, apps: [app] }).success).toBe(true)
-    expect(ComputerSettingsSchema.safeParse({ sessionIdleMs: 120_000, activeApp: 'ask', keepPictures: true, apps: [] }).success).toBe(false)
+    expect(ComputerSettingsSchema.safeParse({ sessionIdleMs: 120_000, activeApp: 'brief', keepPictures: true, videoRemote: false, apps: [app] }).success).toBe(true)
+    expect(ComputerSettingsSchema.safeParse({ sessionIdleMs: 120_000, activeApp: 'ask', keepPictures: true, videoRemote: false, apps: [] }).success).toBe(false)
     // the pictures switch is part of what the page reads
     expect(ComputerSettingsSchema.safeParse({ sessionIdleMs: 120_000, activeApp: 'brief', apps: [] }).success).toBe(false)
     expect(ComputerAppVerdictSchema.safeParse({ ...app, classes: { click: 'screen' } }).success).toBe(false)
@@ -53,6 +53,8 @@ describe('Settings → Computer use wire', () => {
     expect(req('computer.settings.set', { keepPictures: false }).success).toBe(true)
     expect(req('computer.settings.set', { keepPictures: true, sessionIdleMs: 120_000 }).success).toBe(true)
     expect(req('computer.settings.set', { keepPictures: 'off' }).success).toBe(false)
+    expect(req('computer.settings.set', { videoRemote: true }).success).toBe(true)
+    expect(req('computer.settings.set', { videoRemote: 'on' }).success).toBe(false)
   })
 })
 

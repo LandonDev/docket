@@ -6,6 +6,7 @@ import type { ComputerServiceState, ComputerSettingsPush } from '@shared/contrac
 import { ACTIVE_APP_SETTING, SCHEDULE, SESSION_IDLE_SETTING, sessionIdleMs } from '@shared/computer/scheduleRules'
 import { tierVerdictSetting } from '@shared/computer/tools'
 import { KEEP_PICTURES_SETTING } from './history'
+import { VIDEO_REMOTE_SETTING } from '@shared/video/settings'
 import { ComputerSettingsRpc, SETTINGS_PUSH_MS, type ComputerSettingsHost } from './settingsRpc'
 import { TierVerdicts } from './verdicts'
 
@@ -34,6 +35,7 @@ function make(
     unavailable?: string | null
     host?: boolean
     history?: { dropPictures(): Promise<void> } | null
+    videoRemoteChanged?: (on: boolean) => void
   } = {}
 ) {
   const store = memoryStore()
@@ -53,7 +55,8 @@ function make(
     store,
     unavailable: () => over.unavailable ?? null,
     ...(over.bin ? { bin: () => over.bin! } : {}),
-    ...(over.history !== undefined ? { history: over.history } : {})
+    ...(over.history !== undefined ? { history: over.history } : {}),
+    ...(over.videoRemoteChanged ? { videoRemoteChanged: over.videoRemoteChanged } : {})
   })
   const pushes: ComputerSettingsPush[] = []
   rpc.onPush((p) => pushes.push(p))
@@ -68,7 +71,7 @@ afterEach(() => {
 
 describe('ComputerSettingsRpc', () => {
   it('answers the default threshold and no apps on a fresh host', () => {
-    expect(make().rpc.get()).toEqual({ sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', keepPictures: true, apps: [] })
+    expect(make().rpc.get()).toEqual({ sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', keepPictures: true, videoRemote: false, apps: [] })
   })
 
   it('answers the threshold and every learned app with its name', () => {
@@ -95,6 +98,26 @@ describe('ComputerSettingsRpc', () => {
     expect(rpc.set({ activeApp: 'away' })).toMatchObject({ activeApp: 'away', sessionIdleMs: 600_000 })
     expect(store.getSetting(ACTIVE_APP_SETTING)).toBe('away')
     expect(rpc.set({ activeApp: 'brief' }).activeApp).toBe('brief')
+  })
+
+  it('"Watch from my other devices" is off until he turns it on, writes its setting, and tells the host each way', () => {
+    const told: boolean[] = []
+    const m = make({ videoRemoteChanged: (on) => told.push(on) })
+    vi.useFakeTimers()
+    expect(m.rpc.get().videoRemote).toBe(false)
+    expect(m.store.rows.get(VIDEO_REMOTE_SETTING)).toBeUndefined()
+    expect(m.rpc.set({ videoRemote: true }).videoRemote).toBe(true)
+    expect(m.store.rows.get(VIDEO_REMOTE_SETTING)).toBe('1')
+    vi.advanceTimersByTime(SETTINGS_PUSH_MS)
+    expect(m.pushes.at(-1)?.settings.videoRemote).toBe(true)
+    // off: the host hears it, so the streams already out can end
+    expect(m.rpc.set({ videoRemote: false }).videoRemote).toBe(false)
+    expect(m.store.rows.get(VIDEO_REMOTE_SETTING)).toBe('0')
+    expect(told).toEqual([true, false])
+    // another field leaves it alone
+    m.rpc.set({ videoRemote: true })
+    expect(m.rpc.set({ sessionIdleMs: 60_000 }).videoRemote).toBe(true)
+    expect(told).toEqual([true, false, true])
   })
 
   it('the pictures switch defaults on, reads and writes its setting, and going off removes the kept ones', async () => {
@@ -134,7 +157,7 @@ describe('ComputerSettingsRpc', () => {
     expect(pushes).toHaveLength(0)
     vi.advanceTimersByTime(SETTINGS_PUSH_MS)
     expect(pushes).toHaveLength(1)
-    expect(pushes[0]).toEqual({ push: 'computer-settings', settings: { sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', keepPictures: true, apps: [] } })
+    expect(pushes[0]).toEqual({ push: 'computer-settings', settings: { sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', keepPictures: true, videoRemote: false, apps: [] } })
   })
 
   it('coalesces changes to one push a second', () => {

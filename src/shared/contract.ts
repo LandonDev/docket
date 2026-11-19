@@ -28,6 +28,7 @@ import { AddonAddArgsSchema, AddonCallArgsSchema, AddonFindArgsSchema, AddonRemo
 import { SkillRemoveArgsSchema, SkillRequestSchemas, SkillWriteArgsSchema } from './contract-skills'
 import { AddonGrantRequestSchemas } from './contract-addonGrants'
 import { ComputerRequestSchemas } from './contract-computer'
+import { VideoRequestSchemas } from './contract-video'
 import { WorkRequestSchemas } from './contract-work'
 import { ContextChipSchema } from './work/canvas'
 import { SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
@@ -187,6 +188,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...SkillRequestSchemas,
   // Computer use (contract-computer.ts): the service's state, the live sessions, Stop, and the bridge's four tools.
   ...ComputerRequestSchemas,
+  // Live video (contract-video.ts): a stream's id and ticket; its frames ride a socket of their own.
+  ...VideoRequestSchemas,
   // Work (contract-work.ts): the switch, the bridge's two tool methods, and one contract file per pillar.
   ...WorkRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.

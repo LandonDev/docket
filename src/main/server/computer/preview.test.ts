@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { LOCAL_PRINCIPAL, type Capability, type Principal } from '@shared/capabilities'
 import type { ComputerNotification } from '@shared/computer/protocol'
-import { ComputerPreviews, handleComputerPreview } from './preview'
+import { ComputerPreviews, handleComputerPreview, previewRefusal } from './preview'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { ManualClock } from './testFake'
 
@@ -14,6 +15,9 @@ type Push = {
   width: number
   at: number[]
 }
+/** This desktop's own socket, on a host whose previews are of the person's windows. */
+const DESK = { principal: LOCAL_PRINCIPAL, desktop: true, box: false }
+const key = (caps: Capability[], audience: 'client' | 'mcp' = 'client'): Principal => ({ kind: 'remote', keyId: 'k1', name: 'Phone', audience, caps })
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const close of cleanups.splice(0).reverse()) await close()
@@ -294,7 +298,8 @@ describe('ComputerPreviews over tc-computer', () => {
     const started = await handleComputerPreview(
       { id: 'p', method: 'computer.preview.start', params: { threadId: 't1', maxEdge: 512 } },
       previews,
-      va
+      va,
+      DESK
     )
     const preview = (started.result as { preview: string }).preview
     await vi.waitFor(() => expect(a.some((f) => f.push === 'computer-frame')).toBe(true))
@@ -303,14 +308,16 @@ describe('ComputerPreviews over tc-computer', () => {
       await handleComputerPreview(
         { id: 'a', method: 'computer.preview.ack', params: { preview, seq } },
         previews,
-        va
+        va,
+        DESK
       )
     ).toEqual({ handled: true, result: null })
     expect(
       await handleComputerPreview(
         { id: 's', method: 'computer.preview.stop', params: { preview } },
         previews,
-        va
+        va,
+        DESK
       )
     ).toEqual({ handled: true, result: null })
     await expect(previews.start(va, { threadId: 't1', maxEdge: 100 })).rejects.toThrow(
@@ -348,14 +355,41 @@ describe('ComputerPreviews over tc-computer', () => {
       method: 'computer.preview.start',
       params: { threadId: 'missing', maxEdge: 512 }
     } as const
-    await expect(handleComputerPreview(req, null, va)).rejects.toThrow('not available here')
-    await expect(handleComputerPreview(req, previews, va)).rejects.toThrow('No computer window')
+    await expect(handleComputerPreview(req, null, va, DESK)).rejects.toThrow('not available here')
+    await expect(handleComputerPreview(req, previews, va, DESK)).rejects.toThrow('No computer window')
     expect(
       await handleComputerPreview(
         { id: 'x', method: 'computer.sessions', params: {} },
         previews,
-        va
+        va,
+        DESK
       )
     ).toEqual({ handled: false })
+  })
+  it("never gives a person's own windows to a key, whatever the key holds", async () => {
+    const { previews, va } = await setup()
+    const req = { id: 'p', method: 'computer.preview.start', params: { threadId: 't1', maxEdge: 512 } } as const
+    for (const caps of [['read'], ['approve', 'read'], ['admin', 'read']] as const) {
+      const access = { principal: key([...caps]), desktop: true, box: false }
+      expect(previewRefusal(access, req.method)).toBe('forbidden: computer.preview.start is local-only')
+      await expect(handleComputerPreview(req, previews, va, access)).rejects.toThrow('local-only')
+    }
+    expect(previewRefusal(DESK, req.method)).toBeNull()
+    await previews.close()
+  })
+  it("gives the box's browser to a client key with approve, and to no other caller", async () => {
+    const { previews, va, a } = await setup()
+    const req = { id: 'p', method: 'computer.preview.start', params: { threadId: 't1', maxEdge: 512 } } as const
+    const box = (principal: Principal) => ({ principal, desktop: false, box: true })
+    // the refusal comes before anything is asked of the service
+    await expect(handleComputerPreview(req, previews, va, box(key(['read'])))).rejects.toThrow('needs approve')
+    await expect(handleComputerPreview(req, previews, va, box(key(['operate', 'read'])))).rejects.toThrow('needs approve')
+    await expect(handleComputerPreview(req, previews, va, box(key(['approve', 'read'], 'mcp')))).rejects.toThrow('needs approve')
+    await expect(handleComputerPreview(req, previews, va, box(LOCAL_PRINCIPAL))).rejects.toThrow("not served on this host's own socket")
+    expect(a).toEqual([])
+    const started = await handleComputerPreview(req, previews, va, box(key(['approve', 'read'])))
+    expect(started).toMatchObject({ handled: true, result: { app: 'TextEdit' } })
+    await vi.waitFor(() => expect(a.some((f) => f.push === 'computer-frame')).toBe(true))
+    await previews.close()
   })
 })

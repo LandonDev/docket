@@ -38,11 +38,23 @@ export const BrowserRequestSchemas = [
   /** → BrowserState: a thread that never opened its browser reads as the agent driving, with nothing else */
   request('work.browser.state', z.object({ sessionId: z.string() })),
   /** → BrowserState: take over (`owner`) or hand back (`agent`). A person's alone; handing back wakes the thread. */
-  request('work.browser.drive', z.object({ sessionId: z.string(), driver: z.enum(BROWSER_DRIVERS) }))
+  request('work.browser.drive', z.object({ sessionId: z.string(), driver: z.enum(BROWSER_DRIVERS) })),
+  /**
+   * → BrowserVideo: whether the box's browser runs headed for live video (video/settings.ts
+   * `work.browser.video`), set with `on`. It holds from the browser's next start.
+   */
+  request('work.browser.video', z.object({ on: z.boolean().optional() }))
 ] as const
+/** `tools`: the engine and its display are installed on this host; without them the browser stays headless whatever `on` says. */
+export interface BrowserVideo {
+  on: boolean
+  tools: boolean
+}
 export type BrowserPush = { push: 'work.browser'; state: BrowserState }
 export const BROWSER_CAPS = {
   'work.browser.state': 'read',
-  'work.browser.drive': 'operate'
+  'work.browser.drive': 'operate',
+  // reads and sets a host setting: an admin's
+  'work.browser.video': 'admin'
 } satisfies CapsOf<typeof BrowserRequestSchemas>
 export const BROWSER_RELAY = {} satisfies RelayOf<typeof BrowserRequestSchemas>

@@ -85,6 +85,10 @@ import type { AppRef } from '@shared/computer/protocol'
 import { computerUnavailable } from './computer/binary'
 import { computerHooks, type ComputerHost } from './computer/mcp'
 import { ComputerPreviews, handleComputerPreview } from './computer/preview'
+import { VideoRelay } from './video/relay'
+import { VideoRpc, handleVideo } from './video/rpc'
+import { VideoSockets, refuseVideoUpgrade } from './video/sockets'
+import { VIDEO_PATH } from '@shared/contract-video'
 import { SessionHolds, computerBannerHooks, handleComputerProofHold } from './computer/hold'
 import { ComputerRpc } from './computer/rpc'
 import { ComputerSettingsRpc } from './computer/settingsRpc'
@@ -376,6 +380,8 @@ export interface RunningServer {
   remoteAuth: RemoteAuth
   /** The fixed port's listener, or null while remote access is off. */
   readonly remote: RemoteListener | null
+  /** Live video (video/): the relay that joins a viewer to a feed, and where a source is added. */
+  video: { relay: VideoRelay; rpc: VideoRpc }
   registry: SessionRegistry
   store: Store
   gateway: Gateway
@@ -454,6 +460,8 @@ export async function startServer(
     claimShim?: boolean
     /** The fixed port's override (tests: 0 for an ephemeral port). Absent: TEMP_CODE_REMOTE_PORT, else the settings. */
     remotePort?: number
+    /** This host has a desktop of its own (video/access.ts `mayWatch`). Absent: it has one unless it runs headless. A test says which. */
+    desktop?: boolean
     /** The tempcode-asset:// handler, so `/asset/*` on the fixed port can mirror logos, media and agent pages. */
     assets?: (request: Request) => Promise<Response>
     /** Read master's release.json from GitHub on the updater's cadence (deployDrift.ts): the Mac, never a headless host or a test. */
@@ -1453,6 +1461,8 @@ export async function startServer(
   computerHooks.current = computer
   // (the box's browser sets its own once it is wired, below)
   let previews = computer ? new ComputerPreviews(computer) : null
+  /** The previews are of the box's browser, not of a person's windows: a key that may watch gets them (computer/preview.ts `previewRefusal`). */
+  let boxPreviews = false
   const holds = computer ? new SessionHolds({ ...computer, banner: () => computerBannerHooks.current }) : null
   // Wire slot.onHolder(holds.holder) here once the tier scheduler lands.
   // Computer use through the Mac bridge, the box side (computer/bridge.ts): where it cannot run here, a
@@ -1489,7 +1499,10 @@ export async function startServer(
         const box = m.wireBoxBrowser({ registry, store, dataDir: options.dataDir ?? dirname(dbPath) })
         // Watch and Take over draw a box thread's page: its preview relay and its rows, on this host that has no computer use of its own.
         if (!box) return
-        previews ??= new ComputerPreviews({ service: box.service, sessions: box.sessions })
+        if (!previews) {
+          previews = new ComputerPreviews({ service: box.service, sessions: box.sessions })
+          boxPreviews = true
+        }
         computerRpc.setBox(box.sessions)
       },
       (err) => console.log(`[box browser] did not load: ${String(err)}`)
@@ -1881,6 +1894,13 @@ export async function startServer(
 
   const builder = new BuildRunner()
   const remoteAuth = new RemoteAuth(db)
+  // Live video (video/): one relay for this host's streams, their own sockets on both servers, and the
+  // sources each part of the host adds (the box's browser, tc-computer's windows, another host's publish).
+  const hasDesktop = (): boolean => options.desktop ?? !isHeadless()
+  const videoRelay = new VideoRelay()
+  const videoSockets = new VideoSockets(videoRelay, remoteAuth)
+  const videoRpc = new VideoRpc(videoRelay, remoteAuth, hasDesktop)
+  remoteAuth.onRevoke((keyId) => videoRelay.revoke(keyId))
   // The fixed port behind the tunnel (remote/listener.ts). An env override
   // beats the settings so a dev instance never fights the installed app
   // for 7677; '0' turns it off.
@@ -1913,6 +1933,7 @@ export async function startServer(
         // `host` makes the socket a relayed lane to that host (remote/relay.ts).
         attach: (ws, principal, host) => (host ? hostRelay.attachRelayed(ws, principal, host) : attach(ws, principal)),
         relayOnline: (id) => hostRelay.online(id),
+        video: videoSockets,
         hosts: () => hostRelay.hosts(),
         mcp: createMcpHandler({
           auth: remoteAuth,
@@ -2317,8 +2338,15 @@ export async function startServer(
         if (batched.handled) return sendFrame({ id: req.id, ok: true, result: batched.result })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
-        const preview = await handleComputerPreview(req, previews, { connection: previewConnection, send: sendFrame })
+        const preview = await handleComputerPreview(
+          req,
+          previews,
+          { connection: previewConnection, send: sendFrame },
+          { principal, desktop: hasDesktop(), box: boxPreviews }
+        )
         if (preview.handled) return sendFrame({ id: req.id, ok: true, result: preview.result })
+        const video = await handleVideo(req, videoRpc, { principal, connection: previewConnection, connectionId: String(connection) })
+        if (video.handled) return sendFrame({ id: req.id, ok: true, result: video.result })
         const computerSteps = await handleComputerHistory(req, computerHistoryRpc, { connection: previewConnection, send: sendFrame })
         if (computerSteps.handled) return sendFrame({ id: req.id, ok: true, result: computerSteps.result })
         const proofHold = handleComputerProofHold(req, holds)
@@ -3644,6 +3672,7 @@ export async function startServer(
       peerCalls.drop(connection)
       hostDevices.dropConnection(connection)
       previews?.dropConnection(previewConnection)
+      videoRelay.dropConnection(previewConnection)
       computerHistoryRpc?.dropConnection(previewConnection)
       for (const off of unsubs.values()) off()
       unsubs.clear()
@@ -3657,6 +3686,12 @@ export async function startServer(
     // the hot path. Same localhost-only single-user trust as everything
     // else; the serverId is validated against the pool.
     const url = req.url ?? ''
+    // A live video stream's own socket (video/sockets.ts): a ticket this desktop's own socket asked for.
+    if (url.startsWith(VIDEO_PATH)) {
+      const refused = videoSockets.upgrade(req, socket, head, 'local')
+      if (refused !== null) refuseVideoUpgrade(socket, refused)
+      return
+    }
     if (url.startsWith('/lsp/') || url.startsWith('/dap/')) {
       wssLocal.handleUpgrade(req, socket, head, (ws) => {
         if (url.startsWith('/lsp/')) attachLspSocket(url.slice('/lsp/'.length), ws)
@@ -3796,6 +3831,7 @@ export async function startServer(
     attach,
     isInteractive: (sessionId) => focus.isInteractive(sessionId),
     remoteAuth,
+    video: { relay: videoRelay, rpc: videoRpc },
     get remote() {
       return remote
     },
@@ -3868,6 +3904,8 @@ export async function startServer(
       computerBridge?.close()
       holds?.close()
       void previews?.close()
+      videoRelay.shutdown()
+      videoSockets.close()
       scheduler?.dispose()
       if (scheduler) setSessionTierGate(null)
       void computer?.service.close()

@@ -1,3 +1,4 @@
+import type { Principal } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import {
   PREVIEW_MIN_EDGE,
@@ -9,6 +10,7 @@ import {
   type ComputerPreviewEndReason
 } from '@shared/contract-computer'
 import type { ComputerNotification } from '@shared/computer/protocol'
+import { mayWatch } from '@shared/video/access'
 import { ComputerRpcError } from './connection'
 import { PreviewGate } from './previewGate'
 import type { Clock, ComputerService } from './service'
@@ -307,12 +309,37 @@ export class ComputerPreviews {
   }
 }
 
+/** Who asks for a preview, and what this host's previews are of. */
+export interface PreviewAccess {
+  principal: Principal
+  /** this host has a desktop of its own (it is not headless) */
+  desktop: boolean
+  /** the previews are of the box's browser (work/browser/box), not of a person's windows */
+  box: boolean
+}
+
+/**
+ * Why a caller may not have the JPEG preview, or null. A person's own windows
+ * (a Mac's, a PC's) go to that desktop's socket alone, whatever the key. The
+ * box's browser goes to whoever `mayWatch` allows: a client key with approve,
+ * never the box's own local socket.
+ */
+export function previewRefusal(access: PreviewAccess, method: string): string | null {
+  const { principal } = access
+  if (principal.kind !== 'local' && !access.box) return `forbidden: ${method} is local-only`
+  if (mayWatch(principal, access)) return null
+  return principal.kind === 'local' ? `forbidden: ${method} is not served on this host's own socket` : `forbidden: ${method} needs approve`
+}
+
 export async function handleComputerPreview(
   req: ClientRequest,
   previews: ComputerPreviews | null,
-  viewer: Viewer
+  viewer: Viewer,
+  access: PreviewAccess
 ): Promise<{ handled: boolean; result?: unknown }> {
   if (!req.method.startsWith('computer.preview.')) return { handled: false }
+  const refusal = previewRefusal(access, req.method)
+  if (refusal) throw new Error(refusal)
   if (!previews) throw new Error('Computer use is not available here')
   switch (req.method) {
     case 'computer.preview.start':
