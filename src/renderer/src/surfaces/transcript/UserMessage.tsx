@@ -229,7 +229,7 @@ const NO_CHIPS = { chips: [] as const };
 
 /**
  * The chips a message went with, read back from its lines by the
- * work-canvas chunk (work/canvas/sentChips.ts), which draws and opens them
+ * work-canvas chunk (work/canvas/sentChipsOf.ts), which draws and opens them
  * (SentChips.tsx). Only a message that may hold chip lines asks for the
  * chunk; until it lands the words show as they went.
  */

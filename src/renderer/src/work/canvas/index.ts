@@ -9,7 +9,7 @@ export { ComposerChips } from "./ComposerChips";
 export { SentChips } from "./SentChips";
 export { addContextChip } from "./chips";
 export { askWorkMentions, pickWorkMention, rowsStillMatching } from "./mentions";
-export { sentChipsOf } from "./sentChips";
+export { sentChipsOf } from "./sentChipsOf";
 export { CANVAS, kindFor } from "./registry";
 export { onOpenHeld } from "./held";
 export { openItem } from "./store";

@@ -1,5 +1,5 @@
 import { CHIP_NOUN, type ChipKind } from "@shared/work";
-import type { SentChip } from "./sentChips";
+import type { SentChip } from "./sentChipsOf";
 import { sessionStore } from "../../lib/tcserver/store";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { openWorkView } from "../../lib/workSwitch";

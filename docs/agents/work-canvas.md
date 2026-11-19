@@ -278,7 +278,7 @@ until the composer sends:
   Settings → Keybindings lists it in the Work group while Work is on.
 
 The sent bubble draws the chips back from their lines (`sentChipsOf`,
-work/canvas/sentChips.ts, which takes a line only when its brackets hold a
+work/canvas/sentChipsOf.ts, which takes a line only when its brackets hold a
 reference `refWords` writes; `SentChips`, work/canvas/SentChips.tsx) over his words,
 the lines and their quoted words gone from the text and Copy still copying
 the message whole. Only a message that may hold chip lines (it opens with

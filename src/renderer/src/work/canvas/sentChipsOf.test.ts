@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sentChipsOf } from "./sentChips";
+import { sentChipsOf } from "./sentChipsOf";
 
 describe("a sent message's chips", () => {
   it("are the leading chip lines, their quoted lines left out, and his words follow", () => {
