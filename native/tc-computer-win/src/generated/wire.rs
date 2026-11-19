@@ -2379,6 +2379,54 @@ pub mod methods {
     pub type ClipboardStateResult = super::ClipboardActivity;
     pub type EscapeWatchParams = super::EscapeWatchParams;
     pub type EscapeWatchResult = super::Empty;
+    /// Decodes a method's params and encodes them again: the fixture tests' round trip.
+    pub fn roundtrip_params(method: &str, v: serde_json::Value) -> Result<serde_json::Value, String> {
+        match method {
+            "initialize" => serde_json::from_value::<InitializeParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "shutdown" => serde_json::from_value::<ShutdownParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "permissions.get" => serde_json::from_value::<PermissionsGetParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "permissions.request" => serde_json::from_value::<PermissionsRequestParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "apps.list" => serde_json::from_value::<AppsListParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "apps.launch" => serde_json::from_value::<AppsLaunchParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "session.open" => serde_json::from_value::<SessionOpenParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "session.close" => serde_json::from_value::<SessionCloseParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "state.get" => serde_json::from_value::<StateGetParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "action.run" => serde_json::from_value::<ActionRunParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "action.batch" => serde_json::from_value::<ActionBatchParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.screenshot" => serde_json::from_value::<CaptureScreenshotParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.stream.start" => serde_json::from_value::<CaptureStreamStartParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.stream.stop" => serde_json::from_value::<CaptureStreamStopParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "input.probe" => serde_json::from_value::<InputProbeParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "input.restoreSession" => serde_json::from_value::<InputRestoreSessionParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "clipboard.state" => serde_json::from_value::<ClipboardStateParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "escape.watch" => serde_json::from_value::<EscapeWatchParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            _ => Err(format!("no method {method}")),
+        }
+    }
+    /// Decodes a method's result and encodes them again: the fixture tests' round trip.
+    pub fn roundtrip_result(method: &str, v: serde_json::Value) -> Result<serde_json::Value, String> {
+        match method {
+            "initialize" => serde_json::from_value::<InitializeResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "shutdown" => serde_json::from_value::<ShutdownResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "permissions.get" => serde_json::from_value::<PermissionsGetResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "permissions.request" => serde_json::from_value::<PermissionsRequestResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "apps.list" => serde_json::from_value::<AppsListResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "apps.launch" => serde_json::from_value::<AppsLaunchResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "session.open" => serde_json::from_value::<SessionOpenResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "session.close" => serde_json::from_value::<SessionCloseResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "state.get" => serde_json::from_value::<StateGetResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "action.run" => serde_json::from_value::<ActionRunResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "action.batch" => serde_json::from_value::<ActionBatchResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.screenshot" => serde_json::from_value::<CaptureScreenshotResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.stream.start" => serde_json::from_value::<CaptureStreamStartResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.stream.stop" => serde_json::from_value::<CaptureStreamStopResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "input.probe" => serde_json::from_value::<InputProbeResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "input.restoreSession" => serde_json::from_value::<InputRestoreSessionResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "clipboard.state" => serde_json::from_value::<ClipboardStateResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "escape.watch" => serde_json::from_value::<EscapeWatchResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            _ => Err(format!("no method {method}")),
+        }
+    }
     /// The wire names, in COMPUTER_METHODS' order.
     pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "input.probe", "input.restoreSession", "clipboard.state", "escape.watch"];
 }

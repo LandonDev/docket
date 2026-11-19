@@ -229,6 +229,20 @@ export function emitWire(): string {
   const sup = (t: string): string => (/^[A-Z]\w*$/.test(t) ? `super::${t}` : t)
   for (const [base, params, result] of methodTypes)
     methodLines.push(`    pub type ${base}Params = ${sup(params)};`, `    pub type ${base}Result = ${sup(result)};`)
+  for (const side of ['params', 'result'] as const) {
+    methodLines.push(
+      `    /// Decodes a method's ${side} and encodes them again: the fixture tests' round trip.`,
+      `    pub fn roundtrip_${side}(method: &str, v: serde_json::Value) -> Result<serde_json::Value, String> {`,
+      '        match method {',
+      ...methodTypes.map(
+        ([base], i) =>
+          `            ${JSON.stringify(methods[i].method)} => serde_json::from_value::<${base}${side === 'params' ? 'Params' : 'Result'}>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),`
+      ),
+      '            _ => Err(format!("no method {method}")),',
+      '        }',
+      '    }'
+    )
+  }
   methodLines.push(`    /// The wire names, in COMPUTER_METHODS' order.`, `    pub const NAMES: &[&str] = &[${methods.map((m) => JSON.stringify(m.method)).join(', ')}];`, '}')
   return [
     ...HEADER,
