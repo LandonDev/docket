@@ -42,7 +42,7 @@ export function Notes({
             data-note={n.id}
             aria-current={on || undefined}
             onClick={() => onPick(n)}
-            className={`grid w-full min-w-0 items-start gap-x-2 rounded-md px-2 py-1.5 text-start text-[13px] leading-5 text-foreground outline-none transition-[background-color] duration-(--dur-hover) ease-(--ease-out) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none ${
+            className={`grid w-full min-w-0 items-start gap-x-2 rounded-md px-2 py-1.5 text-start text-[13px] leading-5 text-foreground transition-[background-color] duration-(--dur-hover) ease-(--ease-out) motion-reduce:transition-none ${
               timed ? "grid-cols-[36px_20px_minmax(0,1fr)]" : "grid-cols-[20px_minmax(0,1fr)]"
             } ${waiting ? `bg-(--add-bg) ${on ? "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--success)_50%,transparent)]" : ""}` : on ? "bg-muted" : "hover:bg-foreground/5"}`}
           >

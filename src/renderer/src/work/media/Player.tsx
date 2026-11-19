@@ -228,7 +228,7 @@ export function Player({
     <div
       data-media-player
       tabIndex={0}
-      className="min-w-0 px-3 pt-3 outline-none"
+      className="focus-ring min-w-0 px-3 pt-3"
       onKeyDown={(e) => {
         if (!table || e.metaKey || e.ctrlKey || e.altKey) return;
         // A focused control keeps its own keys: Space presses the button, the arrows move in a menu.

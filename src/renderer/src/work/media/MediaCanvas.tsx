@@ -190,7 +190,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
           />
         </div>
         {notes.length ? (
-          <div className="max-h-[40%] shrink-0 overflow-y-auto">
+          <div className="max-h-[40%] shrink-0 overflow-x-hidden overflow-y-auto">
             <Notes notes={notes} table={null} current={current} playing={null} onPick={pick} />
           </div>
         ) : null}
@@ -201,7 +201,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
 
   const versions = other ? [...[other, shown].sort((a, b) => a.n - b.n)] : [shown];
   return (
-    <div data-media-body className="size-full min-h-0 overflow-y-auto">
+    <div data-media-body className="size-full min-h-0 overflow-x-hidden overflow-y-auto">
       <Player
         ref={player}
         versions={versions}

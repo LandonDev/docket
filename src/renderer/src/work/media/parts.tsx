@@ -1,7 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { MediaNote, MediaRegion, MediaShape } from "@shared/contract-work-media";
 import { LazyPopover } from "../../chrome/menuRows";
-import { MessageMultiple } from "../../chrome/icons";
+import { TypeGlyph } from "../../surfaces/threads/TypeGlyph";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
 
@@ -25,8 +25,8 @@ export function Author({ note }: { note: Pick<MediaNote, "by" | "external"> }) {
   const who = authorOf(note);
   if (who.agent)
     return (
-      <span aria-label="Agent" className="grid size-5 place-items-center rounded-full bg-muted text-type-chat">
-        <MessageMultiple className="size-3" />
+      <span aria-label="Agent" className="grid size-5 place-items-center rounded-full bg-muted">
+        <TypeGlyph type="chat" className="size-3" />
       </span>
     );
   return (
