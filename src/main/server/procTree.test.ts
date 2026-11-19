@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
-import { adoptTree, JobHost, killTree, parseNetstat, parseWinProcessTable, taskkillTreeArgs, treeSpawnOptions } from './procTree'
+import { adoptTree, JobHost, killTree, parseNetstat, parseWinProcessTable, stopTurnTrees, taskkillTreeArgs, treeSpawnOptions } from './procTree'
 
 describe('treeSpawnOptions', () => {
   it('is a process group of its own on POSIX, a hidden child in the same console on win32', () => {
@@ -150,5 +150,21 @@ describe('the win32 readers', () => {
       { port: 8080, pid: 77, address: '[::]' },
       { port: 3000, pid: 99, address: '127.0.0.1' }
     ])
+  })
+})
+
+describe('stopTurnTrees', () => {
+  it("ends the tree of each child the harness started since the turn began, never its earlier servers; nothing off win32", async () => {
+    const rows = [
+      { pid: 20, ppid: 10, rssKb: 1, args: 'node mcp-server.js', startedAt: 1_000 },
+      { pid: 21, ppid: 10, rssKb: 1, args: 'powershell -Command Start-Sleep 902', startedAt: 50_000 },
+      { pid: 22, ppid: 21, rssKb: 1, args: 'powershell -Command Start-Sleep 901', startedAt: 50_100 },
+      { pid: 23, ppid: 99, rssKb: 1, args: 'unrelated', startedAt: 60_000 }
+    ]
+    const killed: number[] = []
+    expect(await stopTurnTrees(10, 49_500, 'win32', async () => rows, (pid) => killed.push(pid))).toBe(1)
+    expect(killed).toEqual([21])
+    expect(await stopTurnTrees(10, 49_500, 'linux', async () => rows, (pid) => killed.push(pid))).toBe(0)
+    expect(await stopTurnTrees(null, 0, 'win32', async () => rows, (pid) => killed.push(pid))).toBe(0)
   })
 })

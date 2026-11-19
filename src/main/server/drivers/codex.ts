@@ -7,7 +7,7 @@ import { limitField } from '../limitText'
 import { isMetaModel, type ProviderId, type Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver, SendOpts } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
-import { adoptTree } from '../procTree'
+import { adoptTree, stopTurnTrees } from '../procTree'
 import { WarmPool, type WarmSpec } from './warm'
 import { expandSlashRefs } from '../slash'
 import { recordDriverNote } from '../stalls'
@@ -591,6 +591,8 @@ export const codexDriver: HarnessDriver = {
     let pictureSeq = 0
     const pictureCalls = new Set<string>()
     let currentTurnId: string | null = null
+    /** When the running turn started: a Stop on Windows ends what the app-server started since (procTree.stopTurnTrees). */
+    let turnStartedAt = 0
     /** Steers sent and not yet echoed, id → how the model gets it: into the
      *  running turn (turn/steer) or as a turn of its own (turn/start). The
      *  `userMessage` item carrying the id as its clientId is the read. */
@@ -875,6 +877,7 @@ export const codexDriver: HarnessDriver = {
         case 'turn/started':
           pictureCalls.clear()
           currentTurnId = String((params.turn as Item)?.id ?? '')
+          turnStartedAt = Date.now()
           ctx.mark?.('init')
           break
         case 'item/started':
@@ -1427,6 +1430,8 @@ export const codexDriver: HarnessDriver = {
           void conn
             .request('turn/interrupt', { threadId, turnId: currentTurnId })
             .catch(() => setStatus('idle'))
+          // Windows: the app-server leaves its command's tree running; end it (nothing elsewhere).
+          void stopTurnTrees(conn.pid, turnStartedAt).catch(() => undefined)
         } else {
           // No turn in flight to interrupt — the status is stale (a crashed
           // turn, a lost turn/completed). Stop still settles the session.

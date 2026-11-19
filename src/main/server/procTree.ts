@@ -283,6 +283,29 @@ export function warmJobHost(platform: NodeJS.Platform = process.platform): void 
   if (platform === 'win32') void jobHost().start()
 }
 
+/**
+ * win32: what a Stop leaves of a turn. The process guard ends a call's
+ * processes by the marks in their environment, which Windows does not let one
+ * read; and a harness there (Codex) does not end its command's tree when its
+ * turn is interrupted. So this ends the tree of every child `root` started at
+ * or after `since` (the turn's start): the commands it ran, never the servers
+ * it started before the turn (its MCP servers). Resolves how many it ended;
+ * nothing off win32.
+ */
+export async function stopTurnTrees(
+  root: number | null,
+  since: number,
+  platform: NodeJS.Platform = process.platform,
+  scan: () => Promise<ProcRow[]> = scanWinProcesses,
+  kill: (pid: number) => void = (pid) => void killTree(pid, 'SIGKILL')
+): Promise<number> {
+  if (platform !== 'win32' || !root) return 0
+  // CIM's creation time is to the microsecond, Date.now() to the ms: a second's slack either way costs nothing.
+  const turn = (await scan()).filter((p) => p.ppid === root && p.startedAt !== null && p.startedAt >= since - 1_000)
+  for (const p of turn) kill(p.pid)
+  return turn.length
+}
+
 // ── the process table and the listeners (win32) ──────────────────────
 
 export interface ProcRow {
