@@ -75,9 +75,21 @@ struct WorkItemsTests {
     @Test func thePhonePlaysTheProxyOnceItIsCutAndShowsPicturesFromTiles() {
         let table = FrameTable.cfr(.init(start: 0, rate: .init(num: 25, den: 1), count: 250))
         let cutting = MediaPlay.hls(.init(init: "i", segments: [.init(start: 0, duration: 4)], ended: false, mime: "video/mp4", table: table, why: "phone"))
-        #expect(MediaPick.of([cutting]) == .preparing)
+        #expect(MediaPick.of([cutting], ready: false, canRead: true) == .preparing)
         let cut = MediaPlay.hls(.init(init: "i", segments: [.init(start: 0, duration: 4), .init(start: 4, duration: 4)], ended: true, mime: "video/mp4", table: table, why: "phone"))
-        #expect(MediaPick.of([.original(.init(url: "x", mime: "video/mp4", table: table)), cut]) == .segments(init: "i", count: 2, table: table))
+        let original = MediaPlay.original(.init(url: "tempcode-app://file/0123456789abcdef0123456789abcdef/clip.mp4?v=1", mime: "video/mp4", table: table))
+        #expect(MediaPick.of([original, cut], ready: true, canRead: true) == .segments(init: "i", count: 2, table: table))
+        // Short or small: no HLS, no tiles. A key that may read files takes the proxy, else the original, by token.
+        let proxy = MediaPlay.proxy(.init(url: "tempcode-app://file/fedcba9876543210fedcba9876543210/proxy.mp4?v=2&host=box", table: table, why: "phone"))
+        #expect(MediaPick.of([original, proxy], ready: true, canRead: true) == .file(token: "fedcba9876543210fedcba9876543210", table: table))
+        #expect(MediaPick.of([original], ready: true, canRead: true) == .file(token: "0123456789abcdef0123456789abcdef", table: table))
+        #expect(MediaPick.of([original], ready: true, canRead: false) == MediaPick.none)
+        #expect(MediaPick.of([], ready: false, canRead: false) == .preparing)
+        let picture = MediaPlay.image(.init(url: "tempcode-app://file/00112233445566778899aabbccddeeff/p.png?v=3", width: 2400, height: 1600))
+        #expect(MediaPick.of([picture], ready: true, canRead: true) == .image(token: "00112233445566778899aabbccddeeff"))
+        #expect(MediaPick.asks(canRead: true) == ["h264", "hevc", "hls", "tiles"])
+        #expect(MediaPick.asks(canRead: false) == ["hls", "tiles"])
+        #expect(MediaPick.token(of: "https://example.com/x") == nil)
         let grid = TileGrid(width: 6000, height: 4000, tile: 254, levels: 14, minLevel: 9, maxSide: 2048)
         #expect(grid.level == 11)
         #expect(grid.width == 1500 && grid.height == 1000)
@@ -100,6 +112,19 @@ struct WorkItemsTests {
                 return FileBytes(data: bytes.subdata(in: offset..<(offset + length)).base64EncodedString(), size: 10, rev: "r\(n)")
             }
         }
+    }
+
+    @Test func aMediaFileIsReadInRangesUntilItsSize() async throws {
+        let bytes = Data((0..<5).map(UInt8.init))
+        var asked: [Int] = []
+        let read = try await ChunkedRead.media(frame: 2) { offset, length in
+            asked.append(offset)
+            let end = min(5, offset + length)
+            return MediaRange(dataBase64: bytes.subdata(in: offset..<end).base64EncodedString(), mime: "video/mp4", size: 5, mtimeMs: 1)
+        }
+        #expect(read == bytes)
+        #expect(asked == [0, 2, 4])
+        await #expect(throws: ChunkedRead.Failure.short) { _ = try await ChunkedRead.media { _, _ in nil } }
     }
 
     private func routine(_ id: String, kind: String, nextAt: Int?, ended: Bool = false, proposed: Bool = false, ends: String = #"{"kind":"never"}"#) throws -> RoutinePhoneRow {

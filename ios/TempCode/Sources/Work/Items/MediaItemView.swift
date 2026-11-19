@@ -4,27 +4,36 @@ import TempCodeClient
 import TempCodeContract
 
 /// Images and video (milestone 47): the newest version. A video plays the
-/// host's fMP4 proxy, its segments fetched and joined into one file here;
-/// its comments are listed by time, and Comment pins his words to the frame
-/// the player shows. A picture is drawn from its Deep Zoom tiles.
+/// host's HLS proxy (its segments fetched and joined into one file here), or,
+/// for a key that may read files, the proxy or the original by its media
+/// token; its comments are listed by time, and Comment pins his words to the
+/// frame the player shows. A picture is drawn from its Deep Zoom tiles, or
+/// read whole by its token.
 struct MediaItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.media(item.id) }) { view, reload in
+        let canRead = client.work.canAdmin
+        ItemLoad(read: { try await client.work.canvas.media(item.id, canRead: canRead) }) { view, reload in
             if let version = view.versions.max(by: { $0.n < $1.n }) {
                 switch version.state {
                 case .failed:
                     ContentUnavailableView(version.name, systemImage: "exclamationmark.triangle", description: Text(version.error ?? "The host could not read this file."))
                 case .ready, .probing, .preparing, .unknown:
-                    switch MediaPick.of(version.plays) {
+                    switch MediaPick.of(version.plays, ready: version.state == .ready, canRead: canRead) {
                     case .segments(let initSegment, let count, let table):
-                        VideoVersionView(client: client, item: item, view: view, versionId: version.id, initSegment: initSegment, count: count, table: table, reload: reload)
+                        VideoVersionView(client: client, item: item, view: view, versionId: version.id, source: .segments(init: initSegment, count: count), table: table, reload: reload)
+                    case .file(let token, let table):
+                        VideoVersionView(client: client, item: item, view: view, versionId: version.id, source: .token(token), table: table, reload: reload)
+                    case .image(let token):
+                        TokenPicture(client: client, token: token)
                     case .picture(_, let width, let height, let tile, let overlap, let levels, let minLevel):
                         PictureView(client: client, itemId: item.id, versionId: version.id, grid: TileGrid(width: width, height: height, tile: tile, levels: levels, minLevel: minLevel, maxSide: 2048), tile: Int(tile), overlap: Int(overlap))
-                    case .preparing, .none:
+                    case .preparing:
                         Preparing(reload: reload)
+                    case .none:
+                        ContentUnavailableView(version.name, systemImage: "desktopcomputer", description: Text("This file opens on the computer."))
                     }
                 }
             } else {
@@ -57,12 +66,17 @@ private struct Preparing: View {
 }
 
 private struct VideoVersionView: View {
+    /// The HLS proxy's segments, or a file read by its media token.
+    enum Source {
+        case segments(init: String, count: Int)
+        case token(String)
+    }
+
     let client: EnvironmentClient
     let item: CanvasItem
     let view: MediaPhoneView
     let versionId: String
-    let initSegment: String
-    let count: Int
+    let source: Source
     let table: FrameTable
     let reload: () -> Void
     @State private var player: AVPlayer?
@@ -83,8 +97,12 @@ private struct VideoVersionView: View {
                     ContentUnavailableView("Can’t Play This", systemImage: "exclamationmark.triangle", description: Text(failure))
                 } else {
                     VStack(spacing: 8) {
-                        ProgressView(value: Double(loaded), total: Double(max(1, count + 1)))
-                            .frame(maxWidth: 200)
+                        if case .segments(_, let count) = source {
+                            ProgressView(value: Double(loaded), total: Double(count + 1))
+                                .frame(maxWidth: 200)
+                        } else {
+                            ProgressView()
+                        }
                         Text("Loading video").textStep(.meta).foregroundStyle(.secondary)
                     }
                 }
@@ -141,13 +159,18 @@ private struct VideoVersionView: View {
         let file = FileManager.default.temporaryDirectory.appending(path: "tc-media-\(item.id)-\(versionId).mp4")
         if !FileManager.default.fileExists(atPath: file.path()) {
             do {
-                var joined = try await client.work.canvas.mediaSegment(item.id, versionId: versionId, index: nil)
-                loaded = 1
-                for index in 0..<count {
-                    joined.append(try await client.work.canvas.mediaSegment(item.id, versionId: versionId, index: index))
-                    loaded = index + 2
+                switch source {
+                case .segments(_, let count):
+                    var joined = try await client.work.canvas.mediaSegment(item.id, versionId: versionId, index: nil)
+                    loaded = 1
+                    for index in 0..<count {
+                        joined.append(try await client.work.canvas.mediaSegment(item.id, versionId: versionId, index: index))
+                        loaded = index + 2
+                    }
+                    try joined.write(to: file, options: .atomic)
+                case .token(let token):
+                    try await client.work.canvas.mediaFile(token: token).write(to: file, options: .atomic)
                 }
-                try joined.write(to: file, options: .atomic)
             } catch {
                 failure = ActionError.wrap(error).message
                 return
@@ -231,6 +254,36 @@ private struct PictureView: View {
         image = renderer.image { _ in
             for (origin, piece) in tiles {
                 piece.draw(at: CGPoint(x: origin.x - (origin.x > 0 ? CGFloat(overlap) : 0), y: origin.y - (origin.y > 0 ? CGFloat(overlap) : 0)))
+            }
+        }
+    }
+}
+
+/// A picture read whole by its media token, decoded at the size a phone shows.
+private struct TokenPicture: View {
+    let client: EnvironmentClient
+    let token: String
+    @State private var image: UIImage?
+    @State private var failure: String?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let failure {
+                ContentUnavailableView("Can’t Show This", systemImage: "exclamationmark.triangle", description: Text(failure))
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task {
+            do {
+                let data = try await client.work.canvas.mediaFile(token: token)
+                guard let full = UIImage(data: data) else { failure = "The picture could not be read."; return }
+                let scale = min(1, 2048 / max(full.size.width, full.size.height, 1))
+                image = full.preparingThumbnail(of: CGSize(width: full.size.width * scale, height: full.size.height * scale)) ?? full
+            } catch {
+                failure = ActionError.wrap(error).message
             }
         }
     }
