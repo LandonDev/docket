@@ -88,6 +88,9 @@ import { TurnPassSchema } from '../src/shared/turnpass'
 import { ModelPolicySchema, OrchestrationRulesSchema } from '../src/shared/rules'
 import { MacBridgePolicySchema } from '../src/shared/contract-macbridge'
 import * as W from '../src/shared/wireSchemas'
+import { CanvasSourceSchema, ContextChipSchema } from '../src/shared/work/canvas'
+import { SessionScopeSchema, WorkspaceKindSchema } from '../src/shared/work/ids'
+import { WorkSettingsSchema } from '../src/shared/work/scope'
 
 // ── the subset ──────────────────────────────────────────────────────────
 
@@ -176,6 +179,13 @@ export const SUBSET: SubsetEntry[] = [
   union('AgentEvent', W.WireAgentEventSchema, 'type', 'Event'),
   type('EventRow', W.EventRowSchema),
   type('EventsPage', W.EventsPageSchema),
+  // Work (src/shared/work): the names a session, a workspace and a create carry, before the shapes that use them.
+  // The phone's Work screens (M46) add each pillar's methods and pushes here as they are built.
+  type('WorkspaceKind', WorkspaceKindSchema),
+  type('SessionScope', SessionScopeSchema),
+  type('WorkSettings', WorkSettingsSchema),
+  union('CanvasSource', CanvasSourceSchema, 'at', 'Source'),
+  type('ContextChip', ContextChipSchema),
   // sessions, projects, workspaces, the catalog
   type('SessionMeta', W.SessionMetaSchema),
   type('SessionPage', W.SessionPageSchema),
@@ -415,7 +425,10 @@ export const SUBSET: SubsetEntry[] = [
   method('memory.status', W.MemorySyncStatusSchema),
   method('memory.sync', W.MemorySyncStatusSchema),
   method('macBridge.activity', W.MacBridgeActivitySchema),
-  method('macBridge.stop', W.OkSchema)
+  method('macBridge.stop', W.OkSchema),
+  // Work: the switch on a host (Settings → Work on the phone writes it to every host it is linked to)
+  method('work.get', WorkSettingsSchema),
+  method('work.set', WorkSettingsSchema)
 ]
 
 /** Enum values that need an explicit Swift case name. */

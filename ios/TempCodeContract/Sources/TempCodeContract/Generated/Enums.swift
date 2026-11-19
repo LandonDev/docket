@@ -922,6 +922,52 @@ public enum GateStep: RawRepresentable, Codable, Hashable, Sendable {
     }
 }
 
+public enum WorkspaceKind: RawRepresentable, Codable, Hashable, Sendable {
+    case code
+    case work
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "code": self = .code
+        case "work": self = .work
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .code: "code"
+        case .work: "work"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum SessionScope: RawRepresentable, Codable, Hashable, Sendable {
+    case code
+    case work
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "code": self = .code
+        case "work": self = .work
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .code: "code"
+        case .work: "work"
+        case .unknown(let value): value
+        }
+    }
+}
+
 public enum MacBridgePolicy: RawRepresentable, Codable, Hashable, Sendable {
     case off
     case read

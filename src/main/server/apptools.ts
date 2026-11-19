@@ -4,7 +4,8 @@ import { NOTE_DECISION_DESCRIPTION, NOTE_DECISION_MAX_CHARS, NOTE_DECISION_PARAM
 import {
   createSdkMcpServer,
   tool,
-  type McpSdkServerConfigWithInstance
+  type McpSdkServerConfigWithInstance,
+  type Options
 } from '@anthropic-ai/claude-agent-sdk'
 import {
   CATALOG,
@@ -14,6 +15,9 @@ import {
   type ProviderId
 } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
+import { WORK_TOOL_SERVER, workToolId } from '@shared/work/tools'
+import type { WorkToolMount } from './work/ctx'
+import { inputShapeOf } from './work/modules'
 import {
   HTML_PREVIEW_TOOL_DESCRIPTION,
   HTML_PREVIEW_TOOL_NAME,
@@ -142,6 +146,61 @@ let addons: AppAddons | null = null
 export function setAppAddons(next: AppAddons | null): void {
   addons = next
 }
+// Work's tools (docs/agents/work.md): whatever the Work modules register for a thread's scope, through
+// one mount. Claude gets them on a server of their own (`withWorkTools`); codex and Muse through the
+// bridge's `app.workTools` and `app.workCall`, listed only for a thread that carries a Work token.
+export interface AppWork {
+  tools: WorkToolMount
+}
+let work: AppWork | null = null
+export function setAppWork(next: AppWork | null): void {
+  work = next
+}
+
+/**
+ * Add the Work tools of a thread's scope to a Claude thread's options, as
+ * the `work` MCP server (claude.ts, beside withMacTools). A thread with no
+ * Work tools (Work off, or a code thread) gets its options back untouched,
+ * so its spawn is what it was. Allowed without the CLI's prompt: a Work
+ * tool that acts outward is held by the Outbox, not asked here.
+ */
+export function withWorkTools(options: Options, session: SessionMeta): Options {
+  const mount = work?.tools
+  const tools = mount?.of(session)?.tools ?? []
+  if (!mount || tools.length === 0) return options
+  const server = createSdkMcpServer({
+    name: WORK_TOOL_SERVER,
+    version: '0.1.0',
+    tools: tools.map((t) =>
+      tool(
+        t.name,
+        t.description,
+        inputShapeOf(t.input) ?? {},
+        async (args, extra) => {
+          const live = registry?.get(session.id) ?? session
+          const signal = (extra as { signal?: AbortSignal } | undefined)?.signal ?? new AbortController().signal
+          try {
+            return await mount.call(live, t.name, args, signal)
+          } catch (err) {
+            return { content: [{ type: 'text' as const, text: `error: ${err instanceof Error ? err.message : String(err)}` }], isError: true }
+          }
+        },
+        { annotations: { readOnlyHint: t.readOnly } }
+      )
+    )
+  })
+  options.mcpServers = { ...(options.mcpServers ?? {}), [WORK_TOOL_SERVER]: server }
+  options.allowedTools = [...(options.allowedTools ?? []), ...tools.map((t) => workToolId(t.name))]
+  return options
+}
+
+/** The bridge's Work token for a thread that has Work tools at spawn; none otherwise, so its bridge asks nothing new. */
+function workBridgeEnv(sessionId: string): Record<string, string> {
+  const session = registry?.get(sessionId)
+  if (!work || !session || !work.tools.of(session)) return {}
+  return { TEMP_CODE_WORK_TOKEN: work.tools.tokenFor(sessionId) }
+}
+
 /** Each app server's release of its add-on tools, called where the claude handle ends (drivers/claude.ts). */
 const addonReleases = new WeakMap<object, () => void>()
 export function releaseAppTools(server: object | undefined): void {
@@ -221,6 +280,8 @@ export function bridgeMcpConfig(sessionId: string, opts: { computerImages?: 'par
       ...(macToolsHooks.current?.bridgeEnv(sessionId) ?? {}),
       // Fixed at spawn: a scope that gains its first add-on or loses its last reboots the harness at its next turn (addons/scopeFlip.ts).
       ...(addons?.hasAddons(sessionId) ? { TEMP_CODE_ADDONS: '1' } : {}),
+      // Work's tools, fixed at spawn like the rest: only a thread whose scope has them carries the token (work/ctx.ts).
+      ...workBridgeEnv(sessionId),
       // The computer tools, on a Mac only: the thread's own token, so its bridge never acts as another thread (computer/rpc.ts).
       ...(computer
         ? { TEMP_CODE_COMPUTER_TOKEN: computer.tokens.tokenFor(sessionId), TEMP_CODE_COMPUTER_IMAGES: opts.computerImages ?? 'none' }

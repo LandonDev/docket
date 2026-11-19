@@ -495,6 +495,116 @@ public struct EventsPage: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkSettings: Codable, Hashable, Sendable {
+    public let enabled: Bool
+
+    public init(enabled: Bool) {
+        self.enabled = enabled
+    }
+}
+
+public struct ContextChip: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case task
+        case mail
+        case event
+        case selection
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "task": self = .task
+            case "mail": self = .mail
+            case "event": self = .event
+            case "selection": self = .selection
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .task: "task"
+            case .mail: "mail"
+            case .event: "event"
+            case .selection: "selection"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct RefCase0: Codable, Hashable, Sendable {
+        public enum Table: RawRepresentable, Codable, Hashable, Sendable {
+            case tasks
+            case mailThreads
+            case events
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "tasks": self = .tasks
+                case "mailThreads": self = .mailThreads
+                case "events": self = .events
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .tasks: "tasks"
+                case .mailThreads: "mailThreads"
+                case .events: "events"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let at: String
+        public let table: Table
+        public let id: String
+
+        public init(at: String, table: Table, id: String) {
+            self.at = at
+            self.table = table
+            self.id = id
+        }
+    }
+    public enum Ref: Codable, Hashable, Sendable {
+        case object(RefCase0)
+        case canvasSource(CanvasSource)
+        /// A shape this build does not know, untouched.
+        case unknown(JSONValue)
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let value = try? container.decode(RefCase0.self) { self = .object(value); return }
+            if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
+            self = .unknown(try container.decode(JSONValue.self))
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .object(let value): try container.encode(value)
+            case .canvasSource(let value): try container.encode(value)
+            case .unknown(let value): try container.encode(value)
+            }
+        }
+    }
+
+    public let kind: Kind
+    public let label: String
+    public let ref: Ref
+    public let quote: String?
+
+    public init(kind: Kind, label: String, ref: Ref, quote: String? = nil) {
+        self.kind = kind
+        self.label = label
+        self.ref = ref
+        self.quote = quote
+    }
+}
+
 public struct SessionMeta: Codable, Hashable, Sendable {
     public enum ActivityKind: RawRepresentable, Codable, Hashable, Sendable {
         case think
@@ -698,10 +808,12 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let masterId: String?
     public let after: String?
     public let readAt: Int?
+    public let scope: SessionScope?
+    public let routineRunId: String?
     public let createdAt: Int
     public let updatedAt: Int
 
-    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, statusDetail: String? = nil, activityKind: ActivityKind? = nil, background: Background? = nil, awaiting: [String]? = nil, lastEventAt: Int? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, isMaster: Bool? = nil, masterId: String? = nil, after: String? = nil, readAt: Int? = nil, createdAt: Int, updatedAt: Int) {
+    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, statusDetail: String? = nil, activityKind: ActivityKind? = nil, background: Background? = nil, awaiting: [String]? = nil, lastEventAt: Int? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, isMaster: Bool? = nil, masterId: String? = nil, after: String? = nil, readAt: Int? = nil, scope: SessionScope? = nil, routineRunId: String? = nil, createdAt: Int, updatedAt: Int) {
         self.id = id
         self.parentId = parentId
         self.projectId = projectId
@@ -750,12 +862,14 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         self.masterId = masterId
         self.after = after
         self.readAt = readAt
+        self.scope = scope
+        self.routineRunId = routineRunId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, statusDetail, activityKind, background, awaiting, lastEventAt, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, isMaster, masterId, after, readAt, createdAt, updatedAt
+        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, statusDetail, activityKind, background, awaiting, lastEventAt, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, isMaster, masterId, after, readAt, scope, routineRunId, createdAt, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -808,6 +922,8 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(masterId, forKey: .masterId)
         try container.encodeIfPresent(after, forKey: .after)
         try container.encodeIfPresent(readAt, forKey: .readAt)
+        try container.encodeIfPresent(scope, forKey: .scope)
+        try container.encodeIfPresent(routineRunId, forKey: .routineRunId)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
@@ -1016,9 +1132,11 @@ public struct WorkspaceMeta: Codable, Hashable, Sendable {
     public let preamble: String?
     public let preambleEnabled: Bool?
     public let linkId: String?
+    public let kind: WorkspaceKind?
+    public let sector: String?
     public let createdAt: Int
 
-    public init(id: String, name: String, path: String, git: Bool, accountPins: AccountPins? = nil, githubRepo: String? = nil, githubRepoCheckedAt: Int? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, createdAt: Int) {
+    public init(id: String, name: String, path: String, git: Bool, accountPins: AccountPins? = nil, githubRepo: String? = nil, githubRepoCheckedAt: Int? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, kind: WorkspaceKind? = nil, sector: String? = nil, createdAt: Int) {
         self.id = id
         self.name = name
         self.path = path
@@ -1029,6 +1147,8 @@ public struct WorkspaceMeta: Codable, Hashable, Sendable {
         self.preamble = preamble
         self.preambleEnabled = preambleEnabled
         self.linkId = linkId
+        self.kind = kind
+        self.sector = sector
         self.createdAt = createdAt
     }
 }
@@ -1117,9 +1237,10 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
     public let linkNote: String?
     public let settingsUpdatedAt: Int?
     public let startOn: StartOn?
+    public let lifeosProjectId: String?
     public let createdAt: Int
 
-    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, linkNote: String? = nil, settingsUpdatedAt: Int? = nil, startOn: StartOn? = nil, createdAt: Int) {
+    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, linkNote: String? = nil, settingsUpdatedAt: Int? = nil, startOn: StartOn? = nil, lifeosProjectId: String? = nil, createdAt: Int) {
         self.id = id
         self.workspaceId = workspaceId
         self.name = name
@@ -1134,11 +1255,12 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         self.linkNote = linkNote
         self.settingsUpdatedAt = settingsUpdatedAt
         self.startOn = startOn
+        self.lifeosProjectId = lifeosProjectId
         self.createdAt = createdAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, linkId, linkNote, settingsUpdatedAt, startOn, createdAt
+        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, linkId, linkNote, settingsUpdatedAt, startOn, lifeosProjectId, createdAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1157,6 +1279,7 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(linkNote, forKey: .linkNote)
         try container.encodeIfPresent(settingsUpdatedAt, forKey: .settingsUpdatedAt)
         try container.encodeIfPresent(startOn, forKey: .startOn)
+        try container.encodeIfPresent(lifeosProjectId, forKey: .lifeosProjectId)
         try container.encode(createdAt, forKey: .createdAt)
     }
 }

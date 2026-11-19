@@ -19,7 +19,14 @@
   project-plan, review, plans, resources, devices, deploy, Mac bridge and
   accounts methods and their pushes (`notes`, `batch`, `resources`,
   `boot-resume`, `accounts`, `host.devices`, `host-log`, `macBridge.held`);
-  the README's table is the list, with the capability each needs. The
+  the README's table is the list, with the capability each needs.
+  Work's names are in it too (docs/agents/work.md): `WorkspaceKind`,
+  `SessionScope`, `WorkSettings`, `ContextChip` and `CanvasSource` (a
+  seventh generated file, `CanvasSource.swift`), the optional `scope`,
+  `kind`, `sector` and `lifeosProjectId` fields, and `work.get` and
+  `work.set`. The `work` push is not in `RemotePushSchema` yet: the
+  client's switch over `ServerPush` is exhaustive, so the phone build that
+  reads a Work push adds its case with it. The
   generator refuses a `local` method (`jsonSchemas` throws), names
   `BuildFacts` and `NoticeKind` once, and `scripts/gen-swift-contract.test.ts`
   pins its rules; `DecoderRulesTests.swift` proves the decoder on

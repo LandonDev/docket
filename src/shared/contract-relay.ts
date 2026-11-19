@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { ClientRequest } from './contract'
+import { WORK_NOT_CARRIED, WORK_RELAY } from './contract-work'
 import type { BuildFacts } from './deployDrift'
 
 /**
@@ -252,7 +253,9 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   'harness.status': 'link',
   'harness.sync': 'link',
   'memory.status': 'link',
-  'memory.sync': 'link'
+  'memory.sync': 'link',
+  // Work (contract-work.ts): the switch and every pillar method a key can hold, unless its pillar's relay row keeps it here; a workspace may live on the Mac
+  ...WORK_RELAY
 }
 
 /**
@@ -266,7 +269,9 @@ export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = [
   'host.deploy',
   'host.log',
   'macBridge.activity',
-  'macBridge.stop'
+  'macBridge.stop',
+  // Work methods whose rows are this host's own (a pillar's relay row says `'never'`, contract-work.ts)
+  ...WORK_NOT_CARRIED
 ]
 
 /** Methods a relayed lane answers on the box itself (the key's own rows). */

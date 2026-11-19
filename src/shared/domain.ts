@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AccountPins } from './accounts'
 import type { StartOn } from './defaults'
+import type { SectorKey, WorkspaceKind } from './work/ids'
 
 /**
  * The workspace → project → thread hierarchy (docs/LAYOUT.md).
@@ -41,6 +42,10 @@ export interface WorkspaceMeta {
   preambleEnabled?: boolean
   /** The id this workspace shares with its copies on other hosts (`wl_…`); null until the linker pairs it. */
   linkId?: string | null
+  /** Work (src/shared/work/ids.ts): 'work' on a Work workspace; absent on a code workspace, which reads as before. */
+  kind?: WorkspaceKind
+  /** The LifeOS sector the workspace links to (a code workspace may carry one too); absent or null: none. */
+  sector?: SectorKey | null
   createdAt: number
 }
 
@@ -69,6 +74,8 @@ export interface ProjectMeta {
   settingsUpdatedAt?: number | null
   /** Where the project's new threads start when it is linked across hosts; null follows Thread defaults. */
   startOn?: StartOn | null
+  /** Work: the LifeOS project this one mirrors (`projects.lifeos_project_id`); absent otherwise. */
+  lifeosProjectId?: string | null
   createdAt: number
 }
 

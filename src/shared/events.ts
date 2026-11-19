@@ -3,6 +3,7 @@ import { GateNoticeSchema } from './gate'
 import { ReviewNoticeSchema } from './review'
 import type { AgentType, ProviderId, Reasoning } from './catalog'
 import type { ThreadType } from './domain'
+import type { SessionScope } from './work/ids'
 
 /**
  * The normalized event schema. Every driver (Claude Agent SDK, Codex
@@ -667,6 +668,12 @@ export interface SessionMeta {
    *  unread. Unread is `updatedAt > readAt`. Absent from a host older than
    *  the mark, whose clients keep their own seen maps. */
   readAt?: number
+  /** Work (src/shared/work/ids.ts): 'work' on a Work thread, stamped once at
+   *  create and kept across a move; absent on a code thread, so a code
+   *  thread's meta is what it was before the column. */
+  scope?: SessionScope
+  /** Work: the routine run that started the thread (`sessions.routine_run_id`); absent otherwise. */
+  routineRunId?: string | null
   createdAt: number
   updatedAt: number
 }

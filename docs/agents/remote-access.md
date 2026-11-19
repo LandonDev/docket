@@ -33,7 +33,14 @@
   was demoted to `local`: the /ui bundle and the desktop's remote-host
   flows call the whole donor family, and the phone calls `fs.readPreview`,
   `search.project` and `github.*`. `fence.test.ts` asserts every
-  path-taking contract method has a row. Inside the roots one directory
+  path-taking contract method has a row. A Work method (`work.*`,
+  `app.work*`) has no path param of its own: a file reaches it inside a
+  `CanvasSource` (`{ at: 'file', path }`, or a Microsoft file's `ref:
+  { kind: 'path', path }`), anywhere in its params, and `session.create`
+  carries one in `about`; `workSourcePaths` reads them and the same roots
+  apply, whatever host the source names (docs/agents/work.md). A Work
+  workspace names no folder, so `workspace.create` fences only a path it
+  is given. Inside the roots one directory
   is denied to every remote file method: the computer history
   (docs/computer-protocol.md §17.9), by a path named outright
   (`fenceRequest`'s `denied`), by one named through a project id or

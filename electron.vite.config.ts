@@ -2,7 +2,7 @@ import { resolve } from 'path'
 import { execFileSync } from 'child_process'
 import { mkdirSync, statSync, writeFileSync } from 'fs'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
-import type { Plugin } from 'vite'
+import { build as viteBuild, type InlineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { buildTcComputer } from './scripts/lib/tcComputerBuild'
@@ -110,6 +110,62 @@ function bundleMap(): Plugin {
   }
 }
 
+/** The main bundle's entries (the comment on `main.build` below says what each is). */
+export const MAIN_INPUTS = {
+  index: resolve('src/main/index.ts'),
+  boot: resolve('src/main/boot.ts'),
+  gateway: resolve('src/main/gatewayProcess.ts'),
+  statsWorker: resolve('src/main/aliax/stats/statsWorker.ts'),
+  execBroker: resolve('src/main/execBrokerProcess.ts'),
+  addonHost: resolve('src/main/addonHostProcess.ts'),
+  workService: resolve('src/main/workServiceProcess.ts')
+}
+
+/** The hosted pages (src/hosted): what the Work service serves to a browser
+ *  that is not the app, such as a guest's or the phone's web view. A closed
+ *  list: each is `src/hosted/<name>/index.html`, `index` the folder's own. */
+export const HOSTED_PAGES = ['index', 'item', 'guest', 'form'] as const
+
+/** Where the Work service serves out/hosted, and so every hosted page's asset base. */
+export const HOSTED_BASE = '/w/hosted/'
+
+/** The hosted pages' own build: its own root, chunks and base, so nothing of
+ *  the app's window (its CSP, its boot script, its chunks) reaches a page a
+ *  guest loads, and no hosted module enters the window's first paint. */
+export function hostedBuildConfig(outDir: string = resolve('out/hosted')): InlineConfig {
+  return {
+    configFile: false,
+    root: resolve('src/hosted'),
+    base: HOSTED_BASE,
+    logLevel: 'warn',
+    resolve: {
+      alias: {
+        '@renderer': resolve('src/renderer/src'),
+        '@shared': resolve('src/shared')
+      }
+    },
+    plugins: [react({ babel: { plugins: [reactCompiler] } }), tailwindcss()],
+    build: {
+      outDir,
+      emptyOutDir: true,
+      rollupOptions: {
+        input: Object.fromEntries(HOSTED_PAGES.map((page) => [page, resolve('src/hosted', page === 'index' ? 'index.html' : `${page}/index.html`)]))
+      }
+    }
+  }
+}
+
+/** Builds the hosted pages into out/hosted once the renderer's bundle is written. */
+export function hostedPages(outDir?: string): Plugin {
+  return {
+    name: 'temp-code-hosted-pages',
+    apply: 'build',
+    async closeBundle() {
+      await viteBuild(hostedBuildConfig(outDir))
+    }
+  }
+}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: ['aliax-core', '@muse-code/sdk', 'work-kit'] }), appshotHelper(), tcComputer()],
@@ -118,7 +174,7 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    // Six entries: boot.js (package.json `main`) enables Node's compile
+    // Seven entries: boot.js (package.json `main`) enables Node's compile
     // cache and requires index.js, the real bundle, through it; boot.ts
     // shares no module with index.ts. gateway.js is the gateway's utility
     // process (gatewaySpawn.ts forks it); the modules it shares with
@@ -131,16 +187,12 @@ export default defineConfig({
     // addonHost.js is the add-on host's utility process (addonHostSpawn.ts
     // forks it): every downstream MCP client runs there, never in main or
     // the gateway, so an add-on's fault cuts no provider stream.
+    // workService.js is the Work service's utility process (docs/agents/work.md):
+    // live documents and sheets, guest links and the hosted pages are served
+    // there, never in main. A stub until Work's service is built.
     build: {
       rollupOptions: {
-        input: {
-          index: resolve('src/main/index.ts'),
-          boot: resolve('src/main/boot.ts'),
-          gateway: resolve('src/main/gatewayProcess.ts'),
-          statsWorker: resolve('src/main/aliax/stats/statsWorker.ts'),
-          execBroker: resolve('src/main/execBrokerProcess.ts'),
-          addonHost: resolve('src/main/addonHostProcess.ts')
-        }
+        input: MAIN_INPUTS
       }
     }
   },
@@ -177,7 +229,8 @@ export default defineConfig({
     plugins: [
       react({ babel: { plugins: [reactCompiler] } }),
       tailwindcss(),
-      bundleMap()
+      bundleMap(),
+      hostedPages()
     ]
   }
 })

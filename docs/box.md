@@ -2567,8 +2567,10 @@ the same query). Nothing on the phone has to know the hop.
 - **What crosses.** `RELAY_METHODS` in `src/shared/contract-relay.ts`: every
   read and steering method the phone speaks (threads, projects, files, notes,
   queues, attachments, batches, plans, reviews, resources, GitHub, devices)
-  and the project settings its sheet edits, and the Mac's own harness and
-  memory sync status; the box's own deploy methods and its view of the Mac
+  and the project settings its sheet edits, the Mac's own harness and
+  memory sync status, and every Work method a key can hold (`WORK_RELAY`,
+  src/shared/contract-work.ts: a Work workspace may live on the Mac, and the
+  switch is written to each host); the box's own deploy methods and its view of the Mac
   bridge's calls (`RELAY_NOT_CARRIED`) never cross. The box runs its
   own gate first: a `local` method or a cap the key lacks never crosses, and
   a method outside the table is `forbidden: <method> does not relay to another

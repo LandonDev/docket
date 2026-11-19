@@ -14,6 +14,7 @@ import {
   sinceText,
   type HostPresence
 } from './contract-relay'
+import { isWorkMethod } from './work/wire'
 
 const UTC = 'UTC'
 // 2026-03-04 09:14 UTC
@@ -98,8 +99,8 @@ describe('RELAY_METHODS', () => {
     }
     for (const m of RELAY_BOX_LOCAL) expect(contractMethods.has(m), m).toBe(true)
   })
-  it('needs the screen only for opening Xcode', () => {
-    expect(Object.entries(RELAY_METHODS).filter(([, need]) => need === 'screen').map(([m]) => m)).toEqual(['host.device.openXcode'])
+  it('needs the screen only for opening Xcode (a Work pillar says its own, contract-work.test.ts)', () => {
+    expect(Object.entries(RELAY_METHODS).filter(([m, need]) => need === 'screen' && !isWorkMethod(m)).map(([m]) => m)).toEqual(['host.device.openXcode'])
   })
   it('covers every method the phone speaks (the Swift SUBSET)', () => {
     // scripts/ is outside tsconfig.node.json, so the SUBSET is read off the generator's text: its method('…') rows.

@@ -28,6 +28,9 @@ import { AddonAddArgsSchema, AddonCallArgsSchema, AddonFindArgsSchema, AddonRemo
 import { SkillRemoveArgsSchema, SkillRequestSchemas, SkillWriteArgsSchema } from './contract-skills'
 import { AddonGrantRequestSchemas } from './contract-addonGrants'
 import { ComputerRequestSchemas } from './contract-computer'
+import { WorkRequestSchemas } from './contract-work'
+import { ContextChipSchema } from './work/canvas'
+import { SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
 import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -105,7 +108,13 @@ export const CreateSessionParams = z.object({
   master: z.boolean().optional(),
   /** The thread's first message, stored as its first row in the same step
    *  (SessionRegistry.startWith): the thread and its brief, or neither. */
-  firstMessage: z.string().min(1).optional()
+  firstMessage: z.string().min(1).optional(),
+  /** Work (src/shared/work): 'work' asks for a Work thread; the host stamps
+   *  the scope itself from the workspace, a Work Chat or a Work parent, and
+   *  refuses what it cannot honour (work/scope.ts). */
+  scope: SessionScopeSchema.optional(),
+  /** Work: what the thread is about (a task, a mail, an event or a selection); the host links it in LifeOS. */
+  about: ContextChipSchema.optional()
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
@@ -178,6 +187,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...SkillRequestSchemas,
   // Computer use (contract-computer.ts): the service's state, the live sessions, Stop, and the bridge's four tools.
   ...ComputerRequestSchemas,
+  // Work (contract-work.ts): the switch, the bridge's two tool methods, and one contract file per pillar.
+  ...WorkRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -216,7 +227,15 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('workspace.create'),
-    params: z.object({ path: z.string(), name: z.string().optional() })
+    params: z.object({
+      /** The folder. A Work workspace has none to name: the host makes its own (work/scope.ts). */
+      path: z.string().optional(),
+      name: z.string().optional(),
+      /** 'work': a Work workspace (src/shared/work/ids.ts); absent, a code workspace as before. */
+      kind: WorkspaceKindSchema.optional(),
+      /** The LifeOS sector the workspace links to, if any. */
+      sector: z.string().nullable().optional()
+    })
   }),
   z.object({ id: z.string(), method: z.literal('workspace.list') }),
   /** → WorkRoot: where new workspaces go on this host, for a client with no dialog here. */
@@ -1497,6 +1516,8 @@ export type ServerPush =
   | import('./contract-computer').ComputerPreviewPush
   // The thread's computer history (contract-computer.ts): a call that changed, to the sockets that read its key only.
   | import('./contract-computer').ComputerHistoryPush
+  // Work (contract-work.ts): the switch's state and every pillar's pushes, to every client socket.
+  | import('./contract-work').WorkPush
   // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
   | import('./contract-resources').ResourcesPush
   // Dev servers forwarded to the Mac (contract-ports.ts): the host's list and stream frames down a Mac's link, the Mac's forwards to its renderer.

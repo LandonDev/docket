@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
-import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceDenied, fenceRequest, fencedPaths, insideRoots, requestBases } from './fence'
+import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceDenied, fenceRequest, fencedPaths, insideRoots, requestBases, workSourcePaths } from './fence'
+import { isWorkMethod } from '@shared/work/wire'
 
 /** R2 H1/H2: the real-path fence every remote request passes before a handler runs. */
 let dir: string
@@ -71,12 +72,25 @@ describe('FENCED_PARAMS', () => {
       const params = paramsOf(option)
       if (!params) continue
       const keys = Object.keys(params.shape)
+      if (isWorkMethod(method)) continue // held to Work's own rule below: a file only inside a CanvasSource
       if (keys.some((k) => /Id$/.test(k))) continue // relative to a project, workspace or session
       if (!keys.some((k) => PATH_KEYS.has(k))) continue
       if (OWN_FENCE.has(method)) continue
       if (!(method in FENCED_PARAMS) && !(method in ATTACHMENT_PARAMS)) missing.push(method)
     }
     expect(missing).toEqual([])
+  })
+  it('no Work method has a path param of its own: a file is named inside a CanvasSource, which the fence reads', () => {
+    // `from` and `options` are not paths in Work (`work.outbox.grant {from: HeldRef}`), so they are not in this list.
+    const WORK_PATH_KEYS = ['path', 'paths', 'cwd', 'parent', 'destParent', 'sourcePath', 'projectPath']
+    const offenders: string[] = []
+    for (const option of ClientRequestSchema.options as z.ZodTypeAny[]) {
+      const method = (option as z.ZodObject<{ method: z.ZodLiteral<string> }>).shape.method.value
+      if (!isWorkMethod(method)) continue
+      const keys = Object.keys(paramsOf(option)?.shape ?? {})
+      if (keys.some((k) => WORK_PATH_KEYS.includes(k))) offenders.push(method)
+    }
+    expect(offenders).toEqual([])
   })
   it('checkpoint methods name a thread only: the host reads the cwd off its row', () => {
     const methods = (ClientRequestSchema.options as z.ZodTypeAny[])
@@ -301,5 +315,44 @@ describe('fenceRequest', () => {
     expect(() => fenceRequest(req('fs.statFiles', { paths: [join(root, 'src', 'a.ts'), '/etc/hosts'] }), [root])).toThrow(FenceError)
     expect(() => fenceRequest(req('fs.createPath', { parent: root, name: '../escape', isDir: true }), [root])).toThrow(FenceError)
     expect(() => fenceRequest(req('fs.readText', { path: join(root, 'link-out') }), [root])).toThrow(FenceError)
+  })
+})
+
+describe('Work: a file named inside a CanvasSource', () => {
+  const req = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest
+  const file = (path: string) => ({ at: 'file', host: 'env_1', path })
+  it('reads the sources of a Work method and of a create, wherever they sit in the params', () => {
+    expect(workSourcePaths(req('work.canvas.open', { sessionId: 's', kind: 'pdf', source: file('/r/a.pdf'), title: 'A' }))).toEqual(['/r/a.pdf'])
+    expect(workSourcePaths(req('work.routines.set', { routine: { trigger: { on: 'file', source: file('/r/b.xlsx'), by: 'someone-else' } } }))).toEqual(['/r/b.xlsx'])
+    expect(
+      workSourcePaths(req('app.workCall', { sessionId: 's', token: 't', call: 1, tool: 'canvas_open', args: { source: { at: 'microsoft', host: 'env_1', app: 'excel', name: 'B', ref: { kind: 'path', path: '/r/b.xlsx' } } } }))
+    ).toEqual(['/r/b.xlsx'])
+    // a Teams or SharePoint file is a URL: no path to fence
+    expect(workSourcePaths(req('work.canvas.open', { source: { at: 'microsoft', host: 'env_1', app: 'word', name: 'D', ref: { kind: 'url', url: 'https://x/y' } } }))).toEqual([])
+    expect(workSourcePaths(req('work.canvas.open', { source: { at: 'lifeos', table: 'docs', id: 'd1' } }))).toEqual([])
+    expect(workSourcePaths(req('session.create', { provider: 'claude', model: 'm', about: { kind: 'selection', label: 'A', ref: file('/r/a.pdf') } }))).toEqual(['/r/a.pdf'])
+    // only `about` is read on a create, and no other method is read at all
+    expect(workSourcePaths(req('session.create', { provider: 'claude', model: 'm', cwd: '/r' }))).toEqual([])
+    expect(workSourcePaths(req('session.list', { at: 'file', path: '/etc/hosts' }))).toBeNull()
+  })
+  it('fences them by the same roots and the same typed error', () => {
+    const open = (path: string): ClientRequest => req('work.canvas.open', { sessionId: 's', kind: 'pdf', source: file(path), title: 'A' })
+    expect(() => fenceRequest(open(join(root, 'src', 'a.ts')), [root])).not.toThrow()
+    expect(() => fenceRequest(open(join(outside, 'secret')), [root])).toThrow(FenceError)
+    expect(() => fenceRequest(open(join(root, 'link-out')), [root])).toThrow(FenceError)
+    // a denied directory inside a root stays denied
+    expect(() => fenceRequest(open(join(root, 'src', 'a.ts')), [root], [], [join(root, 'src')])).toThrow(FenceError)
+    const about = (path: string): ClientRequest => req('session.create', { provider: 'claude', model: 'm', about: { kind: 'selection', label: 'A', ref: file(path) } })
+    expect(() => fenceRequest(about(join(root, 'src', 'a.ts')), [root])).not.toThrow()
+    expect(() => fenceRequest(about('/etc/hosts'), [root])).toThrow('forbidden: session.create is outside app-managed roots')
+  })
+  it('refuses a Work request nested deeper than it reads, never passing it unread', () => {
+    let deep: unknown = file('/etc/hosts')
+    for (let i = 0; i < 20; i++) deep = { inner: deep }
+    expect(() => fenceRequest(req('work.canvas.open', { deep }), ['/'])).toThrow(FenceError)
+  })
+  it('a Work workspace names no folder, so workspace.create fences only a path it is given', () => {
+    expect(fencedPaths(req('workspace.create', { kind: 'work', name: 'Purdue', sector: 'purdue' }))).toEqual([])
+    expect(fencedPaths(req('workspace.create', { path: '/w' }))).toEqual(['/w'])
   })
 })

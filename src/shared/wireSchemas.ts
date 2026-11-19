@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { StartOnSchema } from './defaults'
+import { SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
+import { WorkSettingsSchema } from './work/scope'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
 import { ComputerHistoryCallSchema, ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS } from './contract-computer'
@@ -407,6 +409,8 @@ export const SessionMetaSchema = z.object({
   masterId: z.string().nullable().optional(),
   after: z.string().nullable().optional(),
   readAt: z.number().int().optional(),
+  scope: SessionScopeSchema.optional(),
+  routineRunId: z.string().nullable().optional(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })
@@ -472,6 +476,8 @@ export const WorkspaceMetaSchema = z.object({
   preamble: z.string().nullable().optional(),
   preambleEnabled: z.boolean().optional(),
   linkId: z.string().nullable().optional(),
+  kind: WorkspaceKindSchema.optional(),
+  sector: z.string().nullable().optional(),
   createdAt: z.number().int()
 })
 
@@ -495,6 +501,7 @@ export const ProjectMetaSchema = z.object({
   linkNote: z.string().nullable().optional(),
   settingsUpdatedAt: z.number().int().nullable().optional(),
   startOn: StartOnSchema.nullable().optional(),
+  lifeosProjectId: z.string().nullable().optional(),
   createdAt: z.number().int()
 })
 
@@ -1107,6 +1114,8 @@ export const HostLogPushSchema = push('host-log', {
   status: HostJobStatusSchema
 })
 export const MacBridgeHeldPushSchema = push('macBridge.held', { sessionId: z.string(), held: z.number().int() })
+/** Work (contract-work.ts): the switch's state on the host, to every client. Not in RemotePushSchema yet: the phone keeps it as unknown until its Work screens read it, and a pillar's pushes join the subset the same way. */
+export const WorkPushSchema = push('work', { settings: WorkSettingsSchema })
 /** Computer use (contract-computer.ts): the desktop's; not in RemotePushSchema, since the phone does not speak it. */
 export const ComputerPushSchema = push('computer', {
   service: ComputerServiceStateSchema,
@@ -1280,6 +1289,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof HostDevicesPushSchema, PushOf<'host.devices'>>>,
   Expect<Mirror<typeof HostLogPushSchema, PushOf<'host-log'>>>,
   Expect<Mirror<typeof MacBridgeHeldPushSchema, PushOf<'macBridge.held'>>>,
+  Expect<Mirror<typeof WorkPushSchema, PushOf<'work'>>>,
   Expect<Mirror<typeof ComputerPushSchema, PushOf<'computer'>>>,
   Expect<Mirror<typeof ComputerFramePushSchema, PushOf<'computer-frame'>>>,
   Expect<Mirror<typeof ComputerClickPushSchema, PushOf<'computer-click'>>>,

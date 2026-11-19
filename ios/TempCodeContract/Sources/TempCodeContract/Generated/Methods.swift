@@ -416,8 +416,10 @@ public enum Methods {
             public let queue: Bool?
             public let master: Bool?
             public let firstMessage: String?
+            public let scope: SessionScope?
+            public let about: ContextChip?
 
-            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil, queue: Bool? = nil, master: Bool? = nil, firstMessage: String? = nil) {
+            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil, queue: Bool? = nil, master: Bool? = nil, firstMessage: String? = nil, scope: SessionScope? = nil, about: ContextChip? = nil) {
                 self.id = id
                 self.provider = provider
                 self.model = model
@@ -440,6 +442,8 @@ public enum Methods {
                 self.queue = queue
                 self.master = master
                 self.firstMessage = firstMessage
+                self.scope = scope
+                self.about = about
             }
         }
 
@@ -2385,5 +2389,29 @@ public enum Methods {
         }
 
         public typealias Output = Ok
+    }
+
+    public enum WorkGet: ContractMethod {
+        public static let name = "work.get"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = WorkSettings
+    }
+
+    public enum WorkSet: ContractMethod {
+        public static let name = "work.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let enabled: Bool
+
+            public init(enabled: Bool) {
+                self.enabled = enabled
+            }
+        }
+
+        public typealias Output = WorkSettings
     }
 }

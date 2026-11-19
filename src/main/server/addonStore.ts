@@ -29,6 +29,12 @@ type Row = {
 
 export const mintAddonId = (): string => `ad_${nanoid(12)}`
 
+/** What Work knows of an add-on beyond its row: the row TempCode made for LifeOS, and a global add-on allowed in Work threads. */
+export interface AddonWorkMarks {
+  role: 'lifeos' | null
+  forWork: boolean
+}
+
 /** A value as one string whatever its keys' order: a spec's digest names the tools it was listed under, and a put that changes nothing is told by it. */
 export const canonical = (value: unknown): string =>
   JSON.stringify(value, (_k, v: unknown) =>
@@ -68,6 +74,30 @@ export class AddonStore {
         fetched_at  INTEGER NOT NULL
       );
     `)
+    // Work's two columns (docs/agents/work.md), defaulted so an older build still reads and writes
+    // the table: `role` is 'lifeos' on the row TempCode makes for LifeOS, `for_work` marks a global
+    // add-on the person allowed in Work threads. Neither is part of the row that syncs.
+    for (const column of [`role TEXT`, `for_work INTEGER NOT NULL DEFAULT 0`]) {
+      if (!db.prepare(`SELECT 1 FROM pragma_table_info('addons') WHERE name = ?`).get(column.split(' ')[0])) db.exec(`ALTER TABLE addons ADD COLUMN ${column}`)
+    }
+  }
+
+  // ── Work's marks ──────────────────────────────────────────────────────
+
+  /** An add-on's Work marks; null when no such add-on. */
+  workMarks(id: string): AddonWorkMarks | null {
+    const row = this.db.prepare(`SELECT role, for_work FROM addons WHERE id = ?`).get(id) as { role: string | null; for_work: number } | undefined
+    return row ? { role: row.role === 'lifeos' ? 'lifeos' : null, forWork: !!row.for_work } : null
+  }
+
+  /** Sets one or both marks; answers whether the add-on exists. A row's own write (set, put) keeps them. */
+  setWorkMarks(id: string, marks: Partial<AddonWorkMarks>): boolean {
+    const now = this.workMarks(id)
+    if (!now) return false
+    const next = { ...now, ...marks }
+    this.db.prepare(`UPDATE addons SET role = ?, for_work = ? WHERE id = ?`).run(next.role, next.forWork ? 1 : 0, id)
+    if (next.role !== now.role || next.forWork !== now.forWork) this.emit(this.changeListeners)
+    return true
   }
 
   // ── rows ──────────────────────────────────────────────────────────────
@@ -206,10 +236,16 @@ export class AddonStore {
   // ── the table ─────────────────────────────────────────────────────────
 
   private write(row: AddonRow, existing: AddonRow | null): void {
+    // A row of this scope and name under another id that the callers' clash checks could not read (its JSON does not
+    // parse, so `byName` never saw it) gives way, as it did when this statement replaced on the unique index.
+    this.db.prepare(`DELETE FROM addons WHERE IFNULL(workspace_id, '') = ? AND name = ? AND id <> ?`).run(scopeKey(row.workspaceId), row.name, row.id)
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO addons (id, name, workspace_id, description, spec, enabled, added_by, written_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        // An upsert, not a replace: a replace would reset the columns it does not name (Work's marks).
+        `INSERT INTO addons (id, name, workspace_id, description, spec, enabled, added_by, written_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, workspace_id = excluded.workspace_id, description = excluded.description, spec = excluded.spec,
+           enabled = excluded.enabled, added_by = excluded.added_by, written_by = excluded.written_by, created_at = excluded.created_at, updated_at = excluded.updated_at`
       )
       .run(
         row.id,

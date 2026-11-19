@@ -1,4 +1,5 @@
 import type { ClientRequest } from './contract'
+import { WORK_CAPS } from './contract-work'
 
 /**
  * What a remote caller may do. `read` is implied for every key; `admin`
@@ -505,7 +506,10 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.environments.update': 'local',
   'remote.environments.remove': 'local',
   'remote.environments.ticket': 'local',
-  'remote.environments.pair': 'local'
+  'remote.environments.pair': 'local',
+  // Work (contract-work.ts): the switch (read, and admin to set), the bridge's
+  // two tool methods (local), and each pillar's own rows from its contract file.
+  ...WORK_CAPS
 }
 
 /** The capability one request needs: the table row, plus the param-level

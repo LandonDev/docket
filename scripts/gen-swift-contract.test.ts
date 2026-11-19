@@ -84,9 +84,25 @@ describe('the subset', () => {
     expect(swift).toContain('default: self = .unknown(try JSONValue(from: decoder))')
     expect(pushNames).toEqual(expect.arrayContaining(['notes', 'batch', 'resources', 'boot-resume', 'accounts', 'host.devices', 'host-log', 'macBridge.held']))
   })
-  it('is deterministic and writes exactly six files', () => {
+  it('is deterministic and writes exactly seven files', () => {
     expect(generate()).toEqual(files)
-    expect(Object.keys(files).sort()).toEqual(['AgentEvent.swift', 'Contract.swift', 'Enums.swift', 'Methods.swift', 'ServerPush.swift', 'Types.swift'])
+    expect(Object.keys(files).sort()).toEqual(['AgentEvent.swift', 'CanvasSource.swift', 'Contract.swift', 'Enums.swift', 'Methods.swift', 'ServerPush.swift', 'Types.swift'])
+  })
+  it("carries Work's names: the scope and kind enums, the switch, and a create's chip and source", () => {
+    const enums = files['Enums.swift']
+    expect(enums).toContain('public enum WorkspaceKind')
+    expect(enums).toContain('public enum SessionScope')
+    expect(files['Types.swift']).toContain('public struct WorkSettings')
+    expect(files['Types.swift']).toContain('public struct ContextChip')
+    expect(files['CanvasSource.swift']).toContain('public enum CanvasSource')
+    // optional on the wire, so a host from before Work still decodes and call sites keep compiling
+    expect(files['Types.swift']).toContain('scope: SessionScope? = nil')
+    expect(files['Types.swift']).toContain('kind: WorkspaceKind? = nil')
+    const methods = files['Methods.swift']
+    expect(methods).toContain('"work.get"')
+    expect(methods).toContain('"work.set"')
+    // The switch's push is not the phone's yet: adding a case would break the client's exhaustive switch.
+    expect(pushNames).not.toContain('work')
   })
   it('emits a nullable method output as an optional typealias', () => {
     const methods = files['Methods.swift']

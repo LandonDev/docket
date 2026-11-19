@@ -36,7 +36,7 @@ import {
   researchWriteRoots,
   rulesFor
 } from '../orchestration'
-import { APP_TOOLS, appToolsMcp, computerMechanicsFor, releaseAppTools } from '../apptools'
+import { APP_TOOLS, appToolsMcp, computerMechanicsFor, releaseAppTools, withWorkTools } from '../apptools'
 import { withMacTools } from '../macTools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
@@ -1819,6 +1819,8 @@ export const claudeDriver: HarnessDriver = {
 
     // The Mac bridge's tools, when this thread (or its parent) may reach a Mac (macTools.ts).
     withMacTools(options, session)
+    // Work's tools, when the thread's scope has any (apptools.ts): none for a code thread, whose options stay as built.
+    withWorkTools(options, session)
     // Every CLI spawn goes through the warm pool (claudeWarm.ts): a fresh
     // thread whose traffic our own gateway routes (the owner's, or no shim)
     // adopts the warm process of the SDK's exact spec when one waits, and

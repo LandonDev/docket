@@ -134,3 +134,64 @@ describe('AddonStore tools and status (this host only)', () => {
     expect(new AddonStore(db).status()).toEqual({})
   })
 })
+
+describe("AddonStore: Work's marks", () => {
+  it('start unset, are set one at a time, and say when the add-on does not exist', () => {
+    const row = store.set(input(), you)
+    expect(store.workMarks(row.id)).toEqual({ role: null, forWork: false })
+    expect(store.setWorkMarks(row.id, { forWork: true })).toBe(true)
+    expect(store.setWorkMarks(row.id, { role: 'lifeos' })).toBe(true)
+    expect(store.workMarks(row.id)).toEqual({ role: 'lifeos', forWork: true })
+    expect(store.setWorkMarks(row.id, { role: null })).toBe(true)
+    expect(store.workMarks(row.id)).toEqual({ role: null, forWork: true })
+    expect(store.workMarks('ad_missing')).toBeNull()
+    expect(store.setWorkMarks('ad_missing', { forWork: true })).toBe(false)
+  })
+
+  it("survive every write of the row: a person's edit, a replace by name and the sync's put", () => {
+    const row = store.set(input(), you)
+    store.setWorkMarks(row.id, { role: 'lifeos', forWork: true })
+    clock = 2_000
+    store.set(input({ id: row.id, description: 'edited', enabled: false }), thread)
+    expect(store.workMarks(row.id)).toEqual({ role: 'lifeos', forWork: true })
+    store.set(input({ spec: { ...spec, args: ['-y', 'other'] } }), you)
+    expect(store.workMarks(row.id)).toEqual({ role: 'lifeos', forWork: true })
+    expect(store.put({ ...store.get(row.id)!, description: 'from the home', updatedAt: 3_000 })).toBe(true)
+    expect(store.workMarks(row.id)).toEqual({ role: 'lifeos', forWork: true })
+    expect(store.get(row.id)).toMatchObject({ description: 'from the home', updatedAt: 3_000 })
+  })
+
+  it('are not part of the row a client lists or the sync carries, and a change of one tells the listeners once', () => {
+    const row = store.set(input(), you)
+    let changes = 0
+    store.onChange(() => changes++)
+    store.setWorkMarks(row.id, { forWork: true })
+    store.setWorkMarks(row.id, { forWork: true })
+    expect(changes).toBe(1)
+    expect(store.get(row.id)).toEqual(row)
+    expect(Object.keys(store.list()[0])).not.toContain('role')
+    expect(Object.keys(store.list()[0])).not.toContain('forWork')
+  })
+
+  it('go with the add-on when it is removed', () => {
+    const row = store.set(input(), you)
+    store.setWorkMarks(row.id, { role: 'lifeos' })
+    store.remove(row.id)
+    expect(store.workMarks(row.id)).toBeNull()
+    const again = store.set(input(), you)
+    expect(store.workMarks(again.id)).toEqual({ role: null, forWork: false })
+  })
+})
+
+describe('AddonStore: a row it cannot read', () => {
+  it("of the same scope and name gives way to a write, as it did when the write replaced on the unique index", () => {
+    db.prepare(`INSERT INTO addons (id, name, workspace_id, description, spec, enabled, added_by, written_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      'ad_broken', 'github', null, '', '{not json', 1, '{"kind":"person"}', '{"kind":"person"}', 1, 1
+    )
+    expect(store.list()).toEqual([])
+    const home: AddonRow = { id: 'ad_fromhome00', name: 'github', workspaceId: null, description: '', spec, enabled: true, addedBy: you, writtenBy: you, createdAt: 5, updatedAt: 5 }
+    expect(store.put(home)).toBe(true)
+    expect(store.list().map((r) => r.id)).toEqual(['ad_fromhome00'])
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM addons`).get()).toEqual({ n: 1 })
+  })
+})

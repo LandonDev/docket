@@ -26,6 +26,7 @@ import { networkRefusalOf, refusalCodeOf } from './failureKind'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush, type ServerResponse } from '@shared/contract'
 import type { SessionChanges, SessionPage } from '@shared/wire'
 import {
+  CAPABILITIES,
   CONTRACT_VERSION,
   LOCAL_PRINCIPAL,
   allows,
@@ -207,8 +208,12 @@ import {
   setAppSkillTools,
   setAppToolsRegistry,
   setAppAddons,
+  setAppWork,
   setProjectPlans
 } from './apptools'
+import { startWork } from './work/ctx'
+import { isWorkMethod } from '@shared/work/wire'
+import type { Caller as WorkCaller } from './work/modules'
 import { SkillMaterializer, configureMaterializedSkills } from './skills/materialize'
 import { SkillPointers, configureSkillPointers } from './skills/pointers'
 import { configureClaudeSkillRoots } from './skills/claudeRoots'
@@ -294,6 +299,17 @@ import { ListChangeLog } from './listChanges'
 import { LaunchMirror } from './launchMirror'
 import { peerDelay, peerDelayMs } from './peerDelay'
 import type { WireProfile } from '@shared/wire'
+
+/** A code workspace is a folder the caller names; only a Work workspace has none to name. */
+function requireWorkspacePath(path: string | undefined): string {
+  if (path === undefined) throw new Error('workspace.create needs a path')
+  return path
+}
+
+/** Who a socket's request is from, as Work's modules read it (work/modules.ts `Caller`). */
+function workCaller(principal: Principal): WorkCaller {
+  return principal.kind === 'local' ? { kind: 'local', caps: CAPABILITIES } : { kind: 'remote', caps: principal.caps }
+}
 
 /** The session an app.* call claims to be from — must actually exist. */
 function callerOf(registry: SessionRegistry, sessionId: string): SessionMeta {
@@ -1761,6 +1777,31 @@ export async function startServer(
       return !!s && hasAddons(addonStore, workspaceIdOf(registry, s))
     }
   })
+  // The notifier is built late in boot; Work's parts read it through this once it is.
+  let workNotifier: Notifier | null = null
+  // Work (docs/agents/work.md): every module's tables, the switch, the context the modules share and the
+  // one mount of their methods, pushes and tools. Off by default; while off nothing of it starts or lists.
+  const work = startWork({
+    db,
+    store,
+    registry,
+    environmentId,
+    dataDir: options.dataDir ?? dirname(dbPath),
+    peers,
+    peerCalls,
+    crossHostThreads,
+    crossHostAgents,
+    macBridge,
+    sessionMover,
+    addons: addonStore,
+    addonRpc: stores,
+    storeSync,
+    addonHost,
+    addonGrants,
+    away,
+    notifier: () => workNotifier
+  })
+  setAppWork({ tools: work.tools })
   void runDoctor() // warm the cache so the new-session modal opens ready
   // the probed harnesses ask their CLIs for models; the linked hosts hear the rows
   void probeCatalogs().then(() => rulesSync.catalogChanged())
@@ -2039,6 +2080,9 @@ export async function startServer(
     const computerSocket = computerRpc.socket()
     // Add-on grants: every view of this host after a change, never a value.
     const offGrants = addonGrants.onChange((grants) => sendFrame({ push: 'addon-grants', grants }))
+    // Work: the switch's state and every module's pushes, to every client; a bridge call's tools stop with this socket.
+    const offWork = work.pushes.onPush(sendFrame, principal)
+    const workSocket = new AbortController()
 
     ws.on('message', async (data) => {
       let raw: unknown
@@ -2196,6 +2240,11 @@ export async function startServer(
           if (served) return sendFrame({ id: req.id, ok: true, result: await served })
         }
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
+        // Work: the switch, the bridge's tool methods and every pillar's own methods, through the one mount.
+        if (isWorkMethod(req.method)) {
+          const worked = await work.handle(req, principal, workSocket)
+          if (worked.handled) return sendFrame({ id: req.id, ok: true, result: worked.result })
+        }
         const planned = handleProjectPlan(req, projectPlans)
         if (planned.handled) return sendFrame({ id: req.id, ok: true, result: planned.result })
         if (req.method === 'batch.board') boardWatch.ask(connection, req.params.masterId)
@@ -2286,7 +2335,10 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: await registry.createWorkspace(req.params.path, req.params.name)
+              result:
+                req.params.kind === 'work'
+                  ? await work.createWorkspace({ name: req.params.name, sector: req.params.sector }, workCaller(principal))
+                  : await registry.createWorkspace(requireWorkspacePath(req.params.path), req.params.name)
             })
             break
           case 'workspace.list':
@@ -2869,6 +2921,8 @@ export async function startServer(
             })
             break
           case 'session.create': {
+            // A create that asks for Work is admitted or refused by work/scope.ts; one that does not never reaches Work's code.
+            if (req.params.scope === 'work' || req.params.about) work.admitSession(req.params, workCaller(principal))
             const session = await registry.createSession(req.params)
             sendFrame({ id: req.id, ok: true, result: session })
             break
@@ -3489,6 +3543,8 @@ export async function startServer(
       offComputerSettings()
       computerSocket.close()
       offGrants()
+      offWork()
+      workSocket.abort()
       offMeta()
       offNotes()
       offBatch()
@@ -3593,6 +3649,7 @@ export async function startServer(
     // A thread a window shows its person right now: the phone hears nothing of it (attention.ts, FocusSignal).
     onScreen: (id) => focus.isNamed(id)
   })
+  workNotifier = notifier
   // The person-facing sinks (the hub, local APNs) skip an onScreen notice; webhooks, the relay (its carrier's webhooks) and the Live Activity take every one.
   if (hub) {
     notifier.onNotice(
@@ -3703,6 +3760,8 @@ export async function startServer(
       addonGrantsHook.current = null
       addonGrants.close()
       setAppAddons(null)
+      setAppWork(null)
+      work.close()
       stopScopeFlips()
       addonExposure.dispose()
       await addonHost.stop()

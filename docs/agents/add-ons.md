@@ -17,6 +17,11 @@ plan-8YMm3ynnFZYs.md (grants) and plan-vJP8mPAPorvc.md (pages).
 - **Where it lives.** The `addons` table and this host's
   `addon_tool_cache` (src/main/server/addonStore.ts). No column holds a
   secret: `env` and `headers` name the values, which live in the grant.
+  Two columns are Work's (docs/agents/work.md): `role` (`'lifeos'` on the
+  row TempCode makes for LifeOS) and `for_work` (a global add-on allowed
+  in Work threads). They are not part of the row a client lists or the
+  sync carries (`workMarks`, `setWorkMarks`), and a row write keeps them:
+  the store upserts by id, since a replace would reset them.
   One copy, on the box: `StoreSync` (src/main/server/remote/storeSync.ts,
   beside RulesSync) has the Mac follow the box, seed each shared scope
   once, forward every write and refuse one while the box is out of reach;

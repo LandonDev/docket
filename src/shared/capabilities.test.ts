@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from './contract'
 import { METHOD_CAPABILITY, allows, normalizeCaps, requiredCapability } from './capabilities'
+import { pillarOfMethod } from './work/wire'
 
 const methods = (ClientRequestSchema.options as { shape: { method: { value: string } } }[]).map(
   (o) => o.shape.method.value
 )
+// A Work pillar's own methods (`work.<pillar>.*`) are not listed below: each pillar's contract file
+// names their capabilities and contract-work.test.ts holds them to Work's rules, so a pillar adds a
+// method without editing this file. A pillar's bridge methods (`app.work<Pillar>*`) are `app.*` and
+// so local, as the list below already says.
 const withCap = (cap: string): string[] =>
   Object.entries(METHOD_CAPABILITY)
-    .filter(([, c]) => c === cap)
+    .filter(([m, c]) => c === cap && !(m.startsWith('work.') && pillarOfMethod(m)))
     .map(([m]) => m)
     .sort()
 
@@ -157,7 +162,9 @@ describe('METHOD_CAPABILITY', () => {
         // Add-on grants (contract-addonGrants.ts): values, a removal and the owner's refresh.
         'addons.grant.setFields',
         'addons.grant.clear',
-        'addons.grant.refresh'
+        'addons.grant.refresh',
+        // The Work switch on this host (contract-work.ts): a settings write.
+        'work.set'
       ].sort()
     )
   })

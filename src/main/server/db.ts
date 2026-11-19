@@ -289,7 +289,22 @@ export function openDb(path: string): DatabaseSync {
     // A dev server's row (kind 'port'): the listening pid, the tool call that opened it, and what the process is.
     `ALTER TABLE thread_resources ADD COLUMN pid INTEGER`,
     `ALTER TABLE thread_resources ADD COLUMN call_id TEXT`,
-    `ALTER TABLE thread_resources ADD COLUMN what TEXT`
+    `ALTER TABLE thread_resources ADD COLUMN what TEXT`,
+    // Work's core columns (docs/agents/work.md): all defaulted, so a build from before them
+    // still reads and writes the database. A Work table is never added here: each is made by
+    // the module that owns it, in its own `ensure` (work/schema.ts `ensureWorkTables`).
+    // 'code' | 'work': a job is a workspace of kind 'work'.
+    `ALTER TABLE workspaces ADD COLUMN kind TEXT NOT NULL DEFAULT 'code'`,
+    // The LifeOS sector the workspace links to (a code workspace may carry one); NULL: none.
+    `ALTER TABLE workspaces ADD COLUMN sector TEXT`,
+    // JSON WorkspaceWorkSettings (src/shared/work/scope.ts); NULL: the defaults.
+    `ALTER TABLE workspaces ADD COLUMN work_settings TEXT`,
+    // 'code' | 'work', stamped once at create and kept across a move.
+    `ALTER TABLE sessions ADD COLUMN scope TEXT NOT NULL DEFAULT 'code'`,
+    // The routine run that started the thread (started_by is a session id and stays null).
+    `ALTER TABLE sessions ADD COLUMN routine_run_id TEXT`,
+    // The LifeOS project this project mirrors.
+    `ALTER TABLE projects ADD COLUMN lifeos_project_id TEXT`
   ]) {
     try {
       db.exec(stmt)
@@ -451,6 +466,8 @@ interface SessionRowRaw {
   master_id: string | null
   after_id: string | null
   read_at: number | null
+  scope: string | null
+  routine_run_id: string | null
   created_at: number
   updated_at: number
 }
@@ -509,6 +526,9 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     masterId: r.master_id ?? null,
     after: r.after_id ?? null,
     readAt: r.read_at ?? 0,
+    // Work's two fields ride only a row that has them, so a code thread's meta is what it was.
+    ...(r.scope === 'work' ? { scope: 'work' as const } : {}),
+    ...(r.routine_run_id ? { routineRunId: r.routine_run_id } : {}),
     createdAt: r.created_at,
     updatedAt: r.updated_at
   }
@@ -733,8 +753,8 @@ export class Store {
     this.turnIndex.markReady(meta.id)
     this
       .stmt(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, ultrafast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, plan_completed_at, implementation_id, plan_thread_id, started_by, is_master, master_id, after_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, ultrafast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, plan_completed_at, implementation_id, plan_thread_id, started_by, is_master, master_id, after_id, scope, routine_run_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -769,6 +789,8 @@ export class Store {
         meta.isMaster ? 1 : 0,
         meta.masterId ?? null,
         meta.after ?? null,
+        meta.scope === 'work' ? 'work' : 'code',
+        meta.routineRunId ?? null,
         meta.createdAt,
         meta.updatedAt
       )
@@ -1269,9 +1291,25 @@ export class Store {
   insertWorkspace(w: WorkspaceMeta): void {
     this
       .stmt(
-        `INSERT INTO workspaces (id, name, path, git, created_at, github_repo, github_repo_checked_at, link_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO workspaces (id, name, path, git, created_at, github_repo, github_repo_checked_at, link_id, kind, sector) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(w.id, w.name, w.path, w.git ? 1 : 0, w.createdAt, w.githubRepo ?? null, w.githubRepoCheckedAt ?? null, w.linkId ?? null)
+      .run(w.id, w.name, w.path, w.git ? 1 : 0, w.createdAt, w.githubRepo ?? null, w.githubRepoCheckedAt ?? null, w.linkId ?? null, w.kind === 'work' ? 'work' : 'code', w.sector ?? null)
+  }
+
+  /** The LifeOS sector a workspace links to (Work, docs/agents/work.md); null unlinks it. */
+  setWorkspaceSector(id: string, sector: string | null): void {
+    this.stmt(`UPDATE workspaces SET sector = ? WHERE id = ?`).run(sector, id)
+  }
+
+  /** A workspace's stored Work settings as JSON (`workspaces.work_settings`); null: none stored, or no such workspace. */
+  getWorkspaceWorkSettings(id: string): string | null {
+    const row = this.stmt(`SELECT work_settings FROM workspaces WHERE id = ?`).get(id) as { work_settings: string | null } | undefined
+    return row?.work_settings ?? null
+  }
+
+  /** Answers whether the workspace exists. */
+  setWorkspaceWorkSettings(id: string, json: string | null): boolean {
+    return Number(this.stmt(`UPDATE workspaces SET work_settings = ? WHERE id = ?`).run(json, id).changes) > 0
   }
 
   /** The id the workspace shares with its copies on other hosts (projectLinks.ts). */
@@ -1293,6 +1331,8 @@ export class Store {
       preamble: string | null
       preamble_enabled: number
       link_id: string | null
+      kind: string | null
+      sector: string | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -1306,6 +1346,9 @@ export class Store {
       preamble: r.preamble,
       preambleEnabled: r.preamble_enabled !== 0,
       linkId: r.link_id,
+      // Work's two fields ride only a row that has them, so a code workspace reads as it did.
+      ...(r.kind === 'work' ? { kind: 'work' as const } : {}),
+      ...(r.sector ? { sector: r.sector } : {}),
       createdAt: r.created_at
     }))
   }
@@ -1388,9 +1431,14 @@ export class Store {
   insertProject(p: ProjectMeta): void {
     this
       .stmt(
-        `INSERT INTO projects (id, workspace_id, name, mode, branch, cwd, created_at, link_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO projects (id, workspace_id, name, mode, branch, cwd, created_at, link_id, lifeos_project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(p.id, p.workspaceId, p.name, p.mode, p.branch, p.cwd, p.createdAt, p.linkId ?? null)
+      .run(p.id, p.workspaceId, p.name, p.mode, p.branch, p.cwd, p.createdAt, p.linkId ?? null, p.lifeosProjectId ?? null)
+  }
+
+  /** The LifeOS project a project mirrors (Work, docs/agents/work.md); null clears it. */
+  setProjectLifeosId(id: string, lifeosProjectId: string | null): void {
+    this.stmt(`UPDATE projects SET lifeos_project_id = ? WHERE id = ?`).run(lifeosProjectId, id)
   }
 
   /** The id the project shares with its copies on other hosts (projectLinks.ts). */
@@ -1424,6 +1472,7 @@ export class Store {
       link_note: string | null
       settings_updated_at: number | null
       start_on: string | null
+      lifeos_project_id: string | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -1441,6 +1490,7 @@ export class Store {
       ...(r.link_note ? { linkNote: r.link_note } : {}),
       settingsUpdatedAt: r.settings_updated_at,
       startOn: r.start_on === 'box' || r.start_on === 'mac' ? r.start_on : null,
+      ...(r.lifeos_project_id ? { lifeosProjectId: r.lifeos_project_id } : {}),
       createdAt: r.created_at
     }))
   }

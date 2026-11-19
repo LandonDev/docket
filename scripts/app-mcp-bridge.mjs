@@ -20,6 +20,11 @@
  *   TEMP_CODE_COMPUTER_TOKEN  enables computer_* tools discovered from the app;
  *                      each call and cancellation carries this thread's token
  *   TEMP_CODE_COMPUTER_IMAGES  'parts' for MCP images, otherwise 'none'
+ *   TEMP_CODE_WORK_TOKEN  set only for a thread whose Work scope has tools at
+ *                      spawn: the Work tools are discovered from the app
+ *                      (app.workTools) and each call (app.workCall) and
+ *                      cancellation (app.workCancel) carries this thread's
+ *                      token (src/main/server/work/ctx.ts)
  *
  * Runs under plain node (node ≥22 has a global WebSocket client). When
  * spawned with the Electron binary, ELECTRON_RUN_AS_NODE=1 makes that
@@ -38,6 +43,9 @@ const COMPUTER_TOKEN = process.env.TEMP_CODE_COMPUTER_TOKEN
 const COMPUTER_IMAGES = process.env.TEMP_CODE_COMPUTER_IMAGES === 'parts' ? 'parts' : 'none'
 const computerCalls = new Set()
 let computerToolsReady = null
+const WORK_TOKEN = process.env.TEMP_CODE_WORK_TOKEN
+const workCalls = new Set()
+let workToolsReady = null
 
 // ── WS client to the app server ──────────────────────────────────────
 
@@ -903,6 +911,41 @@ function computerTools() {
   return computerToolsReady
 }
 
+/** The Work tools of this thread's scope, fetched once; a failed attempt is asked again at the next list. Never asked without a token. */
+function workTools() {
+  if (!WORK_TOKEN) return []
+  if (!workToolsReady) {
+    const asked = appRequest('app.workTools', { token: WORK_TOKEN })
+      .then((result) => result.tools.map(workListing))
+      .catch((err) => {
+        console.error(`[app-bridge] work tools: ${String(err?.message ?? err).replace(/[\r\n]+/g, ' ')}`)
+        if (workToolsReady === asked) workToolsReady = null
+        return []
+      })
+    workToolsReady = asked
+  }
+  return workToolsReady
+}
+
+/** One Work tool as MCP lists it: the app's name, words and input schema, and its read-only word as an annotation. */
+export function workListing(tool) {
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    ...(tool.readOnly ? { annotations: { readOnlyHint: true } } : {})
+  }
+}
+
+/** A Work tool's answer is MCP's own result shape: passed through whole. */
+export function workResult(result) {
+  return {
+    content: Array.isArray(result?.content) ? result.content : [],
+    ...(result?.isError ? { isError: true } : {}),
+    ...(result?.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {})
+  }
+}
+
 export const METHOD_FOR = {
   app_list_threads: 'app.listThreads',
   app_read_thread: 'app.readThread',
@@ -990,6 +1033,15 @@ async function callTool(name, args, id) {
       computerCalls.delete(id)
     }
   }
+  // A Work tool (one the app listed for this thread): the app holds the deadline, as a held act or a long read may wait.
+  if (WORK_TOKEN && (await workTools()).some((t) => t.name === name)) {
+    workCalls.add(id)
+    try {
+      return workResult(await appRequest('app.workCall', { call: id, tool: name, args: args ?? {}, token: WORK_TOKEN }, 0))
+    } finally {
+      workCalls.delete(id)
+    }
+  }
   // The Mac decides how long a call may wait (its approval, the command's
   // timeout); the server holds the deadline, so no client timeout here.
   if (MAC_JOB_TOOLS.some((t) => t.name === name)) {
@@ -1042,6 +1094,9 @@ async function handle(msg) {
     if (COMPUTER_TOKEN && computerCalls.has(params?.requestId)) {
       void appRequest('app.computerCancel', { call: params.requestId, token: COMPUTER_TOKEN }).catch(() => {})
     }
+    if (WORK_TOKEN && workCalls.has(params?.requestId)) {
+      void appRequest('app.workCancel', { call: params.requestId, token: WORK_TOKEN }).catch(() => {})
+    }
     return
   }
   if (method === 'notifications/initialized') return
@@ -1059,7 +1114,7 @@ async function handle(msg) {
     } else if (method === 'ping') {
       out({ id, result: {} })
     } else if (method === 'tools/list') {
-      out({ id, result: { tools: [...listedTools(), ...(await computerTools())] } })
+      out({ id, result: { tools: [...listedTools(), ...(await computerTools()), ...(await workTools())] } })
     } else if (method === 'tools/call') {
       out({ id, result: await callTool(params?.name, params?.arguments, id) })
     } else {

@@ -2,6 +2,7 @@ import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
+import { isWorkMethod } from '@shared/work/wire'
 
 /**
  * The path fence for remote principals (R2 H1/H2). The donor `fs.*`,
@@ -118,7 +119,8 @@ export const FENCED_PARAMS: { [M in ClientRequest['method']]?: Picker<M> } = {
   'search.project': (p) => [p.options.cwd],
   // These widen the roots, read files by path, or run something in a cwd:
   // a remote key may only do so inside them.
-  'workspace.create': (p) => [p.path],
+  // A Work workspace names no folder: the host makes its own (work/scope.ts).
+  'workspace.create': (p) => (p.path === undefined ? [] : [p.path]),
   'projectLogo.save': (p) => [p.projectPath, p.sourcePath],
   'projectLogo.remove': (p) => [p.projectPath],
   'build.detect': (p) => [p.path],
@@ -163,6 +165,39 @@ export function attachmentPaths(req: ClientRequest): string[] | null {
   return pick ? pick((req as { params?: unknown }).params) : null
 }
 
+// ── Work: a file is named inside a CanvasSource ─────────────────────────
+
+/** How deep a Work request's params are read for sources; a deeper one is refused, never passed unread. */
+const SOURCE_DEPTH_MAX = 12
+
+/** Collects the file paths of every `CanvasSource` in a value (src/shared/work/canvas.ts `canvasSourcePath`); false when it is deeper than this reads. */
+function sourcePaths(value: unknown, out: string[], depth = 0): boolean {
+  if (depth > SOURCE_DEPTH_MAX) return false
+  if (Array.isArray(value)) return value.every((v) => sourcePaths(v, out, depth + 1))
+  if (!value || typeof value !== 'object') return true
+  const o = value as { at?: unknown; path?: unknown; ref?: { kind?: unknown; path?: unknown } }
+  if (o.at === 'file' && typeof o.path === 'string') out.push(o.path)
+  if (o.at === 'microsoft' && o.ref && o.ref.kind === 'path' && typeof o.ref.path === 'string') out.push(o.ref.path)
+  return Object.values(value).every((v) => sourcePaths(v, out, depth + 1))
+}
+
+/**
+ * The file paths a Work request names, or null when the method is not one
+ * that carries sources. A Work method (`work.*`, `app.work*`) has no `path`
+ * or `cwd` param of its own (fence.test.ts holds every pillar's contract to
+ * that): a file reaches it only as a `CanvasSource`, `{ at: 'file', path }`
+ * or a Microsoft file's `ref: { kind: 'path', path }`, anywhere in its
+ * params, and `session.create` carries one in `about`. Every such path is
+ * fenced like any other path param, whatever host the source names.
+ */
+export function workSourcePaths(req: ClientRequest): string[] | null {
+  if (!isWorkMethod(req.method) && req.method !== 'session.create') return null
+  const params = (req as { params?: unknown }).params
+  const out: string[] = []
+  if (!sourcePaths(req.method === 'session.create' ? (params as { about?: unknown } | undefined)?.about : params, out)) throw new FenceError(req.method)
+  return out
+}
+
 /**
  * Throw the typed error when a request names a path outside the roots.
  * `attachmentRoots` widen the roots for attachment paths only. `denied` are
@@ -174,6 +209,8 @@ export function fenceRequest(req: ClientRequest, roots: readonly string[], attac
   const admits = (p: unknown, within: readonly string[]): boolean => typeof p === 'string' && insideRoots(p, within) && !insideRoots(p, denied)
   const paths = fencedPaths(req)
   if (paths) for (const p of paths) if (!admits(p, roots)) throw new FenceError(req.method)
+  // Work: the files named inside a CanvasSource, by the same roots and the same denied directories.
+  for (const p of workSourcePaths(req) ?? []) if (!admits(p, roots)) throw new FenceError(req.method)
   const files = attachmentPaths(req)
   if (!files?.length) return
   const all = [...roots, ...attachmentRoots]
