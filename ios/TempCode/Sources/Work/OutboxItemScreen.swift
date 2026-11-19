@@ -18,6 +18,8 @@ struct OutboxItemScreen: View {
     let refKey: String
     @State private var fetched: OutboxItem?
     @State private var loadError: String?
+    /// The whole read failed while the list's copy shows: what only it carries (a quote, a picture) did not come.
+    @State private var wholeError: String?
     @State private var editing = false
     @State private var confirmDiscard = false
     @State private var busy = false
@@ -26,9 +28,19 @@ struct OutboxItemScreen: View {
     private var client: EnvironmentClient? { model.registry.client(environmentId) }
 
     /// The list's copy while it waits (the pushes keep it current), else the one fetched.
-    private var item: OutboxItem? {
-        client?.work.items.first { OutboxModel.key($0.ref) == refKey } ?? fetched
+    private var listed: OutboxItem? {
+        client?.work.items.first { OutboxModel.key($0.ref) == refKey }
     }
+
+    /// The whole read while it is as new as the list's copy: it carries what the list leaves out
+    /// (a LifeOS reply's quote, a computer act's picture); else the list's copy.
+    private var whole: OutboxItem? {
+        guard let fetched else { return nil }
+        guard let listed else { return fetched }
+        return fetched.updatedAt >= listed.updatedAt ? fetched : nil
+    }
+
+    private var item: OutboxItem? { whole ?? listed ?? fetched }
 
     var body: some View {
         Group {
@@ -41,7 +53,8 @@ struct OutboxItemScreen: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: refKey) { await load() }
+        // Read whole again when the list's copy moves on, so the quote and the picture match what goes.
+        .task(id: "\(refKey)-\(listed?.updatedAt ?? 0)") { await load() }
         #if DEBUG
         .task { await proofHooks() }
         #endif
@@ -77,8 +90,9 @@ struct OutboxItemScreen: View {
         }
         do {
             fetched = try await client.work.item(ref)
+            wholeError = nil
         } catch {
-            if item == nil { loadError = ActionError.wrap(error).message }
+            if item == nil { loadError = ActionError.wrap(error).message } else { wholeError = ActionError.wrap(error).message }
         }
     }
 
@@ -142,11 +156,33 @@ struct OutboxItemScreen: View {
                         .padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // What LifeOS puts under a reply goes too: in its place, muted, as a mail client quotes.
+                if let quote = view.quote {
+                    Text(quote)
+                        .textStep(.meta)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Layout.textEdge)
+                        .padding(.bottom, 16)
+                        .padding(.top, view.body == nil ? 16 : 0)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("outbox-quote")
+                }
+                if item.kind == .computerAct {
+                    KeptPictureView(listed: item, whole: whole, failed: wholeError, retry: { Task { await load() } })
+                        .padding(.horizontal, Layout.textEdge)
+                        .padding(.vertical, 16)
+                } else if OutboxModel.sendsFromDetailOnly(item.kind), whole == nil, let wholeError {
+                    readFailed("The mail did not load: \(wholeError)")
+                        .padding(.horizontal, Layout.textEdge)
+                        .padding(.vertical, 16)
+                }
             }
         }
         .tcBottomBar {
             if waits, client.work.canApprove {
-                bar(item, client: client, editable: OutboxModel.editable(item.kind) && !view.fields.filter({ $0.edit != nil }).isEmpty || view.body != nil && OutboxModel.editable(item.kind))
+                bar(item, client: client, editable: OutboxModel.editable(item.kind) && !view.fields.filter({ $0.edit != nil }).isEmpty || view.body != nil && OutboxModel.editable(item.kind),
+                    ready: OutboxModel.detailReady(item.kind, whole: whole) && pictureDraws(whole))
             }
         }
         .sheet(isPresented: $editing) {
@@ -171,7 +207,23 @@ struct OutboxItemScreen: View {
         }
     }
 
-    private func bar(_ item: OutboxItem, client: EnvironmentClient, editable: Bool) -> some View {
+    /// A read that did not come back: its reason and Retry.
+    private func readFailed(_ words: String) -> some View {
+        HStack(spacing: 12) {
+            Text(words).textStep(.meta, tint: Tint.destructiveText).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            PillButton("Retry") { Task { await load() } }
+        }
+    }
+
+    /// Send waits until what it approves is on screen: a kept picture's bytes must draw.
+    private func pictureDraws(_ whole: OutboxItem?) -> Bool {
+        guard let whole, case .bytes(let data, _, _) = OutboxModel.keptPicture(whole.payload) else { return true }
+        return UIImage(data: data) != nil
+    }
+
+    /// Send waits (`ready`) until the whole read and a computer act's picture have come; Discard and Edit do not.
+    private func bar(_ item: OutboxItem, client: EnvironmentClient, editable: Bool, ready: Bool) -> some View {
         HStack(spacing: 8) {
             Button("Discard", role: .destructive) { confirmDiscard = true }
                 .font(.body)
@@ -190,6 +242,7 @@ struct OutboxItemScreen: View {
                     .accessibilityIdentifier("outbox-edit")
             }
             sendButton(item, client: client)
+                .disabled(!ready)
         }
         .disabled(busy)
         .padding(.horizontal, Layout.textEdge)
@@ -343,5 +396,70 @@ private struct OutboxEditSheet: View {
         } catch {
             self.error = ActionError.wrap(error).message
         }
+    }
+}
+
+/// A computer act's kept picture: the window as it was read, what his press approves. The list
+/// leaves its bytes out, so it draws from the whole read; one kept but not come is a failure with
+/// Retry, never "none kept"; an act that kept none draws nothing.
+private struct KeptPictureView: View {
+    let listed: OutboxItem
+    let whole: OutboxItem?
+    let failed: String?
+    let retry: () -> Void
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        let kept = OutboxModel.keptPicture(listed.payload)
+        let read = whole.map { OutboxModel.keptPicture($0.payload) }
+        switch read {
+        case .bytes(let data, let width, let height)?:
+            if let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(aspect(width, height) ?? image.size.width / max(1, image.size.height), contentMode: .fit)
+                    .clipShape(RoundedRectangle.fieldCorner)
+                    .overlay { RoundedRectangle.fieldCorner.stroke(Surface.hairline, lineWidth: Hairline.thickness(scale: displayScale)) }
+                    .accessibilityLabel("The window as it was read, \(listed.summary)")
+            } else {
+                failure
+            }
+        case .missing?:
+            failure
+        case .notKept?:
+            EmptyView()
+        case nil:
+            if kept == .notKept {
+                EmptyView()
+            } else if failed != nil {
+                failure
+            } else {
+                // While the whole read comes: the picture's own shape, so nothing moves when it lands.
+                RoundedRectangle.fieldCorner
+                    .fill(Surface.fill)
+                    .aspectRatio(listedAspect ?? 1.6, contentMode: .fit)
+                    .overlay { ProgressView() }
+            }
+        }
+    }
+
+    private var failure: some View {
+        HStack(spacing: 12) {
+            Text("The picture did not load").textStep(.meta, tint: Tint.destructiveText)
+            Spacer(minLength: 8)
+            PillButton("Retry", action: retry)
+        }
+    }
+
+    private func aspect(_ width: Double?, _ height: Double?) -> CGFloat? {
+        guard let width, let height, width > 0, height > 0 else { return nil }
+        return width / height
+    }
+
+    /// The kept picture's shape as the list carries it (its size, without the bytes).
+    private var listedAspect: CGFloat? {
+        guard case .object(let o)? = listed.payload, case .object(let p)? = o["picture"],
+              case .number(let w)? = p["width"], case .number(let h)? = p["height"] else { return nil }
+        return aspect(w, h)
     }
 }

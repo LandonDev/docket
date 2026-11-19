@@ -173,18 +173,31 @@ private struct OutboxRow: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canApprove {
                 Button("Discard", systemImage: "trash", role: .destructive, action: discard)
-                Button(failed ? "Send Again" : "Send", systemImage: "paperplane") { OutboxPresses.shared.send(entry) }
+                sendButton
                     .tint(.accentColor)
             }
         }
         .contextMenu {
             if canApprove {
-                Button(failed ? "Send Again" : "Send", systemImage: "paperplane") { OutboxPresses.shared.send(entry) }
+                sendButton
                 Button("Discard", systemImage: "trash", role: .destructive, action: discard)
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("outbox-row")
+    }
+
+    /// Send, or for what only its detail shows (a LifeOS reply's quote, a computer act's picture)
+    /// "Send…", which opens the detail: a list never sends what he has not seen whole.
+    private var sendButton: some View {
+        let title = failed ? "Send Again" : "Send"
+        return Group {
+            if OutboxModel.sendsFromDetailOnly(item.kind) {
+                Button("\(title)…", systemImage: "paperplane") { navigator.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) }
+            } else {
+                Button(title, systemImage: "paperplane") { OutboxPresses.shared.send(entry) }
+            }
+        }
     }
 
     /// The failure's reason, else what the payload names first after the verb (a subject, a target).

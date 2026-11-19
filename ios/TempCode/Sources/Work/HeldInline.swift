@@ -114,7 +114,13 @@ struct HeldInline: View {
                         // Edit is the detail's own sheet: the item over the Outbox, as a notice opens it.
                         PillButton("Edit") { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
                     }
-                    PillButton(item.state == .failed ? "Send Again" : item.verb, tint: .accentColor) { OutboxPresses.shared.send(entry) }
+                    let verb = item.state == .failed ? "Send Again" : item.verb
+                    if OutboxModel.sendsFromDetailOnly(item.kind) {
+                        // A LifeOS reply's quote and a computer act's picture show only in the detail: the verb opens it.
+                        PillButton("\(verb)…", tint: .accentColor) { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
+                    } else {
+                        PillButton(verb, tint: .accentColor) { OutboxPresses.shared.send(entry) }
+                    }
                 }
                 .padding(.top, 2)
             }

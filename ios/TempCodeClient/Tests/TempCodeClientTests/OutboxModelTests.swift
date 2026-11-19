@@ -45,6 +45,53 @@ import TempCodeContract
         #expect(OutboxModel.payloadView(call).fields.map(\.label) == ["In"])
     }
 
+    @Test func theToolDigestTheHoldSealsIsBookkeepingNotAField() {
+        let call: JSONValue = .object(["addonId": .string("slack"), "toolDigest": .string(String(repeating: "4d73", count: 16)), "arguments": .object(["channel": .string("#events"), "text": .string("Booked.\nSee you there.")])])
+        let view = OutboxModel.payloadView(call)
+        #expect(view.fields.map(\.label) == ["In"])
+        #expect(!view.fields.contains { $0.key == "toolDigest" })
+    }
+
+    @Test func aRepliesQuoteIsMutedWordsUnderTheBodyNeverAnEditableField() {
+        var payload = mail
+        if case .object(var o) = payload {
+            o["quote"] = .string("<p>Is the <a href=\"https://rooms.purdue.edu/b\">ballroom</a> free?</p><img src=\"cid:logo\" alt=\"Logo\">")
+            payload = .object(o)
+        }
+        let view = OutboxModel.payloadView(payload)
+        #expect(!view.fields.contains { $0.key == "quote" })
+        #expect(view.quote == "Is the ballroom (https://rooms.purdue.edu/b) free?\n\n[image Logo: cid:logo]")
+        #expect(OutboxModel.payloadView(mail).quote == nil)
+    }
+
+    @Test func aListOrACardOpensWhatOnlyItsDetailShows() {
+        #expect(OutboxModel.sendsFromDetailOnly(.mailSend))
+        #expect(OutboxModel.sendsFromDetailOnly(.computerAct))
+        #expect(!OutboxModel.sendsFromDetailOnly(.officeMailSend))
+        #expect(!OutboxModel.sendsFromDetailOnly(.addonCall))
+    }
+
+    @Test func theDetailSendsOnlyOnceTheWholeReadAndItsPictureHaveCome() {
+        let act = item("c1", kind: .computerAct, payload: .object(["picture": .object(["width": .number(1280), "height": .number(800)])]))
+        let drawn = item("c1", kind: .computerAct, payload: .object(["picture": .object(["data": .string(Data([1, 2, 3]).base64EncodedString()), "width": .number(1280), "height": .number(800)])]))
+        let none = item("c2", kind: .computerAct, payload: .object(["steps": .array([])]))
+        #expect(!OutboxModel.detailReady(.computerAct, whole: nil))
+        #expect(!OutboxModel.detailReady(.computerAct, whole: act))
+        #expect(OutboxModel.detailReady(.computerAct, whole: drawn))
+        #expect(OutboxModel.detailReady(.computerAct, whole: none))
+        #expect(OutboxModel.keptPicture(drawn.payload) == .bytes(Data([1, 2, 3]), width: 1280, height: 800))
+        #expect(OutboxModel.keptPicture(act.payload) == .missing)
+        #expect(!OutboxModel.detailReady(.mailSend, whole: nil))
+        #expect(OutboxModel.detailReady(.mailSend, whole: item("m1", payload: mail)))
+        #expect(OutboxModel.detailReady(.addonCall, whole: nil))
+    }
+
+    @Test func htmlWordsKeepEveryTargetAndSourceAndReadThroughReferences() {
+        #expect(HtmlWords.of("<div style=\"background:u&#114;l(https://t.example/p.png)\">Hi&nbsp;there<br>Line</div>") == "Hi there\nLine\n[background image: https://t.example/p.png]")
+        #expect(HtmlWords.of("<a href=\"mailto:a@b.edu\">a@b.edu</a><script>x()</script>") == "a@b.edu")
+        #expect(HtmlWords.of("<ul><li>One</li><li>Two</li></ul>") == "- One\n- Two")
+    }
+
     @Test func anEditRewritesTheHtmlBesideTheTextAndChecksAddresses() {
         let edited = OutboxModel.applyEdits(mail, ["message.text": "Hi,\n\nIs it free?", "message.to": "Sam Ortiz <sortiz@purdue.edu>, a@b.edu"])
         #expect(edited.error == nil)

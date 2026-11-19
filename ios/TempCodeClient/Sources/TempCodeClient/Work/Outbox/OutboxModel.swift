@@ -24,6 +24,37 @@ public enum OutboxModel {
         }
     }
 
+    /// What a list or a card never sends, only opens: what its own detail alone shows. A LifeOS
+    /// mail may be a reply that quotes the mail it answers, which only its whole read carries; a
+    /// computer act's kept picture of the window is in its whole read alone (the desktop's
+    /// `sendMany` leaves both for their own look).
+    public nonisolated static func sendsFromDetailOnly(_ kind: OutboxItem.Kind) -> Bool {
+        kind == .mailSend || kind == .computerAct
+    }
+
+    /// A computer act's kept picture in a whole read: none was kept, kept with its bytes, or
+    /// kept but the bytes did not come (a failure, never "none").
+    public enum KeptPicture: Sendable, Hashable {
+        case notKept
+        case bytes(Data, width: Double?, height: Double?)
+        case missing
+    }
+
+    public nonisolated static func keptPicture(_ payload: JSONValue?) -> KeptPicture {
+        guard case .object(let o)? = payload, case .object(let picture)? = o["picture"] else { return .notKept }
+        let size = { (key: String) -> Double? in if case .number(let n)? = picture[key] { n } else { nil } }
+        guard case .string(let data)? = picture["data"], let bytes = Data(base64Encoded: data), !bytes.isEmpty else { return .missing }
+        return .bytes(bytes, width: size("width"), height: size("height"))
+    }
+
+    /// Whether the detail may send: for what a list never sends, the whole read has come
+    /// (with a computer act's kept picture in it); anything else as listed.
+    public nonisolated static func detailReady(_ kind: OutboxItem.Kind, whole: OutboxItem?) -> Bool {
+        guard sendsFromDetailOnly(kind) else { return true }
+        guard let whole else { return false }
+        return kind != .computerAct || keptPicture(whole.payload) != .missing
+    }
+
     /// A failed send that may have gone (`outcomeUnknown`): what he checks before Send Again, as the desktop says it.
     public nonisolated static func checkFirst(_ item: OutboxItem) -> String? {
         guard item.state == .failed, item.outcomeUnknown == true else { return nil }
@@ -120,10 +151,13 @@ public enum OutboxModel {
 
         public var fields: [Field]
         public var body: Body?
+        /// What LifeOS puts under a reply: the answered mail, as words (`HtmlWords`), drawn muted
+        /// under the body and never a field (it is not his to edit).
+        public var quote: String? = nil
     }
 
     /// Keys that are the host's bookkeeping, never what goes.
-    private nonisolated static let quiet: Set<String> = ["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host"]
+    private nonisolated static let quiet: Set<String> = ["id", "status", "kind", "accountId", "html", "addonId", "specDigest", "toolDigest", "hints", "mark", "targets", "picture", "read", "proposed", "error", "words", "addon", "tool", "why", "host", "quote"]
     /// Keys whose text is the body: drawn as one plain-text block, not a field.
     private nonisolated static let bodyKeys = ["text", "body", "message", "content"]
     private nonisolated static let labels = ["to": "To", "cc": "Cc", "bcc": "Bcc", "from": "From", "subject": "Subject", "channel": "In", "title": "Title", "app": "App", "window": "Window", "label": "Act"]
@@ -222,6 +256,10 @@ public enum OutboxModel {
             }
         }
         if let payload { walk(payload, [], 0) }
+        if case .object(let o)? = payload, case .string(let quote)? = o["quote"], !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let words = HtmlWords.of(quote)
+            view.quote = words.isEmpty ? nil : words
+        }
         return view
     }
 
