@@ -1,8 +1,8 @@
 # The Work service
 
 The Work service is the utility process that serves live editing: documents
-now, and sheets, guest links, forms, the Office add-in and the full editor as
-their milestones land. Milestone 18 built it; the contract is architecture
+and sheets now (sheets: [work-sheets.md](work-sheets.md)), and guest links,
+forms, the Office add-in and the full editor as their milestones land. Milestone 18 built it; the contract is architecture
 §8.1 to §8.3 and §19 (`.temp-code/plans/work-architecture.md`).
 
 ## The process
@@ -65,14 +65,14 @@ Each later milestone fills its own file and edits no other; a stub answers
 |---|---|---|
 | `wss …/w/doc/<docId>` | `routes/doc.ts` | 18, built |
 | `GET …/w/hosted/*` (`out/hosted`) | `routes/hosted.ts` | 18, built |
-| `wss …/w/sheet/<sheetId>` | `routes/sheet.ts` | 27 |
+| `wss …/w/sheet/<sheetId>` | `routes/sheet.ts` | **27, built** |
 | `GET …/w/open` | `routes/item.ts` | 31 |
 | `…/g/*` | `routes/guests.ts` | 31 |
 | `wss …/w/office`, `GET …/w/addin/*` | `routes/office.ts` | 29 |
 | `…/f/*` | `routes/form.ts` | 36 |
 | `…/w/full/*` | `routes/fullEditor.ts` | 40 |
 | internal `/internal/doc/{read,write,create,comment}` | `routes/internal.ts` | 18, built |
-| internal `/internal/sheet/{read,write}` | `routes/internalSheet.ts` | 27 |
+| internal `/internal/sheet/{read,write}` and main's `/internal/sheet/<op>` | `routes/internalSheet.ts` | **27, built** |
 
 A socket upgrade is refused (503) past 512 open sockets, or 48 from one
 caller, counted by the tunnel's `CF-Connecting-IP`, else the peer's address:
@@ -167,7 +167,9 @@ Hocuspocus 4.4 with garbage collection off, behind our own listener (`ws` in
   be `fileDocName(canonicalPath(path))`. A file on another host, or a
   LifeOS document while another host serves them, throws
   `ServedElsewhere {host}`: the caller (the docs pillar, M20) routes it with
-  `ctx.peer`. A sheet throws `NotBuilt` (27). There is no
+  `ctx.peer`. A sheet (`{item: {sheet}}`, a LifeOS sheet) signs where
+  LifeOS's documents are served and throws `ServedElsewhere` elsewhere
+  (M27). There is no
   `work.collab.token` wire method: method names are `work.<pillar>.<verb>`,
   and the docs and sheets contract files are M20's and M27's.
 - `internal(route, body)`: a POST over the socket with the secret; a 4xx or

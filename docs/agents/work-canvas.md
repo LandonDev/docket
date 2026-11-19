@@ -10,9 +10,9 @@ is docs/DESIGN.md "The canvas pane"; the plan's contracts are
 **What is built:** the frame (tab row, the kind's bar, the fold, the one
 review stepper, the selection bar with Ask, the composer's chip row, a
 kind's own rows in More), the store with its methods, push, tools and move
-hook, and both registries. The PDF, slides, images and video, and meeting
-kinds have their bodies (work-pdf.md, work-slides.md, work-media.md,
-work-meetings.md); every other kind's body says "Not built yet" until its
+hook, and both registries. The PDF, slides, images and video, meeting
+and sheet kinds have their bodies (work-pdf.md, work-slides.md, work-media.md,
+work-meetings.md, work-sheets.md); every other kind's body says "Not built yet" until its
 pillar's milestone builds it. Nobody has seen the pane in the running app.
 
 ## The pane
