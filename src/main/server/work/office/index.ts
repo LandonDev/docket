@@ -10,6 +10,7 @@ import { unfollowAll } from './grid'
 import { officeActs } from './held'
 import { addinHandle, addinHub, addinTools, ensureAddinTables, startAddin } from './addin'
 import { withAddin } from './addin/carrier'
+import { comCarrier } from './com/carrier'
 import { macCarrier } from './mac'
 import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
@@ -18,12 +19,14 @@ import { officeTool, runHere, type Env } from './tools'
 /**
  * The office pillar's server module (docs/agents/work-office.md): one Office
  * tool set for agents, carried out by the Office apps on the host that has
- * them (the Mac, by osascript); Excel as the truth behind a workbook's grid;
+ * them (the Mac by osascript, Windows by COM); Excel as the truth behind a workbook's grid;
  * LifeOS's Outlook-account mail and calendar acts carried by this host's
  * Outlook after his press. Sends are held acts (held.ts).
  */
 
-let carrierFor: () => OfficeCarrier | null = () => withAddin(process.platform === 'darwin' ? macCarrier() : process.platform === 'linux' ? owaCarrier() : null, addinHub)
+const desktopCarrier = (): OfficeCarrier | null =>
+  process.platform === 'darwin' ? macCarrier() : process.platform === 'win32' ? comCarrier() : process.platform === 'linux' ? owaCarrier() : null
+let carrierFor: () => OfficeCarrier | null = () => withAddin(desktopCarrier(), addinHub)
 /** A test hands its own carrier (a `FakeOffice`); null: this host has none. */
 export const setCarrier = (fn: () => OfficeCarrier | null): void => {
   carrierFor = fn
@@ -119,7 +122,7 @@ export const office: WorkModule = {
   acts: officeActs({ carrier: () => (started ? (hereOf(started)?.carrier ?? null) : null) }),
   triggers: [excelChanges(() => started)],
   preamble: () =>
-    'Office files open on the Mac are reached with the `office_*` tools (`office_files` lists them). A workbook range is read with `office_range_read` and written with `office_range_write`, passing the hash you read as `base`. Mail sends, replies, forwards, invitations and answers to invitations are held for the owner\'s press; say so plainly when you make one.',
+    'Office files open on the Mac or a Windows PC are reached with the `office_*` tools (`office_files` lists them). A workbook range is read with `office_range_read` and written with `office_range_write`, passing the hash you read as `base`. Mail sends, replies, forwards, invitations and answers to invitations are held for the owner\'s press; say so plainly when you make one.',
   start(ctx) {
     started = ctx
     const here = hereOf(ctx)
@@ -127,7 +130,10 @@ export const office: WorkModule = {
     let timer: ReturnType<typeof setInterval> | null = null
     // The route runs while LifeOS is connected and Outlook is here; it says nothing new until either changes.
     let said = ''
-    const stopAddin = startAddin(ctx, (book, sheet, address) => void hereOf(ctx)?.excel.heard(book, sheet, address))
+    const heard = (book: string, sheet: string, address: string) => void hereOf(ctx)?.excel.heard(book, sheet, address)
+    const stopAddin = startAddin(ctx, heard)
+    // Windows' Excel tells of each change itself; elsewhere the safety pass and the add-in find them.
+    const stopChanges = here?.carrier.changes?.(heard)
     const check = () => {
       void (async () => {
         const outlook = here && (await here.carrier.apps().catch(() => [])).find((a) => a.app === 'outlook')
@@ -149,6 +155,7 @@ export const office: WorkModule = {
     }
     return () => {
       stopAddin()
+      stopChanges?.()
       if (timer) clearInterval(timer)
       stopRoute?.()
       here?.excel.stop()

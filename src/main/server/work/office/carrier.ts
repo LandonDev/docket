@@ -3,7 +3,7 @@ import type { OfficeApp, OfficeAppState, OfficeCell } from '@shared/contract-wor
 /**
  * What carries an Office tool out (docs/agents/work-office.md "Carriers"):
  * the Mac's osascript (mac.ts), Outlook on the web on the box (owa/) and
- * COM on Windows (M44) later. One interface, so the tools, the held acts and
+ * COM on Windows (com/). One interface, so the tools, the held acts and
  * Excel behind the grid never know which. The fake (fake.ts) is an Office in
  * memory for the box's tests.
  *
@@ -90,7 +90,7 @@ export type EventAnswer = 'accept' | 'decline' | 'tentative'
 export type DocEdit = { insert: string; at: 'start' | 'end' } | { find: string; replace: string }
 
 export interface OfficeCarrier {
-  readonly kind: 'mac' | 'owa' | 'fake' | 'addin'
+  readonly kind: 'mac' | 'owa' | 'com' | 'fake' | 'addin'
   apps(): Promise<OfficeAppState[]>
 
   workbooks(): Promise<WorkbookInfo[]>
@@ -128,13 +128,17 @@ export interface OfficeCarrier {
 
   /** brings the app forward with the file (the switch) */
   open(app: OfficeApp, ref: { kind: 'path'; path: string } | { kind: 'url'; url: string }): Promise<void>
+
+  /** A carrier the app itself tells of changes (Excel's SheetChange on Windows): `address` changed on a sheet. Returns its off. */
+  changes?(fn: (book: string, sheet: string, address: string) => void): () => void
 }
 
 /** A refusal in words the agent and the screen show as they are. */
 export class OfficeError extends Error {
   constructor(
     message: string,
-    readonly code: 'not-installed' | 'not-running' | 'not-allowed' | 'needs-consent' | 'not-found' | 'failed' = 'failed'
+    /** `busy`: the app refused the call for now (a dialog open, a cell in edit); nothing was done, and trying again may work */
+    readonly code: 'not-installed' | 'not-running' | 'not-allowed' | 'needs-consent' | 'not-found' | 'busy' | 'failed' = 'failed'
   ) {
     super(message)
   }

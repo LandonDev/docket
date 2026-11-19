@@ -29,9 +29,9 @@ export interface OfficeAppState {
   allowed: OfficeAllowed
 }
 
-/** What this host can carry out: `mac` by osascript, `owa` by Outlook on the web in the box's browser (mail and calendar only), `addin` by our Office add-in alone (milestone 29), null where no carrier runs (Windows until milestone 44). */
+/** What this host can carry out: `mac` by osascript, `owa` by Outlook on the web in the box's browser (mail and calendar only), `com` by COM on Windows (tc-office.exe), `addin` by our Office add-in alone (milestone 29), null where no carrier runs. */
 export interface OfficeStatus {
-  carrier: 'mac' | 'owa' | 'fake' | 'addin' | null
+  carrier: 'mac' | 'owa' | 'com' | 'fake' | 'addin' | null
   apps: OfficeAppState[]
   /** the Outlook addresses this host reports to LifeOS's local route, and when it last did */
   route: { accounts: string[]; beatAt: number | null; error: string | null }
