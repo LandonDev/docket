@@ -24,7 +24,8 @@ vi.mock("../../lib/connection", async (original) => ({
   },
 }));
 
-const { sendThroughHost, tempcodeMailKit } = await import("./kit");
+const { tempcodeMailKit } = await import("./kit");
+const { sendThroughHost } = await import("./client");
 const { View: MailAct } = await import("./MailAct");
 const { mailActView, mailChip } = await import("./model");
 const { proposalDiff } = await import("./proposal");

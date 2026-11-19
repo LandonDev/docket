@@ -11,7 +11,8 @@ import { openWorkView } from "../../lib/workSwitch";
 import { SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
-import { mailClientFor, tempcodeMailKit } from "./kit";
+import { mailClientFor } from "./client";
+import { tempcodeMailKit } from "./kit";
 import { mailChip } from "./model";
 
 /**
@@ -26,7 +27,7 @@ import { mailChip } from "./model";
 /** The list beside the reading pane, 300px; narrow (under 640px of pane), the list alone at full width. Literal, so Tailwind finds it. */
 const LIST = "flex w-[300px] shrink-0 flex-col border-r border-border @max-[40rem]/mail:w-full @max-[40rem]/mail:border-r-0";
 
-interface MailPage {
+export interface MailPage {
   account: string | null;
   inboxView: InboxView;
   threadId: string | null;
@@ -42,7 +43,8 @@ const BLANK: MailPage = { account: null, inboxView: "everything", threadId: null
 const pages = new Map<string, MailPage>();
 const listeners = new Set<() => void>();
 
-function patch(workspaceId: string, next: Partial<MailPage>): void {
+/** Changes what a workspace's Mail shows. Exported for the preview page, which sets a scene. */
+export function patch(workspaceId: string, next: Partial<MailPage>): void {
   pages.set(workspaceId, { ...(pages.get(workspaceId) ?? BLANK), ...next });
   for (const listener of listeners) listener();
 }
@@ -77,6 +79,12 @@ export function View(props: WorkViewProps) {
 
 function MailPageBody({ workspace }: WorkViewProps) {
   const id = workspace.id;
+  const openTask = useCallback(() => openWorkView({ workspaceId: id, view: "tasks" }), [id]);
+  return <MailScreen id={id} onOpenTask={openTask} />;
+}
+
+/** The page under its providers: the list beside the reading pane, for the workspace (or the preview) named `id`. */
+export function MailScreen({ id, onOpenTask }: { id: string; onOpenTask: () => void }) {
   const page = usePage(id);
   const client = useMailClient();
   const accounts = client.useMailAccounts();
@@ -103,10 +111,10 @@ function MailPageBody({ workspace }: WorkViewProps) {
   const onTask = useCallback(
     (request: MailTaskRequest) => {
       // An open task lives in Tasks; a new one is filed from the mail at once, as LifeOS's own sheet would.
-      if (request.kind === "task") openWorkView({ workspaceId: id, view: "tasks" });
+      if (request.kind === "task") onOpenTask();
       else actions.makeTask(request.threadId, request.draft);
     },
-    [actions, id],
+    [actions, onOpenTask],
   );
   // Narrow, the pane shows only once a mail is open or a new one is being written.
   const reading = page.threadId !== null || page.compose?.full === true;
@@ -117,7 +125,7 @@ function MailPageBody({ workspace }: WorkViewProps) {
   );
   return (
     <div data-mail-kit className="tc-mail h-full min-h-0">
-      <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} />
+      <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} sectors={false} />
     </div>
   );
 }

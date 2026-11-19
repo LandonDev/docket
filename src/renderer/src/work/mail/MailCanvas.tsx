@@ -15,7 +15,8 @@ import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { openWorkSettings } from "../shell/open";
 import { reopenLifeos, sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { RuleLine } from "../rules/RuleLine";
-import { mailClientFor, tempcodeMailKit } from "./kit";
+import { mailClientFor } from "./client";
+import { tempcodeMailKit } from "./kit";
 import { proposalDiff, type Proposal } from "./proposal";
 
 /**

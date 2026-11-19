@@ -39,7 +39,8 @@ vi.mock("work-kit/mail", async (original) => ({
   MailKitProvider: ({ children }: { children: unknown }) => children,
   useMailClient: () => ({ useComposeDoc: () => lifeos.doc, useMailAccounts: () => [] }),
 }));
-vi.mock("./kit", () => ({ mailClientFor: () => ({}), tempcodeMailKit: {} }));
+vi.mock("./kit", () => ({ tempcodeMailKit: {} }));
+vi.mock("./client", () => ({ mailClientFor: () => ({}) }));
 vi.mock("../../lib/tcserver/store", () => ({ useSessionMeta: () => ({ workspaceId: "w1" }) }));
 vi.mock("../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [{ id: "w1", sector: "unify" }] }));
 
