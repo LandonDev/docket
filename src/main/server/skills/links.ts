@@ -23,12 +23,12 @@ export function readDirLink(path: string, junction = JUNCTIONS): string {
 }
 
 /** Rename the link at `tmp` over `link`; a junction that Windows will not rename over another is put in its place after it. */
-export function swapDirLink(tmp: string, link: string, junction = JUNCTIONS): void {
+export function swapDirLink(tmp: string, link: string, junction = JUNCTIONS, rename: (from: string, to: string) => void = renameSync): void {
   try {
-    renameSync(tmp, link)
+    rename(tmp, link)
   } catch (err) {
     if (!junction) throw err
     rmSync(link, { force: true })
-    renameSync(tmp, link)
+    rename(tmp, link)
   }
 }

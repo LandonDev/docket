@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto'
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
+  packagesIn,
   packedAppProblems,
   binaryKind,
   lockIntegrity,
@@ -87,15 +88,6 @@ async function stage(): Promise<void> {
 }
 
 /** Package names under a node_modules folder, scopes opened. */
-function packagesIn(nodeModules: string): string[] {
-  const names: string[] = []
-  for (const entry of existsSync(nodeModules) ? readdirSync(nodeModules) : []) {
-    if (entry.startsWith('.')) continue
-    if (entry.startsWith('@')) for (const inner of readdirSync(join(nodeModules, entry))) names.push(`${entry}/${inner}`)
-    else names.push(entry)
-  }
-  return names
-}
 
 function readPackedApp(appDir: string): PackedApp {
   const modules = join(appDir, 'node_modules')

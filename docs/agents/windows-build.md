@@ -43,7 +43,7 @@ are meant to be as they were, and that has not been proven on a Mac yet.
   `resources/native`. `check-files <dist> <1.0.N>` judges the four release files and that
   `latest.yml` names the installer with its size and checksum. The rules are
   scripts/lib/winRelease.ts (`packedAppProblems`, `winFilesProblems`, `winReleaseFiles`).
-- **Unsigned.** `scripts/sign-win.mjs` is the signing hook and it is empty. SmartScreen asks once
+- **Unsigned.** `build/sign-win.mjs` is the signing hook and it is empty (under `build/`, which no app carries, so the Mac bundle does not ship it). SmartScreen asks once
   on a download (More info, Run anyway). A certificate goes in the hook only if a machine refuses
   the build; LifeOS's hook (jsign with Azure Artifact Signing) is the pattern.
 

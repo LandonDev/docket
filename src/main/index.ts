@@ -6,7 +6,7 @@ import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { bootMark } from './server/boot'
-import { installsOnQuit, noteInstallOnQuit, registerUpdates, selfUpdate, stopChildTree } from './update'
+import { noteInstallOnQuit, registerUpdates, selfUpdate } from './update'
 import { applyHarness, bakedHarness } from './harness'
 import { SOAK_SWITCHES, soakWindow } from './soakWindow'
 import { configureAliax, upstream } from './aliax'
@@ -402,9 +402,6 @@ app.on('before-quit', (e) => {
   // Windows: "Restart to update" already ran this, ahead of the installer it started (update.ts).
   if (stoppedForInstall) return
   shutDown()
-  // Windows: a downloaded release installs when this quit ends, and its installer cannot replace a
-  // file a child still holds open; a child does not die with its parent there.
-  if (process.platform === 'win32' && installsOnQuit()) stopChildTree()
 })
 
 /** Windows only: the updater shut the app's work down before it started the installer, so before-quit has nothing left to do. */

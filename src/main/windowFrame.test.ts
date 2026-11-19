@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { APP_USER_MODEL_ID, CAPTION_HEIGHT, captionOverlay, frameOptions, isDarkColor, localUserData } from './windowFrame'
+import { APP_USER_MODEL_ID, CAPTION_HEIGHT, captionInk, captionOverlay, frameOptions, isDarkColor, localUserData } from './windowFrame'
 
 const look = { dark: true, icon: '/app/icon.png' }
 
@@ -39,6 +39,12 @@ describe('the window frame per platform', () => {
     expect(captionOverlay(true).symbolColor).toBe('#fafafa')
     expect(captionOverlay(false).symbolColor).toBe('#0a0a0a')
     expect(frameOptions('win32', { ...look, dark: false }).titleBarOverlay).toEqual(captionOverlay(false))
+  })
+
+  it('a theme change sets the glyphs\' ink alone, so a zoomed bar keeps its caption height', () => {
+    expect(captionInk(false)).toEqual({ color: '#00000000', symbolColor: '#0a0a0a' })
+    expect(captionInk(true)).not.toHaveProperty('height')
+    expect(captionOverlay(true)).toEqual({ height: CAPTION_HEIGHT, ...captionInk(true) })
   })
 
   it("reads the page's theme colour as dark or light, and anything unreadable as the default dark", () => {

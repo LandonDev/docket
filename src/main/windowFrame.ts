@@ -28,9 +28,14 @@ const CLEAR = '#00000000'
 /** `foreground` in each theme, as main needs plain colours. */
 const SYMBOL = { dark: '#fafafa', light: '#0a0a0a' }
 
-/** The caption buttons over a clear strip, so the page's own bar shows through; their glyphs take the theme's ink. */
+/** The caption buttons' colours alone: a clear strip, so the page's own bar shows through, and glyphs in the theme's ink. No height, so a theme change keeps the zoom's. */
+export function captionInk(dark: boolean): Pick<TitleBarOverlayOptions, 'color' | 'symbolColor'> {
+  return { color: CLEAR, symbolColor: dark ? SYMBOL.dark : SYMBOL.light }
+}
+
+/** The caption buttons as a new window first draws them: the bar's height, the theme's ink. */
 export function captionOverlay(dark: boolean): TitleBarOverlayOptions {
-  return { height: CAPTION_HEIGHT, color: CLEAR, symbolColor: dark ? SYMBOL.dark : SYMBOL.light }
+  return { height: CAPTION_HEIGHT, ...captionInk(dark) }
 }
 
 /** Whether a `#rrggbb` colour (the page's theme colour) is a dark one; anything unreadable counts as dark, the default theme. */

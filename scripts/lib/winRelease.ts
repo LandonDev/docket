@@ -11,6 +11,9 @@
  */
 
 /** The platform package the Windows build needs. */
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
 export const WIN_CLI_PACKAGE = '@anthropic-ai/claude-agent-sdk-win32-x64'
 export const SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk'
 /** Where scripts/win-stage.ts lays it; build/electron-builder.win.yml maps this folder onto node_modules. */
@@ -137,4 +140,19 @@ export function winFilesProblems(
     if (installer?.sha512 && feed.sha512 !== installer.sha512) problems.push('latest.yml carries another checksum than the installer has')
   }
   return problems
+}
+
+/** Every package name under a node_modules, nested ones included (a darwin binary can hide a level down). */
+export function packagesIn(nodeModules: string): string[] {
+  const names: string[] = []
+  const add = (name: string): void => {
+    names.push(name)
+    names.push(...packagesIn(join(nodeModules, name, 'node_modules')))
+  }
+  for (const entry of existsSync(nodeModules) ? readdirSync(nodeModules) : []) {
+    if (entry.startsWith('.')) continue
+    if (entry.startsWith('@')) for (const inner of readdirSync(join(nodeModules, entry))) add(`${entry}/${inner}`)
+    else add(entry)
+  }
+  return names
 }

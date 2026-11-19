@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   APP_STILL_RUNNING,
   DID_NOT_INSTALL,
@@ -21,6 +21,9 @@ import {
   installBlockers,
   parseProcessTable,
   staleWindowsPaths,
+  taskkillArgs,
+  installsWhenQuitting,
+  relaunchIfStillHere,
   type ProcRow
 } from './updateInstall'
 
@@ -160,6 +163,37 @@ describe('feedFallback', () => {
   it('names the public repo for a bundle shipped without the file', () => {
     expect(feedFallback(false)).toEqual({ provider: 'github', owner: 'LandonDev', repo: 'temp-code' })
     expect(feedFallback(false)).toBe(RELEASE_FEED)
+  })
+})
+
+describe('Windows: the install itself', () => {
+  it('kills exactly the listed ids, never their trees again (/T would skip the check for reused ids)', () => {
+    expect(taskkillArgs([12, 34])).toEqual(['/F', '/PID', '12', '/PID', '34'])
+    expect(taskkillArgs([12])).not.toContain('/T')
+  })
+
+  it('installs a downloaded release on quit everywhere but Windows, where only Restart to update installs', () => {
+    expect(installsWhenQuitting('darwin')).toBe(true)
+    expect(installsWhenQuitting('linux')).toBe(true)
+    expect(installsWhenQuitting('win32')).toBe(false)
+  })
+
+  it('starts the app again when no quit began after Restart to update, and leaves a quitting app alone', () => {
+    vi.useFakeTimers()
+    try {
+      const relaunch = vi.fn()
+      relaunchIfStillHere({ quitStarted: () => false, relaunch, delayMs: 8000 })
+      vi.advanceTimersByTime(7999)
+      expect(relaunch).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
+      expect(relaunch).toHaveBeenCalledTimes(1)
+      const quitting = vi.fn()
+      relaunchIfStillHere({ quitStarted: () => true, relaunch: quitting })
+      vi.advanceTimersByTime(10_000)
+      expect(quitting).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

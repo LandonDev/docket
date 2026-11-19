@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, win32 } from 'node:path'
 import type { SkillFile } from '@shared/contract-skills'
 import { SkillStore } from '../skillStore'
 import { JUNCTIONS, linkDir, readDirLink, swapDirLink } from './links'
@@ -85,6 +85,29 @@ describe('directory links', () => {
     expect(() => swapDirLink(join(tmp, 'nope'), join(tmp, 'view'), false)).toThrow()
     expect(readDirLink(join(tmp, 'view'), true)).toBe('b')
   })
+
+  it('on win32, a rename Windows refuses over a junction puts the new one in place after removing the old', () => {
+    mkdirSync(join(tmp, 'a'))
+    mkdirSync(join(tmp, 'b'))
+    linkDir('a', join(tmp, 'view'), true)
+    linkDir('b', join(tmp, 'view.lnk-1-2'), true)
+    const calls: string[] = []
+    const refuseOnce = (from: string, to: string): void => {
+      calls.push(from)
+      if (calls.length === 1) throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' })
+      renameSync(from, to)
+    }
+    swapDirLink(join(tmp, 'view.lnk-1-2'), join(tmp, 'view'), true, refuseOnce)
+    expect(calls.length).toBe(2)
+    expect(readDirLink(join(tmp, 'view'), true)).toBe('b')
+    expect(existsSync(join(tmp, 'view.lnk-1-2'))).toBe(false)
+  })
+
+  it("on win32, a junction's target read back with its trailing backslash compares as the bare name", () => {
+    // libuv gives a junction's target as an absolute path ending in a separator; the readers rely on relative() dropping it.
+    expect(win32.relative('C:\\h\\claude', 'C:\\h\\claude\\global@0123456789ab\\')).toBe('global@0123456789ab')
+    expect(win32.relative('C:\\h\\claude\\scope', 'C:\\h\\claude\\global@0123456789ab\\')).toBe(win32.join('..', 'global@0123456789ab'))
+  })
 })
 
 describe('the skills store with junctions', () => {
@@ -140,7 +163,7 @@ describe('a failed write-out', () => {
     await m.whenSettled()
     const p = pointers(m, false)
     expect(() => p.start()).not.toThrow()
-    expect(logs.some((l) => l.startsWith('refresh failed:'))).toBe(true)
+    expect(logs.some((l) => l.includes('/scope/global not pointed:'))).toBe(true)
     expect(logs.some((l) => l.startsWith('write-out failed:') || l.startsWith('start failed:'))).toBe(true)
   })
 })

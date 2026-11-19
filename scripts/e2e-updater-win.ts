@@ -45,8 +45,14 @@ import { rigConfig, rigPaths, STANDARD_USER } from './win-vm/config'
 const ROOT = '/tmp/tc-updater-e2e-win'
 const APP_ID = 'dev.landon.tempcode.e2e'
 const PRODUCT = 'TempCodeE2E'
-const GUEST_CDP_PORT = 9333
-const CDP_PORT = 9334
+/**
+ * Each copy's CDP port in the guest, and where the tunnel brings it on the box. Two, because the
+ * installer the old copy starts inherits its listening debug socket (a Windows child inherits every
+ * inheritable handle, and Chromium's is one) and holds it until it exits, after it has started the
+ * new copy: on the same port the new copy would come up with no CDP at all.
+ */
+const GUEST_CDP_PORT = { old: 9333, new: 9335 } as const
+const CDP_PORT = { old: 9334, new: 9336 } as const
 const FEED_PORT = 9231
 const FEED_URL = `http://127.0.0.1:${FEED_PORT}/`
 /** In the guest. `%LOCALAPPDATA%` is spelled out: the block is read before any shell could expand it. */
@@ -158,7 +164,7 @@ async function pack(version: string, which: 'old' | 'new'): Promise<void> {
         extraMetadata: {
           tempcodeHarness: {
             TEMP_CODE_USER_DATA: GUEST_USER_DATA,
-            TEMP_CODE_DEBUG_PORT: String(GUEST_CDP_PORT),
+            TEMP_CODE_DEBUG_PORT: String(GUEST_CDP_PORT[which]),
             TEMP_CODE_UPDATE_FEED: FEED_URL
           }
         }
@@ -272,6 +278,14 @@ async function waitFor(what: string, ms: number, probe: () => Promise<boolean>):
   return false
 }
 
+/** The app's light or dark theme, switched as lib/appearance.ts `applyThemePreference` does. */
+async function scheme(cdp: Cdp, to: 'light' | 'dark'): Promise<void> {
+  await cdp.eval(
+    `(() => { document.documentElement.classList.toggle('theme-light', ${to === 'light'}); window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: '${to}' })); })()`
+  )
+  await sleep(1200)
+}
+
 async function key(cdp: Cdp, k: { key: string; code: string; vk: number }, modifiers: number): Promise<void> {
   for (const type of ['rawKeyDown', 'keyUp']) {
     await cdp.send('Input.dispatchKeyEvent', { type, modifiers, key: k.key, code: k.code, windowsVirtualKeyCode: k.vk })
@@ -291,7 +305,8 @@ async function drive(): Promise<void> {
   tunnel = Bun.spawn(
     [
       'ssh', '-N',
-      '-L', `${CDP_PORT}:127.0.0.1:${GUEST_CDP_PORT}`,
+      '-L', `${CDP_PORT.old}:127.0.0.1:${GUEST_CDP_PORT.old}`,
+      '-L', `${CDP_PORT.new}:127.0.0.1:${GUEST_CDP_PORT.new}`,
       '-R', `${FEED_PORT}:127.0.0.1:${FEED_PORT}`,
       '-i', paths.key, '-p', String(rig.sshPort),
       '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15',
@@ -326,7 +341,7 @@ async function drive(): Promise<void> {
   // ── the app on the desktop ──
   const started = await guest([vm('run-in-session'), GUEST_EXE], 120_000)
   check('the app starts on the standard user\'s desktop', started.code === 0, started.out.slice(0, 200))
-  const cdp = await attach(CDP_PORT, 180_000)
+  const cdp = await attach(CDP_PORT.old, 180_000)
   await sleep(4000)
   await shot('installed')
   const booted = await cdp.eval<Status>('window.api.updates.get()')
@@ -347,16 +362,38 @@ async function drive(): Promise<void> {
   check('the window is a Windows one: caption room at the bar\'s end, no controls of ours', frame.platform === 'win32' && frame.space >= 100 && frame.drawn === 0, JSON.stringify(frame))
   const overlay = await cdp.eval<boolean>('navigator.windowControlsOverlay?.visible === true')
   check("Windows draws its own caption buttons over the page (the title bar overlay is on)", overlay === true)
+  // The caption glyphs follow the app's theme through theme-color (chrome/WindowControls.tsx): the shots show both.
+  await scheme(cdp, 'light')
+  const light = await cdp.eval<string | null>(`document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? null`)
+  check('the page tells main its light theme colour', !!light && light !== frame.themeColor, `${frame.themeColor} → ${light}`)
+  await shot('frame-light')
+  await scheme(cdp, 'dark')
+  await shot('frame-dark')
+  // Alt shows no menu bar: the window has none to reveal.
+  await key(cdp, { key: 'Alt', code: 'AltLeft', vk: 18 }, 0)
+  await sleep(800)
+  await shot('after-alt')
+  await key(cdp, { key: 'Escape', code: 'Escape', vk: 27 }, 0)
 
   // ── keys ──
+  const settingsShut = await cdp.eval<boolean>(`!document.querySelector('[data-app-settings]')`)
   await key(cdp, { key: ',', code: 'Comma', vk: 188 }, 2)
-  const settingsOpen = await waitFor('Settings', 15_000, () => cdp.eval<boolean>(`/Keyboard|Keybindings|Shortcuts|General/.test(document.body.innerText) && !!document.querySelector('[data-settings-rail], nav')`))
+  const settingsOpen = await waitFor('Settings', 15_000, () => cdp.eval<boolean>(`!!document.querySelector('[data-app-settings]')`))
+  await sleep(1000)
+  await shot('settings-by-ctrl-comma')
+  check('Ctrl+, opens Settings', settingsShut && settingsOpen)
+  // The key list: every hint in Windows' words.
+  await cdp.eval(
+    `(() => { const e = [...document.querySelectorAll('body *')].find((n) => n.children.length === 0 && n.textContent?.trim() === 'Keybindings'); (e?.closest('button,a,[role],[tabindex]') ?? e)?.click() })()`
+  )
+  await sleep(1500)
   const hints = await cdp.eval<{ kbd: string[]; glyph: boolean }>(
     `(() => ({ kbd: [...document.querySelectorAll('kbd')].map((k) => k.textContent ?? '').slice(0, 40), glyph: /[⌘⌥⇧⌃]/.test(document.body.innerText) }))()`
   )
-  await shot('settings-by-ctrl-comma')
-  check('Ctrl+, opens Settings', settingsOpen, hints.kbd.slice(0, 8).join(' '))
+  await shot('keybindings')
+  check('the key list reads Ctrl', hints.kbd.some((k) => /Ctrl/.test(k)), hints.kbd.slice(0, 12).join(' '))
   check('no hint on the page shows a Mac glyph', !hints.glyph, hints.kbd.join(' '))
+  await key(cdp, { key: 'Escape', code: 'Escape', vk: 27 }, 0)
 
   // ── update ──
   const checked = await cdp.eval<Status>('window.api.updates.check()')
@@ -393,8 +430,18 @@ async function drive(): Promise<void> {
   await shot('installing')
   const swapped = await waitFor(`the folder to hold ${NEW}`, 900_000, async () => (await installedVersion()) === NEW)
   check(`the installed folder holds ${NEW}`, swapped, `${await installedVersion()} ${((Date.now() - restartAt) / 1000).toFixed(0)}s after restart`)
+  // What runs while the installer works, until the app is back with its CDP port: the log says how long each part took.
+  const back = await waitFor('the app to come back', 1_200_000, async () => {
+    const r = await ps(
+      `$p = @(Get-Process -EA 0 | Where-Object { $_.Path -like '${GUEST_APP_DIR}\\*' -or $_.Name -like '*setup*' -or $_.Name -like 'Un_*' } | ForEach-Object { "$($_.Name):$($_.Id)" }) -join ' '; $l = [bool]((netstat -ano | Out-String) -match ':${GUEST_CDP_PORT.new} .*LISTEN'); "$l $p"`
+    )
+    log(`+${((Date.now() - restartAt) / 1000).toFixed(0)}s ${r.out.replace(/\s+/g, ' ').slice(0, 300)}`)
+    if ((Date.now() - restartAt) % 60_000 < 12_000) await shot('installing')
+    return r.out.startsWith('True')
+  })
+  check('the installer started the app again, with its CDP port', back, `${((Date.now() - restartAt) / 1000).toFixed(0)}s after restart`)
 
-  const relaunched = await attach(CDP_PORT, 300_000).catch((e) => {
+  const relaunched = await attach(CDP_PORT.new, 120_000).catch((e) => {
     check('the installer started the app again', false, (e as Error).message)
     return null
   })

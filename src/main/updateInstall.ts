@@ -212,6 +212,34 @@ export function parseProcessTable(json: string): ProcRow[] {
 
 const samePath = (a: string | null, b: string): boolean => a !== null && a.toLowerCase() === b.toLowerCase()
 
+/** taskkill's arguments for an exact list: no /T, which would walk the tree by parent id again, past `installBlockers`' check for reused ids. */
+export function taskkillArgs(pids: readonly number[]): string[] {
+  return ['/F', ...pids.flatMap((pid) => ['/PID', String(pid)])]
+}
+
+/**
+ * Whether a downloaded release installs when the app quits. Not on Windows: there the NSIS
+ * installer would run silently for minutes after the window closed, and the app started again
+ * meanwhile would be the old one, which the installer then closes. "Restart to update" installs
+ * there, with the installer's own window.
+ */
+export function installsWhenQuitting(platform: NodeJS.Platform): boolean {
+  return platform !== 'win32'
+}
+
+/**
+ * Windows: electron-updater quits only when it has started the installer, and its `error` or a
+ * missing download leaves the app open, its server and terminals already stopped. When no quit has
+ * begun a few seconds on, start the app again: its attempt record then says the update never installed.
+ */
+export function relaunchIfStillHere(deps: { quitStarted: () => boolean; relaunch: () => void; delayMs?: number }): ReturnType<typeof setTimeout> {
+  const timer = setTimeout(() => {
+    if (!deps.quitStarted()) deps.relaunch()
+  }, deps.delayMs ?? 8000)
+  timer.unref?.()
+  return timer
+}
+
 /**
  * The processes to end before the installer runs: everything this app
  * started, down the tree (a harness's CLI, a terminal's shell, a helper's git

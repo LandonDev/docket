@@ -269,7 +269,7 @@ fi
 # rules a Windows pack needs), packs the
 # same out/ for win32 x64 into dist/win-unpacked and makes the one-click
 # installer (with its blockmap), the zip and latest.yml, the feed file a
-# Windows install reads. Unsigned: scripts/sign-win.mjs is the empty hook.
+# Windows install reads. Unsigned: build/sign-win.mjs is the empty hook.
 # The Claude Agent SDK ships its CLI as one optional package per platform and
 # this machine has only its own, so the win32 one is staged first
 # (scripts/win-stage.ts, checked against bun.lock's checksum), and the packed

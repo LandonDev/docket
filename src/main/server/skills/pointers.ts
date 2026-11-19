@@ -122,8 +122,8 @@ export class SkillPointers {
     const ids = [...new Set(this.deps.workspaces().map((w) => w.id))]
     const wanted = new Set<string>(['global', ...ids.map((id) => scopeKeyOf(id))])
     for (const provider of SKILL_HARNESSES) {
-      this.point(provider, null)
-      for (const id of ids) this.point(provider, id)
+      this.pointOrLog(provider, null)
+      for (const id of ids) this.pointOrLog(provider, id)
       const dir = join(this.deps.root, provider, SCOPE_DIR)
       let names: string[]
       try {
@@ -156,6 +156,15 @@ export class SkillPointers {
 
   private linkPath(provider: SkillHarness, scope: ScopeKey): string {
     return join(this.deps.root, provider, SCOPE_DIR, scope)
+  }
+
+  /** `point` for a refresh: one scope that cannot be pointed never holds the others back. */
+  private pointOrLog(provider: SkillHarness, workspaceId: string | null): void {
+    try {
+      this.point(provider, workspaceId)
+    } catch (err) {
+      this.log(`${provider}/${SCOPE_DIR}/${scopeKeyOf(workspaceId)} not pointed: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   /** Point one scope at its generation; a move fires onMoved. */

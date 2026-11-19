@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef } from "react";
 import { LazyPopover } from "../../chrome/menuRows";
 import { Button } from "../../components/ui/button";
 import { Kbd } from "../../components/ui/kbd";
-import { IS_MAC } from "../../lib/platform";
+import { keyHint, modKey } from "../../lib/keys";
 import { Ask } from "../icons";
 import type { CanvasSelection } from "./kind";
 
 /** Ask's key, as its cap reads: ⌘L on macOS, Ctrl+L elsewhere. */
-export const ASK_KEY = IS_MAC ? "⌘L" : "Ctrl+L";
+export const ASK_KEY = keyHint("mod+L");
 
 /**
  * The bar over a selection in any canvas kind (docs/DESIGN.md "The canvas
@@ -24,7 +24,7 @@ export function SelectionBar({ selection, onAsk, onDismiss }: { selection: Canva
   useEffect(() => {
     if (!selection) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key.toLowerCase() !== "l" || event.altKey || event.shiftKey || (IS_MAC ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey)) return;
+      if (event.key.toLowerCase() !== "l" || event.altKey || event.shiftKey || !modKey(event)) return;
       const now = live.current.selection;
       if (!now) return;
       event.preventDefault();

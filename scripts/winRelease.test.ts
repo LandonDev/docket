@@ -1,8 +1,10 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 import {
+  packagesIn,
   binaryKind,
   lockIntegrity,
   packedAppProblems,
@@ -167,7 +169,7 @@ describe('the staged Claude CLI', () => {
     // Per user, one click, no admin; the folder is named by the include; the sign hook is there and signs nothing.
     expect(config.nsis).toMatchObject({ oneClick: true, perMachine: false, include: 'build/installer.nsh' })
     expect(read(config.nsis.include)).toContain('${PRODUCT_FILENAME}')
-    expect(config.win.signtoolOptions.sign).toBe('./scripts/sign-win.mjs')
+    expect(config.win.signtoolOptions.sign).toBe('./build/sign-win.mjs')
   })
 
   it("the Windows rules take out another platform's binaries by name", () => {
@@ -179,7 +181,7 @@ describe('the staged Claude CLI', () => {
   })
 
   it('the signing hook is empty: it resolves and touches nothing', async () => {
-    const hook = (await import('./sign-win.mjs')) as { default: (configuration: { path: string }) => Promise<void> }
+    const hook = (await import('../build/sign-win.mjs')) as { default: (configuration: { path: string }) => Promise<void> }
     await expect(hook.default({ path: '/nonexistent/TempCode.exe' })).resolves.toBeUndefined()
   })
 })
@@ -240,5 +242,18 @@ describe('the release check on a packed Windows app', () => {
     const muse = JSON.parse(read('node_modules/@muse-code/sdk/package.json')) as { optionalDependencies?: Record<string, string>; bin?: unknown }
     expect(Object.keys(muse.optionalDependencies ?? {})).toEqual([])
     expect(muse.bin).toBeUndefined()
+  })
+})
+
+describe('packagesIn', () => {
+  it('lists nested packages too, so a platform binary a level down fails the check', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-packages-'))
+    try {
+      for (const p of ['node-pty', '@scope/a/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64', '.bin']) mkdirSync(join(dir, p), { recursive: true })
+      expect(packagesIn(dir).sort()).toEqual(['@anthropic-ai/claude-agent-sdk-darwin-arm64', '@scope/a', 'node-pty'])
+      expect(packagesIn(join(dir, 'missing'))).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

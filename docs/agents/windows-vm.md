@@ -20,8 +20,10 @@ scripts are `scripts/win-vm/` (`vm.ts` does the work, each `*.sh` is one of its 
   with `PSD-`, a name the Task Scheduler refuses in a user ID, so `tc-setup.ps1` renames it).
 - **The machine:** q35 with Secure Boot firmware (OVMF), a software TPM 2.0 (swtpm), an AHCI disk and an e1000e
   NIC (drivers built into Windows), a USB tablet, 1280×800 on the standard VGA, no display window.
-- **Ports on 127.0.0.1:** 22220 is the guest's SSH; 9333 forwards to the guest's 9333 for a CDP port
-  (`--remote-debugging-port=9333`). Override with `WINVM_SSH_PORT`, `WINVM_CDP_PORT`.
+- **Ports on 127.0.0.1:** 22220 is the guest's SSH; 9333 forwards to the guest's 9333, but a CDP port does
+  not answer there: Chromium's debug port listens on the guest's own loopback, and QEMU's forward lands on
+  its other address. Reach CDP through SSH instead (`ssh -L 9334:127.0.0.1:9333` as tcuser, as
+  scripts/e2e-updater-win.ts does). Override with `WINVM_SSH_PORT`, `WINVM_CDP_PORT`.
 - **The guest cannot reach the box.** Through QEMU's user-mode network, 10.0.2.2 is the box's own loopback,
   where the gateway and dev servers trust their callers, so an outbound firewall rule in the guest
   (`tc-block-host-tcp` and `tc-block-host-udp`, set by the admin, which tcuser cannot change) blocks it. The
@@ -65,9 +67,10 @@ scripts/win-vm/down.sh                    # shut Windows down and stop the machi
   is doing. UI Automation inside the guest is M42's service (`native/tc-computer-win/`), started with
   `run-in-session.sh`.
 - **A build in, a program run:** `scp.sh` the installer into `guest:Downloads/`, then
-  `ssh.sh 'Downloads\TempCode-setup.exe /S'` should install per user with no UAC prompt (a silent NSIS
-  one-click install needs no desktop; M12 proves it, or runs the installer with `run-in-session.sh --wait`), then `run-in-session.sh` starts the app on the desktop and `shot.sh` shows it. The
-  app's CDP port, if started with `--remote-debugging-port=9333`, is `127.0.0.1:9333` on the box.
+  `ssh.sh 'Downloads\temp-code-1.0.N-setup.exe /S'` installs per user with no UAC prompt, in session 0
+  (proven by M12: exit 0 after about five minutes with Defender on; give it 20), then `run-in-session.sh`
+  starts the app on the desktop and `shot.sh` shows it. Its CDP port is reached over SSH (above);
+  docs/agents/windows-build.md has the whole recipe.
 - **One machine at a time.** `up.sh` refuses while one runs, and `install`, `up`, `down`, `snapshot` and `fetch`
   hold a lock (`/srv/agents/win-vm/.lock`), so two threads cannot start or stop it at once. Threads take turns:
   `status.sh` says whether it runs and what it was started from. A thread that finds it running and not its own

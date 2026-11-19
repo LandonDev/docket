@@ -10,7 +10,7 @@ import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { soakWindow } from './soakWindow'
 import { bootMark } from './server/boot'
-import { CAPTION_HEIGHT, captionOverlay, frameOptions, isDarkColor } from './windowFrame'
+import { CAPTION_HEIGHT, captionInk, frameOptions, isDarkColor } from './windowFrame'
 
 /**
  * The window registry. Every window has a *slot*: a stable id that names
@@ -221,7 +221,7 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
     // The caption glyphs take the ink of the app's own theme, which only the page knows: it says so in
     // its theme-color (chrome/WindowControls.tsx), and until then the system's setting stands in.
     win.webContents.on('did-change-theme-color', (_event, color) => {
-      if (color && !win.isDestroyed()) win.setTitleBarOverlay(captionOverlay(isDarkColor(color)))
+      if (color && !win.isDestroyed()) win.setTitleBarOverlay(captionInk(isDarkColor(color)))
     })
   }
 

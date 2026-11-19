@@ -11,6 +11,7 @@ import {
   compareVersions,
   feedFallback,
   installBlockers,
+  installsWhenQuitting,
   judgeAttempt,
   parseAttempt,
   parseProcessTable,
@@ -18,6 +19,8 @@ import {
   stagedBundlePath,
   stalePaths,
   staleWindowsPaths,
+  taskkillArgs,
+  relaunchIfStillHere,
   updaterCacheDirName,
   type InstallFailure
 } from './updateInstall'
@@ -169,7 +172,7 @@ export function stopChildTree(): void {
     const pids = installBlockers(parseProcessTable(table), { pid: process.pid, exe: process.execPath, appDir: dirname(process.execPath) })
     if (pids.length === 0) return
     console.log(`[update] stopping ${pids.length} child process(es) before the installer runs`)
-    execFileSync('taskkill.exe', ['/F', '/T', ...pids.flatMap((pid) => ['/PID', String(pid)])], { stdio: 'ignore', timeout: 15_000, windowsHide: true })
+    execFileSync('taskkill.exe', taskkillArgs(pids), { stdio: 'ignore', timeout: 15_000, windowsHide: true })
   } catch (error) {
     // taskkill exits non-zero when one of them was already gone
     console.log(`[update] child sweep: ${String((error as Error).message ?? error).split('\n')[0]}`)
@@ -198,6 +201,14 @@ function restartToInstall(): void {
       if (process.platform === 'win32') {
         beforeInstall?.()
         stopChildTree()
+        let quitStarted = false
+        app.once('before-quit', () => {
+          quitStarted = true
+        })
+        autoUpdater.quitAndInstall()
+        // The app's work is already stopped: an installer that never starts must not leave a window with nothing behind it.
+        relaunchIfStillHere({ quitStarted: () => quitStarted, relaunch: () => (app.relaunch(), app.exit(0)) })
+        return
       }
       autoUpdater.quitAndInstall()
     },
@@ -308,15 +319,11 @@ function forgetAttempt(): void {
   }
 }
 
-/** before-quit: a downloaded release installs on this quit, with or without a relaunch. */
+/** before-quit: a downloaded release installs on this quit, with or without a relaunch (not on Windows, where only "Restart to update" installs). */
 export function noteInstallOnQuit(): void {
-  if (app.isPackaged && status.phase === 'ready' && status.latest) recordAttempt(status.latest)
+  if (app.isPackaged && installsWhenQuitting(process.platform) && status.phase === 'ready' && status.latest) recordAttempt(status.latest)
 }
 
-/** Whether a downloaded release installs when this quit ends (Windows asks, to stop the child tree first). */
-export function installsOnQuit(): boolean {
-  return app.isPackaged && status.phase === 'ready' && !!status.latest
-}
 
 const cachesDir = (): string => join(homedir(), 'Library', 'Caches')
 
@@ -477,7 +484,7 @@ export function registerUpdates(hooks: { beforeInstall?: () => void } = {}): voi
     const failure = detectFailedInstall()
     if (failure) status = { ...status, installFailure: failure, latest: failure.version }
     autoUpdater.autoDownload = false
-    autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.autoInstallOnAppQuit = installsWhenQuitting(process.platform)
     autoUpdater.on('update-available', (info) =>
       setStatus({ latest: info.version, notes: notesToText(info.releaseNotes) })
     )

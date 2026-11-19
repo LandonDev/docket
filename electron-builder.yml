@@ -95,9 +95,9 @@ win:
   # A certificate goes in there only if a machine refuses the unsigned build.
   signtoolOptions:
     signingHashAlgorithms: [sha256]
-    sign: ./scripts/sign-win.mjs
+    sign: ./build/sign-win.mjs
 # Per user, no admin: one click into %LOCALAPPDATA%\Programs\TempCode (build/installer.nsh names
-# the folder after the product), and electron-updater runs the same installer silently to update.
+# the folder after the product). "Restart to update" runs the same installer with its own window.
 nsis:
   oneClick: true
   perMachine: false
