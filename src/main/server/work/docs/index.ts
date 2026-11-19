@@ -6,6 +6,7 @@ import { ServedElsewhere, TOKEN_SECONDS } from '../service/ctx'
 import { dismissWritten, docsOf, ensureModeTable, modeOf, setMode, stopDocs } from './state'
 import { lifeosRow, pathOf, targetOf, titleOf, type DocTarget } from './target'
 import { changeThread, ensureThreadTables, readThreads } from './threads'
+import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, listViews, saveView, workspaceOf } from './find'
 import { docTools } from './tools'
 import { guestNameOf } from '../guests/store'
 
@@ -15,7 +16,8 @@ import { guestNameOf } from '../guests/store'
  * (M18); its history and branches are history's (M19). This module opens a
  * document for a screen (a token, a socket relayed over the host's own link,
  * its threads, its mode) and gives agents `doc_read`, `doc_write`,
- * `doc_suggest` and `doc_comment` (tools.ts).
+ * `doc_suggest` and `doc_comment` (tools.ts), and finds what a workspace
+ * holds for the Docs view and `doc_find` (find.ts).
  */
 
 /** A screen at this host or a key that may operate edits; a read-only key views. */
@@ -82,6 +84,7 @@ export const docs: WorkModule = {
   ensure(db) {
     ensureModeTable(db)
     ensureThreadTables(db)
+    ensureViewsTable(db)
   },
   async handle(req, ctx, by, signal) {
     if (!(req.method in DOCS_CAPS)) return NOT_HANDLED
@@ -138,15 +141,30 @@ export const docs: WorkModule = {
         const id = await ctx.lifeos.owner().mutation<string>('docs:create', { ...(projectId ? { projectId } : { sector }), title })
         return handled({ source: { at: 'lifeos' as const, table: 'docs' as const, id }, title })
       }
+      case 'work.docs.find':
+        return handled(await findDocs(ctx, by, req.params))
+      case 'work.docs.views':
+        workspaceOf(ctx, req.params.workspaceId)
+        return handled({ views: listViews(ctx.db, req.params.workspaceId) })
+      case 'work.docs.saveView': {
+        const { workspaceId, ...view } = req.params
+        workspaceOf(ctx, workspaceId)
+        return handled(saveView(ctx.db, workspaceId, view))
+      }
+      case 'work.docs.dropView':
+        dropView(ctx.db, req.params.workspaceId, req.params.id)
+        return handled({ ok: true as const })
     }
     return NOT_HANDLED
   },
   tools: () => docTools,
   preamble: () =>
-    'A document in the canvas is read with `doc_read` and changed with `doc_write` (its whole new text as markdown), `doc_suggest` or `doc_comment`. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a document others share, or one he set to suggest, your own idea waits as suggestions he steps through in the text.',
+    'Find a document, sheet or file of this workspace with `doc_find`. A document in the canvas is read with `doc_read` and changed with `doc_write` (its whole new text as markdown), `doc_suggest` or `doc_comment`. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a document others share, or one he set to suggest, your own idea waits as suggestions he steps through in the text.',
   start(ctx) {
     return () => stopDocs(ctx)
   },
   sessionsRemoved() {},
-  workspaceRemoved() {}
+  workspaceRemoved(workspaceId, ctx) {
+    dropWorkspaceViews(ctx.db, workspaceId)
+  }
 }

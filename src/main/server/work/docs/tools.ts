@@ -5,6 +5,7 @@ import type { ToolCtx, WorkTool } from '../modules'
 import { docsOf, modeOf, wrote } from './state'
 import { lifeosRow, pathOf, serviceTarget, targetOf, type DocTarget } from './target'
 import { changeThread } from './threads'
+import { EDITED_WITHIN, FIND_BY, FIND_KINDS, FIND_KIND_WORDS, FIND_SORTS, FIND_WHERE, FIND_WHERE_WORDS, findIn, type FindEntry, type FindFilter } from '@shared/work/docFind'
 
 /**
  * The tools a Work thread reads and changes a document with
@@ -106,7 +107,103 @@ async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 
   return workText(`${text}.${note}`)
 }
 
+/** A date the model wrote, as ms; a bare date is the start of that day here. */
+function dateOf(text: string | undefined, name: string): number | undefined {
+  if (!text) return undefined
+  const t = new Date(/^\d{4}-\d{2}-\d{2}$/.test(text) ? `${text}T00:00:00` : text).getTime()
+  if (Number.isNaN(t)) throw new Error(`\`${name}\` is not a date: write it as 2026-10-01 or 2026-10-01T14:00`)
+  return t
+}
+
+const day = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+const LAST_BY = { owner: 'the owner', agent: 'an agent', guest: 'a guest' } as const
+
+/** One found entry as a line the model reads, ending with the source `canvas_open` takes. */
+export function foundLine(e: FindEntry, projects: ReadonlyMap<string, string>): string {
+  const facts = [FIND_KIND_WORDS[e.kind], FIND_WHERE_WORDS[e.where]]
+  const project = e.projectId && projects.get(e.projectId)
+  if (project) facts.push(`project ${project}`)
+  facts.push(`edited ${day(e.editedAt)}${e.lastBy ? ` by ${LAST_BY[e.lastBy]}` : ''}`)
+  if (e.shared || e.guest) facts.push(e.guest ? 'guest link' : 'shared')
+  if (e.comments) facts.push(`${e.comments} open comment${e.comments === 1 ? '' : 's'}`)
+  if (e.waiting) facts.push(`${e.waiting} suggestion${e.waiting === 1 ? '' : 's'} waiting`)
+  if (e.held) facts.push(`${e.held} held`)
+  return `- "${e.title}": ${facts.join(', ')}. source ${JSON.stringify(e.source)}${e.snippet ? `\n  “${e.snippet}”` : ''}`
+}
+
+const findInput = z.object({
+  query: z.string().max(500).optional().describe('Words in the title or written inside. Leave it out to list by the filters alone.'),
+  kinds: z.array(z.enum(FIND_KINDS)).optional().describe('document, sheet, pdf, slides (a deck), media, meeting (a recording), form, dashboard'),
+  where: z.array(z.enum(FIND_WHERE)).optional().describe('lifeos, folder (the workspace folder on this host), google, microsoft, thread (made in a thread)'),
+  project: z.string().max(200).optional().describe('A LifeOS project, by name or id.'),
+  edited_within: z.enum(EDITED_WITHIN).optional(),
+  edited_after: z.string().max(40).optional().describe('A date or time, as 2026-10-01 or 2026-10-01T14:00.'),
+  edited_before: z.string().max(40).optional(),
+  by: z.array(z.enum(FIND_BY)).optional().describe('Who last changed it: owner, agent or guest.'),
+  shared: z.boolean().optional().describe('Only what others can see: shared, guest-linked, or in Google or Microsoft.'),
+  review: z.boolean().optional().describe('Only what has open comments or suggestions waiting.'),
+  held: z.boolean().optional().describe('Only what a held act in the Outbox names.'),
+  sort: z.enum(FIND_SORTS).optional().describe('edited (default), created or name'),
+  limit: z.number().int().min(1).max(50).optional()
+})
+
+/**
+ * `doc_find`: the Docs view's search as a tool. A workspace's thread searches that workspace,
+ * and so its sector alone; a Work Chat searches every Work workspace on this host.
+ */
+async function find(ctx: ToolCtx, a: z.infer<typeof findInput>): Promise<WorkToolResult> {
+  const { findDocs } = await import('./find')
+  const ids = ctx.scope.workspaceId
+    ? [ctx.scope.workspaceId]
+    : (ctx.db.prepare("SELECT id FROM workspaces WHERE kind = 'work'").all() as { id: string }[]).map((r) => r.id)
+  const by = { kind: 'model' as const, caps: [], sessionId: ctx.sessionId }
+  const answers = await Promise.all(ids.map((workspaceId) => findDocs(ctx, by, { workspaceId, query: a.query })))
+  const projects = new Map(answers.flatMap((x) => x.projects.map((p) => [p.id, p.name] as const)))
+  const filter: FindFilter = {
+    ...(a.kinds ? { kinds: a.kinds } : {}),
+    ...(a.where ? { where: a.where } : {}),
+    ...(a.by ? { by: a.by } : {}),
+    ...(a.edited_within ? { within: a.edited_within } : {}),
+    ...(a.shared ? { shared: true } : {}),
+    ...(a.review ? { review: true } : {}),
+    ...(a.held ? { held: true } : {})
+  }
+  const after = dateOf(a.edited_after, 'edited_after')
+  const before = dateOf(a.edited_before, 'edited_before')
+  if (after !== undefined) filter.after = after
+  if (before !== undefined) filter.before = before
+  if (a.project) {
+    const want = a.project.trim().toLowerCase()
+    const matched = [...projects].filter(([id, name]) => id === a.project || name.toLowerCase() === want || name.toLowerCase().includes(want)).map(([id]) => id)
+    if (!matched.length) return workText(`No project is named "${a.project}". The projects are: ${[...projects.values()].join(', ') || 'none'}.`)
+    filter.projects = matched
+  }
+  const hits = new Map(answers.flatMap((x) => x.hits.map((h) => [h.key, h.snippet] as const)))
+  const found = findIn(answers.flatMap((x) => x.entries), { query: a.query ?? '', filter, sort: a.sort ?? 'edited' }, hits)
+  const limit = a.limit ?? 20
+  const missing = answers.map((x) => x.lifeos).find(Boolean)
+  const head = missing ? `LifeOS did not answer (${missing}), so its documents are not in this list.\n` : ''
+  if (!found.length) return workText(`${head}Nothing matches.`)
+  const more = found.length > limit ? `\n${found.length - limit} more match; narrow the search or raise \`limit\`.` : ''
+  return workText(`${head}${found.slice(0, limit).map((e) => foundLine(e, projects)).join('\n')}${more}\nOpen one with canvas_open and its source; a LifeOS document or a .tcdoc also reads with doc_read.`)
+}
+
 export const docTools: WorkTool[] = [
+  {
+    name: 'doc_find',
+    description:
+      'Finds documents, sheets, PDFs, decks, media, recordings, forms and dashboards in this workspace: by words in the title or written inside (LifeOS documents, .tcdoc and .csv files in the folder), and by kind, place, project, when and by whom it was last edited, sharing, open comments or waiting suggestions, and held acts. Each line ends with the source to open it by.',
+    input: findInput,
+    readOnly: true,
+    run: async (args, ctx) => {
+      try {
+        return await find(ctx, args as z.infer<typeof findInput>)
+      } catch (err) {
+        return fail(errorText(err))
+      }
+    }
+  },
   {
     name: 'doc_read',
     description:

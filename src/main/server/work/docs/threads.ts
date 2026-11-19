@@ -61,7 +61,7 @@ export async function readThreads(ctx: WorkCtx, t: DocTarget): Promise<DocThread
   return fileRows(ctx.db, t.doc)
 }
 
-function fileRows(db: DatabaseSync, doc: string): DocThreadRow[] {
+export function fileRows(db: DatabaseSync, doc: string): DocThreadRow[] {
   const row = db.prepare('SELECT rows FROM work_docs_threads WHERE doc = ?').get(doc) as { rows: string } | undefined
   return row ? (JSON.parse(row.rows) as DocThreadRow[]) : []
 }

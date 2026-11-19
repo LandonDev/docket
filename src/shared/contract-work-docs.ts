@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CanvasSourceSchema } from './work/canvas'
+import { EDITED_WITHIN, FIND_BY, FIND_GROUPS, FIND_KINDS, FIND_SORTS, FIND_WHERE } from './work/docFind'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -85,6 +86,31 @@ export const DocThreadOpSchema = z.discriminatedUnion('op', [
 ])
 export type DocThreadOp = z.infer<typeof DocThreadOpSchema>
 
+const id = z.string().min(1).max(200)
+const list = <T extends readonly [string, ...string[]]>(values: T) => z.array(z.enum(values)).max(values.length).optional()
+
+/** A view's filters (shared/work/docFind.ts `FindFilter`). */
+export const FindFilterSchema = z.object({
+  projects: z.array(z.string().max(64)).max(200).optional(),
+  kinds: list(FIND_KINDS),
+  where: list(FIND_WHERE),
+  shared: z.boolean().optional(),
+  by: list(FIND_BY),
+  within: z.enum(EDITED_WITHIN).optional(),
+  after: z.number().int().optional(),
+  before: z.number().int().optional(),
+  review: z.boolean().optional(),
+  held: z.boolean().optional()
+})
+/** What a saved view keeps (`FindSpec`). */
+export const FindSpecSchema = z.object({
+  query: z.string().max(500),
+  filter: FindFilterSchema,
+  group: z.enum(FIND_GROUPS),
+  sort: z.enum(FIND_SORTS),
+  layout: z.enum(['list', 'table'])
+})
+
 /** One relayed socket's frames, each a Hocuspocus message in base64. */
 const frames = z.array(z.string().max(6_000_000)).max(200)
 const socketId = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/)
@@ -113,7 +139,15 @@ export const DocsRequestSchemas = [
   /** → { ok: true }: the agent's last write is settled; the bar stops offering its Undo */
   request('work.docs.dismiss', z.object({ source: CanvasSourceSchema })),
   /** → { source, title }: a new LifeOS document in the sector, or in a project */
-  request('work.docs.create', z.object({ sector: z.string().min(1).max(32), projectId: z.string().min(1).max(64).optional(), title: z.string().min(1).max(200) }))
+  request('work.docs.create', z.object({ sector: z.string().min(1).max(32), projectId: z.string().min(1).max(64).optional(), title: z.string().min(1).max(200) })),
+  /** → FindAnswer (main/server/work/docs/find.ts): what a Work workspace lists, and with `query` the text matches */
+  request('work.docs.find', z.object({ workspaceId: id, query: z.string().max(500).optional() })),
+  /** → { views: SavedFindView[] } */
+  request('work.docs.views', z.object({ workspaceId: id })),
+  /** → SavedFindView: a new view, or one renamed and rewritten */
+  request('work.docs.saveView', z.object({ workspaceId: id, id: id.optional(), name: z.string().trim().min(1).max(80), spec: FindSpecSchema })),
+  /** → { ok: true } */
+  request('work.docs.dropView', z.object({ workspaceId: id, id }))
 ] as const
 
 /** Something changed on a document a screen may hold: its threads, its pending suggestions, or the agent's last write. */
@@ -131,6 +165,10 @@ export const DOCS_CAPS = {
   'work.docs.mode': 'operate',
   'work.docs.rename': 'operate',
   'work.docs.dismiss': 'operate',
-  'work.docs.create': 'operate'
+  'work.docs.create': 'operate',
+  'work.docs.find': 'read',
+  'work.docs.views': 'read',
+  'work.docs.saveView': 'operate',
+  'work.docs.dropView': 'operate'
 } satisfies CapsOf<typeof DocsRequestSchemas>
 export const DOCS_RELAY = {} satisfies RelayOf<typeof DocsRequestSchemas>
