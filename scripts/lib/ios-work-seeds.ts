@@ -235,6 +235,28 @@ export async function seedWorkItems(ready: WorkSeedReady & { environmentId: stri
       }
     }
 
+    // A media item is ready once the host has cut what the phone plays: the proxy's last segment, or the tiles.
+    type Play = { via: string; ended?: boolean }
+    const ready_ = async (kind: string, itemId: string, done: (plays: Play[]) => boolean): Promise<void> => {
+      const t0 = Date.now()
+      let last = ''
+      while (Date.now() - t0 < 180_000) {
+        try {
+          const view = await s.call<{ versions: { state: string; error?: string | null; plays: Play[] }[] }>('work.media.view', { itemId, plays: ['hls', 'tiles'] })
+          const v = view.versions.at(-1)
+          last = v ? `${v.state}${v.error ? `: ${v.error}` : ''}` : 'no version'
+          if (v?.state === 'failed') break
+          if (v && done(v.plays)) {
+            lines.push(`OK ${kind}: prepared for the phone in ${Math.round((Date.now() - t0) / 1000)} s`)
+            return
+          }
+        } catch (err) {
+          last = String(err)
+        }
+        await sleep(2000)
+      }
+      lines.push(`FAIL ${kind}: not prepared for the phone (${last})`)
+    }
     const pdfPath = `${dir}/Spring LAN floor plan.pdf`
     writeFileSync(pdfPath, pdfOf([
       ['Spring LAN floor plan', 'Arena A: 120 seats in six rows.'],
@@ -246,19 +268,28 @@ export async function seedWorkItems(ready: WorkSeedReady & { environmentId: stri
     if (pdf) await probe('pdf', 'work.pdf.open', { itemId: pdf })
 
     const ffmpeg = (args: string[]) => spawnSync('ffmpeg', ['-y', '-loglevel', 'error', ...args], { encoding: 'utf8' })
+    // The media pillar runs the host's installed conversion tools: this machine's ffmpeg stands in for them.
+    const ffmpegDir = spawnSync('sh', ['-c', 'dirname "$(command -v ffmpeg)"'], { encoding: 'utf8' }).stdout.trim()
+    if (ffmpegDir && ffmpegDir !== '.') {
+      const tools = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows: [], tools: { ffmpeg: ffmpegDir } }) })
+      if (!tools.ok) lines.push(`FAIL /work-held tools: ${tools.status}`)
+    }
     const mp4 = `${dir}/LAN promo.mp4`
-    const made = ffmpeg(['-f', 'lavfi', '-i', 'testsrc=duration=6:size=1280x720:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', mp4])
+    // The phone plays what the host cuts as HLS, which it does only past ten minutes (media/plan.ts HLS_OVER_S),
+    // and a picture as tiles only past 40 megapixels (TILES_OVER_MP): a shorter clip or a smaller picture never
+    // plays on the phone. So eleven minutes, small and quick to cut, and an 8000 by 5200 picture.
+    const made = ffmpeg(['-f', 'lavfi', '-i', 'testsrc=duration=660:size=320x180:rate=10', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=660', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', mp4])
     if (made.status !== 0) lines.push(`NOT RUN media video: ffmpeg failed: ${made.stderr}`)
     else {
       const video = await open('media', 'LAN promo', { at: 'file', host, path: mp4 })
-      if (video) await probe('media video', 'work.media.view', { itemId: video, plays: ['hls', 'tiles'] })
+      if (video) await ready_('media video', video, (p) => p.some((x) => x.via === 'hls' && x.ended === true))
     }
     const png = `${dir}/Arena seating.png`
-    const shot = ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=2400x1600', '-frames:v', '1', png])
+    const shot = ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=8000x5200', '-frames:v', '1', png])
     if (shot.status !== 0) lines.push(`NOT RUN media picture: ffmpeg failed: ${shot.stderr}`)
     else {
       const picture = await open('media', 'Arena seating', { at: 'file', host, path: png })
-      if (picture) await probe('media picture', 'work.media.view', { itemId: picture, plays: ['hls', 'tiles'] })
+      if (picture) await ready_('media picture', picture, (p) => p.some((x) => x.via === 'tiles'))
     }
 
     const browser = await open('browser', 'Arena booking', { at: 'browser', host, sessionId })

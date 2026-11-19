@@ -38,7 +38,8 @@
  *   POST /batch-log { masterId, lines }  → appends lines to the master's running shell step (a streaming console)
  *   POST /notes { sessionId, text }      → writes a thread's notes.md (the `notes` push follows)
  *   POST /work-held { rows }   → writes held acts into the hold as it writes them (milestone 46's work set);
- *                                 `forms` and `dashboards` write the rows behind a form's and a dashboard's item (milestone 47)
+ *                                 `forms` and `dashboards` write the rows behind a form's and a dashboard's item, and
+ *                                 `tools: { ffmpeg: <dir> }` links that dir's ffmpeg and ffprobe in as the conversion tool (milestone 47)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
  *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /hold { seconds }      → the host goes down for that long: every remote socket dropped and every
@@ -73,7 +74,7 @@
  */
 import { createServer, Server as HttpServer } from 'node:http'
 import { execFileSync, fork, spawn, type Serializable } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { deflateSync } from 'node:zlib'
@@ -2131,6 +2132,21 @@ const control = createServer((req, res) => {
           const dashboards = Array.isArray(body.dashboards) ? (body.dashboards as { itemId: string; sessionId: string; title: string; blocks: unknown[] }[]) : []
           for (const d of dashboards) {
             db.prepare(`INSERT OR REPLACE INTO work_dashboards (item_id, session_id, rev, title, blocks, as_of, updated_at) VALUES (?, ?, 1, ?, ?, NULL, ?)`).run(d.itemId, d.sessionId, d.title, JSON.stringify(d.blocks), now)
+          }
+          // Milestone 47: this machine's own ffmpeg as the host's installed conversion tool (what Settings →
+          // Work → Conversion tools would install), linked into <data>/work-tools so the media pillar can probe.
+          const ffmpeg = body.tools && typeof (body.tools as { ffmpeg?: unknown }).ffmpeg === 'string' ? String((body.tools as { ffmpeg: string }).ffmpeg) : null
+          if (ffmpeg) {
+            const tools = join(dirname(dbPath), 'work-tools')
+            const dir = join(tools, 'ffmpeg-host')
+            mkdirSync(dir, { recursive: true })
+            for (const name of ['ffmpeg', 'ffprobe']) {
+              rmSync(join(dir, name), { force: true })
+              symlinkSync(join(ffmpeg, name), join(dir, name))
+            }
+            const at = Date.now()
+            const tool = { name: 'ffmpeg', pillar: 'media', version: 'host', licence: 'LGPL', licenceNote: '', ok: true, dir: 'ffmpeg-host', bin: 'ffmpeg', bins: { ffprobe: 'ffprobe' }, at }
+            writeFileSync(join(tools, 'state.json'), JSON.stringify({ platform: `${process.platform}-${process.arch}`, at, tools: { ffmpeg: tool } }))
           }
           return answer(200, { written: rows.length })
         } finally {

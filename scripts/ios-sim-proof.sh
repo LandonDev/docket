@@ -1070,28 +1070,31 @@ work_set() {
 # thread for each kind (scripts/lib/ios-work-seeds.ts seedWorkItems). Slides need a rendered deck (soffice)
 # and a guest link a hosted (LifeOS) item; history needs the Work service, which runs only under Electron.
 work_m47() {
+  # Each shot in a subshell: the script runs under sh, where a variable set before a function call outlives it.
   local items="Spring LAN check-in"
-  shot w21-work-workspace-light work-workspace "" "" "" 12
-  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail shot w22-mail-thread-light work-view "" "" mail-thread
-  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail TC_SHEET=start-thread-mail shot w23-mail-start-thread-light work-view "" "" mail-thread
+  ( shot w21-work-workspace-light work-workspace "" "" "" 12 )
+  ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail shot w22-mail-light work-view )
+  # The Purdue thread opens three seconds after the list, as a tap would.
+  ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail shot w23-mail-thread-light work-view "" "" mail-thread 14 )
+  ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail TC_SHEET=start-thread-mail shot w24-mail-start-thread-light work-view )
   # The sheet fills its words and presses Start three seconds after it shows; the new thread opens.
-  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail TC_SHEET=start-thread-mail TC_ACTION=start-thread launch_app work-view "" "" mail-thread
-  sleep 7; snap w24-mail-start-thread-filled-light
-  sleep 8; snap w25-mail-started-thread-light
-  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=tasks shot w26-tasks-light work-view
-  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=tasks TC_SHEET=start-thread-task shot w27-tasks-start-thread-light work-view
-  TC_LIFE_FIXTURES=1 TC_WORK_VIEW=agenda shot w28-agenda-light work-view
-  TC_WORK_VIEW=routines shot w29-routines-light work-view
-  shot w30-house-rules-voice-light house-rules
-  TC_ITEM=pdf shot w31-item-pdf-light thread "$items" item
-  TC_ITEM="LAN promo" TC_ACTION="media-comment:Logo flickers here" shot w32-item-video-comment-light thread "$items" item "" 20
-  TC_ITEM="Arena seating" shot w33-item-picture-light thread "$items" item "" 14
-  TC_ITEM=meeting shot w34-item-meeting-light thread "$items" item
-  TC_ITEM=browser shot w35-item-browser-light thread "$items" item
-  TC_ITEM=browser shot w36-item-browser-held-opened-light thread "$items" item browser-held 14
-  TC_ITEM=form shot w37-item-form-light thread "$items" item
-  TC_ITEM=dashboard shot w38-item-dashboard-light thread "$items" item
-  TC_ITEM=history shot w39-item-history-light thread "$items" item compare
+  ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail TC_SHEET=start-thread-mail TC_ACTION=start-thread launch_app work-view )
+  sleep 7; snap w25-mail-start-thread-filled-light
+  sleep 8; snap w26-mail-started-thread-light
+  ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=tasks shot w27-tasks-light work-view )
+  ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=tasks TC_SHEET=start-thread-task shot w28-tasks-start-thread-light work-view )
+  ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=agenda shot w29-agenda-light work-view )
+  ( TC_WORK_VIEW=routines shot w30-routines-light work-view )
+  ( shot w31-house-rules-voice-light house-rules )
+  ( TC_ITEM=pdf shot w32-item-pdf-light thread "$items" item )
+  ( TC_ITEM="LAN promo" TC_ACTION="media-comment:Logo flickers here" shot w33-item-video-comment-light thread "$items" item "" 45 )
+  ( TC_ITEM="Arena seating" shot w34-item-picture-light thread "$items" item "" 25 )
+  ( TC_ITEM=meeting shot w35-item-meeting-light thread "$items" item )
+  ( TC_ITEM=browser shot w36-item-browser-light thread "$items" item )
+  ( TC_ITEM=browser shot w37-item-browser-held-opened-light thread "$items" item browser-held 14 )
+  ( TC_ITEM=form shot w38-item-form-light thread "$items" item )
+  ( TC_ITEM=dashboard shot w39-item-dashboard-light thread "$items" item )
+  ( TC_ITEM=history shot w40-item-history-light thread "$items" item compare )
 }
 
 work_m46() {
