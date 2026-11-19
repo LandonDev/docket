@@ -18,18 +18,18 @@
     <title>TempCode</title>
     <script src="./boot.js"></script>
     <style>
+      /* The splash's two colours are `background` and `foreground` of each
+         theme, copied from src/renderer/src/index.css, which has not loaded
+         yet (src/renderer/src/splash.test.ts holds them equal). boot.js sets
+         `theme-light` before this paints. */
       :root {
-        --theme-hue: 240;
-        --theme-saturation: 0%;
-        --sidebar-opacity: 0.8;
-        --background-lightness: 9%;
-        --boot-background: hsl(
-          var(--theme-hue) var(--theme-saturation) var(--background-lightness)
-        );
+        --boot-background: oklch(0.195 0.003 270);
+        --boot-foreground: oklch(0.93 0.003 270);
       }
 
       html.theme-light {
-        --background-lightness: 97%;
+        --boot-background: oklch(1 0 0);
+        --boot-foreground: oklch(0.2 0.012 264);
       }
 
       html,
@@ -56,17 +56,20 @@
         opacity: 0;
       }
 
-      #boot-splash img {
+      /* The logo is one shape in white: drawn as a mask, it takes the
+         theme's ink and shows on a white ground as on a dark one. */
+      #boot-mark {
         width: 72px;
         height: 72px;
-        object-fit: contain;
-        display: block;
+        background: var(--boot-foreground);
+        -webkit-mask: url("./monocode.png") center / contain no-repeat;
+        mask: url("./monocode.png") center / contain no-repeat;
       }
     </style>
   </head>
   <body>
     <div id="boot-splash" aria-hidden="true">
-      <img src="./monocode.png" alt="" />
+      <div id="boot-mark"></div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
