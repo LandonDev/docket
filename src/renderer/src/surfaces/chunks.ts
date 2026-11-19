@@ -80,6 +80,9 @@ export const reviewChunk = defineChunk("review", () => import("./ReviewCard"));
 /** The right panel's Computer section: the window live or as it was, and the thread's steps (threads/computer/). */
 export const computerChunk = defineChunk("computer", () => import("./threads/computer"));
 
+/** A failed turn's card (FailureCard): its actions, the accounts popover and the failure words, drawn only on a turn that failed. */
+export const failureCardChunk = defineChunk("failureCard", () => import("./FailureCard"));
+
 /** The canvas pane beside a Work thread and the composer's chip row (work/canvas). Asked for only by a Work thread or a
  *  composer that holds a chip: nothing of Work is in the first paint (docs/agents/work.md "The first paint"). */
 export const workCanvasChunk = defineChunk("work-canvas", () => import("../work/canvas"));
@@ -115,4 +118,5 @@ export const allChunks = {
   reviewChunk,
   computerChunk,
   workCanvasChunk,
+  failureCardChunk,
 };

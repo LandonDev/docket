@@ -13,6 +13,16 @@ vi.mock("../lib/tcserver/commands", () => ({
 }));
 
 import { ErrorChip } from "./ErrorChip";
+import { failureCardChunk } from "./chunks";
+
+/** The card rides its own chunk: mount, then let it land. */
+async function mountCard(element: Parameters<typeof mountProbe>[0]) {
+  const probe = mountProbe(element);
+  await act(async () => {
+    await failureCardChunk.load();
+  });
+  return probe;
+}
 
 const RAW = "turn ended: error_during_execution";
 const rowOf = (text: string, stopped = false, treeCanContinue = true) => {
@@ -32,7 +42,7 @@ describe("ErrorChip", () => {
   it("a failure the host never classified is the card with the fallback lines and Retry alone", async () => {
     continueSession.mockReset();
     continueSession.mockReturnValue(new Promise(() => {}));
-    const probe = mountProbe(<ErrorChip sessionId="s1" row={rowOf(RAW)} />);
+    const probe = await mountCard(<ErrorChip sessionId="s1" row={rowOf(RAW)} />);
     const root = probe.container;
     const fallback = fallbackFailure();
     expect(root.querySelector("[data-failure-kind=unknown]")).not.toBeNull();
@@ -50,8 +60,8 @@ describe("ErrorChip", () => {
     probe.unmount();
   });
 
-  it("offers no Retry where the host cannot continue, such as a bare turn ended wind-down", () => {
-    const probe = mountProbe(<ErrorChip sessionId="s1" row={rowOf(RAW, false, false)} />);
+  it("offers no Retry where the host cannot continue, such as a bare turn ended wind-down", async () => {
+    const probe = await mountCard(<ErrorChip sessionId="s1" row={rowOf(RAW, false, false)} />);
     expect(probe.container.textContent).toContain(fallbackFailure().summary);
     expect(probe.container.querySelector("button")).toBeNull();
     probe.unmount();

@@ -1,7 +1,13 @@
 import type { ErrorRow } from "../lib/turnOutcome";
 import { StatusMark } from "../components/ui/status";
 import { NoticeLine } from "./transcript/NoticeLine";
-import { FailureCard } from "./FailureCard";
+import { failureCardChunk } from "./chunks";
+
+// The card rides its own chunk (warmed in the idle slot): until it lands the row says Failed with the card's glyph.
+const FailureCard = failureCardChunk.surface(
+  "FailureCard",
+  <NoticeLine role="status" glyph={<StatusMark state="failed" word={false} />} lead="Failed" />,
+);
 
 /**
  * The row a turn ends on when it did not finish: a quiet Stopped line for
