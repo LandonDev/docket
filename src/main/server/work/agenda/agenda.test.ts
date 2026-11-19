@@ -73,6 +73,20 @@ describe('a held calendar act', () => {
     expect(sends()).toEqual([])
   })
 
+  it('does not go when its event moved after it was shown', async () => {
+    const id = rig.lifeos.calendarOp({ kind: 'accept', eventId: 'ev_1' })
+    rig.lifeos.fire()
+    await settled()
+    const [item] = await list()
+    const shown = (await rig.rpc<OutboxItem>('work.outbox.get', { ref: item!.ref })).payload as CalendarOpPayload
+    expect(shown.eventStartsAt).toBe(rig.lifeos.events.get('ev_1')!.startsAt)
+    const def = rig.host.outbox.def('calendar.op')
+    const ctx = { ...rig.work.ctx, item: {} as never, decidedBy: 'owner' as const }
+    Object.assign(rig.lifeos.events.get('ev_1')!, { startsAt: Number(shown.eventStartsAt) + 7_200_000 })
+    await expect(def.execute(shown, ctx)).rejects.toThrow('The event moved since it was shown')
+    expect(rig.lifeos.ops.get(id)!.status).toBe('draft')
+  })
+
   it("does not go when it is edited between the press's read and LifeOS's send", async () => {
     const id = rig.lifeos.calendarOp({ kind: 'accept', eventId: 'ev_1' })
     rig.lifeos.fire()

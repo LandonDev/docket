@@ -126,7 +126,9 @@ export const CalendarOpPayloadSchema = z.looseObject({
   plain: z.boolean().optional(),
   editedAt: z.number().optional(),
   payload: z.looseObject(CalendarFieldsSchema.shape).optional(),
-  eventTitle: z.string().optional()
+  eventTitle: z.string().optional(),
+  /** when the act's event starts, as read for the Outbox; the press refuses an event that moved since */
+  eventStartsAt: z.number().optional()
 })
 export type CalendarOpPayload = z.infer<typeof CalendarOpPayloadSchema>
 
@@ -248,6 +250,8 @@ export class LifeosHeldItems implements LifeosHeld {
   private first = { mail: true, calendar: true }
   /** the titles of the events calendar acts answer, read once each: an act holds only the event's id */
   private readonly eventTitles = new Map<string, string>()
+  /** when each act's event starts, as last read: what the press checks (milestone 50's hold review, 29) */
+  private readonly eventStarts = new Map<string, number>()
 
   constructor(private readonly deps: LifeosHeldDeps) {}
 
@@ -280,6 +284,8 @@ export class LifeosHeldItems implements LifeosHeld {
       // Read fresh: what the press sends is what LifeOS holds now, not what the watcher saw last.
       const row = await this.calendarRow(ref.id)
       if (!row || (row.origin as { host?: string } | undefined)?.host !== this.deps.ctx.host) return null
+      // The event read fresh too: a held act binds the time he is shown, and the press checks it.
+      if (typeof row.eventId === 'string') this.eventTitles.delete(row.eventId)
       await this.titlesFor([row])
       return this.calendarItem(row)
     }
@@ -368,8 +374,9 @@ export class LifeosHeldItems implements LifeosHeld {
     const owner = this.deps.ctx.lifeos.owner()
     await Promise.all(
       ids.map(async (id) => {
-        const event = await owner.query<{ title?: string } | null>(LIFEOS_HELD_FNS.eventGet, { id }).catch(() => null)
+        const event = await owner.query<{ title?: string; startsAt?: number } | null>(LIFEOS_HELD_FNS.eventGet, { id }).catch(() => null)
         if (event?.title) this.eventTitles.set(id, event.title)
+        if (typeof event?.startsAt === 'number') this.eventStarts.set(id, event.startsAt)
       })
     )
   }
@@ -471,7 +478,8 @@ export class LifeosHeldItems implements LifeosHeld {
     const at = typeof row.editedAt === 'number' ? row.editedAt : typeof row._creationTime === 'number' ? row._creationTime : 0
     const failed = row.status === 'failed'
     const eventTitle = typeof row.eventId === 'string' ? this.eventTitles.get(row.eventId) : undefined
-    const payload = CalendarOpPayloadSchema.parse({ ...row, id, ...(eventTitle ? { eventTitle } : {}) })
+    const eventStartsAt = typeof row.eventId === 'string' ? this.eventStarts.get(row.eventId) : undefined
+    const payload = CalendarOpPayloadSchema.parse({ ...row, id, ...(eventTitle ? { eventTitle } : {}), ...(eventStartsAt !== undefined ? { eventStartsAt } : {}) })
     return {
       ref: { at: 'lifeos', table: 'calendarOps', id },
       kind: 'calendar.op',
@@ -549,6 +557,10 @@ export const calendarOpKind: ActKindDef<CalendarOpPayload, CalendarOpMatcher> = 
     if (!now) throw new ActStale('LifeOS no longer has this calendar change')
     if (now.status === 'draft' || now.status === 'failed') {
       if (p.editedAt === undefined || now.editedAt !== p.editedAt) throw new ActStale('The calendar change was edited since it was shown')
+      if (p.eventId && p.eventStartsAt !== undefined) {
+        const event = await owner.query<{ startsAt?: number } | null>(LIFEOS_HELD_FNS.eventGet, { id: p.eventId }).catch(() => null)
+        if (event?.startsAt !== p.eventStartsAt) throw new ActStale('The event moved since it was shown')
+      }
       // LifeOS checks it again in the send's own transaction, so an edit after this read never goes on this press (milestone 50's hold review, 20).
       await owner.mutation(LIFEOS_HELD_FNS.calendarSend, { id: p.id, cause, editedAt: p.editedAt })
     } else if (!['queued', 'sending', 'done'].includes(now.status ?? '')) throw new ActStale(`LifeOS holds this calendar change as ${now.status}`)
