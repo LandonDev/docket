@@ -255,6 +255,50 @@ public enum OutboxModel {
         return (next, nil)
     }
 
+    // MARK: - grants: made only from a held item, narrow
+
+    /// The grant a held item offers in its Send menu, and its name; nil where
+    /// the kind takes none. A mail's fixes its account and every recipient; an
+    /// add-on call's fixes the server and the tool (the desktop's `grantFor`).
+    public nonisolated static func grantFor(_ kind: OutboxItem.Kind, payload: JSONValue?) -> (matcher: JSONValue, label: String)? {
+        guard case .object(let p)? = payload else { return nil }
+        switch kind {
+        case .mailSend:
+            guard case .object(let m)? = p["message"] else { return nil }
+            let people = ["to", "cc", "bcc"].flatMap { key in m[key].flatMap(addresses) ?? [] }
+            guard !people.isEmpty else { return nil }
+            let names = people.map { $0.name ?? $0.address }
+            let label = names.count <= 2 ? "Mail to \(names.joined(separator: " and "))" : "Mail to \(names[0]) and \(names.count - 1) more"
+            var matcher: [String: JSONValue] = ["recipients": .array(people.map { .string($0.address.lowercased()) })]
+            if case .string(let account)? = m["accountId"] { matcher["accountId"] = .string(account) }
+            return (.object(matcher), label)
+        case .addonCall:
+            guard case .string(let addonId)? = p["addonId"], case .string(let tool)? = p["tool"] else { return nil }
+            let words: String = if case .string(let w)? = p["words"] { w } else { tool }
+            let addon: String = if case .string(let a)? = p["addon"] { a } else { "the add-on" }
+            return (.object(["addonId": .string(addonId), "tool": .string(tool)]), "\(words) with \(addon)")
+        default:
+            return nil
+        }
+    }
+
+    // MARK: - the transcript's held line
+
+    /// A Work thread's call the host held for the owner's press ("Held as item
+    /// 12: Send to Dana Lee: Re: budget. It waits…", work/outbox/words.ts): its
+    /// number and the act in his words; nil for any other result. Only a call
+    /// the hold answers (an add-on's tool, the bridge's addon_call, a computer
+    /// step): a shell echoing the words draws nothing.
+    public nonisolated static func heldOf(tool: String, result: String) -> (n: Int, act: String)? {
+        guard tool.hasPrefix("mcp__") || tool == "addon_call" || tool.hasPrefix("computer_") else { return nil }
+        guard let start = result.range(of: "Held as item "),
+              let end = result.range(of: ". It waits for the owner's press.", range: start.upperBound..<result.endIndex) else { return nil }
+        let body = result[start.upperBound..<end.lowerBound]
+        guard let colon = body.firstIndex(of: ":"), let n = Int(body[..<colon]) else { return nil }
+        let act = body[body.index(after: colon)...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return act.isEmpty ? nil : (n, act)
+    }
+
     // MARK: - the list
 
     /// One held item and the host it waits on.

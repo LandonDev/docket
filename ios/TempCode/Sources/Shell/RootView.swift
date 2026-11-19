@@ -327,6 +327,8 @@ struct RootView: View {
                   case .host(let ref) = entry.item.ref else { return }
             let tc: [AnyHashable: Any] = ["event": "needs_you", "kind": "waiting", "environmentId": entry.environmentId, "threadId": entry.item.sessionId ?? "", "held": ["at": "host", "id": ref.id], "ts": 0]
             PushDelegate.route(["aps": ["alert": ["title": entry.item.summary]], "tc": tc])
+        case "work-chats":
+            home.open(.workspace(key: HomeSections.workChatsKey))
         case "work-settings":
             home.open(.settings)
             home.detailStack.append(Route.workSettings)

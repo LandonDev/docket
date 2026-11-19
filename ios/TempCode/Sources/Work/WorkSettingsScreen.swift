@@ -80,6 +80,8 @@ private struct WorkHostSection: View {
                         ForEach(card.tools, id: \.tool) { row in
                             // A tool with no rule yet is held until he answers; no choice shows as made, so Held can be picked too.
                             Picker(selection: Binding<String?>(get: { row.rule?.rawValue }, set: { value in if let value { Task { await set(card, row.tool, value) } } })) {
+                                // No rule yet: the tool is held until he answers, and the picker says so.
+                                if row.rule == nil { Text("Not set").tag(String?.none) }
                                 Text("Runs").tag(String?.some("runs"))
                                 Text("Held").tag(String?.some("held"))
                                 Text("Off").tag(String?.some("off"))

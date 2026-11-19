@@ -107,6 +107,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { runAddonChild } from '../src/main/server/addons/addonChild'
 import type { AddonWireMessage } from '../src/main/server/addons/addonWire'
 import { wirePair } from '../src/main/server/addons/testWire'
+import { heldLine } from '../src/main/server/work/outbox/words'
 import { PERF_CHILDREN, PERF_LOAD, PERF_SIBLING, PERF_THREADS, perfThread } from './lib/ios-perf-seeds'
 
 // A proof set pairs some of these codes late: the features set pairs the
@@ -2104,6 +2105,21 @@ const control = createServer((req, res) => {
               `INSERT INTO work_held_acts (id, workspace_id, session_id, sector, kind, origin, why, summary, verb, account, payload, state, run_key, error, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, 'ios-proof', 'rule', ?, ?, NULL, ?, ?, ?, ?, ?, ?)`
             ).run(String(r.id), r.workspaceId == null ? null : String(r.workspaceId), r.sessionId == null ? null : String(r.sessionId), r.sector == null ? null : String(r.sector), String(r.kind), String(r.summary), String(r.verb ?? 'Send'), JSON.stringify(payload), String(r.state ?? 'held'), `ios-proof-${String(r.id)}`, r.error == null ? null : String(r.error), at, at)
+          }
+          // A held call as the thread saw it (the host's own answer), and Results the thread wrote.
+          const transcript = Array.isArray(body.transcript) ? (body.transcript as { sessionId: string; heldId: string; tool: string }[]) : []
+          for (const [i, t] of transcript.entries()) {
+            const held = db.prepare('SELECT rowid AS n, summary FROM work_held_acts WHERE id = ?').get(t.heldId) as { n: number; summary: string } | undefined
+            if (!held) continue
+            const callId = `held-${i}`
+            server.registry.append(t.sessionId, { type: 'tool-call', callId, name: t.tool, input: {} })
+            server.registry.append(t.sessionId, { type: 'tool-result', callId, output: heldLine({ n: held.n, summary: held.summary, why: 'rule' }), isError: false })
+          }
+          const results = Array.isArray(body.results) ? (body.results as Record<string, unknown>[]) : []
+          for (const r of results) {
+            db.prepare('INSERT INTO work_results (id, session_id, root_id, workspace_id, kind, summary, account, ref, undo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)').run(
+              String(r.id), String(r.sessionId), String(r.sessionId), r.workspaceId == null ? null : String(r.workspaceId), String(r.kind ?? 'cells'), String(r.summary), r.account == null ? null : String(r.account), r.undo == null ? null : JSON.stringify(r.undo), now - 5 * 60_000
+            )
           }
           return answer(200, { written: rows.length })
         } finally {

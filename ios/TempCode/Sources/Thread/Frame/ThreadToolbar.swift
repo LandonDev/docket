@@ -80,6 +80,8 @@ struct ThreadMenu: View {
     @State private var showResources = false
     @State private var archiving: ArchiveWithResourcesSheet.Target?
     @State private var showAccount = false
+    /// A Work thread's Results (milestone 46).
+    @State private var showResults = false
 
     private var block: ActionBlock? { client.operateBlock }
     private var root: Bool { session.parentId == nil }
@@ -102,6 +104,9 @@ struct ThreadMenu: View {
                     archiveItem
                 }
             }
+            if root, session.scope == .work {
+                Button { showResults = true } label: { Label("Results", systemImage: "arrow.uturn.backward.circle") }
+            }
         } label: {
             Image(systemName: GlassMetrics.moreSymbol)
                 .frame(minWidth: 44, minHeight: 44)
@@ -111,6 +116,7 @@ struct ThreadMenu: View {
         .accessibilityIdentifier("thread-menu")
         .sheet(isPresented: $showResources) { ResourcesSheet(client: client, sessionId: session.id) }
         .sheet(isPresented: $showAccount) { AccountMenu(client: client, session: session) }
+        .sheet(isPresented: $showResults) { ResultsSheet(client: client, sessionId: session.id) }
         .task(id: inShell && routed ? client.status.transport : nil) {
             // The chip loaded the accounts and the catalog; in the shell the menu row does.
             guard inShell, routed, client.status.transport == .open else { return }
@@ -126,6 +132,7 @@ struct ThreadMenu: View {
             // DEBUG proof: `TC_TEST_SHEET=resources` opens the sheet; `archive` opens the prompt once the ledger says the thread holds something.
             guard root, let sheet = TestHooks.sheet else { return }
             if sheet == "resources" { showResources = true }
+            if sheet == "results" { showResults = true }
             if sheet == "archive" {
                 await client.resources.load(client, sessionId: session.id)
                 if !client.resources.live(for: session.id).isEmpty { archiving = ArchiveWithResourcesSheet.Target(client: client, meta: session) }

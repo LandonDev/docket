@@ -42,6 +42,8 @@ public final class WorkHost {
     public private(set) var listError: String?
     public private(set) var lifeos: LifeosStatus?
     public private(set) var away: AwaySnapshot?
+    /// Moves on each `work.outbox.result` push: a Results list on screen reads again.
+    public private(set) var resultsRev = 0
     /// Set when this host's Away ended and nobody has reviewed it here yet.
     public private(set) var awayEnd: AwayEnd?
 
@@ -110,6 +112,8 @@ public final class WorkHost {
             if let item = value.item { merge(item) } else { Task { await self.refreshOutbox() } }
         case .workLifeos(let value):
             lifeos = value.status
+        case .workOutboxResult:
+            resultsRev += 1
         case .away(let value):
             take(AwaySnapshot(state: value.state, decided: value.decided), live: true)
         default:
@@ -209,6 +213,26 @@ public final class WorkHost {
 
     public func undo(_ result: WorkResult) async throws -> WorkResult {
         try await socket.request(Methods.WorkOutboxUndo.self, .init(id: result.id))
+    }
+
+    /// "Send and stop holding": a standing grant made from this held item (admin), then its Send.
+    public func grant(_ item: OutboxItem, matcher: JSONValue, label: String) async throws -> OutboxGrant {
+        try await socket.request(Methods.WorkOutboxGrant.self, .init(from: item.ref, matcher: matcher, label: label))
+    }
+
+    /// A thread's Results (its subagents' with it), newest first.
+    public func results(sessionId: String) async throws -> [WorkResult] {
+        try await socket.request(Methods.WorkOutboxResults.self, .init(sessionId: sessionId)).results
+    }
+
+    /// A Work workspace: the host makes its own folder; `sector` links it to LifeOS.
+    public func createWorkspace(name: String, sector: String?) async throws -> WorkspaceMeta {
+        try await socket.request(Methods.WorkspaceCreate.self, .init(name: name, kind: .work, sector: sector.map { .set($0) }))
+    }
+
+    /// A Work Chat: a Work thread in no workspace, started with its first message.
+    public func newWorkChat(firstMessage: String) async throws -> SessionMeta {
+        try await socket.request(Methods.SessionCreate.self, .init(workspaceId: .clear, threadType: .set(.chat), firstMessage: firstMessage, scope: .work))
     }
 
     // MARK: - Settings → Work

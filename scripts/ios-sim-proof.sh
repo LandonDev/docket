@@ -10,8 +10,10 @@
 #   work    Milestone 46, against the local server's work seeds (scripts/lib/ios-work-seeds.ts,
 #           pairs with the admin key): Home with the Outbox row and the Work band, the Outbox,
 #           a held mail, its Edit sheet, the mail edited and sent from the phone (the undo
-#           capsule, then the list), a held notice opening its item, Away cycled from the phone
-#           with its note and review, Settings → Work; Home and the Outbox once more in dark.
+#           capsule, then the list), a held notice opening its item, the held call opened in
+#           place in its thread, the thread's Results, New Work Workspace and New Work Chat, a
+#           grant made from the post's Send menu, Away cycled from the phone with its note and
+#           review, Settings → Work with the grant; Home and the Outbox once more in dark.
 #           scripts/ios-sim-proof-local.ts then reads back on the host what went
 #           ($OUT/work-report.txt).
 #   shell   Home, a workspace's project cards, the archived list, Inbox,
@@ -1058,6 +1060,15 @@ work_set() {
   sleep 3; snap w06-undo-capsule-light
   sleep 8; snap w07-after-send-light
   shot w08-held-notice-light held-notice
+  # The rest of milestone 46: the held call in its thread, opened in place; the thread's Results; the two
+  # create sheets; a grant made from the post's Send menu, then Settings → Work listing it.
+  shot w15-held-inline-light thread "Venue for the spring LAN" "" held
+  TC_SHEET=results shot w16-results-light thread "Venue for the spring LAN"
+  TC_SHEET=new-work shot w17-new-work-workspace-light home
+  TC_SHEET=new-work-chat shot w18-new-work-chat-light work-chats
+  TC_ACTION=outbox-grant-send launch_app outbox-item
+  sleep 6; snap w19-grant-capsule-light
+  sleep 8
   TC_SHEET=away shot w09-away-review-light away "" "" "" 14
   shot w10-home-after-away-light home
   shot w11-work-settings-light work-settings

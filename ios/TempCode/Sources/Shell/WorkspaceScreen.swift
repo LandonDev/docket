@@ -17,6 +17,8 @@ struct WorkspaceScreen: View {
     let key: String
     var slots = HomeSlots()
     @State private var cues: [String: HomeModel.Cue] = [:]
+    /// New Work Chat, from Work Chats' bar.
+    @State private var newWorkChat = false
     @ScaledMetric(relativeTo: .caption) private var cardGap = CardMetrics.gap
     @ScaledMetric(relativeTo: .caption) private var foldGap = CardMetrics.foldGap
 
@@ -72,6 +74,9 @@ struct WorkspaceScreen: View {
                 if let lead {
                     QuietNote(text: "No threads here yet.", action: ("New thread", { presenter.compose(lead.client, lead.workspace, nil) }))
                         .padding(.horizontal, Layout.textEdge)
+                } else if key == HomeSections.workChatsKey {
+                    QuietNote(text: "No Work Chats yet.", action: ("New Work Chat", { newWorkChat = true }))
+                        .padding(.horizontal, Layout.textEdge)
                 } else if screen == nil {
                     ContentUnavailableView("Workspace Not Found", systemImage: "folder")
                 }
@@ -85,6 +90,13 @@ struct WorkspaceScreen: View {
         // Omitted with one entry: a menu of one is a dead chevron.
         .modifier(WorkspaceTitleMenu(key: key, entries: titleEntries))
         .toolbar {
+            if key == HomeSections.workChatsKey {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New Work Chat", systemImage: "square.and.pencil") { newWorkChat = true }
+                        .accessibilityIdentifier("new-work-chat")
+                }
+                .highVisibility()
+            }
             if let lead {
                 ToolbarItem(placement: .primaryAction) {
                     Button("New Thread", systemImage: "square.and.pencil") { presenter.compose(lead.client, lead.workspace, nil) }
@@ -92,6 +104,10 @@ struct WorkspaceScreen: View {
                 .highVisibility()
             }
         }
+        .sheet(isPresented: $newWorkChat) { NewWorkChatSheet() }
+        #if DEBUG
+        .task { if key == HomeSections.workChatsKey, TestHooks.sheet == "new-work-chat" { try? await Task.sleep(for: .seconds(1)); newWorkChat = true } }
+        #endif
         .listOnScreen("workspace:\(key)")
     }
 

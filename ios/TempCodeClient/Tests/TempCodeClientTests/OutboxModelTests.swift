@@ -86,4 +86,29 @@ import TempCodeContract
         #expect(OutboxModel.awayLine(.init()) == nil)
         #expect(OutboxModel.awaySections(.init(decided: 2)) == [.decided])
     }
+
+    @Test func grantsAreNarrowAMailsFixItsAccountAndEveryRecipient() {
+        let grant = OutboxModel.grantFor(.mailSend, payload: .object(["message": .object([
+            "accountId": .string("acct_1"),
+            "to": .array([.object(["name": .string("Dana Lee"), "address": .string("DLee@purdue.edu")])]),
+            "cc": .array([.object(["address": .string("sam@purdue.edu")])])
+        ])]))
+        #expect(grant?.label == "Mail to Dana Lee and sam@purdue.edu")
+        #expect(grant?.matcher == .object(["accountId": .string("acct_1"), "recipients": .array([.string("dlee@purdue.edu"), .string("sam@purdue.edu")])]))
+        let call = OutboxModel.grantFor(.addonCall, payload: .object(["addonId": .string("ad_1"), "tool": .string("send_mail"), "words": .string("Send mail"), "addon": .string("Purdue mail")]))
+        #expect(call?.label == "Send mail with Purdue mail")
+        #expect(call?.matcher == .object(["addonId": .string("ad_1"), "tool": .string("send_mail")]))
+        #expect(OutboxModel.grantFor(.computerAct, payload: .object([:])) == nil)
+        #expect(OutboxModel.grantFor(.mailSend, payload: .object(["message": .object([:])])) == nil)
+    }
+
+    @Test func theHeldLineIsReadOffTheHostsAnswerOnlyForACallTheHoldAnswers() {
+        let answer = "Held as item 12: Send to Dana Lee: Re: budget. It waits for the owner's press. This is a finished step, not a failure."
+        let held = OutboxModel.heldOf(tool: "mcp__app__purdue-mail__send_mail", result: answer)
+        #expect(held?.n == 12)
+        #expect(held?.act == "Send to Dana Lee: Re: budget")
+        #expect(OutboxModel.heldOf(tool: "addon_call", result: answer)?.n == 12)
+        #expect(OutboxModel.heldOf(tool: "Bash", result: answer) == nil)
+        #expect(OutboxModel.heldOf(tool: "mcp__x__y", result: "Sent.") == nil)
+    }
 }

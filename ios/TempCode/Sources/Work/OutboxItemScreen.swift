@@ -54,6 +54,11 @@ struct OutboxItemScreen: View {
     private func proofHooks() async {
         for _ in 0..<100 where item == nil { try? await Task.sleep(for: .milliseconds(100)) }
         if TestHooks.sheet == "outbox-edit" { editing = true }
+        if TestHooks.action == "outbox-grant-send", let current = item, let client, let grant = OutboxModel.grantFor(current.kind, payload: current.payload) {
+            try? await Task.sleep(for: .seconds(2))
+            await sendAndGrant(current, grant: grant, client: client)
+            return
+        }
         guard TestHooks.action == "outbox-edit-send", let client else { return }
         try? await Task.sleep(for: .seconds(4))
         guard let current = item else { return }
@@ -184,7 +189,37 @@ struct OutboxItemScreen: View {
                     .tcGlassButton()
                     .accessibilityIdentifier("outbox-edit")
             }
-            Button(item.state == .failed ? "Send Again" : item.verb) { send(item) }
+            sendButton(item, client: client)
+        }
+        .disabled(busy)
+        .padding(.horizontal, Layout.textEdge)
+        .padding(.vertical, 8)
+    }
+
+    /// Send, the item's own verb. With a grant the kind offers and a key that may make one, a press and
+    /// hold opens the split Send's menu: "Send and stop holding" › the grant's name (the desktop's).
+    @ViewBuilder
+    private func sendButton(_ item: OutboxItem, client: EnvironmentClient) -> some View {
+        let title = item.state == .failed ? "Send Again" : item.verb
+        if client.work.canAdmin, item.state == .held, let grant = OutboxModel.grantFor(item.kind, payload: item.payload) {
+            Menu {
+                Section("Send and stop holding") {
+                    Button(grant.label, systemImage: "checkmark.seal") { Task { await sendAndGrant(item, grant: grant, client: client) } }
+                }
+            } label: {
+                Text(title)
+            } primaryAction: {
+                send(item)
+            }
+            .font(.body.weight(.semibold))
+            .padding(.horizontal, 10)
+            .frame(minHeight: 36)
+            .buttonBorderShape(.capsule)
+            .tcGlassButton(prominent: true)
+            .accessibilityIdentifier("outbox-send")
+            .accessibilityHint("Touch and hold to send and stop holding acts like this one")
+        } else {
+            Button(title) { send(item) }
                 .font(.body.weight(.semibold))
                 .padding(.horizontal, 10)
                 .frame(minHeight: 36)
@@ -192,9 +227,19 @@ struct OutboxItemScreen: View {
                 .tcGlassButton(prominent: true)
                 .accessibilityIdentifier("outbox-send")
         }
-        .disabled(busy)
-        .padding(.horizontal, Layout.textEdge)
-        .padding(.vertical, 8)
+    }
+
+    /// The grant first (only from a held item), then this item's Send with its five seconds of Undo.
+    /// Undo takes back the Send, not the grant; Settings → Work lists the grant with Remove.
+    private func sendAndGrant(_ item: OutboxItem, grant: (matcher: JSONValue, label: String), client: EnvironmentClient) async {
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await client.work.grant(item, matcher: grant.matcher, label: grant.label)
+            send(item)
+        } catch {
+            FleetToastCenter.shared.post(message: "No grant made: \(ActionError.wrap(error).message)")
+        }
     }
 
     /// Back to the list, where the press waits its five seconds with Undo.

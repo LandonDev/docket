@@ -1290,9 +1290,9 @@ public final class EnvironmentClient {
             extras.applyPush(push) // iOS 21: devices and the deploy log (Client/HostExtras.swift)
         case .batch(let value):
             applyBatch(value.state) // iOS 16: a master's batch, coalesced (Client/Batches.swift)
-        case .work, .workOutbox, .workLifeos, .away:
+        case .work, .workOutbox, .workOutboxResult, .workLifeos, .away:
             work.applyPush(push) // milestone 46: Work on the phone (Work/Shell/WorkHost.swift)
-        case .queue, .builds, .macBridgeHeld, .workOutboxResult, .unknown:
+        case .queue, .builds, .macBridgeHeld, .unknown:
             break
         }
     }

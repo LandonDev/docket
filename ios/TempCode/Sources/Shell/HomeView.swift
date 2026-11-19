@@ -19,6 +19,8 @@ struct HomeView: View {
     @Environment(ShellNavigator.self) private var navigator
     var slots = HomeSlots()
     @State private var adding = false
+    /// New Work workspace, from the Work header's +.
+    @State private var addingWork = false
     @State private var pairingAgain: PairedEnvironment?
     @State private var launched = false
     /// The first body has been on screen: from here on, event rows animate in.
@@ -50,15 +52,23 @@ struct HomeView: View {
                             }
                         }
                     }
-                    let jobs = home.work.filter { $0.kind != .workChats }
-                    if !jobs.isEmpty {
+                    // The Work band while any host has Work on, its + making a new Work workspace.
+                    if !home.work.isEmpty {
                         Section {
-                            ForEach(jobs) { entry in
+                            ForEach(home.work.filter { $0.kind != .workChats }) { entry in
                                 WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
                             }
                         } header: {
-                            SectionHeader("Work")
-                                .listRowInsets(EdgeInsets())
+                            SectionHeader("Work") {
+                                Button("New Work Workspace", systemImage: "plus") { addingWork = true }
+                                    .labelStyle(.iconOnly)
+                                    .font(TextStep.meta.font.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(minWidth: Layout.rowHeight)
+                                    .buttonStyle(.pressable)
+                                    .accessibilityIdentifier("new-work-workspace")
+                            }
+                            .listRowInsets(EdgeInsets())
                         }
                     }
                     if clients.count > 1 {
@@ -101,6 +111,10 @@ struct HomeView: View {
         }
         .listOnScreen("home")
         .sheet(isPresented: $adding) { AddEnvironmentSheet() }
+        .sheet(isPresented: $addingWork) { NewWorkWorkspaceSheet() }
+        #if DEBUG
+        .task(id: model.ready) { if model.ready, TestHooks.sheet == "new-work" { try? await Task.sleep(for: .seconds(2)); addingWork = true } }
+        #endif
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .onChange(of: router.restoredSheet, initial: true) { restoreSheet() }
         .onChange(of: model.ready) { restoreSheet() }   // the cached shell is painted by then

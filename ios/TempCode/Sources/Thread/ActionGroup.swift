@@ -277,6 +277,10 @@ private struct ToolStep: View {
                 }
                 .buttonStyle(.pressable)
                 .accessibilityValue(open ? "Expanded" : "Collapsed")
+                // A Work thread's call the host held (milestone 46): the held line, which opens in place.
+                if let held = heldLine {
+                    HeldInline(n: held.n, act: held.act, client: client)
+                }
                 if open {
                     StepBody(tool: tool, whole: whole, loading: loading, command: row.opens == .command)
                         .modifier(BodyFrame(inTable: inTable))
@@ -290,6 +294,12 @@ private struct ToolStep: View {
             whole = await client.body(sessionId: sessionId, seq: seq)
             loading = false
         }
+    }
+
+    /// The host's "Held as item N: …" answer to this call, read off its result.
+    private var heldLine: (n: Int, act: String)? {
+        guard case .whole(let text) = tool.output else { return nil }
+        return OutboxModel.heldOf(tool: tool.name, result: text)
     }
 
     /// The one child a spawn made, where it stands: a still mark after the words.

@@ -54,6 +54,9 @@ export const WORK_MAIL_SUBJECT = 'Ballroom for April 10'
 /** What the work set's edit writes over the subject, read back by `verifyWork`. */
 export const WORK_MAIL_EDITED = 'Ballroom for Saturday, April 10'
 
+/** The Work thread the transcript and Results shots open (TC_TEST_THREAD). */
+export const WORK_THREAD_TITLE = 'Venue for the spring LAN'
+
 export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ purdue: string; unify: string; addonId: string }> {
   const s = await socket(ready)
   try {
@@ -120,8 +123,14 @@ export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ pu
         payload: { addonId: 'billing-gone', addon: 'Billing desk', tool: 'send_mail', words: 'Send mail', arguments: { to: 'office@riveradental.com', subject: 'Invoice 1042 is 14 days past due', text: 'A reminder that invoice 1042 for $1,850.00 was due on November 4.' } }
       }
     ]
-    const written = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows }) })
-    if (!written.ok) throw new Error(`work seed: /work-held answered ${written.status}`)
+    // The post's held call in the thread's transcript, and two Results the thread wrote (one with a way back).
+    const transcript = [{ sessionId: t1.id, heldId: 'm46-post', tool: 'mcp__app__purdue-mail__echo' }]
+    const results = [
+      { id: 'm46-r1', sessionId: t1.id, workspaceId: purdue.id, kind: 'cells', summary: 'Added Dietary needs', account: 'Spring LAN registration', undo: { pillar: 'forms', verb: 'remove_field', args: { id: 'f1' } } },
+      { id: 'm46-r2', sessionId: t1.id, workspaceId: purdue.id, kind: 'doc', summary: 'Changed the date to April 10', account: 'LAN poster' }
+    ]
+    const written = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows, transcript, results }) })
+    if (!written.ok) throw new Error(`work seed: /work-held answered ${written.status}: ${await written.text()}`)
     return { purdue: purdue.id, unify: unify.id, addonId: addon.id }
   } finally {
     s.close()
@@ -137,6 +146,10 @@ export async function verifyWork(ready: WorkSeedReady): Promise<string[]> {
     const subject = mail.payload.arguments?.subject
     lines.push(`${mail.state === 'sent' ? 'PASS' : 'FAIL'} the held mail was sent from the phone (state ${mail.state}, decided by ${mail.decidedBy ?? 'nobody'}${mail.result ? `, "${mail.result.summary}"` : ''})`)
     lines.push(`${subject === WORK_MAIL_EDITED ? 'PASS' : 'FAIL'} what went is the phone's edit (subject "${subject}")`)
+    const post = await s.call<{ state: string; grantId: string | null }>('work.outbox.get', { ref: { at: 'host', id: 'm46-post' } })
+    const grants = await s.call<{ grants: { label: string }[] }>('work.outbox.grants', {})
+    lines.push(`${grants.grants.length > 0 ? 'PASS' : 'FAIL'} a grant was made from the post's Send menu (${grants.grants.map((g) => `"${g.label}"`).join(', ') || 'none'})`)
+    lines.push(`${post.state === 'sent' ? 'PASS' : 'FAIL'} the post went after its grant (state ${post.state})`)
     const waiting = await s.call<{ waiting: number }>('work.outbox.list', {})
     lines.push(`INFO ${waiting.waiting} still wait`)
     const away = await s.call<{ state: { enabled: boolean } }>('away.get', {})
