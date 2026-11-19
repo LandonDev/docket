@@ -72,6 +72,7 @@ public class RecordedCom : ICom {
     if (!installed[app] || !running[app]) throw Err(E_UNAVAILABLE, "Operation unavailable (Exception from HRESULT: 0x800401E3 (MK_E_UNAVAILABLE))");
     return app == "excel" ? excel : app == "word" ? word : app == "powerpoint" ? powerpoint : outlook;
   }
+  object Active2(string app) { return app == "excel" ? excel : app == "word" ? word : app == "powerpoint" ? powerpoint : outlook; }
   void Busy(string what) {
     calls.Add(what);
     if (busy > 0) { busy--; throw Err(E_REJECTED, "Call was rejected by callee. (Exception from HRESULT: 0x80010001 (RPC_E_CALL_REJECTED))"); }
@@ -79,6 +80,9 @@ public class RecordedCom : ICom {
   public object Get(object o, string name, params object[] args) {
     var x = (Obj)o;
     Busy(x.Kind + "." + name);
+    // An app that quit leaves its proxy answering RPC_S_SERVER_UNAVAILABLE.
+    foreach (var app in new[] { "excel", "word", "powerpoint", "outlook" })
+      if (o == Active2(app) && !(installed[app] && running[app])) throw Err(unchecked((int)0x800706BA), "The RPC server is unavailable. (Exception from HRESULT: 0x800706BA)");
     Func<object[], object> f;
     if (!x.G.TryGetValue(name, out f)) throw Err(E_UNKNOWN, "Unknown name. (Exception from HRESULT: 0x80020006 (DISP_E_UNKNOWNNAME))");
     return f(args);
@@ -437,7 +441,8 @@ public class RecordedCom : ICom {
     }
     oldExcel = s.ContainsKey("oldExcel") && Convert.ToBoolean(s["oldExcel"]);
     guard = s.ContainsKey("guard") && Convert.ToBoolean(s["guard"]);
-    busy = 0; sheetChange = null;
+    // The apps stay the same objects across seeds, as a running Office does, and so does an event handler given to Excel.
+    busy = 0;
     books.Clear(); docs.Clear(); decks.Clear(); accounts.Clear(); mail.Clear(); events.Clear(); sent.Clear(); answers.Clear(); started.Clear(); calls.Clear();
     foreach (Dictionary<string, object> b in List(s, "books")) {
       var book = new XBook { Key = (string)b["key"], Name = Leaf((string)b["key"]) };
@@ -474,6 +479,7 @@ public class RecordedCom : ICom {
       foreach (string t in List(e, "attendees")) x.Recipients.Add(new object[] { t, 1 });
       events.Add(x);
     }
+    if (excel != null) return;
     excel = new Obj("Excel.Application").Prop("Version", () => oldExcel ? "16.0 (2016)" : "16.0").Prop("Hwnd", () => 101).Put("Visible", v => { })
       .Prop("Workbooks", () => Collection<XBook>("Workbooks", () => books, BookObj, (b, n) => b.Key == n || b.Name == n));
     word = new Obj("Word.Application").Prop("Version", () => "16.0").Put("Visible", v => { })

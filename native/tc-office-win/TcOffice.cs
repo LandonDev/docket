@@ -133,7 +133,12 @@ public class Office {
   object App(string app) {
     object a;
     if (attached.TryGetValue(app, out a)) {
-      try { com.Get(a, "Version"); return a; } catch (Exception) { attached.Remove(app); if (advised == a) advised = null; }
+      try { com.Get(a, "Version"); return a; }
+      catch (COMException e) {
+        // Busy is the app saying "not now", not gone: the caller hears it and tries again.
+        if (Busy(e)) throw;
+        attached.Remove(app); if (advised == a) advised = null;
+      }
     }
     if (!com.Registered(ProgId(app))) throw new Refusal("not-installed", Named(app) + " is not installed on this PC.");
     if (!com.Running(Proc(app))) throw new Refusal("not-running", Named(app) + " is not open.");
@@ -146,6 +151,8 @@ public class Office {
     if (app == "excel" && watching) Advise(a);
     return a;
   }
+
+  public static bool Busy(COMException e) { var h = (uint)e.ErrorCode; return h == 0x80010001 || h == 0x8001010A; }
 
   public object Apps() {
     var list = new List<object>();

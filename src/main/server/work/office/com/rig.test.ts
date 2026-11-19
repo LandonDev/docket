@@ -20,7 +20,17 @@ import { comCarrier, type ComCarrier } from './carrier'
  * `TC_OFFICE_RIG=m44 NODE_ENV=test bunx vitest run src/main/server/work/office/com/rig.test.ts`.
  */
 const RIG = process.env.TC_OFFICE_RIG
-const SSH = join(__dirname, '../../../../../../scripts/win-vm/ssh.sh')
+const VM = process.env.WINVM_DIR ?? '/srv/agents/win-vm'
+/**
+ * The rig's ssh as scripts/win-vm/vm.ts makes it, with Git Bash's pipes between sshd and the helper:
+ * sshd hands a program one synchronous handle for stdin and stdout, so a read waiting on it holds
+ * every write back. Node gives the helper two pipes of its own, as here.
+ */
+const sshArgs = (exe: string): string[] => [
+  '-i', join(VM, 'keys', 'id_ed25519'), '-p', process.env.WINVM_SSH_PORT ?? '22220',
+  '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'LogLevel=ERROR', '-o', `UserKnownHostsFile=${join(VM, 'base', 'known_hosts')}`,
+  'tcuser@127.0.0.1', `"C:\\Program Files\\Git\\bin\\bash.exe" -c "cat | ./${RIG}/${exe} | cat"`
+]
 
 const MINE = 'C:\\Users\\owner\\Documents\\Mine.xlsx'
 const SHARED = 'https://contoso.sharepoint.com/sites/t/Plan.xlsx'
@@ -100,7 +110,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
   const actCtx = { host: 'env_pc' } as ActCtx
 
   beforeAll(() => {
-    carrier = comCarrier({ start: async () => spawn('bash', [SSH, `${RIG}\\tc-office-recorded.exe`], { stdio: 'pipe' }), log: (l) => logged.push(l) })
+    carrier = comCarrier({ start: async () => spawn('ssh', sshArgs('tc-office-recorded.exe'), { stdio: 'pipe' }), log: (l) => logged.push(l) })
   })
   afterAll(() => carrier?.stop())
   beforeEach(async () => {
@@ -217,7 +227,8 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       await run('office_doc_edit', { document: NOTES, insert: ' More.', at: 'end', because: 'own' })
       const docs = (await state()).docs
       expect(docs[0]).toEqual({ key: BRIEF, text: 'Draft two.\rSecond two.\r', tracked: ['-one +two', '-one +two'] })
-      expect(docs[1]).toEqual({ key: NOTES, text: 'Mine.\r More.\r', tracked: [] })
+      // Word keeps the last paragraph mark last: text put at the end joins the last paragraph.
+      expect(docs[1]).toEqual({ key: NOTES, text: 'Mine. More.\r', tracked: [] })
       expect(await carrier.readDocument(BRIEF)).toEqual(['Draft two.', 'Second two.', ''])
     })
 
@@ -261,7 +272,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
     it("the act's execute sends through Outlook with its formatting, scripts taken out, from the account it names", async () => {
       const mail = officeActs({ carrier: () => carrier }).find((a) => a.kind === 'office.mail.send')!
       const p = OfficeMailSchema.parse({ host: 'env_pc', account: 'owner@example.com', to: ['dana@example.com'], cc: ['lee@example.com'], subject: 'Plan', html: '<table border="1"><tr><td><b>1</b></td></tr></table><script>x()</script>' })
-      await expect(mail.execute(p, actCtx)).resolves.toMatchObject({ summary: 'Sent to dana@example.com, lee@example.com: Plan' })
+      await expect(mail.execute(p, actCtx)).resolves.toMatchObject({ summary: 'Sent to dana@example.com and lee@example.com: Plan' })
       const reply = OfficeMailSchema.parse({ host: 'env_pc', to: ['dana@example.com'], subject: 'Re: Budget', html: '<p><i>Yes</i></p>', replyTo: '42' })
       await mail.execute(reply, actCtx)
       const { sent } = await state()
@@ -285,7 +296,9 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
 
     it('an invitation is sent only by its execute, and one found by its calendar UID is answered with his comment', async () => {
       const cal = officeActs({ carrier: () => carrier }).find((a) => a.kind === 'office.calendar.op')!
-      await cal.execute(OfficeCalendarSchema.parse({ host: 'env_pc', op: 'create', event: { subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] } }), actCtx)
+      const start = new Date(Math.floor(Date.now() / 36e5) * 36e5 + 2 * 36e5).toISOString()
+      const end = new Date(Date.parse(start) + 18e5).toISOString()
+      await cal.execute(OfficeCalendarSchema.parse({ host: 'env_pc', op: 'create', event: { subject: 'Review', start, end, attendees: ['dana@example.com'] } }), actCtx)
       expect((await state()).sent).toEqual([{ invite: 'Review', to: 'dana@example.com', meeting: 1 }])
 
       const id = await carrier.eventByUid('abc-123@example.com')
@@ -293,9 +306,9 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect(await carrier.eventByUid('nobody@example.com')).toBeNull()
       await carrier.answerEvent(id!, 'decline', 'Out that day')
       expect((await state()).answers).toEqual([{ id: 'ev-9', response: 4, noUi: true, sent: true, body: 'Out that day' }])
-      expect((await carrier.events(new Date().toISOString(), new Date(Date.now() + 2 * 864e5).toISOString())).map((e) => [e.subject, e.organizer, e.attendees, e.response])).toEqual([
-        ['Standup', 'Dana', ['owner@purdue.edu'], 'declined']
-      ])
+      const listed = await carrier.events(new Date().toISOString(), new Date(Date.now() + 3 * 864e5).toISOString())
+      expect(listed.find((e) => e.subject === 'Standup')).toMatchObject({ id: 'ev-9', organizer: 'Dana', attendees: ['owner@purdue.edu'], response: 'declined' })
+      expect(listed.find((e) => e.subject === 'Review')).toMatchObject({ start, end, attendees: ['dana@example.com'] })
     })
 
     it("says not allowed when Outlook's object model guard refuses, and the app's state says so", async () => {
@@ -304,4 +317,24 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect((await carrier.apps()).find((a) => a.app === 'outlook')).toMatchObject({ allowed: 'no' })
     })
   })
+})
+
+describe.skipIf(!RIG)('tc-office.exe as shipped, on a Windows with no Office (the rig)', () => {
+  it('starts, finds no Office registered, and refuses every verb as not installed without starting anything', async () => {
+    const carrier = comCarrier({ start: async () => spawn('ssh', sshArgs('tc-office.exe'), { stdio: 'pipe' }), log: () => undefined })
+    try {
+      expect((await carrier.apps()).map((a) => [a.app, a.installed, a.running])).toEqual([
+        ['excel', false, false],
+        ['word', false, false],
+        ['powerpoint', false, false],
+        ['outlook', false, false]
+      ])
+      await expect(carrier.readRange('C:\\x.xlsx', 'Sheet1', 'A1')).rejects.toMatchObject({ code: 'not-installed', message: 'Microsoft Excel is not installed on this PC.' })
+      await expect(carrier.sendMail({ to: ['a@example.com'], cc: [], bcc: [], subject: 's', html: '' })).rejects.toMatchObject({ code: 'not-installed', message: 'Microsoft Outlook is not installed on this PC.' })
+      await expect(carrier.open('excel', { kind: 'path', path: 'C:\\x.xlsx' })).rejects.toMatchObject({ code: 'not-installed' })
+      await expect(carrier.call('_seed', {})).rejects.toMatchObject({ message: 'tc-office has no verb _seed.' })
+    } finally {
+      carrier.stop()
+    }
+  }, 60_000)
 })
