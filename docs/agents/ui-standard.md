@@ -16,7 +16,7 @@
   the one coloured type glyph, each type's tint a `--type-*` token on the
   glyph alone, `THREAD_MENU_ICONS` its menu-row form, a test in
   threadTypes.test.ts refusing any other read of `THREAD_GLYPHS` and
-  lib/typeTint.test.ts holding the tints to 3:1 and 30° from amber and red;
+  lib/tokenContrast.test.ts holding the tints to 3:1 and lib/typeTint.test.ts to 30° from amber and red;
   sonner is the one toast stack, seated 8px above the
   focused thread's strip and inside its column (no wider than it less 16px
   a side, so a master's chat beside its board holds it), above the board's
@@ -46,6 +46,17 @@
   on one line are `Facts` (4px apart, commas between, `lib/factsGuard.test.ts`).
 - Use `text-xs` for 12px. `lib/typeScaleGuard.test.ts` refuses the literal
   `text-[12px]` in renderer source.
+- Colour comes from the tokens in both themes: a value that differs by
+  theme is a token with a value in each block of index.css, text is
+  `foreground`, `muted-foreground` or `faint-foreground` (never an opacity
+  of one), a link is `link`, and a solid fill names its `-foreground`.
+  `lib/tokenContrast.test.ts` holds every pair to the contrast contract and
+  `lib/colourGuard.test.ts` refuses a `dark:` utility, a `.theme-light`
+  selector outside the token blocks, black or white by name and text as an
+  opacity. Dark is held as it was while light is built: a new look goes in
+  light's value and dark keeps its own
+  ([appearance.md](appearance.md) "Dark is held"). Look at both themes:
+  `ui:preview --shot` writes each.
 - Every `overflow-y-auto` class string names its horizontal policy:
   `overflow-x-hidden` for lists or `overflow-x-auto` for content that needs
   both axes. `lib/scrollerGuard.test.ts` enforces this without exceptions.

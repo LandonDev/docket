@@ -111,6 +111,16 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   tests under src/renderer/src/lib/*Guard.test.ts; verify with typecheck, the
   tests you touched and `bun run ui:preview`; never run prettier on
   src/renderer. [docs/agents/ui-standard.md](docs/agents/ui-standard.md)
+- **Appearance** — two themes, one per kind of place: Settings holds a theme
+  for Code and one for Work (lib/appearance.ts), a window wears its place's
+  (`placeKind`, `changeScheme` in lib/placeScheme.ts, the dissolve), and the
+  next launch opens in it (`appearance:scheme`, windowFrame.ts, boot.js).
+  `lib/tokenContrast.test.ts` holds every pair of tokens to the contrast
+  contract and `lib/colourGuard.test.ts` refuses `dark:`, `.theme-light`,
+  black or white by name and text as an opacity. **Dark is held**: no commit
+  changes how dark looks; a look light changes is a token with a value per
+  theme (index.css "Held in dark"), and the file lists what to flip when the
+  owner asks. [docs/agents/appearance.md](docs/agents/appearance.md)
 - **Launch-time code caches and the bundle split** — boot.js and the compile
   cache, the `tempcode-app://` scheme, lazy chunks (`defineChunk`,
   surfaces/chunks.ts) under the index chunk's budget (`bun run check:bundle`).
