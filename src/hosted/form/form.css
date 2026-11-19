@@ -1,0 +1,213 @@
+/* A published form's page: the canvas's Questions half as a filler sees it
+   (docs/DESIGN.md "Form"), on the app's own tokens in both themes. */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.2 0.004 270);
+  --muted: oklch(0.955 0.002 80);
+  --muted-foreground: oklch(0.5 0.008 270);
+  --border: rgb(0 0 0 / 0.08);
+  --input: rgb(0 0 0 / 0.12);
+  --primary: oklch(0.2 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --destructive: oklch(0.55 0.2 27);
+  --ring: oklch(0.6 0.16 255);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.195 0.003 270);
+    --foreground: oklch(0.93 0.003 270);
+    --muted: oklch(0.275 0.004 270);
+    --muted-foreground: oklch(0.68 0.006 270);
+    --border: rgb(255 255 255 / 0.09);
+    --input: rgb(255 255 255 / 0.12);
+    --primary: oklch(0.96 0 0);
+    --primary-foreground: oklch(0.2 0 0);
+    --destructive: oklch(0.7 0.17 25);
+    --ring: oklch(0.7 0.14 255);
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font: 14px/20px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.fm-form,
+.fm-msg,
+.fm-sk {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+h1 {
+  margin: 0;
+  padding: 0 12px;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.fm-desc {
+  margin: 4px 0 0;
+  padding: 0 12px;
+  line-height: 22px;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+  white-space: pre-line;
+}
+.fm-sec {
+  margin: 24px 12px 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.fm-qs {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fm-sec + .fm-qs {
+  margin-top: 4px;
+}
+.fm-q {
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  min-width: 0;
+}
+.fm-ql {
+  display: block;
+  padding: 0;
+  font-weight: 500;
+}
+.fm-req {
+  color: var(--muted-foreground);
+}
+.fm-f {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: 32px;
+  margin-top: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  background: var(--background);
+  color: inherit;
+  font: inherit;
+  transition: border-color 150ms var(--ease-out);
+}
+.fm-f.long {
+  height: 72px;
+  max-width: none;
+  padding: 6px 10px;
+  resize: vertical;
+}
+.fm-f.drop {
+  max-width: 240px;
+}
+.fm-f:focus-visible,
+.fm-o input:focus-visible,
+.fm-send:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.fm-q[aria-invalid="true"] .fm-f {
+  border-color: var(--destructive);
+}
+.fm-opts {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+}
+.fm-o {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.fm-o input {
+  width: 14px;
+  height: 14px;
+  margin: 3px 0 0;
+  flex: none;
+  accent-color: var(--foreground);
+}
+.fm-err {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--destructive);
+}
+.fm-foot {
+  margin-top: 16px;
+  padding: 0 12px;
+}
+.fm-send {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 150ms var(--ease-out), opacity 150ms var(--ease-out);
+}
+.fm-send:active {
+  transform: scale(0.97);
+}
+.fm-send:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.fm-sk {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fm-sk > i {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--muted);
+}
+.fm-sk > .t {
+  width: 52%;
+  height: 20px;
+}
+.fm-sk > .d {
+  width: 80%;
+}
+.fm-sk > .l {
+  width: 30%;
+  margin-top: 16px;
+}
+.fm-sk > .f {
+  height: 32px;
+  max-width: 360px;
+}
+@media (max-width: 480px) {
+  .fm-form,
+  .fm-msg,
+  .fm-sk {
+    padding: 24px 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-send,
+  .fm-f {
+    transition: none;
+  }
+}
