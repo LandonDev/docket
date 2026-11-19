@@ -155,11 +155,20 @@ export function configureComputerHold(hold: ComputerHold | null): void {
  * back; the hold's own press is his and is never refused by it.
  */
 let ownerDrives: ((threadId: string) => string | null) | null = null
-export function configureOwnerDrives(fn: ((threadId: string) => string | null) | null): void {
+export function configureOwnerDrives(fn: ((threadId: string) => string | null) | null, unless?: (threadId: string) => string | null): void {
+  // a stop clears only its own gate: another Work mount (a test's) may have set one since
+  if (fn === null && unless && ownerDrives !== unless) return
   ownerDrives = fn
 }
-/** The line refusing a thread's call while the owner drives its pane, or null. */
-export const ownerDrivesLine = (threadId: string): string | null => ownerDrives?.(threadId) ?? null
+/** The line refusing a thread's call while the owner drives its pane, or null. A gate that cannot answer refuses nothing: Work failing must not stop a code thread's computer use. */
+export function ownerDrivesLine(threadId: string): string | null {
+  try {
+    return ownerDrives?.(threadId) ?? null
+  } catch (err) {
+    console.error('[computer] the Take over gate did not answer:', err)
+    return null
+  }
+}
 
 export const HELD_UNAVAILABLE =
   "held: this step sends, posts, pays, deletes or the like, and it cannot be kept for the owner's press from here, so it was not carried out. Do not reach the same effect another way; say what is ready to go and carry on with the rest."

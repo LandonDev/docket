@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { CanvasPush } from '@shared/contract-work-canvas'
 import type { PushTo } from '../modules'
 import type { SessionMeta } from '@shared/events'
-import { CanvasKindSchema, CanvasSourceSchema, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
+import { CanvasKindSchema, CanvasSourceSchema, canvasSourcePath, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
 
 /**
  * A thread's canvas items (`work_canvas_items`, docs/agents/work-canvas.md
@@ -65,16 +65,9 @@ export interface CanvasStoreDeps {
   log(line: string): void
 }
 
-/** The path on its host an item's source names: a file, or a workbook Office opens by path. Null for the rest. */
-export function sourcePathOf(source: CanvasSource): string | null {
-  if (source.at === 'file') return source.path
-  if (source.at === 'microsoft' && source.ref.kind === 'path') return source.ref.path
-  return null
-}
-
 /** An item as a caller the path fence does not admit sees it: its source's path cut to the file's name. */
 export function fencedItem(item: CanvasItem, reaches: (path: string) => boolean): CanvasItem {
-  const path = sourcePathOf(item.source)
+  const path = canvasSourcePath(item.source)
   if (path === null || reaches(path)) return item
   const s = item.source
   const source: CanvasSource = s.at === 'file' ? { ...s, path: basename(path) } : s.at === 'microsoft' ? { ...s, ref: { kind: 'path', path: basename(path) } } : s
@@ -179,7 +172,8 @@ export class CanvasStore {
     return row.n === null ? 0 : row.n + 1
   }
 
-  private announce(sessionId: string, opened?: string): CanvasItem[] {
+  /** Pushes the thread's open list (a thread that moved here says its items this way), split for remote keys as every change is. */
+  announce(sessionId: string, opened?: string): CanvasItem[] {
     const items = this.list(sessionId)
     const p: CanvasPush = { push: 'work.canvas', sessionId, items, ...(opened ? { opened } : {}) }
     // A remote key sees the paths its fence admits; the rest are cut to file names, in a push of their own.

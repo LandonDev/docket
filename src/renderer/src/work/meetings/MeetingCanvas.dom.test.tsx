@@ -269,6 +269,41 @@ describe("the meeting canvas", () => {
     }
   });
 
+  it("in the desktop app Download recording writes each range to the file he picks, and a cancelled pick reads nothing", async () => {
+    const body = "y".repeat(2 * 1024 * 1024) + "end";
+    host.recording = async (params) => ({ name: "Staff sync.m4a", size: body.length, dataBase64: btoa(body.slice(params.offset as number, (params.offset as number) + (params.length as number))) });
+    const written: string[] = [];
+    let closed = false;
+    let cancel = true;
+    const asked: string[] = [];
+    const picker = vi.fn(async (o: { suggestedName: string }) => {
+      asked.push(o.suggestedName);
+      if (cancel) throw new DOMException("The user aborted a request.", "AbortError");
+      return { createWritable: async () => ({ write: async (part: Uint8Array) => void written.push(new TextDecoder().decode(part)), close: async () => void (closed = true) }) };
+    });
+    Object.assign(window, { showSaveFilePicker: picker });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    try {
+      await seat(sampleMeeting({ title: "Staff sync" }));
+      const download = async () => {
+        fireEvent.click(screen.getByRole("button", { name: "More" }));
+        fireEvent.click(await screen.findByRole("menuitem", { name: "Download recording" }));
+      };
+      await download();
+      await waitFor(() => expect(asked).toEqual(["Staff sync.m4a"]));
+      expect(host.calls.filter((c) => c.method === "work.meetings.recording")).toHaveLength(0);
+      cancel = false;
+      await download();
+      await waitFor(() => expect(closed).toBe(true));
+      expect(written.join("")).toBe(body);
+      expect(written).toHaveLength(2);
+      expect(click).not.toHaveBeenCalled();
+    } finally {
+      click.mockRestore();
+      delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    }
+  });
+
   it("marks a task that waits with the add-task glyph and a filed one with LifeOS's", async () => {
     const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
     await waitFor(() => expect(container.querySelector('[data-task="a1"]')).toBeTruthy());

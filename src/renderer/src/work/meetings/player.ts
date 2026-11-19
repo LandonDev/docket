@@ -54,21 +54,68 @@ export async function readCopy(environmentId: string, path: string, bytes: numbe
   return new Blob(parts as BlobPart[], { type: "audio/mp4" });
 }
 
-/** The original recording (Download recording), read range by range from the host that holds it; `progress` gets 0 to 1 as it comes. */
-export async function readRecording(environmentId: string, itemId: string, progress: (done: number) => void, signal: AbortSignal): Promise<{ name: string; blob: Blob }> {
+interface SaveTarget {
+  write(part: Uint8Array): Promise<void>;
+  close(): Promise<void>;
+}
+type SavePicker = (o: { suggestedName: string }) => Promise<{ createWritable(): Promise<{ write(data: BlobPart): Promise<void>; close(): Promise<void>; abort?(): Promise<void> }> }>;
+
+/**
+ * Downloads the original recording (Download recording), read range by range
+ * from the host that holds it. Where the page can ask for a file (the desktop
+ * app), each range goes straight to the file he picks, so an hour of video is
+ * never held whole; elsewhere the ranges are kept and saved as one Blob.
+ * `progress` gets 0 to 1. Resolves false when he cancelled the save.
+ */
+export async function downloadRecording(environmentId: string, itemId: string, suggestedName: string, progress: (done: number) => void, signal: AbortSignal): Promise<boolean> {
   const link = registry.linkOf(environmentId);
+  const picker = (window as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
+  let target: SaveTarget;
+  let name = suggestedName;
   const parts: Uint8Array[] = [];
-  let name = "";
+  if (picker) {
+    let file;
+    try {
+      file = await (await picker.call(window, { suggestedName })).createWritable();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return false;
+      throw error;
+    }
+    const writable = file;
+    signal.addEventListener("abort", () => void writable.abort?.().catch(() => undefined), { once: true });
+    target = { write: (part) => writable.write(part as BlobPart), close: () => writable.close() };
+  } else {
+    target = {
+      write: async (part) => void parts.push(part),
+      close: async () => saveBlob(name, new Blob(parts as BlobPart[])),
+    };
+  }
   let size = 1;
-  for (let offset = 0; offset < size; offset += RANGE) {
+  for (let offset = 0; offset < size; ) {
     if (signal.aborted) throw new Error("cancelled");
     const range = await link.request<MeetingRecordingRange>("work.meetings.recording", { itemId, offset, length: RANGE });
+    if (signal.aborted) throw new Error("cancelled");
     name = range.name;
     size = range.size;
-    parts.push(bytesOf(range.dataBase64));
-    progress(size ? Math.min(1, (offset + RANGE) / size) : 1);
+    const part = bytesOf(range.dataBase64);
+    // a file that shrank while it was read ends here
+    if (part.length === 0) break;
+    await target.write(part);
+    offset += part.length;
+    progress(size ? Math.min(1, offset / size) : 1);
   }
-  return { name, blob: new Blob(parts as BlobPart[]) };
+  await target.close();
+  return true;
+}
+
+/** Saves a file where the person keeps downloads. */
+export function saveBlob(name: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export function usePlayer(environmentId: string, audio: { path: string; bytes: number } | undefined, durationSec: number): Player {

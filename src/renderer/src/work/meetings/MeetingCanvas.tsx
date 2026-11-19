@@ -13,7 +13,7 @@ import { Download, Export } from "../icons";
 import { decideTasks, loadMeeting, startMeeting, startOnce, undoNotes, useMeeting } from "./data";
 import { Failed, NotesDoc, NothingYet, PlainName, PlayerRow, Progress, Turns, TurnsSkeleton } from "./MeetingView";
 import { findHits, proposedTasks, segmentAt, stretchLabel, stretchOf, tasksByTurn, transcriptText } from "./model";
-import { readRecording, usePlayer } from "./player";
+import { downloadRecording, saveBlob, usePlayer } from "./player";
 import { SpeakerName } from "./Speaker";
 
 /**
@@ -142,12 +142,13 @@ function useStretch(root: RefObject<HTMLDivElement | null>, shell: CanvasShell, 
 /**
  * The meeting's own verbs in the pane's More: Export transcript once there is
  * one, and Download recording, the original as it was dropped, read from the
- * host that holds it. While it comes the row says how far and takes no press.
+ * host that holds it. While it comes the row says how far and takes no press;
+ * leaving the meeting ends it without a word.
  */
-function useMore(shell: CanvasShell, env: string, meeting: Meeting | null): void {
+function useMore(shell: CanvasShell, env: string, meeting: Meeting | null, fileName: string): void {
   const ready = meeting?.status === "ready" && meeting.segments.length > 0 ? meeting : null;
   const recording = meeting?.from === "recording" ? meeting.itemId : null;
-  const [fetched, setFetched] = useState<number | null>(null);
+  const [percent, setPercent] = useState<number | null>(null);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => {
@@ -157,34 +158,25 @@ function useMore(shell: CanvasShell, env: string, meeting: Meeting | null): void
     if (recording)
       entries.push({
         id: "download-recording",
-        label: fetched === null ? "Download recording" : `Downloading… ${Math.round(fetched * 100)}%`,
+        label: percent === null ? "Download recording" : `Downloading… ${percent}%`,
         icon: Download,
-        disabled: fetched !== null,
+        disabled: percent !== null,
         run: async () => {
           const signal = (abort.current = new AbortController()).signal;
-          setFetched(0);
+          setPercent(0);
           try {
-            const { name, blob } = await readRecording(env, recording, setFetched, signal);
-            saveBlob(name, blob);
+            await downloadRecording(env, recording, fileName, (done) => setPercent(Math.floor(done * 100)), signal);
+          } catch (error) {
+            if (!signal.aborted) throw error;
           } finally {
-            if (!signal.aborted) setFetched(null);
+            if (!signal.aborted) setPercent(null);
           }
         },
       });
     if (entries.length === 0) return;
     shell.more?.(entries);
     return () => shell.more?.(null);
-  }, [shell, env, ready, recording, fetched]);
-}
-
-/** Saves a file where the person keeps downloads. */
-function saveBlob(name: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }, [shell, env, ready, recording, percent, fileName]);
 }
 
 export function Body({ item, source, env, state, shell }: CanvasBodyProps<MeetingState>) {
@@ -220,7 +212,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null);
   const current = proposed.some((a) => a.id === task) ? task : (proposed[0]?.id ?? null);
   const selected = useStretch(turnsBox, shell, meeting, source);
-  useMore(shell, env, meeting);
+  useMore(shell, env, meeting, item.source.at === "file" ? (item.source.path.split(/[\\/]/).pop() ?? item.title) : item.title);
 
   const hits = useMemo(() => (meeting && view.find ? findHits(meeting.segments, view.find.query) : []), [meeting, view.find]);
   const hit = view.find && hits.length ? hits[((view.find.index % hits.length) + hits.length) % hits.length] : null;

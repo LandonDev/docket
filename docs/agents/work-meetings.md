@@ -341,8 +341,11 @@ claimed by no kind, unless either is opened as a meeting (`meeting_open`).
   words, saved as `<title>.txt` (`transcriptText`, model.ts). Then, for a
   meeting made from a recording, whatever its state, Download recording:
   the original as it was dropped, under its own name, read in ranges from
-  the host that holds it (`readRecording`, player.ts); while it comes the
-  row reads "Downloading… 40%" and takes no press.
+  the host that holds it (`downloadRecording`, player.ts). In the desktop
+  app he picks where it goes and each range is written there as it comes,
+  so a long video is never held whole; elsewhere the ranges are saved as one
+  file. While it comes the row reads "Downloading… 40%" and takes no press;
+  leaving the meeting ends it without a word.
 - **No bar** while the meeting has nothing in it (Drop a recording): its
   `Bar` renders nothing, so the pane draws none.
 

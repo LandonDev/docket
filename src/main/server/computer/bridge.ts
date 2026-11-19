@@ -32,7 +32,7 @@ import type { MacThreadTokens } from '../macTools'
 import { OfflineError } from '../threadResources'
 import { isSoftCancel, type CallReader } from './pending'
 import { refusal, type ComputerToolOutcome, type LandedShot } from './result'
-import { abortedLine, AWAY_PASSWORD, checkComputerCall, type ComputerToolContext } from './run'
+import { abortedLine, AWAY_PASSWORD, checkComputerCall, ownerDrivesLine, type ComputerToolContext } from './run'
 import { landShotBytes, nextShotNumber } from './shots'
 import { bridgeLegs, bridgeOverhead, timingLine, type BridgeStamps } from '@shared/computer/bridgeTiming'
 import { currentLag, recordComputerSpan } from '../stalls'
@@ -252,12 +252,14 @@ export class ComputerBridge {
     })
   }
 
-  /** What refuses a call before it reaches the Mac: given up, Stopped this turn, paused, no Mac, the Mac offline. */
+  /** What refuses a call before it reaches the Mac: given up, Stopped this turn, paused, the owner driving its pane (Take over), no Mac, the Mac offline. */
   private refusalFor(id: string, signal: AbortSignal | undefined): string | null {
     const given = abortedLine(signal)
     if (given) return given
     if (this.threads.get(id)?.stopped) return hostErrorLine('stopped')
     if (this.deps.pause.isPaused(id)) return hostErrorLine('paused')
+    const driving = ownerDrivesLine(id)
+    if (driving) return driving
     const mac = this.deps.macPeerOf(id)
     if (!mac) return hostErrorLine('service_unavailable', COMPUTER_NO_MAC)
     if (!this.deps.calls.online(mac, MAC_BRIDGE_OFFER)) return hostErrorLine('service_unavailable', new PeerOfflineError(mac).message)

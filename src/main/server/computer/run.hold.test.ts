@@ -667,3 +667,14 @@ describe('Take over', () => {
     expect(acts(h)).toBe(2)
   })
 })
+
+describe('Take over, when Work cannot answer', () => {
+  it('a gate that throws refuses nothing: a code thread keeps its computer use', async () => {
+    configureOwnerDrives(() => {
+      throw new Error('the canvas part did not start')
+    })
+    const { h } = await thread('code')
+    expect((await click(h, PLAIN)).isError).toBe(false)
+    expect(acts(h)).toBe(1)
+  })
+})

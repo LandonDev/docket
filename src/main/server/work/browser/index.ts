@@ -134,8 +134,9 @@ export const browser: WorkModule = {
   // While he drives a pane, its threads' computer calls are refused at the run, whatever turn they come in
   // (his message, a decided act waking the thread), until he hands back.
   start(ctx) {
-    configureOwnerDrives((threadId) => (new DriveStore(ctx.db).get(ctx.canvas.paneOf(threadId)).driver === 'owner' ? OWNER_DRIVES : null))
-    return () => configureOwnerDrives(null)
+    const gate = (threadId: string): string | null => (new DriveStore(ctx.db).get(ctx.canvas.paneOf(threadId)).driver === 'owner' ? OWNER_DRIVES : null)
+    configureOwnerDrives(gate)
+    return () => configureOwnerDrives(null, gate)
   },
   tools: () => tools(),
   acts: [teamsPostKind as unknown as ActKindDef],

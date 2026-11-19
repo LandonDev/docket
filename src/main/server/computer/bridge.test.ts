@@ -16,7 +16,7 @@ import {
 import { READER_ACK_MS } from '@shared/computer/heldCalls'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY } from '../awayPrompts'
-import { AWAY_PASSWORD } from './run'
+import { AWAY_PASSWORD, configureOwnerDrives } from './run'
 import { CANCELLED_PAUSED, MacPause } from '../macPause'
 import { PeerCalls, handlePeerRequest } from '../remote/peerCalls'
 import { COMPUTER_SPAN_MS, ComputerBridge, MAC_SILENT_CANCEL, STOP_REPLY_MS } from './bridge'
@@ -311,6 +311,21 @@ describe('ComputerBridge: one call', () => {
 })
 
 describe('ComputerBridge: pause, Stop, Away, offline', () => {
+  it('a box thread whose pane he drives (Take over) is refused with no peer call until he hands back', async () => {
+    let driving = true
+    configureOwnerDrives((id) => (id === 't1' && driving ? 'He is driving.' : null))
+    try {
+      const b = box()
+      expect((await b.run('computer_observe', observe)).body).toBe('He is driving.')
+      expect(b.ofMethod('mac.computer')).toHaveLength(0)
+      driving = false
+      void b.run('computer_observe', observe)
+      await b.until(() => b.ofMethod('mac.computer').length === 1, 'out')
+    } finally {
+      configureOwnerDrives(null)
+    }
+  })
+
   it('a paused thread is refused with no peer call; a pause mid-call answers cancelled and mac.cancel names the call', async () => {
     const b = box()
     b.status('t1', 'paused')

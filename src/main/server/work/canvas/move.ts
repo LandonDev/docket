@@ -75,7 +75,7 @@ export function registerCanvasMove(db: DatabaseSync, ctx: WorkCtx, store: () => 
       dir: canvasDirOf,
       claimed(host, ids) {
         const withRows = ids.filter((id) => store().rowsFor([id]).length > 0)
-        for (const id of withRows) ctx.push({ push: 'work.canvas', sessionId: id, items: store().list(id) })
+        for (const id of withRows) store().announce(id)
         // The row decides, read off the database: the registry hears of the landing only after this.
         const scope = host.db.prepare(`SELECT scope FROM sessions WHERE id = ?`)
         const workIds = ids.filter((id) => (scope.get(id) as { scope?: string } | undefined)?.scope === 'work')

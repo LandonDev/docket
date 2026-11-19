@@ -112,7 +112,9 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   its subagents, on any turn: his own message, a decided act waking the
   thread) is refused with `OWNER_DRIVES` before it reaches the service, until
   he hands back. The gate is `configureOwnerDrives` in computer/run.ts, set
-  by this module's `start`; the hold's own press is his and runs (F3).
+  by this module's `start`, and asked by `runComputerTool` here and by the
+  box's `ComputerBridge` before a call goes to the Mac; the hold's own press
+  is his and runs, and a gate that throws refuses nothing (F3).
 - **The body**: the live window in its own shape, at most 720px wide, a
   skeleton until the first frame; at a held submit the values under it
   (label, value, source; the values are the host's read of the page's
