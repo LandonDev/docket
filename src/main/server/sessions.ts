@@ -19,9 +19,9 @@ import {
   wrapSteer
 } from './notesPrompts'
 import { randomUUID } from 'node:crypto'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename } from 'node:path'
+import { basename, join } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import { COMPACTING_WORDS, providerWaitWords, retryWords, thenYourMessage } from '@shared/statusWords'
 import { computerActivity } from '@shared/computer/words'
@@ -172,6 +172,9 @@ import {
 import type { ForeignThreadRead } from './crossHostAgents'
 import { removePages } from './htmlRender'
 import { composePreambled, decidePreamble, normalizePreamble } from './projectPreamble'
+import { sessionScopeOf, workspaceKindOf, type ContextChip } from '@shared/work'
+import { sameScope, stampScope, WORK_CHATS_FOLDER, WORK_OFF, WORK_THREAD_TYPES, workEnabled, workFoldersRoot, workHomeOfSession, workProviderRefusal, WorkRefused, type ScopeFacts } from './work/scope'
+import { composeWorkPreambled, WORK_OWNER_NAME_SETTING, workPreamble } from './work/preamble'
 import {
   newProjectLinkId,
   newWorkspaceLinkId,
@@ -284,6 +287,10 @@ export type StartWithOpts = RunSettings & {
   attachments?: Attachment[]
   /** `false`: the spawner opted this thread out of the project preamble */
   preamble?: boolean
+  /** Work: the routine run that starts the thread, stamped on its row. The host's to say (work/threads.ts), never a client's: a create param could pass for a routine's run and use its grants. */
+  routineRunId?: string
+  /** Work: a Work thread on another host starts this one (remote/crossHostThreads.ts, which checked the caller's scope): its preamble reads as a child's, and a master this host does not hold may own it. */
+  farWork?: boolean
 }
 
 // ── thread references (send)─────────────────────────────────────────
@@ -2131,7 +2138,7 @@ export class SessionRegistry {
   private readonly creatingWorkspaces = new Map<string, Promise<WorkspaceMeta>>()
 
   /** One workspace per real folder, including symlinks and trailing slashes. */
-  createWorkspace(path: string, name?: string, opts: { linkId?: string } = {}): Promise<WorkspaceMeta> {
+  createWorkspace(path: string, name?: string, opts: { linkId?: string; kind?: 'work'; sector?: string | null } = {}): Promise<WorkspaceMeta> {
     const key = workspacePathKey(path)
     const inFlight = this.creatingWorkspaces.get(key)
     if (inFlight) return inFlight
@@ -2140,16 +2147,21 @@ export class SessionRegistry {
     return run
   }
 
-  private async createWorkspaceNow(path: string, key: string, name: string | undefined, opts: { linkId?: string }): Promise<WorkspaceMeta> {
+  private async createWorkspaceNow(path: string, key: string, name: string | undefined, opts: { linkId?: string; kind?: 'work'; sector?: string | null }): Promise<WorkspaceMeta> {
     const existing = this.store.listWorkspaces().find((w) => workspacePathKey(w.path) === key)
+    // A folder is one workspace: a Work create never turns a code workspace's folder into a job.
+    if (existing && opts.kind === 'work' && workspaceKindOf(existing) !== 'work') throw new Error(`${existing.name} is a code workspace at that folder`)
     if (existing) return existing
+    // The Work switch decides whether a Work thing can be made (work/scope.ts); the row decides everything after.
+    if (opts.kind === 'work' && !workEnabled(this.store)) throw new WorkRefused(WORK_OFF)
     // A workspace names a folder on this host. A client that has not yet
     // heard which host owns a folder (another host's catalog still loading)
     // falls back to this one; a folder that is not here is not ours.
     if (!isDirectory(path)) throw new Error(`no such folder on this host: ${path}`)
     // Keep the caller's folder spelling for cwd consumers, without a trailing slash.
     path = stripWorkspaceTrailingSlashes(path)
-    const git = await isGitRepo(path)
+    // A Work workspace is the app's own folder, never a checkout.
+    const git = opts.kind === 'work' ? false : await isGitRepo(path)
     const meta: WorkspaceMeta = {
       id: nanoid(12),
       name: name ?? basename(path),
@@ -2158,6 +2170,7 @@ export class SessionRegistry {
       githubRepo: git ? await githubRepoOf(path) : null,
       githubRepoCheckedAt: git ? Date.now() : null,
       ...(opts.linkId ? { linkId: opts.linkId } : {}),
+      ...(opts.kind === 'work' ? { kind: 'work' as const, ...(opts.sector ? { sector: opts.sector } : {}) } : {}),
       createdAt: Date.now()
     }
     // A thread outside every workspace stays there: a workspace made later at
@@ -2427,8 +2440,22 @@ export class SessionRegistry {
   setBatchMembership(sessionId: string, masterId: string): void {
     const thread = this.store.getSession(sessionId)
     if (!thread) throw new Error(`unknown session: ${sessionId}`)
+    this.assertBatchScope(thread, masterId)
     const next = this.store.updateSession(sessionId, { masterId, ...(thread.startedBy ? {} : { startedBy: masterId }) })
     if (next) this.notifyMeta(next)
+  }
+
+  /**
+   * A batch holds threads of one scope (work/scope.ts): a master steers its
+   * batch threads, so a Work master with a code thread in its batch would
+   * reach the person's own MCP servers through it, and a code master would
+   * be instructing a Work thread. A master this host does not hold (another
+   * host's) takes no Work thread.
+   */
+  private assertBatchScope(thread: SessionMeta, masterId: string): void {
+    const master = this.store.getSession(masterId)
+    if (master ? sameScope(this.scopeFacts(), master, thread) : sessionScopeOf(thread) !== 'work') return
+    throw new WorkRefused('refused: a batch holds threads of one scope: a Work master takes only the Work threads of its own workspace, and a Work thread joins no other batch.')
   }
 
   setWorkspacePreamble(workspaceId: string, preamble: string | null, enabled: boolean): void {
@@ -2740,6 +2767,32 @@ export class SessionRegistry {
     )
   }
 
+  /** The rows Work's scope rule reads (work/scope.ts). */
+  private scopeFacts(): ScopeFacts {
+    return {
+      workspaces: () => this.store.listWorkspaces(),
+      project: (id) => this.store.getProject(id),
+      session: (id) => this.store.getSession(id)
+    }
+  }
+
+  /** Where a Work Chat runs: the app's own folder, made on first use. */
+  private workChatsFolder(): string {
+    const dir = join(workFoldersRoot(this.store), WORK_CHATS_FOLDER)
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
+  /** Work threads a Work thread on another host started, since this boot: their first message reads as a child's. */
+  private farWorkStarted = new Set<string>()
+
+  private aboutListeners = new Set<(session: SessionMeta, about: ContextChip) => void>()
+  /** A thread was created with an `about` chip (Work links it in LifeOS). */
+  onAbout(listener: (session: SessionMeta, about: ContextChip) => void): () => void {
+    this.aboutListeners.add(listener)
+    return () => this.aboutListeners.delete(listener)
+  }
+
   /** A thread and its first message as one step: the message is the
    *  thread's first row, on disk with the meta, or the thread is removed
    *  (`session-removed`) and the error is the caller's. Every start path
@@ -2750,12 +2803,13 @@ export class SessionRegistry {
    *  handoff (link, handoff row, archive) waits for that row too. */
   async startWith(raw: CreateSessionInput, text: string, opts: StartWithOpts = {}): Promise<SessionMeta> {
     if (this.closed) throw new BootStopped()
-    const created = await this.create(raw, { handoff: false })
+    const { routineRunId, farWork, ...sendOpts } = opts
+    const created = await this.create(raw, { handoff: false, routineRunId, farWork })
     if (this.closed) throw new BootStopped()
     let stored = false
     try {
       await this.send(created.id, text, {
-        ...opts,
+        ...sendOpts,
         onStored: () => {
           if (this.closed) return
           stored = true
@@ -2776,7 +2830,7 @@ export class SessionRegistry {
     return firstMessage ? this.startWith(spec, firstMessage) : this.create(spec)
   }
 
-  async create(raw: CreateSessionInput, internal: { handoff?: boolean } = {}): Promise<SessionMeta> {
+  async create(raw: CreateSessionInput, internal: { handoff?: boolean; routineRunId?: string; farWork?: boolean } = {}): Promise<SessionMeta> {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
     if (params.id && this.store.getSession(params.id)) throw new Error(`session id already taken: ${params.id}`)
@@ -2798,7 +2852,22 @@ export class SessionRegistry {
     if (!project && params.workspaceId === undefined && params.cwd) {
       workspace = this.store.listWorkspaces().find((w) => w.path === params.cwd) ?? null
     }
-    const cwd = project?.cwd ?? workspace?.path ?? params.cwd ?? homedir()
+    // Work (work/scope.ts): the scope is stamped here, once. A thread of a
+    // Work workspace, a Work Chat, and any thread a Work thread spawns or
+    // starts is a Work thread; a create Work cannot honour is refused, never
+    // made as a code thread. A code create gets null and goes on as before.
+    const stamp = stampScope(this.scopeFacts(), {
+      asked: { scope: params.scope, parentId: params.parentId, startedBy: params.startedBy, threadType: params.threadType, workspaceId: params.workspaceId },
+      project: project ?? null,
+      workspace: workspace ?? null,
+      enabled: workEnabled(this.store)
+    })
+    // A Work thread with no project carries its workspace on its own row, its parent's when one made it.
+    if (stamp && !project) workspace = stamp.workspace
+    // A Work thread runs in its project, in the folder its Work parent gave it, in its workspace, or in Work Chats' own folder: never in a folder a client names.
+    const cwd =
+      project?.cwd ??
+      (stamp ? (stamp.from && params.cwd ? params.cwd : (workspace?.path ?? this.workChatsFolder())) : (workspace?.path ?? params.cwd ?? homedir()))
     const reportsRoot = this.reportsRootFor({
       projectId: params.projectId,
       workspaceId: workspace?.id ?? null,
@@ -2814,6 +2883,9 @@ export class SessionRegistry {
       requested,
       params.model ?? (d.model || CATALOG[requested].defaultModel)
     )
+    // A Work thread runs only on a harness the fence was proven for.
+    const unfenced = stamp ? workProviderRefusal(provider) : null
+    if (unfenced) throw new WorkRefused(unfenced)
     const meta: SessionMeta = {
       id,
       parentId: params.parentId,
@@ -2867,9 +2939,13 @@ export class SessionRegistry {
       after: params.after ?? null,
       // Pinned before the eager boot, so the first spawn is a master's.
       ...(params.master ? { isMaster: true } : {}),
+      // Absent on a code thread, so its row and meta are what they were.
+      ...(stamp ? { scope: 'work' as const, ...(internal.routineRunId ? { routineRunId: internal.routineRunId } : {}) } : {}),
       createdAt: now,
       updatedAt: now
     }
+    if (meta.masterId && !meta.parentId && !(internal.farWork && stamp)) this.assertBatchScope(meta, meta.masterId)
+    if (internal.farWork && stamp) this.farWorkStarted.add(id)
     this.store.insertSession(meta)
     if (params.queue) this.queueOptIn.add(id)
     // Born folded: an empty row at seq 0, and a warm task fold so the
@@ -2883,6 +2959,8 @@ export class SessionRegistry {
     if (params.parentId) {
       this.append(params.parentId, { type: 'agent-spawned', childSessionId: created.id })
     }
+    // What the thread is about (a task, a mail, an event): Work links it once the row exists.
+    if (params.about) for (const listener of this.aboutListeners) listener(created, params.about)
     // A build starting from a plan links to its planning thread and back,
     // leaves a handoff row there, and archives it when plans.archiveAfterStart
     // says so (planFlow.ts): the conversation is over, the plan file carries
@@ -2925,6 +3003,9 @@ export class SessionRegistry {
     const routed = opts?.model
       ? resolveModel(opts?.provider ?? meta.provider, opts.model)
       : { provider: opts?.provider ?? meta.provider, model: undefined }
+    // A Work thread never switches to a harness with no fence.
+    const unfenced = sessionScopeOf(meta) === 'work' ? workProviderRefusal(routed.provider) : null
+    if (unfenced) throw new WorkRefused(unfenced)
     const provider = routed.provider
     const reasoning = opts?.reasoning ?? meta.reasoning
     let handoff = ''
@@ -3163,7 +3244,7 @@ export class SessionRegistry {
       }
     }
     if (this.closed) return
-    let out = stamp ? composePreambled(stamp, text) : opts?.steer ? wrapSteer(text) : text
+    let out = stamp ? (sessionScopeOf(meta) === 'work' ? composeWorkPreambled(stamp, text) : composePreambled(stamp, text)) : opts?.steer ? wrapSteer(text) : text
     // A retyped thread re-instructs on its next message: the new type's
     // preamble rides along once, prefaced so the model knows it replaces
     // the instructions the thread opened with.
@@ -3347,15 +3428,40 @@ export class SessionRegistry {
     }
   }
 
-  /** The project preamble a thread's first message carries (projectPreamble.ts). */
+  /** The project preamble a thread's first message carries (projectPreamble.ts); a Work thread's opens with the Work preamble, whatever else applies. */
   private firstStamp(meta: SessionMeta, text: string, opts?: { preamble?: boolean }): PreambleStamp | null {
     return decidePreamble({
       store: this.store,
       // An untitled thread is about to take its title from the first line.
       session: isPlaceholderTitle(meta) ? { ...meta, title: '' } : meta,
       text,
-      optOut: opts?.preamble === false
+      optOut: opts?.preamble === false,
+      work: this.workPreambleOf(meta)
     })
+  }
+
+  /** What the Work modules add to a Work thread's preamble, in module order; set by Work (work/threads.ts). Unset, the fixed head stands alone. */
+  workPreambleParts: ((session: SessionMeta) => string[]) | null = null
+
+  /** A Work thread's preamble (work/preamble.ts): the fixed head for its workspace, then the modules' parts. Null for a code thread. */
+  private workPreambleOf(meta: SessionMeta): string | null {
+    if (sessionScopeOf(meta) !== 'work') return null
+    // A thread with no Work home (work/scope.ts) is told it is outside every workspace: it has no job's accounts.
+    const home = workHomeOfSession(this.scopeFacts(), meta)
+    const workspace = typeof home === 'string' ? null : home
+    const from =
+      this.farWorkStarted.has(meta.id) ||
+      [meta.parentId, meta.startedBy].some((id) => {
+        const s = id ? this.store.getSession(id) : null
+        return !!s && sessionScopeOf(s) === 'work'
+      })
+    let parts: string[] = []
+    try {
+      parts = this.workPreambleParts?.(meta) ?? []
+    } catch (err) {
+      console.error(`[work] ${meta.id}: the modules' preamble parts failed; the fixed head goes alone:`, err)
+    }
+    return workPreamble({ workspace: workspace?.name ?? null, sector: workspace?.sector ?? null, child: from, owner: this.store.getSetting(WORK_OWNER_NAME_SETTING) }, parts)
   }
 
   /** The person's message as its user row. `stamp` is undefined for a
@@ -3956,6 +4062,8 @@ export class SessionRegistry {
     const meta = this.store.getSession(sessionId)
     // Subagents (parentId set) have no thread identity to change.
     if (!meta || meta.parentId || !meta.threadType || meta.threadType === threadType) return
+    // A Work thread stays a chat or a research thread: Work has no plans or builds (work/scope.ts).
+    if (sessionScopeOf(meta) === 'work' && !WORK_THREAD_TYPES.includes(threadType)) throw new WorkRefused(`refused: a Work thread is a chat or a research thread, not "${threadType}".`)
     await this.dropHandle(sessionId)
     const patch: Parameters<Store['updateSession']>[1] = { threadType }
     // Research owns the planPath slot outright — it is the report
@@ -4073,13 +4181,44 @@ export class SessionRegistry {
     return this.sessionTree(rootId).map((s) => s.id)
   }
 
+  /**
+   * Work's say on a move (work/peer.ts sets it). A Work thread keeps its
+   * scope across a move, so it goes only to a host that will keep it one:
+   * `refusal` asks the destination, which a build from before Work cannot
+   * answer, and `thaw` lifts the freeze of a move this registry refused.
+   * Unset (Work's part did not start), no Work thread moves.
+   */
+  workMove: { refusal(to: string, root: SessionMeta): Promise<string | null>; thaw(ids: string[]): void } | null = null
+
   /** Check the subtree is at rest and freeze it toward `to` in the same tick,
-   *  then let go of its idle harnesses (a frozen thread spawns none). */
+   *  then let go of its idle harnesses (a frozen thread spawns none). A tree
+   *  with a Work thread in it is frozen, then asked about: the destination
+   *  must say it keeps Work threads, or the freeze lifts and the move is
+   *  refused by name. An older host would otherwise take the rows, drop the
+   *  `scope` column it lacks, and run the thread as a code thread. */
   async freezeForMove(rootId: string, freeze: (ids: string[]) => void): Promise<string[]> {
     const blocker = this.moveBlocker(rootId)
     if (blocker) throw new Error(blocker)
-    const ids = this.treeIds(rootId)
+    const tree = this.sessionTree(rootId)
+    const ids = tree.map((s) => s.id)
+    const work = tree.some((s) => sessionScopeOf(s) === 'work')
+    const gate = this.workMove
+    if (work && !gate) throw new WorkRefused('refused: this host cannot check that the other host keeps a Work thread a Work thread; the thread stays here.')
     freeze(ids)
+    if (work && gate) {
+      const to = this.store.movingTo(rootId)
+      let refusal: string | null
+      try {
+        refusal = to ? await gate.refusal(to, tree[0]) : 'the move names no host'
+      } catch (err) {
+        refusal = err instanceof Error ? err.message : String(err)
+      }
+      if (refusal) {
+        gate.thaw(ids)
+        this.thawed(ids)
+        throw new WorkRefused(`refused: this Work thread stays here: ${refusal}`)
+      }
+    }
     for (const id of ids) await this.dropHandle(id)
     return ids
   }
@@ -4550,6 +4689,9 @@ export class SessionRegistry {
     // not only at send time: the driver launches `--model` from this.
     const routed = resolveModel(stored.provider, stored.model)
     const meta = routed.provider === stored.provider ? { ...stored, model: routed.model } : stored
+    // The last check before a process exists: a Work row on a harness with no fence boots nothing, however it came to be there.
+    const unfenced = sessionScopeOf(meta) === 'work' ? workProviderRefusal(meta.provider) : null
+    if (unfenced) throw new WorkRefused(unfenced)
     const driver = BUILT_IN_DRIVERS[meta.provider]
     // The account this process spends from: the pin that applies (its
     // project's, its workspace's), else the best account for its model by

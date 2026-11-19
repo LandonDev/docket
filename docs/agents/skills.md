@@ -39,7 +39,11 @@ and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
   `CLAUDE_CODE_OAUTH_TOKEN=routed` for the gateway; a live CLI calls
   `reloadSkills()` at the first send after its pointer moved; the warm key
   splits by scope alone. It is not a plugin dir, since a plugin's skills
-  are always named `<plugin>:<skill>`. Codex (skills/codexSkills.ts): each
+  are always named `<plugin>:<skill>`. A Work thread runs under a root of
+  its own, `<userData>/harness/claude-config-work/<scope>/`, with the same
+  skill links and none of the person's entries but `projects`, `CLAUDE.md`
+  and `.credentials.json` (`ensureClaudeWorkRoot`;
+  [work-scope.md](work-scope.md)). Codex (skills/codexSkills.ts): each
   home SKILL.md disabled per process (`-c skills.config`), the scope's
   generation as its extra root (`skills/extraRoots/set`), and `needsReboot`
   when a home SKILL.md appeared since the spawn. A `/skill` named in a

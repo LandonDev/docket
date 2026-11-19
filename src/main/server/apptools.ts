@@ -16,6 +16,7 @@ import {
 } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
 import { WORK_TOOL_SERVER, workToolId } from '@shared/work/tools'
+import { sessionScopeOf } from '@shared/work/ids'
 import type { WorkToolMount } from './work/ctx'
 import { inputShapeOf } from './work/toolInput'
 import {
@@ -102,7 +103,23 @@ import { provenanceOf, renderComputerMechanics, wordsFor } from './computer/prom
 import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
-import { batchMembershipOf, hostCatalogView, hostParamDescription, hostServing, isMasterSession, toolLine } from './orchestration'
+import {
+  batchMembershipOf,
+  hostCatalogView,
+  hostParamDescription,
+  hostServing,
+  isMasterSession,
+  toolLine,
+  // Work's scope rule (work/scope.ts), by way of orchestration.ts: this file loads nothing under work/ but the loader and the input helper (work/load.test.ts).
+  mayUseFarDesktop,
+  OUTSIDE_FENCE,
+  scopeFactsOf,
+  withinFence,
+  WORK_THREAD_TYPES,
+  workHomeOf,
+  workHomeOfSession,
+  WorkRefused
+} from './orchestration'
 import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 
 /**
@@ -230,6 +247,13 @@ export function hasAppBridge(): boolean {
   return bridge !== null
 }
 
+/** A Work thread reaches a Mac's desktop (the bridge's tools, bridged computer use) only when its workspace may use that Mac; any other thread as its bridge says. */
+function farDesktopOk(sessionId: string): boolean {
+  const session = registry?.get(sessionId)
+  if (!session || sessionScopeOf(session) !== 'work') return true
+  return mayUseFarDesktop(session, macToolsHooks.current?.macPeerOf(sessionId).macPeer ?? null)
+}
+
 /**
  * Does this thread get the computer tools, and COMPUTER_MECHANICS with them?
  * Computer use runs on this host, or the thread's Mac bridge names a Mac that
@@ -239,7 +263,7 @@ export function hasAppBridge(): boolean {
 export function offersComputerTools(
   session: Pick<SessionMeta, 'provider'> & { id?: string },
   host: ComputerHost | null = computerHooks.current,
-  bridged: (session: { id?: string }) => boolean = (s) => !!s.id && !!computerBridgeHooks.current?.offered(s.id)
+  bridged: (session: { id?: string }) => boolean = (s) => !!s.id && !!computerBridgeHooks.current?.offered(s.id) && farDesktopOk(s.id)
 ): boolean {
   if (!host?.available() && !bridged(session)) return false
   return session.provider === 'claude' || ((session.provider === 'codex' || session.provider === 'muse') && hasAppBridge())
@@ -264,9 +288,10 @@ export function computerMechanicsFor(session: SessionMeta, host: ComputerHost | 
 export function bridgeMcpConfig(sessionId: string, opts: { computerImages?: 'parts' | 'none' } = {}): Record<string, unknown> | null {
   if (!bridge) return null
   // Here where computer use runs, else a box thread whose Mac bridge offers it (computer/bridge.ts).
+  const desktop = farDesktopOk(sessionId)
   const computer = computerHooks.current?.available()
     ? computerHooks.current
-    : computerBridgeHooks.current?.offered(sessionId) && computerBridgeHooks.tokens
+    : desktop && computerBridgeHooks.current?.offered(sessionId) && computerBridgeHooks.tokens
       ? { tokens: computerBridgeHooks.tokens }
       : null
   return {
@@ -277,11 +302,13 @@ export function bridgeMcpConfig(sessionId: string, opts: { computerImages?: 'par
       TEMP_CODE_PORT: String(bridge.port),
       TEMP_CODE_SESSION: sessionId,
       // The Mac bridge's per-thread token, only while the thread's bridge is on (macTools.ts).
-      ...(macToolsHooks.current?.bridgeEnv(sessionId) ?? {}),
+      ...(desktop ? (macToolsHooks.current?.bridgeEnv(sessionId) ?? {}) : {}),
       // Fixed at spawn: a scope that gains its first add-on or loses its last reboots the harness at its next turn (addons/scopeFlip.ts).
       ...(addons?.hasAddons(sessionId) ? { TEMP_CODE_ADDONS: '1' } : {}),
       // Work's tools, fixed at spawn like the rest: only a thread whose scope has them carries the token (work/ctx.ts).
       ...workBridgeEnv(sessionId),
+      // A Work thread says so to its bridge, which may list less for it (the code tools: merge, plan, batch gate).
+      ...(sessionScopeOf(registry?.get(sessionId) ?? {}) === 'work' ? { TEMP_CODE_SCOPE: 'work' } : {}),
       // The computer tools, on a Mac only: the thread's own token, so its bridge never acts as another thread (computer/rpc.ts).
       ...(computer
         ? { TEMP_CODE_COMPUTER_TOKEN: computer.tokens.tokenFor(sessionId), TEMP_CODE_COMPUTER_IMAGES: opts.computerImages ?? 'none' }
@@ -314,9 +341,12 @@ export function appListThreads(
   caller: SessionMeta,
   allProjects: boolean
 ): Record<string, unknown>[] {
+  // A Work thread lists the threads of its own workspace and no other (work/scope.ts).
+  const fenced = sessionScopeOf(caller) === 'work' ? scopeFactsOf(reg) : null
   return reg
     .list()
     .filter((s) => !s.parentId && !s.archived)
+    .filter((s) => !fenced || withinFence(fenced, caller, s))
     .filter((s) => allProjects || (caller.projectId && s.projectId === caller.projectId))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .map(threadRow)
@@ -336,6 +366,8 @@ export async function appReadThread(
   }
   const meta = reg.get(threadId)
   if (!meta) return null
+  // A Work thread reads the threads of its own workspace and no other.
+  if (caller && sessionScopeOf(caller) === 'work' && !withinFence(scopeFactsOf(reg), caller, meta)) return `refused: thread "${threadId}" ${OUTSIDE_FENCE}.`
   let digest = threadDigest(reg, meta)
   if (digest.length > INLINE_DIGEST_MAX_CHARS) {
     digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
@@ -449,8 +481,19 @@ export async function appStartThread(
   if (args.context1m && !supportsContext1m(provider, model, info)) {
     return `refused: ${model} does not offer the 1M context window — only Claude models do. Start the thread without context1m, or pick a Claude model.`
   }
+  // Scope follows the starter (work/scope.ts): what a Work thread starts is a
+  // Work thread of its own workspace, here or on another host, or nothing.
+  // SessionRegistry.create holds the rule; these are its refusals in words.
+  const work = sessionScopeOf(reg.get(caller.id) ?? caller) === 'work' ? scopeFactsOf(reg) : null
+  if (work && !WORK_THREAD_TYPES.includes(args.threadType)) return `refused: a Work thread starts chat and research threads only, not "${args.threadType}".`
   const projectId = args.projectId ?? caller.projectId
   const known = args.projectId ? reg.getProject(args.projectId) : null
+  const homeOf = work ? workHomeOfSession(work, reg.get(caller.id) ?? caller) : 'chat'
+  if (homeOf === 'orphan') return 'refused: this Work thread has no Work workspace on this host, so it starts no threads.'
+  const home = homeOf === 'chat' ? null : homeOf
+  if (work && args.projectId && known && known.workspaceId !== home?.id)
+    return `refused: project "${known.name}" is outside this Work thread's workspace. A Work thread starts threads only in ${home ? `its own workspace (${home.name})` : 'Work Chats'}; leave projectId out, or name one of its projects.`
+  if (work && args.projectId && !known) return `refused: unknown projectId "${args.projectId}".`
   // On another host an id this host does not know is no refusal: the far
   // host lands the thread in its copy of the caller's project by the link.
   if (args.projectId && !known && !args.environmentId?.trim()) {
@@ -474,21 +517,28 @@ export async function appStartThread(
         model,
         reasoning,
         ...(args.context1m ? { context1m: true } : {}),
-        firstMessage: args.firstMessage,
         ...(args.title ? { title: args.title } : {}),
-        ...(args.planPath ? { planPath: args.planPath } : {}),
+        ...(args.planPath && !work ? { planPath: args.planPath } : {}),
         cwd,
-        projectId: sent?.id ?? null
+        // A Work start names its workspace and sector, and its message rides inside `work` with
+        // `firstMessage` left empty: a host from before Work refuses that as malformed, so no build
+        // that would take the thread as a code thread ever starts it (contract-crosshost.ts).
+        ...(work
+          ? { firstMessage: '', projectId: null, work: { kind: 'start' as const, message: args.firstMessage, ...workHomeOf(home) } }
+          : { firstMessage: args.firstMessage, projectId: sent?.id ?? null })
       })
       return started
     } catch (err) {
-      return `refused: ${err instanceof Error ? err.message : String(err)}`
+      const why = err instanceof Error ? err.message : String(err)
+      return work ? `refused: that host did not take the thread as a Work thread (${why.replace(/\s+/g, ' ').trim().slice(0, 200)}). It runs a build from before Work, has Work off, or has no Work workspace for this job; nothing was started.` : `refused: ${why}`
     }
   }
   const seeds = (args.seedThreadIds ?? []).map((id) => reg.get(id))
   if (seeds.some((s) => !s)) {
     return `refused: seedThreadIds contains an unknown thread id. app_list_threads shows valid ids.`
   }
+  const outside = work ? seeds.find((s) => !withinFence(work, reg.get(caller.id) ?? caller, s!)) : null
+  if (outside) return `refused: seed thread "${outside.id}" ${OUTSIDE_FENCE}.`
   // "Start implementation from this plan" is zero-config: the caller's own
   // plan file is the default for the types that execute one.
   const planPath =
@@ -503,39 +553,46 @@ export async function appStartThread(
   const membership = batchMembershipOf(callerNow)
   // The thread and its first message are one step (startWith): a refused
   // message leaves no titled thread without its brief.
-  const thread = await reg.startWith(
-    {
-      provider,
-      model,
-      reasoning,
-      permission: callerNow.permission,
-      ...(args.context1m ? { context1m: true } : {}),
-      projectId,
-      threadType: args.threadType,
-      planPath,
-      title: args.title,
-      parentId: null,
-      // The caller hears when a plan it started completes (planFlow.ts).
-      startedBy: caller.id,
-      // The batch follows the starter (orchestration.ts batchMembershipOf): a
-      // master's thread carries the master's id, a batch thread's thread (a
-      // plan's build) inherits it; `after` names the sibling it waits for.
-      ...membership,
-      ...('masterId' in membership && args.after ? { after: args.after } : {}),
-      ...(projectId ? {} : { cwd: caller.cwd })
-    },
-    args.firstMessage,
-    {
-      attachments: seeds.length
-        ? seeds.map((s) => ({
-            path: `thread:${s!.id}`,
-            name: s!.title,
-            kind: 'thread' as const,
-            sessionId: s!.id
-          }))
-        : undefined
-    }
-  )
+  let thread: SessionMeta
+  try {
+    thread = await reg.startWith(
+      {
+        provider,
+        model,
+        reasoning,
+        permission: callerNow.permission,
+        ...(args.context1m ? { context1m: true } : {}),
+        projectId,
+        threadType: args.threadType,
+        planPath,
+        title: args.title,
+        parentId: null,
+        // The caller hears when a plan it started completes (planFlow.ts).
+        startedBy: caller.id,
+        // The batch follows the starter (orchestration.ts batchMembershipOf): a
+        // master's thread carries the master's id, a batch thread's thread (a
+        // plan's build) inherits it; `after` names the sibling it waits for.
+        ...membership,
+        ...('masterId' in membership && args.after ? { after: args.after } : {}),
+        ...(projectId ? {} : { cwd: caller.cwd })
+      },
+      args.firstMessage,
+      {
+        attachments: seeds.length
+          ? seeds.map((s) => ({
+              path: `thread:${s!.id}`,
+              name: s!.title,
+              kind: 'thread' as const,
+              sessionId: s!.id
+            }))
+          : undefined
+      }
+    )
+  } catch (err) {
+    // Work's refusal is the tool's answer; anything else is a fault as before.
+    if (err instanceof WorkRefused) return err.message
+    throw err
+  }
   const created = reg.get(thread.id) ?? thread
   // Held by `after` or the host's running cap (scheduler.ts): say why, in the words list_agents uses.
   const detail = created.status === 'queued' ? reg.queuedDetail(thread.id) : null
@@ -685,7 +742,49 @@ export function setProjectPlans(plans: ProjectPlans | null): void {
 let skillTools: SkillToolDeps | null = null
 export function setAppSkillTools(deps: SkillToolDeps | null): void {
   skillTools = deps
+  if (deps) guardWorkSkills(deps)
 }
+
+export const WORK_ADDON_REFUSAL = 'refused: a Work thread adds and removes add-ons for its own workspace only, never for every workspace.'
+export const WORK_SKILL_REFUSAL = 'refused: a Work thread writes and removes skills for its own workspace only, never for every workspace: a skill there is read by code threads too.'
+
+/**
+ * A skill is instructions other threads read. One a Work thread wrote for
+ * every workspace would be read by code threads, which hold the person's own
+ * MCP servers and sending keys: the fence, crossed by a file. So a Work
+ * thread writes and removes skills in its own Work workspace's scope only,
+ * and a Work Chat, which has none, not at all.
+ */
+function workSkillRefusal(caller: SessionMeta, scopeWorkspaceId: string | null): string | null {
+  if (!registry || sessionScopeOf(caller) !== 'work') return null
+  const home = workHomeOfSession(scopeFactsOf(registry), caller)
+  return typeof home !== 'string' && scopeWorkspaceId === home.id ? null : WORK_SKILL_REFUSAL
+}
+
+/**
+ * The rule on the store's write itself, for whichever caller reaches it (a
+ * Claude tool here, the bridge's app.skillWrite through index.ts, which holds
+ * the same deps object): the write names its writer, the thread at the top of
+ * the caller's tree, and its scope. A remove names no writer, so the Claude
+ * tool checks it before the call (below); the bridge's remove still asks the
+ * person's card for a skill a person wrote.
+ */
+function guardWorkSkills(deps: SkillToolDeps): void {
+  const write = deps.write
+  if ((write as { workGuarded?: true }).workGuarded) return
+  const guarded: SkillToolDeps['write'] = async (input, expectUpdatedAt) => {
+    const by = input.writtenBy
+    const writer = by?.kind === 'thread' ? registry?.get(by.sessionId) : null
+    const refusal = writer ? workSkillRefusal(writer, input.workspaceId) : null
+    return refusal ?? write(input, expectUpdatedAt)
+  }
+  ;(guarded as { workGuarded?: true }).workGuarded = true
+  deps.write = guarded
+}
+
+/** The scope a skill call lands in, as skills/tools.ts decides it: the one named, else the caller's workspace, else every workspace. */
+const skillScopeOf = (deps: SkillToolDeps, caller: SessionMeta, scope: 'workspace' | 'global' | undefined): string | null =>
+  (scope ?? (deps.workspaceOf(caller) ? 'workspace' : 'global')) === 'global' ? null : (deps.workspaceOf(caller)?.id ?? null)
 
 export const SKILL_WRITE_SHAPE = {
   name: z.string().describe(SKILL_WRITE_PARAMS.name),
@@ -778,6 +877,8 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
   // cite_source exists only inside a research tree (the handle reboots on
   // a retype, so the check at boot is current); elsewhere it would only refuse.
   const research = registry?.researchRootOf(session.id) !== null
+  // A Work thread gets none of the code tools: no merge, no batch gate or landing rules. Its scope was stamped at create, so the row says it.
+  const work = sessionScopeOf(session) === 'work'
   const server = createSdkMcpServer({
     name: 'app',
     version: '0.1.0',
@@ -901,26 +1002,34 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         )
       ),
       deferredTool(
-        tool(SKILL_REMOVE_TOOL, SKILL_REMOVE_DESCRIPTION, SKILL_REMOVE_SHAPE, async (args, x) =>
-          text(skillTools ? await skillRemove(skillTools, liveCaller(session), args, { callId: toolUseIdOf(x) }) : SKILLS_NOT_READY)
-        )
+        tool(SKILL_REMOVE_TOOL, SKILL_REMOVE_DESCRIPTION, SKILL_REMOVE_SHAPE, async (args, x) => {
+          if (!skillTools) return text(SKILLS_NOT_READY)
+          const caller = liveCaller(session)
+          const refusal = workSkillRefusal(caller, skillScopeOf(skillTools, caller, args.scope))
+          return text(refusal ?? (await skillRemove(skillTools, caller, args, { callId: toolUseIdOf(x) })))
+        })
       ),
       // note_decision on every thread: the record of a choice made while the person is away.
       tool(NOTE_DECISION_TOOL_NAME, NOTE_DECISION_DESCRIPTION, NOTE_DECISION_SHAPE, async (args) =>
         text(registry ? appNoteDecision(registry, session, args) : 'app registry not ready')
       ),
-      // merge_branch on every thread: the merge itself, with the project's
+      // merge_branch on every code thread: the merge itself, with the project's
       // review in front of it when that is on (mergeReview.ts).
-      tool(MERGE_BRANCH_TOOL_NAME, MERGE_BRANCH_TOOL_DESCRIPTION, MERGE_BRANCH_SHAPE, async (args) => {
-        const reviews = mergeReviews()
-        const live = registry?.get(session.id) ?? session
-        return text(reviews ? await reviews.mergeBranch(live, args) : 'refused: merge reviews are not available here')
-      }),
+      ...(work
+        ? []
+        : [
+            tool(MERGE_BRANCH_TOOL_NAME, MERGE_BRANCH_TOOL_DESCRIPTION, MERGE_BRANCH_SHAPE, async (args) => {
+              const reviews = mergeReviews()
+              const live = registry?.get(session.id) ?? session
+              return text(reviews ? await reviews.mergeBranch(live, args) : 'refused: merge reviews are not available here')
+            })
+          ]),
       // batch_rules, batch_gate, adopt_thread and archive_threads only on a
       // master thread (batch.ts): what the app does when the batch is done,
       // the gate and release run early, an existing thread brought into the
-      // batch, and threads taken out of it.
-      ...(isMaster(session)
+      // batch, and threads taken out of it. A Work master keeps the two that
+      // manage its threads; the gate and the landing rules are a code batch's.
+      ...(isMaster(session) && !work
         ? [
             tool(BATCH_RULES_TOOL_NAME, BATCH_RULES_TOOL_DESCRIPTION, BATCH_RULES_SHAPE, async (args) => {
               const b = batches()
@@ -931,7 +1040,11 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
               const b = batches()
               const live = registry?.get(session.id) ?? session
               return text(b ? await b.gate(live, args) : 'refused: batches are not available here')
-            }),
+            })
+          ]
+        : []),
+      ...(isMaster(session)
+        ? [
             tool(ADOPT_THREAD_TOOL_NAME, ADOPT_THREAD_TOOL_DESCRIPTION, ADOPT_THREAD_SHAPE, async (args) => {
               const b = batches()
               const live = registry?.get(session.id) ?? session
@@ -960,7 +1073,8 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         htmlRenderTool(session.id, args)
       ),
       // Computer use on a Mac thread: deferred behind tool search, or loaded for a thread that is going to use it (computer/mcp.ts).
-      ...computerTools(session),
+      // Carried to a Mac from here, a Work thread gets it only when its workspace may use that Mac.
+      ...(computerHooks.current?.available() || farDesktopOk(session.id) ? computerTools(session) : []),
       // The add-on registry's management tools: deferred, found by tool search like the add-on tools themselves.
       deferredTool(
         tool(ADDON_LIST_TOOL, ADDON_LIST_DESCRIPTION, {}, async () => {
@@ -968,16 +1082,22 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
           return text(addons ? addons.list(live) : 'refused: add-ons are not available here')
         })
       ),
+      // A Work thread adds and removes add-ons in its own workspace's scope only: one for every workspace would reach
+      // code threads, and a global row it cannot see is not its to remove (addons/scope.ts).
       deferredTool(
         tool(ADDON_ADD_TOOL, ADDON_ADD_DESCRIPTION, ADDON_ADD_SHAPE, async (args) => {
           const live = registry?.get(session.id) ?? session
-          return text(addons ? await addons.add(live, args) : 'refused: add-ons are not available here')
+          if (!addons) return text('refused: add-ons are not available here')
+          if (sessionScopeOf(live) !== 'work') return text(await addons.add(live, args))
+          return text(args.scope === 'global' ? WORK_ADDON_REFUSAL : await addons.add(live, { ...args, scope: 'workspace' }))
         })
       ),
       deferredTool(
         tool(ADDON_REMOVE_TOOL, ADDON_REMOVE_DESCRIPTION, ADDON_REMOVE_SHAPE, async (args) => {
           const live = registry?.get(session.id) ?? session
-          return text(addons ? await addons.remove(live, args) : 'refused: add-ons are not available here')
+          if (!addons) return text('refused: add-ons are not available here')
+          if (sessionScopeOf(live) !== 'work') return text(await addons.remove(live, args))
+          return text(args.scope === 'global' ? WORK_ADDON_REFUSAL : await addons.remove(live, { ...args, scope: 'workspace' }))
         })
       )
     ]

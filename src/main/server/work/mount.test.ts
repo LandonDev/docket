@@ -13,11 +13,12 @@ import type { SessionRegistry } from '../sessions'
 import type { WorkPartDeps } from './ctx'
 import type { Caller, ToolCtx, WorkCtx, WorkModule, WorkSend } from './modules'
 
-// Milestone 6 builds the scope; here a Work thread's scope is whatever the test says it is.
+// The mount alone: a Work thread's scope here is whatever the test says it is (work/scope.ts decides it for real).
 // The part also keeps something that lives only while Work is on, as a later part's connection will.
 const scopes = new Map<string, WorkScope>()
 const part = { up: 0, down: 0 }
-vi.mock('./scope', () => ({
+vi.mock('./scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./scope')>()),
   scopePart: (_ctx: WorkCtx, deps: WorkPartDeps) => {
     deps.whileOn(() => {
       part.up++

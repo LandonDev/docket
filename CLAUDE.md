@@ -211,7 +211,12 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   `github:` spec), kept out of the app by electron-builder; scripts/workKitPin.test.ts.
   [docs/agents/work-kit.md](docs/agents/work-kit.md)
 - **Work** — a job as a workspace, behind one switch per host, off by default
-  (`work.get`, `work.set`). Built so far: the frame only. The shared types
+  (`work.get`, `work.set`). Built so far: the frame, and what a Work thread is
+  on the server: `sessions.scope` stamped once at create and following a
+  thread's parent or starter, no MCP server but the app's own (Claude Code
+  only for now; `work/fence.proof.test.ts` plants one in every source and runs
+  the real CLIs), the Work preamble on every start path
+  ([docs/agents/work-scope.md](docs/agents/work-scope.md)). The shared types
   (src/shared/work), the core columns (`workspaces.kind`, `sessions.scope`, …),
   `WORK_MODULES` and `WorkCtx` (src/main/server/work), one stub per pillar in
   every closed list (`contract-work-<pillar>.ts`, `work/<pillar>/index.ts`), the

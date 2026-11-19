@@ -22,6 +22,11 @@ plan-8YMm3ynnFZYs.md (grants) and plan-vJP8mPAPorvc.md (pages).
   in Work threads). They are not part of the row a client lists or the
   sync carries (`workMarks`, `setWorkMarks`), and a row write keeps them:
   the store upserts by id, since a replace would reset them.
+  A Work thread sees less than a code thread (addons/scope.ts,
+  `configureAddonScope`): the rows of its own Work workspace and, of the
+  global rows, only those marked `for_work`; a Work Chat's scope is
+  `"~work"`. A thread under a Work thread never reads past it
+  ([work-scope.md](work-scope.md)).
   One copy, on the box: `StoreSync` (src/main/server/remote/storeSync.ts,
   beside RulesSync) has the Mac follow the box, seed each shared scope
   once, forward every write and refuse one while the box is out of reach;

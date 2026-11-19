@@ -6,12 +6,14 @@ press. The plan is `.temp-code/plans/project.md` and its contracts are
 `.temp-code/plans/work-architecture.md`; section numbers (§) below point
 there.
 
-**What exists today is the frame and nothing a person sees.** The switch,
+**What exists today is the frame, and what a Work thread is.** The switch,
 the core columns, the shared types, the module list, the context the modules
 share, one stub per pillar in every closed list, the tool mount and the two
-build entries. No Work workspace, thread, tool or screen can be made yet:
-each is refused by name until the milestone that builds it lands. A pillar's
-own account goes in `docs/agents/work-<pillar>.md`.
+build entries; and on that, Work workspaces, Work Chats and Work threads on
+the server, with their fence and their preamble
+([work-scope.md](work-scope.md)). No screen shows them yet, and a pillar's
+method is refused by name until the milestone that builds it lands. A
+pillar's own account goes in `docs/agents/work-<pillar>.md`.
 
 ## The switch
 
@@ -31,7 +33,10 @@ own account goes in `docs/agents/work-<pillar>.md`.
 - With no Work rows, a host with the switch on is still today's app: a code
   thread's servers, allowed tools and bridge config are the same with Work
   mounted and on as with no Work at all (work/claude-driver.test.ts,
-  work/harnesses.test.ts).
+  work/harnesses.test.ts), and so are its stored row and its first message
+  (work/registry.test.ts).
+- A Work row made while the switch was on keeps its fence with it off: the
+  row decides. Off only means nothing new of Work is made.
 
 ## The first paint
 
@@ -229,6 +234,12 @@ the host exists, and that is the one door:
   `work/toolInput.ts` (`inputShapeOf`, which imports nothing of Work).
   work/load.test.ts holds index.ts and apptools.ts to that. A pillar's own
   `index.ts` may import what it likes: it is loaded behind the guard.
+- **The scope rule is the exception, and it is the host's own.**
+  work/scope.ts and work/preamble.ts decide what a Work thread is and what
+  it is told; the registry, the drivers and the cross-host handler load
+  them at boot, since a Work row must be fenced whether or not Work came
+  up. They import no pillar, not the registry and not the mount
+  (work/scope.test.ts); apptools.ts reaches them through orchestration.ts.
 
 ## The context
 
@@ -243,9 +254,9 @@ and edits nothing else:
 
 | Member | File | Milestone |
 |---|---|---|
-| `scopeOf`, and the two admissions below | work/scope.ts | 6 |
-| `threads` | work/threads.ts | 6 |
-| `peer` | work/peer.ts | 6 |
+| `scopeOf`, and the two admissions below | work/scope.ts (built: [work-scope.md](work-scope.md)) | 6 |
+| `threads` | work/threads.ts (built) | 6 |
+| `peer` | work/peer.ts (built) | 6 |
 | `lifeos`, `links` | work/lifeos/ctx.ts | 7 |
 | `canvas` | work/canvas/ctx.ts | 9 |
 | `held` | work/outbox/ctx.ts | 10 |
@@ -285,10 +296,17 @@ hook. The canvas is the first user (docs/agents/work-canvas.md).
 **The two admissions.** `workspace.create { kind: 'work' }` goes to
 `work.createWorkspace`, and a `session.create` that asks for Work (`scope:
 'work'`, or an `about` chip) passes `work.admitSession` first; both are
-answered by work/scope.ts. Today each is refused as not built. A create that
-does not ask never reaches Work's code. The run that started a
-thread (`routineRunId`) is never a client's to say: it is not a create
-param.
+answered by work/scope.ts. With the switch off each is refused (`Work is off
+on this host`). With it on, the workspace is made (the app's own folder
+under `<work root>/Work`), and the create is admitted: its scope is stamped
+where the row is made (`stampScope`, called by `SessionRegistry.create`),
+which also refuses what Work cannot honour. A create with an `about` chip
+says `not built` until the LifeOS link lands. A create that does not ask
+passes untouched, though the registry still stamps a thread of a Work
+workspace, or one a Work thread started, as a Work thread
+([work-scope.md](work-scope.md)). The run that started a thread
+(`routineRunId`) is never a client's to say: it is not a create param;
+`ctx.threads.start` carries it host side.
 
 ## Tools
 
@@ -393,7 +411,7 @@ need in its landing note and a foundation follow-up makes the change.
 - `src/shared/work/work.test.ts`, `src/shared/contract-work.test.ts`: the
   types, the names and the contract's mount.
 - `src/main/server/work/`: `settings.test.ts`, `ctx.test.ts` (every stub
-  says "not built" and its milestone), `mount.test.ts` (a fake module end to
+  that is still one says "not built" and its milestone), `mount.test.ts` (a fake module end to
   end), `harnesses.test.ts` (the real bridge script and Claude's server),
   `claude-driver.test.ts` (a code thread's tool surface, Work on and off),
   `server.test.ts` (a real server: the gate, the fence, the pushes, the
@@ -401,3 +419,6 @@ need in its landing note and a foundation follow-up makes the change.
 - `src/main/server/db-work.test.ts`, `addonStore.test.ts`: the columns.
 - `src/main/workBuild.test.ts`: the two build entries; it builds the hosted
   pages from their stubs.
+- Scope, the fence and the preamble: the list in
+  [work-scope.md](work-scope.md) "Proofs", `fence.proof.test.ts` (the real
+  CLIs) first among them.

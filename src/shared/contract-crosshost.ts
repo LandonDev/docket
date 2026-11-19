@@ -111,14 +111,56 @@ export type CrossHostCaller = z.infer<typeof CrossHostCallerSchema>
 const providerArg = z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx', 'muse'])
 const reasoningArg = z.enum(REASONING_LEVELS)
 
+// ── Work across hosts (docs/agents/work.md "Scope") ─────────────────────
+// A Work thread keeps its fence on every host. Whatever one host asks of
+// another for Work rides `thread.start` inside `work`, with `firstMessage`
+// left EMPTY. A host from before Work reads `firstMessage` as required and
+// non-empty, so it refuses the call as malformed; it would otherwise drop
+// the `work` key it does not know and start an ordinary code thread, which
+// loads the person's own MCP servers. A host that knows Work never starts a
+// thread from an empty message either. Three asks:
+//
+//  - `start`: a Work thread starts a thread there. The host makes it a Work
+//    thread of its own Work workspace for that job, or refuses.
+//  - `probe`: would a Work thread of this workspace be kept one there? A
+//    move asks before a row leaves (sessions.ts freezeForMove). Starts nothing.
+//  - `call`: a Work tool's call to the same module there (`ctx.peer`), run
+//    under that host's bridge policy for the caller. Starts nothing.
+
+/** The Work workspace a thread belongs to, as another host can match it: by link id, by sector, by its folder. All null: a Work Chat. */
+export const WorkHomeSchema = z.object({
+  /** The LifeOS sector the workspace links to. */
+  sector: z.string().min(1).max(64).nullable(),
+  workspaceLinkId: z.string().max(200).nullable(),
+  workspaceName: z.string().max(300).nullable(),
+  /** The workspace's folder on the caller, for the path map. */
+  workspacePath: z.string().max(2_000).nullable().optional()
+})
+export type WorkHome = z.infer<typeof WorkHomeSchema>
+
+export const ThreadWorkSchema = z.discriminatedUnion('kind', [
+  WorkHomeSchema.extend({ kind: z.literal('start'), message: z.string().min(1).max(200_000) }),
+  WorkHomeSchema.extend({ kind: z.literal('probe') }),
+  z.object({
+    kind: z.literal('call'),
+    /** The pillar, and the verb of its method `work.<module>.<verb>`. */
+    module: z.string().min(1).max(40),
+    verb: z.string().min(1).max(80),
+    args: z.unknown()
+  })
+])
+export type ThreadWork = z.infer<typeof ThreadWorkSchema>
+
 /** thread.start: app.startThread's fields, plus where on the box the caller works (translated on the Mac). */
-export const ThreadStartArgsSchema = z.object({
+export const ThreadStartArgsSchema = z
+  .object({
   threadType: ThreadTypeSchema,
   provider: providerArg,
   model: z.string().max(200).optional(),
   reasoning: reasoningArg.optional(),
   context1m: z.boolean().optional(),
-  firstMessage: z.string().min(1).max(200_000),
+  /** The thread's first message. Empty exactly when `work` is set: that is what makes a host from before Work refuse a Work call. */
+  firstMessage: z.string().max(200_000),
   title: z.string().max(300).optional(),
   /** The plan file on the box, when the type executes one; sent as text, since the Mac may not have it. */
   planPath: z.string().max(2_000).optional(),
@@ -129,9 +171,34 @@ export const ThreadStartArgsSchema = z.object({
   /** The master (on the box) whose batch the thread belongs to: the caller when it is a master, the caller's own when it is a batch thread. */
   masterId: z.string().max(64).optional(),
   /** The caller's project (shared/projectLinks.ts): the far host finds or creates its linked copy and the thread lands in it. */
-  project: ProjectLinkFactsSchema.optional()
-})
+  project: ProjectLinkFactsSchema.optional(),
+  /** Work's ask of this host (above); absent for a code thread's start. */
+  work: ThreadWorkSchema.optional()
+  })
+  .superRefine((args, ctx) => {
+    if (args.work && args.firstMessage !== '') ctx.addIssue({ code: 'custom', path: ['firstMessage'], message: 'a Work call leaves firstMessage empty' })
+    if (!args.work && args.firstMessage.length < 1) ctx.addIssue({ code: 'custom', path: ['firstMessage'], message: 'a thread starts with a message' })
+  })
 export type ThreadStartArgs = z.infer<typeof ThreadStartArgsSchema>
+
+/** The `thread.start` args of a Work ask that starts no thread (`probe`, `call`): the fields the method requires, none of them read but the caller's work root, which a probe maps the workspace's folder by. */
+export const workAskArgs = (work: Extract<ThreadWork, { kind: 'probe' | 'call' }>, workRoot?: string): ThreadStartArgs => ({ threadType: 'chat', provider: 'claude', firstMessage: '', cwd: '/', ...(workRoot ? { workRoot } : {}), work })
+
+/** What a `probe` answers. */
+export interface WorkProbeResult {
+  work: {
+    /** The Work switch there. */
+    enabled: boolean
+    /** Whether that host has the Work workspace the probe named (always true for a Work Chat). */
+    home: boolean
+    /** Why it would not keep the thread, in words. */
+    why?: string
+  }
+}
+/** What a `call` answers. */
+export interface WorkCallResult {
+  work: { result: unknown }
+}
 
 /** thread.spawn: one subagent, already resolved against the box thread's rules. */
 export const ThreadSpawnArgsSchema = z.object({
@@ -274,6 +341,8 @@ export interface ThreadStartResult {
   /** Where the thread works on the Mac. */
   cwd: string
   projectId: string | null
+  /** Set when the host made it a Work thread (a `work` start). */
+  scope?: 'work'
   /** Set when the box path had no checkout on the Mac and the thread started in the Mac's work root instead. */
   cwdNote?: string
 }

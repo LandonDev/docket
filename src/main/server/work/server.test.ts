@@ -103,13 +103,13 @@ describe('Work on a running host, as it ships', () => {
     expect(server.store.getSetting('work')).toBeNull()
   })
 
-  it('refuses every way of making a Work thing, by name, and still answers the code paths', async () => {
+  it('with the switch off, refuses every way of making a Work thing, and still answers the code paths', async () => {
     const me = await local()
-    expect(await me.request('workspace.create', { kind: 'work', name: 'Purdue', sector: 'purdue' })).toEqual({ id: '1', ok: false, error: "not built: workspace.create {kind: 'work'} (milestone 6)" })
-    expect(await me.request('session.create', { provider: 'claude', model: 'claude-opus-5-5', cwd: root, scope: 'work' })).toMatchObject({ ok: false, error: "not built: session.create {scope: 'work'} (milestone 6)" })
+    expect(await me.request('workspace.create', { kind: 'work', name: 'Purdue', sector: 'purdue' })).toEqual({ id: '1', ok: false, error: 'Work is off on this host' })
+    expect(await me.request('session.create', { provider: 'claude', model: 'claude-opus-5-5', cwd: root, scope: 'work', threadType: 'chat' })).toMatchObject({ ok: false, error: 'Work is off on this host' })
     expect(await me.request('session.create', { provider: 'claude', model: 'claude-opus-5-5', cwd: root, about: { kind: 'task', label: 'T', ref: { at: 'lifeos', table: 'tasks', id: 'k' } } })).toMatchObject({
       ok: false,
-      error: 'not built: session.create {about} (milestone 7)'
+      error: 'Work is off on this host'
     })
     expect(await me.request('workspace.create', {})).toMatchObject({ ok: false, error: 'workspace.create needs a path' })
     expect(server.store.listWorkspaces()).toEqual([])
@@ -145,9 +145,17 @@ describe('Work on a running host, as it ships', () => {
     for (const sock of [me, phone, admin]) expect(await pushed(sock, 'work')).toEqual([{ push: 'work', settings: { enabled: true } }])
     expect((await me.request('work.get')).result).toEqual({ enabled: true })
     expect(await me.request('app.workTools', { sessionId: 's', token: 'guess' })).toMatchObject({ ok: false, error: "forbidden: not this thread's Work token" })
-    // on or off, nothing makes a Work thing before milestone 6
-    expect(await me.request('workspace.create', { kind: 'work', name: 'Purdue' })).toMatchObject({ ok: false, error: "not built: workspace.create {kind: 'work'} (milestone 6)" })
+    // on: a Work workspace is the app's own folder under the work root (this test's own), and a create that only reads cannot make one
+    server.store.setSetting('workspace.root', join(root, 'workroot'))
+    expect(await phone.request('workspace.create', { kind: 'work', name: 'Purdue' })).toMatchObject({ ok: false })
+    const made = await me.request('workspace.create', { kind: 'work', name: 'Purdue', sector: 'purdue' })
+    expect(made).toMatchObject({ ok: true, result: { kind: 'work', sector: 'purdue', name: 'Purdue', git: false } })
+    expect((made.result as { path: string }).path).toBe(join(root, 'workroot', 'Work', 'Purdue'))
+    expect(await me.request('workspace.create', { kind: 'work', name: 'Purdue again', sector: 'purdue' })).toMatchObject({ ok: false, error: 'this host already has a Work workspace for purdue: Purdue' })
     expect(await me.request('work.set', { enabled: false })).toMatchObject({ ok: true, result: { enabled: false } })
+    // off again: the workspace stays, and nothing new of Work is made
+    expect(await me.request('workspace.create', { kind: 'work', name: 'Cosmic' })).toMatchObject({ ok: false, error: 'Work is off on this host' })
+    expect(server.store.listWorkspaces().filter((w) => w.kind === 'work').map((w) => w.name)).toEqual(['Purdue'])
     expect((await pushed(me, 'work')).at(-1)).toEqual({ push: 'work', settings: { enabled: false } })
     for (const sock of [me, phone, admin]) sock.ws.close()
   })

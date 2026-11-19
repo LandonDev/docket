@@ -37,7 +37,10 @@ import {
   rulesFor
 } from '../orchestration'
 import { APP_TOOLS, appToolsMcp, computerMechanicsFor, releaseAppTools, withWorkTools } from '../apptools'
-import { withMacTools } from '../macTools'
+import { macToolsHooks, withMacTools } from '../macTools'
+import { computerHooks } from '../computer/mcp'
+import { mayUseFarDesktop } from '../work/scope'
+import { WORK_STANDING_RULE } from '../work/preamble'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
 import { isMetaModel, type ProviderId } from '@shared/catalog'
@@ -483,15 +486,116 @@ export function claudeSkillEnv(
 /** How long a turn waits for the CLI to re-read its skills before it goes on without them. */
 export const SKILL_RELOAD_MS = 10_000
 
-export function claudeExtraArgs(session: { model: string; context1m?: boolean; fast?: boolean }): Record<string, string> {
+export function claudeExtraArgs(session: { model: string; context1m?: boolean; fast?: boolean; scope?: 'code' | 'work' }): Record<string, string> {
   return {
     'thinking-display': THINKING_DISPLAY,
     settings: JSON.stringify({
       ...(claudeFastFor(session, session.model) ? { fastMode: true } : {}),
       autoCompactEnabled: !session.context1m,
-      ...(session.context1m ? {} : { autoCompactWindow: AUTO_COMPACT_WINDOW })
+      ...(session.context1m ? {} : { autoCompactWindow: AUTO_COMPACT_WINDOW }),
+      // A Work thread never mounts the account's claude.ai connectors (fenceWorkOptions).
+      ...(session.scope === 'work' ? { disableClaudeAiConnectors: true } : {})
     })
   }
+}
+
+// ── the Work fence (docs/agents/work.md "The fence") ─────────────────────
+// A Work thread loads no MCP server TempCode does not serve itself. Claude
+// Code reads servers from the person's .claude.json (user and local scope),
+// from plugins their settings.json enables, from the account's claude.ai
+// connectors, and from a .mcp.json in the cwd, which an agent can write.
+// Each is cut twice by configuration (fenceWorkOptions) and once more by a
+// hook that does not depend on configuration (workToolRefusal).
+// work/fence.proof.test.ts plants a server in every one of those sources and
+// runs the real CLI under these options.
+
+/** Built-in tools a Work thread never gets: Claude's own schedules (routines replace them, and a cloud routine runs with the account's connectors), and its channels to sessions outside this thread's fence. */
+export const WORK_DENIED_TOOLS: readonly string[] = ['CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'ScheduleWakeup', 'SendMessage', 'ListAgents']
+
+/** `mcp__<server>__<tool>`: the server's name, or null for a tool that is not an MCP server's. */
+export function mcpServerOfTool(toolName: string): string | null {
+  if (!toolName.startsWith('mcp__')) return null
+  const rest = toolName.slice('mcp__'.length)
+  const end = rest.indexOf('__')
+  return end > 0 ? rest.slice(0, end) : rest
+}
+
+/**
+ * The tools an in-process server lists right now (the app server's add-on
+ * tools come and go while the thread runs), or null when its registry cannot
+ * be read, in which case the server's name alone decides.
+ */
+function registeredTools(server: unknown): Set<string> | null {
+  const tools = (server as { instance?: { _registeredTools?: unknown } } | undefined)?.instance?._registeredTools
+  return tools && typeof tools === 'object' ? new Set(Object.keys(tools)) : null
+}
+
+/**
+ * Why a Work thread may not call this tool, or null when it may. An MCP tool
+ * passes only as a tool one of this thread's own servers lists: the name is
+ * matched whole (`mcp__<server>__<tool>`), so a server that got in under a
+ * name beginning like ours (`app__x`) gains nothing by it. A denied built-in
+ * never passes.
+ */
+export function workToolRefusal(toolName: string, servers: Readonly<Record<string, unknown>>): string | null {
+  if (WORK_DENIED_TOOLS.includes(toolName)) return `${toolName} is not available in a Work thread.`
+  if (!toolName.startsWith('mcp__')) return null
+  for (const [name, server] of Object.entries(servers)) {
+    const prefix = `mcp__${name}__`
+    if (!toolName.startsWith(prefix)) continue
+    const listed = registeredTools(server)
+    if (!listed || listed.has(toolName.slice(prefix.length))) return null
+  }
+  return `${toolName} is not a tool of an MCP server this Work thread loads. Use the tools of ${Object.keys(servers).map((s) => `mcp__${s}__`).join(', ')} only.`
+}
+
+/**
+ * The fence around a Work thread's CLI, applied last, when the thread's own
+ * servers are all in `options.mcpServers`:
+ *
+ *  - `strictMcpConfig`: only those servers mount. It drops the person's
+ *    .claude.json servers, a plugin's, the cwd's .mcp.json, and a connector
+ *    the account lists.
+ *  - `settingSources`: the user tier alone, and only under a Work root
+ *    (skills/claudeRoots.ts), which holds the store's skills and none of the
+ *    person's settings, plugins or servers. No project or local tier, so
+ *    nothing in the cwd is read: not .mcp.json, not .claude/settings.json.
+ *    With no Work root (a host without the skills store) no tier is read.
+ *  - the account's connectors off, by the setting (claudeExtraArgs, and the
+ *    Work root's own settings.json) and by the CLI's env switch.
+ *  - a PreToolUse hook, first in the list, that denies any `mcp__*` tool
+ *    these servers do not list and each of WORK_DENIED_TOOLS. A hook runs in
+ *    every permission mode.
+ *  - the standing rule in the system prompt, where a compaction does not
+ *    reach: whose word counts, and that nothing is sent by shell.
+ *
+ * A code thread never comes here: its options are what they were.
+ */
+export function fenceWorkOptions(
+  options: Options,
+  session: { scope?: 'code' | 'work' },
+  root: { work?: true } | null,
+  /** Asked at each call: why the thread may not use another host's desktop right now (its workspace's setting may have changed since the spawn), or null. */
+  farDesktop: (toolName: string) => string | null = () => null
+): Options {
+  if (session.scope !== 'work') return options
+  const servers = { ...(options.mcpServers ?? {}) }
+  const fence = async (hookInput: unknown): Promise<HookJSONOutput> => {
+    const toolName = (hookInput as { tool_name?: unknown }).tool_name
+    const why = typeof toolName === 'string' ? (workToolRefusal(toolName, servers) ?? farDesktop(toolName)) : null
+    if (!why) return { continue: true }
+    return { continue: true, hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }
+  }
+  options.strictMcpConfig = true
+  options.settingSources = root?.work ? ['user'] : []
+  options.env = { ...(options.env ?? {}), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
+  options.hooks = { ...(options.hooks ?? {}), PreToolUse: [{ hooks: [fence] }, ...(options.hooks?.PreToolUse ?? [])] }
+  options.disallowedTools = [...new Set([...(options.disallowedTools ?? []), ...WORK_DENIED_TOOLS])]
+  // The rule a compaction must not take: whose word counts, and that nothing leaves by shell (work/preamble.ts).
+  const prompt = options.systemPrompt
+  if (prompt && typeof prompt === 'object' && !Array.isArray(prompt) && 'preset' in prompt) options.systemPrompt = { ...prompt, append: prompt.append ? `${prompt.append}\n\n${WORK_STANDING_RULE}` : WORK_STANDING_RULE }
+  else if (prompt === undefined) options.systemPrompt = { type: 'preset', preset: 'claude_code', append: WORK_STANDING_RULE }
+  return options
 }
 
 /** The phase a turn is in before its first content (events.ts `phase`): emitted only when it changes. */
@@ -1818,9 +1922,18 @@ export const claudeDriver: HarnessDriver = {
     }
 
     // The Mac bridge's tools, when this thread (or its parent) may reach a Mac (macTools.ts).
-    withMacTools(options, session)
+    // A Work thread gets them only when its workspace may use that Mac (work/scope.ts).
+    if (session.scope !== 'work' || mayUseFarDesktop(session, macToolsHooks.current?.macPeerOf(session.id).macPeer ?? null)) withMacTools(options, session)
     // Work's tools, when the thread's scope has any (apptools.ts): none for a code thread, whose options stay as built.
     withWorkTools(options, session)
+    // The fence around a Work thread, last: every server it mounts is in the options by now.
+    fenceWorkOptions(options, session, skillRoot, (toolName) => {
+      // The Mac bridge's tools, and computer use when this host has none of its own and carries it to a Mac:
+      // allowed only while the workspace may use that Mac, asked now and not only at the spawn.
+      const far = toolName.startsWith('mcp__mac__') || (toolName.startsWith('mcp__app__computer') && !computerHooks.current?.available())
+      if (!far) return null
+      return mayUseFarDesktop(session, macToolsHooks.current?.macPeerOf(session.id).macPeer ?? null) ? null : `${toolName} is not available: this workspace may not use that Mac (its Work settings).`
+    })
     // Every CLI spawn goes through the warm pool (claudeWarm.ts): a fresh
     // thread whose traffic our own gateway routes (the owner's, or no shim)
     // adopts the warm process of the SDK's exact spec when one waits, and
@@ -1831,7 +1944,8 @@ export const claudeDriver: HarnessDriver = {
     // The CLI process behind this handle, for its pid (admission.ts samples its RSS).
     let cli: ChildProcess | null = null
     const own = gw?.url('claude')
-    const warmable = !session.nativeId && !!gw && !!endpoint && !!own && (gw.status().owner || endpoint.startsWith(own))
+    // A Work thread spawns cold: a process kept warm since an earlier start read the Work root before this one put it back.
+    const warmable = session.scope !== 'work' && !session.nativeId && !!gw && !!endpoint && !!own && (gw.status().owner || endpoint.startsWith(own))
     options.spawnClaudeCodeProcess = (spawnOpts) => {
       const spawned = spawnOrAdoptClaude(
         { command: spawnOpts.command, args: spawnOpts.args, cwd: spawnOpts.cwd, env: spawnOpts.env },

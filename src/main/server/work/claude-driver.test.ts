@@ -21,8 +21,9 @@ vi.mock('../drivers/binaries', async (importOriginal) => ({
   resolveClaude: async () => ({ path: null })
 }))
 vi.mock('../endpoint', () => ({ routedEndpointFor: async () => ({ url: null }) }))
-// Milestone 6 builds the scope: here every thread that asks has one, so only the row's own `scope` keeps a code thread out.
-vi.mock('./scope', () => ({
+// The mount alone: here every thread that asks has a scope, so only the row's own `scope` keeps a code thread out.
+vi.mock('./scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./scope')>()),
   scopePart: () => ({
     scopeOf: (id: string): WorkScope => ({ sessionId: id, workspaceId: 'w1', sector: 'purdue', host: 'env_test', away: false, routineRunId: null, shared: () => false }),
     createWorkspace: async () => {
@@ -32,7 +33,7 @@ vi.mock('./scope', () => ({
   })
 }))
 
-const { claudeDriver } = await import('../drivers/claude')
+const { claudeDriver, WORK_DENIED_TOOLS } = await import('../drivers/claude')
 const { setAppWork } = await import('../apptools')
 const { startWork } = await import('./ctx')
 
@@ -98,15 +99,18 @@ it("a code thread's tool surface is the same with no Work, with Work mounted and
   }
 })
 
-it('a Work thread gains the work server and its tool only while Work is on, and nothing else changes', async () => {
+it('a Work thread gains the work server and its tool only while Work is on; its fence stands on or off, since the row decides', async () => {
   setAppWork(null)
   const code = toolSurface(await spawnOptions())
+  const fenced = [...code.disallowed, ...WORK_DENIED_TOOLS].sort()
   setAppWork({ tools: work.tools })
-  // off: the row says Work, the switch says no
-  expect(toolSurface(await spawnOptions({ id: 'cw-5', scope: 'work' }))).toEqual(code)
+  // off: the row says Work, the switch says no. No Work tool, and still no way out.
+  const off = await spawnOptions({ id: 'cw-5', scope: 'work' })
+  expect(toolSurface(off)).toEqual({ ...code, disallowed: fenced })
+  expect(off.strictMcpConfig).toBe(true)
   work.settings.set({ enabled: true })
   const on = toolSurface(await spawnOptions({ id: 'cw-5', scope: 'work' }))
   expect(on.servers).toEqual([...code.servers, 'work'].sort())
   expect(on.allowed).toEqual([...code.allowed, 'mcp__work__mail_fake_search'].sort())
-  expect(on.disallowed).toEqual(code.disallowed)
+  expect(on.disallowed).toEqual(fenced)
 })

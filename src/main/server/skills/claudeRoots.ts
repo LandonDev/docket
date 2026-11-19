@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { RESERVED_SKILL_NAME } from '@shared/skills'
@@ -23,9 +23,36 @@ import { scopeKeyOf, type ScopeKey, type SkillPointers } from './pointers'
  * (sessions/, backups/, lock files) stays in the scope's dir. The sign-in
  * rides the gateway: a routed thread holds `CLAUDE_CODE_OAUTH_TOKEN=routed`,
  * which the gateway replaces with the thread's account.
+ *
+ * A Work thread (docs/agents/work.md "The fence") runs under a root of its
+ * own, beside the scope's:
+ *
+ *   <userData>/harness/claude-config-work/<scope>/
+ *     skills/<name>      → the store's, as above
+ *     projects           → the person's (transcripts and memory)
+ *     CLAUDE.md          → the person's (their standing instructions)
+ *     .credentials.json  → the person's (the sign-in of a thread no gateway routes)
+ *     settings.json      the app's own file: account connectors off
+ *
+ * and nothing else of the person's: no .claude.json (their MCP servers), no
+ * settings.json (their plugins, hooks and env), no plugins/, agents/ or
+ * commands/. The list is what is linked, so an entry the person's dir gains
+ * later is not in a Work root until someone adds it here.
  */
 
 export const CLAUDE_ROOTS = 'claude-config'
+/** Where the Work roots live, one per skills scope. */
+export const CLAUDE_WORK_ROOTS = 'claude-config-work'
+/** Every entry of the person's dir a Work root links. */
+export const CLAUDE_WORK_LINKS: readonly string[] = ['projects', 'CLAUDE.md', '.credentials.json']
+/**
+ * Entries a Work root never keeps, link or not: each is a place the CLI reads
+ * instructions or tools from at the user tier, and nothing but an agent's
+ * shell would have put it there.
+ */
+export const CLAUDE_WORK_DROP: readonly string[] = ['agents', 'commands', 'rules', 'output-styles', 'plugins', 'workflows', 'hooks', 'settings.local.json', 'managed-settings.json']
+/** A Work root's own settings.json: the CLI reads it as the user's, and it turns the account's connectors off. */
+export const CLAUDE_WORK_SETTINGS = { disableClaudeAiConnectors: true } as const
 /** The placeholder the gateway replaces with the thread's account. */
 export const ROUTED_OAUTH = 'routed'
 /** The name Claude Code keeps under skills/ for its account-synced skills (skillProblem refuses it for a new skill). */
@@ -127,6 +154,65 @@ export function ensureClaudeRoot(deps: ClaudeRootDeps): string {
   return dir
 }
 
+/**
+ * <root>/claude-config-work/<scope>/, made or refreshed: the allowlist's
+ * links, the app's own settings.json, the store's skills. A link to anything
+ * else of the person's (a root an older rule made) goes; what the CLI wrote
+ * here for itself stays.
+ */
+export function ensureClaudeWorkRoot(deps: ClaudeRootDeps): string {
+  const personDir = deps.personDir ?? personClaudeDir()
+  const log = deps.log ?? defaultLog
+  const dir = join(deps.root, CLAUDE_WORK_ROOTS, deps.scope)
+  mkdirSync(dir, { recursive: true })
+  mkdirSync(join(personDir, 'projects'), { recursive: true })
+  for (const name of CLAUDE_WORK_LINKS) {
+    const path = join(dir, name)
+    // The person's standing instructions are the person's file, never one written in its place here.
+    if (name === 'CLAUDE.md' && lstatOrNull(path) && !lstatOrNull(path)!.isSymbolicLink()) {
+      rmSync(path, { recursive: true, force: true })
+      log(`${path} was a file of its own; removed and linked to the person's`)
+    }
+    if (lstatOrNull(join(personDir, name))) {
+      if (!linkTo(path, join(personDir, name))) log(`${path} is a file of its own, not the person's ${name}`)
+    } else if (lstatOrNull(path)?.isSymbolicLink()) rmSync(path, { force: true })
+  }
+  for (const name of readdirSync(dir)) {
+    if (name === 'skills' || CLAUDE_WORK_LINKS.includes(name)) continue
+    const path = join(dir, name)
+    if (CLAUDE_WORK_DROP.includes(name)) {
+      rmSync(path, { recursive: true, force: true })
+      log(`${path} removed: a Work root holds no ${name}`)
+      continue
+    }
+    // Nothing else here may point out of the root: a link is the person's entry under another name.
+    if (lstatOrNull(path)?.isSymbolicLink()) {
+      rmSync(path, { force: true })
+      log(`${path} was a link; a Work root links only ${CLAUDE_WORK_LINKS.join(', ')}`)
+    }
+  }
+  const settings = join(dir, 'settings.json')
+  const want = `${JSON.stringify(CLAUDE_WORK_SETTINGS, null, 2)}\n`
+  let have: string | null = null
+  try {
+    have = readFileSync(settings, 'utf8')
+  } catch {
+    // not written yet
+  }
+  if (have !== want) {
+    // Written in place of whatever is there: a link here would send the write into the person's own file.
+    rmSync(settings, { recursive: true, force: true })
+    writeFileSync(settings, want)
+  }
+  relinkClaudeSkills(dir, deps.pointer, personDir, log)
+  // Only the store's skills: a folder written into skills/ by hand is not one.
+  for (const name of readdirSync(join(dir, 'skills'))) {
+    const path = join(dir, 'skills', name)
+    if (!lstatOrNull(path)?.isSymbolicLink()) rmSync(path, { recursive: true, force: true })
+  }
+  return dir
+}
+
 /** Store rows named `synced` already said once (a peer's put never meets skillProblem). */
 const syncedSaid = new Set<string>()
 
@@ -197,7 +283,7 @@ export function configureClaudeSkillRoots(cfg: ClaudeSkillRootsConfig | null): v
   const off = cfg.pointers.onMoved((provider, scope) => {
     if (provider !== 'claude') return
     try {
-      relinkClaudeSkills(join(cfg.root, CLAUDE_ROOTS, scope), join(cfg.root, 'claude', SCOPE_DIR, scope), undefined, cfg.log)
+      for (const base of [CLAUDE_ROOTS, CLAUDE_WORK_ROOTS]) relinkClaudeSkills(join(cfg.root, base, scope), join(cfg.root, 'claude', SCOPE_DIR, scope), undefined, cfg.log)
     } catch (err) {
       ;(cfg.log ?? defaultLog)(`claude ${scope}: relink failed: ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -205,19 +291,27 @@ export function configureClaudeSkillRoots(cfg: ClaudeSkillRootsConfig | null): v
   configured = { ...cfg, off }
 }
 
+/** <userData>/harness, where the app keeps each harness's own roots; null when unconfigured. */
+export function harnessRoot(): string | null {
+  return configured?.root ?? null
+}
+
 export interface ClaudeSkillRoot {
   /** CLAUDE_CONFIG_DIR for the CLI */
   dir: string
   workspaceId: string | null
+  /** A Work root: nothing of the person's but the allowlist. */
+  work?: true
 }
 
-/** The owned root a thread's CLI runs under, made or refreshed now; null when unconfigured. */
-export function claudeSkillRootFor(session: { workspaceId: string | null; projectId: string | null; cwd: string }): ClaudeSkillRoot | null {
+/** The owned root a thread's CLI runs under, made or refreshed now; null when unconfigured. A Work thread gets its scope's Work root. */
+export function claudeSkillRootFor(session: { workspaceId: string | null; projectId: string | null; cwd: string; scope?: 'code' | 'work' }): ClaudeSkillRoot | null {
   if (!configured) return null
   const workspaceId = configured.scopeOf(session)
   const pointer = configured.pointers.path('claude', workspaceId)
-  const dir = ensureClaudeRoot({ root: configured.root, scope: scopeKeyOf(workspaceId), pointer, log: configured.log })
-  return { dir, workspaceId }
+  const deps = { root: configured.root, scope: scopeKeyOf(workspaceId), pointer, log: configured.log }
+  if (session.scope === 'work') return { dir: ensureClaudeWorkRoot(deps), workspaceId, work: true }
+  return { dir: ensureClaudeRoot(deps), workspaceId }
 }
 
 /** The generation a scope's pointer names now; null when unconfigured. */
@@ -228,7 +322,7 @@ export function claudeSkillsGeneration(workspaceId: string | null): string | nul
 /** The generation the scope of an owned root (a spec's CLAUDE_CONFIG_DIR) names now; null for any other dir. */
 export function claudeGenerationOfRoot(configDir: string | undefined): string | null {
   if (!configured || !configDir) return null
-  if (join(configured.root, CLAUDE_ROOTS, basename(configDir)) !== configDir) return null
   const scope = basename(configDir)
+  if (join(configured.root, CLAUDE_ROOTS, scope) !== configDir && join(configured.root, CLAUDE_WORK_ROOTS, scope) !== configDir) return null
   return claudeSkillsGeneration(scope === 'global' ? null : scope.startsWith('ws-') ? scope.slice(3) : null)
 }

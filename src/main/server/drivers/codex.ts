@@ -19,7 +19,11 @@ import { observeCodexSnapshot } from '../gatewayObserve'
 import { serviceTierFor } from './codexTiers'
 import { THREAD_MARK } from '../processGuard'
 import { NICE_LEVEL } from '@shared/bashMarks'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { sessionScopeOf } from '@shared/work/ids'
+import { harnessRoot } from '../skills/claudeRoots'
+import { WORK_STANDING_RULE } from '../work/preamble'
 import { codexSkillRoot, codexSkillScope, disableHomeSkillsArgs, homeSkillFiles, trackCodexSkills } from '../skills/codexSkills'
 import { COMPUTER_PICTURES_TEXT, MAX_IMAGE_PARTS, parseShotLine } from '@shared/computer/tools'
 import { addonCallOf } from '@shared/addonNames'
@@ -92,6 +96,126 @@ export function codexPluginArgs(env: NodeJS.ProcessEnv = process.env): string[] 
 
 /** The same switch, for a thread's own `features`: thread/start's config is read over the person's config.toml again. */
 export const codexPluginsOff = (env: NodeJS.ProcessEnv = process.env): boolean => env.TEMP_CODE_CODEX_PLUGINS === 'off'
+
+// ── the Work fence (docs/agents/work.md "The fence") ─────────────────────
+// A Work thread loads no MCP server but the app's own bridge. Codex reads
+// servers and other tools from: the home's config.toml; plugins installed
+// in the home; plugins and apps of the signed-in ChatGPT account
+// (`codex_apps`, hundreds of tools); a project's `.codex/config.toml` and
+// `.codex/hooks.json`, in the cwd and every folder up to the git root, which
+// an agent can write; and hooks, which run commands. Each is cut here, and
+// work/fence.proof.test.ts plants one in every source and runs the real CLI.
+//
+//  - its own CODEX_HOME (`codexWorkHome`), holding the app's config.toml and
+//    a link to the person's auth.json and nothing else of theirs. Rewritten
+//    before every thread/start and thread/resume: `thread/start` itself
+//    writes a `trusted` entry for the folder into the home's config.toml
+//    under a writable sandbox, and a file entry beats the thread's own.
+//  - plugins, apps and hooks off, in the file, on the argv and in the
+//    thread's config.
+//  - the cwd named untrusted in the thread's config, and no climb to a
+//    parent's `.codex`: a project's config, hooks and exec policies are not
+//    read from an untrusted folder.
+//
+// What this cannot cut: a system config under /etc/codex, which only root
+// writes and which outranks the home. A Work thread is refused on a host
+// that has one. And the home is a file the agent's own shell can write: a
+// process it left running can change it again between the rewrite and
+// codex's read. So the driver also checks what codex did: a Work thread
+// whose app-server names any MCP server but `app` is stopped before a turn.
+//
+// Codex is not offered for Work threads yet (work/scope.ts WORK_PROVIDERS):
+// its app tools go through the stdio bridge, where a tool call can name
+// another thread as its caller. This fence is ready for when that is shut.
+
+/** The feature switches a Work thread runs with, each off. */
+export const CODEX_WORK_OFF = ['plugins', 'remote_plugin', 'apps', 'hooks', 'skill_mcp_dependency_install', 'tool_suggest'] as const
+const workFeatures = (): Record<string, false> => Object.fromEntries(CODEX_WORK_OFF.map((f) => [f, false as const]))
+/** The Work home's whole config.toml. */
+export const CODEX_WORK_CONFIG = `# TempCode's Codex home for Work threads. Rewritten before every thread starts; edits do not survive.\n[features]\n${CODEX_WORK_OFF.map((f) => `${f} = false`).join('\n')}\n`
+/** The system config files a home cannot outrank. */
+export const CODEX_SYSTEM_CONFIG = ['/etc/codex/config.toml', '/etc/codex/managed_config.toml', '/etc/codex/requirements.toml'] as const
+/**
+ * Entries of a Work home removed at every start: a tool source, its cache or
+ * its credentials, and the files codex reads standing instructions from
+ * (only an agent's shell would have written one here).
+ */
+const WORK_HOME_DROP = ['hooks.json', 'plugins', '.tmp', 'cache', '.credentials.json', 'mcp-oauth-locks', 'packages', 'AGENTS.md', 'AGENTS.override.md', 'prompts', 'rules', 'agents']
+
+let workHomeOverride: string | null = null
+/** A test's own Work home. */
+export function setCodexWorkHome(dir: string | null): void {
+  workHomeOverride = dir
+}
+/** Where a Work thread's Codex home lives: `<userData>/harness/codex-work-home`; null on a host with no data dir configured. */
+export function codexWorkHome(): string | null {
+  const root = harnessRoot()
+  return workHomeOverride ?? (root ? join(root, 'codex-work-home') : null)
+}
+/** The person's own Codex home, whose sign-in a Work home links. */
+const personCodexHome = (): string => process.env.CODEX_HOME || join(homedir(), '.codex')
+
+/**
+ * The Work home, made or put back as the app keeps it: its config.toml
+ * rewritten whole, every tool source an agent may have written removed, and
+ * `auth.json` a link to the person's (one file, so one refresh token). The
+ * thread's own rollouts and databases stay, so it resumes from here.
+ */
+export function ensureCodexWorkHome(dir: string, personHome: string = personCodexHome()): string {
+  mkdirSync(dir, { recursive: true })
+  for (const name of readdirSync(dir)) {
+    if (WORK_HOME_DROP.includes(name) || (name.endsWith('.config.toml') && name !== 'config.toml')) rmSync(join(dir, name), { recursive: true, force: true })
+  }
+  // Codex keeps its own skills under skills/.system; anything else there was written by hand.
+  try {
+    for (const name of readdirSync(join(dir, 'skills'))) if (name !== '.system') rmSync(join(dir, 'skills', name), { recursive: true, force: true })
+  } catch {
+    // no skills folder yet
+  }
+  // Written in place of whatever is there: a link here would send the write somewhere else.
+  rmSync(join(dir, 'config.toml'), { recursive: true, force: true })
+  writeFileSync(join(dir, 'config.toml'), CODEX_WORK_CONFIG)
+  const auth = join(dir, 'auth.json')
+  const target = join(personHome, 'auth.json')
+  let linked: string | null = null
+  try {
+    linked = readlinkSync(auth)
+  } catch {
+    // not a link, or not there
+  }
+  // A copy an agent made, a link elsewhere, or a link to a sign-in that is gone: none stays.
+  if (linked !== target || !existsSync(target)) {
+    rmSync(auth, { force: true })
+    if (existsSync(target)) symlinkSync(target, auth)
+  }
+  return dir
+}
+
+/** What follows the binary for a Work thread: the same switches as the file, so they hold if the file changes between the spawn and the thread's start. */
+export const codexWorkArgs = (): string[] => CODEX_WORK_OFF.flatMap((f) => ['-c', `features.${f}=false`])
+
+/** A Work thread's part of the thread config: the cwd untrusted under both of its names, no parent's `.codex`, the switches off. */
+export function codexWorkThreadConfig(cwd: string): { project_root_markers: string[]; projects: Record<string, { trust_level: 'untrusted' }>; features: Record<string, false> } {
+  let real = cwd
+  try {
+    real = realpathSync(cwd)
+  } catch {
+    // a folder that is not there yet has one name
+  }
+  return {
+    project_root_markers: [],
+    projects: Object.fromEntries([...new Set([cwd, real])].map((dir) => [dir, { trust_level: 'untrusted' as const }])),
+    features: workFeatures()
+  }
+}
+
+/** Why a Work thread cannot run on Codex here, or null: a system config no home outranks, or no place for the Work home. */
+export function codexWorkRefusal(exists: (path: string) => boolean = existsSync): string | null {
+  const system = CODEX_SYSTEM_CONFIG.find((path) => exists(path))
+  if (system) return `this host has a system Codex config (${system}) that a Work thread cannot be kept from; Codex is not offered for Work here`
+  if (!codexWorkHome()) return 'this host has no data folder for a Work thread\'s Codex home'
+  return null
+}
 
 /** Backoff before each boot retry; a test shortens it. */
 export const bootOptions = { backoffMs: [1500, 4000] }
@@ -452,7 +576,14 @@ export const codexDriver: HarnessDriver = {
     if (!binPath) throw new Error('codex CLI not found — install it and log in (`codex login`)')
     // The thread's mark for the host's process guard (processGuard.ts): every
     // shell the app-server runs inherits it, so its orphans are the thread's.
-    const env = { ...(await harnessEnv()), [THREAD_MARK]: session.id, ...metaCodexEnv(session) }
+    // A Work thread runs under its own home (the fence above), or not at all.
+    const work = sessionScopeOf(session) === 'work'
+    const workRefusal = work ? codexWorkRefusal() : null
+    if (workRefusal) throw new Error(workRefusal)
+    const workHome = work ? codexWorkHome()! : null
+    const env: NodeJS.ProcessEnv = { ...(await harnessEnv()), [THREAD_MARK]: session.id, ...metaCodexEnv(session), ...(workHome ? { CODEX_HOME: workHome } : {}) }
+    // Another variable would move the thread's databases out of the Work home, back beside the person's.
+    if (workHome) delete env.CODEX_SQLITE_HOME
 
     const computerImages = codexComputerImages()
     let pictureSeq = 0
@@ -471,6 +602,8 @@ export const codexDriver: HarnessDriver = {
     // send waits for startup to settle (bounded), so /linear-style
     // plugins are callable from message one.
     const mcpStarting = new Set<string>()
+    /** A Work thread's app-server named an MCP server that is not the app's: no message is sent to it again. */
+    let fenceBroken: string | null = null
     let mcpSettled: (() => void) | null = null
     // Codex runs a turn on fallback metadata (a 258,400 window, every tool
     // inline) for a model its `model/list` does not name yet: one Mac
@@ -713,6 +846,18 @@ export const codexDriver: HarnessDriver = {
           break
         case 'mcpServer/startupStatus/updated': {
           const name = String(params.name ?? '')
+          // The Work fence, checked on what codex did, not on what it was told: a Work thread mounts the app's bridge
+          // and nothing else. A server of any other name means its home was changed between the app's rewrite and
+          // codex's read of it. The process goes before a turn can list that server's tools.
+          if (work && name && name !== 'app') {
+            fenceBroken = name
+            emit({ type: 'error', message: `Work fence: Codex started an MCP server that is not this app's ("${name}"). The thread's harness was stopped; nothing ran with it.` })
+            setStatus('error')
+            conn.kill()
+            mcpSettled?.()
+            mcpSettled = null
+            break
+          }
           if (params.status === 'starting') mcpStarting.add(name)
           else mcpStarting.delete(name)
           // Every server reached a terminal state — release the gate.
@@ -1023,7 +1168,8 @@ export const codexDriver: HarnessDriver = {
         console.warn(`[codex] ${session.id}: skills/extraRoots/set refused (${err instanceof Error ? err.message : String(err)}); ${heldRoot ? 'the old root stays' : 'no store skills'}`)
       }
     }
-    const spec: WarmSpec = { command: binPath, args: [...codexPluginArgs(), ...disableHomeSkillsArgs(disabledHome), 'app-server'], cwd: session.cwd, env: env as Record<string, string | undefined> }
+    if (workHome) ensureCodexWorkHome(workHome)
+    const spec: WarmSpec = { command: binPath, args: [...(work ? codexWorkArgs() : codexPluginArgs()), ...disableHomeSkillsArgs(disabledHome), 'app-server'], cwd: session.cwd, env: env as Record<string, string | undefined> }
     const boot = async (attempt: number): Promise<void> => {
       let booted = false
       const onExit = (code: number | null): void => {
@@ -1034,7 +1180,8 @@ export const codexDriver: HarnessDriver = {
       // The warm app-server of this binary, env and cwd (codexWarm), already
       // initialized, when one waits; else a cold spawn that becomes the
       // shape to keep warm. A retry after a boot death always spawns cold.
-      const warm = attempt === 1 && process.env.TEMP_CODE_WARM_HARNESS !== '0' ? codexWarm.adopt(spec) : null
+      // A Work thread spawns cold: a process kept warm since an earlier start read the Work home before this one put it back.
+      const warm = attempt === 1 && !work && process.env.TEMP_CODE_WARM_HARNESS !== '0' ? codexWarm.adopt(spec) : null
       if (warm?.proc.alive) {
         conn = warm.proc
         conn.attach(onNotify, onRequest, onExit)
@@ -1065,11 +1212,16 @@ export const codexDriver: HarnessDriver = {
         const writeRoots = researchWriteRoots(session)
         // A Meta row lists no speed tiers, so no service_tier ever reaches Meta.
         const serviceTier = isMetaModel(session.provider, session.model) ? null : serviceTierFor(session, session.model)
+        // The Work home again, right before the thread starts: a warm process was spawned earlier, and codex reads config.toml at thread/start.
+        if (workHome) ensureCodexWorkHome(workHome)
+        const workConfig = work ? codexWorkThreadConfig(session.cwd) : null
         const threadParams = {
           cwd: session.cwd,
           model: session.model,
           approvalPolicy: APPROVAL_POLICY[session.permission],
           sandbox: SANDBOX[session.permission],
+          // A Work thread's standing rule, where a compaction does not reach (work/preamble.ts).
+          ...(work ? { developerInstructions: WORK_STANDING_RULE } : {}),
           config: {
             // The structured-question tool (request_user_input) is
             // feature-gated off by default — without it the model dumps
@@ -1083,8 +1235,11 @@ export const codexDriver: HarnessDriver = {
               // workers exist". Off, so spawn_agent always means the app's.
               multi_agent: false,
               multi_agent_v2: false,
-              ...(codexPluginsOff() ? { plugins: false } : {})
+              ...(codexPluginsOff() ? { plugins: false } : {}),
+              ...(workConfig?.features ?? {})
             },
+            // The Work fence: this folder untrusted, no parent's project config.
+            ...(workConfig ? { project_root_markers: workConfig.project_root_markers, projects: workConfig.projects } : {}),
             // Fast = OpenAI's priority service tier, Ultrafast = its
             // `ultrafast` tier, each sent only when on and listed by the
             // CLI's model/list for this model; otherwise the user's own
@@ -1200,6 +1355,8 @@ export const codexDriver: HarnessDriver = {
         // A dead app-server (a turn/start deadline killed it, a crash, a
         // dispose) must not swallow the message: the registry drops the
         // handle and boots a fresh one on this word.
+        // A fence that broke stays broken for this handle: the message is refused, never sent to a harness that mounted a stranger's server.
+        if (fenceBroken) throw new Error(`Work fence: Codex started an MCP server that is not this app's ("${fenceBroken}"); this thread's harness was stopped`)
         if (disposed || conn.exited) throw new Error('harness gone: the codex app-server has exited')
         setStatus('running')
         // The first send waits for the MCP servers: said as the CLI's

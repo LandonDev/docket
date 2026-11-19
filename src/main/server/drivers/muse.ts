@@ -78,6 +78,10 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
   const translator = createTranslator(ctx)
   // One config dir per (account, skills scope), its skills the store's (museConfigDirs.ts).
   const skills = museSkillsFor(session)
+  // Muse Code is not offered for Work threads (work/scope.ts WORK_PROVIDERS): its app tools go through the stdio bridge,
+  // its fence needs an app-owned primary root, and a child runtime of its own delegation was not shown to leave an
+  // agent-written .mcp.json unread.
+  if (ctx.session.scope === 'work') throw new Error('Muse Code is not offered for Work threads')
   const configDir = museConfigDirFor(ctx.route?.account ?? null, skills?.scope, skills?.pointer ?? null)
   const facts: SessionFacts = { cwd: session.cwd, model: session.model, permission: session.permission, bridge: bridgeMcpConfig(session.id, { computerImages: 'parts' }) }
 

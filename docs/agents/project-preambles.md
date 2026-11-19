@@ -26,7 +26,11 @@
   after the thread instructions and the project context. `{{worktree}}` (a
   slug from the thread title, or the first line of an untitled thread's
   message), `{{project}}` and `{{host}}` (the machine name) are substituted
-  then; an unknown `{{name}}` stays as written.
+  then; an unknown `{{name}}` stays as written. A Work thread opens with
+  the Work preamble first (`decidePreamble`'s `work`, under `## Work
+  rules`), which no opt-out, parent or switched-off project drops, and
+  which a thread with no project carries too; the project's own text
+  follows it ([work-scope.md](work-scope.md) "The preamble").
 - Display: the user-text row keeps the person's text as `text` and the
   rules as `preamble: { text, words }` (the stamp), so the transcript shows
   the brief with "Project rules 212 words" (the lead medium) folded above it

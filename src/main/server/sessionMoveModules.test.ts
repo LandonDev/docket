@@ -284,6 +284,9 @@ describe('the canvas items follow a moved thread', () => {
     pushes.length = 0
     for (const h of [mac, box]) {
       const work = startWork({ db: h.db, store: h.store, registry: h.registry, environmentId: h.env, dataDir: h.data, log: () => {} }, [canvas])
+      // A Work thread moves only to a host that says it will keep it one (work/peer.ts sets this gate; work/hosts.test.ts
+      // proves it between two hosts). These two share no link to ask over, so here the other host's answer is yes.
+      h.registry.workMove = { refusal: async () => null, thaw: () => {} }
       if (h === box) work.pushes.onPush((p) => pushes.push(p))
       works.push(work)
     }

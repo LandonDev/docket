@@ -85,11 +85,6 @@ describe('the context', () => {
   it('answers "not built" from every member a later milestone builds, naming that milestone', () => {
     const { ctx } = work
     const calls: [string, number, () => unknown][] = [
-      ['ctx.scopeOf', 6, () => ctx.scopeOf('s')],
-      ['ctx.threads.start', 6, () => ctx.threads.start({ workspaceId: 'w', text: 't' })],
-      ['ctx.threads.resume', 6, () => ctx.threads.resume('s', 'n')],
-      ['ctx.threads.ownerSaid', 6, () => ctx.threads.ownerSaid('s', 'q')],
-      ['ctx.peer', 6, () => ctx.peer('env_mac')],
       ['ctx.lifeos.connected', 7, () => ctx.lifeos.connected()],
       ['ctx.lifeos.owner', 7, () => ctx.lifeos.owner()],
       ['ctx.lifeos.jwt', 7, () => ctx.lifeos.jwt('purdue')],
@@ -117,16 +112,32 @@ describe('the context', () => {
   })
 })
 
+describe('the members milestone 6 built', () => {
+  it('answer: a thread this host does not hold has no scope and said nothing, and peer is called on a tool\'s own ctx', async () => {
+    const { ctx } = work
+    expect(ctx.scopeOf('s')).toBeNull()
+    expect(ctx.threads.ownerSaid('s', 'send it to the whole team')).toBe(false)
+    await expect(ctx.threads.start({ workspaceId: 'w', text: 't' })).rejects.toThrow('Work is off on this host')
+    await expect(ctx.threads.resume('s', 'n')).rejects.toThrow('unknown thread: s')
+    await expect(ctx.peer('env_mac').call('office', 'rangeWrite', {})).rejects.toThrow('Work is off on this host')
+  })
+})
+
 describe('before a create', () => {
   const by = { kind: 'local' as const, caps: [] }
   it('a create that does not ask for Work passes untouched', () => {
     expect(() => work.admitSession({ provider: 'claude', model: 'm' } as never, by)).not.toThrow()
     expect(() => work.admitSession({ provider: 'claude', model: 'm', scope: 'code' } as never, by)).not.toThrow()
   })
-  it('a create that asks for Work, or carries a chip, is refused by name: no Work thing is made before its milestone', async () => {
-    expect(() => work.admitSession({ provider: 'claude', model: 'm', scope: 'work' } as never, by)).toThrow("not built: session.create {scope: 'work'} (milestone 6)")
+  it('with the switch off, a create that asks for Work or carries a chip is refused, and so is a Work workspace', async () => {
+    expect(() => work.admitSession({ provider: 'claude', model: 'm', scope: 'work' } as never, by)).toThrow('Work is off on this host')
+    expect(() => work.admitSession({ provider: 'claude', model: 'm', about: { kind: 'task', label: 'T', ref: { at: 'lifeos', table: 'tasks', id: 'k' } } } as never, by)).toThrow('Work is off on this host')
+    await expect(work.createWorkspace({ name: 'Purdue', sector: 'purdue' }, by)).rejects.toThrow('Work is off on this host')
+  })
+  it('with it on, a create that asks for Work is admitted (the row is stamped where it is made), and one with a chip waits for the LifeOS link', () => {
+    work.settings.set({ enabled: true })
+    expect(() => work.admitSession({ provider: 'claude', model: 'm', scope: 'work' } as never, by)).not.toThrow()
     expect(() => work.admitSession({ provider: 'claude', model: 'm', about: { kind: 'task', label: 'T', ref: { at: 'lifeos', table: 'tasks', id: 'k' } } } as never, by)).toThrow('not built: session.create {about} (milestone 7)')
-    expect(() => work.createWorkspace({ name: 'Purdue', sector: 'purdue' }, by)).toThrow("not built: workspace.create {kind: 'work'} (milestone 6)")
   })
 })
 

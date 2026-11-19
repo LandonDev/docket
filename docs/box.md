@@ -1296,7 +1296,10 @@ come along it says so in a second line and waits to be read: `The patch
 didn't apply; it's at <path>`, the branch's landing note (it ran at a
 different commit, or a dirty checkout kept its own), or `Uncommitted changes
 stayed on This Mac` (`moveNoticeException` in lib/threadMove.ts), with a
-close button.
+close button. A Work thread moves only to a host that answers it will keep
+it a Work thread (Work on there, and a Work workspace for the job): the
+source asks before any row leaves, and a host from before Work cannot
+answer, so the thread stays (docs/agents/work-scope.md "Across hosts").
 
 Only the Mac starts a move, because only the Mac dials (the peer link of
 `remote/peers.ts`). `session.move {sessionId, to, from?}` is local-only on the
@@ -2345,6 +2348,13 @@ it is created. The same objects are built on every host: the asking side
 is `src/main/server/crossHostAgents.ts`, the serving side
 `src/main/server/remote/crossHostThreads.ts`, and the socket between the
 two runs whichever way it runs.
+
+A Work thread's asks ride `thread.start` inside a `work` envelope with
+`firstMessage` left empty, so a host from before Work refuses them
+instead of starting a code thread: `start` (a Work thread of that host's
+own workspace for the job, or a refusal), `probe` (asked before a Work
+thread moves) and `call` (`ctx.peer`). `spawn_agent` with a host is refused
+for a Work thread (docs/agents/work-scope.md "Across hosts").
 
 The app tools. `app_start_thread` and `spawn_agent` take `environmentId`:
 `mac` for the thread's own Mac (its Mac bridge peer, `macBridge.thread.

@@ -35,7 +35,9 @@ mismatch logs one `[muse]` line.
   server named like a settings server. So a server in `~/.config/muse/
   settings.json` (linked into every config dir) reaches every Muse thread,
   OAuth logins and tool filters included, and a settings server named `app`
-  would make every session start fail.
+  would make every session start fail. For that reason, and two more, Muse
+  Code is not offered for Work threads: the driver refuses a `scope: 'work'`
+  row ([work-scope.md](work-scope.md) "Muse Code: not offered").
   `harness/museProtocol.ts` is the pure mapping: `safe` → `:ask-me` +
   `promptUnmatched`, `edits` → `:ask-me` + `onRequest`, `auto` →
   `:unrestricted` + `allowAll`; the app-tools bridge rides `session/start`'s

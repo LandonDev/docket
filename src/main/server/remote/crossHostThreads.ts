@@ -40,8 +40,14 @@ import {
   type ThreadSpawnArgs,
   type ThreadStartArgs,
   type ThreadStartResult,
-  type ThreadWaitResult
+  type ThreadWaitResult,
+  type ThreadWork,
+  type WorkCallResult,
+  type WorkHome,
+  type WorkProbeResult
 } from '@shared/contract-crosshost'
+import type { WorkspaceMeta } from '@shared/domain'
+import { sessionScopeOf, workspaceKindOf } from '@shared/work/ids'
 import type { EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import type { EnsureLinkedArgs, ProjectLinkFacts } from '@shared/projectLinks'
 import type { EnsureLinkedResult } from '@shared/wireSchemas'
@@ -60,6 +66,7 @@ import { remapper, stripSlash, type HistoryMapping } from '../pathMap'
 import type { SessionRegistry } from '../sessions'
 import type { HostTransport } from './hostLinks'
 import { servePeerCall, type LinkRequest } from './peerCalls'
+import { WORK_OFF, workEnabled } from '../work/scope'
 
 /**
  * The serving side of threads started from another host (docs/box.md
@@ -91,6 +98,14 @@ import { servePeerCall, type LinkRequest } from './peerCalls'
  *    reported after the merge so the owner's land step fetches it.
  *  - Admission: the Mac bridge's thread cap when this host has one
  *    (`admit`), else this host's own `crossHost.maxThreads.<envId>`.
+ *  - Work (docs/agents/work.md "Scope"): a `thread.start` that carries
+ *    `work` is a Work thread's ask. `start` makes a Work thread of this
+ *    host's own Work workspace for that job (or a Work Chat for a Work
+ *    Chat), or is refused: never a code thread. `probe` says whether such a
+ *    thread would be kept a Work thread here; `call` goes to Work's own
+ *    handler (work/peer.ts). A `thread.spawn` names no scope, so the caller
+ *    refuses it for a Work thread before it is sent; and a Work thread here
+ *    joins no batch on another host.
  */
 
 export const OWNER_PREFIX = 'crossHost.owner.'
@@ -123,7 +138,7 @@ export interface CrossHostThreadsDeps {
     | 'listProjects'
     | 'list'
   > &
-    Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership' | 'titleFromTask' | 'stopSubtree'>>
+    Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership' | 'titleFromTask' | 'stopSubtree' | 'listWorkspaces' | 'delete'>>
   /** The saved hosts (remote.environments), by id and name. */
   environments: () => { id: string; name: string }[]
   /** How to send on the link to a host, while it is up: the reply path of a `peer.call` served here. */
@@ -293,7 +308,16 @@ const pendingShape = (rows: EventRow[]): ThreadPending | null => {
     : { kind: 'approval', requestId: p.requestId, toolName: p.toolName, ...(p.title ? { title: p.title } : {}) }
 }
 
+/** A Work tool's call from another host, as Work's own handler takes it (work/peer.ts). */
+export type WorkCallHandler = (from: string, call: Extract<ThreadWork, { kind: 'call' }>) => Promise<unknown>
+
 export class CrossHostThreads {
+  private workCalls: WorkCallHandler | null = null
+  /** Work's handler for a `call` from another host; unset, every such call is refused. */
+  serveWork(handler: WorkCallHandler | null): void {
+    this.workCalls = handler
+  }
+
   private readonly log: (line: string) => void
   private readonly lastStatus = new Map<string, SessionStatus>()
   private readonly settleTimers = new Map<string, NodeJS.Timeout>()
@@ -404,8 +428,21 @@ export class CrossHostThreads {
     const args = params.args as Record<string, unknown>
     switch (method) {
       case 'thread.start': {
-        const result = await this.start(caller, ThreadStartArgsSchema.parse(args))
-        line(`started ${result.sessionId} in ${result.cwd}${result.cwdNote ? ' (work root)' : ''}`)
+        const start = ThreadStartArgsSchema.parse(args)
+        // Work's asks that start nothing (contract-crosshost.ts).
+        if (start.work?.kind === 'probe') {
+          const answer = this.workProbe(start.work, start.workRoot)
+          line(`work probe → ${answer.work.enabled && answer.work.home ? 'kept' : (answer.work.why ?? 'refused')}`)
+          return answer
+        }
+        if (start.work?.kind === 'call') {
+          if (!this.workCalls) throw new Error('this host does not answer Work calls')
+          const answer: WorkCallResult = { work: { result: await this.workCalls(ctx.from, start.work) } }
+          line(`work call ${start.work.module}.${start.work.verb}`)
+          return answer
+        }
+        const result = start.work ? await this.startWork(caller, start, start.work) : await this.start(caller, start)
+        line(`started ${result.sessionId} in ${result.cwd}${result.cwdNote ? ' (work root)' : ''}${result.scope === 'work' ? ' as a Work thread' : ''}`)
         return result
       }
       case 'thread.spawn': {
@@ -531,6 +568,8 @@ export class CrossHostThreads {
               ? 'it is a master thread'
               : meta.archived
                 ? 'it is archived'
+                : sessionScopeOf(meta) === 'work'
+                  ? 'it is a Work thread, and a batch on another host takes none'
                 : meta.masterId && meta.masterId !== a.masterId
                   ? `it is in the batch of ${meta.masterId}`
                   : owner && owner !== caller.environmentId
@@ -644,6 +683,100 @@ export class CrossHostThreads {
     this.lastStatus.set(thread.id, thread.status)
     const created = this.deps.registry.get(thread.id) ?? thread
     return { sessionId: thread.id, title: created.title, cwd: placed.cwd, projectId: placed.projectId, ...(placed.cwdNote ? { cwdNote: placed.cwdNote } : {}) }
+  }
+
+  // ── Work ────────────────────────────────────────────────────────────
+
+  /**
+   * The Work workspace here a caller's workspace names: by link id, else the
+   * one linked to its sector, else the one at its folder (the path map).
+   * `chat`: the caller is a Work Chat, which has none. Null: this host has
+   * no such workspace.
+   */
+  private workHome(home: WorkHome, callerWorkRoot?: string): { chat: true } | { chat: false; workspace: WorkspaceMeta } | null {
+    if (!home.sector && !home.workspaceLinkId && !home.workspaceName && !home.workspacePath) return { chat: true }
+    const all = (this.deps.registry.listWorkspaces?.() ?? []).filter((w) => workspaceKindOf(w) === 'work')
+    const mapped = home.workspacePath ? this.mapPath(home.workspacePath, callerWorkRoot) : null
+    const workspace =
+      (home.workspaceLinkId ? all.find((w) => w.linkId === home.workspaceLinkId) : undefined) ??
+      (home.sector ? all.find((w) => w.sector === home.sector) : undefined) ??
+      (mapped ? all.find((w) => stripSlash(w.path) === stripSlash(mapped)) : undefined)
+    // A workspace found another way still has to be the same job: never a thread of one sector in another's workspace.
+    if (!workspace || (home.sector && workspace.sector && workspace.sector !== home.sector)) return null
+    return { chat: false, workspace }
+  }
+
+  /**
+   * Where a moved thread of the caller's workspace would land here, as the
+   * move's import decides it: the workspace at the caller's folder mapped
+   * onto this host, else the deepest one holding that folder
+   * (sessionMove.ts). A move goes ahead only when that is the workspace the
+   * job names here: the import does not know sectors, and a thread of one job
+   * landed in another job's workspace would read that job's add-ons.
+   */
+  private workLanding(home: WorkHome, callerWorkRoot?: string): WorkspaceMeta | null {
+    const mapped = home.workspacePath ? this.mapPath(home.workspacePath, callerWorkRoot) : null
+    if (!mapped) return null
+    const at = stripSlash(mapped)
+    return (
+      (this.deps.registry.listWorkspaces?.() ?? [])
+        .filter((w) => at === stripSlash(w.path) || at.startsWith(`${stripSlash(w.path)}/`))
+        .sort((a, b) => b.path.length - a.path.length)[0] ?? null
+    )
+  }
+
+  /** Whether a Work thread of the caller's workspace would be kept one here. */
+  private workProbe(home: WorkHome, callerWorkRoot?: string): WorkProbeResult {
+    if (!workEnabled(this.deps.store)) return { work: { enabled: false, home: false, why: WORK_OFF } }
+    const found = this.workHome(home, callerWorkRoot)
+    const name = home.sector ?? home.workspaceName ?? 'that job'
+    if (!found) return { work: { enabled: true, home: false, why: `this host has no Work workspace for ${name}` } }
+    if (found.chat) return { work: { enabled: true, home: true } }
+    // The folder the thread would land in must be that workspace's own, or the import would put it in another's.
+    const landing = this.workLanding(home, callerWorkRoot)
+    if (!landing) return { work: { enabled: true, home: false, why: `this host has no folder for ${found.workspace.name} where the thread's own would land` } }
+    if (landing.id !== found.workspace.id) return { work: { enabled: true, home: false, why: `the thread's folder lands in ${landing.name} on this host, which is not the workspace for ${name} (${found.workspace.name})` } }
+    return { work: { enabled: true, home: true } }
+  }
+
+  /**
+   * A Work thread on another host starts a thread here: a Work thread of
+   * this host's own workspace for that job, which uses this host's own key
+   * for the sector, or a refusal. Its message came inside `work`, so a host
+   * that does not reach this line never started anything.
+   */
+  private async startWork(caller: CrossHostCaller, args: ThreadStartArgs, work: Extract<ThreadWork, { kind: 'start' }>): Promise<ThreadStartResult> {
+    if (!workEnabled(this.deps.store)) throw new Error(WORK_OFF)
+    const home = this.workHome(work, args.workRoot)
+    if (!home) throw new Error(`this host has no Work workspace for ${work.sector ?? work.workspaceName ?? 'that job'}`)
+    this.admitted(caller)
+    const thread = await this.deps.registry.startWith(
+      {
+        scope: 'work',
+        provider: args.provider,
+        model: args.model,
+        reasoning: args.reasoning,
+        permission: caller.permission,
+        ...(args.context1m ? { context1m: true } : {}),
+        threadType: args.threadType,
+        title: args.title,
+        parentId: null,
+        workspaceId: home.chat ? null : home.workspace.id,
+        startedBy: caller.sessionId,
+        ...(args.masterId ? { masterId: args.masterId } : {})
+      },
+      work.message,
+      { farWork: true }
+    )
+    const created = this.deps.registry.get(thread.id) ?? thread
+    // The row decides: a thread that is not a Work thread here is removed, never left running.
+    if (sessionScopeOf(created) !== 'work') {
+      await this.deps.registry.delete?.(thread.id)
+      throw new Error('this host did not make the thread a Work thread; nothing was started')
+    }
+    this.remember(caller, thread.id)
+    this.lastStatus.set(thread.id, thread.status)
+    return { sessionId: thread.id, title: created.title, cwd: created.cwd, projectId: null, scope: 'work' }
   }
 
   private async spawn(caller: CrossHostCaller, args: ThreadSpawnArgs): Promise<ThreadStartResult> {

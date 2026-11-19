@@ -44,6 +44,12 @@ export interface DecideInput {
   optOut?: boolean
   /** this machine's name; defaults to the OS hostname */
   host?: string
+  /**
+   * A Work thread's preamble (work/preamble.ts): its fixed head and what the
+   * Work modules add. Given, it always applies and comes first: no project,
+   * an opt-out or a parent without rules never drops it.
+   */
+  work?: string | null
 }
 
 /**
@@ -52,9 +58,21 @@ export interface DecideInput {
  * workspace) has no enabled preamble, or — for a subagent — the parent
  * thread on this host opened without one (a fleet is all-or-nothing; a
  * parent on another host is unknown here, so its child follows the
- * project).
+ * project). A Work thread always carries its Work preamble (`work`), with
+ * the project's text after it.
  */
 export function decidePreamble(input: DecideInput): PreambleStamp | null {
+  if (input.work) {
+    // The project's own text follows the Work rules when it would have applied by itself.
+    const house = projectPreamble(input)
+    return stampOf(house ? `${input.work}\n\n${house}` : input.work)
+  }
+  const text = projectPreamble(input)
+  return text ? stampOf(text) : null
+}
+
+/** The project's (or its workspace's) preamble text for this thread, substituted; null when none applies. */
+function projectPreamble(input: DecideInput): string | null {
   const { store, session } = input
   if (input.optOut || !session.projectId) return null
   const project = store.getProject(session.projectId)
@@ -67,13 +85,11 @@ export function decidePreamble(input: DecideInput): PreambleStamp | null {
   const template = effectivePreamble(project, workspace)
   if (!template) return null
   const title = session.title.trim() || input.text.trim().split('\n')[0]
-  return stampOf(
-    substitutePreamble(template, {
-      worktree: worktreeSlug(title),
-      project: project.name,
-      host: input.host ?? hostname()
-    })
-  )
+  return substitutePreamble(template, {
+    worktree: worktreeSlug(title),
+    project: project.name,
+    host: input.host ?? hostname()
+  })
 }
 
 /** The house rules as first seeded: every thread ran typecheck, the tests

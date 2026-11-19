@@ -46,6 +46,12 @@ import type { HostCatalog, PeerCatalogs } from './peerCatalogs'
 import { encodeAgentId } from '@shared/contract-crosshost'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
 import { computerActivity } from '@shared/computer/words'
+import { sessionScopeOf } from '@shared/work/ids'
+import { guardCrossHostAgents, OUTSIDE_FENCE, scopeFactsOf, withinFence } from './work/scope'
+
+// Work's scope rule for the app tools (apptools.ts), which may load nothing under work/ itself. work/scope.ts is
+// the host's own rule, not a pillar: it imports no pillar, not the registry and not the mount (work/scope.test.ts).
+export { mayUseFarDesktop, OUTSIDE_FENCE, scopeFactsOf, withinFence, WORK_THREAD_TYPES, workHomeOf, workHomeOfSession, WorkRefused } from './work/scope'
 
 
 /**
@@ -69,6 +75,8 @@ export function setOrchestrationRegistry(r: SessionRegistry): void {
 let crossHost: CrossHostAgents | null = null
 export function setCrossHostAgents(c: CrossHostAgents | null): void {
   crossHost = c
+  // Work's rule on the calls that make or take a thread on another host (work/scope.ts), whoever reaches them.
+  if (c) guardCrossHostAgents(c, () => (registry ? scopeFactsOf(registry) : null))
 }
 // What the other hosts can run (peerCatalogs.ts): the table lists their
 // approved rows, and a spawn there is checked against them.
@@ -465,9 +473,15 @@ export function isMasterSession(
  *  a master, every root thread of its batch (masterId). */
 export function supervisedBy(caller: SessionMeta, session: SessionMeta): boolean {
   if (session.id === caller.id) return false
+  // A Work thread acts only on threads inside its own workspace (work/scope.ts), however one came to hang under it.
+  if (outsideFence(caller, session)) return false
   if (session.parentId === caller.id) return true
   return !session.parentId && session.masterId === caller.id && isMasterSession(caller)
 }
+
+/** A Work caller and a thread that is not of its scope: the caller may not send to it, wait on it or answer for it. */
+const outsideFence = (caller: SessionMeta, session: SessionMeta): boolean =>
+  sessionScopeOf(caller) === 'work' && !!registry && !withinFence(scopeFactsOf(registry), caller, session)
 
 /** The root threads of a master's batch, oldest first. */
 const batchOf = (master: SessionMeta): SessionMeta[] =>
@@ -493,6 +507,7 @@ export function refusedAgent(parent: SessionMeta, agentId: string): string {
     return `refused: there is no thread ${agentId} on this host. ${tail}`
   }
   if (meta.id === parent.id) return 'refused: that is this thread itself.'
+  if (outsideFence(parent, meta)) return `refused: ${agentId} ${OUTSIDE_FENCE}. ${tail}`
   const master = isMasterSession(parent)
   if (meta.parentId) {
     const root = registry?.get(registry.rootSessionOf(meta.id))
@@ -871,6 +886,11 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   if (args.environmentId?.trim()) {
     if (!crossHost) return 'refused: threads on other hosts are not available here'
     if (researchRoot) return 'refused: a research tree spawns its explorers here, not on another host'
+    // Scope follows the parent (work/scope.ts). A subagent on another host is made from this
+    // host's spawn request, which names no scope, so it would be a code thread there: refused.
+    // A Work thread that needs another host starts a thread on it (app_start_thread carries the scope).
+    if (sessionScopeOf(parentNow) === 'work')
+      return 'refused: a Work thread spawns its subagents on this host. To run Work on another host, use app_start_thread with environmentId: that start carries the workspace, and the host refuses it if it cannot keep the thread a Work thread.'
     let started: Awaited<ReturnType<CrossHostAgents['spawn']>>
     try {
       started = await crossHost.spawn(parentNow, args.environmentId, resolved)
