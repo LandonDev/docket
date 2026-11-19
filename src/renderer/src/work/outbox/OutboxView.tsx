@@ -38,6 +38,10 @@ let rememberedTab: "waiting" | "sent" = "waiting";
 const keyOf = (item: Pick<HostItem, "environmentId" | "ref">): string => `${item.environmentId}:${item.ref.at}:${item.ref.id}`;
 /** States a press may take an item from. */
 const pressable = (item: HostItem): boolean => item.state === "held" || item.state === "live" || item.state === "failed";
+/** What a plain Send may take, alone or with others: a send that may have gone waits for his own "Send again". */
+const sendable = (item: HostItem): boolean => pressable(item) && !item.outcomeUnknown;
+/** Where he looks to see whether a send that may have gone went. */
+const checkWords = (item: HostItem): string => (item.kind === "mail.send" || item.kind === "office.mail.send" ? "Check Sent first" : "Check whether it went first");
 /** "Send to Dana Lee: Re: budget" → the act and what it is about. */
 export function splitSummary(summary: string): { act: string; about: string | null } {
   const at = summary.indexOf(": ");
@@ -132,7 +136,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     if (selected === null && first !== null) setSelected(first);
   }, [selected, first]);
   // Ticks hold only items still waiting.
-  const tickedItems = outbox.waiting.filter((item) => ticked.has(keyOf(item)) && pressable(item));
+  const tickedItems = outbox.waiting.filter((item) => ticked.has(keyOf(item)) && sendable(item));
   const tick = (item: HostItem, on: boolean) =>
     setTicked((prev) => {
       const next = new Set(prev);
@@ -284,7 +288,7 @@ function WaitingList({
     <div className="flex flex-col p-1">
       {byWorkspace(items).map((group) => {
         const name = nameOf(group.items[0]!.environmentId, group.workspaceId);
-        const ready = group.items.filter(pressable);
+        const ready = group.items.filter(sendable);
         return (
           <section key={group.key} aria-label={name}>
             <GroupHead sector={group.sector} name={name}>
@@ -325,10 +329,10 @@ function WaitingList({
                       </span>
                     </ItemButton>
                     {/* The glyph column: the kind's glyph, which gives way to the tick on hover, and to every tick while any row is ticked. */}
-                    <span className={cn("pointer-events-none absolute start-2 top-2.5 grid size-4 place-items-center", pressable(item) && (ticking ? "opacity-0" : yields("row")))}>
+                    <span className={cn("pointer-events-none absolute start-2 top-2.5 grid size-4 place-items-center", sendable(item) && (ticking ? "opacity-0" : yields("row")))}>
                       {item.state === "failed" ? <StatusMark state="failed" word={false} /> : item.state === "sending" ? <StatusMark state="working" word={false} /> : <KindGlyph kind={item.kind} />}
                     </span>
-                    {pressable(item) ? (
+                    {sendable(item) ? (
                       <span className={cn("absolute start-2 top-2.5 grid size-4 place-items-center", !ticking && reveal("row", { row: true, overlay: true }))}>
                         <Checkbox aria-label={`Tick ${act}`} checked={ticked.has(keyOf(item))} onCheckedChange={(on) => onTick(item, on)} />
                       </span>
@@ -443,10 +447,10 @@ function HeldDetail({ item, workspace, onOpenSession, onPressed }: { item: HostI
   const [editing, setEditing] = useState(false);
   const grant = grantFor(item);
   const { about } = splitSummary(item.summary);
-  const press = async (which: "send" | "discard" | "grant") => {
-    setBusy(which);
+  const press = async (which: "send" | "again" | "discard" | "grant") => {
+    setBusy(which === "again" ? "send" : which);
     try {
-      const after = which === "discard" ? await discardItem(item) : which === "grant" ? await grantAndSend(item, grant!) : await sendItem(item);
+      const after = which === "discard" ? await discardItem(item) : which === "grant" ? await grantAndSend(item, grant!) : await sendItem(item, { again: which === "again" });
       if (which !== "discard" && !wentOut(after)) return void toastError(notSentWords(after));
       onPressed(item);
       toast(which === "discard" ? "Discarded" : `${pastOf(item.verb)}${about ? `: ${about}` : ""}`);
@@ -479,31 +483,39 @@ function HeldDetail({ item, workspace, onOpenSession, onPressed }: { item: HostI
           <BusyLabel busy={busy === "discard"} label="Discard" />
         </Button>
         <span className="flex-1" />
+        {/* A send that may have gone: no plain Send, only his own Send again once he has looked. */}
+        {item.outcomeUnknown && waiting ? <span className="text-[13px] leading-5 text-muted-foreground">{checkWords(item)}</span> : null}
         {waiting ? (
           <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
             Edit
           </Button>
         ) : null}
-        <span className="flex items-center">
-          <Button size="sm" disabled={!waiting || busy !== null} className={cn(grant && "rounded-e-none")} onClick={() => void press("send")}>
-            <BusyLabel busy={busy === "send" || busy === "grant"} label={item.state === "failed" ? `${item.verb} again` : item.verb} />
+        {item.outcomeUnknown && waiting ? (
+          <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void press("again")}>
+            <BusyLabel busy={busy === "send"} label={`${item.verb} again`} />
           </Button>
-          {grant ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={<Button size="icon-sm" disabled={!waiting || busy !== null} aria-label={`More ways to ${item.verb.toLowerCase()}`} className="rounded-s-none border-s border-primary-foreground/15" />}
-              >
-                <ChevronDown />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="top">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>{item.verb} and stop holding</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => void press("grant")}>{grant.label}</DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </span>
+        ) : (
+          <span className="flex items-center">
+            <Button size="sm" disabled={!waiting || busy !== null} className={cn(grant && "rounded-e-none")} onClick={() => void press("send")}>
+              <BusyLabel busy={busy === "send" || busy === "grant"} label={item.state === "failed" ? `${item.verb} again` : item.verb} />
+            </Button>
+            {grant ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button size="icon-sm" disabled={!waiting || busy !== null} aria-label={`More ways to ${item.verb.toLowerCase()}`} className="rounded-s-none border-s border-primary-foreground/15" />}
+                >
+                  <ChevronDown />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>{item.verb} and stop holding</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => void press("grant")}>{grant.label}</DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </span>
+        )}
       </div>
       {editing ? <EditDialog item={item} onClose={() => setEditing(false)} /> : null}
     </>

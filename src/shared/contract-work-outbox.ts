@@ -35,6 +35,8 @@ export interface OutboxItem extends HeldItem {
   routineRunId: string | null
   /** an agent's rewrite waits in a LifeOS draft (`outbox.proposed`) */
   proposed?: boolean
+  /** a failed send whose end nobody knows: it may have gone, so the screen asks him to check Sent and offers "Send again" (`send({again: true})`), never a plain Send */
+  outcomeUnknown?: boolean
   updatedAt: number
 }
 export const OutboxItemSchema = HeldItemSchema.extend({
@@ -45,6 +47,7 @@ export const OutboxItemSchema = HeldItemSchema.extend({
   result: z.object({ summary: z.string(), ref: z.unknown().optional() }).nullable(),
   routineRunId: z.string().nullable(),
   proposed: z.boolean().optional(),
+  outcomeUnknown: z.boolean().optional(),
   updatedAt: z.number().int()
 })
 
@@ -147,7 +150,7 @@ export const OutboxRequestSchemas = [
   request('work.outbox.get', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: the owner's press. Runs the act once: a second press, another client's press and a restart never run it again. */
   /** `rev`: the item's `updatedAt` as the screen read it. Required for an item LifeOS holds, so what goes is what was shown; for a host row a press on a stale view is refused when given. */
-  request('work.outbox.send', z.object({ ref: HeldRefSchema, rev: z.number().int().optional() })),
+  request('work.outbox.send', z.object({ ref: HeldRefSchema, rev: z.number().int().optional(), /** he checked Sent and chose Send again on an item whose last send may have gone */ again: z.boolean().optional() })),
   /** → OutboxItem: the act will never go */
   request('work.outbox.discard', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: change exactly what will go, while it waits. `payload` is the kind's own shape. */

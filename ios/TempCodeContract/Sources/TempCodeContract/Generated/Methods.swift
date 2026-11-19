@@ -2489,10 +2489,12 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public let ref: HeldRef
             public let rev: Int?
+            public let again: Bool?
 
-            public init(ref: HeldRef, rev: Int? = nil) {
+            public init(ref: HeldRef, rev: Int? = nil, again: Bool? = nil) {
                 self.ref = ref
                 self.rev = rev
+                self.again = again
             }
         }
 

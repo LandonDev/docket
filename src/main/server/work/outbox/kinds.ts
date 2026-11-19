@@ -31,6 +31,20 @@ export class ActKinds {
   }
 }
 
+/**
+ * A send that failed before anything went out (a refusal, a switch that was
+ * off, an answer that says nothing was done). The row reads `failed` and a
+ * plain press may send it again. Any other throw from `execute` reads
+ * failed with its outcome unknown: it may have gone, and he must choose
+ * "Send again" after checking.
+ */
+export class ActNotSent extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ActNotSent'
+  }
+}
+
 /** An act that can no longer be carried out as it was shown: the screen moved on, the draft is gone. Thrown by a kind's `execute`; the row reads `stale`, not `failed`. */
 export class ActStale extends Error {
   constructor(message: string) {

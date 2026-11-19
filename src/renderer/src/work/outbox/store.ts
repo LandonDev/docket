@@ -146,10 +146,13 @@ function putItem(environmentId: string, item: OutboxItem): void {
   changed();
 }
 
-/** Send it. A LifeOS-held item goes with the `updatedAt` it was shown with, so a draft rewritten since is refused, not sent. */
-export async function sendItem(item: HostItem): Promise<OutboxItem> {
+/**
+ * Send it. A LifeOS-held item goes with the `updatedAt` it was shown with, so a draft rewritten since is refused, not sent.
+ * `again`: he chose Send again on a send that may have gone; the host refuses a plain press on one.
+ */
+export async function sendItem(item: HostItem, opts: { again?: boolean } = {}): Promise<OutboxItem> {
   try {
-    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt });
+    return await registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt, ...(opts.again ? { again: true } : {}) });
   } finally {
     void loadHost(item.environmentId);
   }

@@ -56,7 +56,16 @@ then asks LifeOS what became of it (queued or sent: `sent`; still a draft:
 left `failed`). A `live` row at boot reads `stale`: its screen went with the
 process.
 
-`failed` waits on him as `held` does, and a new press is a new attempt.
+`failed` waits on him as `held` does, and a new press is a new attempt,
+unless nobody knows how the last send ended. A kind's `execute` that
+throws `ActNotSent` (kinds.ts) says nothing went: a plain press may send it
+again. Any other throw, and a send cut off by a stop, marks the row
+`outcomeUnknown` (`outcome_unknown`): it may have gone, so `work.outbox.send`
+refuses a plain press (`MAY_HAVE_GONE`) and takes it only with `again:
+true`, which the Outbox offers as "Send again" beside "Check Sent first" in
+place of Send. No group send or tick takes such a row. A LifeOS row is never
+marked: LifeOS holds what became of it, and its kind reads that before it
+sends again.
 
 ## Add-on tools: the rule he sets
 

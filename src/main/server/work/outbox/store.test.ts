@@ -110,9 +110,40 @@ describe('after a stop', () => {
     // a new process on the same database
     const again = new HeldStore(db, () => clock++)
     expect(again.recover()).toEqual({ interrupted: 1, lost: 0 })
-    expect(again.get(a.id)).toMatchObject({ state: 'failed', error: INTERRUPTED, decidedBy: 'owner', attempts: 1 })
+    expect(again.get(a.id)).toMatchObject({ state: 'failed', error: INTERRUPTED, decidedBy: 'owner', attempts: 1, outcomeUnknown: true })
     // recovery itself claims nothing and runs nothing; a second recovery changes nothing
     expect(again.recover()).toEqual({ interrupted: 0, lost: 0 })
+  })
+
+  it('a send cut off by the stop may have gone: only a claim made with again takes it, and a LifeOS row, which LifeOS settles, is not marked', () => {
+    const a = store.insert(act())
+    const m = store.insert(act({ kind: 'mail.send', runKey: lifeosRunKey('outbox', 'ob_9') }))
+    store.claim(a.id, 'owner')
+    store.claim(m.id, 'owner')
+    const again = new HeldStore(db, () => clock++)
+    again.recover()
+    expect(itemOfRow(again.get(a.id)!).outcomeUnknown).toBe(true)
+    expect(again.get(m.id)!.outcomeUnknown).toBe(false)
+    expect(again.claim(a.id, 'owner')).toBeNull()
+    expect(again.claim(a.id, 'owner', null, { again: true })).toMatchObject({ state: 'sending', outcomeUnknown: false })
+    // a failure that says nothing went leaves it pressable as it is
+    expect(again.settle(a.id, 'failed', { error: 'refused', unknown: false })).toMatchObject({ outcomeUnknown: false })
+    expect(again.claim(a.id, 'owner')).toMatchObject({ state: 'sending' })
+    expect(again.settle(a.id, 'failed', { error: 'timed out', unknown: true })).toMatchObject({ outcomeUnknown: true })
+  })
+
+  it('a database made before the mark takes each failed host row as one that may have gone', () => {
+    const old = new DatabaseSync(':memory:')
+    old.exec(`CREATE TABLE work_held_acts (id TEXT PRIMARY KEY, workspace_id TEXT, session_id TEXT, sector TEXT, kind TEXT NOT NULL, origin TEXT NOT NULL, why TEXT NOT NULL DEFAULT 'rule', summary TEXT NOT NULL, verb TEXT NOT NULL DEFAULT 'Send', account TEXT, payload TEXT NOT NULL, state TEXT NOT NULL, run_key TEXT NOT NULL UNIQUE, grant_id TEXT, decided_by TEXT, decided_at INTEGER, result TEXT, error TEXT, routine_run_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, task TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
+    const row = (id: string, state: string, runKey: string): void =>
+      void old.prepare(`INSERT INTO work_held_acts (id, kind, origin, summary, payload, state, run_key, created_at, updated_at) VALUES (?, 'addon.call', 'app', 's', '{}', ?, ?, 1, 1)`).run(id, state, runKey)
+    row('ha_f', 'failed', 'host:ha_f')
+    row('ha_h', 'held', 'host:ha_h')
+    row('ha_l', 'failed', 'lifeos:outbox:ob_1')
+    ensureOutboxTables(old)
+    ensureOutboxTables(old)
+    const s = new HeldStore(old, () => clock++)
+    expect([s.get('ha_f'), s.get('ha_h'), s.get('ha_l')].map((r) => r!.outcomeUnknown)).toEqual([true, false, false])
   })
 
   it('a live act goes stale: its screen went with the process', () => {

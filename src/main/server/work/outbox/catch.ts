@@ -10,7 +10,7 @@ import type { AddonGate, GateAnswer, GatedCall } from '../../addons/addonHost'
 import type { AddonCallResult } from '../../addons/addonWire'
 import { errorResult } from '../../addons/downstream'
 import type { ActKindDef, WorkModule } from '../modules'
-import { ActStale } from './kinds'
+import { ActNotSent, ActStale } from './kinds'
 import { textOf, type Outbox } from './outbox'
 import { isLifeosRow, standingRule, type RuleAddons } from './rules'
 import type { HeldStore } from './store'
@@ -216,7 +216,7 @@ export function addonCallKind(deps: { addons: RuleAddons; ungated(addonId: strin
       const row = deps.addons.get(p.addonId)
       if (!row) throw new ActStale('the add-on was removed')
       if (specDigest(row.spec) !== p.specDigest) throw new ActStale('the add-on was changed since this call was held, so it now reaches another server')
-      if (!row.enabled) throw new Error(`${row.name} is turned off`)
+      if (!row.enabled) throw new ActNotSent(`${row.name} is turned off`)
       const result = await deps.ungated(p.addonId, p.tool, p.arguments)
       const text = textOf({ summary: '', ref: result })
       if (result.isError) throw new Error(text?.trim() || `${row.name} answered with an error`)

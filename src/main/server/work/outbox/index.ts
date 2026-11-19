@@ -95,7 +95,7 @@ export const outbox: WorkModule = {
         return handled(await withPicture(host, await box.get(req.params.ref)))
       case 'work.outbox.send':
         mustBePerson(by, 'approve')
-        return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), by: person(by) }))
+        return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), ...(req.params.again ? { again: true } : {}), by: person(by) }))
       case 'work.outbox.discard':
         mustBePerson(by, 'approve')
         return handled(await box.discard(req.params.ref, person(by)))

@@ -1,7 +1,7 @@
 import type { HeldWhy, OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
 import { ACT_PILLAR, errorText, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
-import { ActStale, type ActKinds } from './kinds'
+import { ActNotSent, ActStale, type ActKinds } from './kinds'
 import { itemOfRow, lifeosRunKey, PRESSABLE, type HeldRow, type HeldStore } from './store'
 import { discardedNote, failedNote, sentNote, staleNote } from './words'
 
@@ -62,6 +62,7 @@ const KEEPS: Partial<Record<ActKind, (old: unknown, next: unknown) => unknown>> 
 
 export const NO_SUCH_ITEM = 'no such held item on this host'
 export const CHANGED_SINCE = 'This item changed since you opened it. Look at it again before you decide.'
+export const MAY_HAVE_GONE = 'This may have gone already: the last send did not say how it ended. Check Sent first, and choose Send again only if it is not there.'
 export const REV_NEEDED = 'refused: a press on an item LifeOS holds names what was read (`rev`), so what goes is what was shown'
 
 /** What `execute` left behind, small enough to keep in the row: a result too large for the log keeps its line and drops its body. */
@@ -161,7 +162,7 @@ export class Outbox {
    * the row taken (sent, being sent, discarded) answers the row as it
    * stands and runs nothing.
    */
-  async send(ref: HeldRef, opts: { rev?: number; by?: string } = {}): Promise<OutboxItem> {
+  async send(ref: HeldRef, opts: { rev?: number; by?: string; again?: boolean } = {}): Promise<OutboxItem> {
     let row = this.store.byRef(ref)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
@@ -173,7 +174,9 @@ export class Outbox {
     if (!row) throw new Error(NO_SUCH_ITEM)
     if (ref.at === 'host' && opts.rev !== undefined && row.updatedAt !== opts.rev && PRESSABLE.includes(row.state)) throw new Error(CHANGED_SINCE)
     const def = this.def(row.kind)
-    const claimed = this.store.claim(row.id, opts.by ?? 'owner')
+    // A send that may have gone is sent again only when he chose that, after checking.
+    if (row.state === 'failed' && row.outcomeUnknown && !opts.again) throw new Error(MAY_HAVE_GONE)
+    const claimed = this.store.claim(row.id, opts.by ?? 'owner', null, { again: opts.again === true })
     if (!claimed) return this.wire(this.store.get(row.id)!)
     return this.wire(await this.run(claimed, def))
   }
@@ -376,13 +379,18 @@ export class Outbox {
     const decidedBy = (row.decidedBy?.startsWith('grant:') ? row.decidedBy : 'owner') as ActCtx['decidedBy']
     let end: HeldRow | null
     let result: ActResult | null = null
+    let started = false
     try {
       const payload = def.payload.parse(row.payload)
       const ctx: ActCtx = { ...this.deps.ctx, item: itemOfRow(row), decidedBy }
+      started = true
       result = await def.execute(payload, ctx)
       end = this.store.settle(row.id, 'sent', { result: keepable(result) })
     } catch (err) {
-      end = err instanceof ActStale ? this.store.settle(row.id, 'stale', { error: err.message }) : this.store.settle(row.id, 'failed', { error: errorText(err) })
+      // Unless the kind says nothing went, a failed send may have gone (a timeout, a lost answer). A LifeOS row is the
+      // exception: LifeOS holds what became of it, and its kind reads that before it sends again.
+      const unknown = started && !(err instanceof ActNotSent) && def.store !== 'lifeos'
+      end = err instanceof ActStale ? this.store.settle(row.id, 'stale', { error: err.message }) : this.store.settle(row.id, 'failed', { error: errorText(err), unknown })
     }
     const last = end ?? this.store.get(row.id)!
     this.settled(last, result, opts.quiet)

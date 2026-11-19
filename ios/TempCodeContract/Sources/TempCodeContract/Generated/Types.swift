@@ -4569,9 +4569,10 @@ public struct OutboxItem: Codable, Hashable, Sendable {
     public let result: Result?
     public let routineRunId: String?
     public let proposed: Bool?
+    public let outcomeUnknown: Bool?
     public let updatedAt: Int
 
-    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, updatedAt: Int) {
+    public init(ref: HeldRef, kind: Kind, workspaceId: String?, sessionId: String?, sector: String?, summary: String, verb: String, account: String?, state: State, payload: JSONValue? = nil, createdAt: Int, decidedBy: String?, decidedAt: Int?, n: Int?, why: Why, grantId: String?, error: String?, result: Result?, routineRunId: String?, proposed: Bool? = nil, outcomeUnknown: Bool? = nil, updatedAt: Int) {
         self.ref = ref
         self.kind = kind
         self.workspaceId = workspaceId
@@ -4592,11 +4593,12 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         self.result = result
         self.routineRunId = routineRunId
         self.proposed = proposed
+        self.outcomeUnknown = outcomeUnknown
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, updatedAt
+        case ref, kind, workspaceId, sessionId, sector, summary, verb, account, state, payload, createdAt, decidedBy, decidedAt, n, why, grantId, error, result, routineRunId, proposed, outcomeUnknown, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -4621,6 +4623,7 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         try container.encode(result, forKey: .result)
         try container.encode(routineRunId, forKey: .routineRunId)
         try container.encodeIfPresent(proposed, forKey: .proposed)
+        try container.encodeIfPresent(outcomeUnknown, forKey: .outcomeUnknown)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
 }

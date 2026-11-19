@@ -6,6 +6,8 @@ import { WORK_CALL_UNGATED } from '../../addons/addonHost'
 import type { ActKindDef, WorkModule } from '../modules'
 import { outbox as outboxModule, NOT_A_PERSON } from './index'
 import { adminKey, approveKey, cast, FAKE_SPEC, fakeSpec, LIFEOS_MCP, makeRig, person, readKey, until, type Rig } from './rig'
+import { ActNotSent } from './kinds'
+import { MAY_HAVE_GONE } from './outbox'
 import { INTERRUPTED } from './store'
 import { REFUSED_OFF } from './words'
 
@@ -195,10 +197,12 @@ describe("the owner's press", () => {
     await new Promise((r) => setTimeout(r, 30))
     expect(rig.downstream).toEqual([])
     const [after] = await rig.waiting()
-    expect(after).toMatchObject({ state: 'failed', error: INTERRUPTED, n: 1 })
-    // only his own new press sends it, once
-    expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: after!.ref })).toMatchObject({ state: 'sent' })
-    expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: after!.ref })).toMatchObject({ state: 'sent' })
+    expect(after).toMatchObject({ state: 'failed', error: INTERRUPTED, n: 1, outcomeUnknown: true })
+    // it may have gone: a plain press is refused, and only his explicit Send again sends it, once
+    await expect(rig.rpc('work.outbox.send', { ref: after!.ref })).rejects.toThrow(MAY_HAVE_GONE)
+    expect(rig.downstream).toEqual([])
+    expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: after!.ref, again: true })).toMatchObject({ state: 'sent' })
+    expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: after!.ref, again: true })).toMatchObject({ state: 'sent' })
     expect(rig.downstream).toHaveLength(1)
   })
 
@@ -213,6 +217,56 @@ describe("the owner's press", () => {
     expect(rig.whispers[0]).toMatchObject({ sessionId: 't-work' })
     expect(rig.whispers[0]!.text).toMatch(/^Held item 1 \(.*\) could not be carried out: .*Do not try another way to do it\.$/)
     expect((await rig.waiting())[0]).toMatchObject({ state: 'failed' })
+  })
+
+  it('that failed with no word of how it ended may have gone: a plain press is refused and only Send again sends it', async () => {
+    const slack = await rig.addon('slack', 'ws-purdue')
+    await rig.claudeCall('t-work', slack.id, 'fail', {})
+    const [item] = await rig.waiting()
+    const failed = await rig.rpc<OutboxItem>('work.outbox.send', { ref: item!.ref })
+    expect(failed).toMatchObject({ state: 'failed', outcomeUnknown: true })
+    const reached = rig.downstream.length
+    await expect(rig.rpc('work.outbox.send', { ref: item!.ref, rev: failed.updatedAt })).rejects.toThrow(MAY_HAVE_GONE)
+    expect(rig.downstream).toHaveLength(reached)
+    // the store holds the same line: no claim takes the row without `again`
+    expect(rig.host.store.claim((item!.ref as { id: string }).id, 'owner')).toBeNull()
+    const again = await rig.rpc<OutboxItem>('work.outbox.send', { ref: item!.ref, again: true })
+    expect(again.state).toBe('failed')
+    expect(rig.downstream).toHaveLength(reached + 1)
+  })
+
+  it('that clearly failed before anything went out may be pressed again as it is', async () => {
+    await rig.close()
+    let refuse = true
+    const ran: string[] = []
+    const z = (await import('zod')).z
+    const kind: ActKindDef<{ to: string }, never> = {
+      kind: 'teams.post',
+      store: 'host',
+      payload: z.object({ to: z.string() }),
+      words: (p) => ({ summary: `Post in ${p.to}`, verb: 'Post' }),
+      execute: async (p) => {
+        if (refuse) throw new ActNotSent('Teams turned the post away; nothing was posted')
+        ran.push(p.to)
+        return { summary: `Posted in ${p.to}` }
+      }
+    }
+    const pillar: WorkModule = { id: 'browser', ensure() {}, acts: [kind as unknown as ActKindDef] }
+    rig = await makeRig({ modules: [outboxModule, pillar] })
+    const { WORK_MODULES } = await import('../modules')
+    WORK_MODULES.push(pillar)
+    try {
+      cast(rig)
+      const item = rig.work.ctx.held.create({ kind: 'teams.post', sessionId: 't-work', payload: { to: 'Budget chat' } })
+      const failed = await rig.rpc<OutboxItem>('work.outbox.send', { ref: item.ref })
+      expect(failed).toMatchObject({ state: 'failed', error: 'Teams turned the post away; nothing was posted' })
+      expect(failed.outcomeUnknown).toBeUndefined()
+      refuse = false
+      expect(await rig.rpc<OutboxItem>('work.outbox.send', { ref: item.ref })).toMatchObject({ state: 'sent' })
+      expect(ran).toEqual(['Budget chat'])
+    } finally {
+      WORK_MODULES.splice(WORK_MODULES.indexOf(pillar), 1)
+    }
   })
 
   it('is refused for an add-on that was pointed at another server since: the call was held for the one he saw', async () => {

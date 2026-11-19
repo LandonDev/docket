@@ -181,6 +181,18 @@ describe("the Outbox", () => {
     ]);
   });
 
+  it("a send that may have gone offers no plain Send: a line to check Sent, his own Send again, and no group or tick takes it", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "failed", error: "Outlook did not answer in time", outcomeUnknown: true }), mail("o2", "Sam Ortiz", "Scrims"), mail("o3", "Events booking", "Ballroom")]);
+    await open();
+    await waitFor(() => expect(screen.getByText("Check Sent first")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "More ways to send" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Tick Send to Dana Lee" })).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send 2" })));
+    expect(sends().map((c) => (c.params.ref as { id: string }).id)).toEqual(["o2", "o3"]);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send again" })));
+    expect(sends().at(-1)!.params).toEqual({ ref: { at: "lifeos", table: "outbox", id: "o1" }, rev: 500, again: true });
+  });
+
   it("ticked rows send together", async () => {
     await open();
     fireEvent.click(screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" }));

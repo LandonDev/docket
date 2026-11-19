@@ -34,6 +34,16 @@ export const INTERRUPTED = 'The app stopped while this was being sent, so it may
 export const LIVE_LOST = 'The app restarted, so the screen this act was read from is gone.'
 
 export function ensureOutboxTables(db: DatabaseSync): void {
+  ensureTables(db)
+  // A database made before the mark: every failed row it holds is taken as a send that may have gone.
+  const columns = (db.prepare(`SELECT name FROM pragma_table_info('${HELD_TABLE}')`).all() as { name: string }[]).map((c) => c.name)
+  if (!columns.includes('outcome_unknown')) {
+    db.exec(`ALTER TABLE ${HELD_TABLE} ADD COLUMN outcome_unknown INTEGER NOT NULL DEFAULT 0`)
+    db.exec(`UPDATE ${HELD_TABLE} SET outcome_unknown = 1 WHERE state = 'failed' AND run_key NOT LIKE 'lifeos:%'`)
+  }
+}
+
+function ensureTables(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS ${HELD_TABLE} (
       id             TEXT PRIMARY KEY,
@@ -56,6 +66,7 @@ export function ensureOutboxTables(db: DatabaseSync): void {
       error          TEXT,
       routine_run_id TEXT,
       attempts       INTEGER NOT NULL DEFAULT 0,
+      outcome_unknown INTEGER NOT NULL DEFAULT 0,
       task           TEXT,
       created_at     INTEGER NOT NULL,
       updated_at     INTEGER NOT NULL
@@ -109,6 +120,7 @@ type Row = {
   error: string | null
   routine_run_id: string | null
   attempts: number
+  outcome_unknown: number
   created_at: number
   updated_at: number
 }
@@ -137,6 +149,8 @@ export interface HeldRow {
   error: string | null
   routineRunId: string | null
   attempts: number
+  /** a failed send whose end nobody knows (a timeout, a lost answer, a stop mid-send): it may have gone, so a press must say "Send again" */
+  outcomeUnknown: boolean
   createdAt: number
   updatedAt: number
 }
@@ -202,6 +216,7 @@ const decode = (r: Row): HeldRow => ({
   error: r.error,
   routineRunId: r.routine_run_id,
   attempts: Number(r.attempts),
+  outcomeUnknown: Number(r.outcome_unknown) === 1,
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at)
 })
@@ -234,6 +249,7 @@ export const itemOfRow = (row: HeldRow): OutboxItem => ({
   error: row.error,
   result: row.result,
   routineRunId: row.routineRunId,
+  ...(row.outcomeUnknown ? { outcomeUnknown: true } : {}),
   updatedAt: row.updatedAt
 })
 
@@ -331,24 +347,25 @@ export class HeldStore {
   /**
    * Take a row for sending. The one UPDATE names the states it may leave,
    * so of any number of presses exactly one gets the row back; the others
-   * get null and send nothing.
+   * get null and send nothing. A row whose last send may have gone is taken
+   * only with `again`: he chose Send again.
    */
-  claim(id: string, decidedBy: string, grantId: string | null = null): HeldRow | null {
+  claim(id: string, decidedBy: string, grantId: string | null = null, opts: { again?: boolean } = {}): HeldRow | null {
     const at = this.now()
     const done = this.db
       .prepare(
-        `UPDATE ${HELD_TABLE} SET state = 'sending', decided_by = ?, decided_at = ?, grant_id = ?, error = NULL, attempts = attempts + 1, updated_at = ?
-         WHERE id = ? AND state IN (${marks(PRESSABLE)})`
+        `UPDATE ${HELD_TABLE} SET state = 'sending', decided_by = ?, decided_at = ?, grant_id = ?, error = NULL, outcome_unknown = 0, attempts = attempts + 1, updated_at = ?
+         WHERE id = ? AND state IN (${marks(PRESSABLE)}) AND (outcome_unknown = 0 OR ? = 1)`
       )
-      .run(decidedBy, at, grantId, at, id, ...PRESSABLE)
+      .run(decidedBy, at, grantId, at, id, ...PRESSABLE, opts.again ? 1 : 0)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
   /** How a claimed send ended. Only a row that is `sending` is settled. */
-  settle(id: string, state: 'sent' | 'failed' | 'stale', out: { result?: ActResult | null; error?: string | null } = {}): HeldRow | null {
+  settle(id: string, state: 'sent' | 'failed' | 'stale', out: { result?: ActResult | null; error?: string | null; unknown?: boolean } = {}): HeldRow | null {
     const done = this.db
-      .prepare(`UPDATE ${HELD_TABLE} SET state = ?, result = ?, error = ?, updated_at = ? WHERE id = ? AND state = 'sending'`)
-      .run(state, out.result ? JSON.stringify(out.result) : null, out.error ?? null, this.now(), id)
+      .prepare(`UPDATE ${HELD_TABLE} SET state = ?, result = ?, error = ?, outcome_unknown = ?, updated_at = ? WHERE id = ? AND state = 'sending'`)
+      .run(state, out.result ? JSON.stringify(out.result) : null, out.error ?? null, state === 'failed' && out.unknown ? 1 : 0, this.now(), id)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
@@ -410,7 +427,12 @@ export class HeldStore {
    */
   recover(): { interrupted: number; lost: number } {
     const at = this.now()
-    const interrupted = Number(this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'failed', error = ?, updated_at = ? WHERE state = 'sending'`).run(INTERRUPTED, at).changes)
+    // A LifeOS row is the exception: LifeOS holds what became of it, and the watcher and the next press both ask it first.
+    const interrupted = Number(
+      this.db
+        .prepare(`UPDATE ${HELD_TABLE} SET state = 'failed', error = ?, outcome_unknown = CASE WHEN run_key LIKE 'lifeos:%' THEN 0 ELSE 1 END, updated_at = ? WHERE state = 'sending'`)
+        .run(INTERRUPTED, at).changes
+    )
     const lost = Number(this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = ? WHERE state = 'live'`).run(LIVE_LOST, at).changes)
     return { interrupted, lost }
   }
