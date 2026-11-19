@@ -172,24 +172,42 @@ A Windows host's glyph is a desktop (`hostKind` in lib/hostPlatform.ts, `chrome/
 
 ## Proof
 
-Seen in the rig on 2026-11-19 (1.0.346): the installer ran silently over SSH as the standard user
-and exited 0 (279 s), the app landed in `%LOCALAPPDATA%\Programs\TempCodeE2E` with nothing under
-Program Files and a Start menu shortcut, the bundled `claude.exe --version` answered
-`2.1.280 (Claude Code)`, and the app's database appeared under `%LOCALAPPDATA%`. Not yet seen: a
-window (the boot stops as said at the top), so every step after it.
+Seen in the rig on 2026-11-19, as the standard user, never elevated (`bun scripts/e2e-updater.ts
+--win`, screenshots in .temp-code/plans/landed/M12/):
 
-`bun scripts/e2e-updater.ts --win` (scripts/e2e-updater-win.ts), on the box: builds 1.0.N-1 and
-1.0.N as `TempCodeE2E` with the harness block, serves the new one from a local feed, and in the
-rig, as the standard user, installs the old one silently over SSH, starts it on the desktop, checks
-the frame, Ctrl+, and the hints over CDP, runs the bundled `claude.exe --version`, and drives
-check → download → restart until the folder holds 1.0.N and the relaunched app answers. `--busy`
-keeps a terminal with a bundled `claude.exe` alive across the restart; `--reuse` keeps the builds;
-`--rig-up` uses a rig that is already up. The guest reaches the feed and the box reaches the
-guest's CDP port through one SSH connection (`-R` and `-L`): Chromium's debug port listens on the
-guest's own loopback, where QEMU's forward does not reach.
+- **Install.** The installer ran silently over SSH in session 0 and exited 0 in 270 to 350 s
+  (Defender on, an emulated disk): `%LOCALAPPDATA%\Programs\TempCodeE2E`, nothing under Program
+  Files, a Start menu shortcut. The bundled `claude.exe --version` answered `2.1.280 (Claude Code)`.
+- **The window.** Windows' own caption buttons over the page's bar, the caption space 136px, none
+  of ours; their glyphs in the theme's ink in dark and in light (the page's `theme-color`, an
+  `oklch()` string, reaches `did-change-theme-color` as a colour); Alt shows no menu bar; Ctrl+,
+  opens Settings; every hint on the Keybindings page reads Ctrl and no ⌘ shows anywhere; Ctrl+=
+  zooms to 110% and the caption buttons grow with the 44px bar. The database is under
+  `%LOCALAPPDATA%`.
+- **Update.** check → download → Restart to update off a local feed: the app shuts its work down,
+  the bundled `claude.exe` left running out of the install folder is gone within six seconds, the
+  installer's own progress window runs for six to eight minutes, then starts 1.0.N, which answers
+  its version with no pending update and no failure and has cleared its attempt record.
+
+Not seen: Snap Layouts on hovering maximise (the rig has no pointer input yet, milestone 43); a
+real thread or a warm harness across the update (milestone 13); the real product's name
+(`TempCode`; the test builds are `TempCodeE2E`, the folder rule is the same); the zip.
+
+The driver, on the box: builds 1.0.N-1 and 1.0.N as `TempCodeE2E` with the harness block, serves
+the new one from a local feed, installs the old one silently, starts it on the desktop, checks the
+frame, both themes, Alt, Ctrl+, and the key list over CDP, runs the bundled CLI, and drives the
+update until the relaunched app answers. `--busy` starts the bundled `claude.exe` from the install
+folder before the restart and checks the sweep ended it; `--reuse` keeps the builds; `--rig-up`
+uses a rig that is already up; `--build-only` stops after the builds. The guest reaches the feed
+and the box reaches the guest's CDP ports through one SSH connection (`-R` and `-L`): Chromium's
+debug port listens on the guest's own loopback, where QEMU's forward does not reach. Each build has
+its own CDP port (9333 old, 9335 new): the installer inherits the old app's listening debug socket
+and holds it while it starts the new app. Over SSH, list a standard user's desktop processes with
+`Get-Process`; a CIM query of them is refused.
 
 Unit tests: `src/main/windowFrame.test.ts` (window options per platform, the data folder),
 `scripts/winRelease.test.ts` (the release file list, the config, the release check),
-`src/main/updateInstall.test.ts` (the child sweep), `src/main/presence.test.ts` (the lock at boot),
+`src/main/updateInstall.test.ts` (the child sweep, taskkill's arguments, the install on quit,
+the relaunch when no quit begins), `src/main/server/skills/links.test.ts` (junctions, boot), `src/main/presence.test.ts` (the lock at boot),
 `src/renderer/src/lib/keys.test.ts` and `keysGuard.test.ts`, `chrome/WindowControls.dom.test.tsx`,
 `chrome/HostGlyph.dom.test.tsx`.
