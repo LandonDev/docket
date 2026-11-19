@@ -22,14 +22,16 @@ import { runOsa, type Osa } from './osa'
  */
 
 const PRELUDE = `
+// An app's collection answers null, not [], when it holds nothing (Excel open with no workbook).
+function all(x){ return x == null ? [] : x }
 function app(name){ var a = Application(name); if (!a.running()) throw new Error(name + ' is not open. (-600)'); return a }
 function grid(x){ if (!Array.isArray(x)) return [[x]]; if (x.length && !Array.isArray(x[0])) return [x]; return x }
 function cell(v){ if (v === undefined || v === null || v === '') return null; if (v instanceof Date) return v.toISOString(); return v }
-function book(xl, key){ var bs = xl.workbooks(); for (var i = 0; i < bs.length; i++) if (bs[i].fullName() === key || bs[i].name() === key) return bs[i]; throw new Error('No open workbook ' + key + '. (-1728)') }
-function byKey(list, key){ for (var i = 0; i < list.length; i++) if (list[i].fullName() === key || list[i].name() === key) return list[i]; throw new Error('Nothing open named ' + key + '. (-1728)') }
-function files(list){ return list.map(function(f){ return { key: f.fullName(), name: f.name() } }) }
+function book(xl, key){ var bs = all(xl.workbooks()); for (var i = 0; i < bs.length; i++) if (bs[i].fullName() === key || bs[i].name() === key) return bs[i]; throw new Error('No open workbook ' + key + '. (-1728)') }
+function byKey(list, key){ list = all(list); for (var i = 0; i < list.length; i++) if (list[i].fullName() === key || list[i].name() === key) return list[i]; throw new Error('Nothing open named ' + key + '. (-1728)') }
+function files(list){ return all(list).map(function(f){ return { key: f.fullName(), name: f.name() } }) }
 function addr(m){ return m && m.address ? m.address : String(m || '') }
-function account(o, address){ var all = [].concat(o.exchangeAccounts(), o.imapAccounts(), o.popAccounts()); var acc = all.filter(function(x){ return String(x.emailAddress()).toLowerCase() === address.toLowerCase() })[0];
+function account(o, address){ var accs = [].concat(all(o.exchangeAccounts()), all(o.imapAccounts()), all(o.popAccounts())); var acc = accs.filter(function(x){ return String(x.emailAddress()).toLowerCase() === address.toLowerCase() })[0];
   if (!acc) throw new Error('Outlook has no account ' + address + '. (-1728)'); return acc }
 var ISO = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/
 function out(x){ return x === null ? '' : typeof x === 'string' && ISO.test(x) ? new Date(x) : x }
@@ -39,7 +41,7 @@ const js = (body: string): string => `${PRELUDE}\nfunction run(argv){ var a = JS
 
 export const SCRIPTS = {
   workbooks: js(`var xl = app('Microsoft Excel');
-    return JSON.stringify(xl.workbooks().map(function(b){ return { key: b.fullName(), name: b.name(), sheets: b.worksheets().map(function(s){
+    return JSON.stringify(all(xl.workbooks()).map(function(b){ return { key: b.fullName(), name: b.name(), sheets: all(b.worksheets()).map(function(s){
       var u = s.usedRange; var r = u.rows.length, c = u.columns.length; if (r === 1 && c === 1 && cell(u.value()) === null) return { name: s.name(), rows: 0, columns: 0 };
       return { name: s.name(), rows: u.firstRowIndex() + r - 1, columns: u.firstColumnIndex() + c - 1 } }) } }))`),
   readRange: js(`var r = book(app('Microsoft Excel'), a.book).worksheets.byName(a.sheet).ranges.byName(a.address);
@@ -62,19 +64,19 @@ export const SCRIPTS = {
     return JSON.stringify(n)`),
   presentations: js(`return JSON.stringify(files(app('Microsoft PowerPoint').presentations()))`),
   readSlides: js(`var p = byKey(app('Microsoft PowerPoint').presentations(), a.pres);
-    return JSON.stringify(p.slides().map(function(s, i){ return { index: i + 1, texts: s.shapes().filter(function(h){ return h.hasTextFrame() }).map(function(h){ return String(h.textFrame.textRange.content()) }) } }))`),
+    return JSON.stringify(all(p.slides()).map(function(s, i){ return { index: i + 1, texts: all(s.shapes()).filter(function(h){ return h.hasTextFrame() }).map(function(h){ return String(h.textFrame.textRange.content()) }) } }))`),
   replaceSlideText: js(`var p = byKey(app('Microsoft PowerPoint').presentations(), a.pres); var n = 0;
-    p.slides().forEach(function(s){ s.shapes().forEach(function(h){ if (!h.hasTextFrame()) return; var t = h.textFrame.textRange; var c = String(t.content());
+    all(p.slides()).forEach(function(s){ all(s.shapes()).forEach(function(h){ if (!h.hasTextFrame()) return; var t = h.textFrame.textRange; var c = String(t.content());
       if (c.indexOf(a.find) >= 0) { t.content = c.split(a.find).join(a.replace); n++ } }) });
     return JSON.stringify(n)`),
-  accounts: js(`var o = app('Microsoft Outlook'); var all = [].concat(o.exchangeAccounts(), o.imapAccounts(), o.popAccounts());
-    return JSON.stringify(all.map(function(x){ return String(x.emailAddress()) }).filter(Boolean))`),
+  accounts: js(`var o = app('Microsoft Outlook'); var accs = [].concat(all(o.exchangeAccounts()), all(o.imapAccounts()), all(o.popAccounts()));
+    return JSON.stringify(accs.map(function(x){ return String(x.emailAddress()) }).filter(Boolean))`),
   listMail: js(`var o = app('Microsoft Outlook'); var f = a.folder === 'sent' ? o.sentItems : a.folder === 'drafts' ? o.drafts : o.inbox;
-    var ms = a.query ? f.messages.whose({ subject: { _contains: a.query } }) : f.messages; var n = Math.min(ms.length, a.limit), out = [];
+    var ms = a.query ? f.messages.whose({ subject: { _contains: a.query } }) : f.messages; var n = Math.min(ms.length || 0, a.limit), out = [];
     for (var i = 0; i < n; i++) { var m = ms[i]; out.push({ id: String(m.id()), account: String(m.account.emailAddress()), from: addr(m.sender()), subject: String(m.subject()), at: (m.timeReceived() || m.timeSent() || new Date(0)).toISOString(), read: !!m.isRead() }) }
     return JSON.stringify(out)`),
   readMail: js(`var o = app('Microsoft Outlook'); var m = o.messages.byId(Number(a.id));
-    var rs = function(list){ return list.map(function(r){ return addr(r.emailAddress()) }) };
+    var rs = function(list){ return all(list).map(function(r){ return addr(r.emailAddress()) }) };
     return JSON.stringify({ id: String(m.id()), account: String(m.account.emailAddress()), from: addr(m.sender()), subject: String(m.subject()), at: (m.timeReceived() || m.timeSent() || new Date(0)).toISOString(), read: !!m.isRead(),
       to: rs(m.toRecipients()), cc: rs(m.ccRecipients()), text: String(m.plainTextContent()) })`),
   mail: js(`var o = app('Microsoft Outlook'); var m;
@@ -90,16 +92,16 @@ export const SCRIPTS = {
     var id = String(m.id()); if (a.send) o.send(m); return JSON.stringify(id)`),
   events: js(`var o = app('Microsoft Outlook'); var from = new Date(a.from), to = new Date(a.to);
     var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] });
-    var ids = es.id(), subj = es.subject(), st = es.startTime(), en = es.endTime(), loc = es.location(), org = es.organizer(), out = [];
+    var ids = all(es.id()), subj = all(es.subject()), st = all(es.startTime()), en = all(es.endTime()), loc = all(es.location()), org = all(es.organizer()), out = [];
     for (var i = 0; i < Math.min(ids.length, 500); i++) out.push({ id: String(ids[i]), subject: String(subj[i]), start: st[i].toISOString(), end: en[i].toISOString(), location: String(loc[i] || ''), organizer: String(org[i] || ''),
-      attendees: es[i].attendees().map(function(x){ return addr(x.emailAddress()) }), response: '' });
+      attendees: all(es[i].attendees()).map(function(x){ return addr(x.emailAddress()) }), response: '' });
     return JSON.stringify(out)`),
   createEvent: js(`var o = app('Microsoft Outlook'); var acc = a.e.account ? account(o, a.e.account) : null;
     var e = o.CalendarEvent({ subject: a.e.subject, startTime: new Date(a.e.start), endTime: new Date(a.e.end), location: a.e.location || '', content: a.e.body || '' });
     (acc ? acc.defaultCalendar.calendarEvents : o.calendarEvents).push(e); a.e.attendees.forEach(function(x){ e.requiredAttendees.push(o.RequiredAttendee({ emailAddress: { address: x } })) });
     if (a.e.attendees.length) { if (acc) o.sendMeeting(e, { fromAccount: acc }); else o.sendMeeting(e) } return JSON.stringify(String(e.id()))`),
   eventByUid: js(`var o = app('Microsoft Outlook'); var now = Date.now(); var from = new Date(now - 7 * 864e5), to = new Date(now + 183 * 864e5);
-    var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] }); var ids = es.id(), ics = es.icalendarData();
+    var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] }); var ids = all(es.id()), ics = all(es.icalendarData());
     for (var i = 0; i < ids.length; i++) if (String(ics[i] || '').replace(/\\r?\\n[ \\t]/g, '').split(/\\r?\\n/).indexOf('UID:' + a.uid) >= 0) return JSON.stringify(String(ids[i]));
     return 'null'`),
   answerEvent: js(`var o = app('Microsoft Outlook'); var e = o.calendarEvents.byId(Number(a.id)); var p = { sendingResponse: true }; if (a.comment) p.comment = a.comment;
@@ -158,6 +160,8 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
       allowedSeen.set(app, 'yes')
       return JSON.parse(out || 'null') as T
     } catch (err) {
+      // The app answered "no such item": it let us in.
+      if (err instanceof OfficeError && err.code === 'not-found') allowedSeen.set(app, 'yes')
       if (err instanceof OfficeError && err.code === 'not-allowed') allowedSeen.set(app, 'no')
       if (err instanceof OfficeError && err.code === 'needs-consent') allowedSeen.set(app, 'ask')
       throw err

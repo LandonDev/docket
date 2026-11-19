@@ -72,6 +72,12 @@ describe('the Excel scripts', () => {
     expect(w3[1][1]).toBeInstanceOf(Date)
   })
 
+  it('answer an empty list, not a TypeError, when Excel is open with no workbook (JXA gives null)', () => {
+    const xl = { running: () => true, workbooks: () => null }
+    expect(runScript('workbooks', {}, { 'Microsoft Excel': xl })).toEqual([])
+    expect(() => runScript('readRange', { book: 'B.xlsx', sheet: 'Sheet1', address: 'A1' }, { 'Microsoft Excel': xl })).toThrow('(-1728)')
+  })
+
   it('refuse a workbook that is not open', () => {
     expect(() => runScript('readRange', { book: 'Other.xlsx', sheet: 'Sheet1', address: 'A1' }, { 'Microsoft Excel': excel([], { value: 1, formula2: '', numberFormat: '' }) })).toThrow('(-1728)')
   })
@@ -115,6 +121,16 @@ describe('the Outlook mail script', () => {
   })
 })
 
+describe('empty collections', () => {
+  it('read as empty in every list: Word, PowerPoint and Outlook answer null for none', () => {
+    const none = { running: () => true, documents: () => null, presentations: () => null, exchangeAccounts: () => null, imapAccounts: () => null, popAccounts: () => [] }
+    const apps = { 'Microsoft Word': none, 'Microsoft PowerPoint': none, 'Microsoft Outlook': none }
+    expect(runScript('documents', {}, apps)).toEqual([])
+    expect(runScript('presentations', {}, apps)).toEqual([])
+    expect(runScript('accounts', {}, apps)).toEqual([])
+  })
+})
+
 describe('every script', () => {
   it('parses as JavaScript, and refuses an app that is not running without starting it', () => {
     for (const [name, src] of Object.entries(SCRIPTS)) {
@@ -139,6 +155,15 @@ describe('the Mac carrier', () => {
     const c = macCarrier({ osa: recorded({ readRange: JSON.stringify({ values: [[1]], formulas: [['']], formats: [['General']] }) }, seen), installed: () => true })
     await expect(c.readRange('/tmp/B.xlsx', 'Sheet1', 'A1')).resolves.toEqual({ values: [[1]], formulas: [['']], formats: [['General']] })
     expect(seen).toEqual([['readRange', JSON.stringify({ book: '/tmp/B.xlsx', sheet: 'Sheet1', address: 'A1' })]])
+  })
+
+  it('records an app as allowed when it answered, with an empty list or with "no such item"', async () => {
+    const c = macCarrier({ osa: recorded({ workbooks: '[]', documents: osaError('execution error: Microsoft Word got an error: Can’t get document "x". (-1728)') }), installed: () => true, running: async () => true })
+    await expect(c.workbooks()).resolves.toEqual([])
+    await expect(c.documents()).rejects.toMatchObject({ code: 'not-found' })
+    const seen = await c.apps()
+    expect(seen.find((a) => a.app === 'excel')?.allowed).toBe('yes')
+    expect(seen.find((a) => a.app === 'word')?.allowed).toBe('yes')
   })
 
   it('says in words when macOS refuses, and remembers it for the status', async () => {
