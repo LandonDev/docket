@@ -24,9 +24,16 @@
   `SessionScope`, `WorkSettings`, `ContextChip` and `CanvasSource` (a
   seventh generated file, `CanvasSource.swift`), the optional `scope`,
   `kind`, `sector` and `lifeosProjectId` fields, and `work.get` and
-  `work.set`. The `work` push is not in `RemotePushSchema` yet: the
-  client's switch over `ServerPush` is exhaustive, so the phone build that
-  reads a Work push adds its case with it. A union's inline object
+  `work.set`. Milestone 46 added the phone's Work: the `work`,
+  `work.outbox`, `work.outbox.result`, `work.lifeos` and `away` pushes are
+  in `RemotePushSchema` (zod for `WorkResult`, `OutboxGrant`,
+  `ToolRulesCard`, `LifeosStatus` and Away's snapshot in wireSchemas.ts,
+  each pinned to its interface), and the subset carries the Outbox's list,
+  get, send, discard, edit, grants, ungrant, rules, setRules, results and
+  undo, `work.lifeos.status`, `away.get` and `away.set`, with `HeldRef`,
+  `AwayState` and `AwayDecided` named. The client's switch over
+  `ServerPush` is exhaustive: a new remote push lands with its case
+  (EnvironmentClient.apply hands Work's to `WorkHost`). A union's inline object
   branch that pins a field to a literal is tried only for the values its
   literal and enum fields list (`branchGuard`), since a generated enum
   keeps a value it does not know and would take a later branch's known

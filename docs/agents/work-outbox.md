@@ -291,6 +291,20 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   again), Decided without you (each thread and its count, Open), Written
   on your files (Undo). With Work off the return is what it was.
 
+### On the phone (milestone 46)
+
+The phone lists, opens, edits, sends and discards held items and reviews
+the return from Away (docs/IOS-DESIGN.md "Work on the phone",
+docs/agents/ios-client.md "Work on the phone"). It reads the same wire:
+`work.outbox.list/get/send/discard/edit/grants/ungrant/rules/setRules/results/undo`,
+the `work.outbox` and `work.outbox.result` pushes (both now in
+`RemotePushSchema`). A relayed lane carries every Outbox method to the
+host whose item it is on the link alone (an empty `OUTBOX_RELAY` means
+"carried", which contract-relay.test.ts pins). A held act's notice carries
+the item (`tc.held` in the APNs payload, `held` on `relay.notice`) and
+keeps the Open category. The phone's Send waits five seconds with Undo
+before it reaches the host; nothing has gone while it waits.
+
 ## Not built here
 
 Each pillar's own view of its acts (mail is M23's, the calendar M25's):

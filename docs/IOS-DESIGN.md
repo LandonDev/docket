@@ -2303,6 +2303,72 @@ to the thread's host, whose attachment folder the fence admits; a cross-host
 subagent's composer uploads to the child's host, because its client is the
 child's.
 
+## Work on the phone
+
+The approved pages are `.temp-code/prototypes/work-workspaces-2/phone-nav.html`
+(one Home with two headings) and `phone-outbox.html` (the Outbox as Home's
+first row, Away's end as one notice and one list). The owner's rule: the
+phone does everything the desktop does. What milestone 46 built:
+
+- **Home.** While any host has Work on, the **Outbox** row leads Home:
+  the `paperplane` glyph in the 28 pt mark slot, "Outbox", and the waiting
+  count as a plain stamp. Held is not Needs you: the count is never amber
+  and no Outbox surface takes the warning wash or an orange dot. **Work
+  Chats** follows Chats. The Work workspaces sit under a "Work" section
+  header after the code workspaces, each led by its **sector's dot** (8 pt)
+  in the mark slot, never a tile. With Work off on every host, Home is
+  exactly what it was.
+- **Sector hues** (`Tint.sector`, Work/WorkStyles.swift): cosmic, hypixel,
+  purdue, ref, unify, life, light and dark, from the prototype kit's oklch
+  values. Used only for a Work workspace's dot, an Outbox band's dot and the
+  held detail's place line.
+- **The Outbox** is a pushed list (the sidebar in the split poses): a band
+  per workspace on the one gray step (dot, name, count), newest band first;
+  each row is the kind's glyph in the mark column, what it does, the
+  subject or target as its meta line, the time as a stamp. A failed send
+  carries the destructive dot and its reason as the meta line. Swipe
+  trailing and the context menu offer Send (Send Again) and Discard;
+  Discard asks once. Empty: "Nothing Held".
+- **The held detail** reads as the act, exactly as it will go: the place
+  line (dot, workspace, time), the summary as the title (title3
+  semibold), then each field on its own line under a hairline (label in
+  meta at a 64 pt column, the value in body, an address under a name), then
+  the body as plain text. Its own bottom bar, the fourth named bottom bar
+  after the dock, the hunk bar and the Preamble panel: Discard as plain
+  destructive text at the leading edge, Edit as a glass capsule, Send (the
+  item's own verb) as the prominent glass capsule. Edit is a form sheet:
+  each field a person reads and the message.
+- **After Send** the detail returns to the list and the item leaves it; an
+  **undo capsule** (glass, 44 pt, one line "Sending to …" and Undo) floats
+  over the list's foot for five seconds, entering and leaving from the
+  same edge (opacity alone with Reduce Motion). The host hears nothing
+  until the five seconds end.
+- **A held notice** (the host's `needs_you` with `tc.held`) opens its item
+  over the Outbox. Its category is Open alone: nothing sends from the lock
+  screen.
+- **Away** is a check item ("Away", `moon`) in the host menu beside the
+  fleet switches. When it ends: one note at the top of Home ("Away ended.
+  7 held, 4 decided without you" and Review), and one notification "Away
+  ended" when the app is not in front. Review is a document sheet "While
+  You Were Away": the span, then Held (each with its verb), Failed,
+  Decided without you (a thread and its count, which opens it), Written on
+  your files (Undo where the write has a way back), each left out when
+  empty.
+- **Settings → Work** is a row under Hosts while any host has Work: per
+  host, the switch, LifeOS's state in words, Grants (each with Remove, no
+  confirm), and each add-on's tools with Runs, Held or Off.
+- **A Work workspace's screen** is the workspace screen; a host that
+  cannot reach LifeOS says so once above the threads ("Sign in to LifeOS
+  on <host> …", or "Can’t reach LifeOS. Retrying…").
+
+Not yet on the phone, and whose: the workspace screen's four view rows
+(Mail, Tasks, Agenda, Docs), LifeOS's project cards and the Routines
+header (milestone 47, with LifeKit); the transcript's held row that opens
+in place (milestone 47's thread items); a grant made from a held item's
+Send menu; a new Work workspace from the band's +; a new Work Chat from
+Work Chats; the house rules page (milestone 39 has not landed); guest
+links in Settings (milestone 31).
+
 ## Visual system
 
 Everything maps to the desktop's `DESIGN.md`: quiet chrome, one gray step,

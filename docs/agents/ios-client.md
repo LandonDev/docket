@@ -750,6 +750,55 @@
   put a pairing link or a key in a file or a log; the scripts scrub their
   output.
 
+## Work on the phone (milestone 46)
+
+- **One `WorkHost` per host** (TempCodeClient Work/Shell/WorkHost.swift,
+  `client.work`): the switch (`work.get` at each open, the `work` push),
+  the Outbox's waiting items and count (`work.outbox.list`, then the
+  `work.outbox` push merges the changed item), LifeOS's state
+  (`work.lifeos.status`, the `work.lifeos` push) and Away (`away.get`, the
+  `away` push). Every press goes to the host and lands back as the item it
+  answered: `send` passes `rev` = the item's `updatedAt`, `edit` sends the
+  whole payload, `discard`, `results(since:)`, `undo`, `setAway`,
+  `setWork`, `grants`, `ungrant`, `rules`, `setRule`. A host with Work off,
+  or from before Work, is `isOn == false` and shows nothing of Work.
+- **Home** (Shell/HomeSections.swift): a host's Work rows never mix with
+  code. `HomeHostInput.workOn` (the switch) splits each host in two:
+  `entries` are the code half as before (Chats leaves out Work threads,
+  the code workspaces leave out `kind: work`), and `home.work` is the Work
+  band: Work Chats (`workChatsKey`), then each Work workspace. With every
+  host's switch off `home.work` is empty and Home is what it was
+  (WorkHomeTests). The view puts the Outbox row first, Work Chats after
+  Chats, and the Work workspaces under a "Work" header, each led by its
+  sector's dot (`SectorDot`, `Tint.sector`).
+- **The Outbox** (TempCode Sources/Work): `OutboxModel` (client package)
+  is the desktop's model.ts in Swift: `payloadView` (a payload object has no
+  key order once decoded, so From, To, Cc, Bcc, Subject lead), `applyEdits`
+  (a text beside an `html` rewrites it), `parseAddresses`, `bands`, the
+  route's `key`/`ref`, Away's words. Routes `.outbox` (sidebar),
+  `.outboxItem(environmentId:ref:)` and `.workSettings` (detail).
+- **Send waits five seconds on the phone** (`OutboxPresses`): the host
+  hears nothing until the wait ends, so the capsule's Undo is a true undo;
+  a second Send or the app leaving the screen sends the waiting one at
+  once. The desktop sends on the press (landed/M14.md); the phone follows
+  phone-outbox.html.
+- **A held notice opens its item**: the host's notice carries `tc.held`
+  (apnsPayload.ts, carried through `relay.notice`), `PushTarget.held` reads
+  it, `NavigationRouter.open` routes to `.outboxItem` over `.outbox`. Its
+  category stays `tc.thread` (Open alone): nothing sends from the lock
+  screen.
+- **Away's end**: `WorkHost` sets `awayEnd` when it sees Away go off live,
+  or at an open when the host's stretch ended after the last one reviewed
+  on this phone (`work.away.reviewed.<env>` in defaults; a first open
+  reviews nothing older). Home shows one note with Review; with the app
+  not in front, one local notification. Away is per host, kept in step by
+  the hosts' own peer leg, so `away.get`/`away.set` never cross a relay.
+- **The proof**: `TC_PROOF_SET=work bun scripts/ios-sim-proof-local.ts`
+  seeds Work through scripts/lib/ios-work-seeds.ts (the test server runs
+  its add-ons in process with `TC_TEST_ADDONS=1`, and `POST /work-held`
+  writes held acts as the hold does), shoots the screens and reads back on
+  the host what the phone's presses did (`work-report.txt`).
+
 ## The data path's two contracts (the performance pass, 2026-11)
 
 What a push and a key may re-run is written down in docs/IOS-DESIGN.md
