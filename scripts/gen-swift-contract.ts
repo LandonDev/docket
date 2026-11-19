@@ -88,6 +88,7 @@ import { TurnPassSchema } from '../src/shared/turnpass'
 import { ModelPolicySchema, OrchestrationRulesSchema } from '../src/shared/rules'
 import { MacBridgePolicySchema } from '../src/shared/contract-macbridge'
 import * as W from '../src/shared/wireSchemas'
+import { FrameTableSchema } from '../src/shared/contract-work-media'
 import { CanvasItemSchema, CanvasSourceSchema, ContextChipSchema } from '../src/shared/work/canvas'
 import { SessionScopeSchema, WorkspaceKindSchema } from '../src/shared/work/ids'
 import { WorkSettingsSchema } from '../src/shared/work/scope'
@@ -493,6 +494,7 @@ export const SUBSET: SubsetEntry[] = [
   method('work.slides.open', W.DeckPhoneViewSchema),
   method('work.slides.read', W.FileBytesSchema),
   method('work.slides.review', W.DeckPhoneViewSchema),
+  type('FrameTable', FrameTableSchema),
   type('MediaPlay', W.MediaPlaySchema),
   type('MediaPhoneNote', W.MediaPhoneNoteSchema),
   type('MediaPhoneView', W.MediaPhoneViewSchema),
@@ -797,7 +799,8 @@ function fields(
   const out: Field[] = []
   for (const [key, prop] of Object.entries(schema.properties ?? {})) {
     if (key === skipKey) continue
-    const r = resolve_(em, prop, pascal(key), direction, nested)
+    // `Patch` is the request wrapper (`Patch<T>`): a field of that name gets another type name.
+    const r = resolve_(em, prop, pascal(key) === 'Patch' ? 'Changes' : pascal(key), direction, nested)
     const optional = !required.has(key) || r.unknown
     let type = r.type
     if (optional && r.nullable && direction === 'in') type = `Patch<${type}>`
@@ -1010,6 +1013,9 @@ function untaggedUnion(
               : (b.type ?? 'value')
     return { name: ident(caseName), type: r.type, guard: branchGuard(b, branches.length) }
   })
+  // Two branches that come out as one Swift case (a string or the literal `'live'`, two tuple
+  // shapes that are both `[JSONValue]`) are one case: the first decodes and encodes both.
+  .filter((c, i, all) => all.findIndex((d) => d.name === c.name && d.type === c.type) === i)
   const body: Lines = []
   if (nested.length) body.push(...nested, '')
   body.push(

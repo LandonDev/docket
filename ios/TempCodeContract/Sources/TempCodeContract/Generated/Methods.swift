@@ -3099,7 +3099,7 @@ public enum Methods {
         public static let name = "work.workspace.set"
 
         public struct Params: Codable, Hashable, Sendable {
-            public struct Patch: Codable, Hashable, Sendable {
+            public struct Changes: Codable, Hashable, Sendable {
                 public let mayUseDesktop: [String]?
                 public let model: Patch<String>?
                 public let reasoning: Patch<String>?
@@ -3114,9 +3114,9 @@ public enum Methods {
             }
 
             public let workspaceId: String
-            public let patch: Patch
+            public let patch: Changes
 
-            public init(workspaceId: String, patch: Patch) {
+            public init(workspaceId: String, patch: Changes) {
                 self.workspaceId = workspaceId
                 self.patch = patch
             }
@@ -3642,13 +3642,11 @@ public enum Methods {
                     public struct Case0: Codable, Hashable, Sendable {
                         public enum Point: Codable, Hashable, Sendable {
                             case array([JSONValue])
-                            case array([JSONValue])
                             /// A shape this build does not know, untouched.
                             case unknown(JSONValue)
 
                             public init(from decoder: any Decoder) throws {
                                 let container = try decoder.singleValueContainer()
-                                if let value = try? container.decode([JSONValue].self) { self = .array(value); return }
                                 if let value = try? container.decode([JSONValue].self) { self = .array(value); return }
                                 self = .unknown(try container.decode(JSONValue.self))
                             }
@@ -3656,7 +3654,6 @@ public enum Methods {
                             public func encode(to encoder: any Encoder) throws {
                                 var container = encoder.singleValueContainer()
                                 switch self {
-                                case .array(let value): try container.encode(value)
                                 case .array(let value): try container.encode(value)
                                 case .unknown(let value): try container.encode(value)
                                 }
@@ -4043,13 +4040,11 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public enum From: Codable, Hashable, Sendable {
                 case string(String)
-                case string(String)
                 /// A shape this build does not know, untouched.
                 case unknown(JSONValue)
 
                 public init(from decoder: any Decoder) throws {
                     let container = try decoder.singleValueContainer()
-                    if let value = try? container.decode(String.self) { self = .string(value); return }
                     if let value = try? container.decode(String.self) { self = .string(value); return }
                     self = .unknown(try container.decode(JSONValue.self))
                 }
@@ -4057,7 +4052,6 @@ public enum Methods {
                 public func encode(to encoder: any Encoder) throws {
                     var container = encoder.singleValueContainer()
                     switch self {
-                    case .string(let value): try container.encode(value)
                     case .string(let value): try container.encode(value)
                     case .unknown(let value): try container.encode(value)
                     }
@@ -4065,13 +4059,11 @@ public enum Methods {
             }
             public enum To: Codable, Hashable, Sendable {
                 case string(String)
-                case string(String)
                 /// A shape this build does not know, untouched.
                 case unknown(JSONValue)
 
                 public init(from decoder: any Decoder) throws {
                     let container = try decoder.singleValueContainer()
-                    if let value = try? container.decode(String.self) { self = .string(value); return }
                     if let value = try? container.decode(String.self) { self = .string(value); return }
                     self = .unknown(try container.decode(JSONValue.self))
                 }
@@ -4079,7 +4071,6 @@ public enum Methods {
                 public func encode(to encoder: any Encoder) throws {
                     var container = encoder.singleValueContainer()
                     switch self {
-                    case .string(let value): try container.encode(value)
                     case .string(let value): try container.encode(value)
                     case .unknown(let value): try container.encode(value)
                     }

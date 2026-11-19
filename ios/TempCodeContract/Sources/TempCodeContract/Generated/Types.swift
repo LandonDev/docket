@@ -5783,154 +5783,89 @@ public struct DeckPhoneView: Codable, Hashable, Sendable {
     }
 }
 
-public enum MediaPlay: Codable, Hashable, Sendable {
+public enum FrameTable: Codable, Hashable, Sendable {
     public struct Case0: Codable, Hashable, Sendable {
-        public enum Table: Codable, Hashable, Sendable {
-            public struct Case0: Codable, Hashable, Sendable {
-                public struct Rate: Codable, Hashable, Sendable {
-                    public let num: Int
-                    public let den: Int
+        public struct Rate: Codable, Hashable, Sendable {
+            public let num: Int
+            public let den: Int
 
-                    public init(num: Int, den: Int) {
-                        self.num = num
-                        self.den = den
-                    }
-                }
-
-                public let start: Double
-                public let rate: Rate
-                public let count: Int
-
-                public init(start: Double, rate: Rate, count: Int) {
-                    self.start = start
-                    self.rate = rate
-                    self.count = count
-                }
-            }
-            public struct Case1: Codable, Hashable, Sendable {
-                public let times: [Double]
-                public let end: Double
-
-                public init(times: [Double], end: Double) {
-                    self.times = times
-                    self.end = end
-                }
-            }
-
-            case cfr(Case0)
-            case vfr(Case1)
-            /// A `kind` this build does not know: the whole object, untouched.
-            case unknown(JSONValue)
-
-            private enum Tag: String, CodingKey {
-                case kind
-            }
-
-            public init(from decoder: any Decoder) throws {
-                let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .kind)
-                switch tag {
-                case "cfr": self = .cfr(try Case0(from: decoder))
-                case "vfr": self = .vfr(try Case1(from: decoder))
-                default: self = .unknown(try JSONValue(from: decoder))
-                }
-            }
-
-            public func encode(to encoder: any Encoder) throws {
-                switch self {
-                case .cfr(let value): try Self.encode(tag: "cfr", value, to: encoder)
-                case .vfr(let value): try Self.encode(tag: "vfr", value, to: encoder)
-                case .unknown(let value): try value.encode(to: encoder)
-                }
-            }
-
-            private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
-                var container = encoder.container(keyedBy: Tag.self)
-                try container.encode(tag, forKey: .kind)
-                try value.encode(to: encoder)
+            public init(num: Int, den: Int) {
+                self.num = num
+                self.den = den
             }
         }
 
+        public let start: Double
+        public let rate: Rate
+        public let count: Int
+
+        public init(start: Double, rate: Rate, count: Int) {
+            self.start = start
+            self.rate = rate
+            self.count = count
+        }
+    }
+    public struct Case1: Codable, Hashable, Sendable {
+        public let times: [Double]
+        public let end: Double
+
+        public init(times: [Double], end: Double) {
+            self.times = times
+            self.end = end
+        }
+    }
+
+    case cfr(Case0)
+    case vfr(Case1)
+    /// A `kind` this build does not know: the whole object, untouched.
+    case unknown(JSONValue)
+
+    private enum Tag: String, CodingKey {
+        case kind
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .kind)
+        switch tag {
+        case "cfr": self = .cfr(try Case0(from: decoder))
+        case "vfr": self = .vfr(try Case1(from: decoder))
+        default: self = .unknown(try JSONValue(from: decoder))
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .cfr(let value): try Self.encode(tag: "cfr", value, to: encoder)
+        case .vfr(let value): try Self.encode(tag: "vfr", value, to: encoder)
+        case .unknown(let value): try value.encode(to: encoder)
+        }
+    }
+
+    private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: Tag.self)
+        try container.encode(tag, forKey: .kind)
+        try value.encode(to: encoder)
+    }
+}
+
+public enum MediaPlay: Codable, Hashable, Sendable {
+    public struct Case0: Codable, Hashable, Sendable {
         public let url: String
         public let mime: String
-        public let table: Table
+        public let table: FrameTable
 
-        public init(url: String, mime: String, table: Table) {
+        public init(url: String, mime: String, table: FrameTable) {
             self.url = url
             self.mime = mime
             self.table = table
         }
     }
     public struct Case1: Codable, Hashable, Sendable {
-        public enum Table: Codable, Hashable, Sendable {
-            public struct Case0: Codable, Hashable, Sendable {
-                public struct Rate: Codable, Hashable, Sendable {
-                    public let num: Int
-                    public let den: Int
-
-                    public init(num: Int, den: Int) {
-                        self.num = num
-                        self.den = den
-                    }
-                }
-
-                public let start: Double
-                public let rate: Rate
-                public let count: Int
-
-                public init(start: Double, rate: Rate, count: Int) {
-                    self.start = start
-                    self.rate = rate
-                    self.count = count
-                }
-            }
-            public struct Case1: Codable, Hashable, Sendable {
-                public let times: [Double]
-                public let end: Double
-
-                public init(times: [Double], end: Double) {
-                    self.times = times
-                    self.end = end
-                }
-            }
-
-            case cfr(Case0)
-            case vfr(Case1)
-            /// A `kind` this build does not know: the whole object, untouched.
-            case unknown(JSONValue)
-
-            private enum Tag: String, CodingKey {
-                case kind
-            }
-
-            public init(from decoder: any Decoder) throws {
-                let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .kind)
-                switch tag {
-                case "cfr": self = .cfr(try Case0(from: decoder))
-                case "vfr": self = .vfr(try Case1(from: decoder))
-                default: self = .unknown(try JSONValue(from: decoder))
-                }
-            }
-
-            public func encode(to encoder: any Encoder) throws {
-                switch self {
-                case .cfr(let value): try Self.encode(tag: "cfr", value, to: encoder)
-                case .vfr(let value): try Self.encode(tag: "vfr", value, to: encoder)
-                case .unknown(let value): try value.encode(to: encoder)
-                }
-            }
-
-            private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
-                var container = encoder.container(keyedBy: Tag.self)
-                try container.encode(tag, forKey: .kind)
-                try value.encode(to: encoder)
-            }
-        }
-
         public let url: String
-        public let table: Table
+        public let table: FrameTable
         public let why: String
 
-        public init(url: String, table: Table, why: String) {
+        public init(url: String, table: FrameTable, why: String) {
             self.url = url
             self.table = table
             self.why = why
@@ -5946,79 +5881,15 @@ public enum MediaPlay: Codable, Hashable, Sendable {
                 self.duration = duration
             }
         }
-        public enum Table: Codable, Hashable, Sendable {
-            public struct Case0: Codable, Hashable, Sendable {
-                public struct Rate: Codable, Hashable, Sendable {
-                    public let num: Int
-                    public let den: Int
-
-                    public init(num: Int, den: Int) {
-                        self.num = num
-                        self.den = den
-                    }
-                }
-
-                public let start: Double
-                public let rate: Rate
-                public let count: Int
-
-                public init(start: Double, rate: Rate, count: Int) {
-                    self.start = start
-                    self.rate = rate
-                    self.count = count
-                }
-            }
-            public struct Case1: Codable, Hashable, Sendable {
-                public let times: [Double]
-                public let end: Double
-
-                public init(times: [Double], end: Double) {
-                    self.times = times
-                    self.end = end
-                }
-            }
-
-            case cfr(Case0)
-            case vfr(Case1)
-            /// A `kind` this build does not know: the whole object, untouched.
-            case unknown(JSONValue)
-
-            private enum Tag: String, CodingKey {
-                case kind
-            }
-
-            public init(from decoder: any Decoder) throws {
-                let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .kind)
-                switch tag {
-                case "cfr": self = .cfr(try Case0(from: decoder))
-                case "vfr": self = .vfr(try Case1(from: decoder))
-                default: self = .unknown(try JSONValue(from: decoder))
-                }
-            }
-
-            public func encode(to encoder: any Encoder) throws {
-                switch self {
-                case .cfr(let value): try Self.encode(tag: "cfr", value, to: encoder)
-                case .vfr(let value): try Self.encode(tag: "vfr", value, to: encoder)
-                case .unknown(let value): try value.encode(to: encoder)
-                }
-            }
-
-            private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
-                var container = encoder.container(keyedBy: Tag.self)
-                try container.encode(tag, forKey: .kind)
-                try value.encode(to: encoder)
-            }
-        }
 
         public let `init`: String
         public let segments: [Segment]
         public let ended: Bool
         public let mime: String
-        public let table: Table
+        public let table: FrameTable
         public let why: String
 
-        public init(`init`: String, segments: [Segment], ended: Bool, mime: String, table: Table, why: String) {
+        public init(`init`: String, segments: [Segment], ended: Bool, mime: String, table: FrameTable, why: String) {
             self.`init` = `init`
             self.segments = segments
             self.ended = ended

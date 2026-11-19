@@ -51,11 +51,14 @@ public final class WorkHost {
     /// Set when this host's Away ended and nobody has reviewed it here yet.
     public private(set) var awayEnd: AwayEnd?
 
-    @ObservationIgnored private let socket: TempCodeSocket
+    @ObservationIgnored let socket: TempCodeSocket
+    /// A Work thread's items and the Routines counter (Work/Items/WorkCanvas.swift, milestone 47).
+    public let canvas: WorkCanvas
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(socket: TempCodeSocket, environment: PairedEnvironment, defaults: UserDefaults = .standard) {
         self.socket = socket
+        canvas = WorkCanvas(socket: socket)
         self.environment = environment
         self.defaults = defaults
         // The cached paint has the Work band: the switch as last read, until this open's answer.
@@ -106,6 +109,8 @@ public final class WorkHost {
     /// `work`, `work.outbox`, `work.lifeos` and `away`; everything else is the client's.
     public func applyPush(_ push: ServerPush) {
         switch push {
+        case .workCanvas, .workRoutines:
+            canvas.apply(push)
         case .work(let value):
             let was = isOn
             settings = value.settings
