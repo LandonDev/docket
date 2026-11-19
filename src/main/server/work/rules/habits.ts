@@ -36,10 +36,10 @@ const squash = (text: string): string => text.replace(/\s+/g, ' ').trim()
 const keyOf = (text: string): string =>
   squash(text)
     .toLowerCase()
-    .replace(/^[\s.,;:!?'"“”‘’()-]+|[\s.,;:'"“”‘’()-]+$/g, '')
+    .replace(/^[\s.,;:!?'"“”‘’()-]+|[\s.,;:!?'"“”‘’()-]+$/g, '')
     .replace(/\d/g, '#')
 const quote = (text: string): string => {
-  const s = squash(text).replace(/^[\s,;:'"“”‘’()-]+|[\s,;:'"“”‘’()-]+$/g, '')
+  const s = squash(text).replace(/^[\s,;:'"“”‘’()-]+|[\s.,;:!?'"“”‘’()-]+$/g, '')
   return s.length > QUOTE_MAX ? `${s.slice(0, QUOTE_MAX - 1).trimEnd()}…` : s
 }
 
@@ -111,10 +111,18 @@ function changesOf(ops: readonly EditOp[]): Change[] {
     }
     if (op.op === '-') {
       const next = ops[i + 1]
-      const put = next?.op === '+' ? next.text : ''
-      out.push({ at, cut: op.text, put })
+      let put = next?.op === '+' ? next.text : ''
+      let cut = op.text
+      // A figure reads with the word after it: "3:00" to "3" is "3:00 PM" to "3 PM".
+      const after = ops[i + (put ? 2 : 1)]
+      const word = after?.op === '=' ? (after.text.match(/^\s*[\p{L}]+/u)?.[0] ?? '') : ''
+      if (put && /\d/.test(cut) && word) {
+        cut += word
+        put += word
+      }
+      out.push({ at, cut, put })
       at += op.text.length
-      if (put) i++
+      if (next?.op === '+') i++
       continue
     }
     out.push({ at, cut: '', put: op.text })
