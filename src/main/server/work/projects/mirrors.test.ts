@@ -13,7 +13,7 @@ import { memoryDeviceToken } from '../lifeos/deviceToken'
 import { FakeLifeos } from '../lifeos/fakeLifeos'
 import { lifeos } from '../lifeos/index'
 import type { WorkCtx } from '../modules'
-import { followMirrors, mirrorMoves, type LifeosProject, type MirrorHost } from './mirrors'
+import { clearCodeSettings, followMirrors, mirrorMoves, type LifeosProject, type MirrorHost } from './mirrors'
 
 const mirror = (id: string, lifeosProjectId: string, name: string, archived = false): ProjectMeta =>
   ({ id, workspaceId: 'ws', name, mode: 'local', branch: null, cwd: '/w', archived, lifeosProjectId, createdAt: 1 }) as ProjectMeta
@@ -48,6 +48,34 @@ describe('what a sector\'s list asks of its mirrors', () => {
   it('leaves a project that mirrors nothing, and a blank name, alone', () => {
     const plain = { ...mirror('p9', '', 'Notes'), lifeosProjectId: undefined } as ProjectMeta
     expect(mirrorMoves([row('lp_1', '   ')], [plain, mirror('p1', 'lp_1', 'Spring LAN')], idle)).toEqual({ rename: [], archive: [], restore: [] })
+  })
+})
+
+describe('the code settings a Work project was given before the server refused them', () => {
+  it('are cleared for projects of Work workspaces only, each held override once, and a second pass writes nothing', () => {
+    const held = new Map<string, Set<string>>([
+      ['p1', new Set(['turnPass', 'review'])],
+      ['p2', new Set()],
+      ['code', new Set(['turnPass', 'build', 'plans'])]
+    ])
+    const cleared: string[] = []
+    const host = {
+      workspaces: () => [{ id: 'ws', name: 'Purdue', kind: 'work', sector: 'purdue' }, { id: 'repo', name: 'repo' }] as WorkspaceMeta[],
+      projects: () => [mirror('p1', 'lp_1', 'A'), mirror('p2', 'lp_2', 'B'), { ...mirror('code', '', 'Alpha'), workspaceId: 'repo' }],
+      overrides: (p: ProjectMeta) =>
+        ['turnPass', 'build', 'review', 'plans', 'startOn'].map((key) => ({
+          held: held.get(p.id)!.has(key),
+          clear: () => {
+            held.get(p.id)!.delete(key)
+            cleared.push(`${p.id}.${key}`)
+          }
+        }))
+    }
+    expect(clearCodeSettings(host)).toBe(1)
+    expect(cleared).toEqual(['p1.turnPass', 'p1.review'])
+    expect([...held.get('code')!]).toEqual(['turnPass', 'build', 'plans'])
+    expect(clearCodeSettings(host)).toBe(0)
+    expect(cleared).toHaveLength(2)
   })
 })
 
@@ -218,5 +246,21 @@ describe('the follower, on the real registry and a LifeOS in memory', () => {
     await until(() => mirrorOf('lp_1')?.archived === true)
     // Archived, never deleted: its threads stay.
     expect(mirrorOf('lp_1')?.name).toBe('Fall LAN')
+  })
+
+  it('clears a Work project of code settings it was given earlier, when Work starts', async () => {
+    work.settings.set({ enabled: true })
+    await until(() => work.ctx.lifeos.connected())
+    const path = join(root, 'Work', 'Purdue')
+    mkdirSync(path, { recursive: true })
+    const workspace = await registry.createWorkspace(path, 'Purdue', { kind: 'work', sector: 'purdue' })
+    const project = await registry.createProject(workspace.id, 'Spring LAN', 'local', { lifeosProjectId: 'lp_1' })
+    registry.setProjectTurnPass(project.id, { verify: true, build: false, commit: 'off' } as never)
+    registry.setProjectBuild(project.id, { command: 'bun run build', outputs: '' })
+    expect(registry.getProjectTurnPass(project.id)).not.toBeNull()
+    work.settings.set({ enabled: false })
+    work.settings.set({ enabled: true })
+    expect(registry.getProjectTurnPass(project.id)).toBeNull()
+    expect(registry.getProjectBuild(project.id)).toBeNull()
   })
 })

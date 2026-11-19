@@ -4,8 +4,8 @@ export default [
   { name: "Changed, ready to save", props: { name: "Fall LAN", state: "paused", dirty: true } },
   { name: "Saving", props: { name: "Fall LAN", dirty: true, pending: true } },
   { name: "A save LifeOS refused", props: { name: "Fall LAN", dirty: true, error: "LifeOS refused the write" } },
-  { name: "LifeOS on its way: the mirror's name, the state's place held", props: { reach: "loading", state: null } },
-  { name: "Signed out: read-only, said once", props: { reach: "signedOut", state: null, rules: "None", accounts: false } },
+  { name: "LifeOS on its way: the mirror's name to type in, the state's place held", props: { reach: "loading", state: null } },
+  { name: "Signed out: words, not disabled controls, and the sign-in named", props: { reach: "signedOut", state: null, rules: "None", accounts: false } },
   { name: "LifeOS dropped after it answered: the last state stands", props: { reach: "unreachable", state: "active" } },
   { name: "Rules kept and switched off; a host with no account to pick", props: { rules: "86 words, not sent", accounts: false } },
 ];

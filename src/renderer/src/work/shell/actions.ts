@@ -45,10 +45,10 @@ export async function linkSector(workspace: Pick<WorkspaceMeta, "id" | "environm
 }
 
 /** The project that holds a Work workspace's threads about one LifeOS project, made the first time. */
-export async function openLifeosProject(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, lifeosProjectId: string): Promise<ProjectMeta & { environmentId: string }> {
+export async function openLifeosProject(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, lifeosProjectId: string, name?: string): Promise<ProjectMeta & { environmentId: string }> {
   const link = registry.linkOf(workspace.environmentId);
-  // The host asks LifeOS for the project and takes its name from there.
-  const project = await link.request<ProjectMeta>("work.project.open", { workspaceId: workspace.id, lifeosProjectId });
+  // The host asks LifeOS for the project and takes its name from there. `name` is for a host a release behind, which still requires it.
+  const project = await link.request<ProjectMeta>("work.project.open", { workspaceId: workspace.id, lifeosProjectId, name: name?.trim() || "Project" });
   await workspaceStore.refresh(link);
   return { ...project, environmentId: workspace.environmentId };
 }

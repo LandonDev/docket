@@ -10,7 +10,7 @@ import { cancelMirrors } from '../mirror'
 import { openDb, Store } from '../db'
 import { SessionRegistry } from '../sessions'
 import { startWork, type Work } from './ctx'
-import { lifeosSeamsFor } from './lifeos/ctx'
+import { lifeosHostOf, lifeosSeamsFor } from './lifeos/ctx'
 import { memoryDeviceToken } from './lifeos/deviceToken'
 import { FakeLifeos } from './lifeos/fakeLifeos'
 import { lifeos } from './lifeos/index'
@@ -50,13 +50,14 @@ beforeEach(() => {
     { _id: 'lp_2', name: 'Nationals', status: 'active', sector: 'purdue' },
     { _id: 'lp_far', name: 'Loot tables', status: 'active', sector: 'cosmic' }
   ]
-  lifeosSeamsFor.current = { transport: fake, tokens: memoryDeviceToken({ v: 1, token: fake.device(), url: LIFEOS, at: 1 }), address: { url: LIFEOS, mcpUrl: `${LIFEOS}/mcp` }, hostName: 'box' }
+  lifeosSeamsFor.current = { transport: fake, tokens: memoryDeviceToken({ v: 1, token: fake.device(), url: LIFEOS, at: 1 }), address: { url: LIFEOS, mcpUrl: `${LIFEOS}/mcp` }, hostName: 'box', session: { retryMs: [20] } }
   work = startWork({ db, store, registry, environmentId: 'env_test', dataDir: root, log: () => {} }, [lifeos])
   lifeosSeamsFor.current = null
   switchWork(true)
 })
 /** Work on through the switch itself, so the host's LifeOS session starts, and signed in. */
 const signedIn = async (): Promise<void> => {
+  // Off and on through the switch itself: the setting was written straight to the store, which starts nothing.
   work.settings.set({ enabled: false })
   work.settings.set({ enabled: true })
   const end = Date.now() + 3_000
@@ -140,10 +141,38 @@ describe('a LifeOS project opened in a Work workspace', () => {
   })
 
   it('says why when LifeOS cannot be asked, and makes nothing', async () => {
-    // Work on, the host never signed in to LifeOS.
+    // Work on, and LifeOS does not answer the host.
+    fake.reachable = false
+    work.settings.set({ enabled: false })
+    work.settings.set({ enabled: true })
+    const end = Date.now() + 3_000
+    while (lifeosHostOf(work.ctx)?.session.state().state !== 'unreachable') {
+      if (Date.now() > end) throw new Error('the session never read as unreachable')
+      await new Promise((r) => setTimeout(r, 5))
+    }
     const id = await workWorkspace('Purdue', 'purdue')
-    await expect(call('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_1' })).rejects.toThrow('Work is off on this host')
+    await expect(call('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_1' })).rejects.toThrow('LifeOS is unreachable')
     expect(store.listProjects()).toEqual([])
+  })
+
+  it('refuses a project that is done or dropped: it is reopened first', async () => {
+    fake.projects.push({ _id: 'lp_done', name: 'Fall LAN', status: 'done', sector: 'purdue' }, { _id: 'lp_dropped', name: 'Old site', status: 'dropped', sector: 'purdue' })
+    await signedIn()
+    const id = await workWorkspace('Purdue', 'purdue')
+    await expect(call('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_done' })).rejects.toThrow('Fall LAN is done: reopen it to start a thread in it')
+    await expect(call('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_dropped' })).rejects.toThrow('Old site is dropped: reopen it to start a thread in it')
+    expect(store.listProjects()).toEqual([])
+  })
+
+  it('asks LifeOS again about an archived mirror: answered when its project is under way, refused while it is over', async () => {
+    await signedIn()
+    const id = await workWorkspace('Purdue', 'purdue')
+    const made = await call<ProjectMeta>('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_1' })
+    // Archived by hand, as the follower would; LifeOS still says active (the follower has not caught up).
+    store.setProjectArchived(made.id, true)
+    expect((await call<ProjectMeta>('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_1' })).id).toBe(made.id)
+    fake.setProjects(fake.projects.map((p) => (p._id === 'lp_1' ? { ...p, status: 'done' } : p)))
+    await expect(call('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_1' })).rejects.toThrow('Spring LAN is done: reopen it to start a thread in it')
   })
 
   it('is refused in a code workspace and in an unlinked Work workspace', async () => {

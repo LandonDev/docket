@@ -64,7 +64,16 @@ describe('the code settings a Work project refuses', () => {
     expect(ask('project.create', { workspaceId: 'ws_code', name: 'Side', mode: 'local' })).toBeNull()
   })
 
-  it('lets an override be cleared, and the workspace-wide defaults be set', () => {
+  it("refuses a Work workspace's own build command and turn pass, which its projects would inherit", () => {
+    expect(ask('build.set', { workspaceId: 'ws_work', config: build })).toBe('A build command is not for a Work workspace')
+    expect(ask('turnpass.set', { workspaceId: 'ws_work', pass })).toBe('A completed-turn pass is not for a Work workspace')
+    expect(ask('build.set', { workspaceId: 'ws_code', config: build })).toBeNull()
+    expect(ask('turnpass.set', { workspaceId: 'ws_code', pass })).toBeNull()
+    expect(ask('build.set', { workspaceId: 'ws_work', config: null })).toBeNull()
+    expect(ask('turnpass.set', { workspaceId: 'ws_work', pass: null })).toBeNull()
+  })
+
+  it('lets an override be cleared, and the global sets be written', () => {
     expect(ask('project.setStartOn', { projectId: 'work1', startOn: null })).toBeNull()
     expect(ask('review.set', { projectId: 'work1', settings: null })).toBeNull()
     expect(ask('plans.set', { projectId: 'work1', settings: null })).toBeNull()

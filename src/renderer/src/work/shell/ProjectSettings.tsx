@@ -11,13 +11,16 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { useClosingDialog } from "../../chrome/Modal";
-import { PreambleDialog } from "../../chrome/PreambleDialog";
-import { AccountPinFields, projectInheritLabel } from "../../chrome/ProjectDialogs";
+import { AccountPinFields, projectInheritLabel } from "../../chrome/AccountPinFields";
 import { renameProject, setProjectAccounts } from "../../lib/tcserver/projects";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { useAccounts } from "../../stores/accounts";
+import { dialogsChunk } from "../../surfaces/chunks";
 import { reopenLifeos, sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession } from "./lifeos";
+
+// The rules dialog rides the dialogs chunk, as it does for a code project: asked for at the press on Edit.
+const PreambleDialog = dialogsChunk.surface("PreambleDialog");
 
 /**
  * A Work project's settings (docs/agents/work.md "A Work project's
@@ -43,9 +46,9 @@ type LifeosProject = { _id: string; name: string; status: ProjectState };
 /** Whether LifeOS can be read and written for the two fields it owns. */
 export type LifeosReach =
   | { status: "ready" }
-  /** on its way: the name the mirror holds is shown, still */
+  /** on its way: the field holds the mirror's name and what he types; Save waits */
   | { status: "loading" }
-  /** said once, under the two fields, with Retry where asking again can help */
+  /** the two stand as plain words, never as disabled controls, and one line under them says why, with Retry where asking again can help */
   | { status: "failed"; line: string; retry?: () => void }
   /** a project of the workspace that mirrors nothing: its name is this host's */
   | { status: "local" };
@@ -97,26 +100,26 @@ export function WorkProjectFields({
   /** the account rows; the section is left out when there is none to draw */
   accounts?: ReactNode;
 }) {
-  const writable = reach.status === "ready" || reach.status === "local";
+  const failed = reach.status === "failed";
+  const stateLabel = PROJECT_STATES.find((s) => s.value === state)?.label;
   return (
     <div className="flex flex-col gap-6 px-5 pb-6">
-      <div className="flex flex-col gap-4">
-        <Field label="Name">
-          <Input autoFocus={writable} value={name} disabled={!writable} onChange={(e) => onName(e.target.value)} />
-        </Field>
-        {/* A state LifeOS never told us is not drawn: the line under the name says why. */}
-        {reach.status === "local" || (reach.status === "failed" && !state) ? null : (
-          <FieldRow label="State" className="-my-2">
-            {state ? (
-              <ChoiceSelect label="State" size="sm" value={state} disabled={!writable} options={PROJECT_STATES} onChange={onState} />
-            ) : (
-              // The select's own box, so the row holds still when the state lands.
-              <Skeleton data-state-loading className="h-7 w-24 rounded-md" />
-            )}
+      {failed ? (
+        // Out of reach: what is known, as words. A control that cannot write is not drawn (docs/DESIGN.md).
+        <div className="flex flex-col">
+          <FieldRow label="Name">
+            <span data-readonly-name className="min-w-0 truncate text-[13px] text-muted-foreground">
+              {name}
+            </span>
           </FieldRow>
-        )}
-        {reach.status === "failed" ? (
-          <p data-lifeos-line className="flex items-baseline gap-2 text-xs text-muted-foreground">
+          {stateLabel ? (
+            <FieldRow label="State">
+              <span data-readonly-state className="text-[13px] text-muted-foreground">
+                {stateLabel}
+              </span>
+            </FieldRow>
+          ) : null}
+          <p data-lifeos-line className="flex items-baseline gap-2 pt-2 text-xs text-muted-foreground">
             <span className="min-w-0">{reach.line}</span>
             {reach.retry ? (
               <Button type="button" variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" onClick={reach.retry}>
@@ -124,8 +127,24 @@ export function WorkProjectFields({
               </Button>
             ) : null}
           </p>
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <Field label="Name">
+            <Input autoFocus value={name} onChange={(e) => onName(e.target.value)} />
+          </Field>
+          {reach.status === "local" ? null : (
+            <FieldRow label="State" className="-my-2">
+              {state && reach.status === "ready" ? (
+                <ChoiceSelect label="State" size="sm" value={state} options={PROJECT_STATES} onChange={onState} />
+              ) : (
+                // The select's own box, so the row holds still when the state lands.
+                <Skeleton data-state-loading className="h-7 w-24 rounded-md" />
+              )}
+            </FieldRow>
+          )}
+        </div>
+      )}
       <Section label="Rules for its threads">
         <div className="flex min-h-7 items-center justify-between gap-3">
           <span data-rules-line className="min-w-0 truncate text-[13px] text-foreground">
@@ -167,8 +186,9 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
         .finally(() => setRetrying(false));
     };
     if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionFailure(session.state), retry };
-    // Asking again helps only when LifeOS did not answer; signed out or refused is mended in Settings, Work.
-    return { status: "failed", line: sessionFailure(session.state), ...(session.state === "unreachable" ? { retry } : {}) };
+    // Asking again helps only when LifeOS did not answer. Signed out is mended in Settings, Work, and the line names the sign-in.
+    if (session.state === "unreachable") return { status: "failed", line: sessionFailure(session.state), retry };
+    return { status: "failed", line: session.state === "refused" ? sessionFailure(session.state) : "Sign in to LifeOS to change its name or state" };
   }, [lifeosId, row, listed, session, retrying, workspace.environmentId, sector]);
 
   // null follows what is saved, so a rename that lands from elsewhere shows until he types.
@@ -187,13 +207,23 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
   const { root, closeThen } = useClosingDialog(onClose, pending);
 
   const writable = reach.status === "ready" || reach.status === "local";
-  const nameDirty = writable && !!name.trim() && name.trim() !== savedName;
-  const stateDirty = reach.status === "ready" && !!state && state !== row?.status;
+  const nameChanged = !!name.trim() && name.trim() !== savedName;
+  const stateChanged = !!lifeosId && !!state && state !== (row ?? known)?.status;
+  const nameDirty = writable && nameChanged;
+  const stateDirty = reach.status === "ready" && stateChanged;
   const pinsDirty = !samePins(pins, project.accountPins ?? {});
   const dirty = nameDirty || stateDirty || pinsDirty;
+  // A name or state he changed that LifeOS cannot take now: Save waits, so nothing he typed is dropped behind a save of the rest.
+  const stranded = !writable && (nameChanged || stateChanged);
 
   const save = async () => {
-    if (!dirty || pending) return;
+    if (pending || stranded) return;
+    // Nothing left to send: an earlier try landed after all (its answer was lost), so the sheet is done.
+    if (!dirty) {
+      setError(null);
+      closeThen(onClose);
+      return;
+    }
     setPending(true);
     setError(null);
     try {
@@ -266,8 +296,9 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
           ) : null}
           <Footer
             start={
-              lifeosId ? (
-                <Button type="button" variant="ghost" disabled={pending || reach.status !== "ready"} onClick={() => setDeleting(true)}>
+              // Drawn only while LifeOS can take it: what cannot be done is absent, never disabled.
+              lifeosId && reach.status === "ready" ? (
+                <Button type="button" variant="ghost" disabled={pending} onClick={() => setDeleting(true)}>
                   Delete project
                 </Button>
               ) : null
@@ -275,7 +306,7 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
             onCancel={() => closeThen(onClose)}
             confirmLabel="Save"
             pending={pending}
-            disabled={!dirty}
+            disabled={!dirty || stranded}
           />
         </form>
         {/* Inside the sheet's own tree, so each opens over it as its child and a press in one never closes the sheet. */}

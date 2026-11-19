@@ -173,11 +173,15 @@ Settings → Work.
   | Delete project | at the foot's start, asked first; its tasks stay as tasks with no project | LifeOS, `projects:remove`; the host archives the mirror |
 
   Save sends only what changed; a failed save keeps the sheet open with the
-  reason beside Retry. While LifeOS cannot be reached (signed out,
-  unreachable, refused) Name stands read-only on what the mirror holds,
-  State is drawn only if LifeOS told it earlier, Save and Delete are off,
-  and one line under the fields says why, with Retry where asking again can
-  help; the rules and accounts are the host's and stay editable. A project
+  reason beside Retry, and a Retry with nothing left to send (the write
+  had landed, its answer lost) closes the sheet. While LifeOS cannot be
+  reached (signed out, unreachable, refused) Name and State stand as plain
+  words, never as disabled controls (State only if LifeOS told it
+  earlier), Delete is not drawn, and one line under them says why: the
+  sign-in named when signed out, Retry when LifeOS did not answer. The
+  rules and accounts are the host's and stay editable, and Save sends
+  them; but a name or state he changed and LifeOS cannot take holds Save,
+  so nothing he typed is dropped behind a save of the rest. A project
   of a Work workspace that mirrors nothing has a name of its own
   (`project.rename`) and no State or Delete. No folder, mode, branch,
   completed turn, review, plans or build is drawn, and none of their reads
@@ -188,7 +192,9 @@ Settings → Work.
   `project.setStartOn`, `review.set`, `plans.set`, `build.set` and
   `turnpass.set` for a project of a Work workspace, a `project.settings.set`
   bundle whose review, plans, build, turn pass or start host is not null,
-  and a client's `project.create` in a Work workspace. Each answers a
+  a `build.set` or `turnpass.set` that names a Work workspace and no project
+  (its projects would inherit it), and a client's `project.create` in a
+  Work workspace. Each answers a
   sentence a screen can show ("A branch is not for a Work project").
   Clearing an override (null) passes, and so do the bundle's name, archived
   mark, rules and account pins, `project.rename`, `project.setAccounts`,
@@ -208,9 +214,13 @@ member (as `routines/host.ts` is), running while Work is on:
   (`projects:list {sector}`) and makes the mirror with the name the project
   has there. A project of another sector, or one LifeOS does not have, is
   refused ("LifeOS has no such project in Purdue's sector") and nothing is
-  made; so is an ask while the host cannot reach LifeOS, in the session's
-  own words. `name` on the request is what an older client still sends and
-  is not read. An existing mirror is answered at once, with no ask.
+  made; so is a project that is done or dropped ("Fall LAN is done: reopen
+  it to start a thread in it"), whose mirror would be archived the moment
+  it was made; so is an ask while the host cannot reach LifeOS, in the
+  session's own words. `name` on the request is not read: the desktop
+  still sends it for a host a release behind, which requires it. A mirror
+  on show is answered at once, with no ask; an archived one is asked about
+  first, and answered only if its project is under way again.
 - **Kept in step.** One live `projects:list` a linked Work workspace, on
   the host's own LifeOS session, which takes it up again after a reconnect.
   `mirrorMoves(rows, mirrors, busy)` is the whole rule: a mirror whose
@@ -220,6 +230,10 @@ member (as `routines/host.ts` is), running while Work is on:
   (`BUSY`: starting, running, queued, watching, waiting); a mirror whose
   project is under way again comes back. A thread coming to rest, a new
   mirror and a workspace linked or removed each settle again.
+- **Old code settings are cleared** when Work starts (`clearCodeSettings`):
+  a turn pass, build, review, plans or start host a Work project was given
+  before the server refused them, which its sheet no longer draws. It
+  writes only where one is held.
 - **Nothing moves until a list has answered**: a host that is signed out
   or cannot reach LifeOS leaves its mirrors as they are, and a list that is
   not a list moves nothing.

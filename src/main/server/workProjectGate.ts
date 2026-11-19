@@ -10,7 +10,9 @@ import type { ClientRequest } from '@shared/contract'
  * mirror through the registry and never passes here.
  *
  * Decided by the row (`workspaces.kind`), never by the switch. Clearing an
- * override (null) passes: it leaves the project as the rule wants it.
+ * override (null) passes: it leaves the project as the rule wants it. What
+ * a Work project was given before this gate is cleared when Work starts
+ * (work/projects/mirrors.ts `clearCodeSettings`).
  */
 export interface WorkProjectFacts {
   /** Whether the project sits in a Work workspace; false for an unknown id. */
@@ -34,10 +36,15 @@ export function workProjectRefusal(req: ClientRequest, facts: WorkProjectFacts):
       return req.params.settings !== null && !!req.params.projectId && facts.workProject(req.params.projectId) ? refusal('Review before merge') : null
     case 'plans.set':
       return req.params.settings !== null && !!req.params.projectId && facts.workProject(req.params.projectId) ? refusal('A plan setting') : null
+    // With no project named these two set the workspace's default, which every project in it inherits: a Work workspace has none either.
     case 'build.set':
-      return req.params.config !== null && !!req.params.projectId && facts.workProject(req.params.projectId) ? refusal('A build command') : null
+      if (req.params.config === null) return null
+      if (req.params.projectId) return facts.workProject(req.params.projectId) ? refusal('A build command') : null
+      return facts.workWorkspace(req.params.workspaceId) ? 'A build command is not for a Work workspace' : null
     case 'turnpass.set':
-      return req.params.pass !== null && !!req.params.projectId && facts.workProject(req.params.projectId) ? refusal('A completed-turn pass') : null
+      if (req.params.pass === null) return null
+      if (req.params.projectId) return facts.workProject(req.params.projectId) ? refusal('A completed-turn pass') : null
+      return facts.workWorkspace(req.params.workspaceId) ? 'A completed-turn pass is not for a Work workspace' : null
     case 'project.settings.set': {
       if (!facts.workProject(req.params.projectId)) return null
       // The bundle's name, archived mark, preamble and account pins are a Work project's own; the rest is code's.

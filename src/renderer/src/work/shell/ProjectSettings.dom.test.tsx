@@ -44,10 +44,19 @@ let sent: Sent[] = [];
 let failWrites: string | null = null;
 let hostCalls: { method: string; params: Record<string, unknown> }[] = [];
 
-/** A LifeOS session whose list holds the mirror's project, and whose writes are recorded. */
+/** What the live list tells its watchers when LifeOS's rows change. */
+let listUpdates = new Set<() => void>();
+
+/** A LifeOS session whose list holds the mirror's project, and whose writes are recorded. `rows` is read afresh on each update. */
 function lifeosClient(rows = [{ _id: "lp_1", name: "Spring LAN", status: "active" }]): ConvexReactClient {
   return {
-    watchQuery: () => ({ localQueryResult: () => rows, onUpdate: () => () => {} }),
+    watchQuery: () => ({
+      localQueryResult: () => [...rows],
+      onUpdate: (fn: () => void) => {
+        listUpdates.add(fn);
+        return () => void listUpdates.delete(fn);
+      },
+    }),
     mutation: async (ref: never, args: Record<string, unknown>) => {
       sent.push({ fn: getFunctionName(ref), args });
       if (failWrites) throw new Error(failWrites);
@@ -63,6 +72,7 @@ const connected = (client = lifeosClient()): void => {
 };
 
 beforeEach(() => {
+  listUpdates = new Set();
   sent = [];
   hostCalls = [];
   failWrites = null;
@@ -189,22 +199,44 @@ describe("Name and State", () => {
     await waitFor(() => expect(sent).toHaveLength(2));
     expect(sent[1].args).toEqual({ id: "lp_1", patch: { name: "Fall LAN" } });
   });
+
+  it("Retry after a save that landed with its answer lost sends nothing more and closes the sheet", async () => {
+    const rows = [{ _id: "lp_1", name: "Spring LAN", status: "active" }];
+    connected(lifeosClient(rows));
+    failWrites = "the connection dropped";
+    const onClose = vi.fn();
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={onClose} />);
+    const root = await sheet();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Fall LAN" } });
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+    await waitFor(() => expect(screen.getByText("the connection dropped")).toBeTruthy());
+    // The write had landed: the live list now says so.
+    rows[0] = { ...rows[0], name: "Fall LAN" };
+    act(() => listUpdates.forEach((fn) => fn()));
+    await act(async () => {
+      fireEvent.click(within(root.querySelector("[data-project-settings-error]") as HTMLElement).getByRole("button", { name: "Retry" }));
+    });
+    expect(sent).toHaveLength(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
 });
 
 describe("while LifeOS cannot be reached", () => {
-  it("signed out: the name stands read-only, no state is drawn, and the reason is said once", async () => {
+  it("signed out: the name stands as words, no state or Delete is drawn, nothing is disabled, and one line names the sign-in", async () => {
     setLifeosStatus(BOX, { lifeos: { state: "signed-out" }, keys: [] });
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
     const root = await sheet();
-    const name = screen.getByLabelText("Name") as HTMLInputElement;
-    expect(name.value).toBe("Spring LAN");
-    expect(name.disabled).toBe(true);
+    expect(root.querySelector("[data-readonly-name]")!.textContent).toBe("Spring LAN");
+    expect(root.querySelector("input")).toBeNull();
     expect(screen.queryByRole("combobox", { name: "State" })).toBeNull();
+    expect(root.querySelector("[data-readonly-state]")).toBeNull();
     expect(root.querySelectorAll("[data-lifeos-line]")).toHaveLength(1);
     // Asking again would not sign him in: the line has no Retry.
-    expect(root.querySelector("[data-lifeos-line]")!.textContent).toBe("Not signed in to LifeOS");
+    expect(root.querySelector("[data-lifeos-line]")!.textContent).toBe("Sign in to LifeOS to change its name or state");
+    expect(screen.queryByRole("button", { name: "Delete project" })).toBeNull();
     expect(saveButton().disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Delete project" }) as HTMLButtonElement).disabled).toBe(true);
     // The rules are this host's: they can still be edited.
     expect((screen.getByRole("button", { name: "Edit" }) as HTMLButtonElement).disabled).toBe(false);
   });
@@ -228,7 +260,22 @@ describe("while LifeOS cannot be reached", () => {
     const line = root.querySelector("[data-lifeos-line]") as HTMLElement;
     expect(line.textContent).toBe("This project is no longer in LifeOS");
     expect(within(line).queryByRole("button")).toBeNull();
-    expect((screen.getByLabelText("Name") as HTMLInputElement).disabled).toBe(true);
+    expect(root.querySelector("[data-readonly-name]")!.textContent).toBe("Spring LAN");
+    expect(screen.queryByRole("button", { name: "Delete project" })).toBeNull();
+  });
+
+  it("LifeOS dropping while he types keeps what he typed and holds Save, and the state it last told stands as a word", async () => {
+    connected();
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    const root = await sheet();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Fall LAN" } });
+    expect(saveButton().disabled).toBe(false);
+    act(() => setLifeosStatus(BOX, { lifeos: { state: "unreachable", since: 1, error: "timeout" }, keys: [] }));
+    await waitFor(() => expect(root.querySelector("[data-readonly-name]")).toBeTruthy());
+    expect(root.querySelector("[data-readonly-name]")!.textContent).toBe("Fall LAN");
+    expect(root.querySelector("[data-readonly-state]")!.textContent).toBe("Active");
+    expect(saveButton().disabled).toBe(true);
+    expect(sent).toEqual([]);
   });
 });
 
@@ -307,10 +354,11 @@ describe("Delete project", () => {
 });
 
 describe("the fields alone", () => {
-  it("hold the state's place with bones until LifeOS answers, and draw no account section with none to draw", () => {
+  it("hold the state's place with bones until LifeOS answers, the name already his to type in, and draw no account section with none to draw", () => {
     const { container } = render(<WorkProjectFields name="Spring LAN" onName={() => {}} state={null} onState={() => {}} reach={{ status: "loading" }} rules="None" onEditRules={() => {}} />);
     expect(container.querySelector("[data-state-loading]")).toBeTruthy();
-    expect((screen.getByLabelText("Name") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Name") as HTMLInputElement).disabled).toBe(false);
+    expect(container.querySelector("[disabled]")).toBeNull();
     expect(headings(container)).toEqual(["Rules for its threads"]);
   });
 

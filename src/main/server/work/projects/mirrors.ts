@@ -53,12 +53,50 @@ export function mirrorMoves(rows: readonly LifeosProject[], mirrors: readonly Pr
   return moves
 }
 
-/** The project of the workspace's own sector that a mirror is made from, asked of LifeOS as the owner. A project of another sector, or none, is refused. */
+/**
+ * The project of the workspace's own sector that a mirror holds threads
+ * for, asked of LifeOS as the owner. A project of another sector, or none,
+ * is refused; so is one that is done or dropped, whose mirror would be
+ * archived the moment it was made and its first thread started out of
+ * sight: it is reopened first, which is one press on its page.
+ */
 export async function lifeosProjectIn(ctx: Pick<WorkCtx, 'lifeos'>, workspace: Pick<WorkspaceMeta, 'name' | 'sector'>, lifeosProjectId: string): Promise<LifeosProject> {
   const rows = await ctx.lifeos.owner().query<LifeosProject[]>('projects:list', { sector: workspace.sector })
   const row = (rows ?? []).find((p) => p._id === lifeosProjectId)
   if (!row) throw new Error(`LifeOS has no such project in ${workspace.name}'s sector`)
+  if (FINAL.has(row.status)) throw new Error(`${row.name} is ${row.status}: reopen it to start a thread in it`)
   return row
+}
+
+/** The code settings of one project, as the registry reads and clears them. */
+export interface CodeSettingsHost {
+  workspaces(): WorkspaceMeta[]
+  projects(): ProjectMeta[]
+  /** Each override the project still holds, with the call that clears it. */
+  overrides(project: ProjectMeta): { held: boolean; clear: () => void }[]
+}
+
+/**
+ * Clears the code settings a Work project was given before the server
+ * refused them (workProjectGate.ts): its sheet no longer draws them, so
+ * nothing else could. Writes only where something is held, so a second
+ * pass tells the catalog nothing. Answers how many projects it cleared.
+ */
+export function clearCodeSettings(host: CodeSettingsHost): number {
+  const work = new Set(
+    host
+      .workspaces()
+      .filter((w) => workspaceKindOf(w) === 'work')
+      .map((w) => w.id)
+  )
+  let cleared = 0
+  for (const project of host.projects()) {
+    if (!work.has(project.workspaceId)) continue
+    const held = host.overrides(project).filter((o) => o.held)
+    for (const override of held) override.clear()
+    if (held.length) cleared++
+  }
+  return cleared
 }
 
 /** What the follower asks of the host: the registry's own methods, narrowed so a test can stand in. */
@@ -159,8 +197,27 @@ export function followMirrors(ctx: Pick<WorkCtx, 'lifeos' | 'log'>, host: Mirror
 /** The follower on the host's own registry, running while Work is on. Called once from `buildWorkCtx`. */
 export function mirrorsPart(ctx: WorkCtx, deps: WorkPartDeps): void {
   const { registry } = deps
-  deps.whileOn(() =>
-    followMirrors(ctx, {
+  deps.whileOn(() => {
+    // A test's registry is often a few methods of the real one: only the real one is swept.
+    if (typeof registry.getProjectTurnPass === 'function') {
+      try {
+        const cleared = clearCodeSettings({
+          workspaces: () => registry.listWorkspaces(),
+          projects: () => registry.listProjects(),
+          overrides: (p) => [
+            { held: registry.getProjectTurnPass(p.id) !== null, clear: () => registry.setProjectTurnPass(p.id, null) },
+            { held: registry.getProjectBuild(p.id) !== null, clear: () => registry.setProjectBuild(p.id, null) },
+            { held: registry.getReviewSettings(p.id) !== null, clear: () => registry.setReviewSettings(p.id, null) },
+            { held: registry.getPlanSettings(p.id) !== null, clear: () => registry.setPlanSettings(p.id, null) },
+            { held: p.startOn != null, clear: () => registry.setProjectStartOn(p.id, null) }
+          ]
+        })
+        if (cleared) ctx.log(`projects: cleared the code settings of ${cleared} Work project${cleared === 1 ? '' : 's'}`)
+      } catch (err) {
+        ctx.log(`projects: the code settings of Work projects were not cleared: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    return followMirrors(ctx, {
       // Each asked for only if the registry has it: a test's registry is often a few methods of the real one.
       workspaces: () => registry.listWorkspaces?.() ?? [],
       projects: () => registry.listProjects?.() ?? [],
@@ -170,5 +227,5 @@ export function mirrorsPart(ctx: WorkCtx, deps: WorkPartDeps): void {
       onCatalog: (fn) => registry.onCatalog?.(fn) ?? (() => {}),
       onMeta: (fn) => registry.onMeta?.((session) => fn(session)) ?? (() => {})
     })
-  )
+  })
 }

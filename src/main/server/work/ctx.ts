@@ -423,7 +423,8 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           const workspace = knownWorkspace(workspaceId)
           if (workspace.kind !== 'work' || !workspace.sector) throw new Error(`${workspace.name} is not a Work workspace linked to LifeOS`)
           const mine = deps.registry.listProjects().find((p) => p.workspaceId === workspaceId && p.lifeosProjectId === lifeosProjectId)
-          if (mine) return handled(mine)
+          // A mirror on show is answered at once. An archived one is asked about first: its project is over, or just came back.
+          if (mine) return handled(mine.archived ? (await lifeosProjectIn(ctx, workspace, lifeosProjectId), mine) : mine)
           // Two asks at once (a double click, a second window) make one project.
           const key = `${workspaceId}\0${lifeosProjectId}`
           let making = openingProjects.get(key)
