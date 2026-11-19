@@ -98,6 +98,10 @@ const decode = (s: string): string =>
  * React escapes it.
  */
 export function htmlWords(html: string): string {
+  // A background image goes with the mail as surely as an <img>: named first, before the tags go (the hold re-review's finding 23).
+  const backgrounds: string[] = [];
+  for (const m of html.matchAll(/\sbackground\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) backgrounds.push(decode(m[1] ?? m[2] ?? m[3] ?? "").trim());
+  for (const m of html.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)) backgrounds.push(decode(m[1] ?? m[2] ?? m[3] ?? "").trim());
   const out = html
     .replace(/<(script|style|head|title)\b[\s\S]*?<\/\1\s*>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
@@ -122,6 +126,8 @@ export function htmlWords(html: string): string {
     .map((l) => l.replace(/[ \t]+$/, ""))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .concat(backgrounds.filter(Boolean).map((u) => `\n[background image: ${u}]`).join(""))
     .trim();
 }
 
@@ -157,6 +163,8 @@ export function payloadView(payload: unknown): PayloadView {
         if (quiet && body?.path.join(".") === at.join(".")) continue;
         if (!body && BODY_KEYS.includes(key) && (v.includes("\n") || v.length > 80)) body = { path: at, text: v };
         else if (v.trim()) fields.push({ key, path: at, label: labelOf(key), value: v, edit: "text" });
+        // An add-on's empty or blank argument still goes: shown quoted (the hold re-review's finding 18).
+        else if (!quiet) fields.push({ key, path: at, label: labelOf(key), value: JSON.stringify(v), edit: "text" });
       } else if (typeof v === "number" || typeof v === "boolean") {
         fields.push({ key, path: at, label: labelOf(key), value: String(v), edit: null });
       } else if (isAddress(v)) {

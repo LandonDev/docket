@@ -53,6 +53,10 @@ describe("payloadView", () => {
       ["Note", "null"],
       ["Tags", "[]"],
     ]);
+    expect(payloadView({ ...CALL, arguments: { destination: "", text: "hi" } }).fields.map((f) => [f.label, f.value])).toEqual([
+      ["Destination", '""'],
+      ["Text", "hi"],
+    ]);
   });
 });
 
@@ -62,6 +66,9 @@ describe("htmlWords", () => {
       "Hi Dana,\n\nGo here (https://a.example) or x@y.z.\nThanks",
     );
     expect(htmlWords('<a href="https://x.example"><img src="https://t.example/p.gif"></a>')).toBe("[image: https://t.example/p.gif] (https://x.example)");
+    expect(htmlWords('<table background="https://e.test/private.png"><tr><td style="background-image: url(\'https://e.test/b.png\')">Hi</td></tr></table>')).toBe(
+      "Hi\n[background image: https://e.test/private.png]\n[background image: https://e.test/b.png]",
+    );
     expect(htmlWords('<ul><li>one</li><li>two &amp; three</li></ul><img alt="logo" src=\'/l.png\'>')).toBe("- one\n- two & three\n\n[image logo: /l.png]");
   });
 
