@@ -4,6 +4,7 @@ import type { CollabClaims as KitClaims } from 'work-kit/collab-server'
 import type { WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
+import { isIsolatedInstance } from '../service/config'
 import { serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
 import { GuestStore, hashSecret, isLive, sourceKey, type StoredLink } from './store'
@@ -36,7 +37,7 @@ export const DEFAULT_ORIGIN = 'https://tempcode.landonhale.com'
 /** Where a guest reaches this host: the tunnel's hostname on the box's installed host; a proof's origin when one is named. */
 export function publicOrigin(ctx: Pick<WorkCtx, 'service'>, env: NodeJS.ProcessEnv = process.env): string {
   if (env.TEMP_CODE_WORK_PUBLIC_ORIGIN) return env.TEMP_CODE_WORK_PUBLIC_ORIGIN.replace(/\/$/, '')
-  if (process.platform === 'linux' && !env.TEMP_CODE_USER_DATA) return DEFAULT_ORIGIN
+  if (process.platform === 'linux' && !isIsolatedInstance(env)) return DEFAULT_ORIGIN
   try {
     return ctx.service.url('/').replace(/\/$/, '')
   } catch {

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { LifeosServer } from './wire'
 
 /**
@@ -11,10 +11,28 @@ import type { LifeosServer } from './wire'
 /** The installed host's public port; only this one is named in scripts/box/ingress.yml. */
 export const INSTALLED_WORK_PORT = 7695
 
+/** The installed box's data dir (docs/box.md: /etc/temp-code.env sets it); processGuard's BOX_PROD_DATA_DIR, held equal by a test. */
+export const BOX_DATA_DIR = '/srv/agents/temp-code-data'
+
+/**
+ * Whether this is an isolated instance (a dev or proof instance) rather than
+ * an installed host. `TEMP_CODE_USER_DATA` alone does not say: the installed
+ * box runs with it, set to its own data dir. So an instance is isolated when
+ * it names a data dir that is not the box's own. A proof or dev instance on
+ * the box always has a dir of its own (the single-instance lock keeps a
+ * second process off the box's), so it stays isolated and never becomes a
+ * second writer to the owner's documents.
+ */
+export function isIsolatedInstance(env: NodeJS.ProcessEnv = process.env): boolean {
+  const dir = env.TEMP_CODE_USER_DATA?.trim()
+  if (!dir) return false
+  return resolve(dir) !== BOX_DATA_DIR
+}
+
 /**
  * The public listener's port: `TEMP_CODE_WORK_PORT` if set, else 7695 for
- * the installed host, else 0 (any free port) for an isolated instance, so
- * two dev instances never fight over one.
+ * an installed host (the box included), else 0 (any free port) for an
+ * isolated instance, so two dev instances never fight over one.
  */
 export function servicePort(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.TEMP_CODE_WORK_PORT
@@ -23,7 +41,7 @@ export function servicePort(env: NodeJS.ProcessEnv = process.env): number {
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`TEMP_CODE_WORK_PORT is not a port: ${raw}`)
     return port
   }
-  return env.TEMP_CODE_USER_DATA ? 0 : INSTALLED_WORK_PORT
+  return isIsolatedInstance(env) ? 0 : INSTALLED_WORK_PORT
 }
 
 /** A Unix socket's path holds at most 104 bytes on macOS (108 on Linux). */
@@ -56,7 +74,7 @@ export function lifeosServerOf(o: {
   savedHosts: readonly { id: string; platform?: string | null }[]
 }): LifeosServer {
   const env = o.env ?? process.env
-  if (env.TEMP_CODE_USER_DATA) {
+  if (isIsolatedInstance(env)) {
     // An isolated instance never becomes a second writer to the owner's LifeOS documents unless a proof says so.
     const named = env.TEMP_CODE_WORK_LIFEOS_SERVER
     if (named === 'here') return { here: true }

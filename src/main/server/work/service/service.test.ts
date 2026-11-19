@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createCollaborationClient, DOCUMENT_FRAGMENT, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabClaims, type CollabSigner } from 'work-kit/collab-server'
-import { lifeosServerOf, servicePaths, servicePort, INSTALLED_WORK_PORT } from './config'
+import { BOX_DATA_DIR, isIsolatedInstance, lifeosServerOf, servicePaths, servicePort, INSTALLED_WORK_PORT } from './config'
+import { BOX_PROD_DATA_DIR } from '../../processGuard'
 import { startFakeConvex, type FakeConvex } from './fakeConvex'
 import { PUBLIC_ROUTES } from './routes'
 import { startWorkService, type RunningService } from './serve'
@@ -107,6 +108,42 @@ const http = (port: number, path: string, init?: RequestInit) => fetch(`http://1
 const fence = { botId: 'key1', sectors: ['life'], client: 'tempcode', draftOnly: true }
 const addDoc = (r: Rig, id: string, extra: Partial<FakeConvex['docs'] extends Map<string, infer D> ? D : never> = {}) =>
   r.convex.docs.set(id, { _id: id, sector: 'life', seq: 0, title: id, shared: false, markdown: '', plain: '', ...extra })
+
+describe('the installed box is not an isolated instance', () => {
+  // /etc/temp-code.env, as docs/box.md has it: the box's installed host runs with TEMP_CODE_USER_DATA set to its own dir.
+  const box = { TEMP_CODE_USER_DATA: '/srv/agents/temp-code-data', TEMP_CODE_HEADLESS: '1', TEMP_CODE_CLAIM_SHIM: '1', TEMP_CODE_REMOTE_PORT: '7677', NODE_ENV: 'production' }
+  const devOnBox = { TEMP_CODE_USER_DATA: '/tmp/tc-m7-proof-x/box-data', TEMP_CODE_HEADLESS: '1' }
+  const mac = {}
+  const devOnMac = { TEMP_CODE_USER_DATA: '/Users/landon/Library/Application Support/temp-code-dev' }
+  it('names the same dir processGuard calls the box prod data', () => expect(BOX_DATA_DIR).toBe(BOX_PROD_DATA_DIR))
+  it('the box: installed, port 7695, serves LifeOS documents', () => {
+    expect(isIsolatedInstance(box)).toBe(false)
+    expect(isIsolatedInstance({ ...box, TEMP_CODE_USER_DATA: '/srv/agents/temp-code-data/' })).toBe(false)
+    expect(servicePort(box)).toBe(7695)
+    expect(lifeosServerOf({ env: box, platform: 'linux', savedHosts: [] })).toEqual({ here: true })
+  })
+  it('a dev or proof instance on the box, headless too: isolated, any port, serves none', () => {
+    expect(isIsolatedInstance(devOnBox)).toBe(true)
+    expect(servicePort(devOnBox)).toBe(0)
+    expect(lifeosServerOf({ env: devOnBox, platform: 'linux', savedHosts: [] })).toEqual({ here: false, host: null })
+  })
+  it('the installed Mac: port 7695, the box serves LifeOS documents', () => {
+    expect(isIsolatedInstance(mac)).toBe(false)
+    expect(servicePort(mac)).toBe(7695)
+    expect(lifeosServerOf({ env: mac, platform: 'darwin', savedHosts: [{ id: 'env_box', platform: 'linux' }] })).toEqual({ here: false, host: 'env_box' })
+  })
+  it.skipIf(process.platform !== 'linux')("on the box a guest link's and a form's address is the tunnel's hostname; a dev instance's is its own", async () => {
+    const { publicOrigin } = await import('../guests/links')
+    const ctx = { service: { url: () => 'http://127.0.0.1:43953/' } } as unknown as Parameters<typeof publicOrigin>[0]
+    expect(publicOrigin(ctx, box)).toBe('https://tempcode.landonhale.com')
+    expect(publicOrigin(ctx, devOnBox)).toBe('http://127.0.0.1:43953')
+  })
+  it('a dev instance on the Mac: isolated, any port, serves none', () => {
+    expect(isIsolatedInstance(devOnMac)).toBe(true)
+    expect(servicePort(devOnMac)).toBe(0)
+    expect(lifeosServerOf({ env: devOnMac, platform: 'darwin', savedHosts: [{ id: 'env_box', platform: 'linux' }] })).toEqual({ here: false, host: null })
+  })
+})
 
 describe('where the service listens', () => {
   it('7695 for the installed host, any free port for an isolated instance, TEMP_CODE_WORK_PORT over both', () => {

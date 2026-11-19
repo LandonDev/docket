@@ -13,7 +13,7 @@ import {
 import type { CanvasItem, HeldItem } from '@shared/work'
 import type { ActCtx, WorkCtx } from '../modules'
 import { ActStale } from '../outbox/kinds'
-import { servicePaths } from '../service/config'
+import { isIsolatedInstance, servicePaths } from '../service/config'
 import { answerable, applySuggestion, FormsStore, mergeColumns, newPublicId, type FormRow } from './store'
 
 /**
@@ -47,7 +47,7 @@ export function rowOf(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem): FormRow {
 export function linkOf(ctx: Pick<WorkCtx, 'service'>, publicId: string): string {
   const origin = process.env.TEMP_CODE_WORK_PUBLIC_ORIGIN
   if (origin) return `${origin.replace(/\/$/, '')}/f/${publicId}`
-  if (process.platform === 'linux' && !process.env.TEMP_CODE_USER_DATA) return `https://tempcode.landonhale.com/f/${publicId}`
+  if (process.platform === 'linux' && !isIsolatedInstance()) return `https://tempcode.landonhale.com/f/${publicId}`
   try {
     return ctx.service.url(`/f/${publicId}`)
   } catch {
