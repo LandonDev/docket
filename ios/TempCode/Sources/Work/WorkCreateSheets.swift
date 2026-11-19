@@ -58,7 +58,7 @@ struct NewWorkWorkspaceSheet: View {
                     if let error { Text(error).foregroundStyle(Tint.destructiveText) }
                 }
             }
-            .navigationTitle("New Work Workspace")
+            .navigationTitle("New Workspace")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

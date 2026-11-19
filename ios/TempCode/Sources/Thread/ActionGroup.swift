@@ -52,11 +52,23 @@ struct ActionGroup: View {
         // The proof's `chip` hook opens a call's omitted body: its group opens with it.
         let opened = forceOpen || (TestHooks.open == "chip" && group.tools.contains { $0.output.isOmitted })
         hands = ThreadCaches.hands(client: client, sessionId: sessionId)
-        _fold = State(initialValue: GroupFold(working: group.working, hand: opened ? true : hands.choice(group.key)))
+        let choice = hands.choice(group.key)
+        // A call the host still holds keeps its group open, so its held line shows; a person's close wins.
+        let holding = choice != false && Self.holds(group, client: client)
+        _fold = State(initialValue: GroupFold(working: group.working, hand: opened || holding ? true : choice))
         _seen = State(initialValue: Set(group.shown(byHand: opened).map(\.key)))
     }
 
     private static var now: Double { Date().timeIntervalSinceReferenceDate }
+
+    /// One of the group's calls is held and still waits in the Outbox (milestone 46, HeldInline).
+    private static func holds(_ group: ActivityGroup, client: EnvironmentClient) -> Bool {
+        guard !client.work.items.isEmpty else { return false }
+        return group.tools.contains { tool in
+            guard case .whole(let text) = tool.output, let held = OutboxModel.heldOf(tool: tool.name, result: text) else { return false }
+            return client.work.items.contains { $0.n == held.n }
+        }
+    }
 
     var body: some View {
         let lone = group.lone
@@ -95,6 +107,14 @@ struct ActionGroup: View {
             TranscriptFollow.resize(follow) { take(open: !open) }
         }
         #endif
+        // The Outbox listed after the group mounted: a held call still opens it, as above.
+        .onChange(of: Self.holds(group, client: client)) { _, now in
+            guard now, fold.hand == nil, hands.choice(group.key) == nil else { return }
+            Motion.withoutAnimation {
+                fold.choose(open: true)
+                seen.formUnion(group.entries.map(\.key))
+            }
+        }
         .onChange(of: forceOpen) { _, now in
             guard now, fold.hand != true else { return }
             // The view's own opening (a landing): not a choice the person made, so not kept.

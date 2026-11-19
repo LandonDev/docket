@@ -11,7 +11,7 @@
 #           pairs with the admin key): Home with the Outbox row and the Work band, the Outbox,
 #           a held mail, its Edit sheet, the mail edited and sent from the phone (the undo
 #           capsule, then the list), a held notice opening its item, the held call opened in
-#           place in its thread, the thread's Results, New Work Workspace and New Work Chat, a
+#           place in its thread, the thread's Results, New Workspace and New Work Chat sheets, a
 #           grant made from the post's Send menu, Away cycled from the phone with its note and
 #           review, Settings → Work with the grant; Home and the Outbox once more in dark.
 #           scripts/ios-sim-proof-local.ts then reads back on the host what went
