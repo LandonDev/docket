@@ -122,7 +122,10 @@ Settings → Work.
   row's one muted trailing fact. `WorkViewProps` hands it the workspace,
   its sector, `lifeos` (a session narrowed to that sector) and
   `startThread(chip)`, which opens a new thread's composer in the workspace
-  with the chip in it (`addContextChip`, work/canvas/chips.ts). Signed out,
+  with the chip in it (`addContextChip`, work/canvas/chips.ts). A fifth
+  row, Routines, follows Docs ([work-routines.md](work-routines.md)); a
+  view opens a thread through `workOpenPort` (lib/workSwitch.ts, App
+  registers it). Signed out,
   the frame draws the sign-in instead of the view; unreachable, one state
   line over it.
 - **The LifeOS session** (work/shell/lifeos.ts): `useLifeosStatus(env)`
@@ -377,6 +380,11 @@ and edits nothing else:
 | `results` | work/outbox/results.ts (and `ensureResults`, which the outbox module's `ensure` calls) | 14 |
 | `convert` | work/formats/jobs.ts (built: [work-formats.md](work-formats.md)) | 15 |
 | `service` | work/service/ctx.ts (built: [work-service.md](work-service.md)) | 18 |
+
+One part adds no member: `routines/host.ts` keeps the host handles the
+routines engine needs and the context does not carry (the add-on host's own
+call for a watch, the registry's settle and read marks), called once from
+`buildWorkCtx` ([work-routines.md](work-routines.md)).
 
 A part is a function `(ctx, deps) => members`. `deps` (`WorkDeps`) is what
 index.ts hands over: the database, the store, the session registry, this
