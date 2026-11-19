@@ -8,11 +8,9 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  readlinkSync,
   renameSync,
   rmSync,
   statSync,
-  symlinkSync,
   writeFileSync
 } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -21,6 +19,7 @@ import { SKILL_HARNESSES, generationDirName, skillDigest, type SkillHarness } fr
 import { writeSkillTreeSync } from '../skillFiles'
 import type { SkillStore, StoredFile } from '../skillStore'
 import { untilLoopIdle } from '../stalls'
+import { JUNCTIONS, linkDir, readDirLink, swapDirLink } from './links'
 import { localizeSkillFile, textKey, type TextContext } from './skillText'
 import { planView, planViews, type ViewPlan } from './views'
 
@@ -96,6 +95,8 @@ export interface MaterializerDeps {
   /** Awaited between skills of an async build; default: a turn of the loop, then a quiet loop. */
   between?: () => Promise<void>
   log?: (line: string) => void
+  /** Links are junctions (links.ts); default: on win32. */
+  junctions?: boolean
 }
 
 type Steps = Generator<void, BuildResult, void>
@@ -126,12 +127,21 @@ export class SkillMaterializer {
     ;(this.deps.log ?? ((l: string) => console.log(`[skills] ${l}`)))(line)
   }
 
+  private get junctions(): boolean {
+    return this.deps.junctions ?? JUNCTIONS
+  }
+
   // ── the lifecycle ──────────────────────────────────────────────────────
 
   start(): void {
     if (this.closed) return
-    mkdirSync(this.deps.root, { recursive: true })
-    this.removeLeftovers()
+    try {
+      mkdirSync(this.deps.root, { recursive: true })
+      this.removeLeftovers()
+    } catch (err) {
+      // The boot goes on without the skills; the next write-out tries again.
+      this.log(`start failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
     this.offs.push(this.deps.skills.onChange(() => this.markDirty()))
     if (this.deps.onTextMap) this.offs.push(this.deps.onTextMap(() => this.markDirty()))
     this.markDirty()
@@ -282,7 +292,7 @@ export class SkillMaterializer {
   /** The generation `<view>` points at, or null. */
   private currentOf(provider: SkillHarness, view: string): string | null {
     try {
-      const target = readlinkSync(join(this.providerDir(provider), view))
+      const target = readDirLink(join(this.providerDir(provider), view), this.junctions)
       return GENERATION_RE.test(target) ? target : null
     } catch {
       return null
@@ -384,8 +394,8 @@ export class SkillMaterializer {
     if (prev === name) return true
     const tmp = `${link}.lnk-${process.pid}-${++this.seq}`
     rmSync(tmp, { force: true })
-    symlinkSync(name, tmp)
-    renameSync(tmp, link)
+    linkDir(name, tmp, this.junctions)
+    swapDirLink(tmp, link, this.junctions)
     const ledger = this.readLedger()
     delete ledger[`${plan.provider}/${name}`]
     if (prev) ledger[`${plan.provider}/${prev}`] = this.now()
@@ -429,7 +439,7 @@ export class SkillMaterializer {
     }
     for (const name of names) {
       try {
-        const target = basename(readlinkSync(join(dir, name)))
+        const target = basename(readDirLink(join(dir, name), this.junctions))
         if (GENERATION_RE.test(target)) out.add(target)
       } catch {
         // not a link: nothing it names

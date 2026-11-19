@@ -1,6 +1,7 @@
-import { lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync } from 'node:fs'
+import { lstatSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { SKILL_HARNESSES, type SkillHarness } from '@shared/skills'
+import { JUNCTIONS, linkDir, readDirLink, swapDirLink } from './links'
 import { SCOPE_DIR, type SkillMaterializer } from './materialize'
 
 /**
@@ -30,6 +31,8 @@ export interface SkillPointersDeps {
   onWorkspaces?: (fn: () => void) => () => void
   now?: () => number
   log?: (line: string) => void
+  /** Links are junctions (links.ts); default: on win32. */
+  junctions?: boolean
 }
 
 type MovedFn = (provider: SkillHarness, scope: ScopeKey, generation: string) => void
@@ -56,7 +59,11 @@ export class SkillPointers {
 
   start(): void {
     if (this.closed) return
-    this.removeLeftovers()
+    try {
+      this.removeLeftovers()
+    } catch (err) {
+      this.log(`start failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
     this.refresh()
     this.offs.push(this.deps.materializer.onPublished(() => this.refresh()))
     if (this.deps.onWorkspaces) this.offs.push(this.deps.onWorkspaces(() => this.refresh()))
@@ -78,7 +85,7 @@ export class SkillPointers {
   current(provider: SkillHarness, workspaceId: string | null): { generation: string; movedAt: number } {
     const scope = scopeKeyOf(workspaceId)
     const link = this.linkPath(provider, scope)
-    const target = readLink(link) ?? (this.point(provider, workspaceId), readLink(link))
+    const target = this.readLink(link) ?? (this.point(provider, workspaceId), this.readLink(link))
     const movedAt = this.movedAt.get(`${provider}/${scope}`) ?? 0
     // A real folder in the pointer's place is what the CLI reads.
     return { generation: target ? join(this.deps.root, provider, basename(target)) : link, movedAt }
@@ -103,6 +110,9 @@ export class SkillPointers {
         this.again = false
         this.refreshOnce()
       } while (this.again && !this.closed)
+    } catch (err) {
+      // A failed write-out never stops the caller (the boot among them); the next publish tries again.
+      this.log(`refresh failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       this.refreshing = false
     }
@@ -132,6 +142,18 @@ export class SkillPointers {
     }
   }
 
+  private get junctions(): boolean {
+    return this.deps.junctions ?? JUNCTIONS
+  }
+
+  private readLink(path: string): string | null {
+    try {
+      return readDirLink(path, this.junctions)
+    } catch {
+      return null
+    }
+  }
+
   private linkPath(provider: SkillHarness, scope: ScopeKey): string {
     return join(this.deps.root, provider, SCOPE_DIR, scope)
   }
@@ -149,13 +171,13 @@ export class SkillPointers {
       this.foreign.add(link)
       return
     }
-    const was = st ? readLink(link) : null
+    const was = st ? this.readLink(link) : null
     if (was === want) return
     mkdirSync(join(this.deps.root, provider, SCOPE_DIR), { recursive: true })
     const tmp = `${link}.lnk-${process.pid}-${++this.seq}`
     rmSync(tmp, { force: true })
-    symlinkSync(want, tmp)
-    renameSync(tmp, link)
+    linkDir(want, tmp, this.junctions)
+    swapDirLink(tmp, link, this.junctions)
     if (was === null) return
     this.movedAt.set(`${provider}/${scope}`, this.deps.now?.() ?? Date.now())
     for (const fn of [...this.listeners]) {
@@ -188,14 +210,6 @@ export class SkillPointers {
 function lstatOrNull(path: string): ReturnType<typeof lstatSync> | null {
   try {
     return lstatSync(path)
-  } catch {
-    return null
-  }
-}
-
-function readLink(path: string): string | null {
-  try {
-    return readlinkSync(path)
   } catch {
     return null
   }
