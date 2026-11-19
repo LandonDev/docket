@@ -3891,6 +3891,24 @@ public enum Methods {
         }
     }
 
+    public enum MediaRead: ContractMethod {
+        public static let name = "media.read"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let token: String
+            public let offset: Int
+            public let length: Int
+
+            public init(token: String, offset: Int, length: Int) {
+                self.token = token
+                self.offset = offset
+                self.length = length
+            }
+        }
+
+        public typealias Output = MediaRange?
+    }
+
     public enum WorkMeetingsGet: ContractMethod {
         public static let name = "work.meetings.get"
 

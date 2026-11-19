@@ -14,6 +14,7 @@ import type { MailSendAnswer } from './contract-work-mail'
 import type { GuestCreated } from './contract-work-guests'
 import type { PdfView } from './contract-work-pdf'
 import type { DeckView } from './contract-work-slides'
+import type { MediaRange } from './contract-fsgit'
 import { FrameTableSchema, type MediaView } from './contract-work-media'
 import type { Meeting } from './contract-work-meetings'
 import type { FormResponses } from './contract-work-forms'
@@ -1260,6 +1261,8 @@ export const WorkCanvasPushSchema = push('work.canvas', { sessionId: z.string(),
 /** Bytes of a file the phone draws itself (a PDF, a deck's render), a frame at a time. */
 export const FileBytesSchema = z.object({ data: z.string(), size: z.number(), rev: z.string() })
 export const Base64DataSchema = z.object({ data: z.string() })
+/** A slice of a media file by its token (`media.read`, admin): the phone's path to a proxy, an original or a picture. */
+export const MediaRangeSchema = z.object({ dataBase64: z.string(), mime: z.string(), size: z.number(), mtimeMs: z.number() })
 export const PdfPhoneViewSchema = z.object({ itemId: z.string(), name: z.string(), size: z.number(), rev: z.string(), missing: z.object({ asOf: z.number() }).optional() })
 export const DeckPhoneViewSchema = z.object({
   itemId: z.string(),
@@ -1579,6 +1582,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof GuestCreatedSchema, GuestCreated>>,
   Expect<Mirror<typeof FormResponsesSchema, FormResponses>>,
   Expect<Mirror<typeof BrowserStateSchema, BrowserState>>,
+  Expect<Mirror<typeof MediaRangeSchema, MediaRange>>,
   Expect<Reads<typeof LifeosJwtAnswerSchema, LifeosJwtAnswer>>,
   Expect<Reads<typeof WorkspaceWorkSettingsWireSchema, WorkspaceWorkSettings>>,
   Expect<Reads<typeof PdfPhoneViewSchema, PdfView>>,

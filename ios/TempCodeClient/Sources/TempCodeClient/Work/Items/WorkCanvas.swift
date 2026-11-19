@@ -87,8 +87,15 @@ public final class WorkCanvas {
     }
 
     /// `plays`: what this viewer can decode, so the host prepares it (an HLS proxy, tiles).
-    public func media(_ itemId: String) async throws -> MediaPhoneView {
-        try await socket.request(Methods.WorkMediaView.self, .init(itemId: itemId, plays: ["hls", "tiles"]))
+    public func media(_ itemId: String, canRead: Bool) async throws -> MediaPhoneView {
+        try await socket.request(Methods.WorkMediaView.self, .init(itemId: itemId, plays: MediaPick.asks(canRead: canRead)))
+    }
+
+    /// A proxy, an original or a picture by its media token, in ranges (`media.read`, admin).
+    public func mediaFile(token: String) async throws -> Data {
+        try await ChunkedRead.media { offset, length in
+            try await self.socket.request(Methods.MediaRead.self, .init(token: token, offset: offset, length: length))
+        }
     }
 
     public func mediaSegment(_ itemId: String, versionId: String, index: Int?) async throws -> Data {

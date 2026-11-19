@@ -502,6 +502,8 @@ export const SUBSET: SubsetEntry[] = [
   method('work.media.note', W.MediaPhoneNoteSchema),
   method('work.media.segment', W.Base64DataSchema),
   method('work.media.tile', W.Base64DataSchema),
+  type('MediaRange', W.MediaRangeSchema),
+  method('media.read', W.MediaRangeSchema.nullable()),
   type('MeetingPhone', W.MeetingPhoneSchema),
   method('work.meetings.get', W.MeetingAnswerSchema),
   type('FormResponses', W.FormResponsesSchema),

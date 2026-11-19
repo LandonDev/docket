@@ -29,4 +29,21 @@ public enum ChunkedRead {
         }
         return data
     }
+
+    /// A media file by its token (`media.read`): the first range says the whole size.
+    public static func media(frame: Int = 2 * 1024 * 1024, read: (_ offset: Int, _ length: Int) async throws -> MediaRange?) async throws -> Data {
+        var data = Data()
+        var size = Int.max
+        var mtime: Double?
+        while data.count < size {
+            guard let range = try await read(data.count, frame) else { throw Failure.short }
+            if let mtime, mtime != range.mtimeMs { throw Failure.changed }
+            mtime = range.mtimeMs
+            size = Int(range.size)
+            guard let bytes = Data(base64Encoded: range.dataBase64) else { throw Failure.notBase64 }
+            guard !bytes.isEmpty || data.count >= size else { throw Failure.short }
+            data.append(bytes)
+        }
+        return data
+    }
 }

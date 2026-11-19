@@ -6140,6 +6140,20 @@ public struct MediaPhoneView: Codable, Hashable, Sendable {
     }
 }
 
+public struct MediaRange: Codable, Hashable, Sendable {
+    public let dataBase64: String
+    public let mime: String
+    public let size: Double
+    public let mtimeMs: Double
+
+    public init(dataBase64: String, mime: String, size: Double, mtimeMs: Double) {
+        self.dataBase64 = dataBase64
+        self.mime = mime
+        self.size = size
+        self.mtimeMs = mtimeMs
+    }
+}
+
 public struct MeetingPhone: Codable, Hashable, Sendable {
     public struct Speaker: Codable, Hashable, Sendable {
         public let id: String

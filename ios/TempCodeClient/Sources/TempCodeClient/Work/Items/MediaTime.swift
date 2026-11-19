@@ -67,24 +67,52 @@ public func mediaClock(_ seconds: Double) -> String {
     return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
 }
 
-/// What the phone plays of a version: the fMP4 proxy's segments, which it fetches and joins into
-/// one file, or a picture from its tiles.
+/// What the phone plays of a version: the fMP4 HLS proxy's segments (joined into one file here), a
+/// proxy or an original file it reads by its media token (`media.read`, a key with admin), a picture
+/// from its tiles or by its token.
 public enum MediaPick: Equatable, Sendable {
     case segments(init: String, count: Int, table: FrameTable)
-    /// The proxy is still being cut: read the view again.
+    case file(token: String, table: FrameTable)
+    /// The proxy or the tiles are still being made: read the view again.
     case preparing
     case picture(preview: String, width: Double, height: Double, tile: Double, overlap: Double, levels: Int, minLevel: Int)
+    case image(token: String)
+    /// Nothing this key can read: the file opens on the computer.
     case none
 
-    public static func of(_ plays: [MediaPlay]) -> MediaPick {
+    /// The codecs a phone's player decodes, as `plays` names them (mediaFrames.ts `playKey`).
+    public static let decodes = ["h264", "hevc"]
+
+    /// What the phone asks the host to prepare: with a key that may read files, the original where
+    /// iOS decodes it; else only what reaches it over the socket (HLS segments, tiles).
+    public static func asks(canRead: Bool) -> [String] {
+        canRead ? decodes + ["hls", "tiles"] : ["hls", "tiles"]
+    }
+
+    /// The version's plays, best first: HLS, then (reading by token) the proxy, then the original;
+    /// tiles, then (by token) the picture. `ready`: the host has finished with the version.
+    public static func of(_ plays: [MediaPlay], ready: Bool, canRead: Bool) -> MediaPick {
+        var proxy: MediaPick?, original: MediaPick?, tiles: MediaPick?, image: MediaPick?
         for play in plays {
             switch play {
-            case .hls(let hls): return hls.ended ? .segments(init: hls.`init`, count: hls.segments.count, table: hls.table) : .preparing
-            case .tiles(let t): return .picture(preview: t.preview, width: t.width, height: t.height, tile: t.tile, overlap: t.overlap, levels: t.levels, minLevel: t.minLevel)
-            default: continue
+            case .hls(let hls):
+                return hls.ended ? .segments(init: hls.`init`, count: hls.segments.count, table: hls.table) : .preparing
+            case .proxy(let p): proxy = token(of: p.url).map { .file(token: $0, table: p.table) }
+            case .original(let o): original = token(of: o.url).map { .file(token: $0, table: o.table) }
+            case .tiles(let t): tiles = .picture(preview: t.preview, width: t.width, height: t.height, tile: t.tile, overlap: t.overlap, levels: t.levels, minLevel: t.minLevel)
+            case .image(let i): image = token(of: i.url).map { .image(token: $0) }
+            case .unknown: continue
             }
         }
-        return .none
+        if let tiles { return tiles }
+        if canRead, let file = proxy ?? original ?? image { return file }
+        return ready ? .none : .preparing
+    }
+
+    /// The token in a media URL (`tempcode-app://file/<token>/<name>?v=…`, server/media.ts `mediaUrl`).
+    public static func token(of url: String) -> String? {
+        guard let range = url.range(of: #"/file/[a-f0-9]{32}/"#, options: .regularExpression) else { return nil }
+        return String(url[range].dropFirst(6).dropLast())
     }
 }
 
