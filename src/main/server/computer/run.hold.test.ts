@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { configureComputerHold, HELD_STALE, HELD_UNAVAILABLE, HELD_UNPLACED, HELD_UNREAD, type HeldComputerCall } from './run'
+import { configureComputerHold, configureOwnerDrives, HELD_STALE, HELD_UNAVAILABLE, HELD_UNPLACED, HELD_UNREAD, type HeldComputerCall } from './run'
 import type { ComputerToolOutcome } from './result'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
@@ -30,6 +30,7 @@ const useHold = (): void => {
 
 afterEach(async () => {
   configureComputerHold(null)
+  configureOwnerDrives(null)
   held = []
   for (const h of harnesses.splice(0)) await h.close()
 })
@@ -641,5 +642,28 @@ describe('the attacker under full access', () => {
     expect(held).toHaveLength(0)
     expect(h.cards).toHaveLength(0)
     expect(h.requests().filter((r) => r.method === 'apps.launch')).toHaveLength(1)
+  })
+})
+
+describe('Take over', () => {
+  it("refuses the thread's own calls while he drives, on every turn, still carries out his press, and runs again once he hands back", async () => {
+    useHold()
+    const { h } = await thread('work')
+    await click(h, SEND)
+    expect(held).toHaveLength(1)
+    let driver: 'owner' | 'agent' = 'owner'
+    configureOwnerDrives((id) => (id === 't1' && driver === 'owner' ? 'He is driving.' : null))
+    expect(await click(h, PLAIN)).toMatchObject({ isError: true, body: 'He is driving.', steps: [] })
+    // a later turn (his message, a decided act waking the thread) is refused the same: nothing reaches the service
+    const before = h.requests().length
+    expect(await h.run('computer_observe', { app: 'TextEdit' })).toMatchObject({ isError: true, body: 'He is driving.' })
+    expect(h.requests()).toHaveLength(before)
+    expect(acts(h)).toBe(0)
+    const pressed = await held[0].carryOut()
+    expect(pressed.isError).toBe(false)
+    expect(acts(h)).toBe(1)
+    driver = 'agent'
+    expect((await click(h, PLAIN)).isError).toBe(false)
+    expect(acts(h)).toBe(2)
   })
 })

@@ -108,6 +108,11 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   browser /ui stop it too), then sets him as driver. While he drives at a
   held submit the ghost beside the primary is Hand back, and his driving
   outranks the line after a press, so Hand back is never out of reach.
+  While he drives, every computer call from the pane's tree (the thread and
+  its subagents, on any turn: his own message, a decided act waking the
+  thread) is refused with `OWNER_DRIVES` before it reaches the service, until
+  he hands back. The gate is `configureOwnerDrives` in computer/run.ts, set
+  by this module's `start`; the hold's own press is his and runs (F3).
 - **The body**: the live window in its own shape, at most 720px wide, a
   skeleton until the first frame; at a held submit the values under it
   (label, value, source; the values are the host's read of the page's
@@ -121,15 +126,9 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
 - Holding a box thread's act on the Mac (a Mac-side row the box presses
   over the peer link): a box thread's computer act on the Mac is refused,
   not held (milestone 10). Yours, milestone 41.
-- **"He is driving" holds for one turn only.** `computer.stop` lasts until
-  the thread's next turn, and nothing in computer use reads
-  `work_browser_drive`: a turn that starts while he drives (his own message,
-  a decided act waking the thread) may use computer use again unless the
-  model heeds `browser_open`'s `OWNER_DRIVES`. The gate belongs in
-  computer/run.ts (a call that is not the owner's press, from a thread whose
-  pane he drives, refused), which this pillar does not own: a foundation
-  follow-up. Likewise the phone's `work.browser.drive` stops nothing: the
-  stop is the desktop's.
+- The phone's `work.browser.drive` stops nothing: the stop is the desktop's.
+  A computer call still running on the phone's Take over finishes; the gate
+  below refuses the next one.
 - The Mac locked: the canvas shows no "As it was at" line for a locked Mac.
 - `teams.post`'s own Outbox view: it uses the generic one (`act.ts`,
   `chunk: null`); Sent's picture is milestone 14's to draw.

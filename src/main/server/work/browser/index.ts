@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { configureOwnerDrives } from '../../computer/run'
 import { PortalSourceSchema, type BrowserState } from '@shared/contract-work-browser'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
 import type { ActKindDef, ToolCtx, WorkCtx, WorkModule, WorkTool } from '../modules'
@@ -129,6 +130,12 @@ export const browser: WorkModule = {
       default:
         return NOT_HANDLED
     }
+  },
+  // While he drives a pane, its threads' computer calls are refused at the run, whatever turn they come in
+  // (his message, a decided act waking the thread), until he hands back.
+  start(ctx) {
+    configureOwnerDrives((threadId) => (new DriveStore(ctx.db).get(ctx.canvas.paneOf(threadId)).driver === 'owner' ? OWNER_DRIVES : null))
+    return () => configureOwnerDrives(null)
   },
   tools: () => tools(),
   acts: [teamsPostKind as unknown as ActKindDef],

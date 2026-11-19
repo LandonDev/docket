@@ -149,6 +149,18 @@ export function configureComputerHold(hold: ComputerHold | null): void {
   computerHold = hold
 }
 
+/**
+ * Whose hands are on a thread's screen: Work's browser pillar sets it while Work is on. A line answers a
+ * thread whose pane the owner has taken over (Take over), and refuses its calls, every turn, until he hands
+ * back; the hold's own press is his and is never refused by it.
+ */
+let ownerDrives: ((threadId: string) => string | null) | null = null
+export function configureOwnerDrives(fn: ((threadId: string) => string | null) | null): void {
+  ownerDrives = fn
+}
+/** The line refusing a thread's call while the owner drives its pane, or null. */
+export const ownerDrivesLine = (threadId: string): string | null => ownerDrives?.(threadId) ?? null
+
 export const HELD_UNAVAILABLE =
   "held: this step sends, posts, pays, deletes or the like, and it cannot be kept for the owner's press from here, so it was not carried out. Do not reach the same effect another way; say what is ready to go and carry on with the rest."
 export const HELD_STALE = 'the window no longer holds what was shown when this was held'
@@ -445,16 +457,19 @@ export async function runComputerTool(
   const meta = ctx.pressed ? null : host.registry.get(ctx.threadId)
   const stopped = t.stopped && !ctx.pressed
   const aborted = abortedLine(signal)
-  const unavailable = aborted || stopped || meta?.status === 'paused' ? null : host.service.unavailableReason()
+  const driving = aborted || stopped || ctx.pressed ? null : ownerDrivesLine(ctx.threadId)
+  const unavailable = aborted || stopped || driving || meta?.status === 'paused' ? null : host.service.unavailableReason()
   const early = aborted
     ? refusal(aborted)
     : stopped
       ? refused('stopped')
-      : meta?.status === 'paused'
-        ? refused('paused')
-        : unavailable
-          ? refused('service_unavailable', unavailable)
-          : null
+      : driving
+        ? refusal(driving)
+        : meta?.status === 'paused'
+          ? refused('paused')
+          : unavailable
+            ? refused('service_unavailable', unavailable)
+            : null
   if (early) {
     settle(early)
     return early

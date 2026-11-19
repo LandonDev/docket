@@ -5,6 +5,7 @@ import type { OutboxItem } from '@shared/contract-work-outbox'
 import type { CanvasItem } from '@shared/work'
 import { awayVerdict } from '@shared/away'
 import { CONFIRM_KIND_INFO } from '@shared/computer/policy'
+import { ownerDrivesLine } from '../../computer/run'
 import { canvas } from '../canvas/index'
 import { outbox as outboxModule } from '../outbox/index'
 import { approveKey, cast, makeRig, readKey, type Rig } from '../outbox/rig'
@@ -94,6 +95,18 @@ describe('the live browser', () => {
     await drive('agent')
     expect(rig.woke).toHaveLength(1)
     expect(browserPushes().map((s) => s.driver)).toEqual(['owner', 'owner', 'agent', 'agent'])
+  })
+
+  it("refuses the pane's computer calls, a subagent's too, on any turn while he drives, until he hands back", async () => {
+    rig.thread('t-sub', { scope: 'work', workspaceId: 'ws-purdue', parentId: 't-work' } as never)
+    await tool('browser_open', { url: 'https://arbitersports.com', name: 'Arbiter', title: 'My availability' })
+    expect(ownerDrivesLine('t-work')).toBeNull()
+    await drive('owner')
+    expect(ownerDrivesLine('t-work')).toBe(OWNER_DRIVES)
+    expect(ownerDrivesLine('t-sub')).toBe(OWNER_DRIVES)
+    await drive('agent')
+    expect(ownerDrivesLine('t-work')).toBeNull()
+    expect(ownerDrivesLine('t-sub')).toBeNull()
   })
 
   it('the agent can neither take over nor hand itself back: a model caller is refused', async () => {
