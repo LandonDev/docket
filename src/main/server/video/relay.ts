@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { VIDEO_CLOSE, type VideoCloseReason } from '@shared/contract-video'
-import { MESSAGE_TYPES, encodeInput, messageType } from '@shared/video/nsl1'
+import { MESSAGE_TYPES, messageType } from '@shared/video/nsl1'
 import type { StreamClaim, StreamHolder, StreamScope } from '../remote/auth'
 import { isFrame, type VideoFeed } from './feed'
 
@@ -100,20 +100,34 @@ export class VideoRelay {
       if (!isBinary || this.streams.get(s.id) !== s) return
       const bytes = Array.isArray(data) ? Buffer.concat(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data
       const type = messageType(bytes)
-      if (type === MESSAGE_TYPES.ack) s.feed.ack(bytes)
-      else if (type === MESSAGE_TYPES.input && this.drives(s)) s.feed.input(bytes)
+      // a feed that throws ends its own stream, never the process
+      this.guard(s, () => {
+        if (type === MESSAGE_TYPES.ack) s.feed.ack(bytes)
+        else if (type === MESSAGE_TYPES.input && this.drives(s)) s.feed.input(bytes)
+      })
     })
     socket.on('close', () => this.remove(s))
-    s.feed.start({
-      frame: (bytes) => {
-        if (this.streams.get(s.id) !== s || !isFrame(bytes)) return
-        if (socket.bufferedAmount > max) return this.end(s.id, 'slow')
-        socket.send(bytes)
-      },
-      end: (reason) => this.end(s.id, reason)
-    })
+    this.guard(s, () =>
+      s.feed.start({
+        frame: (bytes) => {
+          if (this.streams.get(s.id) !== s || !isFrame(bytes)) return
+          if (socket.bufferedAmount > max) return this.end(s.id, 'slow')
+          socket.send(bytes)
+        },
+        end: (reason) => this.end(s.id, reason)
+      })
+    )
     this.changed()
     return true
+  }
+
+  private guard(s: Stream, fn: () => void): void {
+    try {
+      fn()
+    } catch (err) {
+      console.error('[video] a feed failed', err)
+      this.end(s.id, 'error')
+    }
   }
 
   /** Ends one stream: its socket closes with the reason's code and its feed is let go. */
@@ -157,18 +171,23 @@ export class VideoRelay {
 
   /**
    * Who drives `group` now, told by the drive push and never read per record.
-   * When he hands back, each of the group's drive streams sends release-all
-   * and is a watch stream from then on.
+   * When he hands back, each of the group's drive streams lets go of every
+   * key and button and is a watch stream from then on. One nobody joined yet
+   * is ended: its ticket was for a drive stream, which it no longer is.
    */
   setDriver(group: string, owner: boolean): void {
     if (owner) {
       this.driven.add(group)
       return
     }
-    if (!this.driven.delete(group)) return
-    for (const s of this.streams.values()) {
+    const was = this.driven.delete(group)
+    for (const s of [...this.streams.values()]) {
       if (s.group !== group || s.scope !== 'drive') continue
-      if (s.socket) s.feed.input(encodeInput({ type: 'releaseAll' }, 1))
+      if (!s.socket) {
+        this.end(s.id, 'ended')
+        continue
+      }
+      if (was) this.guard(s, () => s.feed.release())
       s.scope = 'watch'
     }
     this.changed()

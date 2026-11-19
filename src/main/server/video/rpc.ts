@@ -49,8 +49,10 @@ export interface VideoCaller {
   principal: Principal
   /** the RPC socket: a stream ends with it, and only it may close or paste into the stream */
   connection: object
-  /** the socket's id on this host, which a local ticket is bound to */
+  /** the socket's id on this host: who a desktop's own ticket names, since its socket has no key */
   connectionId: string
+  /** the RPC socket is still open; a stream is never opened for one that closed while its source was asked */
+  alive?: () => boolean
 }
 
 export class VideoRpc {
@@ -91,6 +93,10 @@ export class VideoRpc {
       const opening = await source.open(ask)
       if (!opening) continue
       if (!opening.ok) return opening
+      if (caller.alive && !caller.alive()) {
+        opening.feed.close()
+        return { ok: false, reason: 'refused' }
+      }
       const holder: StreamHolder = caller.principal.kind === 'local' ? { local: caller.connectionId } : { keyId: caller.principal.keyId }
       const stream = this.relay.open({
         thread: ask.thread,

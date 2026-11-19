@@ -610,6 +610,9 @@ export class RemoteAuth {
    * never rides in a URL; this is all that does.
    */
   mintStreamTicket(claim: StreamClaim): { ticket: string; expiresIn: number } {
+    // spent here, since a desktop with remote access off has no listener to run `sweep`
+    const now = this.now()
+    for (const [digest, entry] of this.streamTickets) if (entry.expiresAt <= now) this.streamTickets.delete(digest)
     const ticket = randomBytes(32).toString('base64url')
     this.streamTickets.set(sha256(ticket), { ...claim, expiresAt: this.now() + TICKET_TTL_MS })
     return { ticket, expiresIn: TICKET_TTL_MS / 1000 }

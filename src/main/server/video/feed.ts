@@ -22,6 +22,12 @@ export interface VideoFeed {
   ack(bytes: Uint8Array): void
   /** One input message of his. The relay calls it only for a `drive` stream while he is the driver. */
   input(bytes: Uint8Array): void
+  /**
+   * Every key and button he holds is let go: he handed back. The feed makes
+   * the message itself, since a source numbers its connections and refuses
+   * input that does not carry the number.
+   */
+  release(): void
   /** The viewer is gone or the stream was ended. Safe to call twice, and before `start`. */
   close(): void
 }
@@ -30,6 +36,8 @@ export interface VideoFeed {
 export class FakeFeed implements VideoFeed {
   readonly acks: Uint8Array[] = []
   readonly inputs: Uint8Array[] = []
+  /** how many times the relay asked for every held key and button to be let go */
+  released = 0
   started = false
   closed = false
   private sink: FeedSink | null = null
@@ -46,6 +54,9 @@ export class FakeFeed implements VideoFeed {
   }
   input(bytes: Uint8Array): void {
     this.inputs.push(bytes)
+  }
+  release(): void {
+    this.released++
   }
   close(): void {
     this.closed = true

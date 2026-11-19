@@ -222,7 +222,7 @@ export function encodeInput(event: InputEvent, generation: number, sequence = 0)
 
 const INPUT_NAMES = Object.fromEntries(Object.entries(INPUT_TYPES).map(([name, code]) => [code, name])) as Record<number, InputEvent['type']>
 
-/** Decodes one input message back to its event, checking it as the engine does. */
+/** Decodes one input message back to its event, refusing what the engine refuses (its `core/input.cpp`): a field a type does not use must be zero. */
 export function parseInput(bytes: Uint8Array | ArrayBuffer): InputEvent {
   const data = bytesOf(bytes)
   const { type, payloadLength: size } = parseHeader(data)
@@ -235,11 +235,13 @@ export function parseInput(bytes: Uint8Array | ArrayBuffer): InputEvent {
   const x = view.getUint16(8) / 65535
   const y = view.getUint16(10) / 65535
   const masks = { buttons: integer(view.getUint16(12), 0, 31, 'buttons'), modifiers: integer(view.getUint16(14), 0, 255, 'modifiers') }
+  if (kind !== 'wheel' && kind !== 'text' && value) throw new Nsl1Error('Invalid input value')
   switch (kind) {
     case 'keyDown':
     case 'keyUp':
       return { type: kind, key: integer(code, 0, 231, 'key'), ...masks }
     case 'pointerMove':
+      if (code) throw new Nsl1Error('Invalid pointer move')
       return { type: kind, x, y, ...masks }
     case 'buttonDown':
     case 'buttonUp':

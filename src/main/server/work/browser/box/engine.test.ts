@@ -273,6 +273,41 @@ describe('EngineFeed', () => {
     expect(parseInput(r.socket().sent[1])).toMatchObject({ type: 'keyDown', key: 224 })
   })
 
+  it('passes the engine only what it takes: it drops a connection that sends anything else', () => {
+    const r = rig(true)
+    // before the first frame the connection has no number: nothing can be right
+    r.feed.ack(encodeAck(1, 1))
+    r.feed.input(encodeInput({ type: 'keyDown', key: 4 }, 1))
+    expect(r.socket().sent).toEqual([])
+    r.socket().frame(FRAME(9, 1))
+    // another connection's number, an ack of a third size, an input with a sequence: none reaches the engine
+    r.feed.ack(encodeAck(8, 1))
+    r.feed.input(encodeInput({ type: 'keyDown', key: 4 }, 8))
+    r.feed.input(encodeInput({ type: 'keyDown', key: 4 }, 9, 3))
+    r.feed.ack(Uint8Array.from([...encodeAck(9, 1, 2), 0, 0]))
+    r.feed.input(encodeAck(9, 1))
+    expect(r.socket().sent).toEqual([])
+    r.feed.ack(encodeAck(9, 1))
+    r.feed.ack(encodeAck(9, 1, 2))
+    r.feed.input(encodeInput({ type: 'keyDown', key: 4 }, 9))
+    expect(r.socket().sent).toHaveLength(3)
+  })
+
+  it('lets go of what he holds with a record numbered for its own connection', () => {
+    const r = rig(true)
+    r.feed.release()
+    expect(r.socket().sent).toEqual([])
+    r.socket().frame(FRAME(7, 1))
+    r.feed.release()
+    expect(parseInput(r.socket().sent[0])).toEqual({ type: 'releaseAll' })
+    expect(new DataView(r.socket().sent[0].buffer).getUint32(8)).toBe(7)
+    // a watcher's feed holds nothing to let go
+    const w = rig(false)
+    w.socket().frame(FRAME(7, 1))
+    w.feed.release()
+    expect(w.socket().sent).toEqual([])
+  })
+
   it('says slow when the engine closes the stream, and error when the engine itself exits', () => {
     const slow = rig(false)
     slow.socket().drop()

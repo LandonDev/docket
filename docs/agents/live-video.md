@@ -83,12 +83,13 @@ unless it runs headless.
 ## The ticket
 
 `RemoteAuth.mintStreamTicket` and `consumeStreamTicket` (remote/auth.ts): 30
-seconds, single use, bound to one stream, one scope (`watch`, `drive`, or
-`publish` for a stream another host sends in) and to who asked: a key, or the
-desktop's own socket by its connection id. A ticket for another stream is
-spent by the try. A key that was revoked, lost `approve` or is not a client's
-by the time the ticket is used opens nothing. The key itself never rides in a
-URL.
+seconds, single use, for one stream and one scope (`watch`, `drive`, or
+`publish` for a stream another host sends in), and it names who asked: a key,
+or the desktop's own socket by its connection id. A ticket for another stream
+is spent by the try. A key that was revoked, lost `approve` or is not a
+client's by the time the ticket is used opens nothing. A desktop's own socket
+has no key to check again; what holds its stream to it is that the stream
+ends when that socket closes. The key itself never rides in a URL.
 
 ## The socket
 
@@ -119,11 +120,16 @@ type and nothing else.
 - Viewer to feed: acks, as they came, so the encoder sees the true link.
   Input passes only on a `drive` stream while he is the driver. The relay
   learns who drives from `setDriver`, not by a read on each record. When he
-  hands back, each drive stream sends release-all and is a watch stream from
-  then on.
+  hands back, each drive stream's feed lets go of every key and button he
+  holds (`release`; the feed makes the message, since a source numbers its
+  connections) and is a watch stream from then on. A drive stream nobody
+  joined yet is ended. Taking over opens a new drive stream; a watch stream is
+  never made one in place.
+- A feed that throws ends its own stream with `error`.
 - A socket holding more than 8 MiB unsent is closed with `slow`.
 - A stream ends when its viewer drops, when the RPC socket that asked for it
-  closes, when its key is revoked (`revoked`), or when its source ends it.
+  closes, when its key is revoked (`revoked`), or when its source ends it. No
+  stream is opened for a socket that closed while the source was asked.
 - A stream nobody joined is let go after 35 seconds.
 
 A feed (`VideoFeed`, video/feed.ts) is one viewer's stream at its source.

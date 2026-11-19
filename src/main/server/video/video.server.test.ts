@@ -172,7 +172,7 @@ describe('live video on a host with no desktop, over keys', () => {
     expect(await reader.rpc.request('video.open', ASK)).toMatchObject({ ok: false, error: 'forbidden: video.open needs approve' })
     expect(await reader.rpc.request('video.paste', { stream: 'abcdefgh', text: 'x' })).toMatchObject({ ok: false, error: 'forbidden: video.paste needs approve' })
     reader.rpc.ws.close()
-    // an mcp key holds no socket here at all; a stream ticket minted in its name still opens nothing
+    // an mcp key holds no socket here at all and can never hold approve; a stream ticket minted in its name still opens nothing
     const bot = await box.remoteAuth.createKey({ name: 'bot', audience: 'mcp', caps: ['operate'], createdBy: 'local' })
     const stream = box.video.relay.open({ thread: 'live', scope: 'watch', holder: { keyId: bot.key.id }, connection: {}, feed: new FakeFeed() })
     const ticket = box.remoteAuth.mintStreamTicket({ stream, scope: 'watch', holder: { keyId: bot.key.id } }).ticket
@@ -220,8 +220,12 @@ describe('live video on a host with no desktop, over keys', () => {
     viewer.ws.send(encodeInput({ type: 'keyDown', key: 5 }, 1))
     await until(() => feed.inputs.length === 1)
     box.video.relay.setDriver('pane', false)
-    // release-all went down as he handed back
-    expect(feed.inputs).toHaveLength(2)
+    // as he handed back the source was told to let go of what he held, and nothing of his passes after
+    expect(feed.released).toBe(1)
+    viewer.ws.send(encodeInput({ type: 'keyDown', key: 6 }, 1))
+    viewer.ws.send(encodeAck(1, 2))
+    await until(() => feed.acks.length === 2)
+    expect(feed.inputs).toHaveLength(1)
     viewer.ws.close()
     rpc.ws.close()
   })
@@ -294,7 +298,7 @@ describe('the JPEG preview of the box’s browser, under the same rule', () => {
 })
 
 describe('live video on a desktop, on its own socket', () => {
-  it('opens a stream with a ticket bound to the asking socket, and plays it on the local server', async () => {
+  it('opens a stream for its own socket, plays it on the local server, and ends it when that socket goes', async () => {
     const me = await local(desk)
     const answer = (await me.request<VideoOpenAnswer>('video.open', { ...ASK, drive: true })).result!
     if (!answer.ok) throw new Error(JSON.stringify(answer))

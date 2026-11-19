@@ -2345,7 +2345,7 @@ export async function startServer(
           { principal, desktop: hasDesktop(), box: boxPreviews }
         )
         if (preview.handled) return sendFrame({ id: req.id, ok: true, result: preview.result })
-        const video = await handleVideo(req, videoRpc, { principal, connection: previewConnection, connectionId: String(connection) })
+        const video = await handleVideo(req, videoRpc, { principal, connection: previewConnection, connectionId: String(connection), alive: () => !socketClosed })
         if (video.handled) return sendFrame({ id: req.id, ok: true, result: video.result })
         const computerSteps = await handleComputerHistory(req, computerHistoryRpc, { connection: previewConnection, send: sendFrame })
         if (computerSteps.handled) return sendFrame({ id: req.id, ok: true, result: computerSteps.result })

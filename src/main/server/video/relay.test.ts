@@ -102,18 +102,66 @@ describe('VideoRelay', () => {
     relay.setDriver('other', false)
     socket.say(key)
     expect(feed.inputs).toHaveLength(2)
+    // he hands back: the feed lets go of what he holds, in the source's own words (it numbers its connections)
+    expect(feed.released).toBe(0)
     relay.setDriver('pane', false)
-    expect(parseInput(feed.inputs[2])).toEqual({ type: 'releaseAll' })
+    expect(feed.released).toBe(1)
     socket.say(key)
-    expect(feed.inputs).toHaveLength(3)
+    expect(feed.inputs).toHaveLength(2)
     // a watch stream from then on: taking over again needs a new ticket
     expect(relay.list()[0].scope).toBe('watch')
     relay.setDriver('pane', true)
     socket.say(key)
-    expect(feed.inputs).toHaveLength(3)
+    expect(feed.inputs).toHaveLength(2)
+    relay.setDriver('pane', false)
+    expect(feed.released).toBe(1)
     // acks never stop
     socket.say(encodeAck(1, 1))
     expect(feed.acked()).toEqual([1])
+  })
+
+  it('ends a drive stream nobody joined when he hands back: its ticket was for a stream it no longer is', () => {
+    const relay = new VideoRelay()
+    relay.setDriver('pane', true)
+    const feed = new FakeFeed()
+    const id = relay.open({ thread: 't1', scope: 'drive', holder: KEY, connection: asker, feed, group: 'pane' })
+    relay.setDriver('pane', false)
+    expect(relay.list()).toEqual([])
+    expect(feed.closed).toBe(true)
+    expect(feed.released).toBe(0)
+    expect(relay.claimable({ stream: id, scope: 'drive', holder: KEY })).toBe(false)
+    // the same for one opened as drive before he was told to be the driver, when the drive ends without ever beginning here
+    const early = relay.open({ thread: 't1', scope: 'drive', holder: KEY, connection: asker, feed: new FakeFeed(), group: 'other' })
+    relay.setDriver('other', false)
+    expect(relay.list().some((s) => s.id === early)).toBe(false)
+  })
+
+  it('ends a stream whose feed throws, and nothing else', () => {
+    const relay = new VideoRelay()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const good = joined(relay)
+      const bad = joined(relay)
+      bad.feed.ack = () => {
+        throw new Error('the source fell over')
+      }
+      bad.socket.say(encodeAck(1, 1))
+      expect(bad.socket.closed).toEqual({ code: VIDEO_CLOSE.error, reason: 'error' })
+      expect(bad.feed.closed).toBe(true)
+      expect(good.socket.closed).toBeNull()
+      // and one that throws as it starts
+      const feed = new FakeFeed()
+      feed.start = () => {
+        throw new Error('no source')
+      }
+      const id = relay.open({ thread: 't1', scope: 'watch', holder: KEY, connection: asker, feed })
+      const socket = new FakeSocket()
+      relay.attach({ stream: id, scope: 'watch', holder: KEY }, socket)
+      expect(socket.closed).toEqual({ code: VIDEO_CLOSE.error, reason: 'error' })
+      expect(relay.list().map((s) => s.id)).toEqual([good.id])
+    } finally {
+      errors.mockRestore()
+    }
   })
 
   it('never passes a feed message that is not a frame', () => {
@@ -290,7 +338,7 @@ describe('VideoRpc', () => {
     expect(relay.list()).toMatchObject([{ id: answer.stream, thread: 't1', scope: 'watch', group: 'pane', joined: false }])
   })
 
-  it("binds a desktop's own stream to the socket that asked", async () => {
+  it("names the asking socket as the holder of a desktop's own stream, since that socket has no key", async () => {
     const relay = new VideoRelay()
     const { auth, minted } = tickets()
     const rpc = new VideoRpc(relay, auth, () => true)
@@ -298,6 +346,24 @@ describe('VideoRpc', () => {
     const answer = await rpc.open({ ...ASK, drive: true }, caller(LOCAL_PRINCIPAL))
     expect(answer.ok).toBe(true)
     expect(minted[0]).toMatchObject({ scope: 'drive', holder: { local: '12' } })
+  })
+
+  it('opens nothing for a socket that closed while its source was asked, and lets the feed go', async () => {
+    const relay = new VideoRelay()
+    const { auth, minted } = tickets()
+    const feed = new FakeFeed()
+    let open = true
+    const rpc = new VideoRpc(relay, auth, () => true)
+    rpc.addSource({
+      open: async () => {
+        open = false
+        return { ok: true, feed, width: 1280, height: 800, fps: 120, scope: 'watch' }
+      }
+    })
+    expect(await rpc.open(ASK, { ...caller(LOCAL_PRINCIPAL), alive: () => open })).toEqual({ ok: false, reason: 'refused' })
+    expect(feed.closed).toBe(true)
+    expect(relay.list()).toEqual([])
+    expect(minted).toEqual([])
   })
 
   it('asks the sources in order: the first that knows the thread answers, and none says unsupported', async () => {
@@ -333,11 +399,14 @@ describe('VideoRpc', () => {
     await expect(rpc.paste({ stream: 'nope', text: 'hello' }, me)).rejects.toThrow(refusal)
     expect(await rpc.paste({ stream: answer.stream, text: 'hello' }, me)).toBeNull()
     expect(pasted).toEqual(['hello'])
-    relay.setDriver('pane', false)
-    await expect(rpc.paste({ stream: answer.stream, text: 'again' }, me)).rejects.toThrow(refusal)
     // closing is the caller's own stream only
     rpc.close(answer.stream, caller(LOCAL_PRINCIPAL))
     expect(relay.list()).toHaveLength(1)
+    // once he hands back, his stream takes no paste (joined, it is a watch stream from then on)
+    expect(relay.attach({ stream: answer.stream, scope: 'drive', holder: { local: '12' } }, new FakeSocket())).toBe(true)
+    relay.setDriver('pane', false)
+    await expect(rpc.paste({ stream: answer.stream, text: 'again' }, me)).rejects.toThrow(refusal)
+    expect(pasted).toEqual(['hello'])
     rpc.close(answer.stream, me)
     expect(relay.list()).toEqual([])
   })

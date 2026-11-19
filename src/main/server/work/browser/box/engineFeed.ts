@@ -1,4 +1,4 @@
-import { HEADER_SIZE, MESSAGE_TYPES, SUBPROTOCOL, encodeInput, type InputEvent } from '@shared/video/nsl1'
+import { HEADER_SIZE, INPUT_SIZE, MESSAGE_TYPES, SUBPROTOCOL, encodeInput, type InputEvent } from '@shared/video/nsl1'
 import type { FeedSink, VideoFeed } from '../../../video/feed'
 import type { EngineLease } from './engine'
 
@@ -57,12 +57,25 @@ export class EngineFeed implements VideoFeed {
     ws.addEventListener('error', gone)
   }
 
+  // The engine drops a connection that sends it anything it does not expect, so only what it takes is passed on:
+  // an ack of 20 or 24 bytes, an input of 36 with no sequence, each carrying the connection's own number.
   ack(bytes: Uint8Array): void {
-    this.send(bytes)
+    if ((bytes.byteLength === HEADER_SIZE || bytes.byteLength === HEADER_SIZE + 4) && this.mine(bytes)) this.send(bytes)
   }
 
   input(bytes: Uint8Array): void {
-    if (this.drive) this.send(bytes)
+    if (!this.drive || bytes.byteLength !== HEADER_SIZE + INPUT_SIZE || !this.mine(bytes)) return
+    if (new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(12) !== 0) return
+    this.send(bytes)
+  }
+
+  release(): void {
+    this.type({ type: 'releaseAll' })
+  }
+
+  /** The message carries the number of this connection, which the first frame said. */
+  private mine(bytes: Uint8Array): boolean {
+    return this.generation !== 0 && new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(8) === this.generation
   }
 
   /** One input event made on this host, numbered for the engine's connection. False when no frame has named the connection yet. */

@@ -61,6 +61,22 @@ describe('the NSL1 wire against screen-relay 0.1.2', () => {
     }
   })
 
+  it('reads back no record the engine would refuse: a field its type does not use must be zero', () => {
+    const tweak = (event: ours.InputEvent, at: number, value: number): Uint8Array => {
+      const bytes = ours.encodeInput(event, 1)
+      bytes[ours.HEADER_SIZE + at] = value
+      return bytes
+    }
+    // a value on a key, a move and a button; a code on a move; the reserved byte
+    expect(() => ours.parseInput(tweak({ type: 'keyDown', key: 4 }, 7, 5))).toThrow(ours.Nsl1Error)
+    expect(() => ours.parseInput(tweak({ type: 'pointerMove', x: 0, y: 0 }, 7, 1))).toThrow(ours.Nsl1Error)
+    expect(() => ours.parseInput(tweak({ type: 'pointerMove', x: 0, y: 0 }, 3, 1))).toThrow(ours.Nsl1Error)
+    expect(() => ours.parseInput(tweak({ type: 'buttonDown', button: 1, x: 0, y: 0 }, 7, 1))).toThrow(ours.Nsl1Error)
+    expect(() => ours.parseInput(tweak({ type: 'releaseAll' }, 7, 1))).toThrow(ours.Nsl1Error)
+    expect(() => ours.parseInput(tweak({ type: 'keyDown', key: 4 }, 1, 1))).toThrow(ours.Nsl1Error)
+    expect(ours.parseInput(ours.encodeInput({ type: 'keyDown', key: 4 }, 1))).toMatchObject({ type: 'keyDown', key: 4 })
+  })
+
   it('encodes acks to the same bytes, with and without the wait', () => {
     for (const wait of [undefined, 0, 0.4, 16.6667, 5000, Number.POSITIVE_INFINITY, Number.NaN, -3]) {
       const mine = ours.encodeAck(3, 41, wait)
