@@ -59,31 +59,34 @@ new token, named for its use, added there first.
 
 ### Colour
 
-Dark is the default theme; `html.theme-light` is the light one (`dark:` in
-a class means the default). One neutral palette; there is no hue, saturation
-or glass setting any more.
+Two themes, one neutral palette: dark (`:root`) and light
+(`html.theme-light`). There is no hue, saturation, glass, accent or contrast
+setting. Which theme a window wears is "Appearance by place" below; how the
+light one is built is "The light theme".
 
 | Token | Use | Dark | Light |
 | --- | --- | --- | --- |
-| `sidebar` | the rail and the title bar | oklch 0.17 | oklch 0.972 warm |
+| `sidebar` | the rail and the title bar | oklch 0.17 | oklch(0.962 0.004 264) |
 | `background` | content | oklch 0.195 | white |
-| `card` | a bounded region inside content (a card, a transcript action list) | oklch 0.225 | oklch 0.985 |
+| `card` | a bounded region inside content (a card, a transcript action list, the person's bubble, the composer) | oklch 0.225 | oklch(0.974 0.003 264) |
 | `popover` | every floating layer: menu, popover, dialog, sheet, the editors' widgets | oklch 0.24 | white |
-| `muted` | a hovered or highlighted row, a track, a key cap | oklch 0.275 | oklch 0.955 |
-| `sidebar-group` | a group's resting fill in the chrome (a project card in the workspace column) | oklch 0.213 | oklch 0.961 warm |
-| `sidebar-group-hover` | that group hovered | oklch 0.244 | oklch 0.95 warm |
-| `sidebar-group-selected` | that group selected | `muted` | oklch 0.94 warm |
-| `secondary` | the secondary button | oklch 0.29 | oklch 0.94 |
-| `border` | every hairline | white 9% | black 8% |
-| `input` | a field's border, a switch's off track | white 12% | black 12% |
-| `foreground` | text that matters | oklch 0.93 | oklch 0.2 |
-| `muted-foreground` | text that supports it | oklch 0.68 | oklch 0.5 |
-| `primary` / `primary-foreground` | the one primary button per surface, a checked box, a switch on | near-white / near-black | near-black / white |
-| `accent` | links, focus rings, the rare call to action | blue 62% | blue 48% |
-| `warning` | the person is needed; the context meter from 85% full | amber | amber |
-| `destructive` | failed, delete | red | red |
-| `success` | lines added, passed | green | green |
-| `info` | the one informational tint | blue | blue |
+| `muted` | a hovered or highlighted row, a track, a key cap | oklch 0.275 | oklch(0.948 0.004 264) |
+| `sidebar-group` | a group's resting fill in the chrome (a project card in the workspace column) | oklch 0.213 | oklch(0.948 0.004 264) |
+| `sidebar-group-hover` | that group hovered | oklch 0.244 | oklch(0.936 0.005 264) |
+| `sidebar-group-selected` | that group selected | `muted` | oklch(0.922 0.006 264) |
+| `secondary` | the secondary button | oklch 0.29 | oklch(0.935 0.005 264) |
+| `border` | every hairline | white 9% | rgb(15 23 42) 10% |
+| `input` | a field's border, a switch's off track | white 12% | rgb(15 23 42) 18% |
+| `foreground` | text that matters | oklch 0.93 | oklch(0.2 0.012 264) |
+| `muted-foreground` | text that supports it | oklch 0.68 | oklch(0.46 0.014 264) |
+| `faint-foreground` | text that may be missed: a line number, ghost text, a done task, a diff's context | oklch(0.56 0.006 270) | oklch(0.58 0.012 264) |
+| `primary` / `primary-foreground` | the one primary button per surface, a checked box, a switch on | near-white / near-black | oklch(0.21 0.012 264) / white |
+| `accent` / `accent-foreground` | focus rings, a selection's edge, the rare call to action | blue 62% / near-black | hsl(214 88% 44%) / white |
+| `link` | a link's words, in prose, a document, a form | `#7dd3fc` | hsl(214 90% 38%) |
+| `warning` | the person is needed; the context meter from 85% full | amber | `#92450a` |
+| `destructive` / `destructive-foreground` | failed, delete; the label on a solid red button | red / near-black | `#b91c1c` / white |
+| `success` | lines added, passed | green | `#046c4e` |
+| `info` | the one informational tint | blue | `#1d4ed8` |
 
 The tooltip is drawn inverted in both themes: `foreground` fill, `background`
 text. The dim behind a dialog or a sheet is `scrim` (black at 30% dark, 18%
@@ -93,11 +96,11 @@ dark, black in light), on a thumbnail, the lightbox, the QR code and avatars.
 The status colours (`success`, `warning`, `destructive`, `info`) are text
 as often as fills, so each reaches 4.5:1 as small text on `background`,
 `sidebar`, `card` and a selected (`muted`) row in both themes; the light
-theme's are the darker steps for that (`lib/statusContrast.test.ts`).
+theme's are the darker steps for that (`lib/tokenContrast.test.ts`).
 
 The chart tokens (`--chart-1..4`, aliax/charts) colour thin marks, so each
 reaches 3:1 on `background` and `card` in both themes
-(`lib/chartContrast.test.ts`). Colour follows the entity, never its rank: a
+(`lib/tokenContrast.test.ts`). Colour follows the entity, never its rank: a
 provider keeps its slot on every chart (Claude `chart-1`, Codex `chart-2`),
 a model takes one of its provider's slots by its family, never by its
 output rank (`chart-1` or `chart-3` for Claude: Opus and Haiku the first,
@@ -116,12 +119,94 @@ The `sidebar-group` steps are a container's surface, never an item's: a
 thread row stays bare in every list. They are opaque steps away from
 `sidebar`, each at least 0.01 of OKLab L past the one before and the
 selected step the farthest, with both inks at 4.5:1 on each
-(`lib/sidebarGroup.test.ts`). Light's ladder is narrow: its selected step
-stops at L 0.94, where amber text still reaches 4.5:1; under it amber falls
-short. The amber, red and green text a card carries reaches 4.5:1 on all
-three; the info blue never sets text in the workspace column and is held to
-the 3:1 glyph bar there, since its 4.5:1 would need L 0.953 and leave no room
-for three steps under the sidebar.
+(`lib/sidebarGroup.test.ts`). Light's ladder runs 0.948, 0.936, 0.922: the
+status colours are the darker steps that still reach 4.5:1 as text on the
+selected one, the info blue among them.
+
+### The light theme
+
+Light is a theme of its own, not dark turned over. Its rules:
+
+- **Ground.** Content and every floating layer are white. Chrome and the
+  regions inside content step down from white: `card` 0.974, `sidebar`
+  0.962, `muted` and a group 0.948, the hovered group 0.936, the selected
+  one 0.922, all at hue 264, the dark theme's own. In dark a nearer surface
+  is lighter; in light a floating layer is white with `shadow-overlay` and
+  the hairline, and a docked one is a gray step with no shadow. A sheet's
+  cells, a document, an editor and a PDF's page are white already, so a
+  canvas sits in the content with no seam.
+- **One declaration, two values.** A value that differs by theme is a token
+  with a value in each block of index.css. A component never asks which
+  theme is on: no `dark:` utility, no `.theme-light` selector outside the
+  token blocks, no `useColorScheme` to pick a colour
+  (`lib/colourGuard.test.ts`). The hook is for a thing that must be told in
+  JS: an editor's theme, a frame's document.
+- **Three inks.** `foreground`, `muted-foreground` and `faint-foreground`.
+  Text is never an opacity of `foreground`: a mix that reads on dark falls
+  under 3:1 on white. Opacities of `foreground` are for fills and edges.
+- **Links are `link`**, never `accent`: the accent is tuned to carry white
+  text and a 3:1 ring, a link to read at 4.5:1 on every surface.
+- **A solid fill names its ink.** `primary`, `destructive` and `accent`
+  each have a `-foreground`; nothing writes white on a status colour.
+- **A picture keeps its own colours** ("Canvas tints"): paper is white in
+  both themes, a video's matte is black in both.
+
+The contrast contract, held for both themes by `lib/tokenContrast.test.ts`
+from the values in index.css (the four older tests fold into it):
+
+| Tier | What | Floor | On |
+| --- | --- | --- | --- |
+| text | `foreground`, `muted-foreground`, `link`, the four status colours, the composer's skill and mention ink, each `-foreground` on its fill, the tooltip's pair | 4.5:1 | `background`, `sidebar`, `card`, `popover`, `muted`, `secondary` and the three `sidebar-group` steps (a `-foreground` on its own fill only) |
+| quiet text | `faint-foreground` | 3:1 | the same surfaces |
+| mark | `accent` as a ring, the type tints, `chart-1..4`, a glyph in a status colour | 3:1 | the surfaces it is drawn on |
+| edge | `border`; `input` | 1.15:1; 1.4:1 | `background`, `sidebar`, `card` |
+| wash | `foreground` over each canvas tint laid on `background` and `card` | 4.5:1 | the mixed colour |
+| code | every ink of the editor's two syntax themes, CodeMirror's two tables and the terminal's sixteen colours per theme | 4.5:1 (a comment and a line number 3:1) | the editor's and the terminal's ground |
+
+Named exceptions, each recorded in the test with its measured ratio so a
+change to one is seen: the eight presence hues and their label inks (the
+shared editor's, one value in both themes), the six sector dots (LifeOS's,
+never the only cue: the sector's name is beside each) and the runner's
+coin and star.
+
+What draws with its own theme takes it from the tokens or carries a table
+per theme, and follows a change live:
+
+| Surface | Source | On a change |
+| --- | --- | --- |
+| Monaco | Darcula and IntelliJ Light (`lib/intellijTheme.ts`), the chrome read from the tokens (`surfaces/monaco/theme.ts`), the completion kinds from `--editor-*`, a value per theme | re-themed in place |
+| CodeMirror | `surfaces/editorChrome.ts`: the tokens, and a highlight table per theme | compartment reconfigured |
+| The terminal and Dev Console | `surfaces/TerminalView.tsx`: sixteen colours per theme, the pane's own ground as xterm's background, `minimumContrastRatio` 4.5 | theme assigned |
+| Transcript code | two inks (`foreground`, `muted-foreground`) by CSS variable; Mermaid's own light and dark | CSS; Mermaid redraws |
+| The sheet (Univer) | the tokens, read on the grid's container (work-kit `sheet/grid/theme.ts`) | repainted |
+| The document (BlockNote) | the tokens through work-kit's `--bn-*` map, the scheme passed as a prop | prop |
+| Mail's frames | a designed mail on white paper in both themes; a plain one in the host's inks, passed in as a palette | frame rebuilt |
+| The ONLYOFFICE editor | the window's scheme when it opens | not live |
+| An agent's HTML page | the frame variables in "html_render" (`src/shared/htmlRender.ts`) | posted to the frame |
+| Guest, form and pairing pages, the Mac's computer banner | the viewer's system; their palettes are copies held equal to index.css by test | media query |
+
+### Appearance by place
+
+Settings → Appearance holds a theme for each kind of place: **Code** and
+**Work**, each System, Light or Dark (`lib/appearance.ts`,
+`monocode.colorScheme` and `monocode.colorScheme.work`, per device). Work
+follows Code until it is set. With Work off on every host the page shows
+one row, Theme.
+
+A window wears the theme of the place selected in its rail
+(`placeKind`, `lib/placeScheme.ts`): a code workspace and Chats take
+Code's; a Work workspace and Work Chats take Work's. A page opened over a
+place (Settings, Inbox, Outbox, Search, Notes, Accounts, Stats) keeps that
+place's theme, so a glance at one never changes the window. Each window
+has its own place and so its own theme.
+
+A change of theme is one cross-fade of the whole window, `--dur-base` on
+`--ease-out`, opacity only, made by a view transition wrapped round the
+change itself, so no frame shows the old place in the new theme. Element
+transitions are off while it runs (`html.theme-switching`). Reduced motion
+jumps. The window's native backing colour and its first paint at launch
+take the theme the window last wore (`appearance:scheme`, kept with the
+window's geometry), so nothing flashes dark behind a light window.
 
 ### Type tints
 
@@ -136,16 +221,16 @@ colour's retune never moves a type.
 | `type-chat` | chat | `#60a5fa` | `#2563eb` |
 | `type-planning` | plan | `#a78bfa` | `#7c3aed` |
 | `type-project-plan` | project plan | planning's | planning's |
-| `type-implementation` | implementation | `#34d399` | `#059669` |
+| `type-implementation` | implementation | `#34d399` | `#04875f` |
 | `type-orchestration` | orchestration | `#cedd59` | `#7d6700` |
-| `type-research` | research | `#22d3ee` | `#0891b2` |
+| `type-research` | research | `#22d3ee` | `#0784a3` |
 
 Orchestration was amber at v1.0.303, the same amber as Needs you; it now
 sits 31° (dark) and 42° (light) of OKLCH hue from `warning`. The rule, held
 by `lib/typeTint.test.ts`: each tint reaches 3:1 (the non-text bar) on
 `background`, `sidebar`, `card` and `muted` in both themes, and stands at
 least 30° of OKLCH hue from `warning` and `destructive`. Light
-implementation (3.30) and research (3.23) are under 4.5:1, which is why no
+implementation (3.60) and research (3.45) are under 4.5:1, which is why no
 text may take a type tint. A glyph is always tinted, on an active chip or
 an idle one; a row's own dimming (offline, disabled) dims it with the row,
 and it never brightens to mean active.
