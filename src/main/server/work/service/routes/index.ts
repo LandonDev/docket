@@ -1,5 +1,6 @@
 import type { PublicRoute } from './route'
 import { docRoute } from './doc'
+import { docsRoutes } from '../../docs/serviceRoutes'
 import { formRoute } from './form'
 import { fullEditorRoute } from './fullEditor'
 import { guestsRoute } from './guests'
@@ -25,11 +26,12 @@ import { sheetRoute } from './sheet'
  *   /f/*                  routes/form.ts        36
  *   /w/full/*             routes/fullEditor.ts  40
  *   internal (socket)     routes/internal.ts    18, its sheet routes routes/internalSheet.ts 27,
- *                         history's in work/history/serviceRoutes.ts 19
+ *                         history's in work/history/serviceRoutes.ts 19,
+ *                         the docs pillar's in work/docs/serviceRoutes.ts 20
  */
 export const PUBLIC_ROUTES: readonly PublicRoute[] = [docRoute, hostedRoute, sheetRoute, itemRoute, guestsRoute, officeRoute, formRoute, fullEditorRoute]
 
-export const INTERNAL_ROUTES = [...internalDocRoutes, ...historyRoutes]
+export const INTERNAL_ROUTES = [...internalDocRoutes, ...historyRoutes, ...docsRoutes]
 
 export function routeFor(pathname: string): { route: PublicRoute; m: RegExpExecArray } | null {
   for (const route of PUBLIC_ROUTES) {

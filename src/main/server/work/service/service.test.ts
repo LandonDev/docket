@@ -367,22 +367,27 @@ describe('the internal document routes', () => {
     expect((await call(r.config.socketPath, '/internal/doc/create', { sector: 'cosmic', title: 'No', markdown: '', botId: 'key1', fence })).status).toBe(404)
   })
 
-  it('an agent\'s own change to a shared document goes into its branch and the live text waits; an asked one is written as a version (milestone 19)', async () => {
+  it('an agent\'s own change to a shared document goes into its branch and the live text waits; so does a bot key\'s "asked", which only main can check (milestones 19, 20)', async () => {
     const r = await rig()
-    addDoc(r, 'kd10', { shared: true })
-    await call(r.config.socketPath, '/internal/doc/write', { docId: 'kd10', markdown: 'Owner words', because: 'asked', botId: 'key1', fence })
+    addDoc(r, 'kd10', { shared: false })
+    const first = await call(r.config.socketPath, '/internal/doc/write', { docId: 'kd10', markdown: 'Owner words', because: 'asked', botId: 'key1', fence })
+    expect(first.body).toMatchObject({ mode: 'direct', versionId: expect.any(String) })
+    r.convex.docs.get('kd10')!.shared = true
     const own = await call(r.config.socketPath, '/internal/doc/write', { docId: 'kd10', markdown: 'Agent idea', because: 'own', origin: { host: 'env_box', threadId: 't1' }, fence })
     expect(own.status).toBe(200)
     expect(own.body).toMatchObject({ mode: 'branch' })
     expect(r.convex.branches).toHaveLength(1)
     expect(r.convex.branches[0]).toMatchObject({ docId: 'kd10', authors: ['agent:env_box:t1'], state: 'pending' })
     expect((await call(r.config.socketPath, '/internal/doc/read', { docId: 'kd10', fence })).body.markdown).toBe('Owner words\n')
-    const asked = await call(r.config.socketPath, '/internal/doc/write', { docId: 'kd10', markdown: 'Asked words', because: 'asked', botId: 'key1', fence })
+    // The worker cannot show the owner's words: its "asked" on a shared document is a suggestion too.
+    const asked = await call(r.config.socketPath, '/internal/doc/write', { docId: 'kd10', markdown: 'Asked words', because: 'asked', quote: 'write it', botId: 'key1', fence })
     expect(asked.status).toBe(200)
-    expect(asked.body).toMatchObject({ mode: 'direct', versionId: expect.any(String) })
-    // A version before each agent write on a shared document, unless nothing changed since the last one.
-    expect(r.convex.versions.map((v) => v.cause)).toEqual(['before-agent', 'agent-turn', 'agent-turn'])
-    expect(r.convex.branches[0]!.baseVersionId).toBe(r.convex.versions[1]!._id)
+    expect(asked.body).toMatchObject({ mode: 'branch' })
+    expect((await call(r.config.socketPath, '/internal/doc/read', { docId: 'kd10', fence })).body.markdown).toBe('Owner words\n')
+    expect(r.convex.branches.map((b) => b.authors)).toEqual([['agent:env_box:t1'], ['lifeos:bot:key1']])
+    // The version the first write cut is the branches' base: nothing changed since it.
+    expect(r.convex.versions.map((v) => v.cause)).toEqual(['agent-turn'])
+    expect(r.convex.branches.map((b) => b.baseVersionId)).toEqual([r.convex.versions[0]!._id, r.convex.versions[0]!._id])
   })
 
   it('the sheet routes (milestone 27) answer "not found" for a sheet LifeOS does not have; a bad body is a 400 with words', async () => {

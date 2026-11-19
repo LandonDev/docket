@@ -120,9 +120,10 @@ describe('history of a .tcdoc on this host', () => {
 
   it("a LifeOS document's branch is listed with what it suggests, and Accept takes one row", async () => {
     const r = await rig()
-    r.convex.docs.set('kd1', { _id: 'kd1', sector: 'life', seq: 0, title: 'Plan', shared: true, markdown: '', plain: '' })
+    r.convex.docs.set('kd1', { _id: 'kd1', sector: 'life', seq: 0, title: 'Plan', shared: false, markdown: '', plain: '' })
     const fence = { sectors: 'all' }
     await post(r.config.socketPath, '/internal/doc/write', { docId: 'kd1', markdown: md('# Plan', 'Alpha', 'Bravo'), because: 'asked', botId: 'k', fence })
+    r.convex.docs.get('kd1')!.shared = true
     await post(r.config.socketPath, '/internal/doc/write', { docId: 'kd1', markdown: md('# Plan', 'Alpha!', 'Bravo!'), because: 'own', origin: { host: 'env_box', threadId: 't1' }, fence })
     const source = { at: 'lifeos', table: 'docs', id: 'kd1' } as const
     const { branches, names } = await r.ask<{ branches: { id: string; diff: HistoryCompare['diff'] }[]; names: Record<string, string> }>('work.history.branches', { source })
