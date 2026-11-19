@@ -1274,6 +1274,56 @@ is one column, `max-w-2xl`, read as a document: 15px on 24px lines,
 headings above the body (`AgentMarkdown size="document"`). A view without a board is the chat
 alone, with no header.
 
+### The canvas pane: an item beside a Work thread
+
+Built: the frame below, with every kind's body a "Not built yet" stub.
+The kinds' own bodies, the rail's and the Work column's Work rows and
+Settings → Work are specified here and in docs/DESIGN.md "The canvas
+pane", and are not built yet (the rail, the column and Settings → Work
+come with milestone 8).
+
+The canvas is `SplitShell` with an item in the board's place: the item on
+the left, the thread on the right at 360px or more. The item takes the
+rest by default: the split starts at 70% for the item (a board starts at
+50%), and the sash, its double-click reset and the fold work as on every
+split view. Top to bottom on the item's side:
+
+1. **The tab row**, 36px on `sidebar`: one 28px tab per open item (6px
+   radius, 2px apart, 6px from the ends, the kind's 14px glyph and the
+   name), then ⋯, a Microsoft file's TempCode/Excel or TempCode/PowerPoint
+   switch beside it, and last the conversation toggle in its usual place.
+   One item alone is its glyph, its 14px semibold name and one 12px muted
+   fact, as a board's header.
+2. **The kind's bar**, 32px on `background`, 12px muted, in a fixed order:
+   avatars (20px), the mode menu ("Agent suggests" or "Agent writes"), the
+   kind's tools, History, then the review stepper (Previous, "2/6", Next,
+   Reject, Accept) at the end. A kind with nothing to put in it draws no
+   bar, so a stub is the tab row and the body. A state line for a source
+   that cannot be reached sits under the bar, 32px.
+3. **The body**, on `background`, scrolling on its own. The selection bar
+   floats over a selection in it (32px, Ask ⌘L first).
+
+The thread's composer gains a chip row inside its box, above the field,
+shared with the file attachments: one 24px chip per item the message is
+about.
+
+The rail (milestone 8, not built yet) gains Outbox after Inbox and Work
+Chats after Chats, and a second heading, Work, whose + lists the sectors
+with no workspace yet; a Work workspace's row leads with its sector's
+8px dot where a code workspace's leads with its glyph. The Work column
+(not built yet) gains a first group of four `RailRow`s (Mail, Tasks,
+Agenda, Docs, one muted trailing fact each) 16px above the project cards;
+a LifeOS project's card has no branch line. A view opens in the main pane
+and the thread strip stays.
+
+Settings → Work (not built yet) has, in order: the switch, LifeOS (its
+error on the heading line), Models, Where it runs, Grants, Guest links;
+off, the Work workspaces leave the settings list and the Work page stays.
+Settings → a Work workspace has Sector, Threads run on ("Same as code
+threads" as a select's muted line), Writing (House rules as an open row
+with "6 rules, 3 proposed", the voice switch with its count and date) and
+Grants.
+
 ### Planning — a document, not a conversation
 
 The main view IS the plan file (`.temp-code/plan-<thread>.md`), rendered

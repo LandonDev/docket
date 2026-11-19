@@ -95,19 +95,47 @@ glyph only when it has one, a 13px label, one trailing mark and at most two
 hover and focus, as a workspace's Pin and ⋯), with `surface="group"` for a
 container on the `sidebar-group` fills (a workspace), used by the rail, its
 foot and the settings list.
+Work adds its canvas shapes to that list: the canvas pane's tab row and
+kind bar, the sheet grid, the document editor (the tracker's block
+editor, shared), the mail client and the task and agenda lists (LifeOS's,
+shared), the PDF page, the slide stage, the media viewer, the meeting
+view, the live browser, the form canvas, the dashboard page, the compare
+and History views, the Outbox and the routines' week grid. Each kind's
+body is a "Not built yet" stub until its milestone.
+
+## Work
+
+The canvas pane's shapes and what each is built from (docs/DESIGN.md "The
+canvas pane"):
+
+| Shape | Built from |
+| --- | --- |
+| The tab row | the thread strip's chip shape: 28px, 6px radius, `muted` when selected |
+| The mode menu ("Agent suggests") | the quiet menu button: a ghost `Button` with a chevron opening `RowsMenu` |
+| The review stepper | ghost icon `Button`s for Previous and Next, a ghost Reject, a `secondary` Accept |
+| The selection bar | the transcript's selection menu (surfaces/TranscriptSelectionMenu.tsx): the popover fill, 12px radius, 4px inset, 24px ghost buttons |
+| A chip in the composer | a 24px `muted` fill, 6px radius, a 12px glyph and a ghost remove control, in the attachment row |
+| The state line | `StatusMark`'s word and detail with one `Button`, on a 32px line |
+| Avatars | initials at 600 weight on `muted` in a circle on `image-outline`, 20px in the bar, 24px in lists, overlapping 6px with a 2px `background` ring |
 
 ## Icons
 
 `@renderer/chrome/icons` is the one icon module (Hugeicons under lucide
 names). Components import from it; never from `lucide-react` or
 `@tabler/icons-react` in the main app. A missing glyph is added there once.
+Work's glyphs are the second catalog, `src/renderer/src/work/icons.tsx`,
+made with the same wrapper and loaded with Work's lazy chunks.
 
 ## Tokens and CSS
 
 Colour, radius, shadow and motion names are in `src/renderer/src/index.css`
 (the token layer at the top); the parts utilities cannot express
 (`focus-field`, the switch and checkbox transitions, the
-collapsible height, the task list) are in `src/renderer/src/assets/components.css`.
+collapsible height, the task list, and work-kit's Kobra rules:
+`transition-ring`, `t-push`, `t-spinner-bar`, the `t-check-*` badge) are in
+`src/renderer/src/assets/components.css`; `t-raise-outline` and `t-flat`
+sit beside `.t-raise` in index.css, and `text-lead` and `text-sheet-title`
+in its `@theme`.
 A component never writes a literal colour, duration or curve;
 `lib/motionGuard.test.ts` fails on a new literal timing and lists, by owning
 area, the sites still open. `lib/colourGuard.test.ts` checks literal colours

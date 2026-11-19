@@ -15,8 +15,10 @@ export { parseMapping, remapper, type HistoryMapping, type Remapper }
  * the same functions. Its one repo import, pathMap.ts, follows the same rule.
  *
  * History is workspaces, projects, sessions, events (hot and cold), folds,
- * notes, the settings rows about threads, and the per-session dirs
- * (checkpoints, html-renders). The destination's own identity never
+ * notes, the settings rows about threads, Work's per-thread rows (every
+ * `work_*` table both sides have with a `session_id` column, read by name
+ * since this file cannot import Work's module list), and the per-session
+ * dirs (checkpoints, html-renders, canvas). The destination's own identity never
  * changes: remote keys, pairings, browser sessions, `remote.*` settings
  * and `environment.json` are not read, let alone written.
  *
@@ -53,7 +55,7 @@ export interface ImportReport {
   missingRoots: Record<string, number>
   /** Source workspace ids folded into a destination workspace that already owned the mapped path. */
   workspaceAliases: Record<string, string>
-  files: { checkpoints: number; htmlRenders: number }
+  files: { checkpoints: number; htmlRenders: number; canvas: number }
 }
 
 export const IMPORT_RECORD_KEY = 'history.import'
@@ -338,8 +340,33 @@ function run(
   }
   counts.push({ table: 'settings', have: have('settings'), add: settingRows.length })
 
+  // Work's per-thread rows: a `work_*` table both sides have, with a `session_id` column; only the shared columns, the workspace through the aliases.
+  const srcWorkTables = (source.prepare(`SELECT name FROM main.sqlite_master WHERE type = 'table' ORDER BY name`).all() as { name: string }[])
+    .map((r) => r.name)
+    .filter((name) => /^work_[A-Za-z0-9_]+$/.test(name))
+  const workRows: { table: string; rows: Row[] }[] = []
+  for (const table of srcWorkTables) {
+    if (!tableExists(db, 'main', table)) continue
+    const dstCols = columns(db, 'main', table)
+    const srcCols = new Set(columns(source, 'main', table))
+    if (!dstCols.includes('session_id') || !srcCols.has('session_id')) continue
+    const shared = dstCols.filter((c) => srcCols.has(c))
+    const key = (db.prepare(`PRAGMA main.table_info(${table})`).all() as { name: string; pk: number }[]).filter((c) => c.pk > 0).map((c) => c.name)
+    const held = key.length && key.every((c) => shared.includes(c)) ? db.prepare(`SELECT 1 FROM main.${table} WHERE ${key.map((c) => `${c} = ?`).join(' AND ')}`) : null
+    const rows: Row[] = []
+    const read = source.prepare(`SELECT ${shared.join(', ')} FROM main.${table} WHERE session_id = ?`)
+    for (const id of srcSessionIds) {
+      for (const r of read.all(id) as Row[]) {
+        if (held?.get(...key.map((c) => r[c] ?? null))) continue
+        rows.push('workspace_id' in r ? { ...r, workspace_id: wsId(r.workspace_id) } : r)
+      }
+    }
+    workRows.push({ table, rows })
+    counts.push({ table, have: have(table), add: rows.length })
+  }
+
   // Per-session dirs: copied when the destination lacks them.
-  const dirsToCopy = (kind: 'checkpoints' | 'html-renders', marker: string | null): string[] =>
+  const dirsToCopy = (kind: 'checkpoints' | 'html-renders' | 'canvas', marker: string | null): string[] =>
     [...srcSessionIds].filter((id) => {
       const src = join(from, kind, id)
       const dst = join(into, kind, id)
@@ -347,13 +374,14 @@ function run(
     })
   const checkpointDirs = files ? dirsToCopy('checkpoints', 'manifest.json') : []
   const renderDirs = files ? dirsToCopy('html-renders', null) : []
+  const canvasDirs = files ? dirsToCopy('canvas', null) : []
 
   const report: ImportReport = {
     dryRun,
     counts,
     missingRoots,
     workspaceAliases,
-    files: { checkpoints: checkpointDirs.length, htmlRenders: renderDirs.length }
+    files: { checkpoints: checkpointDirs.length, htmlRenders: renderDirs.length, canvas: canvasDirs.length }
   }
   if (dryRun) return report
 
@@ -366,6 +394,7 @@ function run(
     insert('session_folds', foldRows)
     insert('notes', noteRows)
     insert('settings', settingRows)
+    for (const w of workRows) insert(w.table, w.rows)
     db.prepare('INSERT OR REPLACE INTO main.settings (key, value) VALUES (?, ?)').run(
       IMPORT_RECORD_KEY,
       JSON.stringify({
@@ -407,9 +436,10 @@ function run(
   }
   for (const id of renderDirs)
     copyDir(join(from, 'html-renders', id), join(into, 'html-renders', id))
+  for (const id of canvasDirs) copyDir(join(from, 'canvas', id), join(into, 'canvas', id))
   if (files)
     log(
-      `files: ${checkpointDirs.length} checkpoint dirs, ${renderDirs.length} html-render dirs copied`
+      `files: ${checkpointDirs.length} checkpoint dirs, ${renderDirs.length} html-render dirs, ${canvasDirs.length} canvas dirs copied`
     )
 
   // The real counts, now that the rows are in.
@@ -452,7 +482,7 @@ export function formatReport(report: ImportReport): string {
   for (const c of report.counts) {
     lines.push(`         ${c.table.padEnd(width)}  ${String(c.have).padStart(9)}  ${String(c.add).padStart(9)}  ${String(c.have + c.add).padStart(9)}`)
   }
-  lines.push(`files: ${report.files.checkpoints} checkpoint dirs, ${report.files.htmlRenders} html-render dirs`)
+  lines.push(`files: ${report.files.checkpoints} checkpoint dirs, ${report.files.htmlRenders} html-render dirs, ${report.files.canvas} canvas dirs`)
   const missing = Object.entries(report.missingRoots)
   lines.push(
     missing.length === 0

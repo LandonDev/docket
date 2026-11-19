@@ -75,6 +75,13 @@ describe('the context', () => {
     expect(ctx.settings.workspace('w1')).toEqual({ mayUseDesktop: [], voice: false })
     expect(() => ctx.log('a line')).not.toThrow()
   })
+  it('has the canvas built (milestone 9): a thread with no items lists none, and an unknown thread or item is refused by name', () => {
+    const { ctx } = work
+    expect(ctx.canvas.forSession('s')).toEqual([])
+    expect(() => ctx.canvas.open('s', 'pdf', { at: 'thread' }, 'A')).toThrow('unknown thread: s')
+    expect(() => ctx.canvas.open('t1', 'pdf', { at: 'thread' }, 'A')).toThrow('not a Work thread: t1')
+    expect(() => ctx.canvas.close('i')).toThrow('no canvas item i')
+  })
   it('answers "not built" from every member a later milestone builds, naming that milestone', () => {
     const { ctx } = work
     const calls: [string, number, () => unknown][] = [
@@ -90,9 +97,6 @@ describe('the context', () => {
       ['ctx.links.link', 7, () => ctx.links.link({ kind: 'task', label: 'T', ref: { at: 'lifeos', table: 'tasks', id: 'k' } }, 's', 'T')],
       ['ctx.links.forThread', 7, () => ctx.links.forThread('s')],
       ['ctx.links.completeFor', 7, () => ctx.links.completeFor('s', 'sent')],
-      ['ctx.canvas.open', 9, () => ctx.canvas.open('s', 'pdf', { at: 'thread' }, 'A')],
-      ['ctx.canvas.close', 9, () => ctx.canvas.close('i')],
-      ['ctx.canvas.forSession', 9, () => ctx.canvas.forSession('s')],
       ['ctx.held.create', 10, () => ctx.held.create({ kind: 'addon.call', sessionId: 's', payload: {} })],
       ['ctx.held.onDecided', 10, () => ctx.held.onDecided(() => {})],
       ['ctx.results.add', 14, () => ctx.results.add({ sessionId: 's', kind: 'task', summary: 'Added a task' })],
@@ -138,7 +142,8 @@ describe('the router, as the stubs ship', () => {
   it('with Work on, a pillar method no module answers says "not built" and the milestone, for every pillar', async () => {
     expect(await work.handle(req('work.set', { enabled: true }), LOCAL_PRINCIPAL)).toEqual({ handled: true, result: { enabled: true } })
     for (const id of PILLAR_IDS) {
-      await expect(work.handle(req(`work.${id}.list`, {}), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: work.${id}.list (milestone ${PILLAR_MILESTONE[id]})`)
+      // The canvas answers its own `work.canvas.list` (milestone 9).
+      if (id !== 'canvas') await expect(work.handle(req(`work.${id}.list`, {}), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: work.${id}.list (milestone ${PILLAR_MILESTONE[id]})`)
       const bridge = `app.work${id[0].toUpperCase()}${id.slice(1)}List`
       await expect(work.handle(req(bridge, { sessionId: 't1', token: work.tools.tokenFor('t1') }), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: ${bridge} (milestone ${PILLAR_MILESTONE[id]})`)
       // a pillar's bridge method is a thread's own call: without that thread's token it is refused before any module is asked

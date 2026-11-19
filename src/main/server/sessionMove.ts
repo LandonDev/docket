@@ -65,6 +65,10 @@ import { BlobLanding, landBranch, planBranchLanding, runGit, undoBranchLanding, 
  *    takes the blobs (`branchChunk`) and runs the step (`branchCommit`):
  *    fetch or unbundle, check out, apply the patch. A discarded landing
  *    undoes what that step made.
+ *  - move modules (`registerMoveModule`): a part of the app that keeps rows
+ *    or files per thread (Work's canvas items) rides along: its rows in the
+ *    manifest's `modules`, its files as `module` entries, landed, dropped
+ *    and claimed with the sessions rows.
  */
 
 export interface MoveHost {
@@ -96,6 +100,78 @@ export interface MoveHost {
 
 export const claudeConfigDir = (): string => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
 export const codexHomeDir = (): string => process.env.CODEX_HOME || join(homedir(), '.codex')
+
+// ── move modules ────────────────────────────────────────────────────────
+
+/** A part of the app that keeps rows or files per thread and wants them to follow a move. */
+export interface MoveModule {
+  /** One word, unique ([a-z][a-z0-9-]*): the key of its rows in the manifest (`modules[id]`) and the first segment of its files' `rel`. */
+  id: string
+  /** Every row it keeps for these threads, as JSON its own `land` reads on the other host. */
+  rows?(host: MoveHost, ids: readonly string[]): unknown[]
+  /** The folder of files it keeps for one thread, under <userData>; the files in it ride the move. */
+  dir?(dataDir: string, sessionId: string): string
+  /** Receiver, at begin, inside the transaction that lands the sessions rows: put these rows in place (after dropping any it holds for the ids). `workspaceId` is the workspace the thread lands in here. */
+  land?(host: MoveHost, rows: unknown[], ctx: { ids: readonly string[]; from: string; workspaceId: string | null; land(path: string): string }): void
+  /** Drop every row it keeps for these ids: the source once the move finished (tombstone), the receiver when a landing is dropped (dropLanding) or replaced. */
+  drop?(host: MoveHost, ids: readonly string[]): void
+  /** Receiver: the landing became the thread (claimLanding). Must not throw into the move: the caller catches and logs. */
+  claimed?(host: MoveHost, ids: readonly string[], from: string): void
+}
+
+const MOVE_MODULE_ID = /^[a-z][a-z0-9-]*$/
+const moveModules = new WeakMap<DatabaseSync, Map<string, MoveModule>>()
+
+/** Registers a module for the host that owns this database (a WeakMap by database: two hosts in one test process stay apart). Registering an id twice replaces it. Returns its off. */
+export function registerMoveModule(db: DatabaseSync, module: MoveModule): () => void {
+  if (!MOVE_MODULE_ID.test(module.id)) throw new Error(`move module ${JSON.stringify(module.id)}: an id is one lower-case word`)
+  let mods = moveModules.get(db)
+  if (!mods) moveModules.set(db, (mods = new Map()))
+  mods.set(module.id, module)
+  return () => {
+    if (mods.get(module.id) === module) mods.delete(module.id)
+  }
+}
+
+const modulesOf = (db: DatabaseSync): MoveModule[] => [...(moveModules.get(db)?.values() ?? [])]
+
+/** Each module's folder for each id, for clearing. */
+function removeModuleDirs(host: MoveHost, ids: readonly string[]): void {
+  for (const m of modulesOf(host.db)) if (m.dir) for (const id of ids) rmSync(m.dir(host.dataDir, id), { recursive: true, force: true })
+}
+
+/** A module whose whole state is one table with a `session_id` column: its rows ride, land with the receiver's workspace id when the table has a `workspace_id` column (only the columns the receiver's table has), and are dropped. */
+export function tableMoveModule(id: string, table: string, extra?: Pick<MoveModule, 'dir' | 'claimed'>): MoveModule {
+  if (!/^[a-z_][a-z0-9_]*$/.test(table)) throw new Error(`move module ${id}: bad table name ${JSON.stringify(table)}`)
+  return {
+    id,
+    rows: (host, ids) => {
+      const q = host.db.prepare(`SELECT * FROM ${table} WHERE session_id = ?`)
+      return ids.flatMap((sid) => q.all(sid) as Row[])
+    },
+    land(host, rows, ctx) {
+      const cols = tableColumns(host.db, table)
+      for (const raw of rows) {
+        const row = raw as Row
+        const ok = !!row && typeof row === 'object' && Object.values(row).every((v) => v === null || typeof v === 'string' || typeof v === 'number')
+        if (!ok || !ctx.ids.includes(String(row.session_id))) throw new MoveRefused(`the thread's ${id} rows are not this move's`)
+        const landed: Row = cols.has('workspace_id') ? { ...row, workspace_id: ctx.workspaceId } : row
+        const keys = Object.keys(landed).filter((k) => cols.has(k))
+        // A plain insert: the move's own rows were dropped just before, so a clash is another thread's row, which a sender never replaces.
+        try {
+          host.db.prepare(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`).run(...keys.map((k) => landed[k] ?? null))
+        } catch (err) {
+          throw new MoveRefused(`the thread's ${id} rows clash with rows this host holds: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+    },
+    drop(host, ids) {
+      const st = host.db.prepare(`DELETE FROM ${table} WHERE session_id = ?`)
+      for (const sid of ids) st.run(sid)
+    },
+    ...extra
+  }
+}
 
 /** Claude Code's project dir name for a cwd (scripts/mac/copy-claude-projects.sh). */
 export const claudeSlug = (cwd: string): string => cwd.replace(/[^A-Za-z0-9_-]/g, '-')
@@ -193,14 +269,19 @@ export function partDigest(part: SessionMovePart): string {
 export const chainNext = (prev: string, part: SessionMovePart): string => sha256(prev + partDigest(part))
 
 /** What the commit compares: the chain's end, bound to the manifest's ids, row counts and files. */
-export function finalDigest(chain: string, m: Pick<SessionMoveManifest, 'sessions' | 'events' | 'files' | 'moveId'>): string {
+export function finalDigest(chain: string, m: Pick<SessionMoveManifest, 'sessions' | 'events' | 'files' | 'moveId' | 'modules'>): string {
   const ids = m.sessions.map((s) => String(s.id)).join(',')
   const events = Object.keys(m.events)
     .sort()
     .map((k) => `${k}=${m.events[k]}`)
     .join(',')
   const files = m.files.map((f) => `${f.kind}|${f.sessionId}|${f.rel}|${f.size}|${f.sha256}`).join('\n')
-  return sha256(`${chain}\0${m.moveId}\0${ids}\0${events}\0${files}`)
+  // The move modules' rows are bound too, when there are any. A host from before the modules drops the manifest's
+  // `modules` as an unknown key, so its digest is of a manifest without them and the commit fails on either side:
+  // the thread stays where it was, whole, instead of landing without its rows.
+  const carried = Object.keys(m.modules ?? {}).sort()
+  const modules = carried.length ? `\0${sha256(JSON.stringify(carried.map((id) => [id, m.modules![id]])))}` : ''
+  return sha256(`${chain}\0${m.moveId}\0${ids}\0${events}\0${files}${modules}`)
 }
 
 // ── export ──────────────────────────────────────────────────────────────
@@ -367,6 +448,17 @@ export class MoveExport {
       const dir = htmlDirOf(host.dataDir, id)
       for (const rel of walkFiles(dir)) add('html', id, rel, join(dir, rel))
     }
+    // The move modules: their rows in the manifest, their files under `<id>/`.
+    const modules: Record<string, unknown[]> = {}
+    for (const m of modulesOf(db)) {
+      const rows = m.rows?.(host, ids) ?? []
+      if (rows.length) modules[m.id] = rows
+      if (!m.dir) continue
+      for (const id of ids) {
+        const dir = m.dir(host.dataDir, id)
+        for (const rel of walkFiles(dir)) add('module', id, join(m.id, rel), join(dir, rel))
+      }
+    }
     const transcriptMissing: string[] = []
     const codexIds = new Set(sessions.filter((s) => s.provider === 'codex' && s.native_id).map((s) => String(s.native_id)))
     const rollouts = findCodexRollouts(host.codexDir(), codexIds)
@@ -426,7 +518,8 @@ export class MoveExport {
       dirty: dirtyAll.slice(0, DIRTY_CAP),
       dirtyMore: Math.max(0, dirtyAll.length - DIRTY_CAP),
       checkpoints,
-      branch: branch?.descriptor ?? null
+      branch: branch?.descriptor ?? null,
+      ...(Object.keys(modules).length ? { modules } : {})
     }
     return new MoveExport(host, manifest, plan, paths, branch)
   }
@@ -638,6 +731,19 @@ export class MoveImports {
       if (state.state === 'live' || state.state === 'exporting') throw new MoveRefused('the thread is already on this host')
     }
     for (const f of manifest.files) if (!safeRel(f.rel) || !ids.includes(f.sessionId)) throw new MoveRefused(`bad file entry ${JSON.stringify(f.rel)}`)
+    // What a move module carried needs that module here: rows and files are refused out loud, never dropped.
+    const mods = new Map(modulesOf(db).map((m) => [m.id, m]))
+    const moduleFile = (rel: string): { module: MoveModule; rest: string } => {
+      const at = rel.search(/[\\/]/)
+      const id = at < 0 ? rel : rel.slice(0, at)
+      const module = mods.get(id)
+      if (!module?.dir) throw new MoveRefused(`this host has no ${id} to take the thread's files`)
+      const rest = at < 0 ? '' : rel.slice(at + 1)
+      if (!rest || !safeRel(rest)) throw new MoveRefused(`bad file entry ${JSON.stringify(rel)}`)
+      return { module, rest }
+    }
+    for (const f of manifest.files) if (f.kind === 'module') moduleFile(f.rel)
+    for (const id of Object.keys(manifest.modules ?? {})) if (!mods.get(id)?.land) throw new MoveRefused(`this host cannot take the thread's ${id} rows`)
 
     const ctx = {
       map: this.host.pathMap(),
@@ -729,6 +835,10 @@ export class MoveImports {
     const targets = manifest.files.map((f) => {
       if (f.kind === 'html') return join(htmlDirOf(this.host.dataDir, f.sessionId), f.rel)
       if (f.kind === 'codex') return join(this.host.codexDir(), 'sessions', f.rel)
+      if (f.kind === 'module') {
+        const { module, rest } = moduleFile(f.rel)
+        return join(module.dir!(this.host.dataDir, f.sessionId), rest)
+      }
       const native = nativeOf.get(f.sessionId)
       if (!native || !(f.rel === `${native}.jsonl` || f.rel.startsWith(`${native}/`))) throw new MoveRefused(`bad transcript entry ${JSON.stringify(f.rel)}`)
       return join(this.host.claudeDir(), 'projects', claudeSlug(landed.get(f.sessionId)!), f.rel)
@@ -748,6 +858,11 @@ export class MoveImports {
         if (!ids.includes(String(f.session_id))) continue
         const keys = Object.keys(f).filter((k) => foldCols.has(k))
         db.prepare(`INSERT OR REPLACE INTO session_folds (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`).run(...keys.map((k) => f[k] ?? null))
+      }
+      for (const m of mods.values()) {
+        m.drop?.(this.host, ids)
+        const carried = manifest.modules?.[m.id]
+        if (carried && m.land) m.land(this.host, carried, { ids, from: manifest.from, workspaceId, land })
       }
       db.exec('COMMIT')
     } catch (err) {
@@ -895,6 +1010,7 @@ export class MoveImports {
       return data
     })
     for (const id of l.ids) rmSync(htmlDirOf(this.host.dataDir, id), { recursive: true, force: true })
+    removeModuleDirs(this.host, l.ids)
     ready.forEach((data, i) => {
       const target = l.targets[i]
       mkdirSync(dirname(target), { recursive: true })
@@ -949,12 +1065,14 @@ export function dropLanding(host: MoveHost, opts: { sessionId?: string; moveId?:
   db.exec('BEGIN')
   try {
     dropRows(db, ids)
+    for (const m of modulesOf(db)) m.drop?.(host, ids)
     db.exec('COMMIT')
   } catch (err) {
     db.exec('ROLLBACK')
     throw err
   }
   for (const id of ids) rmSync(htmlDirOf(host.dataDir, id), { recursive: true, force: true })
+  removeModuleDirs(host, ids)
   host.forget?.(ids)
   return ids
 }
@@ -965,9 +1083,18 @@ export function claimLanding(host: MoveHost, opts: { sessionId?: string; moveId?
   let ids: string[] = []
   if (opts.moveId) ids = (db.prepare(`SELECT id FROM sessions WHERE move_id = ? AND moving_from IS NOT NULL`).all(opts.moveId) as { id: string }[]).map((r) => r.id)
   if (ids.length === 0 && opts.sessionId) ids = subtreeIds(db, opts.sessionId).filter((id) => moveCols(db, id)?.moving_from)
+  const from = ids.length ? (moveCols(db, ids[0])?.moving_from ?? '') : ''
   const st = db.prepare(`UPDATE sessions SET moving_from = NULL, move_id = NULL WHERE id = ?`)
   for (const id of ids) st.run(id)
   host.forget?.(ids)
+  if (ids.length)
+    for (const m of modulesOf(db)) {
+      try {
+        m.claimed?.(host, ids, from)
+      } catch (err) {
+        console.error(`[move] ${m.id} claimed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
   return ids
 }
 
@@ -983,12 +1110,14 @@ export function tombstone(host: MoveHost, ids: readonly string[], to: string): v
       db.prepare(`DELETE FROM cold.events WHERE session_id = ?`).run(id)
       db.prepare(`DELETE FROM session_folds WHERE session_id = ?`).run(id)
     }
+    for (const m of modulesOf(db)) m.drop?.(host, ids)
     db.exec('COMMIT')
   } catch (err) {
     db.exec('ROLLBACK')
     throw err
   }
   for (const id of ids) rmSync(htmlDirOf(host.dataDir, id), { recursive: true, force: true })
+  removeModuleDirs(host, ids)
   host.forget?.(ids)
 }
 

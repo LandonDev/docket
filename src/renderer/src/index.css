@@ -3,6 +3,8 @@
 @import "./assets/components.css";
 @import "./surfaces/transcript/markdown.css";
 @import "./surfaces/transcript/transcript.css";
+/* The work-kit files Tailwind reads: only what the renderer imports (scripts/gen-work-kit-sources.ts). */
+@import "./work-kit-sources.css";
 
 /* `dark:` means the default theme; `html.theme-light` is the light one. */
 @custom-variant dark (&:where(html:not(.theme-light), html:not(.theme-light) *));
@@ -78,6 +80,72 @@
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.5), 0 2px 6px -2px rgb(0 0 0 / 0.3);
   /* The dim behind a dialog or a sheet. */
   --scrim: rgb(0 0 0 / 0.3);
+  /* Work's canvas (docs/DESIGN.md "Canvas tints"). A change waiting on the
+     person, a selection an Ask or a comment will take, and the blank that
+     holds a missing side's place in a compare. Mixed from the status
+     colours and the accent, so one declaration follows both themes. The
+     transcript's edit diff and the editors keep their own tints. */
+  --add-bg: color-mix(in srgb, var(--success) 14%, transparent);
+  --add-bg-soft: color-mix(in srgb, var(--success) 8%, transparent);
+  --del-bg: color-mix(in srgb, var(--destructive) 12%, transparent);
+  --sel-bg: color-mix(in srgb, var(--accent) 22%, transparent);
+  --diff-gap: color-mix(in srgb, var(--foreground) 4%, transparent);
+  --border-strong: color-mix(in srgb, var(--foreground) 24%, transparent);
+  --find-hit: color-mix(in srgb, var(--foreground) 14%, transparent);
+  /* A comment's words in a document: a neutral wash and underline, never
+     amber, which means the person is needed. */
+  --comment: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --comment-hot: color-mix(in srgb, var(--foreground) 14%, transparent);
+  --comment-line: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+  /* The document editor's three loading lines. */
+  --bone: color-mix(in srgb, var(--foreground) 9%, transparent);
+  /* Time in a canvas: a timeline's track, a recording's wave, a routine's
+     run dot. The played part of a wave is foreground. */
+  --track: color-mix(in srgb, var(--foreground) 14%, transparent);
+  --wave: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  --run-dot: color-mix(in srgb, var(--foreground) 55%, transparent);
+  /* The ground under a picture (an image, a PDF's sheets, a slide). */
+  --stage: var(--sidebar);
+  /* One series on a canvas: a form's answer bars, a dashboard's bars beside
+     its current one (foreground), and that bar while the figures are stale. */
+  --chart-neutral: color-mix(in srgb, var(--foreground) 30%, transparent);
+  --chart-neutral-rest: color-mix(in srgb, var(--foreground) 22%, transparent);
+  --chart-neutral-stale: color-mix(in srgb, var(--foreground) 40%, transparent);
+  /* A picture keeps its own colours in both themes, and a tint laid on it
+     takes the theme the picture is in: paper (a PDF or a document's page)
+     takes the light theme's values, a dark picture (a dark slide) the dark
+     theme's. Literals on purpose: they never follow the app's theme. */
+  --paper: #ffffff;
+  --paper-ink: #1f2430;
+  --add-bg-paper: color-mix(in srgb, #047857 16%, transparent);
+  --del-bg-paper: color-mix(in srgb, #c81e1e 13%, transparent);
+  --sel-bg-paper: color-mix(in srgb, hsl(211 92% 48%) 22%, transparent);
+  --find-bg-paper: color-mix(in srgb, hsl(211 92% 48%) 11%, transparent);
+  --find-bg-paper-current: color-mix(in srgb, hsl(211 92% 48%) 34%, transparent);
+  --add-bg-dark-pic: color-mix(in srgb, #34d399 26%, transparent);
+  --del-bg-dark-pic: color-mix(in srgb, #f87171 22%, transparent);
+  --sel-bg-dark-pic: color-mix(in srgb, hsl(211 92% 62%) 30%, transparent);
+  /* Presence: one hue per other person or agent in a document or a sheet
+     (a caret, a cell's outline, the name label on it, their avatar). The
+     shared editor's eight cursor hues in its order, so a person wears one
+     colour in TempCode and in the tracker; the ink is the label's text.
+     One value in both themes, as the editor draws them. */
+  --presence-1: #3b82f6;
+  --presence-2: #8b5cf6;
+  --presence-3: #22c55e;
+  --presence-4: #ef4444;
+  --presence-5: #f97316;
+  --presence-6: #14b8a6;
+  --presence-7: #eab308;
+  --presence-8: #84cc16;
+  --presence-ink-1: oklch(1 0 0);
+  --presence-ink-2: oklch(1 0 0);
+  --presence-ink-3: oklch(0.2 0 0);
+  --presence-ink-4: oklch(1 0 0);
+  --presence-ink-5: oklch(0.2 0 0);
+  --presence-ink-6: oklch(0.2 0 0);
+  --presence-ink-7: oklch(0.2 0 0);
+  --presence-ink-8: oklch(0.2 0 0);
   /* Runner sprites keep their coin and star colours in both themes. */
   --composer-coin: #e8b923;
   --composer-star: #f4e27a;
@@ -192,6 +260,7 @@ html.theme-light {
   --chart-4: #b47800;
   --shadow-overlay: 0 8px 24px -8px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.1);
   --scrim: rgb(0 0 0 / 0.18);
+  --bone: color-mix(in srgb, var(--foreground) 7%, transparent);
   --raise-primary:
     inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 1px 2px -0.5px rgb(255 255 255 / 0.12),
     inset 0 8px 24px -4px rgb(255 255 255 / 0.1), inset 0 -4px 12px -4px rgb(255 255 255 / 0.06),
@@ -264,7 +333,6 @@ html.theme-light {
 @source "../../../node_modules/streamdown/dist/*.js";
 @source "../../../node_modules/@streamdown/code/dist/*.js";
 @source "../../../node_modules/@streamdown/mermaid/dist/*.js";
-@source "../../../node_modules/work-kit/src";
 /* components/ui/reveal.ts builds the hover reveal's classes from a group's
    name at run time (the literals cost the first paint bytes), so its
    variants are listed here; a new group joins each list it uses
@@ -337,6 +405,34 @@ html.theme-light {
   --raise-shadow: var(--raise-destructive);
   --raise-lit: var(--raise-destructive-lit);
 }
+/* work-kit's outline button (`t-raise-outline`) is TempCode's outline
+   button: a hairline on no fill, `muted` on hover, foreground/12 pressed,
+   and it never moves (components/ui/button.tsx `outline`). */
+.t-raise-outline::before {
+  --raise-fill: transparent;
+  --raise-shadow: inset 0 0 0 1px var(--border);
+  --raise-lifted: var(--raise-shadow);
+  --raise-lit: none;
+}
+@media (hover: hover) {
+  .t-raise.t-raise-outline:hover::before {
+    background-color: var(--muted);
+  }
+}
+.t-raise.t-raise-outline:is(:active, [data-pressed])::before {
+  background-color: color-mix(in srgb, var(--foreground) 12%, transparent);
+  scale: 1;
+  transition-duration: var(--dur-instant);
+}
+/* work-kit's `flat` button (`t-flat`): a raised variant with its layer
+   off, no fill, no shadow, no press. */
+.t-raise.t-flat::before,
+.t-raise.t-flat:is(:hover, :active, [aria-expanded="true"], [data-pressed])::before {
+  background-color: transparent;
+  box-shadow: none;
+  filter: none;
+  scale: 1;
+}
 
 /* The toast stack (sonner) on our motion and layers instead of its 400-500ms
    defaults: a toast rises and fades over --dur-base, a removed one leaves
@@ -401,6 +497,14 @@ html.theme-light {
      The same curve is EASE_OUT in lib/ease.ts. */
   --default-transition-duration: var(--dur-fast);
   --default-transition-timing-function: var(--ease-out);
+  /* work-kit's two named type steps on DESIGN.md's scale: `text-lead`
+     (LifeOS 15px at 1.375) is a document's body, 15/24; `text-sheet-title`
+     (LifeOS 17px at 1.375) is the title, 16/24 at -0.01em. */
+  --text-lead: 15px;
+  --text-lead--line-height: 24px;
+  --text-sheet-title: 16px;
+  --text-sheet-title--line-height: 24px;
+  --text-sheet-title--letter-spacing: -0.01em;
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;

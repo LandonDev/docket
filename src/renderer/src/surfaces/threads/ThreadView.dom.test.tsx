@@ -7,10 +7,22 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PANEL_MIN, rightPanel, THREAD_MIN } from "../../lib/rightPanel";
+import type { ReactNode } from "react";
 import type { Session } from "../../lib/session";
 
 vi.mock("../chunks", () => ({
   threadViewsChunk: { surface: () => () => null },
+  // The canvas seat (work/canvas), asked for by a Work thread alone.
+  workCanvasChunk: {
+    surface: (name: string) => {
+      canvas.asked.push(name);
+      return (props: { session: Session; children: ReactNode }) => (
+        <div data-canvas-seat data-session={props.session.id}>
+          {props.children}
+        </div>
+      );
+    },
+  },
   rightPanelChunk: {
     surface: () => (props: { width?: number; motion?: string; onLeft?: () => void; session: Session; paneId?: string }) => (
       <aside
@@ -26,6 +38,11 @@ vi.mock("../chunks", () => ({
   },
 }));
 vi.mock("./ChatView", () => ({ ChatView: () => <div data-chat /> }));
+// Which threads the store says are Work threads (`SessionMeta.scope`).
+const canvas = vi.hoisted(() => ({ asked: [] as string[], work: new Set<string>() }));
+vi.mock("../../lib/tcserver/store", () => ({
+  useSessionMetaValue: (id: string, read: (meta: { scope?: string }) => unknown) => read({ scope: canvas.work.has(id) ? "work" : undefined }),
+}));
 vi.mock("../../lib/masterThread", () => ({ isMasterThread: () => false }));
 // The store's sessions by id, as useSessionById reads them.
 const store = vi.hoisted(() => new Map<string, unknown>());
@@ -166,5 +183,23 @@ describe("the panel follows the thread the pane shows", () => {
     act(() => resize(100));
     expect(panel()).toBeNull();
     expect(rightPanel.hasRoom("t1")).toBe(true);
+  });
+});
+
+describe("a Work thread's canvas seat", () => {
+  it("is not mounted for a code thread, whose view is the tree it always was", () => {
+    canvas.work.clear();
+    const { container } = view();
+    expect(container.querySelector("[data-canvas-seat]")).toBeNull();
+    expect(container.querySelector("[data-chat]")).not.toBeNull();
+  });
+
+  it("wraps the view of a thread whose row says Work, and of that thread alone", () => {
+    canvas.work.add("t1");
+    const { container } = view();
+    const seat = container.querySelector("[data-canvas-seat]");
+    expect(seat?.getAttribute("data-session")).toBe("t1");
+    expect(seat?.querySelector("[data-chat]")).not.toBeNull();
+    canvas.work.clear();
   });
 });

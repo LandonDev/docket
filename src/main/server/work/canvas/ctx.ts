@@ -1,14 +1,30 @@
-import { notBuilt } from '@shared/work'
 import type { CtxPart } from '../ctx'
+import { registerCanvasMove } from './move'
+import { CanvasStore, setCanvasStore } from './store'
 
 /**
- * `ctx.canvas`: a thread's canvas items (`work_canvas_items`). A stub:
- * milestone 9 builds the store, its methods, push and agent tools.
+ * `ctx.canvas`: a thread's canvas items (`work_canvas_items`). The part
+ * makes the database's one `CanvasStore` with the host's handles (the
+ * registry, the data dir, the push) and leaves it where the module finds
+ * it by `ctx.db` (`canvasStoreOf`), and registers the canvas as a move
+ * module. Made at boot with Work on or off: it starts nothing.
  */
-export const canvasPart: CtxPart<'canvas'> = () => ({
-  canvas: {
-    open: notBuilt('ctx.canvas.open', 9),
-    close: notBuilt('ctx.canvas.close', 9),
-    forSession: notBuilt('ctx.canvas.forSession', 9)
+export const canvasPart: CtxPart<'canvas'> = (ctx, deps) => {
+  const store = new CanvasStore({
+    db: deps.db,
+    dataDir: deps.dataDir,
+    session: (id) => deps.registry.get(id),
+    push: (p) => ctx.push(p),
+    log: (line) => ctx.log(line)
+  })
+  setCanvasStore(deps.db, store)
+  // Work on or off: the rows may be from a time it was on.
+  registerCanvasMove(deps.db, ctx, () => store)
+  return {
+    canvas: {
+      open: (sessionId, kind, source, title) => store.open(sessionId, { kind, source, title }),
+      close: (itemId) => store.close(itemId),
+      forSession: (sessionId) => store.list(sessionId)
+    }
   }
-})
+}

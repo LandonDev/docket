@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import { ChevronRight, FilePlus, FoldVertical, ICON_STROKE, UnfoldVertical } from "./icons";
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
-const CATALOG = "chrome/icons.tsx";
+// Two catalogs: the chrome's, in the first paint, and Work's, which rides Work's lazy chunks.
+const CATALOGS = ["chrome/icons.tsx", "work/icons.tsx"];
 const SPECIFIER = /["'](@hugeicons\/[^"']+)["']/g;
 const DEEP_ICON = /^@hugeicons\/core-free-icons\/[A-Z][A-Za-z0-9]+Icon$/;
 
@@ -24,7 +25,7 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("hugeicons imports", () => {
-  it("only deep-imports glyphs through chrome/icons.tsx", () => {
+  it("only deep-imports glyphs through chrome/icons.tsx and work/icons.tsx", () => {
     const violations: string[] = [];
 
     for (const file of sourceFiles(SRC)) {
@@ -33,8 +34,8 @@ describe("hugeicons imports", () => {
       for (const match of source.matchAll(SPECIFIER)) {
         const spec = match[1];
         const allowedCatalog =
-          rel === CATALOG &&
-          (spec === "@hugeicons/react" || DEEP_ICON.test(spec));
+          (rel === CATALOGS[0] && (spec === "@hugeicons/react" || DEEP_ICON.test(spec))) ||
+          (rel === CATALOGS[1] && DEEP_ICON.test(spec));
         if (allowedCatalog) continue;
         violations.push(`${rel}: ${spec}`);
       }
@@ -101,7 +102,7 @@ describe("icon strokes", () => {
     const found: string[] = [];
     for (const file of sourceFiles(SRC)) {
       const rel = relative(SRC, file).replaceAll("\\", "/");
-      if (!rel.endsWith(".tsx") || rel.endsWith(".test.tsx") || rel === CATALOG || rel.startsWith("aliax/charts/")) continue;
+      if (!rel.endsWith(".tsx") || rel.endsWith(".test.tsx") || rel === CATALOGS[0] || rel.startsWith("aliax/charts/")) continue;
       const source = readFileSync(file, "utf8");
       for (const match of source.matchAll(/strokeWidth=/g)) {
         const tag = /<([A-Za-z][\w.]*)[^<]*$/.exec(source.slice(0, match.index))?.[1] ?? "";

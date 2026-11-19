@@ -3,9 +3,9 @@ import { DUR } from "../../lib/ease";
 import type { PanelMotion, RightPanelProps } from "../RightPanel";
 import type { OpenFileFn } from "../../lib/search";
 import type { Session } from "../../lib/session";
-import type { ChatSource } from "./chatSlots";
+import { heldRowOf, type ChatSource } from "./chatSlots";
 import { ChatView } from "./ChatView";
-import { threadViewsChunk } from "../chunks";
+import { threadViewsChunk, workCanvasChunk } from "../chunks";
 import { SurfaceSkeleton } from "../SurfaceSkeleton";
 import { isMasterThread } from "../../lib/masterThread";
 
@@ -17,11 +17,18 @@ const MasterView = threadViewsChunk.surface("MasterView", skeleton);
 const OrchestrationView = threadViewsChunk.surface("OrchestrationView", skeleton);
 const PlanView = threadViewsChunk.surface("PlanView", skeleton);
 const ResearchView = threadViewsChunk.surface("ResearchView", skeleton);
+// A Work thread's view sits in the canvas seat (work/canvas), which holds its open items beside it. Its chunk is asked
+// for by a Work thread alone, so a code thread loads nothing of Work.
+const CanvasSeat = workCanvasChunk.surface("CanvasSeat", skeleton);
 // The panel rides its own chunk and mounts only while open, so a closed panel costs nothing.
 const RightPanel = rightPanelChunk.surface("RightPanel", <SurfaceSkeleton kind="pane" label="Loading panel" />);
 import { panelFit, rightPanel, THREAD_MIN, useRightPanel, useShownThread } from "../../lib/rightPanel";
 import { rightPanelChunk } from "../chunks";
 import { useSessionById } from "../../lib/threads/agents";
+import { useSessionMetaValue } from "../../lib/tcserver/store";
+import type { SessionMeta } from "../../lib/tcserver/types";
+
+const isWork = (meta: SessionMeta): boolean => meta.scope === "work";
 
 export type { ChatOpts } from "./chatSlots";
 
@@ -66,7 +73,16 @@ export function ThreadView(props: ThreadViewProps) {
   }, [fit, root, session.id]);
   useEffect(() => (root ? () => rightPanel.setRoom(session.id, true) : undefined), [root, session.id]);
   const pane = usePaneMotion(session.id, panel.open, fit);
-  const view = master ? <MasterView {...props} /> : typeView(props);
+  const own = master ? <MasterView {...props} /> : typeView(props);
+  // The row decides, never the Work switch: a thread stamped Work shows its canvas beside it.
+  const work = useSessionMetaValue(session.id, isWork) === true;
+  const view = work ? (
+    <CanvasSeat session={session} held={heldRowOf(props, session)}>
+      {own}
+    </CanvasSeat>
+  ) : (
+    own
+  );
   if (!root) return view;
   return (
     // Clipped on x alone: the arriving pane never paints over a split's neighbour, and popovers still overflow up.

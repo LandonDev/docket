@@ -12,6 +12,7 @@ import { WORK_KIT_API } from 'work-kit/api'
 import { lockProblems, pinnedCommit } from 'work-kit/guards'
 import { definesRule, HOST_RULES } from 'work-kit/ui/host-rules'
 import { KitProbe } from 'work-kit/ui/kit-probe'
+import { kitFile, kitSources, sourcesCss, SOURCES_FILE } from './gen-work-kit-sources'
 
 const root = resolve(__dirname, '..')
 const read = (path: string): string => readFileSync(resolve(root, path), 'utf8')
@@ -89,11 +90,33 @@ describe('the renderer', () => {
   it('compiles work-kit classes into its stylesheet, which Tailwind would skip under node_modules', async () => {
     const path = resolve(root, 'src/renderer/src/index.css')
     const text = read('src/renderer/src/index.css')
-    expect(text).toContain('@source "../../../node_modules/work-kit/src";\n')
+    // The lines live in a generated file index.css imports, and never name the whole package:
+    // that put every primitive's classes in the first paint, used or not.
+    expect(text).toContain('@import "./work-kit-sources.css";\n')
+    expect(text).not.toContain('node_modules/work-kit')
     // Only the @source globs are scanned, so the probe's class can come from work-kit alone.
     const compiler = await compile(text, { base: resolve(path, '..'), onDependency: () => {} })
     const css = compiler.build(new Scanner({ sources: compiler.sources }).scan())
     expect(css).toContain('--work-kit-probe: 1')
+  })
+
+  it('reads the work-kit files the renderer imports and no others; `bun scripts/gen-work-kit-sources.ts` after importing one', () => {
+    expect(read(SOURCES_FILE)).toBe(sourcesCss(kitSources(root), root))
+    for (const file of kitSources(root)) expect(file.startsWith('node_modules/work-kit/src/'), file).toBe(true)
+  })
+
+  it('finds a specifier through the package\'s export map, and every work-kit file it reaches', () => {
+    expect(kitFile(root, 'work-kit/ui/button')).toBe('node_modules/work-kit/src/ui/button.tsx')
+    expect(kitFile(root, 'work-kit/ui/cn')).toBe('node_modules/work-kit/src/ui/cn.ts')
+    expect(kitFile(root, 'work-kit/api')).toBe('node_modules/work-kit/src/api.ts')
+    expect(kitFile(root, 'work-kit/nothing-here')).toBeNull()
+    const reached = kitSources(root, ['work-kit/ui/button'])
+    // The probe is always first, then what the button draws with.
+    expect(reached[0]).toBe('node_modules/work-kit/src/ui/kit-probe.tsx')
+    expect(reached).toContain('node_modules/work-kit/src/ui/button.tsx')
+    expect(reached).toContain('node_modules/work-kit/src/ui/cn.ts')
+    expect(reached).not.toContain('node_modules/work-kit/src/ui/calendar.tsx')
+    expect(sourcesCss(reached, root)).toContain('@source "../../../node_modules/work-kit/src/ui/button.tsx";\n')
   })
 
   it('renders a component from work-kit/ui', () => {
@@ -102,25 +125,10 @@ describe('the renderer', () => {
     expect(html).toContain('Pinned')
   })
 
-  it('lacks these Kobra rules the primitives use; a work-kit screen that needs one adds it first', () => {
-    // Raise, check, toggle and the like are TempCode's own; LifeOS defines all of HOST_RULES.
+  it('defines every Kobra rule the primitives use', () => {
+    // Raise, check and toggle are TempCode's own; the rest are LifeOS's rules on TempCode's tokens
+    // (index.css after .t-raise, and assets/components.css).
     const css = rendererCss()
-    expect(HOST_RULES.filter((rule) => !definesRule(css, rule))).toEqual([
-      't-check-arc',
-      't-check-badge',
-      't-check-blur-wrap',
-      't-check-disc',
-      't-check-fill',
-      't-check-mark',
-      't-check-ring',
-      't-check-spinner',
-      't-flat',
-      't-push',
-      't-raise-outline',
-      't-spinner-bar',
-      'text-lead',
-      'text-sheet-title',
-      'transition-ring'
-    ])
+    expect(HOST_RULES.filter((rule) => !definesRule(css, rule))).toEqual([])
   })
 })

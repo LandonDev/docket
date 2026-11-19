@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { animate } from "motion/react";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
-import { SplitShell } from "./SplitShell";
+import { SplitShell, useSplit } from "./SplitShell";
 
 // A settle lands at once, so a test reads where it ends; the call is kept to read its spring.
 vi.mock("motion/react", async (original) => ({
@@ -287,5 +287,39 @@ describe("SplitShell's drag", () => {
     expect(to).toBe(70);
     expect(options.stiffness).toBe(700);
     expect(options.damping).toBe(50);
+  });
+});
+
+describe("SplitShell with a lead in the title's place", () => {
+  it("draws the lead in the header on the strip's fill, with the view's actions and the toggle after it", () => {
+    const { container } = render(shell({ title: undefined, lead: <div role="tablist" aria-label="Open items" />, actions: <button type="button">More</button> }));
+    const header = container.querySelector<HTMLElement>("[data-view-header]")!;
+    expect(header.className).toContain("bg-sidebar");
+    expect(header.querySelector("[data-view-lead] [role='tablist']")).not.toBeNull();
+    expect(header.querySelector("[data-view-title]")).toBeNull();
+    expect([...header.querySelector("[data-view-actions]")!.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["More", "Conversation"]);
+  });
+
+  it("keeps a board's own header as it was: the title on the content's fill", () => {
+    const { container } = render(shell());
+    const header = container.querySelector<HTMLElement>("[data-view-header]")!;
+    expect(header.className).toContain("bg-background");
+    expect(header.querySelector("[data-view-title]")?.textContent).toBe("Plan");
+    expect(header.querySelector("[data-view-lead]")).toBeNull();
+  });
+
+  it("resets the sash to where the view started it, not to the middle", () => {
+    function Seated() {
+      const split = useSplit(70);
+      return shell({ splitState: split });
+    }
+    const { container } = render(<Seated />);
+    const board = container.querySelector<HTMLElement>("[data-board]")!;
+    const sash = screen.getByRole("separator", { name: "Resize" });
+    expect(board.style.flexBasis).toBe("70%");
+    fireEvent.keyDown(sash, { key: "ArrowLeft" });
+    expect(board.style.flexBasis).toBe("68%");
+    fireEvent.doubleClick(sash);
+    expect(board.style.flexBasis).toBe("70%");
   });
 });

@@ -33,18 +33,28 @@ it and who owns each folder.
   the app uses of it, compiled. Belt and braces: `electron-builder.yml` leaves
   out `node_modules/work-kit/**`, and `electron.vite.config.ts` lists it in the
   main process's `externalizeDepsPlugin` exclude beside aliax-core.
-- **Tailwind** skips `node_modules`, so `src/renderer/src/index.css` has
-  `@source "../../../node_modules/work-kit/src";`. Today that adds about 89 KB
-  (10 KB gzipped) to the renderer's one stylesheet, the classes of every
-  primitive in `src/ui` whether used or not.
+- **Tailwind** skips `node_modules`, so a work-kit component's classes reach
+  the renderer's one stylesheet only through an `@source` line. The lines
+  live in `src/renderer/src/work-kit-sources.css`, which `index.css` imports
+  and `bun scripts/gen-work-kit-sources.ts` writes: one line per work-kit
+  file the renderer imports (every `work-kit/…` specifier under
+  `src/renderer/src`, and each work-kit file those reach), and the probe.
+  Never the whole package: that put 89 KB of every primitive's classes in
+  the first paint with none of them on screen (328 KB to 239 KB without).
+  **A thread that starts importing a work-kit module runs the script and
+  commits the file**; the pin test fails until it does. The classes do land
+  in the first-paint stylesheet: a second Tailwind sheet for Work would put
+  utilities in two sheets, and the later one's copies would override the
+  first's in the wrong order across the whole app.
 - **Host rules.** The primitives take some classes from the host's stylesheet
   (`HOST_RULES` in `work-kit/ui/host-rules`: Kobra's raised button, check
-  badge, toggle, spinner bar, ring transition, two type steps). TempCode defines
-  `t-raise` and its primary, secondary and destructive kinds, `t-check`,
-  `t-toggle` and `t-toggle-thumb`; the pin test lists the rest it lacks
-  (outline, flat and push buttons, the check badge's parts, the spinner bar,
-  `transition-ring`, `text-lead`, `text-sheet-title`). A primitive that uses one
-  renders unstyled here until the stylesheet gains it.
+  badge, toggle, spinner bar, ring transition, two type steps). TempCode
+  defines them all, on its own tokens and motion values: `t-raise` and its
+  kinds with `t-raise-outline` and `t-flat` in `index.css`, the rest in
+  `assets/components.css`, and `text-lead` (15/24) and `text-sheet-title`
+  (16/24) as theme steps. The check badge's arc does not turn by CSS here (a
+  new keyframe needs a row in `lib/motionGuard.test.ts`); work-kit's own
+  animation moves it.
 - **A script bundle** that imports work-kit with `--packages=external` needs
   `--alias:work-kit=./node_modules/work-kit/src`, as aliax-core does; a subpath
   maps to the same path under `src` (`work-kit/lifeos` is `src/lifeos/index.ts`).
@@ -60,10 +70,11 @@ Imports are by subpath; there is no root export: `work-kit/ui/<name>`
 scripts/workKitPin.test.ts checks the pin's form and commit against bun.lock,
 the interface version this tree was built for (`WORK_KIT_API` 1), the Swift
 revision in ios/TempCode/project.yml once the phone app pins one, the builder
-rule, the exclude, the `@source` line, and a render of `KitProbe` from
+rule, the exclude, that `work-kit-sources.css` is what the generator writes
+for today's imports, and a render of `KitProbe` from
 `work-kit/ui/kit-probe`, compiles index.css with Tailwind scanning only its
 `@source` globs and finds the probe's `[--work-kit-probe:1]` class, and holds
-the list of host rules TempCode lacks. It runs `lockProblems` (`work-kit/guards`) on bun.lock:
+TempCode to defining every host rule the primitives use. It runs `lockProblems` (`work-kit/guards`) on bun.lock:
 one copy each of yjs, y-prosemirror, y-protocols, prosemirror-model and
 @tiptap/pm, and no `@blocknote/xl-*` (GPL) or `@y/*` (Yjs v14) package. LifeOS
 runs the same guard on its own lock.

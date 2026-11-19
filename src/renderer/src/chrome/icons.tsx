@@ -135,7 +135,8 @@ export type IconComponent = ReturnType<typeof wrap>;
 /** Every chrome icon's stroke, docs/DESIGN.md "Iconography": a size fixes a glyph that reads thin, never a heavier stroke. */
 export const ICON_STROKE = 1.5;
 
-function wrap(icon: IconSvgElement, name: string) {
+/** A glyph under a name: the stroke's default applied. A lazy surface's own glyphs (work/icons.tsx) are made with it, so they stay out of this module. */
+export function wrap(icon: IconSvgElement, name: string) {
   const Component = forwardRef(function Icon(
     { strokeWidth = ICON_STROKE, ...props }: IconProps,
     ref: Ref<SVGSVGElement>,

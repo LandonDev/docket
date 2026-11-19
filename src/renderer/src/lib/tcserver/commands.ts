@@ -6,6 +6,7 @@ import { policyForMode } from "./access";
 import { needsUpload, uploadAttachment } from "../attachmentUpload";
 import { registry, type Link } from "../connection";
 import { sessionStore } from "./store";
+import { chipPort } from "../contextChips";
 import type {
   AgentType,
   CreateSessionInput,
@@ -124,6 +125,8 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
   // somewhere, never a draft: creating it would mint a second one.
   if (sessionStore.isProvisional(session.id)) throw new Error("This thread is still loading");
   const link = linkOfSession(session);
+  // What the draft's first send was about (lib/contextChips.ts): the host links the thread to it.
+  const about = chipPort.get()?.about(session.id);
   const wire = await link.request<WireSessionMeta>("session.create", {
     id: session.id,
     provider: session.harness,
@@ -144,6 +147,7 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
     // The draft's own workspace; null is a chat outside every workspace, which
     // the host never files by its cwd (a workspace's folder included).
     workspaceId: session.workspaceId ?? null,
+    ...(about ? { about } : {}),
   });
   const meta: SessionMeta = { ...wire, environmentId: link.environmentId };
   sessionStore.adopt(meta, { created: true });

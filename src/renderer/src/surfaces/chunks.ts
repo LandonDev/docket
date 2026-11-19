@@ -80,6 +80,10 @@ export const reviewChunk = defineChunk("review", () => import("./ReviewCard"));
 /** The right panel's Computer section: the window live or as it was, and the thread's steps (threads/computer/). */
 export const computerChunk = defineChunk("computer", () => import("./threads/computer"));
 
+/** The canvas pane beside a Work thread and the composer's chip row (work/canvas). Asked for only by a Work thread or a
+ *  composer that holds a chip: nothing of Work is in the first paint (docs/agents/work.md "The first paint"). */
+export const workCanvasChunk = defineChunk("work-canvas", () => import("../work/canvas"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -110,4 +114,5 @@ export const allChunks = {
   messageListChunk,
   reviewChunk,
   computerChunk,
+  workCanvasChunk,
 };

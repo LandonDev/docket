@@ -80,12 +80,16 @@ import {
 } from './ComposerInput'
 import { saveComposerDraft, takeComposerDraft } from '../lib/composerDrafts'
 import { projectDrafts } from '../lib/projectDrafts'
-import { commandMenuChunk, lightboxChunk } from '../surfaces/chunks'
+import { commandMenuChunk, lightboxChunk, workCanvasChunk } from '../surfaces/chunks'
+import { chipPort } from '../lib/contextChips'
 
 // The image viewer rides its own chunk (surfaces/chunks.ts); a thumbnail's hover warms it.
 const Lightbox = lightboxChunk.surface('Lightbox')
 // The slash and @ menu rides its own chunk, warmed in the idle slot after the first thread opens.
 const CommandPopover = commandMenuChunk.surface('CommandPopover')
+// What the message is about: Work's (work/canvas/chips.ts), reached through lib/contextChips.ts's port. The row is
+// mounted only while the composer holds a chip.
+const ComposerChips = workCanvasChunk.surface('ComposerChips')
 import {
   loadNotes,
   peekNotes,
@@ -246,10 +250,13 @@ export function Composer({
   const [fileDrag, setFileDrag] = useState(false)
   const reduce = useReducedMotion()
   const midTurnDefault = useSyncExternalStore(subscribeMidTurnDefault, loadMidTurnDefault)
+  // A chip alone is a message: Send is live with nothing typed.
+  const chips = useSyncExternalStore(chipPort.subscribe, () => (sessionId ? (chipPort.get()?.count(sessionId) ?? 0) : 0))
+  const sendable = hasValue || chips > 0
   const intent = decideComposerAction({
     busy,
     paused,
-    hasText: hasValue,
+    hasText: sendable,
     invert: false,
     midTurnDefault
   })
@@ -715,7 +722,7 @@ export function Composer({
     if (blocked || uploadingRef.current) return
     const text = composeInboxMessage(inboxCard, value)
     const files = attachments
-    if (!text && files.length === 0 && !noteCard && !handoffCard) return
+    if (!text && files.length === 0 && !noteCard && !handoffCard && chips === 0) return
     // A file the thread's host cannot read (it is on this Mac, or only in
     // memory) is uploaded there first; the text and chips stay put until
     // every file landed, and a failure stays here on its chip.
@@ -776,7 +783,8 @@ export function Composer({
     if (field) recordSendOrigin(field.getBoundingClientRect())
     // The composer that mounts for the thread next starts from this box.
     if (draft && frameRef.current) recordComposerHandoff(sessionId, frameRef.current.getBoundingClientRect())
-    onSubmit(text, files, intent === 'pause' ? 'send' : intent)
+    // The chips go as lines of the message; a draft's first one also rides its create (commands.ts ensureCreated).
+    onSubmit((sessionId && chipPort.get()?.send(sessionId, draft, text)) || text, files, intent === 'pause' ? 'send' : intent)
     inputRef.current?.clear()
     setAttachments([])
     setUploads({})
@@ -955,6 +963,8 @@ export function Composer({
               </div>
             ) : null}
 
+            {sessionId && chips > 0 ? <ComposerChips sessionId={sessionId} /> : null}
+
             {inboxCard ? <InboxMiniCard card={inboxCard} onDismiss={onInboxCardDismiss} /> : null}
 
             {noteCard ? <NoteMiniCard card={noteCard} onDismiss={onNoteCardDismiss} /> : null}
@@ -999,7 +1009,7 @@ export function Composer({
               />
               <SendButton
                 intent={intent}
-                disabled={!!blocked || (intent !== 'pause' && !hasValue)}
+                disabled={!!blocked || (intent !== 'pause' && !sendable)}
                 onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
                 onPause={() => onPause?.()}
               />

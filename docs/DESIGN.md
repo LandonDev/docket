@@ -41,7 +41,14 @@ components.json. `lib/motionGuard.test.ts`, `lib/colourGuard.test.ts` and
 
 Hand-made and staying so: the transcript's rows and markdown pipeline, the
 composer's field, the rail, the tab strip, the editor, the terminal, the
-charts (`aliax/charts`, on recharts and the `--chart-1..4` tokens). They are built from the components above wherever they have a
+charts (`aliax/charts`, on recharts and the `--chart-1..4` tokens), and
+Work's canvas shapes: the canvas pane's tab row and kind bar, the sheet
+grid (its formula bar, sheet tabs and chart object), the document editor
+(the tracker's block editor, shared), the mail client and the task and
+agenda lists (LifeOS's, shared), the PDF page, the slide stage, the media
+viewer, the meeting view, the live browser, the form canvas, the dashboard
+page, the compare and History views, the Outbox, and the routines' week
+grid. They are built from the components above wherever they have a
 button, a menu, a field or a status.
 
 ## Tokens
@@ -150,6 +157,75 @@ a surface above `/10`, with one exception: the window's Close off macOS
 `destructive` on hover, as every Windows and Linux window's close does; the
 platform's convention outranks ours there.
 
+### Canvas tints
+
+Work's canvas (the pane beside a thread, "The canvas pane") marks content
+with these. Each is mixed from a token above, so one declaration follows
+both themes, unless the table gives two values.
+
+| Token | Use | Value |
+| --- | --- | --- |
+| `add-bg` | a change waiting on the person: added words, a filled cell, a suggested task | `success` 14% |
+| `add-bg-soft` | a sheet's cells just after the agent wrote them | `success` 8% |
+| `del-bg` | words or cells a change would remove (struck through, muted ink) | `destructive` 12% |
+| `sel-bg` | a selection the person made that an Ask or a comment will take; the current find hit, with the accent line | `accent` 22% |
+| `diff-gap` | the blank that holds a missing side's place in a compare | `foreground` 4% |
+| `border-strong` | a sheet's frozen-pane line | `foreground` 24% |
+| `find-hit` | a find hit in a canvas that is not the current one | `foreground` 14% |
+| `comment`, `comment-hot`, `comment-line` | a comment's words in a document: rest, open or hovered, and its 1.5px underline | `foreground` 8%, 14%; `muted-foreground` 50% |
+| `bone` | the document editor's loading lines | `foreground` 9% dark, 7% light |
+| `track` | any timeline's track | `foreground` 14% |
+| `wave` | a recording's wave; the part played is `foreground` | `muted-foreground` 55% |
+| `run-dot` | a routine's planned run in the week grid | `foreground` 55% |
+| `stage` | the ground under a picture: an image, a PDF's sheets, a slide | `sidebar` |
+| `chart-neutral` | a form's answer bars | `foreground` 30% |
+| `chart-neutral-rest` | a dashboard's bars beside the current one, which is `foreground` | `foreground` 22% |
+| `chart-neutral-stale` | that current bar while the figures are stale | `foreground` 40% |
+
+A comment is never amber: amber means the person is needed. A change
+never takes a bar or an edge; it is the tint alone. The current change
+in a compare is a 1px `foreground` 40% outline, written in place, with no
+token of its own.
+
+A picture keeps its own colours in both themes: a PDF's page, a slide, a
+video frame, a website. A tint laid on a picture takes the theme the
+picture is in, so it reads the same in a dark app. Paper (a PDF or a
+document's page drawn as one) is `paper` (white) with `paper-ink`
+(`#1f2430`) and takes the light theme's values: `add-bg-paper` (light
+success 16%), `del-bg-paper` (light destructive 13%), `sel-bg-paper` (light
+accent 22%), `find-bg-paper` (light accent 11%) and
+`find-bg-paper-current` (34%). A dark picture (a dark slide) takes the dark
+theme's: `add-bg-dark-pic` (dark success 26%), `del-bg-dark-pic` (dark
+destructive 22%) and `sel-bg-dark-pic` (dark accent 30%). These are
+literals on purpose. A picture sits on `image-outline` and is never themed.
+
+Presence is one hue per other person or agent in a document or a sheet:
+`presence-1` to `presence-8`, the shared editor's eight cursor hues in its
+order (blue `#3b82f6`, purple `#8b5cf6`, green `#22c55e`, red `#ef4444`,
+orange `#f97316`, teal `#14b8a6`, yellow `#eab308`, moss `#84cc16`), one
+value in both themes, so a person wears one colour in TempCode and in the
+tracker. `presence-ink-1` to `presence-ink-8` set a name label's text:
+white on blue, purple and red, near-black on the rest. A hue marks a caret,
+a cell's 2px outline, the name label on it and the person's avatar ring,
+never a fill on content, so it cannot read as a change. The agent's caret
+takes a hue too, its label named for its thread.
+
+A sector's mark is LifeOS's: one 8px dot in a 16px slot, drawn only where
+sectors mix (the rail's Work rows, the Outbox's groups, a grant list, the
+settings list), never a chip, a tinted name or a coloured edge. The six
+hues are the dot's alone, a value per theme: cosmic oklch(0.72 0.11 285)
+dark, oklch(0.6 0.12 285) light; hypixel 0.74 0.11 40, 0.64 0.12 40;
+purdue 0.78 0.1 85, 0.7 0.11 85; ref 0.72 0.09 155, 0.62 0.1 155; unify
+0.72 0.09 235, 0.6 0.1 235; life 0.72 0.1 350, 0.62 0.11 350. They are
+`--sector-cosmic` and so on, defined with the sectors themselves. An
+unlinked workspace's dot is a 1.5px `muted-foreground` ring.
+
+A canvas chart of one series is the neutral, never a provider's
+`chart-1..4`, with no legend; those come in only when a chart compares
+entities (two clients, sent against paid), and colour then follows the
+entity. A dashboard has no hero tiles, card grids, sparklines, rings or
+rainbows.
+
 ### Type scale
 
 | Size | Where |
@@ -161,6 +237,30 @@ platform's convention outranks ours there.
 | 15px | an h2 in the model's prose; a document's body (a plan, a board's plan, a report: 15/24, its h3 15/24 medium) |
 | 16px | a title: a dialog's, a sheet's, a page's, an inbox item's, a note's, a report's, an agent's (semibold on 24px lines at -0.01em, one recipe, `lib/typeScaleGuard.test.ts`); an h1 in the model's prose; a document's h2 |
 | 18px | a document's h1 (26px lines, -0.01em) |
+
+Work's canvases keep this scale. A document (the shared editor, a
+meeting's notes, one compare column) is 15/24 body in a 672px measure,
+title 18/26 semibold, Heading 1 16/24 semibold, Heading 2 15/24 medium,
+Heading 3 15/24 medium muted, tables 14/20 with a 600 head on `muted`,
+inline code 14px mono on `muted`; side-by-side compare columns step down
+to 14/22 with tables at 13. A form's title is 18/26 semibold, a question
+14/20 medium, its description 14/22 muted, a section 16/24 semibold. A
+sheet's cells are 13/20 in 28px rows, its column letters and row numbers
+12px muted tabular and centred on `sidebar` in a 24px letter row, numbers
+right-aligned and tabular, the formula bar 13px with a 12px reference box,
+sheet tabs 12px in a 28px row. A presence label is 11px medium. A
+dashboard's figure takes the title recipe (16/24 semibold, -0.01em,
+tabular) and is never bigger; its label is 12px muted, a section heading
+13 semibold, a question 14 medium. A meeting's turn is a 13/20 medium name,
+its minute 12px muted tabular 8px after it on one baseline, its words
+14/22. A media list row's time is 12/20 tabular, the transport's 13/20
+tabular. Strip, tile and thumbnail numbers are 11 or 12px tabular muted.
+A recording's times read m:ss under an hour and h:mm:ss from an hour up.
+Shared LifeOS screens take this scale: a mail's subject and the lead task
+are the 16px title, rows 13px with 12px second lines, a mail's body 14/22.
+Nothing inside a PDF's page or a slide is ours: the picture keeps its own
+type. work-kit's two named steps map here: `text-lead` is 15/24,
+`text-sheet-title` the 16/24 title.
 
 `text-xs` is the one class for 12px; `lib/typeScaleGuard.test.ts` refuses
 the literal `text-[12px]` throughout renderer source.
@@ -342,6 +442,14 @@ exactly this:
 | plan-ready | a page | Plan ready | muted |
 | done | a check | Done | muted |
 | idle | a faint ring | Idle | muted |
+
+Held is not Needs you. Work holds whatever would leave the machine (a
+mail, a post, an invite) in the Outbox until the person sends it. Held is
+plain muted: the Outbox's count in the rail is muted text, a held row in
+the transcript reads "Held" then the act in the person's words ("Held
+Send to events booking"), and no Outbox surface takes the amber wash or
+dot. Amber stays for a question to the person and for a site in the live
+browser that needs them to sign in. A failed send takes the red mark.
 
 Working drawn under a row that already moves (`StatusMark still`) is a 6px
 dot in the working tone, never a still arc: a frozen arc reads as a spinner
@@ -725,6 +833,169 @@ first, and a focused field lets go before the page closes (Settings puts
 the field's value back, Notes and Inbox keep the text; Search's one field
 is the page, so Escape there closes it).
 
+#### The canvas pane
+
+What is built: the pane's frame (the tab row, the kind's bar, the fold,
+the review stepper, the selection bar and the composer's chip row), with
+every kind's body a "Not built yet" stub. Each kind's own surface below
+(the sheet grid, the document editor, the PDF page and the rest), the
+Outbox, Back from Away, routines, house rules and Settings → Work are the
+standard for the work that builds them, not yet in the app.
+
+A Work thread opens an item (a mail, a document, a sheet, a PDF, slides,
+an image or a video, a live browser, a compare or History, a meeting, a
+form, a dashboard) in the split view: the item on the left, the thread on
+the right, never under 360px, one conversation toggle that folds it away
+(docs/LAYOUT.md "The canvas pane"). Help inside a canvas is always the
+thread; nothing answers inside the canvas.
+
+- **The tab row** is 36px on `sidebar`, as the title bar's strip: tabs
+  28px on the strip's chip shape (6px radius, 2px apart, 6px from the
+  row's ends), the kind's 14px glyph, the name, no dirty dot; the selected
+  tab is `muted` with foreground text. One item alone is its glyph, its
+  name as the split view's 14px semibold title and one 12px muted fact.
+- **The kind's bar** is 32px on `background` (the editor's `FileHeader`
+  row), 12px muted, in a fixed order: other people as 20px avatars, the
+  mode ("Agent suggests" or "Agent writes", a quiet menu button), the
+  kind's own tools, History, then the review stepper at the end. A kind
+  with nothing to put there draws no bar. The agent suggests on what
+  other people can edit and writes, with history and Undo, on what only
+  the person sees; the mode says which.
+- **The review stepper**: Previous, "2/6" tabular, Next, Reject (ghost),
+  Accept (secondary). It is the one place to accept or reject inside the
+  item; Accept all and Reject all live in ⋯. The current change is
+  outlined. A move counts as one change, tinted where it lands and where
+  it leaves. After a direct write the stepper's slot holds the settled
+  line ("Wrote 2 sections, 2:04 PM") with Undo.
+- **The state line** is one line across the surface for a source that
+  cannot be reached: glyph, a medium word in its tone, a muted detail, one
+  action, 32px, a hairline under it. Never a second banner.
+- **The selection bar** floats over any selection in any kind, on the
+  transcript's selection menu recipe (surfaces/TranscriptSelectionMenu.tsx):
+  the popover fill at its 12px radius, a 4px inset and 24px ghost buttons
+  at the 8px radius, so it is 32px tall. Ask comes first, with ⌘L (Ctrl+L
+  off macOS), then the kind's own controls. Ask puts the selection in the
+  thread's composer as a chip.
+- **A chip in the composer** says what a message is about (a task, a
+  mail, an event, a selection: "p. 6, clause 7.2", "0:42 to 1:05, trailer
+  v3.mp4"): 24px, the `muted` fill, 6px radius, a 12px muted glyph, the
+  label at 12px, a 16px remove control. The chips are a row of their own
+  inside the composer's box, over the field and under any attachments, 4px
+  apart, 8px from the box's edge. A chip alone can be sent.
+- **Avatars** are initials on `muted` on `image-outline`, 20px in the bar,
+  24px in lists, overlapping 6px with a 2px `background` ring.
+- **History and Share** are 320px popovers from the bar (rows 28px or
+  more, the current version by weight, Compare and Revoke shown on hover);
+  Export is a dialog with one choice.
+
+The kinds, each a hand-made body built from components/ui:
+
+- **Sheet.** A selected cell or range is the 2px `accent` outline, the one
+  place the focus ring marks content; the range fills with `sel-bg`, and
+  its row and column headers take `muted`. Another person's cell is their
+  presence hue as a 2px outline with their name on its right edge. A
+  change is one cell or one run of neighbours. Columns keep the file's
+  widths and scroll; a number never clips. A sheet's chart object is plain
+  bars on the neutral. A Microsoft-hosted file has a switch in the tab row
+  beside ⋯ ("TempCode", "Excel"); the hosted app then fills the body edge
+  to edge and our formula bar and sheet tabs go.
+- **Document.** The shared block editor in a 672px measure, a 52px
+  leading gutter for the block handle, a 24px glyph rail in the trailing
+  gutter when 24px is free, and a margin column (24px gap, 272px card)
+  from 1104px of canvas; under that the outline wins on a long document
+  and the cards go under the text. In the margin form the stepper gives
+  way to the cards. The agent's words arrive by `REVEAL`. Underline and
+  Strikethrough leave the selection bar under a 520px text width.
+- **PDF.** Paper on `stage`, 12px between sheets, a 24px side inset (12px
+  narrow), fit-width zoom from 0.5 to 1.25, a 232px margin column 16px
+  off, a 76px thumbnail rail (60px narrow). Margin notes are 13/20 muted,
+  foreground when picked. A citation in the thread ("p. 6, clause 7.2")
+  is a link that scrolls the page and marks the clause with `sel-bg-paper`.
+  A field the agent fills is a suggestion; signing is never the agent's.
+- **Slides.** A 96px thumbnail in a 140px strip, a 3px tint frame at 6px
+  radius round a 3px-radius slide, the stage at most 760px with a 16px
+  inset, a four-column grid at 12 by 16 gaps, a 164px outline preview.
+  Notes under the stage are 14/22 under a 12px medium muted "Notes". The
+  TempCode and PowerPoint switch sits in the tab row, as the sheet's does.
+- **Images and video.** The frame at radius 8 on `stage` with a 12px
+  inset; the scrubber a 24px hit row with a 4px `track`, a 12px head and
+  2 by 6 ticks in `success`; the transport 32px; list rows 32px or more on
+  a 36/20/1fr grid; a side list 240px, under the body below a 600px body.
+  Ask on a stretch or a region chips "start to end, file" or "Region of
+  file". A note for a shared review service is a suggestion here and a
+  held "Post on …" in the thread, never a canvas button.
+- **Meetings.** A 40px player row with a 24px wave; turns 8 by 12 inside,
+  radius 8, 2px apart; topic rows 13 medium on 36px with 12px tabular
+  times, an open topic inset 34px. Tasks found in a recording are
+  suggestions at their turn; Accept files them in LifeOS. A recording
+  that fails keeps its player; the empty kind offers one Choose a file.
+- **Live browser.** The Computer section's viewport rules filling the
+  body. Its bar holds the host (12px foreground, a lock glyph, never a
+  field), who drives (12px muted, foreground while the person drives) and
+  one verb, in place of the mode. Where it runs is said once, after the
+  page title in the tab row ("Landon's MacBook"). A held submit ends the
+  bar in the one primary named for the act ("Submit in Arbiter") with
+  Discard as a ghost, and never counts down. The agent never types a
+  password.
+- **Form.** Its two halves are a 24px segmented switch after the mode.
+  The bar ends in the stepper while changes wait, Publish (the one
+  primary) while unpublished, otherwise the live link in `accent` with
+  Copy and Close form. Publish is held, since it shares the link; Close
+  form and Reopen are not. Answer bars are `chart-neutral`, 8px tall,
+  square at the base and 4px round at the end, the count beside them in
+  muted tabular text.
+- **Compare and History.** A compare is read only: its bar has no mode,
+  its tab is named for the item and the versions once, in the pickers.
+  Side by side is the default from 420px a side. The list's rows are
+  13/20, the time 12 muted, a section heading 13 semibold with its count
+  12 muted. A restore on a shared item becomes suggestions, and the mode
+  button says so.
+- **Dashboard.** Figures, one chart and flat tables. A figure opens its
+  source (sheet, range, the formula in words). "As of" is said once, in
+  the bar. A new block is a suggestion even on the person's own
+  dashboard.
+
+Around the canvas:
+
+- **The Outbox** is hand-made on the split surface (the Inbox frame): a
+  held act's payload (the plain-text body, the attachment pill), a verb
+  bar whose split primary's menu makes a grant, grants as a sheet. A
+  computer-use act names the Mac and says it "takes its screen for a
+  moment", and its Sent record keeps a picture. "Sent mail cannot be taken
+  back" stands in for a way back. The right panel gains Results (the
+  `outbox` glyph, two groups).
+- **Back from Away** is a form or decision dialog whose sections come in
+  the order the person must act. "Decided while you were away:" leads the
+  away line, with Change on hover. A toast that offers Review stays until
+  pressed.
+- **Routines.** The week grid has 36px rows with hairlines, 12px muted day
+  heads (today's foreground medium) and a 6px `run-dot`; past runs use the
+  status marks. A trigger is always plain words ("Weekdays at 7:00 AM",
+  "When Dana Lee changes it"), never a tag; a watch's row ends "until
+  <day>" or "once". The status slot shows Watching, Paused, Failed or
+  Working, and nothing for an idle routine.
+- **House rules** is a `Page` of one-line `PageRow`s that open, a
+  `Switch` each, a grip in the 24px gutter on hover; past 12 rules a Find
+  `Input` over the list, its matches in `sel-bg`, reorder off while
+  filtered. A proposal row is the sentence, then "from N edits" as its
+  muted line, with Dismiss (ghost `xs`) and Add (secondary `xs`): the one
+  row with two buttons. An edit's evidence is one paragraph with its
+  removed and added words tinted, 13px (14px in a dialog). The
+  transcript's proposal line is a muted 13px line under a sent row
+  ("Add rule…", "Reword…", "Not now"); after: "Added to <workspace>'s
+  rules" with Undo.
+- **Settings for Work.** The settings list gains a Work heading after
+  Threads: the Work page, then each Work workspace led by its sector's
+  dot. A grant row is the dot (on mixed lists only), the grant's name and
+  "<workspace>, made <date> from a held <kind>" as its muted line, with
+  Remove and no confirm. A section that needs an account the person is
+  signed out of shows one muted line naming the sign-in ("Sign in to
+  LifeOS to …"), never disabled controls.
+- **The guest's page** (tempcode.landonhale.com) is the same editor on the
+  same tokens under one 44px line: the item's name, whose it is, what the
+  guest can do, until when, and the guest's avatar. What a guest may not
+  do is absent, never disabled.
+
 ## Scrolling
 
 Every scroller is a native element with `overflow-*-auto`, and one rule in
@@ -778,6 +1049,11 @@ draws the person's logo, the repo's icon or the mascot in the workspace's own
 colour, 16px in a rail row and 14px beside text, an image on the 4px radius,
 never tinted by state; it is the one drawing of it in the rail, Search,
 Inbox, Notes and the folder picker.
+
+Work's glyphs live in a second catalog, `src/renderer/src/work/icons.tsx`,
+made with the chrome's own wrapper, so the stroke is the same 1.5px; it
+rides Work's lazy chunks. chrome/icons.test.ts allows the deep Hugeicons
+imports in those two files alone.
 
 Provider marks may share an asset (Muse Code uses Meta's). `chrome/icons.test.ts`
 checks that every `HARNESS_ICONS` entry names an asset in `assets/providers`,

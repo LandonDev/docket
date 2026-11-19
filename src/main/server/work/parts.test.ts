@@ -43,7 +43,7 @@ it('a part of the context that fails to start never stops the host: its members 
   expect(() => ctx.lifeos.jwt('purdue')).toThrow('work: lifeos/ctx.ts did not start: the vault is locked')
   expect(() => ctx.links.forThread('s')).toThrow('work: lifeos/ctx.ts did not start: the vault is locked')
   // the parts that started are untouched, and the switch still answers
-  expect(() => ctx.canvas.forSession('s')).toThrow('not built: ctx.canvas.forSession (milestone 9)')
+  expect(() => ctx.canvas.open('s', 'pdf', { at: 'thread' }, 'A')).toThrow('unknown thread: s')
   expect(ctx.enabled()).toBe(false)
   expect(work.settings.set({ enabled: true })).toEqual({ enabled: true })
   work.close()

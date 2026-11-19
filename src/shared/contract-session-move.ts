@@ -111,8 +111,8 @@ export interface SessionMoveBranchLanding {
 }
 
 export const SessionMoveFileSchema = z.object({
-  /** html: <userData>/html-renders/<sessionId>/<rel>; claude: <claude config>/projects/<slug(cwd)>/<rel>; codex: <codex home>/sessions/<rel>. */
-  kind: z.enum(['html', 'claude', 'codex']),
+  /** html: <userData>/html-renders/<sessionId>/<rel>; claude: <claude config>/projects/<slug(cwd)>/<rel>; codex: <codex home>/sessions/<rel>; module: `<moduleId>/<path>`, under that move module's `dir(userData, sessionId)` (sessionMove.ts `MoveModule`). */
+  kind: z.enum(['html', 'claude', 'codex', 'module']),
   sessionId: ID,
   rel: z.string().min(1).max(1024),
   size: z.number().int().min(0),
@@ -152,7 +152,9 @@ export const SessionMoveManifestSchema = z.object({
   /** Undo checkpoints exist on the source for this subtree (they stay there). */
   checkpoints: z.boolean(),
   /** The working branch and its uncommitted changes (they travel); absent from an older sender, null when the cwd is not a git checkout. */
-  branch: SessionMoveBranchSchema.nullish()
+  branch: SessionMoveBranchSchema.nullish(),
+  /** Rows a move module keeps for these threads, by its id (sessionMove.ts `MoveModule`); absent from an older sender and when no module has any. */
+  modules: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), z.array(z.unknown()).max(20_000)).optional()
 })
 export type SessionMoveManifest = z.infer<typeof SessionMoveManifestSchema>
 

@@ -25,7 +25,9 @@ import { pushSample, releaseVelocity, rubber, suppressTextSelection, type DragSa
  * master with an empty batch, a plan with no document yet) the chat fills
  * the pane with no header, sash or fold, and a board that leaves goes in
  * the same frame the chat takes the width. Beside the board the chat never goes under 360px: the
- * board yields first (DESIGN "Panels").
+ * board yields first (DESIGN "Panels"). A view with something of its own to
+ * lead the header (the canvas pane's tab row) passes `lead` in the title's
+ * place: the header then sits on the strip's fill at the strip's inset.
  */
 
 /** The split's bounds in percent of the shell. A fitted board drawn under
@@ -34,6 +36,8 @@ const SPLIT_MIN = 30;
 const SPLIT_MAX = 70;
 
 export type SplitState = {
+  /** Where the split starts, and where a double-click on the sash puts it back. */
+  initial: number;
   split: number;
   setSplit: (n: number) => void;
   /** The person dragged the sash: their split wins over a fitted width. */
@@ -156,7 +160,7 @@ export function useSplit(initial = 50): SplitState {
     [manual, setSplit],
   );
   useEffect(() => () => settle.current?.stop(), []);
-  return { split, setSplit, manual, setManual, dragging, rootRef, startDrag };
+  return { initial, split, setSplit, manual, setManual, dragging, rootRef, startDrag };
 }
 
 /** True once the board has painted: a board there at mount (or within
@@ -226,12 +230,14 @@ export function ChatToggle({ open, onToggle }: { open: boolean; onToggle: (open:
 function ViewHeader({
   title,
   detail,
+  lead,
   actions,
   chatOpen,
   onToggleChat,
 }: {
-  title: ReactNode;
+  title?: ReactNode;
   detail?: ReactNode;
+  lead?: ReactNode;
   actions?: ReactNode;
   chatOpen: boolean;
   onToggleChat: (open: boolean) => void;
@@ -244,16 +250,28 @@ function ViewHeader({
   // fact sits 8px after it at 12px, muted. The controls are equal 28px
   // squares 2px apart, the last ending on the rows' 12px right edge.
   return (
-    <div data-view-header className={`flex h-9 shrink-0 items-center gap-2 border-b border-border bg-background pr-3 ${back ? "pl-2" : "pl-3"}`}>
+    <div
+      data-view-header
+      className={`flex h-9 shrink-0 items-center border-b border-border ${
+        // A lead is a row of chips: the strip's fill, 6px from the header's ends, the chips 2px apart.
+        lead !== undefined ? "gap-0.5 bg-sidebar px-1.5" : `gap-2 bg-background pr-3 ${back ? "pl-2" : "pl-3"}`
+      }`}
+    >
       {back ? <BackButton onBack={back} /> : null}
-      <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        {typeof title === "string" ? <TruncateTip text={title}>{heading}</TruncateTip> : heading}
-        {detail ? (
-          <span data-view-detail className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">
-            {detail}
-          </span>
-        ) : null}
-      </div>
+      {lead !== undefined ? (
+        <div data-view-lead className="flex min-w-0 flex-1 items-center">
+          {lead}
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          {typeof title === "string" ? <TruncateTip text={title}>{heading}</TruncateTip> : heading}
+          {detail ? (
+            <span data-view-detail className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">
+              {detail}
+            </span>
+          ) : null}
+        </div>
+      )}
       <div data-view-actions className="flex shrink-0 items-center gap-0.5">
         <TooltipProvider>
           {actions}
@@ -272,6 +290,7 @@ export function SplitShell({
   onToggleChat,
   title,
   detail,
+  lead,
   actions,
   held,
   fit,
@@ -290,6 +309,8 @@ export function SplitShell({
   title?: ReactNode;
   /** One muted state line after the title. */
   detail?: ReactNode;
+  /** Drawn in the title's place, with the header on the strip's fill: a row of chips (the canvas pane's tabs). */
+  lead?: ReactNode;
   /** The view's buttons, before the conversation toggle. */
   actions?: ReactNode;
   /** The thread's paused row (`heldRowOf`): under the header while the
@@ -305,7 +326,7 @@ export function SplitShell({
   className?: string;
 }) {
   const ownSplit = useSplit(50);
-  const { split, setSplit, manual, setManual, dragging, rootRef, startDrag } = splitState ?? ownSplit;
+  const { initial, split, setSplit, manual, setManual, dragging, rootRef, startDrag } = splitState ?? ownSplit;
   const fitted = fit !== undefined && !manual;
   const basis = fitted ? `min(${String(fit)}px, 50%)` : `${String(split)}%`;
   const shellWidth = useShellWidth(rootRef, fitted);
@@ -313,7 +334,7 @@ export function SplitShell({
   const drawn = fitted && shellWidth > 0 ? Math.min((fit / shellWidth) * 100, 50) : split;
   const resetSplit = (): void => {
     if (fit !== undefined) setManual(false);
-    else setSplit(50);
+    else setSplit(initial);
   };
   // The keyboard moves the split 2% (Shift 10%) of the shell, in percent.
   const sashKeys = useSashKeys({
@@ -357,10 +378,11 @@ export function SplitShell({
           }`}
           style={{ flexBasis: folded ? "100%" : basis, flexGrow: 0, flexShrink: 1 }}
         >
-          {title !== undefined ? (
+          {title !== undefined || lead !== undefined ? (
             <ViewHeader
               title={title}
               detail={detail}
+              lead={lead}
               actions={actions}
               chatOpen={!folded}
               onToggleChat={onToggleChat}

@@ -164,7 +164,7 @@ describe('importHistory', () => {
       settings: 4
     })
     expect(report.missingRoots).toEqual({ '/Users/me/Sites/mac-only': 1 })
-    expect(report.files).toEqual({ checkpoints: 2, htmlRenders: 1 })
+    expect(report.files).toEqual({ checkpoints: 2, htmlRenders: 1, canvas: 0 })
     const dst = open(into)
     expect(n(dst, 'SELECT count(*) AS n FROM sessions')).toBe(0)
     dst.close()
@@ -222,7 +222,7 @@ describe('importHistory', () => {
     expect(readFileSync(join(into, 'checkpoints', 's-app', 'files', 'a.txt'), 'utf8')).toBe('a')
     expect(JSON.parse(readFileSync(join(into, 'checkpoints', 's-mac', 'manifest.json'), 'utf8')).cwd).toBe('/Users/me/Sites/mac-only')
     expect(readFileSync(join(into, 'html-renders', 's-app', 'page.html'), 'utf8')).toBe('<p>hi</p>')
-    expect(report.files).toEqual({ checkpoints: 2, htmlRenders: 1 })
+    expect(report.files).toEqual({ checkpoints: 2, htmlRenders: 1, canvas: 0 })
     expect(report.counts.find((c) => c.table === 'cold.events')).toEqual({ table: 'cold.events', have: 0, add: 5 })
   })
 
@@ -231,7 +231,7 @@ describe('importHistory', () => {
     importHistory({ from, into, mapping: MAPPING })
     const again = importHistory({ from, into, mapping: MAPPING, dryRun: true })
     expect(again.counts.every((c) => c.add === 0)).toBe(true)
-    expect(again.files).toEqual({ checkpoints: 0, htmlRenders: 0 })
+    expect(again.files).toEqual({ checkpoints: 0, htmlRenders: 0, canvas: 0 })
     const real = importHistory({ from, into, mapping: MAPPING })
     expect(real.counts.every((c) => c.add === 0)).toBe(true)
   })
@@ -339,5 +339,45 @@ describe('importHistory', () => {
     expect(writerAlive(into)).toBeNull()
     symlinkSync(`${hostname()}-${process.pid}`, join(into, 'SingletonLock'))
     expect(writerAlive(into)).toMatch(/SingletonLock/)
+  })
+
+  it("carries Work's per-thread rows and canvas folders, by name, once", () => {
+    const CANVAS = `CREATE TABLE work_canvas_items (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, workspace_id TEXT, kind TEXT NOT NULL,
+      title TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'open', position INTEGER NOT NULL,
+      rev INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
+    seedSource()
+    const src = open(from)
+    src.exec(CANVAS)
+    src.exec(`CREATE TABLE work_only_here (id TEXT PRIMARY KEY, session_id TEXT NOT NULL)`)
+    const item = src.prepare(`INSERT INTO work_canvas_items (id, session_id, workspace_id, kind, title, source, position, created_at, updated_at) VALUES (?, ?, ?, 'document', ?, '{"at":"thread"}', 0, 1, 1)`)
+    item.run('i-app', 's-app', 'ws-app', 'Draft')
+    item.run('i-gone', 's-gone', null, 'of no imported thread')
+    src.prepare(`INSERT INTO work_only_here VALUES ('x', 's-app')`).run()
+    src.close()
+    mkdirSync(join(from, 'canvas', 's-app', 'i-app'), { recursive: true })
+    writeFileSync(join(from, 'canvas', 's-app', 'i-app', 'body.md'), '# draft')
+    const dst0 = open(into)
+    dst0.exec(CANVAS)
+    // the destination already owns the app's path: the item lands in that workspace
+    workspace(dst0, 'box-app', '/srv/work/app')
+    dst0.close()
+
+    const dry = importHistory({ from, into, mapping: MAPPING, dryRun: true })
+    expect(dry.counts.find((c) => c.table === 'work_canvas_items')).toEqual({ table: 'work_canvas_items', have: 0, add: 1 })
+    expect(dry.counts.some((c) => c.table === 'work_only_here')).toBe(false)
+    expect(dry.files.canvas).toBe(1)
+    expect(existsSync(join(into, 'canvas'))).toBe(false)
+    expect(n(open(into), 'SELECT count(*) AS n FROM work_canvas_items')).toBe(0)
+
+    const report = importHistory({ from, into, mapping: MAPPING })
+    expect(report.counts.find((c) => c.table === 'work_canvas_items')?.add).toBe(1)
+    const dst = open(into)
+    expect(dst.prepare('SELECT id, session_id, workspace_id, title FROM work_canvas_items').all()).toEqual([{ id: 'i-app', session_id: 's-app', workspace_id: 'box-app', title: 'Draft' }])
+    dst.close()
+    expect(readFileSync(join(into, 'canvas', 's-app', 'i-app', 'body.md'), 'utf8')).toBe('# draft')
+
+    const again = importHistory({ from, into, mapping: MAPPING })
+    expect(again.counts.find((c) => c.table === 'work_canvas_items')?.add).toBe(0)
+    expect(again.files.canvas).toBe(0)
   })
 })

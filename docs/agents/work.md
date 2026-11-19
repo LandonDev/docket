@@ -143,6 +143,9 @@ edits none of these.
 | Modules | `PILLAR_LOADERS` and `WORK_MODULES` (work/modules.ts) | `src/main/server/work/<pillar>/index.ts` |
 | Tools | `withWorkTools(options, session)` beside `withMacTools` for Claude; `app.workTools`, `app.workCall` and `app.workCancel` on the bridge for Codex and Muse | `tools` of its module |
 | Path fence | `workSourcePaths` in `fenceRequest` (remote/fence.ts) | none: it names files inside a `CanvasSource` |
+| Moves between hosts | `registerMoveModule(db, module)` and `tableMoveModule` (src/main/server/sessionMove.ts), called from a part at boot | the part's own file (the canvas: work/canvas/move.ts) |
+| Canvas kinds | `CANVAS` (src/renderer/src/work/canvas/registry.ts) | `src/renderer/src/work/<pillar>/canvas.ts` |
+| Act views | `ACT_VIEWS` (src/renderer/src/work/acts/registry.ts) | `src/renderer/src/work/<pillar>/act.ts` |
 | Build | `MAIN_INPUTS.workService` and `hostedPages()` (electron.vite.config.ts) | none |
 | Phone wire | the Work rows of `SUBSET` (scripts/gen-swift-contract.ts) | none until the phone's Work screens are built |
 
@@ -263,6 +266,21 @@ runs when Work turns on and whose return runs when it turns off or the host
 closes. A part that
 throws while it is made never stops the host either: its members answer
 `work: <file> did not start: …` from then on.
+
+**A thread that moves takes its Work rows with it.** A module that keeps
+rows or files per thread registers a `MoveModule` with
+`registerMoveModule(deps.db, …)` at boot, Work on or off. One whose whole
+state is a table with a `session_id` column uses `tableMoveModule(id, table,
+{ dir, claimed })`: its rows ride in the manifest's `modules[id]` and land
+with the receiver's workspace id, the files under `dir(dataDir, sessionId)`
+ride as `module` files, the source drops both once the move has finished,
+and `claimed` runs on the receiver when the landing becomes the thread. A
+host on this build without the module refuses the move by name. A host
+from before the hooks cannot land the thread without those rows: the
+digest the two hosts compare at the commit covers them, so the move fails
+there and the thread stays where it was. History import (historyImport.ts) carries every `work_*` table
+with a `session_id` column, and `canvas/<sessionId>/`, by name, with no
+hook. The canvas is the first user (docs/agents/work-canvas.md).
 
 **The two admissions.** `workspace.create { kind: 'work' }` goes to
 `work.createWorkspace`, and a `session.create` that asks for Work (`scope:
