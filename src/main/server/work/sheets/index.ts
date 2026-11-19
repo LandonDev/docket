@@ -23,10 +23,11 @@ import { sheetTools, writeAccepted } from './tools'
  * (tools.ts); on a shared sheet an agent's own idea waits as a suggestion.
  */
 
-/** A workbook in Excel keeps its history in Excel (File → Browse Version History), not here. */
-function notExcel<H extends ReturnType<typeof heldOf>>(held: H): Exclude<H, { at: 'excel' }> {
+/** A workbook in Excel or Google keeps its history there (File → Browse Version History, File → Version history), not here. */
+function notExcel<H extends ReturnType<typeof heldOf>>(held: H): Exclude<H, { at: 'excel' | 'google' }> {
   if (held.at === 'excel') throw new Error('Excel keeps this workbook\'s history: open it there with File → Browse Version History.')
-  return held as Exclude<H, { at: 'excel' }>
+  if (held.at === 'google') throw new Error('Google keeps this spreadsheet\'s history: open it there with File → Version history.')
+  return held as Exclude<H, { at: 'excel' | 'google' }>
 }
 
 function itemOf(ctx: WorkCtx, itemId: string): CanvasItem {
@@ -47,6 +48,7 @@ async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: She
   const held = heldOf(item, s.ctx.dataDir)
   const who = principalOf(s.ctx, by)
   if (held.at === 'excel') return (await import('../office/grid')).edit(s.ctx, held.ref, baseRev, mutations, who)
+  if (held.at === 'google') return (await import('../google/grid')).edit(s.ctx, held.ref, baseRev, mutations, who)
   if (held.at === 'package') {
     // A refusal (NotSaved) is said once over the grid: the edit stays in the grid, and the file keeps what it had.
     const got = await s.packages.edit(held.path, baseRev, mutations, who)
@@ -100,8 +102,8 @@ export const sheets: WorkModule = {
         const held = heldOf(item!, ctx.dataDir)
         const { rev, offset, length } = req.params
         if (held.at === 'package') return handled({ ...readRange(s.packages.fileAt(held.path, rev), offset, length), rev, format: 'xlsx' as const })
-        if (held.at === 'excel') {
-          const all = await (await import('../office/grid')).snapshot(ctx, held.ref, rev)
+        if (held.at === 'excel' || held.at === 'google') {
+          const all = held.at === 'excel' ? await (await import('../office/grid')).snapshot(ctx, held.ref, rev) : await (await import('../google/grid')).snapshot(ctx, held.ref, rev)
           return handled({ data: all.subarray(offset, offset + length).toString('base64'), size: all.length, rev, format: 'snapshot' as const })
         }
         const got = await host(ctx, 'snapshot', { sheet: held.ref, rev, offset, length })
@@ -109,8 +111,8 @@ export const sheets: WorkModule = {
       }
       case 'work.sheets.since': {
         const held = heldOf(item!, ctx.dataDir)
-        if (held.at === 'excel') {
-          const rev = (await import('../office/grid')).revOf(held.ref)
+        if (held.at === 'excel' || held.at === 'google') {
+          const rev = held.at === 'excel' ? (await import('../office/grid')).revOf(held.ref) : (await import('../google/grid')).revOf(held.ref)
           return handled(rev === req.params.rev ? { rev, ops: [] } : { rev, reload: true as const })
         }
         return handled(held.at === 'package' ? s.packages.since(held.path, req.params.rev) : await host(ctx, 'since', { sheet: held.ref, rev: req.params.rev }))
@@ -125,6 +127,8 @@ export const sheets: WorkModule = {
         const key = storeKey(held)
         if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
         else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
+        // An accepted set goes to Google as one write (google/grid.ts).
+        else if (held.at === 'google') await (await import('../google/grid')).review(ctx, held.ref, req.params.which, req.params.verdict)
         else await host(ctx, 'review', { sheet: held.ref, which: req.params.which, verdict: req.params.verdict })
         await announce(s, item!)
         return handled(await viewOf(s, item!))
@@ -173,6 +177,8 @@ export const sheets: WorkModule = {
           await (await import('../office/grid')).bringForward(ctx, item!.source)
           return handled({ opened: true as const })
         }
+        // Google's own editor, in the system browser.
+        if (held.at === 'google') return handled({ opened: true as const, url: await (await import('../google/grid')).webLink(ctx, held.ref) })
         if (held.at !== 'package') throw new Error('This sheet opens only here for now.')
         if (fullEditorHere(ctx.dataDir)) return handled({ opened: true as const, url: await openFull(ctx, item!, held.path, by) })
         await openInExcel(held.path)
@@ -253,6 +259,7 @@ export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 
     return dir
   }
   if (held.at === 'excel') throw new Error(`${item.title} lives in Excel: save or export it there.`)
+  if (held.at === 'google') throw new Error(`${item.title} lives in Google: download it there with File → Download.`)
   if (held.at === 'package') {
     if (format === 'xlsx') throw new Error('This is an Excel file already: every edit is saved into it.')
     const path = free(join(dirname(held.path), `${base}.csv`))

@@ -10,6 +10,7 @@ import { fullEditorHere } from './fullEditor'
 import type { Caller, WorkCtx } from '../modules'
 import { excelStore } from '../office/excel'
 import { excelRefOf, type ExcelRef } from '../office/grid'
+import { googleSheetRefOf, googleStore, type GoogleSheetRef } from '../google/grid'
 import { gz, writeTcsheet } from './host/backends'
 import type { HostAnswer, HostAsk, SheetRef } from './host/wire'
 import { readCsv } from './writer'
@@ -25,7 +26,7 @@ import type { SheetJobs } from './workerClient'
  * its socket.
  */
 
-export type Held = { at: 'package'; path: string } | { at: 'service'; ref: SheetRef; csv?: string } | { at: 'excel'; ref: ExcelRef }
+export type Held = { at: 'package'; path: string } | { at: 'service'; ref: SheetRef; csv?: string } | { at: 'excel'; ref: ExcelRef } | { at: 'google'; ref: GoogleSheetRef }
 
 export const PACKAGE_EXT = new Set(['.xlsx', '.xlsm'])
 
@@ -44,18 +45,21 @@ export function heldOf(item: Pick<CanvasItem, 'source' | 'title'>, dataDir?: str
   // A workbook that lives in Excel: Excel is the truth, the office pillar's helper reads and writes it (milestone 28).
   const excel = excelRefOf(s)
   if (excel) return { at: 'excel', ref: excel }
-  throw new Error(`${item.title} lives in ${s.at}: its sheet opens there (milestone 30).`)
+  // A Google spreadsheet: Google is the truth, the google pillar reads and writes it (milestone 30).
+  const google = googleSheetRefOf(s)
+  if (google) return { at: 'google', ref: { ...google, name: item.title } }
+  throw new Error(`${item.title} lives in ${s.at}: its sheet opens there.`)
 }
 
 /** The key suggestions, the mode and charts are kept under. */
 export const storeKey = (h: Held): string =>
-  h.at === 'package' ? `file:${h.path}` : h.at === 'excel' ? excelStore(h.ref.book) : 'lifeos' in h.ref ? `lifeos:${h.ref.lifeos}` : `tcsheet:${h.ref.tcsheet}`
+  h.at === 'package' ? `file:${h.path}` : h.at === 'excel' ? excelStore(h.ref.book) : h.at === 'google' ? googleStore(h.ref.fileId) : 'lifeos' in h.ref ? `lifeos:${h.ref.lifeos}` : `tcsheet:${h.ref.tcsheet}`
 
 /** A file path an agent names: absolute, a workbook, there. */
-export function heldOfPath(path: string, dataDir: string): Exclude<Held, { at: 'excel' }> {
+export function heldOfPath(path: string, dataDir: string): Exclude<Held, { at: 'excel' | 'google' }> {
   if (!isAbsolute(path)) throw new Error(`${path} is not an absolute path.`)
   if (!existsSync(path)) throw new Error(`There is no file at ${path}.`)
-  return heldOf({ source: { at: 'file', host: '', path }, title: basename(path) }, dataDir) as Exclude<Held, { at: 'excel' }>
+  return heldOf({ source: { at: 'file', host: '', path }, title: basename(path) }, dataDir) as Exclude<Held, { at: 'excel' | 'google' }>
 }
 
 /** Where the sheet read from a .csv is kept: one per CSV path, under this host's data. */
@@ -181,6 +185,20 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       suggestions: s.suggestions.open(key),
       ...(written ? { written } : {}),
       reach: { parts: ['formatting', 'inserting rows and columns'], to: 'excel' }
+    }
+  }
+  if (held.at === 'google') {
+    const grid = await import('../google/grid')
+    return {
+      ...base,
+      name: held.ref.name,
+      // As an Excel workbook: cell contents save, and the switch opens the spreadsheet in Google.
+      store: 'package',
+      rev: grid.follow(held.ref, item.id, () => void import('./index').then((m) => m.announce(s, item))),
+      shared,
+      suggestions: s.suggestions.open(key),
+      ...(written ? { written } : {}),
+      reach: { parts: ['formatting', 'inserting rows and columns'], to: 'google' }
     }
   }
   const st = await host(s.ctx, 'open', { sheet: held.ref })

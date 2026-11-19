@@ -37,6 +37,8 @@ async function resolve(ctx: ToolCtx, a: TargetArgs): Promise<{ t: DocTarget; sha
     const item = ctx.canvas.get(a.item)
     if (!item || item.kind !== 'document' || item.sessionId !== ctx.canvas.paneOf(ctx.sessionId)) throw new Error(`This thread has no document ${a.item} in its canvas.`)
     source = item.source
+    // Google is the truth for a Google Doc: an agent's change goes there as a suggestion.
+    if (source.at === 'google') throw new Error(`${item.title} lives in Google: read it with google_doc_read and change it with google_doc_suggest.`)
   } else if (a.doc) source = { at: 'lifeos', table: 'docs', id: a.doc }
   else if (a.file) source = { at: 'file', host: ctx.host, path: a.file }
   else throw new Error('Pass `item` (a document open in the canvas), `doc` (a LifeOS document id) or `file` (a .tcdoc path).')

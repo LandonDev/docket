@@ -10,7 +10,9 @@ import { canonicalPath } from '../service/ctx'
  * What a source names, as the Work service and LifeOS know it
  * (docs/agents/work-docs.md "Sources"). A LifeOS project note resolves to the
  * document it is (`projectDocs:open`, null while LifeOS keeps it as markdown);
- * a `.tcdoc` must be on this host and inside the caller's path fence.
+ * a `.tcdoc` must be on this host and inside the caller's path fence; a
+ * Google Doc is its mirror on this host (work/google), outside any fence
+ * since no caller names that path.
  */
 export type DocTarget =
   | { at: 'lifeos'; doc: string; docId: string; source: Extract<CanvasSource, { at: 'lifeos' }> }
@@ -40,7 +42,14 @@ export async function targetOf(ctx: WorkCtx, by: Caller, method: string, source:
     const path = canonicalPath(source.path)
     return { at: 'file', doc: fileDocName(path), path, source: { at: 'file', host: ctx.host, path } }
   }
-  throw new Error('a document is a LifeOS document or a .tcdoc')
+  // A Google Doc opens on its mirror, read from Google when it moved (work/google/docs.ts).
+  if (source.at === 'google') {
+    const { docMirror } = await import('../google/docs')
+    const { googleOf } = await import('../google/google')
+    const path = await docMirror(ctx, googleOf(ctx), source)
+    return { at: 'file', doc: fileDocName(path), path, source: { at: 'file', host: ctx.host, path } }
+  }
+  throw new Error('a document is a LifeOS document, a .tcdoc or a Google Doc')
 }
 
 /** The row LifeOS keeps for a document, or null for a file. */

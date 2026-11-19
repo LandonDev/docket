@@ -63,8 +63,8 @@ export interface SheetSuggestion {
 export interface SheetReach {
   /** the phrases, at most a handful */
   parts: string[]
-  /** where the switch goes: desktop Excel for a Microsoft file or any he opens in Excel; the full editor on the box otherwise */
-  to: 'excel' | 'full'
+  /** where the switch goes: desktop Excel for a Microsoft file or any he opens in Excel; Google's own editor, in the system browser, for a Google spreadsheet; the full editor on the box otherwise */
+  to: 'excel' | 'google' | 'full'
 }
 
 /** What the agent last wrote directly, for the bar's written line and its Undo. */

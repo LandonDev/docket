@@ -424,7 +424,7 @@ export function TabEnd(props: Props) {
   // The host may start the full editor before it answers: the pressed side spins until then.
   const [opening, setOpening] = useState(false);
   if (!reach) return null;
-  const app = reach.to === "excel" ? "Excel" : "Full editor";
+  const app = reach.to === "excel" ? "Excel" : reach.to === "google" ? "Google" : "Full editor";
   return (
     <Tabs
       value="tempcode"
