@@ -5308,3 +5308,132 @@ public struct RuleProposal: Codable, Hashable, Sendable {
         try container.encode(updatedAt, forKey: .updatedAt)
     }
 }
+
+public struct GuestLinkRow: Codable, Hashable, Sendable {
+    public struct Source: Codable, Hashable, Sendable {
+        public enum Table: RawRepresentable, Codable, Hashable, Sendable {
+            case docs
+            case sheets
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "docs": self = .docs
+                case "sheets": self = .sheets
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .docs: "docs"
+                case .sheets: "sheets"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let at: String
+        public let table: Table
+        public let id: String
+
+        public init(at: String, table: Table, id: String) {
+            self.at = at
+            self.table = table
+            self.id = id
+        }
+    }
+    public enum Role: RawRepresentable, Codable, Hashable, Sendable {
+        case view
+        case comment
+        case edit
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "view": self = .view
+            case "comment": self = .comment
+            case "edit": self = .edit
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .view: "view"
+            case .comment: "comment"
+            case .edit: "edit"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum By: RawRepresentable, Codable, Hashable, Sendable {
+        case owner
+        case agent
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "owner": self = .owner
+            case "agent": self = .agent
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .owner: "owner"
+            case .agent: "agent"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let name: String
+    public let source: Source
+    public let title: String
+    public let role: Role
+    public let createdAt: Int
+    public let expiresAt: Int
+    public let revokedAt: Int?
+    public let by: By
+    public let lastOpenedAt: Int?
+    public let open: Int
+
+    public init(id: String, name: String, source: Source, title: String, role: Role, createdAt: Int, expiresAt: Int, revokedAt: Int?, by: By, lastOpenedAt: Int?, open: Int) {
+        self.id = id
+        self.name = name
+        self.source = source
+        self.title = title
+        self.role = role
+        self.createdAt = createdAt
+        self.expiresAt = expiresAt
+        self.revokedAt = revokedAt
+        self.by = by
+        self.lastOpenedAt = lastOpenedAt
+        self.open = open
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, source, title, role, createdAt, expiresAt, revokedAt, by, lastOpenedAt, open
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(source, forKey: .source)
+        try container.encode(title, forKey: .title)
+        try container.encode(role, forKey: .role)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(expiresAt, forKey: .expiresAt)
+        try container.encode(revokedAt, forKey: .revokedAt)
+        try container.encode(by, forKey: .by)
+        try container.encode(lastOpenedAt, forKey: .lastOpenedAt)
+        try container.encode(open, forKey: .open)
+    }
+}

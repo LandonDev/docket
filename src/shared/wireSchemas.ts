@@ -8,6 +8,7 @@ import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, ty
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
 import type { DraftEdit, EditOp, HouseRule, RuleProposal, RulesPage, VoiceFacts } from './contract-work-rules'
+import { GUEST_ROLES, GuestSourceSchema, type GuestLinkRow } from './contract-work-guests'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
 import { ComputerHistoryCallSchema, ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS } from './contract-computer'
@@ -1205,6 +1206,23 @@ export const RulesPageSchema = z.object({ rules: z.array(HouseRuleSchema), propo
 export const VoiceFactsSchema = z.object({ on: z.boolean(), count: z.number().int().nullable(), since: z.number().int().nullable(), from: z.array(z.string()), error: z.string().optional() })
 /** A workspace's rules or proposals changed: a page on screen reads again. */
 export const WorkRulesPushSchema = push('work.rules', { workspaceId: z.string() })
+
+// ── guest links (contract-work-guests.ts, milestone 31) in the phone's Settings → Work ──
+export const GuestLinkRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  source: GuestSourceSchema,
+  title: z.string(),
+  role: z.enum(GUEST_ROLES),
+  createdAt: z.number().int(),
+  expiresAt: z.number().int(),
+  revokedAt: z.number().int().nullable(),
+  by: z.enum(['owner', 'agent']),
+  lastOpenedAt: z.number().int().nullable(),
+  open: z.number().int()
+})
+/** A host's guest links changed. */
+export const WorkGuestsPushSchema = push('work.guests', {})
 /** Computer use (contract-computer.ts): the desktop's; not in RemotePushSchema, since the phone does not speak it. */
 export const ComputerPushSchema = push('computer', {
   service: ComputerServiceStateSchema,
@@ -1275,7 +1293,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkOutboxResultPushSchema,
   WorkLifeosPushSchema,
   AwayPushSchema,
-  WorkRulesPushSchema
+  WorkRulesPushSchema,
+  WorkGuestsPushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -1390,6 +1409,8 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof WorkLifeosPushSchema, PushOf<'work.lifeos'>>>,
   Expect<Mirror<typeof AwayPushSchema, PushOf<'away'>>>,
   Expect<Mirror<typeof WorkRulesPushSchema, PushOf<'work.rules'>>>,
+  Expect<Mirror<typeof WorkGuestsPushSchema, PushOf<'work.guests'>>>,
+  Expect<Mirror<typeof GuestLinkRowSchema, GuestLinkRow>>,
   Expect<Mirror<typeof HouseRuleSchema, HouseRule>>,
   Expect<Mirror<typeof EditOpSchema, EditOp>>,
   Expect<Mirror<typeof DraftEditSchema, DraftEdit>>,

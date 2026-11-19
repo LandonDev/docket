@@ -2902,6 +2902,56 @@ public enum Methods {
         public typealias Output = RuleProposal
     }
 
+    public enum WorkGuestsList: ContractMethod {
+        public static let name = "work.guests.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = [GuestLinkRow]
+    }
+
+    public enum WorkGuestsRekey: ContractMethod {
+        public static let name = "work.guests.rekey"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let linkId: String
+
+            public init(linkId: String) {
+                self.linkId = linkId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let url: String
+
+            public init(url: String) {
+                self.url = url
+            }
+        }
+    }
+
+    public enum WorkGuestsRevoke: ContractMethod {
+        public static let name = "work.guests.revoke"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let linkId: String
+
+            public init(linkId: String) {
+                self.linkId = linkId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let ok: Bool
+
+            public init(ok: Bool) {
+                self.ok = ok
+            }
+        }
+    }
+
     public enum AwayGet: ContractMethod {
         public static let name = "away.get"
 

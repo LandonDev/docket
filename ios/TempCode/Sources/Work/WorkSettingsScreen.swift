@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import TempCodeClient
 import TempCodeContract
 
@@ -33,6 +34,10 @@ private struct WorkHostSection: View {
     let named: Bool
     @State private var grants: [OutboxGrant]?
     @State private var rules: [ToolRulesCard]?
+    /// This host's guest links; nil while reading, or when another host serves them.
+    @State private var guests: [GuestLinkRow]?
+    /// A new address, shown once after New Address.
+    @State private var rekeyed: String?
     @State private var switching = false
 
     var body: some View {
@@ -48,8 +53,23 @@ private struct WorkHostSection: View {
         } footer: {
             if !work.canAdmin { Text("This phone’s key can’t change Work on \(client.environment.name).") }
         }
-        .task(id: work.isOn) { await load() }
+        .task(id: "\(work.isOn)-\(work.guestsRev)") { await load() }
         if work.isOn {
+            if let guests {
+                Section("Guest links") {
+                    if guests.isEmpty {
+                        Text("None. A link is made from a document’s or a sheet’s Share.").textStep(.meta)
+                    }
+                    ForEach(guests, id: \.id) { link in guestRow(link, work: work) }
+                }
+                .alert("New address", isPresented: Binding(get: { rekeyed != nil }, set: { if !$0 { rekeyed = nil } })) {
+                    Button("Copy") { UIPasteboard.general.string = rekeyed; rekeyed = nil }
+                    Button("Done", role: .cancel) { rekeyed = nil }
+                } message: {
+                    Text("Shown once. The address before opens nothing from now on.")
+                }
+
+            }
             Section("Grants") {
                 if let grants {
                     if grants.isEmpty {
@@ -99,8 +119,53 @@ private struct WorkHostSection: View {
         }
     }
 
+    /// A link: who it is for and what, the role and when it ends (or that it ended), and its actions.
+    private func guestRow(_ link: GuestLinkRow, work: WorkHost) -> some View {
+        let ended = link.revokedAt != nil || Double(link.expiresAt) < Date.now.timeIntervalSince1970 * 1000
+        let ends = Date(timeIntervalSince1970: Double(link.expiresAt) / 1000).formatted(.dateTime.month(.abbreviated).day())
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(link.name) · \(link.title)").textStep(.title).lineLimit(1)
+                Text(link.revokedAt != nil ? "Revoked" : ended ? "Ended \(ends)" : "\(link.role.rawValue.capitalized), ends \(ends)\(link.open > 0 ? " · open now" : "")")
+                    .textStep(.meta)
+                    .lineLimit(1)
+            }
+            .opacity(ended ? 0.5 : 1)
+            Spacer(minLength: 8)
+            if !ended {
+                Menu {
+                    if work.canApprove {
+                        Button("New Address", systemImage: "arrow.triangle.2.circlepath") { Task { await rekey(link) } }
+                    }
+                    Button("Revoke", systemImage: "xmark.circle", role: .destructive) { Task { await revoke(link) } }
+                } label: {
+                    Image(systemName: GlassMetrics.moreSymbol)
+                        .frame(minWidth: Layout.rowHeight, minHeight: Layout.rowHeight)
+                }
+                .accessibilityLabel("Actions for \(link.name)’s link")
+            }
+        }
+    }
+
+    private func rekey(_ link: GuestLinkRow) async {
+        do { rekeyed = try await client.work.rekey(link) } catch {
+            FleetToastCenter.shared.post(message: "No new address: \(ActionError.wrap(error).message)")
+        }
+    }
+
+    private func revoke(_ link: GuestLinkRow) async {
+        do {
+            try await client.work.revoke(link)
+            guests = try? await client.work.guestLinks()
+        } catch {
+            FleetToastCenter.shared.post(message: "Not revoked: \(ActionError.wrap(error).message)")
+        }
+    }
+
     private func load() async {
         guard client.work.isOn else { return }
+        // Only the host that serves LifeOS's documents keeps links; the others answer "served elsewhere" and show none.
+        guests = try? await client.work.guestLinks()
         grants = (try? await client.work.grants()) ?? []
         rules = try? await client.work.rules()
     }

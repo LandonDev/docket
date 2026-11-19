@@ -467,6 +467,11 @@ export const SUBSET: SubsetEntry[] = [
   method('work.rules.remove', z.object({ removed: z.boolean() })),
   method('work.rules.order', z.object({ ok: z.literal(true) })),
   method('work.rules.decide', W.RuleProposalSchema),
+  // guest links (milestone 31): Settings → Work lists, rekeys and revokes them
+  type('GuestLinkRow', W.GuestLinkRowSchema),
+  method('work.guests.list', z.array(W.GuestLinkRowSchema)),
+  method('work.guests.rekey', z.object({ url: z.string() })),
+  method('work.guests.revoke', z.object({ ok: z.literal(true) })),
   method('away.get', W.AwaySnapshotSchema),
   method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state }))
 ]

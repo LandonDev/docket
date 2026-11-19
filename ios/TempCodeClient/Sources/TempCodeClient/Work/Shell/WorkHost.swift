@@ -44,6 +44,8 @@ public final class WorkHost {
     public private(set) var away: AwaySnapshot?
     /// Moves on each `work.outbox.result` push: a Results list on screen reads again.
     public private(set) var resultsRev = 0
+    /// Moves on each `work.guests` push: Settings → Work's guest links read again.
+    public private(set) var guestsRev = 0
     /// Moves on each `work.rules` push, per workspace: its rules page reads again.
     public private(set) var rulesRev: [String: Int] = [:]
     /// Set when this host's Away ended and nobody has reviewed it here yet.
@@ -118,6 +120,8 @@ public final class WorkHost {
             resultsRev += 1
         case .workRules(let value):
             rulesRev[value.workspaceId, default: 0] += 1
+        case .workGuests:
+            guestsRev += 1
         case .away(let value):
             take(AwaySnapshot(state: value.state, decided: value.decided), live: true)
         default:
@@ -267,6 +271,22 @@ public final class WorkHost {
     @discardableResult
     public func decide(_ proposalId: String, to: Methods.WorkRulesDecide.Params.To) async throws -> RuleProposal {
         try await socket.request(Methods.WorkRulesDecide.self, .init(id: proposalId, to: to))
+    }
+
+    // MARK: - guest links (milestone 31)
+
+    /// Every link this host serves, live first; a host that does not serve LifeOS's documents answers `served elsewhere`.
+    public func guestLinks() async throws -> [GuestLinkRow] {
+        try await socket.request(Methods.WorkGuestsList.self, .init())
+    }
+
+    /// A new address for a live link, shown once; the one before opens nothing from now on.
+    public func rekey(_ link: GuestLinkRow) async throws -> String {
+        try await socket.request(Methods.WorkGuestsRekey.self, .init(linkId: link.id)).url
+    }
+
+    public func revoke(_ link: GuestLinkRow) async throws {
+        _ = try await socket.request(Methods.WorkGuestsRevoke.self, .init(linkId: link.id))
     }
 
     // MARK: - Settings → Work
