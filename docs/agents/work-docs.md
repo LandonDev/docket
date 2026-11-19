@@ -26,9 +26,10 @@ makes a markdown note a document once LifeOS's `blockDocs` is on, and
 answers null before; the item then says LifeOS keeps it as text), or a
 `.tcdoc` on this host inside the caller's path fence. Every method names the
 source, not a canvas item, so the Docs view opens a document with no
-thread. The kind still claims Word and Google documents (`opens`), which
-its body cannot open yet: M21 imports Word files and M30 opens Google's;
-until then the item's state line says it did not open.
+thread. The kind also claims Word, OpenDocument and RTF files: its body
+makes such a file a `.tcdoc` beside it and the item reopens on that
+(work-formats.md "Import and export"). Google documents (`opens`) wait for
+M30; the item's state line says it did not open.
 
 A LifeOS document is served by the host that serves LifeOS's documents (the
 box). Asked on another host, `work.docs.open` and `token` answer "served

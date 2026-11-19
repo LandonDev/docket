@@ -891,7 +891,12 @@ thread; nothing answers inside the canvas.
   24px in lists, overlapping 6px with a 2px `background` ring.
 - **History and Share** are 320px popovers from the bar (rows 28px or
   more, the current version by weight, Compare and Revoke shown on hover);
-  Export is a dialog with one choice.
+  Export is a dialog with one choice (the format, a `FieldRow` with its
+  select; one muted line under it only when comments or suggestions stay
+  behind or go with it). A file dragged over a document's surface draws a
+  `muted` wash 12px inside it with a hairline and one 13px muted line
+  ("Drop to open as a document"), then the spinner and the file's name
+  while it opens (work/formats/Import.tsx).
 
 The kinds, each a hand-made body built from components/ui:
 

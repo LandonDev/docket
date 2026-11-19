@@ -1,8 +1,7 @@
 # Work: conversions, import and export
 
 Milestone 15 of the Work plan built the toolchain and the job runner (this
-file's first two parts). Milestone 21 (import and export) adds its own part
-after them. [work.md](work.md) says what is mounted for the `formats` pillar
+file's first two parts). Milestone 21 built import and export, the third. [work.md](work.md) says what is mounted for the `formats` pillar
 and how a pillar registers.
 
 ## The toolchain
@@ -199,3 +198,81 @@ the debs and dmg paths ran only for real, on the box and the Mac),
 `work/formats/forward.server.test.ts` (a real server and a key's link; with
 `TEMP_CODE_WORK_TOOLS_DATA=<a userData the installer filled>` it runs the
 real LibreOffice), `ToolchainRow.dom.test.tsx`.
+
+## Import and export
+
+Milestone 21. The readers and writers are work-kit's (`work-kit/src/formats`,
+its README is the account): our own .docx reader and writer (the formats
+report, `.temp-code/reports/hIIKbJY4UKbv.md`, picked both: no other pipeline
+kept comments, replies, resolved state, tracked changes, notes, page breaks,
+headers and columns, and every `@blocknote/xl-*` package is GPL), markdown
+with front matter kept, HTML through DOMPurify and an Office clean-up, the
+`.tcdoc` an import makes, and the export of a live document. The pillar's
+files: `formats/pillar.ts` (the methods), `importer.ts`, `exporter.ts`,
+`print.ts`, `pdfIn.ts`, `serviceRoutes.ts`; the window's in
+`src/renderer/src/work/formats/` (`ExportDialog.tsx`, `Import.tsx`, `model.ts`).
+
+**In** (`work.formats.import`, `operate`, → `ImportAnswer`): from a file on
+this host (`{at: 'source'}`: the canvas opened it; the path fence holds a
+remote key to its roots), a dropped file's bytes (`{at: 'bytes'}`: kept in the
+thread's Work workspace folder, or `<userData>/attachments/work-imports` for
+a Work Chat), or HTML the window read into blocks (`{at: 'blocks'}`). The
+document is `<name>.tcdoc` beside the original (`<name> 2.tcdoc` and on when
+taken); the original is never touched.
+- `.docx`: `readDocx`. `.odt`, `.rtf`, `.doc`: LibreOffice to `.docx`
+  (`ctx.convert`, the toolchain's pairs), then the same reader. `.md`:
+  `readMarkdown`. `.pdf`: pymupdf4llm to markdown (`pdf → md`, `pdfIn.ts`),
+  Docling when pymupdf4llm reads next to no text and the host has Docling
+  (none does yet). `.html`: read in the window only.
+- The live text is the original, before anyone's tracked change; an `import`
+  version is cut of it; each author of tracked changes gets one pending branch,
+  `external:<name>`, which the canvas steps and Accept and Reject decide.
+  Comment threads go into `work_docs_threads` (authors `external:<name>`,
+  Word's dates, replies, resolved), their marks on the words.
+- With `sessionId` the document opens in that thread's canvas and `itemId`
+  (the Word file's own item) closes. The answer says `outsiders` when the file
+  carried other people's comments or changes: such a file is shared from the
+  start (§3, §8.4), which `scope.shared` and `work.docs.open` must answer from
+  M31's link rows; today a `.tcdoc` is `shared: false` everywhere.
+- What could not be kept comes back as `warnings`, a person's words (a picture
+  in a table cell, a nested table, a paragraph-format change); the window
+  shows them in one toast.
+
+**Out** (`work.formats.export`, `read`, → `ExportAnswer` with the file as
+base64): main reads the thread rows and names and asks the Work service's
+`/internal/formats/export`, which reads the live state, the pending branches
+(`history.branches`) and the threads' marks and writes Word
+(`documentForExport`, `writeDocx`: branches as `w:ins`/`w:del` with their
+authors, threads as Word comments, a `.tcdoc`'s stored sidecar for notes and
+the page) or markdown. OpenDocument and RTF are that Word file through
+LibreOffice (RTF keeps no comment replies). HTML is made in the window
+(`htmlDocument`, from the editor's blocks); PDF is the same page laid out for
+paper (A4, or Letter in a US-style locale) and printed by
+`work.formats.print` (`operate`) in a hidden Electron window with no script
+and no network (`print.ts`; a test hands in its own printer). A LifeOS
+document another host serves is asked of that host.
+
+**The window.** The document kind's ⋯ has Export…, a form dialog with one
+choice (Format: Word, PDF, Markdown, Web page, OpenDocument, Rich Text; the
+last one chosen comes first) and one line under it only when comments or
+suggestions stay behind or go with it. A file dropped on an open document
+opens beside it as a document (a muted wash says so while it is over). A copy
+from a document is written for mail and sheets (`mailSafeCopy`): email-safe
+`text/html` (styles inline, tables with borders, colours and widths as
+attributes) and, for a copy that is one table, tab-separated `text/plain`; the
+editor's own `blocknote/html` stays, so a paste back into a document is
+unchanged.
+
+**The tool.** `scripts/work-tools/formats.json`: pymupdf4llm 2.1 with PyMuPDF
+2.1 (AGPL: a separate, unmodified Python process; the rest of the closure
+is permissive), pinned by `pip-lock.ts`, 277 MB in the venv. Installed and
+probed on the box (2026-11-19); not on the Mac, whose PDF imports forward to
+the box.
+
+Tests: work-kit's `formats/docx/matrix.test.ts` (the report's 16-file matrix,
+no worse than its reader and writer), `formats/tcdoc/tcdoc.test.ts` (branches
+per author through a real history; the export of a live document),
+`formats/html/html.jsdom.ts`; here `work/formats/importExport.test.ts` (the
+service in process; with `TEMP_CODE_WORK_TOOLS_DATA` the round trips through
+the real LibreOffice and pymupdf4llm) and
+`src/renderer/src/work/formats/formats.dom.test.tsx`.
