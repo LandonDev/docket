@@ -3,9 +3,10 @@ import { Mail } from "../icons";
 import type { WorkViewDef } from "../views/registry";
 
 /**
- * The Mail row of a linked Work workspace and its view (docs/agents/work-mail.md).
- * A stub: its view says "Not built yet" and its row has no fact until the
- * mail pillar's milestone (23) points `chunk` at its own module and fills `fact`.
+ * The Mail row of a linked Work workspace and its view
+ * (docs/agents/work-mail.md): LifeOS's mail client, filtered to the sector.
+ * The row has no fact yet: an unread count would read LifeOS from the
+ * column, before the view is opened.
  */
 export const mailView: WorkViewDef = {
   id: "mail",
@@ -13,5 +14,5 @@ export const mailView: WorkViewDef = {
   icon: Mail,
   order: 0,
   fact: () => null,
-  chunk: defineChunk("work-mail-view", () => import("../views/NotBuilt")),
+  chunk: defineChunk("work-mail-view", () => import("./MailView")),
 };

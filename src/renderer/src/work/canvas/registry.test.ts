@@ -108,8 +108,8 @@ describe("the act views", () => {
   });
 
   it("falls back to the generic view until a pillar gives a kind its own", () => {
-    // Milestone 25 gave calendar.op its own view; the rest wait for their pillars.
-    const own = new Set<string>(["calendar.op"]);
+    // Milestone 25 gave calendar.op its own view and milestone 23 mail.send; the rest wait for their pillars.
+    const own = new Set<string>(["calendar.op", "mail.send"]);
     for (const kind of ACT_KINDS) {
       if (own.has(kind)) expect(ACT_VIEWS[kind].chunk, kind).not.toBeNull();
       else expect(ACT_VIEWS[kind].chunk, kind).toBeNull();

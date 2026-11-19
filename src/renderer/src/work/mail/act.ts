@@ -1,11 +1,11 @@
+import { defineChunk } from "../../lib/lazyChunk";
 import type { ActViews } from "../acts/registry";
 
 /**
  * How the mail pillar's held acts are shown (`mail.send`;
- * docs/agents/work-mail.md). A stub: `chunk: null` draws the Outbox's
- * generic view (the act's summary and its payload as text) until the pillar's
- * milestone gives the kind a view of its own.
+ * docs/agents/work-mail.md): who the mail is from and to, its subject, its
+ * words and its files, exactly as they go.
  */
 export const mailActs = {
-  "mail.send": { kind: "mail.send", chunk: null },
+  "mail.send": { kind: "mail.send", chunk: defineChunk("work-mail-act", () => import("./MailAct")) },
 } satisfies ActViews;

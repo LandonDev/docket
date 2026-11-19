@@ -145,8 +145,8 @@ describe("the Outbox", () => {
   it("lists every host's held acts under their workspace, and shows exactly what goes", async () => {
     await open();
     expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"))).toEqual(["Outbox", "A Work workspace", "A Work workspace"]);
-    // the first is open: its fields and its body as plain text
-    expect(screen.getByText("Dana Lee <dana@purdue.edu>")).toBeTruthy();
+    // the first is open: mail's own view (milestone 23), its fields and its body as plain text
+    await waitFor(() => expect([...document.querySelectorAll("dd")].map((d) => d.textContent)).toContain("Dana Lee dana@purdue.edu"));
     expect(screen.getByText(/About Budget\./)).toBeTruthy();
     fireEvent.click(screen.getByText("Post message with Slack"));
     expect(screen.getByText("staff")).toBeTruthy();
