@@ -1,13 +1,13 @@
 import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
-import { sep } from 'node:path'
+import { posix, win32 } from 'node:path'
 import type {
   MacBridgeRule,
   MacDecideRemember,
   MacRemember,
   MacRunRememberOffer
 } from '@shared/contract-macbridge-rules'
-import { insideRoots, realSpelling } from './fence'
+import { insideRoots, plainWindowsPath, realSpelling } from './fence'
 
 /**
  * The Mac bridge's remember rules (docs/box.md "The Mac bridge", "Remembered
@@ -21,10 +21,35 @@ import { insideRoots, realSpelling } from './fence'
  * directory, or any credential path in CREDENTIAL_PATHS (in its argv,
  * command text or cwd) asks every time, and no rule is ever made from it.
  * Over-asking is the safe side: `echo sudo` asks too.
+ *
+ * On a Windows host (docs/agents/windows-host.md) WINDOWS_ALWAYS_ASK joins
+ * the list, PowerShell with an encoded command or an execution policy asks,
+ * a recursive delete (`rm -r`, `rd /s`, `Remove-Item -Recurse`, `del /s`)
+ * of a drive, a top folder or the profile asks, and names and paths compare
+ * case-blind with `\` read as `/` and `.exe` dropped.
  */
 
 /** Programs that ask every time, under every rule. One place; docs/box.md lists them. */
 export const ALWAYS_ASK = ['sudo', 'su', 'doas', 'security', 'osascript', 'launchctl'] as const
+/** Windows programs that ask every time on a Windows host: the registry, services, tasks, trust, ACLs, boot and disks. */
+export const WINDOWS_ALWAYS_ASK = [
+  'runas',
+  'reg',
+  'regedit',
+  'schtasks',
+  'sc',
+  'certutil',
+  'cmdkey',
+  'netsh',
+  'icacls',
+  'takeown',
+  'bcdedit',
+  'vssadmin',
+  'diskpart',
+  'format',
+  'wmic',
+  'set-executionpolicy'
+] as const
 /** `defaults <verb>` that writes; `defaults read` is fine. */
 const DEFAULTS_WRITES = new Set(['write', 'delete', 'import', 'rename'])
 /** Path names that mark a credential: in a command's text or cwd they make it ask every time. */
@@ -45,7 +70,10 @@ export const CREDENTIAL_PATHS = [
   '.codex/auth.json',
   'id_rsa',
   'id_ecdsa',
-  'id_ed25519'
+  'id_ed25519',
+  'Microsoft/Credentials',
+  'Microsoft/Protect',
+  'Microsoft/Vault'
 ] as const
 /** Shells and wrappers that run whatever follows them: never offered, never matched, as a 'program'. */
 const NOT_A_PROGRAM = new Set([
@@ -69,7 +97,12 @@ const NOT_A_PROGRAM = new Set([
   'timeout',
   'caffeinate',
   'arch',
-  'script'
+  'script',
+  'cmd',
+  'powershell',
+  'pwsh',
+  'start',
+  'call'
 ])
 
 export interface RunSpec {
@@ -80,6 +113,13 @@ export interface RunSpec {
 }
 
 const strip = (word: string): string => word.slice(word.lastIndexOf('/') + 1)
+/** A program's name as Windows reads it: after either slash, case-blind, without .exe and its kin. */
+const stripWin = (word: string): string =>
+  word
+    .slice(Math.max(word.lastIndexOf('/'), word.lastIndexOf('\\')) + 1)
+    .toLowerCase()
+    .replace(/\.(exe|com|cmd|bat|ps1)$/, '')
+const nameOf = (platform: NodeJS.Platform): ((word: string) => string) => (platform === 'win32' ? stripWin : strip)
 
 /**
  * A shell line's words, quotes removed, and whether it is more than one
@@ -137,7 +177,10 @@ export function shellWords(line: string): { words: string[]; compound: boolean }
 }
 
 /** The program a 'program' rule names for a command, or null where none would be safe to name. */
-export function programOf(spec: { argv?: string[]; command?: string }): string | null {
+export function programOf(
+  spec: { argv?: string[]; command?: string },
+  platform: NodeJS.Platform = process.platform
+): string | null {
   let first: string | undefined
   if (spec.argv) first = spec.argv[0]
   else if (spec.command !== undefined) {
@@ -145,27 +188,102 @@ export function programOf(spec: { argv?: string[]; command?: string }): string |
     if (compound) return null
     first = words.find((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w))
   }
-  const name = first ? strip(first) : ''
+  const name = first ? nameOf(platform)(first) : ''
   if (!name || NOT_A_PROGRAM.has(name)) return null
   return name
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const CREDENTIAL_RES = CREDENTIAL_PATHS.map(
-  (name) => [name, new RegExp(`(^|[^A-Za-z0-9_.-])${escape(name)}(?=$|[^A-Za-z0-9_-])`)] as const
-)
+const credentialRes = (flags: string) =>
+  CREDENTIAL_PATHS.map(
+    (name) => [name, new RegExp(`(^|[^A-Za-z0-9_.-])${escape(name)}(?=$|[^A-Za-z0-9_-])`, flags)] as const
+  )
+const CREDENTIAL_RES = credentialRes('')
+const CREDENTIAL_RES_WIN = credentialRes('i')
 
-/** home and every directory above it. */
-function coversHome(dir: string, home: string): boolean {
-  return dir === sep || dir === home || home.startsWith(dir.endsWith(sep) ? dir : dir + sep)
+/** Home by its real spelling, read on this machine only (a test of another platform's paths keeps it as given). */
+const realHomeOf = (home: string, platform: NodeJS.Platform): string =>
+  platform === process.platform ? realSpelling(home) : home
+
+/** home and every directory above it (a drive's root on Windows, case-blind there). */
+export function coversHome(dir: string, home: string, platform: NodeJS.Platform = process.platform): boolean {
+  const win = platform === 'win32'
+  const sep = win ? win32.sep : posix.sep
+  const d = win ? dir.toLowerCase() : dir
+  const h = win ? home.toLowerCase() : home
+  if (d === sep || d === h || (win && /^[a-z]:\\?$/.test(d))) return true
+  return h.startsWith(d.endsWith(sep) ? d : d + sep)
+}
+
+/**
+ * A box path as this host reads it, before its real spelling: `~` and `~/…`
+ * (on Windows `~\…` too) under home, else absolute. A Windows host takes only
+ * a drive path (`C:\…` or `C:/…`): never a UNC share or device path, a stream
+ * name, a drive-relative `C:foo` or a root with no drive (the box's `/srv/…`,
+ * fence.ts plainWindowsPath).
+ */
+export function hostPath(path: string, home: string, platform: NodeJS.Platform = process.platform): string {
+  const p = platform === 'win32' ? win32 : posix
+  const tilde = path.startsWith('~/') || (platform === 'win32' && path.startsWith('~\\'))
+  const expanded = path === '~' ? home : tilde ? p.join(home, path.slice(2)) : path
+  if (platform === 'win32' && !(/^[A-Za-z]:[\\/]/.test(expanded) && plainWindowsPath(expanded)))
+    throw new Error(`paths on this Windows host must be drive paths (C:\\…) or start with ~\\: ${path}`)
+  if (!p.isAbsolute(expanded))
+    throw new Error(`paths on the Mac must be absolute or start with ~/: ${path}`)
+  return p.resolve(expanded)
+}
+
+/** `powershell -EncodedCommand` (any prefix PowerShell takes, and -ec) or an execution policy: what it runs cannot be read off the card. */
+function opaquePowerShell(names: string[], words: string[]): boolean {
+  if (!names.some((n) => n === 'powershell' || n === 'pwsh')) return false
+  return words.some((w) => {
+    const flag = /^[-/]([A-Za-z]+)$/.exec(w)?.[1]?.toLowerCase()
+    if (!flag) return false
+    return flag === 'ec' || flag === 'e' || (flag.length >= 2 && ('encodedcommand'.startsWith(flag) || 'executionpolicy'.startsWith(flag)))
+  })
+}
+
+/** A recursive delete on Windows: `rm -r` (Git Bash), `rd /s` and `rmdir /s`, `del /s`, `Remove-Item -Recurse` and its aliases. */
+function windowsRecursiveDelete(names: string[], words: string[]): boolean {
+  const lower = words.map((w) => w.toLowerCase())
+  if (names.includes('rm') && lower.some((w) => /^-[a-z]*r/.test(w) || w === '--recursive')) return true
+  if (names.some((n) => ['rd', 'rmdir', 'del', 'erase'].includes(n)) && lower.includes('/s')) return true
+  return names.some((n) => ['remove-item', 'ri', 'rm', 'del', 'rmdir', 'rd'].includes(n)) && lower.some((w) => w.length >= 3 && '-recurse'.startsWith(w))
+}
+
+/** Whether a word names a whole drive, a top folder or the profile (Windows spellings). */
+function windowsWide(word: string, cwd: string, home: string, realHome: string): boolean {
+  const t = word.replace(/[\\/]\*?$/, '').toLowerCase()
+  if (t === '' || /^[a-z]:$/.test(t) || /^[a-z]:[\\/][^\\/]*$/.test(t)) return true // \, C:\, C:\Users, C:\Windows
+  if (['~', '$home', '%userprofile%', '$env:userprofile', home.toLowerCase(), realHome.toLowerCase()].includes(t)) return true
+  return ['.', '*', '..'].includes(t) && coversHome(cwd, realHome, 'win32')
 }
 
 /** Why a command asks every time whatever is remembered, or null. */
-export function alwaysAsks(spec: RunSpec, home: string = homedir()): string | null {
+export function alwaysAsks(
+  spec: RunSpec,
+  home: string = homedir(),
+  platform: NodeJS.Platform = process.platform
+): string | null {
+  const win = platform === 'win32'
   const pieces = spec.argv ?? (spec.command !== undefined ? [spec.command] : [])
-  const words = pieces.flatMap((p) => [p, ...shellWords(p).words])
-  const names = words.map(strip)
+  // On Windows `\` is a path's separator, never an escape; and a quoted line inside a command (`powershell -Command "…"`, `cmd /c "…"`) is read once more.
+  const split = (p: string): string[] => shellWords(win ? p.replace(/\\/g, '/') : p).words
+  const words = pieces.flatMap((p) => [p, ...(win ? split(p).flatMap((w) => [w, ...split(w)]) : split(p))])
+  const names = words.map(nameOf(platform))
   for (const program of ALWAYS_ASK) if (names.includes(program)) return program
+  if (win) {
+    for (const program of WINDOWS_ALWAYS_ASK) if (names.includes(program)) return program
+    if (opaquePowerShell(names, words)) return 'PowerShell with an encoded command or an execution policy'
+    if (windowsRecursiveDelete(names, words)) {
+      const realHome = realHomeOf(home, platform)
+      if (words.some((w) => windowsWide(w.replace(/\//g, '\\'), spec.cwd, home, realHome)))
+        return 'a recursive delete of a drive, a top folder or the profile'
+    }
+    const text = [...pieces, spec.cwd].join('\n').replace(/\\/g, '/')
+    for (const [name, re] of CREDENTIAL_RES_WIN) if (re.test(text)) return `names a credential path (${name})`
+    return null
+  }
   for (let i = 0; i < names.length - 1; i++)
     if (names[i] === 'defaults' && DEFAULTS_WRITES.has(words[i + 1]))
       return `defaults ${words[i + 1]}`
@@ -186,11 +304,15 @@ export function alwaysAsks(spec: RunSpec, home: string = homedir()): string | nu
 }
 
 /** What a run card offers to remember beyond exact and thread. */
-export function runOffer(spec: RunSpec, home: string = homedir()): MacRunRememberOffer {
-  const reason = alwaysAsks(spec, home)
+export function runOffer(
+  spec: RunSpec,
+  home: string = homedir(),
+  platform: NodeJS.Platform = process.platform
+): MacRunRememberOffer {
+  const reason = alwaysAsks(spec, home, platform)
   if (reason) return { alwaysAsk: reason }
-  const program = programOf(spec)
-  const folder = coversHome(spec.cwd, realSpelling(home)) ? null : spec.cwd
+  const program = programOf(spec, platform)
+  const folder = coversHome(spec.cwd, realHomeOf(home, platform), platform) ? null : spec.cwd
   return { ...(folder ? { folder } : {}), ...(program ? { program } : {}) }
 }
 

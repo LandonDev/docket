@@ -1,9 +1,9 @@
-import { readRemembers } from './macBridgeRules'
+import { coversHome, hostPath, readRemembers } from './macBridgeRules'
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
 import { createHash, randomBytes } from 'node:crypto'
 import { constants, existsSync, realpathSync, statSync } from 'node:fs'
 import { copyFile, link, lstat, mkdir, open, rename, rm } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import {
   MAC_APPROVAL_WAIT_MS,
   MAC_WRITE_MAX_BASE64,
@@ -57,14 +57,10 @@ export function writeLevel(raw: string | null | undefined): WriteLevel {
   return raw === 'read' ? 'ask' : 'write'
 }
 
-/** dir is home, or above it: remembering it would admit all of home. */
-function coversHome(dir: string, home: string): boolean {
-  return dir === sep || dir === home || home.startsWith(dir.endsWith(sep) ? dir : dir + sep)
-}
 
 /**
  * Paths a write always asks for, whatever the policy, the shared folders and
- * the remembered ones: under ~/Library, a dotfile or dot-folder directly in
+ * the remembered ones: under ~/Library (a Windows host's ~\AppData), a dotfile or dot-folder directly in
  * home, and a key or credential by name anywhere. Compared case-folded
  * (macOS volumes are case-insensitive by default), by the literal home and
  * its real spelling.
@@ -75,7 +71,7 @@ export function writeDenied(real: string, home: string): boolean {
     const rel = relative(h.toLowerCase(), path)
     if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue
     const first = rel.split(sep)[0]
-    if (first.startsWith('.') || first === 'library') return true
+    if (first.startsWith('.') || first === 'library' || first === 'appdata') return true
   }
   const base = basename(real)
   return isSecretPath(base) || isSecretPath(base.toLowerCase())
@@ -113,10 +109,8 @@ export function writeVerdict(
 
 /** The real path a write lands at: absolute (or ~/… for this Mac's home), symlinks followed. */
 export function writeTarget(path: string, home: string): string {
-  const expanded = path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : path
-  if (!isAbsolute(expanded)) throw new Error(`paths on the Mac must be absolute: ${path}`)
-  const real = realSpelling(resolve(expanded))
-  if (real === sep) throw new Error('refused: / is not a file')
+  const real = realSpelling(hostPath(path, home))
+  if (real === sep || dirname(real) === real) throw new Error(`refused: ${real} is not a file`)
   return real
 }
 

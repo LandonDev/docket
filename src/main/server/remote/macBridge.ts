@@ -39,9 +39,9 @@ import {
   type MacRunResult
 } from '@shared/contract-macbridge'
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
-import { insideRoots, realSpelling } from './fence'
+import { insideRoots, plainWindowsPath, realSpelling } from './fence'
 import { isSecretPath } from './harnessSet'
-import { alwaysAsks, MacBridgeRuleBook, readRemembers, runOffer, runRememberKind } from './macBridgeRules'
+import { alwaysAsks, coversHome, hostPath, MacBridgeRuleBook, readRemembers, runOffer, runRememberKind } from './macBridgeRules'
 import { runMacCommand, type RunningCommand } from './macRunner'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
@@ -183,14 +183,11 @@ export interface MacBridgeDeps {
 
 // ── the policy, pure ─────────────────────────────────────────────────
 
-/** home, and every directory above it: sharing one of these shares all of home. */
-function coversHome(dir: string, home: string): boolean {
-  return dir === sep || dir === home || home.startsWith(dir.endsWith(sep) ? dir : dir + sep)
-}
 
 /** A folder a box may read without asking: absolute, a directory, by its real path; never '/', home, or above home. */
 export function validateSharedFolder(path: string, home: string = homedir()): string {
-  if (!isAbsolute(path)) throw new Error(`a shared folder must be an absolute path: ${path}`)
+  if (!isAbsolute(path) || (process.platform === 'win32' && !plainWindowsPath(path)))
+    throw new Error(`a shared folder must be an absolute path: ${path}`)
   const real = realSpelling(resolve(path))
   const realHome = realSpelling(home)
   if (coversHome(real, realHome))
@@ -223,14 +220,20 @@ export const FULL_DENY_DIRS = [
   '.aliax',
   'Library/Keychains',
   'Library/Application Support/TempCode',
-  'Library/Application Support/temp-code'
+  'Library/Application Support/temp-code',
+  // A Windows host's (join spells them with its own separator): Windows' saved credentials and keys, the app's data.
+  'AppData/Roaming/Microsoft/Credentials',
+  'AppData/Local/Microsoft/Credentials',
+  'AppData/Roaming/Microsoft/Protect',
+  'AppData/Local/Microsoft/Vault',
+  'AppData/Local/TempCode'
 ] as const
 export const FULL_DENY_FILES = ['.claude/.credentials.json', '.codex/auth.json'] as const
 
 /** Strict containment on a segment boundary, case-folded (macOS volumes are case-insensitive by default). */
 function underFolded(path: string, root: string): boolean {
   const p = path.toLowerCase()
-  const r = root.toLowerCase().replace(/\/+$/, '')
+  const r = root.toLowerCase().replace(/[\\/]+$/, '')
   return p === r || p.startsWith(r + sep)
 }
 
@@ -317,11 +320,9 @@ export const commandKey = (spec: { argv?: string[]; command?: string; cwd: strin
  * result never reaches the box before the policy has decided.
  */
 export function macPath(path: string, home: string = homedir()): string {
-  const expanded = path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : path
-  if (!isAbsolute(expanded))
-    throw new Error(`paths on the Mac must be absolute or start with ~/: ${path}`)
-  return realSpelling(resolve(expanded))
+  return realSpelling(hostPath(path, home))
 }
+
 
 /** utf8 when the bytes are text (a cut multi-byte tail is trimmed), else null. */
 export function asText(buf: Buffer): string | null {

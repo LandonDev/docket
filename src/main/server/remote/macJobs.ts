@@ -1,10 +1,10 @@
-import { alwaysAsks, readRemembers } from './macBridgeRules'
+import { alwaysAsks, hostPath, readRemembers } from './macBridgeRules'
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
-import { basename, isAbsolute, resolve } from 'node:path'
+import { basename } from 'node:path'
 import {
   MAC_APPROVAL_WAIT_MS,
   MacRunArgsSchema,
@@ -34,7 +34,8 @@ import {
   type MacJobsEndResult
 } from '@shared/contract-macjobs'
 import { realSpelling } from './fence'
-import { KILL_GRACE_MS, scrubbedEnv, shellArgv } from './macRunner'
+import { KILL_GRACE_MS, scrubbedEnv, shellCall, signalTree, type ShellCall } from './macRunner'
+import { adoptTree, killTree, treeSpawnOptions } from '../procTree'
 import { trackChild } from '../spawnBudget'
 
 /**
@@ -75,15 +76,19 @@ export type JobSpawner = (cmd: {
   args: string[]
   cwd: string
   env: Record<string, string>
+  /** Windows only (macRunner.ts shellCall): hidden, and cmd.exe's line taken verbatim. */
+  options?: ShellCall['options']
 }) => JobProcess
 
 const signalName = (n: number): string =>
   Object.entries(osConstants.signals).find(([, v]) => v === n)?.[0] ?? `SIG${n}`
 
 /** stdin, stdout and stderr as pipes (stdout and stderr merged), in a process group of its own. */
-export const pipeSpawner: JobSpawner = ({ file, args, cwd, env }) => {
-  const child = trackChild(
-    spawn(file, args, { cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] })
+export const pipeSpawner: JobSpawner = ({ file, args, cwd, env, options }) => {
+  const child = adoptTree(
+    trackChild(
+      spawn(file, args, { cwd, env, ...treeSpawnOptions(), ...options, stdio: ['pipe', 'pipe', 'pipe'] })
+    )
   )
   const data: ((chunk: Buffer) => void)[] = []
   const exits: ((code: number | null, signal: string | null) => void)[] = []
@@ -101,11 +106,7 @@ export const pipeSpawner: JobSpawner = ({ file, args, cwd, env }) => {
   }
   // Something the command left in its group holding the pipes open would keep 'close' away.
   child.on('exit', () => {
-    try {
-      if (child.pid) process.kill(-child.pid, 'SIGKILL')
-    } catch {
-      /* the group is empty */
-    }
+    if (child.pid) killTree(child.pid, 'SIGKILL')
   })
   child.on('error', (e) => {
     emit(Buffer.from(`${e.message}\n`))
@@ -127,8 +128,9 @@ type NodePty = typeof import('node-pty')
 /** A terminal (node-pty, as the app's own terminal uses): what prompts that read /dev/tty need. */
 export const ptySpawnerOf =
   (pty: NodePty): JobSpawner =>
-  ({ file, args, cwd, env }) => {
-    const p = pty.spawn(file, args, {
+  ({ file, args, cwd, env, options }) => {
+    // ConPTY takes a whole command line as a string as written: cmd.exe's verbatim line stays whole.
+    const p = pty.spawn(file, options?.windowsVerbatimArguments ? args.join(' ') : args, {
       name: 'xterm',
       cols: 120,
       rows: 40,
@@ -268,6 +270,8 @@ export interface MacJobsDeps {
   finish: (cardId: string, outcome: MacBridgeOutcome) => void
   home: string
   shell?: string
+  /** The host's platform (tests); process.platform otherwise. */
+  platform?: NodeJS.Platform
   spawner?: JobSpawner
   idleMs?: number
   log: (line: string) => void
@@ -375,9 +379,7 @@ export class MacJobs {
   ): Promise<MacJobStartResult> {
     const args = MacRunArgsSchema.parse(raw)
     if (!args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
-    if (args.cwd !== undefined && !isAbsolute(args.cwd))
-      throw new Error(`paths on the Mac must be absolute: ${args.cwd}`)
-    const cwd = realSpelling(args.cwd ? resolve(args.cwd) : this.deps.home)
+    const cwd = realSpelling(args.cwd ? hostPath(args.cwd, this.deps.home, this.deps.platform) : this.deps.home)
     if (!existsSync(cwd) || !statSync(cwd).isDirectory())
       throw new Error(`no such folder on the Mac: ${cwd}`)
     if (this.runningCount(env.id, thread.id) >= MAC_JOB_MAX_PER_THREAD) {
@@ -391,7 +393,7 @@ export class MacJobs {
     const memory = this.remembered.get(this.threadKey(env.id, thread.id)) ?? new Set<string>()
     // Remembered, or the thread runs in full access on its box: no prompt, the card shows it running.
     // A Work thread's command on the always-ask list stays a prompt for the owner, whatever was remembered.
-    const mustAsk = workMustAsk(thread, alwaysAsks(spec))
+    const mustAsk = workMustAsk(thread, alwaysAsks(spec, this.deps.home, this.deps.platform))
     const remembered = !mustAsk && (memory.has(key) || threadRunsUnattended(thread))
     const until = Math.min(Date.now() + MAC_APPROVAL_WAIT_MS, deadlineAt - REPLY_MARGIN_MS)
     if (until <= Date.now()) throw new Error('the call left no time to ask the Mac')
@@ -436,14 +438,15 @@ export class MacJobs {
       throw new Error(`this thread already has ${MAC_JOB_MAX_PER_THREAD} jobs running on the Mac`)
     }
     const argv0 = basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')
-    const [file, ...rest] = shellArgv(spec, this.deps.shell)
+    const { file, args: rest, options } = shellCall(spec, this.deps.shell)
     let proc: JobProcess
     try {
       proc = (this.deps.spawner ?? (await loadDefaultSpawner()))({
         file,
         args: rest,
         cwd,
-        env: scrubbedEnv()
+        env: scrubbedEnv(),
+        options
       })
     } catch (err) {
       this.deps.finish(cardId, 'stopped')
@@ -548,15 +551,9 @@ export class MacJobs {
 
   private group(job: Job, sig: NodeJS.Signals): void {
     if (job.proc.kill) return job.proc.kill(sig)
-    try {
-      if (job.proc.pid) process.kill(-job.proc.pid, sig)
-    } catch {
-      try {
-        if (job.proc.pid) process.kill(job.proc.pid, sig)
-      } catch {
-        /* gone */
-      }
-    }
+    // Windows has no gentle signal for a console program: INT to a terminal job is its ^C; anything else ends the tree.
+    if (sig === 'SIGINT' && job.proc.pty && (this.deps.platform ?? process.platform) === 'win32') return job.proc.write(Buffer.from('\x03'))
+    signalTree({ pid: job.proc.pid, kill: (s) => job.proc.pid && process.kill(job.proc.pid, s) }, sig)
   }
 
   /** The app ends a job: SIGTERM to the group, SIGKILL after the grace. */
@@ -583,11 +580,7 @@ export class MacJobs {
     for (const t of [job.timeout, job.kill]) if (t) clearTimeout(t)
     job.timeout = job.kill = null
     // The shell is gone; anything it left in the group goes with it.
-    try {
-      if (job.proc.pid) process.kill(-job.proc.pid, 'SIGKILL')
-    } catch {
-      /* the group is empty */
-    }
+    if (job.proc.pid) killTree(job.proc.pid, 'SIGKILL')
     this.deps.finish(job.cardId, job.ended || signal ? 'stopped' : 'done')
     line(`job ${job.id} ran: exit ${code ?? signal}${job.ended ? `, ended (${job.ended})` : ''}`)
     this.wake(job)

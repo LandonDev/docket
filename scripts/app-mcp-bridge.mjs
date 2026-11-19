@@ -687,7 +687,11 @@ const MAC_TOOL_PARAMS = {
 }
 /** The descriptions for one thread: the Mac's home named when the box knows it (TEMP_CODE_MAC_HOME). */
 export function macToolDescriptions(home) {
-  const note = home ? ` The Mac's home is ${home} (~ means it: ~/Desktop is ${home}/Desktop).` : ''
+  const note = !home
+    ? ''
+    : /^[A-Za-z]:\\/.test(home)
+      ? ` This host is a Windows PC, not a Mac: paths are drive paths and its home is ${home} (~ means it: ~\\Desktop is ${home}\\Desktop). Commands run in Git Bash (cmd.exe without Git).`
+      : ` The Mac's home is ${home} (~ means it: ~/Desktop is ${home}/Desktop).`
   return Object.fromEntries(Object.entries(MAC_TOOL_DESCRIPTIONS).map(([k, v]) => [k, v + note]))
 }
 const macPath = { type: 'string', description: MAC_TOOL_PARAMS.path }

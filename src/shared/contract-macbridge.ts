@@ -108,24 +108,29 @@ export const MAC_TOOL_PARAMS = {
     'Unix permission bits as a decimal number, e.g. 420 for 0644 (default: 0644 for a new file, unchanged for an existing one).'
 } as const
 
-/** A Mac's home as `peer.register` carries it: absolute, one line. */
+/** A Mac's home as `peer.register` carries it: absolute (a Windows host's is a drive path), one line. */
 export const MacHomeSchema = z
   .string()
   .min(2)
   .max(1024)
   // eslint-disable-next-line no-control-regex -- the home lands in tool text: no control characters
-  .regex(/^\/[^\u0000-\u001f\u007f]*$/)
+  .regex(/^(\/|[A-Za-z]:\\)[^\u0000-\u001f\u007f]*$/)
 
 /**
  * The four tools' descriptions for one thread: the shared text plus, when
  * the box has heard the Mac's home in `peer.register`, a sentence naming it,
- * so a thread never guesses the Mac's user name. scripts/app-mcp-bridge.mjs
+ * so a thread never guesses the Mac's user name. A drive-path home is a
+ * Windows host's (docs/agents/windows-host.md): the sentence says so. scripts/app-mcp-bridge.mjs
  * keeps a copy (macTools.test.ts holds them equal, with and without a home).
  */
 export function macToolDescriptions(
   home?: string | null
 ): Record<keyof typeof MAC_TOOL_DESCRIPTIONS, string> {
-  const note = home ? ` The Mac's home is ${home} (~ means it: ~/Desktop is ${home}/Desktop).` : ''
+  const note = !home
+    ? ''
+    : /^[A-Za-z]:\\/.test(home)
+      ? ` This host is a Windows PC, not a Mac: paths are drive paths and its home is ${home} (~ means it: ~\\Desktop is ${home}\\Desktop). Commands run in Git Bash (cmd.exe without Git).`
+      : ` The Mac's home is ${home} (~ means it: ~/Desktop is ${home}/Desktop).`
   return {
     mac_read_file: MAC_TOOL_DESCRIPTIONS.mac_read_file + note,
     mac_list_dir: MAC_TOOL_DESCRIPTIONS.mac_list_dir + note,

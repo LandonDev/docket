@@ -430,6 +430,16 @@ describe("the Mac's home in the tool text", () => {
     )
   })
 
+  it("a Windows host's home is a drive path, and the tool text says the host is a Windows PC", () => {
+    expect(registerFrame({ from: 'env_pc', offers: ['mac-bridge'], home: 'C:\\Users\\tcuser' })).toBe(true)
+    expect(registerFrame({ from: 'env_pc', offers: [], home: 'C:Users' })).toBe(false)
+    for (const text of Object.values(macToolDescriptions('C:\\Users\\tcuser'))) {
+      expect(text).toContain('This host is a Windows PC, not a Mac')
+      expect(text).toContain('~\\Desktop is C:\\Users\\tcuser\\Desktop')
+      expect(text).not.toContain("The Mac's home is")
+    }
+  })
+
   it('the descriptions name the home when known, and say nothing of it otherwise', () => {
     expect(macToolDescriptions(null)).toEqual(MAC_TOOL_DESCRIPTIONS)
     for (const text of Object.values(macToolDescriptions('/Users/landon'))) {
