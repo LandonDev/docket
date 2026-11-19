@@ -164,8 +164,8 @@ export class SheetHost {
       })
       await o.backend.setSuggestions(updates)
     }
-    await o.engine.settled()
     if (o.rev - o.snapRev >= SNAPSHOT_EVERY) {
+      await o.engine.settled()
       await o.backend.cutSnapshot(o.rev, o.engine.workbook.save())
       o.snapRev = o.rev
     }
