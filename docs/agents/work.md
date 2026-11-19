@@ -466,8 +466,9 @@ input that is not a `z.object` is left out and logged.
   (`/w/hosted/`), so nothing of the app's window reaches a guest's page and
   no hosted module enters the window's first paint. `HOSTED_PAGES` is the
   closed list: `index`, `item`, `guest`, `form`. The Work service serves
-  them at `/w/hosted/`; `index` is its own plain page, the other three are
-  stubs until milestones 31 and 36.
+  them at `/w/hosted/`; `index` is its own plain page, `form` is a published
+  form's page (milestone 36, [work-forms.md](work-forms.md), served at
+  `/f/<publicId>`), and `item` and `guest` are stubs until milestone 31.
   `tsconfig.web.json` includes `src/hosted`.
 
 ## How a pillar registers

@@ -1,8 +1,8 @@
 # The Work service
 
 The Work service is the utility process that serves live editing: documents
-and sheets now (sheets: [work-sheets.md](work-sheets.md)), and guest links,
-forms, the Office add-in and the full editor as their milestones land. Milestone 18 built it; the contract is architecture
+and sheets now (sheets: [work-sheets.md](work-sheets.md)), published forms
+([work-forms.md](work-forms.md)), and guest links, the Office add-in and the full editor as their milestones land. Milestone 18 built it; the contract is architecture
 §8.1 to §8.3 and §19 (`.temp-code/plans/work-architecture.md`).
 
 ## The process
@@ -69,7 +69,7 @@ Each later milestone fills its own file and edits no other; a stub answers
 | `GET …/w/open` | `routes/item.ts` | 31 |
 | `…/g/*` | `routes/guests.ts` | 31 |
 | `wss …/w/office`, `GET …/w/addin/*` | `routes/office.ts` | 29 |
-| `…/f/*` | `routes/form.ts` | 36 |
+| `GET`/`POST …/f/<publicId>` (published forms; [work-forms.md](work-forms.md)) | `routes/form.ts` | **36, built** |
 | `…/w/full/<token>/*` | `routes/fullEditor.ts` | **40, built** ([work-sheets.md](work-sheets.md) "The full editor") |
 | internal `/internal/doc/{read,write,create,comment}` | `routes/internal.ts` | 18, built |
 | internal `/internal/sheet/{read,write}` and main's `/internal/sheet/<op>` | `routes/internalSheet.ts` | **27, built** |
