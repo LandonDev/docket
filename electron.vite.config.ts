@@ -1,10 +1,11 @@
 import { resolve } from 'path'
-import { execFileSync } from 'child_process'
+import { execFileSync, spawn } from 'child_process'
 import { mkdirSync, statSync, writeFileSync } from 'fs'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
-import { build as viteBuild, type InlineConfig, type Plugin } from 'vite'
+import type { InlineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { directIconImports } from './scripts/lib/iconImports'
 import { buildTcComputer } from './scripts/lib/tcComputerBuild'
 
 /** Measurement builds (scripts/measure-react-compiler.ts): the profiling
@@ -145,7 +146,7 @@ export function hostedBuildConfig(outDir: string = resolve('out/hosted')): Inlin
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [react({ babel: { plugins: [reactCompiler] } }), tailwindcss()],
+    plugins: [directIconImports(), react({ babel: { plugins: [reactCompiler] } }), tailwindcss()],
     build: {
       outDir,
       emptyOutDir: true,
@@ -156,13 +157,21 @@ export function hostedBuildConfig(outDir: string = resolve('out/hosted')): Inlin
   }
 }
 
-/** Builds the hosted pages into out/hosted once the renderer's bundle is written. */
+/** Builds the hosted pages into out/hosted once the renderer's bundle is
+ *  written, in a process of their own (Vite's CLI on scripts/hosted.vite.config.ts):
+ *  the renderer build's memory is gone by then, and the two together ran past
+ *  node's heap. */
 export function hostedPages(outDir?: string): Plugin {
   return {
     name: 'temp-code-hosted-pages',
     apply: 'build',
-    async closeBundle() {
-      await viteBuild(hostedBuildConfig(outDir))
+    closeBundle() {
+      const args = [resolve('node_modules/vite/bin/vite.js'), 'build', '--config', resolve('scripts/hosted.vite.config.ts')]
+      return new Promise<void>((done, fail) => {
+        const child = spawn(process.execPath, args, { stdio: 'inherit', env: { ...process.env, TEMP_CODE_HOSTED_OUT: outDir ?? '' } })
+        child.on('error', fail)
+        child.on('exit', (code, signal) => (code === 0 ? done() : fail(new Error(`the hosted pages' build failed (${signal ?? `exit ${code}`})`))))
+      })
     }
   }
 }
@@ -231,6 +240,7 @@ export default defineConfig({
     // Monaco's editor worker is a lazy chunk; iife workers cannot code-split.
     worker: { format: 'es' },
     plugins: [
+      directIconImports(),
       react({ babel: { plugins: [reactCompiler] } }),
       tailwindcss(),
       bundleMap(),
