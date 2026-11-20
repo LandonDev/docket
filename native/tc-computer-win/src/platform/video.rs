@@ -230,6 +230,9 @@ struct Wgc {
     staging: Option<(ID3D11Texture2D, u32, u32)>,
     arrived: Arc<(Mutex<bool>, Condvar)>,
     kind: String,
+    /// frames read, and frames a newer one replaced in the pool before they were read
+    read: u64,
+    skipped: u64,
 }
 
 unsafe impl Send for Wgc {}
@@ -262,7 +265,7 @@ impl Wgc {
         }
         session.StartCapture().map_err(|e| failed("the capture did not start", e))?;
         let kind = format!("wgc on {adapter}{}", if borderless { "" } else { ", with the border" });
-        Ok(Wgc { hwnd, ctx, device, d3d, item, pool, session, size, staging: None, arrived, kind })
+        Ok(Wgc { hwnd, ctx, device, d3d, item, pool, session, size, staging: None, arrived, kind, read: 0, skipped: 0 })
     }
 
     fn copy(&mut self, frame: &windows::Graphics::Capture::Direct3D11CaptureFrame) -> windows::core::Result<Option<Picture>> {
@@ -336,10 +339,12 @@ impl WindowCapture for Wgc {
         let mut newest = None;
         while let Ok(f) = self.pool.TryGetNextFrame() {
             if let Some(old) = newest.replace(f) {
+                self.skipped += 1;
                 let _ = old.Close();
             }
         }
         let Some(frame) = newest else { return Ok(None) };
+        self.read += 1;
         let picture = self.copy(&frame).map_err(|e| CaptureEnd::Error(format!("a frame could not be read: {}", e.message())));
         let _ = frame.Close();
         picture
@@ -352,6 +357,7 @@ impl WindowCapture for Wgc {
 
 impl Drop for Wgc {
     fn drop(&mut self) {
+        eprintln!("video: the capture of window {:?} read {} frames, {} replaced in the pool before they were read", self.hwnd.0, self.read, self.skipped);
         let _ = self.session.Close();
         let _ = self.pool.Close();
     }

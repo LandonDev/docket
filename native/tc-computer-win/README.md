@@ -12,8 +12,13 @@ Automation. §29 there is its account.
   (shot geometry, scaling, blank and flat, the stream's gate, shot names), `src/clip.rs` (HTML Format, markdown),
   `src/act.rs` (the event tiers, the session hold, paste, screenshots) and `src/stream.rs` (the preview stream) are
   platform-free too; `tests/input.rs` drives them over a fake that records what is posted.
+- Live video (§30, "The Windows service"): `src/video/` (the records, the pacer and the still window, Annex B, the
+  picture size and NV12, the pipe's threads, and the streams over the desktop's `WindowCapture` and `VideoEncoder`)
+  and `src/flow.rs` (screen-relay's flow controller) are platform-free; `tests/video.rs` drives the calls over a fake
+  desktop and an in-memory pipe. `src/platform/video.rs` is Windows': the named pipe, Windows.Graphics.Capture (else
+  PrintWindow on a timer) and the Media Foundation H.264 encoder; `pipe-relay` is the rig's.
 - `src/platform/windows.rs` is the desktop over UI Automation: apps, the tree, the `ax` tier; `src/platform/io.rs`
   is input (posted messages, SendInput, the foreground), the person watch (low-level hooks), capture (PrintWindow,
   WIC), the clipboard and launching.
 - Build: `bun scripts/build-tc-computer-win.ts` (cargo-xwin, x86_64-pc-windows-msvc, the CRT linked in).
-- Proof in the rig: `bun scripts/e2e-computer-win.ts`, and `TC_WIN_RIG=1` for `src/main/server/computer/winRig.hold.test.ts`.
+- Proof in the rig: `bun scripts/e2e-computer-win.ts` (`--legs video` for live video alone), and `TC_WIN_RIG=1` for `src/main/server/computer/winRig.hold.test.ts`.

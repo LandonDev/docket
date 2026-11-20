@@ -17,7 +17,7 @@ pub mod wire;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -135,12 +135,16 @@ pub(crate) struct VideoStream {
     state: Mutex<StreamState>,
     /// the newest picture from the capture not yet taken; a newer one takes its place
     mailbox: (Mutex<Option<Picture>>, Condvar),
+    /// pictures a newer one replaced before the stream's thread took them
+    replaced: AtomicU64,
     over: AtomicBool,
 }
 
 impl VideoStream {
     fn offer(&self, p: &Picture) {
-        *guard(&self.mailbox.0) = Some(p.clone());
+        if guard(&self.mailbox.0).replace(p.clone()).is_some() {
+            self.replaced.fetch_add(1, Ordering::Relaxed);
+        }
         self.mailbox.1.notify_one();
     }
 
@@ -189,6 +193,11 @@ struct Stats {
     first_us: u64,
     last_us: u64,
     generations: u32,
+    /// pictures the capture gave, those the pacer let go, and those the flow held back
+    pictures: u64,
+    paced: u64,
+    held: u64,
+    replaced: u64,
 }
 
 impl Stats {
@@ -200,10 +209,14 @@ impl Stats {
         let fps = if secs > 0.0 { (self.frames.saturating_sub(1)) as f64 / secs } else { 0.0 };
         let kbps = if secs > 0.0 { self.bytes as f64 * 8.0 / secs / 1000.0 } else { 0.0 };
         format!(
-            "video {id}: frames={} keyframes={} generations={} secs={secs:.2} fps={fps:.1} kbps={kbps:.0} encode_p50_ms={:.2} encode_p95_ms={:.2} capture={capture} encoder={encoder}",
+            "video {id}: frames={} keyframes={} generations={} pictures={} replaced={} paced_out={} held_by_flow={} secs={secs:.2} fps={fps:.1} kbps={kbps:.0} encode_p50_ms={:.2} encode_p95_ms={:.2} capture={capture} encoder={encoder}",
             self.frames,
             self.keyframes,
             self.generations,
+            self.pictures,
+            self.replaced,
+            self.paced,
+            self.held,
             pct(0.5),
             pct(0.95)
         )
@@ -283,6 +296,7 @@ impl<D: Desktop> Service<D> {
             entry: entry.clone(),
             state: Mutex::new(StreamState { flow: FlowControl::default(), generation: 0, need_key: true }),
             mailbox: (Mutex::new(None), Condvar::new()),
+            replaced: AtomicU64::new(0),
             over: AtomicBool::new(false),
         });
         let (tx, rx) = channel();
@@ -415,7 +429,12 @@ impl<D: Desktop> Service<D> {
     /// `tell` (an end of its own).
     pub(crate) fn end_video(&self, id: u32, reason: Option<CaptureVideoEndedNotificationParamsReason>, tell: bool) {
         let Some(stream) = guard(&self.video.streams).remove(&id) else { return };
-        if stream.over.swap(true, Ordering::SeqCst) {
+        // under the stream's lock: a record being made finishes first, and none is queued once this returns
+        let was_over = {
+            let _made = guard(&stream.state);
+            stream.over.swap(true, Ordering::SeqCst)
+        };
+        if was_over {
             return;
         }
         stream.mailbox.1.notify_one();
@@ -496,7 +515,9 @@ impl<D: Desktop> Service<D> {
                 Some(p) => {
                     still.picture(p.at_us);
                     last = Some(p.clone());
+                    stats.pictures += 1;
                     if !pacer.take(p.at_us) {
+                        stats.paced += 1;
                         continue;
                     }
                     let at = p.at_us;
@@ -511,6 +532,7 @@ impl<D: Desktop> Service<D> {
             {
                 let st = guard(&s.state);
                 if st.flow.paused(now) || st.flow.frames.len() + in_encoder >= st.flow.window as usize {
+                    stats.held += !again as u64;
                     continue;
                 }
             }
@@ -562,9 +584,7 @@ impl<D: Desktop> Service<D> {
                     stats.encode_us.push(started.elapsed().as_micros().min(u32::MAX as u128) as u32);
                     in_encoder = in_encoder.saturating_sub(units.len());
                     for u in units {
-                        if let Some(record) = self.frame_of(&s, (w, h), u, &mut stats) {
-                            pipe.write(record);
-                        }
+                        self.send_frame(&s, &pipe, (w, h), u, &mut stats);
                     }
                 }
             }
@@ -573,11 +593,13 @@ impl<D: Desktop> Service<D> {
             eprintln!("video {}: {why}", s.id);
             self.end_video(s.id, Some(CaptureVideoEndedNotificationParamsReason::Error), true);
         }
+        stats.replaced = s.replaced.load(Ordering::Relaxed);
         eprintln!("{}", stats.line(s.id, &capture_kind, &encoder_kind));
     }
 
-    /// One access unit as the record that goes out, or None when it may not: before a keyframe, or refused by the flow.
-    fn frame_of(&self, s: &VideoStream, size: (usize, usize), u: Encoded, stats: &mut Stats) -> Option<Vec<u8>> {
+    /// One access unit onto the pipe as one record, unless it may not go: before a keyframe, refused by the flow, or
+    /// the stream over. Queued under the stream's lock, so nothing goes once `end_video` has returned.
+    fn send_frame(&self, s: &VideoStream, pipe: &VideoPipe, size: (usize, usize), u: Encoded, stats: &mut Stats) -> Option<()> {
         let mut st = guard(&s.state);
         if s.over.load(Ordering::SeqCst) {
             return None;
@@ -603,7 +625,8 @@ impl<D: Desktop> Service<D> {
             stats.first_us = now;
         }
         stats.last_us = now;
-        Some(record)
+        pipe.write(record);
+        Some(())
     }
 }
 
