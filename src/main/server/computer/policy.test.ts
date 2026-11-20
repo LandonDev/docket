@@ -12,6 +12,7 @@ import {
   refusedOpenItem,
   refusedTarget,
   refusedVmKey,
+  vmLaunchFile,
   VM_REFUSED_LAUNCH_EXES,
   type AppsSource
 } from './policy'
@@ -328,5 +329,14 @@ describe('the Windows VM: no command line', () => {
     expect(refusedOpenItem('https://example.test/form', true)).toBeNull()
     // outside the VM the rule is as it was
     expect(refusedOpenItem('C:\\Users\\tcuser\\Downloads\\x.bat')).toBeNull()
+  })
+})
+
+describe("the VM's app names", () => {
+  it('reach the service as their files, which ShellExecute knows', () => {
+    expect(vmLaunchFile('Microsoft Edge')).toBe('msedge.exe')
+    expect(vmLaunchFile('edge')).toBe('msedge.exe')
+    expect(vmLaunchFile(' File Explorer ')).toBe('explorer.exe')
+    expect(vmLaunchFile('msedge.exe')).toBe('msedge.exe')
   })
 })

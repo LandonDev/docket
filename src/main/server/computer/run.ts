@@ -41,6 +41,7 @@ import {
   refusedLaunch,
   refusedLaunchList,
   refusedVmKey,
+  vmLaunchFile,
   refusedOpenItem,
   refusedTarget,
   type Resolved,
@@ -1127,7 +1128,7 @@ async function runApps(
   const session = t.serviceSession
   const launch = typeof args.launch === 'string' ? args.launch : null
   const open = openOf(args)
-  const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: refusedLaunchList(vm ? 'win32' : undefined, vm) }) : null
+  const r = launch ? await call('apps.launch', { app: vm ? vmLaunchFile(launch) : launch, ...(open.length ? { open } : {}), session, refuse: refusedLaunchList(vm ? 'win32' : undefined, vm) }) : null
   // the launch is the journal's from its answer: a list that fails after it does not unsay it
   if (r) note.launched = { launched: r.launched, opened: open.length > 0 }
   if (r?.front) note.front = r.front
@@ -1180,7 +1181,7 @@ async function pinApp(
     proof?.app ?? query,
     {
       list: async () => (await call('apps.list', {})).apps,
-      launch: (app) => call('apps.launch', { app, session, refuse: refusedLaunchList(host.vm ? 'win32' : undefined, !!host.vm) }),
+      launch: (app) => call('apps.launch', { app: host.vm ? vmLaunchFile(app) : app, session, refuse: refusedLaunchList(host.vm ? 'win32' : undefined, !!host.vm) }),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms))
     },
     (e) => (e instanceof ComputerRpcError ? (e.data ?? null) : null)

@@ -1923,6 +1923,10 @@ describe('the Windows VM', () => {
     expect(count(h, 'apps.launch')).toBe(0)
     await h.run('computer_apps', { launch: 'Notepad' })
     expect(last(h, 'apps.launch').params.refuse).toEqual(expect.arrayContaining(['consent.exe', 'cmd.exe', 'powershell.exe', 'mshta.exe']))
+    // a name goes to the service as its file
+    expect(last(h, 'apps.launch').params.app).toBe('notepad.exe')
+    await h.run('computer_apps', { launch: 'Microsoft Edge' })
+    expect(last(h, 'apps.launch').params.app).toBe('msedge.exe')
     // the Windows key is his
     const key = await h.run('computer_act', { app: 'TextEdit', action: 'key', text: 'super+r' })
     expect(key.body).toMatch(/Windows key/)

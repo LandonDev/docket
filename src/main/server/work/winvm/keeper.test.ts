@@ -342,6 +342,8 @@ describe('setup', () => {
     const script = r.guest.scripts[0]
     for (const step of SETUP_STEPS) expect(script).toContain(`Step "${step}"`)
     expect(script).toContain("'DisableCMD' 1 DWord")
+    // what the service starts runs in tcuser's Documents, so a Save dialog opens there and not in System32
+    expect(script).toContain(String.raw`$action.WorkingDirectory = 'C:\Users\tcuser\Documents'`)
     expect(script).toContain("'NoRun' 1 DWord")
     expect(script).toContain("'DisallowRun' 1 DWord")
     for (const exe of DISALLOWED) expect(script).toContain(`'${exe}'`)

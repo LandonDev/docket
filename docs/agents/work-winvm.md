@@ -339,13 +339,19 @@ Run 2026-11-20 (pictures and numbers in `.temp-code/plans/landed/computers-vm/b1
 | his Take over | `computer.drive` owner, a drive stream, his line typed into Notepad, Hand back |
 | Notepad's save | FAILS: see below |
 
-**Open, found by the run** (app code, not fixed here):
-- Notepad's Save in its Save dialog is held as "Forward": the hold's reading of a navigation button
-  (`navForward`, computer/outward.ts) takes Windows' "Back to … (Alt + Left Arrow)" for one. Its replay after
-  Send fills the file name and says `sent`, but nothing is saved.
-- A program the service starts runs in `C:\Windows\System32`, so Notepad's Save dialog opens there.
-- `windows_apps` refuses "Microsoft Edge" and "Edge" ("no app matches"): the name goes to ShellExecute as it
-  is, and only `msedge.exe` starts it, though `VM_LAUNCH_APPS` lists both names.
+**Found by the run, and fixed since** (not yet run again end to end):
+- Notepad's Save in its Save dialog was held as "Forward": the hold's reading of a navigation button
+  (`navForward`, shared/computer/outward.ts) did not know Windows' own "Back to … (Alt + Left Arrow)" and
+  "Forward to … (Alt + Right Arrow)". It does now, by the key in the name; a Forward with no key in its name (a
+  mail's) is still held.
+- A program the service started ran in `C:\Windows\System32`, so Notepad's Save dialog opened there. The logon
+  task now starts the service in tcuser's Documents (`TCUSER_DOCUMENTS`, setup.ts), from the next Set up.
+- `windows_apps` refused "Microsoft Edge" and "Edge": the name went to ShellExecute as it was. An allowed app's
+  name now goes to the service as its file (`vmLaunchFile`, policy.ts).
+
+**Still open, found by the run:** the held "Forward" press's replay filled the file name and said `sent`, yet
+nothing was saved. With Save no longer held that path is gone for Notepad, but a held press in a Windows dialog
+that answers `sent` without its effect has not been explained.
 - On a headless host the box's own socket may not watch video (`mayWatch`), so the run watches and takes over
   with a client key on the listener, as his Mac or phone would.
 

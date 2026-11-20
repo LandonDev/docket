@@ -10,6 +10,8 @@ import { psQuote } from './machine/guest'
 
 /** Where the service lives: the standard user can run it and cannot replace it. */
 export const SERVICE_DIR = 'C:\\Program Files\\TempCode'
+/** Where what the service starts runs: tcuser's own files, so a Save dialog opens there. */
+export const TCUSER_DOCUMENTS = 'C:\\Users\\tcuser\\Documents'
 export const SERVICE_PATH = `${SERVICE_DIR}\\tc-computer.exe`
 /** The token file and the service's incoming copy: admins write, tcuser only reads. */
 export const DATA_DIR = 'C:\\ProgramData\\TempCode'
@@ -98,6 +100,8 @@ $trigger.UserId = $account
 $action = $def.Actions.Create(0)
 $action.Path = ${psQuote(SERVICE_PATH)}
 $action.Arguments = ${psQuote(`serve --listen 127.0.0.1:${port} --token-file "${TOKEN_PATH}"`)}
+# what the service starts runs where tcuser's files are, not in System32: a Save dialog opens in Documents
+$action.WorkingDirectory = ${psQuote(TCUSER_DOCUMENTS)}
 $folder.RegisterTaskDefinition(${psQuote(TASK_NAME)}, $def, 6, $account, $null, 3) | Out-Null
 Step "logon task"
 

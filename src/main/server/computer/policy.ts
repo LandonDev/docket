@@ -98,6 +98,26 @@ export const VM_LAUNCH_APPS: readonly string[] = [
   'adobe acrobat', 'adobe acrobat reader', 'acrobat reader', 'acrobat.exe', 'acrord32.exe'
 ]
 
+/** The file each allowed app's name launches in the VM: the service hands a name to ShellExecute as it is, which knows files, not "Microsoft Edge". */
+const VM_LAUNCH_FILES: Readonly<Record<string, string>> = {
+  'microsoft edge': 'msedge.exe', edge: 'msedge.exe',
+  notepad: 'notepad.exe',
+  'file explorer': 'explorer.exe', explorer: 'explorer.exe',
+  word: 'winword.exe', 'microsoft word': 'winword.exe',
+  excel: 'excel.exe', 'microsoft excel': 'excel.exe',
+  powerpoint: 'powerpnt.exe', 'microsoft powerpoint': 'powerpnt.exe',
+  outlook: 'outlook.exe', 'microsoft outlook': 'outlook.exe',
+  onenote: 'onenote.exe', 'microsoft onenote': 'onenote.exe',
+  teams: 'ms-teams.exe', 'microsoft teams': 'ms-teams.exe',
+  calculator: 'calc.exe',
+  paint: 'mspaint.exe',
+  'snipping tool': 'snippingtool.exe',
+  'adobe acrobat': 'acrobat.exe', 'adobe acrobat reader': 'acrord32.exe', 'acrobat reader': 'acrord32.exe'
+}
+
+/** A launch in the VM as the service is to hear it: an allowed app's name as its file; anything else as asked (it was refused before). */
+export const vmLaunchFile = (query: string): string => VM_LAUNCH_FILES[query.trim().toLowerCase()] ?? query
+
 /** What a launch in the VM may not hold: a path, a drive or a link's colon, a quote, an 8.3 name's tilde, a trailing dot or space. */
 const NOT_A_BARE_NAME = /[\\/:"~]|[. ]$/
 

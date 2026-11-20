@@ -1410,3 +1410,26 @@ describe('a command line in Windows (the VM)', () => {
     expect(readOutward(steps({ action: 'type', text: 'dir' }), null)).toBeNull()
   })
 })
+
+describe("a Windows dialog's navigation", () => {
+  const dialog = screen(
+    `app "Notepad" · window "Save as" · 900×600 · focused [6]
+[1] dialog "Save as"
+  [2] toolbar "Navigation"
+    [3] button "Back to Desktop (Alt + Left Arrow)"
+    [4] button "Forward to Documents (Alt + Right Arrow)"
+  [5] text field "File name:" = "notes.txt"
+  [6] button "Save"`,
+    { bundleId: 'notepad.exe', name: 'Notepad' }
+  )
+
+  it("does not hold Windows' Forward to a folder, nor the dialog's Save", () => {
+    expect(readOutward(steps({ action: 'left_click', element: 4 }), dialog)).toBeNull()
+    expect(readOutward(steps({ action: 'left_click', element: 6 }), dialog)).toBeNull()
+  })
+
+  it('still holds a Forward that sends, with no navigation key in its name', () => {
+    const mail = screen(`app "Outlook" · window "Inbox" · 900×600\n[1] window "Inbox"\n  [2] button "Forward"`, { bundleId: 'outlook.exe', name: 'Outlook' })
+    expect(readOutward(steps({ action: 'left_click', element: 2 }), mail)).toMatchObject({ label: 'Forward' })
+  })
+})

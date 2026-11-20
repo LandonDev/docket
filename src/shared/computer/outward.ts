@@ -510,11 +510,20 @@ function verbOf(screen: Screen, e: ScreenElement, verbs: readonly string[] = OUT
 const cookieName = (name: string | undefined, verb: string): boolean => ['accept', 'decline', 'reject'].includes(verb) && /\bcookies?\b/i.test(name ?? '')
 const cookieButton = (e: ScreenElement, verb: string): boolean => cookieName(e.name, verb)
 
-/** The browser's own Forward goes through pages: outside any page, beside its Back. A page's Forward is the page's. */
+/** Windows' own navigation buttons name their key: "Forward to Documents (Alt + Right Arrow)". */
+const WINDOWS_NAV = /\s*\(alt\s*\+\s*(left|right) arrow\)\s*$/
+/** A Back beside it: the browser's "Back", Windows' "Back to Desktop (Alt + Left Arrow)". */
+const BACK_NAME = /^(back|go back)( to .*)?$/
+
+/**
+ * The browser's own Forward goes through pages: outside any page, beside its Back. A page's Forward is the page's.
+ * A Windows dialog's or Explorer's Forward to a folder is navigation too, by its key in its name.
+ */
 function navForward(screen: Screen, e: ScreenElement, verb: string): boolean {
   if (verb !== 'forward') return false
   if (ancestors(screen, e.index).some((a) => a.role === 'web area')) return false
-  return [...screen.elements.values()].some((x) => x.index !== e.index && x.parent === e.parent && /^(back|go back)$/.test(norm(x.name ?? '')))
+  if (WINDOWS_NAV.test((e.name ?? '').toLowerCase())) return true
+  return [...screen.elements.values()].some((x) => x.index !== e.index && x.parent === e.parent && BACK_NAME.test(norm((x.name ?? '').toLowerCase().replace(WINDOWS_NAV, ''))))
 }
 
 /** `live`: a control the read shows disabled counts too. A composer's Send is disabled until its box holds text, and the read is taken before the call's own typing. */
