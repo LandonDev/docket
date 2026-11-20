@@ -1366,18 +1366,43 @@ public enum Methods {
         public static let name = "attachment.begin"
 
         public struct Params: Codable, Hashable, Sendable {
+            public enum Into: RawRepresentable, Codable, Hashable, Sendable {
+                case thread
+                case workspace
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "thread": self = .thread
+                    case "workspace": self = .workspace
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .thread: "thread"
+                    case .workspace: "workspace"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
             public let sessionId: String
             public let name: String
             public let size: Int
             public let mime: String?
             public let sha256: String
+            public let into: Into?
 
-            public init(sessionId: String, name: String, size: Int, mime: String? = nil, sha256: String) {
+            public init(sessionId: String, name: String, size: Int, mime: String? = nil, sha256: String, into: Into? = nil) {
                 self.sessionId = sessionId
                 self.name = name
                 self.size = size
                 self.mime = mime
                 self.sha256 = sha256
+                self.into = into
             }
         }
 

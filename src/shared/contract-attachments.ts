@@ -26,7 +26,9 @@ export const AttachmentBeginParamsSchema = z.object({
   name: z.string().min(1).max(1024),
   size: z.number().int().min(0),
   mime: z.string().max(255).optional(),
-  sha256
+  sha256,
+  /** 'workspace': the workspace's folder, real name kept (docs/box.md). */
+  into: z.enum(['thread', 'workspace']).optional()
 })
 export type AttachmentBeginParams = z.infer<typeof AttachmentBeginParamsSchema>
 

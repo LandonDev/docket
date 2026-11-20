@@ -1171,7 +1171,13 @@ a floating chat; that root is in `managedRoots()`). The store
 (`attachmentUploads.ts`) writes a hidden `.upload-<id>.part` in that dir,
 appends and hashes each chunk, and on commit checks size and sha256 and
 renames it to the sanitized name (last path segment, letters, digits, `_ . -`,
-no leading dot, 120 chars; `name-1.ext` on a collision). An upload with no
+no leading dot, 120 chars; `name-1.ext` on a collision). A begin with `into:
+'workspace'` lands in the thread's workspace's own folder instead (the
+thread's attachment dir when it has none) under the file's real name, spaces
+kept, only what no desktop allows in a name taken out, a Windows device name
+prefixed with `_`, at most 240 bytes (`keptFileName`), and `Name (1).ext` on
+a collision (`freeKeptName`); a name the disk still refuses drops the partial.
+Work's files opened from outside (docs/agents/work-canvas.md). An upload with no
 chunk for 10 minutes is dropped with its partial; an upload belongs to the key
 that began it.
 

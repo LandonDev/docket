@@ -274,7 +274,7 @@ import {
 import { configureCommandSkills, listCommands } from './commands'
 import { workspaceIcon } from './wsicon'
 import { ATTACH_DIR, readAttachment, saveAttachment } from './attachments'
-import { attachmentDir, dataAttachmentsRoot, setAttachmentDirContext, treeAttachmentsRoot } from './attachmentDir'
+import { attachmentDir, dataAttachmentsRoot, setAttachmentDirContext, treeAttachmentsRoot, workspaceFolderOf } from './attachmentDir'
 import { AttachmentUploads, handleAttachmentUploads, sweepAttachmentRoots } from './attachmentUploads'
 import {
   closeAllWatchers,
@@ -619,7 +619,7 @@ export async function startServer(
   // TEMP_CODE_ATTACHMENT_TTL_MS: a proof's short expiry (scripts/e2e-attachments.ts); the sweep then runs at a tenth of it.
   const uploadTtl = Number(process.env.TEMP_CODE_ATTACHMENT_TTL_MS) || undefined
   const uploads = new AttachmentUploads({
-    dirFor: (sessionId) => attachmentDir(sessionId),
+    dirFor: (sessionId, into) => (into === 'workspace' ? workspaceFolderOf(sessionId) : null) ?? attachmentDir(sessionId),
     store,
     ...(uploadTtl ? { ttlMs: uploadTtl, sweepEveryMs: Math.max(100, Math.floor(uploadTtl / 10)) } : {})
   })

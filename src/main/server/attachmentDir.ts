@@ -72,6 +72,16 @@ export function attachmentDir(session: AttachmentSession | string, ctx: Attachme
   return join(dataAttachmentsRoot(c)!, s.id)
 }
 
+/** The folder of the workspace a thread hangs off, where a file kept for the
+ *  person lands (`attachment.begin` with `into: 'workspace'`); null for a
+ *  thread with no workspace, or one the server has not seen. */
+export function workspaceFolderOf(session: AttachmentSession | string, ctx: AttachmentDirContext | null = current): string | null {
+  const c = needContext(ctx)
+  const s = resolveSession(session, c)
+  assertSessionId(s.id)
+  return (s.workspaceId ? c.workspacePath(s.workspaceId) : null) || null
+}
+
 /** Every directory a thread's attachments may sit in: where they land now,
  *  and the userData fallback a draft's uploads took before the server knew
  *  its project. What the delete and archive sweeps remove. */

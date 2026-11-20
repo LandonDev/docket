@@ -4,12 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ATTACHMENT_CHUNK_BYTES, DEFAULT_ATTACHMENT_MAX_BYTES } from '@shared/contract-attachments'
-import { attachmentDir, attachmentDirsOf, type AttachmentDirContext } from './attachmentDir'
+import { attachmentDir, attachmentDirsOf, workspaceFolderOf, type AttachmentDirContext } from './attachmentDir'
 import {
   AttachmentUploads,
   UploadError,
   digestFile,
+  freeKeptName,
   freeName,
+  keptFileName,
   readRange,
   sanitizeAttachmentName,
   sweepAttachmentRoots,
@@ -25,7 +27,7 @@ let uploads: AttachmentUploads
 
 const sha = (b: Buffer): string => createHash('sha256').update(b).digest('hex')
 const b64 = (b: Buffer): string => b.toString('base64')
-const landing = (sessionId: string): string => join(dir, 'land', sessionId)
+const landing = (sessionId: string, into: 'thread' | 'workspace' = 'thread'): string => join(dir, into === 'workspace' ? 'folder' : 'land', sessionId)
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'tc-uploads-'))
@@ -199,6 +201,54 @@ describe('AttachmentUploads', () => {
   })
 })
 
+describe('a file kept in the workspace folder', () => {
+  it("lands in the workspace's folder under its real name, spaces and all", async () => {
+    const bytes = Buffer.from('cells')
+    const { uploadId } = await uploads.begin('local', { sessionId: 's1', name: '/Users/me/Desktop/Q3 Budget (final).xlsx', size: 5, sha256: sha(bytes), into: 'workspace' })
+    await uploads.chunk('local', { uploadId, index: 0, dataBase64: b64(bytes) })
+    const att = await uploads.commit('local', uploadId)
+    expect(att.path).toBe(join(landing('s1', 'workspace'), 'Q3 Budget (final).xlsx'))
+    expect(readFileSync(att.path, 'utf8')).toBe('cells')
+  })
+
+  it('a cancel mid-way leaves nothing in the folder', async () => {
+    const bytes = Buffer.alloc(ATTACHMENT_CHUNK_BYTES + 10, 1)
+    const { uploadId } = await uploads.begin('local', { sessionId: 's1', name: 'Cut.mov', size: bytes.length, sha256: sha(bytes), into: 'workspace' })
+    await uploads.chunk('local', { uploadId, index: 0, dataBase64: b64(bytes.subarray(0, ATTACHMENT_CHUNK_BYTES)) })
+    await uploads.abort('local', uploadId)
+    expect(readdirSync(landing('s1', 'workspace'))).toEqual([])
+  })
+
+  it('a second file of the same name is "Name (1)", as a desktop names a copy', async () => {
+    for (const text of ['one', 'two']) {
+      const bytes = Buffer.from(text)
+      const { uploadId } = await uploads.begin('local', { sessionId: 's1', name: 'Budget.xlsx', size: bytes.length, sha256: sha(bytes), into: 'workspace' })
+      await uploads.chunk('local', { uploadId, index: 0, dataBase64: b64(bytes) })
+      await uploads.commit('local', uploadId)
+    }
+    expect(readdirSync(landing('s1', 'workspace')).sort()).toEqual(['Budget (1).xlsx', 'Budget.xlsx'])
+    expect(freeKeptName(landing('s1', 'workspace'), 'notes')).toBe('notes')
+  })
+
+  it('keeps a name as the person wrote it, minus what no desktop allows', () => {
+    expect(keptFileName('C:\\Users\\me\\Sponsor deck.pptx')).toBe('Sponsor deck.pptx')
+    expect(keptFileName('Notes: draft?.md')).toBe('Notes draft .md')
+    expect(keptFileName('.hidden')).toBe('hidden')
+    expect(keptFileName('...')).toBe('file')
+    expect(keptFileName('ünïcode ✓.md')).toBe('ünïcode ✓.md')
+    expect(keptFileName('CON.txt')).toBe('_CON.txt')
+    expect(keptFileName('lpt1')).toBe('_lpt1')
+    expect(keptFileName('Console.txt')).toBe('Console.txt')
+    // Held to 240 bytes of UTF-8, cut between characters, the extension kept.
+    const long = keptFileName(`${'a'.repeat(300)}.json`)
+    expect([Buffer.byteLength(long), long.endsWith('.json')]).toEqual([240, true])
+    const wide = keptFileName(`${'予算'.repeat(70)}😀.xlsx`)
+    expect(Buffer.byteLength(wide)).toBeLessThanOrEqual(240)
+    expect(wide.endsWith('.xlsx')).toBe(true)
+    expect(wide).not.toContain('\uFFFD')
+  })
+})
+
 describe('freeName', () => {
   it('counts up past taken names, extensionless too', () => {
     writeFileSync(join(dir, 'notes'), '')
@@ -244,6 +294,11 @@ describe('attachmentDir', () => {
     expect(attachmentDir('gone', c)).toBe(join(dir, 'userData', 'attachments', 'gone'))
     expect(attachmentDir({ id: 'x', projectId: 'proj', workspaceId: null }, c)).toBe(join(dir, 'repo', '.temp-code', 'attachments', 'x'))
     expect(() => attachmentDir('../etc', c)).toThrow('bad session id')
+  })
+  it("names a thread's workspace folder, and none for a thread with no workspace", () => {
+    expect(workspaceFolderOf('w1', ctx())).toBe(join(dir, 'ws'))
+    expect(workspaceFolderOf('p1', ctx())).toBeNull()
+    expect(workspaceFolderOf('draft', ctx())).toBeNull()
   })
   it('lists the landing dir and the userData fallback for the sweep', () => {
     expect(attachmentDirsOf('p1', ctx())).toEqual([

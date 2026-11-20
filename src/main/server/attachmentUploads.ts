@@ -53,6 +53,8 @@ interface Upload {
   dir: string
   partial: string
   name: string
+  /** Landing in the workspace's folder under the file's own name. */
+  kept: boolean
   mime?: string
   size: number
   sha256: string
@@ -65,8 +67,8 @@ interface Upload {
 }
 
 export interface AttachmentUploadsDeps {
-  /** The landing directory for a session's attachments (attachmentDir). */
-  dirFor(sessionId: string): string
+  /** The landing directory for a session's attachments (attachmentDir), or for a file kept in its workspace's folder. */
+  dirFor(sessionId: string, into: 'thread' | 'workspace'): string
   store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
   now?: () => number
   ttlMs?: number
@@ -86,6 +88,43 @@ export function sanitizeAttachmentName(name: string): string {
     safe = safe.slice(0, 120 - ext.length) + ext
   }
   return safe
+}
+
+/** The most bytes a kept name takes: under every desktop's 255 for one segment, with room for ` (99)`. */
+export const KEPT_NAME_BYTES = 240
+
+/** A file's own name as it lands in a workspace's folder for the person to
+ *  keep: the last segment of whatever was sent, with what no desktop allows
+ *  in a name (separators, `:*?"<>|`, control characters) and leading dots
+ *  taken out, spaces kept, a Windows device name (`CON.txt`) prefixed with
+ *  `_`, and at most KEPT_NAME_BYTES of UTF-8, cut between characters with
+ *  the extension kept. */
+export function keptFileName(name: string): string {
+  const last = name.split(/[\\/]/).pop() ?? ''
+  // eslint-disable-next-line no-control-regex
+  let kept = last.normalize('NFC').replace(/[:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').replace(/^[.\s]+/, '').replace(/[.\s]+$/, '')
+  if (!kept) kept = 'file'
+  if (/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(kept)) kept = `_${kept}`
+  const bytes = (text: string): number => Buffer.byteLength(text, 'utf8')
+  if (bytes(kept) > KEPT_NAME_BYTES) {
+    let ext = extname(kept)
+    if (bytes(ext) > 20) ext = ''
+    const stem = Array.from(kept.slice(0, kept.length - ext.length))
+    while (stem.length > 0 && bytes(stem.join('') + ext) > KEPT_NAME_BYTES) stem.pop()
+    kept = stem.join('').trimEnd() + ext
+  }
+  return kept
+}
+
+/** A kept name that is free in `dir`: `name`, then `stem (1).ext`, `stem (2).ext`, as a desktop names a copy. */
+export function freeKeptName(dir: string, name: string): string {
+  if (!existsSync(join(dir, name))) return name
+  const ext = extname(name)
+  const stem = ext ? name.slice(0, -ext.length) : name
+  for (let n = 1; ; n += 1) {
+    const candidate = `${stem} (${n})${ext}`
+    if (!existsSync(join(dir, candidate))) return candidate
+  }
 }
 
 /** The first of `name`, `stem-1.ext`, `stem-2.ext`, … that does not exist in `dir`. */
@@ -137,7 +176,8 @@ export class AttachmentUploads {
     if (params.size > maxBytes) {
       throw new UploadError('too-large', `attachment too large: ${params.size} bytes is over this host's limit of ${maxBytes}`)
     }
-    const dir = this.deps.dirFor(params.sessionId)
+    const into = params.into ?? 'thread'
+    const dir = this.deps.dirFor(params.sessionId, into)
     mkdirSync(dir, { recursive: true })
     const id = nanoid(21)
     const partial = join(dir, `.upload-${id}.part`)
@@ -148,7 +188,8 @@ export class AttachmentUploads {
       sessionId: params.sessionId,
       dir,
       partial,
-      name: sanitizeAttachmentName(params.name),
+      name: into === 'workspace' ? keptFileName(params.name) : sanitizeAttachmentName(params.name),
+      kept: into === 'workspace',
       mime: params.mime,
       size: params.size,
       sha256: params.sha256,
@@ -213,9 +254,15 @@ export class AttachmentUploads {
     if (digest !== upload.sha256) return fail('sha-mismatch', 'sha256 does not match what begin declared')
     // existsSync and renameSync back to back: nothing else in this process
     // can take the name in between.
-    const name = freeName(upload.dir, upload.name)
+    const name = (upload.kept ? freeKeptName : freeName)(upload.dir, upload.name)
     const path = join(upload.dir, name)
-    renameSync(upload.partial, path)
+    try {
+      renameSync(upload.partial, path)
+    } catch (err) {
+      // A name the disk refuses: the partial goes, so nothing is left in his folder.
+      await rm(upload.partial, { force: true })
+      throw err
+    }
     const mime = upload.mime || mimeFor(path)
     return {
       path,
