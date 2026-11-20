@@ -157,4 +157,20 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         #expect(await rig.until { rig.work.awayEnd?.decided.threads.first?.count == 2 })
         #expect(rig.work.awayEnd?.until == 3_000)
     }
+
+    @Test func `a voice note reads the capture state, then files with its key and Unsorted as null`() async throws {
+        let rig = try WorkRig()
+        let fake = await rig.open()
+        let state = Task { try await rig.work.captureState() }
+        let read = try #require(await rig.request(fake, "work.capture.state"))
+        fake.answer(id: read, result: #"{"host":"h1","last":"purdue","homes":["purdue"],"connected":true}"#)
+        #expect(try await state.value.last == "purdue")
+        let filed = Task { try await rig.work.capture(text: "Call Sam", sector: nil, start: true, key: "k-0001") }
+        let file = try #require(await rig.request(fake, "work.capture.file"))
+        let params = try #require(fake.sentRequests.first { $0.id == file }?.params)
+        #expect(params == .object(["key": .string("k-0001"), "text": .string("Call Sam"), "sector": .null, "start": .bool(true)]))
+        fake.answer(id: file, result: #"{"taskId":"t1","kept":[],"threadId":"s1"}"#)
+        #expect(try await filed.value.threadId == "s1")
+        #expect(rig.work.hostId == "env_test")
+    }
 }

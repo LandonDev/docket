@@ -12,7 +12,7 @@ import TempCodeContract
 /// `work.get`) is `isOn == false`: nothing of Work shows for it, so Home is
 /// what it was.
 @MainActor @Observable
-public final class WorkHost {
+public final class WorkHost: CaptureHost {
     /// Away turned off after a stretch: the review's span and the host's tally of it.
     public struct AwayEnd: Sendable, Hashable {
         public var since: Int
@@ -261,6 +261,21 @@ public final class WorkHost {
     /// A Work Chat: a Work thread in no workspace, started with its first message.
     public func newWorkChat(firstMessage: String) async throws -> SessionMeta {
         try await socket.request(Methods.SessionCreate.self, .init(workspaceId: .clear, threadType: .set(.chat), firstMessage: firstMessage, scope: .work))
+    }
+
+    // MARK: - capture (docs/agents/work-capture.md "The phone")
+
+    public var hostId: String { environment.id }
+
+    /// Where his last capture on this host went and whether its LifeOS answers.
+    public func captureState() async throws -> CaptureState {
+        try await socket.request(Methods.WorkCaptureState.self, .init())
+    }
+
+    /// His own quick add in LifeOS: `sector` nil is Unsorted. `key` names this
+    /// capture, so a retry with the same one files nothing twice.
+    public func capture(text: String, sector: String?, start: Bool = false, key: String = UUID().uuidString) async throws -> CaptureFiled {
+        try await socket.request(Methods.WorkCaptureFile.self, .init(key: key, text: text, sector: sector, start: start ? true : nil))
     }
 
     // MARK: - house rules (milestone 39)

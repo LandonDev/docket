@@ -2512,6 +2512,23 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   Resume.
 - **Write in My Voice** is the first row of the house rules page.
 
+The voice note (capture from anywhere, docs/agents/work-capture.md "The
+phone"):
+
+- **The way in** is a microphone (`mic`) in Home's toolbar, before Settings,
+  while any host has Work on. It opens a form sheet, "Voice Note": the words
+  (a field he can edit, "Note"), then Sector (Unsorted with the quiet dot, or
+  a sector with its dot) and Start Thread, then the reason a save failed as
+  the section's footer in destructive text. Cancel keeps the draft; Save is
+  the one confirm, a spinner while it goes.
+- **The hold control** sits alone in the sheet's bottom bar: a 72 pt circle
+  on the fill step with `mic.fill`, one line under it in meta ("Hold to
+  Talk", the clock while it listens, a spinner while the last words land,
+  or why it cannot listen). Held, it grows to 1.12 on the layout spring;
+  listening, it is destructive red with the glyph in white and a light
+  impact; the release returns on `fast`. Reduce Motion dims the press to
+  `pressDim` and keeps the colour. No ring, no level meter, no glow.
+
 Not on the phone, and why: the Docs row and LifeOS's project cards on a
 Work workspace's screen (no wire lists a workspace's documents yet); a
 native review row for a document or sheet (its suggestions live inside

@@ -525,6 +525,11 @@ export const SUBSET: SubsetEntry[] = [
   type('RoutinePhoneRow', W.RoutinePhoneRowSchema),
   method('work.routines.list', W.RoutinesListSchema),
   method('work.routines.pause', W.RoutinePhoneRowSchema),
+  // capture from anywhere: the phone's voice note (docs/agents/work-capture.md "The phone")
+  type('CaptureState', W.CaptureStateSchema),
+  type('CaptureFiled', W.CaptureFiledSchema),
+  method('work.capture.state', W.CaptureStateSchema),
+  method('work.capture.file', W.CaptureFiledSchema),
   method('away.get', W.AwaySnapshotSchema),
   method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state })),
   // live video of the computer an agent drives (docs/agents/live-video.md): a stream's ticket, and who is driven where

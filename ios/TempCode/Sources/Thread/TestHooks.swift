@@ -76,6 +76,7 @@ enum TestHooks {
     /// For the iPhone Duo set: `rename` (the first thread row on screen), `notes` (a root thread's notes),
     /// `project-settings` (the first project), `preamble` (project settings with the editor pushed),
     /// `milestone` (Plan the milestone for a project plan's first undone one).
+    /// Work on Home: `new-work` (New Work workspace), `voice-note` (the voice note, while a host has Work on).
     /// Actions, in the list above: `batch:pause|batch:resume|batch:stop|batch:archive` on Home run the host-scope
     /// batch without the sheet; `archive-remove` and `remove-resources` on a thread.
     static let sheet = env["TC_TEST_SHEET"].flatMap { $0.isEmpty ? nil : $0 }

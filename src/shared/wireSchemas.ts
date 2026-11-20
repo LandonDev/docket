@@ -1,12 +1,13 @@
 import { z } from 'zod'
 import { StartOnSchema } from './defaults'
-import { SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
+import { SectorKeySchema, SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
 import { WorkSettingsSchema } from './work/scope'
 import { PillarIdSchema } from './work/ids'
 import { ActKindSchema, HeldRefSchema } from './work/acts'
 import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
+import type { CaptureFiled, CaptureState } from './contract-work-capture'
 import { CanvasItemSchema, type CanvasItem } from './work/canvas'
 import type { WorkspaceWorkSettings } from './work/scope'
 import type { LifeosJwtAnswer } from './contract-work-lifeos'
@@ -1195,6 +1196,19 @@ export const WorkOutboxPushSchema = push('work.outbox', { waiting: z.number().in
 export const WorkOutboxResultPushSchema = push('work.outbox.result', { result: WorkResultSchema })
 /** This host's LifeOS sign-in and its sector keys. */
 export const WorkLifeosPushSchema = push('work.lifeos', { status: LifeosStatusSchema })
+/** The capture pillar (contract-work-capture.ts): the phone's voice note reads where it went last, then files. */
+export const CaptureStateSchema = z.object({
+  host: z.string(),
+  last: SectorKeySchema.nullable(),
+  homes: z.array(SectorKeySchema),
+  connected: z.boolean()
+})
+export const CaptureFiledSchema = z.object({
+  taskId: z.string(),
+  kept: z.array(z.string()),
+  threadId: z.string().optional(),
+  threadError: z.string().optional()
+})
 /** Away from computer: the state and the stretch's tally, on each change. */
 export const AwayPushSchema = push('away', { state: AwayStateSchema, decided: AwayDecidedSchema })
 
@@ -1623,6 +1637,8 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof OutboxItemSchema, OutboxItem>>,
   Expect<Mirror<typeof ToolRulesCardSchema, ToolRulesCard>>,
   Expect<Mirror<typeof LifeosStatusSchema, LifeosStatus>>,
+  Expect<Mirror<typeof CaptureStateSchema, CaptureState>>,
+  Expect<Mirror<typeof CaptureFiledSchema, CaptureFiled>>,
   Expect<Mirror<typeof ComputerPushSchema, PushOf<'computer'>>>,
   Expect<Mirror<typeof ComputerFramePushSchema, PushOf<'computer-frame'>>>,
   Expect<Mirror<typeof ComputerClickPushSchema, PushOf<'computer-click'>>>,

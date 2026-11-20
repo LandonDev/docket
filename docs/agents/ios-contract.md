@@ -57,3 +57,8 @@
   with them: union branches that come out as one Swift case (a string or
   the literal `'live'`, two tuple shapes) are one case, and a field named
   `patch` gets the type name `Changes`, never `Patch` (the request wrapper).
+  The voice note (docs/agents/work-capture.md "The phone") added
+  `work.capture.state` and `work.capture.file`, with `CaptureState` and
+  `CaptureFiled` named (zod in wireSchemas.ts, each a `Mirror` of its
+  interface). A nullable param the host requires (`sector`, null for
+  Unsorted) is encoded as an explicit `null`, never left out.

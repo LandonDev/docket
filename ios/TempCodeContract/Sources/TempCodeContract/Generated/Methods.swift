@@ -4278,6 +4278,51 @@ public enum Methods {
         public typealias Output = RoutinePhoneRow
     }
 
+    public enum WorkCaptureState: ContractMethod {
+        public static let name = "work.capture.state"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = CaptureState
+    }
+
+    public enum WorkCaptureFile: ContractMethod {
+        public static let name = "work.capture.file"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let key: String
+            public let text: String
+            public let sector: String?
+            public let files: [CanvasSource]?
+            public let start: Bool?
+
+            public init(key: String, text: String, sector: String?, files: [CanvasSource]? = nil, start: Bool? = nil) {
+                self.key = key
+                self.text = text
+                self.sector = sector
+                self.files = files
+                self.start = start
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case key, text, sector, files, start
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(key, forKey: .key)
+                try container.encode(text, forKey: .text)
+                try container.encode(sector, forKey: .sector)
+                try container.encodeIfPresent(files, forKey: .files)
+                try container.encodeIfPresent(start, forKey: .start)
+            }
+        }
+
+        public typealias Output = CaptureFiled
+    }
+
     public enum AwayGet: ContractMethod {
         public static let name = "away.get"
 

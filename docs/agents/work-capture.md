@@ -99,7 +99,52 @@ A frame change in the main process, kept small:
   the host gave is kept in localStorage, so the window is whole the instant
   it shows. It wears Work's theme.
 
-## A mail
+## The phone: a voice note
+
+The iOS client's way in (built 2026-11-20). Home's toolbar carries a
+microphone (`mic`, "Voice Note") while any host has Work on; it opens a form
+sheet, "Voice Note":
+
+- **Hold to talk.** The 72 pt control at the sheet's foot (in `tcBottomBar`)
+  listens while held: the press grows it at once on the layout spring (a
+  dim instead under Reduce Motion), the microphone opening turns it red with
+  a light tap and the clock under it, the release snaps back on `fast` and
+  the last words land. A press that lets go before the microphone opens is a
+  tap and records nothing. VoiceOver activates it once to start and again to
+  stop. Each take's words follow what the field already holds, and he can
+  edit them before saving.
+- **On the phone, always** (the owner's rule): `OnDeviceSpeech`
+  (ios/TempCode/Sources/Work/Capture/) is `SFSpeechRecognizer` in the phone's
+  language with `requiresOnDeviceRecognition = true`. A phone that cannot
+  transcribe its language on the device is refused ("This iPhone can't
+  transcribe speech on its own."); nothing falls back to Apple's servers.
+  Microphone or speech recognition refused: one line with Open Settings.
+  `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`
+  are in ios/TempCode/project.yml and Info.plist (scripts/ios-project.test.ts).
+- **Sector, Start Thread, Save.** Sector is Unsorted (`null`) or one of the
+  six, the default the filing host's `last` until he picks; Start Thread
+  passes `start: true`; Save files `{key, text, sector, start}` with no files.
+- **Which host.** `VoiceNote.find` asks `work.capture.state` of every host
+  with Work on at once and takes the first that answers `connected: true` (a
+  host asleep behind the relay never holds up one that answered); a started
+  thread opens there. With none connected Save says "No host can reach
+  LifeOS right now." and keeps the words.
+- **Nothing lost.** The draft is kept in the phone's defaults
+  (`work.capture.draft`) as it changes, so Cancel, a failed Save and a quit
+  all keep it; only a Save the host answered clears it. A Save keeps its key
+  while the request (words, sector, Start Thread) is unchanged, so a retry
+  after a lost answer files nothing twice; a changed request gets a new key.
+  A thread that did not start (`threadError`) is said in the sheet; the task
+  is filed.
+- **Code.** Client package `Work/Capture/`: `VoiceNote` (the draft, the host,
+  the key; `CaptureHost`, which `WorkHost` is) and `Dictation` (hold, prepare,
+  listen, finish, refused, failed; `SpeechSource`, which `OnDeviceSpeech`
+  is). `WorkHost.captureState()` and `capture(text:sector:start:key:)` are
+  the wire, `Methods.WorkCaptureState` and `Methods.WorkCaptureFile` in the
+  generated contract (`CaptureState`, `CaptureFiled`). Tests:
+  `VoiceNoteTests.swift` (both suites) and `WorkHostTests`'s capture case.
+  The sheet opens for a shot with `TC_TEST_SHEET=voice-note` (debug builds).
+
 
 LifeOS takes in his mail itself, so a forwarded mail needs nothing of
 TempCode: a mail **he sent** to an address of one of his mailboxes with
@@ -122,7 +167,7 @@ pillar's to fix.
 
 `work/capture/capture.test.ts` (the pillar on a stand-in LifeOS), 
 `src/main/capture.test.ts` (key, file, placement, options, backing equal to
-index.css), `lib/keys.test.ts` (accelerators), `work/capture/capture.dom.test.tsx`
+index.css), the phone's `VoiceNoteTests.swift` and `WorkHostTests.swift`, `lib/keys.test.ts` (accelerators), `work/capture/capture.dom.test.tsx`
 (the page's keys, drop, paste, failure, offline, the socket, the key row),
 LifeOS `test/behaviour/mailCapture.test.ts`. The preview:
 `bun run ui:preview src/renderer/src/work/capture/CaptureView.tsx#CaptureView --shot`.

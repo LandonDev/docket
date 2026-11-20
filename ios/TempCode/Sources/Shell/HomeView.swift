@@ -21,6 +21,10 @@ struct HomeView: View {
     @State private var adding = false
     /// New Work workspace, from the Work header's +.
     @State private var addingWork = false
+    /// A voice note (Work/Capture), from the microphone while any host has Work on.
+    @State private var capturing = false
+    /// Made at the first press and kept, so a draft outlives the sheet.
+    @State private var voiceNote: VoiceNote?
     @State private var pairingAgain: PairedEnvironment?
     @State private var launched = false
     /// The first body has been on screen: from here on, event rows animate in.
@@ -108,6 +112,12 @@ struct HomeView: View {
                     .accessibilityLabel(client.environment.name)
                 }
             }
+            if !home.work.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Voice Note", systemImage: "mic") { captureVoice() }
+                        .accessibilityIdentifier("voice-note")
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Settings", systemImage: "gearshape") { navigator.open(.settings) }
             }
@@ -116,12 +126,19 @@ struct HomeView: View {
         .listOnScreen("home")
         .sheet(isPresented: $adding) { AddEnvironmentSheet() }
         .sheet(isPresented: $addingWork) { NewWorkWorkspaceSheet() }
+        .sheet(isPresented: $capturing) { if let voiceNote { VoiceNoteSheet(note: voiceNote) } }
         #if DEBUG
         .task(id: model.ready) { if model.ready, TestHooks.sheet == "new-work" { try? await Task.sleep(for: .seconds(2)); addingWork = true } }
+        .task(id: model.ready) { if model.ready, TestHooks.sheet == "voice-note" { try? await Task.sleep(for: .seconds(2)); captureVoice() } }
         #endif
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .onChange(of: router.restoredSheet, initial: true) { restoreSheet() }
         .onChange(of: model.ready) { restoreSheet() }   // the cached shell is painted by then
+    }
+
+    private func captureVoice() {
+        if voiceNote == nil { voiceNote = VoiceNote(source: OnDeviceSpeech()) }
+        capturing = true
     }
 
     /// A troubled host's status row and every host's one-off notes, at the top.

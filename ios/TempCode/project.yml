@@ -89,6 +89,9 @@ targets:
         # ProMotion: without it a display link (the streaming reveal) and SwiftUI animations stop at 60 Hz.
         CADisableMinimumFrameDurationOnPhone: true
         ITSAppUsesNonExemptEncryption: false
+        # A voice note (Work/Capture): heard and transcribed on the phone only.
+        NSMicrophoneUsageDescription: TempCode listens while you hold the microphone to take a voice note.
+        NSSpeechRecognitionUsageDescription: Your voice notes are transcribed on this iPhone and never leave it.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:

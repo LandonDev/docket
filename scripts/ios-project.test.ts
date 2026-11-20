@@ -41,6 +41,14 @@ describe('ios/TempCode/project.yml', () => {
     expect(yml).not.toContain('UIRequiresFullScreen')
   })
 
+  it('says why it asks for the microphone and speech recognition (the voice note), in the yml and the checked-in plist', () => {
+    const plist = readFileSync(resolve(import.meta.dirname, '../ios/TempCode/Info.plist'), 'utf8')
+    for (const key of ['NSMicrophoneUsageDescription', 'NSSpeechRecognitionUsageDescription']) {
+      expect(yml).toMatch(new RegExp(`\\n\\s+${key}: \\S`))
+      expect(plist).toContain(`<key>${key}</key>`)
+    }
+  })
+
   it('keeps the launch screen the Duo prepare page asks for', () => {
     expect(yml).toContain('UILaunchScreen: {}')
   })

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		71B152F0C870B275DA569865 /* OnDeviceSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 881304B0E2E3E9ABFF4CC649 /* OnDeviceSpeech.swift */; };
+		3E5EDE471B826068D199B0C8 /* VoiceNoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E481FFD9A2C33BB0C54DE3F8 /* VoiceNoteSheet.swift */; };
 		005E78F53D8BDD5C36DB40E1 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97CD0E1CEDE6E34AFBFFEE6 /* RootView.swift */; };
 		011887BB3F7ED577453C15C9 /* WorkStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41BC3EB3FB86BBBAC8127145 /* WorkStyles.swift */; };
 		01EADB50AA2D4A7CB4448DF3 /* TempCodeContract in Frameworks */ = {isa = PBXBuildFile; productRef = 06BB482460A8D52605811594 /* TempCodeContract */; };
@@ -233,6 +235,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		881304B0E2E3E9ABFF4CC649 /* OnDeviceSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSpeech.swift; sourceTree = "<group>"; };
+		E481FFD9A2C33BB0C54DE3F8 /* VoiceNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNoteSheet.swift; sourceTree = "<group>"; };
 		002DFE88A99F9FF59FF9A750 /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		01696E5EC7D43273F8D53DD8 /* SafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariView.swift; sourceTree = "<group>"; };
 		01E37D6416D5346B034A4FA1 /* HostDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDirectory.swift; sourceTree = "<group>"; };
@@ -725,10 +729,20 @@
 				FE7876C68B25E3B5D3D8267B /* WorkCreateSheets.swift */,
 				0E8D78E9C7ED96E8F2EFAD50 /* WorkSettingsScreen.swift */,
 				41BC3EB3FB86BBBAC8127145 /* WorkStyles.swift */,
+				7215CD134AA9868D3EF43FE9 /* Capture */,
 				CC3548AD7AF1D44576CB1913 /* Items */,
 				CDC7E08CFBEFC943E39C1BD5 /* Life */,
 			);
 			path = Work;
+			sourceTree = "<group>";
+		};
+		7215CD134AA9868D3EF43FE9 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				881304B0E2E3E9ABFF4CC649 /* OnDeviceSpeech.swift */,
+				E481FFD9A2C33BB0C54DE3F8 /* VoiceNoteSheet.swift */,
+			);
+			path = Capture;
 			sourceTree = "<group>";
 		};
 		CC3548AD7AF1D44576CB1913 /* Items */ = {
@@ -1114,6 +1128,8 @@
 				1FB0FF3F2BA329BD97D44344 /* TranscriptRows.swift in Sources */,
 				40F866E114FA5D0D457BDD77 /* TranscriptStyles.swift in Sources */,
 				349C3E1F097A407CF390AF65 /* TranscriptView.swift in Sources */,
+				71B152F0C870B275DA569865 /* OnDeviceSpeech.swift in Sources */,
+				3E5EDE471B826068D199B0C8 /* VoiceNoteSheet.swift in Sources */,
 				FB85F41BF5AC6FB0A9C9CA81 /* WorkCreateSheets.swift in Sources */,
 				B4EFB7CC520B3F90F7070B82 /* WorkLifeHost.swift in Sources */,
 				0BFF7EDB466473CC6A0905EA /* WorkSettingsScreen.swift in Sources */,

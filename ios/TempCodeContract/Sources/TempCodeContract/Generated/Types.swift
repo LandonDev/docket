@@ -7137,6 +7137,46 @@ public struct RoutinePhoneRow: Codable, Hashable, Sendable {
     }
 }
 
+public struct CaptureState: Codable, Hashable, Sendable {
+    public let host: String
+    public let last: String?
+    public let homes: [String]
+    public let connected: Bool
+
+    public init(host: String, last: String?, homes: [String], connected: Bool) {
+        self.host = host
+        self.last = last
+        self.homes = homes
+        self.connected = connected
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case host, last, homes, connected
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(host, forKey: .host)
+        try container.encode(last, forKey: .last)
+        try container.encode(homes, forKey: .homes)
+        try container.encode(connected, forKey: .connected)
+    }
+}
+
+public struct CaptureFiled: Codable, Hashable, Sendable {
+    public let taskId: String
+    public let kept: [String]
+    public let threadId: String?
+    public let threadError: String?
+
+    public init(taskId: String, kept: [String], threadId: String? = nil, threadError: String? = nil) {
+        self.taskId = taskId
+        self.kept = kept
+        self.threadId = threadId
+        self.threadError = threadError
+    }
+}
+
 public struct VideoOpenAnswer: Codable, Hashable, Sendable {
     public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
         case off

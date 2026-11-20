@@ -976,6 +976,17 @@
   history holds the projects Swift (v35, v37 and on), so this milestone
   moved no pin.
 
+## A voice note (capture from anywhere, 2026-11-20)
+
+- Home's microphone (while a host has Work on) opens `VoiceNoteSheet`: hold
+  to talk, transcribed on the phone only (`OnDeviceSpeech`,
+  `requiresOnDeviceRecognition`; no on-device model is a refusal, never a
+  server), a sector (Unsorted or one of six, the host's last by default),
+  Start Thread, Save through `work.capture.file`. `VoiceNote` and
+  `Dictation` (client package Work/Capture) hold the draft, the host, the
+  key and the hold's states; `WorkHost.captureState()` and `capture(...)`
+  are the wire. The account is docs/agents/work-capture.md "The phone".
+
 ## The data path's two contracts (the performance pass, 2026-11)
 
 What a push and a key may re-run is written down in docs/IOS-DESIGN.md
