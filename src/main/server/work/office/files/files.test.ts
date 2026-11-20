@@ -399,7 +399,7 @@ describe('the layout OneDrive 26 writes (his Mac, 2026-11-20)', () => {
     const got = await call('work.office.write', { tool: 'office_range_write', args: { workbook: book, range: 'Sheet1!A1', values: [[2]], because: 'own' }, by: 'agent:env_box:t1' }, peer)
     expect(JSON.stringify(got)).toContain('nothing was written')
     // A box thread whose workspace has not turned the copy on gets no copy of it.
-    const boxCtx = ctxOn('env_box', { scopeOf: () => ({ sessionId: 's1', workspaceId: 'w1' }) } as Partial<WorkCtx>)
+    const boxCtx = ctxOn('env_box', { scopeOf: () => ({ sessionId: 's1', workspaceId: 'w1' }) } as unknown as Partial<WorkCtx>)
     await expect(call('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: 'env_mac', path: book } }, window, boxCtx)).rejects.toThrow('keeps Teams files where they are')
     await expect(call('work.office.filesRead', { ...file(book), as: 'bytes' })).rejects.toThrow('another host')
   })
