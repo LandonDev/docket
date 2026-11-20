@@ -24,6 +24,10 @@
  *                                 streaming turn with a growing Edit and live edits into ios-streaming; 409 while
  *                                 one runs. `frames` ends the answer after that many deltas (no Edit), `rows` after
  *                                 that many rows; `hold` leaves the turn open; `intervalMs` paces the deltas (7)
+ *   POST /video { thread, window? } → a live video source for that thread: `video.open` answers a stream that plays
+ *                                 the box engine's recorded frames (fixtures/ios-test-server/box-stream.nsl1) at about
+ *                                 120 a second, round and round, each pass a new generation; and `computer.sessions`
+ *                                 lists the thread as driven in the box's browser. GET /video → { sent, acks, open }
  *   POST /quiet                 → stops the load and a stream that still plays (its turn ends: turn-complete, idle)
  *   POST /load { seconds, children? }  → the host's other traffic for that long (the perf fixtures, TC_TEST_PERF_SEEDS=1):
  *                                 metas at 10 a second on 12 sessions outside the perf project, events at 20 a second
@@ -80,9 +84,9 @@
  */
 import { createServer, request as httpRequest, Server as HttpServer } from 'node:http'
 import { execFileSync, fork, spawn, type Serializable } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
@@ -135,6 +139,8 @@ import type { ReviewNotice } from '../src/shared/review'
 import { DEFAULT_PLAN_SETTINGS } from '../src/shared/plans'
 import { DEFAULT_REVIEW_SETTINGS } from '../src/shared/review'
 import { startLoopbackHosts } from '../src/main/server/remote/relayLoopback'
+import { LoopFeed, recordedMessages } from './lib/videoLoopFeed'
+import type { ComputerSessionRow } from '../src/shared/contract-computer'
 
 // `POST /hold`: while it lasts, every WebSocket upgrade on any listener of
 // this process is refused at the socket (the listener's own handler never
@@ -298,6 +304,29 @@ const server = await startServer(dbPath, {
         }
       }
     : {})
+})
+
+// The video proof set's source (POST /video): the box engine's recorded frames as a live stream of a seeded thread,
+// and that thread among the computers being driven, as the box's browser rows are.
+const videoThreads = new Set<string>()
+const videoRows: ComputerSessionRow[] = []
+const videoRowListeners = new Set<() => void>()
+const videoFeeds: LoopFeed[] = []
+const videoMessages = existsSync(resolve(process.cwd(), 'scripts/fixtures/ios-test-server/box-stream.nsl1'))
+  ? recordedMessages(resolve(process.cwd(), 'scripts/fixtures/ios-test-server/box-stream.nsl1'))
+  : []
+server.video.rpc.addSource({
+  open: async (ask) => {
+    if (!videoThreads.has(ask.thread) || !videoMessages.length) return null
+    const feed = new LoopFeed(videoMessages)
+    videoFeeds.push(feed)
+    return { ok: true, feed, width: 1280, height: 800, fps: 120, scope: 'watch' }
+  }
+})
+server.computer.rpc.setBox({
+  rows: () => videoRows,
+  onRows: (fn) => (videoRowListeners.add(fn), () => void videoRowListeners.delete(fn)),
+  stop: async () => false
 })
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
 // No pass of the scheduler until the registry stubs below are in: a pass during the seeds ran the
@@ -2028,6 +2057,9 @@ const control = createServer((req, res) => {
       return answer(200, { sockets, clockOffsetMs })
     }
     if (url.pathname === '/actions') return answer(200, { actions })
+    if (url.pathname === '/video' && req.method !== 'POST') {
+      return answer(200, { sent: videoFeeds.reduce((n, f) => n + f.sent, 0), acks: videoFeeds.reduce((n, f) => n + f.acks, 0), open: videoFeeds.filter((f) => !f.closed).length, opened: videoFeeds.length })
+    }
     if (req.method !== 'POST') return answer(404, { error: 'not found' })
     const body = await readJson(req)
     switch (url.pathname) {
@@ -2116,6 +2148,19 @@ const control = createServer((req, res) => {
         seededAccounts.updatedAt = Date.now()
         for (const l of accountsService.listeners) l(seededAccounts)
         return answer(200, { name, usedPercent: window.usedPercent })
+      }
+      case '/video': {
+        const thread = String(body.thread ?? '')
+        if (!thread) return answer(400, { error: 'thread is required' })
+        videoThreads.add(thread)
+        const now = Date.now()
+        videoRows.push({
+          threadId: thread, since: now, lastCallAt: now, tier: 'ax',
+          apps: [{ name: 'Chromium', bundleId: 'org.chromium.Chromium', window: String(body.window ?? 'Arena booking') }],
+          running: { tool: 'computer_act', words: 'Filling in the booking form', startedAt: now }
+        })
+        for (const fn of videoRowListeners) fn()
+        return answer(200, { thread })
       }
       case '/push': {
         // Any push to every remote socket: for a push with no machinery behind it here.

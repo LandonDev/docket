@@ -4274,4 +4274,48 @@ public enum Methods {
             }
         }
     }
+
+    public enum VideoOpen: ContractMethod {
+        public static let name = "video.open"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let threadId: String
+            public let maxEdge: Int
+            public let take: Bool?
+            public let drive: Bool?
+
+            public init(threadId: String, maxEdge: Int, take: Bool? = nil, drive: Bool? = nil) {
+                self.threadId = threadId
+                self.maxEdge = maxEdge
+                self.take = take
+                self.drive = drive
+            }
+        }
+
+        public typealias Output = VideoOpenAnswer
+    }
+
+    public enum VideoClose: ContractMethod {
+        public static let name = "video.close"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let stream: String
+
+            public init(stream: String) {
+                self.stream = stream
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum ComputerSessions: ContractMethod {
+        public static let name = "computer.sessions"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = ComputerSessionsAnswer
+    }
 }

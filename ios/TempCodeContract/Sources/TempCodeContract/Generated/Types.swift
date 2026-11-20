@@ -4218,6 +4218,200 @@ public struct Ok: Codable, Hashable, Sendable {
     }
 }
 
+public struct ComputerServiceState: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case off
+        case starting
+        case up
+        case idle
+        case down
+        case unavailable
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "off": self = .off
+            case "starting": self = .starting
+            case "up": self = .up
+            case "idle": self = .idle
+            case "down": self = .down
+            case "unavailable": self = .unavailable
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .off: "off"
+            case .starting: "starting"
+            case .up: "up"
+            case .idle: "idle"
+            case .down: "down"
+            case .unavailable: "unavailable"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Permissions: Codable, Hashable, Sendable {
+        public let accessibility: Bool
+        public let screenRecording: Bool
+
+        public init(accessibility: Bool, screenRecording: Bool) {
+            self.accessibility = accessibility
+            self.screenRecording = screenRecording
+        }
+    }
+
+    public let state: State
+    public let reason: String?
+    public let pid: Int?
+    public let epoch: String?
+    public let until: Int?
+    public let restarts: Int
+    public let permissions: Permissions?
+
+    public init(state: State, reason: String? = nil, pid: Int? = nil, epoch: String? = nil, until: Int? = nil, restarts: Int, permissions: Permissions?) {
+        self.state = state
+        self.reason = reason
+        self.pid = pid
+        self.epoch = epoch
+        self.until = until
+        self.restarts = restarts
+        self.permissions = permissions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case state, reason, pid, epoch, until, restarts, permissions
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(reason, forKey: .reason)
+        try container.encodeIfPresent(pid, forKey: .pid)
+        try container.encodeIfPresent(epoch, forKey: .epoch)
+        try container.encodeIfPresent(until, forKey: .until)
+        try container.encode(restarts, forKey: .restarts)
+        try container.encode(permissions, forKey: .permissions)
+    }
+}
+
+public struct ComputerSessionRow: Codable, Hashable, Sendable {
+    public struct App: Codable, Hashable, Sendable {
+        public let name: String
+        public let bundleId: String?
+        public let window: String?
+
+        public init(name: String, bundleId: String?, window: String?) {
+            self.name = name
+            self.bundleId = bundleId
+            self.window = window
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case name, bundleId, window
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(name, forKey: .name)
+            try container.encode(bundleId, forKey: .bundleId)
+            try container.encode(window, forKey: .window)
+        }
+    }
+    public struct Running: Codable, Hashable, Sendable {
+        public let tool: String
+        public let words: String
+        public let startedAt: Int
+        public let held: Bool?
+
+        public init(tool: String, words: String, startedAt: Int, held: Bool? = nil) {
+            self.tool = tool
+            self.words = words
+            self.startedAt = startedAt
+            self.held = held
+        }
+    }
+    public enum Tier: RawRepresentable, Codable, Hashable, Sendable {
+        case ax
+        case process
+        case session
+        case front
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "ax": self = .ax
+            case "process": self = .process
+            case "session": self = .session
+            case "front": self = .front
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .ax: "ax"
+            case .process: "process"
+            case .session: "session"
+            case .front: "front"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Asking: Codable, Hashable, Sendable {
+        public let line: String
+
+        public init(line: String) {
+            self.line = line
+        }
+    }
+
+    public let threadId: String
+    public let since: Int
+    public let lastCallAt: Int
+    public let apps: [App]
+    public let running: Running?
+    public let tier: Tier?
+    public let macPeer: String?
+    public let macName: String?
+    public let asking: Asking?
+    public let driver: String?
+
+    public init(threadId: String, since: Int, lastCallAt: Int, apps: [App], running: Running?, tier: Tier?, macPeer: String? = nil, macName: String? = nil, asking: Asking? = nil, driver: String? = nil) {
+        self.threadId = threadId
+        self.since = since
+        self.lastCallAt = lastCallAt
+        self.apps = apps
+        self.running = running
+        self.tier = tier
+        self.macPeer = macPeer
+        self.macName = macName
+        self.asking = asking
+        self.driver = driver
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case threadId, since, lastCallAt, apps, running, tier, macPeer, macName, asking, driver
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(threadId, forKey: .threadId)
+        try container.encode(since, forKey: .since)
+        try container.encode(lastCallAt, forKey: .lastCallAt)
+        try container.encode(apps, forKey: .apps)
+        try container.encode(running, forKey: .running)
+        try container.encode(tier, forKey: .tier)
+        try container.encodeIfPresent(macPeer, forKey: .macPeer)
+        try container.encodeIfPresent(macName, forKey: .macName)
+        try container.encodeIfPresent(asking, forKey: .asking)
+        try container.encodeIfPresent(driver, forKey: .driver)
+    }
+}
+
 public struct ProjectPlanMilestone: Codable, Hashable, Sendable {
     public let index: Int
     public let title: String
@@ -6922,5 +7116,70 @@ public struct RoutinePhoneRow: Codable, Hashable, Sendable {
         try container.encode(running, forKey: .running)
         try container.encode(ended, forKey: .ended)
         try container.encode(waiting, forKey: .waiting)
+    }
+}
+
+public struct VideoOpenAnswer: Codable, Hashable, Sendable {
+    public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
+        case off
+        case noTools
+        case unsupported
+        case busy
+        case permission
+        case refused
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "off": self = .off
+            case "no-tools": self = .noTools
+            case "unsupported": self = .unsupported
+            case "busy": self = .busy
+            case "permission": self = .permission
+            case "refused": self = .refused
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .off: "off"
+            case .noTools: "no-tools"
+            case .unsupported: "unsupported"
+            case .busy: "busy"
+            case .permission: "permission"
+            case .refused: "refused"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let ok: Bool
+    public let stream: String?
+    public let ticket: String?
+    public let width: Int?
+    public let height: Int?
+    public let fps: Int?
+    public let reason: Reason?
+
+    public init(ok: Bool, stream: String? = nil, ticket: String? = nil, width: Int? = nil, height: Int? = nil, fps: Int? = nil, reason: Reason? = nil) {
+        self.ok = ok
+        self.stream = stream
+        self.ticket = ticket
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.reason = reason
+    }
+}
+
+public struct ComputerSessionsAnswer: Codable, Hashable, Sendable {
+    public let service: ComputerServiceState
+    public let sessions: [ComputerSessionRow]
+
+    public init(service: ComputerServiceState, sessions: [ComputerSessionRow]) {
+        self.service = service
+        self.sessions = sessions
     }
 }

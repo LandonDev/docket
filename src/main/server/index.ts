@@ -387,6 +387,8 @@ export interface RunningServer {
   readonly remote: RemoteListener | null
   /** Live video (video/): the relay that joins a viewer to a feed, and where a source is added. */
   video: { relay: VideoRelay; rpc: VideoRpc }
+  /** Computer use's RPC (computer/rpc.ts): who is driven where, which a test hands rows of its own (`setBox`). */
+  computer: { rpc: ComputerRpc }
   registry: SessionRegistry
   store: Store
   gateway: Gateway
@@ -3885,6 +3887,7 @@ export async function startServer(
     isInteractive: (sessionId) => focus.isInteractive(sessionId),
     remoteAuth,
     video: { relay: videoRelay, rpc: videoRpc },
+    computer: { rpc: computerRpc },
     get remote() {
       return remote
     },

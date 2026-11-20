@@ -48,12 +48,19 @@ describe('the iOS test server seeds', () => {
 
 describe('the work set', () => {
   // A relayed host is this server under another id: it would list the same Outbox once per host.
+  it('plays the recorded box stream for a thread the video set names, and lists it as driven', () => {
+    expect(source).toContain("case '/video': {")
+    expect(source).toContain('server.video.rpc.addSource(')
+    expect(source).toContain('server.computer.rpc.setBox(')
+    expect(source).toContain("scripts/fixtures/ios-test-server/box-stream.nsl1")
+  })
+
   it('seeds no relayed hosts', () => {
     expect(source).toContain("const relayed = process.env.TC_TEST_NO_RELAY === '1' ? [] : relaySeed")
     expect(source).toMatch(/hosts: relayed\n/)
     const local = readFileSync(resolve(import.meta.dirname, 'ios-sim-proof-local.ts'), 'utf8')
-    // The work set's server: add-ons in process, no relayed hosts, its own userData and Work root (workEnv).
-    expect(local).toContain("TC_PROOF_SET === 'work' ? workEnv() : {}")
+    // The work and video sets' server: add-ons in process, no relayed hosts, its own userData and Work root (workEnv).
+    expect(local).toContain("TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video' ? workEnv() : {}")
     expect(local).toMatch(/function workEnv\(\)[\s\S]*TC_TEST_ADDONS: '1', TC_TEST_NO_RELAY: '1'[\s\S]*TEMP_CODE_USER_DATA: data, TEMP_CODE_WORK_ROOT: root/)
   })
 })

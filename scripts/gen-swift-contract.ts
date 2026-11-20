@@ -95,6 +95,7 @@ import { WorkSettingsSchema } from '../src/shared/work/scope'
 import { OutboxItemSchema } from '../src/shared/contract-work-outbox'
 import { HeldRefSchema } from '../src/shared/work/acts'
 import { AwayDecidedSchema, AwayStateSchema } from '../src/shared/away'
+import { ComputerServiceStateSchema, ComputerSessionRowSchema } from '../src/shared/contract-computer'
 
 // ── the subset ──────────────────────────────────────────────────────────
 
@@ -294,6 +295,8 @@ export const SUBSET: SubsetEntry[] = [
   type('MacBridgeActivityHost', W.MacBridgeActivityHostSchema),
   type('MacBridgeActivity', W.MacBridgeActivitySchema),
   type('Ok', W.OkSchema),
+  type('ComputerServiceState', ComputerServiceStateSchema),
+  type('ComputerSessionRow', ComputerSessionRowSchema),
   union('ServerPush', W.RemotePushSchema, 'push', 'Push'),
   // methods: params from contract.ts, outputs from the handlers in server/index.ts
   method('catalog.get', W.CatalogSchema),
@@ -523,7 +526,13 @@ export const SUBSET: SubsetEntry[] = [
   method('work.routines.list', W.RoutinesListSchema),
   method('work.routines.pause', W.RoutinePhoneRowSchema),
   method('away.get', W.AwaySnapshotSchema),
-  method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state }))
+  method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state })),
+  // live video of the computer an agent drives (docs/agents/live-video.md): a stream's ticket, and who is driven where
+  type('VideoOpenAnswer', W.VideoOpenWireSchema),
+  method('video.open', W.VideoOpenWireSchema),
+  method('video.close', z.null()),
+  type('ComputerSessionsAnswer', W.ComputerSessionsAnswerSchema),
+  method('computer.sessions', W.ComputerSessionsAnswerSchema)
 ]
 
 /** Enum values that need an explicit Swift case name. */

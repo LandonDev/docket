@@ -10,7 +10,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { bundleNodeScript } from './lib/bundle-node-script'
-import { seedWork, seedWorkItems, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
+import { seedVideo, seedWork, seedWorkItems, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
 
 const repo = resolve(import.meta.dir, '..')
 const out = resolve(repo, 'scripts/.out/ios-client-test-server.mjs')
@@ -41,10 +41,10 @@ function workEnv(): Record<string, string> {
 }
 // The work set runs the Work service in the server's process (history and a form's answers call it); the seeds
 // read the same switch. TC_TEST_WORK_SERVICE=0 runs without it, as before milestone 49.
-if (process.env.TC_PROOF_SET === 'work') process.env.TC_TEST_WORK_SERVICE ??= '1'
+if (process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video') process.env.TC_TEST_WORK_SERVICE ??= '1'
 // The perf set reads what its fixtures and the control panel write: 16,000 seeded rows more, and no CLI behind any thread.
 const perf = process.env.TC_PROOF_SET === 'perf'
-const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, TC_TEST_EXEC_BROKER: broker, ...(perf ? { TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : {}), ...(process.env.TC_PROOF_SET === 'work' ? workEnv() : {}) } })
+const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, TC_TEST_EXEC_BROKER: broker, ...(perf ? { TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : {}), ...(process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video' ? workEnv() : {}) } })
 const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string; pairingLinkOperate: string; adminPairing?: string; second?: { pairingLink: string } }>((ok, bad) => {
   let buffer = ''
   const timer = setTimeout(() => bad(new Error('the test server did not come up in 120 s')), 120_000)
@@ -72,6 +72,12 @@ if (work) {
   console.log(`ios-sim-proof-local: work seeded (${ids.purdue}, ${ids.unify})`)
   items = await seedWorkItems(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue)
   console.log(items.lines.join('\n'))
+}
+// The video set: Work on, and a Work thread whose browser item plays the box engine's recorded stream.
+if (process.env.TC_PROOF_SET === 'video') {
+  const ids = await seedWork(ready as unknown as WorkSeedReady, repo)
+  const video = await seedVideo(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue)
+  console.log(`ios-sim-proof-local: video seeded (${video.sessionId})`)
 }
 const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
   cwd: repo,

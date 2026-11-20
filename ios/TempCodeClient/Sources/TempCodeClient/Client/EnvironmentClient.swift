@@ -430,6 +430,9 @@ public final class EnvironmentClient {
     public let extras: HostExtras
     /// Work on this host: the switch, the Outbox, LifeOS's state and Away (Work/Shell/WorkHost.swift, milestone 46).
     public let work: WorkHost
+    /// Every thread being driven on this host now, as `computer.sessions` and the `computer` push say
+    /// (docs/agents/live-video.md "From his other devices"): Home's Computers row reads them. Empty until read.
+    public private(set) var computerRows: [ComputerSessionRow] = []
     /// The phone's push registrar, when the registry gave it one: told at every open (thread L6).
     public internal(set) var push: PushRegistrar?
     /// Called with every session meta the host sent (the Live Activity follows a thread's status through it).
@@ -1100,6 +1103,8 @@ public final class EnvironmentClient {
             }
             // Work's switch, Outbox and Away, off the open handler too.
             Task { [weak self] in await self?.work.connected() }
+            // Who is being driven here: read once per open, then kept by the `computer` push.
+            Task { [weak self] in await self?.readComputers() }
             for (id, model) in models where subscriptions.has(id) {
                 let live = subscriptions.isLive(id)
                 model.mutate {
@@ -1292,9 +1297,17 @@ public final class EnvironmentClient {
             applyBatch(value.state) // iOS 16: a master's batch, coalesced (Client/Batches.swift)
         case .work, .workOutbox, .workOutboxResult, .workLifeos, .away, .workRules, .workGuests, .workCanvas, .workRoutines:
             work.applyPush(push) // milestone 46: Work on the phone (Work/Shell/WorkHost.swift)
+        case .computer(let value):
+            computerRows = value.sessions // live video: who is driven on this host (Home's Computers row)
         case .queue, .builds, .macBridgeHeld, .unknown:
             break
         }
+    }
+
+    /// `computer.sessions` at open; a key that may not read them, or a host with no computer use, keeps none.
+    func readComputers() async {
+        guard let answer = try? await request(Methods.ComputerSessions.self, .init()) else { return }
+        computerRows = answer.sessions
     }
 
     static let bootResumeKind = "boot-resume"

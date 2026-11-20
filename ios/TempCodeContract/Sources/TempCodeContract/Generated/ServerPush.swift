@@ -289,6 +289,16 @@ public struct WorkRoutinesPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct ComputerPush: Codable, Hashable, Sendable {
+    public let service: ComputerServiceState
+    public let sessions: [ComputerSessionRow]
+
+    public init(service: ComputerServiceState, sessions: [ComputerSessionRow]) {
+        self.service = service
+        self.sessions = sessions
+    }
+}
+
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
     case resync(ResyncPush)
@@ -319,6 +329,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case workGuests(WorkGuestsPush)
     case workCanvas(WorkCanvasPush)
     case workRoutines(WorkRoutinesPush)
+    case computer(ComputerPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -358,6 +369,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "work.guests": self = .workGuests(try WorkGuestsPush(from: decoder))
         case "work.canvas": self = .workCanvas(try WorkCanvasPush(from: decoder))
         case "work.routines": self = .workRoutines(try WorkRoutinesPush(from: decoder))
+        case "computer": self = .computer(try ComputerPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -393,6 +405,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .workGuests(let value): try Self.encode(tag: "work.guests", value, to: encoder)
         case .workCanvas(let value): try Self.encode(tag: "work.canvas", value, to: encoder)
         case .workRoutines(let value): try Self.encode(tag: "work.routines", value, to: encoder)
+        case .computer(let value): try Self.encode(tag: "computer", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

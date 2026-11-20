@@ -506,3 +506,24 @@ export async function verifyWorkItems(ready: WorkSeedReady, sessionId: string): 
     s.close()
   }
 }
+
+/** The video set's Work thread: its browser item plays the test server's recorded stream. */
+export const VIDEO_THREAD_TITLE = 'Arena check-in'
+
+/**
+ * The video set (docs/agents/ios-client.md): a Work thread in the Purdue workspace with a browser item, and the test
+ * server's video source for it (POST /video), which plays the box engine's recorded frames and lists the thread among
+ * the computers being driven.
+ */
+export async function seedVideo(ready: WorkSeedReady & { environmentId: string }, purdue: string): Promise<{ sessionId: string }> {
+  const s = await socket(ready)
+  try {
+    const thread = await s.call<{ id: string }>('session.create', { scope: 'work', workspaceId: purdue, threadType: 'chat', provider: 'claude', model: 'claude-opus-5-5', title: VIDEO_THREAD_TITLE })
+    await s.call('work.canvas.open', { sessionId: thread.id, kind: 'browser', title: 'Arena booking', source: { at: 'browser', host: ready.environmentId, sessionId: thread.id } })
+    const res = await fetch(`${ready.controlUrl}/video`, { method: 'POST', body: JSON.stringify({ thread: thread.id, window: 'Arena booking' }) })
+    if (!res.ok) throw new Error(`video seed: POST /video answered ${res.status}`)
+    return { sessionId: thread.id }
+  } finally {
+    s.close()
+  }
+}

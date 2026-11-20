@@ -26,7 +26,8 @@ import type { DraftEdit, EditOp, HouseRule, RuleProposal, RulesPage, VoiceFacts 
 import { GUEST_ROLES, GuestSourceSchema, type GuestLinkRow } from './contract-work-guests'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
-import { ComputerHistoryCallSchema, ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS } from './contract-computer'
+import { ComputerHistoryCallSchema, ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS, type ComputerSessionsAnswer } from './contract-computer'
+import { VIDEO_REFUSALS, type VideoOpenAnswer } from './contract-video'
 import type { DeployStatus, HostJobPhase, HostJobStatus } from './contract-host'
 import { HostJobSchema } from './contract-host'
 import { HostDevicesReportSchema, type HostDevicesHost } from './contract-hostdevices'
@@ -1251,6 +1252,18 @@ export const LifeosJwtAnswerSchema = z.object({
   state: z.string().optional()
 })
 export const MailSendAnswerSchema = z.object({ id: z.string(), via: z.enum(['hold', 'owner']) })
+/** `video.open`'s answer, flat for the phone (its own union is tagged by a boolean): a stream and its ticket, or why not. */
+export const VideoOpenWireSchema = z.object({
+  ok: z.boolean(),
+  stream: z.string().optional(),
+  ticket: z.string().optional(),
+  width: z.number().int().optional(),
+  height: z.number().int().optional(),
+  fps: z.number().int().optional(),
+  reason: z.enum(VIDEO_REFUSALS).optional()
+})
+/** `computer.sessions`: this host's service and every thread being driven on it, as the `computer` push carries them. */
+export const ComputerSessionsAnswerSchema = z.object({ service: ComputerServiceStateSchema, sessions: z.array(ComputerSessionRowSchema) })
 export const RulesForDraftSchema = z.object({ workspaceId: z.string().nullable(), proposals: z.array(RuleProposalSchema) })
 export const WorkspaceWorkSettingsWireSchema = z.object({ mayUseDesktop: z.array(z.string()), model: z.string().optional(), reasoning: z.string().optional(), voice: z.boolean() })
 export const GuestTicketSchema = z.object({ url: z.string(), expiresAt: z.number().int() })
@@ -1386,7 +1399,7 @@ export const RoutinesListSchema = z.object({ routines: z.array(RoutinePhoneRowSc
 /** A routine or watch changed on this host. */
 export const WorkRoutinesPushSchema = push('work.routines', { workspaceId: z.string(), id: z.string() })
 
-/** Computer use (contract-computer.ts): the desktop's; not in RemotePushSchema, since the phone does not speak it. */
+/** Computer use (contract-computer.ts): who is being driven on this host; the phone's Computers row reads it too. */
 export const ComputerPushSchema = push('computer', {
   service: ComputerServiceStateSchema,
   sessions: z.array(ComputerSessionRowSchema)
@@ -1459,7 +1472,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkRulesPushSchema,
   WorkGuestsPushSchema,
   WorkCanvasPushSchema,
-  WorkRoutinesPushSchema
+  WorkRoutinesPushSchema,
+  ComputerPushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -1584,6 +1598,8 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof BrowserStateSchema, BrowserState>>,
   Expect<Mirror<typeof MediaRangeSchema, MediaRange>>,
   Expect<Reads<typeof LifeosJwtAnswerSchema, LifeosJwtAnswer>>,
+  Expect<Reads<typeof VideoOpenWireSchema, VideoOpenAnswer>>,
+  Expect<Mirror<typeof ComputerSessionsAnswerSchema, ComputerSessionsAnswer>>,
   Expect<Reads<typeof WorkspaceWorkSettingsWireSchema, WorkspaceWorkSettings>>,
   Expect<Reads<typeof PdfPhoneViewSchema, PdfView>>,
   Expect<Reads<typeof DeckPhoneViewSchema, DeckView>>,
