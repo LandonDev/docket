@@ -192,12 +192,22 @@ public extension OutboxModel {
 
     private nonisolated static let clicks = ["left_click": "Clicks", "right_click": "Right-clicks", "middle_click": "Middle-clicks", "double_click": "Double-clicks", "triple_click": "Triple-clicks"]
 
-    /// An element as the host bound it (`button:Send < group:Compose`): its own role and name, `button "Send"`.
+    /// An element as the host bound it: its own role and name, `button "Send"`. The host writes the chain as JSON
+    /// tuples (`[["button","Send"],["group","Compose"]]`); an act held before that has `button:Send < group:Compose`.
     nonisolated static func sigWords(_ sig: JSONValue?) -> String? {
         guard case .string(let sig)? = sig, !sig.isEmpty else { return nil }
-        let own = sig.components(separatedBy: " < ")[0]
-        guard let colon = own.firstIndex(of: ":") else { return own }
-        let role = String(own[..<colon]), name = String(own[own.index(after: colon)...])
+        let role: String, name: String
+        if sig.hasPrefix("[") {
+            guard let data = sig.data(using: .utf8), let chain = try? JSONDecoder().decode([[String]].self, from: data),
+                  let own = chain.first, let first = own.first else { return nil }
+            role = first
+            name = own.count > 1 ? own[1] : ""
+        } else {
+            let own = sig.components(separatedBy: " < ")[0]
+            guard let colon = own.firstIndex(of: ":") else { return own }
+            role = String(own[..<colon])
+            name = String(own[own.index(after: colon)...])
+        }
         return name.isEmpty ? role : "\(role) \(json(.string(name)))"
     }
 

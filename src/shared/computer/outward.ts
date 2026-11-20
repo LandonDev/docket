@@ -915,17 +915,18 @@ export interface HeldTarget {
   step: number
   /** which parameter named it; `focus`: the element a key step goes to; `point`: what lies under a step's coordinate, what a click's `named` finds, or what lies under the pointer for a click with no target */
   param: 'element' | 'start_element' | 'focus' | 'point'
-  /** role, name and the roles and names above it */
+  /** role, name and the roles and names above it, as JSON `[[role, name], …]` from the element up */
   sig: string
   /** which of the elements with this signature, in reading order, and how many there were */
   ordinal: number
   count: number
 }
 
+/** An element and every element above it as `[role, name]` tuples in JSON: a name holding " < " or a colon stays inside its own tuple. */
 const sigOf = (screen: Screen, index: number): string | null => {
   const e = screen.elements.get(index)
   if (!e) return null
-  return [e, ...ancestors(screen, index)].map((x) => `${x.role}:${x.name ?? ''}`).join(' < ')
+  return JSON.stringify([e, ...ancestors(screen, index)].map((x) => [x.role, x.name ?? '']))
 }
 
 function placeOf(screen: Screen, index: number): { sig: string; ordinal: number; count: number } | null {
@@ -1027,10 +1028,10 @@ function sendContext(screen: Screen): [string, string][] {
 /** Numeric fields: a quantity's stepper, an amount's slider. Their value goes as a text field's does. */
 const NUMBER_ROLES = ['stepper', 'slider']
 
-/** The fields whose value would go, in reading order: every text field but a search field and a password, and every numeric field. */
+/** The fields whose value would go, in reading order: every text field but a password (a recipient search box too), and every numeric field. */
 const markFields = (screen: Screen): ScreenElement[] =>
   [...screen.elements.values()]
-    .filter((e) => (TEXT_ROLES.includes(e.role) && e.role !== 'search' && e.role !== 'password') || NUMBER_ROLES.includes(e.role))
+    .filter((e) => (TEXT_ROLES.includes(e.role) && e.role !== 'password') || NUMBER_ROLES.includes(e.role))
     .sort((a, b) => a.index - b.index)
 
 /** A value the read printed cut (observation.ts `cutValue`): its first scalars, then `…(+n chars)`. */
@@ -1061,12 +1062,30 @@ const boundValue = (value: string): string => (value.length > 160 ? `#${sha256He
 const STATE_ROLES = ['checkbox', 'radio', 'switch', 'tab']
 const STATES_BOUND = ['checked', 'unchecked', 'mixed', 'selected']
 
-/** Each tickable control's state and each pop-up's chosen option, in reading order, as `[role, name, state or tagged choice]`. */
+/**
+ * What each listbox has chosen: a `list` (a listbox's options, a picker of recipients or plans), never a `table` or
+ * an `outline`, where a mail list or a sidebar keeps its rows. Every list is bound by the rows selected in it, so
+ * choosing another option, or none, is a change; rows that come and go unselected (a list that grows) are not.
+ */
+function listMark(screen: Screen): [string, string, string][] {
+  const chosen = new Map<number, string[]>()
+  const sorted = [...screen.elements.values()].sort((a, b) => a.index - b.index)
+  for (const e of sorted) if (e.role === 'list') chosen.set(e.index, [])
+  for (const e of sorted) {
+    if ((e.role !== 'row' && e.role !== 'cell') || !e.states.includes('selected')) continue
+    const box = ancestors(screen, e.index).find((a) => ['list', 'table', 'outline'].includes(a.role))
+    if (box?.role === 'list') chosen.get(box.index)?.push(e.name ?? e.value ?? '')
+  }
+  return [...chosen].map(([index, rows]) => ['list', screen.elements.get(index)?.name ?? '', JSON.stringify(rows)])
+}
+
+/** Each tickable control's state, each pop-up's chosen option and each listbox's chosen rows, in reading order, as `[role, name, state or tagged choice]`. */
 function controlMark(screen: Screen): [string, string, string][] {
-  return [...screen.elements.values()]
+  const controls = [...screen.elements.values()]
     .filter((e) => STATE_ROLES.includes(e.role) || e.role === 'pop up')
     .sort((a, b) => a.index - b.index)
-    .map((e) => [e.role, e.name ?? '', e.role === 'pop up' ? boundValue(e.value ?? '') : e.states.filter((x) => STATES_BOUND.includes(x)).join(' ')])
+    .map((e): [string, string, string] => [e.role, e.name ?? '', e.role === 'pop up' ? boundValue(e.value ?? '') : e.states.filter((x) => STATES_BOUND.includes(x)).join(' ')])
+  return [...controls, ...listMark(screen)]
 }
 
 /**

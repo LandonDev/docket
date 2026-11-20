@@ -215,7 +215,7 @@ each target by what it is (role, name and the names above it), and runs the
 call only if every field's text, whole, who it goes to (every heading, and
 the text beside each Send: a chat's header, a To line drawn as text), what
 is ticked, switched or chosen (checkboxes, radios, switches, tabs, a pop-up's
-option) and every target are what he was shown, and a click by name or with no target still finds, by
+option, the rows chosen in a listbox) and every target are what he was shown, and a click by name or with no target still finds, by
 its name or under the pointer, the element it found then; else the row reads `stale` and nothing is sent.
 A field the window's read prints cut (past 160 characters) is read again
 whole by itself (`state.get` with `element`) at the hold and at the press,

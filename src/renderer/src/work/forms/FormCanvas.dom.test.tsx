@@ -410,6 +410,66 @@ describe("Add option", () => {
   });
 });
 
+describe("turning a question to a type that takes options", () => {
+  it("asks for the first option's name: Add saves the type and that option together, Cancel leaves the question as it was", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
+      await found("[data-form]");
+      fireEvent.click(document.querySelector('[data-q="diet"]')!);
+      const pick = async (type: string) => {
+        const trigger = await screen.findByRole("button", { name: /Long answer|Dropdown/ });
+        fireEvent.click(trigger);
+        fireEvent.click(await screen.findByRole("menuitem", { name: type }));
+      };
+      await pick("Dropdown");
+      await screen.findByRole("dialog", { name: "Add option" });
+      // Nothing reaches the form while he names it: no save, no "Option 1", the question still a long answer.
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(formHost.save).not.toHaveBeenCalled();
+      expect(screen.queryByRole("textbox", { name: "Option 1" })).toBeNull();
+      // Cancel: the question is as it was, and nothing is saved, then or later.
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(formHost.save).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: /Long answer/ })).toBeTruthy();
+      // Named and added: one save, the new type and his option together.
+      await pick("Dropdown");
+      await screen.findByRole("dialog", { name: "Add option" });
+      fireEvent.change(screen.getByRole("textbox", { name: "Option" }), { target: { value: "Vegetarian" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(formHost.save).toHaveBeenCalledTimes(1);
+      const diet = formHost.save.mock.calls[0][1].questions.find((q) => q.id === "diet")!;
+      expect(diet.type).toBe("dropdown");
+      expect(diet.options).toEqual(["Vegetarian"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a question that already has options turns at once, keeping them, with no dialog", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
+      await found("[data-form]");
+      fireEvent.click(document.querySelector('[data-q="game"]')!);
+      fireEvent.click(await screen.findByRole("button", { name: /^Choice/ }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Dropdown" }));
+      expect(screen.queryByRole("dialog", { name: "Add option" })).toBeNull();
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      await waitFor(() => expect(formHost.save).toHaveBeenCalledTimes(1));
+      const game = formHost.save.mock.calls[0][1].questions.find((q) => q.id === "game")!;
+      expect(game.type).toBe("dropdown");
+      expect(game.options).toEqual(["Valorant", "Rocket League", "Super Smash Bros. Ultimate"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("the responses' ticks", () => {
   it("follow each response, not its row: a newer answer above keeps his tick and Ask's quote on the same response; a removed one drops", async () => {
     resetContextChips();

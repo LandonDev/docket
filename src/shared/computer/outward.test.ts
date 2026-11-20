@@ -586,11 +586,11 @@ describe('heldTargets, screenMark and restage', () => {
 
   it('names each target by role and name up the tree, with its place among its likes', () => {
     const now = screen(COMPOSE, MAIL)
-    expect(heldTargets(steps({ action: 'left_click', element: 3 }), now)).toEqual([{ step: 0, param: 'element', sig: 'button:Send < toolbar: < window:New Message', ordinal: 0, count: 1 }])
+    expect(heldTargets(steps({ action: 'left_click', element: 3 }), now)).toEqual([{ step: 0, param: 'element', sig: '[["button","Send"],["toolbar",""],["window","New Message"]]', ordinal: 0, count: 1 }])
     expect(heldTargets(steps({ action: 'left_click', element: 99 }), now)).toBeNull()
     // a click by position that lands on no element the read placed is no target he can be shown
     expect(heldTargets(steps({ action: 'left_click', coordinate: [10, 10] }), now)).toBeNull()
-    expect(heldTargets(steps({ action: 'key', text: 'Return' }), now)).toEqual([{ step: 0, param: 'focus', sig: 'text area:Body < window:New Message', ordinal: 0, count: 1 }])
+    expect(heldTargets(steps({ action: 'key', text: 'Return' }), now)).toEqual([{ step: 0, param: 'focus', sig: '[["text area","Body"],["window","New Message"]]', ordinal: 0, count: 1 }])
   })
 
   it('marks the app and every field\'s name and value, and nothing else', () => {
@@ -643,7 +643,7 @@ describe('heldTargets, screenMark and restage', () => {
     const s = steps({ action: 'left_click', coordinate: [30, 20] })
     const now = screen(COMPOSE_TEXT, MAIL)
     const targets = heldTargets(s, now)!
-    expect(targets).toEqual([expect.objectContaining({ param: 'point', sig: 'image:paperplane < button:Send < toolbar: < window:New Message' })])
+    expect(targets).toEqual([expect.objectContaining({ param: 'point', sig: '[["image","paperplane"],["button","Send"],["toolbar",""],["window","New Message"]]' })])
     expect(restage(s, targets, screenMark(now), screen(COMPOSE_TEXT, MAIL))).toEqual(s)
     const swapped = COMPOSE_TEXT.replace('[3] button "Send" @20,12 40×28', '[3] button "Send" @300,12 40×28').replace('[4] image "paperplane" @28,16 24×20', '[4] image "paperplane" @308,16 24×20')
     expect(restage(s, targets, screenMark(now), screen(swapped, MAIL))).toBeNull()
@@ -1145,7 +1145,7 @@ describe('readOutward, heldTargets and screenMark: what the fifth review closed'
     const now = screen(COMPOSE_TEXT, MAIL)
     const mark = screenMark(now)
     const targets = heldTargets(s, now, { coordinate: [30, 20] })!
-    expect(targets).toEqual([{ step: 0, param: 'point', sig: 'image:paperplane < button:Send < toolbar: < window:New Message', ordinal: 0, count: 1 }])
+    expect(targets).toEqual([{ step: 0, param: 'point', sig: '[["image","paperplane"],["button","Send"],["toolbar",""],["window","New Message"]]', ordinal: 0, count: 1 }])
     expect(restage(s, targets, mark, now, { coordinate: [30, 20] })).toEqual(s)
     expect(restage(s, targets, mark, now, { element: 4 })).toEqual(s)
     // the thread put the pointer on the unnamed button beside it since, or nobody knows where it is
@@ -1179,7 +1179,7 @@ describe('heldTargets and restage: what the review of the fifth round closed', (
     const s = steps({ action: 'left_click', named: 'paperplane' })
     const now = screen(TO_DANA, SLACK)
     const targets = heldTargets(s, now)!
-    expect(targets).toEqual([{ step: 0, param: 'point', sig: 'image:paperplane < button:Send to Dana < group:Composer < window:Slack', ordinal: 0, count: 1 }])
+    expect(targets).toEqual([{ step: 0, param: 'point', sig: '[["image","paperplane"],["button","Send to Dana"],["group","Composer"],["window","Slack"]]', ordinal: 0, count: 1 }])
     const mark = screenMark(now)
     expect(restage(s, targets, mark, screen(TO_DANA, SLACK))).toEqual(s)
     const toEve = screen(TO_DANA.replace('Send to Dana', 'Send to Eve'), SLACK)
@@ -1194,7 +1194,7 @@ describe('heldTargets and restage: what the review of the fifth round closed', (
     expect(heldTargets(steps({ action: 'left_click', named: 'Send' }), now)).toBeNull()
     expect(heldTargets(steps({ action: 'left_click', named: 'paperplane' }), screen(`${TO_DANA}\n  [6] image "paperplane"`, SLACK))).toBeNull()
     // an exact name before a case-blind one, as the service picks
-    expect(heldTargets(steps({ action: 'left_click', named: 'paperplane' }), screen(`${TO_DANA}\n  [6] image "PaperPlane"`, SLACK))).toEqual([expect.objectContaining({ sig: 'image:paperplane < button:Send to Dana < group:Composer < window:Slack' })])
+    expect(heldTargets(steps({ action: 'left_click', named: 'paperplane' }), screen(`${TO_DANA}\n  [6] image "PaperPlane"`, SLACK))).toEqual([expect.objectContaining({ sig: '[["image","paperplane"],["button","Send to Dana"],["group","Composer"],["window","Slack"]]' })])
   })
 
   it('refuses to hold a click with no target when nobody knows where the pointer is', () => {
@@ -1247,7 +1247,7 @@ describe('readOutward: keys and typed text by name', () => {
     expect(needsFreshRead(steps({ action: 'type', named: 'Message Body', text: 'x' }))).toBe(true)
     const s = steps({ action: 'type', named: 'Send', text: '\n' })
     const targets = heldTargets(s, gmail)!
-    expect(targets).toEqual([{ step: 0, param: 'point', sig: 'button:Send < web area:Gmail < window:Gmail', ordinal: 0, count: 1 }])
+    expect(targets).toEqual([{ step: 0, param: 'point', sig: '[["button","Send"],["web area","Gmail"],["window","Gmail"]]', ordinal: 0, count: 1 }])
     expect(restage(s, targets, screenMark(gmail), screen(GMAIL.replace('button "Send"', 'button "Send later"'), CHROME))).toBeNull()
     // a second Send elsewhere: the name no longer finds the one he was shown
     expect(restage(s, targets, screenMark(gmail), screen(`${GMAIL}\n    [6] toolbar\n      [7] button "Send"`, CHROME))).toBeNull()
@@ -1270,7 +1270,7 @@ describe('heldTargets and restage: a paste, a value or a selection by name', () 
   it('binds a paste by name to the field the name finds, not the focus an earlier step left', () => {
     const now = screen(COMPOSE, CHROME)
     const targets = heldTargets(s, now)!
-    expect(targets).toContainEqual({ step: 1, param: 'point', sig: 'input:To < web area:Gmail < window:Gmail', ordinal: 0, count: 1 })
+    expect(targets).toContainEqual({ step: 1, param: 'point', sig: '[["input","To"],["web area","Gmail"],["window","Gmail"]]', ordinal: 0, count: 1 })
     expect(restage(s, targets, screenMark(now), screen(COMPOSE, CHROME))).toEqual(s)
     // the mark is the same, but the name now finds a To he was not shown
     expect(screenMark(screen(MOVED, CHROME))).toBe(screenMark(now))
@@ -1280,7 +1280,7 @@ describe('heldTargets and restage: a paste, a value or a selection by name', () 
   it('does the same for a value set or a selection made by name, and refuses one whose name finds none', () => {
     const now = screen(COMPOSE, CHROME)
     for (const step of [{ action: 'set_value', named: 'To', value: 'other@example.com' }, { action: 'select_text', named: 'To', text: 'dana' }]) {
-      expect(heldTargets(steps(step), now)).toEqual([{ step: 0, param: 'point', sig: 'input:To < web area:Gmail < window:Gmail', ordinal: 0, count: 1 }])
+      expect(heldTargets(steps(step), now)).toEqual([{ step: 0, param: 'point', sig: '[["input","To"],["web area","Gmail"],["window","Gmail"]]', ordinal: 0, count: 1 }])
       expect(needsFreshRead(steps(step))).toBe(true)
     }
     expect(namedKeysUnplaced(steps({ action: 'paste', named: 'Bcc', text: 'x' }), now)).toBe(true)
@@ -1332,5 +1332,40 @@ describe('screenMark: what pass 20 closed', () => {
     const c = order('  [2] pop up "Plan" = "Basic|Premium"\n  [3] checkbox "Insurance" unchecked')
     const d = order('  [2] pop up "Plan|=Basic" = "Premium"\n  [3] checkbox "Insurance" unchecked')
     expect(screenMark(c)).not.toBe(screenMark(d))
+  })
+})
+
+describe('heldTargets and screenMark: what pass 21 closed', () => {
+  const win = (body: string) => screen(`app "Shop" · window "Pay" · 800×600\n[1] window "Pay"\n${body}`, { bundleId: 'com.example.shop', name: 'Shop' })
+
+  it('signs a target and the names above it as tuples: a name holding " < " never passes for an ancestor', () => {
+    const a = win('  [2] group "Bob"\n    [3] button "Pay < group:Alice"')
+    const b = win('  [2] group "Alice < group:Bob"\n    [3] button "Pay"')
+    const s = steps({ action: 'left_click', element: 3 })
+    const [ta] = heldTargets(s, a)!
+    const [tb] = heldTargets(s, b)!
+    expect(ta!.sig).toBe(JSON.stringify([['button', 'Pay < group:Alice'], ['group', 'Bob'], ['window', 'Pay']]))
+    expect(ta!.sig).not.toBe(tb!.sig)
+    // held on the one, the press on the other is refused (their marks are equal: neither has a field)
+    expect(screenMark(a)).toBe(screenMark(b))
+    expect(restage(s, [ta!], screenMark(a), b)).toBeNull()
+    expect(restage(s, [ta!], screenMark(a), a)).toEqual(s)
+  })
+
+  it('binds a search field: a recipient search box changed while Send is held is a change', () => {
+    const to = (who: string) => win(`  [2] search "To" = ${JSON.stringify(who)}\n  [3] button "Send"`)
+    expect(screenMark(to('alice@'))).not.toBe(screenMark(to('bob@')))
+    expect(screenMark(to('alice@'))).toBe(screenMark(to('alice@')))
+  })
+
+  it("binds what each listbox has chosen, a change to none too, and not rows that come and go unselected", () => {
+    const pick = (rows: string) => win(`  [2] list "Recipients"\n${rows}\n  [9] button "Send"`)
+    const alice = pick('    [3] row "Alice" selected\n    [4] row "Bob"')
+    expect(screenMark(pick('    [3] row "Alice"\n    [4] row "Bob" selected'))).not.toBe(screenMark(alice))
+    expect(screenMark(pick('    [3] row "Alice"\n    [4] row "Bob"'))).not.toBe(screenMark(alice))
+    expect(screenMark(pick('    [3] row "Alice" selected\n    [4] row "Bob"\n    [5] row "Carol"'))).toBe(screenMark(alice))
+    // a mail list or a sidebar (a table, an outline) is not a choice: clicking around it voids nothing
+    const mail = (row: number) => win(`  [2] table "Inbox"\n    [3] row "Budget"${row === 3 ? ' selected' : ''}\n    [4] row "Lunch"${row === 4 ? ' selected' : ''}\n  [9] button "Send"`)
+    expect(screenMark(mail(3))).toBe(screenMark(mail(4)))
   })
 })

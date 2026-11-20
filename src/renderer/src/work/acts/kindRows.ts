@@ -40,13 +40,30 @@ export function marksWords(pin: unknown, shapes: unknown): { words: string | nul
 
 type Target = { step?: unknown; param?: unknown; sig?: unknown };
 
-/** An element as the host bound it (`button:Send < group:Compose`): its own role and name, `button "Send"`. */
+/**
+ * An element as the host bound it: its own role and name, `button "Send"`. The host writes the chain as JSON tuples
+ * (`[["button","Send"],["group","Compose"]]`); an act held before that has the older `button:Send < group:Compose`.
+ */
 const sigWords = (sig: unknown): string | null => {
   if (typeof sig !== "string" || !sig) return null;
-  const own = sig.split(" < ")[0]!;
-  const at = own.indexOf(":");
-  const role = at >= 0 ? own.slice(0, at) : own;
-  const name = at >= 0 ? own.slice(at + 1) : "";
+  let role: string;
+  let name: string;
+  if (sig.startsWith("[")) {
+    let own: unknown;
+    try {
+      own = (JSON.parse(sig) as unknown[])[0];
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(own) || typeof own[0] !== "string") return null;
+    role = own[0];
+    name = typeof own[1] === "string" ? own[1] : "";
+  } else {
+    const own = sig.split(" < ")[0]!;
+    const at = own.indexOf(":");
+    role = at >= 0 ? own.slice(0, at) : own;
+    name = at >= 0 ? own.slice(at + 1) : "";
+  }
   return name ? `${role} ${JSON.stringify(name)}` : role;
 };
 

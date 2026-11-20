@@ -216,6 +216,15 @@ describe("where a computer act's typing goes", () => {
     expect(exactQuote("a\nb\t")).toBe('"a\\nb\\t"');
   });
 
+  it("reads a bound element from the host's tuples, a name holding \" < \" whole, and from an older act's text the same", () => {
+    const click = (sig: string) => typing([{ action: "left_click", element: 3 }], [{ step: 0, param: "element", sig }])[0];
+    expect(click(JSON.stringify([["button", "Pay < group:Alice"], ["group", "Bob"], ["window", "Pay"]]))).toEqual({ label: "Clicks", value: 'button "Pay < group:Alice"' });
+    expect(click(JSON.stringify([["toolbar", ""], ["window", "Pay"]]))).toEqual({ label: "Clicks", value: "toolbar" });
+    // the same words as before for a held act stored in the older form
+    expect(click("button:Send < toolbar: < window:New Message")).toEqual({ label: "Clicks", value: 'button "Send"' });
+    expect(click(JSON.stringify([["button", "Send"], ["toolbar", ""], ["window", "New Message"]]))).toEqual(click("button:Send < toolbar: < window:New Message"));
+  });
+
   it("keeps the field in every row of a long batch, whatever the title cuts", () => {
     const fields = ["To", "Cc", "Subject", "Message"];
     const steps = fields.flatMap((name, i) => [

@@ -487,9 +487,10 @@ function Questions({ view, host, store, current, onStep }: { view: FormView; hos
     requestAnimationFrame(() => list.current?.querySelector(`[data-q="${q.id}"]`)?.scrollIntoView?.({ block: "nearest" }));
   };
   // An option is named in its dialog and saved on Add, over his other edits that stand: never a placeholder on the form.
-  const addOption = async (id: string, text: string): Promise<void> => {
+  // With `type`, a question turned to Choice or Dropdown takes its new type and its first option in the one save.
+  const addOption = async (id: string, text: string, type?: FormQuestion["type"]): Promise<void> => {
     const now = store.get().edits ?? store.get().view?.body ?? body;
-    await saver.now({ ...now, questions: now.questions.map((q) => (q.id === id ? { ...q, options: [...(q.options ?? []), text] } : q)) });
+    await saver.now({ ...now, questions: now.questions.map((q) => (q.id === id ? { ...q, ...(type ? { type } : {}), options: [...(q.options ?? []), text] } : q)) });
   };
   const sections = shown.filter((s) => s.q.type === "section");
 
@@ -522,7 +523,7 @@ function Questions({ view, host, store, current, onStep }: { view: FormView; hos
                   else setFocus(s.q.id);
                 }}
                 onChange={(q) => setQuestion(s.q.id, q)}
-                onAddOption={(text) => addOption(s.q.id, text)}
+                onAddOption={(text, type) => addOption(s.q.id, text, type)}
               />
             ))}
           </div>
@@ -611,8 +612,8 @@ function QuestionBlock({
   opens: boolean;
   onFocus(): void;
   onChange(q: FormQuestion | null): void;
-  /** saves a named option on this question; refused, it throws and the dialog stays */
-  onAddOption(text: string): Promise<void>;
+  /** saves a named option on this question (and, with `type`, its new type in the same save); refused, it throws and the dialog stays */
+  onAddOption(text: string, type?: FormQuestion["type"]): Promise<void>;
 }) {
   const { q, mark, was } = shown;
   const editing = focused && editable;
@@ -664,7 +665,7 @@ function QuestionBlock({
         </div>
       )}
       <Field q={q} was={mark === "change" ? was : undefined} proposed={mark === "add" || mark === "change"} editing={editing} onChange={onChange} onAddOption={onAddOption} />
-      {editing ? <EditRow q={q} onChange={onChange} /> : null}
+      {editing ? <EditRow q={q} onChange={onChange} onAddOption={onAddOption} /> : null}
     </div>
   );
 }
@@ -782,11 +783,24 @@ function OptionsEdit({ q, onChange, onAddOption }: { q: FormQuestion; onChange(q
   );
 }
 
-function EditRow({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestion | null): void }) {
+function EditRow({
+  q,
+  onChange,
+  onAddOption,
+}: {
+  q: FormQuestion;
+  onChange(q: FormQuestion | null): void;
+  onAddOption(text: string, type: FormQuestion["type"]): Promise<void>;
+}) {
   const TypeIcon = TYPE_ICONS[q.type];
+  // A type that takes options, on a question with none, asks for the first one's name: Add saves the type and that option
+  // together, Cancel leaves the question as it was. A placeholder ("Option 1") never reaches the form.
+  const [retyping, setRetyping] = useState<FormQuestion["type"] | null>(null);
   const retype = (type: FormQuestion["type"]): void => {
+    if (type === q.type) return;
     const takes = type === "choice" || type === "dropdown";
-    onChange({ ...q, type, options: takes ? (q.options?.length ? q.options : ["Option 1"]) : undefined });
+    if (takes && !q.options?.length) setRetyping(type);
+    else onChange({ ...q, type, options: takes ? q.options : undefined });
   };
   return (
     <div className="mt-3 flex items-center gap-2 border-t border-border pt-2 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
@@ -826,6 +840,7 @@ function EditRow({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestion | 
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {retyping ? <AddOption onAdd={(text) => onAddOption(text, retyping)} onClose={() => setRetyping(null)} /> : null}
     </div>
   );
 }

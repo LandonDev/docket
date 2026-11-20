@@ -49,7 +49,10 @@ Publishing shares a link anyone can answer, so it is an outward act:
   published form's page, before that, and a refused Add keeps the dialog
   and his words with the reason (forms/AddQuestion.tsx). A new option is the
   same: Add option asks for its name in a small dialog and saves it on Add,
-  never a placeholder ("Option 3") on the form (forms/AddOption.tsx).
+  never a placeholder ("Option 3") on the form (forms/AddOption.tsx). Turning
+  a question with no options into a Choice or a Dropdown opens the same
+  dialog for its first option: Add saves the new type and that option in one
+  save, Cancel leaves the question as it was (FormCanvas.tsx `EditRow`).
 - **His close and reopen are not held**: they stop or restart answers on
   his own form (`work.forms.close {itemId, open}`). An agent's close
   (`form_close` with `open: false`) runs at once; its reopen shares the link
