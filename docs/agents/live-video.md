@@ -4,12 +4,14 @@ The owner watches the computer an agent drives as H.264 video, up to 120
 frames a second, in place of the 4 fps JPEG picture. The plan is
 `.temp-code/plan-WqCU4GKXKSM6.md`; this file says what is built.
 
-**Built so far:** the wire, the contract, who may watch, the stream ticket,
-the stream's own socket on both servers, the relay, the two settings, the
-box's browser as a source, and the Mac's computer service as a source of its
-windows (`capture.video.*`, below). No viewer asks for a stream yet: every
-client still draws the JPEG picture. `video.open` does not ask the Mac's
-service yet, so it answers `unsupported` on the Mac, as on Windows.
+**Built:** the wire, the contract, who may watch, the stream ticket, the
+stream's own socket on both servers, the relay, the two settings; the box's
+browser as a source, with his pointer and keys into the page he drives; a
+Mac's window as a source (`tc-computer`, `capture.video.*`) and the publish
+leg that carries it to his other devices; the desktop's viewer, which every
+place that shows a live picture now asks first; and the Computers page.
+**Not built:** the phone's viewer and the Windows service's video, each
+set out under "What is not built" at the end.
 
 **What the owner must do before the box plays video:** run the tools
 installer on the box and update it (see "The box", "The tools"). Until then
