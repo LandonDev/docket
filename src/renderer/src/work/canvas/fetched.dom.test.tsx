@@ -16,6 +16,7 @@ const host = vi.hoisted(() => ({
   fetch: null as null | ((itemId: string) => Promise<unknown>),
   file: new Uint8Array(),
   reads: [] as Array<{ offset: number; length: number }>,
+  kept: [] as string[],
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -23,6 +24,7 @@ vi.mock("../../lib/connection", async (original) => {
     connected: true,
     request: (method: string, params: Record<string, unknown> = {}) => {
       if (method === "work.canvas.fetch") return host.fetch!(params.itemId as string);
+      if (method === "work.canvas.keep") return (host.kept.push(params.itemId as string), Promise.resolve({ path: "/w/Q3 report.pdf", name: "Q3 report.pdf" }));
       if (method === "work.canvas.read") {
         const offset = params.offset as number;
         const length = Math.min(params.length as number, 3);
@@ -66,6 +68,7 @@ beforeEach(() => {
   resetFetches();
   saved.length = 0;
   host.reads.length = 0;
+  host.kept.length = 0;
 });
 afterEach(cleanup);
 
@@ -136,6 +139,18 @@ describe("an attachment in the pane", () => {
     expect(saved[0]!.name).toBe("Q3 report.pdf");
     expect(new TextDecoder().decode(saved[0]!.bytes)).toBe("%PDF-1.");
     expect(host.reads.map((r) => r.offset)).toEqual([0, 3, 6]);
+  });
+
+  it("Save to workspace asks the host for a copy in the workspace's folder; a pane with no workspace has none", async () => {
+    host.fetch = () => Promise.resolve({ size: 7 });
+    await seat([ITEM, canvasItem("chat", { title: "From a Work Chat.pdf", source: { ...ATTACHMENT, partId: "3" }, workspaceId: null })]);
+    await act(async () => {});
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save to workspace" })));
+    expect(host.kept).toEqual(["att"]);
+    await act(async () => fireEvent.click(screen.getByRole("tab", { name: /From a Work Chat/ })));
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save to workspace" })).toBeNull();
   });
 
   it("a file read where it is opens at once, with no Download", async () => {

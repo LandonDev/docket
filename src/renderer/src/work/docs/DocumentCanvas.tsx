@@ -18,13 +18,13 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
-import { ItemBones } from "../canvas/ItemBones";
+import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { ExportDialog } from "../formats/ExportDialog";
-import { DropImport, ImportBody } from "../formats/Import";
+import { DropImport, ImportBody, keepAsDocument, readAttachment } from "../formats/Import";
 import { importsFirst } from "../formats/model";
-import { Export } from "../icons";
+import { Doc, Export } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { useGoogleDoc } from "../google/docMore";
 import { docHost, servedBy, type DocHost } from "./host";
@@ -202,22 +202,59 @@ function useOpenState(itemId: string): OpenState {
  */
 export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   const state = useOpenState(item.id);
-  if (importsFirst(source) || state === "failed") return null;
+  // A mail's attachment is read only and is not shared; a Word file becoming a document has nothing yet.
+  if (source.at === "mail" || importsFirst(source) || state === "failed") return null;
   if (state === "opening") return <Skeleton aria-hidden className="h-3 w-30" />;
   return <ShareButton env={env} source={source} title={item.title} />;
 }
 
 /** A Word, OpenDocument or RTF file becomes a `.tcdoc` first (work/formats, milestone 21); the rest open as they are. */
 export function Body(props: CanvasBodyProps<DocState>) {
+  if (props.source.at === "mail") return <AttachmentBody {...props} />;
   return importsFirst(props.source) ? <ImportBody {...(props as CanvasBodyProps<unknown>)} /> : <DocBody {...props} />;
 }
 
-function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<DocState>) {
+/**
+ * A mail's attachment as a document (work-mail.md "Attachments"): read once into a `.tcdoc` beside the host's copy and
+ * shown read only, the item staying the attachment (Download in the bar). Keep as document, in More, makes it his.
+ */
+function AttachmentBody(props: CanvasBodyProps<DocState>) {
+  const { item, env, shell } = props;
+  const [attempt, setAttempt] = useState(0);
+  const [read, setRead] = useState<{ source: CanvasSource } | { error: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    setRead(null);
+    // An item's source never changes, so its id is enough: a push that hands a new copy of the item reads nothing again.
+    readAttachment(env, { id: item.id, source: item.source }).then(
+      (a) => live && setRead({ source: a.source }),
+      (err: unknown) => live && setRead({ error: err instanceof Error && err.message ? err.message : "It could not be read" }),
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [env, item.id, attempt]);
+  useEffect(() => {
+    shell.statusLine(read && "error" in read ? { tone: "failed", word: "Couldn't open this document", detail: read.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
+  }, [shell, read]);
+  useLayoutEffect(() => {
+    if (!read || "error" in read) shell.ready?.(false);
+  }, [shell, read]);
+  const { id, sessionId } = item;
+  const keep = useMemo((): MoreEntry[] => [{ id: "keep", label: "Keep as document", icon: Doc, run: () => keepAsDocument(env, { id, sessionId }) }], [env, id, sessionId]);
+  if (!read) return <ItemSkeleton />;
+  if ("error" in read) return null;
+  return <DocBody {...props} source={read.source} more={keep} />;
+}
+
+function DocBody({ item, source, env, state, setState, shell, more: own = NO_MORE }: CanvasBodyProps<DocState> & { more?: MoreEntry[] }) {
   const [attempt, setAttempt] = useState(0);
   const opened = useOpened(env, source, attempt);
   // A Google Doc's own verbs (work/google): Write to Google, Read again, Open in Google.
   const reopen = useCallback(() => setAttempt((n) => n + 1), []);
-  const google = useGoogleDoc(env, item, reopen);
+  const googleMore = useGoogleDoc(env, item, reopen);
+  const google = useMemo(() => (own.length ? [...own, ...googleMore] : googleMore), [own, googleMore]);
   useEffect(() => {
     shell.statusLine(opened && "error" in opened ? { tone: "failed", word: "Couldn't open this document", detail: opened.error, action: { label: "Retry", run: () => setAttempt((n) => n + 1) } } : null);
   }, [shell, opened]);

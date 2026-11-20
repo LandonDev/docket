@@ -14,7 +14,7 @@ import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection,
 import { CANVAS } from "./registry";
 import { SelectionBar } from "./SelectionBar";
 import { FetchState } from "./FetchState";
-import { downloadItem, useItemFetch } from "./fetched";
+import { downloadItem, keepItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
 
 /** The kind's module once its chunk has landed, else null: its optional parts (`Bar`, `TabEnd`) are read from it. */
@@ -139,6 +139,7 @@ export function CanvasPane({
         feeds={feeds}
         tools={tools}
         onDownload={fetched && !waiting ? () => downloadItem(environmentId, item) : undefined}
+        onKeep={fetched && !waiting && item.workspaceId ? () => keepItem(environmentId, item.id) : undefined}
         onHistory={def.history && module && !waiting && feeds.ready !== false ? shell.openHistory : undefined}
       />
       {feeds.status ? <StateLine line={feeds.status} /> : null}

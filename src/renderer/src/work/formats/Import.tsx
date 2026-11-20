@@ -34,6 +34,23 @@ function importOnce(env: string, key: string, params: Record<string, unknown>): 
   return p;
 }
 
+/**
+ * A mail's attachment read as a document, once per item: the host makes `<name>.tcdoc` beside its fetched copy and
+ * answers it, read only (work-mail.md "Attachments"). The item stays the attachment.
+ */
+export const readAttachment = (env: string, item: { id: string; source: unknown }): Promise<ImportAnswer> => importOnce(env, `${item.id}#attachment`, { itemId: item.id, from: { at: "source", source: item.source } });
+
+/**
+ * Keep as document: the attachment is saved into the workspace's folder (`work.canvas.keep`) and imported from there
+ * as a document of his own, which opens in the pane in the attachment's place.
+ */
+export async function keepAsDocument(env: string, item: { id: string; sessionId: string }): Promise<void> {
+  const link = registry.linkOf(env);
+  const kept = await link.request<{ path: string }>("work.canvas.keep", { itemId: item.id });
+  const answer = await link.request<ImportAnswer>("work.formats.import", { sessionId: item.sessionId, itemId: item.id, from: { at: "source", source: { at: "file", host: env, path: kept.path } } }, { timeoutMs: IMPORT_MS });
+  sayWarnings(answer);
+}
+
 const sayWarnings = (a: ImportAnswer): void => {
   const line = warningsLine(a.warnings);
   if (line) void loadToast().then((toast) => toast(line));

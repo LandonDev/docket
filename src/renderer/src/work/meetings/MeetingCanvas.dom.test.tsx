@@ -251,6 +251,25 @@ describe("the meeting canvas", () => {
     await waitFor(() => expect(host.calls.filter((c) => c.method === "work.meetings.start")).toHaveLength(2));
   });
 
+  it("a mail's recording starts once its file has come to the host, as a file of his does", async () => {
+    const MAIL = { ...ITEM, title: "Voice memo.m4a", source: { at: "mail", threadId: "mt1", messageId: "mm1", partId: "2", name: "Voice memo.m4a" } } as CanvasItem;
+    host.meeting = null;
+    host.current = fakeHost([MAIL], host as never);
+    const plain = host.current.link.request;
+    let arrive!: (v: unknown) => void;
+    host.current.link.request = (method: string, params?: Record<string, unknown>) => (method === "work.canvas.fetch" ? new Promise((r) => (arrive = r)) : plain(method, params));
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }}>
+        <div data-testid="thread" />
+      </CanvasSeat>,
+    );
+    await waitFor(() => expect(canvasOf("t1").loaded).toBe(true));
+    await act(async () => {});
+    expect(host.calls.some((c) => c.method === "work.meetings.start")).toBe(false);
+    await act(async () => arrive({ size: 5 }));
+    await waitFor(() => expect(host.calls.filter((c) => c.method === "work.meetings.start")).toHaveLength(1));
+  });
+
   it("an item with no file yet offers one Choose a file", async () => {
     const { container } = await seat(null, { ...ITEM, source: { at: "thread" } });
     await waitFor(() => expect(container.querySelector("[data-meeting-empty]")).toBeTruthy());

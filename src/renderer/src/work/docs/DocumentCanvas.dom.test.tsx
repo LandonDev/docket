@@ -15,7 +15,13 @@ vi.mock("./host", () => ({
   docHost: (env: string) => ({ env, open: () => new Promise((_, reject) => (opening.fail = reject)) }),
   servedBy: () => null,
 }));
-vi.mock("../../lib/connection", () => ({ registry: { onLink: () => () => undefined, linkOf: () => ({ request: async () => [], onPush: () => () => undefined }) } }));
+const conn = vi.hoisted(() => ({ asked: [] as Array<{ method: string; params: unknown }>, answer: (_method: string): Promise<unknown> => Promise.resolve([]) }));
+vi.mock("../../lib/connection", () => ({
+  registry: {
+    onLink: () => () => undefined,
+    linkOf: () => ({ request: (method: string, params: unknown) => (conn.asked.push({ method, params }), conn.answer(method)), onPush: () => () => undefined }),
+  },
+}));
 const toasts = vi.hoisted(() => [] as string[]);
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: (m: string) => void toasts.push(m) }) }));
 
@@ -158,5 +164,46 @@ describe("Ask on a document's selection", () => {
     const open = { title: "Run of show", source: FILE };
     expect(selectionChip("Pools  run\non 24 stations", open)).toEqual({ kind: "selection", label: "“Pools run on 24 stations”, Run of show", ref: FILE, quote: "Pools  run\non 24 stations" });
     expect(selectionChip("x".repeat(50), open).label).toBe(`“${"x".repeat(40)}…”, Run of show`);
+  });
+});
+
+describe("a mail's attachment as a document", () => {
+  const MAIL = { at: "mail", threadId: "mt1", messageId: "mm1", partId: "2", name: "Brief.docx" } as const;
+  const ATT = { ...ITEM, id: "a1", sessionId: "mailpane_w1", title: "Brief.docx", source: MAIL } as CanvasItem;
+
+  it("is read once into a document beside the host's copy and opened from there; a failed read says so with Retry", async () => {
+    conn.asked.length = 0;
+    let fail = true;
+    conn.answer = (method) =>
+      method !== "work.formats.import" ? Promise.resolve([]) : fail ? Promise.reject(new Error("LibreOffice is not installed here")) : Promise.resolve({ source: { at: "file", host: "box", path: "/data/canvas/mailpane_w1/a1/file/Brief.tcdoc" }, title: "Brief", warnings: [], outsiders: false });
+    const lines: (StatusLine | null)[] = [];
+    const shell = { statusLine: (line: StatusLine | null) => void lines.push(line), ready: () => {}, more: () => {} } as unknown as CanvasShell;
+    render(<Body item={ATT} source={MAIL} env="box" state={undefined} setState={() => {}} shell={shell} />);
+    await waitFor(() => expect(lines.at(-1)).toMatchObject({ tone: "failed", word: "Couldn't open this document", detail: "LibreOffice is not installed here", action: { label: "Retry" } }));
+    // The item stays the attachment: nothing opens in its place, and no thread is named.
+    expect(conn.asked).toEqual([{ method: "work.formats.import", params: { itemId: "a1", from: { at: "source", source: MAIL } } }]);
+    fail = false;
+    await act(async () => lines.at(-1)!.action!.run());
+    await waitFor(() => expect(lines.at(-1)).toBeNull());
+    expect(conn.asked.filter((a) => a.method === "work.formats.import")).toHaveLength(2);
+    // The document it became opens (here the host's open waits): its bones, under the attachment's name.
+    expect(screen.getByRole("heading", { name: "Brief.docx" })).toBeTruthy();
+  });
+
+  it("offers no Share in the bar", () => {
+    act(() => markOpen("a1", "open"));
+    const { container } = render(<Bar item={ATT} source={MAIL} env="box" state={undefined} setState={() => {}} shell={{} as CanvasShell} />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("Keep as document saves it to the workspace and imports that copy into the pane, in the attachment's place", async () => {
+    conn.asked.length = 0;
+    conn.answer = (method) => Promise.resolve(method === "work.canvas.keep" ? { path: "/Cosmic/Brief.docx", name: "Brief.docx" } : { source: { at: "file", host: "box", path: "/Cosmic/Brief.tcdoc" }, title: "Brief", warnings: [], outsiders: false });
+    const { keepAsDocument } = await import("../formats/Import");
+    await keepAsDocument("box", { id: "a1", sessionId: "mailpane_w1" });
+    expect(conn.asked).toEqual([
+      { method: "work.canvas.keep", params: { itemId: "a1" } },
+      { method: "work.formats.import", params: { sessionId: "mailpane_w1", itemId: "a1", from: { at: "source", source: { at: "file", host: "box", path: "/Cosmic/Brief.docx" } } } },
+    ]);
   });
 });

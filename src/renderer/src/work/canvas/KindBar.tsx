@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight } from "../../chrome/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, FolderOpen } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Tip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -82,10 +82,23 @@ function useTight(ref: React.RefObject<HTMLElement | null>, drawn: boolean): boo
  * people go, the mode shortens, the group's name and History's word go; a
  * kind's tool goes whole or stays whole, and Reject and Accept never clip.
  */
-export function KindBar({ feeds, tools, onHistory, onDownload }: { feeds: Feeds; tools?: ReactNode; onHistory?: () => void; onDownload?: () => Promise<void> }) {
+export function KindBar({
+  feeds,
+  tools,
+  onHistory,
+  onDownload,
+  onKeep,
+}: {
+  feeds: Feeds;
+  tools?: ReactNode;
+  onHistory?: () => void;
+  onDownload?: () => Promise<void>;
+  /** Save to workspace: a copy in the workspace's folder; answers the name it took there. */
+  onKeep?: () => Promise<{ name: string }>;
+}) {
   const slot = useRef<HTMLDivElement | null>(null);
   const tight = useTight(slot, !!tools);
-  const others = barShown(feeds, false, !!onHistory || !!onDownload);
+  const others = barShown(feeds, false, !!onHistory || !!onDownload || !!onKeep);
   if (!others && !tools) return null;
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
@@ -105,6 +118,7 @@ export function KindBar({ feeds, tools, onHistory, onDownload }: { feeds: Feeds;
         {/* It gives up room only after the tools, and only through words: the group's name or a written line truncates; History, the count, Reject, Accept and Undo never shrink. */}
         <div className="ms-auto flex min-w-0 items-center gap-2 @max-[560px]/bar:gap-1">
           {onDownload ? <DownloadButton run={onDownload} /> : null}
+          {onKeep ? <KeepButton run={onKeep} /> : null}
           {onHistory ? <HistoryButton onClick={onHistory} /> : null}
           {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}
         </div>
@@ -303,6 +317,21 @@ function DownloadButton({ run }: { run(): Promise<void> }) {
       .finally(() => setBusy(false));
   };
   return <EndButton label="Download" icon={Download} busy={busy} onClick={press} />;
+}
+
+/** Save to workspace, for a mail's attachment: a copy in the workspace's folder under its own name. */
+function KeepButton({ run }: { run(): Promise<{ name: string }> }) {
+  const [busy, setBusy] = useState(false);
+  const press = (): void => {
+    setBusy(true);
+    run()
+      .then(
+        ({ name }) => loadToast().then((toast) => void toast(`Saved ${name} to the workspace`)),
+        (error: unknown) => sayError(error, "Couldn't save the file to the workspace"),
+      )
+      .finally(() => setBusy(false));
+  };
+  return <EndButton label="Save to workspace" icon={FolderOpen} busy={busy} onClick={press} />;
 }
 
 function Step({ label, tip = label, disabled = false, className, onClick, children }: { label: string; tip?: string; disabled?: boolean; className?: string; onClick(): void; children: ReactNode }) {

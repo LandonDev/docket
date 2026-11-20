@@ -186,6 +186,9 @@ function useMore(shell: CanvasShell, env: string, meeting: Meeting | null, fileN
   }, [shell, env, ready, recording, percent, fileName]);
 }
 
+/** An item that names its recording: a file of his, or a mail's attachment the pane has fetched (work-mail.md "Attachments"). */
+const hasFile = (source: CanvasSource): boolean => source.at === "file" || source.at === "mail";
+
 export function Body({ item, source, env, state, shell }: CanvasBodyProps<MeetingState>) {
   const view = state ?? FIRST;
   const { meeting, loaded, error } = useMeeting(env, item.id);
@@ -199,7 +202,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   const needsFile = loaded && !error && (!meeting || meeting.status === "empty");
   const [startError, setStartError] = useState<string | null>(null);
   useEffect(() => {
-    if (needsFile && source.at === "file") startOnce(env, item.id)?.catch((err: unknown) => setStartError(err instanceof Error ? err.message : String(err)));
+    if (needsFile && hasFile(source)) startOnce(env, item.id)?.catch((err: unknown) => setStartError(err instanceof Error ? err.message : String(err)));
   }, [needsFile, source.at, env, item.id]);
 
   const reveal = useCallback((selector: string) => {
@@ -220,7 +223,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null, player.error ? { error: player.error, retry: toggle } : null);
   const current = proposed.some((a) => a.id === task) ? task : (proposed[0]?.id ?? null);
   const selected = useStretch(turnsBox, shell, meeting, source);
-  useMore(shell, env, meeting, item.source.at === "file" ? (item.source.path.split(/[\\/]/).pop() ?? item.title) : item.title);
+  useMore(shell, env, meeting, item.source.at === "file" ? (item.source.path.split(/[\\/]/).pop() ?? item.title) : item.source.at === "mail" ? item.source.name : item.title);
 
   const hits = useMemo(() => (meeting && view.find ? findHits(meeting.segments, view.find.query) : []), [meeting, view.find]);
   const hit = view.find && hits.length ? hits[((view.find.index % hits.length) + hits.length) % hits.length] : null;
@@ -252,7 +255,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   }
   // A read that failed is the state line's alone: nothing under it pretends to load.
   if (error && !meeting) return null;
-  if (!loaded || (needsFile && source.at === "file")) return <TurnsSkeleton />;
+  if (!loaded || (needsFile && hasFile(source))) return <TurnsSkeleton />;
   if (!meeting || meeting.status === "empty") {
     return (
       <div

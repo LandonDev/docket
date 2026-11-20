@@ -17,7 +17,7 @@ export type Fetch = { phase: "fetching"; received: number; total: number | null 
  * The kinds whose host side opens a fetched file (pdf/file.ts `sourcePath` for a PDF and a deck, sheets/held.ts
  * `heldOf`, media/prepare.ts): an attachment of any other kind is only saved until its kind reads one.
  */
-export const FETCHED_KINDS: readonly CanvasKind[] = ["pdf", "sheet", "media", "slides"];
+export const FETCHED_KINDS: readonly CanvasKind[] = ["pdf", "sheet", "media", "slides", "document", "meeting"];
 
 /** Whether an item's bytes are fetched before its kind opens them. */
 export const fetchedSource = (item: Pick<CanvasItem, "source">): boolean => item.source.at === "mail";
@@ -97,6 +97,9 @@ export async function downloadItem(env: string, item: Pick<CanvasItem, "id" | "t
   }
   await saveDownload(item.source.at === "mail" ? item.source.name : item.title, whole);
 }
+
+/** Save to workspace: the host copies its file into the item's workspace folder and answers the name it took. */
+export const keepItem = (env: string, itemId: string): Promise<{ path: string; name: string }> => registry.linkOf(env).request("work.canvas.keep", { itemId });
 
 /** A preview's seam: the item's fetch as it is drawn, with no host asked. */
 export const seedFetch = (itemId: string, fetch: Fetch): void => put(itemId, fetch);
