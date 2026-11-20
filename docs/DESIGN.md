@@ -1074,6 +1074,8 @@ Every computer being driven now, on every connected host, in one place
   while it works) with the one press that fits, secondary: Set up, Wake or
   Sleep, spinning while the keeper works; a failure is the row's red line.
   Once set up: "Sleeps after" (15 minutes, 30 minutes, 2 hours, Never),
+  "Screen size" (1280 × 800, 1920 × 1200; "From the next wake" under it
+  unless the machine sleeps, since an awake one keeps the size it woke with),
   "Restore points" (a row that opens a dialog of the points, newest first,
   each with Go back… after a confirm naming what is lost, and Delete; Save
   a point at its foot; saving and going back only while it sleeps), the

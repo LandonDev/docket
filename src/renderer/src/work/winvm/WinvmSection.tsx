@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { WINVM_EVALUATION_ENDS, type WinvmPoint, type WinvmSleepAfter, type WinvmState } from "@shared/contract-work-winvm";
+import { WINVM_EVALUATION_ENDS, type WinvmPoint, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from "@shared/contract-work-winvm";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { confirmAction, errorText } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
@@ -45,6 +45,11 @@ const SLEEP_AFTER: { value: WinvmSleepAfter; label: string }[] = [
   { value: "2h", label: "2 hours" },
   { value: "never", label: "Never" },
 ];
+/** The guest's screen: the std VGA's own, or the larger size the picture holds at (docs/agents/live-video.md "The Windows VM"). */
+const SCREENS: { value: WinvmScreen; label: string }[] = [
+  { value: "1280x800", label: "1280 × 800" },
+  { value: "1920x1200", label: "1920 × 1200" },
+];
 
 /** The edition's line: what it is and when it ends. */
 export const evaluationLine = (ends: string): string =>
@@ -63,6 +68,7 @@ export function WinvmSection({ hosts }: { hosts: readonly string[] }) {
 function WinvmHost({ env, named }: { env: string; named: boolean }) {
   const [state, setState] = useState<WinvmState | null>(null);
   const [points, setPoints] = useState<WinvmPoint[] | null>(null);
+  const [screen, setScreen] = useState<WinvmScreen | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pressing, setPressing] = useState(false);
   const [showPoints, setShowPoints] = useState(false);
@@ -78,6 +84,10 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
     void link.request<{ points: WinvmPoint[] }>("work.winvm.points", {}).then(
       (p) => setPoints(p.points),
       () => setPoints([]),
+    );
+    void link.request<WinvmSettings>("work.winvm.settings", {}).then(
+      (v) => setScreen(v.screen),
+      () => setScreen(null),
     );
   }, [link]);
   useEffect(() => {
@@ -136,9 +146,29 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       load();
     }
   };
+  const pickScreen = async (next: WinvmScreen): Promise<void> => {
+    try {
+      setScreen(next);
+      await link.request("work.winvm.settings", { screen: next });
+    } catch (err) {
+      setError(errorText(err));
+      load();
+    }
+  };
   return (
     <>
-      <WinvmView title={title} state={state} points={points} error={error} pressing={pressing} onPress={() => void press()} onSleepAfter={(v) => void setSleepAfter(v)} onPoints={() => setShowPoints(true)} />
+      <WinvmView
+        title={title}
+        state={state}
+        points={points}
+        screen={screen}
+        error={error}
+        pressing={pressing}
+        onPress={() => void press()}
+        onSleepAfter={(v) => void setSleepAfter(v)}
+        onScreen={(v) => void pickScreen(v)}
+        onPoints={() => setShowPoints(true)}
+      />
       {showPoints ? <PointsDialog env={env} state={state} points={points ?? []} onClose={() => setShowPoints(false)} /> : null}
     </>
   );
@@ -148,15 +178,18 @@ export interface WinvmViewProps {
   title: string;
   state: WinvmState;
   points: readonly WinvmPoint[] | null;
+  /** the guest's screen size; null until the host has said */
+  screen: WinvmScreen | null;
   error: string | null;
   pressing: boolean;
   onPress: () => void;
   onSleepAfter: (v: WinvmSleepAfter) => void;
+  onScreen: (v: WinvmScreen) => void;
   onPoints: () => void;
 }
 
 /** The section, pure: the machine's row and, once it is set up, when it sleeps, its points, the edition and Office. */
-export function WinvmView({ title, state, points, error, pressing, onPress, onSleepAfter, onPoints }: WinvmViewProps) {
+export function WinvmView({ title, state, points, screen, error, pressing, onPress, onSleepAfter, onScreen, onPoints }: WinvmViewProps) {
   const row = winvmRow(state);
   return (
     <PageSection title={title}>
@@ -176,6 +209,12 @@ export function WinvmView({ title, state, points, error, pressing, onPress, onSl
           <PageRow title="Sleeps after">
             <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} />
           </PageRow>
+          {screen ? (
+            // the screen is the machine's from a wake on: an awake one keeps the size it woke with
+            <PageRow title="Screen size" description={state.state === "asleep" ? undefined : "From the next wake"}>
+              <ChoiceSelect size="sm" label="Screen size" value={screen} options={SCREENS} onChange={(v) => onScreen(v as WinvmScreen)} />
+            </PageRow>
+          ) : null}
           <PageRow
             title="Restore points"
             description={points === null ? undefined : points.length === 0 ? "None yet" : `${points.length} kept, the last ${dayTime(Math.max(...points.map((p) => p.at)))}`}

@@ -5,13 +5,14 @@ import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { registry } from "../../lib/connection";
 import { WinvmSection, WinvmWorkspaceRow, evaluationLine, winvmRow } from "./WinvmSection";
 
-const h = vi.hoisted(() => ({ state: null as unknown, points: [] as unknown[], calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
+const h = vi.hoisted(() => ({ screen: "1280x800", state: null as unknown, points: [] as unknown[], calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
 vi.mock("../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../chrome/ConfirmDialog")>()), confirmAction: async () => h.confirm }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
 const flush = () => act(async () => {});
 
 beforeEach(() => {
+  h.screen = "1280x800";
   h.state = at({});
   h.points = [];
   h.calls = [];
@@ -24,6 +25,11 @@ beforeEach(() => {
           h.calls.push({ method, params });
           if (method === "work.winvm.state") return h.state;
           if (method === "work.winvm.points") return { points: h.points };
+          if (method === "work.winvm.settings") {
+            const next = (params as { screen?: string }).screen;
+            if (next) h.screen = next;
+            return { sleepAfter: "30m", screen: h.screen };
+          }
           return null;
         },
         onPush: (fn: (p: unknown) => void) => (h.pushes.push(fn), () => undefined),
@@ -35,7 +41,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
-const pressed = () => h.calls.filter((c) => !["work.winvm.state", "work.winvm.points"].includes(c.method)).map((c) => c.method);
+const pressed = () => h.calls.filter((c) => !["work.winvm.state", "work.winvm.points", "work.winvm.settings"].includes(c.method)).map((c) => c.method);
 
 describe("the Windows VM in Settings → Work", () => {
   it("says its state in a few words with the one press that fits", () => {
@@ -88,6 +94,39 @@ describe("the Windows VM in Settings → Work", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save a point" }));
     await flush();
     expect(h.calls.at(-1)?.method).toBe("work.winvm.point.save");
+  });
+
+  it("sets the screen size from the two offered, taken at the next wake", async () => {
+    h.state = at({ state: "awake" });
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    const pick = screen.getByRole("combobox", { name: "Screen size" });
+    expect(pick.textContent).toContain("1280 × 800");
+    // an awake machine keeps the size it woke with
+    expect(screen.getByText("From the next wake")).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(pick);
+    });
+    const option = await screen.findByRole("option", { name: "1920 × 1200" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    expect(h.calls).toContainEqual({ method: "work.winvm.settings", params: { screen: "1920x1200" } });
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1920 × 1200");
+  });
+
+  it("offers no screen size before it is set up, and says no wake while it sleeps", async () => {
+    h.state = at({ state: "none" });
+    const v = render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.queryByRole("combobox", { name: "Screen size" })).toBeNull();
+    v.unmount();
+    h.state = at({ state: "asleep" });
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.getByRole("combobox", { name: "Screen size" })).not.toBeNull();
+    expect(screen.queryByText("From the next wake")).toBeNull();
   });
 
   it("gives a workspace its switch only where its host has the VM set up", async () => {
