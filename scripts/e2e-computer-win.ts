@@ -15,13 +15,22 @@
  * stopping a session step (both sent as hardware keys over QMP), and
  * apps.launch of an app that was not running.
  *
- *   bun scripts/e2e-computer-win.ts [--out DIR]
+ * The video leg (§30, "The Windows service"): a window that redraws steadily
+ * (a WinForms form a PowerShell draws, 60 times a second at most), the
+ * service started with its bytes pipe through `pipe-relay`, the host's own
+ * ComputerConnection on the box reading the records and acking them; the
+ * checks of §30's rules, then frames a second, bitrate and encode times
+ * measured in `quality` and in `budget`, written down as measured.
+ *
+ *   bun scripts/e2e-computer-win.ts [--out DIR] [--legs wire,video]
  *
  * Needs the rig up (scripts/win-vm/up.sh) and the exe built
  * (bun scripts/build-tc-computer-win.ts). Writes each observation text, the
  * wire, the shots and QMP's screens into DIR (default .temp-code/plans/landed/M43).
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { formatObservation, parseObservation } from '../src/shared/computer/observation'
@@ -33,9 +42,13 @@ import {
   type ComputerResult,
   type Observation
 } from '../src/shared/computer/protocol'
-import { compareToScreen, desktopState, getClipboard, qmpKeys, qmpShot, readPng, repo, setClipboard, sleep, socketTo, startService, tunnel, vm } from './lib/winComputerRig'
+import { ComputerConnection } from '../src/main/server/computer/connection'
+import { encodeAck, parseFrame } from '../src/shared/video/nsl1'
+import { compareToScreen, desktopState, getClipboard, qmpKeys, qmpShot, readPng, repo, rigSpawn, setClipboard, sleep, socketTo, startService, startVideoService, tunnel, vm } from './lib/winComputerRig'
 
-const out = resolve(process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : join(repo, '.temp-code/plans/landed/M43'))
+const arg = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
+const out = resolve(arg('--out') ?? join(repo, '.temp-code/plans/landed/M43'))
+const legs = new Set((arg('--legs') ?? 'wire,video').split(','))
 mkdirSync(out, { recursive: true })
 const GUEST_PORT = 47820
 const LOCAL_PORT = 47821
@@ -60,7 +73,7 @@ addEventListener('mouseup',e=>{if(d!==null){document.title='drag='+Math.round(e.
 addEventListener('scroll',()=>{document.title='y='+Math.round(scrollY)})
 </script>`
 
-async function main(): Promise<void> {
+async function wireLeg(): Promise<void> {
   vm('ssh', '--ps', 'Stop-Process -Name tc-computer,notepad,msedge,charmap -Force -ErrorAction SilentlyContinue')
   vm('ssh', '--ps', 'Set-Content -Path "$env:USERPROFILE\\Documents\\m42-scratch.txt" -Value "scratch file for the M42 proof"')
   writeFileSync(join(out, 'm43-page.html'), PAGE)
@@ -308,6 +321,9 @@ async function main(): Promise<void> {
   const f2 = await note('capture/frame')
   check('a click marks the stream and new pixels send a frame', !!click2 && !!f2, JSON.stringify(click2?.params ?? null))
   await ok('capture.stream.stop', { stream: 'p1' })
+  // started with no bytes pipe, the service never named video: the two calls are unknown (the video leg has the pipe)
+  await no('without a video pipe capture.video.start answers as an unknown method', 'capture.video.start', { session: 'm43', app: { app: 'msedge.exe' }, maxEdge: 1280, mode: 'quality' }, -32601)
+  await no('and so does capture.video.stop', 'capture.video.stop', { stream: 1 }, -32601)
   check('stopping ends the stream', ((await note('capture/streamEnded'))?.params as { reason?: string } | undefined)?.reason === 'stopped')
 
   // ── launching ────────────────────────────────────────────────────────
@@ -332,8 +348,188 @@ async function main(): Promise<void> {
   ssh.kill()
   vm('ssh', '--ps', 'Stop-Process -Name charmap -Force -ErrorAction SilentlyContinue')
   writeFileSync(join(out, 'service.log'), vm('ssh', 'type %USERPROFILE%\\tc-computer.log').stdout)
+}
+
+async function main(): Promise<void> {
+  if (legs.has('wire')) await wireLeg()
+  if (legs.has('video')) await videoLeg()
   console.log(failures ? `${failures} check(s) failed` : 'all checks passed')
   process.exit(failures ? 1 : 0)
+}
+
+// ── the video leg ──────────────────────────────────────────────────────
+
+/**
+ * A window that redraws steadily: a bar that moves and a counter, on a 10 ms timer (the least a window timer
+ * takes, with the system's timer at 1 ms); it closes when a file appears and writes how many times it drew.
+ */
+const VIDEO_WINDOW = `Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -Namespace TcVideo -Name Winmm -MemberDefinition '[DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint p);'
+[void][TcVideo.Winmm]::timeBeginPeriod(1)
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$f = New-Object System.Windows.Forms.Form
+$f.Text = 'tc video proof'
+$f.StartPosition = 'Manual'
+$f.Location = New-Object System.Drawing.Point(160, 60)
+$f.ClientSize = New-Object System.Drawing.Size(960, 600)
+$f.BackColor = [System.Drawing.Color]::White
+[System.Windows.Forms.Control].GetProperty('DoubleBuffered', [Reflection.BindingFlags]'NonPublic,Instance').SetValue($f, $true, $null)
+$font = New-Object System.Drawing.Font('Segoe UI', 40)
+$script:n = 0
+$f.Add_Paint({ param($s, $e)
+  $x = ($script:n * 9) % 900
+  $e.Graphics.FillRectangle([System.Drawing.Brushes]::SteelBlue, $x, 220, 60, 260)
+  $e.Graphics.DrawString("frame $($script:n)", $font, [System.Drawing.Brushes]::Black, 24, 24) })
+$t = New-Object System.Windows.Forms.Timer
+$t.Interval = 10
+$t.Add_Tick({
+  $script:n++
+  if ($script:n % 50 -eq 0) { Set-Content -Path "$env:USERPROFILE\\tc-video-drawn.txt" -Value "$($script:n) $($clock.ElapsedMilliseconds)" }
+  if ($script:n % 20 -eq 0 -and (Test-Path "$env:USERPROFILE\\tc-video-close")) { $f.Close() } else { $f.Invalidate() } })
+$t.Start()
+[System.Windows.Forms.Application]::Run($f)
+`
+
+/** The NAL unit types of an Annex B access unit. */
+function nalTypes(au: Uint8Array): number[] {
+  const types: number[] = []
+  for (let i = 0; i + 3 < au.length; i++) {
+    if (au[i] === 0 && au[i + 1] === 0 && au[i + 2] === 1) {
+      types.push(au[i + 3] & 0x1f)
+      i += 3
+    }
+  }
+  return types
+}
+
+interface Got {
+  stream: number
+  generation: number
+  sequence: number
+  keyframe: boolean
+  width: number
+  height: number
+  bytes: number
+  types: number[]
+  at: number
+}
+
+async function videoLeg(): Promise<void> {
+  const [GUEST, LOCAL, RELAY_GUEST, RELAY_LOCAL] = [47830, 47831, 47832, 47833]
+  const guestData = 'C:\\Users\\tcuser\\AppData\\Local\\Temp\\video-proof'
+  vm('ssh', '--ps', 'Stop-Process -Name tc-computer -Force -ErrorAction SilentlyContinue; Remove-Item "$env:USERPROFILE\\tc-video-close","$env:USERPROFILE\\tc-video-drawn.txt" -ErrorAction SilentlyContinue')
+  writeFileSync(join(out, 'tc-video-window.ps1'), VIDEO_WINDOW)
+  vm('scp', join(out, 'tc-video-window.ps1'), 'guest:tc-video-window.ps1')
+  const drawn = vm('run-in-session', 'powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\Users\\tcuser\\tc-video-window.ps1')
+  check('a window that redraws starts on the desktop', drawn.status === 0, drawn.stderr.trim())
+  await sleep(5000)
+  const token = randomBytes(32).toString('hex')
+  check('the service starts with pipe-relay beside it', await startVideoService(GUEST, RELAY_GUEST, token))
+  const tunnels = [await tunnel(LOCAL, GUEST), await tunnel(RELAY_LOCAL, RELAY_GUEST)]
+  const hostDir = join(tmpdir(), `tc-video-proof-${process.pid}`)
+  mkdirSync(hostDir, { recursive: true })
+  const hostLog: string[] = []
+  const conn = await ComputerConnection.start({
+    bin: 'tc-computer.exe',
+    dataDir: hostDir,
+    spawn: rigSpawn(LOCAL, guestData, hostDir, { port: RELAY_LOCAL, token }),
+    videoPipe: 'named',
+    videoPipeName: join(hostDir, 'video.sock'),
+    log: (l) => hostLog.push(l)
+  })
+  check('the service names video and the host has its pipe', conn.video, JSON.stringify(conn.init.features))
+
+  const got: Got[] = []
+  const acking = new Set<number>()
+  conn.onBytes((stream, message) => {
+    const f = parseFrame(message)
+    got.push({ stream, generation: f.generation, sequence: f.sequence, keyframe: f.keyframe, width: f.width, height: f.height, bytes: f.data.byteLength, types: f.keyframe ? nalTypes(f.data) : [], at: performance.now() })
+    if (acking.has(stream)) conn.sendBytes(stream, encodeAck(f.generation, f.sequence))
+  })
+  const ended: { stream: number; reason: string }[] = []
+  conn.onNotification((n) => {
+    if (n.method === 'capture/videoEnded') ended.push(n.params as { stream: number; reason: string })
+  })
+  const target = { session: 'video', app: { app: 'powershell.exe' }, window: { title: 'tc video proof' } }
+  await conn.request('session.open', { session: 'video' })
+  const of = (stream: number): Got[] => got.filter((g) => g.stream === stream)
+  /** From now on every frame of the stream is acked as it comes, and those that came already are acked now. */
+  const ackFrom = (stream: number): void => {
+    acking.add(stream)
+    for (const g of of(stream)) conn.sendBytes(stream, encodeAck(g.generation, g.sequence))
+  }
+
+  /** One stream for 10 s with every frame acked: frames a second, bitrate, and §30's checks. */
+  const measure = async (mode: 'quality' | 'budget', maxEdge: number, firstHeld: boolean) => {
+    const start = await conn.request('capture.video.start', { ...target, maxEdge, mode })
+    const { stream } = start
+    if (firstHeld) {
+      // no ack yet: the flow's window is one frame until the first ack comes back
+      await sleep(1000)
+      const before = of(stream).length
+      check(`${mode}: before any ack one frame comes, no more`, before === 1, `${before} in 1 s`)
+    }
+    ackFrom(stream)
+    const drawn = (): [number, number] => (vm('ssh', 'type %USERPROFILE%\\tc-video-drawn.txt').stdout.trim().split(/\s+/).map(Number) as [number, number])
+    const d0 = drawn()
+    const from = performance.now()
+    await sleep(10_000)
+    const d1 = drawn()
+    const window = of(stream).filter((g) => g.at >= from && g.at < from + 10_000)
+    await conn.request('capture.video.stop', { stream })
+    // records the service queued before it answered may still be on their way (the relay and a second tunnel)
+    const answered = of(stream).length
+    await sleep(500)
+    const all = of(stream)
+    const settled = of(stream).length
+    await sleep(1500)
+    check(`${mode}: a stopped stream sends nothing more`, of(stream).length === settled, `${settled - answered} still in flight at the answer, ${of(stream).length - settled} after`)
+    check(`${mode}: a stop says nothing`, !ended.some((e) => e.stream === stream))
+    const first = all[0]
+    check(`${mode}: the first frame is a keyframe with an SPS and a PPS`, !!first?.keyframe && first.types.includes(7) && first.types.includes(8), JSON.stringify(first?.types))
+    const gens = [...new Set(all.map((g) => g.generation))]
+    const runs = gens.every((gen) => all.filter((g) => g.generation === gen).every((g, i) => g.sequence === i + 1))
+    check(`${mode}: sequences run 1, 2, 3 … with no gap`, runs && gens.every((gen) => all.find((g) => g.generation === gen)?.keyframe), `generations ${gens.join(',')}, ${all.length} frames`)
+    check(`${mode}: every frame is the size start answered`, all.every((g) => g.width === start.width && g.height === start.height), `${start.width}×${start.height}`)
+    check(`${mode}: more than 8 frames come once acks reach the service`, all.length > 8, `${all.length}`)
+    const bytes = window.reduce((n, g) => n + g.bytes, 0)
+    const drawsPerSecond = (d1[0] - d0[0]) / ((d1[1] - d0[1]) / 1000)
+    return { mode, stream, width: start.width, height: start.height, frames: window.length, fps: window.length / 10, drawsPerSecond, mbps: (bytes * 8) / 10 / 1e6, keyframes: all.filter((g) => g.keyframe).length }
+  }
+
+  const quality = await measure('quality', 3840, true)
+  const budget = await measure('budget', 1280, false)
+
+  // the window closes: its stream ends on its own
+  const last = await conn.request('capture.video.start', { ...target, maxEdge: 640, mode: 'quality' })
+  ackFrom(last.stream)
+  await sleep(1000)
+  vm('ssh', '--ps', 'Set-Content -Path "$env:USERPROFILE\\tc-video-close" -Value 1')
+  const until = Date.now() + 8000
+  while (Date.now() < until && !ended.some((e) => e.stream === last.stream)) await sleep(50)
+  check('a closed window ends its stream with window-closed', ended.find((e) => e.stream === last.stream)?.reason === 'window-closed', JSON.stringify(ended))
+
+  await conn.request('session.close', { session: 'video' })
+  await conn.shutdown()
+  for (const t of tunnels) t.kill()
+  await sleep(500)
+  const log = vm('ssh', 'type %USERPROFILE%\\tc-computer.log').stdout
+  writeFileSync(join(out, 'video-service.log'), log)
+  writeFileSync(join(out, 'video-relay.log'), vm('ssh', 'type %USERPROFILE%\\tc-relay.log').stdout)
+  writeFileSync(join(out, 'video-host.log'), hostLog.join('\n') + '\n')
+  const stats = (stream: number): Record<string, string> => {
+    const line = log.split(/\r?\n/).find((l) => l.startsWith(`video ${stream}: frames=`)) ?? ''
+    return Object.fromEntries([...line.matchAll(/(\w+)=((?:[^ =]| (?!\w+=))+)/g)].map((m) => [m[1], m[2].trim()]))
+  }
+  const rows = [quality, budget].map((r) => ({ ...r, service: stats(r.stream) }))
+  console.log('\nmeasured in the rig (no GPU), 10 s each, every frame acked at once:')
+  console.log('| mode | picture | frames a second | the window drew a second | bitrate | keyframes | encode p50 | encode p95 | capture | encoder |')
+  console.log('|---|---|---|---|---|---|---|---|---|---|')
+  for (const r of rows) {
+    console.log(`| ${r.mode} | ${r.width}×${r.height} | ${r.fps.toFixed(1)} | ${r.drawsPerSecond.toFixed(1)} | ${r.mbps.toFixed(2)} Mbit/s | ${r.keyframes} | ${r.service.encode_p50_ms ?? '?'} ms | ${r.service.encode_p95_ms ?? '?'} ms | ${r.service.capture ?? '?'} | ${r.service.encoder ?? '?'} |`)
+  }
+  writeFileSync(join(out, 'video.json'), JSON.stringify({ rows, ended }, null, 2) + '\n')
+  rmSync(hostDir, { recursive: true, force: true })
 }
 
 main().catch((e) => {
