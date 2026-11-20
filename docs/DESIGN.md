@@ -1182,7 +1182,9 @@ Around the canvas:
   semibold, -0.01em), edited in place. A card is `background` on a `card`
   lane with a hairline (6px in a 12px lane), a stronger hairline in hand,
   and no shadow; only a row or a card being dragged lifts. The peek is a
-  sheet (16px). A stage of work is a mark, never a word in its colour: a
+  sheet (16px), 44% of the view's pane (560 to 960px); the work makes
+  room for it on a pane of 1280px or more, and under that it lies over
+  the work. A stage of work is a mark, never a word in its colour: a
   state's 14px glyph and a meter's segment in `stage-doing`,
   `stage-waiting` and `stage-done`, the rest of a meter a dotted line in
   `chart-neutral-stale`; the meter is 4px, square, with no track, and

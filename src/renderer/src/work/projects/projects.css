@@ -48,6 +48,23 @@
 
   --pk-ease-out: var(--ease-out);
   --pk-ease-drawer: var(--ease-drawer);
+
+  /* The peek is measured on the view's pane, not the window: the rail and the column stand beside it. */
+  --pk-peek-w: clamp(560px, 44cqw, 960px);
+}
+
+/* work-kit gives the peek its room on a wide window; here the pane must be that wide, and on a
+   narrower one the peek lies over the work. */
+.tc-projects {
+  container: tc-projects / inline-size;
+}
+.tc-projects .pk-peek-room > .pk-room {
+  padding-inline-end: 0;
+}
+@container tc-projects (min-width: 80rem) {
+  .tc-projects .pk-peek-room > .pk-room {
+    padding-inline-end: calc(var(--pk-peek-w) + 12px);
+  }
 }
 
 /* work-kit's two rules that ask for `.dark`, on tokens that follow the theme themselves. */
