@@ -555,12 +555,13 @@ hold `budget` within 1.5 times 8 Mbit/s (3.5 to 3.8 times). So `quality` keeps
 the default rate control and `budget` keeps low-latency rate control
 (`VideoTuning.qualityDataRateLimits` and `budgetDataRateLimits` are false).
 
-Open: in `budget` the flow never raised the bitrate, though every ack came at
-once. The likely reason, from the code: low-latency rate control drops most
-frames of a busy window (32 a second of the 120 offered), and screen-relay's flow takes a gap
-of more than three frame intervals between sent frames as idle and starts its
-sample again, so it never sees the steady demand it needs before it probes.
-It still lowers the bitrate on a congested link; it cannot raise it again.
+In `budget` the flow at first never raised the bitrate, though every ack came
+at once: low-latency rate control drops most frames of a busy window, and
+screen-relay's flow takes a gap of more than three frame intervals between
+sent frames as idle and starts its sample again, so it never saw the steady
+demand it needs before it probes. The stream now applies the flow's own probe
+beside it (§30 "The stream", `probeAtTheEdge` in ComputerService/Video.swift);
+the host's proof then ran `budget` at 60 to 86 fps and 12 to 16 Mbit/s.
 
 ## Settings
 
@@ -604,9 +605,41 @@ the viewer and the relay, so the engine sees it only through the acks, as it
 will through the tunnel.
 
 Not proven: the stream through the real Cloudflare tunnel (it is first seen
-after the owner installs the tools and updates the box), and the desktop's
-own viewer against a real stream: its rules are unit-tested over a fake
-socket and decoder, and its first decode on a Mac is still to be seen.
+after the owner installs the tools and updates the box), and the box's
+browser stream through the desktop's viewer (the viewer below ran on a Mac
+window's stream only).
+
+### The desktop's viewer, on the Mac
+
+`bun run script:e2e-video-viewer` (scripts/e2e-video-viewer.ts): the
+viewer's own worker (`video.worker.ts`, bundled with `bun build`) in an inert
+Electron window of the checkout (an accessory app, never focusable, shown
+without being made key), on a stream of TC Probe `--busy` from the real
+tc-computer through the in-process host of §30 "Measured". The page hands
+the worker a canvas and posts `surface`, `open` and `bind` as streams.ts
+does; `count` and `closed` come back through its console; the viewer's
+waits are read at the host from the acks. `TC_VIEWER_PROBE=1` puts a shim in
+front of the worker that counts its frame clock, decoder and socket.
+
+2026-11-19, M4 Max, the window on the 144 Hz display, load 5.6, a 2560×1664
+`quality` stream (`avc1.640034`), 10 s after 2 s each:
+
+| | Rule | Measured |
+|---|---|---|
+| Frames drawn a second | 110 | 117.0, pass |
+| The same, the page's main thread burning 8 ms of every 16 (62.5 times a second) | holds | 117.4, pass |
+| The viewer's wait, arrival to draw, p50 / p95 | | calm 2.2 / 5.8 ms; busy 2.1 / 4.3 ms |
+| `closed` | never | never, pass |
+| `VideoDecoder.isConfigSupported` | | yes; with `prefer-hardware` yes |
+
+The first runs drew nothing: the worker took the keyframe and the decoder
+gave no frame back, so no ack went and the service ended the stream after
+three seconds. Chromium's hardware decoder held every frame of a 2560×1664
+stream whose SPS says nothing of reordering (0 out of 6 until `flush()`, at
+1280×832 and in software each came back at once); with the SPS rewritten
+(§30 "The encoder") each came back at once. A viewer that joins more than
+three seconds after `video.open` is ended the same way, with `error`: the
+app's viewer opens its socket as soon as `video.open` answers.
 
 ## What this cannot stop
 

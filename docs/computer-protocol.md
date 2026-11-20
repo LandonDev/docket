@@ -2699,7 +2699,12 @@ frame waited inside the viewer, in microseconds.
   rate control and sets `AverageBitRate` as the flow moves it. A picture of
   another size is scaled with `VTPixelTransferSession`. The output becomes
   Annex B: a start code ahead of each NAL unit, the SPS and PPS ahead of a
-  keyframe (an SEI may sit before the IDR slice). An encoder that fails is
+  keyframe (an SEI may sit before the IDR slice). The SPS is rewritten to say
+  no frame is reordered (`H264SPS`: a VUI `bitstream_restriction` with
+  `max_num_reorder_frames` 0): VideoToolbox writes none, and Chromium's
+  hardware decoder then held every frame of a 2560×1664 stream until
+  `flush()`, so with the flow's one frame before the first ack the stream
+  never started. An encoder that fails is
   made again as a new generation, up to three times in a row, then the
   stream ends with `error`. Each frame handed to the encoder is settled with
   the stream exactly once, encoded or dropped; a session that closes
@@ -2745,6 +2750,40 @@ by stream (`onBytes`) and writes acks (`sendBytes`). `video` is true only
 when the service named the feature and the pipe is there. The fake service
 (`fakeService.mjs`) sends video on descriptor 3 at most eight frames ahead
 of the acks, for the host's tests.
+
+### Measured
+
+`bun run script:e2e-computer-video` (scripts/e2e-computer-video.ts): the real
+tc-computer under the in-process host (`ComputerSessions`, `ComputerVideo` as
+a source of a `VideoRpc` over a `VideoRelay`, `VideoSockets` on a loopback
+server), TC Probe `--busy` (a 1280×800-point window behind the others that
+redraws all of itself every refresh), and a `ws` viewer that acks each frame
+at once. 10 s after 2 s per mode; it waits for five idle minutes and stops on
+input. Capture to arrival compares the service's CLOCK_UPTIME_RAW stamp with
+the host's `process.hrtime`: on macOS both read the mach clock, which the
+script checks at the start (CLOCK_UPTIME_RAW read by another process falls
+between two hrtime reads). The event loop's lag is
+`monitorEventLoopDelay` at 1 ms, which an idle loop reads as about 1 ms.
+
+2026-11-19, Mac16,5 (M4 Max), the window on the 144 Hz display at 2×, load
+5.4 (1 min), the Mac idle 140 minutes, the build of this section:
+
+| | `quality`, maxEdge 3840 | `budget`, the publish leg's ask |
+|---|---|---|
+| Picture | 2560×1664 | 1280×832 |
+| Frames a second at the viewer (rule: 100 in `quality`) | 118.3, pass | 59.6 |
+| Capture to the host's viewer socket, p50 / p95 | 8.98 / 15.29 ms | 4.65 / 10.53 ms |
+| The service's CPU (rule: under half a core) | 0.071 cores, pass | 0.077 cores, pass |
+| The host's event loop, p50 / p95 / max | 1.27 / 1.74 / 23.5 ms | 1.28 / 1.72 / 24.2 ms |
+| Through it | 57.8 Mbit/s | 11.8 Mbit/s |
+| Encode, the trace's p50 / p95 (rule: p95 under 12 ms) | 8.25 / 12.38 ms, a miss | 3.91 / 6.38 ms, pass |
+
+An earlier quiet run the same evening, before the SPS rewrite (the encoder
+the same), gave `quality` 117.5 fps with encode p95 9.00 ms and `budget`
+86.2 fps at 15.5 Mbit/s: the encode p95 sits near the rule and over it in
+one of two runs; `budget`'s rate follows how far its bitrate has climbed in
+the 12 s. A first run was void: another session's builds took the load to
+185 during it.
 
 ## The unattended proof modes
 
