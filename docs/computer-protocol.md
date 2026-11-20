@@ -2558,6 +2558,99 @@ host-name text calls this machine "this PC" there (`thisDesktopInLine`).
   live `computer.act` in the real Outbox that Away keeps and his press
   submits once. Without the variable it is skipped.
 
+## 30. Live video
+
+A window as H.264 video, for a person to watch (docs/agents/live-video.md).
+It runs beside the JPEG preview stream (§17.8), which stays as the fallback.
+`COMPUTER_PROTOCOL` stays 1: a service says it can at `initialize` with the
+feature `video`, and a service that does not is never asked.
+
+### The calls
+
+| Method | Params | Result |
+|---|---|---|
+| `capture.video.start` | `Target & { maxEdge: 256..3840, fps?: 10..120 (default 120), bitrate?: 1M..20M, mode: 'quality' \| 'budget' }` | `{ stream: number, width, height }` |
+| `capture.video.stop` | `{ stream }` | `{}` |
+
+`capture/videoEnded { stream, reason }` is sent when a stream ends on its
+own: `window-closed`, `permission` (Screen Recording went off), `error`.
+`capture.video.stop` and `session.close` end a stream with no notice. The
+numbers are `VIDEO_STREAM` in `src/shared/computer/protocol.ts`, generated
+into Swift and Rust.
+
+- `stream` is a positive integer the service picks, unique for its run.
+- `width` and `height` are the encoded picture's pixels: the window's own,
+  scaled down to fit `maxEdge` on the long edge, each even.
+- `capture.video.start` passes the same guard as every picture path:
+  Screen Recording off is `permission_missing`, a minimized window
+  `window_minimized`.
+
+### The bytes pipe
+
+Frames do not travel on stdout. On the Mac the host starts the service with
+a fourth stdio entry, a socket pair: file descriptor 3 in the service
+(`VIDEO_STREAM.pipeFd`), read and written. A service started without it (the
+descriptor is not open) leaves `video` out of its features. On Windows the
+bytes go over a named pipe the host names at spawn (§29).
+
+A record on the pipe is the stream's number as four bytes, big-endian, then
+one whole NSL1 message (`src/shared/computer/videoPipe.ts`). The service
+writes frames; the host writes acks. Either side that reads a record it
+cannot place (no NSL1 magic after the number, a length past the wire's
+limit) has lost its place: the host kills the service as `bad-output`; the
+service ends every stream with `error`.
+
+An NSL1 message (`src/shared/video/nsl1.ts`, from screen-relay 0.1.2) is a
+20-byte header, big-endian, then its payload:
+
+| Bytes | Field |
+|---|---|
+| 0..3 | magic `NSL1` (0x4e534c31) |
+| 4 | version, 1 |
+| 5 | type: 1 frame, 2 ack |
+| 6..7 | flags: 1 on a frame that is a keyframe, else 0 |
+| 8..11 | generation, 1 or more: one number for the life of a stream's encoder |
+| 12..15 | sequence: 1, 2, 3 … within a generation |
+| 16..19 | payload length |
+
+A frame's payload is the picture's width and height (two bytes each), the
+capture time in microseconds on the service's monotonic clock (eight bytes),
+then one H.264 access unit in Annex B form (start codes; a keyframe carries
+its SPS and PPS). An ack's payload is empty, or four bytes: how long the
+frame waited inside the viewer, in microseconds.
+
+### The service's rules
+
+- **One capture per window, one encoder per stream.** Streams of one window
+  share its capture; each has its own encoder, since each viewer's link
+  differs.
+- **The first frame of a generation is a keyframe.** A new encoder (the
+  window changed size, the encoder failed and was made again) is a new
+  generation, starting again at sequence 1 with a keyframe.
+- **`quality`** is for a viewer on the same machine: every frame is kept,
+  at `VIDEO_STREAM.qualityBitrate`.
+- **`budget`** is for a viewer across a link: the bitrate starts at
+  `bitrate` (else `startBitrate`) and follows the acks between `minBitrate`
+  and `maxBitrate`, and the encoder may drop frames to hold it.
+- **Flow.** The acks say what the viewer has taken. The service keeps a
+  window of frames sent and not acked and stops encoding while it is full,
+  as screen-relay's flow controller does (ported with its cases). A stream
+  with no ack for three seconds ends with `error`.
+- **A still window sends nothing.** After `sharpenAfterMs` at rest the last
+  frame is encoded again, up to `sharpenFrames` times, so the picture he is
+  left with is sharp.
+- **Pacing.** The capture runs at the display's own rate and the service
+  drops to the asked `fps`: a cap asked of the capture itself on a 144 Hz
+  display gave 105 frames a second, not 120.
+
+### The host
+
+`ServiceConnection` (`computer/connection.ts`) opens the pipe, reads records
+by stream (`onBytes`) and writes acks (`sendBytes`). `video` is true only
+when the service named the feature and the pipe is there. The fake service
+(`fakeService.mjs`) sends video on descriptor 3 at most eight frames ahead
+of the acks, for the host's tests.
+
 ## The unattended proof modes
 
 Proofs build wire coordinates through `intPoint` in
