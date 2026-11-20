@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { bridgeCancelledProbeRead, bridgeHasOneRemoteNote, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, waitForBridgeProofCall } from './computerBridgeProof'
+import { bridgeCancelledProbeRead, bridgeHasOneRemoteNote, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, bridgeRepeatPingRan, waitForBridgeProofCall } from './computerBridgeProof'
 import { COMPUTER_BRIDGE_NOTE, COMPUTER_TOOLS, ComputerActInputSchema, ComputerResultInputSchema } from '../../src/shared/computer/tools'
 import { heldAnswerLine } from '../../src/shared/computer/heldCalls'
 import { markersOf } from '../../src/main/server/processGuard'
@@ -89,4 +89,17 @@ it('returns a refusal as is and drops its timers', async () => {
     standing: vi.fn(), log: vi.fn()
   })).rejects.toThrow('offline')
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it('takes a later press of Ping as run whether its highlight was caught or not, and nothing else', () => {
+  // 1.0.352's publish gate, word for word: the press ran, and no frame of the pixel watch caught its highlight
+  expect(bridgeRepeatPingRan('left_click [3] button "Ping" · ax · can\'t tell\nTC Probe · no changes · thin tree')).toBe(true)
+  expect(bridgeRepeatPingRan('left_click [3] button "Ping" · ax · changed')).toBe(true)
+  expect(bridgeRepeatPingRan('left_click [12] button "Ping" · process · changed')).toBe(true)
+  // a press that did not run, another tier, another step, or no step line at all
+  expect(bridgeRepeatPingRan('left_click [3] button "Ping" · ax · no change seen')).toBe(false)
+  expect(bridgeRepeatPingRan('left_click [3] button "Ping" · session · changed')).toBe(false)
+  expect(bridgeRepeatPingRan('set_value [4] input "Name" · ax · changed')).toBe(false)
+  expect(bridgeRepeatPingRan('Still held: the click waits for a computer session')).toBe(false)
+  expect(bridgeRepeatPingRan('denied: the person did not allow it')).toBe(false)
 })

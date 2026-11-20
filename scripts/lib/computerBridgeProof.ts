@@ -16,6 +16,18 @@ export function bridgeProbePing(text: string): number {
   return Number(index)
 }
 
+/**
+ * A press of Ping after the first ran, by its step line. The first press changes the label, which the
+ * service always sees. A later one changes nothing that lasts: only the button's highlight shows it, and
+ * that counts only when a frame of the ten-a-second pixel watch is stamped after the press returned and
+ * still holds it (tc-computer's WaitRule.effect and SmartWait). So the service says `changed`
+ * or, on TC Probe's thin tree, `can't tell`, and either is a press that ran. 1.0.352's publish gate read
+ * `can't tell` once on a quiet Mac; the same press read `changed` 66 times after.
+ */
+export function bridgeRepeatPingRan(text: string): boolean {
+  return /^left_click .*"Ping".* · (ax|process) · (changed|can't tell)/m.test(text)
+}
+
 /** Never turn a failed held call into a second, invalid computer_result call. */
 export function bridgeHeldId(text: string): string {
   const id = text.match(/^Held after[^\n]*computer_result with id "(c\d+)"/)?.[1]

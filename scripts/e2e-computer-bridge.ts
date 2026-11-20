@@ -54,7 +54,7 @@ import { createInterface } from 'node:readline'
 import { proofDescendants } from './lib/proofProcesses'
 import { cleanupProbeApp } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
-import { bridgeCancelledProbeRead, bridgeHasOneRemoteNote, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, waitForBridgeProofCall } from './lib/computerBridgeProof'
+import { bridgeCancelledProbeRead, bridgeHasOneRemoteNote, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, bridgeRepeatPingRan, waitForBridgeProofCall } from './lib/computerBridgeProof'
 import { shortHostName } from '../src/shared/hostNames'
 import { BRIDGE_TIMING_RULE, judgeBridgeTiming, median, timingTable, type TimingKind, type TimingSample } from './lib/computerBridgeTiming'
 import { parseTimingLine } from '../src/shared/computer/bridgeTiming'
@@ -891,7 +891,7 @@ async function orchestrator(): Promise<void> {
     let read = textOf(await ask('computer_result', { id: heldId }))
     while (read.startsWith('Still held')) read = textOf(await ask('computer_result', { id: heldId }))
     const heldCover = probeCovered()
-    check("held: computer_result returns the click's step line", !heldCover && / · (ax|process) · changed/.test(read), heldCover ?? read.slice(0, 300))
+    check("held: computer_result returns the click's step line", !heldCover && bridgeRepeatPingRan(read), heldCover ?? read.slice(0, 300))
     // a second held click left unread is cancelled on the Mac and never runs
     await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
     await boxCall('session.markStatus', { sessionId: t1, status: 'running' })
@@ -953,7 +953,7 @@ async function orchestrator(): Promise<void> {
     await until(10_000, async () => (await boxCall<{ enabled: boolean }>('away.get', {})).enabled === true)
     const awayOut = await computer(t1, 'computer_act', clickArgs)
     const awayCover = probeCovered()
-    check('away: an acting call that would ask is allowed and marked away', !awayCover && !awayOut.isError && / · (ax|process) · changed/.test(awayOut.text) && logOf(mac).includes('card allowed (away)'), awayCover ?? awayOut.text)
+    check('away: an acting call that would ask is allowed and marked away', !awayCover && !awayOut.isError && bridgeRepeatPingRan(awayOut.text) && logOf(mac).includes('card allowed (away)'), awayCover ?? awayOut.text)
     // The local socket answers session.events as the rows themselves; a remote one wraps them in { rows }.
     type Row = { event: { type: string; kind?: string; away?: { kind: string; text: string } } }
     const events = await boxCall<Row[] | { rows: Row[] }>('session.events', { sessionId: t1, afterSeq: 0 })
