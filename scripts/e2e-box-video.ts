@@ -11,6 +11,10 @@
  *  2. thin link: the same scene through 5 Mbit/s with 30 ms each way holds 100 fps
  *  3. cut: a link cut for 4 s closes the stream, and the next open plays
  *
+ * `--scale 2` (or 1.5) runs the display at that many pixels for each of the
+ * page's, the page still 1280×800: the rule to ship such a display is that
+ * scene 1 holds 100 fps with the engine under 3 cores.
+ *
  * Scenes 1 and 2 run `--runs` times each (5), turn about, and the medians are
  * judged: the box is shared and a single run says little. The browser, the
  * display and the engine are pinned to cores of their own (`--cores a-b`,
@@ -22,7 +26,7 @@
  * else TEMP_CODE_USER_DATA. Nothing here touches the box's live service, its
  * browser profile or its display: everything lives under a temp folder.
  *
- * Run: bun run script:e2e-box-video [-- --runs 5 --secs 15 --cores 24-31]
+ * Run: bun run script:e2e-box-video [-- --runs 5 --secs 15 --cores 24-31 --scale 1]
  * The report is /tmp/tc-box-video-proof/report.json. Exit 1 when a rule fails.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -54,7 +58,8 @@ const SECS = Number(arg('secs', '15'))
 const cpus = availableParallelism()
 const CORES = arg('cores', cpus >= 16 ? `${cpus - 8}-${cpus - 1}` : `0-${cpus - 1}`)
 const OUT = '/tmp/tc-box-video-proof'
-const RULES = { scrollFps: 110, relayP95Ms: 15, engineCores: 1.2, thinFps: 100 }
+const SCALE = Number(arg('scale', '1'))
+const RULES = SCALE === 1 ? { scrollFps: 110, relayP95Ms: 15, engineCores: 1.2, thinFps: 100 } : { scrollFps: 100, relayP95Ms: 15, engineCores: 3, thinFps: 100 }
 
 const dataDir = process.argv.includes('--data') ? arg('data', '') : (process.env.TEMP_CODE_TEST_VIDEO_TOOLS ?? process.env.TEMP_CODE_USER_DATA ?? '')
 const tools = dataDir ? videoToolsAt(dataDir) : null
@@ -162,6 +167,8 @@ function link(target: number, kbit: number, delayMs: number): Promise<{ port: nu
 }
 
 interface Run {
+  /** the stream's frames, width×height */
+  size: string
   fps: number
   kbit: number
   relayP50: number
@@ -180,7 +187,7 @@ const check = (name: string, ok: boolean, detail: string): void => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} — ${detail}`)
 }
 
-const browser = new BoxChromium({ root, bin: () => bin, video: () => tools, spawn: pinned, makeDisplay: (t) => new BoxXDisplay({ root, tools: t, spawn: pinned }) })
+const browser = new BoxChromium({ root, bin: () => bin, video: () => tools, spawn: pinned, makeDisplay: (t) => new BoxXDisplay({ root, tools: t, scale: SCALE, spawn: pinned }) })
 const stage = new BoxStage({ endpoint: () => browser.endpoint(), wm: () => browser.wm })
 const engines = new BoxEngines({ root, tools: () => browser.tools, display: () => browser.display, spawn: pinned })
 const relay = new VideoRelay()
@@ -193,7 +200,7 @@ let site: Server
 const kids: ChildProcess[] = []
 
 /** One stream of the page, through the relay and its socket at `port`; the viewer acks each frame on arrival. */
-async function view(port: number): Promise<{ ws: WebSocket; frames: () => number; bytes: () => number; lat: number[]; enginePid: number; closed: Promise<number> }> {
+async function view(port: number): Promise<{ ws: WebSocket; frames: () => number; bytes: () => number; size: () => string; lat: number[]; enginePid: number; closed: Promise<number> }> {
   const lease = (await engines.lease())!
   const feed = new EngineFeed(lease, false)
   const real = feed.start.bind(feed)
@@ -213,9 +220,11 @@ async function view(port: number): Promise<{ ws: WebSocket; frames: () => number
   ws.binaryType = 'nodebuffer'
   let frames = 0
   let bytes = 0
+  let size = ''
   const lat: number[] = []
   ws.on('message', (data: Buffer) => {
     const frame = parseFrame(data)
+    size ||= `${frame.width}×${frame.height}`
     frames++
     bytes += data.length
     lat.push((nowUs() - frame.timestamp) / 1000)
@@ -226,7 +235,7 @@ async function view(port: number): Promise<{ ws: WebSocket; frames: () => number
     ws.on('open', () => resolve())
     ws.on('error', reject)
   })
-  return { ws, frames: () => frames, bytes: () => bytes, lat, enginePid: lease.pid ?? 0, closed }
+  return { ws, frames: () => frames, bytes: () => bytes, size: () => size, lat, enginePid: lease.pid ?? 0, closed }
 }
 
 async function measure(port: number): Promise<Run> {
@@ -251,6 +260,7 @@ async function measure(port: number): Promise<Run> {
   await v.closed
   await sleep(300)
   return {
+    size: v.size(),
     fps: +(frames / wall).toFixed(1),
     kbit: Math.round((bytes * 8) / 1000 / wall),
     relayP50: +quantile(relayed, 0.5).toFixed(1),
@@ -286,7 +296,7 @@ try {
   await new Promise<void>((r) => http.listen(0, '127.0.0.1', () => r()))
   const direct = (http.address() as { port: number }).port
 
-  console.log(`e2e-box-video: ${RUNS} runs of ${SECS} s a scene, pinned to cores ${CORES}; load ${load()}`)
+  console.log(`e2e-box-video: ${RUNS} runs of ${SECS} s a scene at scale ${SCALE}, pinned to cores ${CORES}; load ${load()}`)
   await browser.endpoint()
   if (!browser.display) throw new Error('the browser did not start headed')
   const target = await stage.open(`http://127.0.0.1:${(site.address() as { port: number }).port}/`)
@@ -330,7 +340,7 @@ try {
     slow.push(await measure(thin.port))
     console.log(`  thin   ${i + 1}/${RUNS}: ${JSON.stringify(slow.at(-1))}`)
   }
-  const med = (runs: Run[], key: keyof Omit<Run, 'load'>): number => median(runs.map((r) => r[key]))
+  const med = (runs: Run[], key: keyof Omit<Run, 'load' | 'size'>): number => median(runs.map((r) => r[key]))
   console.log('')
   check(`scroll: the stream holds ${RULES.scrollFps} fps`, med(scroll, 'fps') >= RULES.scrollFps, `median ${med(scroll, 'fps')} fps at ${med(scroll, 'kbit')} kbit/s (runs ${scroll.map((r) => r.fps).join(', ')}; load ${scroll.map((r) => r.load).join(', ')})`)
   check(`scroll: capture to relay p95 under ${RULES.relayP95Ms} ms`, med(scroll, 'relayP95') < RULES.relayP95Ms, `median p50 ${med(scroll, 'relayP50')} ms, p95 ${med(scroll, 'relayP95')} ms; to the viewer p50 ${med(scroll, 'viewerP50')} ms, p95 ${med(scroll, 'viewerP95')} ms`)
@@ -353,7 +363,7 @@ try {
   cutLink.close()
   thin.close()
 
-  writeFileSync(join(OUT, 'report.json'), `${JSON.stringify({ at: new Date().toISOString(), runs: RUNS, secs: SECS, cores: CORES, rules: RULES, scroll, thin: slow, checks }, null, 2)}\n`)
+  writeFileSync(join(OUT, 'report.json'), `${JSON.stringify({ at: new Date().toISOString(), runs: RUNS, secs: SECS, cores: CORES, scale: SCALE, rules: RULES, scroll, thin: slow, checks }, null, 2)}\n`)
   code = checks.every((c) => c.ok) ? 0 : 1
   console.log(`\n${code === 0 ? 'ALL PASS' : 'FAILED'}  (${join(OUT, 'report.json')}; load ${load()})`)
 } catch (err) {
