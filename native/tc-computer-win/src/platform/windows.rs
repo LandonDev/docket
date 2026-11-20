@@ -161,7 +161,7 @@ fn class_name(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buf[..n.max(0) as usize])
 }
 
-fn window_frame(hwnd: HWND) -> Rect {
+pub(crate) fn window_frame(hwnd: HWND) -> Rect {
     let mut r = RECT::default();
     let ok = unsafe { DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut r as *mut _ as *mut c_void, std::mem::size_of::<RECT>() as u32) }.is_ok();
     if !ok {
@@ -859,6 +859,14 @@ impl Desktop for WindowsDesktop {
 
     fn alive(&self, window_id: i64) -> bool {
         io::alive(window_id)
+    }
+
+    fn video_capture(&self, window_id: i64, fps: usize) -> Result<Box<dyn crate::video::WindowCapture>, ComputerError> {
+        super::video::capture(window_id, fps)
+    }
+
+    fn video_encoder(&self, spec: &crate::video::EncoderSpec) -> Result<Box<dyn crate::video::VideoEncoder>, ComputerError> {
+        Ok(Box::new(super::video::MfEncoder::new(spec)?))
     }
 
     fn clip_seq(&self) -> i64 {

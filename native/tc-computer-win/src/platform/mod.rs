@@ -3,4 +3,6 @@
 #[cfg(windows)]
 pub mod io;
 #[cfg(windows)]
+pub mod video;
+#[cfg(windows)]
 pub mod windows;
