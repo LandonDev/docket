@@ -67,12 +67,40 @@ journaled and is acked as done, as a mail is.
 
 **The Mac.** Each verb is one JXA script run by `/usr/bin/osascript -l
 JavaScript -`. A range is one Apple Event each way, never one per cell. The
-names come from the apps' own dictionaries (`sdef`), checked against Excel
-16.102 and Outlook 16.115 on the owner's Mac. Word and PowerPoint were not
-installed there; their scripts follow the published dictionaries and are
-unproven. A verb on an app that is not running answers "not open". It never
-starts the app unseen. The one exception is `open`, the switch (`open -a
-"Microsoft Excel" <path>`, or `ms-excel:ofe|u|<url>`).
+names come from the apps' own dictionaries (`sdef`). Excel, Word and
+PowerPoint 16.115 have run them live on the owner's Mac, on dummy files
+(M28.md, "Found live"). A verb on an app that is not running answers "not
+open". It never starts the app unseen. The one exception is `open`, the
+switch (`open -a "Microsoft Excel" <path>`, or `ms-excel:ofe|u|<url>`).
+
+What the apps answer, as found live:
+
+- **Number formats.** Excel answers a block's `number format` with one
+  value, not a grid: the format when every cell shares it, "" when they
+  differ. `readRange` spreads a shared one over the block, and reads a
+  mixed one by row and then by cell, as the Windows helper does.
+- **Document keys.** Word names a document by its HFS path ("Macintosh
+  HD:private:tmp:a.docx"); Excel and PowerPoint use POSIX paths, and
+  PowerPoint drops `/private`. The scripts hand out POSIX keys for every app
+  (`posix`, another disk under `/Volumes`), and a key finds its file in
+  either form, `/tmp` and `/private/tmp` alike (`same`, and `fileKey` in
+  tools.ts).
+- **Word inserts.** Word has no `insertAfter` or `insertText` (-1708).
+  Text goes in through a range Word makes (`createRange`) at 0, or at the
+  end before the last paragraph mark, with that range's `content` set.
+- **PowerPoint.** A deck's slides and shapes answer one at a time by index.
+  Read as a list, or with their text read in one call, they fail (-1728)
+  or come back null. Slides are read and replaced shape by shape, passing
+  over a shape with no text frame or one that cannot be read
+  (`eachText`).
+- **Errors.** JXA wraps a script's own throw: stderr reads "Error: Error:
+  Microsoft Word is not open. (-600) (-2700)". `osaError` takes the code
+  the script gave, not the wrapper's -2700, and names the app.
+- **Opening files.** The first file Word or PowerPoint opens after a cold
+  start can close itself within seconds, and the start gallery comes back.
+  The carrier opens nothing but the switch's file. A proof opens its file
+  through the app's own `open` once the app is up, and checks that it stayed
+  open.
 
 macOS charges osascript's Apple Events to TempCode, so the Automation prompt
 reads "TempCode wants to control Microsoft Excel", once per app. The
