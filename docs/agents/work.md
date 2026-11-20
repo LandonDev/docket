@@ -130,8 +130,9 @@ Settings → Work.
   row's one muted trailing fact. `WorkViewProps` hands it the workspace,
   its sector, `lifeos` (a session narrowed to that sector) and
   `startThread(chip)`, which opens a new thread's composer in the workspace
-  with the chip in it (`addContextChip`, work/canvas/chips.ts). A sixth
-  row, Routines, follows Files ([work-routines.md](work-routines.md)); a
+  with the chip in it (`addContextChip`, work/canvas/chips.ts). Plays
+  ([work-plays.md](work-plays.md)) and then Routines
+  ([work-routines.md](work-routines.md)) follow Files; a
   view opens a thread through `workOpenPort` (lib/workSwitch.ts, App
   registers it). Signed out,
   the frame draws the sign-in instead of the view; unreachable, one state

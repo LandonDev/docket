@@ -6,6 +6,7 @@ import {
   STARTER_PLAYS,
   playInputsProblem,
   playMessage,
+  playTitle,
   type PlayDraft,
   type PlayRow,
   type PlayTake
@@ -51,13 +52,13 @@ async function draftText(prompt: string): Promise<string | null> {
 }
 
 /** The prompt that drafts a play from a thread's messages: the newest kept when the thread is long. */
-export function draftPrompt(words: readonly { by: 'person' | 'agent'; text: string }[]): string {
+export function draftPrompt(words: readonly { by: 'owner' | 'app' | 'agent'; text: string }[]): string {
   const lines: string[] = []
   let room = DRAFT_CHARS
   for (const w of [...words].reverse()) {
     const text = w.text.trim()
     if (!text) continue
-    const line = `[${w.by === 'person' ? 'owner' : 'agent'}] ${text.length > DRAFT_MESSAGE_CHARS ? `${text.slice(0, DRAFT_MESSAGE_CHARS)}…` : text}`
+    const line = `[${w.by}] ${text.length > DRAFT_MESSAGE_CHARS ? `${text.slice(0, DRAFT_MESSAGE_CHARS)}…` : text}`
     if (line.length > room) break
     room -= line.length
     lines.unshift(line)
@@ -106,6 +107,8 @@ export async function handlePlays(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         const p = mine(q.id)
         if (p.workspaceId !== q.workspaceId) refuse('a play stays in its workspace')
         if (same && same.id !== p.id) refuse(`a play is already named “${same.name}”`)
+        const runner = q.takes.length ? new RoutineStore(ctx.db).runningPlay(p.id)[0] : undefined
+        if (runner) refuse(`the routine “${runner.name}” runs it, and a routine runs only a play that takes nothing`)
         const saved = store.update(p.id, { name: q.name, instructions: q.instructions, takes: q.takes }, now)!
         changed(saved.workspaceId)
         return handled(rowOf(saved, ctx))
@@ -137,7 +140,8 @@ export async function handlePlays(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       if (problem) refuse(`“${p.name}”: ${problem}`)
       // The thing it is about leads, so the thread is linked to it as a thread started from that thing is.
       const about = inputs.chips.find((c) => c.ref.at === 'lifeos')
-      const sessionId = await ctx.threads.start({ workspaceId: p.workspaceId, text: playMessage(p, inputs), ...(about ? { about } : {}) })
+      // Named here, so no model is asked for a title: the first message may be a Purdue mail.
+      const sessionId = await ctx.threads.start({ workspaceId: p.workspaceId, text: playMessage(p, inputs), title: playTitle(p, inputs), ...(about ? { about } : {}) })
       return handled({ sessionId })
     }
     case 'work.routines.playDraft': {

@@ -209,6 +209,10 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     // a routine's run: nobody typed its brief; the app wrote it
     const run = await work.ctx.threads.start({ workspaceId: purdue, text: 'Send the weekly summary to the whole team.', routineRunId: 'run-1' })
     expect(work.ctx.threads.ownerSaid(run, 'Send the weekly summary to the whole team')).toBe(false)
+    // a play's start (work-plays.md): no run behind it, named by the host so no model titles it; its steps are the app's too
+    const play = await work.ctx.threads.start({ workspaceId: purdue, text: 'Clear the roster sheet and post it to the team.', title: 'Roster: week 12' })
+    expect(work.ctx.threads.ownerSaid(play, 'Clear the roster sheet and post it to the team')).toBe(false)
+    expect(registry.get(play)?.title).toBe('Roster: week 12')
     // a batch thread: its master's sends are a thread's
     const master = await registry.create({ threadType: 'chat', workspaceId: purdue, master: true })
     const batch = await registry.startWith({ threadType: 'chat', workspaceId: purdue, masterId: master.id }, 'Rewrite the shared agenda from scratch.', { by: { kind: 'thread', sessionId: master.id } })

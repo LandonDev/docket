@@ -367,6 +367,7 @@ export function playInputsProblem(takes: readonly PlayTake[], inputs: PlayInputs
     if (take === 'date' && !inputs.date) return 'it takes a date'
     if (take === 'text' && !inputs.text?.trim()) return 'it takes a line of text'
   }
+  if (inputs.date && !realDate(inputs.date)) return `${inputs.date} is not a day`
   const stray = chips.find((c) => {
     const take = takeOfChip(c.kind)
     return !take || !takes.includes(take)
@@ -375,6 +376,19 @@ export function playInputsProblem(takes: readonly PlayTake[], inputs: PlayInputs
   if (inputs.date && !takes.includes('date')) return 'it takes no date'
   if (inputs.text?.trim() && !takes.includes('text')) return 'it takes no text'
   return null
+}
+
+/** Whether a YYYY-MM-DD names a day that exists. */
+const realDate = (date: string): boolean => {
+  const at = new Date(`${date}T12:00:00Z`)
+  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === date
+}
+
+/** A play's thread's name: the play, and the thing it started from. */
+export function playTitle(play: Pick<PlayRow, 'name'>, inputs: PlayInputs): string {
+  const about = inputs.chips?.[0]?.label.trim()
+  const title = about ? `${play.name}: ${about}` : play.name
+  return title.length > 80 ? `${title.slice(0, 79)}…` : title
 }
 
 /** The first message of a play's thread: what it is about, then his line of text, then the instructions, and where it came from. */

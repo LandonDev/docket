@@ -104,7 +104,8 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
     link.request<PlayDraft>("work.routines.playDraft", { sessionId: source.sessionId }).then(
       (d) => {
         setOther(null);
-        setForm({ name: d.name, instructions: d.instructions, takes: orderedTakes(d.takes) });
+        // The draft fills what he left empty: nothing he typed is replaced.
+        setForm((cur) => ({ name: cur.name.trim() ? cur.name : d.name, instructions: cur.instructions.trim() ? cur.instructions : d.instructions, takes: cur.takes.length ? cur.takes : orderedTakes(d.takes) }));
       },
       (err: unknown) => {
         setOther(null);

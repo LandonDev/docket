@@ -13,7 +13,7 @@ import { Textarea } from "../../../components/ui/textarea";
 import { registry } from "../../../lib/connection";
 import { refusalWords } from "../../../lib/settingsHome";
 import { startPlay, usePlays } from "./data";
-import { pickerKinds, playsFor, startInputs, TAKE_LABEL, takesLeft, takesLine, today } from "./model";
+import { alsoLine, pickerKinds, playsFor, startInputs, TAKE_LABEL, takesLeft, today } from "./model";
 
 /** A thing the start hands the play, as it stands chosen. */
 const CHOSEN = "truncate rounded-lg bg-muted px-2.5 py-1.5 text-[13px] text-foreground";
@@ -105,7 +105,7 @@ function Pick({ env, workspaceId, chip, onClose, onPick, noun, pending, setPendi
                       </span>
                     ) : null}
                   </span>
-                  <span className="truncate text-xs text-muted-foreground">{takesLine(p.takes)}</span>
+                  {takesLeft(p, chip ? [chip] : []).length ? <span className="truncate text-xs text-muted-foreground">{alsoLine(takesLeft(p, chip ? [chip] : []))}</span> : null}
                 </ItemButton>
               </li>
             ))}
@@ -192,7 +192,7 @@ function Picker({ env, workspaceId, take, first, chip, onChip }: { env: string; 
           .linkOf(env)
           .request<MentionAnswer>("work.canvas.mentions", { sessionId: `play-${workspaceId}`, draft: { workspaceId, work: true }, text: query, kinds: pickerKinds(take) })
           .then(
-            (a) => live && setAnswer(a.failed.length && !a.hits.length ? { error: "Couldn't reach LifeOS" } : { hits: a.hits }),
+            (a) => live && setAnswer(a.failed?.length && !a.hits?.length ? { error: "Couldn't reach LifeOS" } : { hits: a.hits ?? [] }),
             (err: unknown) => live && setAnswer({ error: refusalWords(err) || "The host did not answer" }),
           ),
       query ? 120 : 0,

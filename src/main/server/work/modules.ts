@@ -189,7 +189,8 @@ export interface WorkCtx {
   }
   /** milestone 6, over SessionRegistry */
   threads: {
-    start(o: { workspaceId: string; projectId?: string; text: string; model?: string; routineRunId?: string; about?: ContextChip }): Promise<string>
+    /** `title` names the thread, and no model is asked for one. */
+    start(o: { workspaceId: string; projectId?: string; text: string; model?: string; routineRunId?: string; about?: ContextChip; title?: string }): Promise<string>
     resume(sessionId: string, notice: string): Promise<void>
     /** whether the owner typed this quote in the thread */
     ownerSaid(sessionId: string, quote: string): boolean

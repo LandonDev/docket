@@ -287,9 +287,9 @@ export class RoutineStore {
   }
 
   /** Every routine of the workspace, and their runs. Their threads stay. */
-  /** The routines that run this play. */
+  /** The routines that run this play: one that has ended runs nothing, and lets it go. */
   runningPlay(playId: string): Routine[] {
-    return (this.db.prepare(`SELECT * FROM ${ROUTINES_TABLE} WHERE play_id = ?`).all(playId) as Row[]).flatMap((r) => routineOf(r) ?? [])
+    return (this.db.prepare(`SELECT * FROM ${ROUTINES_TABLE} WHERE play_id = ? AND ended = 0`).all(playId) as Row[]).flatMap((r) => routineOf(r) ?? [])
   }
 
   removeWorkspace(workspaceId: string): string[] {

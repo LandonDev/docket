@@ -20,6 +20,7 @@ vi.mock("../../../lib/connection", async (original) => ({
       request: async (method: string, params: unknown) => {
         host.asked.push({ method, params });
         if (method === "work.routines.plays") return { plays: host.plays };
+        if (method === "work.canvas.mentions") return { hits: [], failed: [] };
         return host.answer(method, params);
       },
     }),
@@ -105,7 +106,7 @@ describe("Run a play… on a mail", () => {
     render(<RunDialog env="box" workspaceId="ws" chip={mail} onClose={onClose} />);
     await settle();
     const list = screen.getByRole("list", { name: "Plays" });
-    expect(within(list).getAllByRole("button").map((b) => b.textContent)).toEqual(["Game assignmentTakes a mail", "Assignment and dateTakes a mail and a date"]);
+    expect(within(list).getAllByRole("button").map((b) => b.textContent)).toEqual(["Game assignment", "Assignment and dateAlso takes a date"]);
     fireEvent.click(within(list).getByRole("button", { name: /Assignment and date/ }));
     expect((screen.getByLabelText("Date") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-11-27" } });
@@ -130,13 +131,16 @@ describe("Save as a play", () => {
     render(<PlayDialog env="box" workspaceId="ws" source={{ kind: "thread", sessionId: "t1", mayDraft: true }} onClose={() => {}} />);
     await settle();
     expect(asked("work.routines.playDraft")).toEqual([]);
+    fireEvent.change(screen.getByPlaceholderText("Game assignment"), { target: { value: "My own name" } });
     fireEvent.click(screen.getByRole("button", { name: "Draft from the thread" }));
     await settle();
     expect(asked("work.routines.playDraft")).toEqual([{ sessionId: "t1" }]);
     expect((screen.getByPlaceholderText("The steps, in your words") as HTMLTextAreaElement).value).toBe("1. Read the mail.");
+    // what he typed before the draft stays
+    expect((screen.getByPlaceholderText("Game assignment") as HTMLInputElement).value).toBe("My own name");
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await settle();
-    expect(asked("work.routines.playSave")).toEqual([expect.objectContaining({ name: "Game assignment", takes: ["mail"], madeIn: "t1" })]);
+    expect(asked("work.routines.playSave")).toEqual([expect.objectContaining({ name: "My own name", takes: ["mail"], madeIn: "t1" })]);
     cleanup();
     render(<PlayDialog env="box" workspaceId="ws" source={{ kind: "thread", sessionId: "t2", mayDraft: false }} onClose={() => {}} />);
     expect(screen.queryByRole("button", { name: "Draft from the thread" })).toBeNull();

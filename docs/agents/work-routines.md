@@ -17,6 +17,7 @@ routines pillar as built.
 | Due times in a time zone | `routines/schedule.ts` |
 | The host handles the context lacks | `routines/host.ts`, hooked once from `work/ctx.ts` (`routinesHostPart`) |
 | The screens | `src/renderer/src/work/routines/` (`view.ts`, `RoutinesView.tsx`, `RoutineForm.tsx`, `model.ts`) |
+| Plays, work he starts by hand, which a routine may run | `routines/plays.ts`, `routines/playMethods.ts`, `src/renderer/src/work/routines/plays/` ([work-plays.md](work-plays.md)) |
 
 ## The rows
 
@@ -94,6 +95,11 @@ counted from the tree's transcripts; unread), `asked`
   no `at` is never asked. With none for that place the row says "Waiting:
   nothing watches files there yet".
 
+A routine may run a play (`play_id`, [work-plays.md](work-plays.md)): one
+of its workspace's plays that takes nothing, read afresh at each firing, its
+steps first and the routine's own words, if any, after them; its prompt may
+then be empty. A play a routine runs cannot be deleted.
+
 A firing starts a root Work thread through `ctx.threads.start({workspaceId,
 projectId, text, model, routineRunId})` (registry `startWith`: the queue
 and the running cap apply; `startedBy` stays null). Its first message is
@@ -139,7 +145,9 @@ the thread it was made in or wakes, then every run as a 32px row (time,
 mark, outcome) that opens its thread (`workOpenPort`, registered by App).
 The header's New routine and Edit open the form ("A form"): Name, What to
 do, Starts (Schedule, LifeOS, Read, File, each swapping its fields), Ends
-(Never, On a day, After one run). Read offers only tools set to Runs. A
+(Never, On a day, After one run), and Runs (a play that takes nothing, when
+the workspace has one; "What to do" then reads "Also"). Read offers only
+tools set to Runs. A
 trigger he leaves untouched is saved as it was, so an agent's proposal the
 form cannot show exactly (every 5 minutes, Mon and Fri) is created as
 proposed. Delete asks first.

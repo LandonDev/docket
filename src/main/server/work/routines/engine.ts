@@ -336,6 +336,7 @@ export class RoutinesEngine {
       // A routine that runs a play reads it now, so his last edit of the play is what runs.
       const play = r.playId ? new PlayStore(this.ctx.db).get(r.playId) : null
       if (r.playId && (!play || play.proposed)) throw new Error('its play was removed')
+      if (play?.takes.length) throw new Error(`its play now takes ${play.takes.join(', ')}`)
       const body = play ? [play.instructions.trim(), r.prompt.trim()].filter(Boolean).join('\n\n') : r.prompt
       const text = `${body}\n\n---\nStarted by the routine “${r.name}”${play ? `, which runs the play “${play.name}”` : ''}: ${cause}${folded ? ` (${folded + 1} times due since the last run; this one run covers them)` : ''}.${o.detail ? `\n${cut(o.detail)}` : ''}`
       const sessionId = await this.ctx.threads.start({

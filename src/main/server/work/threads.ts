@@ -126,7 +126,8 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
             ...(reasoning && (!provider || CATALOG[provider]) ? { reasoning } : {}),
             // Nobody is there to answer a card: a Work thread has full access, and what leaves is held by the Outbox.
             permission: 'auto',
-            ...(o.about ? { about: o.about } : {})
+            ...(o.about ? { about: o.about } : {}),
+            ...(o.title ? { title: o.title } : {})
           },
           o.text,
           o.routineRunId ? { routineRunId: o.routineRunId } : {}

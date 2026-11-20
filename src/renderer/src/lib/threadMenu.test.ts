@@ -224,3 +224,12 @@ describe("canCompact", () => {
     expect(canCompact({ status: "idle", treeHasPaused: true })).toBe(false);
   });
 });
+
+describe("Save as a play…", () => {
+  it("is offered on a Work thread of a workspace with Work on, before Resources, and never on a draft", () => {
+    expect(ids(threadMenuRows(facts({ play: true })))).toEqual(["rename", "type", "—", "compact", "—", "save-play", "resources", "master", "—", "archive", "delete"]);
+    expect(row(threadMenuRows(facts({ play: true })), "save-play")).toMatchObject({ label: "Save as a play…" });
+    expect(ids(threadMenuRows(facts({ play: true, draft: true })))).not.toContain("save-play");
+    expect(ids(threadMenuRows(facts()))).not.toContain("save-play");
+  });
+});

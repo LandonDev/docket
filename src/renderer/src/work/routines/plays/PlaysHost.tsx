@@ -27,7 +27,7 @@ export function PlaysHost() {
   if (!ask) return null;
   const close = () => setAsk(null);
   return ask.kind === "run" ? (
-    <RunAsk key={JSON.stringify(ask.chip.ref)} environmentId={ask.environmentId} workspaceId={ask.workspaceId} chip={ask.chip} onClose={close} />
+    <RunAsk key={`${ask.workspaceId} ${JSON.stringify(ask.chip.ref)}`} environmentId={ask.environmentId} workspaceId={ask.workspaceId} chip={ask.chip} onClose={close} />
   ) : (
     <SaveAsk key={ask.sessionId} environmentId={ask.environmentId} sessionId={ask.sessionId} onClose={close} />
   );

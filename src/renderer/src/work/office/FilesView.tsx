@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { TeamsEntry, TeamsFileKind, TeamsLibrary } from "@shared/contract-work-office";
 import { teamsCanvasOf, teamsWebOf } from "@shared/contract-work-office";
-import type { CanvasItem } from "@shared/work";
+import type { CanvasItem, ContextChip } from "@shared/work";
 import { ChevronRight, Folder, MoreHorizontal, Search, X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
@@ -311,7 +311,6 @@ function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownL
   const { rows, places, workspace } = props;
   const [busy, setBusy] = useState<Busy>(null);
   const open = useOpener(props, setBusy);
-  const runPlay = playRunner();
   return (
     <div role="list">
       {rows.map(({ entry, library }) => {
@@ -353,9 +352,7 @@ function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownL
                     <DropdownMenuItem onClick={() => void open.app(entry, library)}>{appVerb(entry)}</DropdownMenuItem>
                     {library.web ? <DropdownMenuItem onClick={() => window.open(teamsWebOf(library, entry.path)!, "_blank")}>Open on the web</DropdownMenuItem> : null}
                     {/* A play's thread reads the file where it lies: only one on the workspace's own host. */}
-                    {runPlay && library.env === workspace.environmentId ? (
-                      <DropdownMenuItem onClick={() => runPlay({ kind: "item", label: entry.name, ref: { at: "file", host: library.host, path: entry.path } })}>Run a play…</DropdownMenuItem>
-                    ) : null}
+                    {library.env === workspace.environmentId ? <RunPlayItem chip={{ kind: "item", label: entry.name, ref: { at: "file", host: library.host, path: entry.path } }} /> : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -369,6 +366,12 @@ function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownL
 
 const failed = (title: string, err: unknown): void => void loadToast().then((toast) => toast.error(title, { description: refusalWords(err) || undefined }));
 const source = (library: ShownLibrary, entry: TeamsEntry) => ({ at: "file" as const, host: library.host, path: entry.path });
+
+/** Run a play… on the file, read as the menu opens (work/routines/plays/runOn.ts). */
+function RunPlayItem({ chip }: { chip: ContextChip }) {
+  const runPlay = playRunner();
+  return runPlay ? <DropdownMenuItem onClick={() => runPlay(chip)}>Run a play…</DropdownMenuItem> : null;
+}
 
 /** A new thread in the workspace, titled for the file: the canvas it opens in. Nothing runs until he writes. */
 async function newThread(workspace: WorkspaceMeta, title: string): Promise<string> {

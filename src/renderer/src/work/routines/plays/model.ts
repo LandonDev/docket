@@ -28,6 +28,9 @@ export function takesLine(takes: readonly PlayTake[]): string {
   return `Takes ${nouns.length > 1 ? `${nouns.slice(0, -1).join(", ")} and ${nouns.at(-1)}` : nouns[0]}`;
 }
 
+/** What a play still takes once the thing it starts from is in: "Also takes a date". */
+export const alsoLine = (left: readonly PlayTake[]): string => takesLine(left).replace(/^Takes/, "Also takes");
+
 /** The starters of this sector he has not added yet, in their own order: none he added, and none named as a play he has. */
 export function startersLeft(sector: string | null | undefined, plays: readonly PlayRow[]): readonly StarterPlay[] {
   const added = new Set(plays.map((p) => p.starter).filter(Boolean));
