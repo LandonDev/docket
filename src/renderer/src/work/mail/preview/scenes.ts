@@ -65,6 +65,16 @@ function typed(text: string) {
     await page.type(text);
   };
 }
+/** A real click on the first element under `selector` whose words are exactly `text`. */
+function pressText(selector: string, text: string) {
+  const find = `[...document.querySelectorAll(${JSON.stringify(selector)})].find((el) => el.textContent.trim() === ${JSON.stringify(text)})`;
+  return async (page: Page) => {
+    await page.until(find, `${text} in ${selector}`);
+    await page.wait(400);
+    const at = await page.eval<{ x: number; y: number }>(`(() => { const r = ${find}.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()`);
+    await page.click(at.x, at.y);
+  };
+}
 /** A real key, once the page's key listener is there. */
 function keyed(key: string, modifiers: { shift?: boolean } = {}) {
   return async (page: Page) => {
@@ -93,6 +103,16 @@ export const SCENES: Scene[] = [
   { name: "reply", set: then(opened("c-invoice"), press("[data-mail-pane] button.mail-reply-row")), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
   { name: "new-mail", set: async (page) => void (await page.eval(`window.__mail.compose({ open: { kind: "new" }, full: true })`)), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
   { name: "held-draft", set: async (page) => void (await page.eval(`window.__mail.compose({ open: { kind: "row", id: "c-held" }, full: true })`)), ready: `document.querySelector("[aria-label=Compose] .tiptap")` },
+  {
+    name: "held-sending",
+    set: then(
+      async (page) => void (await page.eval(`window.__mail.compose({ open: { kind: "row", id: "c-held" }, full: true })`)),
+      pressText("[aria-label=Compose] button", "Send"),
+      // The draft speaks of an attachment and carries none, so Send asks once; this is the answer.
+      pressText("[role=dialog] button", "Send"),
+    ),
+    ready: `[...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Undo") && document.body.textContent.includes("Sending to")`,
+  },
   { name: "settings", query: "page=settings", ready: `document.querySelector("h2")?.textContent === "Mail" && document.querySelectorAll("h3").length === 4` },
   { name: "settings-signature", query: "page=settings", set: press("section:nth-of-type(3) button.group\\/row"), ready: `document.querySelector("[role=dialog] .tiptap")` },
   { name: "settings-account", query: "page=settings", set: press("section:nth-of-type(4) button.group\\/row"), ready: `document.querySelector("[role=dialog]")` },

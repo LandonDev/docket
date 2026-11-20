@@ -47,6 +47,9 @@ interface Addr {
 interface LocalMail {
   row: {
     _id: string
+    /** how many times the row was saved, and when last: the claim names both, so a row changed since this read is not taken */
+    version?: number
+    editedAt?: number
     message: { kind: 'mail'; to: Addr[]; cc: Addr[]; bcc: Addr[]; subject: string; html: string; text: string } | { kind: string }
   }
   address: string
@@ -159,7 +162,10 @@ export class OutlookRoute {
     const id = due.row._id
     // A row still in the journal may have gone: the replay acks it, Outlook never sees it again.
     if (this.journaled('outbox', id)) return
-    if (!(await lifeos().mutation<boolean>('outbox:localClaim', { id, host }))) return
+    // Only the row as it was read: one he pulled back, changed and sent again while an earlier mail of this pass went
+    // through Outlook is another mail under the same id, found with its own words on the next pass (Mail's security review).
+    const seen = { version: due.row.version ?? 0, ...(due.row.editedAt !== undefined ? { editedAt: due.row.editedAt } : {}) }
+    if (!(await lifeos().mutation<boolean>('outbox:localClaim', { id, host, ...seen }))) return
     this.journal('outbox', id, null)
     let sent: { id: string | null }
     try {

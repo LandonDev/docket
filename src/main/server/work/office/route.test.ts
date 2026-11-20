@@ -86,10 +86,19 @@ describe("LifeOS's Outlook route", () => {
     expect(calls[0]).toEqual({ kind: 'query', fn: 'outbox:localDue', args: { host: 'env_mac', now: 5_000 } })
     expect(office.sent).toEqual([{ account: 'owner@purdue.example', to: ['owner@example.com'], cc: [], bcc: [], subject: 'Plan', html: '<p><b>Plan</b></p>' }])
     expect(mutations()).toEqual([
-      ['outbox:localClaim', { id: 'm1', host: 'env_mac' }],
+      ['outbox:localClaim', { id: 'm1', host: 'env_mac', version: 0 }],
       ['outbox:localSent', { id: 'm1', host: 'env_mac', providerMessageId: 'sent-1' }]
     ])
     expect(db.prepare('SELECT * FROM work_office_journal').all()).toEqual([])
+  })
+
+  it('claims a due mail only as the row it read: the version and the edit time go with the claim', async () => {
+    const r = route()
+    await r.beat()
+    calls = []
+    due = [{ ...mail('m7'), row: { ...mail('m7').row, version: 4, editedAt: 99 } }] as never
+    await r.pump()
+    expect(mutations()[0]).toEqual(['outbox:localClaim', { id: 'm7', host: 'env_mac', version: 4, editedAt: 99 }])
   })
 
   it('sends nothing it could not claim', async () => {
