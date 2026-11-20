@@ -14,6 +14,11 @@
 // the window's pixels change and a capture stream, which sends a frame only when they do, keeps sending.
 // SIGUSR1 pauses the count and the next one resumes it, for a check that needs the window still.
 //
+// `--busy` (opt-in, for the live video proofs; docs/computer-protocol.md §30): the window is 1280×800 points
+// at the normal level, behind every other window, and redraws all of itself on every refresh of its screen
+// (a hue, a moving bar, 34 lines of new text and a counter, as capture-proof's busy scene), so a 120 fps
+// stream has a new picture for every frame.
+//
 // `--windows` (opt-in, for the window actions leg; docs/computer-protocol.md §22): see ProbeWindows below.
 //
 // `--fallbacks <dir>` (opt-in, for the background fallbacks leg; §24): see ProbeFallbacks below.
@@ -69,6 +74,8 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     /// held while `--tick` runs: a background app whose window is covered is napped, and its 0.1 s timer then fired about
     /// twice a second, so the preview proof counted 2 fps of new pixels (a publish-shaped run, 2026-11-11)
     private var tickActivity: NSObjectProtocol?
+    private var busyScene: BusyScene?
+    private var busyActivity: NSObjectProtocol?
     private let windows = ProbeWindows()
     private let fallbacks = ProbeFallbacks()
     private let active = ProbeActive()
@@ -104,8 +111,9 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let ticking = CommandLine.arguments.contains("--tick")
+        let busy = CommandLine.arguments.contains("--busy")
         let window = InertWindow(
-            contentRect: NSRect(x: 160, y: 160, width: 360, height: ticking ? 180 : 150),
+            contentRect: busy ? NSRect(x: 80, y: 80, width: 1_280, height: 800) : NSRect(x: 160, y: 160, width: 360, height: ticking ? 180 : 150),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -133,6 +141,13 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
             field.widthAnchor.constraint(equalToConstant: 320),
         ])
         window.contentView = content
+        if busy {
+            // the normal level, behind the person's windows: ScreenCaptureKit captures a covered window all the same
+            window.level = .normal
+            window.collectionBehavior = [.managed]
+            busyScene = BusyScene(view: content)
+            busyActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical], reason: "TC Probe --busy draws every refresh for the live video proof")
+        }
 
         // On screen for AX and capture, behind every other window, and never key: no activate call.
         window.ignoresMouseEvents = true
@@ -927,3 +942,64 @@ app.setActivationPolicy(.regular)
 let delegate = ProbeDelegate()
 app.delegate = delegate
 app.run()
+
+/// `--busy`: every refresh changes all of the window (docs/computer-protocol.md §30's proofs).
+final class BusyScene: NSObject {
+    private let root = CALayer(), bar = CALayer(), text = CATextLayer(), counter = CATextLayer()
+    private var frame = 0
+    private var seed: UInt32 = 12_345
+    private var link: CADisplayLink?
+
+    init(view: NSView) {
+        super.init()
+        view.wantsLayer = true
+        let bounds = CGRect(x: 0, y: 0, width: 1_280, height: 800)
+        root.frame = bounds
+        root.zPosition = -1
+        root.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 1).cgColor
+        view.layer?.addSublayer(root)
+        let scale = view.window?.backingScaleFactor ?? 2
+        let mono = NSFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+        text.frame = CGRect(x: 40, y: 80, width: bounds.width - 80, height: bounds.height - 200)
+        text.font = mono
+        text.fontSize = 15
+        text.contentsScale = scale
+        text.foregroundColor = NSColor.white.cgColor
+        root.addSublayer(text)
+        bar.frame = CGRect(x: 0, y: 0, width: 120, height: bounds.height)
+        bar.backgroundColor = NSColor.systemOrange.withAlphaComponent(0.8).cgColor
+        root.addSublayer(bar)
+        counter.frame = CGRect(x: 40, y: 20, width: 200, height: 40)
+        counter.font = mono
+        counter.fontSize = 28
+        counter.contentsScale = scale
+        counter.backgroundColor = NSColor.black.cgColor
+        counter.foregroundColor = NSColor.systemGreen.cgColor
+        root.addSublayer(counter)
+        let link = view.displayLink(target: self, selector: #selector(tick))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 240, preferred: 240)
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    @objc private func tick(_ link: CADisplayLink) {
+        frame += 1
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        counter.string = String(format: "%07d", frame)
+        bar.position.x = CGFloat((frame * 9) % 1_280)
+        root.backgroundColor = NSColor(calibratedHue: CGFloat(frame % 360) / 360, saturation: 0.35, brightness: 0.25, alpha: 1).cgColor
+        let chars = Array("abcdefghijklmnopqrstuvwxyz0123456789 {}()=;.,ABCDEFGHIJ")
+        var lines = ""
+        for line in 0..<34 {
+            lines += String(format: "%02d %08d ", line, frame)
+            for _ in 0..<120 {
+                seed = seed &* 1_664_525 &+ 1_013_904_223
+                lines.append(chars[Int(seed >> 24) % chars.count])
+            }
+            lines += "\n"
+        }
+        text.string = lines
+        CATransaction.commit()
+    }
+}
