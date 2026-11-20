@@ -32,19 +32,14 @@ struct MeetingItemView: View {
     }
 }
 
-/// The browser (milestone 47): who drives and where, Take Over and Hand Back, and an act the
+/// The browser (milestone 47): the page live, who drives and where, Take Over and Hand Back, and an act the
 /// browser holds for him as the one prominent button, which opens it in the Outbox.
 struct BrowserItemView: View {
     @Environment(ShellNavigator.self) private var navigator
     let client: EnvironmentClient
     let item: CanvasItem
-    @State private var driving = false
+    @State private var model: BrowserStateModel?
     @State private var error: String?
-    /// What Take Over or Hand Back answered, shown until a fresh read lands: the screen never says the agent drives
-    /// while he does, even when the read after the press fails.
-    @State private var pressed: BrowserState?
-    /// The read after a press failed: the content stays, with a short line and Retry.
-    @State private var refreshError: String?
 
     private var held: [OutboxItem] {
         // The browser's own acts: a held computer act of this thread, not its mail.
@@ -52,88 +47,120 @@ struct BrowserItemView: View {
     }
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.browser(item.sessionId) },
-                 onRead: { _ in pressed = nil; refreshError = nil },
-                 onRefreshFailed: { refreshError = $0 }) { read, reload in
-            let state = pressed ?? read
-            List {
-                if let refreshError {
-                    Section {
-                        HStack(spacing: 12) {
-                            Text("Couldn’t read the browser again: \(refreshError)").textStep(.meta, tint: Tint.destructiveText)
-                            Spacer(minLength: 8)
-                            PillButton("Retry") { reload() }
-                        }
-                        .accessibilityIdentifier("browser-reread-failed")
+        Group {
+            if let model, let state = model.state {
+                list(state, model: model)
+            } else if let model, let failed = model.error {
+                ContentUnavailableView {
+                    Label("Can’t Open This", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(failed)
+                } actions: {
+                    // the phone's busy idiom: the spinner in the button's place while the read is out
+                    if model.reading > 0 {
+                        ProgressView()
+                    } else {
+                        Button("Try Again") { Task { await model.read() } }
                     }
                 }
-                Section {
-                    LabeledContent(state.driver == .owner ? "You are driving" : "The agent is driving") {
-                        if client.work.canApprove {
-                            Button(state.driver == .owner ? "Hand Back" : "Take Over") { Task { await drive(state.driver != .owner, reload: reload) } }
-                                .disabled(driving)
-                                .accessibilityIdentifier("browser-drive")
-                        }
-                    }
-                    if let site = state.site {
-                        LabeledContent("Site") { Text(site.name).lineLimit(1) }
-                    }
-                    if let needs = state.needs {
-                        Text(needs).foregroundStyle(Tint.warningText)
-                    }
-                }
-                if !state.sources.isEmpty {
-                    Section("Where the values came from") {
-                        ForEach(state.sources, id: \.field) { source in
-                            LabeledContent(source.field, value: source.source)
-                        }
-                    }
-                }
-                if let error {
-                    Text(error).foregroundStyle(Tint.destructiveText)
-                }
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .safeAreaInset(edge: .bottom) {
-                if let act = held.first {
-                    Button {
-                        navigator.open(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref)))
-                    } label: {
-                        Text(act.summary).lineLimit(1).frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
-                    .padding(.horizontal, Layout.textEdge)
-                    .padding(.bottom, 8)
-                    .accessibilityIdentifier("browser-held")
-                }
-            }
-            .refreshable { reload() }
-            .task {
-                #if DEBUG
-                // The work set: `TC_TEST_OPEN=browser-held` presses the held act once it shows.
-                guard TestHooks.open == "browser-held" else { return }
-                for _ in 0..<100 {
-                    if let act = held.first, TestHooks.once("browser-held") {
-                        try? await Task.sleep(for: .seconds(2))
-                        navigator.open(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref)))
-                        return
-                    }
-                    try? await Task.sleep(for: .milliseconds(100))
-                }
-                #endif
-            }
+        }
+        .task {
+            let model = self.model ?? BrowserStateModel(client: client, sessionId: item.sessionId)
+            self.model = model
+            if model.state == nil { await model.read() }
         }
         .accessibilityIdentifier("browser-item")
     }
 
-    private func drive(_ owner: Bool, reload: () -> Void) async {
-        driving = true
-        defer { driving = false }
+    private func list(_ state: BrowserState, model: BrowserStateModel) -> some View {
+        List {
+            // a re-read that failed while the browser is shown: the content stays, with a short line and Retry
+            if let refreshError = model.refreshError {
+                Section {
+                    HStack(spacing: 12) {
+                        Text("Couldn’t read the browser again: \(refreshError)").textStep(.meta, tint: Tint.destructiveText)
+                        Spacer(minLength: 8)
+                        // the phone's busy idiom: the spinner in the button's place while the read is out
+                        if model.reading > 0 {
+                            ProgressView()
+                        } else {
+                            PillButton("Retry") { Task { await model.read() } }
+                        }
+                    }
+                    .accessibilityIdentifier("browser-reread-failed")
+                }
+            }
+            Section {
+                // the page as it is now, where the kept picture goes (docs/agents/live-video.md "From his other devices")
+                LivePicture(client: client, threadId: item.sessionId, place: client.environment.name)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
+            }
+            Section {
+                LabeledContent(state.driver == .owner ? "You are driving" : "The agent is driving") {
+                    if client.work.canApprove {
+                        Button(state.driver == .owner ? "Hand Back" : "Take Over") { Task { await drive(state.driver != .owner, model: model) } }
+                            .disabled(model.driving)
+                            .accessibilityIdentifier("browser-drive")
+                    }
+                }
+                if let site = state.site {
+                    LabeledContent("Site") { Text(site.name).lineLimit(1) }
+                }
+                if let needs = state.needs {
+                    Text(needs).foregroundStyle(Tint.warningText)
+                }
+            }
+            if !state.sources.isEmpty {
+                Section("Where the values came from") {
+                    ForEach(state.sources, id: \.field) { source in
+                        LabeledContent(source.field, value: source.source)
+                    }
+                }
+            }
+            if let error {
+                Text(error).foregroundStyle(Tint.destructiveText)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let act = held.first {
+                Button {
+                    navigator.open(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref)))
+                } label: {
+                    Text(act.summary).lineLimit(1).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                .padding(.horizontal, Layout.textEdge)
+                .padding(.bottom, 8)
+                .accessibilityIdentifier("browser-held")
+            }
+        }
+        .refreshable { await model.read() }
+        .task {
+            #if DEBUG
+            // The work set: `TC_TEST_OPEN=browser-held` presses the held act once it shows.
+            guard TestHooks.open == "browser-held" else { return }
+            for _ in 0..<100 {
+                if let act = held.first, TestHooks.once("browser-held") {
+                    try? await Task.sleep(for: .seconds(2))
+                    navigator.open(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref)))
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            #endif
+        }
+    }
+
+    private func drive(_ owner: Bool, model: BrowserStateModel) async {
         do {
-            // The driver the call answers is the one shown at once; the read after it only refreshes the rest.
-            pressed = try await client.work.canvas.drive(item.sessionId, owner: owner)
+            // the call's own answer is the state now; a read still out from before it is dropped (BrowserStateModel)
+            try await model.drive(owner: owner)
             error = nil
-            reload()
         } catch {
             self.error = ActionError.wrap(error).message
         }
