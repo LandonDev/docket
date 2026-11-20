@@ -31,6 +31,10 @@ public enum CaptureTrace: Sendable {
     /// rects the judge read (in frame pixels).
     case watchFrame(window: UInt32, complete: Bool, width: Int, height: Int, dirty: [CGRect]?, judged: [CGRect]?, counted: Bool, displayTime: UInt64)
     case watchStopped(window: UInt32, cause: StopCause)
+    /// Live video (§30): a stream's encoder joined the window's capture, the window resized, the capture ended.
+    case videoEncoder(window: UInt32, width: Int, height: Int, mode: String)
+    case videoResized(window: UInt32, width: Int, height: Int)
+    case videoEnded(window: UInt32, reason: String)
 }
 
 public typealias CaptureTraceHandler = @Sendable (CaptureTrace) -> Void

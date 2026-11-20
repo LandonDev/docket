@@ -5,17 +5,19 @@ import Foundation
 /// service sends a field an older host could not parse only when the host listed its feature. `front`
 /// covers the front tier (`tier`, `needed`, `step.front`), `commit` the disk check (the `uncommitted`
 /// effect, `step.disk`, the document line), `save_as` the save panel route (`panel`, `not_committed`,
-/// `file_exists`). An unknown name is ignored; a host that sent none speaks none.
+/// `file_exists`), `video` the live video calls (§30). An unknown name is ignored; a host that sent none speaks none.
 public struct HostFeatures: Hashable, Sendable {
     public let front: Bool
     public let commit: Bool
     public let saveAs: Bool
+    public let video: Bool
 
     public init(_ listed: [String]?) {
         let names = Set(listed ?? [])
         front = names.contains("front")
         commit = names.contains("commit")
         saveAs = names.contains("save_as")
+        video = names.contains("video")
     }
 
     /// A host that named every feature this build speaks.

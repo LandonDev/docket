@@ -53,7 +53,10 @@ final class ServiceRig: @unchecked Sendable {
     private let inputBox = Box<FakeInput>()
     private var nextID = 100
 
-    init(accessibility: Bool = true, screenRecording: Bool = true, pixelLive: Bool = false, timing: ((inout ServiceTiming) -> Void)? = nil, dataDir: URL? = nil) {
+    /// the host's end of the bytes pipe (§30), when the rig gave the service one
+    let videoHost: Int32?
+
+    init(accessibility: Bool = true, screenRecording: Bool = true, pixelLive: Bool = false, videoPipe: Bool = false, timing: ((inout ServiceTiming) -> Void)? = nil, dataDir: URL? = nil) {
         permissions = FakePermissions(accessibility: accessibility, screenRecording: screenRecording)
         readers = FakeReaders(log: log)
         capture = FakeCapture(log: log, pixelLive: pixelLive)
@@ -70,10 +73,19 @@ final class ServiceRig: @unchecked Sendable {
         t.waitTick = .milliseconds(5)
         timing?(&t)
         let exits = self.exits
+        var pipe: VideoPipe?
+        if videoPipe {
+            var fds: [Int32] = [0, 0]
+            precondition(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0)
+            pipe = VideoPipe(fd: fds[0])
+            videoHost = fds[1]
+        } else {
+            videoHost = nil
+        }
         let env = ServiceEnvironment(
             workspace: workspace, permissions: permissions, system: system, appEvents: appEvents, windowEvents: windowEvents, front: front,
             lockDirectory: self.dataDir.appendingPathComponent("locks"), exit: { exits.record($0) }, parentGone: { false }, timing: t,
-            parentPid: ServiceRig.hostPid
+            parentPid: ServiceRig.hostPid, videoPipe: pipe
         )
         // a move the guard makes comes back as NSWorkspace and AX tell it
         let appEvents = self.appEvents, windowEvents = self.windowEvents
@@ -154,6 +166,34 @@ final class ServiceRig: @unchecked Sendable {
     }
 
     func closeStdin() { try? stdin.fileHandleForWriting.close() }
+
+    // MARK: The bytes pipe, from the host's end
+
+    private var hostReader = VideoRecordReader()
+    private var hostRecords: [VideoRecord] = []
+
+    /// Every record the service wrote so far, read without blocking.
+    func videoRecords() -> [VideoRecord] {
+        guard let videoHost else { return [] }
+        _ = fcntl(videoHost, F_SETFL, fcntl(videoHost, F_GETFL) | O_NONBLOCK)
+        var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
+        while true {
+            let n = Darwin.read(videoHost, &buffer, buffer.count)
+            guard n > 0, let more = try? hostReader.push(Data(buffer[0..<n])) else { break }
+            hostRecords += more
+        }
+        return hostRecords
+    }
+
+    /// An ack from the host for one frame.
+    func ack(stream: Int, generation: UInt32 = 1, sequence: UInt32, waitMicros: UInt32? = nil) {
+        hostWrite(VideoRecord.ack(stream: UInt32(stream), generation: generation, sequence: sequence, waitMicros: waitMicros))
+    }
+
+    func hostWrite(_ bytes: Data) {
+        guard let videoHost else { return }
+        bytes.withUnsafeBytes { _ = Darwin.write(videoHost, $0.baseAddress, $0.count) }
+    }
 }
 
 /// True once `condition` holds, polled every 2 ms up to `timeout`.

@@ -5,9 +5,9 @@ import Foundation
 /// window, shared by its streams, and one encoder per stream. The shell keeps the streams, the bytes
 /// pipe, the flow, the pacing and the still window; Capture captures and encodes.
 public protocol VideoCapturing {
-    /// Starts a capture of the window at the display's own rate and at least `fps`. It delivers nothing
-    /// until an encoder is added.
-    func startVideo(windowID: UInt32, fps: Int) async throws -> any WindowVideo
+    /// Starts a capture of the window at the display's own rate and at least `fps`, its pictures sized for
+    /// a first stream of `maxEdge`. It delivers nothing until an encoder is added.
+    func startVideo(windowID: UInt32, fps: Int, maxEdge: Int) async throws -> any WindowVideo
 }
 
 /// One window's running capture.

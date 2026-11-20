@@ -16,7 +16,8 @@ extension ServiceEnvironment {
             windowEvents: LiveWindowEvents(windows: windows),
             front: LiveFrontSource(windows: windows),
             exit: { code in Foundation.exit(code) },
-            parentGone: { getppid() == 1 }
+            parentGone: { getppid() == 1 },
+            videoPipe: VideoPipe.inherited()
         )
     }
 }

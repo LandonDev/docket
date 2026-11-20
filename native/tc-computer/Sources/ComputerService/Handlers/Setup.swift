@@ -79,10 +79,13 @@ extension ComputerService {
         }
 
         let read = readPermissions()
+        let host = HostFeatures(p.features)
         lock.withLock {
             permissions = read
-            hostFeatures = HostFeatures(p.features)
+            hostFeatures = host
         }
+        // live video only with a pipe for its bytes, and only for a host that asked: else its calls are unknown methods
+        if let pipe = env.videoPipe, host.video { registerVideo(pipe: pipe) }
         return (Methods.Initialize.Output(
             protocol: computerProtocol,
             service: .init(version: build.version, build: build.build),
@@ -90,7 +93,7 @@ extension ComputerService {
             os: .init(version: env.system.osVersion(), arch: env.system.arch()),
             permissions: read,
             displays: env.system.displays(),
-            features: computerFeatures
+            features: env.videoPipe == nil ? computerFeatures.filter { $0 != "video" } : computerFeatures
         ), stale.count)
     }
 

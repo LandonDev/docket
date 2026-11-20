@@ -202,11 +202,13 @@ public struct ServiceEnvironment: Sendable {
     public var pid: Int32
     /// the host: an app it resolves to is never launched or opened into (§23.2)
     public var parentPid: Int32
+    /// the bytes pipe for live video (§30), when the host opened descriptor 3; none, no `video`
+    public var videoPipe: VideoPipe?
 
     public init(workspace: any Workspace, permissions: any PermissionSource, system: any SystemFacts, appEvents: any AppEventSource,
                 windowEvents: any WindowEventSource, front: any FrontSource = NoFrontSource(), lockDirectory: URL = MacLocks.defaultDirectory(),
                 exit: @escaping @Sendable (Int32) -> Void, parentGone: @escaping @Sendable () -> Bool, timing: ServiceTiming = ServiceTiming(),
-                pid: Int32 = ProcessInfo.processInfo.processIdentifier, parentPid: Int32 = getppid()) {
+                pid: Int32 = ProcessInfo.processInfo.processIdentifier, parentPid: Int32 = getppid(), videoPipe: VideoPipe? = nil) {
         self.workspace = workspace
         self.permissions = permissions
         self.system = system
@@ -219,6 +221,7 @@ public struct ServiceEnvironment: Sendable {
         self.timing = timing
         self.pid = pid
         self.parentPid = parentPid
+        self.videoPipe = videoPipe
     }
 }
 

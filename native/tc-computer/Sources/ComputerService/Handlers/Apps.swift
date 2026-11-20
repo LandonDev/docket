@@ -87,6 +87,7 @@ extension ComputerService {
             await entry.handle.stop()
             notify("capture/streamEnded", CaptureStreamEndedNotification.Params(stream: entry.id, reason: .stopped))
         }
+        await endVideos(session: session)
         readers.close(session: session)
         workers.drop(session: session)
         capture.forget(session: session)

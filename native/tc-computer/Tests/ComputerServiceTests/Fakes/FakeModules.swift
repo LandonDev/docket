@@ -376,10 +376,16 @@ final class FakeCapture: CaptureSource, @unchecked Sendable {
     var space = CoordinateSpace(width: 1280, height: 960, scale: 1.6)
     var shotSize: (Int, Int)?
     var failShots = false
+    let videos: FakeVideos
 
     init(log: CallLog, pixelLive: Bool = false) {
         self.log = log
         self.pixel = FakePixelSignal(live: pixelLive, log: log)
+        self.videos = FakeVideos(log: log)
+    }
+
+    func startVideo(windowID: UInt32, fps: Int, maxEdge: Int) async throws -> any WindowVideo {
+        try videos.start(windowID: windowID, fps: fps, maxEdge: maxEdge)
     }
 
     func stream(_ windowID: UInt32) -> FakeStream? { lock.withLock { made["\(windowID)"] } }

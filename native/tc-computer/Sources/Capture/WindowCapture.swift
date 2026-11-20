@@ -17,7 +17,7 @@ public final class ScreenCaptureKitCapture: WindowCapturing, PixelWatching, @unc
     private let granted: @Sendable () -> Bool
     private let windows: any ShareableWindowSource
     private let log: @Sendable (String) -> Void
-    private let trace: CaptureTraceHandler?
+    let trace: CaptureTraceHandler?
     private let watches = OSAllocatedUnfairLock<[UInt32: WatchStream]>(initialState: [:])
 
     /// `log` reaches the shell's `log` notification; `trace` hears what the streams do
@@ -146,7 +146,7 @@ public final class ScreenCaptureKitCapture: WindowCapturing, PixelWatching, @unc
     // MARK: Shared
 
     /// The grant, the runtime, the live bounds and the SCWindow, in that order.
-    private func target(_ windowID: UInt32) async throws -> (SCWindow, CGRect) {
+    func target(_ windowID: UInt32) async throws -> (SCWindow, CGRect) {
         guard granted() else { throw ComputerFailure.screenRecordingMissing }
         await CaptureRuntime.prepare()
         guard let bounds = LiveWindows.bounds(windowID) else { throw ComputerFailure.windowGone(windowID) }

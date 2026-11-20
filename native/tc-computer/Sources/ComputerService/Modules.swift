@@ -91,7 +91,7 @@ public struct InputWiring: Sendable {
 }
 
 /// What the shell needs of Capture's `ScreenCaptureKitCapture` and its pure helpers.
-public protocol CaptureSource: WindowCapturing, PixelWatching, Sendable {
+public protocol CaptureSource: WindowCapturing, PixelWatching, VideoCapturing, Sendable {
     /// the shareable-window cache is read again (on `window/changed`)
     func invalidate()
     /// The space a screenshot of the window at `maxEdge` would have (`ShotGeometry.output` over the

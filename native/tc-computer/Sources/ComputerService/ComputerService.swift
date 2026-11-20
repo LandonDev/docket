@@ -45,6 +45,11 @@ public final class ComputerService: @unchecked Sendable {
     var permissions = Permissions(accessibility: false, screenRecording: false)
     var clipboard: ClipboardWatchRule?
     var streams: [String: StreamEntry] = [:]
+    /// live video (§30): the streams by number, each window's one capture, the flow's clock
+    var videos: [Int: VideoStream] = [:]
+    var windowVideos: [UInt32: WindowVideoEntry] = [:]
+    var nextVideo = 0
+    var videoClock: DispatchSourceTimer?
     /// the agent's last click per session × window, for a stream that starts after it (P2)
     var clicks = ClickCarry()
     /// per session, the requests that passed its check and have not answered: `session.close` cancels and waits for them
@@ -235,6 +240,7 @@ public final class ComputerService: @unchecked Sendable {
             await entry.handle.stop()
             notify("capture/streamEnded", CaptureStreamEndedNotification.Params(stream: entry.id, reason: .stopped))
         }
+        await endVideos(session: nil)
         for session in book.openSessions { readers.close(session: session) }
         let stopping: [any Stoppable] = lock.withLock {
             defer { watchers.removeAll() }

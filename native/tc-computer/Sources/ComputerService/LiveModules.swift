@@ -46,6 +46,10 @@ final class LiveCapture: CaptureSource, @unchecked Sendable {
         try await capture.watch(windowID: windowID)
     }
 
+    func startVideo(windowID: UInt32, fps: Int, maxEdge: Int) async throws -> any WindowVideo {
+        try await capture.startVideo(windowID: windowID, fps: fps, maxEdge: maxEdge)
+    }
+
     func invalidate() { capture.invalidate() }
 
     /// `ShotGeometry.output` over the window's frame at its display's backing scale, the edge clamped
