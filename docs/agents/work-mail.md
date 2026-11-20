@@ -74,6 +74,16 @@ queue and its Undo; LifeOS takes `immediate` only with `cause: 'press'`
 named, and makes a grant's send wait the undo time whatever time it names.
 A held draft has no Send later.
 
+**One wait a draft.** A second Send on the same draft, or the draft opened
+again in the composer, ends the wait it had (work-kit `held-send.ts`), so
+the Undo he sees stops the only timer there is. **Retry** on a failed mail
+one of this host's threads made goes through the host too (`work.mail.send`
+on the row as the thread's foot showed it), where the hold queues it again;
+one that may already have gone asks first. And the host calls a held mail
+sent only once LifeOS has it on its way: the hold answers an item it had
+already settled as it stands, so a draft left behind by an earlier send is
+refused with words, never reported as sent.
+
 **What goes is the row he was shown, to the edit.** A held mail's payload
 carries LifeOS's `editedAt` as read with the item. The hold's `mail.send`
 refuses (stale) a row whose edit time has moved since, and names that time

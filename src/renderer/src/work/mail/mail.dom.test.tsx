@@ -120,6 +120,19 @@ describe("Send", () => {
     expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_held", seen, waited: true } }]);
   });
 
+  it("sends a failed held mail's Retry through the host, on the row as shown, and leaves his own mail's to LifeOS", async () => {
+    const { actions } = fakeActions("ob_x");
+    const retry = vi.fn(async () => {});
+    const wrapped = sendThroughHost("box", { ...actions, retry } as unknown as OutboxActions);
+    await wrapped.retry("ob_f", { id: "ob_f", origin: { app: "tempcode", threadId: "t1", host: "box" }, message: args.message } as never);
+    expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_f", seen } }]);
+    expect(retry).not.toHaveBeenCalled();
+    calls.length = 0;
+    await wrapped.retry("ob_o", { id: "ob_o", message: args.message } as never);
+    expect(calls).toEqual([]);
+    expect(retry).toHaveBeenCalledWith("ob_o", expect.objectContaining({ id: "ob_o" }));
+  });
+
   it("carries the time he chose, and the host's refusal reaches the composer", async () => {
     const { actions } = fakeActions("ob_late");
     await expect(sendThroughHost("box", actions).send({ ...args, sendAt: 1_800_000_000_000 })).rejects.toThrow("goes now or not at all");

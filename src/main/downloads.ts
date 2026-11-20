@@ -39,7 +39,10 @@ function clip(name: string): string {
   if (name.length <= NAME_MAX) return name
   const dot = name.lastIndexOf('.')
   const ext = dot > 0 && name.length - dot <= 20 ? name.slice(dot) : ''
-  return `${name.slice(0, NAME_MAX - ext.length).replace(/[. ]+$/, '')}${ext}`
+  const stem = name.slice(0, NAME_MAX - ext.length).replace(/[. ]+$/, '')
+  // With no extension short enough to keep, the cut may not make one: a dot left near the end
+  // ("… .exe" out of "… .exe.<long tail>") would name a type the file never claimed.
+  return ext ? `${stem}${ext}` : stem.replace(/\./g, '_')
 }
 
 /** `name` if free, else "name (2).ext", "name (3).ext", … */

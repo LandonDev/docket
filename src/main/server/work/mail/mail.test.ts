@@ -150,6 +150,18 @@ describe('Send from TempCode', () => {
     expect(sends().at(-1)!.args).not.toHaveProperty('immediate')
   })
 
+  it('never calls a mail sent on the strength of an earlier send the hold recorded', async () => {
+    const id = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Once.' })
+    rig.lifeos.fire()
+    await settled()
+    await rig.rpc('work.mail.send', { id, seen: seenOf(id) })
+    const went = sends().length
+    // LifeOS's own lane failed it later, and he opened and saved it again: a draft once more, which the hold still has down as sent.
+    Object.assign(rig.lifeos.rows.get(id)!, { status: 'draft' })
+    await expect(rig.rpc('work.mail.send', { id, seen: seenOf(id) })).rejects.toThrow(/did not go/)
+    expect(sends()).toHaveLength(went)
+  })
+
   it('keeps the waited mark inside the one call that made it', async () => {
     const { withWaited, takeWaited } = await import('./waited')
     // Outside any call there is no mark, whatever the draft.

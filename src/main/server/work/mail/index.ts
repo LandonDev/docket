@@ -27,6 +27,7 @@ export interface MailRow {
 const NOT_A_PERSON = 'only a person can send mail'
 export const HELD_NOT_SCHEDULED = 'A draft a thread made goes now or not at all. Send it now, or schedule it from LifeOS.'
 export const ELSEWHERE = 'A thread on another host made this draft. Send it from that host.'
+export const NOT_QUEUED = 'This mail did not go: the Outbox had already recorded an earlier send of it. Open the Outbox and send it from there.'
 export const CHANGED = 'The draft changed after you pressed Send. Look at it again, then send.'
 
 type Address = { address?: unknown }
@@ -101,6 +102,11 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
     // The hold settles a failed send, or a press another press beat, as a row and not a throw: say what became of it.
     const item = answer.result as OutboxItem
     if (item.state !== 'sent' && item.state !== 'sending') throw new Error(item.error ?? `This mail was not sent: the Outbox holds it as ${item.state}.`)
+    // The hold answers an item it had already settled as it stands, and runs nothing. So "sent" is believed only when
+    // LifeOS has the mail on its way: a draft that an earlier send of the hold's left behind (it failed in LifeOS's own
+    // lane, and was opened and saved again) is never called sent while it sits there unsent.
+    const after = await owner.query<{ row: MailRow } | null>('compose:get', { id })
+    if (!after?.row || !['queued', 'sending', 'sent'].includes(String(after.row.status))) throw new Error(NOT_QUEUED)
     return { id, via: 'hold' }
   }
   if (row.status !== 'draft') throw new Error(`LifeOS holds this mail as ${row.status}`)

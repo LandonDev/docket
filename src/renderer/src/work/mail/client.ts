@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { MailClient, MailWrite, OutboxActions } from "work-kit/mail";
+import type { ComposeMessage, MailClient, MailWrite, OutboxActions } from "work-kit/mail";
 import { createLifeosMailClient } from "work-kit/lifeos";
 import type { MailSeen, MailSendAnswer } from "@shared/contract-work-mail";
 import { loadToast } from "../../components/ui/toaster";
@@ -24,20 +24,29 @@ const heldSends = new Set<string>();
  * That second call saves nothing: what he pressed on is only compared, so an edit made while it waited (by him in another window, by
  * the thread's agent) is never written over, and the host refuses the send because the row no longer says what he saw.
  */
+/** Everything of a mail that goes, as he saw it, so the host refuses a row changed in any of it: the HTML and the files too. */
+function seenOf(m: ComposeMessage): MailSeen {
+  const attachments = [...(m.attachments ?? []).map((f) => ({ id: f.storageId, name: f.name })), ...(m.forwardParts ?? []).map((f) => ({ id: `part:${f.partId}`, name: f.name }))];
+  return { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text, html: m.html ?? "", attachments, accountId: m.accountId, ...(m.from ? { from: { ...(m.from.name ? { name: m.from.name } : {}), address: m.from.address } } : {}) };
+}
+
 export function sendThroughHost(env: string, actions: OutboxActions): OutboxActions {
   return {
     ...actions,
     send: async (args) => {
       const id = args.waited && args.id ? args.id : await actions.save(args);
-      const m = args.message;
-      // Everything that goes, so the host refuses a row changed in any of it after this save: the HTML and the files too.
-      const attachments = [...(m.attachments ?? []).map((f) => ({ id: f.storageId, name: f.name })), ...(m.forwardParts ?? []).map((f) => ({ id: `part:${f.partId}`, name: f.name }))];
-      const seen: MailSeen = { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text, html: m.html ?? "", attachments, accountId: m.accountId, ...(m.from ? { from: { ...(m.from.name ? { name: m.from.name } : {}), address: m.from.address } } : {}) };
-      const answer = await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen, ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}), ...(args.waited ? { waited: true } : {}) });
+      const answer = await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen: seenOf(args.message), ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}), ...(args.waited ? { waited: true } : {}) });
       if (answer.via === "hold") heldSends.add(id);
       return id;
     },
     cancel: (id) => (heldSends.has(id) ? Promise.resolve(false) : actions.cancel(id)),
+    // A failed mail one of this host's threads made is sent again by the hold, on what the thread's foot showed him;
+    // any other is his own and LifeOS queues it again.
+    retry: async (id, row) => {
+      if (row?.origin?.app !== "tempcode") return actions.retry(id, row);
+      await registry.linkOf(env).request<MailSendAnswer>("work.mail.send", { id, seen: seenOf(row.message) });
+      heldSends.add(id);
+    },
   };
 }
 

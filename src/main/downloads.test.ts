@@ -40,6 +40,10 @@ describe('safeFileName and a long name', () => {
     // A name with no extension, or one too long to be one, is cut plainly.
     expect(safeFileName('b'.repeat(400))).toBe('b'.repeat(180))
     expect(safeFileName(`c.${'d'.repeat(300)}`).length).toBe(180)
+    // A tail too long to be an extension may not leave an earlier one at the cut.
+    const cut = safeFileName(`${'e'.repeat(176)}.exe.${'x'.repeat(40)}`)
+    expect(cut.length).toBe(180)
+    expect(cut).not.toContain('.')
   })
 })
 
