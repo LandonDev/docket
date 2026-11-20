@@ -120,7 +120,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   black or white by name and text as an opacity. **Dark is held**: no commit
   changes how dark looks (`lib/darkHeld.test.ts`, a frozen copy); a look
   light changes is a token with a value per theme (index.css "Held in
-  dark"), and the file lists the edit that flips each when the owner asks. [docs/agents/appearance.md](docs/agents/appearance.md)
+  dark"), and the file lists the edit that flips each when the owner asks. [docs/agents/appearance.md](docs/agents/appearance.md); the
+  phone checked in light, one tint fixed and the rest listed:
+  [appearance-phone.md](docs/agents/appearance-phone.md)
 - **Launch-time code caches and the bundle split** — boot.js and the compile
   cache, the `tempcode-app://` scheme, lazy chunks (`defineChunk`,
   surfaces/chunks.ts) under the index chunk's budget (`bun run check:bundle`).
