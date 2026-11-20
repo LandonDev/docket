@@ -1101,9 +1101,11 @@ thread; nothing answers inside the canvas.
 - **A mail's attachment** waits for the host's copy in the document's
   bones; from a megabyte, the first line is a 4px bar with "2.1 of 8.4 MB"
   in 12px muted tabular figures beside it. A failed fetch is the kind's
-  failure (`Couldn't open this PDF`, the sentence, Retry). A document from
-  a mail is read only (no mode, no Share), and Keep as document in ⋯ makes
-  it his. In the Mail view
+  failure (`Couldn't open this PDF`, the sentence, Retry). A mail's file
+  of any kind is read only until it is kept: its bar draws no mode, no
+  stepper and no History, only the kind's reading tools, Download, Save to
+  workspace and ⋯; a document also has no Share, and Keep as document in ⋯
+  makes it his. In the Mail view
   the reader's half holds the items at the left and the mail at the right,
   the toggle a Mail glyph named Mail.
 - **The state line** is one line across the surface for a source that

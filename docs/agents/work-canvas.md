@@ -103,6 +103,8 @@ file) with the host's sentence and Retry, never bones. Once it is there the
 bar has Download, then Save to workspace in a pane with a workspace, before
 History, each its glyph alone in the narrow bar.
 
+**A mail's file is read only until it is kept.** For an item whose source is `{at: 'mail'}`, in every kind, the frame takes no `mode`, `review` or `written` from the kind (frame.ts `useFrame`) and draws no History: the bar is the kind's own reading tools (pages, zoom, find, play), Download, Save to workspace and the ⋯. What an agent proposes on the private copy stays marks in the body. The host is as it was.
+
 ## Panes that are not a thread
 
 A workspace's Mail view owns items as a thread does, under

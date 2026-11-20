@@ -276,6 +276,7 @@ type, the mail thread, the message and the part):
   attachment to the workspace (below) and imports that copy into the pane,
   where the document it becomes is his to edit and takes the attachment's
   place.
+- **Read only, every kind.** Until he keeps it, a mail's file has no mode menu, no stepper, no written line and no History in its bar, whatever its kind would say (work-canvas.md "Fetched sources").
 - **Save to workspace**, in the bar beside Download for an attachment in a
   workspace's pane (a thread's or the Mail view's; a Work Chat has no
   folder), copies the host's file into the workspace's folder under its own

@@ -140,7 +140,7 @@ export function CanvasPane({
         tools={tools}
         onDownload={fetched && !waiting ? () => downloadItem(environmentId, item) : undefined}
         onKeep={fetched && !waiting && item.workspaceId ? () => keepItem(environmentId, item.id) : undefined}
-        onHistory={def.history && module && !waiting && feeds.ready !== false ? shell.openHistory : undefined}
+        onHistory={def.history && module && !fetched && feeds.ready !== false ? shell.openHistory : undefined}
       />
       {feeds.status ? <StateLine line={feeds.status} /> : null}
       <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">

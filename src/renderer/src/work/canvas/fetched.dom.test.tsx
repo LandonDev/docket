@@ -175,3 +175,44 @@ describe("a pane with no thread (the Mail view's)", () => {
     expect(contextChipsOf("t1")).toEqual([]);
   });
 });
+
+describe("a mail's file is read only until it is kept", () => {
+  it("a mail's PDF and a mail's sheet draw no mode menu, stepper or written line, whatever the kind feeds; a kept one does", async () => {
+    host.fetch = () => Promise.resolve({ size: 5 });
+    const noop = async (): Promise<void> => undefined;
+    // Fed once per item, as a kind's effect would: a new adapter on every render would never settle.
+    const fed = new WeakSet<CanvasShell>();
+    const driven = drivenKinds((shell) => {
+      if (fed.has(shell)) return;
+      fed.add(shell);
+      shell.mode({ value: "suggests", set: () => undefined });
+      shell.review({ groups: [{ id: "g", label: "Agent", by: "agent:box:t", count: 2 }], index: 0, count: 2, step: () => undefined, accept: noop, reject: noop });
+    });
+    const kinds = { ...driven, pdf: { ...driven.pdf, chunk: driven.document.chunk, history: true }, sheet: { ...driven.sheet, chunk: driven.document.chunk, history: true } };
+    const mailPdf = canvasItem("mp", { kind: "pdf", title: "Contract.pdf", source: ATTACHMENT });
+    const mailSheet = canvasItem("ms", { kind: "sheet", title: "Budget.xlsx", source: { ...ATTACHMENT, partId: "3", name: "Budget.xlsx" } });
+    const kept = canvasItem("kp", { kind: "pdf", title: "Contract (kept).pdf", source: { at: "file", host: "local", path: "/Cosmic/Contract.pdf" } });
+    host.current = fakeHost([mailPdf, mailSheet, kept], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds}>
+        <div data-testid="thread" />
+      </CanvasSeat>,
+    );
+    await waitFor(() => expect(canvasOf("t1").loaded).toBe(true));
+    const bar = () => document.querySelector("[data-canvas-bar]")?.textContent ?? "";
+    for (const name of [/Contract\.pdf/, /Budget\.xlsx/]) {
+      await act(async () => fireEvent.click(screen.getByRole("tab", { name })));
+      await act(async () => {});
+      expect(screen.getByTestId("body")).toBeTruthy();
+      expect(bar()).not.toMatch(/Suggests|Reject|Accept|History/);
+      expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Save to workspace" })).toBeTruthy();
+    }
+    await act(async () => fireEvent.click(screen.getByRole("tab", { name: /Contract \(kept\)/ })));
+    await act(async () => {});
+    expect(bar()).toMatch(/Suggests/);
+    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "History" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+});

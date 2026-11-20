@@ -43,19 +43,23 @@ export function useFrame(environmentId: string, sessionId: string, item: CanvasI
   const kind = item?.kind;
   const title = item?.title;
   const source = item?.source;
+  // A mail's file is read only until he keeps it (work-mail.md "Attachments"): whatever its kind says, the bar draws no
+  // mode, no stepper and no written line, and an agent's marks on the private copy stay marks in the body.
+  const readOnly = source?.at === "mail";
   const shell = useMemo<CanvasShell>(() => {
     const feed =
       <K extends keyof Feeds>(key: K) =>
       (value: Feeds[K]): void =>
         setState((prev) => (prev.id !== id || prev.feeds[key] === value ? prev : { id, feeds: { ...prev.feeds, [key]: value } }));
+    const ignored = (): void => undefined;
     return {
-      review: feed("review"),
+      review: readOnly ? ignored : feed("review"),
       selection: feed("selection"),
       ask: (chip) => asking.current?.(chip),
       presence: (people) => feed("presence")(people.length === 0 ? NO_PEOPLE : people),
-      mode: feed("mode"),
+      mode: readOnly ? ignored : feed("mode"),
       statusLine: feed("status"),
-      written: feed("written"),
+      written: readOnly ? ignored : feed("written"),
       detail: feed("detail"),
       ready: feed("ready"),
       more: (entries) => feed("more")(entries && entries.length > 0 ? entries : null),
@@ -67,6 +71,6 @@ export function useFrame(environmentId: string, sessionId: string, item: CanvasI
     };
     // The source is the item's own and never changes under one id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [environmentId, sessionId, id, kind, title]);
+  }, [environmentId, sessionId, id, kind, title, readOnly]);
   return { feeds: state.id === id ? state.feeds : NO_FEEDS, shell };
 }
