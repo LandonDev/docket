@@ -96,9 +96,23 @@ export const SCRIPTS = {
       var props = { subject: a.m.subject, content: a.m.html };
       if (a.m.account) props.account = account(o, a.m.account);
       m = o.OutgoingMessage(props); o.outgoingMessages.push(m) }
-    if (!a.m.forward && !a.m.replyTo) a.m.to.forEach(function(x){ m.toRecipients.push(o.ToRecipient({ emailAddress: { address: x } })) });
+    // A reply he pressed goes to the held To alone: what Outlook addressed it to (the mail's Reply-To, say) is taken off first.
+    var answer = a.send && (a.m.replyTo || a.m.forward);
+    if (a.send && a.m.replyTo) [m.toRecipients, m.ccRecipients, m.bccRecipients].forEach(function(list){ all(list()).forEach(function(r){ try { o.delete(r) } catch (e) {} }) });
+    if (!a.m.forward && (!a.m.replyTo || a.send)) a.m.to.forEach(function(x){ m.toRecipients.push(o.ToRecipient({ emailAddress: { address: x } })) });
     a.m.cc.forEach(function(x){ m.ccRecipients.push(o.CcRecipient({ emailAddress: { address: x } })) });
     a.m.bcc.forEach(function(x){ m.bccRecipients.push(o.BccRecipient({ emailAddress: { address: x } })) });
+    // Then what Outlook holds is read back (the hold review's 21.1, as carrier.ts recipientsOff): anyone but the held
+    // recipients, or one of them missing, and the mail is thrown away unsent.
+    if (answer) {
+      var norm = function(xs){ var seen = {}; return xs.map(function(x){ return String(x).trim().toLowerCase() }).filter(function(x){ if (!x || seen[x]) return false; seen[x] = true; return true }).sort() };
+      var read = function(list){ return all(list()).map(function(r){ return addr(r.emailAddress()) }) };
+      var built = { to: read(m.toRecipients), cc: read(m.ccRecipients), bcc: read(m.bccRecipients) };
+      var names = { to: 'To', cc: 'Cc', bcc: 'Bcc' }, keys = ['to', 'cc', 'bcc'];
+      var listed = function(r){ return keys.filter(function(k){ return norm(r[k]).length }).map(function(k){ return names[k] + ' ' + norm(r[k]).join(', ') }).join('; ') || 'nobody' };
+      var same = keys.every(function(k){ return norm(a.m[k]).join('\\n') === norm(built[k]).join('\\n') });
+      if (!same) { try { o.delete(m) } catch (e) {} return JSON.stringify({ refused: 'Outlook made this ' + (a.m.replyTo ? 'reply' : 'forward') + ' for ' + listed(built) + ', not ' + listed(a.m) + ' as held, so nothing was sent.' }) }
+    }
     var id = String(m.id()); if (a.send) o.send(m); return JSON.stringify(id)`),
   events: js(`var o = app('Microsoft Outlook'); var from = new Date(a.from), to = new Date(a.to);
     var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] });
@@ -191,7 +205,12 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
       throw err
     }
   }
-  const mail = (m: unknown, send: boolean) => call<string>('mail', { m, send })
+  // A reply or forward whose recipients Outlook built otherwise than held comes back refused, thrown away unsent.
+  const mail = async (m: unknown, send: boolean): Promise<string> => {
+    const made = await call<string | { refused: string }>('mail', { m, send })
+    if (typeof made === 'object' && made && 'refused' in made) throw new OfficeError(made.refused, 'refused')
+    return made
+  }
   return {
     kind: 'mac',
     async outlookProblem() {

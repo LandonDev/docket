@@ -114,7 +114,8 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   return (
     <ConvexProvider client={lifeos.client}>
       {event ? <OpenEvent workspaceId={workspace.id} id={event} lifeos={lifeos} /> : null}
-      <Agenda client={clients.agenda} startThread={startThread} />
+      {/* While the event is read, its bones: today's list never paints before the event's week. */}
+      {event ? <AgendaSkeleton /> : <Agenda client={clients.agenda} startThread={startThread} />}
       {adding !== null ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} onClose={() => go({ adding: null })} /> : null}
     </ConvexProvider>
   );

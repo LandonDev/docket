@@ -196,52 +196,36 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
       {face.kind === "live" ? <div className="pointer-events-none absolute inset-0">{face.mark}</div> : null}
     </div>
   );
-  if (face.kind === "live" && face.driving) {
-    return (
-      <div {...wrap}>
-        <div ref={ref as Ref<HTMLDivElement>} {...DRIVEN} aria-label={label} data-face="live" data-frames={frames} data-marks={marks} className={cn(boxClass, DRIVEN_CLASS)} style={boxStyle}>
-          {picture}
-        </div>
-        {below}
-      </div>
-    );
-  }
-  if ((face.kind === "picture" || face.kind === "live") && face.onOpen) {
-    const open = face.onOpen;
-    // One element from the stream's start: a live box that opens is this button before its first frame too (off until
-    // a frame is there to open), so the frame's arrival never swaps the element and drops the canvas that took it.
-    const closed = face.kind === "live" && !face.drawn;
-    return (
-      <div {...wrap}>
-        <button
-          ref={ref as Ref<HTMLButtonElement>}
-          type="button"
-          aria-label={label}
-          data-face={face.kind}
-          disabled={closed}
-          {...(face.kind === "live" ? { "data-frames": frames, "data-marks": marks } : {})}
-          onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
-          className={cn(boxClass, closed ? "cursor-default" : "cursor-zoom-in")}
-          style={boxStyle}
-        >
-          {picture}
-        </button>
-        {below}
-      </div>
-    );
-  }
+  // One element for the box in every mode (watched, opening, driven): a mode only changes its attributes, so the canvas
+  // that took a frame stays through the first frame, Take over and Hand back (a still page sends one frame, then waits).
+  const driving = face.kind === "live" && !!face.driving;
+  const open = !driving && (face.kind === "picture" || face.kind === "live") ? face.onOpen : undefined;
+  // The full view opens from a clear button laid over the picture, off until a frame is there to open; while it is
+  // there it carries the box's name, since an image's own children are hidden from assistive tech.
+  const closed = face.kind === "live" && !face.drawn;
+  const role = driving ? DRIVEN : open ? {} : { role: "img" as const };
   return (
     <div {...wrap}>
       <div
         ref={ref as Ref<HTMLDivElement>}
-        role="img"
-        aria-label={label}
+        {...role}
+        aria-label={open ? undefined : label}
         data-face={face.kind}
         {...(face.kind === "live" ? { "data-frames": frames, "data-marks": marks } : {})}
-        className={boxClass}
+        className={cn(boxClass, driving && DRIVEN_CLASS)}
         style={boxStyle}
       >
         {picture}
+        {open ? (
+          <button
+            type="button"
+            aria-label={label}
+            data-viewport-open
+            disabled={closed}
+            onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
+            className={cn("absolute inset-0 rounded-lg", closed ? "cursor-default" : "cursor-zoom-in")}
+          />
+        ) : null}
       </div>
       {below}
     </div>

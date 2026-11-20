@@ -96,7 +96,7 @@ pub fn cut_name(s: &str) -> String {
 }
 
 /// Roles whose value would go with a send: printed even when it repeats the name.
-const BOUND_VALUE_ROLES: &[&str] = &["input", "search", "text area", "combo box", "date", "pop up"];
+const BOUND_VALUE_ROLES: &[&str] = &["input", "search", "text area", "combo box", "date", "pop up", "stepper", "slider"];
 
 /// At most 160 scalars, then `…(+<n> chars)`.
 pub fn cut_value(s: &str) -> String {
@@ -396,6 +396,17 @@ mod tests {
         // whole in an element read
         let whole = render(&w, &w.root, &mut AppBook::default(), TextOptions { whole_values: true, ..TextOptions::default() }, false);
         assert!(whole.text.contains(&format!(" = {}", quote(&body))), "{}", whole.text);
+    }
+
+    #[test]
+    fn a_numeric_field_value_repeating_its_name_still_prints() {
+        for role in ["stepper", "slider"] {
+            let mut field = n(role, Some("100000"), 4, vec![]);
+            field.value = Some("100000".into());
+            let w = win(n("window", Some("Untitled - Notepad"), 1, vec![field]));
+            let r = render(&w, &w.root, &mut AppBook::default(), TextOptions::default(), false);
+            assert!(r.text.contains(&format!("{role} \"100000\" = \"100000\"")), "{}", r.text);
+        }
     }
 
     fn notepad() -> RawNode<()> {

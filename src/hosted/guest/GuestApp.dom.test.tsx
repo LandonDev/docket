@@ -94,4 +94,35 @@ describe("a project's link on the guest's page", () => {
     await act(async () => void (await vi.advanceTimersByTimeAsync(15_000)));
     expect(await screen.findByText("This link no longer opens anything")).toBeTruthy();
   });
+
+  it("puts a task page's way back first in the line, where a document's is, and Escape goes back from either", async () => {
+    render(<GuestApp />);
+    fireEvent.click(await first("Book the ballroom"));
+    fireEvent.click(await screen.findByRole("button", { name: "Open task" }));
+    const back = await within(line()).findByRole("button", { name: "Back to Spring LAN" });
+    // First in the line, before the glyph and the project's name; the task's key stays after them.
+    expect(line().firstElementChild!.contains(back)).toBe(true);
+    expect(line().textContent).toMatch(/Spring LAN.*PUR-1/);
+    expect(within(line()).queryByRole("button", { name: "Back" })).toBeNull();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(within(line()).queryByRole("button", { name: /Back/ })).toBeNull());
+    // A document's way back is in the same place, and Escape leaves it too.
+    fireEvent.click(await first("Run of show"));
+    await screen.findByText("Check-in opens at the north doors.");
+    expect(line().firstElementChild).toBe(within(line()).getByRole("button", { name: "Back to Spring LAN" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("Check-in opens at the north doors.")).toBeNull());
+    expect((document.querySelector("[data-guest-project]") as HTMLElement).hidden).toBe(false);
+  });
+});
+
+describe("a face in the project's screens", () => {
+  it("wears the image outline, as the guest's own face and the desktop's do", async () => {
+    const { Face } = await import("./ProjectPage");
+    const { container } = render(<Face name="Dana Lee" size={20} />);
+    const face = container.firstElementChild as HTMLElement;
+    expect(face.textContent).toBe("DL");
+    expect(face.className).toContain("outline-(--image-outline)");
+    expect(face.className).toContain("-outline-offset-1");
+  });
 });

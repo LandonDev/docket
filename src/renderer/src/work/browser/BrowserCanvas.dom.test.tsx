@@ -31,6 +31,8 @@ const host = vi.hoisted(() => ({
   /** the live view's stream, as the viewport would report it; null for the real one (jsdom draws no frame) */
   stream: null as null | { status: "starting" } | { status: "live"; app: string; window: null; width: number; height: number; drawn: boolean } | { status: "ended"; reason: "window-closed" },
   streamRetries: 0,
+  /** his way into the page while he drives it from here (a stand-in for the video's drive); null while he watches */
+  drive: null as null | { send(): void; paste(): Promise<void> },
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -75,7 +77,7 @@ vi.mock("../../surfaces/threads/computer/Viewport", async (original) => {
     ...real,
     useLiveStream: (...args: Parameters<typeof real.useLiveStream>) => {
       const stream = real.useLiveStream(...args);
-      return host.stream ? { ...stream, state: host.stream, retry: () => void (host.streamRetries += 1) } : stream;
+      return host.stream ? { ...stream, state: host.stream, retry: () => void (host.streamRetries += 1), drive: host.drive as never } : stream;
     },
   };
 });
@@ -129,6 +131,7 @@ beforeEach(() => {
   host.drawn = [];
   host.stream = null;
   host.streamRetries = 0;
+  host.drive = null;
 });
 afterEach(cleanup);
 
@@ -544,20 +547,54 @@ describe("the browser's body", () => {
     expect(screen.getAllByRole("row")[0]!.className.split(/\s+/)).toContain("items-baseline");
   });
 
-  it("a live window that opens the full view keeps the canvas that took its first frame: one button, off until then", async () => {
+  it("a live window that opens the full view keeps the canvas that took its first frame: one box, a clear button over it, off until then", async () => {
     host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
     host.stream = { status: "starting" };
     const { rerender } = render(<Body {...props()} />);
     const button = await screen.findByRole("button", { name: "Live view" });
-    const canvas = button.querySelector("canvas")!;
+    const face = document.querySelector<HTMLElement>('[data-face="live"]')!;
+    const canvas = face.querySelector("canvas")!;
     expect(canvas).toBeTruthy();
+    // The button lies over the picture; the box holds the canvas.
+    expect(button.parentElement).toBe(face);
+    expect(button.querySelector("canvas")).toBeNull();
     expect(button.hasAttribute("disabled")).toBe(true);
     host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: true };
     rerender(<Body {...props()} />);
     await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
-    // The same element and the same canvas: the frame's arrival swaps nothing.
+    // The same box, button and canvas: the frame's arrival swaps nothing.
+    expect(document.querySelector('[data-face="live"]')).toBe(face);
     expect(screen.getByRole("button", { name: "Live view" })).toBe(button);
-    expect(button.querySelector("canvas")).toBe(canvas);
+    expect(face.querySelector("canvas")).toBe(canvas);
+  });
+
+  it("keeps one box and the canvas that took a frame when he takes over and hands back; the full view's button is there only while he does not drive", async () => {
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: true };
+    const { rerender } = render(<Body {...props()} />);
+    const opener = () => document.querySelector<HTMLButtonElement>("[data-viewport-open]");
+    await waitFor(() => expect(opener()?.disabled).toBe(false));
+    const face = document.querySelector<HTMLElement>('[data-face="live"]')!;
+    const canvas = face.querySelector("canvas")!;
+    // He takes over: the box becomes his keyboard and pointer, the same element, on the same canvas.
+    host.state = { ...host.state, driver: "owner" };
+    host.drive = { send() {}, paste: async () => undefined };
+    act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
+    rerender(<Body {...props()} />);
+    await waitFor(() => expect(face.getAttribute("role")).toBe("application"));
+    expect(document.querySelector('[data-face="live"]')).toBe(face);
+    expect(face.querySelector("canvas")).toBe(canvas);
+    expect(face.className).toContain("focus-ring-held");
+    expect(opener()).toBeNull();
+    // He hands back: a picture again, the same element and canvas, its button back.
+    host.state = { ...host.state, driver: "agent" };
+    host.drive = null;
+    act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
+    rerender(<Body {...props()} />);
+    await waitFor(() => expect(opener()?.disabled).toBe(false));
+    expect(document.querySelector('[data-face="live"]')).toBe(face);
+    expect(face.querySelector("canvas")).toBe(canvas);
+    expect(face.hasAttribute("data-driving")).toBe(false);
   });
 
   it("with nothing held and no window to draw, says so in one line", async () => {

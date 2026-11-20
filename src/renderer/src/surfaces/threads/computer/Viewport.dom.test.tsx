@@ -595,15 +595,19 @@ describe("the live viewport", () => {
 
 describe("the viewport's faces", () => {
   const still = <img alt="" src="data:," />;
-  it("a kept picture is a button named for what it shows, and a click opens it from the box", () => {
+  it("a kept picture opens from a clear button over it, named for what it shows, and a click opens it from the box", () => {
     const onOpen = vi.fn();
     render(<Viewport face={{ kind: "picture", src: "blob:kept", onOpen }} label="Untitled in TextEdit at 2:04 PM" size={{ width: 960, height: 804 }} />);
     const button = screen.getByRole("button", { name: "Untitled in TextEdit at 2:04 PM" });
-    expect(button.getAttribute("data-face")).toBe("picture");
-    expect(button.style.aspectRatio).toBe("960 / 804");
-    expect(button.querySelector("img")?.getAttribute("src")).toBe("blob:kept");
+    const face = button.parentElement!;
+    expect(face.getAttribute("data-face")).toBe("picture");
+    expect(face.style.aspectRatio).toBe("960 / 804");
+    expect(face.querySelector("img")?.getAttribute("src")).toBe("blob:kept");
+    // the button carries the name; the box under it is no second image
+    expect(face.hasAttribute("aria-label")).toBe(false);
+    expect(button.className).toContain("absolute inset-0");
     // no frame count on a picture that is not the stream
-    expect(button.hasAttribute("data-frames")).toBe(false);
+    expect(face.hasAttribute("data-frames")).toBe(false);
     button.click();
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("img")).toBeNull();

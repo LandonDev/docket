@@ -335,29 +335,34 @@ function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof us
       <div className="pointer-events-none absolute inset-0">{face.mark}</div>
     </>
   );
-  const open = face.onOpen;
-  // A box that opens is one button from the stream's start, off until its first frame: the frame's arrival never swaps
-  // the element, so the canvas that took it stays (a still page sends one frame, then waits for a change).
+  // One element for the box in every mode (watched, opening, driven): a mode only changes its attributes, so the canvas
+  // that took a frame stays through the first frame, Take over and Hand back (a still page sends one frame, then waits
+  // for a change). The full view opens from a clear button laid over the picture, there only while he does not drive,
+  // off until a frame is there to open, and carrying the box's name while it is there.
+  const open = face.driving ? undefined : face.onOpen;
+  const role = face.driving ? DRIVEN : open ? {} : { role: "img" as const };
   return (
     <div className={FADE_IN}>
-      {open ? (
-        <button
-          ref={box as RefObject<never>}
-          type="button"
-          aria-label={label}
-          data-face="live"
-          disabled={!face.drawn}
-          onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
-          className={cn("relative block w-full overflow-hidden rounded-lg bg-card", face.drawn ? "cursor-zoom-in" : "cursor-default")}
-          style={shape}
-        >
-          {inside}
-        </button>
-      ) : (
-        <div ref={box} {...(face.driving ? DRIVEN : { role: "img" })} aria-label={label} data-face="live" className={cn("relative w-full overflow-hidden rounded-lg bg-card", face.driving && DRIVEN_CLASS)} style={shape}>
-          {inside}
-        </div>
-      )}
+      <div
+        ref={box}
+        {...role}
+        aria-label={open ? undefined : label}
+        data-face="live"
+        className={cn("relative w-full overflow-hidden rounded-lg bg-card", face.driving && DRIVEN_CLASS)}
+        style={shape}
+      >
+        {inside}
+        {open ? (
+          <button
+            type="button"
+            aria-label={label}
+            data-viewport-open
+            disabled={!face.drawn}
+            onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
+            className={cn("absolute inset-0 rounded-lg", face.drawn ? "cursor-zoom-in" : "cursor-default")}
+          />
+        ) : null}
+      </div>
       {ended ? (
         <div className="pt-1">
           <ViewportLine words={ENDED_WORDS[ended.reason]} onRetry={RETRY_ENDS.has(ended.reason) ? stream.retry : undefined} />

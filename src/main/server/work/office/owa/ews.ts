@@ -1,4 +1,4 @@
-import type { CalendarEvent, EventAnswer, EventOut, MailFull, MailOut, MailSummary } from '../carrier'
+import type { CalendarEvent, EventAnswer, EventOut, MailFull, MailOut, MailSummary, Recipients } from '../carrier'
 
 /**
  * Outlook on the web's own requests, in the shapes its page sends to
@@ -15,7 +15,7 @@ const request = (op: string, body: Record<string, unknown>) => ({ __type: T(`${o
 const folder = (id: string) => ({ __type: T('DistinguishedFolderId'), Id: id })
 const field = (uri: string) => ({ __type: T('PropertyUri'), FieldURI: uri })
 const mailbox = (address: string) => ({ __type: T('EmailAddress'), EmailAddress: address, RoutingType: 'SMTP', MailboxType: 'Mailbox' })
-const itemId = (id: string) => ({ __type: T('ItemId'), Id: id })
+const itemId = (id: string, changeKey?: string) => ({ __type: T('ItemId'), Id: id, ...(changeKey ? { ChangeKey: changeKey } : {}) })
 
 export type Folder = 'inbox' | 'sentitems' | 'drafts' | 'calendar'
 
@@ -41,6 +41,27 @@ export function sendMail(m: MailOut, disposition: 'SendAndSaveCopy' | 'SaveOnly'
       SavedItemFolderId: { __type: T('TargetFolderId'), BaseFolderId: folder(disposition === 'SaveOnly' ? 'drafts' : 'sentitems') }
     })
   }
+}
+
+/** Who a saved mail is addressed to, field by field: a reply or forward made as a draft is read back before it goes. */
+export function getRecipients(id: string): { action: string; body: unknown } {
+  return {
+    action: 'GetItem',
+    body: request('GetItem', { ItemShape: { __type: T('ItemResponseShape'), BaseShape: 'IdOnly', AdditionalProperties: ['ToRecipients', 'CcRecipients', 'BccRecipients'].map((u) => field(`message:${u}`)) }, ItemIds: [itemId(id)] })
+  }
+}
+
+/** A saved draft sent as it stands, its copy kept in Sent. */
+export function sendItem(id: string, changeKey?: string): { action: string; body: unknown } {
+  return {
+    action: 'SendItem',
+    body: request('SendItem', { ItemIds: [itemId(id, changeKey)], SaveItemToFolder: true, SavedItemFolderId: { __type: T('TargetFolderId'), BaseFolderId: folder('sentitems') } })
+  }
+}
+
+/** A draft thrown away for good, never sent. */
+export function deleteItem(id: string): { action: string; body: unknown } {
+  return { action: 'DeleteItem', body: request('DeleteItem', { ItemIds: [itemId(id)], DeleteType: 'HardDelete' }) }
 }
 
 export function createEvent(e: EventOut): { action: string; body: unknown } {
@@ -138,7 +159,7 @@ interface Mailbox {
   EmailAddress?: string
 }
 export interface Item {
-  ItemId?: { Id: string }
+  ItemId?: { Id: string; ChangeKey?: string }
   Subject?: string
   DateTimeReceived?: string
   DateTimeSent?: string
@@ -146,6 +167,7 @@ export interface Item {
   IsRead?: boolean
   ToRecipients?: Mailbox[]
   CcRecipients?: Mailbox[]
+  BccRecipients?: Mailbox[]
   Body?: { Value?: string; BodyType?: string }
   Start?: string
   End?: string
@@ -168,6 +190,13 @@ export function messageOf(answer: unknown): Message {
 const address = (m: Mailbox | undefined): string => m?.EmailAddress ?? m?.Name ?? ''
 
 export const createdId = (answer: unknown): string | null => messageOf(answer).Items?.[0]?.ItemId?.Id ?? null
+
+/** A saved mail's recipients as Exchange holds them, with the change key its send names. */
+export function recipientsOf(answer: unknown): Recipients & { changeKey?: string } {
+  const i = messageOf(answer).Items?.[0]
+  if (!i?.ItemId) throw new EwsError('No such mail', 'ErrorItemNotFound')
+  return { to: (i.ToRecipients ?? []).map(address), cc: (i.CcRecipients ?? []).map(address), bcc: (i.BccRecipients ?? []).map(address), ...(i.ItemId.ChangeKey ? { changeKey: i.ItemId.ChangeKey } : {}) }
+}
 
 export function mailList(answer: unknown, account: string): MailSummary[] {
   return (messageOf(answer).RootFolder?.Items ?? []).map((i) => ({

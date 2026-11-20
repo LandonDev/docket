@@ -4,6 +4,8 @@ import { RichText } from "work-kit/editor";
 import { createGuestProjectsClient, Projects, ProjectsClientProvider, ProjectsKitProvider, type GuestProjection, type ProjectsKit, type ProjectsPlace } from "work-kit/projects";
 import "work-kit/projects/styles.css";
 import "@renderer/work/projects/projects.css";
+import { Button } from "@renderer/components/ui/button";
+import { ArrowLeft } from "@renderer/chrome/icons";
 import { initials, OpenFailed, type ChildItem, type Opened, type Session } from "./session";
 
 /**
@@ -20,7 +22,7 @@ import { initials, OpenFailed, type ChildItem, type Opened, type Session } from 
  */
 
 /** What the kit's parts read of the page around them; the kit itself never changes. */
-const PageContext = createContext<{ session: Session; slot: HTMLElement | null; at: ProjectsPlace["at"]; read: number } | null>(null);
+const PageContext = createContext<{ session: Session; slot: HTMLElement | null; lead: HTMLElement | null; title: string; at: ProjectsPlace["at"]; read: number } | null>(null);
 const usePage = () => {
   const page = useContext(PageContext);
   if (!page) throw new Error("The guest's project page is not mounted");
@@ -30,17 +32,32 @@ const usePage = () => {
 /**
  * The screens' bar in the page's one 44px line: List or Board at its end.
  * The way back is drawn only from a task's own page; a project's page has
- * none, since the guest has no list of projects to go back to.
+ * none, since the guest has no list of projects to go back to. A task's way
+ * back takes the line's first place (`lead`), where a document's does, and
+ * its key stays where the crumb was.
  */
-function Bar({ crumb, children }: { crumb: ReactNode | null; children: ReactNode }) {
-  const { slot, at } = usePage();
+function Bar({ crumb, back, here, children }: { crumb: ReactNode | null; back?: { label?: string | undefined; run: () => void } | null | undefined; here?: ReactNode | undefined; children: ReactNode }) {
+  const { slot, lead, title, at } = usePage();
   if (!slot) return null;
-  return createPortal(
+  const split = at === "task" && !!back && !!lead;
+  return (
     <>
-      <span className="flex min-w-0 items-center">{at === "task" ? crumb : null}</span>
-      <span className="flex shrink-0 items-center gap-1">{children}</span>
-    </>,
-    slot,
+      {split
+        ? createPortal(
+            <Button variant="ghost" size="icon-xs" aria-label={`Back to ${title}`} className="-ms-1.5 text-muted-foreground" onClick={back.run}>
+              <ArrowLeft />
+            </Button>,
+            lead,
+          )
+        : null}
+      {createPortal(
+        <>
+          <span className="flex min-w-0 items-center">{at === "task" ? (split ? here : crumb) : null}</span>
+          <span className="flex shrink-0 items-center gap-1">{children}</span>
+        </>,
+        slot,
+      )}
+    </>
   );
 }
 
@@ -75,13 +92,16 @@ export function DocText({ id, title, markdown }: { id: string; title: string; ma
   );
 }
 
+/** A person's initials in the screens, with the image outline every face on the page wears (the guest's own, the desktop's `Face`). */
+export const Face: ProjectsKit["Face"] = ({ name, size, className }) => (
+  <span aria-hidden className={`inline-grid shrink-0 place-items-center rounded-full bg-muted font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline) ${size === 16 ? "size-4 text-[7px]" : "size-5 text-[8px]"} ${className ?? ""}`}>
+    {initials(name)}
+  </span>
+);
+
 const kit: ProjectsKit = {
   SectorMark: () => null,
-  Face: ({ name, size, className }) => (
-    <span aria-hidden className={`inline-grid shrink-0 place-items-center rounded-full bg-muted font-semibold text-muted-foreground ${size === 16 ? "size-4 text-[7px]" : "size-5 text-[8px]"} ${className ?? ""}`}>
-      {initials(name)}
-    </span>
-  ),
+  Face,
   // A page in a browser names no keys of the app.
   Hint: ({ children }) => children,
   toast: () => {},
@@ -96,6 +116,7 @@ export function ProjectPage({
   session,
   opened,
   slot,
+  lead = null,
   hidden,
   onOpen,
   onShown,
@@ -105,6 +126,8 @@ export function ProjectPage({
   opened: Opened;
   /** the page line's place for the screens' controls */
   slot: HTMLElement | null;
+  /** the page line's first place, before the glyph: a task's way back */
+  lead?: HTMLElement | null;
   /** a document or sheet is open over it: kept mounted, so the place and the reads stay */
   hidden: boolean;
   onOpen(item: ChildItem & { title: string }): void;
@@ -146,7 +169,7 @@ export function ProjectPage({
     if ((next.at === "project" && next.id === projectId) || next.at === "task") setPlace(next);
   };
   const guestKit = useMemo<ProjectsKit>(() => ({ ...kit, openItem: (item) => (item.kind === "doc" || item.kind === "sheet") && onOpen({ table: item.kind === "doc" ? "docs" : "sheets", id: item.id, title: item.title }) }), [onOpen]);
-  const page = useMemo(() => ({ session, slot, at: place.at, read }), [session, slot, place.at, read]);
+  const page = useMemo(() => ({ session, slot, lead, title: opened.title, at: place.at, read }), [session, slot, lead, opened.title, place.at, read]);
   return (
     <div hidden={hidden} className="tc-projects h-full min-h-0" data-guest-project>
       <PageContext.Provider value={page}>

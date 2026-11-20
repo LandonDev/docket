@@ -123,7 +123,7 @@ const prop = (n: AxNode, name: string): unknown => n.properties?.find((p) => p.n
 const rawText = (v: AxValue | undefined): string => (v?.value === undefined || v.value === null ? '' : String(v.value))
 const text = (v: AxValue | undefined): string => rawText(v).trim()
 /** Roles whose value is what a send would carry: always printed, raw (outward.ts `screenMark` binds them). */
-const EDITABLE_ROLES: ReadonlySet<string> = new Set(['input', 'text area', 'combo box', 'search', 'pop up'])
+const EDITABLE_ROLES: ReadonlySet<string> = new Set(['input', 'text area', 'combo box', 'search', 'pop up', 'stepper', 'slider'])
 
 export interface ReadOptions {
   /** the page's key in the book: its target id */

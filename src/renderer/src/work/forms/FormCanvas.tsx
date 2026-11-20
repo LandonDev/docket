@@ -19,6 +19,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { Table } from "../icons";
+import { AddOption } from "./AddOption";
 import { AddQuestion } from "./AddQuestion";
 import { linkFormHost, type FormHost } from "./host";
 import { answerBars, chartQuestion, liveView, optionDiff, plural, resolvePick, shownQuestions, submittedTime, TYPE_WORDS, type Pick, type Shown } from "./model";
@@ -485,6 +486,11 @@ function Questions({ view, host, store, current, onStep }: { view: FormView; hos
     await saver.now({ ...now, questions: [...now.questions, q] });
     requestAnimationFrame(() => list.current?.querySelector(`[data-q="${q.id}"]`)?.scrollIntoView?.({ block: "nearest" }));
   };
+  // An option is named in its dialog and saved on Add, over his other edits that stand: never a placeholder on the form.
+  const addOption = async (id: string, text: string): Promise<void> => {
+    const now = store.get().edits ?? store.get().view?.body ?? body;
+    await saver.now({ ...now, questions: now.questions.map((q) => (q.id === id ? { ...q, options: [...(q.options ?? []), text] } : q)) });
+  };
   const sections = shown.filter((s) => s.q.type === "section");
 
   return (
@@ -516,6 +522,7 @@ function Questions({ view, host, store, current, onStep }: { view: FormView; hos
                   else setFocus(s.q.id);
                 }}
                 onChange={(q) => setQuestion(s.q.id, q)}
+                onAddOption={(text) => addOption(s.q.id, text)}
               />
             ))}
           </div>
@@ -594,6 +601,7 @@ function QuestionBlock({
   opens,
   onFocus,
   onChange,
+  onAddOption,
 }: {
   shown: Shown;
   focused: boolean;
@@ -603,6 +611,8 @@ function QuestionBlock({
   opens: boolean;
   onFocus(): void;
   onChange(q: FormQuestion | null): void;
+  /** saves a named option on this question; refused, it throws and the dialog stays */
+  onAddOption(text: string): Promise<void>;
 }) {
   const { q, mark, was } = shown;
   const editing = focused && editable;
@@ -653,7 +663,7 @@ function QuestionBlock({
           <Required q={q} was={mark === "change" ? was : undefined} gone={mark === "del"} />
         </div>
       )}
-      <Field q={q} was={mark === "change" ? was : undefined} proposed={mark === "add" || mark === "change"} editing={editing} onChange={onChange} />
+      <Field q={q} was={mark === "change" ? was : undefined} proposed={mark === "add" || mark === "change"} editing={editing} onChange={onChange} onAddOption={onAddOption} />
       {editing ? <EditRow q={q} onChange={onChange} /> : null}
     </div>
   );
@@ -700,10 +710,24 @@ function Required({ q, was, gone }: { q: FormQuestion; was?: FormQuestion; gone:
 const FIELD = cn(INPUT_FIELD_CLASS, "mt-2 block bg-background");
 
 /** The answer's place as the filler sees it; a choice's options, editable in place while he edits the question. */
-function Field({ q, was, proposed, editing, onChange }: { q: FormQuestion; was?: FormQuestion; proposed?: boolean; editing: boolean; onChange(q: FormQuestion): void }) {
+function Field({
+  q,
+  was,
+  proposed,
+  editing,
+  onChange,
+  onAddOption,
+}: {
+  q: FormQuestion;
+  was?: FormQuestion;
+  proposed?: boolean;
+  editing: boolean;
+  onChange(q: FormQuestion): void;
+  onAddOption(text: string): Promise<void>;
+}) {
   if (q.type === "short") return <div data-field className={cn(FIELD, "h-8 max-w-[360px]")} />;
   if (q.type === "long") return <div data-field className={cn(FIELD, "h-[72px]")} />;
-  if (editing) return <OptionsEdit q={q} onChange={onChange} />;
+  if (editing) return <OptionsEdit q={q} onChange={onChange} onAddOption={onAddOption} />;
   // At rest a dropdown is the filler's closed box; a proposed one lists its choices, so a change to them can be seen.
   if (q.type === "dropdown" && !proposed)
     return (
@@ -725,8 +749,9 @@ function Field({ q, was, proposed, editing, onChange }: { q: FormQuestion; was?:
   );
 }
 
-function OptionsEdit({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestion): void }) {
+function OptionsEdit({ q, onChange, onAddOption }: { q: FormQuestion; onChange(q: FormQuestion): void; onAddOption(text: string): Promise<void> }) {
   const options = q.options ?? [];
+  const [adding, setAdding] = useState(false);
   const set = (next: string[]): void => onChange({ ...q, options: next });
   return (
     <div data-field className="mt-1.5 flex flex-col">
@@ -748,10 +773,11 @@ function OptionsEdit({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestio
           ) : null}
         </div>
       ))}
-      <Button variant="ghost" size="xs" className="mt-1 -ms-2 self-start text-muted-foreground" onClick={() => set([...options, `Option ${options.length + 1}`])}>
+      <Button variant="ghost" size="xs" className="mt-1 -ms-2 self-start text-muted-foreground" onClick={() => setAdding(true)}>
         <Plus />
         Add option
       </Button>
+      {adding ? <AddOption onAdd={onAddOption} onClose={() => setAdding(false)} /> : null}
     </div>
   );
 }
@@ -851,31 +877,52 @@ function Responses({ view, host, store, item, shell }: { view: FormView; host: F
   return <ResponseTable view={view} got={got} item={item} shell={shell} />;
 }
 
+/**
+ * Each response's own key: the sheet sends no id, so a row is known by what it holds, its answers and the moment it was
+ * submitted. A newer answer arriving above it moves its row, never its key, so what he ticked stays ticked.
+ */
+export function responseKeys(rows: readonly (readonly string[])[]): string[] {
+  // Two rows the same in every answer and to the second are told apart by which of them comes first.
+  const seen = new Map<string, number>();
+  return rows.map((row) => {
+    const key = row.join("\u001f");
+    const n = seen.get(key) ?? 0;
+    seen.set(key, n + 1);
+    return n ? `${key}\u001e${n}` : key;
+  });
+}
+
 function ResponseTable({ view, got, item, shell }: { view: FormView; got: FormResponses; item: Props["item"]; shell: CanvasShell }) {
   const last = submittedTime(got.rows[0]?.at(-1) ?? "");
   const q = chartQuestion(view.body);
   const bars = q ? answerBars(got, q) : [];
   const max = Math.max(1, ...bars.map((b) => b.count));
-  const [picked, setPicked] = useState<ReadonlySet<number>>(new Set());
+  // What he ticked, by each response's key, never its row: a new revision keeps the ones still there and drops the rest.
+  const keys = useMemo(() => responseKeys(got.rows), [got.rows]);
+  const [ticked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const picked = useMemo(() => {
+    const here = new Set(keys);
+    return new Set([...ticked].filter((k) => here.has(k)));
+  }, [ticked, keys]);
   const table = useRef<HTMLTableElement>(null);
   useEffect(() => {
     const el = table.current;
     if (!picked.size || !el) return shell.selection(null);
-    const rows = [...picked].sort((a, b) => a - b).map((i) => got.rows[i]);
+    const rows = got.rows.filter((_, i) => picked.has(keys[i]!));
     const head = got.columns.map((c) => c.label).join("\t");
     shell.selection({
       chip: { kind: "selection", label: `${plural(rows.length, "response")}, ${view.body.title}`, ref: view.sheet ?? item.source, quote: [head, ...rows.map((r) => r.join("\t"))].join("\n") },
       rect: (el.querySelector("tr[data-picked]") ?? el).getBoundingClientRect(),
     });
     return () => shell.selection(null);
-  }, [shell, picked, got, view.sheet, view.body.title, item.source]);
-  const toggle = (i: number): void =>
-    setPicked((was) => {
-      const next = new Set(was);
-      if (!next.delete(i)) next.add(i);
+  }, [shell, picked, got, keys, view.sheet, view.body.title, item.source]);
+  const toggle = (key: string): void =>
+    setPicked(() => {
+      const next = new Set(picked);
+      if (!next.delete(key)) next.add(key);
       return next;
     });
-  const all = picked.size === got.rows.length;
+  const all = got.rows.length > 0 && picked.size === keys.length;
   return (
     <div data-form-responses className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
       <p className="px-4 pt-3 text-[13px] leading-5 text-muted-foreground">
@@ -896,7 +943,7 @@ function ResponseTable({ view, got, item, shell }: { view: FormView; got: FormRe
           <TableHeader>
             <TableRow>
               <TableHead className="w-4 pe-0 first:pl-4">
-                <Checkbox aria-label="Select all" checked={all} onCheckedChange={() => setPicked(all ? new Set() : new Set(got.rows.map((_, i) => i)))} />
+                <Checkbox aria-label="Select all" checked={all} onCheckedChange={() => setPicked(all ? new Set() : new Set(keys))} />
               </TableHead>
               {got.columns.map((c, i) => (
                 <TableHead key={c.id} className={`last:pr-4 ${i === got.columns.length - 1 ? "text-end" : ""}`}>
@@ -907,9 +954,9 @@ function ResponseTable({ view, got, item, shell }: { view: FormView; got: FormRe
           </TableHeader>
           <TableBody>
             {got.rows.map((r, i) => (
-              <TableRow key={i} data-picked={picked.has(i) || undefined} className={picked.has(i) ? "bg-(--sel-bg)" : ""}>
+              <TableRow key={keys[i]} data-picked={picked.has(keys[i]!) || undefined} className={picked.has(keys[i]!) ? "bg-(--sel-bg)" : ""}>
                 <TableCell className="w-4 pe-0 first:pl-4">
-                  <Checkbox aria-label="Select" checked={picked.has(i)} onCheckedChange={() => toggle(i)} />
+                  <Checkbox aria-label="Select" checked={picked.has(keys[i]!)} onCheckedChange={() => toggle(keys[i]!)} />
                 </TableCell>
                 {r.map((v, j) => (
                   <Cell key={j} last={j === r.length - 1}>

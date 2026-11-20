@@ -11,7 +11,7 @@ import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEdit
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null, itemGate: null as Promise<void> | null }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -20,6 +20,7 @@ vi.mock("../../lib/connection", async (original) => {
     request: async (method: string, params: Record<string, unknown> = {}) => {
       calls.list.push({ env, method, params });
       if (method === "work.guests.list" && calls.listGate) await calls.listGate;
+      if (method === "work.guests.forItem" && calls.itemGate) await calls.itemGate;
       if (calls.down.has(env)) throw new Error(calls.downWords[env] ?? "The host did not answer");
       // The Mac does not serve LifeOS's documents: it names the box, as the host does.
       if (env === "mac") throw new Error("served elsewhere: box");
@@ -128,6 +129,33 @@ describe("Share", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("LifeOS did not answer");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByText("Sam Ortiz");
+    expect(screen.queryByText("LifeOS did not answer")).toBeNull();
+  });
+
+  it("keeps Retry's row, its focus and the error while it asks, busy, and takes no second press", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.links = [LINK];
+    calls.failOnce = true;
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} title="Run of show" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByText("LifeOS did not answer");
+    let open: () => void = () => {};
+    calls.itemGate = new Promise((r) => (open = r));
+    const reads = () => calls.list.filter((c) => c.method === "work.guests.forItem").length;
+    const before = reads();
+    const retry = screen.getByRole("button", { name: "Retry" });
+    retry.focus();
+    fireEvent.click(retry);
+    expect(retry.isConnected).toBe(true);
+    expect(retry.hasAttribute("disabled")).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    expect(document.activeElement).toBe(retry);
+    expect(screen.getByText("LifeOS did not answer")).toBeTruthy();
+    fireEvent.click(retry);
+    expect(reads()).toBe(before + 1);
+    calls.itemGate = null;
+    await act(async () => open());
     await screen.findByText("Sam Ortiz");
     expect(screen.queryByText("LifeOS did not answer")).toBeNull();
   });

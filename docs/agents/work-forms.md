@@ -47,7 +47,9 @@ Publishing shares a link anyone can answer, so it is an outward act:
   Add question dialog (its words, kind, options for a choice or dropdown,
   Required) and made on Add, saved at once; nothing reaches the form, or a
   published form's page, before that, and a refused Add keeps the dialog
-  and his words with the reason (forms/AddQuestion.tsx).
+  and his words with the reason (forms/AddQuestion.tsx). A new option is the
+  same: Add option asks for its name in a small dialog and saves it on Add,
+  never a placeholder ("Option 3") on the form (forms/AddOption.tsx).
 - **His close and reopen are not held**: they stop or restart answers on
   his own form (`work.forms.close {itemId, open}`). An agent's close
   (`form_close` with `open: false`) runs at once; its reopen shares the link
@@ -93,7 +95,9 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
   all. A body is at most 64 KiB.
 - The page (`src/hosted/form/`) is plain DOM with no framework: it builds
   every word with `textContent`, sends no cookies, and draws the canvas's
-  Questions half as a filler sees it in both themes.
+  Questions half as a filler sees it in both themes. A form that did not
+  load offers Retry; when a Retry pressed from the keyboard draws the form,
+  the focus goes to the form's title, unless he moved it meanwhile.
 - **The link.** `linkOf` (forms/forms.ts): `https://tempcode.landonhale.com/f/<id>`
   on the box's installed host, the one behind the tunnel; the service's local
   address on any other host or an isolated instance;
@@ -120,8 +124,12 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
   with three or more sections gets a jump list from 640px of canvas.
 - **Responses** is one summary line, the bars of the form's first choice or
   dropdown (`chart-neutral`), and a flat table, newest first, the time last.
-  Picked rows feed Ask, which takes them to the thread as text. It is read
-  every 10 s while shown, and only when the sheet's rev moved.
+  Picked rows feed Ask, which takes them to the thread as text. A tick
+  follows its response, not its row (`responseKeys`: the sheet sends no id,
+  so a response is known by its answers and the moment it was submitted): a
+  newer answer arriving on top keeps his ticks and Ask's quote on the
+  responses he chose, and one gone from a new rev drops from them. It is
+  read every 10 s while shown, and only when the sheet's rev moved.
 - More holds "Open responses as a sheet".
 
 ## The tools

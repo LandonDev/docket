@@ -19,6 +19,8 @@ const world = vi.hoisted(() => ({
   listDown: new Set<string>(),
   quote: null as string | null,
   getFails: false,
+  // a send the host has not answered yet: it answers when the test lets it
+  sendHeld: null as Promise<void> | null,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -42,6 +44,7 @@ vi.mock("../../lib/connection", async (original) => {
         case "work.outbox.grants":
           return { grants: (world.grants.get(env) ?? []).filter((g) => !g.removedAt) };
         case "work.outbox.send":
+          if (world.sendHeld) await world.sendHeld;
           // as the host: a row another press decided first is answered as it stands, and nothing runs
           if (!["held", "live", "failed"].includes(find().state)) return find();
           Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now });
@@ -138,6 +141,7 @@ beforeEach(() => {
   world.grants = new Map();
   world.resultsDown = false;
   world.listDown.clear();
+  world.sendHeld = null;
   workSwitch.reset();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -498,10 +502,77 @@ describe("the Outbox", () => {
     // The named failure and its Retry stay in view.
     const failure = [...document.querySelectorAll("[role=status]")].find((n) => n.textContent?.includes("did not answer"))!;
     expect(failure.querySelector("button")!.textContent).toContain("Retry");
+    // The row above is the one place that names the host: the empty words do not name it again.
+    const empty = document.querySelector("[data-outbox-detail] [data-outbox-empty=detail]") as HTMLElement;
+    expect(empty.textContent).toContain("Shown once it answers.");
+    expect(empty.textContent).not.toContain("did not answer");
     // Once it answers, the empty list is known to be clear.
     world.listDown.clear();
     const { loadOutbox } = await import("./store");
     await act(async () => loadOutbox());
     await waitFor(() => expect(screen.getAllByText("Nothing held").length).toBe(2));
+  });
+
+  it("with two hosts down, the empty words say once they answer", async () => {
+    world.items.set("box", []);
+    world.items.set("mac", []);
+    world.listDown.add("box");
+    world.listDown.add("mac");
+    resetOutboxStore();
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getAllByText("Shown once they answer.").length).toBe(2));
+    expect(screen.queryByText("Nothing held")).toBeNull();
+  });
+
+  it("a send that answers late moves nothing off what he picked since, or off Sent", async () => {
+    await open();
+    const list = () => document.querySelector("[data-outbox-list]") as HTMLElement;
+    const picked = () => list().querySelector("[aria-current=true]")?.textContent ?? "";
+    const pressLate = async () => {
+      let answer!: () => void;
+      world.sendHeld = new Promise<void>((resolve) => (answer = resolve));
+      await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(sends().length).toBeGreaterThan(0));
+      return answer;
+    };
+    // He sends Dana's mail, then picks Events booking before the host answers: he stays on Events booking.
+    let answer = await pressLate();
+    fireEvent.click(within(list()).getByText("Send to Events booking"));
+    await act(async () => answer());
+    await waitFor(() => expect(within(list()).queryByText("Send to Dana Lee")).toBeNull());
+    expect(picked()).toContain("Send to Events booking");
+    // He sends Events booking and goes to Sent before the answer: Sent keeps its own pick, its detail on screen.
+    answer = await pressLate();
+    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    await act(async () => answer());
+    await waitFor(() => expect(within(list()).getAllByText("Sent to Events booking").length).toBeGreaterThan(0));
+    await waitFor(() => expect(picked()).not.toBe(""));
+    expect(screen.queryByText("No longer waiting")).toBeNull();
+    // With nothing picked since, a send still hands the selection to the next one down.
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    world.sendHeld = null;
+    await waitFor(() => expect(picked()).toContain("Send to Sam Ortiz"));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Send" })));
+    await waitFor(() => expect(picked()).toContain("Post message with Slack"));
+  });
+
+  it("narrow, the ticked review gives the act and its subject a line each, so a long act never pushes the subject off", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review 1" }));
+    const row = document.querySelector("[data-ticked-row]") as HTMLElement;
+    const act = row.querySelector("[data-ticked-act]") as HTMLElement;
+    const about = row.querySelector("[data-ticked-about]") as HTMLElement;
+    expect(act.textContent).toBe("Send to Sam Ortiz");
+    expect(about.textContent).toBe("Scrims");
+    // one line wide; narrow, a column whose act may shrink and wrap
+    expect(act.parentElement).toBe(about.parentElement);
+    expect(act.parentElement!.className).toContain("@max-[40rem]/outbox:flex-col");
+    expect(act.className).toContain("@max-[40rem]/outbox:shrink");
+    expect(act.className).toContain("@max-[40rem]/outbox:break-words");
+    expect(row.className).not.toMatch(/(^| )h-8( |$)/);
   });
 });

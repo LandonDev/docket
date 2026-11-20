@@ -268,8 +268,14 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
  * there (404, 410) says so; a read that failed (the service, the connection)
  * is not the same thing, and offers Retry.
  */
-export async function mount(root: HTMLElement, pathname: string, fetcher: Fetch): Promise<void> {
+export async function mount(root: HTMLElement, pathname: string, fetcher: Fetch, fromRetry = false): Promise<void> {
   const base = pathname.replace(/\/+$/, '')
+  // A read Retry started, with the focus on Retry: what replaces the button takes the focus at its heading, unless he moved
+  // it elsewhere meanwhile, so the next Tab starts in the form.
+  const mayMove = (): boolean => {
+    const at = document.activeElement
+    return fromRetry && (!at || at === document.body || root.contains(at))
+  }
   // One read at a time: Retry is busy while it reads, as Send is while it sends; a read that fails draws the message again, Retry with it.
   const retry = {
     label: 'Retry',
@@ -277,16 +283,24 @@ export async function mount(root: HTMLElement, pathname: string, fetcher: Fetch)
       if (button.disabled) return
       button.disabled = true
       button.setAttribute('aria-busy', 'true')
+      const had = document.activeElement === button
       button.textContent = 'Retrying…'
-      void mount(root, pathname, fetcher)
+      void mount(root, pathname, fetcher, had)
     },
   }
   try {
     const r = await fetcher(`${base}/form`)
     if (r.status === 404 || r.status === 410) return message(root, 'There is no form here', 'The link may be wrong, or the form was taken down.')
-    if (!r.ok) return message(root, 'The form did not load', 'Something went wrong on our side.', retry)
-    renderForm(root, (await r.json()) as PublicForm, base, fetcher)
+    if (!r.ok) return message(root, 'The form did not load', 'Something went wrong on our side.', retry, fromRetry ? mayMove() : undefined)
+    const f = (await r.json()) as PublicForm
+    const move = mayMove()
+    renderForm(root, f, base, fetcher)
+    const title = root.querySelector<HTMLElement>('h1')
+    if (move && title) {
+      title.tabIndex = -1
+      title.focus()
+    }
   } catch {
-    message(root, 'The form did not load', 'Check your connection.', retry)
+    message(root, 'The form did not load', 'Check your connection.', retry, fromRetry ? mayMove() : undefined)
   }
 }

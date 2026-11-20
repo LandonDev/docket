@@ -149,8 +149,11 @@ project's bar or in its settings, or asked for by an agent with
   revoke ("This link no longer opens anything"). The description is its
   document's text (`Session.child`, read again with each of the project's
   reads), with the stored lead until it comes. A document or sheet opens
-  in place (`ChildPage` in GuestApp.tsx) with the way back in the line: a
-  document as text (`DocText`), read again every 15 seconds; one the
+  in place (`ChildPage` in GuestApp.tsx) with the way back first in the
+  line, and Escape goes back too. A task's page puts its way back in the
+  same first place (the line's `data-project-lead`, before the glyph), with
+  its key where the screens' crumb was. Faces wear the image outline, as
+  the desktop's do. A document is shown as text (`DocText`), read again every 15 seconds; one the
   project no longer lists is closed at the page's next read, and a link
   that ended shows the end.
 - **The owner's hosted editor** has no project: `work.guests.ticket`

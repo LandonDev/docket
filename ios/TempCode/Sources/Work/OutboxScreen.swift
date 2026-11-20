@@ -37,8 +37,9 @@ struct OutboxHomeRow: View {
                     .textStep(.title, weight: .medium)
                 Spacer(minLength: 8)
                 if count > 0 {
+                    // The stamp step in `label`: the hierarchical tertiary measured 1.7:1 on white (IOS-DESIGN "Work on the phone").
                     Text(count, format: .number)
-                        .textStep(.stamp)
+                        .textStep(.stamp, tint: Color(.label))
                         .contentTransition(.numericText())
                 }
             }
@@ -201,8 +202,9 @@ private struct OutboxRow: View {
                     }
                 }
                 Spacer(minLength: 8)
+                // The stamp step in `label`, as the Outbox's other stamps: tertiary measured 1.7:1 on white.
                 Text(HeldTime.of(item.createdAt))
-                    .textStep(.stamp)
+                    .textStep(.stamp, tint: Color(.label))
             }
             .padding(.vertical, Layout.rowVertical)
             .frame(minHeight: Layout.rowHeight + 8)

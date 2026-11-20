@@ -39,6 +39,8 @@ const host = vi.hoisted(() => ({
   failBranches: false,
   failRestore: false,
   failVersions: false,
+  /** while set, the suggestions' read waits on it */
+  branchesGate: null as Promise<void> | null,
   toasts: [] as string[],
 }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -62,6 +64,7 @@ vi.mock("../../lib/connection", async (original) => {
         return { diff, names };
       }
       if (method === "work.history.branches") {
+        if (host.branchesGate) await host.branchesGate;
         if (host.failBranches) throw new Error("The box did not answer");
         return { branches: host.branches, names };
       }
@@ -101,6 +104,7 @@ beforeEach(async () => {
   host.branches = [];
   host.restore = { mode: "direct" };
   host.failBranches = false;
+  host.branchesGate = null;
   host.failRestore = false;
   host.failVersions = false;
   host.toasts = [];
@@ -209,6 +213,26 @@ describe("the history canvas", () => {
     expect(screen.getByText("Wrote the morning")).toBeTruthy();
     host.failBranches = false;
     fireEvent.click(within(container.querySelector("[data-canvas-state]") as HTMLElement).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(container.querySelector("[data-canvas-state]")).toBeNull());
+  });
+
+  it("keeps Retry busy until the read it started settles", async () => {
+    host.failBranches = true;
+    const { container } = await seat();
+    await waitFor(() => expect(container.querySelector("[data-canvas-state='failed']")?.textContent).toContain("Suggestions did not load"));
+    host.failBranches = false;
+    let answer!: () => void;
+    host.branchesGate = new Promise((done) => (answer = done));
+    const retry = within(container.querySelector("[data-canvas-state]") as HTMLElement).getByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+    // The host has not answered: the button spins and waits.
+    await waitFor(() => expect(retry.querySelector("[data-slot=busy-label]")?.hasAttribute("data-busy")).toBe(true));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(retry.querySelector("[data-slot=busy-label]")?.hasAttribute("data-busy")).toBe(true);
+    expect(retry.hasAttribute("disabled")).toBe(true);
+    // It answers: the line goes.
+    host.branchesGate = null;
+    act(() => answer());
     await waitFor(() => expect(container.querySelector("[data-canvas-state]")).toBeNull());
   });
 

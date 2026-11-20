@@ -231,7 +231,7 @@ function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<
   // A failed open is said once, on the state line with Retry; the body under it stays empty rather than pulse.
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>
-      <Scroller scrollTop={state?.scrollTop ?? 0} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
+      <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
         {(width) =>
           opened === null ? (
             <ItemBones title={<Title text={item.title} />} />
@@ -244,15 +244,46 @@ function DocBody({ item, source, env, state, setState, shell }: CanvasBodyProps<
   );
 }
 
-/** The scrolling surface, its place kept in the item's state; the text column centred in it. */
-export function Scroller({ scrollTop, onScroll, children }: { scrollTop: number; onScroll(top: number): void; children(width: number): ReactNode }) {
+/**
+ * The scrolling surface, its place kept in the item's state; the text column centred in it. The kept place comes back
+ * once what it scrolls is open (`ready`) and has laid out tall enough to hold it: never over the bones, and never clamped
+ * to a shorter page and saved so. A scroll of his own before then ends the wait.
+ */
+export function Scroller({
+  scrollTop,
+  ready = true,
+  onScroll,
+  children,
+}: {
+  scrollTop: number;
+  ready?: boolean;
+  onScroll(top: number): void;
+  children(width: number): ReactNode;
+}) {
   const [ref, width] = useWidth();
-  const restored = useRef(false);
+  const restored = useRef(scrollTop <= 0);
+  const restoring = useRef(false);
   useLayoutEffect(() => {
-    if (restored.current || !ref.current) return;
-    restored.current = true;
-    ref.current.scrollTop = scrollTop;
-  });
+    const el = ref.current;
+    if (restored.current || !el || !ready) return;
+    const restore = (): boolean => {
+      if (restored.current) return true;
+      if (el.scrollHeight - el.clientHeight < scrollTop) return false;
+      restored.current = true;
+      restoring.current = true;
+      el.scrollTop = scrollTop;
+      return true;
+    };
+    if (restore() || typeof ResizeObserver === "undefined") return;
+    // The editor lays out after it mounts: wait for what it draws to grow tall enough.
+    const observer = new ResizeObserver(() => {
+      if (restore()) observer.disconnect();
+    });
+    for (const child of el.children) observer.observe(child);
+    return () => observer.disconnect();
+    // The kept place is read once; later saves of it are his own scrolling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   return (
     <div
@@ -261,6 +292,9 @@ export function Scroller({ scrollTop, onScroll, children }: { scrollTop: number;
       className="h-full overflow-x-hidden overflow-y-auto px-6 pt-8 pb-24"
       onScroll={(event) => {
         const top = event.currentTarget.scrollTop;
+        // A scroll of his own while the kept place waits for room: his place wins.
+        if (!restoring.current) restored.current = true;
+        restoring.current = false;
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => onScroll(top), 250);
       }}

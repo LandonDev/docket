@@ -594,7 +594,7 @@ describe('heldTargets, screenMark and restage', () => {
   })
 
   it('marks the app and every field\'s name and value, and nothing else', () => {
-    expect(screenMark(screen(COMPOSE, MAIL))).toBe(JSON.stringify(['com.apple.mail', ['input|To:|=dana@example.com', 'text area|Body|=Hi Dana']]))
+    expect(screenMark(screen(COMPOSE, MAIL))).toBe(JSON.stringify(['com.apple.mail', [['input', 'To:', '=dana@example.com'], ['text area', 'Body', '=Hi Dana']]]))
     expect(screenMark(screen(COMPOSE.replace('button "Attach"', 'button "Attach file"'), MAIL))).toBe(screenMark(screen(COMPOSE, MAIL)))
   })
 
@@ -1310,5 +1310,27 @@ describe('screenMark and cutFields: what pass 19 closed', () => {
     expect(spelled.length).toBeLessThanOrEqual(160)
     expect(screenMark(sheet(spelled))).not.toBe(screenMark(sheet(long)))
     expect(screenMark(sheet(spelled, spelled))).not.toBe(screenMark(sheet(long, long)))
+  })
+})
+
+describe('screenMark: what pass 20 closed', () => {
+  const order = (fields: string) => screen(`app "Shop" · window "Checkout" · 800×600\n[1] window "Checkout"\n${fields}\n  [9] button "Place order"`, { bundleId: 'com.example.shop', name: 'Shop' })
+
+  it('binds a numeric field: a quantity changed while Place order is held is a change', () => {
+    const one = order('  [2] stepper "Quantity" = "1"\n  [3] slider "Tip" = "10"')
+    expect(screenMark(order('  [2] stepper "Quantity" = "100000"\n  [3] slider "Tip" = "10"'))).not.toBe(screenMark(one))
+    expect(screenMark(order('  [2] stepper "Quantity" = "1"\n  [3] slider "Tip" = "90"'))).not.toBe(screenMark(one))
+    expect(screenMark(order('  [2] stepper "Quantity" = "1"\n  [3] slider "Tip" = "10"'))).toBe(screenMark(one))
+    // a long one is read again whole, as a text field is
+    expect(cutFields(order(`  [2] stepper "Quantity" = ${JSON.stringify(cutValue('9'.repeat(200)))}`))).toEqual([2])
+  })
+
+  it('keeps each field apart: a separator inside a name or a value never moves text from one part to the next', () => {
+    const a = order('  [2] input "Message" = "hello|=PAY 100000"')
+    const b = order('  [2] input "Message|=hello" = "PAY 100000"')
+    expect(screenMark(a)).not.toBe(screenMark(b))
+    const c = order('  [2] pop up "Plan" = "Basic|Premium"\n  [3] checkbox "Insurance" unchecked')
+    const d = order('  [2] pop up "Plan|=Basic" = "Premium"\n  [3] checkbox "Insurance" unchecked')
+    expect(screenMark(c)).not.toBe(screenMark(d))
   })
 })

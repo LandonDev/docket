@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { OfficeAppState } from '@shared/contract-work-office'
-import { OfficeError, type EventAnswer, type EventOut, type MailFull, type MailOut, type OfficeCarrier } from '../carrier'
+import { OfficeError, recipientsOff, type EventAnswer, type EventOut, type MailFull, type MailOut, type OfficeCarrier } from '../carrier'
 import * as ews from './ews'
 import type { CallOptions, OwaTransport } from './page'
 
@@ -150,7 +150,31 @@ export class OwaCarrier implements OfficeCarrier {
 
   /** Only from a held act's execute, after his press. Outlook answers no id for a sent mail: it is found in Sent. */
   async sendMail(m: MailOut): Promise<{ id: string | null }> {
-    await this.send(ews.sendMail(m, 'SendAndSaveCopy'), ews.messageOf, m.account)
+    if (!m.replyTo && !m.forward) {
+      await this.send(ews.sendMail(m, 'SendAndSaveCopy'), ews.messageOf, m.account)
+      return { id: null }
+    }
+    // A reply or forward (the hold review's 21.1): Exchange addresses a ReplyToItem itself, to the mail's Reply-To when
+    // it has one, and adds the recipients named. So it is made as a draft, read back, and sent only when its To, Cc and
+    // Bcc are exactly the held ones; otherwise the draft is deleted and nothing goes.
+    const what = m.replyTo ? 'reply' : 'forward'
+    await this.liveAccount(m.account)
+    const again: CallOptions = { afterReload: async () => void (await this.liveAccount(m.account)) }
+    const id = await this.call(ews.sendMail(m, 'SaveOnly'), ews.createdId, again)
+    if (!id) throw new OfficeError(`Outlook on the web made the ${what} but gave no id, so nothing was sent.`, 'refused')
+    let built: Awaited<ReturnType<typeof ews.recipientsOf>>
+    try {
+      built = await this.call(ews.getRecipients(id), ews.recipientsOf, again)
+    } catch (err) {
+      await this.call(ews.deleteItem(id), ews.messageOf).catch(() => undefined)
+      throw err
+    }
+    const off = recipientsOff(what, m, built)
+    if (off) {
+      await this.call(ews.deleteItem(id), ews.messageOf).catch(() => undefined)
+      throw new OfficeError(off, 'refused')
+    }
+    await this.call(ews.sendItem(id, built.changeKey), ews.messageOf, again)
     return { id: null }
   }
 

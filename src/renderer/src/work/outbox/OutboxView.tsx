@@ -198,8 +198,12 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   // the ticks kept, and "Review N" opens the ticked rows again.
   const narrowDetail = opened;
 
-  // After a press the item leaves Waiting: the next one down takes the selection.
+  // After a press the item leaves Waiting: the next one down takes the selection, but only while that item is still
+  // what he has on screen in Waiting. A reply that lands after he picked another item, or went to Sent, moves nothing.
+  const onScreen = useRef({ tab, selected });
+  onScreen.current = { tab, selected };
   const afterPress = (item: HostItem) => {
+    if (onScreen.current.tab !== "waiting" || onScreen.current.selected !== keyOf(item)) return;
     const at = outbox.waiting.findIndex((x) => keyOf(x) === keyOf(item));
     const next = outbox.waiting[at + 1] ?? outbox.waiting[at - 1];
     setSelected(next ? keyOf(next) : null);
@@ -214,14 +218,11 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     if (failed.length) toastError(`${failed.length} could not go: ${failed[0]!.error}`);
   };
 
-  // An empty list is clear only when every host answered: a host that failed is named above with its Retry, and its
-  // items are not known, so the words never say "Nothing held" beside a failed read.
-  const downNames = outbox.errors.map((e) => hostName(e.environmentId));
+  // An empty list is clear only when every host answered: a host that failed is named above with its Retry (the one
+  // place that names it), and its items are not known, so the words never say "Nothing held" beside a failed read.
+  const down = outbox.errors.length;
   const emptyWords = !outbox.complete ? (
-    <EmptyState
-      title="Not known yet"
-      line={`${downNames.length ? `${downNames.length === 1 ? downNames[0] : `${downNames.length} hosts`} did not answer, so` : "Until every host answers,"} what ${tab === "waiting" ? "waits" : "was sent"} there is not shown.`}
-    />
+    <EmptyState title="Not known yet" line={down === 1 ? "Shown once it answers." : down > 1 ? "Shown once they answer." : "Shown once every host answers."} />
   ) : tab === "waiting" ? (
     <EmptyState title="Nothing held" line="What a thread would send, post or accept waits here for your press." />
   ) : (
@@ -739,10 +740,15 @@ function TickedDetail({ items, onClear, onSend }: { items: HostItem[]; onClear: 
             {items.map((item) => {
               const { act, about } = rowWords(item);
               return (
-                <li key={keyOf(item)} className="flex h-8 min-w-0 items-center gap-2 border-t border-border text-[13px] first:border-t-0">
-                  <KindGlyph kind={item.kind} />
-                  <span className="shrink-0">{act}</span>
-                  {about ? <span className="min-w-0 truncate text-muted-foreground">{about}</span> : null}
+                // Narrow, the act and what it is about take a line each, so a long recipient never pushes the subject off.
+                <li key={keyOf(item)} data-ticked-row className="flex min-h-8 min-w-0 items-center gap-2 border-t border-border text-[13px] leading-5 first:border-t-0 @max-[40rem]/outbox:items-start @max-[40rem]/outbox:py-1.5">
+                  <span className="flex h-5 shrink-0 items-center">
+                    <KindGlyph kind={item.kind} />
+                  </span>
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2 @max-[40rem]/outbox:flex-col @max-[40rem]/outbox:items-stretch @max-[40rem]/outbox:gap-0">
+                    <span data-ticked-act className="shrink-0 @max-[40rem]/outbox:shrink @max-[40rem]/outbox:break-words">{act}</span>
+                    {about ? <span data-ticked-about className="min-w-0 truncate text-muted-foreground">{about}</span> : null}
+                  </span>
                 </li>
               );
             })}

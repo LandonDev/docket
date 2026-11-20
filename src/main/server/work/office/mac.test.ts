@@ -83,10 +83,23 @@ describe('the Excel scripts', () => {
   })
 })
 
-function outlook(log: string[]) {
-  const recipients = () => Object.assign([] as unknown[], { push: (r: { emailAddress: { address: string } }) => log.push(`to ${r.emailAddress.address}`) })
-  const message = (id: number) => {
-    const m: Record<string, unknown> = { id: () => id, toRecipients: recipients(), ccRecipients: recipients(), bccRecipients: recipients() }
+/**
+ * Outlook's mail objects as JXA hands them: a recipient list is called to read and pushed to add. A reply comes back
+ * addressed as Outlook addresses it, to the mail's Reply-To when it has one; `o.delete` takes a recipient off, unless
+ * `sticky` (an Outlook that will not let one go), or throws a made message away.
+ */
+function outlook(log: string[], o: { replyTo?: string; sticky?: boolean } = {}) {
+  type R = { emailAddress: () => { address: string } }
+  const lists: R[][] = []
+  const recipients = (kind: string, start: string[] = []) => {
+    const list: R[] = start.map((x) => ({ emailAddress: () => ({ address: x }) }))
+    lists.push(list)
+    return Object.assign(() => list.slice(), {
+      push: (r: { emailAddress: { address: string } }) => (log.push(`${kind} ${r.emailAddress.address}`), list.push({ emailAddress: () => r.emailAddress }))
+    })
+  }
+  const message = (id: number, to: string[] = []) => {
+    const m: Record<string, unknown> = { id: () => id, toRecipients: recipients('to', to), ccRecipients: recipients('cc'), bccRecipients: recipients('bcc') }
     let content = '<p>quoted</p>'
     Object.defineProperty(m, 'content', { get: () => () => content, set: (x: string) => (log.push(`content ${x}`), (content = x)) })
     return m
@@ -102,7 +115,19 @@ function outlook(log: string[]) {
     ToRecipient: (x: unknown) => x,
     CcRecipient: (x: unknown) => x,
     BccRecipient: (x: unknown) => x,
-    replyTo: (_m: unknown, p: { openingWindow: boolean }) => (log.push(`reply window=${p.openingWindow}`), message(8)),
+    replyTo: (_m: unknown, p: { openingWindow: boolean }) => (log.push(`reply window=${p.openingWindow}`), message(8, [o.replyTo ?? 'dana@example.com'])),
+    forward: (_m: unknown, p: { to: string }) => (log.push(`forward to=${p.to}`), message(9, p.to.split(',').filter(Boolean))),
+    delete: (x: R | Record<string, unknown>) => {
+      for (const list of lists) {
+        const at = list.indexOf(x as R)
+        if (at >= 0) {
+          if (o.sticky) return
+          log.push(`off ${(x as R).emailAddress().address}`)
+          return void list.splice(at, 1)
+        }
+      }
+      log.push('THROWN AWAY')
+    },
     send: () => log.push('SENT')
   }
 }
@@ -117,7 +142,43 @@ describe('the Outlook mail script', () => {
   it('sends only when told to, and a reply keeps Outlook\'s quote under the new text, with no window', () => {
     const log: string[] = []
     runScript('mail', { m: { ...m, replyTo: '42' }, send: true }, { 'Microsoft Outlook': outlook(log) })
-    expect(log).toEqual(['reply window=false', 'content <b>hi</b><p>quoted</p>', 'SENT'])
+    expect(log).toEqual(['reply window=false', 'content <b>hi</b><p>quoted</p>', 'off dana@example.com', 'to dana@example.com', 'SENT'])
+  })
+
+  describe('a reply or forward goes only to the recipients held (the hold review\'s 21.1)', () => {
+    it("sends a reply to the held sender, never to the mail's Reply-To that Outlook addressed it to", () => {
+      const log: string[] = []
+      expect(runScript('mail', { m: { ...m, cc: ['lee@example.com'], replyTo: '42' }, send: true }, { 'Microsoft Outlook': outlook(log, { replyTo: 'b@elsewhere.com' }) })).toBe('8')
+      expect(log).toEqual(['reply window=false', 'content <b>hi</b><p>quoted</p>', 'off b@elsewhere.com', 'to dana@example.com', 'cc lee@example.com', 'SENT'])
+    })
+    it('refuses, throwing the reply away unsent, when Outlook keeps a recipient it made', () => {
+      const log: string[] = []
+      expect(runScript('mail', { m: { ...m, replyTo: '42' }, send: true }, { 'Microsoft Outlook': outlook(log, { replyTo: 'b@elsewhere.com', sticky: true }) })).toEqual({
+        refused: 'Outlook made this reply for To b@elsewhere.com, dana@example.com, not To dana@example.com as held, so nothing was sent.'
+      })
+      expect(log).not.toContain('SENT')
+      expect(log.at(-1)).toBe('THROWN AWAY')
+    })
+    it('checks a forward too: its To, Cc and Bcc as held go, any other is refused', () => {
+      const log: string[] = []
+      runScript('mail', { m: { ...m, to: ['lee@example.com'], bcc: ['me@example.com'], forward: '42' }, send: true }, { 'Microsoft Outlook': outlook(log) })
+      expect(log.at(-1)).toBe('SENT')
+      // A forward Outlook addressed to someone more (as the stand-in does with a second address in its `to`) is not sent.
+      const bad: string[] = []
+      const apps = { 'Microsoft Outlook': { ...outlook(bad), forward: () => (bad.push('forward'), outlook(bad).replyTo({}, { openingWindow: false })) } }
+      expect(runScript('mail', { m: { ...m, to: ['lee@example.com'], forward: '42' }, send: true }, apps)).toMatchObject({ refused: expect.stringContaining('Outlook made this forward for To dana@example.com') })
+      expect(bad).not.toContain('SENT')
+    })
+    it("leaves a reply draft as Outlook addressed it: he sends a draft himself, from Outlook's own window", () => {
+      const log: string[] = []
+      expect(runScript('mail', { m: { ...m, to: [], replyTo: '42' }, send: false }, { 'Microsoft Outlook': outlook(log, { replyTo: 'b@elsewhere.com' }) })).toBe('8')
+      expect(log).toEqual(['reply window=false', 'content <b>hi</b><p>quoted</p>'])
+    })
+    it('the carrier throws the refusal as refused, so the press fails with nothing sent', async () => {
+      const osa: Osa = async () => JSON.stringify({ refused: 'Outlook made this reply for To b@elsewhere.com, not To dana@example.com as held, so nothing was sent.' })
+      const c = macCarrier({ osa, installed: () => true })
+      await expect(c.sendMail({ ...m, replyTo: '42' })).rejects.toMatchObject({ code: 'refused', message: expect.stringContaining('so nothing was sent') })
+    })
   })
 })
 

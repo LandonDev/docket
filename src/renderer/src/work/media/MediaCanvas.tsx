@@ -98,6 +98,10 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   // A Play the element refused, kept for the version it was refused on: another version starts clear.
   const [refused, setRefused] = useState<{ id: string; reason: string } | null>(null);
   const playError = refused && refused.id === shown?.id ? refused.reason : null;
+  // A picture whose bytes did not load or could not be read, kept for the version it failed on; Retry loads it afresh.
+  const [unread, setUnread] = useState<string | null>(null);
+  const pictureFailed = unread !== null && unread === shown?.id;
+  const [attempt, setAttempt] = useState(0);
 
   const notes = useMemo(
     () => (view?.notes ?? []).filter((n) => n.anchor.versionId === shown?.id && !n.parentId).sort((a, b) => (a.anchor.frame ?? 0) - (b.anchor.frame ?? 0) || a.createdAt - b.createdAt),
@@ -138,17 +142,25 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
         ? { tone: "failed", word: `${failed.name} could not be shown`, detail: unshowable(failed), action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
         : error
           ? { tone: "failed", word: "Couldn't open this file", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
-          : playError
+          : pictureFailed
             ? {
                 tone: "failed",
-                word: "Couldn't play this video",
-                detail: playError,
-                // A fresh view first, in case the address it plays from has lapsed; then the element loads and plays again.
-                action: { label: "Retry", run: () => loadMedia(env, item.id).then(() => player.current?.play()) },
+                word: "Couldn't show this image",
+                detail: "Its bytes did not load or could not be read",
+                // A fresh view first, in case the address it loads from has lapsed; then the picture loads again.
+                action: { label: "Retry", run: () => loadMedia(env, item.id).then(() => setAttempt((n) => n + 1)) },
               }
-            : null,
+            : playError
+              ? {
+                  tone: "failed",
+                  word: "Couldn't play this video",
+                  detail: playError,
+                  // A fresh view first, in case the address it plays from has lapsed; then the element loads and plays again.
+                  action: { label: "Retry", run: () => loadMedia(env, item.id).then(() => player.current?.play()) },
+                }
+              : null,
     );
-  }, [shell, shown, other, view?.versions, error, playError, env, item.id]);
+  }, [shell, shown, other, view?.versions, error, pictureFailed, playError, env, item.id]);
   useEffect(
     () => () => {
       shell.mode(null);
@@ -200,6 +212,8 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
             selecting={!!region}
             onRegion={(r, rect) => selectRegion(r, rect)}
             onScale={() => {}}
+            attempt={attempt}
+            onDrawn={(ok) => setUnread((was) => (ok ? (was === shown.id ? null : was) : shown.id))}
           />
         </div>
         {notes.length ? (

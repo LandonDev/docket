@@ -39,3 +39,17 @@ describe('a field whose value is its name', () => {
     expect(line(named('  Pay $100  ', 'Message')).value).toBe('  Pay $100  ')
   })
 })
+
+/** A numeric field's value goes as a text field's does (hold pass 20): printed even when it repeats its name. */
+describe('a numeric field', () => {
+  it('prints a stepper or slider value that repeats its name', () => {
+    for (const [role, word] of [['spinbutton', 'stepper'], ['slider', 'slider']] as const) {
+      const nodes: AxNode[] = [
+        { nodeId: '1', role: { value: 'RootWebArea' }, name: { value: 'Shop' }, childIds: ['2'], backendDOMNodeId: 1 },
+        { nodeId: '2', role: { value: role }, name: { value: '100000' }, value: { value: '100000' }, backendDOMNodeId: 2 }
+      ]
+      const line = readTree(nodes, new IndexBook(), { page: 'p1', passwords: new Set() }).kept.find((k) => k.line.role === word)!.line
+      expect(line.value).toBe('100000')
+    }
+  })
+})

@@ -36,7 +36,7 @@ class XBook { public string Key, Name; public List<XSheet> Sheets = new List<XSh
 class WDoc { public string Key, Name, Text; public bool Track; public List<string> Tracked = new List<string>(); }
 class PDeck { public string Key, Name; public List<List<string>> Slides = new List<List<string>>(); }
 class OMail {
-  public string Id, Account, From = "", Subject = "", Html = "", Text = "", Folder = "inbox"; public DateTime At; public bool Read = true; public int Class = 43;
+  public string Id, Account, From = "", ReplyTo, Subject = "", Html = "", Text = "", Folder = "inbox"; public DateTime At; public bool Read = true; public int Class = 43;
   public List<object[]> Recipients = new List<object[]>(); public object SendUsing;
 }
 class OEvent { public string Id, Subject = "", Location = "", Organizer = "", Global = "", Body = ""; public DateTime Start, End; public int Response, Meeting; public List<object[]> Recipients = new List<object[]>(); }
@@ -55,6 +55,7 @@ public class RecordedCom : ICom {
   readonly List<string> accounts = new List<string>();
   readonly List<OMail> mail = new List<OMail>();
   readonly List<OEvent> events = new List<OEvent>();
+  readonly List<object> thrownAway = new List<object>();
   readonly List<object> sent = new List<object>(), answers = new List<object>(), started = new List<object>(), calls = new List<object>();
   int nextId = 1000;
   Delegate sheetChange;
@@ -363,7 +364,8 @@ public class RecordedCom : ICom {
       .Prop("Parent", () => FolderObj(m.Folder, m.Account))
       .Put("SendUsingAccount", v => m.SendUsing = v)
       .Fn("Reply", a => {
-        var r = Draft(m.Account); r.Subject = "RE: " + m.Subject; r.Recipients.Add(new object[] { m.From, 1 });
+        // As Outlook does: a reply is addressed to the mail's Reply-To when it has one, else to its sender.
+        var r = Draft(m.Account); r.Subject = "RE: " + m.Subject; r.Recipients.Add(new object[] { m.ReplyTo ?? m.From, 1 });
         r.Html = "<html><head></head><body><div class=quote>From: " + m.From + "<br>" + m.Text + "</div></body></html>"; return MailObj(r);
       })
       .Fn("Forward", a => {
@@ -371,6 +373,7 @@ public class RecordedCom : ICom {
         r.Html = "<html><head></head><body><div class=quote>From: " + m.From + "<br>" + m.Text + "</div></body></html>"; return MailObj(r);
       })
       .Fn("Save", a => { if (!mail.Contains(m)) { m.Folder = "drafts"; mail.Add(m); } return null; })
+      .Fn("Delete", a => { mail.Remove(m); thrownAway.Add(m.Subject); return null; })
       .Fn("Send", a => {
         var acc = m.SendUsing == null ? accounts.FirstOrDefault() : (string)Raw(m.SendUsing, "SmtpAddress");
         sent.Add(Office.Obj("account", acc, "to", Of(m.Recipients, 1, ";"), "cc", Of(m.Recipients, 2, ";"), "bcc", Of(m.Recipients, 3, ";"), "subject", m.Subject, "html", m.Html));
@@ -469,7 +472,7 @@ public class RecordedCom : ICom {
     busy = 0; failMember = null;
     // Seeded books are opened afresh: new objects, with no handlers of the old ones.
     bookObjs.Clear(); remote.Clear();
-    books.Clear(); docs.Clear(); decks.Clear(); accounts.Clear(); mail.Clear(); events.Clear(); sent.Clear(); answers.Clear(); started.Clear(); calls.Clear();
+    books.Clear(); docs.Clear(); decks.Clear(); accounts.Clear(); mail.Clear(); events.Clear(); sent.Clear(); thrownAway.Clear(); answers.Clear(); started.Clear(); calls.Clear();
     foreach (Dictionary<string, object> b in List(s, "books")) {
       var book = new XBook { Key = (string)b["key"], Name = Leaf((string)b["key"]) };
       foreach (var sh in (Dictionary<string, object>)b["sheets"]) {
@@ -493,7 +496,7 @@ public class RecordedCom : ICom {
     foreach (string a in List(s, "accounts")) accounts.Add(a);
     foreach (Dictionary<string, object> m in List(s, "mail")) {
       var x = new OMail { Id = (string)m["id"], Account = (string)m["account"], From = (string)m["from"], Subject = (string)m["subject"], Text = m.ContainsKey("text") ? (string)m["text"] : "",
-        At = DateTime.Parse((string)m["at"], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).ToLocalTime(), Read = !m.ContainsKey("read") || Convert.ToBoolean(m["read"]), Folder = m.ContainsKey("folder") ? (string)m["folder"] : "inbox" };
+        At = DateTime.Parse((string)m["at"], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).ToLocalTime(), Read = !m.ContainsKey("read") || Convert.ToBoolean(m["read"]), Folder = m.ContainsKey("folder") ? (string)m["folder"] : "inbox", ReplyTo = m.ContainsKey("replyTo") ? (string)m["replyTo"] : null };
       foreach (string t in List(m, "to")) x.Recipients.Add(new object[] { t, 1 });
       foreach (string t in List(m, "cc")) x.Recipients.Add(new object[] { t, 2 });
       mail.Add(x);
@@ -546,7 +549,7 @@ public class RecordedCom : ICom {
         return null;
       }
       case "_state":
-        return Office.Obj("sent", sent, "answers", answers, "started", started, "calls", calls, "markup", markupNow,
+        return Office.Obj("sent", sent, "thrownAway", thrownAway, "answers", answers, "started", started, "calls", calls, "markup", markupNow,
           "drafts", mail.Where(m => m.Folder == "drafts").Select(m => (object)Office.Obj("id", m.Id, "subject", m.Subject, "html", m.Html, "to", Of(m.Recipients, 1, ";"))).ToList(),
           "docs", docs.Select(d => (object)Office.Obj("key", d.Key, "text", d.Text, "tracked", d.Tracked)).ToList(),
           "decks", decks.Select(p => (object)Office.Obj("key", p.Key, "slides", p.Slides)).ToList(),

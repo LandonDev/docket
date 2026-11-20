@@ -43,6 +43,7 @@ interface State {
   answers: { id: string; response: number; sent: boolean; body: string }[]
   started: Record<string, unknown>[]
   drafts: { id: string; subject: string; html: string; to: string }[]
+  thrownAway: string[]
   docs: { key: string; text: string; tracked: string[] }[]
   decks: { key: string; slides: string[][] }[]
   events: { id: string; subject: string; meeting: number; attendees: string }[]
@@ -293,10 +294,11 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
 
     it('every verb that sends, replies, forwards, invites or answers returns a held act, and Outlook sends nothing', async () => {
       const SENDS: [string, unknown][] = [
-        ['office_mail_send', { to: ['dana@example.com'], subject: 'Plan', html: '<p><b>Here</b> it is</p>' }],
+        // Outlook here has two accounts: a new mail or an invitation names the one it goes from (the hold review's 16.8).
+        ['office_mail_send', { account: 'owner@purdue.edu', to: ['dana@example.com'], subject: 'Plan', html: '<p><b>Here</b> it is</p>' }],
         ['office_mail_send', { to: [], subject: 'Re: Budget', html: '<p>Yes</p>', replyTo: '42' }],
         ['office_mail_send', { to: ['lee@example.com'], subject: 'Fw: Budget', html: '<p>FYI</p>', forward: '42' }],
-        ['office_calendar_create', { subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] }],
+        ['office_calendar_create', { account: 'owner@purdue.edu', subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] }],
         ['office_calendar_answer', { id: 'ev-9', subject: 'Standup', answer: 'accept' }]
       ]
       for (const [name, args] of SENDS) expect(text(await run(name, args))).toMatch(/^Held for the owner/)
@@ -317,6 +319,41 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect(sent[0]).toEqual({ account: 'owner@example.com', to: 'dana@example.com', cc: 'lee@example.com', bcc: '', subject: 'Plan', html: '<table border="1"><tr><td><b>1</b></td></tr></table>' })
       expect(sent[1]).toMatchObject({ account: 'owner@purdue.edu', to: 'dana@example.com', subject: 'RE: Budget' })
       expect(sent[1].html).toMatch(/<body><p><i>Yes<\/i><\/p><div class=quote>From: dana@example.com/)
+    })
+
+    describe("a reply or forward goes only to the recipients held (the hold review's 21.1)", () => {
+      // Mail from kim whose Reply-To is a list: Outlook's own Reply addresses the list.
+      const SIGNUPS = { id: '44', account: 'owner@purdue.edu', from: 'kim@example.com', replyTo: 'list@elsewhere.com', subject: 'Signups', at: '2026-11-18T13:00:00.000Z', to: ['owner@purdue.edu'], text: 'Reply to the list' }
+      const mail = () => officeActs({ carrier: () => carrier }).find((a) => a.kind === 'office.mail.send')!
+
+      it("holds a reply for the sender, and sends it there, never to the mail's Reply-To", async () => {
+        await seed({ mail: [...SEED.mail, SIGNUPS] })
+        expect(text(await run('office_mail_send', { to: [], subject: 'Re: Signups', html: '<p>In</p>', replyTo: '44' }))).toMatch(/^Held for the owner/)
+        expect(held[0].payload).toMatchObject({ to: ['kim@example.com'] })
+        await mail().execute(OfficeMailSchema.parse(held[0].payload), actCtx)
+        const { sent } = await state()
+        expect(sent).toHaveLength(1)
+        expect(sent[0]).toMatchObject({ to: 'kim@example.com', cc: '', bcc: '', subject: 'RE: Signups' })
+      })
+
+      it('refuses, throwing the reply away unsent, when Outlook will not let go of the recipient it made', async () => {
+        await seed({ mail: [...SEED.mail, SIGNUPS] })
+        await carrier.call('_fail', { member: 'Remove', hresult: '0x80020009' })
+        const reply = OfficeMailSchema.parse({ host: 'env_pc', to: ['kim@example.com'], subject: 'Re: Signups', html: '<p>In</p>', replyTo: '44' })
+        await expect(mail().execute(reply, actCtx)).rejects.toMatchObject({
+          code: 'refused',
+          message: 'Outlook made this reply for To kim@example.com, list@elsewhere.com, not To kim@example.com as held, so nothing was sent.'
+        })
+        const s = await state()
+        expect(s.sent).toEqual([])
+        expect(s.thrownAway).toEqual(['RE: Signups'])
+      })
+
+      it('sends a forward with its To, Cc and Bcc exactly as held', async () => {
+        const fwd = OfficeMailSchema.parse({ host: 'env_pc', to: ['lee@example.com'], cc: ['kim@example.com'], bcc: ['owner@purdue.edu'], subject: 'Fw: Budget', html: '<p>FYI</p>', forward: '42' })
+        await mail().execute(fwd, actCtx)
+        expect((await state()).sent[0]).toMatchObject({ to: 'lee@example.com', cc: 'kim@example.com', bcc: 'owner@purdue.edu' })
+      })
     })
 
     it('refuses, with nothing sent, a mail to someone Outlook does not know', async () => {
@@ -361,7 +398,7 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       const cal = officeActs({ carrier: () => carrier }).find((a) => a.kind === 'office.calendar.op')!
       const start = new Date(Math.floor(Date.now() / 36e5) * 36e5 + 2 * 36e5).toISOString()
       const end = new Date(Date.parse(start) + 18e5).toISOString()
-      await cal.execute(OfficeCalendarSchema.parse({ host: 'env_pc', op: 'create', event: { subject: 'Review', start, end, attendees: ['dana@example.com'] } }), actCtx)
+      await cal.execute(OfficeCalendarSchema.parse({ host: 'env_pc', op: 'create', event: { account: 'owner@purdue.edu', subject: 'Review', start, end, attendees: ['dana@example.com'] } }), actCtx)
       expect((await state()).sent).toEqual([{ invite: 'Review', to: 'dana@example.com', meeting: 1 }])
 
       const id = await carrier.eventByUid('abc-123@example.com')

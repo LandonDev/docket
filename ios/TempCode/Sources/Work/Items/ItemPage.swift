@@ -199,6 +199,10 @@ struct ItemLoad<Value, Content: View>: View {
     /// in its place: for a view whose old value must not stay live through a refresh (a deck's review after a decision).
     var dropsOnReload = false
     let read: () async throws -> Value
+    /// Each read that answers, for a view that holds something newer than the last value until the next one lands.
+    var onRead: ((Value) -> Void)? = nil
+    /// A reload that fails while a value is shown: the value stays, and the view can say so with its own Retry.
+    var onRefreshFailed: ((String) -> Void)? = nil
     @ViewBuilder let content: (Value, _ reload: @escaping () -> Void) -> Content
     @State private var value: Value?
     @State private var error: String?
@@ -230,10 +234,12 @@ struct ItemLoad<Value, Content: View>: View {
             reading = true
             defer { reading = false }
             do {
-                value = try await read()
+                let next = try await read()
+                value = next
                 error = nil
+                onRead?(next)
             } catch {
-                if value == nil { self.error = ActionError.wrap(error).message }
+                if value == nil { self.error = ActionError.wrap(error).message } else { onRefreshFailed?(ActionError.wrap(error).message) }
             }
         }
     }

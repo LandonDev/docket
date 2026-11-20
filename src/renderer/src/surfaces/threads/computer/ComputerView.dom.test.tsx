@@ -162,6 +162,10 @@ const rowButton = (id: string): HTMLButtonElement => document.querySelector<HTML
 const openRow = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-slot="step"][data-open]');
 const words = (el: Element | null): string => (el?.querySelector("button")?.textContent ?? "").replace(/\s+/g, " ").trim();
 const box = (): HTMLElement | null => document.querySelector<HTMLElement>("[data-face]");
+/** The clear button over a picture that opens it: it carries the picture's name while it is there. */
+const opener = (): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>("[data-viewport-open]");
+/** Whatever names the picture: the opener over it, else the box itself. */
+const named = (): HTMLElement | null => opener() ?? box();
 const lineUnder = (): string => document.querySelector('[data-slot="computer-line"]')?.textContent ?? "";
 const runningRows = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[data-slot="step-running"]')];
 const stepList = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="computer-steps"]')!;
@@ -174,9 +178,9 @@ describe("following", () => {
     mount(data([call(1), call(2, { steps: [step("Typed", "into Save As", { kind: "type", target: '"Total"', tier: "ax" })] }), running(3)], [entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT } })]));
     await flush();
     // the live box, once a frame is on it: a button that opens the full view, named for the window
-    expect(box()!.tagName).toBe("BUTTON");
+    expect(opener()!.tagName).toBe("BUTTON");
     expect(box()!.getAttribute("data-face")).toBe("live");
-    expect(box()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
+    expect(named()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
     expect(h.preview.runs.at(-1)).toBe(true);
     // one line for the running call, its state the still dot, the app left to the session row above
     expect(runningRows()).toHaveLength(1);
@@ -430,15 +434,15 @@ describe("following", () => {
     const view = mount(d([text({ running, lastCallAt: AT + 8_000 }), mail({ lastCallAt: AT + 7_000 })]));
     await act(async () => {});
     expect(order()).toEqual(["Inbox in Mail", "Untitled in TextEdit"]);
-    expect(box()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
+    expect(named()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
     // its call ends and Mail's begins, a moment later: nothing moves
     view.again(d([mail({ running: { ...running, startedAt: AT + 10_000 }, lastCallAt: AT + 7_000 }), text({ lastCallAt: AT + 9_900 })]));
     await act(async () => {});
     expect(order()).toEqual(["Inbox in Mail", "Untitled in TextEdit"]);
-    expect(box()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
+    expect(named()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
     // TextEdit stays idle while Mail works: once the hold runs out the live look goes to Mail
     await act(async () => vi.advanceTimersByTime(FOLLOW_HOLD_MS + 100));
-    expect(box()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
+    expect(named()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
     expect(order()).toEqual(["Untitled in TextEdit", "Inbox in Mail"]);
   });
 
@@ -474,13 +478,13 @@ describe("following", () => {
     h.preview.state = live({ app: "Mail", window: "Inbox" });
     const view = mount(data([call(1), call(2)], [entry()]));
     await flush();
-    expect(box()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
+    expect(named()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
     expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("Inbox in Mail");
     // the other order: the row says Mail and the stream is still TextEdit's; the picture is TextEdit's, and says so
     h.preview.state = live({ app: "TextEdit", window: "Untitled" });
     view.again(data([call(1), call(2)], [entry({ apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }] })]));
     await flush();
-    expect(box()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
+    expect(named()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
     expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("Untitled in TextEdit");
     // before the stream has said anything the row is all there is
     h.preview.state = { status: "starting" };
@@ -519,7 +523,7 @@ describe("following", () => {
     expect(head.className).not.toMatch(/shrink-0/);
     expect(document.querySelector('[data-slot="computer-steps"]')!.className.split(/\s+/)).toContain("min-h-16");
     expect(h.preview.entries.at(-1)).toBe(lead);
-    expect(box()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
+    expect(named()!.getAttribute("aria-label")).toBe("Live view of Inbox in Mail");
     // each Stop says whose it is
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
     expect(screen.getByRole("button", { name: "Stop Inbox in Mail" })).toBeTruthy();
@@ -546,8 +550,8 @@ describe("pinning", () => {
     await flush();
     expect(words(openRow())).toBe("ClickedStep 1 in TextEdit");
     // the picture as it was: a button named for the window and the time, not the stream
-    expect(box()!.tagName).toBe("BUTTON");
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 1400)}`);
+    expect(opener()!.tagName).toBe("BUTTON");
+    expect(named()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 1400)}`);
     expect(box()!.querySelector("img")!.getAttribute("src")).toMatch(/^blob:/);
     expect(h.readStep).toHaveBeenCalledWith("t1", 1);
     // the stream stops: the Mac stops capturing for it
@@ -767,7 +771,7 @@ describe("pinning", () => {
     expect(box()!.className).not.toContain("starting:opacity-0");
     fireEvent.click(rowButton("t1:1:0"));
     await flush();
-    expect(box()!.tagName).toBe("BUTTON");
+    expect(opener()!.tagName).toBe("BUTTON");
     expect(box()!.className).not.toContain("starting:opacity-0");
     // the same wrapper: nothing was mounted again, so nothing fades again
     expect(document.querySelector('[data-slot="computer-viewport"]')).toBe(wrapper);
@@ -795,7 +799,7 @@ describe("pinning", () => {
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await flush();
-    expect(box()!.tagName).toBe("BUTTON");
+    expect(opener()!.tagName).toBe("BUTTON");
     expect(box()!.querySelector("img")).toBeTruthy();
     // the pin held through the failure and the retry
     expect(openRow()!.getAttribute("data-step")).toBe("t1:1:0");
@@ -808,29 +812,29 @@ describe("pinning", () => {
     await flush();
     await reads.answer(2);
     const second = `Second in TextEdit at ${dayTime(AT + 2450)}`;
-    expect(box()!.getAttribute("aria-label")).toBe(second);
+    expect(named()!.getAttribute("aria-label")).toBe(second);
     const shown = box()!.querySelector("img")!.getAttribute("src");
     fireEvent.click(rowButton("t1:1:0"));
     await flush();
     // call 1's picture has not answered: what is on screen is still call 2's, and it says so
     expect(box()!.querySelector("img")!.getAttribute("src")).toBe(shown);
-    expect(box()!.getAttribute("aria-label")).toBe(second);
+    expect(named()!.getAttribute("aria-label")).toBe(second);
     await reads.answer(1);
     expect(box()!.querySelector("img")!.getAttribute("src")).not.toBe(shown);
-    expect(box()!.getAttribute("aria-label")).toBe(`First in TextEdit at ${dayTime(AT + 1450)}`);
+    expect(named()!.getAttribute("aria-label")).toBe(`First in TextEdit at ${dayTime(AT + 1450)}`);
   });
 
   it("a kept picture opens the lightbox from the box, and the live picture its full view", async () => {
     h.preview.state = live();
     mount(data([call(1), call(2)], [entry()]));
     await flush();
-    fireEvent.click(box()!);
+    fireEvent.click(opener()!);
     expect(h.openLightbox).toHaveBeenCalledTimes(1);
     expect(h.openLightbox.mock.calls[0][0]).toEqual([{ environmentId: "local", name: "Live view of Untitled in TextEdit", live: { threadId: "t1" } }]);
     h.openLightbox.mockClear();
     fireEvent.click(rowButton("t1:1:0"));
     await flush();
-    fireEvent.click(box()!);
+    fireEvent.click(opener()!);
     expect(h.openLightbox).toHaveBeenCalledTimes(1);
     const [items, index] = h.openLightbox.mock.calls[0];
     expect(items).toEqual([{ environmentId: "local", name: `Untitled in TextEdit at ${dayTime(AT + 1400)}`, src: expect.stringMatching(/^blob:/) }]);
@@ -852,7 +856,7 @@ describe("pinning", () => {
     expect(shown).toMatch(/^blob:/);
     await reads.answer(1);
     expect(box()!.querySelector("img")!.getAttribute("src")).toBe(shown);
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 4400)}`);
+    expect(named()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 4400)}`);
   });
 
   it("a first picture on its way is a skeleton; the next dims the old one only once it has taken more than 150 ms", async () => {
@@ -944,7 +948,7 @@ describe("pinning", () => {
     await flush();
     fireEvent.click(rowButton("t1:1:0"));
     await flush();
-    expect(box()!.tagName).toBe("BUTTON");
+    expect(opener()!.tagName).toBe("BUTTON");
     expect(lineUnder()).toBe("");
   });
 
@@ -1349,9 +1353,9 @@ describe("once the turn settled", () => {
     await flush();
     expect(document.querySelector('[data-slot="computer-session"]')).toBeNull();
     expect(words(openRow())).toBe("ClickedStep 2");
-    expect(box()!.tagName).toBe("BUTTON");
+    expect(opener()!.tagName).toBe("BUTTON");
     // the picture's own time: it is taken after the call's answer
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 2450)}`);
+    expect(named()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 2450)}`);
     expect(lineUnder()).toBe("");
     expect(h.readStep).toHaveBeenCalledWith("t1", 2);
     // nothing is live, so nothing is asked of the Mac
@@ -1391,8 +1395,8 @@ describe("once the turn settled", () => {
     mount(data([call(1), stopped]));
     await flush();
     expect(words(openRow())).toBe("ClickSave");
-    expect(box()!.tagName).toBe("BUTTON");
-    expect(box()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 1450)}`);
+    expect(opener()!.tagName).toBe("BUTTON");
+    expect(named()!.getAttribute("aria-label")).toBe(`Untitled in TextEdit at ${dayTime(AT + 1450)}`);
     expect(lineUnder()).toBe(`As it was at ${lineTime(AT + 1450)}`);
     expect(h.readStep).toHaveBeenCalledWith("t1", 1);
     cleanup();
@@ -1422,13 +1426,13 @@ describe("once the turn settled", () => {
     const view = mount(d);
     await flush();
     expect(words(openRow())).toContain("ClickSave");
-    expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
+    expect(named()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
     expect(lineUnder()).toBe(`As it was at ${lineTime(AT + 1450)}`);
     expect(h.readStep).toHaveBeenCalledWith("t1", 1);
     // with nothing kept in its own session, another window's picture stands in and is named
     view.again({ ...d, histories: { ...d.histories, t1: { born: 1, calls: [call(3, { picture: { none: "no-read" }, steps: [step("Click", "Save", { state: "stopped", tier: undefined, reason: "Stopped" })] })], more: false, status: "ready" } } });
     await flush();
-    expect(box()!.getAttribute("aria-label")).toMatch(/^Inbox in Mail at /);
+    expect(named()!.getAttribute("aria-label")).toMatch(/^Inbox in Mail at /);
     expect(lineUnder()).toBe(`Inbox in Mail, as it was at ${lineTime(AT + 2450)}`);
   });
 
@@ -1491,7 +1495,7 @@ describe("when the preview ends", () => {
     };
     mount(d);
     await flush();
-    expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
+    expect(named()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
     expect(lineUnder()).toBe(`The window closed. Untitled in TextEdit, as it was at ${lineTime(AT + 1450)}`);
     cleanup();
     // its own older picture needs only its time; its newest step's own picture needs nothing more
@@ -1535,14 +1539,14 @@ describe("when the preview ends", () => {
     // the open row is the tree's newest step, Mail's; the box under "Untitled in TextEdit" is TextEdit's
     expect(words(openRow())).toContain("Step 9");
     expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("Untitled in TextEdit");
-    expect(box()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
+    expect(named()!.getAttribute("aria-label")).toMatch(/^Untitled in TextEdit at /);
     expect(lineUnder()).toBe(`The window closed. As it was at ${lineTime(AT + 1450)}`);
     expect(h.readStep).toHaveBeenCalledWith("t1", 1);
     expect(h.readStep).not.toHaveBeenCalledWith("sub1", 9);
     // with nothing of its own kept, the other session's picture stands in, and the line names its window
     view.again(d([call(1, { picture: { none: "no-read" } })]));
     await flush();
-    expect(box()!.getAttribute("aria-label")).toMatch(/^Inbox in Mail at /);
+    expect(named()!.getAttribute("aria-label")).toMatch(/^Inbox in Mail at /);
     expect(lineUnder()).toBe(`The window closed. Inbox in Mail, as it was at ${lineTime(AT + 9450)}`);
   });
 
@@ -1553,7 +1557,7 @@ describe("when the preview ends", () => {
     mount(data([call(1, { window: "A" }), call(2, { window: "B", picture: { none: "failed" } })], [inB]));
     await flush();
     expect(document.querySelector('[data-slot="computer-session"]')!.textContent).toBe("B in TextEdit");
-    expect(box()!.getAttribute("aria-label")).toMatch(/^A in TextEdit at /);
+    expect(named()!.getAttribute("aria-label")).toMatch(/^A in TextEdit at /);
     expect(lineUnder()).toBe(`The window closed. A in TextEdit, as it was at ${lineTime(AT + 1450)}`);
   });
 

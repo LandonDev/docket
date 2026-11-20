@@ -87,17 +87,26 @@ function ItemLinks({ env, source, layout, onNew }: { env: string; source: GuestS
   const [refused, setRefused] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [home, setHome] = useState(env);
-  const load = useCallback(() => {
-    setError(null);
-    guestsCall<GuestLinkRow[]>(env, "work.guests.forItem", { source }).then(
-      (got) => {
-        setHome(got.env);
-        setRows((got.value ?? []).filter((l) => isLive(l)));
-      },
-      (err: unknown) => setError(errorText(err)),
-    );
-  }, [env, source]);
-  useEffect(load, [load]);
+  // Retry keeps its row, and the focus on it, busy until the read settles; the first read has no row to keep.
+  const [retrying, setRetrying] = useState(false);
+  const load = useCallback(
+    (again = false) => {
+      if (again) setRetrying(true);
+      else setError(null);
+      guestsCall<GuestLinkRow[]>(env, "work.guests.forItem", { source })
+        .then(
+          (got) => {
+            setError(null);
+            setHome(got.env);
+            setRows((got.value ?? []).filter((l) => isLive(l)));
+          },
+          (err: unknown) => setError(errorText(err)),
+        )
+        .finally(() => setRetrying(false));
+    },
+    [env, source],
+  );
+  useEffect(() => load(), [load]);
   // The row stays, its Revoke busy, until the host confirms; refused, it stays and says why.
   const revoke = async (id: string): Promise<void> => {
     setRevoking(id);
@@ -111,7 +120,7 @@ function ItemLinks({ env, source, layout, onNew }: { env: string; source: GuestS
       setRevoking(null);
     }
   };
-  return <LinkRows rows={rows} error={error} refused={refused} revoking={revoking} project={source.table === "projects"} layout={layout} onRevoke={(id) => void revoke(id)} onRetry={load} onNew={onNew} />;
+  return <LinkRows rows={rows} error={error} refused={refused} revoking={revoking} project={source.table === "projects"} layout={layout} onRevoke={(id) => void revoke(id)} onRetry={() => load(true)} retrying={retrying} onNew={onNew} />;
 }
 
 /**
@@ -128,6 +137,7 @@ export function LinkRows({
   layout = "menu",
   onRevoke,
   onRetry,
+  retrying = false,
   onNew,
 }: {
   rows: GuestLinkRow[] | null;
@@ -139,6 +149,8 @@ export function LinkRows({
   layout?: "menu" | "section";
   onRevoke(id: string): void;
   onRetry(): void;
+  /** Retry's read is out: the row stays and its button is busy. */
+  retrying?: boolean;
   onNew(): void;
 }) {
   return (
@@ -176,8 +188,8 @@ export function LinkRows({
           <div className="min-w-0 flex-1">
             <ErrorLine error={error} />
           </div>
-          <Button variant="ghost" size="xs" onClick={onRetry}>
-            Retry
+          <Button variant="ghost" size="xs" disabled={retrying} onClick={onRetry}>
+            <BusyLabel busy={retrying} label="Retry" />
           </Button>
         </div>
       ) : null}

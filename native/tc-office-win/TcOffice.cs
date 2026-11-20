@@ -693,11 +693,15 @@ public class Office {
     var app = App("outlook");
     object mail;
     var html = (string)m["html"] ?? "";
-    if (m.ContainsKey("replyTo") && m["replyTo"] != null) {
-      // A reply goes to the sender Outlook has for the original, as the held card said.
+    var reply = m.ContainsKey("replyTo") && m["replyTo"] != null;
+    var forward = !reply && m.ContainsKey("forward") && m["forward"] != null;
+    if (reply) {
       mail = com.Call(ItemById(ns, (string)m["replyTo"]), "Reply");
+      // A reply he pressed goes to the held To alone, the sender the card showed: Outlook addresses it from the mail
+      // (its Reply-To, say), so those recipients are taken off and the held ones put on. A draft keeps Outlook's.
+      if (send) { ClearRecipients(mail); AddRecipients(mail, m["to"], 1); }
       InsertHtml(mail, html);
-    } else if (m.ContainsKey("forward") && m["forward"] != null) {
+    } else if (forward) {
       mail = com.Call(ItemById(ns, (string)m["forward"]), "Forward");
       AddRecipients(mail, m["to"], 1);
       InsertHtml(mail, html);
@@ -713,7 +717,42 @@ public class Office {
     if (!string.IsNullOrEmpty(account)) com.Set(mail, "SendUsingAccount", Account(ns, account));
     if (send) Resolved(mail);
     else { com.Call(com.Get(mail, "Recipients"), "ResolveAll"); com.Call(mail, "Save"); }
+    // Then what Outlook holds is read back (the hold review's 21.1): anyone but the held recipients, or one of them
+    // missing, and the mail is thrown away unsent. The words are carrier.ts recipientsOff's.
+    if (send && (reply || forward)) {
+      var held = new[] { Lowered(m["to"]), Lowered(m["cc"]), Lowered(m["bcc"]) };
+      var built = new[] { Lowered(RecipientsOf(mail, 1)), Lowered(RecipientsOf(mail, 2)), Lowered(RecipientsOf(mail, 3)) };
+      var same = true;
+      for (var i = 0; i < 3; i++) if (string.Join("\n", held[i].ToArray()) != string.Join("\n", built[i].ToArray())) same = false;
+      if (!same) {
+        try { com.Call(mail, "Delete"); } catch (COMException e) { Keep(e); }
+        throw new Refusal("refused", "Outlook made this " + (reply ? "reply" : "forward") + " for " + Listed(built) + ", not " + Listed(held) + " as held, so nothing was sent.");
+      }
+    }
     return mail;
+  }
+
+  // Every recipient off a mail, last first. One Outlook will not let go stays, and the read-back above refuses the mail.
+  void ClearRecipients(object mail) {
+    var rs = com.Get(mail, "Recipients");
+    for (var i = Convert.ToInt32(com.Get(rs, "Count")); i >= 1; i--) {
+      try { com.Call(rs, "Remove", i); } catch (COMException e) { Keep(e); }
+    }
+  }
+
+  // Addresses as one field holds them: trimmed, lower case, each once, sorted.
+  static List<string> Lowered(object list) {
+    var all = list as IEnumerable;
+    var set = new SortedSet<string>(StringComparer.Ordinal);
+    if (all != null) foreach (var a in all) { var x = (Convert.ToString(a) ?? "").Trim().ToLowerInvariant(); if (x != "") set.Add(x); }
+    return new List<string>(set);
+  }
+
+  static string Listed(List<string>[] r) {
+    var names = new[] { "To", "Cc", "Bcc" };
+    var parts = new List<string>();
+    for (var i = 0; i < 3; i++) if (r[i].Count > 0) parts.Add(names[i] + " " + string.Join(", ", r[i].ToArray()));
+    return parts.Count > 0 ? string.Join("; ", parts.ToArray()) : "nobody";
   }
 
   object Calendar(object ns, string account) {

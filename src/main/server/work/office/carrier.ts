@@ -62,6 +62,31 @@ export interface MailOut {
   forward?: string
 }
 
+/** Who a mail goes to, by field. */
+export interface Recipients {
+  to: string[]
+  cc: string[]
+  bcc: string[]
+}
+
+const norm = (xs: readonly string[]): string[] => [...new Set(xs.map((x) => x.trim().toLowerCase()).filter(Boolean))].sort()
+const FIELD = { to: 'To', cc: 'Cc', bcc: 'Bcc' } as const
+const listed = (r: Recipients): string =>
+  (['to', 'cc', 'bcc'] as const)
+    .filter((k) => norm(r[k]).length)
+    .map((k) => `${FIELD[k]} ${norm(r[k]).join(', ')}`)
+    .join('; ') || 'nobody'
+
+/**
+ * Whether the recipients Outlook built for a reply or forward are exactly the held ones (the hold review's 21.1): a
+ * reply goes where the mail's Reply-To says unless told otherwise, so what Outlook made is read back before it goes.
+ * Null when they match, field by field, case aside; else the refusal in words. The Mac's mail script says the same.
+ */
+export function recipientsOff(what: 'reply' | 'forward', held: Recipients, built: Recipients): string | null {
+  const same = (['to', 'cc', 'bcc'] as const).every((k) => norm(held[k]).join('\n') === norm(built[k]).join('\n'))
+  return same ? null : `Outlook made this ${what} for ${listed(built)}, not ${listed(held)} as held, so nothing was sent.`
+}
+
 export interface CalendarEvent {
   id: string
   subject: string

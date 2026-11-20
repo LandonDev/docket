@@ -6,7 +6,7 @@
  * live link with Close form, the closed line with Reopen, and the
  * responses' summary, bars and table.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FormBody, FormResponses, FormView } from "@shared/contract-work-forms";
 import type { CanvasItem } from "@shared/work";
@@ -14,6 +14,7 @@ import { openMenus } from "../../chrome/menuRows";
 import { defineChunk } from "../../lib/lazyChunk";
 import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
+import { contextChipsOf, resetContextChips } from "../canvas/chips";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import type { FormHost } from "./host";
 import { liveView, optionDiff, resolvePick, shownQuestions } from "./model";
@@ -356,6 +357,94 @@ describe("the form kind", () => {
     expect(screen.getByRole("img", { name: "Game: Valorant 2, Rocket League 1, Super Smash Bros. Ultimate 0" })).toBeTruthy();
     expect([...table.querySelectorAll("tbody tr")].map((r) => r.querySelectorAll("td")[1].textContent)).toEqual(["Marcus Lee", "Ava Thompson", "Jordan Kim"]);
     expect(table.querySelector('[data-slot="table"]')).not.toBeNull();
+  });
+});
+
+describe("Add option", () => {
+  const live = () => view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 });
+  const openGame = async () => {
+    await found("[data-form]");
+    fireEvent.click(document.querySelector('[data-q="game"]')!);
+    await screen.findByRole("textbox", { name: "Option 1" });
+    fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+    return screen.findByRole("dialog", { name: "Add option" });
+  };
+
+  it("asks for the option's name and saves it on Add, never a placeholder on the live form; Cancel adds nothing", async () => {
+    open(live());
+    await openGame();
+    // Nothing reaches the form while he names it: no save, no "Option 4".
+    expect(formHost.save).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Option 4" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(formHost.save).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Option 4" })).toBeNull();
+    // Named and added: one save, carrying his words.
+    fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+    await screen.findByRole("dialog", { name: "Add option" });
+    expect(screen.getByRole("button", { name: "Add" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByRole("textbox", { name: "Option" }), { target: { value: "Marvel Rivals" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(formHost.save).toHaveBeenCalledTimes(1);
+    const game = formHost.save.mock.calls[0][1].questions.find((q) => q.id === "game")!;
+    expect(game.options).toEqual(["Valorant", "Rocket League", "Super Smash Bros. Ultimate", "Marvel Rivals"]);
+    expect(game.options!.some((o) => /^Option \d+$/.test(o))).toBe(false);
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Option 4" }) as HTMLInputElement).value).toBe("Marvel Rivals"));
+  });
+
+  it("a refused Add keeps the dialog and the name, with the reason, and adds nothing to the form", async () => {
+    open(live());
+    formHost.save.mockRejectedValueOnce(new Error("The form changed since"));
+    await openGame();
+    fireEvent.change(screen.getByRole("textbox", { name: "Option" }), { target: { value: "Marvel Rivals" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Add option" }).textContent).toContain("The form changed since"));
+    expect((screen.getByRole("textbox", { name: "Option" }) as HTMLInputElement).value).toBe("Marvel Rivals");
+    expect(screen.queryByRole("textbox", { name: "Option 4" })).toBeNull();
+    // Add again lands it.
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(formHost.save.mock.calls[1][1].questions.find((q) => q.id === "game")!.options!.at(-1)).toBe("Marvel Rivals");
+  });
+});
+
+describe("the responses' ticks", () => {
+  it("follow each response, not its row: a newer answer above keeps his tick and Ask's quote on the same response; a removed one drops", async () => {
+    resetContextChips();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
+      await found("[data-form]");
+      fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
+      const table = await found("[data-form-responses]");
+      const rowOf = (name: string) => [...table.querySelectorAll("tbody tr")].find((r) => r.textContent?.includes(name))!;
+      const ticked = () => [...table.querySelectorAll("tbody tr[data-picked]")].map((r) => r.querySelectorAll("td")[1].textContent);
+      fireEvent.click(rowOf("Ava Thompson").querySelector('[aria-label="Select"]')!);
+      expect(ticked()).toEqual(["Ava Thompson"]);
+      // A newer answer arrives at the top on the next poll: Ava's row moves down, his tick goes with her.
+      const newer = ["Riley Chen", "Valorant", "", "2026-11-19 14:05"];
+      formHost.responses.mockImplementation(async () => ({ ...RESPONSES, rev: 5, rows: [newer, ...RESPONSES.rows], count: 4 }));
+      await act(async () => void vi.advanceTimersByTime(10_000));
+      await waitFor(() => expect(rowOf("Riley Chen")).toBeTruthy());
+      expect(ticked()).toEqual(["Ava Thompson"]);
+      // Ask carries the response he chose, not whichever now sits in her old row.
+      const bar = await screen.findByRole("toolbar", { name: "Selection" });
+      fireEvent.click(within(bar).getByRole("button", { name: /^Ask/ }));
+      const chip = contextChipsOf("t1")[0]!;
+      expect(chip.label).toBe("1 response, Spring LAN registration");
+      expect(chip.quote).toContain("Ava Thompson");
+      expect(chip.quote).not.toContain("Marcus Lee");
+      // Her response is gone from the next revision: nothing stays ticked in her place.
+      formHost.responses.mockImplementation(async () => ({ ...RESPONSES, rev: 6, rows: [newer, RESPONSES.rows[0]!, RESPONSES.rows[2]!], count: 3 }));
+      await act(async () => void vi.advanceTimersByTime(10_000));
+      await waitFor(() => expect(rowOf("Ava Thompson")).toBeUndefined());
+      expect(ticked()).toEqual([]);
+      expect(screen.queryByRole("toolbar", { name: "Selection" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

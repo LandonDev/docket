@@ -181,24 +181,29 @@ describe("the live viewport, as video", () => {
     expect(HTMLCanvasElement.prototype.getContext).not.toHaveBeenCalled();
   });
 
-  it("a box that opens the full view keeps the canvas that took the first frame: one button from the start, off until then", async () => {
+  it("a box that opens the full view keeps the canvas that took the first frame: one box, a clear button over it, off until then", async () => {
     const onOpen = vi.fn();
     mount({ onOpen });
     await flush();
     const stream = h.acquired[0];
-    const button = screen.getByRole("button", { name: "Live view of Concur in Chromium" });
-    const canvas = button.querySelector("canvas")!;
+    const opener = screen.getByRole("button", { name: "Live view of Concur in Chromium" });
+    const face = document.querySelector<HTMLElement>('[data-face="live"]')!;
+    const canvas = face.querySelector("canvas")!;
+    // The button lies over the picture; the box, not the button, holds the canvas.
+    expect(opener.parentElement).toBe(face);
+    expect(opener.querySelector("canvas")).toBeNull();
     expect(stream.shown).toEqual([canvas]);
     // Nothing to open before a frame is there: the same button, off.
-    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(opener.hasAttribute("disabled")).toBe(true);
     await act(async () => stream.set({ status: "opening", width: 1280, height: 800 }));
     await act(async () => stream.set({ status: "live", width: 1280, height: 800 }));
-    // The first frame swaps nothing: the same element and the same canvas, handed to the stream once.
-    expect(screen.getByRole("button", { name: "Live view of Concur in Chromium" })).toBe(button);
-    expect(button.querySelector("canvas")).toBe(canvas);
+    // The first frame swaps nothing: the same box, button and canvas, handed to the stream once.
+    expect(document.querySelector('[data-face="live"]')).toBe(face);
+    expect(screen.getByRole("button", { name: "Live view of Concur in Chromium" })).toBe(opener);
+    expect(face.querySelector("canvas")).toBe(canvas);
     expect(stream.shown).toEqual([canvas]);
-    expect(button.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(button);
+    expect(opener.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(opener);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
@@ -334,6 +339,41 @@ describe("driving the page from the picture", () => {
     const down = new KeyboardEvent("keydown", { code: "KeyK", bubbles: true, cancelable: true });
     box.dispatchEvent(down);
     expect(down.defaultPrevented).toBe(true);
+  });
+
+  it("keeps one box and the canvas that took a frame through Take over and Hand back, the full view's button there only while he does not drive", async () => {
+    const onOpen = vi.fn();
+    const view = mount({ onOpen });
+    await flush();
+    const watch = h.acquired[0];
+    await act(async () => watch.set({ status: "live", width: 1280, height: 800 }));
+    const face = document.querySelector<HTMLElement>('[data-face="live"]')!;
+    const canvas = face.querySelector("canvas")!;
+    const opener = () => document.querySelector<HTMLButtonElement>("[data-viewport-open]");
+    expect(opener()!.disabled).toBe(false);
+    expect(face.getAttribute("role")).toBeNull();
+    // He takes over: a stream he drives, its frame on the canvas already there.
+    view.again({ entry: owned(), onOpen });
+    await flush();
+    const driven = h.acquired.at(-1)!;
+    expect(driven.want.drive).toBe(true);
+    await act(async () => driven.set({ status: "live", width: 1280, height: 800 }));
+    expect(document.querySelector('[data-face="live"]')).toBe(face);
+    expect(face.querySelector("canvas")).toBe(canvas);
+    expect(screen.getByRole("application", { name: "Live view of Concur in Chromium" })).toBe(face);
+    expect(opener()).toBeNull();
+    expect(driven.shown.at(-1)).toBe(canvas);
+    // He hands back: the same box and canvas, a picture again, and its button back once a frame is on it.
+    view.again({ entry: entry(), onOpen });
+    await flush();
+    const back = h.acquired.at(-1)!;
+    await act(async () => back.set({ status: "live", width: 1280, height: 800 }));
+    expect(document.querySelector('[data-face="live"]')).toBe(face);
+    expect(face.querySelector("canvas")).toBe(canvas);
+    expect(face.hasAttribute("data-driving")).toBe(false);
+    expect(opener()!.disabled).toBe(false);
+    fireEvent.click(opener()!);
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("lets go of everything he holds when the picture loses the keyboard, and when he hands back", async () => {

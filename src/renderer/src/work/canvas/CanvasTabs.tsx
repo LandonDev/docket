@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, type KeyboardEvent, type ReactNode, type WheelEvent } from "react";
+import { useCallback, useEffect, useRef, type KeyboardEvent, type ReactElement, type ReactNode, type WheelEvent } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { MoreHorizontal } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
-import { TruncateTip } from "../../components/tip";
+import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
@@ -116,39 +116,57 @@ export function CanvasTabs({
           <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`relative flex max-w-60 min-w-9 shrink ${dragging ? "z-10" : ""}`}>
             {lineStart ? <div className="pointer-events-none absolute inset-y-1 -left-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
             {lineEnd ? <div className="pointer-events-none absolute inset-y-1 -right-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
-            <Button
-              variant="ghost"
-              role="tab"
-              id={canvasTabId(item.id)}
-              // Only the shown item's panel is drawn, so only its tab names one.
-              aria-controls={active ? canvasPanelId(item.id) : undefined}
-              aria-selected={active}
-              tabIndex={active ? 0 : -1}
-              data-canvas-tab={item.id}
-              data-dragging={dragging || undefined}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                onSelect(item.id);
-                sortable.onItemPointerDown(item.id, event);
-              }}
-              onClick={(event) => {
-                // A pointer selected on its press; this is Enter and Space.
-                if (event.detail === 0) onSelect(item.id);
-              }}
-              onAuxClick={(event) => {
-                if (event.button === 1) onClose(item.id);
-              }}
-              className="h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50"
-            >
-              <Glyph className="size-3.5" />
-              <TruncateTip text={item.title}>
-                <span className="min-w-0 truncate">{item.title}</span>
-              </TruncateTip>
-            </Button>
+            <TitleTip title={item.title}>
+              {(titleRef) => (
+                <Button
+                  variant="ghost"
+                  role="tab"
+                  id={canvasTabId(item.id)}
+                  // Only the shown item's panel is drawn, so only its tab names one.
+                  aria-controls={active ? canvasPanelId(item.id) : undefined}
+                  aria-selected={active}
+                  tabIndex={active ? 0 : -1}
+                  data-canvas-tab={item.id}
+                  data-dragging={dragging || undefined}
+                  onPointerDown={(event) => {
+                    if (event.button !== 0) return;
+                    onSelect(item.id);
+                    sortable.onItemPointerDown(item.id, event);
+                  }}
+                  onClick={(event) => {
+                    // A pointer selected on its press; this is Enter and Space.
+                    if (event.detail === 0) onSelect(item.id);
+                  }}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) onClose(item.id);
+                  }}
+                  className="h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50"
+                >
+                  <Glyph className="size-3.5" />
+                  <span ref={titleRef} className="min-w-0 truncate">
+                    {item.title}
+                  </span>
+                </Button>
+              )}
+            </TitleTip>
           </div>
         );
       })}
     </div>
+  );
+}
+
+/**
+ * A tab's whole title on hover and on focus while its title is cut: the tab itself is the tip's trigger, so the arrow
+ * keys' focus shows it too, and the title span alone is measured. The tip is always there and off while the title
+ * fits, so a resize never swaps the tab under the focus.
+ */
+function TitleTip({ title, children }: { title: string; children: (titleRef: (el: HTMLElement | null) => void) => ReactElement }) {
+  const { ref, cut } = useTruncated(title);
+  return (
+    <Tip label={title} disabled={!cut}>
+      {children(ref)}
+    </Tip>
   );
 }
 

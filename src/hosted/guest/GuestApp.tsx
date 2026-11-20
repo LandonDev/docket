@@ -79,6 +79,8 @@ export function GuestApp() {
   // A project's link: the document or sheet open over the project, and where the screens' controls go in the line.
   const [child, setChild] = useState<(ChildItem & { title: string }) | null>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  // The line's first place, before the glyph: a task's way back goes there, where a document's does.
+  const [lead, setLead] = useState<HTMLElement | null>(null);
   const back = useCallback(() => setChild(null), []);
   // A document or sheet the project no longer lists is closed at the page's next read: its socket is already shut.
   const shown = useCallback((p: GuestProjection) => setChild((open) => (open && !projectionLists(p, open.table, open.id) ? null : open)), []);
@@ -95,6 +97,7 @@ export function GuestApp() {
                 <ArrowLeft />
               </Button>
             ) : null}
+            {opened.kind === "project" && !child ? <span ref={setLead} data-project-lead className="flex shrink-0 items-center empty:hidden" /> : null}
             <span className="shrink-0 text-muted-foreground">{createElement(GLYPH[child ? (child.table === "docs" ? "doc" : "sheet") : opened.kind], { className: "size-3.5" })}</span>
             <span className="min-w-0 truncate text-sm font-semibold">{child ? child.title || "Untitled" : opened.title}</span>
             {opened.owner ? <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{opened.owner}</span> : null}
@@ -122,7 +125,7 @@ export function GuestApp() {
           <Suspense fallback={<Bones />}>
             {opened.kind === "project" ? (
               <>
-                <ProjectPage session={session!} opened={opened} slot={slot} hidden={!!child} onOpen={setChild} onShown={shown} onGone={gone} />
+                <ProjectPage session={session!} opened={opened} slot={slot} lead={lead} hidden={!!child} onOpen={setChild} onShown={shown} onGone={gone} />
                 {child ? <ChildPage key={`${child.table}:${child.id}`} session={session!} item={child} onBack={back} onGone={gone} /> : null}
               </>
             ) : opened.kind === "doc" ? (
@@ -162,6 +165,18 @@ function ChildPage({ session, item, onBack, onGone }: { session: Session; item: 
     [own, left],
   );
   useEffect(() => load(), [load]);
+  // Escape goes back to the project, as from a task's page; never from a field, a dialog or a menu that takes it.
+  useEffect(() => {
+    const listen = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if ((event.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable=true], [role=dialog], [role=menu], [role=listbox]")) return;
+      event.preventDefault();
+      onBack();
+    };
+    // Ahead of the hidden project's own keys (a task's page under it listens for Escape too).
+    window.addEventListener("keydown", listen, true);
+    return () => window.removeEventListener("keydown", listen, true);
+  }, [onBack]);
   const isDoc = item.table === "docs";
   useEffect(() => {
     if (!isDoc) return;

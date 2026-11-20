@@ -38,6 +38,8 @@ export function Picture({
   selecting,
   onRegion,
   onScale,
+  attempt = 0,
+  onDrawn,
 }: {
   versionId: string;
   play: ImagePlay;
@@ -49,10 +51,20 @@ export function Picture({
   onRegion(region: MediaRegion, rect: DOMRect): void;
   /** The scale shown, for the bar's zoom word. */
   onScale(scale: number): void;
+  /** Each Retry moves it on, so the picture loads afresh. */
+  attempt?: number;
+  /** Whether the picture (or the tiles' preview) drew: false when its bytes did not load or could not be read. */
+  onDrawn?(drawn: boolean): void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [view, setView] = useState({ left: 0, top: 0 });
+  // A picture that did not draw leaves its frame, at its own size, empty: never the browser's broken-image mark.
+  const [broken, setBroken] = useState(false);
+  const drawn = (ok: boolean): void => {
+    setBroken(!ok);
+    onDrawn?.(ok);
+  };
   useLayoutEffect(() => {
     const el = stage.current;
     if (!el) return;
@@ -81,9 +93,18 @@ export function Picture({
       <div className="m-auto p-6">
         <div className="relative overflow-hidden rounded-[4px] outline-1 -outline-offset-1 outline-(--image-outline)" style={box}>
           {play.via === "image" ? (
-            <img src={play.url} alt="" draggable={false} className="absolute inset-0 size-full select-none" />
+            <img
+              key={`${play.url}#${attempt}`}
+              src={play.url}
+              alt=""
+              draggable={false}
+              data-media-picture
+              onLoad={() => drawn(true)}
+              onError={() => drawn(false)}
+              className={`absolute inset-0 size-full select-none ${broken ? "invisible" : ""}`}
+            />
           ) : (
-            <Tiles versionId={versionId} play={play} scale={scale} shown={{ ...view, width: size.width, height: size.height }} actions={actions} />
+            <Tiles versionId={versionId} play={play} scale={scale} shown={{ ...view, width: size.width, height: size.height }} actions={actions} attempt={attempt} broken={broken} onPreview={drawn} />
           )}
           <RegionLayer shown={region} shapes={shapes} selecting={selecting} onRegion={onRegion} />
         </div>
@@ -95,7 +116,26 @@ export function Picture({
 const tileUrls = new Map<string, string>();
 const TILE_CACHE = 400;
 
-function Tiles({ versionId, play, scale, shown, actions }: { versionId: string; play: Extract<MediaPlay, { via: "tiles" }>; scale: number; shown: { left: number; top: number; width: number; height: number }; actions: MediaActions }) {
+function Tiles({
+  versionId,
+  play,
+  scale,
+  shown,
+  actions,
+  attempt,
+  broken,
+  onPreview,
+}: {
+  versionId: string;
+  play: Extract<MediaPlay, { via: "tiles" }>;
+  scale: number;
+  shown: { left: number; top: number; width: number; height: number };
+  actions: MediaActions;
+  attempt: number;
+  broken: boolean;
+  /** Whether the preview under the tiles drew. */
+  onPreview(drawn: boolean): void;
+}) {
   const [, redraw] = useState(0);
   const level = levelFor(scale, play.levels, play.minLevel);
   const max = play.levels - 1;
@@ -144,7 +184,16 @@ function Tiles({ versionId, play, scale, shown, actions }: { versionId: string; 
   }, [versionId, play.preview, level, x0, y0, x1, y1, missing]);
   return (
     <>
-      <img src={play.preview} alt="" draggable={false} className="absolute inset-0 size-full select-none" />
+      <img
+        key={`${play.preview}#${attempt}`}
+        src={play.preview}
+        alt=""
+        draggable={false}
+        data-media-picture
+        onLoad={() => onPreview(true)}
+        onError={() => onPreview(false)}
+        className={`absolute inset-0 size-full select-none ${broken ? "invisible" : ""}`}
+      />
       {wanted.map(([x, y]) => {
         const url = tileUrls.get(key(x, y));
         return url ? <img key={key(x, y)} src={url} alt="" draggable={false} className="absolute select-none" style={{ left: x * t, top: y * t, width: t, height: t }} /> : null;

@@ -40,6 +40,11 @@ struct BrowserItemView: View {
     let item: CanvasItem
     @State private var driving = false
     @State private var error: String?
+    /// What Take Over or Hand Back answered, shown until a fresh read lands: the screen never says the agent drives
+    /// while he does, even when the read after the press fails.
+    @State private var pressed: BrowserState?
+    /// The read after a press failed: the content stays, with a short line and Retry.
+    @State private var refreshError: String?
 
     private var held: [OutboxItem] {
         // The browser's own acts: a held computer act of this thread, not its mail.
@@ -47,8 +52,21 @@ struct BrowserItemView: View {
     }
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.browser(item.sessionId) }) { state, reload in
+        ItemLoad(read: { try await client.work.canvas.browser(item.sessionId) },
+                 onRead: { _ in pressed = nil; refreshError = nil },
+                 onRefreshFailed: { refreshError = $0 }) { read, reload in
+            let state = pressed ?? read
             List {
+                if let refreshError {
+                    Section {
+                        HStack(spacing: 12) {
+                            Text("Couldn’t read the browser again: \(refreshError)").textStep(.meta, tint: Tint.destructiveText)
+                            Spacer(minLength: 8)
+                            PillButton("Retry") { reload() }
+                        }
+                        .accessibilityIdentifier("browser-reread-failed")
+                    }
+                }
                 Section {
                     LabeledContent(state.driver == .owner ? "You are driving" : "The agent is driving") {
                         if client.work.canApprove {
@@ -112,7 +130,8 @@ struct BrowserItemView: View {
         driving = true
         defer { driving = false }
         do {
-            _ = try await client.work.canvas.drive(item.sessionId, owner: owner)
+            // The driver the call answers is the one shown at once; the read after it only refreshes the rest.
+            pressed = try await client.work.canvas.drive(item.sessionId, owner: owner)
             error = nil
             reload()
         } catch {

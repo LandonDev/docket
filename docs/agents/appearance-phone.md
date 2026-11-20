@@ -22,8 +22,11 @@ which inside a list's section header nest under its dimming: 1.7:1 and
 1.3:1 on `Surface.chrome` in light. Both now draw in `Color(.label)` through
 `textStep`'s `tint`, keeping their two type steps (meta semibold, stamp):
 18.8:1 in light and 17:1 in dark on the chrome fill. `secondaryLabel` would
-measure only 3.3:1 there in light. Rows 3 and 13 (the stamp and meta steps
-everywhere else) stay the owner's call. Parse-checked on the box; not shot.
+measure only 3.3:1 there in light. The held detail's meta and stamps, the
+Home row's count and each Outbox row's time draw the same way; the rule is
+written once in docs/IOS-DESIGN.md "Work on the phone" ("Inks"). Rows 3 and 13
+(the stamp and meta steps everywhere else) stay the owner's call.
+Parse-checked on the box; not shot.
 
 ## Left for the owner
 

@@ -376,6 +376,60 @@ describe("the media canvas", () => {
     expect(region.quote).toContain("x 0.27, y 0.12, w 0.31, h 0.53");
   });
 
+  it("says a picture whose bytes did not load on the state line, keeps its frame's size, and Retry loads it afresh", async () => {
+    const IMG: MediaVersion = { ...V3, id: "p1", name: "LAN poster.png", plays: [{ via: "image", url: "tempcode-asset://file/x/poster.png", width: 1080, height: 1350 }] };
+    host.view = { itemId: "item1", kind: "image", versions: [IMG], notes: [], mode: "writes", shared: false, rev: 1 };
+    const shell = fakeShell();
+    const { container } = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={shell} />);
+    const picture = await waitFor(() => {
+      const el = container.querySelector<HTMLImageElement>("[data-media-picture]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const frame = picture.parentElement!;
+    const box = frame.getAttribute("style");
+    // The bytes do not load: the state line says so, with Retry; the frame keeps its size and shows no broken mark.
+    fireEvent.error(picture);
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't show this image" })));
+    expect(frame.getAttribute("style")).toBe(box);
+    expect(frame.getAttribute("style")).toContain("aspect-ratio");
+    expect(container.querySelector("[data-media-picture]")!.className).toContain("invisible");
+    // Retry reads the view again and loads the picture afresh (a new element), then the line clears once it draws.
+    const viewsBefore = host.calls.filter((c) => c.method === "work.media.view").length;
+    const line = shell.statusLine.mock.lastCall![0] as { action: { label: string; run(): Promise<void> } };
+    expect(line.action.label).toBe("Retry");
+    await act(() => line.action.run());
+    expect(host.calls.filter((c) => c.method === "work.media.view").length).toBe(viewsBefore + 1);
+    const again = container.querySelector<HTMLImageElement>("[data-media-picture]")!;
+    expect(again).not.toBe(picture);
+    fireEvent.load(again);
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
+    expect(again.className).not.toContain("invisible");
+  });
+
+  it("says a tiled picture whose preview did not load on the state line, with Retry", async () => {
+    const BIG: MediaVersion = {
+      ...V3,
+      id: "p2",
+      name: "Arena map.tif",
+      plays: [{ via: "tiles", preview: "tempcode-asset://file/x/map-preview.jpg", width: 8192, height: 4096, tile: 254, overlap: 1, levels: 14, minLevel: 9, format: "jpg" }],
+    };
+    host.view = { itemId: "item1", kind: "image", versions: [BIG], notes: [], mode: "writes", shared: false, rev: 1 };
+    const shell = fakeShell();
+    const { container } = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={shell} />);
+    const preview = await waitFor(() => {
+      const el = container.querySelector<HTMLImageElement>("[data-media-picture]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.error(preview);
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "Couldn't show this image" })));
+    const line = shell.statusLine.mock.lastCall![0] as { action: { run(): Promise<void> } };
+    await act(() => line.action.run());
+    fireEvent.load(container.querySelector<HTMLImageElement>("[data-media-picture]")!);
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
+  });
+
   it("fits a picture without enlarging it, and draws a huge one from the tile level its zoom needs", () => {
     expect(scaleOf("fit", { width: 1080, height: 1350 }, { width: 600, height: 700 })).toBeCloseTo(652 / 1350);
     expect(scaleOf("fit", { width: 200, height: 100 }, { width: 600, height: 700 })).toBe(1);

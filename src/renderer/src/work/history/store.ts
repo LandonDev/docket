@@ -43,7 +43,7 @@ async function ask(env: string, key: string, method: string, params: Record<stri
   }
 }
 
-function useAsked<T>(env: string, source: CanvasSource, what: string | null, method: string, params: Record<string, unknown>): Asked<T> & { retry(): void } {
+function useAsked<T>(env: string, source: CanvasSource, what: string | null, method: string, params: Record<string, unknown>): Asked<T> & { retry(): Promise<void> } {
   const key = what === null ? null : keyOf(env, source, what);
   const entry = useSyncExternalStore(
     (l) => {
@@ -60,9 +60,10 @@ function useAsked<T>(env: string, source: CanvasSource, what: string | null, met
     // `params` is named by `what`, which is part of the key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  // Stable for a key, so an effect that names it (a state line's Retry) runs only when the error changes.
-  const retry = useCallback(() => {
-    if (key) void ask(env, key, method, { source, ...params });
+  // Stable for a key, so an effect that names it (a state line's Retry) runs only when the error changes. It returns the
+  // read, so the state line's Retry spins until the host answers.
+  const retry = useCallback((): Promise<void> => {
+    return key ? ask(env, key, method, { source, ...params }) : Promise.resolve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return { ...entry, retry };

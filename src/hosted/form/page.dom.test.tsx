@@ -241,6 +241,38 @@ describe('the form page', () => {
     expect(root.querySelector('button')!.textContent).toBe('Retry')
   })
 
+  it('takes the focus to the form\'s title after a Retry that drew it, when the focus was on Retry, and not when he moved it', async () => {
+    let answer = json(503, {})
+    const fetcher = vi.fn(async () => answer)
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    answer = json(200, FORM)
+    const retry = root.querySelector<HTMLButtonElement>('button')!
+    retry.focus()
+    retry.click()
+    await vi.waitFor(() => expect(root.querySelector('h1')!.textContent).toBe('Spring LAN registration'))
+    const title = root.querySelector<HTMLElement>('h1')!
+    expect(document.activeElement).toBe(title)
+    expect(title.tabIndex).toBe(-1)
+    // The next Tab starts at the recovered form: its first field follows the title.
+    expect(title.compareDocumentPosition(root.querySelector('#q0')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    // Moved elsewhere while the read was out: the focus stays where he put it.
+    let done: (r: Response) => void = () => {}
+    fetcher.mockImplementation(async () => json(503, {}))
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    fetcher.mockImplementation(() => new Promise<Response>((r) => (done = r)))
+    const again = root.querySelector<HTMLButtonElement>('button')!
+    again.focus()
+    again.click()
+    const elsewhere = document.createElement('button')
+    document.body.append(elsewhere)
+    elsewhere.focus()
+    done(json(200, FORM))
+    await vi.waitFor(() => expect(root.querySelector('h1')!.textContent).toBe('Spring LAN registration'))
+    expect(document.activeElement).toBe(elsewhere)
+    elsewhere.remove()
+  })
+
   it('makes Retry busy and off while it reads, one read at a time, and brings it back when the read fails', async () => {
     let done: (r: Response) => void = () => {}
     const fetcher = vi.fn(async () => json(503, {}))

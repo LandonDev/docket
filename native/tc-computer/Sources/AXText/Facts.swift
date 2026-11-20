@@ -78,7 +78,7 @@ public enum Facts {
     /// The roles a caret or selection prints on.
     static let caretRoles: Set<String> = ["input", "search", "password", "text area", "combo box"]
     /// A value that would go with a send (the host binds it whole): printed even when it repeats the name.
-    static let boundValueRoles: Set<String> = ["input", "search", "text area", "combo box", "date", "pop up"]
+    static let boundValueRoles: Set<String> = ["input", "search", "text area", "combo box", "date", "pop up", "stepper", "slider"]
     /// `read-only` applies to these when AXValue is not settable.
     static let readOnlyRoles: Set<String> = ["input", "search", "text area", "combo box", "date"]
     public static let listRoles: Set<String> = ["list", "outline", "table"]

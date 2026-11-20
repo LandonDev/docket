@@ -1001,11 +1001,11 @@ const CONTEXT_VERBS: readonly string[] = RETURN_VERBS.filter((v) => !['reply', '
  * stand straight in each larger container up to the window or page (a mail's To line drawn as text). A list's
  * messages sit deeper and are left out, so a message coming in does not void a press.
  */
-function sendContext(screen: Screen): string[] {
-  const kept = new Map<number, string>()
+function sendContext(screen: Screen): [string, string][] {
+  const kept = new Map<number, [string, string]>()
   const keep = (e: ScreenElement): void => {
     const words = e.role === 'heading' || e.role === 'text' ? (e.name ?? e.value) : undefined
-    if (words?.trim()) kept.set(e.index, `${e.role}|${words}`)
+    if (words?.trim()) kept.set(e.index, [e.role, words])
   }
   for (const e of screen.elements.values()) if (e.role === 'heading') keep(e)
   const seen = new Set<number>()
@@ -1024,9 +1024,14 @@ function sendContext(screen: Screen): string[] {
   return [...kept].sort((a, b) => a[0] - b[0]).map(([, words]) => words)
 }
 
-/** The fields whose text would go, in reading order: every text field but a search field and a password. */
+/** Numeric fields: a quantity's stepper, an amount's slider. Their value goes as a text field's does. */
+const NUMBER_ROLES = ['stepper', 'slider']
+
+/** The fields whose value would go, in reading order: every text field but a search field and a password, and every numeric field. */
 const markFields = (screen: Screen): ScreenElement[] =>
-  [...screen.elements.values()].filter((e) => TEXT_ROLES.includes(e.role) && e.role !== 'search' && e.role !== 'password').sort((a, b) => a.index - b.index)
+  [...screen.elements.values()]
+    .filter((e) => (TEXT_ROLES.includes(e.role) && e.role !== 'search' && e.role !== 'password') || NUMBER_ROLES.includes(e.role))
+    .sort((a, b) => a.index - b.index)
 
 /** A value the read printed cut (observation.ts `cutValue`): its first scalars, then `…(+n chars)`. */
 export const isCutValue = (value: string | undefined): boolean => !!value && /…\(\+\d+ chars\)$/.test(value)
@@ -1056,21 +1061,22 @@ const boundValue = (value: string): string => (value.length > 160 ? `#${sha256He
 const STATE_ROLES = ['checkbox', 'radio', 'switch', 'tab']
 const STATES_BOUND = ['checked', 'unchecked', 'mixed', 'selected']
 
-/** Each tickable control's state and each pop-up's chosen option, in reading order. */
-function controlMark(screen: Screen): string[] {
+/** Each tickable control's state and each pop-up's chosen option, in reading order, as `[role, name, state or tagged choice]`. */
+function controlMark(screen: Screen): [string, string, string][] {
   return [...screen.elements.values()]
     .filter((e) => STATE_ROLES.includes(e.role) || e.role === 'pop up')
     .sort((a, b) => a.index - b.index)
-    .map((e) => `${e.role}|${e.name ?? ''}|${e.role === 'pop up' ? boundValue(e.value ?? '') : e.states.filter((x) => STATES_BOUND.includes(x)).join(' ')}`)
+    .map((e) => [e.role, e.name ?? '', e.role === 'pop up' ? boundValue(e.value ?? '') : e.states.filter((x) => STATES_BOUND.includes(x)).join(' ')])
 }
 
 /**
  * What the window holds that would go: the app, every field's name and value (a long value by its digest), who it
- * goes to (`sendContext`), and what is ticked or chosen (`controlMark`). A part with nothing in it is left out, so
- * the mark of a window with none is what it was before that part was added.
+ * goes to (`sendContext`), and what is ticked or chosen (`controlMark`). Each entry is a tuple, never words joined
+ * by a separator, so no name or value can spill into the next part ("Message" holding "hello|=PAY" never binds as
+ * "Message|=hello" holding "PAY"). A part with nothing in it is left out.
  */
 export function screenMark(screen: Screen): string {
-  const fields = markFields(screen).map((e) => `${e.role}|${e.name ?? ''}|${boundValue(e.value ?? '')}`)
+  const fields = markFields(screen).map((e): [string, string, string] => [e.role, e.name ?? '', boundValue(e.value ?? '')])
   const context = sendContext(screen)
   const controls = controlMark(screen)
   const app = screen.app.bundleId ?? screen.app.name

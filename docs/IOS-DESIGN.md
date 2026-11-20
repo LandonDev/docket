@@ -2331,6 +2331,13 @@ phone does everything the desktop does. What milestone 46 built:
   carries the destructive dot and its reason as the meta line. Swipe
   trailing and the context menu offer Send (Send Again) and Discard;
   Discard asks once. Empty: "Nothing Held".
+- **Inks.** The Outbox's bands, held detail and stamps draw meta and stamps in
+  `label` for the 4.5:1 floor, ordered by size and weight: the hierarchical
+  secondary and tertiary measure 3.4:1 and 1.7:1 on white, less in a list's
+  section header. This covers the band's name and count, the held detail's place,
+  time, field labels, addresses and state line, the Home row's count and each
+  row's time. The rest of the phone keeps the steps' own inks
+  (docs/agents/appearance-phone.md).
 - **The held detail** reads as the act, exactly as it will go: the place
   line (dot, workspace, time), the summary as the title (title3
   semibold), then each field on its own line under a hairline (label in

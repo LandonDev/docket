@@ -19,7 +19,7 @@ vi.mock("../../lib/connection", () => ({ registry: { onLink: () => () => undefin
 const toasts = vi.hoisted(() => [] as string[]);
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: (m: string) => void toasts.push(m) }) }));
 
-const { Body, Bar, TitleField, markOpen, selectionChip } = await import("./DocumentCanvas");
+const { Body, Bar, Scroller, TitleField, markOpen, selectionChip } = await import("./DocumentCanvas");
 
 afterEach(cleanup);
 
@@ -40,6 +40,48 @@ describe("the document's body", () => {
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
     expect(container.querySelector("[aria-busy]")).toBeNull();
     expect(ready.at(-1)).toBe(false);
+  });
+});
+
+describe("the document's kept place", () => {
+  it("comes back once the document is open and laid out tall enough to hold it, never over the bones", () => {
+    // How tall the scrolled page is; the editor lays out after it mounts.
+    let tall = 120;
+    const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => tall);
+    const client = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(100);
+    const watched: Array<() => void> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private fire: () => void) {}
+        observe() {
+          watched.push(this.fire);
+        }
+        disconnect() {}
+      },
+    );
+    try {
+      const page = (ready: boolean) => (
+        <Scroller scrollTop={600} ready={ready} onScroll={() => undefined}>
+          {() => <div data-page />}
+        </Scroller>
+      );
+      const { container, rerender } = render(page(false));
+      const scroller = container.querySelector("[data-doc-scroller]") as HTMLElement;
+      // While it opens, the bones keep the top.
+      expect(scroller.scrollTop).toBe(0);
+      // Open, but the editor has not laid out: the place waits rather than clamp to a short page.
+      rerender(page(true));
+      expect(scroller.scrollTop).toBe(0);
+      // The editor lays out: the kept place comes back.
+      tall = 1400;
+      act(() => watched.forEach((fire) => fire()));
+      expect(scroller.scrollTop).toBe(600);
+    } finally {
+      height.mockRestore();
+      client.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });
 
