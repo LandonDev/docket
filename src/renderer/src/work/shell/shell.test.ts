@@ -79,15 +79,18 @@ describe("Settings → Work's lines", () => {
 });
 
 describe("the column's LifeOS projects", () => {
-  it("are those still under way, in LifeOS's order", () => {
+  it("are those still under way, in the Projects view's order: oldest first, the id settling a tie", () => {
     const rows = columnProjects([
-      { _id: "a", name: "Wrap-up", status: "done" },
-      { _id: "b", name: "Spring LAN", status: "active", order: 2 },
-      { _id: "c", name: "Nationals", status: "backlog", order: 1 },
-      { _id: "d", name: "Dropped", status: "dropped" },
-      { _id: "e", name: "Sponsors", status: "paused", order: 2 },
+      { _id: "a", name: "Wrap-up", status: "done", _creationTime: 1 },
+      { _id: "b", name: "Spring LAN", status: "active", _creationTime: 30 },
+      { _id: "c", name: "Nationals", status: "backlog", _creationTime: 10 },
+      { _id: "d", name: "Dropped", status: "dropped", _creationTime: 2 },
+      { _id: "f", name: "Tryouts", status: "paused", _creationTime: 20 },
+      { _id: "e", name: "Sponsors", status: "paused", _creationTime: 20 },
     ]);
-    expect(rows.map((r) => r.name)).toEqual(["Nationals", "Sponsors", "Spring LAN"]);
+    expect(rows.map((r) => r.name)).toEqual(["Nationals", "Sponsors", "Tryouts", "Spring LAN"]);
+    // Only what a card needs leaves: nothing of the order's own fields.
+    expect(rows[0]).toEqual({ id: "c", name: "Nationals" });
   });
   it("name a sector as LifeOS does, else by its key", () => {
     expect(sectorName("ref")).toBe("Ref");
@@ -96,8 +99,8 @@ describe("the column's LifeOS projects", () => {
 });
 
 describe("WORK_VIEWS", () => {
-  it("is Mail, Tasks, Agenda, Docs and Files in that order, then Routines (milestone 32); each a stub until its pillar lands", async () => {
-    expect(workViewList().map((v) => v.label)).toEqual(["Mail", "Tasks", "Agenda", "Docs", "Files", "Routines"]);
+  it("is Mail, Tasks, Projects, Agenda, Docs and Files in that order, then Routines (milestone 32); none of them says a fact it has not read", async () => {
+    expect(workViewList().map((v) => v.label)).toEqual(["Mail", "Tasks", "Projects", "Agenda", "Docs", "Files", "Routines"]);
     for (const view of Object.values(WORK_VIEWS)) {
       expect(view.chunk.name).toBe(`work-${view.id}-view`);
       expect(view.fact({} as WorkspaceMeta)).toBeNull();

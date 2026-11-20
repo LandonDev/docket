@@ -223,14 +223,19 @@ export const workColumnPort = {
 export interface OpenWorkView {
   workspaceId: string;
   view: string;
+  /** Projects alone: the LifeOS project to stand on (a card's Open project). The view takes it once and clears it. */
+  project?: string;
 }
 let openView: OpenWorkView | null = null;
 
 export function openWorkView(next: OpenWorkView | null): void {
-  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view) return;
+  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project) return;
   openView = next;
   for (const listener of listeners) listener();
 }
+
+/** The view open now, read outside React. */
+export const workViewNow = (): OpenWorkView | null => openView;
 
 export function useWorkView(): OpenWorkView | null {
   const read = (): OpenWorkView | null => openView;

@@ -46,7 +46,7 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
     floor: 4.5,
     pairs: [
       ...pairs(
-        ["--foreground", "--muted-foreground", "--link", "--thread-success", "--thread-warning", "--thread-danger", "--thread-info"],
+        ["--foreground", "--muted-foreground", "--link", "--thread-success", "--thread-warning", "--thread-waiting", "--thread-danger", "--thread-info"],
         SURFACES,
       ),
       // An alert's description and a search hit's line (foreground at 80% in dark, held; foreground in light).
@@ -92,6 +92,8 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
     pairs: [
       ...pairs(["--accent", "--ring", "--type-chat", "--type-planning", "--type-project-plan", "--type-implementation", "--type-orchestration", "--type-research"], SURFACES),
       ...pairs(["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-neutral", "--chart-neutral-rest", "--chart-neutral-stale", "--thread-violet", "--thread-cyan"], PAGE),
+      // The project screens' stages of work (a state's glyph, a meter's segment) on the page, a lane and the rail's cards.
+      ...pairs(["--stage-doing", "--stage-waiting", "--stage-done"], EDGE_GROUNDS),
     ],
   },
   { name: "edge", floor: 1.15, pairs: pairs(["--border"], EDGE_GROUNDS) },

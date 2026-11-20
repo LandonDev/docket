@@ -8,16 +8,17 @@ import { agendaView } from "../agenda/view";
 import { docsView } from "../docs/view";
 import { filesView } from "../office/view";
 import { mailView } from "../mail/view";
+import { projectsView } from "../projects/view";
 import { routinesView } from "../routines/view";
 import { tasksView } from "../tasks/view";
 
 /**
  * The rows over a linked Work workspace's projects (architecture §7.3):
- * Mail, Tasks, Agenda, Docs and Files (Teams files, docs/agents/work-files.md), then Routines (milestone 32). A row opens its view in the main pane under
+ * Mail, Tasks, Projects (the project screens, docs/agents/work-projects.md), Agenda, Docs and Files (Teams files, docs/agents/work-files.md), then Routines (milestone 32). A row opens its view in the main pane under
  * the thread strip. One closed list; each pillar fills its own `view.ts`
  * (milestones 23 and 25, and Docs after them) and edits nothing here.
  */
-export type WorkViewId = "mail" | "tasks" | "agenda" | "docs" | "files" | "routines";
+export type WorkViewId = "mail" | "tasks" | "projects" | "agenda" | "docs" | "files" | "routines";
 
 export interface WorkViewProps {
   env: string;
@@ -33,6 +34,8 @@ export interface WorkViewProps {
 export interface WorkViewModule {
   View: ComponentType<WorkViewProps>;
   Head?: (props: WorkViewProps) => ReactNode;
+  /** In place of the view's name in the header, for a view that stands somewhere inside itself: the way back from a project's page. Until the chunk lands the header shows the name. */
+  Title?: (props: WorkViewProps) => ReactNode;
 }
 
 export interface WorkViewDef {
@@ -52,6 +55,7 @@ export interface WorkViewDef {
 export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
   mail: mailView,
   tasks: tasksView,
+  projects: projectsView,
   agenda: agendaView,
   docs: docsView,
   files: filesView,

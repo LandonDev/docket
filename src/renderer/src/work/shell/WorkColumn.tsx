@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo } from "react";
 import type { ContextChip, SectorKey } from "@shared/work";
+import { projectOrder } from "work-kit/projects/order";
 import { RailRow } from "../../chrome/RailRow";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { openWorkView, setLifeosProjects, useWorkView, workColumnPort, workStartPort, type LifeosProjectRow } from "../../lib/workSwitch";
@@ -11,14 +12,15 @@ import { useLifeosQuery, useLifeosSession } from "./lifeos";
 /** The statuses whose projects the column lists: what is still under way. */
 const LISTED = new Set(["backlog", "active", "paused"]);
 
-type LifeosProject = { _id: string; name: string; status: string; order?: number };
+type LifeosProject = { _id: string; name: string; status: string; _creationTime?: number };
 
-/** LifeOS's projects of one sector as the column lists them: still under way, in LifeOS's order, then by name. */
+/** LifeOS's projects of one sector as the column lists them: still under way, in the Projects view's own order (oldest first), so a card never moves for what is opened or worked in. */
 export function columnProjects(rows: readonly LifeosProject[]): LifeosProjectRow[] {
   return rows
     .filter((p) => LISTED.has(p.status))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
-    .map((p) => ({ id: p._id, name: p.name }));
+    .map((p) => ({ id: p._id, name: p.name, createdAt: p._creationTime ?? 0 }))
+    .sort(projectOrder)
+    .map(({ id, name }) => ({ id, name }));
 }
 
 /**

@@ -17,6 +17,7 @@ import { useThreadMenu } from "./useThreadMenu";
 import { HostGlyph } from "./HostGlyph";
 import {
   Archive,
+  Briefcase,
   ArchiveRestore,
   ChevronRight,
   FileText,
@@ -85,7 +86,7 @@ import { useSessionMetas } from "../lib/tcserver/store";
 import { usePlanReady } from "../hooks/usePlanReady";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog, WORK_CHATS } from "../lib/tcserver/workspaces";
-import { LIFEOS_CARD, useLifeosProjects, workColumnPort } from "../lib/workSwitch";
+import { LIFEOS_CARD, openWorkView, useLifeosProjects, workColumnPort } from "../lib/workSwitch";
 import { loadToast } from "../components/ui/toaster";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
 import {
@@ -1138,13 +1139,15 @@ export const ProjectCard = memo(function ProjectCard({
 
   const dormant = () => dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
   const menuRows = (): MenuRow[] => {
+    // Its page in the Projects view: tasks, documents, activity.
+    const openProject = { kind: "item", id: "open-project", label: "Open project", icon: Briefcase } as const;
     // A LifeOS project's card: LifeOS names, archives and deletes it; until it holds a thread there is no project to set up.
-    if (project.id.startsWith(LIFEOS_CARD)) return [{ kind: "item", id: "chat", label: "New chat", icon: MessageSquarePlus }];
+    if (project.id.startsWith(LIFEOS_CARD)) return [{ kind: "item", id: "chat", label: "New chat", icon: MessageSquarePlus }, openProject];
     const lifeos = !!project.lifeosProjectId;
     const all = dormant();
     const items: MenuRow[] = [
       { kind: "item", id: "chat", label: "New chat", icon: MessageSquarePlus },
-      ...(lifeos ? [] : [{ kind: "item", id: "rename", label: "Rename", icon: Pencil } as const]),
+      ...(lifeos ? [openProject] : [{ kind: "item", id: "rename", label: "Rename", icon: Pencil } as const]),
       { kind: "item", id: "settings", label: "Project settings", icon: Settings },
       // A Work project's rules are a part of its settings sheet.
       ...(lifeos ? [] : [{ kind: "item", id: "preamble", label: "Preamble…", icon: FileText } as const]),
@@ -1175,6 +1178,7 @@ export const ProjectCard = memo(function ProjectCard({
   };
   const onMenuPick = (id: string) => {
     if (id === "chat") newChat(project.id);
+    else if (id === "open-project" && project.lifeosProjectId) openWorkView({ workspaceId: project.workspaceId, view: "projects", project: project.lifeosProjectId });
     else if (id === "rename") setRenaming(true);
     else if (id === "settings") openSettings(project);
     else if (id === "preamble") openPreamble(project);

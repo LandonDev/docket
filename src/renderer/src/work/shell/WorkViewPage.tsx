@@ -53,6 +53,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   }, [def]);
   const loaded = def.chunk.loaded();
   const Head = loaded?.Head;
+  const Title = loaded?.Title;
   const props = useMemo<WorkViewProps>(
     () => ({ env: environmentId, workspace, sector, lifeos: session, startThread: (about, at) => startThreadAbout(about, at?.projectId ?? null, at?.cwd) }),
     [environmentId, workspace, sector, session],
@@ -79,7 +80,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
     <div role="region" aria-label={def.label} className="absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col bg-background">
       <div className="@container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
         <Icon className="size-3.5 text-muted-foreground" />
-        <span className="font-medium text-foreground">{def.label}</span>
+        {Title && !signedOut ? <Title {...props} /> : <span className="font-medium text-foreground">{def.label}</span>}
         <span className="flex-1" />
         {Head && !signedOut ? <Head {...props} /> : null}
       </div>

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { openWorkView, workViewNow } from '../lib/workSwitch'
 import { act, fireEvent } from '@testing-library/react'
 import { SESSION_LIST_PAGE } from '../lib/sessionListWindow'
 import type { ProjectMeta, SessionMeta } from '../lib/tcserver/types'
@@ -423,7 +424,7 @@ describe('a project card', () => {
     probe.unmount()
   })
 
-  it("a Work project's menu has New chat, Project settings and the fleet rows: no Preamble, no rename, no archive, no delete", async () => {
+  it("a Work project's menu has New chat, Open project, Project settings and the fleet rows: no Preamble, no rename, no archive, no delete", async () => {
     resetMenus()
     const probe = mountProbe(projectCard([], { project: { lifeosProjectId: 'lp_1', branch: null } }))
     act(() => {
@@ -431,10 +432,16 @@ describe('a project card', () => {
     })
     const menu = await screen.findByRole('menu', { name: 'Project actions' })
     const labels = [...menu.querySelectorAll('[role=menuitem]')].map((row) => row.textContent)
-    expect(labels.slice(0, 2)).toEqual(['New chat', 'Project settings'])
+    expect(labels.slice(0, 3)).toEqual(['New chat', 'Open project', 'Project settings'])
     for (const gone of ['Preamble…', 'Rename', 'Archive project', 'Archive project…', 'Delete project…']) expect(labels).not.toContain(gone)
     // The fleet's rows over its threads stay: archiving dormant threads is not archiving the project.
     expect(labels).toContain('Archive dormant threads')
+    // Open project stands the Projects view on the LifeOS project the card mirrors.
+    act(() => {
+      fireEvent.click([...menu.querySelectorAll<HTMLElement>('[role=menuitem]')].find((row) => row.textContent === 'Open project')!)
+    })
+    expect(workViewNow()).toEqual({ workspaceId: 'w1', view: 'projects', project: 'lp_1' })
+    openWorkView(null)
     probe.unmount()
   })
 

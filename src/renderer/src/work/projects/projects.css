@@ -1,0 +1,59 @@
+/* The shared project screens (work-kit/projects) on TempCode's scale
+   (docs/DESIGN.md "Project screens"). work-kit's own sheet sets every --pk-*
+   to the tracker's measures, which LifeOS keeps; here they are TempCode's:
+   32px rows of 13px words, the 18/26 title, the radius ladder's steps, a card
+   that is the page's fill on a `card` lane with a hairline and no shadow, and
+   the three hues from the status tokens. Loaded with the Projects view's
+   chunk and the guest's project page, never in the first paint.
+
+   work-kit reads dark from a `.dark` class, which TempCode never sets (its
+   default theme is dark, its light one `html.theme-light`). So nothing here
+   asks which theme is on: each value names a token of index.css, which has a
+   value in each theme, and what work-kit sets under `.dark` is a token too. */
+
+:root {
+  --pk-row-h: 32px;
+  --pk-bar-h: 40px;
+  --pk-indent: 20px;
+  --pk-gutter: 16px;
+  --pk-text: 13px;
+  --pk-meta: 12px;
+  --pk-title: 18px;
+  --pk-title-lh: 26px;
+  --pk-title-track: -0.01em;
+
+  --pk-radius-row: 8px;
+  --pk-radius-card: 6px;
+  --pk-radius-lane: 12px;
+  --pk-radius-sheet: 16px;
+
+  --pk-well: var(--card);
+  --pk-card: var(--background);
+  /* A card is flat here: one hairline, and a stronger one in hand. Only the drag lifts. */
+  --pk-card-shadow: 0 0 0 1px var(--border);
+  --pk-hand-shadow: 0 0 0 1px var(--border-strong);
+  --pk-lift-shadow: 0 0 0 1px var(--border), var(--shadow-overlay);
+
+  /* A row in hand is the chrome's hover step; selected, open or pressed, its `muted` step. */
+  --pk-veil: color-mix(in srgb, var(--foreground) 5%, transparent);
+  --pk-veil-strong: color-mix(in srgb, var(--foreground) 9%, transparent);
+
+  /* The three hues of work in hand are marks (a glyph, a meter's segment), never words: index.css's
+     stage tokens, the status colours on dark and the chart's series on light. */
+  --pk-doing: var(--stage-doing);
+  --pk-waiting: var(--stage-waiting);
+  --pk-done: var(--stage-done);
+  /* Work nobody began: the meter's dotted rest, a mark like a chart's stale series (3:1 on the page). */
+  --pk-rest: var(--chart-neutral-stale);
+
+  --pk-ease-out: var(--ease-out);
+  --pk-ease-drawer: var(--ease-drawer);
+}
+
+/* work-kit's two rules that ask for `.dark`, on tokens that follow the theme themselves. */
+.tc-projects .meter-rest {
+  color: var(--pk-rest);
+}
+.tc-projects .pk-slot {
+  border-color: var(--border-strong);
+}

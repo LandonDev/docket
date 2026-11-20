@@ -75,6 +75,13 @@
   --destructive-foreground: #ffffff;
   --success: var(--thread-success);
   --warning: var(--thread-warning);
+  /* Work parked on someone else (a task that waits): orange, a step from the amber that means the person is needed. */
+  --waiting: var(--thread-waiting);
+  /* The three stages of work in hand on the project screens (work/projects/projects.css): a state's
+     glyph and a meter's segment, marks and never words. On dark the status colours serve. */
+  --stage-doing: var(--warning);
+  --stage-waiting: var(--waiting);
+  --stage-done: var(--success);
   --info: var(--thread-info);
   /* Type identity: one colour per thread type, on its glyph only, never a
      status, a title, a fill or a border. Literals, so retuning a status
@@ -313,6 +320,11 @@
 }
 
 html.theme-light {
+  /* Light's status colours are dark enough to read as words, and as fills its amber and orange close
+     on one brown: a stage's mark takes the chart's series, three hues that stay apart at 3:1. */
+  --stage-doing: var(--chart-4);
+  --stage-waiting: var(--chart-2);
+  --stage-done: var(--chart-3);
   --sector-cosmic: oklch(0.6 0.12 285);
   --sector-hypixel: oklch(0.64 0.12 40);
   --sector-purdue: oklch(0.7 0.11 85);
@@ -671,6 +683,7 @@ html.theme-light {
   --color-markdown-heading: #f9a8c9;
   --thread-success: #34d399;
   --thread-warning: #fbbf24;
+  --thread-waiting: #fb923c;
   --thread-danger: #f87171;
   --thread-info: #60a5fa;
   --thread-violet: #a78bfa;
@@ -707,6 +720,7 @@ html.theme-light {
      selected group step among them (lib/tokenContrast.test.ts). */
   --thread-success: #046c4e;
   --thread-warning: #92450a;
+  --thread-waiting: #b93a0c;
   --thread-danger: #b91c1c;
   --thread-info: #1d4ed8;
   --thread-violet: #7c3aed;
