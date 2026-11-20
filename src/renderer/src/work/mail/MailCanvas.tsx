@@ -45,9 +45,8 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
     const retry = (): Promise<void> => reopenLifeos(env, sector).catch(() => undefined);
     shell.statusLine(unreachable ? { tone: "failed", word: "LifeOS did not answer", detail: "The draft is kept there", action: { label: "Retry", run: retry } } : null);
   }, [shell, unreachable, env, sector]);
-  // A file of the mail it answers opens as another item of this pane (files.ts), from the mail thread shown now.
-  const shownThread = useRef<string | null>(null);
-  const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId, thread: () => shownThread.current }), [env, item.sessionId]);
+  // A file of the mail it answers opens as another item of this pane (files.ts).
+  const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId }), [env, item.sessionId]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
   if (lifeos.state === "off" || lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title="Sign in to LifeOS" action={{ label: "Sign in", onClick: openWorkSettings }} />;
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
@@ -61,7 +60,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
       <MailClientProvider client={mailClientFor(env, lifeos.client.url)}>
         <MailKitProvider kit={kit}>
           <div className="tc-mail flex h-full min-h-0 flex-col">
-            <Draft id={source.id} shell={shell} shownThread={shownThread} />
+            <Draft id={source.id} shell={shell} />
             <SentLine env={env} id={source.id} />
           </div>
         </MailKitProvider>
@@ -93,7 +92,7 @@ const NO_TASKS: ReadonlySet<string> = new Set();
 const paneOnly = ({ pane }: { list: ReactNode; pane: ReactNode }): ReactNode => pane;
 const who = (people: readonly { name?: string | undefined; address: string }[]): string => people.map((p) => p.name?.trim() || p.address).join(", ");
 
-function Draft({ id, shell, shownThread: shownRef }: { id: string; shell: CanvasShell; shownThread: { current: string | null } }) {
+function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
   const client = useMailClient();
   const convex = useConvex();
   const doc = client.useComposeDoc(id);
@@ -105,7 +104,6 @@ function Draft({ id, shell, shownThread: shownRef }: { id: string; shell: Canvas
 
   const [shownThread, setShownThread] = useState<string | null>(threadId);
   useEffect(() => setShownThread(threadId), [threadId]);
-  shownRef.current = shownThread;
   const [compose, setCompose] = useState<ComposeState | null>(null);
   // Closing the composer is his; it opens again on the draft only when the item comes back or a rewrite was decided.
   const closed = useRef(false);

@@ -10,24 +10,23 @@ import { openItem } from "../canvas/store";
  * by the host from LifeOS's store. A file no canvas shows here is saved to Downloads, as before.
  */
 
-/** Where a reader's files open: the pane's host and owner, and the mail thread the reader has open now. */
+/** Where a reader's files open: the pane's host and owner. */
 export interface FilePlace {
   env: string;
   pane: string;
-  thread(): string | null;
 }
 
-/** The canvas kind that shows this file beside the mail, or null when it is only saved. */
-export function viewKind(file: MailFile, thread: string | null): CanvasKind | null {
-  if (!thread || !file.messageId || !file.partId) return null;
+/** The canvas kind that shows this file beside the mail, or null when it is only saved. A file names its mail thread, message and part, or the host cannot find it. */
+export function viewKind(file: MailFile): CanvasKind | null {
+  if (!file.threadId || !file.messageId || !file.partId) return null;
   const kind = kindForFile(file.name, file.contentType);
   return kind && FETCHED_KINDS.includes(kind) ? kind : null;
 }
 
 /** The attachment as a canvas source. */
-export const attachmentSource = (file: MailFile, thread: string): CanvasSource => ({
+export const attachmentSource = (file: MailFile): CanvasSource => ({
   at: "mail",
-  threadId: thread,
+  threadId: file.threadId!,
   messageId: file.messageId!,
   partId: file.partId!,
   name: file.name,
@@ -39,13 +38,12 @@ export const attachmentSource = (file: MailFile, thread: string): CanvasSource =
 export function placeFiles(place: FilePlace, save: MailKit["saveFile"]): Pick<MailKit, "openFile" | "saveFile" | "viewsPictures" | "fileVerb"> {
   return {
     viewsPictures: true,
-    fileVerb: (file) => (viewKind(file, place.thread()) ? "view" : "save"),
+    fileVerb: (file) => (viewKind(file) ? "view" : "save"),
     saveFile: save,
     openFile: async (file) => {
-      const thread = place.thread();
-      const kind = viewKind(file, thread);
-      if (!kind || !thread) return save(file);
-      await openItem(place.env, place.pane, { kind, source: attachmentSource(file, thread), title: file.name.slice(0, 200) });
+      const kind = viewKind(file);
+      if (!kind) return save(file);
+      await openItem(place.env, place.pane, { kind, source: attachmentSource(file), title: file.name.slice(0, 200) });
       return "opened";
     },
   };

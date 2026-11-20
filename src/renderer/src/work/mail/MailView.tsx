@@ -128,12 +128,9 @@ export function MailScreen({
 }) {
   const page = usePage(id);
   const kit = useMailKit();
-  // The open mail, read when a file is pressed: the reader shows only the thread it has open.
-  const open = useRef(page.threadId);
-  open.current = page.threadId;
   const pane = mailPaneOf(id);
   const env = files?.env;
-  const placed = useMemo(() => (env ? placedKit(kit, { env, pane, thread: () => open.current }) : null), [kit, env, pane]);
+  const placed = useMemo(() => (env ? placedKit(kit, { env, pane }) : null), [kit, env, pane]);
   const client = useMailClient();
   const accounts = client.useMailAccounts();
   const actions = client.useMailActions();
