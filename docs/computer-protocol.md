@@ -2227,11 +2227,33 @@ app's job object and ends with it.
 ### 29.1 Process and the wire
 
 - `tc-computer serve` on stdin and stdout, stderr the log; `version`;
-  `hold-lock clipboard|session MS`. `serve --listen 127.0.0.1:PORT` takes one
-  loopback connection in place of stdio, only with `TC_COMPUTER_PROOF=1`:
-  the rig's proof starts the service on the desktop through the Task
-  Scheduler, which gives it no pipe to a host. A non-loopback address is
-  refused.
+  `hold-lock clipboard|session MS`.
+- **The door**, `serve --listen 127.0.0.1:PORT --token-file FILE`
+  (src/door.rs), for a host on another machine: a service started on the
+  desktop by the Task Scheduler has no pipe to a host, so the host reaches
+  the guest's loopback through an SSH forward. The address must be
+  loopback (any other exits 64 before anything listens); the token is the
+  file's text without surrounding whitespace, 32 printable characters at
+  least. The first line a connection sends, 512 bytes at most within 5 s,
+  is its knock: `TOKEN` for the host's wire, `TOKEN video` for the wire
+  when a bytes connection is coming, `TOKEN bytes VIDEO_TOKEN` for live
+  video's bytes (§30, VIDEO_TOKEN 16 to 128 hex digits). The token is
+  compared in constant time; a wrong or missing one closes the connection
+  with nothing written. One host at a time: another wire knock while a host
+  is in is answered `{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"another host is connected"}}`
+  and closed, and so is a bytes knock (closed, with nothing written). A
+  bytes connection waits 10 s at most for the host that asks for video,
+  and that host waits 3 s for it, in either order. Each host let in gets a
+  fresh `tc-computer serve` child on stdio: the door carries the wire to
+  its stdin and stdout, and when it asked for video makes a named pipe of
+  one instance (`\\.\pipe\tc-computer-video-…`, the first instance, so no
+  other process holds the name), starts the child with that pipe and
+  VIDEO_TOKEN as `TC_COMPUTER_VIDEO_PIPE` and `TC_COMPUTER_VIDEO_TOKEN`, and
+  carries the pipe to the bytes connection; the child writes VIDEO_TOKEN
+  first, as on a Windows host, and the host checks it. The wire closing
+  ends the child (stdin EOF, killed after 5 s otherwise); the child ending
+  closes the wire; the next host may knock then. The child's stderr is the
+  door's.
 - The wire types are generated: `bun scripts/gen-rust-computer.ts` reads the
   same JSON Schemas as §12's Swift generator (`jsonSchemas` over
   `COMPUTER_SUBSET`) and writes serde types, the methods' params and results,
@@ -2538,13 +2560,25 @@ host-name text calls this machine "this PC" there (`thisDesktopInLine`).
   `~/.cache/cargo-xwin`), the C runtime linked in (`.cargo/config.toml`:
   a PC without the Visual C++ runtime cannot start it otherwise). The
   Windows pack takes it from `target/x86_64-pc-windows-msvc/release` into
-  `resources/native` (build/electron-builder.win.yml). `cargo test` in the
+  `resources/native` (build/electron-builder.win.yml); `release-publish.sh
+  --win` builds it before that pack, and the release check (`win-stage.ts
+  check-app`, `packedAppProblems`) refuses a packed app without it or with
+  one that is not an x64 Windows executable. The box's source deploy
+  (box-update-lib.sh `build_script`) runs the script with `--into
+  resources/native`, so the exe the Windows VM's keeper copies into the
+  guest is the box build's own; `tcComputerExe` (src/main/server/work/winvm/serviceBin.ts)
+  finds it there, else a dev tree's cargo output, else the file
+  `TEMP_CODE_WINVM_EXE` names, and answers null when there is none. A failed
+  exe build there warns and the deploy goes on; a release tarball's deploy
+  (`box-update v1.0.N`) carries none. `cargo test` in the
   crate runs the platform-free core (framing, router, slots, locks, the
   book, the text) against a fake desktop on the box.
 - `bun scripts/e2e-computer-win.ts` is the proof in the rig: it starts
   Notepad, Edge (a scratch page) and File Explorer on tcuser's desktop and
-  the service through `run-in-session.sh`, reaches it through an SSH
-  tunnel, calls every method of §3 holding each answer to
+  the service as its door (§29.1, a fresh token in tcuser's `tc-token`)
+  through `run-in-session.sh`, reaches it through an SSH tunnel, checks
+  that the door closes a wrong or missing token, refuses a second host
+  and refuses a non-loopback address, calls every method of §3 holding each answer to
   `resultFrameSchema` or `RpcErrorResponseSchema`, checks the refusals,
   puts every observation through `parseObservation` and
   `formatObservation`, sets values in Notepad and Edge, selects text, and
@@ -2831,13 +2865,12 @@ frame waited inside the viewer, in microseconds.
   hold far more at this size. 120 frames a second was not seen. The bitrate
   is low because the picture is simple.
 - **In the rig, the pipe crosses machines.** The proof's host is on the box
-  and the service in the guest, so `tc-computer pipe-relay NAME --listen
-  127.0.0.1:PORT` (only with `TC_COMPUTER_PROOF=1`) makes the named pipe the
-  service dials and carries it to a guest loopback port; a second SSH
-  tunnel brings that port to the box, where the proof's spawn
-  (`rigSpawn` in scripts/lib/winComputerRig.ts) checks and drops the
-  service's token and joins the rest to the host's own pipe after the
-  host's token.
+  and the service in the guest, behind its door (§29.1). The proof's spawn
+  (`rigSpawn` in scripts/lib/winComputerRig.ts) knocks `TOKEN bytes` with
+  the host's own video token on one connection and `TOKEN video` on
+  another, both through the one SSH tunnel, and joins the bytes connection
+  to the host's own pipe; the service's first bytes on it are the host's
+  token, which the host checks.
 
 ### The host
 

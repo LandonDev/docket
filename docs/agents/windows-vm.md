@@ -88,7 +88,8 @@ scripts/win-vm/down.sh                    # shut Windows down and stop the machi
   that limit, and exits with cmd.exe's code.
 - **Reading the screen:** `shot.sh` asks QEMU for the frame (`screendump`, PNG), so it works whatever the guest
   is doing. UI Automation inside the guest is M42's service (`native/tc-computer-win/`), started with
-  `run-in-session.sh`.
+  `run-in-session.sh` as its door, `serve --listen 127.0.0.1:PORT --token-file FILE`, which a host on the box
+  reaches through an SSH tunnel with the token as its first line (docs/computer-protocol.md §29.1).
 - **A build in, a program run:** `scp.sh` the installer into `guest:Downloads/`, then
   `ssh.sh 'Downloads\temp-code-1.0.N-setup.exe /S'` installs per user with no UAC prompt, in session 0
   (proven by M12: exit 0 after about five minutes with Defender on; give it 20), then `run-in-session.sh`

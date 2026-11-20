@@ -725,8 +725,9 @@ will through the tunnel.
 The Windows service, `bun scripts/e2e-computer-win.ts --legs video`, in the
 rig on 2026-11-19 (8 cores, no GPU, Windows 11 at 1280×800): a WinForms window
 that draws a moving bar and a counter on a 10 ms timer, the box's own
-`ComputerConnection` reading the records through `pipe-relay` and a second
-SSH tunnel and acking each one, 10 s per mode.
+`ComputerConnection` reading the records through a relay of the named pipe
+over a second SSH tunnel (since replaced by the door's bytes connection,
+docs/computer-protocol.md §29.1) and acking each one, 10 s per mode.
 
 | Mode | Picture | Frames a second (the window drew) | Bitrate | Encode p50 / p95 | Capture | Encoder |
 |---|---|---|---|---|---|---|

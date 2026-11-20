@@ -4226,7 +4226,16 @@ both):
   version equal to N and its `tempcodeBuild.sha` equal to the manifest's,
   a contract version in the manifest. The probe reads version and contract
   from the manifest, so the candidate needs no `src/`.
-- `box-update master` clones and runs `electron-vite build` as before.
+- `box-update master` clones and runs `electron-vite build` as before, then
+  `bun scripts/build-tc-computer-win.ts --into resources/native`: the
+  Windows VM's service, cross-built with the agents user's cargo-xwin
+  (`~/.cargo/bin`, the SDK under `~/.cache/cargo-xwin`), about 40 s cold.
+  The keeper finds it through `tcComputerExe`
+  (src/main/server/work/winvm/serviceBin.ts). A failed exe build prints
+  `WARN: tc-computer.exe was not built` and the deploy goes on; the VM then
+  has no service. A `v1.0.N` asset carries none. The step lives in
+  box-update-lib.sh, so it runs only once stage 85 is reapplied
+  (`scripts/box/apply.sh --from 85 --through 85` from the Mac).
 - node_modules, on both paths: when the candidate's bun.lock is
   byte-identical to the current build's and that build has an Electron
   binary, the current tree is hardlinked into the candidate (`cp -al`, 0.7 s
