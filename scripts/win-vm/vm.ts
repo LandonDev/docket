@@ -228,6 +228,7 @@ async function up(mode: { keep: boolean; from: string | null; wait: boolean }): 
     must('qemu-img', ['create', '-q', '-f', 'qcow2', '-b', join(src, 'disk.qcow2'), '-F', 'qcow2', p.runDisk])
     copyFileSync(join(src, 'OVMF_VARS.fd'), p.runVars)
     writeFileSync(join(p.run, 'FROM'), (mode.from ?? 'base') + '\n')
+    writeFileSync(p.runId, randomBytes(8).toString('hex') + '\n')
     tpmFrom = existsSync(join(src, 'tpm')) ? join(src, 'tpm') : p.baseTpm
     log(standing ? "the standing machine's disk, made from the base image" : `fresh overlay on ${mode.from ? `snapshot ${mode.from}` : 'the base image'}`)
   }

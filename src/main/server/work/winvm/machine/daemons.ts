@@ -3,7 +3,7 @@
  * server keeper. Plain node only: scripts/win-vm/vm.ts runs this under bun.
  */
 import { spawn } from 'node:child_process'
-import { accessSync, constants, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { accessSync, constants, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { daemonEnv, type RigConfig, type RigPaths } from './config'
 import { qemuArgs, swtpmArgs, type Machine } from './qemu'
@@ -67,13 +67,19 @@ export function stopTpm(p: RigPaths): void {
   }
 }
 
-/** Starts swtpm on a fresh live state copied from `from` (a saved state), or a blank TPM when there is none. */
+const readOr = (file: string, none: string) => (existsSync(file) ? readFileSync(file, 'utf8').trim() : none)
+
+/**
+ * Starts swtpm on a fresh live state copied from `from` (a saved state), or a blank TPM when there is none. The
+ * live state is marked with the run's id, so only that run ever takes it back.
+ */
 export async function startTpm(c: RigConfig, p: RigPaths, from: string | null): Promise<void> {
   stopTpm(p)
   await waitFor('the old swtpm to exit', 10, () => tpmPid(p) === null, 0.2)
   rmSync(c.tpmDir, { recursive: true, force: true })
   mkdirSync(p.tpmState, { recursive: true, mode: 0o700 })
   if (from && existsSync(from)) cpSync(from, p.tpmState, { recursive: true })
+  writeFileSync(p.tpmRunId, readOr(p.runId, ''))
   await startDaemon('swtpm', ['swtpm', swtpmArgs(p)])
 }
 
@@ -96,10 +102,13 @@ function newest(dir: string): number | null {
 }
 
 /**
- * Whether the live TPM state changed after the run's saved copy: QEMU crashed, or the guest stopped itself, so no
- * clean stop saved it. A clean stop copies the live state, and the copy is the newer, so this is then false.
+ * Whether the live TPM state is this run's and changed after the run's saved copy: QEMU crashed, or the guest
+ * stopped itself, so no clean stop saved it. A clean stop copies the live state, and the copy is the newer, so this
+ * is then false. A live state started for another run (or a run with no id, from before ids) is never taken.
  */
 export function liveTpmIsNewer(p: RigPaths): boolean {
+  const id = readOr(p.runId, '')
+  if (!id || readOr(p.tpmRunId, '') !== id) return false
   const live = newest(p.tpmState)
   if (live === null) return false
   const saved = newest(p.runTpm)

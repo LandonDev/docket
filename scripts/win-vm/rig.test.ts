@@ -148,6 +148,11 @@ describe('the TPM after a crash or a guest\'s own stop', () => {
       writeFileSync(join(dir, 'tpm2-00.permall'), body)
       utimesSync(join(dir, 'tpm2-00.permall'), at, at)
     }
+    // As up and startTpm leave them: the run's id, and the live state marked with it.
+    mkdirSync(p.run, { recursive: true })
+    writeFileSync(p.runId, 'run-1\n')
+    mkdirSync(c.tpmDir, { recursive: true })
+    writeFileSync(p.tpmRunId, 'run-1')
     return { c, p, write }
   }
 
@@ -170,6 +175,18 @@ describe('the TPM after a crash or a guest\'s own stop', () => {
     rmSync(p.runTpm, { recursive: true })
     expect(await keepLiveTpm(c, p)).toBe(true)
     expect(readFileSync(join(p.runTpm, 'tpm2-00.permall'), 'utf8')).toBe('live')
+  })
+
+  it("never takes a live state started for another run, or for a run from before ids", async () => {
+    const { c, p, write } = machine('rig')
+    write(p.runTpm, 'this run, saved', 1000)
+    write(p.tpmState, 'a later run, put aside by hand, or a restore point gone back past', 2000)
+    writeFileSync(p.tpmRunId, 'run-2')
+    expect(await keepLiveTpm(c, p)).toBe(false)
+    writeFileSync(p.tpmRunId, '')
+    rmSync(p.runId)
+    expect(await keepLiveTpm(c, p)).toBe(false)
+    expect(readFileSync(join(p.runTpm, 'tpm2-00.permall'), 'utf8')).toBe('this run, saved')
   })
 
   it('does nothing with no live state or no run', async () => {

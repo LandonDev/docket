@@ -121,6 +121,9 @@ export function rigPaths(c: RigConfig) {
     runDisk: join(run, 'disk.qcow2'),
     runVars: join(run, 'OVMF_VARS.fd'),
     runTpm: join(run, 'tpm'),
+    /** A run's id, new with each fresh overlay; the live TPM state carries the id of the run it was started for. */
+    runId: join(run, 'ID'),
+    tpmRunId: join(c.tpmDir, 'run-id'),
     qmp: join(run, 'qmp.sock'),
     pid: join(run, 'qemu.pid'),
     tpmState: join(c.tpmDir, 'state'),
