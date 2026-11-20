@@ -221,6 +221,27 @@ describe('ComputerConnection', () => {
     expect(three.alive).toBe(true)
   })
 
+  it('a host with no fourth descriptor names a pipe the service dials: video flows the same, and only the service that says the token is taken', async () => {
+    const name = (): string => join(tmpdir(), `tc-video-pipe-${process.pid}-${Math.random().toString(36).slice(2)}.sock`)
+    const c = await start({ FAKE_VIDEO_FPS: '200' }, { videoPipe: 'named', videoPipeName: name() })
+    expect(c.video).toBe(true)
+    await c.request('session.open', { session: 's1' })
+    const got: number[] = []
+    c.onBytes((_stream, message) => void got.push(parseFrame(message).sequence))
+    const { stream } = await c.request('capture.video.start', { ...target('TextEdit'), maxEdge: 1280, mode: 'budget' })
+    await vi.waitFor(() => expect(got).toHaveLength(8))
+    c.sendBytes(stream, encodeAck(stream, 8, 0))
+    await vi.waitFor(() => expect(got.length).toBe(16))
+    await c.request('capture.video.stop', { stream })
+    // a process that dials the name without the token is not the pipe: the service is one with no video
+    const wrong = await start({ FAKE_VIDEO_BAD_TOKEN: '1' }, { videoPipe: 'named', videoPipeName: name() })
+    expect(wrong.video).toBe(false)
+    expect(await wrong.request('permissions.get', {})).toEqual({ accessibility: true, screenRecording: true })
+    // and a service that never dials (an older build) is one too, with no wait at start worth the name
+    const old = await start({ FAKE_NO_FEATURES: '1' }, { videoPipe: 'named', videoPipeName: name() })
+    expect(old.video).toBe(false)
+  })
+
   it('bytes on the pipe that are no record kill the service as bad-output', async () => {
     const c = await start({ FAKE_VIDEO_GARBAGE: '1' })
     await c.request('session.open', { session: 's1' })

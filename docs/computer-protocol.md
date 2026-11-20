@@ -2597,8 +2597,20 @@ into Swift and Rust.
 Frames do not travel on stdout. On the Mac the host starts the service with
 a fourth stdio entry, a socket pair: file descriptor 3 in the service
 (`VIDEO_STREAM.pipeFd`), read and written. A service started without it (the
-descriptor is not open) leaves `video` out of its features. On Windows the
-bytes go over a named pipe the host names at spawn (§29).
+descriptor is not open) leaves `video` out of its features.
+
+Windows has no fourth descriptor to hand down. There the host listens on a
+named pipe before it starts the service, `\\.\pipe\tc-computer-video-<32 hex>`,
+and tells the service two things in its environment: the pipe's name
+(`TC_COMPUTER_VIDEO_PIPE`) and a token of 64 hex characters
+(`TC_COMPUTER_VIDEO_TOKEN`). The service dials the pipe before it answers
+`initialize` and writes the token's 64 characters first; records follow, both
+ways, as on descriptor 3. The name of a pipe can be read by any process on
+the machine, the token only by the service it was handed to: the host takes
+the first socket that says it, drops every other, and closes the listener. A
+service with neither variable set, or one that could not dial, leaves `video`
+out of its features. A host that hears `video` waits up to two seconds for the
+pipe (`ComputerConnection.start`, `videoPipe: 'named'`).
 
 A record on the pipe is the stream's number as four bytes, big-endian, then
 one whole NSL1 message (`src/shared/computer/videoPipe.ts`). The service

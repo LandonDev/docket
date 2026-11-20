@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto'
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { Socket } from 'node:net'
+import { Socket, connect } from 'node:net'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 
@@ -102,8 +102,14 @@ const VIDEO_WINDOW = 8
 let videoPipe = null
 if (process.env.FAKE_NO_VIDEO_PIPE !== '1') {
   try {
-    videoPipe = new Socket({ fd: 3, readable: true, writable: true })
+    if (process.env.TC_COMPUTER_VIDEO_PIPE) {
+      // a host with no fourth descriptor to hand down (Windows) names a pipe to dial: the token is said first.
+      // FAKE_VIDEO_BAD_TOKEN=1 says a wrong one, as a process that is not the service would.
+      videoPipe = connect(process.env.TC_COMPUTER_VIDEO_PIPE)
+      videoPipe.write(process.env.FAKE_VIDEO_BAD_TOKEN === '1' ? 'x'.repeat(64) : (process.env.TC_COMPUTER_VIDEO_TOKEN ?? ''))
+    } else videoPipe = new Socket({ fd: 3, readable: true, writable: true })
     videoPipe.on('error', () => { videoPipe = null })
+    videoPipe.on('close', () => { videoPipe = null })
     videoPipe.on('data', onVideoBytes)
   } catch {
     videoPipe = null

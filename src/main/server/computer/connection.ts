@@ -1,4 +1,6 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { createServer, type Server, type Socket } from 'node:net'
 import { createInterface } from 'node:readline'
 import type { Duplex } from 'node:stream'
 import { version as appVersion } from '../../../../package.json'
@@ -47,7 +49,20 @@ export interface ComputerConnectionOptions {
   now?: () => number
   /** after a deadline's `$/cancel`, how long the answer may still come (test seam) */
   cancelGraceMs?: number
+  /**
+   * How the bytes pipe of live video is made (§30): `stdio` is the child's fourth descriptor, `named` a pipe the
+   * service is told the name of and dials (Windows has no fourth descriptor to inherit). By the platform when left out.
+   */
+  videoPipe?: 'stdio' | 'named'
+  /** where a `named` pipe listens (test seam); `\\.\pipe\tc-computer-video-<random>` on Windows */
+  videoPipeName?: string
 }
+
+/** The name of the pipe the service dials, and the word it says first so no other process can stand in its place. */
+export const VIDEO_PIPE_ENV = 'TC_COMPUTER_VIDEO_PIPE'
+export const VIDEO_PIPE_TOKEN_ENV = 'TC_COMPUTER_VIDEO_TOKEN'
+/** A service that names `video` has this long after `initialize` to be on its named pipe. */
+const VIDEO_PIPE_JOIN_MS = 2_000
 
 export type ComputerExitKind = 'clean' | 'grant-restart' | 'bad-command' | 'old-macos' | 'fault' | 'crash' | 'bad-output' | 'killed'
 export interface ComputerExit {
@@ -172,8 +187,11 @@ export class ComputerConnection {
   private readonly stderrTail: string[] = []
   private exit: ComputerExit | null = null
   private killedAs: ComputerExitKind | null = null
-  /** the bytes pipe (§30), when the service was started with one; null for an in-process service and on Windows */
-  private readonly pipe: Duplex | null
+  /** the bytes pipe (§30), when the service was started with one or has dialed its named one; null for an in-process service */
+  private pipe: Duplex | null
+  /** the named pipe's listener, while the service may still dial it */
+  private pipeServer: Server | null = null
+  private pipeJoined: (() => void) | null = null
   private readonly records = new RecordReader()
   private readonly recordListeners = new Set<(stream: number, message: Uint8Array) => void>()
 
@@ -196,9 +214,10 @@ export class ComputerConnection {
     })
     child.stdin?.on('error', () => undefined)
     // (an in-process service is no child process: it has three streams and no `stdio` at all)
-    this.pipe = ((child.stdio as ChildProcess['stdio'] | undefined)?.[VIDEO_STREAM.pipeFd] as Duplex | null | undefined) ?? null
-    this.pipe?.on('error', () => undefined)
-    this.pipe?.on('data', (chunk: Buffer) => this.received(chunk))
+    this.pipe = null
+    const inherited = ((child.stdio as ChildProcess['stdio'] | undefined)?.[VIDEO_STREAM.pipeFd] as Duplex | null | undefined) ?? null
+    if (inherited) this.usePipe(inherited)
+    child.once('exit', () => this.closePipeServer())
     createInterface({ input: child.stdout! }).on('line', (line) => this.onLine(line))
     createInterface({ input: child.stderr! }).on('line', (line) => {
       this.stderrTail.push(line)
@@ -207,15 +226,64 @@ export class ComputerConnection {
     })
   }
 
+  private usePipe(pipe: Duplex): void {
+    this.pipe = pipe
+    pipe.on('error', () => undefined)
+    pipe.on('data', (chunk: Buffer) => this.received(chunk))
+  }
+
+  private closePipeServer(): void {
+    this.pipeServer?.close()
+    this.pipeServer = null
+  }
+
+  /**
+   * The named pipe's listener. Whoever dials must say the token first: the name of a pipe can be read by any
+   * process of the machine, the token only by the service it was handed to. The first that says it is the pipe;
+   * every other socket is dropped, and the listener closes.
+   */
+  private listenPipe(server: Server, token: string): void {
+    this.pipeServer = server
+    const word = Buffer.from(token, 'latin1')
+    server.on('connection', (socket: Socket) => {
+      let got: Buffer = Buffer.alloc(0)
+      const drop = (): void => void socket.destroy()
+      const timer = setTimeout(drop, VIDEO_PIPE_JOIN_MS)
+      socket.on('error', () => undefined)
+      const onData = (chunk: Buffer): void => {
+        got = Buffer.concat([got, chunk])
+        if (got.length < word.length) return
+        clearTimeout(timer)
+        socket.off('data', onData)
+        if (this.pipe || !timingSafeEqual(got.subarray(0, word.length), word)) return drop()
+        this.usePipe(socket)
+        this.closePipeServer()
+        // what it sent after the token is the pipe's first bytes
+        if (got.length > word.length) this.received(got.subarray(word.length))
+        this.pipeJoined?.()
+      }
+      socket.on('data', onData)
+    })
+    server.on('error', (err) => this.log(`the video pipe did not listen: ${err.message}`))
+  }
+
   /** Spawn `tc-computer serve` and run `initialize`; a service that refuses or dies first throws. */
   static async start(opts: ComputerConnectionOptions): Promise<ComputerConnection> {
     const spawn = opts.spawn ?? nodeSpawn
     // on Windows the service joins the app's job object, so it ends with the app (procTree.ts)
-    // The fourth entry is the bytes pipe of live video (§30): a service that does not know it leaves it alone. On
-    // Windows the bytes go over a named pipe instead (§29), so no fourth entry is made there.
-    const stdio: ('pipe')[] = process.platform === 'win32' ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe', 'pipe']
-    const child = adoptTree(spawn(opts.bin, ['serve'], { stdio, env: opts.env ?? process.env }))
+    // The fourth entry is the bytes pipe of live video (§30): a service that does not know it leaves it alone. Windows
+    // has no fourth descriptor to hand down, so there the service is told the name of a pipe to dial (§29.7).
+    const named = (opts.videoPipe ?? (process.platform === 'win32' ? 'named' : 'stdio')) === 'named'
+    const stdio: ('pipe')[] = named ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe', 'pipe']
+    const pipeName = named ? (opts.videoPipeName ?? `\\\\.\\pipe\\tc-computer-video-${randomBytes(16).toString('hex')}`) : null
+    const token = named ? randomBytes(32).toString('hex') : null
+    const server = pipeName ? createServer() : null
+    if (server && pipeName) await new Promise<void>((resolve) => server.once('error', () => resolve()).listen(pipeName, () => resolve()))
+    const env = { ...(opts.env ?? process.env), ...(server?.listening && pipeName && token ? { [VIDEO_PIPE_ENV]: pipeName, [VIDEO_PIPE_TOKEN_ENV]: token } : {}) }
+    const child = adoptTree(spawn(opts.bin, ['serve'], { stdio, env }))
     const conn = new ComputerConnection(child, opts)
+    if (server?.listening && token) conn.listenPipe(server, token)
+    else server?.close()
     const spawned = new Promise<void>((resolve, reject) => {
       child.once('spawn', () => resolve())
       child.once('error', (e) => reject(e))
@@ -229,6 +297,17 @@ export class ComputerConnection {
       )
       if (init.protocol !== COMPUTER_PROTOCOL) throw new ComputerRpcError(RPC_ERROR.computer, `the service speaks protocol ${init.protocol}, not ${COMPUTER_PROTOCOL}`)
       conn.initResult = init
+      // a service that says it speaks video over a named pipe has dialed it, or is about to: it is waited for a moment,
+      // so the first ask for video does not find the pipe a beat behind the answer
+      if (conn.pipeServer && !conn.pipe && init.features?.includes('video')) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, VIDEO_PIPE_JOIN_MS)
+          conn.pipeJoined = () => (clearTimeout(timer), resolve())
+        })
+        conn.pipeJoined = null
+      }
+      // one that does not will never dial
+      if (!conn.pipe) conn.closePipeServer()
       return conn
     } catch (error) {
       conn.kill()
