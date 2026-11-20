@@ -34,7 +34,7 @@ import { join } from 'node:path'
 import { FFIType, dlopen, ptr } from 'bun:ffi'
 import { WebSocket } from 'ws'
 import { VIDEO_CLOSE } from '../src/shared/contract-video'
-import { encodeAck, parseFrame } from '../src/shared/video/nsl1'
+import { MESSAGE_TYPES, encodeAck, h264Codec, messageType, parseFrame } from '../src/shared/video/nsl1'
 import type { StreamClaim } from '../src/main/server/remote/auth'
 import { BoxChromium, findChromium } from '../src/main/server/work/browser/box/chromium'
 import { BoxXDisplay } from '../src/main/server/work/browser/box/display'
@@ -262,11 +262,20 @@ async function measure(port: number): Promise<Run> {
   }
 }
 
+/**
+ * `--record <file>`: no scenes. The first `--frames` messages (120) of a calm page's stream are written to the file
+ * as they came off the socket, one NSL1 message after another, and the script ends. The file is the box's own
+ * engine's bytes for a client's decoder test (the phone's fixture): a keyframe, then deltas.
+ */
+const RECORD = process.argv.includes('--record') ? arg('record', '') : ''
+/** A page that changes a little on every frame: a counter and a bar on a page of text, so each frame is small. */
+const CALM = `<!doctype html><meta charset=utf-8><title>calm</title><body style="margin:0;font:15px/1.5 system-ui,sans-serif;background:#fff;color:#111"><div style="padding:24px 15%"><h2>Expense report</h2><p>${'The quick brown fox jumps over the lazy dog. '.repeat(40)}</p></div><div id=c style="position:fixed;left:40px;top:20px;font:28px monospace"></div><div id=b style="position:fixed;left:0;bottom:0;height:12px;background:#2563eb"></div><script>let n=0;(function f(){n++;document.getElementById('c').textContent=String(n).padStart(6,'0');document.getElementById('b').style.width=(n%240)/2.4+'%';requestAnimationFrame(f)})()</script>`
+
 let code = 1
 try {
   site = createHttp((_req, res) => {
     res.setHeader('content-type', 'text/html; charset=utf-8')
-    res.end(PAGE)
+    res.end(RECORD ? CALM : PAGE)
   })
   await new Promise<void>((r) => site.listen(0, '127.0.0.1', () => r()))
   http = createHttp((_req, res) => res.writeHead(426).end())
@@ -284,6 +293,33 @@ try {
   await stage.watch(target)
   // the notice that says how to leave full screen is gone after a few seconds
   await sleep(5_000)
+
+  if (RECORD) {
+    const want = Number(arg('frames', '120'))
+    const lease = (await engines.lease())!
+    const feed = new EngineFeed(lease, false)
+    const got: Uint8Array[] = []
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`only ${got.length} of ${want} frames came`)), 20_000)
+      feed.start({
+        frame: (bytes) => {
+          // the engine also sends the pointer's shape, which is no frame
+          if (got.length >= want || messageType(bytes) !== MESSAGE_TYPES.frame) return
+          got.push(new Uint8Array(bytes))
+          const f = parseFrame(bytes)
+          feed.ack(encodeAck(f.generation, f.sequence, 0))
+          if (got.length === want) (clearTimeout(timer), resolve())
+        },
+        end: (reason) => reject(new Error(`the stream ended: ${reason}`))
+      })
+    })
+    feed.close()
+    writeFileSync(RECORD, Buffer.concat(got))
+    const first = parseFrame(got[0]!)
+    console.log(`recorded ${got.length} frames (${first.width}×${first.height}, ${h264Codec(first.data)}, ${Buffer.concat(got).length} bytes) to ${RECORD}`)
+    code = 0
+    throw new Error('recorded')
+  }
 
   const thin = await link(direct, 5_000, 30)
   const scroll: Run[] = []
@@ -321,7 +357,7 @@ try {
   code = checks.every((c) => c.ok) ? 0 : 1
   console.log(`\n${code === 0 ? 'ALL PASS' : 'FAILED'}  (${join(OUT, 'report.json')}; load ${load()})`)
 } catch (err) {
-  console.error('e2e-box-video failed:', err)
+  if (!(err instanceof Error && err.message === 'recorded')) console.error('e2e-box-video failed:', err)
 } finally {
   relay.shutdown()
   sockets.close()
