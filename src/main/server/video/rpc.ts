@@ -1,5 +1,6 @@
 import type { Principal } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
+import type { ComputerClickPush } from '@shared/contract-computer'
 import { type VideoOpenAnswer, type VideoRefusal } from '@shared/contract-video'
 import { mayWatch } from '@shared/video/access'
 import type { RemoteAuth, StreamHolder } from '../remote/auth'
@@ -21,6 +22,10 @@ export interface VideoAsk {
   principal: Principal
   /** the viewer is on this host's own socket: its frames cross no link */
   local: boolean
+  /** another host of his asks, to pass the stream on to a viewer there (the publish leg): the frames cross a link */
+  published?: boolean
+  /** a push to the asking socket, for what rides beside a stream (the agent's click on a window) */
+  push?: (push: ComputerClickPush) => void
 }
 
 export type VideoOpening =
@@ -55,6 +60,8 @@ export interface VideoCaller {
   connectionId: string
   /** the RPC socket is still open; a stream is never opened for one that closed while its source was asked */
   alive?: () => boolean
+  /** a push to this socket */
+  push?: (push: ComputerClickPush) => void
 }
 
 export class VideoRpc {
@@ -89,7 +96,8 @@ export class VideoRpc {
       take: params.take === true,
       drive: params.drive === true,
       principal: caller.principal,
-      local: caller.principal.kind === 'local'
+      local: caller.principal.kind === 'local',
+      ...(caller.push ? { push: caller.push } : {})
     }
     for (const source of [...this.sources]) {
       const opening = await source.open(ask)

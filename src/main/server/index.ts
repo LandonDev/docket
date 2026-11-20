@@ -89,10 +89,11 @@ import { VideoRelay } from './video/relay'
 import { VideoRpc, handleVideo } from './video/rpc'
 import { VideoSockets, refuseVideoUpgrade } from './video/sockets'
 import { VIDEO_PATH } from '@shared/contract-video'
-import { BROWSER_VIDEO_SETTING, browserVideoOn } from '@shared/video/settings'
+import { BROWSER_VIDEO_SETTING, VIDEO_REMOTE_SETTING, browserVideoOn, videoRemoteOn } from '@shared/video/settings'
 import { SessionHolds, computerBannerHooks, handleComputerProofHold } from './computer/hold'
 import { ComputerRpc } from './computer/rpc'
 import { ComputerSettingsRpc } from './computer/settingsRpc'
+import { ComputerVideo } from './computer/videoFeed'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
 import { ComputerHistory, KEEP_PICTURES_SETTING, historyPicturesFromEnv, historyRoot } from './computer/history'
@@ -1471,6 +1472,8 @@ export async function startServer(
   computerHooks.current = computer
   // (the box's browser sets its own once it is wired, below)
   let previews = computer ? new ComputerPreviews(computer) : null
+  // A window in this machine's own computer service plays as video for its desktop (computer/videoFeed.ts).
+  if (computer) videoRpc.addSource(new ComputerVideo({ service: computer.service, sessions: computer.sessions, remote: () => videoRemoteOn(store.getSetting(VIDEO_REMOTE_SETTING)) }))
   /** The previews are of the box's browser, not of a person's windows: a key that may watch gets them (computer/preview.ts `previewRefusal`). */
   let boxPreviews = false
   const holds = computer ? new SessionHolds({ ...computer, banner: () => computerBannerHooks.current }) : null
@@ -2353,7 +2356,7 @@ export async function startServer(
           { principal, desktop: hasDesktop(), box: boxPreviews }
         )
         if (preview.handled) return sendFrame({ id: req.id, ok: true, result: preview.result })
-        const video = await handleVideo(req, videoRpc, { principal, connection: previewConnection, connectionId: String(connection), alive: () => !socketClosed })
+        const video = await handleVideo(req, videoRpc, { principal, connection: previewConnection, connectionId: String(connection), alive: () => !socketClosed, push: sendFrame })
         if (video.handled) return sendFrame({ id: req.id, ok: true, result: video.result })
         const computerSteps = await handleComputerHistory(req, computerHistoryRpc, { connection: previewConnection, send: sendFrame })
         if (computerSteps.handled) return sendFrame({ id: req.id, ok: true, result: computerSteps.result })
