@@ -12,6 +12,7 @@ import { setPopOutShape } from "../../../lib/native";
 import { POP_OUT_FRAME, closePopOut, usePopOut } from "../../../lib/popOut";
 import { ViewButton } from "./ComputerCaption";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
+import { drivenScreen } from "../../../lib/video/videoInput";
 
 /**
  * The pop-out (docs/DESIGN.md "Computers", "Pop out"): a small frameless
@@ -188,7 +189,7 @@ function PopOutBody({ host, threadId, name, title, onBack }: { host: string; thr
   const box = useRef<HTMLDivElement>(null);
   // it is what he watches: it takes the box's display, and he may drive from it
   const stream = useLiveStream(tile?.entry ?? null, true, box as RefObject<HTMLElement | null>, measure);
-  useDrivingInput(stream, box as RefObject<HTMLElement | null>);
+  useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""));
   const frame = streamSize(stream.state);
   useEffect(() => {
     title.title = tile?.title ?? name;

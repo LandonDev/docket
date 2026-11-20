@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { InputEvent } from "@server/shared/video/nsl1";
 import { encodeInput, parseInput } from "@server/shared/video/nsl1";
-import { HID_KEYS, VideoInput, attachInput } from "./videoInput";
+import { HID_KEYS, VideoInput, attachInput, drivenScreen, type DrivenScreen } from "./videoInput";
 
-function rig(mac = false) {
+function rig(mac = false, screen?: DrivenScreen) {
   const sent: InputEvent[] = [];
   let pastes = 0;
   let left = 0;
-  const input = new VideoInput((e) => sent.push(e), { mac, paste: () => void pastes++, leave: () => void left++ });
+  const input = new VideoInput((e) => sent.push(e), { mac, paste: () => void pastes++, leave: () => void left++, ...(screen ? { screen } : {}) });
   const keys = () => sent.map((e) => ("key" in e ? `${e.type === "keyDown" ? "+" : "-"}${e.key}` : e.type));
   return { sent, input, keys, pastes: () => pastes, left: () => left };
 }
@@ -102,6 +102,25 @@ describe("his keys", () => {
     // the Windows key is neither the page's nor sent
     expect(r.input.keyDown({ code: "MetaLeft" })).toBe(true);
     expect(r.keys()).toEqual(["+26"]);
+  });
+
+  it("sends the Windows VM every chord, Ctrl+W, T, N, Q and Ctrl+Shift+I included: the guest is his", () => {
+    expect(drivenScreen("vm:windows")).toBe("vm");
+    expect(drivenScreen("browser:t1")).toBe("browser");
+    const r = rig(false, "vm");
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    for (const code of ["KeyW", "KeyQ", "KeyN", "KeyT"]) {
+      expect(r.input.keyDown({ code, ctrlKey: true }), code).toBe(true);
+      r.input.keyUp({ code, ctrlKey: true });
+    }
+    r.input.keyDown({ code: "ShiftLeft", ctrlKey: true, shiftKey: true });
+    r.input.keyDown({ code: "KeyI", ctrlKey: true, shiftKey: true });
+    expect(r.keys()).toEqual(["+224", "+26", "-26", "+20", "-20", "+17", "-17", "+23", "-23", "+225", "+12"]);
+    // on a Mac ⌘ never crosses, and ⌘C goes as Ctrl+C, as on the browser
+    const m = rig(true, "vm");
+    expect(m.input.keyDown({ code: "MetaLeft", command: true })).toBe(false);
+    expect(m.input.keyDown({ code: "KeyC", command: true })).toBe(true);
+    expect(m.keys()).toEqual(["+224", "+6", "-6", "-224"]);
   });
 
   it("presses the far Caps Lock only when it differs from his", () => {

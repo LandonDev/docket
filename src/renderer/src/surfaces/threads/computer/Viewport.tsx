@@ -11,7 +11,7 @@ import { loadToast } from "@renderer/components/ui/toaster";
 import { useComputerVideo, type VideoDrive } from "../../../lib/computerVideo";
 import { IS_MAC } from "../../../lib/platform";
 import { keyHint } from "../../../lib/keys";
-import { LEAVE_CHORD, VideoInput, attachInput } from "../../../lib/video/videoInput";
+import { LEAVE_CHORD, VideoInput, attachInput, type DrivenScreen } from "../../../lib/video/videoInput";
 import { sharpWidth } from "../../../lib/video/support";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 
@@ -280,7 +280,7 @@ export interface LiveStream {
  * he holds is let go when the box loses the keyboard. Ctrl+Alt alone takes
  * the keyboard out of it, to Hand back.
  */
-export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement | null>): boolean {
+export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement | null>, screen: DrivenScreen = "browser"): boolean {
   const drive = stream.drive;
   useEffect(() => {
     const el = box.current;
@@ -294,8 +294,8 @@ export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement |
       leaveSaid = true;
       void loadToast().then((toast) => toast(`Press ${keyHint(LEAVE_CHORD)} to leave the page`));
     }
-    return attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el) }));
-  }, [box, drive]);
+    return attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el), screen }));
+  }, [box, drive, screen]);
   return drive !== null;
 }
 

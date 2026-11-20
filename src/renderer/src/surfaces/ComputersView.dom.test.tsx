@@ -157,6 +157,25 @@ describe("the Computers page", () => {
     expect([...screen.getByRole("article").querySelector('[data-slot="facts"]')!.children].map((c) => c.textContent)).toEqual(["The box"]);
   });
 
+  it("gives the Windows VM he drives one quiet Keys menu beside Hand back, and the browser none", async () => {
+    const pressed: unknown[] = [];
+    vi.spyOn(await import("../lib/computerVideo"), "pressKeys").mockImplementation(async (...args) => (pressed.push(args), true));
+    const base = tile();
+    const vmTile = tile({ browser: false, computer: "vm:windows", driving: true, doing: null, entry: { ...base.entry, previewHost: "box", previewKey: "vm:windows" } });
+    render(<Tile tile={vmTile} onOpenSession={() => undefined} />);
+    const keys = screen.getByRole("button", { name: "Keys" });
+    expect(keys.getAttribute("data-variant")).toBe("ghost");
+    expect(screen.getByRole("button", { name: "Hand back" }).getAttribute("data-variant")).toBe("default");
+    fireEvent.click(keys);
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Windows key", "Ctrl+Alt+Del", "Alt+Tab"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ctrl+Alt+Del" }));
+    await act(async () => {});
+    expect(pressed).toEqual([["box", "vm:windows", [224, 226, 76]]]);
+    cleanup();
+    render(<Tile tile={tile({ driving: true, doing: null })} onOpenSession={() => undefined} />);
+    expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
+  });
+
   it("shows the stage's controls always: Take over only where the computer takes input, Stop unless it is idle, and Hand back alone while he drives", () => {
     render(<Tile tile={tile()} onOpenSession={() => undefined} />);
     const controls = screen.getByRole("article").querySelector<HTMLElement>('[data-slot="computer-controls"]')!;

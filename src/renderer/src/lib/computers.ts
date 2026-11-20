@@ -110,8 +110,13 @@ export function useComputers(): ComputerTile[] {
  * is still looking at that page.
  */
 export function findComputer(tiles: readonly ComputerTile[], host: string, threadId: string, pane: string): ComputerTile | null {
+  // the Windows VM is opened by its own name: the thread its row is listed under changes as he takes it over
+  if (threadId.startsWith("vm:")) return tiles.find((t) => t.entry.host === host && t.computer === threadId) ?? null;
   return tiles.find((t) => t.id === tileId(host, threadId)) ?? tiles.find((t) => t.browser && t.entry.host === host && t.pane === pane) ?? null;
 }
+
+/** What a full window or a pop-out names a tile by: the Windows VM by its own name, which outlives the threads listed for it; any other by its thread. */
+export const viewKey = (tile: Pick<ComputerTile, "computer" | "entry">): string => (tile.computer.startsWith("vm:") ? tile.computer : tile.entry.row.threadId);
 
 /** One tile by its host and thread, or null once nothing drives it. */
 export function useComputer(host: string, threadId: string): ComputerTile | null {
@@ -127,6 +132,8 @@ export function useComputer(host: string, threadId: string): ComputerTile | null
  * picture the same element.
  */
 export function tileKey(tile: ComputerTile, all: readonly ComputerTile[]): string {
+  // the Windows VM is one machine whoever drives it: a thread's session, its idle row, his Take over
+  if (tile.computer.startsWith("vm:")) return `${tile.entry.host}\n${tile.computer}`;
   if (!tile.browser) return tile.id;
   const alone = all.every((t) => t === tile || !t.browser || t.entry.host !== tile.entry.host || t.pane !== tile.pane);
   return alone ? `${tile.entry.host}\n${tile.pane}\nbrowser` : tile.id;

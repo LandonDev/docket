@@ -49,6 +49,16 @@ const asking = tile({
   computer: "window:t6",
   entry: { ...tile().entry, host: "local", row: { ...tile().entry.row, threadId: "t6", lastCallAt: 2, asking: { line: "Allow Frame.io to be used?" } } },
 });
+const vm = tile({
+  id: "box\nvm:windows",
+  title: "Windows VM",
+  doing: null,
+  driving: true,
+  browser: false,
+  pane: "vm:windows",
+  computer: "vm:windows",
+  entry: { ...tile().entry, previewKey: "vm:windows", row: { ...tile().entry.row, threadId: "vm:windows", computer: "vm:windows", driver: "owner", apps: [{ name: "Windows VM", bundleId: null, window: null }] } },
+});
 const stopped = tile({ id: "box\nt5", title: "Book the arena for Saturday", doing: "Filling in the booking form", pane: "t5", computer: "browser:t5" });
 
 const pictures = new Map<string, (place: Place) => ReactNode>([
@@ -58,6 +68,7 @@ const pictures = new Map<string, (place: Place) => ReactNode>([
   [driven.id, shot("page", "Live view of Parking in Chromium")],
   [asking.id, shot("doc", "Live view of Review in Frame.io")],
   [studio.id, elsewhere("Studio")],
+  [vm.id, shot("page", "Live view of Windows VM")],
 ]);
 const pictureOf = (t: ComputerTile, place: Place): ReactNode => (pictures.get(t.id) ?? coming)(place);
 
@@ -74,6 +85,7 @@ const fixtures: ComputersFixture[] = [
   { name: "Three: the stage and a strip beside it (1440×900)", width: 1200, height: 860, props: { tiles: [browser, mac, studio], onOpenSession: noop, pictureOf } },
   { name: "Three in a smaller window (900×700)", width: 660, height: 660, props: { tiles: [browser, mac, studio], onOpenSession: noop, pictureOf } },
   { name: "He drives the page on the stage", width: 1200, height: 860, props: { tiles: [driven, mac], onOpenSession: noop, pictureOf } },
+  { name: "He drives the Windows VM: its keys beside Hand back", width: 660, height: 520, props: { tiles: [vm], onOpenSession: noop, pictureOf } },
   { name: "One waits on him: it has the stage, its question in its caption", width: 1200, height: 860, props: { tiles: [browser, asking], onOpenSession: noop, pictureOf } },
   { name: "A narrow page: the strip under the stage", width: 520, height: 760, props: { tiles: [browser, mac, asking], onOpenSession: noop, pictureOf } },
   { name: "A picture that stopped, and can be tried again", width: 660, height: 500, props: { tiles: [stopped], onOpenSession: noop, pictureOf } },

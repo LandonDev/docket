@@ -34,6 +34,12 @@ export interface VideoDrive {
 let loading: Promise<typeof import("./video/streams")> | null = null;
 const loadStreams = (): Promise<typeof import("./video/streams")> => (loading ??= import("./video/streams"));
 
+/** A chord pressed on the drive stream of a host's computer (`VideoStreams.press`); false when none is live here. */
+export async function pressKeys(host: string, key: string, keys: readonly number[]): Promise<boolean> {
+  const { videoStreams } = await loadStreams();
+  return videoStreams.press(host, key, keys);
+}
+
 const starting = (prev: PreviewState): PreviewState =>
   (prev.status === "live" || prev.status === "starting") && prev.width && prev.height ? { status: "starting", width: prev.width, height: prev.height } : { status: "starting" };
 

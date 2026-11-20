@@ -121,6 +121,18 @@ export class VideoStreams {
 
   constructor(private readonly deps: StreamsDeps) {}
 
+  /**
+   * A chord on the drive stream of a host's computer, from a control beside the picture (the Windows VM's keys
+   * menu): each key down in order, then up in reverse. False when no drive stream of it is live here.
+   */
+  press(host: string, key: string, keys: readonly number[]): boolean {
+    const entry = this.entries.get(keyOf(host, key));
+    if (!entry?.opened?.drive || entry.view.status !== "live" || !this.worker) return false;
+    for (const k of keys) this.post({ t: "input", stream: entry.id, event: { type: "keyDown", key: k } });
+    for (const k of [...keys].reverse()) this.post({ t: "input", stream: entry.id, event: { type: "keyUp", key: k } });
+    return true;
+  }
+
   acquire(host: string, key: string, want: StreamWant): StreamHandle {
     const id = keyOf(host, key);
     let entry = this.entries.get(id);

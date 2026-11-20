@@ -97,6 +97,22 @@ describe("where a stream's socket is, and what a closed one does next", () => {
 });
 
 describe("the window's streams", () => {
+  it("presses a chord on a live drive stream only, keys down in order and up in reverse", async () => {
+    const r = rig();
+    const h = r.streams.acquire("box", "vm:windows", { edge: 1280, take: true, drive: true });
+    expect(r.streams.press("box", "vm:windows", [224, 226, 76])).toBe(false);
+    await settle();
+    r.say({ t: "drawn", stream: 1, width: 1280, height: 800 });
+    expect(h.view().status).toBe("live");
+    expect(r.streams.press("box", "vm:windows", [224, 226, 76])).toBe(true);
+    const inputs = r.posted.filter((m) => m.t === "input").map((m) => (m.t === "input" && "key" in m.event ? `${m.event.type === "keyDown" ? "+" : "-"}${m.event.key}` : ""));
+    expect(inputs).toEqual(["+224", "+226", "+76", "-76", "-226", "-224"]);
+    // not on a stream asked only to watch
+    r.streams.acquire("box", "t2", { edge: 640, take: false });
+    await settle();
+    expect(r.streams.press("box", "t2", [227])).toBe(false);
+  });
+
   it("asks for a computer that outlives every thread by its name", async () => {
     const r = rig();
     r.streams.acquire("box", "vm:windows", { edge: 1280, take: true });

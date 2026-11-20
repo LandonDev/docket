@@ -14,7 +14,8 @@ import { macCommand } from "../keys";
  * Changed here: the rules are a class with no DOM in it; on a Mac only five
  * ⌘ chords cross, as their Ctrl chords, and every other ⌘ chord stays the
  * app's; a paste is handed to the host, never typed; the chords that would
- * close or quit the shared browser are never sent; and Ctrl+Alt pressed with
+ * close or quit the shared browser are never sent to it (the Windows VM's are
+ * his); and Ctrl+Alt pressed with
  * nothing else is his way out of the picture, since Tab and Escape are the
  * page's while it holds the keyboard.
  */
@@ -47,8 +48,15 @@ const isMeta = (code: number): boolean => code === 227 || code === 231;
 
 /** On a Mac these ⌘ chords go to the page as the Ctrl chords; ⌘V is the paste. Every other ⌘ chord stays the app's. */
 export const MAC_CHORDS: ReadonlySet<string> = new Set(["KeyC", "KeyX", "KeyA", "KeyZ"]);
-/** With Ctrl held these would close, quit or leave the shared browser: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T, and Ctrl+Shift+I. They are never sent. */
+/** With Ctrl held these would close, quit or leave the shared browser: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T, and Ctrl+Shift+I. They are never sent to it. */
 export const NEVER_SENT: ReadonlySet<string> = new Set(["KeyW", "KeyQ", "KeyN", "KeyT"]);
+/**
+ * Whose screen he drives, which decides what is never sent: the box's browser every thread shares keeps its chords
+ * (`NEVER_SENT`); the Windows VM is his, every chord the guest's (the host still keeps QEMU's own window's Ctrl+Alt
+ * keys from it, box/engineFeed.ts).
+ */
+export type DrivenScreen = "browser" | "vm";
+export const drivenScreen = (computer: string): DrivenScreen => (computer.startsWith("vm:") ? "vm" : "browser");
 /** Held together and let go with no other key or button between: the keyboard goes back to the app (`leave`). The way a VM's window lets go. */
 export const LEAVE_CHORD = "ctrl+alt";
 
@@ -98,7 +106,7 @@ export class VideoInput {
 
   constructor(
     private readonly send: (event: InputEvent) => void,
-    private readonly opts: { mac: boolean; paste: () => void; leave?: () => void },
+    private readonly opts: { mac: boolean; paste: () => void; leave?: () => void; screen?: DrivenScreen },
   ) {}
 
   private emit(event: InputEvent): void {
@@ -155,7 +163,7 @@ export class VideoInput {
       }
       return true;
     }
-    if (control && (NEVER_SENT.has(e.code) || (e.code === "KeyI" && ((this.modifiers & SHIFT_BITS) !== 0 || !!e.shiftKey)))) return true;
+    if (this.opts.screen !== "vm" && control && (NEVER_SENT.has(e.code) || (e.code === "KeyI" && ((this.modifiers & SHIFT_BITS) !== 0 || !!e.shiftKey)))) return true;
     this.syncCaps(e);
     if (e.code === "CapsLock") return true;
     if (e.repeat || this.held.has(code)) {

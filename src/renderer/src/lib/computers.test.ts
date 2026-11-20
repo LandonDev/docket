@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { macComputerKey } from "@server/shared/contract-maccomputer";
-import { canTakeOver, computerTiles, computersMark, driveName, findComputer, handBack, takeOver, tileKey } from "./computers";
+import { canTakeOver, computerTiles, viewKey, computersMark, driveName, findComputer, handBack, takeOver, tileKey } from "./computers";
 import { sleepingVm } from "./winvmWake";
 import { registry } from "./connection/registry";
 import { BOX_BROWSER_BUNDLE } from "./computerSessions";
@@ -164,6 +164,16 @@ describe("the Windows VM", () => {
     expect(tile.title).toBe("File the expense report");
     expect(tile.entry.previewKey).toBe("vm:windows");
     expect(computersMark({ box: [vm({ threadId: "b1", idle: undefined })] })).toBe("working");
+  });
+
+  it("is one tile and one view through his Take over: the thread its row is listed under changes, its name does not", () => {
+    const [byThread] = computerTiles({ box: [vm({ threadId: "b1", idle: undefined })] }, titleOf, nameOf, mac);
+    const [his] = computerTiles({ box: [vm({ driver: "owner", idle: undefined })] }, titleOf, nameOf, mac);
+    expect(tileKey(byThread, [byThread])).toBe(tileKey(his, [his]));
+    expect(viewKey(byThread)).toBe("vm:windows");
+    expect(findComputer([his], "box", "vm:windows", "vm:windows")).toBe(his);
+    expect(findComputer([his], "local", "vm:windows", "vm:windows")).toBeNull();
+    expect(his.driving).toBe(true);
   });
 
   it("offers no Take over with no window of its own", () => {

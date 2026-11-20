@@ -4,7 +4,9 @@ import { Kbd } from "@renderer/components/ui/kbd";
 import { loadToast } from "@renderer/components/ui/toaster";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { TruncateTip } from "@renderer/components/tip";
-import { Square } from "../../../chrome/icons";
+import { Keyboard, Square } from "../../../chrome/icons";
+import { RowsMenu } from "../../../chrome/menuRows";
+import { pressKeys } from "../../../lib/computerVideo";
 import { canTakeOver, handBack, takeOver, type ComputerTile } from "../../../lib/computers";
 import { stopComputer } from "../../../lib/computerSessions";
 import { keyHint } from "../../../lib/keys";
@@ -42,7 +44,8 @@ export function StageControls({ tile, onTookOver }: { tile: ComputerTile; onTook
   };
   if (tile.driving)
     return (
-      <span data-slot="computer-controls" className="flex shrink-0 items-center">
+      <span data-slot="computer-controls" className="flex shrink-0 items-center gap-1">
+        {tile.computer.startsWith("vm:") ? <KeysMenu tile={tile} /> : null}
         <Button size="sm" data-hand-back disabled={!!busy} onClick={() => press("back", () => handBack(tile), "Couldn't hand it back")}>
           <BusyLabel busy={busy === "back"} label="Hand back" />
           <Kbd size="sm" aria-hidden="true" className="border-transparent bg-transparent text-primary-foreground">
@@ -84,6 +87,38 @@ export function StageControls({ tile, onTookOver }: { tile: ComputerTile; onTook
         </Tooltip>
       )}
     </span>
+  );
+}
+
+/** The keys a person's own keyboard cannot send into the Windows VM from here, by HID usage code: pressed in order, let go in reverse. */
+export const VM_KEYS: readonly { id: string; label: string; keys: readonly number[] }[] = [
+  { id: "windows", label: "Windows key", keys: [227] },
+  { id: "ctrl-alt-del", label: "Ctrl+Alt+Del", keys: [224, 226, 76] },
+  { id: "alt-tab", label: "Alt+Tab", keys: [226, 43] },
+];
+
+/** While he drives the Windows VM: one quiet button with the keys his own keyboard would keep for itself. */
+function KeysMenu({ tile }: { tile: ComputerTile }) {
+  return (
+    <RowsMenu
+      label="Keys"
+      align="end"
+      side="top"
+      tip={{ label: "Keys" }}
+      rows={VM_KEYS.map((k) => ({ kind: "item" as const, id: k.id, label: k.label }))}
+      onPick={(id) => {
+        const chord = VM_KEYS.find((k) => k.id === id);
+        if (!chord || !tile.entry.previewHost || !tile.entry.previewKey) return;
+        void pressKeys(tile.entry.previewHost, tile.entry.previewKey, chord.keys).then((sent) => {
+          if (!sent) void loadToast().then((toast) => toast.error("Couldn't send the keys", { description: tile.title }));
+        });
+      }}
+      trigger={
+        <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label="Keys">
+          <Keyboard className="size-4" />
+        </Button>
+      }
+    />
   );
 }
 

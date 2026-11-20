@@ -8,7 +8,7 @@ import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDocumentVisible } from "../hooks/paneVisibility";
 import { cn } from "../lib/cn";
-import { tileKey, useComputers, type ComputerTile } from "../lib/computers";
+import { tileKey, useComputers, viewKey, type ComputerTile } from "../lib/computers";
 import { previewContext } from "../lib/computerSessions";
 import { openFullWindow } from "../lib/fullWindow";
 import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
@@ -20,6 +20,7 @@ import { useSleepingVm, wakeVm, type SleepingVm } from "../lib/winvmWake";
 import { EmptyState } from "./SurfaceSkeleton";
 import { ComputerCaption, ViewButton, tileLine } from "./threads/computer/ComputerCaption";
 import { ENDED_WORDS, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
+import { drivenScreen } from "../lib/video/videoInput";
 
 /**
  * Computers (docs/DESIGN.md "Computers"): every computer being driven now,
@@ -71,7 +72,7 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
   const stream = useLiveStream(tile.entry, seen, box, measure, { take: place.stage, drive: place.stage });
-  useDrivingInput(stream, box);
+  useDrivingInput(stream, box, drivenScreen(tile.computer));
   useEffect(() => {
     if (!stream.drive || !focusOnDrive.current) return;
     focusOnDrive.current = false;
@@ -87,7 +88,7 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
       <Viewport
         ref={box}
         fill
-        face={over ? { kind: "none" } : liveFace(stream, place.stage ? () => openFullWindow({ host: tile.entry.host, threadId: tile.entry.row.threadId, name: label }) : undefined)}
+        face={over ? { kind: "none" } : liveFace(stream, place.stage ? () => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: label }) : undefined)}
         label={label}
         size={frame}
         line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
@@ -129,10 +130,10 @@ export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTo
           views={
             picture && !tile.shownOn ? (
               <>
-                <ViewButton label="Pop out" onClick={() => openPopOut({ host: tile.entry.host, threadId: tile.entry.row.threadId, name: tileLabel(tile) })}>
+                <ViewButton label="Pop out" onClick={() => openPopOut({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile) })}>
                   <PictureInPicture className="size-4" />
                 </ViewButton>
-                <ViewButton label="Full window" onClick={() => openFullWindow({ host: tile.entry.host, threadId: tile.entry.row.threadId, name: tileLabel(tile) })}>
+                <ViewButton label="Full window" onClick={() => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile) })}>
                   <Maximize2 className="size-4" />
                 </ViewButton>
               </>
@@ -176,7 +177,7 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
   const asked = useStageRequest();
   useEffect(() => {
     if (!asked) return;
-    const found = tiles.find((tile) => tile.entry.host === asked.host && (tile.entry.row.threadId === asked.threadId || tile.pane === asked.threadId));
+    const found = tiles.find((tile) => tile.entry.host === asked.host && (tile.entry.row.threadId === asked.threadId || tile.pane === asked.threadId || tile.computer === asked.threadId));
     takeStageRequest();
     if (found) setPick(tileKey(found, tiles));
   }, [asked, tiles]);

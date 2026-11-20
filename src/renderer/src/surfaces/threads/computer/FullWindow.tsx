@@ -8,6 +8,7 @@ import { CAPTION_GAP, CAPTION_HEIGHT, STAGE_INSET, fitStage, type Size } from ".
 import { pixelRatioOf } from "../../../lib/video/support";
 import { ComputerCaption, ViewButton } from "./ComputerCaption";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, RETRY_ENDS, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
+import { drivenScreen } from "../../../lib/video/videoInput";
 
 /**
  * The full window (docs/DESIGN.md "Computers", "Full window"): the stage with
@@ -159,7 +160,7 @@ export function FullWindow({ onOpenSession }: { onOpenSession: (threadId: string
   const box = useRef<HTMLDivElement>(null);
   const focusOnDrive = useRef(false);
   const stream = useLiveStream(target ? (tile?.entry ?? null) : null, !!target, box as RefObject<HTMLElement | null>, measure);
-  useDrivingInput(stream, box as RefObject<HTMLElement | null>);
+  useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""));
   useLeaveOnEscape(closeFullWindow);
   useEffect(() => {
     if (!stream.drive || !focusOnDrive.current) return;
