@@ -68,7 +68,7 @@ vi.mock("../shell/actions", async (importOriginal) => ({
 }));
 vi.mock("../../lib/tcserver/store", () => ({ sessionStore: { adopt: vi.fn() } }));
 vi.mock("../../lib/macBridge", () => ({ bridgeNewThread: () => Promise.resolve() }));
-vi.mock("../../lib/workSwitch", () => ({ workOpenPort: { get: () => (id: string) => opened.push(id) } }));
+vi.mock("../../lib/workSwitch", () => ({ workOpenPort: { get: () => (id: string) => opened.push(id) }, workPlayPort: { get: () => null }, workViewNow: () => null }));
 
 const { View, Head } = await import("./FilesView");
 

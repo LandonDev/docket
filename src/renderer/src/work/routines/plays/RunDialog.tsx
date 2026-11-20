@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PlayRow, PlayTake } from "@shared/contract-work-routines";
+import { takeOfChip, type PlayRow, type PlayTake } from "@shared/contract-work-routines";
 import type { ContextChip, MentionAnswer, MentionHit } from "@shared/work";
 import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Field } from "../../../chrome/DialogField";
@@ -14,6 +14,9 @@ import { registry } from "../../../lib/connection";
 import { refusalWords } from "../../../lib/settingsHome";
 import { startPlay, usePlays } from "./data";
 import { pickerKinds, playsFor, startInputs, TAKE_LABEL, takesLeft, takesLine, today } from "./model";
+
+/** A thing the start hands the play, as it stands chosen. */
+const CHOSEN = "truncate rounded-lg bg-muted px-2.5 py-1.5 text-[13px] text-foreground";
 
 type Props = {
   env: string;
@@ -150,6 +153,11 @@ function Inputs({ env, workspaceId, chip, play, onClose, pending, setPending }: 
       }}
     >
       <ModalBody>
+        {chip ? (
+          <Field label={TAKE_LABEL[takeOfChip(chip.kind) ?? "file"]}>
+            <p className={CHOSEN}>{chip.label}</p>
+          </Field>
+        ) : null}
         {left.map((take, i) =>
           take === "date" ? (
             <Field key={take} label="Date">
@@ -201,12 +209,12 @@ function Picker({ env, workspaceId, take, first, chip, onChip }: { env: string; 
       <Field
         label={label}
         aside={
-          <Button type="button" variant="ghost" size="xs" onClick={() => onChip(undefined)}>
+          <Button type="button" variant="link" size="xs" className="h-auto px-0 text-xs" onClick={() => onChip(undefined)}>
             Change
           </Button>
         }
       >
-        <p className="truncate rounded-lg bg-muted px-2.5 py-1.5 text-[13px] text-foreground">{chip.label}</p>
+        <p className={CHOSEN}>{chip.label}</p>
       </Field>
     );
   return (

@@ -125,16 +125,7 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
         <Field label="Name">
           <Input autoFocus value={form.name} disabled={drafting} onChange={(e) => patch({ name: e.target.value })} placeholder="Game assignment" autoComplete="off" />
         </Field>
-        <Field
-          label="Instructions"
-          aside={
-            source.kind === "thread" && source.mayDraft ? (
-              <Button type="button" variant="ghost" size="xs" disabled={pending || other !== null} onClick={draft}>
-                <BusyLabel busy={drafting} label="Draft from the thread" busyLabel="Drafting…" />
-              </Button>
-            ) : undefined
-          }
-        >
+        <Field label="Instructions">
           <Textarea rows={8} value={form.instructions} disabled={drafting} onChange={(e) => patch({ instructions: e.target.value })} placeholder="The steps, in your words" />
         </Field>
         <Field label="Takes" hint="What you hand it at each start">
@@ -162,6 +153,10 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
           row ? (
             <Button type="button" variant="ghost" size="sm" disabled={pending || other !== null} onClick={() => void remove()}>
               <BusyLabel busy={other === "remove"} label={row.proposed ? "Not now" : "Delete"} />
+            </Button>
+          ) : source.kind === "thread" && source.mayDraft ? (
+            <Button type="button" variant="ghost" size="sm" disabled={pending || other !== null} onClick={draft}>
+              <BusyLabel busy={drafting} label="Draft from the thread" busyLabel="Drafting…" />
             </Button>
           ) : undefined
         }
