@@ -463,6 +463,21 @@ function replaceKeeping(path: string, from: string, was: string): void {
 export class StaleChangesError extends Error {}
 
 /**
+ * A press made on one preview of the suggestions, refused because they moved on since (another
+ * window, the agent's next edit to the same slide): an accept or a reject is always on what he saw.
+ */
+export class ChangedSinceError extends Error {}
+export const CHANGED_SINCE = 'The suggestions changed since this preview. Nothing was accepted or rejected; look at them again.'
+
+/** The proposed render's rev as the view advertises it (`renders.proposed.rev`), null when no change waits. */
+const proposedRev = (deck: Deck): string | null => (deck.proposed ? deck.proposed.key.slice(0, 16) : null)
+
+/** Refuses a press whose `rev` is not the proposed render's now; a press with none (the desktop's strip) is not checked. */
+function checkRev(deck: Deck, rev: string | undefined): void {
+  if (rev !== undefined && proposedRev(deck) !== rev) throw new ChangedSinceError(CHANGED_SINCE)
+}
+
+/**
  * Accepts changes and writes them into the file. Taking every waiting
  * change replays the edits as they were made, which is how the proposed
  * deck was drawn. Taking some: an `add` or `move` goes after the nearest
@@ -471,9 +486,10 @@ export class StaleChangesError extends Error {}
  * edits no longer fits the file is left waiting, the others are written, and
  * a `StaleChangesError` names it.
  */
-export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', signal?: AbortSignal): Promise<void> {
+export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', signal?: AbortSignal, rev?: string): Promise<void> {
   const stale = await serial(item.id, () =>
     withDeck(ctx, item, signal, async (deck) => {
+      checkRev(deck, rev)
       let chosen = deck.pending.filter((p) => ids === 'all' || ids.includes(changeIdOf(p.slide)))
       if (!chosen.length) return []
       const whole = chosen.length === deck.pending.length
@@ -586,8 +602,10 @@ export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] 
 }
 
 /** Rejects changes: their rows go; an edit anchored on a slide a rejected add would have made takes that add's own anchor. */
-export async function reject(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem, ids: readonly string[] | 'all'): Promise<void> {
+export async function reject(ctx: Ctx, item: CanvasItem, ids: readonly string[] | 'all', rev?: string, signal?: AbortSignal): Promise<void> {
   await serial(item.id, async () => {
+    // Checked on the item's queue, against the deck as it is now, so no edit lands between the check and the drop.
+    if (rev !== undefined) checkRev(await deckOf(ctx, item, signal), rev)
     const store = new SlidesStore(ctx.db)
     const pending = store.pending(item.id)
     const chosen = pending.filter((p) => ids === 'all' || ids.includes(changeIdOf(p.slide)))

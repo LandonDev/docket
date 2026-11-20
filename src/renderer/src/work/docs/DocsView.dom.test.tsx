@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** The Docs view: one list from the host, searched as he types, filtered, grouped, laid out, picked and saved. */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FindAnswer } from "@shared/contract-work-docs";
 import { DEFAULT_SPEC, type FindEntry } from "@shared/work/docFind";
@@ -196,6 +196,19 @@ describe("the Docs view", () => {
     under.unmount();
   });
 
+  it("sets what waits on a row in the foreground ink, its time muted, and its bones at the list's insets", async () => {
+    let land: (a: FindAnswer) => void = () => {};
+    answers["work.docs.find"] = () => new Promise((r) => (land = r));
+    const { container } = render(<View {...props} />);
+    await settle();
+    expect(container.querySelector("[aria-busy]")!.className).toContain("ps-7 pe-6");
+    await act(async () => land(ANSWER));
+    const row = screen.getByRole("button", { name: /scan\.pdf/ });
+    const words = within(row).getByText("1 held");
+    expect(words.className).toContain("text-foreground");
+    expect(words.nextElementSibling!.className).toContain("text-muted-foreground");
+  });
+
   it("hangs a row's pick box 4px clear of a picked row's fill, inside the column's start padding", async () => {
     answers["work.docs.find"] = async () => ANSWER;
     const { container } = render(<View {...props} />);
@@ -320,7 +333,8 @@ describe("the menus' rows", () => {
   });
 
   it("say what waits on an entry as one sentence", () => {
-    expect(waitWords(entry({ key: "a", title: "A", comments: 1, waiting: 2, held: 1 }))).toBe("3 to review, held");
+    expect(waitWords(entry({ key: "a", title: "A", comments: 1, waiting: 2, held: 1 }))).toBe("3 to review, 1 held");
+    expect(waitWords(entry({ key: "c", title: "C", held: 2 }))).toBe("2 held");
     expect(waitWords(entry({ key: "b", title: "B" }))).toBe("");
   });
 });

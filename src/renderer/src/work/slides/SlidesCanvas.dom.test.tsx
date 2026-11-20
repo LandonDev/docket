@@ -45,11 +45,25 @@ const PROPOSED = fakeDoc(Array.from({ length: 13 }, (_, i) => ({ size: WIDE, run
 
 let deckHost: ReturnType<typeof fakeDeckHost>;
 let item: CanvasItem;
+/** How many of the next picture reads this window refuses, as a socket that closed mid-read would. */
+let refuseReads = 0;
+let reads = 0;
 
 function kinds(width = 800): Record<string, CanvasKindDef> {
   // Each render a doc of its own: the file's 12 slides, the proposed deck's 13.
   let opened = 0;
-  const engine = fakeEngine(() => (opened++ === 0 ? DECK : PROPOSED));
+  const pictures = fakeEngine(() => (opened++ === 0 ? DECK : PROPOSED));
+  const engine: typeof pictures = {
+    ...pictures,
+    open: async (file) => {
+      reads++;
+      if (refuseReads > 0) {
+        refuseReads--;
+        throw new Error("The socket closed");
+      }
+      return pictures.open(file);
+    },
+  };
   const module = import("./SlidesCanvas").then((m) => ({
     Body: (props: CanvasBodyProps) => <m.Body {...(props as CanvasBodyProps<undefined>)} host={deckHost} engine={engine} width={width} height={700} />,
     Bar: m.Bar as never,
@@ -272,6 +286,30 @@ describe("the slides kind", () => {
     }
   });
 
+  it("a picture this window could not read gets Retry on the state line, which reads it again; the strip and the diffs stay", async () => {
+    refuseReads = 1;
+    reads = 0;
+    open(deckView({ changes: [change("c1", 1, { edits: [{ where: "Title", before: "Hello", after: "Welcome" }] })], slides: deckView().slides.map((s) => (s.id === 1 ? { ...s, change: "c1" } : s)) }));
+    const line = await found('[data-canvas-state="failed"]');
+    expect(line.textContent).toContain("Can't draw the slides");
+    expect(line.textContent).toContain("The socket closed");
+    // The strip and the text diff stay drawn under the line.
+    expect(thumbs()).toHaveLength(12);
+    expect((await found("[data-slide-edits]")).textContent).toContain("Welcome");
+    const before = reads;
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull());
+    expect(reads).toBe(before + 1);
+    await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 1"));
+    expect(document.querySelector("[data-slide-edits]")?.textContent).toContain("Welcome");
+  });
+
+  it("a deck the host has no picture of offers no Retry: there is nothing here to read again", async () => {
+    open(deckView({ renders: { file: null, proposed: null }, renderError: "LibreOffice is not installed on this host" }));
+    const line = await found('[data-canvas-state="failed"]');
+    expect(within(line).queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("says why with the host's reason alone, not the line's own word twice", async () => {
     open(deckView({ renders: { file: null, proposed: null }, renderError: "There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches." }));
     const line = await found('[data-canvas-state="failed"]');
@@ -288,6 +326,10 @@ describe("the slides kind", () => {
     const bones = await found("[data-slides-skeleton]");
     expect(bones.className).toContain("@container");
     expect(bones.firstElementChild!.className).toContain("@max-[400px]:flex-col-reverse");
+    // The stage row sits on the stage band with its inset, as the loaded slide does, so nothing moves when the deck lands.
+    const stage = bones.querySelector("[data-slides-skeleton-stage]")!;
+    expect(stage.className).toContain("bg-(--slide-stage)");
+    expect(stage.className).toContain("pb-(--slide-stage-inset)");
   });
 
   it("draws a deck the host could not open as the state line with Retry, with no bones under it", async () => {

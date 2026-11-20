@@ -40,7 +40,11 @@ describe("Teams files in Settings", () => {
   it("names a found library by its team, its folder in the row's tip; a folder he added shows its path", async () => {
     const { link } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
-    expect(screen.getByText("Purdue Esports").closest("[data-library-path]")!.getAttribute("data-library-path")).toBe(FOUND.path);
+    const tip = screen.getByText("Purdue Esports").closest("[data-library-path]")!;
+    expect(tip.getAttribute("data-library-path")).toBe(FOUND.path);
+    // The keyboard reaches the path too: focus opens the tip as hover does.
+    expect(tip.getAttribute("tabindex")).toBe("0");
+    expect(tip.className).toContain("focus-ring");
     expect(screen.queryByText(FOUND.path)).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/c/S/RecWell - Site Policies" } });

@@ -13,10 +13,11 @@ public enum ChunkedRead {
         case short
     }
 
-    /// Every frame of a file of `size` bytes, in order; one `rev` throughout.
-    public static func all(size: Int, frame: Int = ChunkedRead.frame, read: (_ offset: Int, _ length: Int) async throws -> FileBytes) async throws -> Data {
+    /// Every frame of a file of `size` bytes, in order; one `rev` throughout, and that one `expecting` when the view
+    /// that named the file advertised it, so the bytes are the render the view described and no other.
+    public static func all(size: Int, frame: Int = ChunkedRead.frame, expecting: String? = nil, read: (_ offset: Int, _ length: Int) async throws -> FileBytes) async throws -> Data {
         var data = Data(capacity: size)
-        var rev: String?
+        var rev: String? = expecting
         var offset = 0
         while offset < size {
             let answer = try await read(offset, min(frame, size - offset))

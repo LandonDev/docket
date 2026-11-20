@@ -15,7 +15,9 @@ public enum HtmlWords {
         for m in matches(#"\sbackground\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#, in: plain) { backgrounds.append(m.firstGroup.trimmingCharacters(in: .whitespaces)) }
         for m in matches(#"url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)"#, in: plain) { backgrounds.append(m.firstGroup.trimmingCharacters(in: .whitespaces)) }
 
-        var out = replace(#"<(script|style|head|title)\b[\s\S]*?</\1\s*>"#, in: html) { _ in "" }
+        // A <head>'s content stays: the outgoing html keeps it and a browser shows a <p> found there. Only what
+        // never shows (script, style, the title) goes.
+        var out = replace(#"<(script|style|title)\b[\s\S]*?</\1\s*>"#, in: html) { _ in "" }
         out = replace(#"<!--[\s\S]*?-->"#, in: out) { _ in "" }
         out = replace(#"<img\b[^>]*>"#, in: out) { m in
             let src = decode(attr(m.whole, "src") ?? "").trimmingCharacters(in: .whitespaces)

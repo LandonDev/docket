@@ -195,6 +195,9 @@ struct AskSheet: View {
 
 /// A view that reads its kind's answer once it shows: a spinner, the view, or why not, with Try Again.
 struct ItemLoad<Value, Content: View>: View {
+    /// A reload drops what was shown first, so the spinner, then a fresh value or the failure with Try Again, stand
+    /// in its place: for a view whose old value must not stay live through a refresh (a deck's review after a decision).
+    var dropsOnReload = false
     let read: () async throws -> Value
     @ViewBuilder let content: (Value, _ reload: @escaping () -> Void) -> Content
     @State private var value: Value?
@@ -206,7 +209,11 @@ struct ItemLoad<Value, Content: View>: View {
     var body: some View {
         Group {
             if let value {
-                content(value) { if !reading { round += 1 } }
+                content(value) {
+                    guard !reading else { return }
+                    if dropsOnReload { self.value = nil }
+                    round += 1
+                }
             } else if let error {
                 ContentUnavailableView {
                     Label("Can’t Open This", systemImage: "exclamationmark.triangle")

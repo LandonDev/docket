@@ -283,15 +283,10 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
               accounts={accountRows}
             />
           </div>
-          {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. */}
+          {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. The foot's Save, still live, is its retry. */}
           {error ? (
-            <div data-project-settings-error className="flex items-start gap-3 px-5 py-3">
-              <div className="min-w-0 flex-1">
-                <ErrorLine error={error} />
-              </div>
-              <Button type="button" variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" onClick={() => void save()}>
-                Retry
-              </Button>
+            <div data-project-settings-error className="px-5 py-3">
+              <ErrorLine error={error} />
             </div>
           ) : null}
           <Footer
@@ -306,7 +301,8 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
             onCancel={() => closeThen(onClose)}
             confirmLabel="Save"
             pending={pending}
-            disabled={!dirty || stranded}
+            // After a failed save Save stays live, as its retry: even once an earlier try is seen to have landed, when it closes the sheet.
+            disabled={(!dirty && !error) || stranded}
           />
         </form>
         {/* Inside the sheet's own tree, so each opens over it as its child and a press in one never closes the sheet. */}

@@ -165,7 +165,16 @@ export const SlidesRequestSchemas = [
   /** → { data: base64, size, rev }: bytes of one of the deck's renders, a PDF */
   request('work.slides.read', z.object({ itemId, which: z.enum(['file', 'proposed']), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → DeckView: accept writes the changes into the file; reject drops them */
-  request('work.slides.review', z.object({ itemId, changes: z.union([z.array(z.string()).max(1000), z.literal('all')]), verdict: z.enum(['accept', 'reject']) })),
+  request(
+    'work.slides.review',
+    z.object({
+      itemId,
+      changes: z.union([z.array(z.string()).max(1000), z.literal('all')]),
+      verdict: z.enum(['accept', 'reject']),
+      /** the proposed render the press was made on (`DeckView.renders.proposed.rev`): with it, a press on changes that moved on since is refused, never applied to what he did not see */
+      rev: z.string().max(64).optional()
+    })
+  ),
   /** → DeckView: what the agent does to this deck from now on */
   request('work.slides.mode', z.object({ itemId, mode: z.enum(['suggests', 'writes']) })),
   /** → DeckView: puts the file back as it was before the agent's direct write */

@@ -5,6 +5,19 @@ import type { FormBody, FormQuestion, FormResponses, FormSuggestion } from "@sha
  * (docs/agents/work-forms.md "The canvas"). Pure, so the tests read it.
  */
 
+/**
+ * A waiting change still has something to show: a question it adds, or one the form holds. A host that kept a change to
+ * a question since gone (one before the removal cleared them) sends it still; it has no row, outline or verb, so the
+ * canvas never counts or steps to it.
+ */
+export const standing = (body: FormBody, s: FormSuggestion): boolean => s.op === "add" || body.questions.some((q) => q.id === s.question.id);
+
+/** The view with only the changes that stand. */
+export function liveView<V extends { body: FormBody; suggestions: FormSuggestion[] }>(view: V): V {
+  const suggestions = view.suggestions.filter((s) => standing(view.body, s));
+  return suggestions.length === view.suggestions.length ? view : { ...view, suggestions };
+}
+
 /** A question as shown: as it stands, or as a waiting change would make it. */
 export interface Shown {
   q: FormQuestion;

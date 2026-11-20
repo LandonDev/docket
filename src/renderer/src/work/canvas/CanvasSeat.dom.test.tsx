@@ -552,7 +552,7 @@ describe("the frame a kind drives through its shell", () => {
     expect(within(stepper).getByText("3")).toBeTruthy();
   });
 
-  it("while the kind holds its changes, keeps the stepper drawn with Reject and Accept off, and More's Accept all and Reject all off", async () => {
+  it("while the kind holds its changes, keeps the stepper drawn with its steps, Reject and Accept off, and More's Accept all and Reject all off", async () => {
     const { shell } = await driven();
     const adapter = review({ index: 1, count: 3, held: true });
     act(() => shell.review(adapter));
@@ -560,9 +560,9 @@ describe("the frame a kind drives through its shell", () => {
     expect(within(stepper).getByText("2/3")).toBeTruthy();
     expect(within(stepper).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
     expect(within(stepper).getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
-    // Stepping still moves: only deciding waits.
+    // The body draws no change to step to while it holds, so the steps rest too (round 9).
     fireEvent.click(within(stepper).getByRole("button", { name: "Next change" }));
-    expect(adapter.step).toHaveBeenCalledWith(2);
+    expect(adapter.step).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     const all = await screen.findByRole("menuitem", { name: "Accept all" });
     expect(all.getAttribute("aria-disabled") ?? all.getAttribute("data-disabled")).not.toBeNull();
@@ -653,6 +653,38 @@ describe("the frame a kind drives through its shell", () => {
     const tip = await historyIn(false);
     await new Promise((r) => setTimeout(r, 900));
     expect(tip()).toBeNull();
+  });
+
+  it("keeps one step in the narrow bar: the next change, and from the last back round to the first", async () => {
+    const { shell } = await driven();
+    const adapter = review({ index: 0, count: 3 });
+    act(() => shell.review(adapter));
+    const stepper = screen.getByRole("toolbar", { name: "Review changes" });
+    const step = within(stepper).getByRole("button", { name: "Step to the next change" });
+    // Drawn only by the narrow form; Previous and Next are the wide form's.
+    expect(step.className).toContain("hidden");
+    expect(step.className).toContain("@max-[560px]/bar:inline-flex");
+    fireEvent.click(step);
+    expect(adapter.step).toHaveBeenLastCalledWith(1);
+    act(() => shell.review({ ...adapter, index: 2 }));
+    fireEvent.click(within(stepper).getByRole("button", { name: "Step to the next change" }));
+    expect(adapter.step).toHaveBeenLastCalledWith(0);
+    // With none in hand, it takes the first, unless the kind cannot show it from there.
+    act(() => shell.review({ ...adapter, index: -1 }));
+    fireEvent.click(within(stepper).getByRole("button", { name: "Step to the next change" }));
+    expect(adapter.step).toHaveBeenLastCalledWith(0);
+    act(() => shell.review({ ...adapter, index: -1, enter: false }));
+    expect(within(stepper).getByRole("button", { name: "Step to the next change" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("rests every step while the kind holds its review, the count still drawn", async () => {
+    const { shell } = await driven();
+    act(() => shell.review(review({ index: 1, count: 3, held: true })));
+    const stepper = screen.getByRole("toolbar", { name: "Review changes" });
+    for (const name of ["Previous change", "Next change", "Step to the next change", "Reject", "Accept"]) expect(within(stepper).getByRole("button", { name }).hasAttribute("disabled"), name).toBe(true);
+    expect(within(stepper).getByText("2/3")).toBeTruthy();
+    act(() => shell.review(review({ index: 1, count: 3 })));
+    expect(within(stepper).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false);
   });
 
   it("shows one change already in hand as its two verbs alone: nowhere to step", async () => {

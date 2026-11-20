@@ -116,7 +116,7 @@ thread's canvas folder.
 |---|---|---|
 | `work.slides.open` | read | → `DeckView`: reads and renders the deck and the proposed deck |
 | `work.slides.read` | read | → `{ data, size, rev }`: bytes of the `file` or `proposed` render by range, at most 4 MB a call |
-| `work.slides.review` | operate | accept or reject changes by id, or `all` → `DeckView` |
+| `work.slides.review` | operate | accept or reject changes by id, or `all` → `DeckView`; an optional `rev` (the proposed render's, as the view advertised it) binds the press to that preview: when the changes moved on since, nothing is accepted or rejected, every client is told the deck as it is, and the call fails with "The suggestions changed since this preview". The phone always sends it and reads the render's bytes only at that rev; the desktop's strip sends none and is not checked |
 | `work.slides.mode` | operate | `suggests` or `writes` → `DeckView` |
 | `work.slides.undo` | operate | puts the file back before the agent's direct write → `DeckView` |
 

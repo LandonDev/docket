@@ -4,7 +4,7 @@ import { fenceItem, itemOf, readRange } from '../pdf/file'
 import { SLIDES_CONVERTERS } from './deck'
 import { ensureSlidesTables, SlidesStore } from './store'
 import { slidesTools } from './tools'
-import { accept, announce, reject, renderPath, StaleChangesError, undo, viewOf } from './view'
+import { accept, announce, ChangedSinceError, reject, renderPath, StaleChangesError, undo, viewOf } from './view'
 
 /**
  * The slides pillar's server module (docs/agents/work-slides.md): a deck
@@ -38,15 +38,13 @@ export const slides: WorkModule = {
       case 'work.slides.review': {
         // An agent suggests and the owner accepts: a thread's own call settles nothing.
         if (by.kind === 'model') throw new Error('Only the owner accepts or rejects a suggestion.')
-        if (req.params.verdict === 'reject') {
-          await reject(ctx, item, req.params.changes)
-          return handled(await announce(ctx, item, signal))
-        }
         try {
-          await accept(ctx, item, req.params.changes, signal)
+          if (req.params.verdict === 'reject') await reject(ctx, item, req.params.changes, req.params.rev, signal)
+          else await accept(ctx, item, req.params.changes, signal, req.params.rev)
         } catch (err) {
-          // What went in is shown at once; the sentence says which change still waits and why.
-          if (err instanceof StaleChangesError) await announce(ctx, item, signal)
+          // What went in is shown at once; the sentence says which change still waits and why. A press on a preview
+          // the changes moved on from changes nothing, and every client is shown the changes as they are now.
+          if (err instanceof StaleChangesError || err instanceof ChangedSinceError) await announce(ctx, item, signal)
           throw err
         }
         return handled(await announce(ctx, item, signal))

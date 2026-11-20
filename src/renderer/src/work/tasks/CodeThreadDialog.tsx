@@ -9,6 +9,7 @@ import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { PickerNote } from "../../chrome/PickerDialog";
 import { WorkspaceGlyph, workspaceLook } from "../../chrome/WorkspaceGlyph";
 import { ChoiceSelect } from "../../components/choice-select";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { MENU_ROW } from "../../components/ui/menu-row";
 import { ROW_PRESS } from "../../components/ui/press";
@@ -34,6 +35,18 @@ import { codeThreadChip, codeWorkspaces, pickedProject, type CodeWorkspace } fro
 type Detail = { task: { description?: string } } | null;
 const get = makeFunctionReference<"query">("tasks:get");
 
+/** How long Start waits for the task's notes before it goes with the title alone. */
+export const NOTES_WAIT_MS = 5_000;
+
+/** The task's notes: undefined while they load, "failed" when the read failed (Convex's useQuery throws it after its hooks ran). */
+function useNotes(id: string): Detail | undefined | "failed" {
+  try {
+    return useQuery(get, { id }) as Detail | undefined;
+  } catch {
+    return "failed";
+  }
+}
+
 export type CodeThreadStart = (about: ContextChip, at: { cwd: string; projectId: string | null }) => void;
 
 export function CodeThreadDialog({ task, sector, onStart, onClose }: { task: Task; sector: string | null; onStart: CodeThreadStart; onClose: () => void }) {
@@ -58,12 +71,13 @@ function useCodeWorkspaces(): CodeWorkspace[] {
 function Body({ task, sector, onStart, onClose }: { task: Task; sector: string | null; onStart: CodeThreadStart; onClose: () => void }) {
   const close = useModalClose();
   const all = useCodeWorkspaces();
-  const detail = useQuery(get, { id: task._id }) as Detail | undefined;
+  const detail = useNotes(task._id);
   const [query, setQuery] = useState("");
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [projectPick, setProjectPick] = useState("");
-  // Start pressed before the notes came: it goes once they do, the verb spinning.
+  // Start pressed before the notes came: it goes once they do, the verb spinning; after NOTES_WAIT_MS, or a failed read, with the title alone.
   const [waiting, setWaiting] = useState(false);
+  const [gaveUp, setGaveUp] = useState(false);
   const shown = useMemo(() => {
     const words = query.trim().toLowerCase();
     return words ? all.filter((w) => w.name.toLowerCase().includes(words)) : all;
@@ -76,16 +90,22 @@ function Body({ task, sector, onStart, onClose }: { task: Task; sector: string |
   const choose = (w: CodeWorkspace) => setChosenId(w.id);
   const start = () => {
     if (!chosen) return;
-    // A workspace that cannot read LifeOS is handed the notes: Start waits for them.
-    if (!reads && detail === undefined) return setWaiting(true);
-    onStart(codeThreadChip(task, detail?.task.description, reads), { cwd: chosen.path, projectId: projectId || null });
+    // A workspace that cannot read LifeOS is handed the notes: Start waits for them, for a while.
+    if (!reads && detail === undefined && !gaveUp) return setWaiting(true);
+    const notes = detail && detail !== "failed" ? detail.task.description : undefined;
+    onStart(codeThreadChip(task, notes, reads), { cwd: chosen.path, projectId: projectId || null });
     close ? close(onClose) : onClose();
   };
   const go = useRef(start);
   go.current = start;
   useEffect(() => {
-    if (waiting && detail !== undefined) go.current();
-  }, [waiting, detail]);
+    if (waiting && (detail !== undefined || gaveUp)) go.current();
+  }, [waiting, detail, gaveUp]);
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setTimeout(() => setGaveUp(true), NOTES_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [waiting]);
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     e.preventDefault();
@@ -124,7 +144,12 @@ function Body({ task, sector, onStart, onClose }: { task: Task; sector: string |
           </Field>
         ) : null}
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel="Start" pending={waiting} disabled={!chosen} />
+      {/* Only Start spins while it waits for the notes: Cancel stays live, so he can leave without waiting. */}
+      <DialogFooter onCancel={onClose}>
+        <Button data-dialog-confirm type="submit" disabled={!chosen || waiting}>
+          <BusyLabel busy={waiting} label="Start" />
+        </Button>
+      </DialogFooter>
     </form>
   );
 }

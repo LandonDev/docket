@@ -114,6 +114,25 @@ describe('the form page', () => {
     expect(root.querySelector('button')!.textContent).toBe('Retry')
   })
 
+  it('makes Retry busy and off while it reads, one read at a time, and brings it back when the read fails', async () => {
+    let done: (r: Response) => void = () => {}
+    const fetcher = vi.fn(async () => json(503, {}))
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    fetcher.mockImplementation(() => new Promise<Response>((r) => (done = r)))
+    const button = root.querySelector<HTMLButtonElement>('button')!
+    button.click()
+    expect(button.disabled).toBe(true)
+    expect(button.getAttribute('aria-busy')).toBe('true')
+    expect(button.textContent).toBe('Retrying…')
+    button.click()
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    done(json(503, {}))
+    await vi.waitFor(() => expect(root.querySelector('button')!.textContent).toBe('Retry'))
+    const again = root.querySelector<HTMLButtonElement>('button')!
+    expect(again.disabled).toBe(false)
+    expect(again.hasAttribute('aria-busy')).toBe(false)
+  })
+
   it('presses Send by a fill step on the app\'s duration tokens, never a scale or a hard-coded time', () => {
     const css = readFileSync(join(dirname(__filename), 'form.css'), 'utf8')
     expect(css).not.toMatch(/scale\(/)

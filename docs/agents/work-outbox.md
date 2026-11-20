@@ -194,8 +194,9 @@ Return where that sends; Space or Return on such a control; and any call the
 model flagged. The host reads the window afresh, with frames, when a step
 lands by position, goes to the focus, acts on an element by its number
 (the number may name another control by now: a Next become a Send), clicks
-where the pointer was left, clicks, types or presses a key by a name (the
-Mac finds the name on the live window), or names an element its book lacks. A key or typed text by name is judged on every element the
+where the pointer was left, clicks, types, pastes, sets a value, selects
+text or presses a key by a name (the Mac finds the name on the live window),
+or names an element its book lacks. A key or typed text by name is judged on every element the
 name finds (a line break typed "into" a focusable Send is held), and one
 whose name finds none, or several, is refused (`HELD_UNPLACED`).
 If that read fails the call is refused (`HELD_UNREAD`): nothing is judged

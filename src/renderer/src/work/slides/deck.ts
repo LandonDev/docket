@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { DeckMode, DeckView } from "@shared/contract-work-slides";
 import { registry } from "../../lib/connection";
 import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
@@ -101,8 +101,16 @@ export function useDeckView(host: DeckHost, store: DeckStore): void {
 }
 
 /** One of the deck's renders opened in the engine, at its revision: null until it is; `error` when it could not be read. */
-export function useRender(host: DeckHost, which: "file" | "proposed", render: { rev: string; size: number } | null, engine: PdfEngine = pdfjsEngine): { doc: PdfDoc | null; error: string | null } {
+export function useRender(
+  host: DeckHost,
+  which: "file" | "proposed",
+  render: { rev: string; size: number } | null,
+  engine: PdfEngine = pdfjsEngine,
+): { doc: PdfDoc | null; error: string | null; retry(): void } {
   const [state, setState] = useState<{ doc: PdfDoc | null; error: string | null }>({ doc: null, error: null });
+  // Each Retry reads the picture again from its first byte.
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const rev = render?.rev;
   const size = render?.size;
   useEffect(() => {
@@ -122,6 +130,6 @@ export function useRender(host: DeckHost, which: "file" | "proposed", render: { 
       live = false;
       opened?.destroy();
     };
-  }, [host, which, rev, size, engine]);
-  return state;
+  }, [host, which, rev, size, engine, attempt]);
+  return { ...state, retry };
 }

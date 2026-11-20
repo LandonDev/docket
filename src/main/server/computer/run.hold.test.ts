@@ -648,6 +648,13 @@ describe('the attacker under full access', () => {
     expect(acts(h)).toBe(0)
   })
 
+  it('refuses a paste to a name the window does not hold, and sends nothing', async () => {
+    useHold()
+    const { h } = await thread('work')
+    expect(await h.run('computer_act', { app: 'TextEdit', action: 'paste', named: 'To', text: 'other@example.com' })).toMatchObject({ isError: true, body: HELD_UNPLACED })
+    expect(acts(h)).toBe(0)
+  })
+
   it('holds a mouse down after an earlier call left the pointer on Send', async () => {
     useHold()
     const { h } = await thread('work')

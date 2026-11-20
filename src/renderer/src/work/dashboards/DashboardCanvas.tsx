@@ -305,10 +305,13 @@ function Figure({ f, stale, open }: { f: DashFigure; stale: boolean; open(from: 
       <Popover>
         <PopoverTrigger
           render={
-            <button
-              type="button"
+            // A compact ghost Button sized by the figure it holds: the figure keeps the 16/24 title recipe, the ghost its fills.
+            <Button
+              variant="ghost"
+              size="xs"
+              data-figure-open
               aria-label={`${f.label}: ${f.value ?? "no value"}. Where it comes from`}
-              className="-mx-1 rounded-sm px-1 text-start transition-[background-color] duration-(--dur-hover) hover:bg-foreground/6 aria-expanded:bg-foreground/6"
+              className="-mx-1 h-auto justify-start px-1 text-start"
             />
           }
         >

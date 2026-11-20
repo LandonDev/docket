@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { Bbox } from "@shared/contract-work-pdf";
 import type { DeckShape, DeckSlide, DeckView, SlideChange } from "@shared/contract-work-slides";
 import { Button } from "../../components/ui/button";
@@ -110,7 +110,22 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
     store.set({ error: null });
     return openDeck(host, store);
   }, [host, store]);
-  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry);
+  // A picture this window could not read is read again on Retry, the strip and the text diffs staying drawn meanwhile;
+  // a deck the host has no picture of (its own word) has nothing here to read again.
+  const readFailed = !view?.renderError && (fileRender.error !== null || proposedRender.error !== null);
+  const retryFile = fileRender.retry;
+  const retryProposed = proposedRender.retry;
+  const retryRender = useMemo(
+    () =>
+      readFailed
+        ? () => {
+            retryFile();
+            retryProposed();
+          }
+        : undefined,
+    [readFailed, retryFile, retryProposed],
+  );
+  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender);
 
   // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
   if (error) return null;
@@ -152,6 +167,7 @@ function useFeeds(
   host: DeckHost,
   run: (work: Promise<DeckView>, fallback: string) => Promise<void>,
   retry: () => Promise<void>,
+  retryRender: (() => void) | undefined,
 ): void {
   const inPowerPoint = side === "powerpoint";
   const mode = view?.mode;
@@ -166,11 +182,11 @@ function useFeeds(
       error
         ? { tone: "failed", word: "Couldn't open this deck", detail: error, action: { label: "Retry", run: retry } }
         : renderError
-          ? { tone: "failed", word: "Can't draw the slides", detail: renderDetail(renderError) }
+          ? { tone: "failed", word: "Can't draw the slides", detail: renderDetail(renderError), action: retryRender ? { label: "Retry", run: retryRender } : undefined }
           : null,
     );
     return () => shell.statusLine(null);
-  }, [shell, error, renderError, retry]);
+  }, [shell, error, renderError, retry, retryRender]);
 
   const written = view?.written;
   const pending = view?.changes.length ?? 0;
@@ -493,7 +509,8 @@ function DeckSkeleton() {
           ))}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex justify-center px-4 pt-4">
+          {/* On the stage band, as the loaded slide is (:406), so nothing moves when the deck lands. */}
+          <div data-slides-skeleton-stage className="flex justify-center bg-(--slide-stage) px-4 pt-4 pb-(--slide-stage-inset)">
             <Skeleton className="aspect-video w-full max-w-[560px]" />
           </div>
           <div className="flex flex-col gap-2 px-5 pt-4">

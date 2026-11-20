@@ -1251,3 +1251,36 @@ describe('readOutward: keys and typed text by name', () => {
     expect(restage(s, targets, screenMark(gmail), gmail)).toEqual(s)
   })
 })
+
+describe('heldTargets and restage: a paste, a value or a selection by name', () => {
+  const COMPOSE = `app "Google Chrome" · window "Gmail" · 1280×800 · focused [5]
+[1] window "Gmail"
+  [2] input "Address and search bar" = "mail.google.com/mail/u/0/#inbox"
+  [3] web area "Gmail"
+    [4] input "To" = "dana@example.com"
+    [5] text area "Message" = "Hi" focused caret 2
+    [6] button "Send"`
+  // the same fields in the same order, the To field moved into another part of the page
+  const MOVED = COMPOSE.replace('    [4] input "To" = "dana@example.com"', '    [7] group "Forward"\n      [4] input "To" = "dana@example.com"')
+  const s = steps({ action: 'left_click', element: 5 }, { action: 'paste', named: 'To', text: 'other@example.com' }, { action: 'left_click', element: 6 })
+
+  it('binds a paste by name to the field the name finds, not the focus an earlier step left', () => {
+    const now = screen(COMPOSE, CHROME)
+    const targets = heldTargets(s, now)!
+    expect(targets).toContainEqual({ step: 1, param: 'point', sig: 'input:To < web area:Gmail < window:Gmail', ordinal: 0, count: 1 })
+    expect(restage(s, targets, screenMark(now), screen(COMPOSE, CHROME))).toEqual(s)
+    // the mark is the same, but the name now finds a To he was not shown
+    expect(screenMark(screen(MOVED, CHROME))).toBe(screenMark(now))
+    expect(restage(s, targets, screenMark(now), screen(MOVED, CHROME))).toBeNull()
+  })
+
+  it('does the same for a value set or a selection made by name, and refuses one whose name finds none', () => {
+    const now = screen(COMPOSE, CHROME)
+    for (const step of [{ action: 'set_value', named: 'To', value: 'other@example.com' }, { action: 'select_text', named: 'To', text: 'dana' }]) {
+      expect(heldTargets(steps(step), now)).toEqual([{ step: 0, param: 'point', sig: 'input:To < web area:Gmail < window:Gmail', ordinal: 0, count: 1 }])
+      expect(needsFreshRead(steps(step))).toBe(true)
+    }
+    expect(namedKeysUnplaced(steps({ action: 'paste', named: 'Bcc', text: 'x' }), now)).toBe(true)
+    expect(heldTargets(steps({ action: 'paste', named: 'Bcc', text: 'x' }), now)).toBeNull()
+  })
+})

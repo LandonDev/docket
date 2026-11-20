@@ -40,6 +40,12 @@ describe("an Outlook calendar act", () => {
     ]);
   });
 
+  it("names the account an invitation goes from, as the host bound it", () => {
+    const rows = officeOpFields({ ...invite, event: { ...invite.event, account: "work@contoso.com" } });
+    expect(rows.map((r) => r.label)).toEqual(["Event", "When", "Where", "From", "Invites", "Details"]);
+    expect(rows.find((r) => r.label === "From")!.value).toBe("work@contoso.com");
+  });
+
   it("names both dates when an invitation runs into the next day", () => {
     const rows = officeOpFields({ ...invite, event: { ...invite.event, start: "2026-11-21T22:00:00", end: "2026-11-22T01:00:00" } });
     const when = rows.find((r) => r.label === "When")!.value;

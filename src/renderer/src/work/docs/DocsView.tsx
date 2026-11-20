@@ -529,7 +529,8 @@ function DocList(props: WorkViewProps) {
   if (!found.answer && found.error) return <EmptyState title="Docs did not load" line={found.error} action={{ label: "Retry", onClick: retry }} />;
   if (!groups || !shown)
     return (
-      <div aria-busy className="mx-auto flex max-w-[720px] flex-col gap-3 px-6 py-5">
+      // At the list's own insets, so the titles do not step sideways when the list lands.
+      <div aria-busy className="mx-auto flex max-w-[720px] flex-col gap-3 ps-7 pe-6 py-5">
         <Skeleton className="h-3 w-[18%]" />
         <Skeleton className="h-3 w-[70%]" />
         <Skeleton className="h-3 w-[56%]" />
@@ -614,7 +615,8 @@ interface LayoutProps {
 export function waitWords(e: FindEntry): string {
   const out: string[] = [];
   if (e.comments + e.waiting) out.push(`${e.comments + e.waiting} to review`);
-  if (e.held) out.push("held");
+  // With its count, as "2 to review" has: "held" alone read as a word about the time beside it.
+  if (e.held) out.push(`${e.held} held`);
   return out.join(", ");
 }
 
@@ -669,7 +671,8 @@ function ListLayout({ groups, selected, spec, onPick, onOpen }: LayoutProps) {
                     <span className="truncate text-foreground">{e.title}</span>
                     {e.snippet ? <span className="truncate text-xs text-muted-foreground">{e.snippet}</span> : null}
                   </span>
-                  {wait ? <span className="mt-0.5 shrink-0 self-start text-xs text-muted-foreground tabular-nums">{wait}</span> : null}
+                  {/* What waits asks him to act: the foreground ink; the time beside it stays muted. */}
+                  {wait ? <span className="mt-0.5 shrink-0 self-start text-xs text-foreground tabular-nums">{wait}</span> : null}
                   <span className="mt-0.5 shrink-0 self-start text-xs text-muted-foreground tabular-nums">{dayTime(at(e, spec))}</span>
                 </ItemButton>
               </div>
@@ -727,7 +730,7 @@ function TableLayout({ groups, selected, projects, spec, onPick, onOpen }: Layou
                   >
                     <Icon className="size-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate text-foreground">{e.title}</span>
-                    {wait ? <span className="shrink-0 text-xs text-muted-foreground">{wait}</span> : null}
+                    {wait ? <span className="shrink-0 text-xs text-foreground tabular-nums">{wait}</span> : null}
                   </ItemButton>
                 </TableCell>
                 {cols.kind ? <TableCell className="text-muted-foreground">{FIND_KIND_WORDS[e.kind]}</TableCell> : null}

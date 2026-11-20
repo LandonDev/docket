@@ -75,15 +75,18 @@ public final class WorkCanvas {
         try await socket.request(Methods.WorkSlidesOpen.self, .init(itemId: itemId))
     }
 
-    /// One of a deck's renders (a PDF): `proposed` while changes wait.
-    public func deckData(_ itemId: String, proposed: Bool, size: Int) async throws -> Data {
-        try await ChunkedRead.all(size: size) { offset, length in
+    /// One of a deck's renders (a PDF): `proposed` while changes wait. `rev` is the render's rev as the view advertised
+    /// it: a frame of any other render (the changes moved on meanwhile) fails the read, never shows in its place.
+    public func deckData(_ itemId: String, proposed: Bool, size: Int, rev: String) async throws -> Data {
+        try await ChunkedRead.all(size: size, expecting: rev) { offset, length in
             try await self.socket.request(Methods.WorkSlidesRead.self, .init(itemId: itemId, which: proposed ? .proposed : .file, offset: offset, length: length))
         }
     }
 
-    public func reviewDeck(_ itemId: String, accept: Bool) async throws -> DeckPhoneView {
-        try await socket.request(Methods.WorkSlidesReview.self, .init(itemId: itemId, changes: .string("all"), verdict: accept ? .accept : .reject))
+    /// Accept or reject every waiting change, bound to the proposed render he saw (`rev`): the host refuses the press
+    /// when the changes moved on since, and nothing is applied to what he did not see.
+    public func reviewDeck(_ itemId: String, accept: Bool, rev: String) async throws -> DeckPhoneView {
+        try await socket.request(Methods.WorkSlidesReview.self, .init(itemId: itemId, changes: .string("all"), verdict: accept ? .accept : .reject, rev: rev))
     }
 
     /// `plays`: what this viewer can decode, so the host prepares it (an HLS proxy, tiles).

@@ -178,7 +178,7 @@ describe("Name and State", () => {
     expect(screen.getByRole("combobox", { name: "State" }).textContent).toContain("Backlog");
   });
 
-  it("a failed save says why beside Retry, which sends it again", async () => {
+  it("a failed save says why, once, and Save is its retry: no second button does the same", async () => {
     connected();
     failWrites = "LifeOS refused the write";
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
@@ -192,15 +192,17 @@ describe("Name and State", () => {
     // One hairline between the error and the foot, the foot's own.
     expect(line.className).not.toContain("border-t");
     expect(line.nextElementSibling!.className).toContain("border-t");
+    expect(within(line as HTMLElement).queryByRole("button")).toBeNull();
+    expect(saveButton().hasAttribute("disabled")).toBe(false);
     failWrites = null;
     await act(async () => {
-      fireEvent.click(within(line as HTMLElement).getByRole("button", { name: "Retry" }));
+      fireEvent.click(saveButton());
     });
     await waitFor(() => expect(sent).toHaveLength(2));
     expect(sent[1].args).toEqual({ id: "lp_1", patch: { name: "Fall LAN" } });
   });
 
-  it("Retry after a save that landed with its answer lost sends nothing more and closes the sheet", async () => {
+  it("Save after a save that landed with its answer lost sends nothing more and closes the sheet", async () => {
     const rows = [{ _id: "lp_1", name: "Spring LAN", status: "active" }];
     connected(lifeosClient(rows));
     failWrites = "the connection dropped";
@@ -215,8 +217,10 @@ describe("Name and State", () => {
     // The write had landed: the live list now says so.
     rows[0] = { ...rows[0], name: "Fall LAN" };
     act(() => listUpdates.forEach((fn) => fn()));
+    // Nothing differs now, yet Save stays live while the error stands: it is the retry, and finds the sheet done.
+    expect(root.querySelector("[data-project-settings-error]")).not.toBeNull();
     await act(async () => {
-      fireEvent.click(within(root.querySelector("[data-project-settings-error]") as HTMLElement).getByRole("button", { name: "Retry" }));
+      fireEvent.click(saveButton());
     });
     expect(sent).toHaveLength(1);
     await waitFor(() => expect(onClose).toHaveBeenCalled());

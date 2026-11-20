@@ -33,9 +33,10 @@ export function officeOpFields(payload: unknown): { label: string; value: string
     const start = at(e.start);
     if (start !== undefined) rows.push({ label: "When", value: whenWords(start, at(e.end)) });
     if (e.location) rows.push({ label: "Where", value: e.location });
+    // The account it goes from, bound by the host when it was held: the press never takes Outlook's default of that moment.
+    if (e.account) rows.push({ label: "From", value: e.account });
     if (e.attendees?.length) rows.push({ label: "Invites", value: e.attendees.join(", ") });
     if (e.body?.trim()) rows.push({ label: "Details", value: words(e.body) });
-    if (e.account) rows.push({ label: "Calendar", value: e.account });
     return rows;
   }
   if (op.subject) rows.push({ label: "Event", value: op.subject });

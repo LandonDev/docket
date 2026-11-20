@@ -12,6 +12,7 @@ import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, Table
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { Tip, TruncateTip } from "../../components/tip";
+import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -19,7 +20,7 @@ import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { Table } from "../icons";
 import { linkFormHost, type FormHost } from "./host";
-import { answerBars, chartQuestion, newId, optionDiff, plural, resolvePick, shownQuestions, submittedTime, TYPE_WORDS, type Pick, type Shown } from "./model";
+import { answerBars, chartQuestion, liveView, newId, optionDiff, plural, resolvePick, shownQuestions, submittedTime, TYPE_WORDS, type Pick, type Shown } from "./model";
 
 /**
  * The form kind (docs/agents/work-forms.md; the approved page is
@@ -59,7 +60,9 @@ class FormStore {
   }
   get = (): Slot => this.slot;
   set = (patch: Partial<Slot>): void => {
-    this.slot = { ...this.slot, ...patch };
+    // Every view the canvas reads holds only the changes that stand (`liveView`): a change kept against a question since
+    // gone is never counted, stepped to or decided, whatever host version sent it.
+    this.slot = { ...this.slot, ...patch, ...(patch.view ? { view: liveView(patch.view) } : {}) };
     for (const l of this.listeners) l();
   };
   subscribe = (l: () => void): (() => void) => {
@@ -156,6 +159,17 @@ const run = (work: Promise<FormView>, store: FormStore, fallback: string): Promi
     (e: unknown) => sayError(e, fallback),
   );
 
+/** An accept, and what it cleared with a removed question, said once: the changes that went with it, as the host names them. */
+const accept = (work: ReturnType<FormHost["review"]>, store: FormStore): Promise<void> =>
+  work.then(
+    (v) => {
+      store.set({ view: v });
+      const cleared = v.cleared ?? [];
+      if (cleared.length) void loadToast().then((toast) => toast(`Cleared ${plural(cleared.length, "change")} to the removed question`, { description: cleared.join(", ") }));
+    },
+    (e: unknown) => sayError(e, "Couldn't accept the change"),
+  );
+
 /** What the body tells the pane: the mode, the stepper over waiting changes, the line after a direct write, More's own rows. */
 function useFeeds(
   shell: CanvasShell,
@@ -199,7 +213,7 @@ function useFeeds(
       count: suggestions.length,
       held: editing,
       step: setCurrent,
-      accept: (w) => (hidden() ? Promise.resolve() : run(host.review(ids(w), "accept"), store, "Couldn't accept the change")),
+      accept: (w) => (hidden() ? Promise.resolve() : accept(host.review(ids(w), "accept"), store)),
       reject: (w) => (hidden() ? Promise.resolve() : run(host.review(ids(w), "reject"), store, "Couldn't reject the change")),
     };
     shell.review(review);

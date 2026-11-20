@@ -1306,8 +1306,8 @@ split view. Top to bottom on the item's side:
    (`BAR_NARROW`, a container query on the bar) the people go, the mode
    reads "Suggests" or "Writes", tools a kind marks `data-narrow-hide` go,
    History turns to its glyph with a tip, and the stepper drops its group
-   label, Previous and Next, keeping "1/3", Reject and Accept, which never
-   shrink; the bar clips rather than spill. Wider, a marked tool also goes
+   label and trades Previous and Next for one Next that goes round to the
+   first, keeping "1/3", Reject and Accept, which never shrink; the bar clips rather than spill. Wider, a marked tool also goes
    while the tools slot cannot hold it whole. With
    one change in hand the stepper is Reject and Accept alone. A state line for a source
    that cannot be reached sits under the bar, 32px.

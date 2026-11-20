@@ -73,9 +73,19 @@ public enum OutboxModel {
     /// "Send" → "Sent", "Reply" → "Replied", "Move or rename files" → "Moved or renamed files": the
     /// desktop's `pastOf`. A verb is the first word, or one that follows "or"/"and" right after another
     /// verb; the words after them stay. An older Outlook tentative answer's verb, "Maybe", is said whole.
-    public nonisolated static func pastOf(_ verb: String) -> String {
+    public nonisolated static func pastOf(_ verb: String, kind: OutboxItem.Kind? = nil) -> String {
         if verb == "Maybe" { return "Answered maybe" }
+        // A computer act's verb is its control's own word ("Reset", "Bid"): one the table does not know reads as the press it was.
+        if pressed(verb, kind: kind) { return "Pressed \(verb)" }
         return turned(verb, pastWord)
+    }
+
+    /// A computer act whose first word the past table does not know: said as a press ("Pressed Reset", "Pressing
+    /// Reset"), never a guessed past ("Reseted"). The desktop's `pastOf(verb, kind)`.
+    private nonisolated static func pressed(_ verb: String, kind: OutboxItem.Kind?) -> Bool {
+        guard kind == .computerAct else { return false }
+        let head = verb.split(separator: " ", omittingEmptySubsequences: false).first.map { $0.lowercased() } ?? ""
+        return past[head] == nil
     }
 
     /// The desktop's PAST (work/outbox/model.ts), word for word.
@@ -129,12 +139,12 @@ public enum OutboxModel {
     /// is its summary with the verb made progressive.
     public nonisolated static func pendingLine(_ item: OutboxItem) -> String {
         if let people = recipients(item), !people.isEmpty {
-            return "\(progressive(item.verb)) to \(peopleWords(people))"
+            return "\(progressive(item.verb, kind: item.kind)) to \(peopleWords(people))"
         }
         let summary = item.summary
         guard summary.hasPrefix(item.verb) else { return summary }
         let rest = summary.dropFirst(item.verb.count)
-        return progressive(item.verb) + rest
+        return progressive(item.verb, kind: item.kind) + rest
     }
 
     /// A mail's To and Cc as a person reads them: the name where there is one, else the address.
@@ -165,8 +175,9 @@ public enum OutboxModel {
 
     /// "Send" → "Sending", "Answer maybe" → "Answering maybe", "Move or rename files" → "Moving or
     /// renaming files": the undo capsule's verb, turned as `pastOf` turns it.
-    nonisolated static func progressive(_ verb: String) -> String {
+    nonisolated static func progressive(_ verb: String, kind: OutboxItem.Kind? = nil) -> String {
         if verb == "Maybe" { return "Answering maybe" }
+        if pressed(verb, kind: kind) { return "Pressing \(verb)" }
         return turned(verb, progressiveWord)
     }
 

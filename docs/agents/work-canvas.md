@@ -190,8 +190,11 @@ What a kind should know:
   (560px of canvas) it takes its narrow form by CSS alone, the same at run
   time and in a static render: the people go, the mode reads "Suggests" or
   "Writes" (the full words stay its name and its menu's rows), History is
-  its glyph with a tip, and the stepper drops its group's name and
-  Previous and Next, keeping "1/3", Reject and Accept. The end group gives
+  its glyph with a tip, and the stepper drops its group's name and trades
+  Previous and Next for one Next that goes round from the last change to
+  the first ("Step to the next change"), keeping "1/3", Reject and Accept,
+  so every change is reachable before any is decided. While the adapter is
+  `held` every step rests too, the count still drawn. The end group gives
   up room only through words (the group's name, a written line); History,
   the count and the verbs never shrink, and the bar clips rather than
   spill. The narrow form starts when the bar's content box (its width less

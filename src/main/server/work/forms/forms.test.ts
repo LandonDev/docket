@@ -250,6 +250,64 @@ describe('a form', () => {
     expect(got.rows[0].slice(0, 4)).toEqual(['Ava', 'Valorant', '', 'M'])
   })
 
+  it('accepting a removal clears the other changes waiting on that question, and the result names them', async () => {
+    const { itemId, view } = await made()
+    const diet = view.body.questions[2].id
+    // One call: the tool numbers a call's changes, so changes from separate calls in one millisecond could share an id.
+    await tool('form_edit', {
+      item: itemId,
+      changes: [
+        { op: 'remove', id: diet },
+        { op: 'change', id: diet, label: 'Allergies' },
+        { op: 'change', id: view.body.questions[0].id, label: 'Full name' }
+      ]
+    })
+    const waiting = (await call<FormView>('work.forms.open', { itemId })).suggestions
+    expect(waiting.map((s) => s.op)).toEqual(['remove', 'change', 'change'])
+    const out = await call<FormView & { cleared: string[] }>('work.forms.review', { itemId, which: { ids: [waiting[0].id] }, verdict: 'accept' })
+    expect(out.body.questions.map((q) => q.label)).toEqual(['Name', 'Game'])
+    // The rewrite of the removed question went with it, named as the form had it; the change to Name still waits.
+    expect(out.cleared).toEqual(['Change Dietary needs'])
+    expect(out.suggestions.map((s) => s.question.label)).toEqual(['Full name'])
+    expect((await call<FormView>('work.forms.open', { itemId })).suggestions.map((s) => s.id)).toEqual([waiting[2].id])
+  })
+
+  it('accepting all clears a rewrite whose question an earlier removal in the same press took away, without an error', async () => {
+    const { itemId, view } = await made()
+    const diet = view.body.questions[2].id
+    await tool('form_edit', { item: itemId, changes: [{ op: 'remove', id: diet }, { op: 'change', id: diet, label: 'Allergies' }] })
+    const out = await call<FormView & { cleared: string[] }>('work.forms.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(out.body.questions.map((q) => q.label)).toEqual(['Name', 'Game'])
+    expect(out.cleared).toEqual(['Change Dietary needs'])
+    expect(out.suggestions).toEqual([])
+  })
+
+  it('never offers a saved change to a question that is gone, and drops it on the next write', async () => {
+    const { itemId, view } = await made()
+    await tool('form_edit', { item: itemId, changes: [{ op: 'change', id: view.body.questions[0].id, label: 'Full name' }] })
+    const { FormsStore } = await import('./store')
+    const store = new FormsStore(db)
+    const row = store.get(itemId)!
+    const orphan = { ...row.suggestions[0], id: 'orphan', question: { ...row.suggestions[0].question, id: 'gone', label: 'Old question' } }
+    store.update(itemId, { suggestions: [...row.suggestions, orphan] })
+    const open = await call<FormView>('work.forms.open', { itemId })
+    expect(open.suggestions.map((s) => s.id)).toEqual([row.suggestions[0].id])
+    expect((await tool('form_read', { item: itemId })).text).toContain('1 change(s) wait for the owner.')
+    // Deciding all decides what stands; the orphan is dropped, never named, and nothing throws.
+    const out = await call<FormView & { cleared: string[] }>('work.forms.review', { itemId, which: 'all', verdict: 'reject' })
+    expect(out.cleared).toEqual([])
+    expect(store.get(itemId)!.suggestions).toEqual([])
+  })
+
+  it('his own edit that removes a question drops the changes waiting on it', async () => {
+    const { itemId, view } = await made()
+    await tool('form_edit', { item: itemId, changes: [{ op: 'change', id: view.body.questions[2].id, label: 'Allergies' }] })
+    const saved = await call<FormView>('work.forms.save', { itemId, rev: view.rev, body: { ...view.body, questions: view.body.questions.slice(0, 2) } })
+    expect(saved.suggestions).toEqual([])
+    const { FormsStore } = await import('./store')
+    expect(new FormsStore(db).get(itemId)!.suggestions).toEqual([])
+  })
+
   it('writes an agent\'s change at once before publishing only when the mode says so', async () => {
     const { itemId, view } = await made()
     await tool('form_edit', { item: itemId, changes: [{ op: 'remove', id: view.body.questions[2].id }] })
@@ -339,5 +397,18 @@ describe('the answers a page sends', () => {
     expect(checkAnswers({ questions: qs }, { answers: { a: 'x'.repeat(501) } })).toMatchObject({ question: 'a' })
     expect(checkAnswers({ questions: qs }, { answers: { a: 'x', c: 'y'.repeat(5000) } })).toEqual({ ok: { a: 'x', c: 'y'.repeat(5000) } })
     expect(checkAnswers({ questions: qs }, 'nope')).toEqual({ error: 'Nothing was sent.' })
+  })
+})
+
+describe("an agent's change", () => {
+  it('takes an id no other call shares, even in the same millisecond, so a decision by id takes exactly one (the hold review)', async () => {
+    const { suggestionId } = await import('./tools')
+    vi.useFakeTimers({ now: 1_700_000_000_000 })
+    try {
+      const ids = new Set(Array.from({ length: 50 }, () => suggestionId()))
+      expect(ids.size).toBe(50)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

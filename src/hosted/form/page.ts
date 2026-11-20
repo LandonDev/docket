@@ -16,7 +16,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return node
 }
 
-function message(root: HTMLElement, title: string, line?: string, action?: { label: string; run: () => void }): void {
+function message(root: HTMLElement, title: string, line?: string, action?: { label: string; run: (button: HTMLButtonElement) => void }): void {
   // Focus inside the form (Send was just pressed) moves to the heading that replaces it, so a keyboard or a screen reader hears what happened.
   const hadFocus = root.contains(document.activeElement)
   root.replaceChildren()
@@ -29,7 +29,7 @@ function message(root: HTMLElement, title: string, line?: string, action?: { lab
     const foot = el('div', 'fm-foot')
     const button = el('button', 'fm-send', action.label)
     button.type = 'button'
-    button.addEventListener('click', action.run)
+    button.addEventListener('click', () => action.run(button))
     foot.append(button)
     box.append(foot)
   }
@@ -195,7 +195,17 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
  */
 export async function mount(root: HTMLElement, pathname: string, fetcher: Fetch): Promise<void> {
   const base = pathname.replace(/\/+$/, '')
-  const retry = { label: 'Retry', run: () => void mount(root, pathname, fetcher) }
+  // One read at a time: Retry is busy while it reads, as Send is while it sends; a read that fails draws the message again, Retry with it.
+  const retry = {
+    label: 'Retry',
+    run: (button: HTMLButtonElement) => {
+      if (button.disabled) return
+      button.disabled = true
+      button.setAttribute('aria-busy', 'true')
+      button.textContent = 'Retrying…'
+      void mount(root, pathname, fetcher)
+    },
+  }
   try {
     const r = await fetcher(`${base}/form`)
     if (r.status === 404 || r.status === 410) return message(root, 'There is no form here', 'The link may be wrong, or the form was taken down.')

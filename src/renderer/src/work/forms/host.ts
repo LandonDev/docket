@@ -11,7 +11,8 @@ import { registry } from "../../lib/connection";
 export interface FormHost {
   open(): Promise<FormView>;
   save(rev: number, body: FormBody): Promise<FormView>;
-  review(which: { ids: string[] } | "all", verdict: "accept" | "reject"): Promise<FormView>;
+  /** `cleared`: the changes the decision cleared because their question went with it, as the host names them */
+  review(which: { ids: string[] } | "all", verdict: "accept" | "reject"): Promise<FormView & { cleared?: string[] }>;
   mode(mode: FormMode): Promise<FormView>;
   /** Holds the publish, then presses it: the button is his press. */
   publish(): Promise<FormView>;

@@ -62,7 +62,7 @@ export function viewOf(ctx: Pick<WorkCtx, 'service'>, row: FormRow): FormView {
     body: row.body,
     state: row.state,
     mode: row.mode,
-    suggestions: row.suggestions,
+    suggestions: standingOf(row.body, row.suggestions),
     link: row.publicId ? linkOf(ctx, row.publicId) : null,
     publishedAt: row.publishedAt,
     closedAt: row.closedAt,
@@ -71,6 +71,22 @@ export function viewOf(ctx: Pick<WorkCtx, 'service'>, row: FormRow): FormView {
     written: row.written
   }
 }
+
+/**
+ * A waiting change still has something to show: a question it adds, or one the form holds. A change to a question that
+ * has gone (a removal he accepted, or his own edit) has nothing on screen and no verb, so it is no longer waiting.
+ */
+export const standing = (body: FormBody, s: FormSuggestion): boolean => s.op === 'add' || body.questions.some((q) => q.id === s.question.id)
+
+/** The waiting changes that still stand: review data saved with a change to a missing question shows nothing for it. */
+export const standingOf = (body: FormBody, suggestions: readonly FormSuggestion[]): FormSuggestion[] => suggestions.filter((s) => standing(body, s))
+
+/** A change as the owner's result names it: what it would have done, to the question as the form had it. */
+export const changeWords = (body: FormBody, s: FormSuggestion): string =>
+  `${s.op === 'remove' ? 'Remove' : s.op === 'add' ? 'Add' : 'Change'} ${body.questions.find((q) => q.id === s.question.id)?.label ?? s.question.label}`
+
+/** What a decision returns: the form, and the changes it cleared because the question they were about is gone. */
+export type FormReviewResult = FormView & { cleared: string[] }
 
 export function announce(ctx: Ctx, row: FormRow): FormView {
   const view = viewOf(ctx, row)
@@ -116,7 +132,9 @@ export async function save(ctx: Ctx, item: CanvasItem, rev: number, body: FormBo
   const store = new FormsStore(ctx.db)
   const row = rowOf(ctx, item)
   if (row.rev !== rev) throw new FormError('The form changed since you opened it; your edit was not kept. Try again.')
-  return announce(ctx, await afterChange(ctx, store.update(item.id, { body })))
+  // A change to a question his edit took away has nothing left to show: it goes with the question.
+  const suggestions = standingOf(body, row.suggestions)
+  return announce(ctx, await afterChange(ctx, store.update(item.id, { body, ...(suggestions.length !== row.suggestions.length ? { suggestions } : {}) })))
 }
 
 /** After the form changed: a published form's columns and the service's copy follow. */
@@ -129,23 +147,38 @@ async function afterChange(ctx: Ctx, row: FormRow): Promise<FormRow> {
   return next
 }
 
-export async function review(ctx: Ctx, item: CanvasItem, which: { ids: string[] } | 'all', verdict: 'accept' | 'reject'): Promise<FormView> {
+/**
+ * His verdict on waiting changes. Accepting a removal clears every other change waiting on that question (a rewrite of a
+ * question that is gone has nothing to show), and the result names what it cleared. Saved changes to a question already
+ * gone are never decided: they are dropped with this write.
+ */
+export async function review(ctx: Ctx, item: CanvasItem, which: { ids: string[] } | 'all', verdict: 'accept' | 'reject'): Promise<FormReviewResult> {
   const store = new FormsStore(ctx.db)
   const row = rowOf(ctx, item)
-  const picked = which === 'all' ? row.suggestions : row.suggestions.filter((s) => which.ids.includes(s.id))
+  const live = standingOf(row.body, row.suggestions)
+  const picked = which === 'all' ? live : live.filter((s) => which.ids.includes(s.id))
   let body = row.body
   const gone: string[] = []
+  const cleared: FormSuggestion[] = []
   if (verdict === 'accept')
     for (const s of picked) {
+      // An earlier pick in this press removed its question: it is cleared with it, not applied.
+      if (!standing(body, s)) {
+        cleared.push(s)
+        continue
+      }
       const next = applySuggestion(body, s)
       if (next) body = next
       else gone.push(s.question.label)
     }
   const left = row.suggestions.filter((s) => !picked.includes(s))
-  const next = store.update(item.id, { suggestions: left, ...(body !== row.body ? { body } : {}) })
+  const suggestions = standingOf(body, left)
+  // Named only when this press cleared them: a change saved against a question already gone was never on screen.
+  cleared.push(...left.filter((s) => !standing(body, s) && standing(row.body, s)))
+  const next = store.update(item.id, { suggestions, ...(body !== row.body ? { body } : {}) })
   const view = announce(ctx, body !== row.body ? await afterChange(ctx, next) : next)
   if (gone.length) throw new FormError(`${gone.join(', ')}: that question is gone, so the change was dropped.`)
-  return view
+  return { ...view, cleared: cleared.map((s) => changeWords(row.body, s)) }
 }
 
 /**

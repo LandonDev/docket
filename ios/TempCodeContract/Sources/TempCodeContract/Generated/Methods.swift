@@ -3599,11 +3599,13 @@ public enum Methods {
             public let itemId: String
             public let changes: Changes
             public let verdict: Verdict
+            public let rev: String?
 
-            public init(itemId: String, changes: Changes, verdict: Verdict) {
+            public init(itemId: String, changes: Changes, verdict: Verdict, rev: String? = nil) {
                 self.itemId = itemId
                 self.changes = changes
                 self.verdict = verdict
+                self.rev = rev
             }
         }
 

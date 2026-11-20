@@ -43,8 +43,8 @@ export function timeOf(at: number, now = Date.now()): string {
 }
 
 /** Who decided a sent act, in his words: "Sent by you", "Sent from your phone", "Sent by the grant Mail to Dana Lee". */
-export function decidedWords(item: Pick<OutboxItem, "decidedBy" | "verb">, grantLabel?: string | null): string {
-  const past = pastOf(item.verb);
+export function decidedWords(item: Pick<OutboxItem, "decidedBy" | "verb"> & { kind?: string }, grantLabel?: string | null): string {
+  const past = pastOf(item.verb, item.kind);
   if (item.decidedBy?.startsWith("grant:")) return grantLabel ? `${past} by the grant ${grantLabel}` : `${past} by a grant`;
   if (item.decidedBy === "owner:remote") return `${past} from another device`;
   return `${past} by you`;
@@ -113,10 +113,13 @@ function pastWord(word: string): string {
  * "Send" → "Sent", "Reply" → "Replied", "Make link" → "Made link", "Answer
  * maybe" → "Answered maybe", "Move or rename files" → "Moved or renamed
  * files": the first word, and each verb joined to it by "or" or "and", take
- * their past; the words after them stay.
+ * their past; the words after them stay. A computer act's word the table
+ * does not know reads "Pressed Reset".
  */
-export function pastOf(verb: string): string {
+export function pastOf(verb: string, kind?: string): string {
   const words = verb.split(" ");
+  // A computer act's verb is its control's own word ("Reset", "Bid"): one the table does not know reads as the press it was.
+  if (kind === "computer.act" && !Object.hasOwn(PAST, words[0]!.toLowerCase())) return `Pressed ${verb}`;
   // A verb is the first word, or one that follows "or"/"and" right after another verb.
   const verbAt = new Set<number>([0]);
   for (let i = 2; i < words.length; i++) if ((words[i - 1] === "or" || words[i - 1] === "and") && verbAt.has(i - 2)) verbAt.add(i);
@@ -244,7 +247,8 @@ export function htmlWords(raw: string): string {
     for (const text of css) for (const m of cssUnescape(text).matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)) backgrounds.push((m[1] ?? m[2] ?? m[3] ?? "").trim());
   }
   const out = html
-    .replace(/<(script|style|head|title)\b[\s\S]*?<\/\1\s*>/gi, "")
+    // Only what no reader shows goes: words put inside <head> are moved into the body by every browser and sent as they stand (the hold review).
+    .replace(/<(script|style|title)\b[\s\S]*?<\/\1\s*>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<img\b[^>]*>/gi, (tag) => {
       const src = decode(attr(tag, "src") ?? "").trim();

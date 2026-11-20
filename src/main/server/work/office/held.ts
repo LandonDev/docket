@@ -143,6 +143,8 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     },
     keep: keepOfficeMail,
     async execute(p, ctx) {
+      // A new mail held before its account was bound would go from whatever Outlook's default is now: refused, never sent blind.
+      if (!p.replyTo && !p.forward && !p.account) throw new ActStale('it was held before the account it goes from was kept: ask for it again')
       const sent = await carrierHere(deps, p.host, ctx.host).sendMail({ ...p, html: cleanMailHtml(p.html) })
       const { summary } = mail.words(p)
       return { summary: summary.replace(/^(Send|Reply|Forward)/, (v) => ({ Send: 'Sent', Reply: 'Replied', Forward: 'Forwarded' })[v] ?? v), ...(sent.id ? { ref: { outlook: sent.id } } : {}) }
@@ -163,6 +165,7 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     async execute(p, ctx) {
       const c = carrierHere(deps, p.host, ctx.host)
       if (p.op === 'create') {
+        if (!p.event.account) throw new ActStale('it was held before the account it goes from was kept: ask for the invitation again')
         const id = await c.createEvent(p.event)
         return { summary: `Invited ${list(p.event.attendees)} to ${p.event.subject}`, ref: { outlook: id } }
       }

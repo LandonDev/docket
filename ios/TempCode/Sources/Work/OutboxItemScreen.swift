@@ -110,8 +110,9 @@ struct OutboxItemScreen: View {
                         Text(HeldTime.of(item.createdAt))
                             .textStep(.stamp)
                     }
-                    // A form, a share or a Teams post says in its heading only what its rows do not (`kindHeading`).
-                    Text(OutboxModel.kindHeading(kind: item.kind, payload: item.payload, sent: item.state == .sent) ?? item.summary)
+                    // A form, a share or a Teams post says in its heading only what its rows do not (`kindHeading`), in the
+                    // present always: the state line under it says the past ("Posted 4:02 PM").
+                    Text(OutboxModel.kindHeading(kind: item.kind, payload: item.payload, sent: false) ?? item.summary)
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let state = stateLine(item) {
@@ -213,7 +214,7 @@ struct OutboxItemScreen: View {
         case .failed: (OutboxModel.failureLine(item), true)
         case .stale: (item.error ?? "No longer current.", true)
         case .sending: ("Sending…", false)
-        case .sent: ("\(OutboxModel.pastOf(item.verb)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")", false)
+        case .sent: ("\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")", false)
         case .discarded: ("Discarded", false)
         default: item.proposed == true ? ("An agent’s rewrite waits in LifeOS.", false) : nil
         }

@@ -91,7 +91,28 @@ const MailFields = {
   bcc: Addresses.optional(),
   subject: z.string().max(998),
   html: z.string().max(2_000_000).describe('The body as HTML (bold, links, lists and tables keep their look in Outlook).'),
-  account: z.string().max(320).optional().describe("The Outlook account it goes from, by address; absent: Outlook's default.")
+  account: z.string().max(320).optional().describe('The Outlook account it goes from, by address; may be left out only when Outlook has one account.')
+}
+
+/**
+ * The account a held mail or invitation goes from, bound when it is held (milestone 50's hold review, 16.8): the one
+ * asked for when Outlook has it, else Outlook's only account. With several and none named it is refused: the press
+ * would take Outlook's default at that moment, which may not be the one the Outbox showed.
+ */
+export async function senderAccount(carrier: Pick<OfficeCarrier, 'accounts'>, asked: string | undefined): Promise<{ account: string } | { refused: string }> {
+  let all: string[]
+  try {
+    all = await carrier.accounts()
+  } catch (err) {
+    return { refused: `Outlook's accounts could not be read, so the account it goes from cannot be bound: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  if (asked) {
+    const hit = all.find((x) => x.toLowerCase() === asked.toLowerCase())
+    return hit ? { account: hit } : { refused: `Outlook has no account ${asked}. Name one of ${all.join(', ') || 'its accounts'} in \`account\`.` }
+  }
+  if (all.length === 1) return { account: all[0]! }
+  if (!all.length) return { refused: 'Outlook has no mail account on this host to send from.' }
+  return { refused: `Outlook has ${all.length} accounts (${all.join(', ')}): name the one it goes from in \`account\`.` }
 }
 
 const tool = <S extends z.ZodRawShape>(t: { name: string; description: string; input: S; readOnly: boolean; run(a: z.infer<z.ZodObject<S>>, env: Env): Promise<WorkToolResult> }): OfficeTool =>
@@ -262,7 +283,13 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       // forward take no other): the card and a grant judge that account, and another one asked for is refused.
       if (was && a.account && a.account.toLowerCase() !== was.account.toLowerCase())
         return fail(`That mail is in ${was.account}: a ${a.replyTo ? 'reply' : 'forward'} goes from there, not from ${a.account}. Leave \`account\` out, or name ${was.account}.`)
-      const account = was ? was.account : a.account
+      // A new mail's sender is bound now, never left to Outlook's default at the press; a reply or forward keeps its mail's.
+      let account = was?.account
+      if (!was) {
+        const bound = await senderAccount(env.carrier, a.account)
+        if ('refused' in bound) return fail(bound.refused)
+        account = bound.account
+      }
       const to = a.replyTo && was ? [was.from] : a.to
       const subject = was ? `${a.replyTo ? 'Re' : 'Fw'}: ${was.subject.replace(/^(re|fw|fwd):\s*/i, '')}` : a.subject
       if (!to.length) return fail('Name at least one recipient in `to`.')
@@ -302,7 +329,10 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     async run(a, env) {
       if (a.end <= a.start) return fail('The end comes after the start.')
       if (!a.attendees.length) return workText(`On his calendar (${await env.carrier.createEvent(a)}).`)
-      const item = env.ctx.held.create({ kind: 'office.calendar.op', sessionId: env.sessionId, account: a.account, payload: { host: env.ctx.host, op: 'create', event: a } })
+      // An invitation goes from a bound account too: the press never takes Outlook's default of that moment.
+      const bound = await senderAccount(env.carrier, a.account)
+      if ('refused' in bound) return fail(bound.refused)
+      const item = env.ctx.held.create({ kind: 'office.calendar.op', sessionId: env.sessionId, account: bound.account, payload: { host: env.ctx.host, op: 'create', event: { ...a, account: bound.account } } })
       return heldAnswer(item.state, item.summary)
     }
   }),

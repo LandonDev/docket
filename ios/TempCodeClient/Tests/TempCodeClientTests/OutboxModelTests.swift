@@ -326,6 +326,22 @@ import TempCodeContract
         #expect(oval.map(\.1) == ["An oval centred 50% across, 50% down, 20% wide and 10% high"])
     }
 
+    @Test func `a computer act's word the past table does not know reads as the press it was`() {
+        for (verb, past) in [("Reset", "Pressed Reset"), ("Read", "Pressed Read"), ("Bid", "Pressed Bid"), ("Send", "Sent"), ("Submit order", "Submitted order")] {
+            #expect(OutboxModel.pastOf(verb, kind: .computerAct) == past)
+        }
+        for (verb, now) in [("Reset", "Pressing Reset"), ("Bid", "Pressing Bid"), ("Send", "Sending"), ("Submit order", "Submitting order")] {
+            #expect(OutboxModel.progressive(verb, kind: .computerAct) == now)
+        }
+        // Any other kind keeps the rule.
+        #expect(OutboxModel.pastOf("Stop", kind: .addonCall) == "Stopped")
+    }
+
+    @Test func `a head's paragraph reads, as the outgoing html keeps it; its title does not`() {
+        #expect(HtmlWords.of("<head><title>Quote</title><p>I accept the revised price of $9000</p></head><p>Thanks.</p>") == "I accept the revised price of $9000\n\nThanks.")
+        #expect(HtmlWords.of("<head><p>I accept the revised price of $9000</p></head><p>Thanks.</p>") == "I accept the revised price of $9000\n\nThanks.")
+    }
+
     @Test func anUnclosedLinkStillNamesWhereItGoes() {
         #expect(HtmlWords.of(#"<p>See <a href="https://outside.example/secret">the report</p>"#) == "See [link: https://outside.example/secret] the report")
         // A link's words never run across another link's start (the desktop's test, word for word).

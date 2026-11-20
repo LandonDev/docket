@@ -60,9 +60,10 @@ export function canEdit(item: Pick<HostItem, "payload" | "state" | "kind">): boo
   return view.fields.some((f) => f.edit !== null) || (view.body !== null && !view.body.readOnly);
 }
 /** A list press's past verb: the acts' own when they share one ("Posted 2"), else "Sent", as the list's Send N says; never the first item's alone. */
-export function batchVerb(items: readonly Pick<HostItem, "verb">[]): string {
+export function batchVerb(items: readonly (Pick<HostItem, "verb"> & { kind?: string })[]): string {
   const verbs = new Set(items.map((i) => i.verb));
-  return verbs.size === 1 ? pastOf([...verbs][0]!) : "Sent";
+  const kinds = new Set(items.map((i) => i.kind));
+  return verbs.size === 1 ? pastOf([...verbs][0]!, kinds.size === 1 ? [...kinds][0] : undefined) : "Sent";
 }
 /** Where he looks to see whether a send that may have gone went. */
 const checkWords = (item: HostItem): string => (item.kind === "mail.send" || item.kind === "office.mail.send" ? "Check Sent first" : "Check whether it went first");
@@ -445,7 +446,7 @@ function SentList({
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <SectorDot sector={item.sector} className="size-4" />
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5">{pastTense(act, item.verb)}</span>
+                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5">{pastTense(act, item.verb, item.kind)}</span>
                       <time className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeOf(at)}</time>
                     </span>
                     <span className="truncate ps-6 text-xs leading-4 text-muted-foreground">{about ?? nameOf(item.environmentId, item.workspaceId)}</span>
@@ -461,8 +462,8 @@ function SentList({
 }
 
 /** "Send to Dana Lee" → "Sent to Dana Lee", by the act's own verb. */
-function pastTense(act: string, verb: string): string {
-  return act.startsWith(verb) ? `${pastOf(verb)}${act.slice(verb.length)}` : act;
+function pastTense(act: string, verb: string, kind: string): string {
+  return act.startsWith(verb) ? `${pastOf(verb, kind)}${act.slice(verb.length)}` : act;
 }
 
 // ── the detail ────────────────────────────────────────────────────────────
@@ -491,7 +492,7 @@ function DetailHead({ item, facts, narrowOnly = [], menu }: { item: HostItem; fa
         {menu}
       </div>
       <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">
-        {kindHeading(item.kind, item.payload, item.state === "sent") ?? (item.state === "sent" ? pastTense(act, item.verb) : act)}
+        {kindHeading(item.kind, item.payload, item.state === "sent") ?? (item.state === "sent" ? pastTense(act, item.verb, item.kind) : act)}
       </h1>
     </header>
   );
@@ -561,7 +562,7 @@ function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }:
       const after = which === "discard" ? await discardItem(item) : which === "grant" ? await grantAndSend(item, grant!) : await sendItem(item, { again: which === "again" });
       if (which !== "discard" && !wentOut(after)) return void toastError(notSentWords(after));
       onPressed(item);
-      toast(which === "discard" ? "Discarded" : `${pastOf(item.verb)}${about ? `: ${about}` : ""}`);
+      toast(which === "discard" ? "Discarded" : `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`);
       if (which === "grant") toast(`Grant made: ${grant!.label}`);
     } catch (err) {
       toastError(errorText(err));

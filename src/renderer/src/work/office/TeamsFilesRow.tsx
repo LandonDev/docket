@@ -80,7 +80,7 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
         ) : null}
       </PageRow>
       {shown.map((row) => (
-        // A folder he added shows its path; a library found by its team and channel is named well enough, its path in a tip.
+        // A folder he added shows its path; a library found by its team and channel is named well enough, its path in a tip that focus opens as hover does.
         <PageRow
           key={row.folder}
           title={
@@ -88,7 +88,7 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
               row.title
             ) : (
               <Tooltip>
-                <TooltipTrigger render={<span data-library-path={row.folder} />}>{row.title}</TooltipTrigger>
+                <TooltipTrigger render={<span data-library-path={row.folder} tabIndex={0} className="focus-ring rounded-sm" />}>{row.title}</TooltipTrigger>
                 <TooltipContent side="bottom" align="start" className="max-w-sm break-all">
                   {row.folder}
                 </TooltipContent>

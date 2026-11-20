@@ -234,7 +234,7 @@ describe('nothing is sent without his press', () => {
   it("the act's own execute sends with its formatting, scripts taken out, and only on the host it was held on", async () => {
     const acts = officeActs({ carrier: () => office })
     const mail = acts.find((a) => a.kind === 'office.mail.send')!
-    const p = OfficeMailSchema.parse({ host: 'env_mac', to: ['dana@example.com'], subject: 'Plan', html: '<table border="1"><tr><td><b>1</b></td></tr></table><script>x()</script><a href="javascript:y()" onclick="z()">l</a>' })
+    const p = OfficeMailSchema.parse({ host: 'env_mac', account: 'owner@example.com', to: ['dana@example.com'], subject: 'Plan', html: '<table border="1"><tr><td><b>1</b></td></tr></table><script>x()</script><a href="javascript:y()" onclick="z()">l</a>' })
     expect(mail.words(p)).toEqual({ summary: 'Send to dana@example.com: Plan', verb: 'Send' })
     const actCtx = { host: 'env_mac' } as ActCtx
     await expect(mail.execute(p, actCtx)).resolves.toMatchObject({ summary: 'Sent to dana@example.com: Plan', ref: { outlook: 'sent-1' } })
@@ -292,3 +292,47 @@ describe('cleanMailHtml', () => {
 
 // The Env type is what both routes hand a tool; keep the test honest about it.
 export type { Env, WorkCtx }
+
+describe("the account a held mail or invitation goes from (the hold review's 16.8)", () => {
+  const payloadOf = (i: number) => held[i]!.payload as { account?: string; event?: { account?: string } }
+
+  it("binds Outlook's only account when none is named, for a mail and for an invitation", async () => {
+    expect(text(await run('office_mail_send', { to: ['dana@example.com'], subject: 'Plan', html: '<p>Hi</p>' }))).toMatch(/^Held for the owner/)
+    expect(payloadOf(0).account).toBe('owner@example.com')
+    expect(text(await run('office_calendar_create', { subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] }))).toMatch(/^Held for the owner/)
+    expect(payloadOf(1).event!.account).toBe('owner@example.com')
+  })
+
+  it("with several accounts, binds the one named (as Outlook spells it) and refuses to guess when none is", async () => {
+    office.addresses = ['owner@example.com', 'work@contoso.com']
+    const unnamed = await run('office_mail_send', { to: ['dana@example.com'], subject: 'Plan', html: '<p>Hi</p>' })
+    expect(unnamed).toMatchObject({ isError: true })
+    expect(text(unnamed)).toContain('name the one it goes from in `account`')
+    expect(await run('office_calendar_create', { subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] })).toMatchObject({ isError: true })
+    expect(held).toEqual([])
+    await run('office_mail_send', { to: ['dana@example.com'], subject: 'Plan', html: '<p>Hi</p>', account: 'WORK@contoso.com' })
+    expect(payloadOf(0).account).toBe('work@contoso.com')
+    const unknown = await run('office_mail_send', { to: ['dana@example.com'], subject: 'Plan', html: '<p>Hi</p>', account: 'other@example.com' })
+    expect(text(unknown)).toContain('Outlook has no account other@example.com')
+    expect(held).toHaveLength(1)
+  })
+
+  it("keeps a reply's account the mail it answers sits in, whatever the other accounts", async () => {
+    office.addresses = ['owner@example.com', 'work@contoso.com']
+    await run('office_mail_send', { to: [], subject: 'x', html: '<p>Yes</p>', replyTo: '42' })
+    expect(payloadOf(0).account).toBe('owner@example.com')
+  })
+
+  it("refuses at the press a new mail or invitation held before its account was kept, and sends nothing", async () => {
+    const acts = officeActs({ carrier: () => office })
+    const actCtx = { host: 'env_mac' } as ActCtx
+    const mail = acts.find((a) => a.kind === 'office.mail.send')!
+    await expect(mail.execute(OfficeMailSchema.parse({ host: 'env_mac', to: ['dana@example.com'], subject: 'Plan', html: '<p>Hi</p>' }), actCtx)).rejects.toThrow('before the account it goes from was kept')
+    const cal = acts.find((a) => a.kind === 'office.calendar.op')!
+    await expect(
+      cal.execute(OfficeCalendarSchema.parse({ host: 'env_mac', op: 'create', event: { subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', attendees: ['dana@example.com'] } }), actCtx),
+    ).rejects.toThrow('before the account it goes from was kept')
+    expect(office.sent).toEqual([])
+    expect(office.log.map((l) => l.verb).filter((v) => v === 'createEvent')).toEqual([])
+  })
+})

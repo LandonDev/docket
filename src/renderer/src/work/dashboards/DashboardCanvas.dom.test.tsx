@@ -131,7 +131,10 @@ describe("the dashboard kind", () => {
   it("opens a figure's source: the sheet, the range, what it counts, and the way to it", async () => {
     open(page());
     await found("[data-dashboard]");
-    fireEvent.click(screen.getByRole("button", { name: "Outstanding: $7,420. Where it comes from" }));
+    const trigger = screen.getByRole("button", { name: "Outstanding: $7,420. Where it comes from" });
+    // The source trigger is the design system's compact ghost Button, never a raw button.
+    expect(trigger.getAttribute("data-variant")).toBe("ghost");
+    fireEvent.click(trigger);
     const source = await found("[data-figure-source]");
     expect(source.textContent).toContain("Invoices 2026");
     expect(source.textContent).toContain("Invoices!E2:E48");

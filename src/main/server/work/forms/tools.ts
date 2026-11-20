@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { FORM_OPTIONS_MAX, FORM_QUESTION_TYPES, FORM_QUESTIONS_MAX, FormBodySchema, type FormQuestion, type FormSuggestion } from '@shared/contract-work-forms'
 import { agentPrincipal, workText, type CanvasItem, type WorkToolResult } from '@shared/work'
@@ -5,6 +6,9 @@ import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { agentChange, FormError, formItem, hold, responses, rowOf, setOpen, viewOf } from './forms'
 import { FormsStore, newQuestionId, tidyQuestion } from './store'
+
+/** A change's id, never shared with another call's change made in the same millisecond: a decision by id takes exactly one (the hold review). */
+export const suggestionId = (): string => `s${Date.now().toString(36)}${randomBytes(4).toString('hex')}`
 
 /**
  * The tools a Work thread makes and runs a form with
@@ -37,7 +41,7 @@ function outline(ctx: ToolCtx, it: CanvasItem): string {
       q.type === 'section' ? `## ${q.label}  [${q.id}]` : `- ${q.label}  [${q.id}, ${q.type}${q.required ? ', required' : ''}${q.options ? `: ${q.options.join(' | ')}` : ''}]`
     )
   ]
-  if (row.suggestions.length) lines.push('', `${row.suggestions.length} change(s) wait for the owner.`)
+  if (view.suggestions.length) lines.push('', `${view.suggestions.length} change(s) wait for the owner.`)
   if (row.sheet) lines.push('', `Answers are written to the sheet ${row.sheet.at === 'lifeos' ? `LifeOS sheets ${row.sheet.id}` : row.sheet.at === 'file' ? row.sheet.path : ''} (row 1 is the header; column A is when each came in). Read it with sheet_read.`)
   return lines.join('\n')
 }
@@ -110,8 +114,7 @@ export const formsTools: WorkTool[] = [
           if (c.op === 'remove') return { op: 'remove', question: was, reason: a.reason, by }
           return { op: 'change', question: tidyQuestion({ ...was, ...Object.fromEntries(Object.entries(c).filter(([k, v]) => k !== 'op' && k !== 'id' && v !== undefined)) }), reason: a.reason, by }
         })
-        let n = 0
-        const { waiting } = await agentChange(ctx, it, made, () => `s${Date.now().toString(36)}${n++}`)
+        const { waiting } = await agentChange(ctx, it, made, suggestionId)
         return workText(waiting ? `${made.length} change(s) wait for the owner to accept in the canvas.` : `Changed the form.\n\n${outline(ctx, it)}`)
       } catch (err) {
         return fail(errorText(err))

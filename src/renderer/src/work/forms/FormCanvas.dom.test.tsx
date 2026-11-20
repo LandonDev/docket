@@ -16,12 +16,21 @@ import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import type { FormHost } from "./host";
-import { optionDiff, resolvePick, shownQuestions } from "./model";
+import { liveView, optionDiff, resolvePick, shownQuestions } from "./model";
 
 const host = vi.hoisted(() => ({
   current: null as ReturnType<typeof import("../canvas/testkit").fakeHost> | null,
   pushes: new Set<(push: never) => void>(),
   opens: new Set<() => void>(),
+  toasts: [] as string[],
+}));
+vi.mock("../../components/ui/toaster", async (original) => ({
+  ...(await original<typeof import("../../components/ui/toaster")>()),
+  loadToast: async () =>
+    Object.assign((m: string, o?: { description?: string }) => void host.toasts.push(o?.description ? `${m}: ${o.description}` : m), {
+      error: (m: string) => void host.toasts.push(`error: ${m}`),
+      success: (m: string) => void host.toasts.push(m),
+    }),
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -113,6 +122,7 @@ const found = (selector: string): Promise<HTMLElement> =>
   });
 
 beforeEach(async () => {
+  host.toasts = [];
   Element.prototype.scrollIntoView ??= () => undefined;
   localStorage.clear();
   resetCanvasStore();
@@ -651,5 +661,62 @@ describe("the form's one selection", () => {
     ];
     expect(shownQuestions(BODY, two).find((x) => x.q.id === "game")).toMatchObject({ change: 0, q: { label: "First" }, was: { label: "Game" } });
     expect(shownQuestions(BODY, two, 1).find((x) => x.q.id === "game")).toMatchObject({ change: 1, q: { label: "Second" }, was: { label: "Game" } });
+  });
+});
+
+describe("the form kind, round nine", () => {
+  const by = "agent:env:t1" as const;
+
+  it("never counts, steps to or decides a saved change to a question that is gone", async () => {
+    open(
+      view({
+        suggestions: [
+          { id: "gone", op: "change", question: { id: "old", label: "Old question", type: "short", required: false }, by, at: 1 },
+          { id: "s1", op: "change", question: { ...BODY.questions[1], options: ["Valorant", "Marvel Rivals"] }, by, at: 1 },
+        ],
+      }),
+    );
+    await found("[data-form]");
+    // One change stands, so the stepper counts one (a lone change shows no "1/2"), and its Accept is that change's.
+    await waitFor(() => expect(screen.getByRole("toolbar", { name: "Review changes" })).toBeTruthy());
+    expect(screen.queryByText("1/2")).toBeNull();
+    expect(screen.queryByText("2/2")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(formHost.review).toHaveBeenCalledWith({ ids: ["s1"] }, "accept"));
+    expect(document.querySelector('[data-q="old"]')).toBeNull();
+  });
+
+  it("names, once, the changes an accepted removal cleared with its question", async () => {
+    open(
+      view({
+        suggestions: [
+          { id: "s1", op: "remove", question: BODY.questions[2], by, at: 1 },
+          { id: "s2", op: "change", question: { ...BODY.questions[2], label: "Allergies" }, by, at: 1 },
+        ],
+      }),
+    );
+    await found("[data-form]");
+    formHost.review.mockImplementationOnce(async () => ({ ...view({ itemId: item.id, body: { ...BODY, questions: BODY.questions.slice(0, 2) } }), cleared: ["Change Dietary needs"] }));
+    await waitFor(() => expect(screen.getByText("1/2")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(host.toasts).toEqual(["Cleared 1 change to the removed question: Change Dietary needs"]));
+    expect(document.querySelector('[data-q="diet"]')).toBeNull();
+    expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+  });
+
+  it("an accept that cleared nothing says nothing", async () => {
+    open(view({ suggestions: [{ id: "s1", op: "change", question: { ...BODY.questions[0], label: "Full name" }, by, at: 1 }] }));
+    await found("[data-form]");
+    await waitFor(() => expect(screen.getByRole("toolbar", { name: "Review changes" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(formHost.review).toHaveBeenCalled());
+    expect(host.toasts).toEqual([]);
+  });
+
+  it("keeps the view as it is when every change stands", () => {
+    const v = view({ suggestions: [{ id: "a", op: "add", question: { id: "new", label: "New", type: "short", required: false }, after: null, by, at: 1 }] });
+    expect(liveView(v)).toBe(v);
+    const gone = view({ suggestions: [{ id: "g", op: "remove", question: { id: "old", label: "Old", type: "short", required: false }, by, at: 1 }] });
+    expect(liveView(gone).suggestions).toEqual([]);
   });
 });

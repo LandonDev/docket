@@ -23,6 +23,8 @@ const code = vi.hoisted(() => ({
   projects: [{ id: "p-api", workspaceId: "w-app", name: "api", mode: "local", branch: "main", cwd: "/r/app", archived: false, createdAt: 1, environmentId: "env_mac" }],
   /** `tasks:get`'s answer; undefined while it loads. */
   detail: { task: { description: "Ask for the east hall" } } as { task: { description: string } } | undefined,
+  /** `tasks:get` failed: Convex's useQuery throws it. */
+  fail: false,
 }));
 vi.mock("../../stores/project", async (original) => ({
   ...(await original<object>()),
@@ -42,7 +44,10 @@ vi.mock("../../lib/workSwitch", async (original) => ({
 // The task's notes, as `tasks:get` reads them.
 vi.mock("convex/react", async (original) => ({
   ...(await original<object>()),
-  useQuery: () => code.detail,
+  useQuery: () => {
+    if (code.fail) throw new Error("LifeOS refused the read");
+    return code.detail;
+  },
 }));
 
 const { Tasks } = await import("./TasksView");
@@ -166,6 +171,48 @@ describe("the Tasks view", () => {
       expect(startThread.mock.calls[0]![0].quote).toBe("Ask for the east hall");
     } finally {
       code.detail = notes;
+    }
+  });
+
+  it("spins Start alone while it waits for the notes, Cancel live, and after five seconds starts with the title alone", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const startThread = vi.fn();
+    const notes = code.detail;
+    code.detail = undefined;
+    try {
+      render(<Tasks client={fakeTasksClient(rows)} sector="purdue" startThread={startThread} />);
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Open Send Dana the budget" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Open a code thread…" }));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("option", { name: "app" }));
+      fireEvent.submit(dialog.querySelector("form")!);
+      const start = within(dialog).getByRole("button", { name: "Start" });
+      expect(start.hasAttribute("disabled")).toBe(true);
+      expect(start.querySelector("[data-busy]")).not.toBeNull();
+      expect(within(dialog).getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(false);
+      expect(startThread).not.toHaveBeenCalled();
+      await act(async () => void vi.advanceTimersByTime(5_000));
+      expect(startThread).toHaveBeenCalledOnce();
+      expect(startThread.mock.calls[0]![0]).toEqual({ kind: "task", label: "Send Dana the budget", ref: { at: "lifeos", table: "tasks", id: "t2" } });
+    } finally {
+      code.detail = notes;
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts with the title alone when the notes' read failed", async () => {
+    const startThread = vi.fn();
+    code.fail = true;
+    try {
+      render(<Tasks client={fakeTasksClient(rows)} sector="purdue" startThread={startThread} />);
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Open Send Dana the budget" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Open a code thread…" }));
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("option", { name: "app" }));
+      fireEvent.submit(dialog.querySelector("form")!);
+      expect(startThread).toHaveBeenCalledWith({ kind: "task", label: "Send Dana the budget", ref: { at: "lifeos", table: "tasks", id: "t2" } }, { cwd: "/r/app", projectId: null });
+    } finally {
+      code.fail = false;
     }
   });
 

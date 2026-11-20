@@ -27,12 +27,17 @@ export const BAR_TOOLS_ONLY = "has-[[data-canvas-tools]:empty]:hidden";
 /**
  * Under this width of canvas the bar takes its narrow form: the other people go, the mode says "Suggests" or "Writes",
  * the kind's tools marked `data-narrow-hide` go, History is its glyph alone, and the stepper drops its group's name and
- * its Previous and Next, keeping "1/3", Reject and Accept. A container query on the bar (`NARROW_HIDE`), so the form is
+ * trades Previous and Next for one Next that goes round from the last change to the first, keeping "1/3", Reject and
+ * Accept. A container query on the bar (`NARROW_HIDE`), so the form is
  * the same wherever the bar is drawn, a static render included.
  */
 export const BAR_NARROW = 560;
 export const NARROW_HIDE = "@max-[560px]/bar:hidden";
 const NARROW_ONLY = "hidden @max-[560px]/bar:inline";
+/** The narrow bar's mode button: 6px each side, not 8, its words kept on the bar's start line; with History's 6px and the tighter gaps, room for the narrow step at 340px of bar. */
+const NARROW_TIGHT = "@max-[560px]/bar:-ms-1.5 @max-[560px]/bar:px-1.5";
+/** A control only the narrow bar draws, as a flex item (a button keeps its own box). */
+const NARROW_STEP = "hidden @max-[560px]/bar:inline-flex";
 /**
  * On the tools slot: a tool a kind marks `data-narrow-hide` goes in the narrow form, whole, rather than be cut by the
  * slot's clip; and above it too while the slot cannot hold its tools (`data-tight`, `useTight`).
@@ -97,7 +102,7 @@ export function KindBar({ feeds, tools, onHistory }: { feeds: Feeds; tools?: Rea
           </div>
         ) : null}
         {/* It gives up room only after the tools, and only through words: the group's name or a written line truncates; History, the count, Reject, Accept and Undo never shrink. */}
-        <div className="ms-auto flex min-w-0 items-center gap-2">
+        <div className="ms-auto flex min-w-0 items-center gap-2 @max-[560px]/bar:gap-1">
           {onHistory ? <HistoryButton onClick={onHistory} /> : null}
           {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}
         </div>
@@ -181,7 +186,7 @@ function Mode({ mode }: { mode: CanvasMode }) {
         if (id === "suggests" || id === "writes") set(id);
       }}
       trigger={
-        <Button variant="ghost" size="xs" aria-label={MODE_WORDS[mode.value]} className="-ms-2 shrink-0 font-normal text-muted-foreground">
+        <Button variant="ghost" size="xs" aria-label={MODE_WORDS[mode.value]} className={`-ms-2 shrink-0 font-normal text-muted-foreground ${NARROW_TIGHT}`}>
           <ModeWords value={mode.value} />
           <ChevronDown />
         </Button>
@@ -216,19 +221,26 @@ function Stepper({ review }: { review: ReviewAdapter }) {
   const busy = pending !== null;
   // Held: still drawn, so the bar does not flicker, but nothing is decided until the kind lets go.
   const off = busy || none || !!review.held;
+  // Held, the steps rest too: the body draws no change to step to while his edits save. The count stays.
+  const stepsOff = busy || !!review.held;
+  const cannotEnter = none && review.enter === false;
   // One change, already the current one: there is nowhere to step, so only the verbs show.
   const steps = !(count === 1 && index === 0);
   return (
-    <div role="toolbar" aria-label="Review changes" aria-busy={busy || undefined} className="flex min-w-0 items-center gap-1">
+    <div role="toolbar" aria-label="Review changes" aria-busy={busy || undefined} className="flex min-w-0 items-center gap-1 @max-[560px]/bar:gap-0.5">
       {group ? <span className={`max-w-40 min-w-0 truncate pe-1 ${NARROW_HIDE}`}>{group}</span> : null}
       {steps ? (
         <>
-          <Step label="Previous change" disabled={busy || index <= 0} className={NARROW_HIDE} onClick={() => review.step(index - 1)}>
+          <Step label="Previous change" disabled={stepsOff || index <= 0} className={NARROW_HIDE} onClick={() => review.step(index - 1)}>
             <ChevronLeft />
           </Step>
           {/* With no change in hand, the count alone, never "0/3"; Next takes the first change unless the kind says it cannot show it from here. */}
           <span className="min-w-6 shrink-0 text-center text-foreground tabular-nums select-none">{none ? count : `${index + 1}/${count}`}</span>
-          <Step label="Next change" disabled={busy || (none && review.enter === false) || index >= count - 1} className={NARROW_HIDE} onClick={() => review.step(index + 1)}>
+          <Step label="Next change" disabled={stepsOff || cannotEnter || index >= count - 1} className={NARROW_HIDE} onClick={() => review.step(index + 1)}>
+            <ChevronRight />
+          </Step>
+          {/* The narrow bar's one step: the next change, and from the last back to the first, so every change is reachable before any is decided. */}
+          <Step label="Step to the next change" tip="Next change" disabled={stepsOff || cannotEnter} className={NARROW_STEP} onClick={() => review.step(index >= count - 1 ? 0 : index + 1)}>
             <ChevronRight />
           </Step>
         </>
@@ -260,7 +272,7 @@ function HistoryButton({ onClick }: { onClick(): void }) {
   }, []);
   return (
     <Tip label="History" disabled={!bare}>
-      <Button ref={button} variant="ghost" size="xs" aria-label="History" className="shrink-0" onClick={onClick} onPointerEnter={look} onFocus={look}>
+      <Button ref={button} variant="ghost" size="xs" aria-label="History" className="shrink-0 @max-[560px]/bar:px-1.5" onClick={onClick} onPointerEnter={look} onFocus={look}>
         <History />
         <span ref={word} className={NARROW_HIDE}>
           History
@@ -270,11 +282,11 @@ function HistoryButton({ onClick }: { onClick(): void }) {
   );
 }
 
-function Step({ label, disabled = false, className, onClick, children }: { label: string; disabled?: boolean; className?: string; onClick(): void; children: ReactNode }) {
+function Step({ label, tip = label, disabled = false, className, onClick, children }: { label: string; tip?: string; disabled?: boolean; className?: string; onClick(): void; children: ReactNode }) {
   return (
     <Tooltip>
       <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} disabled={disabled} className={className} onClick={onClick} />}>{children}</TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent>{tip}</TooltipContent>
     </Tooltip>
   );
 }

@@ -48,9 +48,10 @@ public extension OutboxModel {
                 if let subject = string(e["subject"]) { rows.append(("Event", subject)) }
                 if let start = iso(e["start"]) { rows.append(("When", when(start, iso(e["end"]), false))) }
                 if let place = string(e["location"]) { rows.append(("Where", place)) }
+                // The account it goes from, bound by the host when it was held, as the desktop says it.
+                if let account = string(e["account"]) { rows.append(("From", account)) }
                 if case .array(let list)? = e["attendees"], !list.isEmpty { rows.append(("Invites", list.compactMap { string($0) }.joined(separator: ", "))) }
                 if let body = string(e["body"]) { rows.append(("Details", HtmlWords.of(body))) }
-                if let account = string(e["account"]) { rows.append(("Calendar", account)) }
             } else {
                 if let subject = string(o["subject"]) { rows.append(("Event", subject)) }
                 // The host now keeps the event's end and place with the answer, and its press refuses a change to either.

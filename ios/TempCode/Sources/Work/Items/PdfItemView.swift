@@ -35,17 +35,21 @@ struct SlidesItemView: View {
         var deck: DeckPhoneView
         var data: Data
         var render: DeckRender
+        /// The render's rev as the view advertised it: the bytes read are that render's, and a decision is bound to it.
+        var rev: String
         /// Which render this is: a new one (after Accept or Reject, or the file's next version) gets a new viewer.
         var key: String { "\(deck.rev):\(render == .proposed ? "proposed" : "file")" }
     }
 
     var body: some View {
-        ItemLoad(read: { try await load() }) { loaded, reload in
+        // After a decision the deck reads afresh with its review off: the old preview, its count and its buttons never
+        // stay live through the refresh, and a refresh that fails says so with Try Again.
+        ItemLoad(dropsOnReload: true, read: { try await load() }) { loaded, reload in
             VStack(spacing: 0) {
                 // The review row only over the render its changes propose (`DeckRender`).
                 if loaded.render == .proposed, client.work.canApprove {
                     DeckReviewRow(words: loaded.deck.changes.count == 1 ? "1 change" : "\(loaded.deck.changes.count) changes", busy: deciding) { accept in
-                        Task { await decide(accept, reload: reload) }
+                        Task { await decide(accept, rev: loaded.rev, reload: reload) }
                     }
                     Divider()
                 }
@@ -65,21 +69,26 @@ struct SlidesItemView: View {
         // While changes wait only their proposed render shows; a missing one is the Try Again state, never the
         // file's render under live Reject and Accept. The two renders are distinct generated types; only the size is read.
         guard let render = DeckRender.pick(changesWaiting: waiting, hasProposed: deck.renders.proposed != nil, hasFile: deck.renders.file != nil),
-              let size = render == .proposed ? deck.renders.proposed?.size : deck.renders.file?.size else {
+              let size = render == .proposed ? deck.renders.proposed?.size : deck.renders.file?.size,
+              let rev = render == .proposed ? deck.renders.proposed?.rev : deck.renders.file?.rev else {
             throw DeckError.notRendered(deck.renderError ?? DeckRender.missingWords(changesWaiting: waiting))
         }
-        return Loaded(deck: deck, data: try await client.work.canvas.deckData(item.id, proposed: render == .proposed, size: Int(size)), render: render)
+        // The bytes must be the render the view named: a read that meets another (the changes moved on) fails, for Try Again.
+        let data = try await client.work.canvas.deckData(item.id, proposed: render == .proposed, size: Int(size), rev: rev)
+        return Loaded(deck: deck, data: data, render: render, rev: rev)
     }
 
-    private func decide(_ accept: Bool, reload: () -> Void) async {
+    /// Bound to the render he saw: the host refuses the press when the changes moved on since. Either way the deck
+    /// reads afresh, so what shows next is the deck as it is now.
+    private func decide(_ accept: Bool, rev: String, reload: () -> Void) async {
         deciding = true
         defer { deciding = false }
         do {
-            _ = try await client.work.canvas.reviewDeck(item.id, accept: accept)
-            reload()
+            _ = try await client.work.canvas.reviewDeck(item.id, accept: accept, rev: rev)
         } catch {
             self.error = ActionError.wrap(error).message
         }
+        reload()
     }
 
     private enum DeckError: LocalizedError {

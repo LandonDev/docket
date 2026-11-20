@@ -934,12 +934,15 @@ function placeOf(screen: Screen, index: number): { sig: string; ordinal: number;
   return { sig, ordinal: same.indexOf(index), count: same.length }
 }
 
-/** A key or typed text sent to an element found by its name. */
-const namedKeys = (a: ComputerAction): boolean => ['key', 'hold_key', 'type'].includes(a.action) && a.named !== undefined && a.element === undefined
+/** Steps that put keys or text into an element: by its name, each is bound to the element the name found. */
+const NAMED_INPUT = ['key', 'hold_key', 'type', 'paste', 'set_value', 'select_text']
+
+/** A key, typed or pasted text, a value set or a selection made in an element found by its name. */
+const namedKeys = (a: ComputerAction): boolean => NAMED_INPUT.includes(a.action) && a.named !== undefined && a.element === undefined
 
 /**
- * Whether a key or typed text names an element its name finds none of, or several, on the screen: the service would
- * resolve it on its own and the host cannot judge where it goes. In a thread the hold applies to it is refused.
+ * Whether a key, a text or a value names an element its name finds none of, or several, on the screen: the service
+ * would resolve it on its own and the host cannot judge where it goes. In a thread the hold applies to it is refused.
  */
 export function namedKeysUnplaced(steps: readonly ComputerAction[], screen: Screen): boolean {
   return steps.some((a) => namedKeys(a) && namedTarget(screen, a.named!) === null)

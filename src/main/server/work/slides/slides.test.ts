@@ -362,6 +362,29 @@ describe('the module, on a fake deck tool', () => {
     expect(pushes.at(-1)).toMatchObject({ push: 'work.slides', view: { itemId: item.id } })
   })
 
+  it('a press made on one preview is refused once the changes moved on, for an accept and a reject alike; a press with no rev is not checked', async () => {
+    const item = openDeck(fileSource(path))
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['First words'] }] })
+    const shown = (await call('work.slides.open', { itemId: item.id })).renders.proposed!.rev
+    // The agent's next edit joins after the phone drew its preview: that preview's press changes nothing.
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['Second words'] }] })
+    const before = pushes.length
+    for (const verdict of ['accept', 'reject'] as const) {
+      await expect(call('work.slides.review', { itemId: item.id, changes: 'all', verdict, rev: shown })).rejects.toThrow('The suggestions changed since this preview')
+    }
+    expect(readFake(path)).toEqual(FAKE_DECK)
+    expect(new SlidesStore(db).pending(item.id)).toHaveLength(2)
+    // Every client is shown the changes as they are now.
+    expect(pushes.length).toBeGreaterThan(before)
+    // The fresh preview's rev is taken; the desktop's press, with none, is not checked.
+    const now = (await call('work.slides.open', { itemId: item.id })).renders.proposed!.rev
+    expect(now).not.toBe(shown)
+    const view = await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'reject', rev: now })
+    expect(view.changes).toEqual([])
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['Third words'] }] })
+    expect((await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept' })).changes).toEqual([])
+  })
+
   it('reject drops the change; an edit anchored on a rejected add takes that add\'s own anchor', async () => {
     const item = openDeck(fileSource(path))
     await tool('slides_edit', {
