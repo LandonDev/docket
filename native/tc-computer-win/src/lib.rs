@@ -7,6 +7,7 @@ pub mod book;
 pub mod capture;
 pub mod clip;
 pub mod desktop;
+pub mod flow;
 pub mod generated;
 pub mod input;
 pub mod locks;
@@ -15,5 +16,6 @@ pub mod server;
 pub mod service;
 pub mod stream;
 pub mod text;
+pub mod video;
 
 pub use generated::{contract, wire};
