@@ -52,9 +52,9 @@ final class ProjectSettingsModel {
 
     var dirty: Bool { (review?.dirty ?? false) || (plans?.dirty ?? false) }
 
-    /// A Work project's sheet (milestone 8 of the projects plan): Rules and, with milestone 7,
-    /// Sharing. Review before merge and the plan flow are code settings the server refuses for a
-    /// Work project, so nothing of them is read or offered.
+    /// A Work project's sheet (milestone 8 of the projects plan): Rules alone; Sharing (milestone
+    /// 7's guest links) is on the desktop's sheet only. Review before merge and the plan flow are
+    /// code settings the server refuses for a Work project, so nothing of them is read or offered.
     func loadWork() {
         review = nil
         plans = nil
@@ -215,8 +215,8 @@ struct ProjectSettingsSheet: View {
                     }
                 }
                 if let project, isWork {
-                    // A Work project: Rules for its threads, then Sharing, which milestone 7 (a
-                    // project's guest links) fills; until then the sheet holds Rules alone.
+                    // A Work project: Rules for its threads. Sharing (milestone 7's guest links)
+                    // is on the desktop's sheet only, so the phone's holds Rules alone.
                     Section {
                         NavigationLink(value: PreambleScope.project(projectId: project.id, workspaceId: project.workspaceId)) {
                             LabeledContent("Rules") {

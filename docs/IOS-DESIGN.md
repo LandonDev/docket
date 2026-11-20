@@ -2420,10 +2420,11 @@ What milestone 47 added (approved pages `phone-life.html` and
   project cards stay the places threads live; a Work project's card has no
   branch line.
 - **A Work project's settings** hold Rules for its threads (the project's
-  rules row, which pushes the rules editor) and, with the project guest
-  links (the projects plan's milestone 7), Sharing; nothing of code: no
-  review before merge, no plan flow, no workspace default row. Its one
-  button is Done, since the rules save in their own editor.
+  rules row, which pushes the rules editor) and nothing of code: no review
+  before merge, no plan flow, no workspace default row. Its one button is
+  Done, since the rules save in their own editor. Sharing (the project
+  guest links, the projects plan's milestone 7) is the desktop's alone for
+  now.
 - **Start Thread** opens a form sheet, "New Thread": the item as a chip
   (28 pt, radius 8, the fill, the kind's glyph and its label) above his
   words, Cancel and Start. Nothing runs until Start; the thread opens.

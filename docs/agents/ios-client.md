@@ -950,11 +950,14 @@
   a Save). The rules editor it pushes (`PreambleEditor`, `isWork`) offers
   Work examples in its placeholder and leaves `{{worktree}}` out of its
   variables, as the desktop's rules dialog does for a Work project.
-  Sharing joins it with milestone 7 (a project's guest links).
-- **The pin.** TempCode pins work-kit `v33` (`2987160`), the commit LifeOS's
-  phone pins too: the projects Swift on the commit TempCode pinned before
-  (`615f4b4`), so its JavaScript side moves nothing; package.json, bun.lock
-  and ios/TempCode/project.yml name the same commit.
+  The desktop's sheet also has Sharing (a project's guest links,
+  milestone 7); the phone's has none yet.
+- **The pin.** The phone's project screens come with TempCode's one
+  work-kit pin, master's: package.json, bun.lock, ios/TempCode/project.yml
+  and the Xcode project name the same commit (scripts/workKitPin.test.ts
+  holds the first three equal). Every work-kit commit with `f4caf23` in its
+  history holds the projects Swift (v35, v37 and on), so this milestone
+  moved no pin.
 
 ## The data path's two contracts (the performance pass, 2026-11)
 
