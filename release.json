@@ -1,5 +1,5 @@
 {
-  "n": 352,
-  "notes": "Projects: the tracker's project screens in a Work workspace (list, board, a project's page with its description, tasks, linked documents and sheets, a share link), projects made from TempCode, a Work project's own settings, and tools agents work them through. Mail: the rebuilt reader, list and compose from the design pass, through its council's first round (pictures show, signatures and settings, attachments save to Downloads). The Computers page: a live picture of each computer an agent drives. Milestone 50: the hold review's fixes through its twenty-first pass and the design council's through round 14.",
-  "ts": 1795147129774
+  "n": 353,
+  "notes": "Take over keeps the computer's picture on the Computers page, the full view and the browser canvas, and the fallback picture is drawn at its full width. A file opened or saved from a mail lands in Downloads under its own name and extension. Mail after its council's rounds two to four. Guest links: a sheet's access ends when its link does, a new address cuts the old one off at once, a guest's cursor carries the link's name. The live video build's final review fixes; the computer-use proofs that failed on 1.0.352's publish pass on a quiet Mac.",
+  "ts": 1795154769224
 }
