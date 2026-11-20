@@ -119,7 +119,8 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
     });
   }
   // A session this desktop can draw is the Computer section's: its window, its steps and its Stop are there.
-  for (const entry of src.computer ?? []) if (!entry.previewable) rest.push(computerRow(entry));
+  // an idle page (the box's, after its last act) is nothing running
+  for (const entry of src.computer ?? []) if (!entry.previewable && !entry.row.idle) rest.push(computerRow(entry));
   rest.sort((a, b) => a.since - b.since);
   return [...head, ...rest];
 }

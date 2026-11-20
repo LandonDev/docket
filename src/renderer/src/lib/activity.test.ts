@@ -213,6 +213,10 @@ describe("computer rows", () => {
     expect(rows([entry(row(), true), sub], [mac("running")]).map((r) => r.key)).toEqual(["computer:local:sub1", "mac:m-running"]);
   });
 
+  it("an idle page (the box's, after its last act) is nothing running: no row", () => {
+    expect(rows([entry(row({ idle: true, computer: "browser:s1" }))])).toEqual([]);
+  });
+
   it("is one row per session it cannot draw: the window in its last app, the tier in a person's words, its age and Stop", () => {
     const e = entry(row());
     const [r] = rows([e]);

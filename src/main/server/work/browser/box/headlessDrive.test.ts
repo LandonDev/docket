@@ -17,7 +17,8 @@ import { serveTestSite, type TestSite } from './testSite'
  * Take over on a box whose browser is headless (the video tools are not
  * installed): the host's own wiring on the real Chromium. The page he took
  * stays listed and its 4 fps picture goes on, though the session it was
- * drawn from is stopped; Hand back ends both.
+ * drawn from is stopped. Hand back leaves it listed idle, with its picture,
+ * until its idle time is out; a session that ends does the same.
  */
 const bin = findChromium()
 const d = bin ? describe : describe.skip
@@ -45,7 +46,9 @@ d('take over on a headless box browser', () => {
   const states: ComputerPreviewPush[] = []
   const pushedRows: string[][] = []
   const run = (threadId: string, tool: string, args: Record<string, unknown>) => host.sessions.run({ threadId, permission: () => 'auto' }, tool, args)
-  const listed = (): { threadId: string; driver?: string }[] => host.rows.rows().map((r) => ({ threadId: r.threadId, ...(r.driver ? { driver: r.driver } : {}) }))
+  const listed = (): { threadId: string; driver?: string; idle?: true }[] =>
+    host.rows.rows().map((r) => ({ threadId: r.threadId, ...(r.driver ? { driver: r.driver } : {}), ...(r.idle ? { idle: r.idle } : {}) }))
+  const IDLE_MS = 2_500
 
   beforeAll(async () => {
     // no work-tools under it: the browser starts headless
@@ -59,13 +62,14 @@ d('take over on a headless box browser', () => {
         get: (id: string) => ({ id, permission: 'auto', scope: 'work' }) as unknown as SessionMeta,
         requestApproval: async () => true,
         awayOn: () => false,
-        rootSessionOf: (id: string) => (id === 'sub' ? 'w1' : id),
+        rootSessionOf: (id: string) => (id.startsWith('sub') ? 'w1' : id),
         onMeta: () => {},
         onRemoved: () => {}
       } as never,
       store: { getSetting: () => null, setSetting: () => {} } as never,
       dataDir,
-      log: () => {}
+      log: () => {},
+      idleMs: IDLE_MS
     })!
     db = new DatabaseSync(':memory:')
     ensureBrowserTables(db)
@@ -86,9 +90,10 @@ d('take over on a headless box browser', () => {
     rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   })
 
-  it('keeps the page listed and its picture playing through Take over, and ends both at Hand back', async () => {
+  it('keeps the page listed and its picture playing through Take over, idle after Hand back, and ends both when its idle time is out', async () => {
     expect(host.browser.display).toBeNull()
     expect(listed()).toEqual([{ threadId: 'w1' }])
+    expect(host.rows.rows()[0]!.computer).toBe('browser:w1')
     const viewer = {
       connection,
       send: (push: ComputerFramePush | ComputerPreviewPush | { push: 'computer-click' }): void => {
@@ -124,11 +129,31 @@ d('take over on a headless box browser', () => {
     // and a place that opens it now (a tile mounted after) gets it by the pane's thread
     expect(host.previews.previewTarget('w1')).toMatchObject({ serviceSession: 'owner:w1' })
 
-    // Hand back: the page is nobody's until the agent acts again, and the picture ends
+    // Hand back: nothing drives the page, which stays listed, idle, its picture going on, and nothing to stop
     new DriveStore(db).drive('w1', 'agent')
-    boxDriveChanged('w1', false)
-    await until(() => listed().length === 0)
+    await boxDriveChanged('w1', false)
+    expect(listed()).toEqual([{ threadId: 'w1', idle: true }])
+    expect(await host.rows.stop('w1')).toBe(false)
+    const handed = frames.length
+    await until(() => frames.length > handed + 1)
+    expect(states.some((s) => s.state === 'ended')).toBe(false)
+    // its idle time out, it leaves every list and its picture ends
+    await until(() => listed().length === 0, IDLE_MS + 5_000)
     await until(() => states.some((s) => s.state === 'ended'))
     expect(host.previews.previewTarget('w1')).toBeNull()
+  }, 60_000)
+
+  it('lists a page idle under its pane once the session that drove it ends, and live again when the agent acts there', async () => {
+    await run('sub', 'computer_observe', { app: 'Chromium' })
+    expect(listed()).toEqual([{ threadId: 'sub' }])
+    expect(host.rows.rows()[0]!.computer).toBe('browser:w1')
+    expect(await host.rows.stop('sub')).toBe(true)
+    await until(() => listed()[0]?.idle === true)
+    expect(listed()).toEqual([{ threadId: 'w1', idle: true }])
+    expect(host.rows.rows()[0]).toMatchObject({ computer: 'browser:w1', running: null })
+    expect(host.rows.rows()[0]!.driver).toBeUndefined()
+    // the agent acting again in the pane makes it a live row once more
+    await run('sub2', 'computer_observe', { app: 'Chromium' })
+    expect(listed()).toEqual([{ threadId: 'sub2' }])
   }, 60_000)
 })

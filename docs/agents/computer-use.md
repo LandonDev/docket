@@ -220,7 +220,17 @@ why and the measured headline.
   (`lib/computers.ts`) reads the rows `computerSessionsStore` already holds
   and joins each to its thread's title, where it runs, whether he drives it
   and which machine alone draws one this desktop may not; a session a box
-  thread drives on this Mac is one tile, the box's. A tile's picture is the
+  thread drives on this Mac is one tile, the box's. Each row names its
+  computer (`computer`): `browser:<pane>` for a page of the
+  box's browser, `vm:windows` for the Windows VM, else `window:<thread>`,
+  a window on a person's own computer. A row lives from a thread's first
+  computer call in a turn to that turn's end, with one exception: the box's
+  page stays listed, `idle`, for ten minutes after its last act or his Hand
+  back (`IDLE_ROW_MS`, work/browser/box/index.ts), its 4 fps picture drawn
+  on the service session that only looks (`owner:<pane>`), closed when the
+  ten minutes are out. Nothing drives an idle page: Stop does nothing on it,
+  and the rail's mark (`computersMark`) and Activity leave it out. A Mac's
+  or a PC's own window leaves when its turn ends. A tile's picture is the
   viewport's (`useLiveStream` with `take: false`), its controls are
   `ComputerControls` (Take over, Hand back, Stop), and a click on a live
   picture anywhere opens the full view in the lightbox (`LiveFullView`).

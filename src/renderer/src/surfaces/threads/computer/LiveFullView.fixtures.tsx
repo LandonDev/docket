@@ -33,6 +33,8 @@ export const tile = (over: Partial<ComputerTile> = {}): ComputerTile => ({
   browser: true,
   pane: "t1",
   shownOn: null,
+  computer: "browser:t1",
+  idle: false,
   ...over,
 });
 

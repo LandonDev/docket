@@ -88,6 +88,8 @@ export interface BoxWiring {
   videoOn?: () => boolean
   /** the host's video relay and where a source is added; absent (a test of the browser alone) there is no video */
   video?: { relay: VideoRelay; rpc: Pick<VideoRpc, 'addSource'> }
+  /** how long a page stays listed idle after its last act; IDLE_ROW_MS but in a test */
+  idleMs?: number
 }
 
 export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
@@ -145,7 +147,10 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   o.registry.onRemoved((ids) => {
     void sessions.end(ids)
     // a removed thread's page is no longer anyone's to open, and what plays of it ends
-    for (const id of ids) lastPage.delete(id)
+    for (const id of ids) {
+      lastPage.delete(id)
+      lastAct.delete(id)
+    }
     video?.removed(ids)
   })
 
@@ -196,17 +201,60 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
         : []
     )
   }
+  // A pane's page after its last act stays listed for IDLE_ROW_MS, idle, so he can still watch it and take over;
+  // its picture is the one the session last read, on the service session that only looks, as for a pane he drives.
+  const lastAct = new Map<string, { since: number; at: number }>()
+  const idleMs = o.idleMs ?? IDLE_ROW_MS
+  let idleTimer: NodeJS.Timeout | null = null
+  const idleNow = (pane: string, now = Date.now()): boolean => {
+    const act = lastAct.get(pane)
+    return !!act && now - act.at < idleMs
+  }
+  const idleRows = (live: ComputerSessionRow[], now = Date.now()): ComputerSessionRow[] =>
+    [...lastAct].flatMap(([pane, act]) =>
+      idleNow(pane, now) && !drives(pane) && pageOf(pane) && !live.some((l) => paneOf(l.threadId) === pane)
+        ? [{ threadId: pane, since: act.since, lastCallAt: act.at, apps: [{ name: BOX_BROWSER_APP.name, bundleId: BOX_BROWSER_APP.bundleId, window: null }], running: null, tier: null, idle: true as const }]
+        : []
+    )
+  /** The next idle row to end ends on time: the rows are told, and its look at the page is closed. */
+  const scheduleIdle = (): void => {
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = null
+    const now = Date.now()
+    for (const [pane, act] of lastAct) {
+      if (now - act.at < idleMs) continue
+      lastAct.delete(pane)
+      if (!drives(pane)) void service.request('session.close', { session: OWNER_SESSION + pane }).catch(() => {})
+    }
+    const next = Math.min(...[...lastAct.values()].map((a) => a.at + idleMs))
+    if (Number.isFinite(next))
+      idleTimer = setTimeout(() => {
+        scheduleIdle()
+        rowsChanged()
+      }, next - now)
+    idleTimer?.unref?.()
+  }
   const allRows = (): ComputerSessionRow[] => {
     const live = sessions.rows()
     // a session still live in a pane he has just taken is his page already: its row says so until the session is stopped
-    return [...live.map((r) => (drives(paneOf(r.threadId)) ? { ...r, driver: 'owner' as const } : r)), ...ownerRows(live)]
+    const rows = [...live.map((r) => (drives(paneOf(r.threadId)) ? { ...r, driver: 'owner' as const } : r)), ...ownerRows(live), ...idleRows(live)]
+    return rows.map((r) => ({ ...r, computer: `browser:${paneOf(r.threadId)}` }))
   }
   const rowsChanged = (): void => {
     if (!rowListeners.size) return
     const rows = allRows()
     for (const fn of rowListeners) fn(rows)
   }
-  sessions.onRows(() => rowsChanged())
+  sessions.onRows((live) => {
+    // a session's last act is its pane's: the page is listed idle from when that session ends
+    for (const r of live) {
+      const pane = paneOf(r.threadId)
+      const was = lastAct.get(pane)
+      lastAct.set(pane, { since: was && was.at >= r.since ? was.since : r.since, at: Math.max(was?.at ?? 0, r.lastCallAt) })
+    }
+    scheduleIdle()
+    rowsChanged()
+  })
   const rows: BoxBrowserHost['rows'] = {
     rows: allRows,
     onRows: (fn) => {
@@ -222,7 +270,7 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   const targetListeners = new Set<(threadId: string) => void>()
   const ownerTarget = (thread: string): PreviewTarget | null => {
     const kept = lastTarget.get(thread)
-    return kept && drives(thread) && pageOf(thread) ? { ...kept, serviceSession: OWNER_SESSION + thread } : null
+    return kept && (drives(thread) || idleNow(thread)) && pageOf(thread) ? { ...kept, serviceSession: OWNER_SESSION + thread } : null
   }
   sessions.onTarget((thread) => {
     const target = sessions.previewTarget(thread)
@@ -253,13 +301,24 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
       // the pane's picture is drawn from another session of the service now
       for (const fn of targetListeners) fn(pane)
     }
-    if (!owner) void service.request('session.close', { session: OWNER_SESSION + pane }).catch(() => {})
+    if (!owner) {
+      // handed back, the page is idle until the agent acts again, and his look at it goes on while it is listed
+      lastAct.set(pane, { since: lastAct.get(pane)?.since ?? Date.now(), at: Date.now() })
+      scheduleIdle()
+    }
     return (video ? video.driver(pane, owner) : Promise.resolve()).then(told, told)
   }
-  browser.onStop(() => lastTarget.clear())
+  browser.onStop(() => {
+    lastTarget.clear()
+    lastAct.clear()
+    scheduleIdle()
+  })
   host = { root, browser, stage, service, sessions, video, rows, previews }
   return host
 }
+
+/** How long a pane's page stays listed after its last act (or his Hand back), idle. */
+export const IDLE_ROW_MS = 10 * 60_000
 
 /** The service session his own look at a pane's page runs on, by the pane. */
 const OWNER_SESSION = 'owner:'

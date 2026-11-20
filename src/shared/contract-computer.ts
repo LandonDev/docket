@@ -60,7 +60,11 @@ export const ComputerSessionRowSchema = z.object({
    * He drives this page himself: a pane of the box's browser he took over (work/browser/box). Its session is
    * stopped, so the row is kept for him: `threadId` is the pane's thread, nothing runs, and Stop does nothing.
    */
-  driver: z.literal('owner').optional()
+  driver: z.literal('owner').optional(),
+  /** The computer's own name, which outlives a session: `browser:<pane>` for a page of the box's browser, `vm:windows`; absent for a window on a person's own computer (`window:<threadId>`). */
+  computer: z.string().optional(),
+  /** The box's page after its last act: nothing drives it, it is still there to watch and take over, for ten minutes (work/browser/box). Not working: the rail's mark and Activity leave it out. */
+  idle: z.literal(true).optional()
 })
 export type ComputerSessionRow = z.infer<typeof ComputerSessionRowSchema>
 

@@ -34,6 +34,10 @@ export interface ComputerTile {
   pane: string;
   /** the machine that alone draws it, when this desktop may not; null when it draws here */
   shownOn: string | null;
+  /** its name on its host, which outlives a session: `browser:<pane>`, `vm:windows`, `window:<thread>` */
+  computer: string;
+  /** nothing drives it now: the box's page after its last act, still there to watch and take over */
+  idle: boolean;
 }
 
 export const tileId = (host: string, threadId: string): string => `${host}\n${threadId}`;
@@ -70,6 +74,8 @@ export function computerTiles(
         browser: !row.macPeer && row.apps.some((a) => a.bundleId === BOX_BROWSER_BUNDLE),
         pane: paneOf(row.threadId),
         shownOn: entry.previewable ? null : where,
+        computer: row.computer ?? `window:${row.threadId}`,
+        idle: !!row.idle,
       });
     }
   }
@@ -124,7 +130,7 @@ export function tileKey(tile: ComputerTile, all: readonly ComputerTile[]): strin
 }
 
 /** The name the host knows a tile's computer by for its wheel (computer/drive.ts): a browser tile's pane's page. */
-export const driveName = (tile: ComputerTile): string => `browser:${tile.pane}`;
+export const driveName = (tile: ComputerTile): string => (tile.computer.startsWith("window:") ? `browser:${tile.pane}` : tile.computer);
 
 /**
  * Take over a tile's computer: one call, and the host does the rest in order
@@ -144,12 +150,12 @@ export async function handBack(tile: ComputerTile): Promise<void> {
   await link.request("computer.drive", { computer: driveName(tile), driver: "agent" });
 }
 
-/** The rail row's mark: waiting while a session's card needs him, working while anything is driven, else none. It carries no count. */
+/** The rail row's mark: waiting while a session's card needs him, working while anything is driven (an idle page is not), else none. It carries no count. */
 export function computersMark(byHost: Readonly<Record<string, readonly ComputerSessionRow[]>>): "waiting" | "working" | null {
   let any = false;
   for (const [host, rows] of Object.entries(byHost)) {
     for (const row of rows) {
-      if (bridgedHere(host, row)) continue;
+      if (bridgedHere(host, row) || row.idle) continue;
       if (row.asking) return "waiting";
       any = true;
     }

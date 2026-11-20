@@ -125,8 +125,20 @@ describe("every computer being driven now", () => {
     spy.mockRestore();
   });
 
+  it("names each tile's computer, and says when nothing drives it", () => {
+    const tiles = computerTiles({ box: [row({ threadId: "w1", apps: chromium, computer: "browser:w1", idle: true })], local: [row({ threadId: "t1" })] }, titleOf, nameOf, mac);
+    expect(tiles.map((t) => [t.computer, t.idle])).toEqual(
+      expect.arrayContaining([
+        ["browser:w1", true],
+        ["window:t1", false],
+      ]),
+    );
+  });
+
   it("marks the rail's row: waiting while a card needs him, working while anything is driven, nothing otherwise, and never a count", () => {
     expect(computersMark({})).toBeNull();
+    // the box's page after its last act is listed, and is not working
+    expect(computersMark({ box: [row({ threadId: "w1", apps: chromium, idle: true })] })).toBeNull();
     expect(computersMark({ local: [], box: [] })).toBeNull();
     expect(computersMark({ local: [row({ threadId: "t1" })] })).toBe("working");
     expect(computersMark({ local: [row({ threadId: "t1" })], box: [row({ threadId: "b1", macPeer: "env_mac", asking: { line: "Allow TextEdit?" } })] })).toBe("waiting");
