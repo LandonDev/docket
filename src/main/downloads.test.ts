@@ -49,9 +49,32 @@ describe('safeFileName and a long name', () => {
 
 describe('freeName', () => {
   it('numbers a name already taken, before its extension', () => {
-    const taken = new Set(['a.pdf', 'a (2).pdf', 'README'])
+    const taken = new Set(['a.pdf', 'a (1).pdf', 'README'])
     expect(freeName('b.pdf', (n) => taken.has(n))).toBe('b.pdf')
-    expect(freeName('a.pdf', (n) => taken.has(n))).toBe('a (3).pdf')
-    expect(freeName('README', (n) => taken.has(n))).toBe('README (2)')
+    expect(freeName('a.pdf', (n) => taken.has(n))).toBe('a (2).pdf')
+    expect(freeName('README', (n) => taken.has(n))).toBe('README (1)')
+  })
+})
+
+describe('a file saved from a mail', () => {
+  const taken = new Set<string>()
+  const save = (name: string) => {
+    const file = freeName(safeFileName(name), (n) => taken.has(n))
+    taken.add(file)
+    return file
+  }
+  it('keeps its own name and extension, made safe, and never replaces a file', () => {
+    // A named PDF.
+    expect(save('Invoice 1042.pdf')).toBe('Invoice 1042.pdf')
+    // The same file saved again.
+    expect(save('Invoice 1042.pdf')).toBe('Invoice 1042 (1).pdf')
+    expect(save('Invoice 1042.pdf')).toBe('Invoice 1042 (2).pdf')
+    // A name with a path in it stays one name, in Downloads.
+    expect(save('../../Library/LaunchAgents/x.plist')).toBe('__.._Library_LaunchAgents_x.plist')
+    expect(save('C:\\Users\\me\\report.docx')).toBe('C__Users_me_report.docx')
+    // A very long name keeps its extension.
+    const long = save(`${'q'.repeat(300)}.xlsx`)
+    expect(long.length).toBe(180)
+    expect(long.endsWith('.xlsx')).toBe(true)
   })
 })

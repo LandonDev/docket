@@ -45,12 +45,12 @@ function clip(name: string): string {
   return ext ? `${stem}${ext}` : stem.replace(/\./g, '_')
 }
 
-/** `name` if free, else "name (2).ext", "name (3).ext", … */
+/** `name` if free, else "name (1).ext", "name (2).ext", … as a browser numbers a second download. */
 export function freeName(name: string, taken: (candidate: string) => boolean): string {
   if (!taken(name)) return name
   const dot = name.lastIndexOf('.')
   const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
-  for (let n = 2; n < 10_000; n++) {
+  for (let n = 1; n < 10_000; n++) {
     const candidate = `${stem} (${n})${ext}`
     if (!taken(candidate)) return candidate
   }

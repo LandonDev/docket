@@ -169,17 +169,19 @@ function useKey(handler: (event: KeyboardEvent) => void, enabled = true): void {
   }, [handler, enabled]);
 }
 
-const opened = async (file: { url: string }): Promise<"opened"> => {
-  await openUrl(file.url);
-  return "opened";
-};
-
 /** Save: the file's bytes, read from LifeOS's store, written into Downloads under its own name. */
 const saved = async (file: { url: string; name: string }): Promise<"saved"> => {
   const blob = await loadBytes(file.url);
   await saveDownload(file.name, new Uint8Array(await blob.arrayBuffer()));
   return "saved";
 };
+
+/**
+ * Open, for a file no canvas shows: it is saved, under its own name, and the reader says so. The
+ * file's address in LifeOS's store is never handed to the browser, which would save it under the
+ * store's own key (a random name with no extension).
+ */
+const opened = saved;
 
 class Boundary extends Component<{ className?: string; onNotFound?: () => void; children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
