@@ -205,7 +205,7 @@ own (`earnedOf`), so it is never wider than any of them:
 
 | Kind | Earns | Earns nothing |
 |---|---|---|
-| `mail.send` | its account and its one recipient | two or more people (to, cc and bcc together); a domain is never offered |
+| `mail.send` | its account and its one recipient (named by address; the account, not one of its addresses, is what a mail grant binds) | two or more people (to, cc and bcc together); a domain is never offered |
 | `calendar.op` | an answer (accept, decline, maybe) on one account and calendar; an invite of one person there | a change, a cancel, a proposal, a series, an uninvite, no account |
 | `addon.call` | its server and tool (digests sealed as for any grant) with every argument fixed and none free | a call held without the digests, or held only because the add-on was never reviewed |
 
@@ -217,12 +217,24 @@ from counting.
 
 - **As the thread wrote it.** The host keeps an act's words at first sight
   (`work_held_first`: a host row at `hold`, a LifeOS draft when the watcher
-  first lists it), and a send counts only when its words are those (spacing
-  aside). A LifeOS draft already edited when the host first saw it (made
-  while the host was off) never counts; nor does an agent's rewrite or one
-  he took. **An edited send or a discard breaks the run**; a grant's send is
-  passed over. A routine's acts count only toward that routine's offer, and
-  a run the host cannot place (`ROUTINE_UNKNOWN`) toward none.
+  first lists it), and a send counts only when what goes is those words:
+  for mail the people, From, what it answers, its Gmail thread, subject,
+  text, html (exactly), files; for a calendar act its event, route and
+  fields (spacing aside in text); an add-on call's arguments exactly. A
+  LifeOS draft with no edit time, edited more than 2 s after it was made by
+  the time the host first saw it, or made more than 30 days before, never
+  counts; nor does an agent's rewrite or one he took.
+- **His press, alone.** A send of several by one press (a group's Send N,
+  ticked rows: `send({many: true})`) is one gesture and counts for none.
+- **What breaks a run.** Any decision aimed at the same target, by its words
+  as sent or as first written (`targetOf`: an edit that moved a mail from
+  Dana to Sam breaks both), that is not a clean press: an edited send, a
+  discard, a send still going or failed (until a later press sends it), one
+  of several. A grant's send is
+  passed over. The history is the rows' own: their workspace and routine as
+  held, so deleting or moving a thread changes nothing. A routine's acts
+  count only toward that routine's offer, a run the host cannot place
+  (`ROUTINE_UNKNOWN`) toward none, and a Work Chat's acts toward none.
 - **Once.** An offer is kept per workspace, kind and matcher
   (`work_grant_offers`), whatever became of it: dismissed, taken, or closed
   by a grant he made by hand that fits its item. None is made while a
@@ -233,8 +245,14 @@ from counting.
   matcher: `takeOffer({id})` runs the same `grant` from the offer's item
   with the matcher the host worked out, and every check of a grant made by
   hand applies. The thread is not told it earned anything, and Away presses
-  nothing. An offer whose item left its workspace or routine, or that a
-  grant now covers, is not listed.
+  nothing. An offer keeps its run, each send with the time of the press that
+  sent it, and stands only while every one still reads sent from that press
+  (one LifeOS failed later drops it, and a later retry does not bring it
+  back; a fresh run makes a fresh offer in its place), its item is in the
+  workspace it was held in and earned in, and no grant covers it. A grant
+  like one that stands is that one (`grant` answers it), so taking an
+  offer and asking by hand never make two; `takeOffer` makes the grant,
+  then marks the offer.
 
 ## Computer use
 

@@ -89,9 +89,11 @@ export function wordsOf(kind: ActKind, payload: unknown): unknown {
       threadId: m.threadId ?? null,
       inReplyTo: m.inReplyTo ?? null,
       mode: m.mode ?? null,
+      providerThreadId: m.providerThreadId ?? null,
       subject: m.subject,
       text: m.text,
-      html: m.html,
+      // compared exactly: in html, spacing can be what goes (a <pre>)
+      html: { exact: m.html },
       attachments: m.attachments ?? null,
       forwardParts: m.forwardParts ?? null
     }
@@ -115,7 +117,9 @@ export function wordsOf(kind: ActKind, payload: unknown): unknown {
 
 /** Spacing in a mail's or an event's words never counts as an edit: a composer that tidies a line break changed nothing he meant. An add-on's arguments are compared exactly: a tool may tell "a  b" from "a b". */
 const squashed = (value: unknown): unknown =>
-  typeof value === 'string'
+  value && typeof value === 'object' && !Array.isArray(value) && 'exact' in value
+    ? value
+    : typeof value === 'string'
     ? value.replace(/\s+/g, ' ').trim()
     : Array.isArray(value)
       ? value.map(squashed)
@@ -130,7 +134,7 @@ export const sameWords = (kind: ActKind, a: unknown, b: unknown): boolean =>
  * words or its last makes an act part of a run's history, so an edit that
  * moved it from one person to another breaks the run of both.
  */
-export function targetOf(kind: ActKind, words: unknown): string | null {
+export function targetOf(kind: ActKind, words: unknown, payload?: unknown): string | null {
   const w = words as Record<string, unknown> | null
   if (!w) return null
   if (kind === 'mail.send') {
@@ -138,10 +142,14 @@ export function targetOf(kind: ActKind, words: unknown): string | null {
     return `mail|${String(w.accountId)}|${all.join(',')}`
   }
   if (kind === 'calendar.op') {
-    const invited = ((w.payload as { attendees?: { address: string }[] } | null)?.attendees ?? []).map((a) => lower(a.address)).sort()
+    const invited = [...new Set(((w.payload as { attendees?: { address: string }[] } | null)?.attendees ?? []).map((a) => lower(a.address)))].sort()
     return `cal|${String(w.kind)}|${String(w.account)}|${String(w.calendarId ?? '')}|${invited.join(',')}`
   }
-  if (kind === 'addon.call') return `addon|${String(w.addonId)}|${String(w.tool)}|${digest(canonical(w.arguments))}`
+  if (kind === 'addon.call') {
+    // The server and the tool as listed are the act's own (an edit changes only its arguments), so a call on another revision is another target.
+    const p = payload as { specDigest?: string; toolDigest?: string } | null
+    return `addon|${String(w.addonId)}|${String(w.tool)}|${p?.specDigest ?? ''}|${p?.toolDigest ?? ''}|${digest(canonical(w.arguments))}`
+  }
   return null
 }
 
@@ -173,9 +181,8 @@ export function earnedOf(kind: ActKind, payload: unknown): Earned | null {
     const people = [...new Set(all.map((a) => lower(a.address)))]
     if (people.length !== 1 || !m.accountId) return null
     const one = people[0]!
-    // Named by the address, never a display name a draft may carry; from the address it went from when LifeOS says.
-    const from = m.from?.address ? ` from ${lower(m.from.address)}` : ''
-    return { key: `mail|${m.accountId}|${one}`, matcher: { accountId: m.accountId, recipients: [one] }, label: `Mail to ${one}${from}` }
+    // Named by the address, never a display name a draft may carry. The grant binds the account, not an address of it: the label names no From.
+    return { key: `mail|${m.accountId}|${one}`, matcher: { accountId: m.accountId, recipients: [one] }, label: `Mail to ${one}` }
   }
   if (kind === 'calendar.op') {
     const p = CalendarOpPayloadSchema.safeParse(payload)
@@ -237,8 +244,8 @@ export interface StoredOffer extends GrantOffer {
   matcher: unknown
   state: 'open' | 'dismissed' | 'made'
   grantId: string | null
-  /** the run keys of the sends that earned it: each must still read sent for the offer to stand */
-  run: string[]
+  /** the sends that earned it, each with the time of the press that sent it: each must still read sent from that press for the offer to stand */
+  run: { runKey: string; at: number }[]
 }
 
 const decodeOffer = (r: OfferRow): StoredOffer => ({
@@ -253,7 +260,7 @@ const decodeOffer = (r: OfferRow): StoredOffer => ({
   count: Number(r.count),
   state: r.state as StoredOffer['state'],
   grantId: r.grant_id,
-  run: JSON.parse(r.run) as string[],
+  run: JSON.parse(r.run) as StoredOffer['run'],
   createdAt: Number(r.created_at)
 })
 
@@ -293,12 +300,18 @@ export class EarnedStore {
     return !!this.db.prepare(`SELECT 1 FROM ${FIRST_TABLE} WHERE run_key = ? AND batch = 1`).get(runKey)
   }
 
-  /** Whether this matcher was ever offered in the workspace: an offer is made once, whatever became of it. */
-  offered(workspaceId: string, kind: ActKind, key: string): boolean {
-    return !!this.db.prepare(`SELECT 1 FROM ${OFFERS_TABLE} WHERE workspace_id = ? AND kind = ? AND key = ?`).get(workspaceId, kind, key)
+  /** The offer this matcher had in the workspace, if any: an offer is made once, and stays decided whatever became of it. */
+  offeredRow(workspaceId: string, kind: ActKind, key: string): StoredOffer | null {
+    const row = this.db.prepare(`SELECT * FROM ${OFFERS_TABLE} WHERE workspace_id = ? AND kind = ? AND key = ?`).get(workspaceId, kind, key) as unknown as OfferRow | undefined
+    return row ? decodeOffer(row) : null
   }
 
-  add(o: { workspaceId: string; kind: ActKind; key: string; matcher: unknown; label: string; routineId: string | null; from: HeldRef; run: string[] }): StoredOffer | null {
+  /** An open offer whose run no longer stands, making way for a fresh one. */
+  drop(id: string): void {
+    this.db.prepare(`DELETE FROM ${OFFERS_TABLE} WHERE id = ? AND state = 'open'`).run(id)
+  }
+
+  add(o: { workspaceId: string; kind: ActKind; key: string; matcher: unknown; label: string; routineId: string | null; from: HeldRef; run: StoredOffer['run'] }): StoredOffer | null {
     const id = `go_${randomUUID()}`
     const done = this.db
       .prepare(
@@ -353,6 +366,8 @@ export interface RunDeps {
   routineOf(runId: string): string | null
   /** whether a standing grant already fits the act */
   granted(row: HeldRow): boolean
+  /** whether an open offer still stands (outbox.ts) */
+  stands(offer: StoredOffer): boolean
   /** an act the host read as no grant's (a command line's) */
   notGrantable(payload: unknown): boolean
   now(): number
@@ -365,7 +380,7 @@ export interface RunDeps {
  */
 function placeOf(deps: RunDeps, row: HeldRow): { scope: string; routineId: string | null } | null {
   const scope = row.workspaceId
-  if (!scope || !row.sessionId) return null
+  if (!scope) return null
   const routineId = row.routineRunId ? deps.routineOf(row.routineRunId) : null
   // A run this host cannot place takes no grant, so it earns none.
   if (row.routineRunId && !routineId) return null
@@ -399,21 +414,26 @@ export function earn(deps: RunDeps, row: HeldRow): StoredOffer | null {
   if (!clean(deps, row)) return null
   const mine = earnedOf(row.kind, row.payload)
   const place = placeOf(deps, row)
-  if (!mine || !place) return null
+  // The item an offer is made from must still have its thread: the grant is made from it.
+  if (!mine || !place || !row.sessionId) return null
   const key = `${place.routineId ?? ''}|${mine.key}`
-  if (deps.earned.offered(place.scope, row.kind, key) || deps.granted(row)) return null
-  const target = targetOf(row.kind, wordsOf(row.kind, row.payload))
-  const run: string[] = []
+  const before = deps.earned.offeredRow(place.scope, row.kind, key)
+  // Dismissed or taken is for good; an offer whose run no longer stands gives way to a fresh run.
+  if (before && (before.state !== 'open' || deps.stands(before))) return null
+  if (deps.granted(row)) return null
+  if (before) deps.earned.drop(before.id)
+  const target = targetOf(row.kind, wordsOf(row.kind, row.payload), row.payload)
+  const run: StoredOffer['run'] = []
   for (const other of deps.decidedSince(row.kind, place.scope, deps.now() - EARN_DAYS * DAY)) {
     if (other.decidedBy?.startsWith('grant:')) continue
     const at = placeOf(deps, other)
     if (!at || at.routineId !== place.routineId) continue
-    const aimed = targetOf(other.kind, wordsOf(other.kind, other.payload)) === target || targetOf(other.kind, deps.earned.first(other.runKey)) === target
+    const aimed = targetOf(other.kind, wordsOf(other.kind, other.payload), other.payload) === target || targetOf(other.kind, deps.earned.first(other.runKey), other.payload) === target
     if (!aimed) continue
     if (!clean(deps, other)) break
     // The same people or call to another server, or the tool as it was listed before: no part of this run, and no break in it.
     if (earnedOf(other.kind, other.payload)?.key !== mine.key) continue
-    run.push(other.runKey)
+    run.push({ runKey: other.runKey, at: other.decidedAt ?? 0 })
     if (run.length >= EARN_AT) break
   }
   if (run.length < EARN_AT) return null

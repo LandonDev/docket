@@ -42,7 +42,7 @@ describe('what one act earns', () => {
     // named by the address, never by a display name the draft carries, and from the address it goes from
     const named = mail(['dana@purdue.edu'])
     Object.assign(named.message, { to: [{ name: 'Dana Lee', address: 'dana@purdue.edu' }], from: { address: 'Landon@purdue.edu' } })
-    expect(earnedOf('mail.send', named)?.label).toBe('Mail to dana@purdue.edu from landon@purdue.edu')
+    expect(earnedOf('mail.send', named)?.label).toBe('Mail to dana@purdue.edu')
     expect(earnedOf('mail.send', mail(['dana@purdue.edu'], { cc: ['sam@purdue.edu'] }))).toBeNull()
     expect(earnedOf('mail.send', mail(['dana@purdue.edu', 'sam@purdue.edu']))).toBeNull()
     expect(earnedOf('mail.send', mail([]))).toBeNull()
@@ -105,11 +105,13 @@ describe('the run', () => {
   const now = 100 * DAY
   const routines: Record<string, string> = { 'run-a1': 'routine-a', 'run-a2': 'routine-a', 'run-b1': 'routine-b' }
   let granted = false
+  let standing = true
   const deps = (): RunDeps => ({
     earned,
     decidedSince: (kind, ws, since) => rows.filter((r) => r.kind === kind && r.workspaceId === ws && (r.decidedAt ?? 0) >= since).sort((a, b) => (b.decidedAt ?? 0) - (a.decidedAt ?? 0) || b.n - a.n),
     routineOf: (id) => routines[id] ?? null,
     granted: () => granted,
+    stands: () => standing,
     notGrantable: (p) => (p as { read?: { grantable?: boolean } }).read?.grantable === false,
     now: () => now
   })
@@ -146,6 +148,7 @@ describe('the run', () => {
     rows = []
     n = 0
     granted = false
+    standing = true
   })
 
   it(`offers after ${EARN_AT} unedited presses in a row, once, from the press that completed the run`, () => {
@@ -228,7 +231,25 @@ describe('the run', () => {
   it("keeps the run's sends with the offer", () => {
     for (let i = 0; i < EARN_AT - 1; i++) press()
     const offer = press()!
-    expect(offer.run).toEqual(rows.slice(-EARN_AT).map((r) => r.runKey).reverse())
+    expect(offer.run).toEqual(rows.slice(-EARN_AT).map((r) => ({ runKey: r.runKey, at: r.decidedAt })).reverse())
+  })
+
+  it('an open offer whose run no longer stands gives way to a fresh run; one dismissed or taken never does', () => {
+    for (let i = 0; i < EARN_AT; i++) press()
+    standing = false
+    // the latest five are still clean: the next press makes a fresh offer from them, in the old one's place
+    const fresh = press()!
+    expect(fresh).not.toBeNull()
+    expect(earned.open()).toHaveLength(1)
+    earned.claim(fresh.id, 'dismissed')
+    for (let i = 0; i < EARN_AT; i++) expect(press()).toBeNull()
+  })
+
+  it('a discarded invite that named the same person twice still breaks that person\'s run', () => {
+    const invite = (people: string[]) => ({ id: 'op', kind: 'create', account: 'landon@purdue.edu', calendarId: 'cal', payload: { attendees: people.map((address) => ({ address })) } })
+    for (let i = 0; i < EARN_AT - 1; i++) press({ kind: 'calendar.op', payload: invite(['dana@purdue.edu']) })
+    act({ kind: 'calendar.op', payload: invite(['dana@purdue.edu', 'Dana@purdue.edu']), state: 'discarded' })
+    expect(press({ kind: 'calendar.op', payload: invite(['dana@purdue.edu']) })).toBeNull()
   })
 
   it('none for a call held only because its add-on was never reviewed, for an act read as no grant\'s, or while a grant already fits', () => {
@@ -297,13 +318,13 @@ describe('an earned grant on the hold', () => {
     const fifth = await pressMail()
     expect(fifth.state).toBe('sent')
     const [offer] = await offers()
-    expect(offer).toMatchObject({ workspaceId: 'ws-purdue', kind: 'mail.send', label: 'Mail to dana@purdue.edu from landon@purdue.edu', routineId: null, from: fifth.ref, count: EARN_AT })
+    expect(offer).toMatchObject({ workspaceId: 'ws-purdue', kind: 'mail.send', label: 'Mail to dana@purdue.edu', routineId: null, from: fifth.ref, count: EARN_AT })
     // the screen never gets the matcher: the host keeps it
     expect(offer).not.toHaveProperty('matcher')
     // the thread is not told it earned anything
     expect(rig.whispers.map((w) => w.text).join('\n')).not.toMatch(/grant|offer/i)
     const grant = await rig.rpc<OutboxGrant>('work.outbox.takeOffer', { id: offer!.id })
-    expect(grant).toMatchObject({ workspaceId: 'ws-purdue', kind: 'mail.send', matcher: { accountId: 'acct_purdue', recipients: ['dana@purdue.edu'] }, label: 'Mail to dana@purdue.edu from landon@purdue.edu', madeFrom: fifth.ref, routineId: null })
+    expect(grant).toMatchObject({ workspaceId: 'ws-purdue', kind: 'mail.send', matcher: { accountId: 'acct_purdue', recipients: ['dana@purdue.edu'] }, label: 'Mail to dana@purdue.edu', madeFrom: fifth.ref, routineId: null })
     expect(await offers()).toEqual([])
     await expect(rig.rpc('work.outbox.takeOffer', { id: offer!.id })).rejects.toThrow(NO_SUCH_OFFER)
     expect(rig.host.store.grants()).toHaveLength(1)
@@ -435,6 +456,28 @@ describe('an earned grant on the hold', () => {
     rig.host.store.failSent(earlier.id, 'Gmail refused it')
     expect(await offers()).toEqual([])
     await expect(rig.rpc('work.outbox.takeOffer', { id: offer!.id })).rejects.toThrow(NO_SUCH_OFFER)
+  })
+
+  it('a send of the run that failed and went again, edited or not, is another decision: the offer it earned does not come back', async () => {
+    for (let i = 0; i < EARN_AT; i++) await pressMail()
+    const [offer] = await offers()
+    const earlier = rig.host.store.list({ show: 'decided' }).find((r) => r.state === 'sent' && !(r.runKey.endsWith(offer!.from.id)))!
+    rig.host.store.failSent(earlier.id, 'Gmail refused it')
+    expect(await offers()).toEqual([])
+    // the same row reads sent again after a later press
+    rig.host.store.claim(earlier.id, 'owner')
+    rig.host.store.settle(earlier.id, 'sent')
+    expect(rig.host.store.get(earlier.id)!.state).toBe('sent')
+    expect(await offers()).toEqual([])
+  })
+
+  it('the same people asked for by hand in another case are the same grant', async () => {
+    for (let i = 0; i < EARN_AT; i++) await pressMail()
+    const [offer] = await offers()
+    const taken = await rig.rpc<OutboxGrant>('work.outbox.takeOffer', { id: offer!.id })
+    const again = await rig.rpc<OutboxGrant>('work.outbox.grant', { from: offer!.from, matcher: { accountId: 'acct_purdue', recipients: ['DANA@purdue.edu', 'dana@purdue.edu'] } })
+    expect(again.id).toBe(taken.id)
+    expect(rig.host.store.grants()).toHaveLength(1)
   })
 
   it('taken, and then asked for by hand from the same item, is one grant: one Remove ends it', async () => {

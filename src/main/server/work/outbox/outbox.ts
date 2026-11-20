@@ -66,6 +66,15 @@ export interface OutboxDeps {
   earned?: EarnedStore
 }
 
+/** A matcher as its kind matches it: the people of a mail or an invite in any case, order or repeat are the same people. */
+function sameAs(matcher: unknown): unknown {
+  if (!matcher || typeof matcher !== 'object') return matcher
+  const m = { ...(matcher as Record<string, unknown>) }
+  for (const key of ['recipients', 'domains', 'attendees'])
+    if (Array.isArray(m[key])) m[key] = [...new Set((m[key] as unknown[]).map((v) => (typeof v === 'string' ? v.trim().toLowerCase().replace(/^@/, '') : v)))].sort()
+  return m
+}
+
 /** A LifeOS draft first seen this long after it was made, and edited since it was made, holds words nobody can name the writer of. */
 const FIRST_SIGHT_SLACK = 2_000
 
@@ -178,7 +187,7 @@ export class Outbox {
     // One made before the run's window began is never taken up with today's words either.
     const editedAt = (item.payload as { editedAt?: unknown } | null)?.editedAt
     const fresh = item.createdAt >= Date.now() - EARN_DAYS * 86_400_000
-    if (fresh && (typeof editedAt !== 'number' || editedAt - item.createdAt <= FIRST_SIGHT_SLACK)) this.noteFirst(lifeosRunKey(item.ref.table, item.ref.id), item.kind, item.payload)
+    if (fresh && typeof editedAt === 'number' && editedAt - item.createdAt <= FIRST_SIGHT_SLACK) this.noteFirst(lifeosRunKey(item.ref.table, item.ref.id), item.kind, item.payload)
     const def = this.deps.kinds.get(item.kind)
     const grant = def && item.state === 'held' ? this.grantFor({ kind: item.kind, payload: item.payload, sessionId: item.sessionId, routineRunId: item.routineRunId, createdAt: item.createdAt }, def) : null
     if (!def || !grant) return void (opts.quiet ? undefined : this.deps.notify?.(item))
@@ -229,6 +238,8 @@ export class Outbox {
     let row = this.store.byRef(ref)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       const live = await this.readLifeos(ref)
+      // The log records what was discarded as LifeOS holds it now, not as an earlier decision left it.
+      if (row && PRESSABLE.includes(row.state)) row = this.store.edit(row.id, { payload: live.payload, summary: live.summary, verb: live.verb, account: live.account }) ?? row
       row ??= this.adopt(live)
       if (row && PRESSABLE.includes(row.state)) await this.lifeos!.discard(ref)
     }
@@ -289,7 +300,7 @@ export class Outbox {
     if (opts.routine && !routineId) throw new Error('refused: this item was not made by a routine')
     const label = (opts.label ?? '').trim() || `Like: ${item.summary}`
     // A grant like one that stands is that one: an offer taken and the same grant asked for by hand never make two, so one Remove ends it.
-    const same = this.store.grants({ workspaceId: scope }).find((g) => g.kind === item.kind && (g.routineId ?? null) === routineId && canonical(g.matcher) === canonical(parsed))
+    const same = this.store.grants({ workspaceId: scope }).find((g) => g.kind === item.kind && (g.routineId ?? null) === routineId && canonical(sameAs(g.matcher)) === canonical(sameAs(parsed)))
     if (same) {
       this.closeCovered(same, def)
       return same
@@ -322,7 +333,12 @@ export class Outbox {
     // presses at once make one grant (`grant` answers the one that stands).
     const grant = await this.grant(open.from, open.matcher, { label: open.label, ...(open.routineId ? { routine: true } : {}) })
     if ((grant.routineId ?? null) !== open.routineId) throw new Error(NO_SUCH_OFFER)
-    if (earned.claim(id, 'made')) earned.settle(id, grant.id)
+    try {
+      if (earned.claim(id, 'made')) earned.settle(id, grant.id)
+    } catch (err) {
+      // The grant stands: it is what he asked for, so the press answers it whatever became of the offer's mark.
+      this.deps.ctx.log(`outbox: offer ${id} was not marked taken: ${errorText(err)}`)
+    }
     this.changed(null)
     return grant
   }
@@ -340,8 +356,9 @@ export class Outbox {
    * its item is in the workspace it was earned in and was held in, under
    * the same routine, and no standing grant fits it.
    */
-  private offerStands(o: StoredOffer): boolean {
-    if (o.run.some((runKey) => this.store.byRunKey(runKey)?.state !== 'sent')) return false
+  offerStands(o: StoredOffer): boolean {
+    // Sent by the press that earned it: a retry after a failure, edited or not, is another decision.
+    if (o.run.some((r) => { const row = this.store.byRunKey(r.runKey); return row?.state !== 'sent' || row.decidedAt !== r.at })) return false
     const row = this.store.byRef(o.from)
     if (!row?.sessionId || row.state !== 'sent' || row.workspaceId !== o.workspaceId || this.deps.scopeKeyOf(row.sessionId) !== o.workspaceId) return false
     const routineId = row.routineRunId ? this.deps.routineOf(row.routineRunId) : null
@@ -397,6 +414,7 @@ export class Outbox {
             const def = this.deps.kinds.get(r.kind)
             return !def || !!this.grantFor({ kind: r.kind, payload: r.payload, sessionId: r.sessionId, routineRunId: r.routineRunId, createdAt: Number.MAX_SAFE_INTEGER }, def)
           },
+          stands: (o) => this.offerStands(o),
           notGrantable,
           now: Date.now
         },
