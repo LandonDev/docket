@@ -951,11 +951,10 @@
   Work examples in its placeholder and leaves `{{worktree}}` out of its
   variables, as the desktop's rules dialog does for a Work project.
   Sharing joins it with milestone 7 (a project's guest links).
-- **The pin.** work-kit's Swift for this is on `projects-swift-tc`, a
-  branch from the commit TempCode pinned (`fb39587`), merged into work-kit
-  main with no change to main's tree, so TempCode's JS side moves nothing
-  when its pin (package.json, bun.lock and ios/TempCode/project.yml, equal)
-  takes the branch's head.
+- **The pin.** TempCode pins work-kit `v33` (`2987160`), the commit LifeOS's
+  phone pins too: the projects Swift on the commit TempCode pinned before
+  (`615f4b4`), so its JavaScript side moves nothing; package.json, bun.lock
+  and ios/TempCode/project.yml name the same commit.
 
 ## The data path's two contracts (the performance pass, 2026-11)
 
