@@ -10,7 +10,7 @@ import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { soakWindow } from './soakWindow'
 import { bootMark } from './server/boot'
-import { CAPTION_HEIGHT, captionInk, frameOptions, isDarkColor, BACKING, readAppearance, withPlace, type WindowAppearance } from './windowFrame'
+import { CAPTION_HEIGHT, captionInk, frameOptions, isDarkColor, BACKING, readAppearance, withPlace, type WindowAppearance, takeAppearance } from './windowFrame'
 
 /**
  * The window registry. Every window has a *slot*: a stable id that names
@@ -473,13 +473,14 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
   // The page's theme and the kind of place it is on (lib/placeScheme.ts). The window's backing takes
   // the theme's colour now, and both are kept with its bounds for the next launch.
   ipcMain.on('appearance:scheme', (e: IpcMainEvent, payload: unknown) => {
-    const appearance = readAppearance(payload)
     const entry = windows.get(e.sender.id)
-    if (!appearance || !entry || entry.win.isDestroyed()) return
-    const state = loadStateFile().windows[entry.slot]
-    if (state?.appearance?.scheme === appearance.scheme && state.appearance.kind === appearance.kind) return
-    entry.win.setBackgroundColor(BACKING[appearance.scheme])
-    if (state) state.appearance = appearance
+    if (!entry || entry.win.isDestroyed()) return
+    const file = loadStateFile()
+    const taken = takeAppearance(file.windows[entry.slot]?.appearance, payload)
+    if (!taken) return
+    entry.win.setBackgroundColor(taken.backing)
+    // A window always has a state entry (createWindow writes it); one that lost it gets the default bounds until the next save.
+    file.windows[entry.slot] = { ...(file.windows[entry.slot] ?? DEFAULT_STATE), appearance: taken.appearance }
     saveStateSoon()
   })
 

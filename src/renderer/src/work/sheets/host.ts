@@ -66,8 +66,9 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     chart: (chart, remove = false) => call("work.sheets.chart", { chart, remove }),
     exportAs: (format, sheet) => call("work.sheets.export", { format, ...(sheet ? { sheet } : {}) }),
     switchApp: async () => {
-      // The full editor is a page of its own: it opens in the theme this window wears.
-      const { url } = await call<{ opened: true; url?: string }>("work.sheets.switch", { scheme: isLightScheme() ? "light" : "dark" });
+      // The full editor is a page of its own. From a light window it opens light; from a dark one it
+      // follows the browser's system, as it did (dark is held: docs/agents/appearance.md).
+      const { url } = await call<{ opened: true; url?: string }>("work.sheets.switch", isLightScheme() ? { scheme: "light" } : {});
       if (url) await openUrl(url);
     },
     onPush: (listener) =>

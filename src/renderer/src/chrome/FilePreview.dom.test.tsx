@@ -50,8 +50,8 @@ describe("FilePreview", () => {
     expect(context.className).toBe("text-[var(--diff-context-strong,var(--foreground))]");
     expect(context.parentElement!.className).toBe("text-muted-foreground opacity-(--diff-context-dim)");
     expect(changed.parentElement!.className.trim()).toBe("text-muted-foreground");
-    expect(leaf("// the app")[0].className).toBe("text-faint-foreground opacity-(--diff-context-dim)");
-    expect(leaf("// why")[0].className.trim()).toBe("text-faint-foreground");
+    expect(leaf("// the app")[0].className).toBe("text-(--ink-muted-60) opacity-(--diff-context-dim)");
+    expect(leaf("// why")[0].className.trim()).toBe("text-(--ink-muted-60)");
     expect(container.innerHTML).not.toContain("opacity-70");
   });
 

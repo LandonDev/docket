@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { channels, resolve, themes } from '../renderer/src/lib/colourMath'
-import { APP_USER_MODEL_ID, BACKING, CAPTION_HEIGHT, captionInk, captionOverlay, frameOptions, isDarkColor, localUserData, readAppearance, SYMBOL, withPlace } from './windowFrame'
+import { APP_USER_MODEL_ID, BACKING, CAPTION_HEIGHT, captionInk, captionOverlay, frameOptions, isDarkColor, localUserData, readAppearance, SYMBOL, takeAppearance, withPlace } from './windowFrame'
 
 /** A token of index.css in one theme, as the plain `#rrggbb` main can hand to Electron. */
 const app = themes(readFileSync(join(__dirname, '../renderer/src/index.css'), 'utf8'))
@@ -86,6 +86,16 @@ describe("a window's theme and place, kept for its next launch", () => {
     expect(readAppearance({ scheme: 'dark', kind: 'code', more: 1 })).toEqual({ scheme: 'dark', kind: 'code' })
     for (const bad of [null, undefined, 'light', 7, {}, { scheme: 'light' }, { kind: 'work' }, { scheme: 'sepia', kind: 'work' }, { scheme: 'light', kind: 'play' }, { scheme: 1, kind: 2 }])
       expect(readAppearance(bad), JSON.stringify(bad)).toBeNull()
+  })
+
+  it("takes a page's theme and kind once: the backing to set and the appearance to keep, and nothing for a repeat or a bad message", () => {
+    expect(takeAppearance(undefined, { scheme: 'light', kind: 'work' })).toEqual({ appearance: { scheme: 'light', kind: 'work' }, backing: BACKING.light })
+    expect(takeAppearance({ scheme: 'light', kind: 'work' }, { scheme: 'dark', kind: 'work' })).toEqual({ appearance: { scheme: 'dark', kind: 'work' }, backing: BACKING.dark })
+    // The kind alone moving is kept too: the next launch reads it from the window's address.
+    expect(takeAppearance({ scheme: 'dark', kind: 'code' }, { scheme: 'dark', kind: 'work' })).toEqual({ appearance: { scheme: 'dark', kind: 'work' }, backing: BACKING.dark })
+    expect(takeAppearance({ scheme: 'dark', kind: 'work' }, { scheme: 'dark', kind: 'work' })).toBeNull()
+    expect(takeAppearance({ scheme: 'dark', kind: 'work' }, { scheme: 'neon', kind: 'work' })).toBeNull()
+    expect(takeAppearance(null, 'light')).toBeNull()
   })
 
   it("puts the kind of place in the window's own address, and leaves the address alone for a window that never said", () => {

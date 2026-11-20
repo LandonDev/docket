@@ -227,11 +227,14 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
   stop never closes what an open is starting. The canvas allows the press
   two minutes (`LONG_WRITES`), since a cold start can be slow. The document key is hex too: the converter takes a key starting
   with `-` for a flag, and the docservice escapes `_` in the links it writes.
-- **Its theme** is the asking window's. The canvas sends the theme it wears
-  with the press (`work.sheets.switch` `scheme`, from `work/sheets/host.ts`),
-  and the signed config names it as ONLYOFFICE's `uiTheme`: `theme-light` or
-  `theme-dark` (`uiThemeOf`, `fullEditor/editor.ts`). A press with no theme
-  (the phone) gets `theme-system`, the browser's own. The editor reads its
+- **Its theme** is the asking window's when that is light. A light window
+  sends `scheme: 'light'` with the press (`work.sheets.switch`, from
+  `work/sheets/host.ts`), and the signed config names it as ONLYOFFICE's
+  `uiTheme`: `theme-light` (`uiThemeOf`, `fullEditor/editor.ts`; it writes
+  `theme-dark` for a dark scheme too). A press with no theme gets
+  `theme-system`, the browser's own: the phone sends none, and neither does a
+  dark window yet, where the editor opens as it always did (dark is held,
+  docs/agents/appearance.md). The editor reads its
   theme when its page loads and never after: a later press from a window in
   another theme changes what the next load wears, not the open page.
 - **The route** `…/w/full/<token>/` asks main what the token opens, over the

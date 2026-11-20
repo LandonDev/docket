@@ -17,7 +17,7 @@ import {
   type TerminalMetaPatch,
 } from "../lib/terminalTab";
 import { isLightScheme, SCHEME_CHANGE_EVENT } from "../lib/appearance";
-import { ANSI, MINIMUM_CONTRAST, TERMINAL_FALLBACK } from "../lib/terminalPalette";
+import { ANSI, MINIMUM_CONTRAST, TERMINAL_DARK, TERMINAL_FALLBACK } from "../lib/terminalPalette";
 import {
   applyTerminalChrome,
   fitTerminal,
@@ -65,16 +65,15 @@ export function terminalTheme(light: boolean) {
   const foreground = cssColor("var(--color-foreground)", fallback.foreground);
   const ink = hexOf(foreground, fallback.foreground);
   const ground = hexOf(cssColor("var(--color-background)", fallback.background), fallback.background);
+  // The pane paints the ground. In light xterm is told its colour at zero alpha, so reverse video
+  // and the contrast floor (MINIMUM_CONTRAST) work from the colour on screen, not from black; the
+  // cursor's cut-out is the ground and a selection the ink at 18% (8% unfocused). Dark keeps the
+  // four values it had.
+  const own = light ? { background: `${ground}00`, cursorAccent: ground, selectionBackground: `${ink}2e`, selectionInactiveBackground: `${ink}14` } : TERMINAL_DARK;
   return {
-    // The pane paints the ground. xterm is told its colour at zero alpha, so reverse video and
-    // the contrast floor (MINIMUM_CONTRAST) work from the colour on screen, not from black.
-    background: `${ground}00`,
+    ...own,
     foreground,
     cursor: cssColor("var(--color-accent)", fallback.accent),
-    cursorAccent: ground,
-    // A selection is the ink at 18%, and at 8% while the terminal is not focused.
-    selectionBackground: `${ink}2e`,
-    selectionInactiveBackground: `${ink}14`,
     // The app's scrollbar tokens (docs/DESIGN.md "Scrolling"); index.css sizes the bar.
     ...terminalScrollbar(),
     ...(light ? ANSI.light : ANSI.dark),

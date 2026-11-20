@@ -51,6 +51,17 @@ export const TERMINAL_FALLBACK = {
   light: { foreground: "#13161c", background: "#ffffff", accent: "#0d63d3" },
 } as const;
 
+/** What the dark terminal's theme held before the pane's own colours were
+ *  read for it, kept as it was: xterm's background as transparent black, the
+ *  cursor's cut-out black, a selection white at 18% (8% unfocused). Light
+ *  takes these from the pane (surfaces/TerminalView.tsx `terminalTheme`). */
+export const TERMINAL_DARK = {
+  background: "#00000000",
+  cursorAccent: "#000000",
+  selectionBackground: "rgba(255,255,255,0.18)",
+  selectionInactiveBackground: "rgba(255,255,255,0.08)",
+} as const;
+
 /** The floor xterm holds a program's own colours to as it draws (its
  *  `minimumContrastRatio`): 4.5:1 on the light pane, where a program written
  *  for a dark terminal prints pale colours; none in dark, held as it was. */

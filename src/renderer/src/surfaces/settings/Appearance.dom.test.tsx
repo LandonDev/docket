@@ -40,6 +40,13 @@ describe("Appearance", () => {
     expect(localStorage.getItem("monocode.colorScheme.work")).toBeNull();
   });
 
+  it("shows a choice made in another window", async () => {
+    render(<AppearancePage />);
+    localStorage.setItem("monocode.colorScheme", "light");
+    await act(async () => void window.dispatchEvent(new StorageEvent("storage", { key: "monocode.colorScheme" })));
+    expect(screen.getByRole("combobox", { name: "Theme" }).textContent).toContain("Light");
+  });
+
   it("saves the editor's type size", async () => {
     render(<AppearancePage />);
     await choose("Editor font size", "14px");

@@ -51,7 +51,7 @@ const RING_R = 8 - 1.25 / 2;
 const RING_W = 1.25;
 const CHECK_W = 1.75;
 
-const MARK_TONE: Record<TaskState, string> = { pending: "text-faint-foreground", active: "text-foreground", done: "text-faint-foreground" };
+const MARK_TONE: Record<TaskState, string> = { pending: "text-(--ink-muted-60)", active: "text-foreground", done: "text-(--ink-45)" };
 
 const DONUT_W = 1.75;
 const DONUT_R = 8 - DONUT_W / 2;
@@ -67,7 +67,7 @@ function TaskTimeText({ time, state }: { time: TaskTime; state: TaskState }) {
   const now = useNow(time.from !== undefined);
   const ms = time.from !== undefined && now > 0 ? time.ms + Math.max(0, now - time.from) : time.ms;
   if (ms < TIME_SHOWN_FROM_MS) return null;
-  return <span className={cn("ms-auto shrink-0 text-xs leading-5 tabular-nums", state === "done" ? "text-faint-foreground" : "text-muted-foreground")}>{duration(ms)}</span>;
+  return <span className={cn("ms-auto shrink-0 text-xs leading-5 tabular-nums", state === "done" ? "text-(--ink-45)" : "text-muted-foreground")}>{duration(ms)}</span>;
 }
 
 function TaskDonut({ done, total }: { done: number; total: number }) {
@@ -110,7 +110,7 @@ function CompactTaskRow({ task }: { task: Task }) {
     <li className="flex min-h-5 items-start gap-2">
       <TaskMark state={task.state} className="mt-1 size-3" />
       <TruncateTip text={task.label}>
-        <span data-state={task.state} className={cn("task-label relative min-w-0 truncate text-xs leading-5", task.state === "active" ? "text-foreground" : task.state === "done" ? "text-faint-foreground" : "text-muted-foreground")}>
+        <span data-state={task.state} className={cn("task-label relative min-w-0 truncate text-xs leading-5", task.state === "active" ? "text-foreground" : task.state === "done" ? "text-(--ink-45)" : "text-muted-foreground")}>
           {task.label}
           <span aria-hidden className="task-strike" />
         </span>
@@ -129,7 +129,7 @@ function TaskRow({ task }: { task: Task }) {
   const label = (
     <TruncateTip text={task.label}>
       {/* One element in every state, so the strike draws when the active row finishes. */}
-      <span data-state={task.state} className={cn("task-label relative min-w-0 text-[13px] leading-5", task.state === "active" ? "break-words text-foreground" : task.state === "done" ? "truncate text-faint-foreground" : "truncate text-muted-foreground")}>
+      <span data-state={task.state} className={cn("task-label relative min-w-0 text-[13px] leading-5", task.state === "active" ? "break-words text-foreground" : task.state === "done" ? "truncate text-(--ink-45)" : "truncate text-muted-foreground")}>
         {task.label}
         <span aria-hidden className="task-strike" />
       </span>

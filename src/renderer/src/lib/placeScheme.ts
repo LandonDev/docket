@@ -29,7 +29,9 @@ export function placeKind(projectCwd: string, catalog: Pick<WorkspaceCatalog, "l
   if (projectCwd === "~") return "code";
   const workspace = workspaceByPath(catalog.workspaces, projectCwd);
   if (workspace) return workspace.kind === "work" ? "work" : "code";
-  // A folder no row names is a code folder, once every row has arrived.
+  // A folder no row names is taken for a code folder once the catalog has loaded. (It is loaded
+  // from its first host's answer: a Work workspace on a host that has not answered and left no row
+  // in the launch mirror is judged code until its row arrives.)
   return catalog.loaded ? "code" : null;
 }
 
@@ -110,6 +112,16 @@ function moveTo(next: PlaceKind): void {
   if (next === kind) return;
   kind = next;
   savePlaceKind(next);
+  // The window's address names its kind for boot.js: kept in step, so a reload paints this place's theme first.
+  try {
+    const here = new URL(window.location.href);
+    if (here.searchParams.has("place")) {
+      here.searchParams.set("place", next);
+      window.history.replaceState(window.history.state, "", here);
+    }
+  } catch {
+    // An address that cannot be rewritten: the saved kind still serves the next load.
+  }
   applyPlaceScheme();
 }
 

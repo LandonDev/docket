@@ -134,7 +134,7 @@ describe("a task's time", () => {
       />,
     );
     expect(timeOf(container, 0)).toBe("12s");
-    expect(container.querySelector("li .tabular-nums")?.className).toContain("text-faint-foreground");
+    expect(container.querySelector("li .tabular-nums")?.className).toContain("text-(--ink-45)");
     expect(timeOf(container, 1)).toBeNull();
     expect(timeOf(container, 2)).toBeNull();
   });
@@ -275,7 +275,7 @@ describe("the compact rows", () => {
       expect(label.className).not.toContain("break-words");
     }
     expect(labelOf(container, LONG).className).toContain("text-foreground");
-    expect(labelOf(container, "Read the brief").className).toContain("text-faint-foreground");
+    expect(labelOf(container, "Read the brief").className).toContain("text-(--ink-45)");
     expect(labelOf(container, "Tests").className).toContain("text-muted-foreground");
   });
 

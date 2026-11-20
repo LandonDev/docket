@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageRow, PageSection } from "../../components/page";
 import {
   EDITOR_FONT_SIZES,
+  isThemeKey,
   loadEditorFontSize,
   loadThemePreference,
   saveEditorFontSize,
@@ -32,6 +33,14 @@ export function AppearancePage() {
   const work = useWorkOn();
   const [themes, setThemes] = useState(read);
   const [fontSize, setFontSize] = useState<EditorFontSize>(loadEditorFontSize);
+  // A choice made in another window shows here too.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent): void => {
+      if (event.key === null || isThemeKey(event.key)) setThemes(read());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   const choose = (kind: PlaceKind, next: ThemePreference): void => {
     saveThemePreference(kind, next);
     setThemes(read());

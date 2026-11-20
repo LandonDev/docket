@@ -33,16 +33,25 @@ describe('the terminal chrome reads the tokens', () => {
     expect(osc.bg).toBe(light ? '#ffffff' : '#141516')
   })
 
-  it.each(['dark', 'light'] as const)('tells xterm the pane’s own colour at zero alpha, so reverse video and the contrast floor start from what is on screen (%s)', (scheme) => {
-    computeTokens(scheme)
-    const light = scheme === 'light'
-    const theme = terminalTheme(light)
-    const ground = light ? '#ffffff' : '#141516'
-    expect(theme.background).toBe(`${ground}00`)
+  it('in light tells xterm the pane’s own colour at zero alpha, so reverse video and the contrast floor start from what is on screen', () => {
+    computeTokens('light')
+    const theme = terminalTheme(true)
+    expect(theme.background).toBe('#ffffff00')
     // The bar cursor's cut-out and a selection come from the same two colours.
-    expect(theme.cursorAccent).toBe(ground)
-    expect(theme.selectionBackground).toBe(`${light ? '#13161c' : '#e7e8ea'}2e`)
-    expect(theme.selectionInactiveBackground).toBe(`${light ? '#13161c' : '#e7e8ea'}14`)
+    expect(theme.cursorAccent).toBe('#ffffff')
+    expect(theme.selectionBackground).toBe('#13161c2e')
+    expect(theme.selectionInactiveBackground).toBe('#13161c14')
+  })
+
+  it('in dark keeps the four values it always had', () => {
+    computeTokens('dark')
+    const theme = terminalTheme(false)
+    expect({ background: theme.background, cursorAccent: theme.cursorAccent, selectionBackground: theme.selectionBackground, selectionInactiveBackground: theme.selectionInactiveBackground }).toEqual({
+      background: '#00000000',
+      cursorAccent: '#000000',
+      selectionBackground: 'rgba(255,255,255,0.18)',
+      selectionInactiveBackground: 'rgba(255,255,255,0.08)'
+    })
   })
 
   it('carries the sixteen ANSI colours of the theme, with light’s whites as grays', () => {

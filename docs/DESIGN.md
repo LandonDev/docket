@@ -172,30 +172,41 @@ never the only cue: the sector's name is beside each), the runner's
 coin and star, and a field's border on the rail (1.37:1 in dark).
 
 **Dark is held.** The owner works in dark while light is built, so dark
-keeps every value it had, and no commit changes how it looks. Where the
-contract finds a dark pair under its floor, the test records it
-(`HELD_IN_DARK`) and leaves it: white on dark's accent (2.88:1) and on its
-red (2.77:1), the neutral chart's two quieter steps (2.42:1 and 1.85:1),
-the white letter on seven of Monaco's completion badges, and the
-terminal's black and bright black. Looks that light changes and dark
-keeps are tokens with a value per theme, grouped in index.css under "Held
-in dark": a diff's context line (dimmed in dark, stepped back by ink in
-light), the Inbox diff's code (green keywords and amber type names in
-dark, the transcript's two inks in light), a link (the accent in dark; an
-agent page's link keeps its sky blue there as `link-color`), an alert's
-description and a search hit's line (`near-foreground`: foreground at 80%
-in dark), struck words and a command's strings and flags
-(`soft-foreground`: foreground at 70% in dark), a slide's ground (the bare canvas in dark, `stage` with a 16px
-inset in light), a raster add-on
-mark's tile, and Monaco's completion list (IDEA's row and badge fills in
-dark, the muted row and darker fills in light). A brand mark's colour
-is judged only on the light menu, and the terminal holds a program's
-colours to 4.5:1 only on the light pane. Each is his to change in dark:
-`docs/agents/appearance.md` lists what to flip. One thing did move in
-dark, by a few levels of gray and no more: text that was an opacity of
-`foreground` under 70% (a done task, a line number in a markdown file, a
-completion's detail) is now `muted-foreground` or `faint-foreground`, the
-nearest of the three inks.
+keeps every value it had, and no commit changes how it looks.
+`lib/darkHeld.test.ts` compares the dark token block and the dark code
+palettes with a frozen copy (`lib/darkHeld.json`): a dark value moves only
+when he asks, and that file moves with it. Where the contract finds a dark
+pair under its floor, the test records it (`HELD_IN_DARK`, and
+`ANSI_LIFTED` for the terminal's black and bright black) and leaves it:
+white on dark's accent (2.88:1) and on its red (2.77:1), the neutral
+chart's two quieter steps (2.42:1 and 1.85:1), the white letter on seven of
+Monaco's completion badges, and the lowest steps of dark's text ladder.
+
+A look that light changes and dark keeps is a token with a value per
+theme, grouped in index.css under "Held in dark":
+
+- Text. In dark, quieter text is still a mix of `foreground`, as it was: a
+  ladder of tokens named for the share (`ink-35` to `ink-55`,
+  `ink-muted-60`, `soft-foreground` at 70%, `near-foreground` at 80%). In
+  light each is one of the three inks, which is the rule above.
+- A link is the accent in dark; an agent page's link keeps its sky blue
+  there (`link-color`).
+- A diff's context line is dimmed in dark and steps back by ink in light;
+  the Inbox diff's code is green keywords and amber type names in dark and
+  the transcript's two inks in light.
+- A slide's ground is the bare canvas in dark and `stage` with a 16px inset
+  in light; a raster add-on mark's tile is clear in dark.
+- The names work-kit reads and TempCode never defined (the date picker's
+  colours, its one radius, its ring duration, its floating sheet's shadow)
+  have a value in light and none in dark.
+- Monaco's completion list keeps IDEA's row and badge fills in dark and
+  takes the muted row and darker fills in light; the terminal keeps its
+  dark theme's four values and holds a program's colours to 4.5:1 only on
+  the light pane; a brand mark's colour is judged only on the light menu;
+  the full editor follows the browser's system from a dark window.
+
+Each is his to change in dark: `docs/agents/appearance.md` lists the one
+edit that flips it.
 
 What draws with its own theme takes it from the tokens or carries a table
 per theme, and follows a change live:

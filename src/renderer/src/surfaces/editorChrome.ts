@@ -43,7 +43,7 @@ function editorThemeStyles(dark: boolean) {
     },
     ".cm-gutters": {
       backgroundColor: "transparent",
-      color: "var(--faint-foreground)",
+      color: "var(--ink-38)",
       borderRight:
         "1px solid color-mix(in srgb, var(--foreground) 7%, transparent)",
       paddingLeft: "4px",
@@ -58,17 +58,17 @@ function editorThemeStyles(dark: boolean) {
     ".cm-foldGutter .cm-gutterElement": {
       padding: "0 2px",
       cursor: "pointer",
-      color: "var(--faint-foreground)",
+      color: "var(--ink-45)",
     },
     ".cm-foldPlaceholder": {
-      color: "var(--faint-foreground)",
+      color: "var(--ink-40)",
     },
     ".cm-activeLine": {
       backgroundColor: "color-mix(in srgb, var(--foreground) 10%, transparent)",
     },
     ".cm-activeLineGutter": {
       backgroundColor: "color-mix(in srgb, var(--foreground) 10%, transparent)",
-      color: "var(--muted-foreground)",
+      color: "var(--soft-foreground)",
     },
     ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection":
       {
@@ -120,7 +120,7 @@ function editorThemeStyles(dark: boolean) {
       color: "var(--foreground)",
     },
     ".cm-completionDetail": {
-      color: "var(--muted-foreground)",
+      color: "var(--ink-50)",
       fontStyle: "normal",
       marginLeft: "8px",
     },

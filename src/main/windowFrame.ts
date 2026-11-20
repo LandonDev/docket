@@ -39,6 +39,19 @@ export function readAppearance(raw: unknown): WindowAppearance | null {
   return { scheme, kind }
 }
 
+/** What main does when a page says its theme and kind: nothing for a message it cannot read or one
+ *  that repeats what the window's state already holds; else the appearance to keep with the
+ *  window's bounds and the backing colour to give the window now. */
+export function takeAppearance(
+  held: WindowAppearance | null | undefined,
+  payload: unknown
+): { appearance: WindowAppearance; backing: string } | null {
+  const appearance = readAppearance(payload)
+  if (!appearance) return null
+  if (held && held.scheme === appearance.scheme && held.kind === appearance.kind) return null
+  return { appearance, backing: BACKING[appearance.scheme] }
+}
+
 /** A window's address with the kind of place it last showed, so boot.js sets
  *  that kind's theme before the first paint. localStorage is shared by every
  *  window; the address is this window's own. */

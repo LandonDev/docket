@@ -208,7 +208,7 @@ export function highlightCode(text: string, dimmed: boolean): ReactElement {
 }
 
 /** Code tints are neutral by weight, so green and red mean only added and
- *  removed lines: keywords in foreground, the rest muted, comments faint. A
+ *  removed lines: keywords in foreground, the rest muted, comments quieter. A
  *  context line (`dimmed`) steps back by the theme's own means, which the
  *  tokens carry: in light by ink (its keywords muted too), since an opacity
  *  falls under 3:1 on white; in dark by the dim it always had. */
@@ -220,7 +220,7 @@ function tokenizeLine(text: string, dimmed: boolean): ReactElement {
     trimmed.startsWith("///") ||
     trimmed.startsWith("#")
   ) {
-    return <span className={`text-faint-foreground ${dim}`}>{text}</span>;
+    return <span className={`text-(--ink-muted-60) ${dim}`}>{text}</span>;
   }
 
   const parts: { text: string; keyword: boolean }[] = [];

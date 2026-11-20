@@ -151,7 +151,7 @@ export function MessageQueue({
                     // The `+` button's 28px box, so the grip centres on `+`'s axis; inside it the
                     // grip centres on the text's first 20px line, as the box centres its controls
                     // on the field's first line. The text starts 8px after the box, as the field's does.
-                    className="-my-1.5 flex w-7 shrink-0 cursor-grab touch-none justify-center self-stretch py-1.5 text-faint-foreground active:cursor-grabbing"
+                    className="-my-1.5 flex w-7 shrink-0 cursor-grab touch-none justify-center self-stretch py-1.5 text-(--ink-muted-60) active:cursor-grabbing"
                   >
                     <span className="flex h-5 items-center">
                       <GripVertical className="size-3.5" />

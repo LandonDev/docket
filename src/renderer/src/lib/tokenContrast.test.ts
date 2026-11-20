@@ -29,7 +29,13 @@ function ratio(theme: Theme, ink: string, ground: string, base = "--background")
   return contrast(over(value(theme, ink), under), under);
 }
 
-type Pair = { ink: string; on: string; base?: string };
+/** `only` keeps a pair to the one theme that has it (a name work-kit reads has no value in dark). */
+type Pair = { ink: string; on: string; base?: string; only?: "light" };
+const wash = (token: string, percent: number): string => `color-mix(in srgb, var(${token}) ${percent}%, transparent)`;
+/** The hover vocabulary (docs/DESIGN.md "Type tints"): foreground at 5% on a hovered row, 7% on a ghost button, 12% pressed. */
+const HOVER_WASHES = [5, 7, 12].map((percent) => wash("--foreground", percent));
+const CHROME = ["--background", "--sidebar", "--card"];
+const STATUS = ["--thread-success", "--thread-warning", "--thread-danger", "--thread-info"];
 const pairs = (inks: string[], grounds: string[]): Pair[] => inks.flatMap((ink) => grounds.map((on) => ({ ink, on })));
 
 const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
@@ -55,16 +61,30 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
       { ink: "--popover-foreground", on: "--popover" },
       { ink: "--secondary-foreground", on: "--secondary" },
       { ink: "--ui-wash-foreground", on: "--ui-wash" },
-      // work-kit's date picker reads these names; each must be a pair that reads.
-      { ink: "--calendar-selected-foreground", on: "--calendar-selected" },
-      { ink: "--calendar-active-foreground", on: "--calendar-active" },
-      { ink: "--calendar-today-foreground", on: "--calendar-today" },
-      { ink: "--foreground", on: "--calendar-range" },
+      // work-kit's date picker reads these names; each must be a pair that reads. Dark gives them no value, as before.
+      { ink: "--calendar-selected-foreground", on: "--calendar-selected", only: "light" },
+      { ink: "--calendar-active-foreground", on: "--calendar-active", only: "light" },
+      { ink: "--calendar-today-foreground", on: "--calendar-today", only: "light" },
+      { ink: "--foreground", on: "--calendar-range", only: "light" },
+      // Text on a hovered or pressed row, and a status colour on its own tint (an alert's tone).
+      ...["--foreground", "--muted-foreground"].flatMap((ink) => HOVER_WASHES.flatMap((on) => CHROME.map((base) => ({ ink, on, base })))),
+      ...STATUS.flatMap((ink) => CHROME.map((base) => ({ ink, on: wash(ink, 10), base }))),
+      // The ladder's two upper steps (a completion's detail, a signature, a quote): muted-foreground in light.
+      ...pairs(["--ink-50", "--ink-55"], [...PAGE, "--popover", "--muted"]),
       { ink: "--background", on: "--foreground" },
     ],
   },
-  // Text that may be missed: a line number, ghost text, a done task, a diff's context.
-  { name: "quiet text", floor: 3, pairs: pairs(["--faint-foreground"], SURFACES) },
+  // Text that may be missed: a line number, ghost text, a done task, a diff's comment; and the same on a hovered or pressed row.
+  {
+    name: "quiet text",
+    floor: 3,
+    pairs: [
+      ...pairs(["--faint-foreground"], SURFACES),
+      ...HOVER_WASHES.flatMap((on) => CHROME.map((base) => ({ ink: "--faint-foreground", on, base }))),
+      // The ladder's lower steps: faint-foreground in light, the mixes dark always had.
+      ...pairs(["--ink-35", "--ink-38", "--ink-40", "--ink-45", "--ink-muted-60"], [...PAGE, "--popover"]),
+    ],
+  },
   {
     // A mark is seen, not read: the focus ring, a type's glyph, a chart's series, an agent page's two extra series.
     name: "mark",
@@ -123,7 +143,7 @@ function codePairs(name: "dark" | "light"): { label: string; ink: string; on: st
  * left alone. Each is a change for him to ask for, never one to make for
  * him (docs/agents/appearance.md "Dark is held").
  */
-const HELD_IN_DARK: (Pair & { ratio: number })[] = [
+const HELD_IN_DARK: (Pair & { ratio: number; floor?: number })[] = [
   // White on the lighter fills dark uses for the accent and for red.
   { ink: "--accent-foreground", on: "--accent", ratio: 2.88 },
   { ink: "--destructive-foreground", on: "--destructive", ratio: 2.77 },
@@ -132,10 +152,20 @@ const HELD_IN_DARK: (Pair & { ratio: number })[] = [
   { ink: "--chart-neutral", on: "--card", ratio: 2.44 },
   { ink: "--chart-neutral-rest", on: "--background", ratio: 1.85 },
   { ink: "--chart-neutral-rest", on: "--card", ratio: 1.89 },
+  // The ladder dark's quieter text always stood on: a placeholder, a pending mark and a diff's comment are a
+  // hair under 3:1, a completion's detail a hair under 4.5:1.
+  ...Object.entries({ "--background": 2.85, "--card": 2.85, "--popover": 2.84 }).map(([on, ratio]) => ({ ink: "--ink-35", on, ratio, floor: 3 })),
+  { ink: "--ink-muted-60", on: "--card", ratio: 2.99, floor: 3 },
+  { ink: "--ink-muted-60", on: "--popover", ratio: 2.94, floor: 3 },
+  ...Object.entries({ "--card": 4.43, "--popover": 4.36, "--muted": 4.16 }).map(([on, ratio]) => ({ ink: "--ink-50", on, ratio })),
+  // Supporting and quiet text on a pressed row (foreground at 12%).
+  { ink: "--muted-foreground", on: HOVER_WASHES[2], base: "--card", ratio: 4.31 },
+  { ink: "--faint-foreground", on: HOVER_WASHES[2], base: "--background", ratio: 2.91, floor: 3 },
+  { ink: "--faint-foreground", on: HOVER_WASHES[2], base: "--card", ratio: 2.67, floor: 3 },
   // The white letter on IDEA's completion badges.
   ...Object.entries({ class: 3.87, interface: 3.32, enum: 4, method: 4.36, field: 2.97, variable: 3.25, keyword: 4.42 }).map(([kind, ratio]) => ({ ink: "--editor-symbol-foreground", on: `--editor-symbol-${kind}`, ratio })),
 ];
-const held = (p: { ink: string; on: string }): boolean => HELD_IN_DARK.some((h) => h.ink === p.ink && h.on === p.on);
+const held = (p: { ink: string; on: string; base?: string }): boolean => HELD_IN_DARK.some((h) => h.ink === p.ink && h.on === p.on && h.base === p.base);
 
 /**
  * Named exceptions: colours that are someone else's or a picture's, one
@@ -164,7 +194,7 @@ describe("the contrast contract", () => {
   for (const [name, theme] of THEMES) {
     for (const tier of TIERS) {
       it(`${tier.name}: ${tier.floor}:1 in the ${name} theme`, () => {
-        const measured = tier.pairs.filter((p) => !(name === "dark" && held(p))).map((p) => ({ ...p, ratio: ratio(theme, p.ink, p.on, p.base) }));
+        const measured = tier.pairs.filter((p) => (!p.only || p.only === name) && !(name === "dark" && held(p))).map((p) => ({ ...p, ratio: ratio(theme, p.ink, p.on, p.base) }));
         if (process.env.TOKEN_CONTRAST_PRINT) {
           const low = measured.reduce((a, b) => (b.ratio < a.ratio ? b : a));
           console.log(`${name} ${tier.name}: lowest ${low.ink} on ${low.on} ${low.ratio.toFixed(2)}`);
@@ -194,13 +224,13 @@ describe("the contrast contract", () => {
 
   it("holds dark as it was: each pair under its floor there is recorded at its ratio, and none of them has moved", () => {
     const [, dark] = THEMES.find(([name]) => name === "dark")!;
-    expect(HELD_IN_DARK.map((h) => `${h.ink} on ${h.on}: ${ratio(dark, h.ink, h.on).toFixed(2)}`)).toEqual(HELD_IN_DARK.map((h) => `${h.ink} on ${h.on}: ${h.ratio.toFixed(2)}`));
+    expect(HELD_IN_DARK.map((h) => `${h.ink} on ${h.on}: ${ratio(dark, h.ink, h.on, h.base).toFixed(2)}`)).toEqual(HELD_IN_DARK.map((h) => `${h.ink} on ${h.on}: ${h.ratio.toFixed(2)}`));
     // A held pair is one a tier checks: a stale entry here would hide nothing and say nothing.
     const checked = [...TIERS.flatMap((tier) => tier.pairs), ...KIND_BADGES.map((on) => ({ ink: "--editor-symbol-foreground", on }))];
-    for (const h of HELD_IN_DARK) expect(checked.some((p) => p.ink === h.ink && p.on === h.on), `${h.ink} on ${h.on}`).toBe(true);
+    for (const h of HELD_IN_DARK) expect(checked.some((p) => p.ink === h.ink && p.on === h.on && (p as Pair).base === h.base), `${h.ink} on ${h.on}`).toBe(true);
     // And light holds none of them back: every one passes there.
     const [, light] = THEMES.find(([name]) => name === "light")!;
-    for (const h of HELD_IN_DARK) expect(ratio(light, h.ink, h.on), `${h.ink} on ${h.on} in light`).toBeGreaterThanOrEqual(h.ink.startsWith("--chart") ? 3 : 4.5);
+    for (const h of HELD_IN_DARK) expect(ratio(light, h.ink, h.on, h.base), `${h.ink} on ${h.on} in light`).toBeGreaterThanOrEqual(h.floor ?? (h.ink.startsWith("--chart") ? 3 : 4.5));
   });
 
   it("reads the tokens it checks", () => {
@@ -209,6 +239,6 @@ describe("the contrast contract", () => {
     expect(luminance(value(light, "--background"))).toBeCloseTo(1, 3);
     // A thin edge is measured as drawn, over its ground, never as its own colour.
     expect(ratio(light, "--border", "--background")).toBeLessThan(2);
-    for (const tier of TIERS) for (const p of tier.pairs) for (const [, theme] of THEMES) expect(theme.has(p.ink) && (theme.has(p.on) || !p.on.startsWith("--")), `${p.ink} on ${p.on}`).toBe(true);
+    for (const tier of TIERS) for (const p of tier.pairs) for (const [, theme] of THEMES) expect((theme.has(p.ink) || !p.ink.startsWith("--")) && (theme.has(p.on) || !p.on.startsWith("--")), `${p.ink} on ${p.on}`).toBe(true);
   });
 });

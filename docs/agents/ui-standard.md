@@ -53,9 +53,9 @@
   `lib/tokenContrast.test.ts` holds every pair to the contrast contract and
   `lib/colourGuard.test.ts` refuses a `dark:` utility, a `.theme-light`
   selector outside the token blocks, black or white by name and text as an
-  opacity. Dark is held as it was while light is built: a new look goes in
-  light's value and dark keeps its own
-  ([appearance.md](appearance.md) "Dark is held"). Look at both themes:
+  opacity. Dark is held as it was while light is built
+  (`lib/darkHeld.test.ts`): a new look goes in light's value and dark keeps
+  its own ([appearance.md](appearance.md) "Dark is held"). Look at both themes:
   `ui:preview --shot` writes each.
 - Every `overflow-y-auto` class string names its horizontal policy:
   `overflow-x-hidden` for lists or `overflow-x-auto` for content that needs

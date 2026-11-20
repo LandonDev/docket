@@ -268,6 +268,23 @@ describe("a window wears the theme of its place", () => {
     expect(light()).toBe(true);
   });
 
+  it("keeps the kind in the window's address in step, so a reload paints this place's theme first", () => {
+    window.history.replaceState(null, "", "/?place=code");
+    launch(CODE, { code: "dark", work: "light" });
+    project.setProjectCwd(WORK);
+    expect(new URLSearchParams(window.location.search).get("place")).toBe("work");
+    project.setProjectCwd(CODE);
+    expect(new URLSearchParams(window.location.search).get("place")).toBe("code");
+  });
+
+  it("writes no kind into an address that never had one (the web /ui, a first launch)", () => {
+    launch(CODE, { code: "dark", work: "light" });
+    project.setProjectCwd(WORK);
+    expect(window.location.search).toBe("");
+    // The saved kind serves the next load there.
+    expect(localStorage.getItem("monocode.placeKind")).toBe("work");
+  });
+
   it("does not change when Settings, the Inbox, the Outbox, Search or Notes opens over the place", () => {
     launch(WORK, { code: "dark", work: "light" });
     expect(light()).toBe(true);

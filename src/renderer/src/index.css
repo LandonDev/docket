@@ -40,19 +40,6 @@
      `HOST_WASH`). */
   --ui-wash: var(--muted);
   --ui-wash-foreground: var(--foreground);
-  /* work-kit's date picker (Mail's Send later): the chosen day and a period
-     cell are the primary pair, today and a range the muted fill. Its editor
-     sizes its corners from one radius, our `lg`; its cells' ring moves over
-     the fast duration. */
-  --calendar-selected: var(--primary);
-  --calendar-selected-foreground: var(--primary-foreground);
-  --calendar-active: var(--primary);
-  --calendar-active-foreground: var(--primary-foreground);
-  --calendar-range: var(--muted);
-  --calendar-today: var(--muted);
-  --calendar-today-foreground: var(--foreground);
-  --radius: 8px;
-  --ring-duration: var(--dur-fast);
   /* Ink: foreground for what matters, muted for what supports it, faint for
      what may be missed (a line number, ghost text, a done task). Text is one
      of the three, never an opacity of foreground (docs/DESIGN.md "The light
@@ -197,7 +184,7 @@
   --editor-type-name: #6c9edd;
   --editor-constant-name: #c0a85c;
   --editor-keyword-name: #cc7832;
-  --editor-symbol-foreground: #ffffff;
+  --editor-symbol-foreground: #fff;
   --editor-symbol-text: #6b6e76;
   --editor-symbol-class: #4a7cf0;
   --editor-symbol-interface: #34a05a;
@@ -222,6 +209,35 @@
   --link-color: #7dd3fc;
   --near-foreground: color-mix(in srgb, var(--foreground) 80%, transparent);
   --soft-foreground: color-mix(in srgb, var(--foreground) 70%, transparent);
+  /* Quieter text stood on a ladder of mixes here, and still does: a number
+     is the share of foreground (`ink-muted-60` of muted-foreground). In
+     light each is one of the three inks, which is the rule (docs/DESIGN.md
+     "The light theme"). 35 a placeholder; 38 a gutter's line numbers; 40 a
+     fold's placeholder, a code lens, a dimmed parameter; 45 a done task, a
+     fold mark; 50 a completion's detail, a usage's line; 55 a signature, a
+     quote; muted-60 a pending mark, a drag grip, a diff's comment. */
+  --ink-35: color-mix(in srgb, var(--foreground) 35%, transparent);
+  --ink-38: color-mix(in srgb, var(--foreground) 38%, transparent);
+  --ink-40: color-mix(in srgb, var(--foreground) 40%, transparent);
+  --ink-45: color-mix(in srgb, var(--foreground) 45%, transparent);
+  --ink-50: color-mix(in srgb, var(--foreground) 50%, transparent);
+  --ink-55: color-mix(in srgb, var(--foreground) 55%, transparent);
+  --ink-muted-60: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  /* work-kit reads these names, and TempCode never gave them a value: its
+     date picker's chosen day, today and range, the one radius its editor
+     sizes corners from, its cells' ring duration, and the shadow of its
+     floating sheet (Mail's composer). Light gives each one; here they stay
+     without, as they were (`initial` is no value at all). */
+  --calendar-selected: initial;
+  --calendar-selected-foreground: initial;
+  --calendar-active: initial;
+  --calendar-active-foreground: initial;
+  --calendar-range: initial;
+  --calendar-today: initial;
+  --calendar-today-foreground: initial;
+  --radius: initial;
+  --ring-duration: initial;
+  --sheet-shadow: none;
   --diff-context-dim: 0.7;
   --diff-context-strong: initial;
   --pr-code-keyword: var(--success);
@@ -318,6 +334,27 @@ html.theme-light {
   --link-color: var(--link);
   --near-foreground: var(--foreground);
   --soft-foreground: var(--muted-foreground);
+  --ink-35: var(--faint-foreground);
+  --ink-38: var(--faint-foreground);
+  --ink-40: var(--faint-foreground);
+  --ink-45: var(--faint-foreground);
+  --ink-50: var(--muted-foreground);
+  --ink-55: var(--muted-foreground);
+  --ink-muted-60: var(--faint-foreground);
+  /* work-kit's date picker: the chosen day and a period cell are the primary
+     pair, today and a range the muted fill. Its editor's one radius is our
+     `lg`; its cells' ring moves over the fast duration; its floating sheet
+     takes the one shadow and the hairline, as every floating layer does. */
+  --calendar-selected: var(--primary);
+  --calendar-selected-foreground: var(--primary-foreground);
+  --calendar-active: var(--primary);
+  --calendar-active-foreground: var(--primary-foreground);
+  --calendar-range: var(--muted);
+  --calendar-today: var(--muted);
+  --calendar-today-foreground: var(--foreground);
+  --radius: 8px;
+  --ring-duration: var(--dur-fast);
+  --sheet-shadow: 0 0 0 1px var(--border), var(--shadow-overlay);
   --diff-context-dim: 1;
   --diff-context-strong: var(--muted-foreground);
   --pr-code-keyword: var(--foreground);
@@ -540,12 +577,10 @@ html.theme-light {
   scale: 1;
 }
 
-/* work-kit's floating sheet (Mail's composer) asks for this by name: it is a
-   floating layer, so it takes the one shadow and the hairline. */
+/* work-kit's floating sheet (Mail's composer) asks for this by name; the
+   theme says what it is (`sheet-shadow`). */
 .smooth-shadow-ring-xl {
-  box-shadow:
-    0 0 0 1px var(--border),
-    var(--shadow-overlay);
+  box-shadow: var(--sheet-shadow);
 }
 
 /* The toast stack (sonner) on our motion and layers instead of its 400-500ms
@@ -845,7 +880,7 @@ input,
   padding: 0.15em 0 0.15em 0.75em;
   border-left: 2px solid
     color-mix(in srgb, var(--foreground) 16%, transparent);
-  color: var(--muted-foreground);
+  color: var(--ink-55);
 }
 
 .workspace-surface[aria-hidden="true"] {
@@ -895,8 +930,8 @@ html.is-resizing * {
 }
 
 .markdown-source-field::placeholder {
-  color: var(--faint-foreground);
-  -webkit-text-fill-color: var(--faint-foreground);
+  color: var(--ink-35);
+  -webkit-text-fill-color: var(--ink-35);
 }
 
 .scrollbar-none::-webkit-scrollbar {
@@ -1114,7 +1149,7 @@ header[data-tauri-drag-region] button {
   text-overflow: ellipsis;
   white-space: pre;
   opacity: 1 !important;
-  color: var(--muted-foreground);
+  color: var(--ink-55);
 }
 .monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .right {
   flex: 0 0 auto !important;
@@ -1125,7 +1160,7 @@ header[data-tauri-drag-region] button {
   font-size: 100% !important;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--muted-foreground) !important;
+  color: var(--ink-50) !important;
   margin-right: 6px;
 }
 /* Kind-coloured names. */
@@ -1199,7 +1234,7 @@ header[data-tauri-drag-region] button {
 .monaco-editor .suggest-widget .suggest-status-bar {
   font-size: 10.5px;
   padding: 2px 10px;
-  color: var(--muted-foreground);
+  color: var(--ink-50);
   background: color-mix(in srgb, var(--foreground) 4%, var(--background));
   border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
 }
@@ -1227,10 +1262,10 @@ header[data-tauri-drag-region] button {
 }
 .monaco-editor .codelens-decoration,
 .monaco-editor .codelens-decoration a {
-  color: var(--faint-foreground) !important;
+  color: var(--ink-40) !important;
 }
 .monaco-editor .codelens-decoration a:hover {
-  color: var(--muted-foreground) !important;
+  color: var(--soft-foreground) !important;
 }
 /* Parameter info (⌘P) and the usages / hierarchy popup. */
 .monaco-editor .tc-param-info,
@@ -1262,7 +1297,7 @@ header[data-tauri-drag-region] button {
 }
 .monaco-editor .tc-param-info-empty,
 .monaco-editor .tc-param-info-dimmed {
-  color: var(--faint-foreground);
+  color: var(--ink-40);
 }
 .monaco-editor .tc-param-info-empty {
   font-style: italic;
@@ -1289,7 +1324,7 @@ header[data-tauri-drag-region] button {
 .monaco-editor .tc-usages-count,
 .monaco-editor .tc-usages-line,
 .monaco-editor .tc-usages-footer {
-  color: var(--faint-foreground);
+  color: var(--ink-50);
 }
 .monaco-editor .tc-usages-count {
   margin-left: auto;
@@ -1308,7 +1343,7 @@ header[data-tauri-drag-region] button {
   white-space: pre;
 }
 .monaco-editor .tc-usages-file {
-  color: var(--muted-foreground);
+  color: var(--soft-foreground);
 }
 .monaco-editor .tc-usages-selected {
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);
