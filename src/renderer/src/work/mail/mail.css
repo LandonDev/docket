@@ -67,6 +67,20 @@
   padding-inline-start: 12px;
 }
 
+/* A settings dialog of Mail's (`data-mail-dialog`) closes as every TempCode dialog does: a quiet 28px
+   button in muted ink at the header's end (chrome/Modal.tsx), where work-kit draws a round filled one. */
+[data-mail-dialog] > [data-slot="dialog-close"] {
+  top: 22px;
+  inset-inline-end: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: transparent;
+}
+[data-mail-dialog] > [data-slot="dialog-close"]:hover {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+
 /* Snooze's dialog is new with this Mail and holds work-kit's date picker: its chosen day and today
    take the values light gives the picker (index.css), in both themes, so the dialog shows the date
    its button would snooze to. The picker's other homes keep what index.css gives them ("Held in

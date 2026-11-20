@@ -1283,8 +1283,9 @@ Around the canvas:
   one toast, "Sending to …" over a 3px track that empties across the undo
   time, with Undo; nothing has gone until the track is empty.
   Mail's settings are flat groups of 44px rows under 13px semibold
-  headings; a signature and an account open as dialogs, every control in
-  the account dialog at one width.
+  headings; a signature and an account open as dialogs in the one dialog
+  shape (the title beside a quiet Close, a hairline over the footer), every
+  control in the account dialog at one width.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way
