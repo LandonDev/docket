@@ -5,6 +5,7 @@ import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import type { SheetChart, SheetMutationJson, SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { FenceError } from '../../remote/fence'
+import { fetchedFile } from '../canvas/fetch'
 import { Toolchain } from '../formats/tools'
 import { fullEditorHere } from './fullEditor'
 import type { Caller, WorkCtx } from '../modules'
@@ -31,8 +32,13 @@ export type Held = { at: 'package'; path: string } | { at: 'service'; ref: Sheet
 export const PACKAGE_EXT = new Set(['.xlsx', '.xlsm'])
 
 /** The store an item names. */
-export function heldOf(item: Pick<CanvasItem, 'source' | 'title'>, dataDir?: string): Held {
+export function heldOf(item: Pick<CanvasItem, 'source' | 'title'> & Partial<Pick<CanvasItem, 'id' | 'sessionId'>>, dataDir?: string): Held {
   const s = item.source
+  // A mail's attachment is the copy the pane fetched into the item's own folder (canvas/fetch.ts), opened as a file of his would be.
+  if (s.at === 'mail') {
+    if (!dataDir || !item.id || !item.sessionId) throw new Error(`${item.title} has not come from the mail yet.`)
+    return heldOf({ source: { at: 'file', host: '', path: fetchedFile(dataDir, item as CanvasItem) }, title: item.title }, dataDir)
+  }
   if (s.at === 'lifeos' && s.table === 'sheets') return { at: 'service', ref: { lifeos: s.id } }
   if (s.at === 'file') {
     const ext = extname(s.path).toLowerCase()

@@ -45,6 +45,11 @@ export type CanvasSource =
   | { at: 'browser'; host: string; sessionId: string }
   /** Made in the thread; lives under `canvas/<sid>/<itemId>/`. */
   | { at: 'thread' }
+  /**
+   * A mail's attachment in LifeOS's file store: the host fetches its bytes into the item's own
+   * folder, inside the pane's sector (work-mail.md "Attachments"). Never a copy in his folder.
+   */
+  | { at: 'mail'; threadId: string; messageId: string; partId: string; name: string; contentType?: string; size?: number }
 
 export const CanvasSourceSchema = z.discriminatedUnion('at', [
   z.object({ at: z.literal('lifeos'), table: z.enum(['docs', 'sheets', 'outbox', 'calendarOps', 'projectDocs']), id: z.string() }),
@@ -60,8 +65,26 @@ export const CanvasSourceSchema = z.discriminatedUnion('at', [
   }),
   z.object({ at: z.literal('frameio'), account: z.string(), fileId: z.string() }),
   z.object({ at: z.literal('browser'), host: z.string(), sessionId: z.string() }),
-  z.object({ at: z.literal('thread') })
+  z.object({ at: z.literal('thread') }),
+  z.object({
+    at: z.literal('mail'),
+    threadId: z.string().min(1).max(200),
+    messageId: z.string().min(1).max(200),
+    partId: z.string().min(1).max(200),
+    name: z.string().min(1).max(500),
+    contentType: z.string().max(200).optional(),
+    size: z.number().int().nonnegative().optional()
+  })
 ])
+
+/**
+ * The pane of a workspace's Mail view: an owner of canvas items as a thread is, so an attachment
+ * opens beside the mail with no thread made for it. Its key fits a canvas folder's name.
+ */
+export const MAIL_PANE_PREFIX = 'mailpane_'
+export const mailPaneOf = (workspaceId: string): string => `${MAIL_PANE_PREFIX}${workspaceId}`
+/** The workspace a Mail view's pane belongs to; null for a thread. */
+export const mailPaneWorkspace = (owner: string): string | null => (owner.startsWith(MAIL_PANE_PREFIX) && owner.length > MAIL_PANE_PREFIX.length ? owner.slice(MAIL_PANE_PREFIX.length) : null)
 
 /** The file path a source names on a host's disk, if it names one: what the path fence checks. */
 export function canvasSourcePath(source: CanvasSource): string | null {

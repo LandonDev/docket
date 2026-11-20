@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { CanvasPush } from '@shared/contract-work-canvas'
 import type { PushTo } from '../modules'
 import type { SessionMeta } from '@shared/events'
-import { CanvasKindSchema, CanvasSourceSchema, canvasSourcePath, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
+import { CanvasKindSchema, CanvasSourceSchema, canvasSourcePath, mailPaneWorkspace, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
 
 /**
  * A thread's canvas items (`work_canvas_items`, docs/agents/work-canvas.md
@@ -59,6 +59,8 @@ export interface CanvasStoreDeps {
   dataDir: string
   /** The thread's row (the session registry's `get`). */
   session(id: string): Pick<SessionMeta, 'id' | 'workspaceId' | 'scope' | 'parentId'> | null
+  /** Whether this host has a Work workspace by this id: a Mail view's pane (`mailPaneOf`) owns items only for one. */
+  workWorkspace?(id: string): boolean
   push(p: CanvasPush, to?: PushTo): void
   /** Whether a remote key could name this path (the listener's fence, `ctx.reaches`); absent, it names none. */
   remoteReaches?(path: string): boolean
@@ -164,8 +166,13 @@ export class CanvasStore {
     return id
   }
 
-  /** The thread's row, which must be a Work thread. */
-  private workThread(sessionId: string): Pick<SessionMeta, 'id' | 'workspaceId' | 'scope'> {
+  /** The owner's row: a Work thread, or a Work workspace's Mail pane (an attachment opened beside the mail). */
+  private workThread(sessionId: string): Pick<SessionMeta, 'id' | 'workspaceId'> {
+    const pane = mailPaneWorkspace(sessionId)
+    if (pane !== null && !this.deps.session(sessionId)) {
+      if (!this.deps.workWorkspace?.(pane)) throw new Error(`not a Work workspace: ${pane}`)
+      return { id: sessionId, workspaceId: pane }
+    }
     const session = this.deps.session(sessionId)
     if (!session) throw new Error(`unknown thread: ${sessionId}`)
     if (sessionScopeOf(session) !== 'work') throw new Error(`not a Work thread: ${sessionId}`)
@@ -249,7 +256,7 @@ export class CanvasStore {
 
   /** The tab order: `order` first, then the open items it left out, in their order; ids that are not open items of the thread are ignored. */
   reorder(sessionId: string, order: readonly string[]): CanvasItem[] {
-    if (!this.deps.session(sessionId)) throw new Error(`unknown thread: ${sessionId}`)
+    if (!this.deps.session(sessionId) && !(mailPaneWorkspace(sessionId) && this.deps.workWorkspace?.(mailPaneWorkspace(sessionId)!))) throw new Error(`unknown thread: ${sessionId}`)
     const open = this.db.prepare(`SELECT id, position FROM work_canvas_items WHERE session_id = ? AND state = 'open' ORDER BY position, created_at`).all(sessionId) as { id: string; position: number }[]
     const ids = new Set(open.map((r) => r.id))
     const listed = [...new Set(order)].filter((id) => ids.has(id))

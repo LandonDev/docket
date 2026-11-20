@@ -1,3 +1,4 @@
+import { workspaceKindOf } from '@shared/work'
 import type { CtxPart } from '../ctx'
 import { registerCanvasMove } from './move'
 import { CanvasStore, setCanvasStore } from './store'
@@ -14,6 +15,7 @@ export const canvasPart: CtxPart<'canvas'> = (ctx, deps) => {
     db: deps.db,
     dataDir: deps.dataDir,
     session: (id) => deps.registry.get(id),
+    workWorkspace: (id) => deps.registry.listWorkspaces().some((w) => w.id === id && workspaceKindOf(w) === 'work'),
     push: (p, to) => ctx.push(p, to),
     remoteReaches: (path) => {
       try {

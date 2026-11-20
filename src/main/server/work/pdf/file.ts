@@ -3,6 +3,7 @@ import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readSync, ren
 import { basename, join } from 'node:path'
 import { canvasSourcePath, type CanvasItem, type CanvasKind } from '@shared/work'
 import { FenceError } from '../../remote/fence'
+import { fetchedPath } from '../canvas/fetch'
 import { canvasItemDir } from '../canvas/store'
 import type { Caller, PushTo, WorkCtx } from '../modules'
 
@@ -55,6 +56,14 @@ export async function itemDir(ctx: Pick<WorkCtx, 'dataDir'>, item: CanvasItem, .
 export async function sourcePath(ctx: Ctx, item: CanvasItem, own: string): Promise<string> {
   const source = item.source
   if (source.at === 'thread') return join(await itemDir(ctx, item), own)
+  // A mail's attachment: the copy the pane fetched into the item's own folder (canvas/fetch.ts), never his.
+  if (source.at === 'mail') {
+    try {
+      return fetchedPath(ctx.dataDir, item)
+    } catch (err) {
+      throw new ItemFileError((err as Error).message, 'missing')
+    }
+  }
   if (source.at === 'file' || (source.at === 'microsoft' && source.ref.kind === 'path')) {
     const path = source.at === 'file' ? source.path : (source.ref as { path: string }).path
     // An agent's word for the host is loose; the file being here settles it.

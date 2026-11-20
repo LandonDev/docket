@@ -63,7 +63,7 @@ export function mediaItem(ctx: WorkCtx, itemId: string): CanvasItem {
 
 /** The item's media row, made with its first version (the file the canvas item names) on first sight. */
 export function itemRow(ctx: WorkCtx, item: CanvasItem): ItemRow {
-  const name = item.source.at === 'file' ? nameOf(item.source.path) : item.title
+  const name = item.source.at === 'file' ? nameOf(item.source.path) : item.source.at === 'mail' ? item.source.name : item.title
   return liveOf(ctx).store.ensureItem(item.id, item.sessionId, { source: item.source, name, by: 'owner' })
 }
 
@@ -88,7 +88,10 @@ export async function viewOf(ctx: WorkCtx, itemId: string, o: { plays?: readonly
 }
 
 const VIDEO_EXT = /\.(mp4|m4v|mov|webm|mkv|mxf|avi|mts|m2ts|ts|ogv)$/i
-const guessKind = (item: CanvasItem): 'video' | 'image' => (item.source.at === 'file' && !VIDEO_EXT.test(item.source.path) ? 'image' : 'video')
+const guessKind = (item: CanvasItem): 'video' | 'image' => {
+  const name = item.source.at === 'file' ? item.source.path : item.source.at === 'mail' ? item.source.name : null
+  return name !== null && !VIDEO_EXT.test(name) ? 'image' : 'video'
+}
 
 /** Pushes the item's view, at most twice a second however often it changes. */
 export function pushSoon(ctx: WorkCtx, itemId: string): void {

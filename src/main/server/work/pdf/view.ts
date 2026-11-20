@@ -55,7 +55,8 @@ const servedAs = (path: string, name: string, rev: string): FileStamp => ({ ...s
  * no longer kept is refused with a sentence.
  */
 export async function snapshot(ctx: Ctx, item: CanvasItem, o: { refresh?: boolean; rev?: string } = {}): Promise<Snapshot> {
-  if (item.source.at === 'thread') {
+  // A thread's own file, and a mail's attachment fetched into the item's folder, never change under the item: served as they are.
+  if (item.source.at === 'thread' || item.source.at === 'mail') {
     const path = await sourcePath(ctx, item, OWN_FILE)
     const name = nameOf(item, path)
     const stamp = stampOf(path, item.title)
@@ -106,6 +107,7 @@ const stale = (): ItemFileError => new ItemFileError('This file changed since it
 export const nameOf = (item: CanvasItem, path: string | null): string => {
   const source = item.source
   if (source.at === 'microsoft') return source.name
+  if (source.at === 'mail') return source.name
   if (path && source.at === 'file') return basename(path)
   return /\.pdf$/i.test(item.title) ? item.title : `${item.title}.pdf`
 }

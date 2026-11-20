@@ -64,6 +64,7 @@ export async function deckPath(ctx: Ctx, item: CanvasItem): Promise<string> {
 export const nameOf = (item: CanvasItem, path: string | null): string => {
   const source = item.source
   if (source.at === 'microsoft') return source.name
+  if (source.at === 'mail') return source.name
   if (path && source.at === 'file') return basename(path)
   return /\.pptx$/i.test(item.title) ? item.title : `${item.title}.pptx`
 }

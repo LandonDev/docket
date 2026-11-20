@@ -3,6 +3,8 @@ import type { MailSeen, MailSendAnswer } from '@shared/contract-work-mail'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, handled, NOT_HANDLED } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
+import { registerCanvasFetcher } from '../canvas/fetch'
+import { mailAttachmentFetcher } from './attachment'
 import { outgoingHtml } from './outgoing'
 import { withWaited } from './waited'
 
@@ -160,7 +162,13 @@ export const mail: WorkModule = {
     return handled(await sendMail(ctx, by, req.params.id, req.params.seen, req.params.sendAt, req.params.waited === true))
   },
   start(ctx) {
-    return ctx.lifeos.subscribe<MailRow[]>('outboxHeld:held', { host: ctx.host }, (rows) => openDrafts(ctx, rows ?? []))
+    // A mail's attachment opened in a canvas comes through the host, inside the pane's sector (attachment.ts).
+    const offFetch = registerCanvasFetcher(mailAttachmentFetcher)
+    const offDrafts = ctx.lifeos.subscribe<MailRow[]>('outboxHeld:held', { host: ctx.host }, (rows) => openDrafts(ctx, rows ?? []))
+    return () => {
+      offFetch()
+      offDrafts()
+    }
   },
   preamble: () => PREAMBLE,
   sessionsRemoved(sessionIds, ctx) {

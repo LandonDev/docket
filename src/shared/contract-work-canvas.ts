@@ -26,6 +26,14 @@ export const CanvasRequestSchemas = [
   /** → { items: CanvasItem[] }: the tab order; `order` lists item ids, first tab first. Open items it leaves out keep their order after the listed ones; ids that are not open items of the thread are ignored. */
   request('work.canvas.reorder', z.object({ sessionId: z.string(), order: z.array(z.string()).max(200) })),
   /**
+   * → { size }: the item's bytes are on this host, in its own folder, fetched first when they are not (a mail's
+   * attachment from LifeOS's file store, inside the pane's sector). Progress goes as `work.canvas.fetch` pushes.
+   * A source with nothing to fetch (a file, a thread's own) is refused.
+   */
+  request('work.canvas.fetch', z.object({ itemId: z.string() })),
+  /** → { data, size }: base64 bytes of a fetched item's file, from `offset`, at most `length` (Download in the bar). */
+  request('work.canvas.read', z.object({ itemId: z.string(), offset: z.number().int().nonnegative(), length: z.number().int().positive().max(8 * 1024 * 1024) })),
+  /**
    * → MentionAnswer (src/shared/work/mentions.ts): what the composer's `@` offers for `text`, found only in what
    * the thread's scope may read. A thread not made yet (a draft) names where it will be: its project or
    * workspace, and `work` for a Work Chat. `kinds` narrows to those kinds.
@@ -42,15 +50,21 @@ export const CanvasRequestSchemas = [
 ] as const
 
 /** A thread's open items changed: the whole list, in tab order. `opened`: the item an open just made or reopened, for the pane to select. */
-export type CanvasPush = { push: 'work.canvas'; sessionId: string; items: CanvasItem[]; opened?: string }
+export type CanvasPush =
+  | { push: 'work.canvas'; sessionId: string; items: CanvasItem[]; opened?: string }
+  /** An item's bytes on their way to this host: `total` null while the store has not said. */
+  | { push: 'work.canvas.fetch'; sessionId: string; itemId: string; received: number; total: number | null }
 
 export const CANVAS_CAPS = {
   'work.canvas.list': 'read',
   'work.canvas.open': 'operate',
   'work.canvas.close': 'operate',
   'work.canvas.reorder': 'operate',
+  // An attachment's bytes are his mail, read as the JWT that reads the mail would.
+  'work.canvas.fetch': 'approve',
+  'work.canvas.read': 'approve',
   // It reads his mail, tasks and agenda as a LifeOS JWT would, so it needs what `work.lifeos.jwt` needs.
   'work.canvas.mentions': 'approve'
 } satisfies CapsOf<typeof CanvasRequestSchemas>
 // Carried to a far host only while its screen is unlocked, as the JWT that reads the same things is.
-export const CANVAS_RELAY = { 'work.canvas.mentions': 'screen' } satisfies RelayOf<typeof CanvasRequestSchemas>
+export const CANVAS_RELAY = { 'work.canvas.mentions': 'screen', 'work.canvas.fetch': 'screen', 'work.canvas.read': 'screen' } satisfies RelayOf<typeof CanvasRequestSchemas>

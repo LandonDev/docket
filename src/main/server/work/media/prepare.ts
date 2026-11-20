@@ -1,4 +1,4 @@
-import { closeSync, existsSync, realpathSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, realpathSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { frameStart, FrameTableSchema, VIEWER_DEFAULT_PLAYS, type FrameTable, type MediaPlay, type MediaProbe, type MediaVersion } from '@shared/contract-work-media'
 import { errorText, type HostId } from '@shared/work'
@@ -8,6 +8,7 @@ import { runTool, tailOf } from '../formats/tools'
 import { frameArgs, proxyArgs, stillArgs, tileLevels, tilesArgs, TILE } from './encode'
 import { planImage, planVideo } from './plan'
 import { parsePacketTimes, probeFile, type Probed } from './probe'
+import { fetchedPath } from '../canvas/fetch'
 import { mediaSourceFor } from './sources'
 import { mediaCacheDir, versionWire, type VersionRow } from './store'
 import type { WorkCtx } from '../modules'
@@ -268,7 +269,7 @@ export class Preparer {
   }
 
   private async work(v: VersionRow, prep: Prep, probedDone?: () => void): Promise<void> {
-    if (v.source.at !== 'file') {
+    if (v.source.at !== 'file' && v.source.at !== 'mail') {
       const adapter = mediaSourceFor(v.source.at)
       if (!adapter) throw new Error(`a ${v.source.at} file cannot be shown here yet`)
       const got = await adapter.resolve(v.source, this.host.ctx, prep.signal)
@@ -277,8 +278,10 @@ export class Preparer {
       prep.adapter = got.play
       return
     }
-    if (v.source.host !== this.host.ctx.host) throw new Error(`the file is on ${v.source.host}; open it from a thread there`)
-    const path = v.source.path
+    if (v.source.at === 'file' && v.source.host !== this.host.ctx.host) throw new Error(`the file is on ${v.source.host}; open it from a thread there`)
+    // A mail's attachment is the host's own copy, fetched into the item's folder (canvas/fetch.ts): no person named its path.
+    const fetched = v.source.at === 'mail' ? this.fetchedOf(v) : null
+    let path = fetched ?? (v.source as { path: string }).path
     const sig = sigOf(path)
     if (!sig) throw new Error(`there is no file at ${path}`)
     prep.sig ??= sig
@@ -289,12 +292,18 @@ export class Preparer {
       for (const name of readdirSync(dir)) rmSync(join(dir, name), { recursive: true, force: true })
       writeFileSync(join(dir, 'sig.json'), JSON.stringify({ sig: prep.sig }))
     }
+    // The media host serves its own cache, so an attachment is shown from a copy there.
+    if (fetched) {
+      const copy = join(dir, `original${extname(fetched).toLowerCase()}`)
+      if (!existsSync(copy)) copyFileSync(fetched, copy)
+      path = copy
+    }
     if (!prep.probe) {
       const probed = await this.probe(path, dir, prep.signal)
       prep.probe = probed.probe
       prep.table = probed.table
       // Shown only from the folders this host shows, converted or not: the agent may name any path, and what is made from it is served to other desktops.
-      if (!this.shown(path)) throw new Error(OUTSIDE)
+      if (!fetched && !this.shown(path)) throw new Error(OUTSIDE)
       const direct = await fsMedia(path)
       if (direct) prep.original = { file: path, mime: direct.mime }
     }
@@ -348,8 +357,16 @@ export class Preparer {
     return mediaServes(real) && !insideRealRoots(real, [workMediaRoot(this.host.dataDir), MEDIA_SCRATCH_DIR])
   }
 
+  /** A mail attachment's fetched file, which the canvas fetched before the item opened. */
+  private fetchedOf(v: VersionRow): string {
+    const item = this.host.ctx.canvas.get(v.itemId)
+    if (!item) throw new Error('this item is gone')
+    return fetchedPath(this.host.dataDir, item)
+  }
+
   private inputOf(v: VersionRow): string {
     if (v.source.at === 'file') return v.source.path
+    if (v.source.at === 'mail') return this.fetchedOf(v)
     throw new Error('this version has no file on this host')
   }
 

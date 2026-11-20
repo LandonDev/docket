@@ -1,0 +1,113 @@
+import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, rmSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { safeFileName } from '@shared/fileName'
+import type { CanvasItem, CanvasSource } from '@shared/work'
+import type { WorkCtx } from '../modules'
+import { canvasItemDir } from './store'
+
+/**
+ * An item whose bytes live elsewhere and come to this host before a kind
+ * opens them (docs/agents/work-canvas.md "Fetched sources"): a mail's
+ * attachment from LifeOS's file store. The bytes go into the item's own
+ * folder (`canvas/<owner>/<item>/file/<name>`), which goes with the thread
+ * or the pane, never into his folder. A pillar registers the fetcher for
+ * its `at`; a kind finds the file with `fetchedPath` and opens it as it
+ * would a file of his.
+ */
+
+export interface CanvasFetcher {
+  at: CanvasSource['at']
+  /** Writes the item's bytes to `dest`, saying how far it got; refuses (throws a sentence) what the owner may not read. */
+  fetch(item: CanvasItem, ctx: WorkCtx, to: { dest: string; progress(received: number, total: number | null): void; signal: AbortSignal }): Promise<void>
+}
+
+const fetchers = new Map<CanvasSource['at'], CanvasFetcher>()
+
+/** Registers a fetcher; a second for the same `at` replaces it. Returns its off. */
+export function registerCanvasFetcher(fetcher: CanvasFetcher): () => void {
+  fetchers.set(fetcher.at, fetcher)
+  return () => {
+    if (fetchers.get(fetcher.at) === fetcher) fetchers.delete(fetcher.at)
+  }
+}
+
+/** Whether an item's bytes are fetched rather than read where they are. */
+export const isFetched = (source: CanvasSource): boolean => source.at === 'mail'
+
+/** The name the item's file takes on disk: the source's own, made safe. */
+const nameOf = (item: CanvasItem): string => safeFileName(item.source.at === 'mail' ? item.source.name : item.title)
+
+/** Where a fetched item's file is, whether or not it has come yet. */
+export const fetchedFile = (dataDir: string, item: CanvasItem): string => join(canvasItemDir(dataDir, item.sessionId, item.id), 'file', nameOf(item))
+
+/** The fetched item's file, which must be here: a kind asks after the pane has fetched it. */
+export function fetchedPath(dataDir: string, item: CanvasItem): string {
+  const path = fetchedFile(dataDir, item)
+  if (!existsSync(path)) throw new Error(`${item.title} has not come from the mail yet.`)
+  return path
+}
+
+/** One fetch per item at a time: a second ask waits on the first. */
+const running = new Map<string, Promise<{ size: number }>>()
+
+/** Pushes at most this often while bytes come. */
+const PROGRESS_MS = 150
+
+/**
+ * The item's bytes on this host: at once when they are here, else fetched
+ * through its source's fetcher into a part file that is renamed into place
+ * only once whole, so a kind never opens half a file.
+ */
+export function ensureFetched(ctx: WorkCtx, item: CanvasItem): Promise<{ size: number }> {
+  const dest = fetchedFile(ctx.dataDir, item)
+  if (existsSync(dest)) return Promise.resolve({ size: statSync(dest).size })
+  const fetcher = fetchers.get(item.source.at)
+  if (!fetcher) return Promise.reject(new Error(isFetched(item.source) ? 'Attachments cannot be fetched on this host while Work is off.' : `${item.title} is not fetched: it is read where it is.`))
+  const known = running.get(item.id)
+  if (known) return known
+  const run = (async () => {
+    mkdirSync(join(dest, '..'), { recursive: true, mode: 0o700 })
+    const part = `${dest}.part`
+    rmSync(part, { force: true })
+    let last = 0
+    const say = (received: number, total: number | null): void => ctx.push({ push: 'work.canvas.fetch', sessionId: item.sessionId, itemId: item.id, received, total })
+    const progress = (received: number, total: number | null): void => {
+      const now = Date.now()
+      if (now - last < PROGRESS_MS) return
+      last = now
+      say(received, total)
+    }
+    try {
+      await fetcher.fetch(item, ctx, { dest: part, progress, signal: AbortSignal.timeout(10 * 60_000) })
+      renameSync(part, dest)
+    } catch (err) {
+      rmSync(part, { force: true })
+      throw err
+    }
+    const size = statSync(dest).size
+    say(size, size)
+    return { size }
+  })().finally(() => running.delete(item.id))
+  running.set(item.id, run)
+  return run
+}
+
+/** Bytes of a fetched item's file by range, base64, for the window's Download. */
+export function readFetched(dataDir: string, item: CanvasItem, offset: number, length: number): { data: string; size: number } {
+  const path = fetchedPath(dataDir, item)
+  const size = statSync(path).size
+  const n = Math.max(0, Math.min(length, size - offset))
+  const buf = Buffer.alloc(n)
+  const fd = openSync(path, 'r')
+  try {
+    let got = 0
+    while (got < n) {
+      const r = readSync(fd, buf, got, n - got, offset + got)
+      if (r === 0) break
+      got += r
+    }
+  } finally {
+    closeSync(fd)
+  }
+  return { data: buf.toString('base64'), size }
+}

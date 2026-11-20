@@ -1,4 +1,5 @@
-import { handled, NOT_HANDLED, type CanvasItem } from '@shared/work'
+import { handled, mailPaneOf, NOT_HANDLED, type CanvasItem } from '@shared/work'
+import { ensureFetched, isFetched, readFetched } from './fetch'
 import { WORK_MODULES, type WorkModule } from '../modules'
 import { canvasMentions, searchMentions } from './mentions'
 import { ensureMovedTable, retryMoved } from './move'
@@ -35,6 +36,14 @@ export const canvas: WorkModule = {
         return handled(null)
       case 'work.canvas.reorder':
         return handled({ items: store.reorder(req.params.sessionId, req.params.order).map(shown) })
+      case 'work.canvas.fetch':
+      case 'work.canvas.read': {
+        const item = store.get(req.params.itemId)
+        if (!item) throw new Error(`no canvas item ${req.params.itemId}`)
+        if (!isFetched(item.source)) throw new Error(`${item.title} is read where it is: there is nothing to fetch.`)
+        if (req.method === 'work.canvas.fetch') return handled(await ensureFetched(ctx, item))
+        return handled(readFetched(ctx.dataDir, item, req.params.offset, req.params.length))
+      }
       case 'work.canvas.mentions': {
         const { sessionId, draft, text, kinds } = req.params
         // The thread's scope is the fence: a thread with no reach (an unlinked code thread) is offered nothing.
@@ -51,6 +60,8 @@ export const canvas: WorkModule = {
     const gone = ctx.db.prepare(`DELETE FROM work_canvas_moved WHERE session_id = ?`)
     for (const id of ids) gone.run(id)
   },
-  // Nothing: a deleted workspace's threads are removed too, and `sessionsRemoved` clears their items.
-  workspaceRemoved() {}
+  // A deleted workspace's threads are removed too, and `sessionsRemoved` clears their items; its Mail pane goes here.
+  workspaceRemoved(workspaceId, ctx) {
+    canvasStoreOf(ctx.db).removeSessions([mailPaneOf(workspaceId)])
+  }
 }
