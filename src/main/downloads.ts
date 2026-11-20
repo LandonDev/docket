@@ -17,6 +17,8 @@ export const SAVE_MAX_BYTES = 64 * 1024 * 1024
 /** A file name with nothing in it a file system or a shell would read as more than a name. */
 export function safeFileName(name: string): string {
   const cleaned = String(name)
+    // Marks that turn text round or hide in it: with them "exe.fdp" can read as "pdf.exe" in a file list.
+    .replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, '')
     // Path separators, control characters, and what Windows refuses in a name.
     .replace(/[\\/\u0000-\u001f\u007f<>:"|?*]/g, '_')
     .replace(/^\.+/, '_')

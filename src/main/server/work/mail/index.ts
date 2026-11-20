@@ -4,7 +4,7 @@ import type { OutboxItem } from '@shared/contract-work-outbox'
 import { errorText, handled, NOT_HANDLED } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
 import { outgoingHtml } from './outgoing'
-import { markWaited, takeWaited } from './waited'
+import { withWaited } from './waited'
 
 /**
  * The mail pillar's server module (docs/agents/work-mail.md): the press
@@ -93,15 +93,10 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
     if (!outbox?.handle) throw new Error('the Outbox is not running on this host')
     const rev = Math.round(row.editedAt ?? row._creationTime)
     // His press already waited out the undo time in the window: this one send may skip LifeOS's
-    // own queue. The mark is this module's alone to set, for this draft and this call only; the
-    // Outbox page, a grant and the phone send through the same hold and never carry it.
-    if (waited) markWaited(id)
-    let answer
-    try {
-      answer = await outbox.handle({ id: 'mail', method: 'work.outbox.send', params: { ref: { at: 'lifeos', table: 'outbox', id }, rev } } as never, ctx, by)
-    } finally {
-      takeWaited(id)
-    }
+    // own queue. The mark is this module's alone to set, and it lives in this call (waited.ts):
+    // the Outbox page, a grant and the phone send through the same hold in calls of their own.
+    const press = () => outbox.handle!({ id: 'mail', method: 'work.outbox.send', params: { ref: { at: 'lifeos', table: 'outbox', id }, rev } } as never, ctx, by)
+    const answer = await (waited ? withWaited(id, press) : press())
     if (!answer.handled) throw new Error('the Outbox did not take the send')
     // The hold settles a failed send, or a press another press beat, as a row and not a throw: say what became of it.
     const item = answer.result as OutboxItem

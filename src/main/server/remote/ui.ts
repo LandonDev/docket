@@ -61,6 +61,9 @@ export function fencedUnder(root: string, pathname: string): string | null {
  * not extend it to wss:, so the host is spelled into connect-src.
  */
 export function rewriteCsp(html: string, host: string, proto: 'http' | 'https'): string {
+  // The host comes from the request. Only a plain name or address, with a port, is ever written
+  // into the page: anything else could end the attribute or add a source of its own.
+  if (!/^(?:[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?|\[[0-9a-f:.]{2,45}\])(?::\d{1,5})?$/i.test(host)) return html
   const ws = proto === 'https' ? 'wss' : 'ws'
   return html.replace(/(<meta\s+http-equiv="Content-Security-Policy"\s+content=")([^"]*)(")/i, (_m, open: string, policy: string, close: string) => {
     const extra = `${ws}://${host} ${proto}://${host}`

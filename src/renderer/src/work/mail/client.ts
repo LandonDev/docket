@@ -19,12 +19,16 @@ const heldSends = new Set<string>();
  * The composer's Send: the draft is saved as he sees it, then the host sends it (`work.mail.send`)
  * only if LifeOS's row still says what he saw (people, subject, words, HTML, files and sender); this window never sends. Undo on a mail the hold
  * sent answers false, which the composer reads as "Already sent".
+ *
+ * A held draft's send comes here twice over: the composer saved it at the press, waited out the undo time, and now asks with `waited`.
+ * That second call saves nothing: what he pressed on is only compared, so an edit made while it waited (by him in another window, by
+ * the thread's agent) is never written over, and the host refuses the send because the row no longer says what he saw.
  */
 export function sendThroughHost(env: string, actions: OutboxActions): OutboxActions {
   return {
     ...actions,
     send: async (args) => {
-      const id = await actions.save(args);
+      const id = args.waited && args.id ? args.id : await actions.save(args);
       const m = args.message;
       // Everything that goes, so the host refuses a row changed in any of it after this save: the HTML and the files too.
       const attachments = [...(m.attachments ?? []).map((f) => ({ id: f.storageId, name: f.name })), ...(m.forwardParts ?? []).map((f) => ({ id: `part:${f.partId}`, name: f.name }))];

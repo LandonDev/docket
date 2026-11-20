@@ -190,6 +190,15 @@ class Boundary extends Component<{ className?: string; onNotFound?: () => void; 
   }
 }
 
+/** What a link in a mail may open outside the app: a web page, a mail address or a phone number, as the browser reads it. */
+export function mailLink(href: string): boolean {
+  try {
+    return /^(https?|mailto|tel):$/.test(new URL(href).protocol);
+  } catch {
+    return false;
+  }
+}
+
 export const tempcodeMailKit: MailKit = {
   toast,
   Face,
@@ -199,7 +208,10 @@ export const tempcodeMailKit: MailKit = {
   useToday,
   useKey,
   onMailto: () => () => {},
-  openLink: (href) => void openUrl(href),
+  // Work-kit hands on only what a mail may open; the host checks again at its own door.
+  openLink: (href) => {
+    if (mailLink(href)) void openUrl(href);
+  },
   openFile: opened,
   saveFile: saved,
   print: printInFrame,

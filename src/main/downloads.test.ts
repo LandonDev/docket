@@ -21,6 +21,15 @@ describe('safeFileName', () => {
   })
 })
 
+describe('safeFileName and turned-round names', () => {
+  it('drops the marks that turn a name round or hide in it', () => {
+    // With a right-to-left override, "invoice\u202Efdp.exe" reads as "invoiceexe.pdf" in a file list.
+    expect(safeFileName('invoice\u202Efdp.exe')).toBe('invoicefdp.exe')
+    expect(safeFileName('a\u200Bb\u2066c\u2069\uFEFF.txt')).toBe('abc.txt')
+    expect(safeFileName('\u202E')).toBe('file')
+  })
+})
+
 describe('freeName', () => {
   it('numbers a name already taken, before its extension', () => {
     const taken = new Set(['a.pdf', 'a (2).pdf', 'README'])

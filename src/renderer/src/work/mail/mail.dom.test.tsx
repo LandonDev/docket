@@ -111,6 +111,15 @@ describe("Send", () => {
     expect(actions.send).not.toHaveBeenCalled();
   });
 
+  it("saves nothing again when the wait ends: what he pressed on is compared, never written over a later edit", async () => {
+    const { actions, log } = fakeActions("ob_other");
+    const wrapped = sendThroughHost("box", actions);
+    // The composer saved the draft at the press and now asks, with its id, after the wait.
+    expect(await wrapped.send({ ...args, id: "ob_held", waited: true })).toBe("ob_held");
+    expect(log).toEqual([]);
+    expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_held", seen, waited: true } }]);
+  });
+
   it("carries the time he chose, and the host's refusal reaches the composer", async () => {
     const { actions } = fakeActions("ob_late");
     await expect(sendThroughHost("box", actions).send({ ...args, sendAt: 1_800_000_000_000 })).rejects.toThrow("goes now or not at all");

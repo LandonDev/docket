@@ -150,6 +150,49 @@ describe('Send from TempCode', () => {
     expect(sends().at(-1)!.args).not.toHaveProperty('immediate')
   })
 
+  it('keeps the waited mark inside the one call that made it', async () => {
+    const { withWaited, takeWaited } = await import('./waited')
+    // Outside any call there is no mark, whatever the draft.
+    expect(takeWaited('d1')).toBe(false)
+    let later: (() => boolean) | null = null
+    const inside = await withWaited('d1', async () => {
+      // Another draft's act, run inside this call, finds nothing.
+      const other = takeWaited('d2')
+      // A press from another road for the same draft runs in a call of its own, started outside this one.
+      const first = takeWaited('d1')
+      const second = takeWaited('d1')
+      // Something this call leaves running inherits its scope, and finds the mark spent.
+      await new Promise<void>((resolve) => setTimeout(() => ((later = () => takeWaited('d1')), resolve())))
+      return { other, first, second }
+    })
+    expect(inside).toEqual({ other: false, first: true, second: false })
+    expect(later!()).toBe(false)
+    // A call that never took its mark leaves none behind either.
+    let kept: () => boolean = () => true
+    await withWaited('d3', async () => {
+      setTimeout(() => (kept = () => takeWaited('d3')))
+    })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(kept()).toBe(false)
+  })
+
+  it('does not hand a waited mark to a press from the Outbox page that wins the claim', async () => {
+    const { withWaited } = await import('./waited')
+    const held = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Raced.' })
+    rig.lifeos.fire()
+    await settled()
+    const { items } = await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', {})
+    const item = items.find((i) => i.ref.at === 'lifeos' && i.ref.id === held)!
+    // The composer's waited call is in flight for this very draft while the Outbox page's press runs in its own call.
+    let release: () => void = () => {}
+    const composing = withWaited(held, () => new Promise<void>((resolve) => (release = resolve)))
+    await rig.rpc('work.outbox.send', { ref: item.ref, rev: item.updatedAt })
+    release()
+    await composing
+    expect(sends().at(-1)!.args).toMatchObject({ id: held, cause: 'press' })
+    expect(sends().at(-1)!.args).not.toHaveProperty('immediate')
+  })
+
   it('goes as his own compose.send for mail he wrote himself, cleaned, at the time he chose', async () => {
     const id = rig.lifeos.draft({ subject: 'Lunch' })
     const row = rig.lifeos.rows.get(id)! as { origin?: unknown; message: { html: string } }

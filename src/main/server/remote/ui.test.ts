@@ -9,6 +9,16 @@ const INDEX = `<!doctype html><html><head><meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; media-src 'self' tempcode-asset:; frame-src tempcode-asset:" />
 <title>TempCode</title></head><body></body></html>`
 
+describe('rewriteCsp and the request host', () => {
+  it('writes only a plain name or address into the page', () => {
+    for (const host of ['tempcode.example.com', 'tempcode.example.com:8443', '127.0.0.1:5199', '[::1]:5199', 'box'])
+      expect(rewriteCsp(INDEX, host, 'https')).toContain(`wss://${host} https://${host}`)
+    // A host that could end the attribute, add a source or name every host leaves the page as it was.
+    for (const host of ['x" onload="alert(1)', "x; script-src 'unsafe-inline'", 'a b', '*', '*.example.com', 'x/y', '', 'x:notaport', '-x.example'])
+      expect(rewriteCsp(INDEX, host, 'https')).toBe(INDEX)
+  })
+})
+
 describe('rewriteCsp', () => {
   it('adds the host to connect-src with wss behind https', () => {
     const out = rewriteCsp(INDEX, 'tempcode.example.com', 'https')

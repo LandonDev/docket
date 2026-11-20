@@ -54,7 +54,9 @@ export const MailSendPayloadSchema = z.object({
   /** an agent's rewrite waits in the draft (`outbox.proposed`): subject, text and who proposed it */
   proposed: z.looseObject({ subject: z.string().optional(), text: z.string().optional(), by: z.string().optional() }).optional(),
   /** the mail a reply answers, as LifeOS puts it under the body (`compose.get`'s quote, html); read with the item, so the Outbox shows all that goes */
-  quote: z.string().optional()
+  quote: z.string().optional(),
+  /** when LifeOS last saw the row edited, as read with the item: a send names it, so a row edited after it was shown never goes on that press */
+  editedAt: z.number().optional()
 })
 export type MailSendPayload = z.infer<typeof MailSendPayloadSchema>
 
@@ -448,7 +450,7 @@ export class LifeosHeldItems implements LifeosHeld {
 
   private mailItem(row: OutboxDoc, quote?: string): OutboxItem | null {
     if (row.message?.kind !== 'mail' || (row.status !== 'draft' && row.status !== 'failed')) return null
-    const payload = MailSendPayloadSchema.safeParse({ id: row._id, status: row.status, message: row.message, ...(row.error ? { error: row.error } : {}), ...(row.proposed ? { proposed: row.proposed } : {}), ...(quote ? { quote } : {}) })
+    const payload = MailSendPayloadSchema.safeParse({ id: row._id, status: row.status, message: row.message, ...(row.error ? { error: row.error } : {}), ...(row.proposed ? { proposed: row.proposed } : {}), ...(quote ? { quote } : {}), ...(typeof row.editedAt === 'number' ? { editedAt: row.editedAt } : {}) })
     if (!payload.success) return null
     const words = mailWords(payload.data)
     const session = row.origin?.threadId ? this.deps.session(row.origin.threadId) : null
@@ -545,6 +547,9 @@ export const mailSendKind: ActKindDef<MailSendPayload, MailSendMatcher> = {
     // What LifeOS holds now decides how it goes: a draft is sent with the mail he was shown, a failed send is queued again.
     const now = await owner.query<{ row: OutboxDoc } | null>(LIFEOS_HELD_FNS.mailGet, { id: p.id })
     if (!now?.row) throw new ActStale('LifeOS no longer has this mail')
+    // What goes is the mail as it was shown: a row edited since (in another app, by the thread's agent) is refused, as a calendar act is.
+    const waiting = now.row.status === 'draft' || now.row.status === 'failed'
+    if (waiting && p.editedAt !== undefined && now.row.editedAt !== p.editedAt) throw new ActStale('The mail was edited since it was shown')
     if (now.row.status === 'failed') await owner.mutation(LIFEOS_HELD_FNS.mailRetry, { id: p.id })
     // The outgoing rules clean the HTML first: Outlook takes it as it is, and a draft can carry a raw signature.
     else if (now.row.status === 'draft') {
