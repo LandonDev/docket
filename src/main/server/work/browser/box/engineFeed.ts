@@ -18,8 +18,25 @@ import type { EngineLease } from './engine'
 const KEY_I = 12
 /** With Ctrl held these close, quit or leave the shared browser: W, Q, N, T. */
 const NEVER_WITH_CTRL = new Set([26, 20, 17, 23])
+/**
+ * With Ctrl and Alt held these are QEMU's own window's, never the guest's: Q quits QEMU (the guest's power cut),
+ * F full screen, G grab, M the menu bar, U the original size, 0, minus and plus the zoom (the pointer then misses),
+ * 1 to 9 its consoles (ui-gtk's accelerators).
+ */
+const QEMU_WITH_CTRL_ALT = new Set([20, 9, 10, 16, 24, 39, 45, 46, 86, 87, 30, 31, 32, 33, 34, 35, 36, 37, 38])
 const isCtrl = (key: number): boolean => key === 224 || key === 228
 const isShift = (key: number): boolean => key === 225 || key === 229
+const isAlt = (key: number): boolean => key === 226 || key === 230
+
+/**
+ * What a source's feed never passes on, by whose screen it is (docs/agents/live-video.md "Driving"):
+ * - `browser`: the box's browser every thread shares: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T and Ctrl+Shift+I would close,
+ *   quit or leave it;
+ * - `vm`: the Windows VM is his: every chord of the guest's is his, Ctrl+W included, but QEMU's own window's
+ *   Ctrl+Alt chords never reach it, and no `text` record either (QEMU reads X's keycodes, and a character the engine
+ *   types on a spare keycode lands as the wrong key in the guest: a phone types there with keys or a paste).
+ */
+export type NeverSent = 'browser' | 'vm'
 
 /** The engine's address for one viewer. */
 export function engineUrl(port: number, drive: boolean): string {
@@ -33,7 +50,7 @@ export class EngineFeed implements VideoFeed {
   /** the engine exited: the end is an error, not a slow link */
   private exited = false
   private generation = 0
-  /** the Ctrl and Shift keys his records have pressed and not let go */
+  /** the Ctrl, Shift and Alt keys his records have pressed and not let go */
   private readonly held = new Set<number>()
 
   constructor(
@@ -41,7 +58,9 @@ export class EngineFeed implements VideoFeed {
     private readonly drive: boolean,
     private readonly socket: (url: string, protocols: string[]) => WebSocket = (url, protocols) => new WebSocket(url, protocols),
     /** `close` once, when the feed is closed, started or not; `input` at each of his input records passed on */
-    private readonly on: { close?: () => void; input?: () => void } = {}
+    private readonly on: { close?: () => void; input?: () => void } = {},
+    /** whose screen it is: what is never passed on */
+    private readonly rules: NeverSent = 'browser'
   ) {}
 
   start(sink: FeedSink): void {
@@ -88,9 +107,9 @@ export class EngineFeed implements VideoFeed {
   }
 
   /**
-   * The chords that would close, quit or leave the browser every thread
-   * shares: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T and Ctrl+Shift+I. The app's viewer
-   * never sends them (videoInput.ts); no other client of his can either. The
+   * The records this source never passes on (`NeverSent`): the browser's
+   * chords, or QEMU's own on the VM. The app's viewer never sends the
+   * browser's (videoInput.ts); no other client of his can either. The
    * modifiers are followed from the records themselves, since the engine
    * presses each key as it comes, whatever a record says is held.
    */
@@ -103,9 +122,10 @@ export class EngineFeed implements VideoFeed {
       return true
     }
     if (event.type === 'releaseAll') this.held.clear()
+    if (event.type === 'text') return this.rules === 'vm'
     if (event.type !== 'keyDown' && event.type !== 'keyUp') return false
     const key = event.key
-    if (isCtrl(key) || isShift(key)) {
+    if (isCtrl(key) || isShift(key) || isAlt(key)) {
       if (event.type === 'keyDown') this.held.add(key)
       else this.held.delete(key)
       return false
@@ -115,6 +135,8 @@ export class EngineFeed implements VideoFeed {
     const mods = event.modifiers ?? 0
     const ctrl = held.some(isCtrl) || (mods & 0x11) !== 0
     const shift = held.some(isShift) || (mods & 0x22) !== 0
+    const alt = held.some(isAlt) || (mods & 0x44) !== 0
+    if (this.rules === 'vm') return ctrl && alt && QEMU_WITH_CTRL_ALT.has(key)
     return ctrl && (NEVER_WITH_CTRL.has(key) || (key === KEY_I && shift))
   }
 

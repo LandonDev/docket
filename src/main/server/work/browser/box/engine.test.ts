@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { encodeAck, encodeFrame, encodeInput, parseInput } from '@shared/video/nsl1'
 import type { VideoCloseReason } from '@shared/contract-video'
 import { BoxEngines, ENGINE_MAX, engineArgs, freePort, type EngineLease } from './engine'
-import { EngineFeed, engineUrl } from './engineFeed'
+import { EngineFeed, type NeverSent, engineUrl } from './engineFeed'
 import type { VideoTools } from './videoSetting'
 
 let root: string
@@ -220,13 +220,13 @@ class FakeEngineSocket extends EventTarget {
 }
 
 describe('EngineFeed', () => {
-  function rig(drive: boolean) {
+  function rig(drive: boolean, rules: NeverSent = 'browser') {
     const exits: (() => void)[] = []
     let released = 0
     const lease: EngineLease = { port: 4100, token: 'f'.repeat(64), pid: null, onExit: (fn) => void exits.push(fn), release: () => void released++ }
     let socket!: FakeEngineSocket
     const told = { input: 0, close: 0 }
-    const feed = new EngineFeed(lease, drive, (url, protocols) => (socket = new FakeEngineSocket(url, protocols)) as unknown as WebSocket, { input: () => void told.input++, close: () => void told.close++ })
+    const feed = new EngineFeed(lease, drive, (url, protocols) => (socket = new FakeEngineSocket(url, protocols)) as unknown as WebSocket, { input: () => void told.input++, close: () => void told.close++ }, rules)
     const frames: Uint8Array[] = []
     const ends: VideoCloseReason[] = []
     feed.start({ frame: (b) => frames.push(b), end: (r) => ends.push(r) })
@@ -322,6 +322,37 @@ describe('EngineFeed', () => {
     send({ type: 'releaseAll' })
     send({ type: 'keyDown', key: 26, modifiers: 1 })
     expect(keys()).toEqual(['releaseAll'])
+  })
+
+  it("on the Windows VM passes every chord of the guest's, and never QEMU's own window's or a typed character", () => {
+    const r = rig(true, 'vm')
+    r.socket().frame(FRAME(9, 1))
+    const send = (event: Parameters<typeof encodeInput>[0]): void => r.feed.input(encodeInput(event, 9))
+    const keys = (): string[] => r.socket().sent.map((b) => parseInput(b)).map((e) => ('key' in e ? `${e.type === 'keyDown' ? '+' : '-'}${e.key}` : e.type))
+    // Ctrl+W, Q, N, T and Ctrl+Shift+I are his in the guest
+    send({ type: 'keyDown', key: 224 })
+    for (const key of [26, 20, 17, 23]) send({ type: 'keyDown', key })
+    send({ type: 'keyDown', key: 225 })
+    send({ type: 'keyDown', key: 12 })
+    expect(keys()).toEqual(['+224', '+26', '+20', '+17', '+23', '+225', '+12'])
+    // with Alt as well, QEMU's window would take Q (quit), F, G, M, U, the zoom keys and 1 to 9; Delete is the guest's
+    r.socket().sent.length = 0
+    send({ type: 'releaseAll' })
+    send({ type: 'keyDown', key: 224 })
+    send({ type: 'keyDown', key: 226 })
+    for (const key of [20, 9, 10, 16, 24, 39, 45, 46, 30, 38]) send({ type: 'keyDown', key })
+    send({ type: 'keyDown', key: 76 })
+    expect(keys()).toEqual(['releaseAll', '+224', '+226', '+76'])
+    // a record that only says Ctrl and Alt are held, by the right-hand Alt, is refused the same way
+    r.socket().sent.length = 0
+    send({ type: 'releaseAll' })
+    send({ type: 'keyDown', key: 20, modifiers: 0x11 | 0x40 })
+    send({ type: 'keyDown', key: 20 })
+    expect(keys()).toEqual(['releaseAll', '+20'])
+    // a typed character never: QEMU reads keycodes, and the engine's spare one lands as the wrong key
+    r.socket().sent.length = 0
+    send({ type: 'text', codepoint: 0xe9 })
+    expect(r.socket().sent).toEqual([])
   })
 
   it('lets go of what he holds with a record numbered for its own connection', () => {

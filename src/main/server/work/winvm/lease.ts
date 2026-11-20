@@ -52,7 +52,11 @@ export class VmLease {
 
   /** Takes or keeps the machine for this thread's call; the line that refuses it otherwise. */
   take(threadId: string): string | null {
-    if (this.owner) return VM_OWNER_DRIVES
+    if (this.owner) {
+      // told when he hands back, as a thread turned away by another is told when that one is done
+      this.waiting.add(threadId)
+      return VM_OWNER_DRIVES
+    }
     const pane = this.o.pane(threadId)
     if (this.holder && this.holder.pane !== pane) {
       this.waiting.add(threadId)

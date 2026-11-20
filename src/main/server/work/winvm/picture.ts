@@ -7,6 +7,7 @@ import { VIDEO_FPS, type VideoRefusal } from '@shared/contract-video'
 import type { WinvmState } from '@shared/contract-work-winvm'
 import { previewRefusal, type PreviewAccess, type Viewer } from '../../computer/preview'
 import { PreviewGate } from '../../computer/previewGate'
+import type { InputEvent } from '@shared/video/nsl1'
 import type { StreamInfo, VideoRelay } from '../../video/relay'
 import type { VideoAsk, VideoOpening, VideoSource } from '../../video/rpc'
 import { EngineFeed } from '../browser/box/engineFeed'
@@ -42,7 +43,7 @@ export interface VmPictureDeps {
   /** how many watch its picture: while any do, it does not sleep */
   setViewers(n: number): void
   screen: Pick<VmScreen, 'env' | 'size' | 'missingTool' | 'adopt' | 'engines'>
-  relay: Pick<VideoRelay, 'list' | 'onChange' | 'endWhere'>
+  relay: Pick<VideoRelay, 'list' | 'onChange' | 'endWhere' | 'setDriver' | 'driving'>
   /** QMP's screenshot of the guest's screen, as PNG */
   screenshot(): Promise<Buffer>
   /** a PNG as a JPEG no longer than `maxEdge` on its long side, base64 */
@@ -59,7 +60,13 @@ export class VmPicture implements VideoSource {
   private awake = false
   /** viewers of its video now */
   private viewers = 0
+  /** he drives it (his Take over, `computer.drive` on `vm:windows`) */
+  private owner = false
+  /** what Take over hands back by itself when the machine leaves `awake` under him (drive.ts here) */
+  private handBack: (() => void) | null = null
   readonly previews: VmPreviews
+  /** each drive or watch stream's feed by its stream id, for a paste */
+  private readonly streams = new Map<string, EngineFeed>()
 
   constructor(private readonly d: VmPictureDeps) {
     this.awake = d.state()?.state === 'awake'
@@ -69,8 +76,9 @@ export class VmPicture implements VideoSource {
         const awake = state?.state === 'awake'
         if (awake === this.awake) return
         this.awake = awake
-        // asleep: what played of it ends, and its tile goes
+        // asleep: what played of it ends, and its tile goes; a machine he drove is his no longer
         if (!awake) {
+          if (this.owner) this.handBack?.()
           d.relay.endWhere(isVm, 'ended')
           this.previews.endAll()
         }
@@ -79,7 +87,9 @@ export class VmPicture implements VideoSource {
     )
     this.offs.push(
       d.relay.onChange(() => {
-        const live = d.relay.list().filter((s) => isVm(s) && s.joined).length
+        const mine = d.relay.list().filter(isVm)
+        for (const id of [...this.streams.keys()]) if (!mine.some((s) => s.id === id)) this.streams.delete(id)
+        const live = mine.filter((s) => s.joined).length
         if (live !== this.viewers) d.setViewers((this.viewers = live))
       })
     )
@@ -89,7 +99,8 @@ export class VmPicture implements VideoSource {
   rows(): ComputerSessionRow[] {
     const state = this.d.state()
     if (state?.state !== 'awake') return []
-    const holder = this.d.holder?.() ?? null
+    // while he drives no thread holds it: the row is his, under the VM's own name
+    const holder = this.owner ? null : (this.d.holder?.() ?? null)
     if (!this.d.screen.env) this.d.screen.adopt()
     return [
       {
@@ -100,7 +111,7 @@ export class VmPicture implements VideoSource {
         running: null,
         tier: null,
         computer: VM_COMPUTER,
-        ...(holder ? {} : { idle: true as const }),
+        ...(this.owner ? { driver: 'owner' as const } : holder ? {} : { idle: true as const }),
         ...(this.windowless() ? { pictureOnly: true as const } : {})
       }
     ]
@@ -122,6 +133,24 @@ export class VmPicture implements VideoSource {
   rowsChanged(): void {
     const rows = this.rows()
     for (const fn of [...this.rowListeners]) fn(rows)
+  }
+
+  /** He drives it now. */
+  driving(): boolean {
+    return this.owner
+  }
+
+  /**
+   * His Take over or Hand back (drive.ts `vmWheel`): his streams take his input
+   * from here, or every key and button he holds is let go and they are watch
+   * streams again (the relay's `setDriver`). `handBack` is what ends his drive
+   * by itself when the machine goes to sleep under him.
+   */
+  setDriving(on: boolean, handBack?: () => void): void {
+    this.owner = on
+    this.handBack = on ? (handBack ?? null) : null
+    this.d.relay.setDriver(VM_COMPUTER, on)
+    this.rowsChanged()
   }
 
   /** Stop on the VM's row: what a thread does there is the lease's to stop (B5); the machine itself is never stopped from here. */
@@ -148,9 +177,33 @@ export class VmPicture implements VideoSource {
       return refuse('unsupported')
     }
     if (!lease) return refuse('busy')
-    // the feed gives its engine back when it closes
-    const feed = new EngineFeed(lease, false)
-    return { ok: true, feed, width: size.width, height: size.height, fps: VIDEO_FPS, scope: 'watch', group: VM_COMPUTER, tag: VM_COMPUTER }
+    // a drive stream only while he drives: the relay passes input by what it was told, so it is told at every open
+    this.d.relay.setDriver(VM_COMPUTER, this.owner)
+    const scope = ask.drive && this.owner ? 'drive' : 'watch'
+    // the feed gives its engine back when it closes; QEMU's own chords and typed characters never reach the guest
+    const feed = new EngineFeed(lease, scope === 'drive', undefined, {}, 'vm')
+    return {
+      ok: true,
+      feed,
+      width: size.width,
+      height: size.height,
+      fps: VIDEO_FPS,
+      scope,
+      group: VM_COMPUTER,
+      tag: VM_COMPUTER,
+      opened: (stream) => this.streams.set(stream, feed)
+    }
+  }
+
+  /**
+   * His paste into the VM he drives: his text on the guest's clipboard and Ctrl+V pressed, through the VM's
+   * service (B9's `vmPaste`, set by `configureVmPaste`). Until that is there, a paste is refused in words.
+   */
+  async paste(stream: StreamInfo, text: string): Promise<void> {
+    const feed = this.streams.get(stream.id)
+    if (!feed || !this.owner) throw new Error('forbidden: video.paste needs a stream you are driving')
+    if (!vmPaste) throw new Error(NO_VM_PASTE)
+    await vmPaste(text, (event) => feed.type(event))
   }
 
   close(): void {
@@ -160,6 +213,18 @@ export class VmPicture implements VideoSource {
 }
 
 const refuse = (reason: VideoRefusal): VideoOpening => ({ ok: false, reason })
+
+export const NO_VM_PASTE = 'Paste into the Windows VM is not here yet: it comes with its clipboard.'
+
+/**
+ * B9's paste into the guest (work/winvm, `vmPaste`): his text on the guest's clipboard, then Ctrl+V, typed on the
+ * drive stream with `type`. Null until B9 sets it.
+ */
+export type VmPaste = (text: string, type: (event: InputEvent) => boolean) => Promise<void>
+let vmPaste: VmPaste | null = null
+export function configureVmPaste(fn: VmPaste | null): void {
+  vmPaste = fn
+}
 
 interface Watcher {
   id: string

@@ -7,7 +7,7 @@ import type { EngineLease } from '../browser/box/engine'
 import { VideoRelay, type ViewerSocket } from '../../video/relay'
 import { VideoRpc } from '../../video/rpc'
 import { joinRows } from './host'
-import { VM_COMPUTER, VmPicture, type VmPictureDeps } from './picture'
+import { configureVmPaste, NO_VM_PASTE, VM_COMPUTER, VmPicture, type VmPictureDeps } from './picture'
 
 type Push = ComputerFramePush | ComputerClickPush | ComputerPreviewPush
 
@@ -203,5 +203,55 @@ describe("the Windows VM's 4 fps picture", () => {
   it('goes where the box browser goes (mayWatch): never to the box host own socket', async () => {
     const t = setup()
     await expect(t.picture.previews.handle(start(), { connection: {}, send: () => {} }, { principal: LOCAL_PRINCIPAL, desktop: false, box: false })).rejects.toThrow(/forbidden/)
+  })
+})
+
+describe("his Take over, on the VM's video", () => {
+  const drive = { ...ask(), drive: true }
+
+  it('gives a drive stream only while he drives, and a watch stream to every other ask', async () => {
+    const t = setup()
+    expect(await t.picture.open(drive)).toMatchObject({ ok: true, scope: 'watch' })
+    t.picture.setDriving(true)
+    expect(t.relay.driving(VM_COMPUTER)).toBe(true)
+    expect(await t.picture.open(drive)).toMatchObject({ ok: true, scope: 'drive', group: VM_COMPUTER })
+    expect(await t.picture.open(ask())).toMatchObject({ ok: true, scope: 'watch' })
+    t.picture.setDriving(false)
+    expect(t.relay.driving(VM_COMPUTER)).toBe(false)
+  })
+
+  it('lists his row while he drives, under the VM name, with nothing idle about it', () => {
+    const t = setup({ holder: 'thread-1' })
+    t.picture.setDriving(true)
+    expect(t.picture.rows()[0]).toMatchObject({ threadId: VM_COMPUTER, driver: 'owner', computer: VM_COMPUTER })
+    expect(t.picture.rows()[0]!.idle).toBeUndefined()
+    // with threads' sessions still listed as he takes it, his row is the one shown
+    const rows = joinRows({ rows: () => [{ threadId: 'thread-1', since: 1, lastCallAt: 1, apps: [], running: null, tier: null, computer: VM_COMPUTER }], onRows: () => () => true, stop: async () => true }, t.picture)
+    expect(rows.rows().map((r) => [r.threadId, r.driver])).toEqual([[VM_COMPUTER, 'owner']])
+  })
+
+  it('hands back by itself when the VM goes to sleep under him', () => {
+    const t = setup()
+    let back = 0
+    t.picture.setDriving(true, () => void back++)
+    t.set(asleep)
+    expect(back).toBe(1)
+  })
+
+  it('takes his paste through the VM clipboard where B9 set it, and says it is not there yet otherwise', async () => {
+    const t = setup()
+    t.picture.setDriving(true)
+    const rpc = new VideoRpc(t.relay, { mintStreamTicket: () => ({ ticket: 'k', expiresIn: 30 }) }, () => true)
+    rpc.addSource(t.picture)
+    const connection = {}
+    const caller = { principal: LOCAL_PRINCIPAL, connection, connectionId: '1' }
+    const answer = await rpc.open({ threadId: 'x', computer: VM_COMPUTER, maxEdge: 1280, drive: true }, caller)
+    if (!answer.ok) throw new Error(answer.reason)
+    await expect(rpc.paste({ stream: answer.stream, text: 'hi' }, caller)).rejects.toThrow(NO_VM_PASTE)
+    const pasted: string[] = []
+    configureVmPaste(async (text) => void pasted.push(text))
+    await rpc.paste({ stream: answer.stream, text: 'hi' }, caller)
+    expect(pasted).toEqual(['hi'])
+    configureVmPaste(null)
   })
 })

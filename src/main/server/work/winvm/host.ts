@@ -6,6 +6,9 @@ import type { VideoRpc } from '../../video/rpc'
 import { winvmKeeper, onWinvmState } from './index'
 import { rigConfig, rigPaths } from './machine/config'
 import { qmp, screendump } from './machine/qmp'
+import { configureComputerDrive } from '../../computer/drive'
+import { vmWheel } from './drive'
+import type { VmLease } from './lease'
 import { electronJpeg, qmpScreenshot, VmPicture } from './picture'
 import { vmScreen } from './window'
 
@@ -42,13 +45,21 @@ export function wireVmPicture(o: {
 }
 
 /**
- * The VM's rows for the host's Computers: the sessions of the threads that drive it (vm.ts) while there are any, else
- * the VM's own idle row while it is awake (picture.ts). Every one says `pictureOnly` while the VM has no window. Stop
- * goes to the sessions; the idle row has nothing to stop.
+ * His Take over of the VM through `computer.drive` (drive.ts): the `vm` kind's hook, for the host's whole life, so
+ * a Take over while Work is off is refused in words rather than unknown.
  */
-export function joinRows(sessions: Rows, vm: Pick<VmPicture, 'rows' | 'onRows' | 'stop' | 'windowless'>): Rows {
+export function wireVmDrive(o: { picture: VmPicture; lease: Pick<VmLease, 'ownerDrives'>; sessions: Pick<Rows, 'rows'>; log?: (line: string) => void }): void {
+  configureComputerDrive('vm', vmWheel({ picture: o.picture, lease: o.lease, keeper: winvmKeeper, sessions: () => o.sessions.rows(), log: o.log }))
+}
+
+/**
+ * The VM's rows for the host's Computers: his own while he drives it; else the sessions of the threads that drive it
+ * (vm.ts) while there are any, else the VM's own idle row while it is awake (picture.ts). Every one says
+ * `pictureOnly` while the VM has no window. Stop goes to the sessions; his row and the idle row have nothing to stop.
+ */
+export function joinRows(sessions: Rows, vm: Pick<VmPicture, 'rows' | 'onRows' | 'stop' | 'windowless' | 'driving'>): Rows {
   const all = (): ComputerSessionRow[] => {
-    const driven = sessions.rows()
+    const driven = vm.driving() ? [] : sessions.rows()
     const rows = driven.length ? driven : vm.rows()
     return vm.windowless() ? rows.map((r) => ({ ...r, pictureOnly: true as const })) : rows
   }
