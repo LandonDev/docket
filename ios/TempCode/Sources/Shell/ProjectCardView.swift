@@ -17,6 +17,8 @@ struct ProjectCardView: View {
     /// Needs-you cues by `ShellCues.key`, read for the needs-you and failed lines.
     var cues: [String: HomeModel.Cue] = [:]
     let slots: HomeSlots
+    /// A Work project's card has no branch line: it has no branch (milestone 8 of the projects plan).
+    var showsBranch = true
     let newThread: (EnvironmentClient, WorkspaceMeta, ProjectMeta?) -> Void
     @ScaledMetric(relativeTo: .caption) private var branchGap = CardMetrics.branchGap
     @ScaledMetric(relativeTo: .caption) private var linesGap = CardMetrics.linesGap
@@ -24,9 +26,11 @@ struct ProjectCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             head
-            branchLine
-                .padding(.top, branchGap)
-                .allowsHitTesting(false)
+            if showsBranch {
+                branchLine
+                    .padding(.top, branchGap)
+                    .allowsHitTesting(false)
+            }
             if !card.lines.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(card.lines) { line in

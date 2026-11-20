@@ -32,7 +32,7 @@ struct WorkspaceScreen: View {
                     .listRowInsets(Layout.rowInsets)
                     .listRowSeparator(.hidden)
             }
-            // A Work workspace's Mail, Tasks, Agenda and Routines (milestone 47), then its house rules.
+            // A Work workspace's Mail, Tasks, Agenda, Projects and Routines (milestone 47), then its house rules.
             if let lead, lead.workspace.kind == .work {
                 WorkViewRows(client: lead.client, workspace: lead.workspace, dimmed: lifeosNote != nil)
             }
@@ -43,7 +43,10 @@ struct WorkspaceScreen: View {
             }
             if let screen {
                 ForEach(screen.projects) { card in
-                    ProjectCardView(card: card, selected: pose.isSplit && card.holdsShown, cues: cues, slots: slots, newThread: presenter.compose)
+                    ProjectCardView(
+                        card: card, selected: pose.isSplit && card.holdsShown, cues: cues, slots: slots,
+                        showsBranch: lead?.workspace.kind != .work, newThread: presenter.compose
+                    )
                         .listRowInsets(EdgeInsets(top: cardGap / 2, leading: Layout.textEdge, bottom: cardGap / 2, trailing: Layout.textEdge))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)

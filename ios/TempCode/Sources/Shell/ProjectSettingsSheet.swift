@@ -52,6 +52,16 @@ final class ProjectSettingsModel {
 
     var dirty: Bool { (review?.dirty ?? false) || (plans?.dirty ?? false) }
 
+    /// A Work project's sheet (milestone 8 of the projects plan): Rules and, with milestone 7,
+    /// Sharing. Review before merge and the plan flow are code settings the server refuses for a
+    /// Work project, so nothing of them is read or offered.
+    func loadWork() {
+        review = nil
+        plans = nil
+        loadError = nil
+        loading = false
+    }
+
     func load(client: EnvironmentClient, projectId: String) async {
         loading = true
         loadError = nil
@@ -123,6 +133,8 @@ struct ProjectSettingsSheet: View {
     private var hostName: String { client.environment.name }
     /// Why the home cannot be read right now: its link, never the key.
     private var readBlock: ActionBlock? { Actions.block(status: client.status, environment: client.environment, needs: .read) }
+    /// A project in a Work workspace: its sheet holds what a Work project has, nothing of code.
+    private var isWork: Bool { workspace?.kind == .work }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -135,7 +147,10 @@ struct ProjectSettingsSheet: View {
                         Button("Cancel") { dismiss() }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        if model.saving {
+                        if isWork {
+                            // Its rules save in their own editor; nothing here waits for a Save.
+                            Button("Done") { dismiss() }
+                        } else if model.saving {
                             ProgressView()
                         } else {
                             Button("Save") {
@@ -154,7 +169,11 @@ struct ProjectSettingsSheet: View {
         // Loads once the home's link is up; a reconnect after the load keeps the drafts.
         .task(id: readBlock == nil) {
             guard readBlock == nil, model.review == nil else { return }
-            await model.load(client: client, projectId: projectId)
+            if isWork {
+                model.loadWork()
+            } else {
+                await model.load(client: client, projectId: projectId)
+            }
         }
         .accessibilityIdentifier("project-settings")
         .onChange(of: project?.id, initial: true) { _, id in
@@ -193,7 +212,23 @@ struct ProjectSettingsSheet: View {
                         Text(reason)
                     }
                 }
-                if let project {
+                if let project, isWork {
+                    // A Work project: Rules for its threads, then Sharing, which milestone 7 (a
+                    // project's guest links) fills; until then the sheet holds Rules alone.
+                    Section {
+                        NavigationLink(value: PreambleScope.project(projectId: project.id, workspaceId: project.workspaceId)) {
+                            LabeledContent("Rules") {
+                                Text(TempCodeClient.PreambleRow.summary(project: project, workspace: workspace))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityIdentifier("preamble-project")
+                    } header: {
+                        Text("Rules for its threads")
+                    } footer: {
+                        Text("Sent with the first message of each new thread in \(project.name).")
+                    }
+                } else if let project {
                     Section {
                         NavigationLink(value: PreambleScope.project(projectId: project.id, workspaceId: project.workspaceId)) {
                             LabeledContent("Project rules") {
@@ -217,11 +252,11 @@ struct ProjectSettingsSheet: View {
                         Text("Opens every new thread in \(project.name) as its project rules.")
                     }
                 }
-                if model.review != nil {
+                if model.review != nil, !isWork {
                     ReviewSettingsSection(model: model)
                         .disabled(readOnly)
                 }
-                if model.plans != nil {
+                if model.plans != nil, !isWork {
                     PlanSettingsSection(model: model)
                         .disabled(readOnly)
                 }

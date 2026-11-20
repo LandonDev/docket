@@ -11,7 +11,7 @@ import TempCodeContract
 /// screen's.
 struct LifeViewScreen: View {
     enum Kind: String, CaseIterable, Identifiable {
-        case mail, tasks, agenda
+        case mail, tasks, agenda, projects
         var id: String { rawValue }
         var title: String { rawValue.capitalized }
         var symbol: String {
@@ -19,6 +19,7 @@ struct LifeViewScreen: View {
             case .mail: Symbol.mail
             case .tasks: Symbol.tasks
             case .agenda: Symbol.agenda
+            case .projects: "folder"
             }
         }
     }
@@ -75,6 +76,14 @@ struct LifeViewScreen: View {
         case .mail: MailScreen()
         case .tasks: TasksScreen()
         case .agenda: AgendaScreen()
+        case .projects:
+            // The workspace's sector's projects; a project pushes in the shell's own stack.
+            if let sector = host.sector {
+                ProjectsList(sector: sector)
+                    .projectDestinations()
+            } else {
+                ContentUnavailableView("No Sector", systemImage: "folder")
+            }
         }
     }
 }

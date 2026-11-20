@@ -3,9 +3,10 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The head of a Work workspace's screen (milestone 47): Mail, Tasks and
-/// Agenda on the Home row grid, then Routines, each opening its screen.
-/// While LifeOS is out of reach the three rows sit at half strength.
+/// The head of a Work workspace's screen (milestone 47): Mail, Tasks,
+/// Agenda and Projects (the projects plan's milestone 8) on the Home row
+/// grid, then Routines, each opening its screen. While LifeOS is out of
+/// reach the four LifeOS rows sit at half strength.
 struct WorkViewRows: View {
     let client: EnvironmentClient
     let workspace: WorkspaceMeta
