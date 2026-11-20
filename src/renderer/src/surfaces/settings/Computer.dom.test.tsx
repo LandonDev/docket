@@ -29,7 +29,7 @@ const link = {
 };
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => link } }));
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
-vi.mock("../../lib/native", () => ({ openUrl: (url: string) => host.openUrl(url) }));
+vi.mock("../../lib/native", () => ({ openUrl: (url: string) => host.openUrl(url), thisDesktopInLine: () => "this Mac" }));
 vi.mock("../../lib/computerSessions", async () => {
   const { useSyncExternalStore } = await import("react");
   const subscribe = (fn: () => void) => {
@@ -261,6 +261,41 @@ describe("Settings › Computer use", () => {
     expect((screen.getByRole("textbox", { name: "Take the screen after minutes" }) as HTMLInputElement).value).toBe("10");
     expect(screen.getByRole("button", { name: "Forget Notes" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Forget TextEdit" })).toBeNull();
+  });
+});
+
+describe("Watch from my other devices", () => {
+  const toggle = (): HTMLElement => screen.getByRole("switch", { name: "Watch from my other devices" });
+
+  it("is one row with a switch, off unless he turned it on, after the pictures row", async () => {
+    render(<ComputerPage />);
+    await settle();
+    const row = toggle().closest("[data-slot=page-row]") as HTMLElement;
+    expect(row.textContent).toContain("Watch from my other devices");
+    expect(row.textContent).toContain("live on your phone and other desktops. Off stops what they are watching.");
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
+    expect(within(row).getAllByRole("switch")).toHaveLength(1);
+    expect(firstSection().contains(row)).toBe(true);
+    const pictures = screen.getByRole("switch", { name: "Keep pictures of the window" }).closest("[data-slot=page-row]") as HTMLElement;
+    expect(pictures.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("saves the flip, follows the host's answer and its push, and slides back when the save is refused", async () => {
+    host.handlers["computer.settings.set"] = async (params) => ({ ...SETTINGS, ...(params as object) });
+    render(<ComputerPage />);
+    await settle();
+    await act(async () => fireEvent.click(toggle()));
+    expect(calls("computer.settings.set").at(-1)![1]).toEqual({ videoRemote: true });
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
+    act(() => host.pushes.forEach((fn) => fn({ push: "computer-settings", settings: { ...SETTINGS, videoRemote: false } })));
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
+    host.handlers["computer.settings.set"] = async () => {
+      throw new Error("the host is not connected");
+    };
+    await act(async () => fireEvent.click(toggle()));
+    await settle();
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText("the host is not connected")).not.toBeNull();
   });
 });
 

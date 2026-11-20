@@ -12,6 +12,7 @@ import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
 import type { Link } from "../../lib/connection/link";
 import { setComputerService, useComputerService } from "../../lib/computerSessions";
+import { thisDesktopInLine } from "../../lib/native";
 import {
   IDLE_MINUTES,
   appTitle,
@@ -52,6 +53,7 @@ export function ComputerPage() {
   const [idleError, setIdleError] = useState<string | null>(null);
   const [activeError, setActiveError] = useState<string | null>(null);
   const [picturesError, setPicturesError] = useState<string | null>(null);
+  const [watchError, setWatchError] = useState<string | null>(null);
 
   useEffect(() => onComputerSettings(link, set), [link, set]);
 
@@ -88,6 +90,18 @@ export function ComputerPage() {
     }
   };
 
+  /** Off also closes what his other devices are watching of this machine; a refusal slides the switch back. */
+  const watchRemote = async (on: boolean): Promise<boolean> => {
+    try {
+      set(await setComputerSettings(link, { videoRemote: on }));
+      setWatchError(null);
+      return true;
+    } catch (err) {
+      setWatchError(message(err));
+      return false;
+    }
+  };
+
   const retryRead = (
     <Button variant="ghost" size="sm" onClick={settings.retry}>
       Retry
@@ -112,7 +126,7 @@ export function ComputerPage() {
         ) : settings.error ? (
           <PageError action={retryRead}>{settings.error}</PageError>
         ) : (
-          <PageRowsSkeleton rows={[{ description: true, control: "number" }, { control: "select" }, { description: true, control: "switch" }]} />
+          <PageRowsSkeleton rows={[{ description: true, control: "number" }, { control: "select" }, { description: true, control: "switch" }, { description: true, control: "switch" }]} />
         )}
         {settings.value ? (
           <PageRow title="When a step needs the app in front" error={activeError}>
@@ -127,6 +141,11 @@ export function ComputerPage() {
         {settings.value ? (
           <PageRow title="Keep pictures of the window" description="On this Mac: a thread's newest 400, for 30 days after it last used the computer. Off deletes them; the steps and what was read stay." error={picturesError}>
             <SettingSwitch label="Keep pictures of the window" on={settings.value.keepPictures} onChange={keepPictures} />
+          </PageRow>
+        ) : null}
+        {settings.value ? (
+          <PageRow title="Watch from my other devices" description={`A window a thread drives on ${thisDesktopInLine()}, live on your phone and other desktops. Off stops what they are watching.`} error={watchError}>
+            <SettingSwitch label="Watch from my other devices" on={settings.value.videoRemote} onChange={watchRemote} />
           </PageRow>
         ) : null}
       </PageSection>
