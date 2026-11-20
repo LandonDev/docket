@@ -56,6 +56,7 @@ describe("railTopRows", () => {
       "search",
       "inbox",
       "outbox",
+      "computers",
       "read",
       "notes",
       "chats",
@@ -69,20 +70,20 @@ describe("railTopRows", () => {
     expect(chatsAriaLabel(false, true)).toBe("Chats, needs you");
   });
 
-  it("is one navigation group on the desktop: Search, Inbox, Mark all read, Notes, Chats, Accounts, Stats", () => {
-    expect(railTopRows({ chats: true, notes: true, aliax: true })).toEqual(["search", "inbox", "read", "notes", "chats", "accounts", "stats"]);
+  it("is one navigation group on the desktop: Search, Inbox, Computers, Mark all read, Notes, Chats, Accounts, Stats", () => {
+    expect(railTopRows({ chats: true, notes: true, aliax: true })).toEqual(["search", "inbox", "computers", "read", "notes", "chats", "accounts", "stats"]);
   });
 
   it("has no Accounts or Stats at /ui, where their pages cannot open", () => {
-    expect(railTopRows({ chats: true, notes: true, aliax: false })).toEqual(["search", "inbox", "read", "notes", "chats"]);
+    expect(railTopRows({ chats: true, notes: true, aliax: false })).toEqual(["search", "inbox", "computers", "read", "notes", "chats"]);
   });
 
   it("leaves Notes out where the view cannot open", () => {
-    expect(railTopRows({ chats: true, notes: false, aliax: true })).toEqual(["search", "inbox", "read", "chats", "accounts", "stats"]);
+    expect(railTopRows({ chats: true, notes: false, aliax: true })).toEqual(["search", "inbox", "computers", "read", "chats", "accounts", "stats"]);
   });
 
   it("leaves Chats out where there is no home", () => {
-    expect(railTopRows({ chats: false, notes: false, aliax: false })).toEqual(["search", "inbox", "read"]);
+    expect(railTopRows({ chats: false, notes: false, aliax: false })).toEqual(["search", "inbox", "computers", "read"]);
   });
 });
 

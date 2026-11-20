@@ -328,13 +328,13 @@ function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof us
           aria-label={label}
           data-face="live"
           onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
-          className="relative mx-auto block w-full cursor-zoom-in overflow-hidden rounded-lg bg-card"
+          className="relative block w-full cursor-zoom-in overflow-hidden rounded-lg bg-card"
           style={shape}
         >
           {inside}
         </button>
       ) : (
-        <div ref={box} role="img" aria-label={label} data-face="live" className="relative mx-auto w-full overflow-hidden rounded-lg bg-card" style={shape}>
+        <div ref={box} role="img" aria-label={label} data-face="live" className="relative w-full overflow-hidden rounded-lg bg-card" style={shape}>
           {inside}
         </div>
       )}
@@ -365,7 +365,7 @@ function StillView({ env, held }: { env: string; held: OutboxItem | null }) {
       onLoad={picture.onLoad}
       onError={picture.onError}
       // in the live picture's own frame: no wider than its pixels, so the two swap without a jump
-      className={cn(pictureClass(true), "mx-auto h-auto")}
+      className={cn(pictureClass(true), "h-auto")}
       style={{ aspectRatio: shape, maxWidth: payload?.picture ? sharpWidth(payload.picture.width, window.devicePixelRatio || 1) : undefined }}
     />
   );

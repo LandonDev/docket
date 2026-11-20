@@ -139,7 +139,7 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
   // In its own shape the picture fills the box's height. In a kept height it is as wide as that height allows and no
   // wider than the box, so a picture of any shape sits whole inside it, centred both ways.
   const fit = height ? { aspectRatio: aspect, width: `min(100%, ${Math.round((height * width) / tall)}px)` } : { aspectRatio: aspect };
-  const boxClass = cn("relative flex w-full justify-center overflow-hidden rounded-lg bg-card", height && "items-center", cap && "mx-auto");
+  const boxClass = cn("relative flex w-full justify-center overflow-hidden rounded-lg bg-card", height && "items-center");
   // The fade is the section's first picture arriving: it rides the wrapper, which stays through every change of face,
   // so a pin, Go live and a step by key swap one face for another with nothing moving.
   const wrap = { "data-slot": "computer-viewport", className: FADE_IN } as const;

@@ -34,6 +34,8 @@ export type ShellState = {
   inboxViewOpen: boolean;
   /** Work's Outbox (work/outbox), on the Inbox's frame. */
   outboxViewOpen: boolean;
+  /** Computers: every computer being driven now (surfaces/ComputersView), on the Inbox's frame. */
+  computersViewOpen: boolean;
   notesViewOpen: boolean;
   /** The Aliax page covering the board, if one is open. */
   accountsPage: AliaxPageId | null;
@@ -59,6 +61,7 @@ export function initialShellState(
     searchSeed: null,
     inboxViewOpen: false,
     outboxViewOpen: false,
+    computersViewOpen: false,
     notesViewOpen: false,
     accountsPage: null,
     settingsOpen: false,
@@ -85,6 +88,7 @@ const VIEWS_CLOSED = {
   searchViewOpen: false,
   inboxViewOpen: false,
   outboxViewOpen: false,
+  computersViewOpen: false,
   notesViewOpen: false,
   accountsPage: null,
 } as const;
@@ -123,6 +127,7 @@ export function openSearchView(state: ShellState): ShellState {
     settingsOpen: false,
     inboxViewOpen: false,
     outboxViewOpen: false,
+    computersViewOpen: false,
     notesViewOpen: false,
     accountsPage: null,
     searchViewOpen: true,
@@ -138,6 +143,7 @@ export function openInbox(state: ShellState): ShellState {
     searchViewOpen: false,
     notesViewOpen: false,
     outboxViewOpen: false,
+    computersViewOpen: false,
     accountsPage: null,
     inboxViewOpen: true,
   });
@@ -148,6 +154,11 @@ export function openOutbox(state: ShellState): ShellState {
   return patch(state, { ...VIEWS_CLOSED, filePickerOpen: false, settingsOpen: false, outboxViewOpen: true });
 }
 
+/** Computers covers the board, as the Inbox does, in any workspace. */
+export function openComputers(state: ShellState): ShellState {
+  return patch(state, { ...VIEWS_CLOSED, filePickerOpen: false, settingsOpen: false, computersViewOpen: true });
+}
+
 export function openNotes(state: ShellState): ShellState {
   return patch(state, {
     filePickerOpen: false,
@@ -155,6 +166,7 @@ export function openNotes(state: ShellState): ShellState {
     searchViewOpen: false,
     inboxViewOpen: false,
     outboxViewOpen: false,
+    computersViewOpen: false,
     accountsPage: null,
     notesViewOpen: true,
   });
@@ -189,6 +201,7 @@ export function leaveTopOverlay(state: ShellState): ShellState {
   if (state.searchViewOpen) return { ...state, searchViewOpen: false };
   if (state.inboxViewOpen) return { ...state, inboxViewOpen: false };
   if (state.outboxViewOpen) return { ...state, outboxViewOpen: false };
+  if (state.computersViewOpen) return { ...state, computersViewOpen: false };
   if (state.notesViewOpen) return { ...state, notesViewOpen: false };
   if (state.accountsPage) return { ...state, accountsPage: null };
   return state;
@@ -205,7 +218,7 @@ export function useShell<T>(selector: (state: ShellState) => T): T {
 /** True while a full-screen view covers the board. */
 export function anyViewOpen(state: ShellState): boolean {
   return (
-    state.searchViewOpen || state.inboxViewOpen || state.outboxViewOpen || state.notesViewOpen || state.accountsPage !== null
+    state.searchViewOpen || state.inboxViewOpen || state.outboxViewOpen || state.computersViewOpen || state.notesViewOpen || state.accountsPage !== null
   );
 }
 
@@ -241,6 +254,11 @@ export const shell = {
     update(openOutbox);
   },
   closeOutbox: () => update((s) => patch(s, { outboxViewOpen: false })),
+  openComputers: () => {
+    perfMark("page-switch", "computers");
+    update(openComputers);
+  },
+  closeComputers: () => update((s) => patch(s, { computersViewOpen: false })),
   openNotes: () => {
     update(openNotes);
   },

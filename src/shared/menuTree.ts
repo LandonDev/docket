@@ -164,6 +164,7 @@ export const MENU_TREE: MenuSection[] = [
       cmd('next_environment', 'Next Host', 'CmdOrCtrl+Alt+]'),
       sep,
       cmd('open_inbox', 'Inbox'),
+      cmd('open_computers', 'Computers', 'CmdOrCtrl+Shift+L'),
       cmd('open_notes', 'Notes')
     ]
   },

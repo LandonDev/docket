@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { macComputerKey } from "@server/shared/contract-maccomputer";
-import { computerTiles } from "./computers";
+import { computerTiles, computersMark } from "./computers";
 import { BOX_BROWSER_BUNDLE } from "./computerSessions";
 
 const row = (over: Partial<ComputerSessionRow> & { threadId: string }): ComputerSessionRow => ({
@@ -76,5 +76,19 @@ describe("every computer being driven now", () => {
     expect(computerTiles({ local: [row({ threadId: "gone" })] }, titleOf, nameOf, mac)[0].title).toBe("Untitled");
     expect(computerTiles({ local: [row({ threadId: "gone", apps: [{ name: "Notes", bundleId: null, window: null }] })] }, titleOf, nameOf, mac)[0].title).toBe("Notes");
     expect(computerTiles({ local: [], box: [] }, titleOf, nameOf, mac)).toEqual([]);
+  });
+
+  it("gives each tile the thread whose pane holds its browser, so Take over is asked of the pane", () => {
+    const tiles = computerTiles({ box: [row({ threadId: "sub", apps: chromium })] }, titleOf, nameOf, mac, (id) => (id === "sub" ? "root" : id));
+    expect(tiles[0].pane).toBe("root");
+  });
+
+  it("marks the rail's row: waiting while a card needs him, working while anything is driven, nothing otherwise, and never a count", () => {
+    expect(computersMark({})).toBeNull();
+    expect(computersMark({ local: [], box: [] })).toBeNull();
+    expect(computersMark({ local: [row({ threadId: "t1" })] })).toBe("working");
+    expect(computersMark({ local: [row({ threadId: "t1" })], box: [row({ threadId: "b1", macPeer: "env_mac", asking: { line: "Allow TextEdit?" } })] })).toBe("waiting");
+    // this Mac's own row of a session a box thread drives here is that thread's, counted once and never alone
+    expect(computersMark({ local: [row({ threadId: macComputerKey(`env_${"b".repeat(22)}`, "b1") })] })).toBeNull();
   });
 });

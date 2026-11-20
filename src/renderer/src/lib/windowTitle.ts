@@ -6,7 +6,7 @@ import { sessionDisplayTitle, UNTITLED_THREAD, type HarnessId } from "./session"
  *  the window, so this is the Window menu's, Mission Control's and ⌘`'s
  *  name for it. No "— TempCode" suffix: macOS names the app already. */
 
-export type TitlePage = "settings" | "search" | "inbox" | "outbox" | "notes" | "accounts" | "stats";
+export type TitlePage = "settings" | "search" | "inbox" | "outbox" | "computers" | "notes" | "accounts" | "stats";
 
 export type TitlePane =
   | { kind: "thread"; title: string }
@@ -24,6 +24,7 @@ const PAGE_TITLES: Record<TitlePage, string> = {
   search: "Search",
   inbox: "Inbox",
   outbox: "Outbox",
+  computers: "Computers",
   notes: "Notes",
   accounts: "Accounts",
   stats: "Stats",

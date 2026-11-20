@@ -6,6 +6,7 @@ import {
   closeViews,
   initialShellState,
   leaveTopOverlay,
+  openComputers,
   openFilesSearch,
   openInbox,
   openNotes,
@@ -166,5 +167,23 @@ describe("shell store", () => {
     expect(seen).toEqual([true, false]);
     expect(shellStore.getState().settingsSection).toBe("build");
     stop();
+  });
+
+  it("Computers is a view like the rest: opening it closes the others, another view closes it, and Back leaves it", () => {
+    const state = { ...base(), inboxViewOpen: true, filePickerOpen: true, settingsOpen: true };
+    const computers = openComputers(state);
+    expect(computers).toMatchObject({ computersViewOpen: true, inboxViewOpen: false, filePickerOpen: false, settingsOpen: false });
+    expect(openComputers(computers)).toBe(computers);
+    expect(openInbox(computers).computersViewOpen).toBe(false);
+    expect(openSearchView(computers).computersViewOpen).toBe(false);
+    expect(openNotes(computers).computersViewOpen).toBe(false);
+    expect(openSettings(computers).computersViewOpen).toBe(false);
+    expect(closeViews(computers).computersViewOpen).toBe(false);
+    expect(leaveTopOverlay(computers)).toEqual({ ...computers, computersViewOpen: false });
+    shellStore.setState(base());
+    shell.openComputers();
+    expect(shellStore.getState().computersViewOpen).toBe(true);
+    shell.closeComputers();
+    expect(shellStore.getState().computersViewOpen).toBe(false);
   });
 });

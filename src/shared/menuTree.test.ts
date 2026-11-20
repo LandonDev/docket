@@ -147,6 +147,7 @@ describe('menu tree', () => {
       ['Next Host', 'Alt+Cmd+]'],
       '—',
       ['Inbox'],
+      ['Computers', 'Shift+Cmd+L'],
       ['Notes']
     ])
     expect(section('Threads')).toEqual([

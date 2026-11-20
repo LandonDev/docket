@@ -117,3 +117,21 @@ export async function handBack(tile: ComputerTile): Promise<void> {
   if (!link) throw new Error("the host is not connected");
   await link.request("work.browser.drive", { sessionId: tile.pane, driver: "agent" });
 }
+
+/** The rail row's mark: waiting while a session's card needs him, working while anything is driven, else none. It carries no count. */
+export function computersMark(byHost: Readonly<Record<string, readonly ComputerSessionRow[]>>): "waiting" | "working" | null {
+  let any = false;
+  for (const [host, rows] of Object.entries(byHost)) {
+    for (const row of rows) {
+      if (bridgedHere(host, row)) continue;
+      if (row.asking) return "waiting";
+      any = true;
+    }
+  }
+  return any ? "working" : null;
+}
+
+export function useComputersMark(): "waiting" | "working" | null {
+  useEffect(startComputerSessions, []);
+  return useStore(computerSessionsStore, (s) => computersMark(s.byHost));
+}

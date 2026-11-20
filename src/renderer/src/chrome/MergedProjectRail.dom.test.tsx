@@ -205,7 +205,7 @@ describe("the rail", () => {
     const root = await mountRail([LOCAL, BOX]);
     const list = root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto')!;
     const labels = [...list.querySelectorAll("[data-rail-row] > button")].map((b) => b.textContent);
-    expect(labels.slice(0, 7)).toEqual(["Search", "Inbox", "Mark all read", "Notes", "Chats", "Accounts", "Stats"]);
+    expect(labels.slice(0, 8)).toEqual(["Search", "Inbox", "Computers", "Mark all read", "Notes", "Chats", "Accounts", "Stats"]);
     // No heading names the navigation or an Accounts group; two threads wait
     // on the person, so the Working section stands under the list.
     expect(headers(root)).toEqual(["Workspaces", "Working"]);

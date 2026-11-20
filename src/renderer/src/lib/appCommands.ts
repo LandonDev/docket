@@ -65,6 +65,7 @@ export const APP_COMMANDS = [
   "save_all",
   "open_search",
   "open_inbox",
+  "open_computers",
   "open_notes",
   "open_settings",
   "check_for_updates",

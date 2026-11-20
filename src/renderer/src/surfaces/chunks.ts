@@ -34,6 +34,8 @@ export const rightPanelChunk = defineChunk("rightPanel", () => import("./RightPa
 export const searchChunk = defineChunk("search", () => import("./SearchView"));
 /** The inbox view and the classic layout's detail pane (InboxView, InboxDetailPane). */
 export const inboxChunk = defineChunk("inbox", () => import("./InboxView"));
+/** Computers: every computer being driven now, live (ComputersView). */
+export const computersChunk = defineChunk("computers", () => import("./ComputersView"));
 /** The all-notes view (NotesView, focusNote). */
 export const notesChunk = defineChunk("notes", () => import("./NotesView"));
 /** Every select on the Base UI select: the dialogs' and settings' ChoiceSelect, and the composer's
@@ -135,5 +137,6 @@ export const allChunks = {
   failureCardChunk,
   workShellChunk,
   workOutboxChunk,
+  computersChunk,
   messageQueueChunk,
 };

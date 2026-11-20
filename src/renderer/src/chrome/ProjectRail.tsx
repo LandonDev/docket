@@ -24,6 +24,7 @@ import {
   Settings,
   StickyNote,
   Trash2,
+  Desktop,
 } from "./icons";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDragResize } from "../hooks/useDragResize";
@@ -99,9 +100,10 @@ import { RailWorking } from "./RailWorking";
 import { useGitDiffStats } from "../lib/gitIndexStore";
 import type { GitDiffStats } from "../lib/fs";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
+import { useComputersMark } from "../lib/computers";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
-import { aliaxChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workOutboxChunk, workShellChunk } from "../surfaces/chunks";
+import { aliaxChunk, computersChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workOutboxChunk, workShellChunk } from "../surfaces/chunks";
 
 /** The Customize dialog loads with the click (its menu warms it). */
 const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
@@ -213,12 +215,13 @@ export function ProjectRail({
   const searchActive = useShell((s) => s.searchViewOpen);
   const inboxActive = useShell((s) => s.inboxViewOpen);
   const outboxActive = useShell((s) => s.outboxViewOpen);
+  const computersActive = useShell((s) => s.computersViewOpen);
   const notesActive = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
   const settingsOpen = useShell((s) => s.settingsOpen);
   const settingsSection = useShell((s) => s.settingsSection);
   /** A full-window view covers the list: no workspace row is selected. */
-  const overlayOpen = searchActive || inboxActive || outboxActive || notesActive || !!accountsPage;
+  const overlayOpen = searchActive || inboxActive || outboxActive || computersActive || notesActive || !!accountsPage;
   const resize = useDragResize({
     min: PROJECT_RAIL_WIDTH_MIN,
     max: () =>
@@ -506,6 +509,7 @@ export function ProjectRail({
   const outboxWaiting = useOutboxWaiting();
   const outboxFailed = useOutboxFailed();
   const inboxUnseen = useInboxUnseen();
+  const computersMark = useComputersMark();
   const topIds = railTopRows({
     chats: onOpenChats !== undefined,
     notes: onOpenNotes !== undefined,
@@ -544,6 +548,21 @@ export function ProjectRail({
       case "outbox":
         // Plain muted count: held is not "needs you" (docs/DESIGN.md "Held is not Needs you"); a failed send takes the failed mark in its place.
         return <RailRow key={id} icon={Outbox} label="Outbox" trailing={outboxFailed > 0 ? <StatusMark state="failed" word={false} /> : outboxWaiting || null} selected={outboxActive} onClick={onOpenOutbox} intent={workOutboxChunk.intent} />;
+      case "computers":
+        // No count: the still working dot while anything is driven, the amber mark while one needs him (docs/DESIGN.md "Computers").
+        return (
+          <RailRow
+            key={id}
+            icon={Desktop}
+            label="Computers"
+            ariaLabel={computersMark === "waiting" ? "Computers, one needs you" : computersMark === "working" ? "Computers, in use" : "Computers"}
+            trailing={computersMark ? <StatusMark state={computersMark} word={false} /> : null}
+            selected={computersActive}
+            onClick={shell.openComputers}
+            intent={computersChunk.intent}
+            tooltip={<Kbd>{keyHint("mod+shift+L")}</Kbd>}
+          />
+        );
       case "workChats":
         return (
           <RailRow
@@ -1059,7 +1078,7 @@ export function workspaceRowAriaLabel(
   return parts.join(", ");
 }
 
-export type RailTopRowId = "search" | "inbox" | "outbox" | "read" | "notes" | "chats" | "workChats" | "accounts" | "stats";
+export type RailTopRowId = "search" | "inbox" | "outbox" | "computers" | "read" | "notes" | "chats" | "workChats" | "accounts" | "stats";
 
 /** The rail's one navigation group, first in its list and with no heading:
  *  Search, Inbox, Mark all read, Notes (where the view can open), Chats
@@ -1069,6 +1088,8 @@ export function railTopRows(facts: { chats: boolean; notes: boolean; aliax: bool
   const rows: RailTopRowId[] = ["search", "inbox"];
   // Work's twins sit beside their code ones: the Outbox (whenever Work is on: Sent and the grants are reached from it with nothing waiting) after Inbox, Work Chats after Chats.
   if (facts.outbox) rows.push("outbox");
+  // Computers is app-wide and always there: whatever an agent drives is reached from any workspace.
+  rows.push("computers");
   rows.push("read");
   if (facts.notes) rows.push("notes");
   if (facts.chats) rows.push("chats");

@@ -67,7 +67,8 @@ export function FullView({ tile, all, stream, room, name, boxRef, picture, dpr =
         <TruncateTip text={tile?.title ?? name}>
           <span className="min-w-0 truncate text-[13px] leading-5 font-medium">{tile?.title ?? name}</span>
         </TruncateTip>
-        {words ? <span className={tile?.driving ? "shrink-0 text-xs whitespace-nowrap text-foreground" : "shrink-0 text-xs whitespace-nowrap text-muted-foreground"}>{words}</span> : null}
+        {/* on the title's own line height, so the two sizes share a baseline */}
+        {words ? <span className={tile?.driving ? "shrink-0 text-xs leading-5 whitespace-nowrap text-foreground" : "shrink-0 text-xs leading-5 whitespace-nowrap text-muted-foreground"}>{words}</span> : null}
         <span className="flex-1" />
         {tile ? <ComputerControls tile={tile} all={all} /> : null}
       </div>
