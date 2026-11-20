@@ -16,9 +16,24 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return node
 }
 
-function message(root: HTMLElement, title: string, line?: string, action?: { label: string; run: (button: HTMLButtonElement) => void }): void {
+/**
+ * The page's one status line, beside the root and never redrawn with it: it says each Send's outcome and keeps
+ * saying it, so a screen reader hears what happened even when the focus did not move.
+ */
+function statusFor(root: HTMLElement): HTMLElement {
+  const next = root.nextElementSibling
+  if (next instanceof HTMLElement && next.dataset.fmStatus !== undefined) return next
+  const line = el('p', 'fm-sr')
+  line.dataset.fmStatus = ''
+  line.setAttribute('role', 'status')
+  root.after(line)
+  return line
+}
+
+/** `focus`: whether the heading takes the focus; by default, when the focus was inside what it replaces. */
+function message(root: HTMLElement, title: string, line?: string, action?: { label: string; run: (button: HTMLButtonElement) => void }, focus?: boolean): void {
   // Focus inside the form (Send was just pressed) moves to the heading that replaces it, so a keyboard or a screen reader hears what happened.
-  const hadFocus = root.contains(document.activeElement)
+  const hadFocus = focus ?? root.contains(document.activeElement)
   root.replaceChildren()
   const box = el('div', 'fm-msg')
   const heading = el('h1', undefined, title)
@@ -167,6 +182,17 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
     const answers = answersOf(form, f.questions)
     const missing = f.questions.find((q) => q.required && q.type !== 'section' && !answers[q.id])
     if (missing) return showError(missing.id, 'This question needs an answer.')
+    // Where the focus was when Send began: the outcome takes it if it is still in the form, or fell to the page
+    // while the fields rested, and never from somewhere he moved it to meanwhile.
+    const hadFocus = form.contains(document.activeElement)
+    const mayMove = (): boolean => {
+      const at = document.activeElement
+      return hadFocus && (!at || at === document.body || form.contains(at))
+    }
+    const status = statusFor(root)
+    const outcome = (text: string): void => {
+      status.textContent = text
+    }
     // What goes is what was read just now: the fields rest until the answer comes, and come back as they were (values kept) if it fails.
     const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')].filter((c) => !c.disabled)
     for (const c of fields) c.disabled = true
@@ -184,15 +210,25 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
     }
     void fetcher(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers }) })
       .then(async (r) => {
-        if (r.ok) return message(root, f.title, 'Your answer was sent. Thank you.')
+        if (r.ok) {
+          outcome('Your answer was sent.')
+          return message(root, f.title, 'Your answer was sent. Thank you.', undefined, mayMove())
+        }
         const body = (await r.json().catch(() => ({}))) as { error?: string; question?: string }
-        if (r.status === 410) return message(root, f.title, 'This form is closed. It takes no more answers.')
+        if (r.status === 410) {
+          outcome('Your answer was not sent: this form is closed.')
+          return message(root, f.title, 'This form is closed. It takes no more answers.', undefined, mayMove())
+        }
+        const text = body.error ?? 'Your answer was not sent. Try again.'
+        outcome(text.startsWith('Your answer was not sent') ? text : `Your answer was not sent. ${text}`)
         release()
-        showError(body.question, body.error ?? 'Your answer was not sent. Try again.')
+        showError(body.question, text)
       })
       .catch(() => {
+        const text = 'Your answer was not sent. Check your connection and try again.'
+        outcome(text)
         release()
-        showError(undefined, 'Your answer was not sent. Check your connection and try again.')
+        showError(undefined, text)
       })
   })
   root.append(form)

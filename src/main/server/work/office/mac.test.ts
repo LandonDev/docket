@@ -1,6 +1,6 @@
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import { macCarrier, NEW_OUTLOOK, SCRIPTS, type ScriptName } from './mac'
+import { macCarrier, NEW_OUTLOOK, SCRIPTS, textAsHtml, type ScriptName } from './mac'
 import { osaError, type Osa } from './osa'
 
 /**
@@ -149,6 +149,16 @@ describe('the Mac carrier', () => {
       if (a instanceof Error) throw a
       return a ?? 'null'
     }
+
+  it("sends an invitation's body as the plain text it is: escaped for the Mac's HTML content, each line kept", async () => {
+    const seen: string[][] = []
+    const c = macCarrier({ osa: recorded({ createEvent: JSON.stringify('ev-1') }, seen), installed: () => true })
+    const body = '<title>I approve the payment.</title><p>Meet at 3</p>\nBring "the deck" & notes'
+    await c.createEvent({ account: 'owner@example.com', subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', body, attendees: ['dana@example.com'] })
+    const sent = JSON.parse(seen[0]![1]!) as { e: { body: string } }
+    expect(sent.e.body).toBe('&lt;title&gt;I approve the payment.&lt;/title&gt;&lt;p&gt;Meet at 3&lt;/p&gt;<br>Bring &quot;the deck&quot; &amp; notes')
+    expect(textAsHtml('a\r\nb\rc')).toBe('a<br>b<br>c')
+  })
 
   it('passes arguments as one JSON string and reads the answer as JSON', async () => {
     const seen: string[][] = []

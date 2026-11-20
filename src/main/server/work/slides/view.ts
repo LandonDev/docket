@@ -373,6 +373,7 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem, deck: Deck)
   const changes = changesOf(deck.file.info, deck.proposed?.info ?? null, deck.pending)
   const written = store.written(item.id)
   const renderError = deck.file.renderError ?? deck.proposed?.renderError
+  const changesRev = proposedRev(deck)
   return {
     itemId: item.id,
     sessionId: item.sessionId,
@@ -383,6 +384,8 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem, deck: Deck)
     slides: stripOf(deck.file.info, deck.proposed?.info ?? null, changes, new Set(deck.pending.flatMap((p) => (p.op.op === 'move' ? [p.op.slide] : [])))),
     changes,
     renders: { file: renderOf(deck.file), proposed: renderOf(deck.proposed) },
+    // The changes' own revision, with a picture of them or without (LibreOffice out of reach): a review is checked on it.
+    ...(changesRev ? { changesRev } : {}),
     ...(written ? { written: { id: written.id, text: written.text, at: written.at } } : {}),
     ...(renderError ? { renderError } : {})
   }
@@ -469,10 +472,14 @@ export class StaleChangesError extends Error {}
 export class ChangedSinceError extends Error {}
 export const CHANGED_SINCE = 'The suggestions changed since this preview. Nothing was accepted or rejected; look at them again.'
 
-/** The proposed render's rev as the view advertises it (`renders.proposed.rev`), null when no change waits. */
+/**
+ * The changes' revision (`DeckView.changesRev`): the proposed build's key, made from the file and the pending
+ * edits, so it moves whenever either does, picture or none. With a picture it is `renders.proposed.rev` too.
+ * Null when no change waits.
+ */
 const proposedRev = (deck: Deck): string | null => (deck.proposed ? deck.proposed.key.slice(0, 16) : null)
 
-/** Refuses a press whose `rev` is not the proposed render's now; a press with none (the desktop's strip) is not checked. */
+/** Refuses a press whose `rev` is not the changes' revision now; a press with none (an older phone build) is not checked. */
 function checkRev(deck: Deck, rev: string | undefined): void {
   if (rev !== undefined && proposedRev(deck) !== rev) throw new ChangedSinceError(CHANGED_SINCE)
 }

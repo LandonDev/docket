@@ -190,6 +190,20 @@ describe("where a computer act's typing goes", () => {
     expect(one({ action: "select_text", element: 4, range: [4, 9], place: "after" })).toEqual({ label: "Puts the caret", value: 'after characters 4 to 9 in text area "Message"' });
   });
 
+  it("shows every prefix and suffix given, spaces alone included, quoted with what cannot be seen escaped", () => {
+    const one = (step: Record<string, unknown>) => typing([step], [{ step: 0, param: "element", sig: "text area:Message < window:New Message" }])[0]!.value;
+    const caret = (more: Record<string, unknown>) => one({ action: "select_text", element: 4, text: "Pay", place: "after", ...more });
+    // "Pay" with a space before it is another occurrence than the first "Pay": the rows must differ
+    expect(caret({})).toBe('after the first "Pay" in text area "Message"');
+    expect(caret({ prefix: " " })).toBe('after the first "Pay" right after " " in text area "Message"');
+    expect(caret({ suffix: "  " })).toBe('after the first "Pay" right before "  " in text area "Message"');
+    expect(caret({ prefix: "\t", suffix: "\n" })).toBe('after the first "Pay" right after "\\t" and right before "\\n" in text area "Message"');
+    // a no-break space looks like a space and is not one
+    expect(caret({ prefix: "\u00a0" })).toBe('after the first "Pay" right after "\\u00a0" in text area "Message"');
+    expect(caret({ prefix: "\u00a0" })).not.toBe(caret({ prefix: " " }));
+    expect(caret({ prefix: 'say "' })).toBe('after the first "Pay" right after "say \\"" in text area "Message"');
+  });
+
   it("keeps the field in every row of a long batch, whatever the title cuts", () => {
     const fields = ["To", "Cc", "Subject", "Message"];
     const steps = fields.flatMap((name, i) => [

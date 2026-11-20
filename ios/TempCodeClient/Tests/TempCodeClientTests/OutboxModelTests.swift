@@ -93,7 +93,7 @@ import TempCodeContract
         let made = OutboxModel.calendarFields(kind: .officeCalendarOp, payload: invite, locale: us, timeZone: utc) ?? []
         #expect(made.map(\.label) == ["Event", "When", "Where", "Invites", "Details"])
         #expect(made[1].value.hasPrefix("Fri, Nov 20, 2:00 to 3:30"))
-        #expect(made[4].value == "Agenda & notes")
+        #expect(made[4].value == "<p>Agenda &amp; notes</p>")
 
         let answer: JSONValue = .object(["op": .string("answer"), "id": .string("x"), "subject": .string("Board"), "start": .string("2026-11-20T09:00:00-05:00"),
                                          "organizer": .string("boss@purdue.edu"), "answer": .string("tentative"), "comment": .string("Running late")])
@@ -101,6 +101,18 @@ import TempCodeContract
         #expect(reply.map(\.label) == ["Event", "When", "From", "Reply", "Note"])
         #expect(reply[1].value.hasPrefix("Fri, Nov 20, 2:00"))
         #expect(reply[3].value == "Maybe")
+    }
+
+    @Test func `shows an invitation's body exactly as it goes, plain text with nothing stripped`() {
+        func details(_ body: String) -> String? {
+            let invite: JSONValue = .object(["op": .string("create"), "event": .object(["subject": .string("Sync"), "start": .string("2026-11-20T14:00:00Z"), "body": .string(body)])])
+            return OutboxModel.calendarFields(kind: .officeCalendarOp, payload: invite, locale: us, timeZone: utc)?.first { $0.label == "Details" }?.value
+        }
+        let body = "<title>I approve the payment.</title><p>Meet at 3</p>\n  second line "
+        #expect(details(body) == body)
+        // A body of spaces alone still goes, so it still shows.
+        #expect(details("   ") == "   ")
+        #expect(details("") == nil)
     }
 
     @Test func whenWordsSayADayPeriodOnceAndADayItemAsItsDay() {
@@ -336,6 +348,23 @@ import TempCodeContract
         #expect(span.value == #"after characters 4 to 9 in text area "Message""#)
     }
 
+    @Test func `shows every prefix and suffix given, spaces alone included, quoted with what cannot be seen escaped`() {
+        func caret(_ more: [String: JSONValue]) -> String {
+            var step: [String: JSONValue] = ["action": .string("select_text"), "element": .number(4), "text": .string("Pay"), "place": .string("after")]
+            step.merge(more) { _, new in new }
+            return typing([.object(step)], [.object(["step": .number(0), "param": .string("element"), "sig": .string("text area:Message < window:New Message")])])[0].value
+        }
+        // "Pay" with a space before it is another occurrence than the first "Pay": the rows must differ.
+        #expect(caret([:]) == #"after the first "Pay" in text area "Message""#)
+        #expect(caret(["prefix": .string(" ")]) == #"after the first "Pay" right after " " in text area "Message""#)
+        #expect(caret(["suffix": .string("  ")]) == #"after the first "Pay" right before "  " in text area "Message""#)
+        #expect(caret(["prefix": .string("\t"), "suffix": .string("\n")]) == #"after the first "Pay" right after "\t" and right before "\n" in text area "Message""#)
+        // A no-break space looks like a space and is not one.
+        #expect(caret(["prefix": .string("\u{00A0}")]) == #"after the first "Pay" right after "\u00a0" in text area "Message""#)
+        #expect(caret(["prefix": .string("\u{00A0}")]) != caret(["prefix": .string(" ")]))
+        #expect(caret(["prefix": .string(#"say ""#)]) == #"after the first "Pay" right after "say \"" in text area "Message""#)
+    }
+
     @Test func `keeps the field in every row of a long batch, whatever the title cuts`() {
         let fields = ["To", "Cc", "Subject", "Message"]
         let steps: [JSONValue] = fields.enumerated().flatMap { i, name in
@@ -422,6 +451,30 @@ import TempCodeContract
     @Test func aComputerActDropsItsToolWordAndSaysURL() {
         let act = OutboxModel.actView(item("c1", kind: .computerAct, payload: .object(["args": .object(["action": .string("left_click"), "url": .string("https://concur.example/expense")])])))
         #expect(act.fields.map(\.label) == ["URL", "Clicks"])
+    }
+
+    @Test func `keeps a Google share's person in its list title however long the file's name, the file on the line under it`() {
+        let name = "Spring LAN budget, final, with every vendor quote attached.xlsx"
+        let share = OutboxItem(ref: .host(.init(id: "g9")), kind: .shareGoogle, workspaceId: "w1", sessionId: "s1", sector: "purdue",
+                               summary: "Share \(name) with dana@purdue.edu (can edit)", verb: "Share", account: nil, state: .held,
+                               payload: .object(["name": .string(name), "email": .string("dana@purdue.edu"), "role": .string("writer")]),
+                               createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, updatedAt: 1)
+        #expect(OutboxModel.rowWords(share) == (title: "Share with dana@purdue.edu (can edit)", line: name))
+        // Every other kind splits its summary at the colon, as before.
+        #expect(OutboxModel.rowWords(item("m2", summary: "Send to Dana Lee: Budget")) == (title: "Send to Dana Lee", line: "Budget"))
+    }
+
+    @Test func `a host whose read failed is named above the bands whatever the others hold`() {
+        let reads = OutboxModel.failedReads([(id: "box", name: "Box", error: "The host did not answer"), (id: "mac", name: "Mac", error: nil)])
+        #expect(reads.map(\.id) == ["box"])
+        #expect(reads[0].line == "Box did not answer")
+        #expect(reads[0].error == "The host did not answer")
+        // Rows from another host never hide a failed read, and a failed read never shows as empty.
+        #expect(OutboxModel.emptyState(bandsEmpty: false, anyReading: false, anyFailed: true) == nil)
+        #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: false, anyFailed: true) == nil)
+        #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: true, anyFailed: false) == .reading)
+        #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: false, anyFailed: false) == .nothingHeld)
+        #expect(OutboxModel.emptyState(bandsEmpty: false, anyReading: true, anyFailed: false) == nil)
     }
 
     @Test func aRowsTitleIsTheActAndItsLineTheWordsAfterIt() {

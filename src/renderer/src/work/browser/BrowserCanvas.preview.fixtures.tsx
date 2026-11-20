@@ -10,6 +10,7 @@ export default [
   { name: "The agent is driving", props: { moment: "driving" } },
   { name: "You took over", props: { moment: "took" } },
   { name: "Submit, held", props: { moment: "held" } },
+  { name: "Submit, held, on a long site name", props: { moment: "held-long" } },
   { name: "Sign in needed", props: { moment: "signin" } },
   { name: "Submitted", props: { moment: "done" } },
   { name: "Loading", props: { moment: "loading" } },

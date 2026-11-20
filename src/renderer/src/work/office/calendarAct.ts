@@ -1,5 +1,4 @@
 import { whenWords } from "../agenda/calendarAct";
-import { htmlWords } from "../outbox/model";
 
 /**
  * What a held Outlook calendar act (`office.calendar.op`) says, as the Outbox
@@ -21,8 +20,6 @@ const at = (iso: string | undefined): number | undefined => {
   const ms = iso ? Date.parse(iso) : NaN;
   return Number.isFinite(ms) ? ms : undefined;
 };
-/** An invitation's body as he reads it: its words, with links and images named, when Outlook's body is html. */
-const words = (body: string): string => (/<[a-z][\s\S]*>/i.test(body) ? htmlWords(body) : body.trim());
 
 export function officeOpFields(payload: unknown): { label: string; value: string }[] {
   const op = (payload ?? {}) as OfficeCalendarOp;
@@ -36,7 +33,9 @@ export function officeOpFields(payload: unknown): { label: string; value: string
     // The account it goes from, bound by the host when it was held: the press never takes Outlook's default of that moment.
     if (e.account) rows.push({ label: "From", value: e.account });
     if (e.attendees?.length) rows.push({ label: "Invites", value: e.attendees.join(", ") });
-    if (e.body?.trim()) rows.push({ label: "Details", value: words(e.body) });
+    // Plain text on every carrier (Outlook on the web sends it as Text, Windows as Body, the Mac escaped): shown exactly
+    // as it goes, never read as html, so a tag in it is words he sees, not markup that hides some.
+    if (e.body) rows.push({ label: "Details", value: e.body });
     return rows;
   }
   if (op.subject) rows.push({ label: "Event", value: op.subject });

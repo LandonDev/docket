@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeldItem } from "@shared/work";
 
@@ -51,6 +51,21 @@ describe("a held mail in the Outbox", () => {
     expect(drawn.html).toBe(outgoingMail(payload));
     // The header rows stay above the drawn mail.
     expect(container.textContent).toContain("marisol@riveradental.com");
+  });
+
+  it("seats the switch under the headers, above the body it swaps, and its words switch it", () => {
+    const { container } = render(<View item={{ payload } as unknown as HeldItem} env="box" />);
+    const looks = container.querySelector<HTMLElement>("[data-mail-looks]")!;
+    // After the headers and before the words: it stays under the pointer whichever body shows.
+    expect(looks.previousElementSibling!.tagName).toBe("DL");
+    expect(looks.nextElementSibling!.textContent).toContain("It is attached.");
+    fireEvent.click(within(looks).getByText("As it looks"));
+    expect(screen.getByRole("switch", { name: "As it looks" }).getAttribute("aria-checked")).toBe("true");
+    expect(container.querySelector("[data-frame]")).not.toBeNull();
+    // Still above what it swapped in, and its words switch back.
+    expect(looks.nextElementSibling!.hasAttribute("data-mail-drawn")).toBe(true);
+    fireEvent.click(within(looks).getByText("As it looks"));
+    expect(container.querySelector("[data-frame]")).toBeNull();
   });
 
   it("offers no drawn view for a mail with no HTML", () => {

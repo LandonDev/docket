@@ -50,6 +50,13 @@ const sigWords = (sig: unknown): string | null => {
   return name ? `${role} ${JSON.stringify(name)}` : role;
 };
 
+/**
+ * A string as it goes, in quotes: JSON's escapes for quotes, line breaks and tabs, and `\uXXXX` for the characters
+ * that look like a space or like nothing (a no-break space, a zero-width space), so " " and "\u00a0" never read alike.
+ */
+export const exactQuote = (v: string): string =>
+  JSON.stringify(v).replace(/[\u00a0\u1680\u180e\u2000-\u200f\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+
 const CLICK: Record<string, string> = { left_click: "Clicks", right_click: "Right-clicks", middle_click: "Middle-clicks", double_click: "Double-clicks", triple_click: "Triple-clicks" };
 
 /**
@@ -114,9 +121,12 @@ export function stepRows(args: Rec, targets: unknown): { label: string; value: s
         // What it finds (its first match, narrowed by the words right around it, or a span of characters), in which
         // field, and whether it selects that or only puts the caret beside it: "select Pay" and "caret after Pay"
         // then paste the same text to different ends.
+        // A prefix or suffix of spaces alone still picks another occurrence (TextMatch.swift `findText`): every one
+        // given is shown, untrimmed, quoted with its invisible characters escaped.
         const range = Array.isArray(a.range) && a.range.length === 2 ? `characters ${a.range[0]} to ${a.range[1]}` : null;
-        const around = [str(a.prefix) ? `right after ${JSON.stringify(a.prefix)}` : "", str(a.suffix) ? `right before ${JSON.stringify(a.suffix)}` : ""].filter(Boolean).join(" and ");
-        const match = range ?? `the first ${JSON.stringify(text ?? "")}${around ? ` ${around}` : ""}`;
+        const given = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+        const around = [given(a.prefix) ? `right after ${exactQuote(a.prefix)}` : "", given(a.suffix) ? `right before ${exactQuote(a.suffix)}` : ""].filter(Boolean).join(" and ");
+        const match = range ?? `the first ${exactQuote(text ?? "")}${around ? ` ${around}` : ""}`;
         const place = str(a.place);
         if (place === "before" || place === "after") rows.push({ label: "Puts the caret", value: `${place} ${match} in ${intoWhat()}` });
         else rows.push({ label: "Selects", value: `${match} in ${intoWhat()}` });

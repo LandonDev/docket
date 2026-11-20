@@ -28,21 +28,43 @@ const EDIT_WAIT = 150;
  * (null); `lost` is an edit whose answer never came because the line dropped.
  */
 export function refusedWords(reason: string | "lost"): string | null {
-  if (reason === "lost") return "The connection dropped before the sheet took it";
+  if (reason === "lost") return "The connection dropped before the sheet answered. Check the cell";
   if (/changed under that edit/i.test(reason)) return "Someone changed the sheet first. Type it again";
   if (/^a guest cannot/i.test(reason)) return "Guests can change values and formats only";
   if (/can view, not edit/i.test(reason)) return "This link can view the sheet, not edit it";
   return null;
 }
 
-export function SheetPage({ session, opened, onGone, onDown }: { session: Session; opened: Opened; onGone(): void; onDown(unsaved: boolean): void }) {
+/**
+ * An edit the sheet does not have, and why in his words (null: the word alone). `unconfirmed`: the line dropped
+ * before the sheet answered, so whether it landed is not known, and he is asked to check the cell.
+ */
+export type Refusal = { why: string | null; unconfirmed?: boolean };
+
+/** A dropped line's refusal: the save could not be confirmed. */
+const lost = (): Refusal => ({ why: refusedWords("lost"), unconfirmed: true });
+
+export function SheetPage({
+  session,
+  opened,
+  onGone,
+  onDown,
+  carried = null,
+}: {
+  session: Session;
+  opened: Opened;
+  onGone(): void;
+  /** The tries ran out; with the refusal that stood then, so the unreachable screen and the grid after Retry keep it. */
+  onDown(left: Refusal | null): void;
+  /** A refusal from before a Retry: it stands on the grid until an edit is taken. */
+  carried?: Refusal | null;
+}) {
   const [book, setBook] = useState<{ snapshot: Record<string, unknown>; key: number } | null>(null);
-  // Set: an edit the sheet does not have, and why in his words (null: the word alone).
-  const [refused, setRefusedState] = useState<{ why: string | null } | null>(null);
-  // Whether an edit stands unsaved now: read when the tries run out, in the same tick a close may have set it.
-  const unsaved = useRef(false);
-  const setRefused = (next: { why: string | null } | null): void => {
-    unsaved.current = next !== null;
+  const [refused, setRefusedState] = useState<Refusal | null>(carried);
+  // The refusal standing now: read when the tries run out, in the same tick a close may have set it.
+  const standing = useRef<Refusal | null>(carried);
+  const setRefused = (next: Refusal | null): void => {
+    standing.current = next;
     setRefusedState(next);
   };
   // The socket is down: the grid stays as it was, read only, under one line, until a fresh state comes.
@@ -56,7 +78,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
     const l = live.current;
     // Again, with backoff: after five tries in a row, the page cannot be reached (the unavailable screen, with Retry).
     const again = (delay?: number): void => {
-      if (++tries > 5) return onDown(unsaved.current);
+      if (++tries > 5) return onDown(standing.current);
       setTimeout(() => void connect(), delay ?? Math.min(8000, 500 * 2 ** tries));
     };
     const connect = async (): Promise<void> => {
@@ -110,7 +132,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
         if (l.ws === ws) l.ws = null;
         // An edit sent and not yet answered, or still waiting to go, is not on the sheet: say so, and take the sheet's own copy back.
         if (l.inflight || l.pending.length) {
-          setRefused({ why: refusedWords("lost") });
+          setRefused(lost());
           l.pending = [];
           if (l.timer) clearTimeout(l.timer);
           l.timer = null;
@@ -152,7 +174,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
       ) : null}
       {refused ? (
         <div role="alert" data-sheet-refused="" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
-          <StatusMark state="failed" word="Edit not saved" detail={refused.why ?? undefined} className="min-w-0 flex-1" />
+          <StatusMark state="failed" word={refused.unconfirmed ? "Edit not confirmed" : "Edit not saved"} detail={refused.why ?? undefined} className="min-w-0 flex-1" />
         </div>
       ) : null}
       <SheetCanvas
@@ -169,7 +191,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
             if (!m.id.startsWith("sheet.mutation.") || p?.unitId !== l.unit) return;
             // An edit made while the line is down cannot reach the sheet: it is not kept, it is said, and the sheet's copy comes back on reconnect.
             if (!l.ws || l.ws.readyState !== WebSocket.OPEN) {
-              setRefused({ why: refusedWords("lost") });
+              setRefused(lost());
               l.rev = -1;
               return;
             }

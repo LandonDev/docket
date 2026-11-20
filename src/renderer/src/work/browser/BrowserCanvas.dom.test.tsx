@@ -184,25 +184,66 @@ describe("the browser's bar", () => {
       warmTooltips();
       await tooltipChunk.load();
     });
-    const { unmount } = render(<Bar {...props()} />);
+    // The measure follows the button's size; this observer lets the test resize it.
+    const watched = new Map<Element, (entries: unknown[]) => void>();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private fire: (entries: unknown[]) => void) {}
+        observe(el: Element) {
+          watched.set(el, this.fire);
+        }
+        unobserve(el: Element) {
+          watched.delete(el);
+        }
+        disconnect() {}
+      },
+    );
+    const resize = (el: Element) => act(() => watched.get(el)?.([]));
+    // The page he approves is on screen (a preview's stand-in), so the primary is live and can take its tooltip.
+    render(<Bar {...props()} picture={<div />} />);
     const name = `Submit Report in ${site}`;
     const primary = await screen.findByRole("button", { name });
-    // It may shrink and its words cut; the verbs beside it stay whole.
-    expect(primary.className).toContain("min-w-0");
+    // It may shrink (the recipe's shrink-0 lifted) and its words cut; the verbs beside it stay whole.
+    const tokens = primary.className.split(/\s+/);
+    expect(tokens).not.toContain("shrink-0");
+    expect(tokens).toContain("shrink");
+    expect(tokens).toContain("min-w-0");
     expect(primary.className).toContain("[&_[data-slot=busy-label]:not([data-busy])>span]:truncate");
     expect(primary.parentElement!.className).toContain("min-w-0");
-    expect(primary.parentElement!.className).not.toContain("shrink-0");
-    expect(screen.getByRole("button", { name: "Discard" }).className).toContain("shrink-0");
-    // Words that fit mount no tooltip.
-    expect(primary.getAttribute("data-slot")).toBe("button");
-    unmount();
-    // Words that are cut show whole on hover and focus.
+    expect(screen.getByRole("button", { name: "Discard" }).className.split(/\s+/)).toContain("shrink-0");
+    const tip = () => document.querySelector('[data-slot="tooltip-content"]');
+    const hover = async () => {
+      fireEvent.pointerEnter(primary, { pointerType: "mouse" });
+      fireEvent.mouseEnter(primary);
+      fireEvent.mouseMove(primary);
+      await act(() => new Promise((resolve) => setTimeout(resolve, 700)));
+    };
+    const leave = () => {
+      fireEvent.pointerLeave(primary, { pointerType: "mouse" });
+      fireEvent.mouseLeave(primary);
+    };
+    // Words that fit show no tip.
+    await hover();
+    expect(tip()).toBeNull();
+    leave();
+    // The pane narrows and the words are cut: the same button, focus kept, now with its tip.
+    primary.focus();
     const width = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
     const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
-    render(<Bar {...props()} />);
-    await waitFor(() => expect(screen.getByRole("button", { name }).getAttribute("data-slot")).toBe("tooltip-trigger"));
+    resize(primary);
+    expect(screen.getByRole("button", { name })).toBe(primary);
+    expect(document.activeElement).toBe(primary);
+    await hover();
+    await waitFor(() => expect(tip()?.textContent).toBe(name));
+    leave();
+    // Wide again: still the same button, and no tip.
     width.mockRestore();
     client.mockRestore();
+    resize(primary);
+    expect(screen.getByRole("button", { name })).toBe(primary);
+    expect(document.activeElement).toBe(primary);
+    vi.unstubAllGlobals();
   });
 
   it("at a held submit, Take over gives way by the pane's width (a container query), never the window's", async () => {

@@ -41,6 +41,11 @@ const weekStart = localeWeekStart();
 const state = shared<{ view: AgendaView; day: number; adding: number | "now" | null }>({ view: "list", day: startOfDay(Date.now()), adding: null });
 const go = (patch: Partial<ReturnType<typeof state.get>>) => state.set({ ...state.get(), ...patch });
 
+/** "Nov 2026": the month a narrow Month view is on. */
+export function shortMonth(day: number): string {
+  return new Date(day).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
 export function Head(_props: WorkViewProps) {
   const { view, day } = useShared(state);
   return (
@@ -48,6 +53,12 @@ export function Head(_props: WorkViewProps) {
       {view !== "list" ? (
         <>
           <span className="hidden truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:inline">{formatPeriod(view, day, weekStart)}</span>
+          {/* Narrow, the month grid shows weekdays and dates alone: its month and year stay here, short, so Previous and Next never lose the date. */}
+          {view === "month" ? (
+            <span data-agenda-short-period className="truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:hidden">
+              {shortMonth(day)}
+            </span>
+          ) : null}
           <Button variant="ghost" size="sm" onClick={() => go({ day: startOfDay(Date.now()) })}>
             Today
           </Button>

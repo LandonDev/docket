@@ -365,7 +365,10 @@ describe('the module, on a fake deck tool', () => {
   it('a press made on one preview is refused once the changes moved on, for an accept and a reject alike; a press with no rev is not checked', async () => {
     const item = openDeck(fileSource(path))
     await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['First words'] }] })
-    const shown = (await call('work.slides.open', { itemId: item.id })).renders.proposed!.rev
+    const opened = await call('work.slides.open', { itemId: item.id })
+    const shown = opened.renders.proposed!.rev
+    // With a picture, the changes' revision is the picture's: one rule, one value.
+    expect(opened.changesRev).toBe(shown)
     // The agent's next edit joins after the phone drew its preview: that preview's press changes nothing.
     await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['Second words'] }] })
     const before = pushes.length
@@ -376,7 +379,7 @@ describe('the module, on a fake deck tool', () => {
     expect(new SlidesStore(db).pending(item.id)).toHaveLength(2)
     // Every client is shown the changes as they are now.
     expect(pushes.length).toBeGreaterThan(before)
-    // The fresh preview's rev is taken; the desktop's press, with none, is not checked.
+    // The fresh preview's rev is taken; a press with none (an older phone build) is not checked.
     const now = (await call('work.slides.open', { itemId: item.id })).renders.proposed!.rev
     expect(now).not.toBe(shown)
     const view = await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'reject', rev: now })
@@ -700,6 +703,34 @@ describe('the module without LibreOffice in reach', () => {
     expect(view.renderError).toBe('There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches.')
     expect(view.renders.file).toBeNull()
     expect(view.slides).toHaveLength(4)
+    // Nothing waits: no changes revision.
+    expect(view.changesRev).toBeUndefined()
+  })
+
+  it('with no picture, the changes still carry a revision, and a review on it is checked on accept and on reject alike', async () => {
+    const path = join(dir, 'Show.pptx')
+    writeFileSync(path, fakeBytes(FAKE_DECK))
+    const item = openDeck(fileSource(path))
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['First words'] }] })
+    const shownView = await call('work.slides.open', { itemId: item.id })
+    expect(shownView.renderError).toBeDefined()
+    expect(shownView.renders.proposed).toBeNull()
+    const shown = shownView.changesRev!
+    expect(shown).toMatch(/^[0-9a-f]{16}$/)
+    // The agent's next edit moves the revision: the text-diff review he saw is refused, for an accept and a reject alike.
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['Second words'] }] })
+    for (const verdict of ['accept', 'reject'] as const) {
+      await expect(call('work.slides.review', { itemId: item.id, changes: 'all', verdict, rev: shown })).rejects.toThrow('The suggestions changed since this preview')
+    }
+    expect(readFake(path)).toEqual(FAKE_DECK)
+    expect(new SlidesStore(db).pending(item.id)).toHaveLength(2)
+    // The fresh revision is taken.
+    const now = (await call('work.slides.open', { itemId: item.id })).changesRev!
+    expect(now).not.toBe(shown)
+    expect((await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'reject', rev: now })).changes).toEqual([])
+    // A press with no rev (an older phone build) is still taken, as today.
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['Third words'] }] })
+    expect((await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept' })).changes).toEqual([])
   })
 })
 

@@ -151,6 +151,11 @@ export interface DeckView {
   changes: SlideChange[]
   /** `file`: the deck as it is on disk. `proposed`: with every pending change in; null when nothing is pending. */
   renders: { file: DeckRender | null; proposed: DeckRender | null }
+  /**
+   * The revision of the changes that wait, whether or not a picture of them could be made (with one, it is
+   * `renders.proposed.rev`); absent when nothing is pending. A review's `rev` is checked against it.
+   */
+  changesRev?: string
   /** What the agent last wrote directly, for the bar's settled line and its Undo. */
   written?: { id: string; text: string; at: number }
   /** Why there is no picture (LibreOffice is not installed on a host this one can reach). The outline still shows. */
@@ -171,7 +176,7 @@ export const SlidesRequestSchemas = [
       itemId,
       changes: z.union([z.array(z.string()).max(1000), z.literal('all')]),
       verdict: z.enum(['accept', 'reject']),
-      /** the proposed render the press was made on (`DeckView.renders.proposed.rev`): with it, a press on changes that moved on since is refused, never applied to what he did not see */
+      /** the changes the press was made on (`DeckView.changesRev`, which is `renders.proposed.rev` when there is a picture): with it, a press on changes that moved on since is refused, never applied to what he did not see; an older client that sends none is not checked */
       rev: z.string().max(64).optional()
     })
   ),

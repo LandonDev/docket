@@ -17,7 +17,8 @@ import { applyCanvasPush, resetCanvasStore } from "../canvas/store";
 import * as BrowserCanvas from "./BrowserCanvas";
 import { CONCUR_PAGE } from "./BrowserCanvas.preview.fixtures";
 
-export type BrowserMoment = "driving" | "took" | "held" | "signin" | "done" | "loading";
+/** `held-long`: the held submit on a site whose name runs long (the host allows 80 characters), for the narrow bar. */
+export type BrowserMoment = "driving" | "took" | "held" | "held-long" | "signin" | "done" | "loading";
 
 void workCanvasChunk.load();
 
@@ -51,7 +52,10 @@ function data(moment: BrowserMoment, sessionId: string): BrowserCanvas.Browser {
     sessionId,
     driver: moment === "took" ? "owner" : "agent",
     needs: moment === "signin" ? "Concur wants you to sign in" : null,
-    site: { url: moment === "signin" ? "https://login.purdue.edu" : "https://us2.concursolutions.com/report", name: "Concur" },
+    site: {
+      url: moment === "signin" ? "https://login.purdue.edu" : "https://us2.concursolutions.com/report",
+      name: moment === "held-long" ? "Concur Expense Reporting for Purdue University Recreation and Wellness" : "Concur",
+    },
     sources: [
       { field: "Hotel", source: "Hilton folio.pdf, page 1" },
       { field: "Mileage", source: "412 miles at $0.447, from Maps" },
@@ -59,7 +63,7 @@ function data(moment: BrowserMoment, sessionId: string): BrowserCanvas.Browser {
     ],
     since: 1,
   };
-  const held = moment === "held" ? { ...SUBMIT, sessionId } : moment === "done" ? { ...SUBMIT, sessionId, state: "sent" as const, decidedAt: new Date(2026, 10, 19, 14, 14).getTime() } : null;
+  const held = moment === "held" || moment === "held-long" ? { ...SUBMIT, sessionId } : moment === "done" ? { ...SUBMIT, sessionId, state: "sent" as const, decidedAt: new Date(2026, 10, 19, 14, 14).getTime() } : null;
   return { state, held, entry: null, live: [] };
 }
 

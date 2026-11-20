@@ -78,6 +78,13 @@ export function View({ item }: ActViewProps) {
           </div>
         ))}
       </dl>
+      {/* Under the headers, above the body it swaps: it stays under the pointer whatever height either has, and its words switch it too. */}
+      {drawn ? (
+        <label data-mail-looks className="flex cursor-default items-center justify-between gap-3 text-[13px] text-muted-foreground">
+          <span>As it looks</span>
+          <SettingSwitch label="As it looks" on={looks} onChange={setLooks} />
+        </label>
+      ) : null}
       {looks && drawn ? (
         <AsItLooks html={drawn} />
       ) : (
@@ -87,12 +94,6 @@ export function View({ item }: ActViewProps) {
           {quote ? <div data-mail-quote className="whitespace-pre-wrap break-words text-[13px] leading-5 text-muted-foreground">{quote}</div> : null}
         </>
       )}
-      {drawn ? (
-        <div className="flex items-center justify-between gap-3 text-[13px] text-muted-foreground">
-          <span>As it looks</span>
-          <SettingSwitch label="As it looks" on={looks} onChange={setLooks} />
-        </div>
-      ) : null}
       {files.length ? (
         <div className="flex flex-wrap gap-2">
           {files.map((name) => (

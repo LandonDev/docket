@@ -123,6 +123,57 @@ describe('the form page', () => {
     expect(document.activeElement).toBe(name)
   })
 
+  it('takes the focus to the outcome when it fell to the page while Send was out, and says the outcome in a status line that stays', async () => {
+    let done: (r: Response) => void = () => undefined
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'POST' ? new Promise<Response>((r) => (done = r)) : json(200, FORM)))
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    type('#q0', 'Ava')
+    root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
+    root.querySelector<HTMLButtonElement>('.fm-send')!.focus()
+    submit()
+    // The button rested, and a browser drops the focus of a control it disables to the page (jsdom keeps it, so the test drops it).
+    expect(root.querySelector<HTMLButtonElement>('.fm-send')!.disabled).toBe(true)
+    const gone = document.createElement('input')
+    document.body.append(gone)
+    gone.focus()
+    gone.remove()
+    expect(document.activeElement).toBe(document.body)
+    done(json(200, {}))
+    await vi.waitFor(() => expect(root.querySelector('.fm-msg')).not.toBeNull())
+    expect(document.activeElement).toBe(root.querySelector('.fm-msg h1'))
+    const status = document.querySelector('[data-fm-status]')!
+    expect(status.getAttribute('role')).toBe('status')
+    expect(status.textContent).toBe('Your answer was sent.')
+    // Outside the root, so the redraw left it standing.
+    expect(root.contains(status)).toBe(false)
+  })
+
+  it('leaves the focus where he moved it during the send, and still says the outcome', async () => {
+    let done: (r: Response) => void = () => undefined
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'POST' ? new Promise<Response>((r) => (done = r)) : json(200, FORM)))
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    type('#q0', 'Ava')
+    root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
+    root.querySelector<HTMLButtonElement>('.fm-send')!.focus()
+    submit()
+    const elsewhere = document.createElement('button')
+    document.body.append(elsewhere)
+    elsewhere.focus()
+    done(json(200, {}))
+    await vi.waitFor(() => expect(root.querySelector('.fm-msg')).not.toBeNull())
+    expect(document.activeElement).toBe(elsewhere)
+    expect(document.querySelector('[data-fm-status]')!.textContent).toBe('Your answer was sent.')
+  })
+
+  it('says a send that failed in the same status line', async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'POST' ? Promise.reject(new TypeError('offline')) : json(200, FORM)))
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    type('#q0', 'Ava')
+    root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
+    submit()
+    await vi.waitFor(() => expect(document.querySelector('[data-fm-status]')!.textContent).toBe('Your answer was not sent. Check your connection and try again.'))
+  })
+
   it('tells a form that failed to load from one that is not there, and Retry reads it again', async () => {
     let answer = json(503, {})
     const fetcher = vi.fn(async () => answer)

@@ -26,8 +26,15 @@ export type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { 
  * workspace's rows never stand on another's page; `put` sets an answer in
  * place (an optimistic order) and outranks any read still in flight.
  */
-function usePushed<T>(env: string | undefined, key: string | null, read: () => Promise<T>, heard: (workspaceId: string) => boolean): [Load<T>, (value: T) => void] {
+/** Retry on a failed read: asks again while the error stays on screen, `retrying` while it runs. */
+export interface Again {
+  retry(): void;
+  retrying: boolean;
+}
+
+function usePushed<T>(env: string | undefined, key: string | null, read: () => Promise<T>, heard: (workspaceId: string) => boolean): [Load<T>, (value: T) => void, Again] {
   const [state, setState] = useState<{ key: string | null; load: Load<T> }>({ key, load: { status: "loading" } });
+  const [retrying, setRetrying] = useState(false);
   const asked = useRef(0);
   useEffect(() => {
     if (!env || !key) return;
@@ -56,7 +63,18 @@ function usePushed<T>(env: string | undefined, key: string | null, read: () => P
     asked.current++;
     setState({ key, load: { status: "ready", value } });
   };
-  return [state.key === key ? state.load : { status: "loading" }, put];
+  const retry = (): void => {
+    if (!env || !key || retrying) return;
+    setRetrying(true);
+    const mine = ++asked.current;
+    read()
+      .then(
+        (value) => mine === asked.current && setState({ key, load: { status: "ready", value } }),
+        (err: unknown) => mine === asked.current && setState({ key, load: { status: "error", error: refusalWords(err) || "The host did not answer" } }),
+      )
+      .finally(() => setRetrying(false));
+  };
+  return [state.key === key ? state.load : { status: "loading" }, put, { retry, retrying }];
 }
 
 export const useRulesPage = (env: string | undefined, workspaceId: string) =>

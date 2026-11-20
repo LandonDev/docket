@@ -130,11 +130,20 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
         : undefined,
     [readFailed, fileFailed, proposedFailed, retryFile, retryProposed],
   );
-  // The review is bound to the proposed render on screen: its revision goes with every press, and while a new one is
-  // being read in its place (or the first is still coming) the stepper is held, its verbs off.
-  const proposedAt = view?.renders.proposed?.rev;
-  const replacing = !!proposedAt && !view?.renderError && !proposedFailed && (proposedRender.doc === null || proposedRender.rev !== proposedAt);
-  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, proposedAt, replacing, store);
+  // The review is bound to the changes he is shown: their revision goes with every press, single or all, and with no
+  // revision (a host that sends none) no verdict is offered. Where the host has a picture of them, he decides on the
+  // stage: the verbs are held while the proposed render loads or is replaced, and until the stage has painted the slide
+  // on screen from it; a failed paint holds them until its Retry paints. With no picture (LibreOffice out of reach) the
+  // outline and the text diffs are the review, on the changes' revision.
+  const reviewRev = view?.changesRev ?? view?.renders.proposed?.rev;
+  const pictured = !!view && !view.renderError && !!view.renders.proposed;
+  const shownSlide = view ? (view.slides.find((s) => s.key === current) ?? view.slides[0]) : undefined;
+  const shownDoc = shownSlide && !view?.renderError ? (shownSlide.from === "proposed" ? proposedDoc : fileDoc) : null;
+  const [painted, setPainted] = useState<{ key: string; doc: PdfDoc } | null>(null);
+  const bound = pictured && proposedDoc !== null && proposedRender.rev === view?.renders.proposed?.rev;
+  const seen = !!shownSlide && !!shownDoc && painted?.key === shownSlide.key && painted.doc === shownDoc;
+  const held = !reviewRev || (pictured && !(bound && seen));
+  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store);
 
   // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
   if (error) return null;
@@ -153,6 +162,8 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
           view={view}
           slide={shown}
           doc={view.renderError ? null : docOf(shown)}
+          onPainted={(doc) => setPainted({ key: shown.key, doc })}
+          onPaintFailed={() => setPainted(null)}
           width={narrow ? size.width : size.width - STRIP}
           height={narrow ? size.height - 96 : size.height}
           itemTitle={item.title}
@@ -177,8 +188,8 @@ function useFeeds(
   run: (work: Promise<DeckView>, fallback: string) => Promise<void>,
   retry: () => Promise<void>,
   retryRender: (() => void) | undefined,
-  proposedAt: string | undefined,
-  replacing: boolean,
+  reviewRev: string | undefined,
+  held: boolean,
   store: DeckStore,
 ): void {
   const inPowerPoint = side === "powerpoint";
@@ -222,15 +233,15 @@ function useFeeds(
         const slide = change && slideOfChange(view, change);
         if (slide) select(slide.key);
       },
-      held: replacing,
+      held,
       accept: (w) => decide(which(w), "accept"),
       reject: (w) => decide(which(w), "reject"),
     };
-    // A press goes with the revision of the preview he saw; one the host refuses (the changes moved on since) says so,
-    // and the deck is read again, so he decides only on what is drawn.
+    // A press goes with the revision of the changes he saw, never without one; one the host refuses (the changes moved
+    // on since) says so, and the deck is read again, so he decides only on what is drawn.
     function decide(changes: string[] | "all", verdict: "accept" | "reject"): Promise<void> {
-      if (replacing) return Promise.reject(new Error("The slides are still being drawn"));
-      return host.review(changes, verdict, proposedAt).then(
+      if (held || !reviewRev) return Promise.reject(new Error("The slides are still being drawn"));
+      return host.review(changes, verdict, reviewRev).then(
         (next) => store.view(next),
         (e: unknown) => {
           sayError(e, verdict === "accept" ? "Couldn't accept the change" : "Couldn't reject the change");
@@ -241,7 +252,7 @@ function useFeeds(
     shell.review(review);
     return () => shell.review(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shell, host, changes, index, inPowerPoint, run, select, proposedAt, replacing, store]);
+  }, [shell, host, changes, index, inPowerPoint, run, select, reviewRev, held, store]);
 }
 
 // ── the strip ────────────────────────────────────────────────────────
@@ -345,7 +356,25 @@ function useInView(ref: { current: Element | null }, margin = "200px"): boolean 
  * refuses on the stage says so in the slide's place, with Retry, as a PDF's
  * page does; a thumbnail stays a blank.
  */
-const Picture = memo(function Picture({ doc, page, width, ghost = false, title, thumb = false, onPainted }: { doc: PdfDoc | null; page: number; width: number; ghost?: boolean; title: string; thumb?: boolean; onPainted?(host: HTMLElement): void }) {
+const Picture = memo(function Picture({
+  doc,
+  page,
+  width,
+  ghost = false,
+  title,
+  thumb = false,
+  onPainted,
+  onFailed,
+}: {
+  doc: PdfDoc | null;
+  page: number;
+  width: number;
+  ghost?: boolean;
+  title: string;
+  thumb?: boolean;
+  onPainted?(host: HTMLElement): void;
+  onFailed?(): void;
+}) {
   const host = useRef<HTMLSpanElement>(null);
   const [painted, setPainted] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -366,7 +395,11 @@ const Picture = memo(function Picture({ doc, page, width, ghost = false, title, 
           setPainted(true);
           onPainted?.(el);
         },
-        () => !job.signal.aborted && !thumb && setFailed(true),
+        () => {
+          if (job.signal.aborted || thumb) return;
+          setFailed(true);
+          onFailed?.();
+        },
       );
     };
     // The stage asks first: a thumbnail waits a beat, so the one worker draws the big slide before the strip.
@@ -420,7 +453,30 @@ export function toneOf(host: HTMLElement): "dark" | "light" {
   return sum / n < 128 ? "dark" : "light";
 }
 
-function Main({ view, slide, doc, width, height, itemTitle, source, shell }: { view: DeckView; slide: DeckSlide; doc: PdfDoc | null; width: number; height: number; itemTitle: string; source: CanvasBodyProps["source"]; shell: CanvasShell }) {
+function Main({
+  view,
+  slide,
+  doc,
+  width,
+  height,
+  itemTitle,
+  source,
+  shell,
+  onPainted,
+  onPaintFailed,
+}: {
+  view: DeckView;
+  slide: DeckSlide;
+  doc: PdfDoc | null;
+  width: number;
+  height: number;
+  itemTitle: string;
+  source: CanvasBodyProps["source"];
+  shell: CanvasShell;
+  /** the stage painted this slide from `doc`: the review it shows may open */
+  onPainted(doc: PdfDoc): void;
+  onPaintFailed(): void;
+}) {
   const size = doc?.size(slide.page);
   const aspect = size ? size.width / size.height : 16 / 9;
   const w = width > 0 ? stageWidth(width, height, aspect) : STAGE_MAX;
@@ -446,7 +502,18 @@ function Main({ view, slide, doc, width, height, itemTitle, source, shell }: { v
     <div data-slides-main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
       <div className="flex shrink-0 justify-center bg-(--slide-stage) px-4 pt-4 pb-(--slide-stage-inset)">
         <div data-slides-stage className="relative shrink-0" style={{ width: w }}>
-          <Picture doc={doc} page={slide.page} width={w} ghost={slide.tint === "del"} title={slide.title} onPainted={(el) => setTone(toneOf(el))} />
+          <Picture
+            doc={doc}
+            page={slide.page}
+            width={w}
+            ghost={slide.tint === "del"}
+            title={slide.title}
+            onPainted={(el) => {
+              setTone(toneOf(el));
+              if (doc) onPainted(doc);
+            }}
+            onFailed={onPaintFailed}
+          />
           <div className="absolute inset-0">
             {slide.changed.map((b: Bbox, i) => (
               <span key={`c${i}`} data-slide-changed style={boxStyle(b)} className={`pointer-events-none absolute rounded-[3px] ${tints.add}`} />

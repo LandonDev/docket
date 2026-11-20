@@ -5,8 +5,7 @@ import { Lock } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
-import { TruncateTip } from "../../components/tip";
+import { Tip, TruncateTip } from "../../components/tip";
 import { FADE_IN } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
 import { treeIds } from "../../lib/activity";
@@ -199,39 +198,43 @@ function FaceEnd({
   }
 }
 
-/** The held submit's one primary: its words cut to the room it has (a site's name runs to 80 characters), whole in its name and, while cut, in its tooltip. */
+/**
+ * The held submit's one primary: its words cut to the room it has (a site's name runs to 80 characters), whole in its
+ * name and, while cut, in its tooltip. One tooltip trigger stays mounted around it, the tip off while the words fit, so a
+ * pane that narrows or widens never swaps the button (its focus stays) and the measure keeps watching the words shown.
+ */
 function Primary({ label, busy, disabled, onClick }: { label: string; busy: boolean; disabled: boolean; onClick(): void }) {
   const button = useRef<HTMLButtonElement>(null);
   const [cut, setCut] = useState(false);
   useLayoutEffect(() => {
-    const words = button.current?.querySelector<HTMLElement>("[data-slot=busy-label] > span");
-    if (!words) return;
-    const measure = () => setCut(words.scrollWidth > words.clientWidth);
+    const el = button.current;
+    if (!el) return;
+    // Read the words afresh on each measure: a busy press redraws them inside the same button.
+    const measure = (): void => {
+      const words = el.querySelector<HTMLElement>("[data-slot=busy-label] > span");
+      setCut(!!words && words.scrollWidth > words.clientWidth);
+    };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
-    observer.observe(words);
+    observer.observe(el);
     return () => observer.disconnect();
   }, [label, busy]);
-  const primary = (
-    <Button
-      ref={button}
-      size="xs"
-      data-browser-submit
-      aria-label={label}
-      className="max-w-full min-w-0 [&_[data-slot=busy-label]]:min-w-0 [&_[data-slot=busy-label]:not([data-busy])>span]:block [&_[data-slot=busy-label]:not([data-busy])>span]:truncate"
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <BusyLabel busy={busy} label={label} />
-    </Button>
-  );
-  if (!cut) return primary;
   return (
-    <Tooltip>
-      <TooltipTrigger render={primary} />
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <Tip label={label} disabled={!cut}>
+      <Button
+        ref={button}
+        size="xs"
+        data-browser-submit
+        aria-label={label}
+        // `shrink` lifts the recipe's shrink-0, so the primary gives way to the room beside Discard and cuts its words there.
+        className="max-w-full min-w-0 shrink [&_[data-slot=busy-label]]:min-w-0 [&_[data-slot=busy-label]:not([data-busy])>span]:block [&_[data-slot=busy-label]:not([data-busy])>span]:truncate"
+        disabled={disabled}
+        onClick={onClick}
+      >
+        <BusyLabel busy={busy} label={label} />
+      </Button>
+    </Tip>
   );
 }
 

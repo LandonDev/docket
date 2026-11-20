@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { OwaCarrier } from './carrier'
 import type { CallOptions, OwaTransport } from './page'
+import * as ews from './ews'
 
 /**
  * Outlook on the web sends from whoever the page is signed in as (the hold review's 17.2): each send asks the page
@@ -76,5 +77,13 @@ describe('an Outlook on the web send checks who is signed in now', () => {
     await expect(ok.carrier.sendMail(mail)).resolves.toEqual({ id: null })
     expect(ok.state.asked).toBe(2)
     expect(ok.state.sends).toEqual(['CreateItem'])
+  })
+})
+
+describe("an invitation's body on Outlook on the web", () => {
+  it('goes as plain text, exactly as written, tags and all', () => {
+    const body = '<title>I approve the payment.</title><p>Meet at 3</p>'
+    const req = ews.createEvent({ account: 'a@contoso.com', subject: 'Review', start: '2026-11-20T15:00:00Z', end: '2026-11-20T15:30:00Z', body, attendees: ['dana@example.com'] }) as { body: { Body: { Items: { Body: unknown }[] } } }
+    expect(req.body.Body.Items[0]!.Body).toEqual({ __type: 'BodyContentType:#Exchange', BodyType: 'Text', Value: body })
   })
 })

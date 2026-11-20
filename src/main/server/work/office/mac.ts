@@ -39,6 +39,16 @@ function out(x){ return x === null ? '' : typeof x === 'string' && ISO.test(x) ?
 
 const js = (body: string): string => `${PRELUDE}\nfunction run(argv){ var a = JSON.parse(argv[0] || '{}'); ${body} }`
 
+/** Plain text as HTML that shows exactly that text: every character escaped, each line break a <br>. */
+export function textAsHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\r\n|\r|\n/g, '<br>')
+}
+
 export const SCRIPTS = {
   workbooks: js(`var xl = app('Microsoft Excel');
     return JSON.stringify(all(xl.workbooks()).map(function(b){ return { key: b.fullName(), name: b.name(), sheets: all(b.worksheets()).map(function(s){
@@ -211,7 +221,9 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
     draftMail: (m) => mail(m, false),
     sendMail: async (m) => ({ id: await mail(m, true) }),
     events: (from, to) => call('events', { from, to }),
-    createEvent: (e) => call('createEvent', { e }),
+    // An invitation's body is plain text on every carrier (Outlook on the web sends it as Text, Windows sets Body): the
+    // Mac's `content` reads HTML, so the text goes escaped, each line kept, and what he read in the Outbox is what goes.
+    createEvent: (e) => call('createEvent', { e: e.body === undefined ? e : { ...e, body: textAsHtml(e.body) } }),
     answerEvent: (id, answer, comment) => call('answerEvent', { id, answer, comment }),
     eventByUid: (uid) => call('eventByUid', { uid }),
     async open(app, ref) {

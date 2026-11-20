@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DraftEdit, HouseRule, RuleProposal } from "@shared/contract-work-rules";
 
 const calls: { method: string; params: Record<string, unknown> }[] = [];
-const state: { rules: HouseRule[]; proposals: RuleProposal[]; line: RuleProposal[] } = { rules: [], proposals: [], line: [] };
+const state: { rules: HouseRule[]; proposals: RuleProposal[]; line: RuleProposal[]; fail: Set<string>; gate: Promise<void> | null } = { rules: [], proposals: [], line: [], fail: new Set(), gate: null };
 
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
@@ -19,6 +19,8 @@ vi.mock("../../lib/connection", async (original) => ({
       onPush: () => () => {},
       request: async (method: string, params: Record<string, unknown> = {}) => {
         calls.push({ method, params });
+        if (state.gate) await state.gate;
+        if (state.fail.has(method)) throw new Error("The box did not answer");
         if (method === "work.rules.list") return { rules: state.rules, proposals: state.proposals };
         if (method === "work.rules.forDraft") return { workspaceId: "ws", proposals: state.line };
         if (method === "work.rules.voice") return { on: true, count: 2, since: Date.UTC(2026, 9, 19, 12), from: ["landon@purdue.edu"] };
@@ -77,6 +79,8 @@ beforeEach(() => {
   state.rules = [rule("r1", "Sign Purdue mail as Landon Hale"), rule("r2", "Copy Sam Ortiz on anything about scrims", false)];
   state.proposals = [proposal()];
   state.line = [proposal()];
+  state.fail = new Set();
+  state.gate = null;
 });
 afterEach(cleanup);
 
@@ -133,6 +137,44 @@ describe("the rules page", () => {
     expect(screen.getByText("No rules yet")).toBeTruthy();
     expect(screen.queryByText("Proposed")).toBeNull();
     expect(screen.getByText(/^2 mails from landon@purdue\.edu since /)).toBeTruthy();
+  });
+});
+
+describe("a read that failed", () => {
+  it("offers Retry on the rules' error, busy while it asks again, then lists them", async () => {
+    state.fail.add("work.rules.list");
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
+    state.fail.delete("work.rules.list");
+    let open: () => void = () => {};
+    state.gate = new Promise((r) => (open = r));
+    const retry = screen.getAllByRole("button", { name: "Retry" })[0]!;
+    fireEvent.click(retry);
+    expect(retry.hasAttribute("disabled")).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    // The error stays said while it asks.
+    expect(screen.getByText("The box did not answer")).toBeTruthy();
+    state.gate = null;
+    await act(async () => open());
+    await settle();
+    expect(screen.getByText("Sign Purdue mail as Landon Hale")).toBeTruthy();
+  });
+
+  it("offers Retry on the voice row's error, and a retry that fails again keeps it", async () => {
+    state.fail.add("work.rules.voice");
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    const retry = () => screen.getByRole("button", { name: "Retry" });
+    fireEvent.click(retry());
+    await settle();
+    expect(screen.getByText("The box did not answer")).toBeTruthy();
+    expect(retry().hasAttribute("disabled")).toBe(false);
+    state.fail.delete("work.rules.voice");
+    fireEvent.click(retry());
+    await settle();
+    expect(screen.getByText(/^2 mails from landon@purdue\.edu since /)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });
 

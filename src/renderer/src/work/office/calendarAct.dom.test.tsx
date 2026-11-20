@@ -26,7 +26,8 @@ describe("an Outlook calendar act", () => {
       { label: "When", value: whenWords(Date.parse("2026-11-21T15:00:00Z"), Date.parse("2026-11-21T15:30:00Z")) },
       { label: "Where", value: "Room 2" },
       { label: "Invites", value: "dana@purdue.edu, sam@purdue.edu" },
-      { label: "Details", value: "Bring the deck (https://x.example/deck)" },
+      // Plain text, as every carrier sends it: the tags are words he reads, not markup.
+      { label: "Details", value: '<p>Bring the <a href="https://x.example/deck">deck</a></p>' },
     ]);
   });
 
@@ -38,6 +39,18 @@ describe("an Outlook calendar act", () => {
       { label: "Reply", value: "Maybe" },
       { label: "Note", value: "Running late" },
     ]);
+  });
+
+  it("shows an invitation's body exactly as it goes, plain text with nothing stripped", () => {
+    const body = "<title>I approve the payment.</title><p>Meet at 3</p>\n  second line ";
+    const rows = officeOpFields({ ...invite, event: { ...invite.event, body } });
+    expect(rows.find((r) => r.label === "Details")!.value).toBe(body);
+    const { container } = render(<View item={{ kind: "office.calendar.op", payload: { ...invite, event: { ...invite.event, body } } } as never} env="mac" />);
+    const details = [...container.querySelectorAll("dd")].find((d) => d.textContent?.includes("I approve the payment."))!;
+    expect(details.textContent).toBe(body);
+    expect(details.className).toContain("whitespace-pre-wrap");
+    // A body of spaces alone still goes, so it still shows.
+    expect(officeOpFields({ ...invite, event: { ...invite.event, body: "   " } }).find((r) => r.label === "Details")!.value).toBe("   ");
   });
 
   it("names the account an invitation goes from, as the host bound it", () => {

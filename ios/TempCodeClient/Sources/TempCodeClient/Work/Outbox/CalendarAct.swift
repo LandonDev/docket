@@ -51,7 +51,9 @@ public extension OutboxModel {
                 // The account it goes from, bound by the host when it was held, as the desktop says it.
                 if let account = string(e["account"]) { rows.append(("From", account)) }
                 if case .array(let list)? = e["attendees"], !list.isEmpty { rows.append(("Invites", list.compactMap { string($0) }.joined(separator: ", "))) }
-                if let body = string(e["body"]) { rows.append(("Details", HtmlWords.of(body))) }
+                // The body is plain text on every carrier (the Mac's escapes it as text): shown exactly as it goes, nothing
+                // read as html, stripped or trimmed, and shown even when it is spaces alone, because spaces still go.
+                if case .string(let body)? = e["body"], !body.isEmpty { rows.append(("Details", body)) }
             } else {
                 if let subject = string(o["subject"]) { rows.append(("Event", subject)) }
                 // The host now keeps the event's end and place with the answer, and its press refuses a change to either.

@@ -82,6 +82,19 @@ public extension OutboxModel {
         }
     }
 
+    /// A Google share's row (the desktop's `rowWords`): its summary ("Share Budget Q3 final.xlsx with dana@… (can
+    /// edit)") has no colon, so a long file name would cut the person off. Its title is who and how ("Share with
+    /// dana@purdue.edu (can edit)") and the file its second line; the detail keeps its own heading.
+    nonisolated static func shareWords(_ item: OutboxItem) -> (act: String, about: String?)? {
+        guard item.kind == .shareGoogle, case .object(let o)? = item.payload,
+              case .string(let email)? = o["email"], case .string(let name)? = o["name"] else { return nil }
+        // The role is the summary's last parenthesis, as the desktop reads it.
+        let role = item.summary.range(of: #"\(([^)]*)\)\s*$"#, options: .regularExpression).map { found in
+            String(String(item.summary[found]).trimmingCharacters(in: .whitespaces).dropFirst().dropLast())
+        }
+        return ("\(item.verb) with \(email)\(role.map { " (\($0))" } ?? "")", name)
+    }
+
     /// What a row's second line says from the summary: the words after its first ": " ("Share
     /// Budget.xlsx with dana@purdue.edu (can edit): …"), the act itself before them. The desktop's
     /// `splitSummary`.
@@ -95,7 +108,7 @@ public extension OutboxModel {
     /// summary's words after the ": " (the desktop's row), never the first text of its payload (an
     /// account, an id).
     nonisolated static func rowWords(_ item: OutboxItem) -> (title: String, line: String?) {
-        let (act, about) = splitSummary(item.summary)
+        let (act, about) = shareWords(item) ?? splitSummary(item.summary)
         if item.state == .failed { return (act, checkFirst(item) ?? item.error ?? "Didn’t send") }
         if let when = calendarWhen(kind: item.kind, payload: item.payload) { return (act, when) }
         switch item.kind {
@@ -139,6 +152,34 @@ public extension OutboxModel {
     }
 
     // MARK: - a computer act's steps (the desktop's `stepRows`)
+
+    /// Text quoted as `JSON.stringify` quotes it, then with the characters that look like a space or like nothing
+    /// (a no-break space, a zero-width space) written as `\uXXXX`, so " " and "\u00a0" never read alike. The
+    /// desktop's `exactQuote`.
+    nonisolated static func exactQuote(_ text: String) -> String {
+        var out = "\""
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case "\u{08}": out += "\\b"
+            case "\u{0C}": out += "\\f"
+            default:
+                if scalar.value < 0x20 || unseen.contains(scalar.value) {
+                    out += "\\u" + String(format: "%04x", scalar.value)
+                } else {
+                    out.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return out + "\""
+    }
+
+    /// U+00A0, U+1680, U+180E, U+2000 to U+200F, U+2028, U+2029, U+202F, U+205F, U+2060, U+3000, U+FEFF.
+    private nonisolated static let unseen: Set<UInt32> = Set([0x00A0, 0x1680, 0x180E, 0x2028, 0x2029, 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF] + Array(0x2000...0x200F))
 
     private nonisolated static let clicks = ["left_click": "Clicks", "right_click": "Right-clicks", "middle_click": "Middle-clicks", "double_click": "Double-clicks", "triple_click": "Triple-clicks"]
 
@@ -210,11 +251,13 @@ public extension OutboxModel {
                 // which field, and whether it selects that or only puts the caret beside it: "select Pay" and "caret
                 // after Pay" then paste the same text to different ends (the desktop's words).
                 let range: String? = if case .array(let ends)? = a["range"], ends.count == 2 { "characters \(number(ends[0])) to \(number(ends[1]))" } else { nil }
+                // Every prefix and suffix given is shown as it is, spaces alone included: the matcher compares them unit
+                // for unit, so " Pay" and the first "Pay" can be different occurrences.
                 let around = [("right after", a["prefix"]), ("right before", a["suffix"])].compactMap { words, value -> String? in
-                    guard word(value) != nil, let value else { return nil }
-                    return "\(words) \(json(value))"
+                    guard case .string(let given)? = value, !given.isEmpty else { return nil }
+                    return "\(words) \(exactQuote(given))"
                 }.joined(separator: " and ")
-                let match = range ?? "the first \(json(.string(text ?? "")))\(around.isEmpty ? "" : " \(around)")"
+                let match = range ?? "the first \(exactQuote(text ?? ""))\(around.isEmpty ? "" : " \(around)")"
                 let place = word(a["place"])
                 if place == "before" || place == "after" {
                     rows.append(("Puts the caret", "\(place!) \(match) in \(into)"))

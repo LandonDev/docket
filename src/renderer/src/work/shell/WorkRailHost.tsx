@@ -16,7 +16,7 @@ import { useWorkspaces, workspaceByPath } from "../../lib/tcserver/workspaces";
 import { workRailPort, useWorkHosts } from "../../lib/workSwitch";
 import { openWorkSettings } from "./open";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
-import { useLifeosQuery, useLifeosSession, useLifeosStatus, watchLifeos } from "./lifeos";
+import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
 /** A sector's dot as a menu row's glyph, one stable component per sector. */
 const DOT_ICONS = new Map<string, MenuIcon>();
@@ -79,6 +79,14 @@ export function sectorMenuRows(current: string | null | undefined, state: Lifeos
  * it answers the rail's port (the + menu, a code workspace's sector
  * submenu, what a pick does) and holds the one dialog those open.
  */
+/**
+ * The add menu's Retry: asks the host for its LifeOS status now. Watching it again would start nothing,
+ * since the rail already watches that host; a status that does not come is said once, as a toast.
+ */
+export function retryLifeos(home: string | null | undefined, fail: (error: unknown) => void): void {
+  if (home) void refreshLifeos(home).catch(fail);
+}
+
 export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: string) => void }) {
   const environments = useEnvironments();
   const hosts = useWorkHosts();
@@ -113,7 +121,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       pick(action, path) {
         if (action === "work:signin") return openWorkSettings();
         if (action === "work:retry") {
-          if (home) watchLifeos(home);
+          retryLifeos(home, fail);
           return openWorkSettings();
         }
         if (action === "work:add-unlinked") return setNaming(true);

@@ -5,6 +5,8 @@ import { Skeleton } from "@renderer/components/ui/skeleton";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { Doc, Table } from "@renderer/work/icons";
 import { initials, modeOf, OpenFailed, Session, untilDay, type Failure, type Opened } from "./session";
+// The type alone: the sheet stays in its own lazy chunk.
+import type { Refusal } from "./SheetPage";
 
 /**
  * The hosted page (architecture §8.6; docs/DESIGN.md "The guest's page"):
@@ -42,7 +44,7 @@ export function GuestApp() {
     const mode = modeOf(location.pathname, location.hash);
     return mode.kind === "none" ? null : new Session(mode, location.origin, renewStore);
   }, []);
-  const [state, setState] = useState<{ at: "loading" } | { at: "open"; opened: Opened } | { at: "failed"; why: Failure; unsaved?: boolean }>(session ? { at: "loading" } : { at: "failed", why: "gone" });
+  const [state, setState] = useState<{ at: "loading" } | { at: "open"; opened: Opened } | { at: "failed"; why: Failure }>(session ? { at: "loading" } : { at: "failed", why: "gone" });
 
   const load = useCallback(() => {
     if (!session) return;
@@ -59,10 +61,14 @@ export function GuestApp() {
   }, [session]);
   useEffect(load, [load]);
   const gone = useCallback(() => setState({ at: "failed", why: "gone" }), []);
-  // A sheet that ran out of tries says whether an edit stood unsaved: the screen keeps that warning.
-  const down = useCallback((unsaved = false) => setState({ at: "failed", why: "down", unsaved }), []);
+  // A sheet that ran out of tries hands over the refusal that stood: the screen keeps its warning, and so does the grid after Retry.
+  const [left, setLeft] = useState<Refusal | null>(null);
+  const down = useCallback((standing: Refusal | null = null) => {
+    setLeft(standing);
+    setState({ at: "failed", why: "down" });
+  }, []);
 
-  if (state.at === "failed") return <Ended why={state.why} unsaved={!!state.unsaved} owner={session?.mode.kind === "owner"} retry={load} />;
+  if (state.at === "failed") return <Ended why={state.why} left={left} owner={session?.mode.kind === "owner"} retry={load} />;
   const opened = state.at === "open" ? state.opened : null;
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -93,7 +99,7 @@ export function GuestApp() {
       <main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
         {opened ? (
           <Suspense fallback={<Bones />}>
-            {opened.kind === "doc" ? <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} /> : <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} />}
+            {opened.kind === "doc" ? <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} /> : <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} carried={left} />}
           </Suspense>
         ) : (
           <Bones />
@@ -122,11 +128,14 @@ const ENDED: Record<Failure, { title: string; detail: string }> = {
   down: { title: "This page cannot be reached right now", detail: "Try again in a minute." },
 };
 
-/** The unreachable screen with an edit the item never took: the warning the grid showed stays. */
+/** The unreachable screen with an edit the item refused: the warning the grid showed stays. */
 const DOWN_UNSAVED = { title: "This page cannot be reached right now", detail: "Your last edit was not saved. Try again in a minute, then make it again." };
+/** With an edit whose answer never came: it may or may not have landed. */
+const DOWN_UNCONFIRMED = { title: "This page cannot be reached right now", detail: "Your last edit could not be confirmed. Try again in a minute, then check the cell." };
 
-export function Ended({ why, unsaved = false, owner, retry }: { why: Failure; unsaved?: boolean; owner: boolean; retry(): void }) {
-  const words = owner && why === "gone" ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : why === "down" && unsaved ? DOWN_UNSAVED : ENDED[why];
+export function Ended({ why, left = null, owner, retry }: { why: Failure; left?: Refusal | null; owner: boolean; retry(): void }) {
+  const downWords = left ? (left.unconfirmed ? DOWN_UNCONFIRMED : DOWN_UNSAVED) : ENDED.down;
+  const words = owner && why === "gone" ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : why === "down" ? downWords : ENDED[why];
   return (
     <main className="grid h-dvh place-items-center bg-background px-6 text-foreground">
       <Empty>

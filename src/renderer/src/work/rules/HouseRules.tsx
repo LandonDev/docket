@@ -13,7 +13,7 @@ import { cn } from "../../lib/cn";
 import { refusalWords } from "../../lib/settingsHome";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceSettings } from "../shell/actions";
-import { addRule, decideProposal, editRule, orderRules, removeRule, useRulesPage, useVoice } from "./data";
+import { addRule, decideProposal, editRule, orderRules, removeRule, useRulesPage, useVoice, type Again } from "./data";
 import { Evidence, fromEdits } from "./Evidence";
 import { RuleDialog, type RuleDialogOf, type RuleMoves } from "./RuleDialog";
 
@@ -45,9 +45,18 @@ function Marked({ text, find }: { text: string; find: string }): ReactNode {
   );
 }
 
+/** A failed read's Retry: it asks again, spinning, with the error still said beside it. */
+function RetryRead({ again }: { again: Again }) {
+  return (
+    <Button variant="ghost" size="sm" disabled={again.retrying} onClick={again.retry}>
+      <BusyLabel busy={again.retrying} label="Retry" />
+    </Button>
+  );
+}
+
 export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
   const env = workspace.environmentId;
-  const [load, put] = useRulesPage(env, workspace.id);
+  const [load, put, again] = useRulesPage(env, workspace.id);
   const [dialog, setDialog] = useState<RuleDialogOf | null>(null);
   const page = load.status === "ready" ? load.value : null;
 
@@ -75,7 +84,7 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
         }
       >
         {load.status === "loading" ? <PageRowsSkeleton rows={3} control="switch" /> : null}
-        {load.status === "error" ? <PageError>{load.error}</PageError> : null}
+        {load.status === "error" ? <PageError action={<RetryRead again={again} />}>{load.error}</PageError> : null}
         {page ? <RuleList env={env} workspaceId={workspace.id} page={page} put={put} onOpen={(rule) => setDialog({ kind: "rule", rule })} /> : null}
       </PageSection>
       {page?.proposals.length ? (
@@ -224,7 +233,7 @@ function ProposalRow({ env, proposal, onAdded, onEdit }: { env: string; proposal
 const DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 function Voice({ workspace }: { workspace: WorkspaceMeta }) {
-  const [facts, put] = useVoice(workspace.environmentId, workspace.id);
+  const [facts, put, again] = useVoice(workspace.environmentId, workspace.id);
   const flip = async (voice: boolean): Promise<boolean> => {
     try {
       await setWorkspaceSettings(workspace, { voice });
@@ -247,7 +256,7 @@ function Voice({ workspace }: { workspace: WorkspaceMeta }) {
       {facts.status === "loading" ? (
         <PageRowsSkeleton rows={1} description control="switch" />
       ) : facts.status === "error" ? (
-        <PageError>{facts.error}</PageError>
+        <PageError action={<RetryRead again={again} />}>{facts.error}</PageError>
       ) : (
         <PageRow title="Read my sent mail for how I write" description={line} error={facts.value.error}>
           <SettingSwitch label="Read my sent mail for how I write" on={facts.value.on} onChange={flip} />

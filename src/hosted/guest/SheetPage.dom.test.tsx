@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** The hosted sheet: a refused guest edit says "Edit not saved" with the service's reason while the sheet reloads; the next edit it takes clears it. */
+/** The hosted sheet: a refused guest edit says "Edit not saved" with the service's reason while the sheet reloads, one whose answer never came "Edit not confirmed"; the next edit it takes clears it, and a Retry after the page could not be reached keeps it. */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -61,7 +61,7 @@ describe("the hosted sheet", () => {
     expect(refusedWords("ops is 1 to 500 mutations")).toBeNull();
   });
 
-  it("says an edit was not saved when the line drops before the sheet answered it", async () => {
+  it("says an edit could not be confirmed, and to check the cell, when the line drops before the sheet answered it", async () => {
     grid.handle = { onMutation: (fn: (m: unknown) => void) => void (grid.emit = fn), apply: () => {} };
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} />);
@@ -73,8 +73,9 @@ describe("the hosted sheet", () => {
     expect(socket.sent.some((m) => m.includes('"t":"ops"'))).toBe(true);
     await act(async () => socket.onclose?.({ code: 1006 }));
     const line = screen.getByRole("alert");
-    expect(line.textContent).toContain("Edit not saved");
-    expect(line.textContent).toContain("The connection dropped before the sheet took it");
+    expect(line.textContent).toContain("Edit not confirmed");
+    expect(line.textContent).toContain("The connection dropped before the sheet answered. Check the cell");
+    expect(line.textContent).not.toContain("not saved");
     vi.useRealTimers();
     grid.handle = null;
   });
@@ -91,7 +92,7 @@ describe("the hosted sheet", () => {
     expect(document.querySelector("[data-sheet-offline]")!.textContent).toContain("Reconnecting");
     expect(document.querySelector("[data-grid]")!.getAttribute("data-readonly")).toBe("true");
     await act(async () => grid.emit!({ id: "sheet.mutation.set-range-values", params: { unitId: "u1", subUnitId: "s1", cellValue: {} } }));
-    expect(screen.getByRole("alert").textContent).toContain("The connection dropped before the sheet took it");
+    expect(screen.getByRole("alert").textContent).toContain("The connection dropped before the sheet answered. Check the cell");
     expect(first.sent.some((m) => m.includes('"t":"ops"'))).toBe(false);
     // Back: a fresh state, the grid editable again; the unsaved line stays until an edit is taken.
     await act(async () => void vi.advanceTimersByTime(2000));
@@ -132,8 +133,8 @@ describe("the hosted sheet", () => {
         await act(async () => void vi.advanceTimersByTime(9000));
       }
       expect(onDown).toHaveBeenCalledOnce();
-      // Nothing was typed: no unsaved edit to warn of.
-      expect(onDown).toHaveBeenCalledWith(false);
+      // Nothing was typed: no refusal to hand over.
+      expect(onDown).toHaveBeenCalledWith(null);
       expect(onGone).not.toHaveBeenCalled();
       cleanup();
 
@@ -147,7 +148,7 @@ describe("the hosted sheet", () => {
     }
   });
 
-  it("says an edit stood unsaved when the tries run out after the line dropped under it", async () => {
+  it("hands over the unconfirmed edit when the tries run out after the line dropped under it", async () => {
     grid.handle = { onMutation: (fn: (m: unknown) => void) => void (grid.emit = fn), apply: () => {} };
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
@@ -168,7 +169,7 @@ describe("the hosted sheet", () => {
         await flush();
         await act(async () => void vi.advanceTimersByTime(9000));
       }
-      expect(onDown).toHaveBeenCalledWith(true);
+      expect(onDown).toHaveBeenCalledWith(expect.objectContaining({ unconfirmed: true }));
     } finally {
       vi.useRealTimers();
       grid.handle = null;
@@ -177,16 +178,36 @@ describe("the hosted sheet", () => {
 });
 
 describe("the unreachable screen", () => {
-  it("keeps the unsaved-edit warning when an edit never reached the item, and claims nothing when it cannot know", async () => {
+  it("keeps the warning that stood: not saved for an edit the item refused, not confirmed for one whose answer never came, and claims nothing with none", async () => {
     const { Ended } = await import("./GuestApp");
-    const view = render(<Ended why="down" unsaved owner={false} retry={() => {}} />);
+    const refused = render(<Ended why="down" left={{ why: "Guests can change values and formats only" }} owner={false} retry={() => {}} />);
     expect(screen.getByText("This page cannot be reached right now")).toBeTruthy();
     expect(screen.getByText(/Your last edit was not saved/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
-    view.unmount();
+    refused.unmount();
+    const unconfirmed = render(<Ended why="down" left={{ why: refusedWords("lost"), unconfirmed: true }} owner={false} retry={() => {}} />);
+    expect(screen.getByText(/Your last edit could not be confirmed/)).toBeTruthy();
+    expect(screen.getByText(/check the cell/)).toBeTruthy();
+    expect(screen.queryByText(/not saved/)).toBeNull();
+    unconfirmed.unmount();
     render(<Ended why="down" owner={false} retry={() => {}} />);
     expect(screen.getByText("Try again in a minute.")).toBeTruthy();
     expect(screen.queryByText(/Nothing you wrote is lost/)).toBeNull();
-    expect(screen.queryByText(/not saved/)).toBeNull();
+    expect(screen.queryByText(/not saved|not be confirmed/)).toBeNull();
+  });
+
+  it("brings the warning back onto the grid after Retry, until an edit is taken", async () => {
+    grid.handle = { onMutation: (fn: (m: unknown) => void) => void (grid.emit = fn), apply: () => {} };
+    const carried = { why: refusedWords("lost"), unconfirmed: true };
+    render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} carried={carried} />);
+    await flush();
+    await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+    const line = screen.getByRole("alert");
+    expect(line.textContent).toContain("Edit not confirmed");
+    expect(line.textContent).toContain("Check the cell");
+    // An edit the sheet takes clears it.
+    await act(async () => FakeSocket.last!.say({ t: "ack", id: 1, rev: 2 }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    grid.handle = null;
   });
 });

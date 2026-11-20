@@ -229,8 +229,12 @@ describe("the slides kind", () => {
     expect(edits.textContent).toContain("Why sponsor us");
     expect(edits.textContent).toContain("Why sponsor Spring LAN");
     expect(document.querySelectorAll("[data-slide-changed]")).toHaveLength(1);
+    // The review opens once the stage has painted this change's slide (the frame holds its steps until then too).
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
     await waitFor(() => expect(thumbs().find((t) => t.dataset.slide === "6")!.getAttribute("aria-current")).toBe("true"));
+    // Each change is decided once the stage has painted its slide.
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
     // The press carries the revision of the proposed render on screen.
     await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: ["c6"], verdict: "accept", rev: "p1" }]));
@@ -364,6 +368,86 @@ describe("the slides kind", () => {
     await waitFor(() => expect(held().getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(held().getByRole("button", { name: "Reject" }));
     await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: ["c2"], verdict: "reject", rev: "p2" }]));
+  });
+
+  it("holds the verdicts until the stage has painted the change's slide from the proposed render on screen", async () => {
+    const paint = PROPOSED.paint;
+    let paintNow!: () => void;
+    let painting: Promise<void> | null = new Promise((done) => (paintNow = done));
+    // The stage's paint of the first change's slide (page 2) waits; the rest draw as before.
+    PROPOSED.paint = async (...args) => {
+      if (painting && args[0] === 2 && args[1].closest("[data-slides-stage]")) await painting;
+      return paint(...args);
+    };
+    try {
+      open(revised());
+      const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
+      fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+      await waitFor(() => expect(within(bar).getByText("1/5")).toBeTruthy());
+      // The proposed render is open, the stage has not painted the slide: no verdict yet, the stepper still drawn.
+      await new Promise((done) => setTimeout(done, 20));
+      expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+      expect(within(bar).getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      expect((await screen.findByRole("menuitem", { name: "Accept all" })).getAttribute("aria-disabled")).toBe("true");
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      painting = null;
+      act(() => paintNow());
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+    } finally {
+      PROPOSED.paint = paint;
+    }
+  });
+
+  it("holds the verdicts through a failed paint of the slide on the stage, and opens them once Retry paints it", async () => {
+    const paint = PROPOSED.paint;
+    let refuse = true;
+    PROPOSED.paint = (...args) => (refuse && args[0] === 2 && args[1].closest("[data-slides-stage]") ? Promise.reject(new Error("worker gone")) : paint(...args));
+    try {
+      open(revised());
+      const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
+      fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+      const failed = await found("[data-slides-stage] [data-slide-failed]");
+      expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+      // The change's words stay readable while the stage cannot show it.
+      expect((await found("[data-slide-edits]")).textContent).toContain("Why sponsor Spring LAN");
+      refuse = false;
+      fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+      // Every verdict goes with the revision on screen, one change or all of them.
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Reject all" }));
+      await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: "all", verdict: "reject", rev: "p1" }]));
+    } finally {
+      PROPOSED.paint = paint;
+    }
+  });
+
+  it("with no picture of the changes, the outline and text diffs are the review, decided on the changes' revision", async () => {
+    const view = revised();
+    open({ ...view, renders: { file: null, proposed: null }, renderError: "There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches.", changesRev: "c9" });
+    const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+    fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+    expect((await found("[data-slide-edits]")).textContent).toContain("Why sponsor Spring LAN");
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: ["c2"], verdict: "accept", rev: "c9" }]));
+  });
+
+  it("never offers a verdict without a revision: a host that names none keeps the verbs off, the diffs still drawn", async () => {
+    const view = revised();
+    open({ ...view, renders: { file: null, proposed: null }, renderError: "There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches." });
+    const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+    // The strip still takes him to the change.
+    await waitFor(() => expect(thumbs().length).toBeGreaterThan(0));
+    fireEvent.click(thumbs().find((t) => t.dataset.slide === "2")!);
+    expect((await found("[data-slide-edits]")).textContent).toContain("Why sponsor Spring LAN");
+    await new Promise((done) => setTimeout(done, 20));
+    expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+    expect(within(bar).getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+    expect(deckHost.calls.some(([m]) => m === "review")).toBe(false);
   });
 
   it("a press the host refuses because the changes moved on says so and reads the deck again", async () => {

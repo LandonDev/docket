@@ -64,25 +64,31 @@ struct OutboxScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(ShellNavigator.self) private var navigator
     @State private var confirmDiscard: OutboxModel.Entry?
+    /// Hosts whose Retry is reading.
+    @State private var retrying: Set<String> = []
 
     var body: some View {
         let clients = model.registry.ordered
         let workHosts = clients.filter(\.work.isOn)
         let presses = OutboxPresses.shared
         let bands = OutboxModel.bands(OutboxEntries.of(clients).filter { !presses.hides($0) })
+        // Each host whose read failed, named above the bands with its own Retry, whatever the others hold; the rows
+        // it read before stay below (`OutboxModel.failedReads`).
+        let failed = OutboxModel.failedReads(workHosts.map { (id: $0.environment.id, name: $0.environment.name, error: $0.work.listError) })
         List {
+            if !failed.isEmpty {
+                Section {
+                    ForEach(failed) { read in failedRow(read) }
+                }
+            }
             ForEach(bands) { band in bandSection(band) }
         }
         .listStyle(.plain)
         .overlay {
-            if bands.isEmpty {
-                if workHosts.contains(where: { !$0.work.listed && $0.work.listError == nil }) {
-                    ProgressView()
-                } else if let error = workHosts.compactMap(\.work.listError).first {
-                    ContentUnavailableView("Can’t Read the Outbox", systemImage: "exclamationmark.triangle", description: Text(error))
-                } else {
-                    ContentUnavailableView("Nothing Held", systemImage: WorkGlyph.outbox, description: Text("What a Work thread sends waits here for you."))
-                }
+            switch OutboxModel.emptyState(bandsEmpty: bands.isEmpty, anyReading: workHosts.contains { !$0.work.listed && $0.work.listError == nil }, anyFailed: !failed.isEmpty) {
+            case .reading?: ProgressView()
+            case .nothingHeld?: ContentUnavailableView("Nothing Held", systemImage: WorkGlyph.outbox, description: Text("What a Work thread sends waits here for you."))
+            case nil: EmptyView()
             }
         }
         .refreshable { for client in workHosts { await client.work.refreshOutbox() } }
@@ -96,6 +102,40 @@ struct OutboxScreen: View {
         }
         .listOnScreen("outbox")
         .accessibilityIdentifier("outbox")
+    }
+
+    /// "Box did not answer", its error under it, and Retry, which reads that host alone again.
+    private func failedRow(_ read: OutboxModel.FailedRead) -> some View {
+        HStack(spacing: Layout.rowGap) {
+            Circle()
+                .fill(Tint.destructive)
+                .frame(width: Layout.dotSize, height: Layout.dotSize)
+                .frame(width: Layout.glyphWidth + Layout.markWidth)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(read.line).textStep(.title).lineLimit(1)
+                Text(read.error).textStep(.meta).lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            if retrying.contains(read.id) {
+                ProgressView()
+            } else {
+                PillButton("Retry") { Task { await retry(read.id) } }
+            }
+        }
+        .padding(.vertical, Layout.rowVertical)
+        .frame(minHeight: Layout.rowHeight + 8)
+        .listRowInsets(Layout.rowInsets)
+        // Retry stays its own element, never folded into the row's words.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("outbox-host-failed")
+    }
+
+    private func retry(_ id: String) async {
+        guard let client = model.registry.client(id) else { return }
+        retrying.insert(id)
+        defer { retrying.remove(id) }
+        await client.work.refreshOutbox()
     }
 
     private func bandSection(_ band: OutboxModel.Band) -> some View {
