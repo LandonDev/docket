@@ -93,6 +93,17 @@ pub trait Desktop: Send + Sync + 'static {
         false
     }
 
+    // ── live video (§30) ────────────────────────────────────────────────
+
+    /// Starts a capture of the window at the display's own rate, at least `fps`. Called on the window's capture thread.
+    fn video_capture(&self, _window_id: i64, _fps: usize) -> Result<Box<dyn crate::video::WindowCapture>, ComputerError> {
+        Err(not_here("video"))
+    }
+    /// An encoder for one stream. Called on the stream's thread.
+    fn video_encoder(&self, _spec: &crate::video::EncoderSpec) -> Result<Box<dyn crate::video::VideoEncoder>, ComputerError> {
+        Err(not_here("video"))
+    }
+
     // ── the clipboard (§5.3) ────────────────────────────────────────────
 
     /// The clipboard's change count (Windows' sequence number).

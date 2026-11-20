@@ -47,6 +47,8 @@ pub struct Service<D: Desktop> {
     pub(crate) person: Person,
     pub(crate) clip: ClipWatch,
     pub(crate) streams: Mutex<HashMap<String, Arc<Stream>>>,
+    /// live video (§30): the bytes pipe, its streams and the windows' captures
+    pub(crate) video: crate::video::VideoState,
     /// one window brought forward at a time in this process: front and session steps take it, front first, then the file lock
     pub(crate) front_lock: Mutex<()>,
 }
@@ -176,6 +178,7 @@ impl<D: Desktop> Service<D> {
             person: Person::default(),
             clip: ClipWatch::new(started_at),
             streams: Mutex::default(),
+            video: Default::default(),
             front_lock: Mutex::new(()),
         }
     }
@@ -318,6 +321,7 @@ impl<D: Desktop> Service<D> {
                 for id in ids {
                     self.stream_stop(&id);
                 }
+                self.end_videos(Some(&p.session));
                 let mut st = guard(&self.state);
                 st.sessions.close(&p.session);
                 st.spaces.retain(|(s, _), _| *s != p.session);
@@ -366,6 +370,21 @@ impl<D: Desktop> Service<D> {
                 self.check_session(&target)?;
                 let me = self.me.get().and_then(Weak::upgrade).ok_or_else(|| fail(ComputerErrorKind::CaptureFailed, "the service is not serving"))?;
                 encode(me.stream_start(p)?)
+            }
+            "capture.video.start" | "capture.video.stop" if !self.video.on.load(Ordering::SeqCst) => Err(crate::video::unknown(method)),
+            "capture.video.start" => {
+                let p: CaptureVideoStartParams = decode(params)?;
+                gate()?;
+                let target = Target { session: p.session.clone(), app: p.app.clone(), window: p.window.clone(), launch: p.launch, epoch: p.epoch.clone() };
+                self.check_session(&target)?;
+                let me = self.me.get().and_then(Weak::upgrade).ok_or_else(|| fail(ComputerErrorKind::CaptureFailed, "the service is not serving"))?;
+                encode(me.video_start(p)?)
+            }
+            "capture.video.stop" => {
+                let p: CaptureVideoStopParams = decode(params)?;
+                gate()?;
+                self.end_video(p.stream.clamp(0, u32::MAX as i64) as u32, None, false);
+                encode(json!({}))
             }
             "capture.stream.stop" => {
                 let p: CaptureStreamStopParams = decode(params)?;
@@ -417,6 +436,8 @@ impl<D: Desktop> Service<D> {
             .map_err(|e| fail(ComputerErrorKind::AlreadyRunning, format!("cannot lock the data dir: {e}")))?
             .ok_or_else(|| fail(ComputerErrorKind::AlreadyRunning, "another service holds this data dir"))?;
         let (version, arch) = self.desktop.os();
+        let video = self.video.has_pipe() && p.features.as_ref().is_some_and(|f| f.iter().any(|x| x == "video"));
+        self.video.on.store(video, Ordering::SeqCst);
         let result = InitializeResult {
             protocol: COMPUTER_PROTOCOL,
             service: InitializeResultService { version: self.version.clone(), build: "win-uia".into() },
@@ -424,7 +445,8 @@ impl<D: Desktop> Service<D> {
             os: InitializeResultOs { version, arch },
             permissions: Permissions { accessibility: true, screen_recording: true },
             displays: self.desktop.displays(),
-            features: Some(vec![]),
+            // `video` only with a pipe for its bytes and a host that offered it (§30)
+            features: Some(if video { vec!["video".into()] } else { vec![] }),
         };
         let mut st = guard(&self.state);
         st.initialized = Some((p.data_dir, result.clone()));
@@ -525,6 +547,10 @@ impl<D: Desktop> Service<D> {
         }
         let window = found.map(|(_, w)| LaunchedWindow { id: w.id, title: w.title });
         encode(AppsLaunchResult { pid, launched: running.is_err(), front, window, others: None })
+    }
+
+    pub(crate) fn session_open(&self, session: &str) -> bool {
+        guard(&self.state).sessions.is_open(session)
     }
 
     fn check_session(&self, t: &Target) -> Result<(), ComputerError> {

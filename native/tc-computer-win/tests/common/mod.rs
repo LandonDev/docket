@@ -12,7 +12,7 @@ use tc_computer_win::desktop::Desktop;
 use tc_computer_win::server::serve;
 use tc_computer_win::service::Service;
 
-pub struct Pipe(Receiver<Vec<u8>>, Vec<u8>);
+pub struct Pipe(pub Receiver<Vec<u8>>, pub Vec<u8>);
 impl Read for Pipe {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if self.1.is_empty() {
@@ -50,10 +50,16 @@ pub struct Wire {
 
 impl Wire {
     pub fn start<D: Desktop>(fake: D) -> Wire {
+        Self::start_with(fake, |_| {})
+    }
+
+    /// As `start`, with `before` run on the service before it serves (a test attaches its video pipe there).
+    pub fn start_with<D: Desktop>(fake: D, before: impl FnOnce(&Arc<Service<D>>)) -> Wire {
         let (send, recv) = channel();
         let out = Arc::new(Mutex::new(Vec::new()));
         let sink = Sink(out.clone());
         let service = Arc::new(Service::new(fake, "test"));
+        before(&service);
         std::thread::spawn(move || serve(service, Pipe(recv, Vec::new()), Box::new(sink)));
         Wire { notes: Vec::new(), send, out, next: 1, seen: 0 }
     }
