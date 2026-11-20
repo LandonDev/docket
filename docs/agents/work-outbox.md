@@ -136,8 +136,20 @@ host does with it:
   'press'` or `'grant'`), or `compose:retry` for a failed send. The item
   gets a row here when it is decided; that row's run key
   (`lifeos:outbox:<id>`) is unique, which makes the decision the only one.
-- **Sent** means LifeOS took it. If LifeOS's own lane then fails, the item
-  comes back `failed`.
+- **What goes is the row he was shown, to the edit.** A held mail's payload
+  carries LifeOS's `editedAt` as read with the item; the press refuses a row
+  whose edit time has moved and names that time to `compose:send` and
+  `compose:retry`, which compare it again inside the write.
+- **Sent** means LifeOS took it: the host reports a mail sent only once
+  LifeOS has the row queued, sending or sent (`NOT_QUEUED` otherwise, with
+  words), so a draft an earlier send left behind is never called sent. If
+  LifeOS's own lane then fails, the item comes back `failed`.
+- **A press from Mail's composer** on a held draft has already waited out
+  the undo time in the window (work-mail.md "Undo for a held draft"): that
+  one call carries `waited`, and only then does the hold ask LifeOS to send
+  at once (`immediate`, which LifeOS takes only with `cause: 'press'`). A
+  press here on the Outbox page, a grant's send and the phone's keep
+  LifeOS's own queue and its Undo.
 - `calendar.op` goes through LifeOS's `calendarOps` the same way
   ([work-agenda.md](work-agenda.md)); a LifeOS deployment without them
   answers `not built … (milestone 24)`.

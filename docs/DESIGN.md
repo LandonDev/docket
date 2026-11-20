@@ -222,7 +222,7 @@ per theme, and follows a change live:
 | Transcript code | two inks (`foreground`, `muted-foreground`) by CSS variable; Mermaid's own light and dark | CSS; Mermaid redraws |
 | The sheet (Univer) | the tokens, read on the grid's container (work-kit `sheet/grid/theme.ts`) | repainted |
 | The document (BlockNote) | the tokens through work-kit's `--bn-*` map, the scheme passed as a prop | prop |
-| Mail's frames | a designed mail on white paper in both themes; a plain one in the host's inks, passed in as a palette | frame rebuilt |
+| Mail's frames | a designed mail on white paper in both themes; a plain one in the host's inks, set on the frame's root from outside, with a sender's colour moved only when it would not read | tokens set again, the frame kept |
 | The ONLYOFFICE editor | the window's scheme when it opens | not live |
 | An agent's HTML page | the frame variables in "html_render" (`src/shared/htmlRender.ts`) | posted to the frame |
 | Guest, form and pairing pages, the Mac's computer banner | the viewer's system; their palettes are copies held equal to index.css by test | media query |
@@ -1232,6 +1232,59 @@ Around the canvas:
   host on each workspace's page. A section that needs an account the person is
   signed out of shows one muted line naming the sign-in ("Sign in to
   LifeOS to …"), never disabled controls.
+- **The Mail view** (work-kit's mail client, shared with LifeOS, on
+  TempCode's scale; docs/agents/work-mail.md). The view has no header of
+  its own: the list's 44px head is the page's. The list is 296px (260 to
+  480, kept), the reader beside it; at and under 640px of view they take
+  turns, and the reader's toolbar leads with the way back.
+  The head holds the mailbox (13px semibold, its unread count muted) on a
+  menu of all nine, then Filter and New mail as quiet 28px buttons, the
+  same in every mailbox; under it the 28px search field, and one muted
+  12px line when the network or an account's sync is down.
+  A row is 68px (48px in two lines) at radius 6, 1px apart: a 22px gutter
+  for the 6px unread dot, which gives way to a 14px tick box under the
+  pointer and on every row once one is ticked; the sender (600 and
+  `foreground` when unread), the thread's count, and at the row's end the
+  marks and the date in 12px tabular. The marks say each thing once: the
+  14px circle-dot in `warning` for a thread that needs him or a draft an
+  agent wrote (amber stays the one sign that he is needed), 12px glyphs
+  for an invitation and for files. The second line is the subject, the
+  third the first words in 12px; in two lines the first words follow the
+  subject 8px on, 12px, in `faint-foreground`. Hover is `foreground` at
+  5%, the open and ticked rows at 9%, at once. Under the pointer the date
+  gives way to Archive, Delete and Mark read; with rows ticked the head
+  becomes "3 selected" with those acts, and no row shows its own. A search
+  lights the words it found, where a word starts, in `foreground` medium.
+  An empty mailbox says so in one line at the column's middle, level with
+  the pane's "No mail open".
+  The reader's toolbar is 44px of quiet 28px buttons (Archive, Delete,
+  Snooze, Needs me, More; in Trash, Restore alone with its word), its
+  place in the list at the end. The mail is a 680px column: the subject
+  (the 16px title), then each message under a hairline with a 28px face,
+  the name at 600, the address, "to me" on its details, the time, Reply
+  and its menu. A run of two or more read messages is one 40px row
+  ("5 earlier messages") with two lapped 18px faces; a lone one folds to
+  a row. A plain mail is 14/22 on 68ch in the app's inks, a sender's own
+  colour kept and moved only when it would not read; a mail written for
+  white keeps its white page at radius 8 in both themes, edge to edge.
+  Quotes sit behind "Show quoted text". Held pictures are one `muted`
+  strip with Show. Files are 40px chips with a 28px tile, which is the
+  picture itself for a picture; two or more get "3 files, 4.1 MB" and
+  Save all. An invitation is a card above the body: the date tile, when
+  and where, Accept, Maybe, Decline, Open in Agenda; it leaves out a
+  title the subject already says. The thread ends in the 40px "Reply to
+  …" row.
+  The composer is a card in the thread's flow for a reply and the pane's
+  own surface, 720px at most, for a new mail: To, From and Subject rows
+  with one value edge, the editor, and a foot bar with Attach, Picture,
+  the formatting row, Saved, Discard and the one primary, Send. A draft a
+  thread wrote opens under one line: the amber mark, "Drafted in" and the
+  thread's name in medium, Open thread. Its Send has no menu and shows
+  one toast, "Sending to …" over a 3px track that empties across the undo
+  time, with Undo; nothing has gone until the track is empty.
+  Mail's settings are flat groups of 44px rows under 13px semibold
+  headings; a signature and an account open as dialogs, every control in
+  the account dialog at one width.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way
