@@ -7,14 +7,16 @@ import { FADE_IN } from "@renderer/components/ui/reveal";
 import { cn } from "@renderer/lib/cn";
 import { CLICK_MARK } from "../../../lib/ease";
 import { useComputerPreview, type PreviewState } from "../../../lib/computerPreview";
+import { useComputerVideo } from "../../../lib/computerVideo";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 
 /**
  * The Computer section's viewport (docs/DESIGN.md "Panels"): the window as
  * it is or as it was, in one box at the pane's width less its insets, in the
  * picture's shape and at most `min(400px, 45cqh)` of the section's height. It
- * has four faces and never two at once: the live stream on a canvas with the
- * agent's click ringed for a moment; a kept picture, which opens the
+ * has four faces and never two at once: the live stream on a canvas (video
+ * where the host has it, else the 4 fps picture) with the agent's click
+ * ringed for a moment; a kept picture, which opens the
  * lightbox; the text the model read, where there is no picture; a skeleton
  * in the picture's shape while the first one is on its way. One 12px line
  * sits under it only when it has something to say. Nothing in it moves but
@@ -227,17 +229,29 @@ export interface LiveStream {
   retry: () => void;
   canvas: RefObject<HTMLCanvasElement | null>;
   ring: RefObject<HTMLDivElement | null>;
+  /** what draws on the canvas: the video's worker, or the 4 fps picture. Each has a canvas of its own, since one handed to the worker takes no other drawing. */
+  mode: "video" | "picture";
 }
 
 /**
  * The stream of `entry`'s window while `run` holds (the section shown, the
- * document visible, the section following). The box's width decides the edge
- * it asks for. A click moves the ring to its share of the picture and plays
- * it; the frame and click counts go to the box's `data-frames` and
- * `data-marks` by hand, so neither re-renders anything.
+ * document visible, the section following). It is video first
+ * (docs/agents/live-video.md), and the 4 fps picture when video gives way.
+ * The box's width decides the edge it asks for. A click moves the ring to
+ * its share of the picture and plays it; the frame and click counts go to
+ * the box's `data-frames`, `data-fps` and `data-marks` by hand, so none
+ * re-renders anything. `take` is false for a place that is not the thread
+ * on screen: it does not take the box's one display from another page.
  */
-export function useLiveStream(entry: ComputerEntry | null, run: boolean, box: RefObject<HTMLElement | null>, measure: RefObject<HTMLElement | null>): LiveStream {
-  const canvas = useRef<HTMLCanvasElement>(null);
+export function useLiveStream(
+  entry: ComputerEntry | null,
+  run: boolean,
+  box: RefObject<HTMLElement | null>,
+  measure: RefObject<HTMLElement | null>,
+  { take = true }: { take?: boolean } = {},
+): LiveStream {
+  const pictureCanvas = useRef<HTMLCanvasElement>(null);
+  const videoCanvas = useRef<HTMLCanvasElement>(null);
   const ring = useRef<HTMLDivElement>(null);
   const [boxWidth, setBoxWidth] = useState(0);
   const marks = useRef(0);
@@ -269,14 +283,18 @@ export function useLiveStream(entry: ComputerEntry | null, run: boolean, box: Re
     [box],
   );
 
-  const { state, retry } = useComputerPreview(entry ?? NO_ENTRY, { run: run && !!entry && boxWidth > 0, boxWidth, canvas, box, onClick });
-  return { state, retry, canvas, ring };
+  const on = run && !!entry && boxWidth > 0;
+  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take });
+  const picture = useComputerPreview(entry ?? NO_ENTRY, { run: on && video.gaveWay, boxWidth, canvas: pictureCanvas, box, onClick });
+  if (video.gaveWay) return { state: picture.state, retry: picture.retry, canvas: pictureCanvas, ring, mode: "picture" };
+  return { state: video.state, retry: video.retry, canvas: videoCanvas, ring, mode: "video" };
 }
 
 /** The live face from a stream: its canvas, hidden until the first frame, and the ring a click plays. */
 export function liveFace(stream: LiveStream): Extract<ViewportFace, { kind: "live" }> {
   const drawn = stream.state.status === "live" && stream.state.drawn;
-  return { kind: "live", drawn, picture: <canvas ref={stream.canvas} aria-hidden="true" className={pictureClass(drawn)} />, mark: <ClickMark ref={stream.ring} /> };
+  // keyed by what draws on it: when video gives way to the picture, the picture gets a canvas nothing was handed off
+  return { kind: "live", drawn, picture: <canvas key={stream.mode} ref={stream.canvas} aria-hidden="true" className={pictureClass(drawn)} />, mark: <ClickMark ref={stream.ring} /> };
 }
 
 /** The stream's shape while it starts or runs; null before it is known. */

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerPush } from "@server/shared/contract";
 import { VIDEO_CLOSE, VIDEO_RETRIES, type VideoOpenAnswer } from "@server/shared/contract-video";
 import { afterClose, RETRY_DELAYS_MS, streamUrl, type FromWorker, type ToWorker } from "./messages";
-import { LINGER_MS, VideoStreams, videoEdge, type StreamLink, type WorkerLike } from "./streams";
+import { LINGER_MS, VideoStreams, type StreamLink, type WorkerLike } from "./streams";
+import { videoEdge } from "./support";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());

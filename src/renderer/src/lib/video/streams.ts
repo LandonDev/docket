@@ -1,7 +1,8 @@
 import type { ServerPush } from "@server/shared/contract";
-import { VIDEO_MAX_EDGE, VIDEO_MIN_EDGE, type VideoCloseFace, type VideoOpenAnswer } from "@server/shared/contract-video";
+import { VIDEO_MIN_EDGE, type VideoCloseFace, type VideoOpenAnswer } from "@server/shared/contract-video";
 import { registry } from "../connection/registry";
 import { afterClose, streamUrl, type FromWorker, type ToWorker } from "./messages";
+import { REGROW } from "./support";
 
 /**
  * The live streams of this window (docs/agents/live-video.md "The viewer").
@@ -46,14 +47,6 @@ export interface StreamHandle {
   release(): void;
 }
 
-/** The edge to ask for: the place's width in device pixels, rounded up to 64, inside the wire's bounds. */
-export function videoEdge(cssWidth: number, dpr: number): number {
-  const want = Math.ceil((Math.max(1, cssWidth) * Math.max(1, dpr)) / 64) * 64;
-  return Math.min(VIDEO_MAX_EDGE, Math.max(VIDEO_MIN_EDGE, want));
-}
-
-/** A place that grew this much past the edge the stream was opened at has it opened again, larger. */
-export const REGROW = 1.25;
 /** A stream nobody shows is kept this long, for the place that is about to show it. */
 export const LINGER_MS = 1500;
 
@@ -318,11 +311,6 @@ export class VideoStreams {
       if (entry.round === round && entry.wants.size) this.open(entry);
     }, next.delayMs);
   }
-}
-
-/** This window can play a stream at all: a worker, WebCodecs, and a canvas it can hand over. */
-export function videoSupported(): boolean {
-  return typeof Worker !== "undefined" && typeof VideoDecoder !== "undefined" && typeof HTMLCanvasElement !== "undefined" && "transferControlToOffscreen" in HTMLCanvasElement.prototype;
 }
 
 const gone = typeof FinalizationRegistry !== "undefined" ? new FinalizationRegistry<() => void>((fn) => fn()) : null;
