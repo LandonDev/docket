@@ -168,4 +168,4 @@ pub mod grammar {
 }
 
 /// The method names, for the router (COMPUTER_METHODS' keys).
-pub const METHODS: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "escape.watch"];
+pub const METHODS: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "clipboard.read", "clipboard.write", "escape.watch"];

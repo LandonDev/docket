@@ -416,6 +416,36 @@ impl<D: Desktop> Service<D> {
                 self.clip.poll(&self.desktop);
                 encode(self.clip.state())
             }
+            // §29.8: the clipboard's text, read and written whole, for the Windows VM's paste in and copy out
+            "clipboard.read" => {
+                let _: Empty = decode(params)?;
+                gate()?;
+                let (text, truncated) = match self.desktop.clip_text()? {
+                    Some(t) => {
+                        let (t, cut) = crate::clip::cap_text(t, crate::clip::CLIPBOARD_TEXT_MAX_BYTES);
+                        (Some(t), cut)
+                    }
+                    None => (None, false),
+                };
+                encode(ClipboardReadResult { text, truncated })
+            }
+            "clipboard.write" => {
+                let p: ClipboardWriteParams = decode(params)?;
+                gate()?;
+                if p.text.as_ref().is_some_and(|t| t.len() > crate::clip::CLIPBOARD_TEXT_MAX_BYTES) {
+                    return Err(RpcError::std(rpc_error::INVALID_PARAMS, format!("the clipboard takes at most {} bytes of text", crate::clip::CLIPBOARD_TEXT_MAX_BYTES)));
+                }
+                // the service's own write: the watch takes the number it leaves as its own, not the person's copy
+                self.clip.writing.store(true, Ordering::SeqCst);
+                let done = match &p.text {
+                    Some(t) => self.desktop.clip_put(t, None),
+                    None => self.desktop.clip_empty(),
+                };
+                self.clip.ours(self.desktop.clip_seq());
+                self.clip.writing.store(false, Ordering::SeqCst);
+                done?;
+                encode(Empty {})
+            }
             _ => Err(RpcError::std(rpc_error::METHOD_NOT_FOUND, format!("no method {method}"))),
         }
     }

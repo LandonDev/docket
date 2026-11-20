@@ -2431,6 +2431,19 @@ pub struct InputRestoreSessionParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ClipboardReadResult {
+    #[serde(default)]
+    pub text: Option<String>,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ClipboardWriteParams {
+    #[serde(default)]
+    pub text: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct EscapeWatchParams {
     pub on: bool,
     #[serde(rename = "leaseMs", default, skip_serializing_if = "Option::is_none")]
@@ -2477,6 +2490,10 @@ pub mod methods {
     pub type InputRestoreSessionResult = super::SessionRestore;
     pub type ClipboardStateParams = super::Empty;
     pub type ClipboardStateResult = super::ClipboardActivity;
+    pub type ClipboardReadParams = super::Empty;
+    pub type ClipboardReadResult = super::ClipboardReadResult;
+    pub type ClipboardWriteParams = super::ClipboardWriteParams;
+    pub type ClipboardWriteResult = super::Empty;
     pub type EscapeWatchParams = super::EscapeWatchParams;
     pub type EscapeWatchResult = super::Empty;
     /// Decodes a method's params and encodes them again: the fixture tests' round trip.
@@ -2501,6 +2518,8 @@ pub mod methods {
             "input.probe" => serde_json::from_value::<InputProbeParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "input.restoreSession" => serde_json::from_value::<InputRestoreSessionParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "clipboard.state" => serde_json::from_value::<ClipboardStateParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "clipboard.read" => serde_json::from_value::<ClipboardReadParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "clipboard.write" => serde_json::from_value::<ClipboardWriteParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "escape.watch" => serde_json::from_value::<EscapeWatchParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             _ => Err(format!("no method {method}")),
         }
@@ -2527,10 +2546,12 @@ pub mod methods {
             "input.probe" => serde_json::from_value::<InputProbeResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "input.restoreSession" => serde_json::from_value::<InputRestoreSessionResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "clipboard.state" => serde_json::from_value::<ClipboardStateResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "clipboard.read" => serde_json::from_value::<ClipboardReadResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "clipboard.write" => serde_json::from_value::<ClipboardWriteResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "escape.watch" => serde_json::from_value::<EscapeWatchResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             _ => Err(format!("no method {method}")),
         }
     }
     /// The wire names, in COMPUTER_METHODS' order.
-    pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "escape.watch"];
+    pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "clipboard.read", "clipboard.write", "escape.watch"];
 }

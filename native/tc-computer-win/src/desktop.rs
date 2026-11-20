@@ -121,6 +121,14 @@ pub trait Desktop: Send + Sync + 'static {
     fn clip_restore(&self, _clip: &Clip) -> Result<(), ComputerError> {
         Err(not_here("clipboard"))
     }
+    /// The clipboard's text (CF_UNICODETEXT), whole; None when it holds no text (§29.8).
+    fn clip_text(&self) -> Result<Option<String>, ComputerError> {
+        Err(not_here("clipboard"))
+    }
+    /// Empties the clipboard (§29.8, `clipboard.write { text: null }`).
+    fn clip_empty(&self) -> Result<(), ComputerError> {
+        Err(not_here("clipboard"))
+    }
 
     // ── launching (§23) ─────────────────────────────────────────────────
 

@@ -21,6 +21,8 @@ struct Fake {
     save: Mutex<bool>,
     /// a read panics, as a UIA fault would
     panics: bool,
+    /// the clipboard's text and its sequence number
+    clip: Mutex<(Option<String>, i64)>,
 }
 
 impl Desktop for Fake {
@@ -56,6 +58,22 @@ impl Desktop for Fake {
         let root = RawNode { handle: "window", key: vec![1], role: "window".into(), name: Some("Untitled - Notepad".into()), children, ..Default::default() };
         let root = if from == Some(&"field") { field } else { root };
         Ok(RawWindow { pid, app_name: "Notepad".into(), bundle_id: Some("notepad.exe".into()), window_id: 70, title: "Untitled - Notepad".into(), frame: Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 }, others: vec![], root, partial: false, read_ms: 1 })
+    }
+    fn clip_seq(&self) -> i64 {
+        self.clip.lock().unwrap().1
+    }
+    fn clip_text(&self) -> Result<Option<String>, ComputerError> {
+        Ok(self.clip.lock().unwrap().0.clone())
+    }
+    fn clip_put(&self, text: &str, _html: Option<&str>) -> Result<(), ComputerError> {
+        let mut c = self.clip.lock().unwrap();
+        *c = (Some(text.to_string()), c.1 + 1);
+        Ok(())
+    }
+    fn clip_empty(&self) -> Result<(), ComputerError> {
+        let mut c = self.clip.lock().unwrap();
+        *c = (None, c.1 + 1);
+        Ok(())
     }
     fn act(&self, _pid: i64, element: &&'static str, action: &ComputerAction) -> Result<Acted, ComputerError> {
         match (*element, action.action) {
@@ -200,4 +218,34 @@ fn a_handler_that_panics_is_answered_and_frees_its_slot() {
         assert!(f["error"]["message"].as_str().unwrap().contains("the reader fell over"));
     }
     assert_eq!(w.ok("apps.list", json!({}))["apps"][0]["name"], json!("Notepad"), "40 faults later the service still answers");
+}
+
+#[test]
+fn the_clipboard_read_and_written_whole() {
+    let mut w = Wire::start(Fake::default());
+    assert_eq!(w.kind("clipboard.read", json!({})), "not_initialized");
+    init(&mut w);
+    assert_eq!(w.ok("clipboard.read", json!({})), json!({ "text": null, "truncated": false }));
+    w.ok("clipboard.write", json!({ "text": "Pasted from the owner" }));
+    assert_eq!(w.ok("clipboard.read", json!({})), json!({ "text": "Pasted from the owner", "truncated": false }));
+    // the service's own write is no copy of the person's
+    assert!(w.ok("clipboard.state", json!({}))["foreignChangeAt"].is_null());
+    w.ok("clipboard.write", json!({ "text": null }));
+    assert_eq!(w.ok("clipboard.read", json!({})), json!({ "text": null, "truncated": false }));
+    // past the cap: refused on the way in
+    let big = "x".repeat(tc_computer_win::clip::CLIPBOARD_TEXT_MAX_BYTES + 1);
+    assert_eq!(w.call("clipboard.write", json!({ "text": big }))["error"]["code"], json!(-32602));
+}
+
+#[test]
+fn a_clipboard_past_the_cap_is_answered_cut_at_a_character() {
+    let max = tc_computer_win::clip::CLIPBOARD_TEXT_MAX_BYTES;
+    let fake = Fake::default();
+    // a two-byte character straddles the cap
+    *fake.clip.lock().unwrap() = (Some(format!("{}é and more", "a".repeat(max - 1))), 1);
+    let mut w = Wire::start(fake);
+    init(&mut w);
+    let r = w.ok("clipboard.read", json!({}));
+    assert_eq!(r["truncated"], json!(true));
+    assert_eq!(r["text"].as_str().unwrap().len(), max - 1);
 }

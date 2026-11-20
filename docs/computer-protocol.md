@@ -125,6 +125,8 @@ Every method's params and result are a zod schema in `COMPUTER_METHODS` (`protoc
 | `input.probe` | `Target & { classes?: ActionClass[] }` (default `['scroll', 'key', 'click']`) | `ProbeReport`: which classes the app honours at the `process` tier, each tried only where its state can be put back through AX (§14.6) |
 | `input.restoreSession` | `{ afterInterrupt? }` | `SessionRestore`: what the `session` tier changed since the last restore, put back unless the person moved since (§14.5; `afterInterrupt: true`, within 2 s of the person's trip, keeps only each half's own check); `session_unavailable` when another holder keeps the session lock for 5 s |
 | `clipboard.state` | `{}` | `{ changeCount: number, foreignChangeAt: number \| null, watchingSince: number }` (epoch ms): when the pasteboard last changed by anyone but this service, from the change count alone (§16.4) |
+| `clipboard.read` | `{}` | `{ text: string \| null, truncated: boolean }`: the clipboard's text, cut at 1 MB of UTF-8 (`truncated`), null when it holds none. The Windows service's alone (§29.8) |
+| `clipboard.write` | `{ text: string \| null }` (at most 1 MB of UTF-8) | `{}`: the clipboard holds this text alone, or nothing for null. The Windows service's alone (§29.8) |
 
 Notifications from the host: `$/cancel { id }`, `capture.stream.ack { stream, seq }`.
 
@@ -2633,6 +2635,23 @@ host-name text calls this machine "this PC" there (`thisDesktopInLine`).
 - Live video on Windows, its parts and the rig's measured rates, are §30's
   "The Windows service"; `bun scripts/e2e-computer-win.ts --legs video` runs
   only that leg of the proof.
+
+### 29.8 The clipboard's text
+
+`clipboard.read` and `clipboard.write` serve the Windows VM's person at the
+picture (docs/agents/work-winvm.md "The clipboard"): his paste goes in as the
+guest's clipboard text and a Ctrl+V, his copy in the guest comes out as text,
+and his Hand back puts the guest's clipboard back as it was at Take over. Text
+only (`CF_UNICODETEXT`; Windows makes it from `CF_TEXT` itself), at most
+`CLIPBOARD_TEXT_MAX_BYTES` (1 MB of UTF-8) either way: a read past it answers
+the first 1 MB cut at a character with `truncated: true`, a write past it is
+`-32602`. A write of `null` empties the clipboard. A write is the service's
+own change: the clipboard watch takes the sequence number it leaves as its own,
+never as the person's copy (`clipboard.state` does not move its
+`foreignChangeAt`). Both take the init gate and no app slot. The Mac service
+does not answer them (`-32601`); the host sends them to the VM's service only.
+`native/tc-computer-win/tests/wire.rs` proves both over the wire with a fake
+desktop, the cap and the cut included.
 
 ## 30. Live video
 

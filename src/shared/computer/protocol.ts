@@ -1233,6 +1233,29 @@ export const ClipboardActivitySchema = z.object({
 })
 export type ClipboardActivity = z.infer<typeof ClipboardActivitySchema>
 
+/**
+ * The clipboard's text, read and written whole (§29.8): the Windows service's alone, for the Windows VM's
+ * paste in and copy out (docs/agents/work-winvm.md "The clipboard"). Text only, at most
+ * CLIPBOARD_TEXT_MAX_BYTES of UTF-8 either way.
+ */
+export const CLIPBOARD_TEXT_MAX_BYTES = 1_048_576
+const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length
+export const ClipboardTextSchema = z.object({
+  /** the clipboard's text; null when it holds none (empty, or only an image or files) */
+  text: z.string().nullable(),
+  /** the text was longer than the cap: `text` is its first CLIPBOARD_TEXT_MAX_BYTES, cut at a character */
+  truncated: z.boolean()
+})
+export type ClipboardText = z.infer<typeof ClipboardTextSchema>
+export const ClipboardWriteParamsSchema = z.object({
+  /** what the clipboard holds after: this text alone, or nothing at all for null */
+  text: z
+    .string()
+    .nullable()
+    .refine((t) => t === null || utf8Bytes(t) <= CLIPBOARD_TEXT_MAX_BYTES, `the clipboard takes at most ${CLIPBOARD_TEXT_MAX_BYTES} bytes of text`)
+})
+export type ClipboardWriteParams = z.infer<typeof ClipboardWriteParamsSchema>
+
 export const InitializeParamsSchema = z.object({
   protocol: int(),
   client: z.object({ name: z.string(), version: z.string() }),
@@ -1304,6 +1327,9 @@ export const COMPUTER_METHODS = {
   'input.probe': { params: InputProbeParamsSchema, result: ProbeReportSchema },
   'input.restoreSession': { params: InputRestoreParamsSchema, result: SessionRestoreSchema },
   'clipboard.state': { params: EmptySchema, result: ClipboardActivitySchema },
+  // §29.8, the Windows service's: the Windows VM's paste in, copy out and the clipboard put back at Hand back
+  'clipboard.read': { params: EmptySchema, result: ClipboardTextSchema },
+  'clipboard.write': { params: ClipboardWriteParamsSchema, result: EmptySchema },
   /** P1: while on, the person's unmarked Escape is taken and sent as `escape/pressed`; every other event passes */
   'escape.watch': {
     params: z.object({ on: z.boolean(), leaseMs: int().min(ESCAPE_WATCH.minLeaseMs).max(ESCAPE_WATCH.maxLeaseMs).optional() }),

@@ -885,6 +885,14 @@ impl Desktop for WindowsDesktop {
         io::clip_restore(clip)
     }
 
+    fn clip_text(&self) -> Result<Option<String>, ComputerError> {
+        io::clip_text()
+    }
+
+    fn clip_empty(&self) -> Result<(), ComputerError> {
+        io::clip_empty()
+    }
+
     fn launch(&self, exe: &str, args: &[String]) -> Result<i64, ComputerError> {
         io::launch(exe, args)
     }

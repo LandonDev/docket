@@ -23,7 +23,7 @@ use windows::Win32::Graphics::Imaging::*;
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 use windows::Win32::System::Com::StructuredStorage::{IPropertyBag2, PROPBAG2};
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER, STREAM_SEEK_CUR};
-use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW, SetClipboardData};
+use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardSequenceNumber, IsClipboardFormatAvailable, OpenClipboard, RegisterClipboardFormatW, SetClipboardData};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE};
 use windows::Win32::System::StationsAndDesktops::{CloseDesktop, GetUserObjectInformationW, OpenInputDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS, UOI_NAME};
@@ -786,6 +786,34 @@ pub fn clip_put(text: &str, html: Option<&str>) -> Result<(), ComputerError> {
         set(id, &bytes)?;
     }
     Ok(())
+}
+
+/// The clipboard's text, whole: CF_UNICODETEXT up to its NUL (Windows makes it from CF_TEXT itself). None
+/// when the clipboard holds no text. The cap is the caller's (`clip::cap_text`).
+pub fn clip_text() -> Result<Option<String>, ComputerError> {
+    let _open = Opened::new()?;
+    unsafe {
+        if IsClipboardFormatAvailable(CF_UNICODETEXT).is_err() {
+            return Ok(None);
+        }
+        let Ok(h) = GetClipboardData(CF_UNICODETEXT) else { return Ok(None) };
+        let g = HGLOBAL(h.0);
+        let units = GlobalSize(g) / 2;
+        let p = GlobalLock(g) as *const u16;
+        if p.is_null() {
+            return Err(fail(ComputerErrorKind::ClipboardBusy, "the clipboard's text could not be read"));
+        }
+        let all = std::slice::from_raw_parts(p, units);
+        let end = all.iter().position(|u| *u == 0).unwrap_or(all.len());
+        let text = String::from_utf16_lossy(&all[..end]);
+        let _ = GlobalUnlock(g);
+        Ok(Some(text))
+    }
+}
+
+pub fn clip_empty() -> Result<(), ComputerError> {
+    let _open = Opened::new()?;
+    unsafe { EmptyClipboard() }.map_err(|_| fail(ComputerErrorKind::ClipboardBusy, "the clipboard would not empty"))
 }
 
 pub fn clip_restore(clip: &Clip) -> Result<(), ComputerError> {

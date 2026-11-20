@@ -187,3 +187,19 @@ mod tests {
         assert_eq!(html_text("<ul><li>a</li><li>b</li></ul>"), "a\nb");
     }
 }
+
+/// The most text `clipboard.read` answers and `clipboard.write` takes, in UTF-8 bytes (§29.8; protocol.ts
+/// CLIPBOARD_TEXT_MAX_BYTES).
+pub const CLIPBOARD_TEXT_MAX_BYTES: usize = 1_048_576;
+
+/// The text cut to at most `max` UTF-8 bytes at a character, and whether it was cut.
+pub fn cap_text(text: String, max: usize) -> (String, bool) {
+    if text.len() <= max {
+        return (text, false);
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    (text[..end].to_string(), true)
+}
