@@ -317,6 +317,37 @@ bitrate follows that viewer's own link, and the relay stays a pipe.
   settings and is set through `computer.settings.set`, which is `local`: no
   key can turn it on.
 
+## The proofs
+
+`bun run script:e2e-box-video` (scripts/e2e-box-video.ts) measures the box
+through our relay and the stream's own socket: the real Chromium headed on
+its display, the real engine, and a viewer that acks each frame as it
+arrives. Scenes run five times each, turn about, pinned to cores of their
+own; the medians are judged and the load average is printed beside them. It
+needs the tools installed (`--data <userData>`) and touches nothing of the
+box's live service.
+
+Measured 2026-11-19 on the box (16 cores, no GPU), cores 24 to 31, load
+average 11 to 15 from other threads. Medians of five runs of 15 s:
+
+| Scene | Rule | Measured |
+|---|---|---|
+| A page of text scrolling every frame, 1280×800, loopback | 110 fps | 119.1 fps at 5.3 Mbit/s (runs 115.1, 119.7, 119.1, 117.9, 119.1) |
+| The same: capture to relay | p95 under 15 ms | p50 1.8 ms, p95 6.9 ms (to the viewer 1.9 and 7.0) |
+| The same: the engine's CPU | under 1.2 cores | 0.53 of a core |
+| The same through 5 Mbit/s with 30 ms each way | 100 fps | 116.3 fps at 4.2 Mbit/s; to the viewer p50 41 ms, p95 76 ms |
+| A link cut for 4 s | the stream closes | closed with `slow` (4107) after 180 frames |
+| The next open after the cut | it plays | 181 frames in 1.5 s |
+
+The capture time is the engine's, on the kernel's monotonic clock; the
+script reads the same clock. The thin link is a proxy in the script between
+the viewer and the relay, so the engine sees it only through the acks, as it
+will through the tunnel.
+
+Not proven: the stream through the real Cloudflare tunnel (it is first seen
+after the owner installs the tools and updates the box), and any viewer but
+the script's.
+
 ## What this cannot stop
 
 - A process of the `agents` user on the box that reads an engine's token
