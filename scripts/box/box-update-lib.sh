@@ -8,7 +8,9 @@
 #   - for a v1.0.N ref, the release's temp-code-out-1.0.N.tar.gz (the out/
 #     the Mac built, package.json, release.json, bun.lock, scripts/box, a
 #     build-manifest.json), fetched with its sha256 and verified;
-#   - for master, a clone built with electron-vite as before;
+#   - for master, a clone built with electron-vite as before, and
+#     tc-computer.exe cross-built into its resources/native (the Windows VM's
+#     service; a release tarball carries none);
 #   - node_modules: a hardlinked copy of the current build's when bun.lock is
 #     byte-identical (modules_plan), else a fresh `bun install` with Electron's
 #     binary and the native modules rebuilt for Linux (build_script).
@@ -65,7 +67,12 @@ build_script() {
       '[[ -x node_modules/electron/dist/electron ]] || node node_modules/electron/install.js'
       'node_modules/.bin/electron-builder install-app-deps')
   fi
-  if [[ $source == source ]]; then steps+=('node_modules/.bin/electron-vite build'); fi
+  # tc-computer.exe for the Windows VM (src/main/server/work/winvm/serviceBin.ts), cross-built with cargo-xwin
+  # into the build's resources/native; a build without it still deploys, and the VM then has no service.
+  if [[ $source == source ]]; then
+    steps+=('node_modules/.bin/electron-vite build'
+      'bun scripts/build-tc-computer-win.ts --into resources/native || echo "WARN: tc-computer.exe was not built; the Windows VM has no service in this build" >&2')
+  fi
   ((${#steps[@]})) || return 0
   printf 'set -euo pipefail\n'
   printf '%s\n' "${steps[@]}"

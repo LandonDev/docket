@@ -34,6 +34,7 @@ def fake_tree(root, version='1.0.5', n=5, contract=7):
     for rel, text in {
         'out/main/boot.js': "require('./index.js')\n",
         'out/main/index.js': 'console.log("main")\n',
+        'out/main/gateway.js': 'console.log("gateway")\n',
         'out/preload/index.js': '// preload\n',
         'out/renderer/index.html': '<!doctype html><title>t</title>\n',
         'package.json': '{\n  "name": "temp-code",\n  "version": "%s",\n  "main": "./out/main/boot.js"\n}\n' % version,
@@ -199,8 +200,11 @@ with tempfile.TemporaryDirectory(prefix='tc-build-once-') as temp:
     assert steps('asset', 'install') == ('set -euo pipefail\nbun install --frozen-lockfile\n'
                                          '[[ -x node_modules/electron/dist/electron ]] || node node_modules/electron/install.js\n'
                                          'node_modules/.bin/electron-builder install-app-deps\n')
-    assert steps('source', 'reuse') == 'set -euo pipefail\nnode_modules/.bin/electron-vite build\n'
-    assert steps('source', 'install').endswith('install-app-deps\nnode_modules/.bin/electron-vite build\n')
+    exe = ('bun scripts/build-tc-computer-win.ts --into resources/native || echo "WARN: tc-computer.exe was not built; '
+           'the Windows VM has no service in this build" >&2\n')
+    assert steps('source', 'reuse') == 'set -euo pipefail\nnode_modules/.bin/electron-vite build\n' + exe
+    assert steps('source', 'install').endswith('install-app-deps\nnode_modules/.bin/electron-vite build\n' + exe)
+    assert 'tc-computer' not in steps('asset', 'install')
     print('PASS: build_script runs only the steps a path still needs')
 
     lib('write_manifest', str(candidate), 'version=1.0.5', 'contract=json:7', 'sha=' + SHA, 'deploy.ref=v1.0.5',
