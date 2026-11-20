@@ -80,3 +80,16 @@ export function kindFor(source: CanvasSource, hint: OpenHint = {}, kinds: Record
   const ext = name ? extensionOf(name) : "";
   return (ext ? defs.find((def) => (def.opens.ext ?? []).includes(ext)) : undefined)?.kind ?? null;
 }
+
+/**
+ * The kind that shows a file, by its extension, or by its mime type when the
+ * name has none; null when no kind does. The one lookup for a file from
+ * outside: a drop, Open file…, a mail's attachment. The type a desktop or a
+ * mail gives is a guess from the name (a `.ts` script comes as `video/mp2t`,
+ * a `.csv` from Windows as `application/vnd.ms-excel`), so it never
+ * overrules one.
+ */
+export function kindForFile(name: string, mime?: string, kinds: Record<CanvasKind, CanvasKindDef> = CANVAS): CanvasKind | null {
+  if (extensionOf(name)) return kindFor({ at: "file", host: "", path: name }, {}, kinds);
+  return mime ? kindFor({ at: "thread" }, { mime }, kinds) : null;
+}

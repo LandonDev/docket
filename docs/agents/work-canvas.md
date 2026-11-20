@@ -64,6 +64,14 @@ claims the mime type (a Google file's own, or the hint's), else the one
 that claims the file extension; null when none does. A pillar corrects its
 own `opens`.
 
+`kindForFile(name, mime?)` (the same file, on the work-canvas chunk's
+barrel) is the one lookup for a file from outside: a drop, Open file…, a
+mail's attachment. It goes by the extension, and by the mime type only when
+the name has none, since a desktop's or a mail's type is a guess from the
+name (`main.ts` arrives as `video/mp2t`). The Docs view's list, which the
+host builds, reads extensions from `kindOfFile` (src/shared/work/docFind.ts);
+registry.test.ts holds the two to the same claims.
+
 `ACT_VIEWS` (work/acts/registry.ts) holds one `ActKindView` per held act
 kind, in `work/<pillar>/act.ts` for the pillar `ACT_PILLAR` names.
 `chunk: null` means the Outbox's generic view (the summary and the payload

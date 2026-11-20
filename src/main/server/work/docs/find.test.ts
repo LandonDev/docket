@@ -33,7 +33,7 @@ function rig(o: { lifeos?: 'down'; reaches?: (path: string) => boolean; items?: 
   writeFileSync(join(folder, 'Plan.tcdoc'), 'state')
   writeFileSync(join(folder, 'sub', 'costs.csv'), 'item,cost\nvenue rental,400\n')
   writeFileSync(join(folder, 'sub', 'scan.pdf'), '%PDF')
-  writeFileSync(join(folder, 'notes.txt'), 'not a kind')
+  writeFileSync(join(folder, 'notes.log'), 'not a kind')
   writeFileSync(join(folder, '.hidden', 'x.pdf'), '%PDF')
   writeFileSync(join(folder, 'node_modules', 'y.pdf'), '%PDF')
 

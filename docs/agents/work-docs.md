@@ -26,8 +26,9 @@ makes a markdown note a document once LifeOS's `blockDocs` is on, and
 answers null before; the item then says LifeOS keeps it as text), or a
 `.tcdoc` on this host inside the caller's path fence. Every method names the
 source, not a canvas item, so the Docs view opens a document with no
-thread. The kind also claims Word, OpenDocument and RTF files: its body
-makes such a file a `.tcdoc` beside it and the item reopens on that
+thread. The kind also claims Word (`.docx`, `.doc`), OpenDocument, RTF,
+markdown and text files: its body makes such a file a `.tcdoc` beside it and
+the item reopens on that
 (work-formats.md "Import and export"). A Google Doc opens on a mirror
 of its own, read from Google when it is opened ([work-google.md](work-google.md)
 "Docs"); its ⋯ adds Write to Google, Read again from Google and Open in

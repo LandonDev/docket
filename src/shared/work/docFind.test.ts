@@ -86,7 +86,7 @@ describe('the groups', () => {
 
 describe('kinds of files', () => {
   it('follow the canvas kinds', () => {
-    expect(['a.TCDOC', 'b.xlsx', 'c.pdf', 'd.pptx', 'e.mov', 'f.m4a', 'g.txt', 'noext'].map(kindOfFile)).toEqual(['document', 'sheet', 'pdf', 'slides', 'media', 'meeting', null, null])
+    expect(['a.TCDOC', 'b.xlsx', 'c.pdf', 'd.pptx', 'e.mov', 'f.m4a', 'g.zip', 'noext', 'h.md'].map(kindOfFile)).toEqual(['document', 'sheet', 'pdf', 'slides', 'media', 'meeting', null, null, 'document'])
     expect(kindOfMime('application/vnd.google-apps.spreadsheet')).toBe('sheet')
     expect(kindOfMime('application/zip')).toBeNull()
   })

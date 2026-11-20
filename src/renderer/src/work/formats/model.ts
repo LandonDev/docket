@@ -69,10 +69,10 @@ const IMPORTS = /\.(docx|odt|rtf|doc|md|markdown|html?|pdf)$/i;
 export const importable = (name: string): boolean => IMPORTS.test(name);
 export const isHtml = (name: string): boolean => /\.html?$/i.test(name);
 
-/** A source the document kind claims but cannot open as it is: a Word, OpenDocument or RTF file, made a `.tcdoc` first. */
+/** A source the document kind claims but cannot open as it is: a Word, OpenDocument, RTF, markdown or text file, made a `.tcdoc` first. */
 export function importsFirst(source: CanvasSource): boolean {
   if (source.at === "microsoft") return source.app === "word";
-  return source.at === "file" && /\.(docx|odt|rtf|doc)$/i.test(source.path);
+  return source.at === "file" && /\.(docx|odt|rtf|doc|md|markdown|txt)$/i.test(source.path);
 }
 
 /** The most a dropped file may be: what the host link carries in one frame. */

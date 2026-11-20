@@ -10,7 +10,8 @@ import { guestsActs } from "../guests/act";
 import { mailActs } from "../mail/act";
 import { officeActs } from "../office/act";
 import { outboxActs } from "../outbox/act";
-import { CANVAS, kindFor } from "./registry";
+import { kindOfFile } from "@shared/work/docFind";
+import { CANVAS, kindFor, kindForFile } from "./registry";
 
 /** The two registries Work's pillars plug into: every kind and every act kind once, each in its pillar's own file. */
 
@@ -91,6 +92,26 @@ describe("kindFor", () => {
     expect(kindFor(file("/w/Makefile"))).toBeNull();
     expect(kindFor({ at: "thread" })).toBeNull();
     expect(kindFor({ at: "lifeos", table: "calendarOps", id: "c" })).toBeNull();
+  });
+});
+
+describe("kindForFile", () => {
+  it("goes by the name first, then the type the desktop gave", () => {
+    expect(kindForFile("Q3 Budget.XLSX", "application/octet-stream")).toBe("sheet");
+    expect(kindForFile("export.csv", "application/vnd.ms-excel")).toBe("sheet");
+    expect(kindForFile("main.ts", "video/mp2t")).toBeNull();
+    expect(kindForFile("scan", "application/pdf")).toBe("pdf");
+    expect(kindForFile("IMG_0042", "image/heic")).toBe("media");
+    expect(kindForFile("README.md")).toBe("document");
+    expect(kindForFile("notes.txt", "text/plain")).toBe("document");
+    expect(kindForFile("call.m4a")).toBe("meeting");
+    expect(kindForFile("archive.zip", "application/zip")).toBeNull();
+  });
+
+  it("the Docs view's list, which the host builds, reads files as the registry does", () => {
+    for (const kind of CANVAS_KINDS) {
+      for (const ext of CANVAS[kind].opens.ext ?? []) expect([ext, kindOfFile(`f.${ext}`)]).toEqual([ext, kind]);
+    }
   });
 });
 

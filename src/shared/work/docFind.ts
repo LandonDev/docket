@@ -36,7 +36,7 @@ export const FIND_BY_WORDS: Record<FindBy, string> = { owner: 'You', agent: 'An 
 /** A file's extension to the kind that opens it, as the canvas kinds claim them (work/<pillar>/canvas.ts). */
 const EXT_KIND: Record<string, FindKind> = {}
 const claim = (kind: FindKind, exts: string) => exts.split(' ').forEach((e) => (EXT_KIND[e] = kind))
-claim('document', 'tcdoc docx odt rtf')
+claim('document', 'tcdoc docx doc odt rtf md markdown txt')
 claim('sheet', 'tcsheet xlsx xlsm csv')
 claim('pdf', 'pdf')
 claim('slides', 'pptx')
