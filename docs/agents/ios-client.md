@@ -920,7 +920,7 @@
   page) as its chip and sends to the thread (`WorkHost.ask`), then shows
   Chat; the thread's own composer holds no chips.
 - **Routes**: `.workView(environmentId:workspaceId:view:)` (`mail`,
-  `tasks`, `agenda`, `routines`), in the detail column.
+  `tasks`, `agenda`, `projects`, `routines`), in the detail column.
 
 ## A Work workspace's projects (the projects plan, milestone 8)
 
@@ -946,8 +946,11 @@
   workspace's kind): `ProjectSettingsModel.loadWork()` reads nothing of
   review or plans, so `review.set` and `plans.set` (which the server
   refuses for a Work project) are never offered or sent; the sheet holds
-  the project's Rules row and a Done button. Sharing joins it with
-  milestone 7 (a project's guest links).
+  the project's Rules row and a Done button (no Cancel: nothing waits for
+  a Save). The rules editor it pushes (`PreambleEditor`, `isWork`) offers
+  Work examples in its placeholder and leaves `{{worktree}}` out of its
+  variables, as the desktop's rules dialog does for a Work project.
+  Sharing joins it with milestone 7 (a project's guest links).
 - **The pin.** work-kit's Swift for this is on `projects-swift-tc`, a
   branch from the commit TempCode pinned (`fb39587`), merged into work-kit
   main with no change to main's tree, so TempCode's JS side moves nothing

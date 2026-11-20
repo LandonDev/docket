@@ -50,6 +50,10 @@ struct PreambleEditor: View {
         }
     }
 
+    /// A Work workspace's rules: its threads have no worktree, so nothing here teaches one
+    /// (the desktop's rules dialog leaves the word out for a Work project too).
+    private var isWork: Bool { workspace?.kind == .work }
+
     private var project: ProjectMeta? {
         guard case .project(let projectId, _) = scope else { return nil }
         return client.projects.first { $0.id == projectId }
@@ -140,9 +144,14 @@ struct PreambleEditor: View {
             .overlay(alignment: .topLeading) {
                 if draft.text.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("- Work in your own worktree: `git worktree add .claude/worktrees/{{worktree}} -b {{worktree}} master`.")
-                        Text("- Run typecheck and the tests you touched; land with merge_branch.")
-                        Text("- Never touch the user's checkout on {{host}}.")
+                        if isWork {
+                            Text("- Read a project with get_project before working in it.")
+                            Text("- Name a task by its key; comment on it when you stop.")
+                        } else {
+                            Text("- Work in your own worktree: `git worktree add .claude/worktrees/{{worktree}} -b {{worktree}} master`.")
+                            Text("- Run typecheck and the tests you touched; land with merge_branch.")
+                            Text("- Never touch the user's checkout on {{host}}.")
+                        }
                     }
                     .textStep(.meta)
                     .padding(.horizontal, Layout.textEdge)
@@ -229,7 +238,7 @@ struct PreambleEditor: View {
     /// the thread runs on, filled in when the thread starts."
     private var variables: AttributedString {
         var out = AttributedString()
-        let all = Preamble.variables
+        let all = Preamble.variables.filter { !isWork || $0.name != "worktree" }
         for (index, variable) in all.enumerated() {
             if index > 0 { out += AttributedString(index == all.count - 1 ? " and " : ", ") }
             var name = AttributedString("{{\(variable.name)}}")

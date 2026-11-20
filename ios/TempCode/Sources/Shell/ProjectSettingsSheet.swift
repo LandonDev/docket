@@ -143,8 +143,10 @@ struct ProjectSettingsSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(for: PreambleScope.self) { PreambleEditor(client: client, scope: $0) }
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
+                    if !isWork {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { dismiss() }
+                        }
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         if isWork {
@@ -225,8 +227,6 @@ struct ProjectSettingsSheet: View {
                         .accessibilityIdentifier("preamble-project")
                     } header: {
                         Text("Rules for its threads")
-                    } footer: {
-                        Text("Sent with the first message of each new thread in \(project.name).")
                     }
                 } else if let project {
                     Section {
