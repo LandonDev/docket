@@ -278,9 +278,10 @@ describe("the meeting canvas", () => {
     // Nothing in the bar yet, so no bar is drawn: its Bar renders nothing (F2).
     const bar = container.querySelector("[data-canvas-bar]");
     expect(bar === null || bar.matches(":has([data-canvas-tools]:empty)")).toBe(true);
-    // and More holds the frame's rows alone
+    // and More holds the frame's rows alone. Open file… and Open from Google… open a new tab of the file's own kind
+    // (work-canvas.md "Opening a file from outside"); Choose a file fills this meeting, so neither says the same thing.
     fireEvent.click(screen.getByRole("button", { name: "More" }));
-    expect((await screen.findAllByRole("menuitem")).map((row) => row.textContent)).toEqual(["Open from Google…", "Close"]);
+    expect((await screen.findAllByRole("menuitem")).map((row) => row.textContent)).toEqual(["Open file…", "Open from Google…", "Close"]);
   });
 
   it("offers Export transcript first in More once there is a transcript, and saves the turns as text", async () => {
