@@ -6,6 +6,7 @@ import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { outboxHostOf, type OutboxHost } from './ctx'
 import { ensureResults, resultsOf } from './results'
 import { rulesCard, setRules } from './rules'
+import { ensureEarnedTables } from './earned'
 import { ensureOutboxTables } from './store'
 import { outboxMentions } from './mentions'
 
@@ -84,6 +85,7 @@ export const outbox: WorkModule = {
   mentions: outboxMentions,
   ensure(db) {
     ensureOutboxTables(db)
+    ensureEarnedTables(db)
     ensureResults(db)
   },
   async handle(req, ctx, by, signal) {
@@ -112,6 +114,16 @@ export const outbox: WorkModule = {
       case 'work.outbox.ungrant':
         mustBePerson(by, 'admin')
         return handled(box.ungrant(req.params.id))
+      // Grants he has earned (earned.ts): read, taken and dismissed only by a person, like the grant itself.
+      case 'work.outbox.offers':
+        mustBePerson(by, 'approve')
+        return handled({ offers: box.offers(req.params ?? {}) })
+      case 'work.outbox.takeOffer':
+        mustBePerson(by, 'admin')
+        return handled(await box.takeOffer(req.params.id))
+      case 'work.outbox.dismissOffer':
+        mustBePerson(by, 'admin')
+        return handled(box.dismissOffer(req.params.id))
       case 'work.outbox.rules': {
         if (!host.addons) return handled({ addons: [] })
         const cards: ToolRulesCard[] = workAddons(host, req.params ?? {}).map((row) => rulesCard(host.store, host.addons!, row, host.mcpUrl()))
@@ -175,6 +187,7 @@ export const outbox: WorkModule = {
     if (!host) return
     host.store.closeWorkspace(id, 'The workspace this belonged to was deleted.')
     host.store.removeWorkspaceGrants(id)
+    host.earned.dropWorkspace(id)
   }
 }
 

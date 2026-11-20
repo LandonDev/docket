@@ -1,6 +1,7 @@
-import type { HeldWhy, OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
+import type { GrantOffer, HeldWhy, OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
 import { ACT_PILLAR, errorText, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
+import { earn, wireOffer, type EarnedStore, type StoredOffer } from './earned'
 import { ActNotSent, ActStale, type ActKinds } from './kinds'
 import { itemOfRow, lifeosRunKey, PRESSABLE, type HeldRow, type HeldStore } from './store'
 import { discardedNote, failedNote, sentNote, staleNote } from './words'
@@ -60,7 +61,12 @@ export interface OutboxDeps {
   whisper(sessionId: string, text: string): void
   /** The held notice for a phone or a desktop; absent in a test. */
   notify?(item: OutboxItem): void
+  /** What the thread first wrote and the grants he has earned (earned.ts); absent, nothing is offered. */
+  earned?: EarnedStore
 }
+
+/** A LifeOS draft first seen this long after it was made, and edited since it was made, holds words nobody can name the writer of. */
+const FIRST_SIGHT_SLACK = 60_000
 
 /** Kinds whose result the thread needs to go on: carrying one out wakes its thread with what came back. The others are told quietly, ahead of the thread's next turn. */
 const WAKES: readonly ActKind[] = ['addon.call', 'computer.act']
@@ -81,6 +87,7 @@ export const NOT_EDITABLE = 'This act cannot be changed here; change it where it
 export const NO_SUCH_ITEM = 'no such held item on this host'
 export const CHANGED_SINCE = 'This item changed since you opened it. Look at it again before you decide.'
 export const MAY_HAVE_GONE = 'This may have gone already: the last send did not say how it ended. Check Sent first, and choose Send again only if it is not there.'
+export const NO_SUCH_OFFER = 'There is no such offer on this host, or it was already decided.'
 export const REV_NEEDED = 'refused: a press on an item LifeOS holds names what was read (`rev`), so what goes is what was shown'
 
 /** What `execute` left behind, small enough to keep in the row: a result too large for the log keeps its line and drops its body. */
@@ -105,7 +112,7 @@ export class Outbox {
   lifeos: LifeosHeld | null = null
   /** What the host adds to a kind's matcher before a grant is kept (an add-on call's server), so a client cannot leave it out. */
   readonly seals = new Map<ActKind, (matcher: never, payload: never) => unknown>()
-  private readonly decidedListeners = new Set<(item: HeldItem) => void>()
+  private readonly decidedListeners = new Set<(item: HeldItem, asHeld: unknown) => void>()
   private readonly changeListeners = new Set<(item: OutboxItem | null) => void>()
 
   constructor(private readonly deps: OutboxDeps) {
@@ -151,6 +158,7 @@ export class Outbox {
       state: act.state ?? 'held',
       routineRunId: (act.sessionId ? this.deps.routineRunOf(act.sessionId) : null) ?? scope?.routineRunId ?? null
     })
+    this.noteFirst(row.runKey, row.kind, payload)
     // A live act is the screen as it was read: only his press carries it out, never a grant.
     const grant = row.state === 'held' ? this.grantFor({ kind: row.kind, payload, sessionId: row.sessionId, routineRunId: row.routineRunId, createdAt: row.createdAt }, def) : null
     if (grant) {
@@ -164,6 +172,10 @@ export class Outbox {
   /** A LifeOS-held item the watcher saw for the first time: sent now when a grant made before it fits, else told as held. */
   async offer(item: OutboxItem, opts: { quiet?: boolean } = {}): Promise<void> {
     if (item.ref.at !== 'lifeos' || this.store.byRef(item.ref)) return
+    // What the thread wrote, unless the draft was already changed when the host first saw it (made while it was off):
+    // then nobody can say whose words it holds, and its send never counts toward an earned grant.
+    const editedAt = (item.payload as { editedAt?: unknown } | null)?.editedAt
+    if (typeof editedAt !== 'number' || editedAt - item.createdAt <= FIRST_SIGHT_SLACK) this.noteFirst(lifeosRunKey(item.ref.table, item.ref.id), item.kind, item.payload)
     const def = this.deps.kinds.get(item.kind)
     const grant = def && item.state === 'held' ? this.grantFor({ kind: item.kind, payload: item.payload, sessionId: item.sessionId, routineRunId: item.routineRunId, createdAt: item.createdAt }, def) : null
     if (!def || !grant) return void (opts.quiet ? undefined : this.deps.notify?.(item))
@@ -272,7 +284,115 @@ export class Outbox {
     if (item.routineRunId && !routineId) throw new Error("refused: this item's routine is not known on this host, so no grant can be made from it")
     if (opts.routine && !routineId) throw new Error('refused: this item was not made by a routine')
     const label = (opts.label ?? '').trim() || `Like: ${item.summary}`
-    return this.store.addGrant({ workspaceId: scope, kind: item.kind, matcher: parsed, label: label.slice(0, 200), madeFrom: item.ref, routineId })
+    const grant = this.store.addGrant({ workspaceId: scope, kind: item.kind, matcher: parsed, label: label.slice(0, 200), madeFrom: item.ref, routineId })
+    this.closeCovered(grant, def)
+    return grant
+  }
+
+  // ── grants he has earned (earned.ts) ──────────────────────────────────
+
+  /** The offers still open, each from an item that is still in a Work workspace and fits no standing grant. */
+  offers(q: { workspaceId?: string } = {}): GrantOffer[] {
+    const earned = this.deps.earned
+    if (!earned) return []
+    return earned.open(q).flatMap((o) => (this.offerStands(o) ? [wireOffer(o)] : []))
+  }
+
+  /**
+   * Make the grant an offer names. It is the same `grant` he could ask for
+   * by hand from the offer's item, with the matcher the host worked out:
+   * the client names only the offer. Who may call this is checked in
+   * index.ts: a person with admin, never a model.
+   */
+  async takeOffer(id: string): Promise<OutboxGrant> {
+    const earned = this.deps.earned
+    const open = earned?.get(id)
+    if (!earned || !open || open.state !== 'open' || !this.offerStands(open)) throw new Error(NO_SUCH_OFFER)
+    const taken = earned.claim(id, 'made')
+    if (!taken) throw new Error(NO_SUCH_OFFER)
+    let grant: OutboxGrant | null = null
+    try {
+      grant = await this.grant(taken.from, taken.matcher, { label: taken.label, ...(taken.routineId ? { routine: true } : {}) })
+      if ((grant.routineId ?? null) !== taken.routineId) {
+        // The item's routine is no longer the one that earned it: no grant other than the one offered.
+        this.store.removeGrant(grant.id)
+        grant = null
+        throw new Error(NO_SUCH_OFFER)
+      }
+      return grant
+    } finally {
+      earned.settle(id, grant?.id ?? null)
+      this.changed(null)
+    }
+  }
+
+  /** Never offered again, whatever he sends after. */
+  dismissOffer(id: string): GrantOffer {
+    const gone = this.deps.earned?.claim(id, 'dismissed')
+    if (!gone) throw new Error(NO_SUCH_OFFER)
+    this.changed(null)
+    return wireOffer(gone)
+  }
+
+  /** An offer still stands while its item is in the workspace it was earned in, under the same routine, and no standing grant fits it. */
+  private offerStands(o: StoredOffer): boolean {
+    const row = this.store.byRef(o.from)
+    if (!row?.sessionId || row.state !== 'sent' || this.deps.scopeKeyOf(row.sessionId) !== o.workspaceId) return false
+    const routineId = row.routineRunId ? this.deps.routineOf(row.routineRunId) : null
+    if ((row.routineRunId && !routineId) || routineId !== o.routineId) return false
+    const def = this.deps.kinds.get(row.kind)
+    return !!def && !this.grantFor({ kind: row.kind, payload: row.payload, sessionId: row.sessionId, routineRunId: row.routineRunId, createdAt: Number.MAX_SAFE_INTEGER }, def)
+  }
+
+  /** A grant he made fits an open offer's item: that offer is decided, by the grant. */
+  private closeCovered(grant: OutboxGrant, def: ActKindDef): void {
+    const earned = this.deps.earned
+    if (!earned || !def.matcher || !def.matches) return
+    try {
+      const matcher = def.matcher.parse(grant.matcher)
+      for (const o of earned.open({ workspaceId: grant.workspaceId, kind: grant.kind })) {
+        const row = this.store.byRef(o.from)
+        const payload = row ? def.payload.safeParse(row.payload) : null
+        if (payload?.success && (grant.routineId ?? null) === o.routineId && def.matches(matcher, payload.data) && earned.claim(o.id, 'made')) earned.settle(o.id, grant.id)
+      }
+    } catch (err) {
+      this.deps.ctx.log(`outbox: offers a grant covers were not closed: ${errorText(err)}`)
+    }
+  }
+
+  /** What the thread wrote, kept at first sight. Never in the way of a hold. */
+  private noteFirst(runKey: string, kind: ActKind, payload: unknown): void {
+    try {
+      this.deps.earned?.noteFirst(runKey, kind, payload)
+    } catch (err) {
+      this.deps.ctx.log(`outbox: the first words of an act were not kept: ${errorText(err)}`)
+    }
+  }
+
+  /** A send he pressed may complete a run: the offer is made now, before the press answers. Never in the way of a send. */
+  private earnFrom(row: HeldRow): void {
+    const earned = this.deps.earned
+    if (!earned || row.state !== 'sent') return
+    try {
+      const made = earn(
+        {
+          earned,
+          decidedSince: (kind, since) => this.store.decidedSince(kind, since),
+          scopeKeyOf: (id) => this.deps.scopeKeyOf(id),
+          routineOf: (id) => this.deps.routineOf(id),
+          granted: (r) => {
+            const def = this.deps.kinds.get(r.kind)
+            return !def || !!this.grantFor({ kind: r.kind, payload: r.payload, sessionId: r.sessionId, routineRunId: r.routineRunId, createdAt: Number.MAX_SAFE_INTEGER }, def)
+          },
+          notGrantable,
+          now: Date.now
+        },
+        row
+      )
+      if (made) this.changed(null)
+    } catch (err) {
+      this.deps.ctx.log(`outbox: an earned grant was not worked out: ${errorText(err)}`)
+    }
   }
 
   ungrant(id: string): OutboxGrant {
@@ -362,8 +482,8 @@ export class Outbox {
 
   // ── listeners ─────────────────────────────────────────────────────────
 
-  /** A held act reached its end: sent, failed, discarded or stale. */
-  onDecided(fn: (item: HeldItem) => void): () => void {
+  /** A held act reached its end: sent, failed, discarded or stale. `asHeld`: its words as the thread wrote them (earned.ts `wordsOf`), or null. */
+  onDecided(fn: (item: HeldItem, asHeld: unknown) => void): () => void {
     this.decidedListeners.add(fn)
     return () => this.decidedListeners.delete(fn)
   }
@@ -449,10 +569,17 @@ export class Outbox {
       void this.completeTasks()
     }
     if (!quiet && row.sessionId) this.tell(row, result)
+    this.earnFrom(row)
     const item = itemOfRow(row)
+    let asHeld: unknown = null
+    try {
+      asHeld = this.deps.earned?.first(row.runKey) ?? null
+    } catch {
+      // not kept: the listeners read no edit
+    }
     for (const fn of [...this.decidedListeners]) {
       try {
-        fn(item)
+        fn(item, asHeld)
       } catch (err) {
         this.deps.ctx.log(`outbox: a listener failed: ${errorText(err)}`)
       }

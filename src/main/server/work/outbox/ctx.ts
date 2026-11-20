@@ -11,6 +11,7 @@ import { scopeFactsOf, workAddonScope, WORK_ORPHAN } from '../scope'
 import { addonCallKind, makeAddonGate, sealAddonMatcher } from './catch'
 import { ActKinds, ActStale } from './kinds'
 import { calendarOpKind, LifeosHeldItems, mailSendKind } from './lifeosHeld'
+import { EarnedStore } from './earned'
 import { Outbox } from './outbox'
 import { isLifeosSpec, type RuleAddons } from './rules'
 import { HeldStore, HELD_TABLE, LIVE_LOST } from './store'
@@ -51,6 +52,7 @@ export type ComputerActPayload = z.infer<typeof ComputerActPayloadSchema>
 export interface OutboxHost {
   outbox: Outbox
   store: HeldStore
+  earned: EarnedStore
   addons: RuleAddons | null
   setForWork(addonId: string, forWork: boolean): boolean
   mcpUrl(): string
@@ -69,6 +71,7 @@ const outcomeText = (out: ComputerToolOutcome): string => [...out.steps, ...(out
 export const heldPart: CtxPart<'held'> = (ctx, deps) => {
   const facts = scopeFactsOf(deps.registry)
   const store = new HeldStore(deps.db)
+  const earned = new EarnedStore(deps.db)
   const kinds = new ActKinds(() => WORK_MODULES)
   const mcpUrl = (): string => lifeosSeamsFor.current?.address?.mcpUrl ?? lifeosAddress().mcpUrl
   const isWorkScope = (workspaceId: string): boolean =>
@@ -137,7 +140,8 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
     rootOf,
     routineRunOf,
     whisper: (sessionId, text) => deps.registry.whisper(sessionId, text),
-    notify
+    notify,
+    earned
   })
   outbox.seals.set('addon.call', sealAddonMatcher as never)
 
@@ -222,6 +226,7 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
   hosts.set(ctx, {
     outbox,
     store,
+    earned,
     addons,
     setForWork: (addonId, forWork) => deps.addons?.setWorkMarks(addonId, { forWork }) ?? false,
     mcpUrl,

@@ -67,6 +67,28 @@ export interface OutboxGrant {
   removedAt: number | null
 }
 
+/**
+ * A grant he has earned (docs/agents/work-outbox.md "Offered grants"): he
+ * sent several held acts of one narrow kind himself, each as the thread
+ * wrote it, and the host offers that grant once, beside the item whose press
+ * completed the run. The matcher stays on the host: taking the offer makes
+ * the grant the host worked out, from that item.
+ */
+export interface GrantOffer {
+  id: string
+  workspaceId: string
+  kind: ActKind
+  /** the grant's name: "Mail to Sam Ortiz" */
+  label: string
+  /** set when a routine's runs earned it: the grant would fit that routine's runs alone */
+  routineId: string | null
+  /** the item whose press completed the run, and that the grant is made from */
+  from: HeldRef
+  /** the sends in a row that earned it */
+  count: number
+  createdAt: number
+}
+
 export const ToolRuleSchema = z.enum(['runs', 'held', 'off'])
 export const ToolHintsSchema = z.object({
   readOnly: z.boolean().optional(),
@@ -161,6 +183,12 @@ export const OutboxRequestSchemas = [
   request('work.outbox.grants', z.object({ workspaceId: z.string().optional(), all: z.boolean().optional() }).optional()),
   /** → OutboxGrant: removed; acts it would have fit are held again */
   request('work.outbox.ungrant', z.object({ id: z.string() })),
+  /** → { offers: GrantOffer[] }: the grants he has earned and not yet decided */
+  request('work.outbox.offers', z.object({ workspaceId: z.string().optional() }).optional()),
+  /** → OutboxGrant: make the grant an offer names, from its item, as `grant` would. Only by a person with admin. */
+  request('work.outbox.takeOffer', z.object({ id: z.string() })),
+  /** → GrantOffer: never offered again */
+  request('work.outbox.dismissOffer', z.object({ id: z.string() })),
   /** → { addons: ToolRulesCard[] }: each add-on a Work thread can reach, with its tools, their hints and their rules */
   request('work.outbox.rules', z.object({ addonId: z.string().optional(), workspaceId: z.string().optional() }).optional()),
   /** → ToolRulesCard: the owner's answer to the card. A tool left out keeps its rule. */
@@ -192,6 +220,9 @@ export const OUTBOX_CAPS = {
   'work.outbox.grant': 'admin',
   'work.outbox.grants': 'read',
   'work.outbox.ungrant': 'admin',
+  'work.outbox.offers': 'approve',
+  'work.outbox.takeOffer': 'admin',
+  'work.outbox.dismissOffer': 'admin',
   'work.outbox.rules': 'read',
   'work.outbox.setRules': 'admin',
   'work.outbox.setForWork': 'admin',

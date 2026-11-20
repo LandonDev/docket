@@ -180,7 +180,8 @@ export interface WorkCtx {
   held: {
     /** holds the act, or runs it at once if a grant fits */
     create(act: { kind: ActKind; sessionId: string | null; payload: unknown; account?: string }): HeldItem
-    onDecided(fn: (item: HeldItem) => void): () => void
+    /** `asHeld`: the act's words as the thread wrote them, when the host kept them (outbox/earned.ts `wordsOf`); null otherwise */
+    onDecided(fn: (item: HeldItem, asHeld: unknown) => void): () => void
   }
   /** milestone 14 */
   results: {

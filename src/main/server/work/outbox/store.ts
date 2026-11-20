@@ -363,6 +363,14 @@ export class HeldStore {
     return rows.map(decode)
   }
 
+  /** Rows of one kind sent or discarded since a time, newest decision first: what an earned grant counts (earned.ts). */
+  decidedSince(kind: ActKind, since: number, limit = 500): HeldRow[] {
+    const rows = this.db
+      .prepare(`${SELECT} WHERE kind = ? AND state IN ('sent', 'discarded') AND decided_at >= ? ORDER BY decided_at DESC, rowid DESC LIMIT ?`)
+      .all(kind, since, limit) as unknown as Row[]
+    return rows.map(decode)
+  }
+
   /** How many rows wait on the owner. */
   /** Held rows whose send failed and that wait on him again: the rail's failed mark. */
   failed(): number {
