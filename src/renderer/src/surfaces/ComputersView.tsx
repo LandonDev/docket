@@ -1,27 +1,21 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { BusyLabel, Button } from "@renderer/components/ui/button";
-import { Kbd } from "@renderer/components/ui/kbd";
+import { Button } from "@renderer/components/ui/button";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { StatusMark } from "@renderer/components/ui/status";
-import { loadToast } from "@renderer/components/ui/toaster";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
-import { TruncateTip } from "@renderer/components/tip";
-import { Desktop, Square } from "../chrome/icons";
-import { openLightbox } from "../chrome/lightboxStore";
+import { Desktop, Maximize2 } from "../chrome/icons";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDocumentVisible } from "../hooks/paneVisibility";
 import { cn } from "../lib/cn";
-import { canTakeOver, handBack, takeOver, tileKey, useComputers, type ComputerTile } from "../lib/computers";
-import { previewContext, stopComputer } from "../lib/computerSessions";
-import { keyHint } from "../lib/keys";
+import { tileKey, useComputers, type ComputerTile } from "../lib/computers";
+import { previewContext } from "../lib/computerSessions";
+import { openFullWindow } from "../lib/fullWindow";
 import { fitStage, stageLayout, stageOf, type Size } from "../lib/stageLayout";
-import { LEAVE_CHORD } from "../lib/video/videoInput";
 import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
-import { Facts } from "./settings/hosts/Facts";
 import { EmptyState } from "./SurfaceSkeleton";
+import { ComputerCaption, ViewButton, tileLine } from "./threads/computer/ComputerCaption";
 import { ENDED_WORDS, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
 
 /**
@@ -38,8 +32,7 @@ import { ENDED_WORDS, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, 
  * tile plays video where a stream is free and the 4 fps picture where not.
  */
 
-/** What a tile says first: that he drives, a card's question, else the step's words. */
-export const tileLine = (tile: ComputerTile): string | null => (tile.driving ? "You are driving" : (tile.entry.row.asking?.line ?? tile.doing));
+export { tileLine } from "./threads/computer/ComputerCaption";
 
 const tileLabel = (tile: ComputerTile): string => {
   const app = tile.entry.row.apps[0];
@@ -91,7 +84,7 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
       <Viewport
         ref={box}
         fill
-        face={over ? { kind: "none" } : liveFace(stream, place.stage ? (from) => openLightbox([{ environmentId: tile.entry.host, name: label, live: { threadId: tile.entry.row.threadId } }], 0, from) : undefined)}
+        face={over ? { kind: "none" } : liveFace(stream, place.stage ? () => openFullWindow({ host: tile.entry.host, threadId: tile.entry.row.threadId, name: label }) : undefined)}
         label={label}
         size={frame}
         line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
@@ -103,71 +96,6 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
 /** In place of a picture this desktop may not draw: one muted line, naming the machine that does. */
 function ElsewherePicture({ machine }: { machine: string }) {
   return <Viewport fill face={{ kind: "none" }} label={`Shown on ${machine} only`} line={<ViewportLine words={`Shown on ${machine} only`} />} />;
-}
-
-/**
- * The stage's controls, at the caption's end and always shown: Take over (where the computer takes input from its
- * picture) and Stop; while he drives, Hand back alone, the page's one primary, with the chord that leaves the picture.
- */
-export function StageControls({ tile, onTookOver }: { tile: ComputerTile; onTookOver?: () => void }) {
-  const [busy, setBusy] = useState<"take" | "back" | "stop" | null>(null);
-  const pressing = useRef(false);
-  const press = (which: "take" | "back" | "stop", run: () => Promise<unknown>, failed: string): void => {
-    if (pressing.current) return;
-    pressing.current = true;
-    setBusy(which);
-    void run()
-      .catch(() => loadToast().then((toast) => toast.error(failed, { description: tile.title })))
-      .finally(() => {
-        pressing.current = false;
-        setBusy(null);
-      });
-  };
-  if (tile.driving)
-    return (
-      <span data-slot="computer-controls" className="flex shrink-0 items-center">
-        <Button size="sm" data-hand-back disabled={!!busy} onClick={() => press("back", () => handBack(tile), "Couldn't hand it back")}>
-          <BusyLabel busy={busy === "back"} label="Hand back" />
-          <Kbd size="sm" aria-hidden="true" className="border-transparent bg-transparent text-primary-foreground">
-            {keyHint(LEAVE_CHORD)}
-          </Kbd>
-        </Button>
-      </span>
-    );
-  return (
-    <span data-slot="computer-controls" className="flex shrink-0 items-center gap-1">
-      {canTakeOver(tile) ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={!!busy}
-          onClick={() =>
-            press(
-              "take",
-              async () => {
-                onTookOver?.();
-                await takeOver(tile);
-              },
-              "Couldn't take over",
-            )
-          }
-        >
-          <BusyLabel busy={busy === "take"} label="Take over" />
-        </Button>
-      ) : null}
-      {/* an idle page has nothing running to stop */}
-      {tile.idle ? null : (
-        <Tooltip>
-          <TooltipTrigger
-            render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label={`Stop ${tile.title}`} disabled={!!busy} onClick={() => press("stop", () => stopComputer(tile.entry), "Couldn't stop it")} />}
-          >
-            <Square className="size-2.5 fill-current" />
-          </TooltipTrigger>
-          <TooltipContent>Stop</TooltipContent>
-        </Tooltip>
-      )}
-    </span>
-  );
 }
 
 export interface TileProps {
@@ -184,33 +112,25 @@ export interface TileProps {
 /** One computer, on the stage or in the strip: the same element either way, so its picture's canvas stays. */
 export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTookOver }: TileProps) {
   const line = tileLine(tile);
-  const loud = tile.driving || !!tile.entry.row.asking;
   // where it runs is said once: a picture this desktop may not draw already names the machine
   const where = picture && tile.shownOn ? null : tile.where;
   return (
     <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", stage ? "gap-2" : "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98]", FADE_IN)}>
       {picture}
       {stage ? (
-        // as wide as the picture and no wider, however long the title: it adds nothing to the tile's width
-        <div className="flex min-h-9 w-0 min-w-full items-center gap-3">
-          <div className="flex min-w-0 flex-1 flex-col">
-            <TruncateTip text={tile.title}>
-              <Button variant="link" size="xs" className="h-5 max-w-full justify-start p-0 text-[13px] leading-5 font-medium text-foreground" onClick={() => onOpenSession(tile.entry.row.threadId, tile.entry.host)}>
-                <span className="truncate">{tile.title}</span>
-              </Button>
-            </TruncateTip>
-            {tile.entry.row.asking && !tile.driving ? (
-              // a card's question ends its own sentence: where it runs follows it, with no comma
-              <span className="flex min-w-0 gap-1 text-xs leading-4 text-muted-foreground">
-                <span className="min-w-0 truncate text-foreground">{line}</span>
-                {where ? <span className="shrink-0">{where}</span> : null}
-              </span>
-            ) : (
-              <Facts parts={[line && loud ? <span className="text-foreground">{line}</span> : line, where]} className="text-xs leading-4 text-muted-foreground" />
-            )}
-          </div>
-          <StageControls tile={tile} onTookOver={onTookOver} />
-        </div>
+        <ComputerCaption
+          tile={tile}
+          onOpenSession={onOpenSession}
+          where={where}
+          onTookOver={onTookOver}
+          views={
+            picture && !tile.shownOn ? (
+              <ViewButton label="Full window" onClick={() => openFullWindow({ host: tile.entry.host, threadId: tile.entry.row.threadId, name: tileLabel(tile) })}>
+                <Maximize2 className="size-4" />
+              </ViewButton>
+            ) : null
+          }
+        />
       ) : (
         <div className="flex min-w-0 flex-col">
           <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 font-medium">

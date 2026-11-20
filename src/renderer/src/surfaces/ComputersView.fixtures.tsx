@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import type { ComputerTile } from "../lib/computers";
 import type { ComputersPageProps, Place } from "./ComputersView";
 import { fitStage } from "../lib/stageLayout";
-import { tile } from "./threads/computer/LiveFullView.fixtures";
+import { tile } from "./threads/computer/FullWindow.fixtures";
 import { Viewport, ViewportLine, pictureClass } from "./threads/computer/Viewport";
 
 const still = (app: string, state: string): string => new URL(`../../../main/server/computer/fixtures/apps/${app}/${state}/window.jpg`, import.meta.url).href;

@@ -8,9 +8,9 @@ import { readAttachment } from '../lib/tcserver/commands'
  */
 
 /** An image the lightbox can show: either an in-memory URL (composer
- *  previews) or an attachment path fetched on demand (transcript thumbs);
- *  or the computer a thread drives, live (`live`: the full view). */
-export type LightboxItem = { environmentId: string; name: string; src?: string; path?: string; live?: { threadId: string } }
+ *  previews) or an attachment path fetched on demand (transcript thumbs).
+ *  A live picture opens the full window instead (lib/fullWindow.ts). */
+export type LightboxItem = { environmentId: string; name: string; src?: string; path?: string }
 
 /** Shared with transcript thumbs; count two bytes per data URL character. */
 export const IMAGE_CACHE_BYTES = 64 * 1024 * 1024

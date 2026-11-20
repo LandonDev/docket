@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { ComputerHistoryCall } from "@server/shared/contract-computer";
 import { loadToast } from "../../../components/ui/toaster";
 import { openLightbox } from "../../../chrome/lightboxStore";
+import { openFullWindow } from "../../../lib/fullWindow";
 import { useDocumentVisible, usePaneVisible } from "../../../hooks/paneVisibility";
 import { computerLabel } from "../../../lib/activity";
 import type { PreviewState } from "../../../lib/computerPreview";
@@ -465,7 +466,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     another,
     // a kept picture opens the lightbox from the box, and the live picture its full view
     onOpen: (label, url, from) => openLightbox([{ environmentId: LOCAL_ENVIRONMENT_ID, name: label, src: url }], 0, from),
-    onOpenLive: (entry, label, from) => openLightbox([{ environmentId: entry.host, name: label, live: { threadId: entry.row.threadId } }], 0, from),
+    onOpenLive: (entry, label) => openFullWindow({ host: entry.host, threadId: entry.row.threadId, name: label }),
   });
 
   return (

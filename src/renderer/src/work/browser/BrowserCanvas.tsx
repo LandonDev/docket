@@ -15,7 +15,7 @@ import { thisDesktopInLine } from "../../lib/native";
 import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, OPEN_OVER, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useDrivingInput, useLiveStream, VIEWPORT_INSETS, ViewportLine } from "../../surfaces/threads/computer/Viewport";
-import { openLightbox } from "../../chrome/lightboxStore";
+import { openFullWindow } from "../../lib/fullWindow";
 import { sharpWidth } from "../../lib/video/support";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps } from "../canvas/kind";
@@ -295,7 +295,7 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
           (still ? (
             <StillView env={env} held={still} />
           ) : entry ? (
-            <LiveView stream={stream} box={box} label={liveLabel(entry)} onOpen={(from) => openLightbox([{ environmentId: entry.host, name: liveLabel(entry), live: { threadId: entry.row.threadId } }], 0, from)} />
+            <LiveView stream={stream} box={box} label={liveLabel(entry)} onOpen={() => openFullWindow({ host: entry.host, threadId: entry.row.threadId, name: liveLabel(entry) })} />
           ) : state ? (
             <StillView env={env} held={waiting} />
           ) : (

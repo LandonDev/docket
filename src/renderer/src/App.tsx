@@ -45,6 +45,7 @@ import { markAllSeen } from "./lib/sessionSeen";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/lightboxStore";
+import { useFullWindow } from "./lib/fullWindow";
 import {
   closeHtmlRenderOverlay,
   HtmlRenderOverlay,
@@ -293,7 +294,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workShellChunk } from "./surfaces/chunks";
+import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workShellChunk } from "./surfaces/chunks";
 import { openWorkView, useWorkOn, useWorkView, workHome, workFilePort, workOpenPort, workStartPort } from "./lib/workSwitch";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
@@ -315,6 +316,7 @@ const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" l
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" lines={3} label="Loading notes" />);
 const OutboxView = workOutboxChunk.surface("OutboxView", <SurfaceSkeleton kind="page" label="Loading the Outbox" />);
 const ComputersView = computersChunk.surface("ComputersView", <SurfaceSkeleton kind="page" label="Loading Computers" />);
+const FullWindow = fullWindowChunk.surface("FullWindow");
 const WorkViewSurface = workShellChunk.surface("WorkViewSurface", <SurfaceSkeleton kind="page" label="Loading" />);
 const WorkRailHost = workShellChunk.surface("WorkRailHost");
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
@@ -456,6 +458,7 @@ export default function App() {
   const inboxViewOpen = useShell((s) => s.inboxViewOpen);
   const outboxViewOpen = useShell((s) => s.outboxViewOpen);
   const computersViewOpen = useShell((s) => s.computersViewOpen);
+  const fullWindowOpen = useFullWindow() !== null;
   const workViewShown = useWorkView() !== null;
   const workOn = useWorkOn();
   // Work turned off on every host: its Outbox page goes with it.
@@ -3612,6 +3615,7 @@ export default function App() {
         {computersViewOpen ? (
           <ComputersView besideRail={projectRailOpen} onClose={shell.closeComputers} onToggleSidebar={onToggleSidebar} onOpenSession={onOpenApprovalSession} />
         ) : null}
+        {fullWindowOpen ? <FullWindow onOpenSession={onOpenApprovalSession} /> : null}
         {notesViewOpen ? (
           <NotesView
             besideRail={projectRailOpen}

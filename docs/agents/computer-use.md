@@ -236,8 +236,8 @@ why and the measured headline.
   he drives, its caption holds `StageControls` (Take over where
   `canTakeOver`, Stop, Hand back), and a strip tile's picture asks without
   `take`. Every tile is one element in one grid, so a swap remakes no
-  canvas. A click on a live picture opens the full view in the lightbox
-  (`LiveFullView`).
+  canvas. A click on a live picture opens the full window
+  (`FullWindow`, `openFullWindow` in lib/fullWindow.ts).
 - **Video.** A live picture is video where its host answers `video.open`
   and the 4 fps preview where it does not; the places that show it did not
   change ([live-video.md](live-video.md) "The viewer").

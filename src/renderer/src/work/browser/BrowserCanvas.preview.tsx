@@ -16,7 +16,7 @@ import { CANVAS } from "../canvas/registry";
 import { applyCanvasPush, resetCanvasStore } from "../canvas/store";
 import * as BrowserCanvas from "./BrowserCanvas";
 import { CONCUR_PAGE } from "./BrowserCanvas.preview.fixtures";
-import { streamOf } from "../../surfaces/threads/computer/LiveFullView.fixtures";
+import { streamOf } from "../../surfaces/threads/computer/FullWindow.fixtures";
 
 /** `held-long`: the held submit on a site whose name runs long (the host allows 80 characters), for the narrow bar. */
 /** `stopped`: the live picture's own body with a stream that ended, over its line and Retry. */

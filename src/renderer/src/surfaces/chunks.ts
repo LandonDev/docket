@@ -36,6 +36,8 @@ export const searchChunk = defineChunk("search", () => import("./SearchView"));
 export const inboxChunk = defineChunk("inbox", () => import("./InboxView"));
 /** Computers: every computer being driven now, live (ComputersView). */
 export const computersChunk = defineChunk("computers", () => import("./ComputersView"));
+/** The full window of one computer, over the whole app (FullWindow, lib/fullWindow.ts). */
+export const fullWindowChunk = defineChunk("fullWindow", () => import("./threads/computer/FullWindow"));
 /** The all-notes view (NotesView, focusNote). */
 export const notesChunk = defineChunk("notes", () => import("./NotesView"));
 /** Every select on the Base UI select: the dialogs' and settings' ChoiceSelect, and the composer's
@@ -138,5 +140,6 @@ export const allChunks = {
   workShellChunk,
   workOutboxChunk,
   computersChunk,
+  fullWindowChunk,
   messageQueueChunk,
 };

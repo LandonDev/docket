@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { closeFullWindow, fullWindowTarget } from "../../../lib/fullWindow";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerHistoryCall, ComputerHistoryStep, ComputerHistoryStepAnswer, ComputerSessionRow } from "@server/shared/contract-computer";
 import type { PreviewState } from "../../../lib/computerPreview";
@@ -824,14 +825,14 @@ describe("pinning", () => {
     expect(named()!.getAttribute("aria-label")).toBe(`First in TextEdit at ${dayTime(AT + 1450)}`);
   });
 
-  it("a kept picture opens the lightbox from the box, and the live picture its full view", async () => {
+  it("a kept picture opens the lightbox from the box, and the live picture the full window", async () => {
     h.preview.state = live();
     mount(data([call(1), call(2)], [entry()]));
     await flush();
     fireEvent.click(opener()!);
-    expect(h.openLightbox).toHaveBeenCalledTimes(1);
-    expect(h.openLightbox.mock.calls[0][0]).toEqual([{ environmentId: "local", name: "Live view of Untitled in TextEdit", live: { threadId: "t1" } }]);
-    h.openLightbox.mockClear();
+    expect(h.openLightbox).not.toHaveBeenCalled();
+    expect(fullWindowTarget()).toEqual({ host: "local", threadId: "t1", name: "Live view of Untitled in TextEdit" });
+    closeFullWindow();
     fireEvent.click(rowButton("t1:1:0"));
     await flush();
     fireEvent.click(opener()!);

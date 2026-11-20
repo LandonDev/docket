@@ -2,10 +2,11 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerTile } from "../lib/computers";
+import { closeFullWindow, fullWindowTarget } from "../lib/fullWindow";
 import { registry } from "../lib/connection/registry";
 import { ComputersPage, ComputersView, Tile, tileLine } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
-import { tile } from "./threads/computer/LiveFullView.fixtures";
+import { tile } from "./threads/computer/FullWindow.fixtures";
 
 const h = vi.hoisted(() => ({ tiles: [] as ComputerTile[], desktop: true, streams: [] as { key: string; take: boolean | undefined; run: boolean }[], ended: null as string | null, retried: 0 }));
 vi.mock("../lib/computers", async (original) => ({ ...(await original<typeof import("../lib/computers")>()), useComputers: () => h.tiles }));
@@ -25,8 +26,6 @@ vi.mock("./threads/computer/Viewport", async (original) => {
 // the window's own buttons belong to the frame's tests
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 vi.mock("../chrome/TitleBar", () => ({ OverlayNav: () => null }));
-const openLightbox = vi.hoisted(() => vi.fn());
-vi.mock("../chrome/lightboxStore", () => ({ openLightbox }));
 
 beforeEach(() => {
   h.tiles = [];
@@ -34,7 +33,6 @@ beforeEach(() => {
   h.streams.length = 0;
   h.ended = null;
   h.retried = 0;
-  openLightbox.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -172,14 +170,14 @@ describe("the Computers page", () => {
     expect(screen.getAllByRole("button").map((b) => b.textContent)).not.toContain("Take over");
   });
 
-  it("plays the stage's stream as the one he watches, a strip tile's without taking the box's display, and opens the stage's full view on a click of its picture", () => {
+  it("plays the stage's stream as the one he watches, a strip tile's without taking the box's display, and opens the full window on a click of the stage's picture", () => {
     h.tiles = [tile(), tile({ id: "box\nt2", computer: "browser:t2", entry: { ...tile().entry, previewKey: "t2", row: { ...tile().entry.row, threadId: "t2", lastCallAt: 0 } } })];
     render(<ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
     expect(h.streams.findLast((s) => s.key === "t1")).toMatchObject({ take: true, run: true });
     expect(h.streams.findLast((s) => s.key === "t2")).toMatchObject({ take: false, run: true });
     fireEvent.click(screen.getByRole("button", { name: "Live view of Expense report in Chromium" }));
-    expect(openLightbox).toHaveBeenCalledTimes(1);
-    expect(openLightbox.mock.calls[0][0]).toEqual([{ environmentId: "box", name: "Live view of Expense report in Chromium", live: { threadId: "t1" } }]);
+    expect(fullWindowTarget()).toEqual({ host: "box", threadId: "t1", name: "Live view of Expense report in Chromium" });
+    closeFullWindow();
   });
 
   it("says a picture stopped in one line with Retry, and keeps the tile's caption and controls", () => {

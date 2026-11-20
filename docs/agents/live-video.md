@@ -410,9 +410,9 @@ first wanted; nothing of it is in the first paint.
   thread on screen and ask with `take`. A Computers tile does not.
 - **Sharp.** The canvas holds the stream's own pixels. Its box is as wide
   as its column and no wider than those pixels on this screen
-  (`sharpWidth`); the full view draws them one to one, or exactly two to
-  one where the window has the room (`sharpSize`). A narrower column scales
-  the picture down, whole.
+  (`sharpWidth`); the Computers page's stage and the full window draw them
+  as large as their room allows, never past two to one (`fitStage`). A
+  narrower column scales the picture down, whole.
 - **Counts.** The worker says how many frames it drew and at what rate
   four times a second; they go to the box's `data-frames` and `data-fps`
   by hand, for the proofs. Nothing on screen shows them.
@@ -815,10 +815,6 @@ is first seen in the owner's own use:
   starts with the grant off is refused with `permission`. Whether macOS
   stops a running capture with the code the service reads as `permission`
   was not tried; it may end with "The preview stopped" instead.
-- **The bundle budget.** `bun run check:bundle` needs a build, which this
-  work did not run; `scripts/entryGraph.test.ts` passes. If the index
-  chunk is over, `LiveFullView` in chrome/Lightbox.tsx is the import to
-  make lazy.
 
 ## What this cannot stop
 
@@ -891,8 +887,8 @@ is first seen in the owner's own use:
   stream's rules over a fake socket and decoder), `streams.test.ts` (the
   registry and the retry rule)
 - `src/renderer/src/surfaces/threads/computer/ViewportVideo.dom.test.tsx`
-  (live, ended, gave way, shown again), `LiveFullView.dom.test.tsx` (the
-  sharp sizes, the full view and its controls),
+  (live, ended, gave way, shown again), `FullWindow.dom.test.tsx` (its
+  size, its caption's fade, its controls, Escape),
   `src/renderer/src/surfaces/ComputersView.dom.test.tsx`,
   `src/renderer/src/lib/computers.test.ts`
 - `src/main/server/work/browser/box/`: `display.test.ts`, `chromium.test.ts`,

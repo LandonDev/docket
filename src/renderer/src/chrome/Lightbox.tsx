@@ -3,7 +3,6 @@ import { Button } from '@renderer/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@renderer/components/ui/dialog'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tip } from '../components/tip'
-import { LiveFullView } from '../surfaces/threads/computer/LiveFullView'
 import { ChevronLeft, ChevronRight } from './icons'
 import {
   closeLightbox,
@@ -90,9 +89,7 @@ const VIEWER_INSET = 24
 
 /**
  * Full-window image viewer on the Dialog primitive: the window less 24px a
- * side, no chrome but the close, the arrows and the counter. A live item is
- * the full view of a computer being driven (LiveFullView): its picture and
- * one row. Escape and the
+ * side, no chrome but the close, the arrows and the counter. Escape and the
  * arrow keys reach it through the command map (lib/appCommands.ts); Base
  * UI's own Escape and a click away from the image close it too.
  */
@@ -131,7 +128,7 @@ export function Lightbox() {
           key={shown.index}
           className="flex items-center justify-center duration-(--dur-fast) ease-(--ease-out) animate-in fade-in-0"
         >
-          {item.live ? <LiveFullView host={item.environmentId} threadId={item.live.threadId} name={item.name} /> : <Slide item={item} />}
+          <Slide item={item} />
         </div>
         {many ? (
           <>

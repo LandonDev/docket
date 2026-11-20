@@ -1020,21 +1020,27 @@ Every computer being driven now, on every connected host, in one place
   the keyboard as soon as it is his.
 - **The picture** is the Computer section's viewport with no cap of its
   own (`fill`): its place sizes it. A skeleton until the first frame; a
-  click on the stage's picture opens the full view. A session this desktop
+  click on the stage's picture opens the full window. A session this desktop
   may not draw is one muted line in the box's place, naming the machine:
   "Shown on Studio only". The browser /ui lists the tiles with no picture
   at all.
 - **Nothing driven** is the one `EmptyState`: "Nothing is being driven",
   "A browser or an app an agent is using shows here, live." No action.
-- **The full view** is the lightbox's body for a live picture
-  (`LiveFullView`): one `popover` surface on the dialog's radius, 12px
-  inside, holding the picture at its own pixels, or exactly twice them
-  where the window has the room, and one 36px row under it: the thread's
-  title, who drives in the canvas bar's words (12px muted; foreground
-  while he drives), then Take over or Hand back and Stop at the row's end.
-  It is another canvas on the stream the place already plays, never a
-  second stream. It opens from the picture and settles back to it as any
-  lightbox item does.
+- **Full window** (`FullWindow`, lib/fullWindow.ts, its own chunk): the
+  stage with the rail and the header gone, over the whole window on the
+  `stage` ground (the ground under a picture; `matte` is black in both
+  themes and no text reads on it in light). One computer, its picture as
+  large as the window allows less a 16px inset and the caption, in its
+  shape and never past twice the stream's own pixels, centred both ways;
+  the stage's caption under it, with Leave full window (a quiet icon button
+  with a tip) after the controls. The caption fades over `--dur-base` two
+  seconds after the pointer last moved and comes back when it moves, or
+  with keyboard focus in it. Escape leaves when the picture does not hold
+  the keyboard; a double click on the picture leaves when he does not
+  drive. A click on any live picture (the stage's, the Computer section's,
+  the browser canvas's) or the stage's Full window button opens it; the
+  lightbox no longer shows a live picture. It is another canvas on the
+  stream the place already plays, never a second stream.
 - **Nothing says "live".** No mark, no frame counter, no quality menu. The
   video is never eased or blurred; ours is only the first frame's arrival
   and a tile's entry.
