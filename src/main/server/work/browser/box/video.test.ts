@@ -400,4 +400,36 @@ describe('the box browser as a source of video', () => {
     await r.video.driver('a', false)
     expect(r.spawned[0].killed).toBe(true)
   })
+
+  it('takes the clipboard from the browser when he hands back, so what he copied in the page is gone too', async () => {
+    vi.useFakeTimers()
+    try {
+      const r = rig()
+      r.state.owner.add('a')
+      r.state.owner.delete('a')
+      await r.video.driver('a', false)
+      // an empty xclip owns the clipboard in the browser's place, on the browser's display, then is ended
+      const wipe = r.spawned.at(-1)!
+      expect(wipe.cmd).toBe('/t/xclip')
+      expect(wipe.args).toEqual(['-selection', 'clipboard', '-in', '-quiet'])
+      expect(wipe.stdin).toBe('')
+      expect(wipe.env.DISPLAY).toBe(':7')
+      expect(wipe.killed).toBe(false)
+      vi.advanceTimersByTime(PASTE_CLEAR_MS + 10)
+      expect(wipe.killed).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ends what plays of a removed thread’s page', async () => {
+    const r = rig()
+    const answer = await r.ask('a')
+    if (!answer.ok) throw new Error()
+    const viewer = r.join()
+    r.video.removed(['other'])
+    expect(viewer.closed).toBeNull()
+    r.video.removed(['a'])
+    expect(viewer.closed).toMatchObject({ reason: 'ended' })
+  })
 })

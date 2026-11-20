@@ -1,4 +1,4 @@
-import { HEADER_SIZE, INPUT_SIZE, MESSAGE_TYPES, SUBPROTOCOL, encodeInput, type InputEvent } from '@shared/video/nsl1'
+import { HEADER_SIZE, INPUT_SIZE, MESSAGE_TYPES, SUBPROTOCOL, encodeInput, parseInput, type InputEvent } from '@shared/video/nsl1'
 import type { FeedSink, VideoFeed } from '../../../video/feed'
 import type { EngineLease } from './engine'
 
@@ -14,6 +14,13 @@ import type { EngineLease } from './engine'
  * accepted.
  */
 
+// HID usage codes (the wire's own): the keys of the chords below, and the modifiers that make them.
+const KEY_I = 12
+/** With Ctrl held these close, quit or leave the shared browser: W, Q, N, T. */
+const NEVER_WITH_CTRL = new Set([26, 20, 17, 23])
+const isCtrl = (key: number): boolean => key === 224 || key === 228
+const isShift = (key: number): boolean => key === 225 || key === 229
+
 /** The engine's address for one viewer. */
 export function engineUrl(port: number, drive: boolean): string {
   return `ws://127.0.0.1:${port}/stream${drive ? '' : '?view=1'}`
@@ -26,6 +33,8 @@ export class EngineFeed implements VideoFeed {
   /** the engine exited: the end is an error, not a slow link */
   private exited = false
   private generation = 0
+  /** the Ctrl and Shift keys his records have pressed and not let go */
+  private readonly held = new Set<number>()
 
   constructor(
     private readonly lease: EngineLease,
@@ -68,12 +77,45 @@ export class EngineFeed implements VideoFeed {
   input(bytes: Uint8Array): void {
     if (!this.drive || bytes.byteLength !== HEADER_SIZE + INPUT_SIZE || !this.mine(bytes)) return
     if (new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(12) !== 0) return
+    if (this.never(bytes)) return
     this.on.input?.()
     this.send(bytes)
   }
 
   release(): void {
+    this.held.clear()
     this.type({ type: 'releaseAll' })
+  }
+
+  /**
+   * The chords that would close, quit or leave the browser every thread
+   * shares: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T and Ctrl+Shift+I. The app's viewer
+   * never sends them (videoInput.ts); no other client of his can either. The
+   * modifiers are followed from the records themselves, since the engine
+   * presses each key as it comes, whatever a record says is held.
+   */
+  private never(bytes: Uint8Array): boolean {
+    let event: InputEvent
+    try {
+      event = parseInput(bytes)
+    } catch {
+      // not a record the engine takes: it would drop the connection
+      return true
+    }
+    if (event.type === 'releaseAll') this.held.clear()
+    if (event.type !== 'keyDown' && event.type !== 'keyUp') return false
+    const key = event.key
+    if (isCtrl(key) || isShift(key)) {
+      if (event.type === 'keyDown') this.held.add(key)
+      else this.held.delete(key)
+      return false
+    }
+    if (event.type === 'keyUp') return false
+    const held = [...this.held]
+    const mods = event.modifiers ?? 0
+    const ctrl = held.some(isCtrl) || (mods & 0x11) !== 0
+    const shift = held.some(isShift) || (mods & 0x22) !== 0
+    return ctrl && (NEVER_WITH_CTRL.has(key) || (key === KEY_I && shift))
   }
 
   /** The message carries the number of this connection, which the first frame said. */

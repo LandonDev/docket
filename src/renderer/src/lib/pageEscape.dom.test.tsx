@@ -19,6 +19,7 @@ function Page({ onClose, fields }: { onClose: () => void; fields: FieldEscape })
       <div role="alertdialog">
         <button>Cancel</button>
       </div>
+      <div role="application" aria-label="Live view" tabIndex={0} data-driving="" />
     </div>
   );
 }
@@ -31,6 +32,15 @@ describe("usePageEscape", () => {
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Escape to a live picture he drives: it is the page's key", () => {
+    const onClose = vi.fn();
+    const view = render(<Page onClose={onClose} fields="close" />);
+    const down = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    view.getByRole("application").dispatchEvent(down);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(down.defaultPrevented).toBe(false);
   });
 
   it("undo puts a field's value back and lets it go", () => {

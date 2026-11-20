@@ -267,6 +267,7 @@ import { playCue } from "./lib/sounds";
 import {
   APP_COMMANDS,
   createKeyResolver,
+  pageOwnsKey,
   dialogOpen,
   isAppCommandId,
   menuCommandAllowed,
@@ -3289,6 +3290,8 @@ export default function App() {
   useEffect(() => {
     const keyCommand = createKeyResolver();
     const onKey = (e: KeyboardEvent) => {
+      // a live picture he drives holds the keyboard: the key is the page's, the editor's find and the app's commands leave it
+      if (pageOwnsKey(e)) return;
       const lightboxOpen = isLightboxOpen() || isHtmlRenderOverlayOpen();
       if (
         !lightboxOpen &&

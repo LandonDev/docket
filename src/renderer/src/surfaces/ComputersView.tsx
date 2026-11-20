@@ -85,7 +85,8 @@ export function Tile({ tile, all, onOpenSession, picture }: TileProps) {
               <span className="truncate">{tile.title}</span>
             </Button>
           </TruncateTip>
-          <Facts parts={[line && tile.driving ? <span className="text-foreground">{line}</span> : line, tile.where]} className="text-xs leading-4 text-muted-foreground" />
+          {/* where it runs is said once: a picture this desktop may not draw already names the machine */}
+          <Facts parts={[line && tile.driving ? <span className="text-foreground">{line}</span> : line, picture && tile.shownOn ? null : tile.where]} className="text-xs leading-4 text-muted-foreground" />
         </div>
         <span className={reveal("item", { row: true })}>
           <ComputerControls tile={tile} all={all} />

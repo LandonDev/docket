@@ -87,7 +87,10 @@ answer a key. `previewRefusal` (computer/preview.ts) keeps a person's own
 windows on that machine's own socket: a Mac or a PC answers
 `computer.preview.start` from any key with `local-only`, whatever the key
 holds. A server takes `desktop` as an option; without it a host has a desktop
-unless it runs headless.
+when it is a Mac or a PC that is not headless (`personsDesktop`,
+src/main/headless.ts). A Linux host never has one, whatever its environment
+says: the box's service runs under `xvfb-run`, so it has a display, and the
+refusal of its local socket must not rest on one variable in a file.
 
 ## The ticket
 
@@ -344,7 +347,9 @@ bitrate follows that viewer's own link, and the relay stays a pipe.
 - **Paste** (`video.paste`). The text goes to xclip on its stdin and is put
   on the display's clipboard, then Ctrl+V is pressed, unless he handed back
   meanwhile. The clipboard is emptied 1.5 seconds later, and at once when he
-  hands back, so nothing he pasted is there for an agent to paste again.
+  hands back, so nothing he pasted is there for an agent to paste again. At
+  hand back an empty xclip also takes the clipboard from the browser and is
+  ended a moment after, so what he copied in the page is gone too.
 
 ## The viewer
 
@@ -435,7 +440,14 @@ first wanted; nothing of it is in the first paint.
   each ack. An ack of a window the stream has left is dropped.
 - **Ends.** `ended` when the window closes or the session is gone,
   `permission` when Screen Recording goes off, `error` when the service
-  fails or is restarted (the viewer opens again).
+  fails or is restarted (the viewer opens again). The feed hears its
+  stream end from the first ask on, so a viewer that joins after the end
+  (the service ends a stream nobody acks within three seconds) is told at
+  once.
+- **One run of the service.** A feed starts, acks and stops on the
+  connection its stream was started on, and ends when that process exits.
+  Each run numbers its streams from 1, so a word sent to a later run would
+  land on another viewer's stream.
 - **The click ring.** A `capture/click` whose `stream` is the video
   stream's number goes to the asking socket as `computer-click` under the
   viewer's own stream id.
@@ -505,7 +517,15 @@ Only the box's browser takes his input. He presses Take over
 - **Paste** (⌘V, or Ctrl+V elsewhere) is his clipboard's text handed to
   `video.paste`, never typed and never the far clipboard's own.
 - **Never sent**: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T and Ctrl+Shift+I, which
-  would close, quit or leave the shared browser. They are swallowed.
+  would close, quit or leave the shared browser. They are swallowed in the
+  viewer, and the box drops them again whoever sends them (`EngineFeed`
+  follows Ctrl and Shift from the records themselves).
+- **The app leaves the page's keys alone.** While the picture holds the
+  keyboard the app's own key listener passes every key by (`pageOwnsKey`,
+  lib/appCommands.ts): Escape and the arrows do not close or step the full
+  view, Ctrl+S and its like run no command, a double Shift opens nothing,
+  and Escape closes no page under it (lib/pageEscape.ts). Only a Mac's ⌘
+  chords stay the app's.
 - **The keyboard's way out** is Ctrl+Alt pressed with nothing else and let
   go (⌃⌥ on a Mac; off a Mac only the left Alt, since the right one is
   AltGr): Tab and Escape are the page's while the picture holds the
@@ -760,6 +780,10 @@ is first seen in the owner's own use:
   Mac reached through the box. The failed re-read line in the browser item
   was built after the proof's shots and is covered by its model's test
   alone.
+- **Screen Recording turned off while a stream plays.** A stream that
+  starts with the grant off is refused with `permission`. Whether macOS
+  stops a running capture with the code the service reads as `permission`
+  was not tried; it may end with "The preview stopped" instead.
 - **The bundle budget.** `bun run check:bundle` needs a build, which this
   work did not run; `scripts/entryGraph.test.ts` passes. If the index
   chunk is over, `LiveFullView` in chrome/Lightbox.tsx is the import to
@@ -774,6 +798,17 @@ is first seen in the owner's own use:
   existing rule for the local socket, not a new one. The only source that
   takes input is the box's, and the box's local socket gets no stream.
 
+- A held submit ends the pane's video and the canvas shows the kept
+  picture, but the Computer section, the full view and a Computers tile can
+  still show that page live (as the 4 fps picture, or as video opened
+  later). No act runs from there; the primary still waits on the kept
+  picture.
+- Nothing caps how many streams one of his keys may open, beyond the box's
+  four engines. Each costs a capture and an encoder on the machine that
+  serves it.
+- The refused apps are the host's short list (TempCode itself). A thread
+  that read a password manager's window streams it, as the 4 fps preview
+  shows it today.
 - A menu or a notice of a page behind the curtain can be in one frame: the
   display shows it before the manager hears of it and puts it behind.
 - While he drives, a menu another thread's agent opens within two seconds of

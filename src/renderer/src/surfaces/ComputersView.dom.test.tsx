@@ -6,7 +6,7 @@ import { ComputersPage, ComputersView, Tile, tileLine } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
 import { tile } from "./threads/computer/LiveFullView.fixtures";
 
-const h = vi.hoisted(() => ({ tiles: [] as ComputerTile[], desktop: true, streams: [] as { key: string; take: boolean | undefined; run: boolean }[] }));
+const h = vi.hoisted(() => ({ tiles: [] as ComputerTile[], desktop: true, streams: [] as { key: string; take: boolean | undefined; run: boolean }[], ended: null as string | null, retried: 0 }));
 vi.mock("../lib/computers", async (original) => ({ ...(await original<typeof import("../lib/computers")>()), useComputers: () => h.tiles }));
 vi.mock("../lib/computerSessions", async (original) => ({ ...(await original<typeof import("../lib/computerSessions")>()), previewContext: () => ({ desktop: h.desktop, localId: null }) }));
 vi.mock("./threads/computer/Viewport", async (original) => {
@@ -16,7 +16,8 @@ vi.mock("./threads/computer/Viewport", async (original) => {
     // the stream itself is the viewport tests' business: here, what a tile asks of it
     useLiveStream: (entry: { previewKey?: string } | null, run: boolean, _box: unknown, _measure: unknown, opts?: { take?: boolean }) => {
       h.streams.push({ key: entry?.previewKey ?? "", take: opts?.take, run });
-      return { state: { status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true }, retry: () => undefined, canvas: { current: null }, ring: { current: null }, mode: "video" };
+      const state = h.ended ? { status: "ended", reason: h.ended } : { status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true };
+      return { state, retry: () => void h.retried++, canvas: { current: null }, ring: { current: null }, mode: "video" };
     },
   };
 });
@@ -30,6 +31,8 @@ beforeEach(() => {
   h.tiles = [];
   h.desktop = true;
   h.streams.length = 0;
+  h.ended = null;
+  h.retried = 0;
   openLightbox.mockReset();
 });
 afterEach(cleanup);
@@ -103,10 +106,27 @@ describe("the Computers page", () => {
     expect(openLightbox.mock.calls[0][0]).toEqual([{ environmentId: "box", name: "Live view of Expense report in Chromium", live: { threadId: "t1" } }]);
   });
 
+  it("says a picture stopped in one line with Retry, and keeps the tile's caption and controls", () => {
+    h.tiles = [tile()];
+    h.ended = "error";
+    render(<ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
+    expect(screen.getByText("The preview stopped")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(h.retried).toBe(1);
+    expect(screen.getByRole("button", { name: "Take over" })).not.toBeNull();
+    // a stream that ended because the window closed has nothing to try again
+    cleanup();
+    h.ended = "ended";
+    render(<ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("draws one muted line in place of a picture this desktop may not draw, naming the machine", () => {
     h.tiles = [tile({ shownOn: "Studio", where: "Studio", browser: false })];
     render(<ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
     expect(screen.getByText("Shown on Studio only")).not.toBeNull();
+    // the machine is named once: the caption under it does not say it again
+    expect(document.body.textContent!.match(/Studio/g)).toHaveLength(1);
     expect(h.streams).toEqual([]);
   });
 

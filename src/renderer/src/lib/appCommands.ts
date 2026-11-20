@@ -34,7 +34,7 @@
  *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌃` …)
  */
 
-import { chordKey, ctrlOnly, modOrCtrl } from "./keys";
+import { chordKey, ctrlOnly, macCommand, modOrCtrl } from "./keys";
 import { insideMonaco, isEditorChord } from "./editorKeys";
 import { tabCommand, type TabCommand } from "./tabKeys";
 
@@ -129,6 +129,16 @@ const within = (target: EventTarget | null, selector: string): boolean => {
   return typeof el?.closest === "function" && !!el.closest(selector);
 };
 
+/**
+ * The key is the page's: its target is a live picture he drives
+ * (lib/video/videoInput.ts), which holds the keyboard. Every key goes to the
+ * page there, Escape, the arrows and the Ctrl chords among them; only a Mac's
+ * ⌘ chords stay the app's. Ctrl+Alt alone takes the keyboard back out.
+ */
+export function pageOwnsKey(e: KeyboardEvent): boolean {
+  return within(e.target, "[data-driving]") && !macCommand(e);
+}
+
 const isMac = (): boolean =>
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -190,6 +200,10 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
   return function keyCommand(e: KeyboardEvent, ctx: KeyContext): AppCommand | null {
     if (e.isComposing || e.repeat) return null;
     const target = e.target;
+    if (pageOwnsKey(e)) {
+      lastShift = -Infinity;
+      return null;
+    }
 
     const zoom = zoomChord(e);
 

@@ -26,6 +26,20 @@ export function noDisplay(
 }
 
 /**
+ * Whether this machine's local socket is the person's own app (shared/video/
+ * access.ts `mayWatch`): a Mac or a PC that is not headless. Never a Linux
+ * host, whatever its environment says: the box's service runs under
+ * xvfb-run, so it has a display, and its local socket is any process of the
+ * service's user. The refusal must not rest on one variable in a file.
+ */
+export function personsDesktop(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  return platform !== 'linux' && !isHeadless(env, platform)
+}
+
+/**
  * Whether the last window closing ends the app: never on macOS (the dock
  * keeps it), never headless (the only windows are html preview's hidden
  * ones), and never before the first user window has opened: the origin

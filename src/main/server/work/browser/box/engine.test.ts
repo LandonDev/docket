@@ -297,6 +297,33 @@ describe('EngineFeed', () => {
     expect(r.socket().sent).toHaveLength(3)
   })
 
+  it('never passes the chords that would close, quit or leave the shared browser, whoever sends them', () => {
+    const r = rig(true)
+    r.socket().frame(FRAME(9, 1))
+    const send = (event: Parameters<typeof encodeInput>[0]): void => r.feed.input(encodeInput(event, 9))
+    const keys = (): string[] => r.socket().sent.map((b) => parseInput(b)).map((e) => ('key' in e ? `${e.type === 'keyDown' ? '+' : '-'}${e.key}` : e.type))
+    // Ctrl held by its own record, the letters with no modifier said: the engine would still press Ctrl+W
+    send({ type: 'keyDown', key: 224 })
+    for (const key of [26, 20, 17, 23]) send({ type: 'keyDown', key })
+    send({ type: 'keyDown', key: 4 })
+    send({ type: 'keyUp', key: 224 })
+    // with Ctrl let go, W is a letter again
+    send({ type: 'keyDown', key: 26 })
+    expect(keys()).toEqual(['+224', '+4', '-224', '+26'])
+    // Ctrl+Shift+I, by the right-hand keys; Ctrl+I alone is the page's
+    r.socket().sent.length = 0
+    send({ type: 'keyDown', key: 228 })
+    send({ type: 'keyDown', key: 12 })
+    send({ type: 'keyDown', key: 229 })
+    send({ type: 'keyDown', key: 12 })
+    expect(keys()).toEqual(['+228', '+12', '+229'])
+    // a record that only says Ctrl is held is refused the same way
+    r.socket().sent.length = 0
+    send({ type: 'releaseAll' })
+    send({ type: 'keyDown', key: 26, modifiers: 1 })
+    expect(keys()).toEqual(['releaseAll'])
+  })
+
   it('lets go of what he holds with a record numbered for its own connection', () => {
     const r = rig(true)
     r.feed.release()

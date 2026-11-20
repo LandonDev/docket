@@ -127,7 +127,7 @@ import { MacRunCalls, MacRunLive } from './macRunLive'
 import { macBridgeLandingRoot } from './macBridgeLanding'
 import { listEnvironments } from './remote/environments'
 import { LIVE_STATUSES } from '@shared/session-lifecycle'
-import { isHeadless } from '../headless'
+import { isHeadless, personsDesktop } from '../headless'
 import type { SelfUpdateOutcome } from '../updateTrigger'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
@@ -467,7 +467,7 @@ export async function startServer(
     claimShim?: boolean
     /** The fixed port's override (tests: 0 for an ephemeral port). Absent: TEMP_CODE_REMOTE_PORT, else the settings. */
     remotePort?: number
-    /** This host has a desktop of its own (video/access.ts `mayWatch`). Absent: it has one unless it runs headless. A test says which. */
+    /** This host has a desktop of its own (video/access.ts `mayWatch`). Absent: a Mac or a PC that is not headless, never a Linux host (`personsDesktop`). A test says which. */
     desktop?: boolean
     /** The tempcode-asset:// handler, so `/asset/*` on the fixed port can mirror logos, media and agent pages. */
     assets?: (request: Request) => Promise<Response>
@@ -1478,7 +1478,7 @@ export async function startServer(
   const remoteAuth = new RemoteAuth(db)
   // Live video (video/): one relay for this host's streams, their own sockets on both servers, and the
   // sources each part of the host adds (the box's browser, tc-computer's windows, another host's publish).
-  const hasDesktop = (): boolean => options.desktop ?? !isHeadless()
+  const hasDesktop = (): boolean => options.desktop ?? personsDesktop()
   const videoRelay = new VideoRelay()
   const videoSockets = new VideoSockets(videoRelay, remoteAuth)
   const videoRpc = new VideoRpc(videoRelay, remoteAuth, hasDesktop)

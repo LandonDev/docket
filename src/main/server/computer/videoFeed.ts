@@ -22,6 +22,10 @@ import type { ComputerSessions } from './sessions'
  * takes generations in rising order only, so the feed numbers them itself
  * and writes its own number into each frame, and the service's back into
  * each ack.
+ *
+ * A feed speaks only to the run of the service its stream lives on: each run
+ * numbers its streams from 1, so a stop or an ack sent to a later run would
+ * land on another viewer's stream.
  */
 
 /** A copy of a message under another generation. (A copy made whole: a Node buffer's own `slice` shares its bytes.) */
@@ -75,25 +79,33 @@ export class ServiceVideoFeed implements VideoFeed {
   private readonly offs: (() => void)[] = []
   /** one change of window at a time */
   private queue: Promise<void> = Promise.resolve()
+  /** why it ended before a viewer joined: the viewer is told when it does */
+  private over: VideoCloseReason | null = null
 
   constructor(
     private readonly deps: ComputerVideoDeps,
-    conn: ComputerConnection,
+    private readonly conn: ComputerConnection,
     private readonly thread: string,
     private readonly ask: { maxEdge: number; mode: 'quality' | 'budget'; push?: (push: ComputerClickPush) => void }
   ) {
-    this.offs.push(conn.onBytes((stream, message) => this.bytes(stream, message)))
+    this.offs.push(
+      conn.onBytes((stream, message) => this.bytes(stream, message)),
+      // heard from the first ask on, joined or not: the service ends a stream nobody acks after three seconds
+      conn.onNotification((n) => this.notification(n))
+    )
+    // the run its stream lives on is gone, and its streams with it
+    void conn.exited.then(() => this.end('error'))
   }
 
   /** Asks the service for the window's stream. What it sends before its answer is kept until the answer names it. */
   async begin(target: PreviewTarget): Promise<Started> {
     this.early = []
     try {
-      const started = await startVideo(this.deps, target, this.ask)
+      const started = await startVideo(this.conn, target, this.ask)
       const early = this.early
       this.early = null
       if (this.closed) {
-        void this.deps.service.request('capture.video.stop', { stream: started.stream }).catch(() => {})
+        void this.conn.request('capture.video.stop', { stream: started.stream }).catch(() => {})
         return started
       }
       this.stream = started.stream
@@ -109,14 +121,12 @@ export class ServiceVideoFeed implements VideoFeed {
   }
 
   start(sink: FeedSink): void {
+    if (this.over) return sink.end(this.over)
     if (this.closed) return
     this.sink = sink
     for (const frame of this.held.splice(0)) sink.frame(frame)
-    const { service, sessions } = this.deps
+    const { sessions } = this.deps
     this.offs.push(
-      service.onNotification((n) => this.notification(n)),
-      // the service went and another came up: its streams went with it
-      service.onEpoch(() => this.end('error')),
       sessions.onTarget((thread) => {
         if (thread === this.thread) this.follow()
       }),
@@ -131,8 +141,7 @@ export class ServiceVideoFeed implements VideoFeed {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
     // an ack of a window the stream has left is owed to nobody
     if (view.getUint32(8) !== this.generation || !this.serviceGeneration) return
-    const out = renumbered(bytes, this.serviceGeneration)
-    void this.deps.service.connection().then((conn) => this.stream !== null && conn.sendBytes(this.stream, out)).catch(() => {})
+    this.conn.sendBytes(this.stream, renumbered(bytes, this.serviceGeneration))
   }
 
   // a person's window takes no input through the picture: he uses the real one
@@ -150,14 +159,15 @@ export class ServiceVideoFeed implements VideoFeed {
   private stop(): void {
     const stream = this.stream
     this.stream = null
-    if (stream !== null) void this.deps.service.request('capture.video.stop', { stream }).catch(() => {})
+    if (stream !== null && this.conn.alive) void this.conn.request('capture.video.stop', { stream }).catch(() => {})
   }
 
   private end(reason: VideoCloseReason): void {
     if (this.closed) return
     const sink = this.sink
     this.close()
-    sink?.end(reason)
+    if (sink) sink.end(reason)
+    else this.over = reason
   }
 
   private bytes(stream: number, message: Uint8Array): void {
@@ -208,8 +218,8 @@ export class ServiceVideoFeed implements VideoFeed {
   }
 }
 
-function startVideo(deps: ComputerVideoDeps, target: PreviewTarget, ask: { maxEdge: number; mode: 'quality' | 'budget' }): Promise<Started> {
-  return deps.service.request('capture.video.start', {
+function startVideo(conn: ComputerConnection, target: PreviewTarget, ask: { maxEdge: number; mode: 'quality' | 'budget' }): Promise<Started> {
+  return conn.request('capture.video.start', {
     session: target.serviceSession,
     app: { pid: target.app.pid },
     window: { id: target.window.id },

@@ -22,6 +22,7 @@ const shot = (name: keyof typeof SHOTS, label: string): ReactNode => {
   return <Viewport face={{ kind: "live", drawn: true, picture: <img src={s.src} alt="" draggable={false} className={pictureClass(true)} /> }} label={label} size={s} sharp={s.width / 2} />;
 };
 const elsewhere = (machine: string): ReactNode => <Viewport face={{ kind: "none" }} label={`Shown on ${machine} only`} line={<ViewportLine words={`Shown on ${machine} only`} />} />;
+const ended = (): ReactNode => <Viewport face={{ kind: "none" }} label="Live view" line={<ViewportLine words="The preview stopped" onRetry={noop} />} />;
 const coming = (): ReactNode => <Viewport face={{ kind: "skeleton" }} label="Live view" size={{ width: 1280, height: 800 }} sharp={640} />;
 
 const browser = tile();
@@ -29,7 +30,10 @@ const mac = tile({ id: "local\nt2", title: "Tidy the Downloads folder", doing: "
 const driven = tile({ id: "box\nt3", title: "Renew the parking permit", doing: null, driving: true, pane: "t3" });
 const studio = tile({ id: "box\nt4", title: "Export the March invoices from the accounting app", doing: "Clicking Export in Numbers", where: "Studio", browser: false, shownOn: "Studio", pane: "t4" });
 
+const stopped = tile({ id: "box\nt5", title: "Book the arena for Saturday", doing: "Filling in the booking form", pane: "t5" });
+
 const pictures = new Map<string, ReactNode>([
+  [stopped.id, ended()],
   [browser.id, shot("page", "Live view of Expense report in Chromium")],
   [mac.id, shot("doc", "Live view of Untitled in TextEdit")],
   [driven.id, shot("page", "Live view of Parking in Chromium")],
@@ -48,6 +52,7 @@ const fixtures: ComputersFixture[] = [
   { name: "One computer: its picture at its own pixels", width: 820, props: { tiles: [browser], onOpenSession: noop, pictureOf } },
   { name: "Three, on a page two across: a browser the agent drives, a Mac's window, a page he drives", width: 820, props: { tiles: [browser, mac, driven], onOpenSession: noop, pictureOf } },
   { name: "A narrow page: one across, and one this desktop may not draw", width: 400, props: { tiles: [mac, studio], onOpenSession: noop, pictureOf } },
+  { name: "A picture that stopped, and can be tried again", width: 400, props: { tiles: [stopped], onOpenSession: noop, pictureOf } },
   { name: "A first frame on its way", width: 400, props: { tiles: [tile({ id: "box\nt9" })], onOpenSession: noop, pictureOf } },
   { name: "Nothing is being driven", width: 820, props: { tiles: [], onOpenSession: noop, pictureOf } },
 ];

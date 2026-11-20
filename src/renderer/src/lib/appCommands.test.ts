@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 // These keys are a Mac's (⌘): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
 vi.mock("./platform", () => ({ IS_MAC: true }));
 import { RENDERER_MENU_IDS } from "@shared/menuTree";
-import { createKeyResolver, isAppCommandId, menuCommandAllowed, DOUBLE_SHIFT_MS } from "./appCommands";
+import { createKeyResolver, isAppCommandId, menuCommandAllowed, pageOwnsKey, DOUBLE_SHIFT_MS } from "./appCommands";
 
-type Surface = "dialog" | "monaco" | "terminal" | "codemirror" | "composer" | null;
+type Surface = "dialog" | "monaco" | "terminal" | "codemirror" | "composer" | "driving" | null;
 
 const SELECTORS: Record<Exclude<Surface, null>, string> = {
   dialog: 'role="dialog"',
@@ -13,6 +13,7 @@ const SELECTORS: Record<Exclude<Surface, null>, string> = {
   terminal: ".monocode-terminal",
   codemirror: ".cm-editor",
   composer: "[data-composer]",
+  driving: "[data-driving]",
 };
 
 function key(
@@ -173,5 +174,27 @@ describe("command map: guards", () => {
 
   it("every renderer id in the menu tree is a command", () => {
     expect(RENDERER_MENU_IDS.filter((id) => !isAppCommandId(id))).toEqual([]);
+  });
+});
+
+describe("a live picture he drives holds the keyboard", () => {
+  it("leaves every key to the page: the Ctrl chords, Escape and the arrows under the full view, and a double Shift", () => {
+    let t = 0;
+    const resolve = createKeyResolver(() => t);
+    for (const k of ["s", "b", "k", "p", "o", "t", "w"]) expect(resolve(key(k, { ctrl: true }, "driving"), ctx)).toBeNull();
+    expect(resolve(key("f", { ctrl: true, shift: true }, "driving"), ctx)).toBeNull();
+    for (const k of ["Escape", "ArrowLeft", "ArrowRight"]) expect(resolve(key(k, {}, "driving"), { lightboxOpen: true })).toBeNull();
+    expect(resolve(key("Shift", {}, "driving"), ctx)).toBeNull();
+    t += 50;
+    expect(resolve(key("Shift", {}, "driving"), ctx)).toBeNull();
+    // the same keys anywhere else are the app's
+    expect(resolve(key("s", { ctrl: true }), ctx)).toEqual({ id: "save_all" });
+    expect(resolve(key("Escape"), { lightboxOpen: true })).toEqual({ id: "lightbox_close" });
+  });
+
+  it("says a key is the page's only inside the driven picture", () => {
+    expect(pageOwnsKey(key("Escape", {}, "driving"))).toBe(true);
+    expect(pageOwnsKey(key("Escape", {}, "dialog"))).toBe(false);
+    expect(pageOwnsKey(key("Escape"))).toBe(false);
   });
 });

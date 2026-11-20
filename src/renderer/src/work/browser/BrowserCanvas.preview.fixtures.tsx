@@ -12,6 +12,7 @@ export default [
   { name: "Submit, held", props: { moment: "held" } },
   { name: "Submit, held, on a long site name", props: { moment: "held-long" } },
   { name: "Sign in needed", props: { moment: "signin" } },
+  { name: "The live picture stopped", props: { moment: "stopped" } },
   { name: "Submitted", props: { moment: "done" } },
   { name: "Loading", props: { moment: "loading" } },
 ];

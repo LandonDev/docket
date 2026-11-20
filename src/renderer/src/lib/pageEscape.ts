@@ -8,9 +8,10 @@ import { useEffect, useRef } from "react";
 export type FieldEscape = "undo" | "blur" | "close";
 
 /** Popups that own their Escape: a dialog or a confirm, a menu, a select or
- *  a popover. Escape inside one never reaches the page behind it. */
+ *  a popover. Escape inside one never reaches the page behind it. So does a
+ *  live picture he drives: there Escape is the page's. */
 const INNER_LAYER =
-  '[role="dialog"], [role="alertdialog"], [role="menu"], [data-slot=select-content], [data-slot=popover-content], [data-slot=dropdown-menu-content]';
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [data-slot=select-content], [data-slot=popover-content], [data-slot=dropdown-menu-content], [data-driving]';
 const OPEN_POPUP = '[data-slot=select-content][data-open], [role="alertdialog"][data-open], [role="menu"][data-open]';
 
 /** True when a layer above the page should take this Escape. */

@@ -142,6 +142,34 @@ describe('a window in tc-computer as live video', () => {
     expect(second.closed).toEqual({ code: VIDEO_CLOSE.ended, reason: 'ended' })
   })
 
+  it('tells a viewer that joins after the stream ended, at once: the end is heard from the first ask on', async () => {
+    const r = await setup({ FAKE_VIDEO_END_MS: '60', FAKE_VIDEO_END_REASON: 'window-closed' })
+    await r.rpc.open({ threadId: 't1', maxEdge: 1280 }, r.me)
+    await sleep(250)
+    const late = r.join()
+    expect(late.closed).toEqual({ code: VIDEO_CLOSE.ended, reason: 'ended' })
+  })
+
+  it('speaks only to the run of the service its stream lives on: after a restart its end stops nobody else’s stream', async () => {
+    const r = await setup()
+    await r.rpc.open({ threadId: 't1', maxEdge: 1280 }, r.me)
+    const first = r.join()
+    await until(() => first.frames.length > 0)
+    // the service dies under it: the stream is over, and the next run numbers its streams from 1 again
+    ;(await r.h.service.connection()).kill()
+    await until(() => first.closed !== null)
+    expect(first.closed).toEqual({ code: VIDEO_CLOSE.error, reason: 'error' })
+    await r.h.run('computer_observe', { app: 'TextEdit' })
+    const again = await r.rpc.open({ threadId: 't1', maxEdge: 1280 }, r.me)
+    expect(again.ok).toBe(true)
+    const second = r.join()
+    await until(() => second.frames.length > 3)
+    const seen = second.frames.length
+    await sleep(200)
+    expect(second.closed).toBeNull()
+    expect(second.frames.length).toBeGreaterThan(seen)
+  })
+
   it('refuses a viewer elsewhere: a person’s windows go to this machine’s own desktop, whatever the switch says', async () => {
     const r = await setup()
     const far = { principal: phone, connection: {}, connectionId: '2' }
@@ -154,12 +182,13 @@ describe('a window in tc-computer as live video', () => {
 
   it('rings the agent’s click on the socket that asked, under the viewer’s own stream id', async () => {
     const r = await setup()
+    // what the feed hears from its run of the service, said by hand: the fake's first video stream is its number 1
+    const heard: ((n: ComputerNotification) => void)[] = []
+    const conn = await r.h.service.connection()
+    const subscribe = conn.onNotification.bind(conn)
+    vi.spyOn(conn, 'onNotification').mockImplementation((fn) => (heard.push(fn), subscribe(fn)))
     const answer = await r.rpc.open({ threadId: 't1', maxEdge: 1280 }, r.me)
     if (!answer.ok) throw new Error()
-    // what the feed hears from the service, said by hand: the fake's first video stream is its number 1
-    const heard: ((n: ComputerNotification) => void)[] = []
-    const subscribe = r.h.service.onNotification.bind(r.h.service)
-    vi.spyOn(r.h.service, 'onNotification').mockImplementation((fn) => (heard.push(fn), subscribe(fn)))
     r.join()
     const say = (n: ComputerNotification): void => heard.forEach((fn) => fn(n))
     say({ method: 'capture/click', params: { stream: '1', at: [10, 20], width: 640, height: 400 } })

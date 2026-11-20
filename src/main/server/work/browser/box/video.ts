@@ -199,7 +199,7 @@ export class BoxVideo implements VideoSource {
   async driver(pane: string, owner: boolean): Promise<void> {
     const { deps } = this
     deps.relay.setDriver(pane, owner)
-    if (!owner) this.clearClipboard()
+    if (!owner) this.wipeClipboard()
     if (!deps.browser.running || !deps.browser.display) return
     const target = deps.pageOf(pane)
     try {
@@ -232,6 +232,35 @@ export class BoxVideo implements VideoSource {
 
   private refuse(reason: VideoRefusal): VideoOpening {
     return { ok: false, reason }
+  }
+
+  /**
+   * He handed back. What he pasted is let go, and so is what he copied in the
+   * page, which the browser holds: an empty xclip takes the clipboard from
+   * it, and is ended a moment after, so nothing of his is there for an agent
+   * to paste.
+   */
+  private wipeClipboard(): void {
+    this.clearClipboard()
+    const display = this.deps.browser.display
+    const tools = this.deps.browser.tools
+    if (!display || !tools) return
+    try {
+      const child = (this.deps.spawn ?? nodeSpawn)(tools.xclip, ['-selection', 'clipboard', '-in', '-quiet'], { env: { ...displayEnv(display), ...videoToolsEnv(tools) }, stdio: ['pipe', 'ignore', 'ignore'] })
+      child.once('error', () => undefined)
+      child.stdin?.once('error', () => undefined)
+      child.stdin?.end()
+      this.clipboards.add(child)
+      this.clearing = setTimeout(() => this.clearClipboard(), PASTE_CLEAR_MS)
+      this.clearing.unref?.()
+    } catch (err) {
+      this.deps.log?.(`box video: the clipboard was not emptied: ${(err as Error).message}`)
+    }
+  }
+
+  /** Threads were removed: the pages they used are shown to nobody from here on. */
+  removed(threads: readonly string[]): void {
+    this.deps.relay.endWhere((s) => isBox(s) && threads.includes(s.thread), 'ended')
   }
 
   private clearClipboard(): void {

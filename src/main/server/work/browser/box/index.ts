@@ -137,7 +137,12 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
     log
   })
   o.registry.onMeta((m) => sessions.onMeta(m))
-  o.registry.onRemoved((ids) => void sessions.end(ids))
+  o.registry.onRemoved((ids) => {
+    void sessions.end(ids)
+    // a removed thread's page is no longer anyone's to open, and what plays of it ends
+    for (const id of ids) lastPage.delete(id)
+    video?.removed(ids)
+  })
 
   const pageOf = (thread: string): string | null => {
     const target = lastPage.get(thread) ?? lastPage.get(paneOf(thread))

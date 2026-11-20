@@ -319,7 +319,7 @@ const liveLabel = (entry: ComputerEntry): string => {
  * The window live, in its own shape, a skeleton in that shape until its first frame. It is as wide as the column and no
  * wider than its own pixels, so the picture is never stretched; a click on it opens the full view.
  */
-function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof useLiveStream>; box: RefObject<HTMLDivElement | null>; label: string; onOpen?: (from: DOMRect) => void }) {
+export function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof useLiveStream>; box: RefObject<HTMLDivElement | null>; label: string; onOpen?: (from: DOMRect) => void }) {
   const face = liveFace(stream, onOpen);
   // while he drives, the picture is his way into the page: his pointer and keys go down the stream
   useDrivingInput(stream, box);

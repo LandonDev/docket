@@ -16,9 +16,11 @@ import { CANVAS } from "../canvas/registry";
 import { applyCanvasPush, resetCanvasStore } from "../canvas/store";
 import * as BrowserCanvas from "./BrowserCanvas";
 import { CONCUR_PAGE } from "./BrowserCanvas.preview.fixtures";
+import { streamOf } from "../../surfaces/threads/computer/LiveFullView.fixtures";
 
 /** `held-long`: the held submit on a site whose name runs long (the host allows 80 characters), for the narrow bar. */
-export type BrowserMoment = "driving" | "took" | "held" | "held-long" | "signin" | "done" | "loading";
+/** `stopped`: the live picture's own body with a stream that ended, over its line and Retry. */
+export type BrowserMoment = "driving" | "took" | "held" | "held-long" | "signin" | "done" | "loading" | "stopped";
 
 void workCanvasChunk.load();
 
@@ -72,7 +74,13 @@ export function BrowserPreview({ moment = "driving" }: { moment?: BrowserMoment 
   const sessionId = `preview-browser-${moment}`;
   const itemId = `${sessionId}-item`;
   const item: CanvasItem = { id: itemId, sessionId, workspaceId: "ws", kind: "browser" as CanvasKind, title: "Report: Columbus trip", source: { at: "browser", host: "local", sessionId }, state: "open", position: 0, rev: 0, createdAt: 0, updatedAt: 0 };
-  const seam = { data: data(moment, sessionId), picture: moment === "loading" ? undefined : <img src={CONCUR_PAGE} alt="" className="block w-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" /> };
+  const picture =
+    moment === "loading" ? undefined : moment === "stopped" ? (
+      <BrowserCanvas.LiveView stream={streamOf({ status: "ended", reason: "error" })} box={{ current: null }} label="Live view of Concur in Chromium" />
+    ) : (
+      <img src={CONCUR_PAGE} alt="" className="block w-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" />
+    );
+  const seam = { data: data(moment, sessionId), picture };
   const module = {
     Body: (props: CanvasBodyProps) => <BrowserCanvas.Body {...props} {...seam} />,
     Bar: (props: CanvasBodyProps) => <BrowserCanvas.Bar {...props} {...seam} />,

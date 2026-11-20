@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LOCAL_PORT_FILE, isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
+import { LOCAL_PORT_FILE, isHeadless, noDisplay, personsDesktop, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
 
 describe('isHeadless', () => {
   it('follows TEMP_CODE_HEADLESS on every platform', () => {
@@ -45,5 +45,17 @@ describe('quitsOnAllClosed', () => {
     expect(quitsOnAllClosed({ headless: false, userWindowsOpened: false }, 'linux')).toBe(false)
     expect(quitsOnAllClosed({ headless: false, userWindowsOpened: true }, 'linux')).toBe(true)
     expect(quitsOnAllClosed({ headless: false, userWindowsOpened: true }, 'win32')).toBe(true)
+  })
+})
+
+describe('personsDesktop', () => {
+  it('is a Mac or a PC that is not headless, and never a Linux host, whatever its display or its environment', () => {
+    expect(personsDesktop({}, 'darwin')).toBe(true)
+    expect(personsDesktop({}, 'win32')).toBe(true)
+    expect(personsDesktop({ TEMP_CODE_HEADLESS: '1' }, 'darwin')).toBe(false)
+    // the box under xvfb-run with the variable gone from its env file: still no desktop of his
+    expect(personsDesktop({ DISPLAY: ':99' }, 'linux')).toBe(false)
+    expect(personsDesktop({ DISPLAY: ':99', TEMP_CODE_HEADLESS: '0' }, 'linux')).toBe(false)
+    expect(personsDesktop({ TEMP_CODE_HEADLESS: '1' }, 'linux')).toBe(false)
   })
 })
