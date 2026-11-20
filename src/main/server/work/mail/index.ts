@@ -7,6 +7,7 @@ import { registerCanvasFetcher } from '../canvas/fetch'
 import { mailAttachmentFetcher } from './attachment'
 import { outgoingHtml } from './outgoing'
 import { withWaited } from './waited'
+import { ensureWaitingTables, reportDrops, setWaiting, startNudge, waitingOf, waitingTool, type DropRow } from './waiting'
 
 /**
  * The mail pillar's server module (docs/agents/work-mail.md): the press
@@ -125,6 +126,7 @@ export function ensureMailTables(db: DatabaseSync): void {
     session_id TEXT NOT NULL,
     at INTEGER NOT NULL
   )`)
+  ensureWaitingTables(db)
 }
 
 /** Opens each new draft a thread of this host made as a mail item beside that thread, once. */
@@ -153,24 +155,42 @@ const PREAMBLE = [
   'Mail: write a mail or a reply with LifeOS\'s draft_mail. The draft opens beside this thread, where he reads it and presses Send himself; you never send mail.',
   'To change a draft after it is written, use update_mail_draft: your rewrite waits in the draft until he accepts or rejects it.'
 ].join(' ')
+const WAITING_LINE = 'mail_waiting lists the mail he sent in this sector that no one has answered.'
 
 export const mail: WorkModule = {
   id: 'mail',
   ensure: ensureMailTables,
   async handle(req, ctx, by) {
-    if (req.method !== 'work.mail.send') return NOT_HANDLED
-    return handled(await sendMail(ctx, by, req.params.id, req.params.seen, req.params.sendAt, req.params.waited === true))
+    switch (req.method) {
+      case 'work.mail.send':
+        return handled(await sendMail(ctx, by, req.params.id, req.params.seen, req.params.sendAt, req.params.waited === true))
+      case 'work.mail.nudge':
+        return handled(await startNudge(ctx, by, req.params.workspaceId, req.params.threadId))
+      case 'work.mail.waiting':
+        return handled(await waitingOf(ctx, by, req.params.workspaceId))
+      case 'work.mail.setWaiting': {
+        const { workspaceId, days, routine } = req.params
+        return handled(await setWaiting(ctx, by, workspaceId, { ...(days !== undefined ? { days } : {}), ...(routine !== undefined ? { routine } : {}) }))
+      }
+      default:
+        return NOT_HANDLED
+    }
   },
+  tools: (scope) => (scope.sector ? [waitingTool] : []),
   start(ctx) {
     // A mail's attachment opened in a canvas comes through the host, inside the pane's sector (attachment.ts).
     const offFetch = registerCanvasFetcher(mailAttachmentFetcher)
     const offDrafts = ctx.lifeos.subscribe<MailRow[]>('outboxHeld:held', { host: ctx.host }, (rows) => openDrafts(ctx, rows ?? []))
+    // A nudge LifeOS dropped because a reply came is told to the thread that drafted it, once.
+    const told = new Set<string>()
+    const offDrops = ctx.lifeos.subscribe<DropRow[]>('mailWaits:drops', { host: ctx.host }, (rows) => void reportDrops(ctx, rows ?? [], told))
     return () => {
       offFetch()
       offDrafts()
+      offDrops()
     }
   },
-  preamble: () => PREAMBLE,
+  preamble: (scope) => (scope.sector ? `${PREAMBLE} ${WAITING_LINE}` : PREAMBLE),
   sessionsRemoved(sessionIds, ctx) {
     const drop = ctx.db.prepare('DELETE FROM work_mail_opened WHERE session_id = ?')
     for (const id of sessionIds) drop.run(id)

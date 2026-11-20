@@ -43,8 +43,30 @@ export const MailRequestSchemas = [
    * out the undo time for this held draft (the composer's toast, with Undo), so LifeOS need not
    * queue it a second time. It means nothing for his own mail, which keeps LifeOS's queue.
    */
-  request('work.mail.send', z.object({ id: z.string().min(1).max(64), sendAt: z.number().int().positive().optional(), seen: MailSeenSchema, waited: z.boolean().optional() }))
+  request('work.mail.send', z.object({ id: z.string().min(1).max(64), sendAt: z.number().int().positive().optional(), seen: MailSeenSchema, waited: z.boolean().optional() })),
+  /**
+   * → { sessionId }: his press on Waiting on's Draft a nudge. Starts a Work thread in the workspace, linked
+   * to the mail, that drafts a follow-up in that mail thread; the draft is held as every draft is. A thread's
+   * own call is refused, and so is a mail outside the workspace's sector.
+   */
+  request('work.mail.nudge', z.object({ workspaceId: z.string().min(1).max(64), threadId: z.string().min(1).max(64) })),
+  /** → MailWaiting: the workspace's Waiting on settings. */
+  request('work.mail.waiting', z.object({ workspaceId: z.string().min(1).max(64) })),
+  /**
+   * → MailWaiting: `days` is how many working days a mail that asked a question waits before it is listed
+   * (LifeOS keeps it per sector); `routine` turns on or off the routine that drafts nudges by itself. A person's call only.
+   */
+  request('work.mail.setWaiting', z.object({ workspaceId: z.string().min(1).max(64), days: z.number().int().min(1).max(30).optional(), routine: z.boolean().optional() }))
 ] as const
+
+/** A workspace's Waiting on: `days` null when LifeOS did not answer (`error` says why). */
+export interface MailWaiting {
+  days: number | null
+  /** The nudge routine is on: it drafts a nudge by itself when a mail passes its time, which spends model use. */
+  routine: boolean
+  routineId?: string
+  error?: string
+}
 
 /** How a send went: through the hold (a thread's draft) or as the owner's own mail. */
 export interface MailSendAnswer {
@@ -55,6 +77,9 @@ export interface MailSendAnswer {
 export type MailPush = never
 
 export const MAIL_CAPS = {
-  'work.mail.send': 'approve'
+  'work.mail.send': 'approve',
+  'work.mail.nudge': 'operate',
+  'work.mail.waiting': 'read',
+  'work.mail.setWaiting': 'admin'
 } satisfies CapsOf<typeof MailRequestSchemas>
 export const MAIL_RELAY = {} satisfies RelayOf<typeof MailRequestSchemas>

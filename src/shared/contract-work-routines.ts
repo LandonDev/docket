@@ -216,7 +216,8 @@ export const LIFEOS_TRIGGER_KINDS = {
   'draft.sent': 'A draft is sent',
   'event.soon': 'An event is about to start',
   'doc.changed': 'A document changes',
-  'sheet.changed': 'A sheet changes'
+  'sheet.changed': 'A sheet changes',
+  'mail.waiting': 'Sent mail gets no reply in time'
 } as const
 export type LifeosTriggerKind = keyof typeof LIFEOS_TRIGGER_KINDS
 
