@@ -34,3 +34,54 @@ describe("a file from a mail", () => {
     expect((native.saveDownload.mock.calls[0] as unknown as [string])[0]).toBe("attachment.pdf");
   });
 });
+
+describe("a face", () => {
+  const { Face } = tempcodeMailKit;
+  const PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+  it("is the stored picture where there is one, drawn at once when it needs no reading", async () => {
+    const { render, cleanup } = await import("@testing-library/react");
+    const { container } = render(<Face name="Marisol Rivera" picture={PIXEL} size="row" />);
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(PIXEL);
+    expect(container.textContent).toBe("");
+    cleanup();
+  });
+
+  it("falls back to initials quietly when the picture does not load", async () => {
+    const { render, cleanup, fireEvent } = await import("@testing-library/react");
+    const { container } = render(<Face name="Marisol Rivera" picture={PIXEL} size="row" />);
+    fireEvent.error(container.querySelector("img")!);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toBe("MR");
+    cleanup();
+  });
+
+  it("reads a picture in LifeOS's store as bytes, once, and keeps it", async () => {
+    const { render, cleanup, waitFor } = await import("@testing-library/react");
+    const fetched = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
+    vi.stubGlobal("fetch", fetched);
+    URL.createObjectURL = vi.fn(() => "blob:face-1");
+    const url = "https://lifeos.example/api/storage/face-1";
+    const first = render(<Face name="Tom Beck" picture={url} size="head" />);
+    // Initials stand until the bytes are here.
+    expect(first.container.textContent).toBe("TB");
+    await waitFor(() => expect(first.container.querySelector("img")?.getAttribute("src")).toBe("blob:face-1"));
+    cleanup();
+    // Seen once, it is there from the first frame, with no second request.
+    const again = render(<Face name="Tom Beck" picture={url} size="chip" />);
+    expect(again.container.querySelector("img")?.getAttribute("src")).toBe("blob:face-1");
+    expect(fetched).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("draws a mark for a list or a shared mailbox, and initials for a person: one letter at the small sizes", async () => {
+    const { render, cleanup } = await import("@testing-library/react");
+    const list = render(<Face name="Practice Weekly" mark="list" size="row" />);
+    expect(list.container.querySelector("svg")).not.toBeNull();
+    expect(list.container.textContent).toBe("");
+    cleanup();
+    const person = render(<Face name="Maya Chen" size="chip" />);
+    expect(person.container.textContent).toBe("M");
+    cleanup();
+  });
+});

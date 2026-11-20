@@ -1245,9 +1245,12 @@ Around the canvas:
   menu of all nine, then Filter and New mail as quiet 28px buttons, the
   same in every mailbox; under it the 28px search field, and one muted
   12px line when the network or an account's sync is down.
-  A row is 68px (48px in two lines) at radius 6, 1px apart: a 22px gutter
+  A row is 68px (48px in two lines) at radius 6, 1px apart: a 20px gutter
   for the 6px unread dot, which gives way to a 14px tick box under the
-  pointer and on every row once one is ticked; the sender (600 and
+  pointer and on every row once one is ticked; then the sender's face,
+  24px, level with the first two lines in a slot every row and the
+  skeleton share, so a picture never moves a word (his own face for a
+  thread that is only his); the sender (600 and
   `foreground` when unread), the thread's count, and at the row's end the
   marks and the date in 12px tabular. The marks say each thing once: the
   14px circle-dot in `warning` for a thread that needs him or a draft an
@@ -1286,6 +1289,13 @@ Around the canvas:
   thread's name in medium, Open thread. Its Send has no menu and shows
   one toast, "Sending to …" over a 3px track that empties across the undo
   time, with Undo; nothing has gone until the track is empty.
+  A face is one avatar everywhere in Mail (a list row at 24px, a message's
+  header at 28px, a fold row and a recipient's chip at 18px): the person's
+  picture where LifeOS holds one (read from LifeOS's store as bytes, never
+  from the web, and kept once read so it never flashes back to initials),
+  else a 14px glyph for a mailing list or a shared mailbox, else initials
+  on `muted`, all inside the image outline. A picture that does not load
+  gives way to the initials quietly.
   Mail's settings are flat groups of 44px rows under 13px semibold
   headings; a signature and an account open as dialogs in the one dialog
   shape (the title beside a quiet Close, a hairline over the footer), every

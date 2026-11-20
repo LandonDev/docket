@@ -165,6 +165,16 @@ sender through `mail:search`: lifeos/mentions.ts); with no thread open the
 item is not drawn. A sent mail chip opens this view on its mail
 (`openWorkView {view: 'mail', mail}`).
 
+**Faces.** Whoever a mail is from or to shows a face by address (work-kit's
+`SenderFace`): the picture LifeOS holds (`mail:faces`, one index for the
+client: a person's picture in People, his own, a Google contact's, all
+fetched by LifeOS's worker), else a glyph for a mailing list or a shared
+mailbox, else initials. The kit's `Face` (kit.tsx) draws all three. The
+page's policy lets no picture load from the web, so a stored picture is
+read from LifeOS as bytes and drawn from a blob (`useFacePicture`), kept
+for the session by its address in the store: a face seen once is there
+from the first frame, and one that fails falls back to initials.
+
 TempCode's kit: toasts through its own stack (Undo where the write has
 one; `z` takes back the last such act while its toast still could), a link
 from a mail opened outside only as http, https, mailto or tel, initials

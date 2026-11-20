@@ -1,7 +1,7 @@
-import { Component, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { Component, useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { loadBytes, printInFrame, type MailFaceProps, type MailKit, type MailOrigin, type MailOriginLabel, type MailReference, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
 import { DropdownMenuItem } from "work-kit/ui/dropdown-menu";
-import { AtSign } from "../../chrome/icons";
+import { AtSign, Users } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
@@ -13,6 +13,7 @@ import { openWorkView, workOpenPort, workViewNow } from "../../lib/workSwitch";
 import { shell } from "../../stores/shell";
 import { currentActiveSession } from "../../stores/subscriptions";
 import { undoLast } from "./client";
+import { News } from "../icons";
 import { mailChip } from "./model";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 
@@ -106,23 +107,75 @@ const FACE: Record<NonNullable<MailFaceProps["size"]>, string> = {
 };
 
 /**
- * A person as initials on `muted` in a circle (docs/DESIGN.md, avatars):
- * 28px beside an open message's sender, 24px in a row, 18px in a recipient
- * chip and a fold row. The two small sizes hold one letter, which reads at
- * 11px; two would not.
+ * Pictures of faces this window has read, by their address in LifeOS's store: a blob the page may
+ * draw (its policy lets no picture load from the web, so the bytes are fetched from LifeOS and
+ * handed over), or null for one that did not load. Kept for the session, so a face seen once
+ * never shows its initials again; a `data:` picture needs no reading.
  */
-function Face({ name, size = "row", className }: MailFaceProps) {
+const facePictures = new Map<string, string | null>();
+const faceReads = new Set<string>();
+const faceWaits = new Set<() => void>();
+const drawable = (url: string) => url.startsWith("data:") || url.startsWith("blob:");
+
+function readFace(url: string): void {
+  if (drawable(url) || facePictures.has(url) || faceReads.has(url)) return;
+  faceReads.add(url);
+  void loadBytes(url)
+    .then(
+      (blob) => facePictures.set(url, URL.createObjectURL(blob)),
+      () => facePictures.set(url, null),
+    )
+    .finally(() => {
+      faceReads.delete(url);
+      for (const wake of faceWaits) wake();
+    });
+}
+
+const waitForFaces = (wake: () => void) => {
+  faceWaits.add(wake);
+  return () => void faceWaits.delete(wake);
+};
+
+/** The picture to draw for a stored one: there at once when it was read before, undefined until it is or when it failed. */
+export function useFacePicture(url: string | undefined): string | undefined {
+  const held = useSyncExternalStore(waitForFaces, () => (!url ? undefined : drawable(url) ? url : (facePictures.get(url) ?? undefined)));
+  useEffect(() => {
+    if (url) readFace(url);
+  }, [url]);
+  return held;
+}
+
+/**
+ * A face in a circle on `muted` (docs/DESIGN.md, avatars): 28px beside an open message's sender,
+ * 24px in a list row, 18px in a recipient chip and a fold row. It is the person's picture where
+ * LifeOS holds one; else a glyph for a mailing list or a shared mailbox; else initials (the two
+ * small sizes hold one letter, which reads at 11px; two would not). A picture that fails to load
+ * gives way to what would have stood there, quietly.
+ */
+function Face({ name, picture, mark, size = "row", className }: MailFaceProps) {
   const letters = initials(name);
+  const src = useFacePicture(picture);
+  const [broken, setBroken] = useState<string | null>(null);
+  const small = size === "chip" || size === "line";
+  const Mark = mark === "list" ? News : mark === "group" ? Users : null;
   return (
     <span
       aria-hidden
       className={cn(
-        "inline-grid shrink-0 place-items-center rounded-full bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
+        "inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
         FACE[size],
         className,
       )}
     >
-      {size === "chip" || size === "line" ? letters.slice(0, 1) : letters}
+      {src && broken !== src ? (
+        <img src={src} alt="" draggable={false} className="size-full object-cover" onError={() => setBroken(src)} />
+      ) : Mark ? (
+        <Mark className={small ? "size-2.5" : "size-3.5"} />
+      ) : small ? (
+        letters.slice(0, 1)
+      ) : (
+        letters
+      )}
     </span>
   );
 }
