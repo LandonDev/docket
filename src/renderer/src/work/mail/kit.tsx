@@ -1,7 +1,7 @@
 import { Component, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { isPicture, loadBytes, printInFrame, type MailKit, type MailOrigin, type MailOriginLabel, type MailReference, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
 import { DropdownMenuItem } from "work-kit/ui/dropdown-menu";
-import { AtSign } from "../../chrome/icons";
+import { AtSign, Play } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
@@ -16,6 +16,7 @@ import { undoLast } from "./client";
 import { Face } from "./face";
 import { onMailto } from "./mailto";
 import { mailChip } from "./model";
+import { playRunner } from "../routines/plays/runOn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 
 /**
@@ -188,6 +189,22 @@ function MentionItem({ reference, plain }: { reference: MailReference; plain?: b
   );
 }
 
+/** Run a play… beside it: the Mail view's plays that take a mail (work/routines/plays/runOn.ts); none where no Work view is open. */
+function ReferenceItems({ reference, plain }: { reference: MailReference; plain?: boolean }) {
+  const runPlay = playRunner();
+  return (
+    <>
+      <MentionItem reference={reference} plain={plain} />
+      {runPlay ? (
+        <DropdownMenuItem onClick={() => runPlay(mailChip(reference.id, reference.title))}>
+          {plain ? null : <Play />}
+          Run a play…
+        </DropdownMenuItem>
+      ) : null}
+    </>
+  );
+}
+
 /** What a link in a mail may open outside the app: a web page, a mail address or a phone number, as the browser reads it. */
 export function mailLink(href: string): boolean {
   try {
@@ -221,7 +238,7 @@ export const tempcodeMailKit: MailKit = {
   holdsSend: (origin) => origin.app === "tempcode",
   // A draft a bot's key made carries no origin; TempCode names the threads it holds and nothing else.
   originLabel: ({ origin }) => (origin ? originNamer?.(origin) ?? threadLabel(origin) : undefined),
-  reference: { props: () => ({}), MenuItem: MentionItem },
+  reference: { props: () => ({}), MenuItem: ReferenceItems },
   undo: undoLast,
   // Mail's settings are under Settings, Work.
   openSettings: () => shell.openSettings("work"),

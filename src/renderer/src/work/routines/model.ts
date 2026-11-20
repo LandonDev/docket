@@ -52,6 +52,8 @@ export const EVENT_CHOICES = Object.entries(LIFEOS_TRIGGER_KINDS).map(([value, l
 export interface RoutineForm {
   name: string;
   prompt: string;
+  /** the play each run starts, "" for none (docs/agents/work-plays.md) */
+  play: string;
   starts: StartsOn;
   days: DaysChoice;
   /** "07:00" */
@@ -75,7 +77,7 @@ const dateOf = (ms: number): string => {
 };
 
 export function blankForm(now = Date.now()): RoutineForm {
-  return { name: "", prompt: "", starts: "sched", days: "weekdays", at: "07:00", event: "mail.received", tool: "", every: "15", args: "{}", path: "", ends: "never", until: dateOf(now + 7 * 86_400_000) };
+  return { name: "", prompt: "", play: "", starts: "sched", days: "weekdays", at: "07:00", event: "mail.received", tool: "", every: "15", args: "{}", path: "", ends: "never", until: dateOf(now + 7 * 86_400_000) };
 }
 
 const daysOf = (days: readonly number[]): DaysChoice => {
@@ -88,7 +90,7 @@ const daysOf = (days: readonly number[]): DaysChoice => {
 
 /** A saved routine (or an agent's proposal) as the form shows it. */
 export function formOf(row: RoutineRow, now = Date.now()): RoutineForm {
-  const f: RoutineForm = { ...blankForm(now), name: row.name, prompt: row.prompt };
+  const f: RoutineForm = { ...blankForm(now), name: row.name, prompt: row.prompt, play: row.playId ?? "" };
   const t = row.trigger;
   if (t.on === "schedule") {
     const s = parseSchedule(t.rrule);

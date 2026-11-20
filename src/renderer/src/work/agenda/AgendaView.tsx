@@ -6,6 +6,7 @@ import { addDays, endOf, formatPeriod, groupByDay, leaveAt, localeWeekStart, shi
 import { formatDayHeading, formatLeave, formatTime } from "work-kit/views/lib/format";
 import { ChevronLeft, ChevronRight, Plus } from "../../chrome/icons";
 import { ChoiceToggle } from "../../components/choice-toggle";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../../components/ui/context-menu";
 import { Button } from "../../components/ui/button";
 import { reveal } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -15,6 +16,7 @@ import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/clie
 import { useMinute } from "../tasks/minute";
 import { shared, useShared } from "../tasks/store";
 import { NewEventDialog } from "./NewEventDialog";
+import { playRunner } from "../routines/plays/runOn";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
 import { knownAttendees, type DirectoryPerson } from "../people/model";
@@ -142,7 +144,7 @@ function Agenda({ client, startThread, people = NO_PEOPLE, workspaceId }: { clie
   const events = client.useEvents(from, to);
   const latest = useRef(startThread);
   latest.current = startThread;
-  const prepare = useMemo(() => (event: AgendaEvent) => latest.current({ kind: "event", label: event.title, ref: { at: "lifeos", table: "events", id: event._id } }), []);
+  const prepare = useMemo(() => (event: AgendaEvent) => latest.current(eventChip(event)), []);
   const days = useMemo(() => (events && view === "list" ? groupByDay(events, from, to) : null), [events, view, from, to]);
   if (!events) return <AgendaSkeleton />;
   // An event or a day picked in the week or month opens that day's list, where Prepare is.
@@ -174,31 +176,48 @@ function Agenda({ client, startThread, people = NO_PEOPLE, workspaceId }: { clie
   );
 }
 
-/** One event: its time (with when to leave under it while that is ahead), its title over where it is, Prepare on hover. */
+const eventChip = (event: AgendaEvent): ContextChip => ({ kind: "event", label: event.title, ref: { at: "lifeos", table: "events", id: event._id } });
+
+/** One event: its time (with when to leave under it while that is ahead), its title over where it is, Prepare on hover; its right-click, Prepare and Run a play…. */
 const EventRow = memo(function EventRow({ event, past, leave, onPrepare, people, workspaceId }: { event: AgendaEvent; past: boolean; leave: number | undefined; onPrepare: (event: AgendaEvent) => void; people: readonly DirectoryPerson[]; workspaceId: string | undefined }) {
   // LifeOS's event carries its attendees; the shared type does not name them.
   const met = knownAttendees((event as AgendaEvent & { attendees?: { address: string }[] }).attendees, people);
   return (
-    <div role="listitem" className="group/row relative grid min-h-9 grid-cols-[72px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5">
-      <span className="flex flex-col text-xs leading-5 text-muted-foreground tabular-nums">
-        <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
-        {leave !== undefined && !past ? <span className="font-medium text-foreground">Leave {formatLeave(leave, event.startsAt)}</span> : null}
-      </span>
-      <span className="flex min-w-0 flex-col pr-20">
-        <span className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
-        {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
-        {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
-      </span>
-      {past ? null : (
-        <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
-          <Button size="xs" variant="ghost" onClick={() => onPrepare(event)}>
-            Prepare
-          </Button>
+    <ContextMenu>
+      <ContextMenuTrigger
+        render={<div role="listitem" className="group/row relative grid min-h-9 grid-cols-[72px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5" />}
+      >
+        <span className="flex flex-col text-xs leading-5 text-muted-foreground tabular-nums">
+          <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
+          {leave !== undefined && !past ? <span className="font-medium text-foreground">Leave {formatLeave(leave, event.startsAt)}</span> : null}
         </span>
-      )}
-    </div>
+        <span className="flex min-w-0 flex-col pr-20">
+          <span className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
+          {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
+          {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
+        </span>
+        {past ? null : (
+          <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
+            <Button size="xs" variant="ghost" onClick={() => onPrepare(event)}>
+              Prepare
+            </Button>
+          </span>
+        )}
+      </ContextMenuTrigger>
+      <EventMenu event={event} onPrepare={onPrepare} />
+    </ContextMenu>
   );
 });
+
+function EventMenu({ event, onPrepare }: { event: AgendaEvent; onPrepare: (event: AgendaEvent) => void }) {
+  const runPlay = playRunner();
+  return (
+    <ContextMenuContent>
+      <ContextMenuItem onClick={() => onPrepare(event)}>Prepare</ContextMenuItem>
+      {runPlay ? <ContextMenuItem onClick={() => runPlay(eventChip(event))}>Run a play…</ContextMenuItem> : null}
+    </ContextMenuContent>
+  );
+}
 
 /** Who of the sector's people is at an event, as one comma sentence of names; a name opens their page. */
 function With({ people, workspaceId }: { people: readonly DirectoryPerson[]; workspaceId: string }) {

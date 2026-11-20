@@ -9,7 +9,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoutineRow } from "@shared/contract-work-routines";
 
-const host: { list: () => Promise<unknown>; runs: () => Promise<unknown>; asked: string[] } = { list: async () => ({ routines: [] }), runs: async () => ({ runs: [] }), asked: [] };
+const host: { list: () => Promise<unknown>; runs: () => Promise<unknown>; plays: () => Promise<unknown>; asked: string[] } = { list: async () => ({ routines: [] }), runs: async () => ({ runs: [] }), plays: async () => ({ plays: [] }), asked: [] };
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   useEnvironments: () => [{ id: "box", name: "The box", platform: "linux" }],
@@ -18,7 +18,7 @@ vi.mock("../../lib/connection", async (original) => ({
       onPush: () => () => {},
       request: (method: string) => {
         host.asked.push(method);
-        return method === "work.routines.list" ? host.list() : host.runs();
+        return method === "work.routines.list" ? host.list() : method === "work.routines.plays" ? host.plays() : host.runs();
       },
     }),
   },
@@ -63,6 +63,7 @@ beforeEach(() => {
   host.asked.length = 0;
   host.list = async () => ({ routines: [row()] });
   host.runs = async () => ({ runs: [] });
+  host.plays = async () => ({ plays: [] });
 });
 afterEach(cleanup);
 
@@ -116,5 +117,16 @@ describe("the Routines view", () => {
     expect((document.querySelector("[data-routine-detail]") as HTMLElement).className).not.toContain("@max-[40rem]/routines:hidden");
     fireEvent.click(screen.getByRole("button", { name: "Routines" }));
     expect(list.className).not.toContain("@max-[40rem]/routines:hidden");
+  });
+
+  it("names the play a routine runs, and shows no empty words of its own", async () => {
+    host.list = async () => ({ routines: [row({ prompt: "", playId: "p1" })] });
+    host.plays = async () => ({ plays: [{ id: "p1", name: "Weekly pay check", takes: [], proposed: false }] });
+    render(<View {...props} />);
+    await settle();
+    const detail = document.querySelector("[data-routine-detail]") as HTMLElement;
+    expect(detail.querySelector("dt")?.textContent).toBe("Runs");
+    expect(detail.querySelector("dd")?.textContent).toBe("Weekly pay check");
+    expect(detail.querySelector("p.whitespace-pre-wrap")).toBeNull();
   });
 });

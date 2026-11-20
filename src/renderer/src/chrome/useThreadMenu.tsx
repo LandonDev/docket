@@ -5,6 +5,7 @@ import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBrid
 import { useMasterIds } from "../lib/masterThread";
 import * as commands from "../lib/tcserver/commands";
 import { sessionStore } from "../lib/tcserver/store";
+import { workPlayPort } from "../lib/workSwitch";
 import { useProjects } from "../lib/tcserver/workspaces";
 import type { ThreadRules } from "@server/shared/rules";
 import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
@@ -158,6 +159,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         close: actions?.onCloseTab ? closeFact(id) : undefined,
         dev: own ? dev : null,
         draft: sessionStore.isDraft(id),
+        play: t.scope === "work" && !!t.workspaceId && !t.parentId && !!workPlayPort.get(),
       },
       extra,
     );
@@ -206,6 +208,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     } else if (pick === "mac-bridge-rules") setDialog({ kind: "bridge", id });
     else if (pick === "resources") setDialog({ kind: "resources", id });
     else if (pick === "dev") devPane.toggle();
+    else if (pick === "save-play") workPlayPort.get()?.save({ environmentId: (sessionStore.get(id) ?? metaOf(id))!.environmentId, sessionId: id });
     else if (pick === "remove-queue") {
       const env = metaOf(id)?.environmentId ?? sessionStore.get(id)?.environmentId;
       // The answer names a refused id as failed, with why: that is a failure too.

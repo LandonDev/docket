@@ -16,6 +16,7 @@ import { useWorkspaces, workspaceByPath } from "../../lib/tcserver/workspaces";
 import { workRailPort, useWorkHosts } from "../../lib/workSwitch";
 import { FileDrops } from "../canvas/fileDrop";
 import { openWorkSettings } from "./open";
+import { PlaysHost } from "../routines/plays/PlaysHost";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
 import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -145,6 +146,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
     <>
       {/* Files dropped on Work open in a thread's canvas, wherever Work is on screen (work/canvas/fileDrop.tsx). */}
       <FileDrops />
+      {/* Run a play… and Save as a play…, from wherever Work is on screen (work/routines/plays/PlaysHost.tsx). */}
+      <PlaysHost />
       {naming && home ? (
         <NameWorkspaceDialog
           environmentId={home}

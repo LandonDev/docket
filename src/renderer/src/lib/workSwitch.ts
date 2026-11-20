@@ -316,3 +316,21 @@ export function setWorkHome(environmentId: string): void {
     // private mode / quota
   }
 }
+
+/**
+ * What the plays answer (docs/agents/work-plays.md), filled by Work's shell
+ * while Work is on: Run a play… on a mail, task, event or file of a
+ * workspace, with that thing's chip, and Save as a play… on a Work thread.
+ * The chip is typed loosely here so the first paint takes nothing of Work's.
+ */
+export interface WorkPlayPort {
+  run(ask: { environmentId: string; workspaceId: string; chip: { kind: string; label: string } }): void;
+  save(ask: { environmentId: string; sessionId: string }): void;
+}
+let playPort: WorkPlayPort | null = null;
+export const workPlayPort = {
+  get: (): WorkPlayPort | null => playPort,
+  set(next: WorkPlayPort | null): void {
+    playPort = next;
+  },
+};

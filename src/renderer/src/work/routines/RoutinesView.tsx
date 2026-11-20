@@ -15,6 +15,7 @@ import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { RoutineDialog } from "./RoutineForm";
+import { usePlays } from "./plays/data";
 import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
 
 /**
@@ -108,6 +109,8 @@ function useRuns(env: string, id: string | null, tick: number): [RoutineRun[] | 
 
 export function View({ env, workspace }: WorkViewProps) {
   const [load, tick, retry] = useRoutines(env, workspace.id);
+  const [plays] = usePlays(env, workspace.id);
+  const playName = (id: string | null) => (id && plays.status === "ready" ? (plays.value.find((p) => p.id === id)?.name ?? null) : null);
   const [picked, setPicked] = useState<string | null>(null);
   const [form, setForm] = useState<{ row: RoutineRow | null } | null>(null);
   const asked = useSyncExternalStore(
@@ -155,7 +158,7 @@ export function View({ env, workspace }: WorkViewProps) {
             ))}
           </ul>
           {current ? (
-            <Detail key={current.id} env={env} row={current} tick={tick} narrowShown={narrowDetail} onBack={() => setPicked(null)} onEdit={() => setForm({ row: current })} />
+            <Detail key={current.id} env={env} row={current} play={playName(current.playId)} tick={tick} narrowShown={narrowDetail} onBack={() => setPicked(null)} onEdit={() => setForm({ row: current })} />
           ) : null}
         </div>
       )}
@@ -177,7 +180,7 @@ function RoutineItem({ row, current, onPick }: { row: RoutineRow; current: boole
   );
 }
 
-function Detail({ env, row, tick, narrowShown, onBack, onEdit }: { env: string; row: RoutineRow; tick: number; narrowShown: boolean; onBack: () => void; onEdit: () => void }) {
+function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: string; row: RoutineRow; play: string | null; tick: number; narrowShown: boolean; onBack: () => void; onEdit: () => void }) {
   const [runs, retryRuns] = useRuns(env, row.id, tick);
   const [busy, setBusy] = useState<"pause" | "run" | "drop" | null>(null);
   const hostName = useEnvironments().find((e) => e.id === env)?.name ?? "this host";
@@ -242,8 +245,14 @@ function Detail({ env, row, tick, narrowShown, onBack, onEdit }: { env: string; 
             )}
           </div>
         </div>
-        <p className="text-sm leading-[22px] whitespace-pre-wrap text-foreground">{row.prompt}</p>
+        {row.prompt ? <p className="text-sm leading-[22px] whitespace-pre-wrap text-foreground">{row.prompt}</p> : null}
         <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
+          {play ? (
+            <>
+              <dt className="text-muted-foreground">Runs</dt>
+              <dd className="min-w-0 text-foreground">{play}</dd>
+            </>
+          ) : null}
           <dt className="text-muted-foreground">Starts</dt>
           <dd className="min-w-0 text-foreground">{row.enabled || row.proposed ? starts : `${row.words}, paused`}</dd>
           {ends ? (

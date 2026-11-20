@@ -1,6 +1,7 @@
 import { ConvexProvider } from "convex/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { ContextChip } from "@shared/work";
+import { playRunner } from "../routines/plays/runOn";
 import { groupTasks, SNOOZE_CHOICES, SNOOZE_LABELS, TASK_GROUP_LABELS, TASK_GROUPS, type SnoozeChoice } from "work-kit/lifeos/tasks";
 import { formatDue } from "work-kit/views/lib/format";
 import { ChevronDown, Plus } from "../../chrome/icons";
@@ -263,10 +264,12 @@ function TaskMenu({
   onCode: (task: Task) => void;
   onDone: () => void;
 }) {
+  const runPlay = playRunner();
   return (
     <ContextMenuContent>
       {thread ? <ContextMenuItem onClick={() => openThread(thread)}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
       <ContextMenuItem onClick={() => onCode(task)}>Open a code thread…</ContextMenuItem>
+      {runPlay ? <ContextMenuItem onClick={() => runPlay(chipOf(task))}>Run a play…</ContextMenuItem> : null}
       <ContextMenuItem onClick={() => onOpen(task)}>Open</ContextMenuItem>
       <ContextMenuItem onClick={onDone}>Done</ContextMenuItem>
       <ContextMenuSeparator />

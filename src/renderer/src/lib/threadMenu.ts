@@ -65,6 +65,8 @@ export type ThreadMenuFacts = {
   dev?: { open: boolean } | null;
   /** Minted here and never sent: the host does not know it yet. */
   draft?: boolean;
+  /** A Work thread of a workspace, with Work on: Save as a play… (docs/agents/work-plays.md). */
+  play?: boolean;
 };
 
 export type ThreadMenuExtra = { open?: boolean; newPass?: boolean };
@@ -154,6 +156,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     if (on) rows.push({ kind: "item", id: "mac-bridge-rules", label: "Mac approvals…", icon: Lock });
   }
   if (facts.dev) rows.push({ kind: "item", id: "dev", label: "Dev server", icon: Globe, checked: facts.dev.open });
+  if (facts.play && !facts.draft) rows.push({ kind: "item", id: "save-play", label: "Save as a play…", icon: ListPlus });
   rows.push({
     kind: "item",
     id: "resources",

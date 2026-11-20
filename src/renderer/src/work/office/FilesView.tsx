@@ -25,6 +25,7 @@ import { linkIdOfHost, localHostId, workspaceSettings } from "../shell/actions";
 import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
 import { ViewStateLine } from "../views/ViewStateLine";
+import { playRunner } from "../routines/plays/runOn";
 import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, type ShownLibrary } from "./files";
 
 /**
@@ -310,6 +311,7 @@ function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownL
   const { rows, places, workspace } = props;
   const [busy, setBusy] = useState<Busy>(null);
   const open = useOpener(props, setBusy);
+  const runPlay = playRunner();
   return (
     <div role="list">
       {rows.map(({ entry, library }) => {
@@ -350,6 +352,10 @@ function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownL
                     <DropdownMenuItem onClick={() => void open.open(entry, library)}>Open</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => void open.app(entry, library)}>{appVerb(entry)}</DropdownMenuItem>
                     {library.web ? <DropdownMenuItem onClick={() => window.open(teamsWebOf(library, entry.path)!, "_blank")}>Open on the web</DropdownMenuItem> : null}
+                    {/* A play's thread reads the file where it lies: only one on the workspace's own host. */}
+                    {runPlay && library.env === workspace.environmentId ? (
+                      <DropdownMenuItem onClick={() => runPlay({ kind: "item", label: entry.name, ref: { at: "file", host: library.host, path: entry.path } })}>Run a play…</DropdownMenuItem>
+                    ) : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
