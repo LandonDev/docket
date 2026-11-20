@@ -1,3 +1,4 @@
+import { POP_OUT_FRAME, popOutCreated, windowOpenHandler } from './popOut'
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -291,9 +292,10 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
   win.webContents.on('did-fail-load', () => releaseTransferFor(id))
   win.webContents.on('render-process-gone', () => releaseTransferFor(id))
 
-  win.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
+  // The page's pop-out opens as a floating child of this window (popOut.ts); anything else goes to the system's browser.
+  win.webContents.setWindowOpenHandler((details) => windowOpenHandler(details, (url) => void shell.openExternal(url)))
+  win.webContents.on('did-create-window', (child, details) => {
+    if (details.frameName === POP_OUT_FRAME) popOutCreated(child)
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
