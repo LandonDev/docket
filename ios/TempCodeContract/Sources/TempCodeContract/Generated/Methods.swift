@@ -2996,6 +2996,15 @@ public enum Methods {
                         self.name = name
                     }
                 }
+                public struct From: Codable, Hashable, Sendable {
+                    public let name: String?
+                    public let address: String
+
+                    public init(name: String? = nil, address: String) {
+                        self.name = name
+                        self.address = address
+                    }
+                }
 
                 public let to: [String]
                 public let cc: [String]
@@ -3004,8 +3013,10 @@ public enum Methods {
                 public let text: String
                 public let html: String?
                 public let attachments: [Attachment]?
+                public let accountId: String?
+                public let from: From?
 
-                public init(to: [String], cc: [String], bcc: [String], subject: String, text: String, html: String? = nil, attachments: [Attachment]? = nil) {
+                public init(to: [String], cc: [String], bcc: [String], subject: String, text: String, html: String? = nil, attachments: [Attachment]? = nil, accountId: String? = nil, from: From? = nil) {
                     self.to = to
                     self.cc = cc
                     self.bcc = bcc
@@ -3013,6 +3024,8 @@ public enum Methods {
                     self.text = text
                     self.html = html
                     self.attachments = attachments
+                    self.accountId = accountId
+                    self.from = from
                 }
             }
 

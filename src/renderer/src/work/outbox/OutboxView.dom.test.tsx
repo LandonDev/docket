@@ -438,4 +438,22 @@ describe("the Outbox", () => {
     fireEvent.click(within(detail()).getByRole("button", { name: "Waiting" }));
     expect(list.className).not.toContain("@max-[40rem]/outbox:hidden");
   });
+
+  it("heads a Teams post as Post in Teams and a Google share by its file, each fact said once, the list keeping the whole summary", async () => {
+    const teams: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "tp1" }, kind: "teams.post", workspaceId: "ws1", summary: "Post in Teams to Esports staff: “Spring LAN is set”", verb: "Post", payload: { chat: "Esports staff", text: "Spring LAN is set" } };
+    const share: OutboxItem = { ...addonCall, state: "held", ref: { at: "host", id: "gs1" }, kind: "share.google", workspaceId: "ws1", summary: "Share Budget.xlsx with dana@purdue.edu (can edit)", verb: "Share", payload: { account: "landon@x", fileId: "1AbC", name: "Budget.xlsx", email: "dana@purdue.edu", role: "writer", notify: false } };
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget"), teams, share]);
+    world.items.set("mac", []);
+    await open();
+    fireEvent.click(screen.getByText("Post in Teams to Esports staff"));
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Post in Teams"));
+    // Esports staff once in the detail: the In row.
+    const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
+    expect(detail.textContent!.split("Esports staff").length - 1).toBe(1);
+    fireEvent.click(screen.getByText("Share Budget.xlsx with dana@purdue.edu (can edit)"));
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Share Budget.xlsx"));
+    expect(detail.textContent!.split("dana@purdue.edu").length - 1).toBe(1);
+    // The list keeps the whole summary.
+    expect(document.querySelector("[data-outbox-list]")!.textContent).toContain("Esports staff");
+  });
 });

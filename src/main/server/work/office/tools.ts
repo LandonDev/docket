@@ -267,7 +267,7 @@ export const OFFICE_TOOLS: OfficeTool[] = [
       const subject = was ? `${a.replyTo ? 'Re' : 'Fw'}: ${was.subject.replace(/^(re|fw|fwd):\s*/i, '')}` : a.subject
       if (!to.length) return fail('Name at least one recipient in `to`.')
       // Outlook puts the mail it answers or passes on under the body: the Outbox says so (milestone 50's hold review).
-      const outlookAdds = was ? `The mail from ${was.from}, "${was.subject}" (${was.at.slice(0, 10)}), ${a.forward ? 'with its attachments, ' : ''}under this one` : undefined
+      const outlookAdds = was ? `The mail from ${was.from}, "${was.subject}" (${new Date(was.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}), ${a.forward ? 'with its attachments, ' : ''}under this one` : undefined
       // Held as it goes: the html cleaned now, so the Outbox shows the body Outlook will get.
       const item = env.ctx.held.create({
         kind: 'office.mail.send',

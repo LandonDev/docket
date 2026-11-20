@@ -104,4 +104,9 @@ describe("WORK_VIEWS", () => {
       expect(typeof (await view.chunk.load()).View).toBe("function");
     }
   });
+
+  it("has every view say whether it reads LifeOS: Files and Routines read the host alone, so no sign-in or LifeOS line stands over them", () => {
+    const reads = Object.fromEntries(Object.values(WORK_VIEWS).map((view) => [view.id, view.readsLifeos]));
+    expect(reads).toEqual({ mail: true, tasks: true, agenda: true, docs: true, files: false, routines: false });
+  });
 });

@@ -73,7 +73,8 @@ describe('Send from TempCode', () => {
   const seenOf = (id: string) => {
     const m = (rig.lifeos.rows.get(id) as { message: { to: { address: string }[]; cc: { address: string }[]; bcc: { address: string }[]; subject: string; text: string; html?: string } & Files }).message
     const attachments = [...(m.attachments ?? []).map((f) => ({ id: f.storageId, name: f.name })), ...(m.forwardParts ?? []).map((f) => ({ id: `part:${f.partId}`, name: f.name }))]
-    return { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text, html: m.html ?? '', attachments }
+    const sender = m as { accountId?: string; from?: { name?: string; address: string } }
+    return { to: m.to.map((a) => a.address), cc: m.cc.map((a) => a.address), bcc: m.bcc.map((a) => a.address), subject: m.subject, text: m.text, html: m.html ?? '', attachments, ...(sender.accountId ? { accountId: sender.accountId } : {}), ...(sender.from ? { from: sender.from } : {}) }
   }
 
   beforeEach(async () => {
@@ -169,6 +170,27 @@ describe('Send from TempCode', () => {
     expect(sends()).toHaveLength(1)
     // with neither HTML nor files on the row, the older client's word is enough
     expect(stillSeen({ kind: 'mail', to: [], cc: [], bcc: [], subject: 'S', text: 'T' }, { to: [], cc: [], bcc: [], subject: 'S', text: 'T' })).toBe(true)
+  })
+
+  it('sends nothing when the account or the From changed after his save (the hold review)', async () => {
+    const id = rig.lifeos.draft({ to: ['dana@purdue.edu'], subject: 'Re: budget', text: 'Attached.' })
+    rig.lifeos.fire()
+    await settled()
+    const message = (rig.lifeos.rows.get(id) as { message: { accountId?: string; from?: { name?: string; address: string } } }).message
+    message.accountId = 'acc_purdue'
+    message.from = { name: 'Landon', address: 'landon@purdue.edu' }
+    const seen = seenOf(id)
+    message.accountId = 'acc_personal'
+    await expect(rig.rpc('work.mail.send', { id, seen })).rejects.toThrow(CHANGED)
+    message.accountId = 'acc_purdue'
+    message.from = { name: 'Landon', address: 'events@purdue.edu' }
+    await expect(rig.rpc('work.mail.send', { id, seen })).rejects.toThrow(CHANGED)
+    // an older client names no sender: a row that has one is refused
+    message.from = { name: 'Landon', address: 'landon@purdue.edu' }
+    const { accountId: _account, from: _from, ...older } = seen
+    await expect(rig.rpc('work.mail.send', { id, seen: older })).rejects.toThrow(CHANGED)
+    expect(sends()).toEqual([])
+    expect(await rig.rpc('work.mail.send', { id, seen: { ...seen, from: { name: 'Landon', address: 'LANDON@purdue.edu' } } })).toEqual({ id, via: 'hold' })
   })
 
   it("says so when the hold's send fails, never Sent", async () => {

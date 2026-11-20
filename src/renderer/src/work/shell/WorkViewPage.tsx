@@ -62,7 +62,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const View = useMemo(() => lazy(() => def.chunk.load().then((m) => ({ default: m.View }))), [def, attempt]);
   const Icon = def.icon;
   // A view that reads the host alone (Routines) is never behind LifeOS's sign-in or its line.
-  const gated = def.readsLifeos !== false;
+  const gated = def.readsLifeos;
   // The session's own state counts too: its JWT can be refused or go unanswered while the host says connected.
   const signedOut = gated && (state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused");
   const unreachable = gated && (state === "unreachable" || session.state === "unreachable");

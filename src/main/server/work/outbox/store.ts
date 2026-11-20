@@ -385,7 +385,7 @@ export class HeldStore {
     const at = this.now()
     const done = this.db
       .prepare(
-        `UPDATE ${HELD_TABLE} SET state = 'sending', decided_by = ?, decided_at = ?, grant_id = ?, error = NULL, outcome_unknown = 0, attempts = attempts + 1, updated_at = ?
+        `UPDATE ${HELD_TABLE} SET state = 'sending', decided_by = ?, decided_at = ?, grant_id = ?, error = NULL, outcome_unknown = 0, attempts = attempts + 1, updated_at = MAX(updated_at + 1, ?)
          WHERE id = ? AND state IN (${marks(PRESSABLE)}) AND (outcome_unknown = 0 OR ? = 1)`
       )
       .run(decidedBy, at, grantId, at, id, ...PRESSABLE, opts.again ? 1 : 0)
@@ -395,7 +395,7 @@ export class HeldStore {
   /** How a claimed send ended. Only a row that is `sending` is settled. */
   settle(id: string, state: 'sent' | 'failed' | 'stale', out: { result?: ActResult | null; error?: string | null; unknown?: boolean } = {}): HeldRow | null {
     const done = this.db
-      .prepare(`UPDATE ${HELD_TABLE} SET state = ?, result = ?, error = ?, outcome_unknown = ?, updated_at = ? WHERE id = ? AND state = 'sending'`)
+      .prepare(`UPDATE ${HELD_TABLE} SET state = ?, result = ?, error = ?, outcome_unknown = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'sending'`)
       .run(state, out.result ? JSON.stringify(out.result) : null, out.error ?? null, state === 'failed' && out.unknown ? 1 : 0, this.now(), id)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
@@ -404,7 +404,7 @@ export class HeldStore {
   discard(id: string, decidedBy: string): HeldRow | null {
     const at = this.now()
     const done = this.db
-      .prepare(`UPDATE ${HELD_TABLE} SET state = 'discarded', decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ? AND state IN (${marks(PRESSABLE)})`)
+      .prepare(`UPDATE ${HELD_TABLE} SET state = 'discarded', decided_by = ?, decided_at = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)})`)
       .run(decidedBy, at, at, id, ...PRESSABLE)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
@@ -412,20 +412,20 @@ export class HeldStore {
   /** The screen or the store a waiting act was read from moved on: it can no longer be carried out as shown. */
   stale(id: string, why: string): HeldRow | null {
     const done = this.db
-      .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = ? WHERE id = ? AND state IN ('held', 'live')`)
+      .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN ('held', 'live')`)
       .run(why, this.now(), id)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
   /** A LifeOS send the host recorded as sent came back failed in LifeOS's own lane: it waits on him again. */
   failSent(id: string, error: string): HeldRow | null {
-    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'failed', error = ?, updated_at = ? WHERE id = ? AND state = 'sent'`).run(error, this.now(), id)
+    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'failed', error = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'sent'`).run(error, this.now(), id)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
   /** A failed row whose end was learned later (LifeOS says an interrupted send did go, or no longer has the mail). */
   settleFailed(id: string, state: 'sent' | 'stale', error: string | null = null): HeldRow | null {
-    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = ?, error = ?, updated_at = ? WHERE id = ? AND state = 'failed'`).run(state, error, this.now(), id)
+    const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = ?, error = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state = 'failed'`).run(state, error, this.now(), id)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
 
@@ -434,7 +434,7 @@ export class HeldStore {
     let n = 0
     for (const id of sessionIds)
       for (const row of (this.db.prepare(`${SELECT} WHERE session_id = ? AND state IN (${marks(PRESSABLE)})`).all(id, ...PRESSABLE) as unknown as Row[]).map(decode)) {
-        const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = ? WHERE id = ? AND state IN (${marks(PRESSABLE)})`).run(why, this.now(), row.id, ...PRESSABLE)
+        const done = this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN (${marks(PRESSABLE)})`).run(why, this.now(), row.id, ...PRESSABLE)
         if (Number(done.changes) === 1) {
           n++
           this.told(row.id)
@@ -446,7 +446,7 @@ export class HeldStore {
   /** Change exactly what will go. Only while the row is held: a live act is the screen as it was read, and a row being sent is spoken for. */
   edit(id: string, next: { payload: unknown; summary: string; verb: string; account?: string | null }): HeldRow | null {
     const done = this.db
-      .prepare(`UPDATE ${HELD_TABLE} SET payload = ?, summary = ?, verb = ?, account = COALESCE(?, account), updated_at = ? WHERE id = ? AND state IN ('held', 'failed')`)
+      .prepare(`UPDATE ${HELD_TABLE} SET payload = ?, summary = ?, verb = ?, account = COALESCE(?, account), updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND state IN ('held', 'failed')`)
       .run(JSON.stringify(next.payload ?? null), next.summary, next.verb, next.account ?? null, this.now(), id)
     return Number(done.changes) === 1 ? this.told(id) : null
   }
@@ -461,10 +461,10 @@ export class HeldStore {
     // A LifeOS row is the exception: LifeOS holds what became of it, and the watcher and the next press both ask it first.
     const interrupted = Number(
       this.db
-        .prepare(`UPDATE ${HELD_TABLE} SET state = 'failed', error = ?, outcome_unknown = CASE WHEN run_key LIKE 'lifeos:%' THEN 0 ELSE 1 END, updated_at = ? WHERE state = 'sending'`)
+        .prepare(`UPDATE ${HELD_TABLE} SET state = 'failed', error = ?, outcome_unknown = CASE WHEN run_key LIKE 'lifeos:%' THEN 0 ELSE 1 END, updated_at = MAX(updated_at + 1, ?) WHERE state = 'sending'`)
         .run(INTERRUPTED, at).changes
     )
-    const lost = Number(this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = ? WHERE state = 'live'`).run(LIVE_LOST, at).changes)
+    const lost = Number(this.db.prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = MAX(updated_at + 1, ?) WHERE state = 'live'`).run(LIVE_LOST, at).changes)
     return { interrupted, lost }
   }
 
@@ -473,7 +473,7 @@ export class HeldStore {
     const at = this.now()
     return Number(
       this.db
-        .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = ? WHERE workspace_id = ? AND state IN (${marks(PRESSABLE)})`)
+        .prepare(`UPDATE ${HELD_TABLE} SET state = 'stale', error = ?, updated_at = MAX(updated_at + 1, ?) WHERE workspace_id = ? AND state IN (${marks(PRESSABLE)})`)
         .run(why, at, workspaceId, ...PRESSABLE).changes
     )
   }

@@ -48,6 +48,13 @@ describe("an Outlook calendar act", () => {
     expect(when).toContain(d.format(Date.parse("2026-11-22T01:00:00")));
   });
 
+  it("reads a reply's bound end and place: When runs to the end, Where names the room", () => {
+    const rows = officeOpFields({ ...reply, start: "2026-11-22T12:00:00Z", end: "2026-11-22T13:00:00Z", location: "Room 9" });
+    expect(rows.find((r) => r.label === "When")!.value).toBe(whenWords(Date.parse("2026-11-22T12:00:00Z"), Date.parse("2026-11-22T13:00:00Z")));
+    expect(rows.find((r) => r.label === "Where")!.value).toBe("Room 9");
+    expect(rows.map((r) => r.label)).toEqual(["Event", "When", "Where", "From", "Reply", "Note"]);
+  });
+
   it("draws its own view, with no host id and no JSON", () => {
     expect(officeActs["office.calendar.op"].chunk).not.toBeNull();
     const { container } = render(<View item={{ kind: "office.calendar.op", payload: invite } as never} env="mac" />);

@@ -44,8 +44,8 @@ export interface WorkViewDef {
   fact(workspace: WorkspaceMeta): string | null;
   /** The fact as a hook, for one that reads LifeOS live; called once per row on every column render, in place of `fact`. */
   useFact?: (workspace: WorkspaceMeta, sector: SectorKey) => string | null;
-  /** false for a view whose data is the host's own (Routines): it is never behind LifeOS's sign-in or its "did not answer" line. */
-  readsLifeos?: boolean;
+  /** Whether the view reads LifeOS. Every view says: true puts it behind LifeOS's sign-in and its "did not answer" line; false (Routines, Files: the host's own data) never is. */
+  readsLifeos: boolean;
   chunk: Chunk<WorkViewModule>;
 }
 

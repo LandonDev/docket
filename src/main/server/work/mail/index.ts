@@ -40,8 +40,8 @@ export const rowFiles = (message: MailRow['message']): string[] =>
   ].sort()
 
 /**
- * Whether the row still says what he pressed Send on: the same people, subject, words, HTML and files. A client
- * that sent no HTML or no files (an older one) saw none: a row that has some is refused, never sent unseen.
+ * Whether the row still says what he pressed Send on: the same people, subject, words, HTML, files, account and
+ * From. A client that sent no HTML, files or sender (an older one) saw none: a row that has some is refused, never sent unseen.
  */
 export function stillSeen(message: MailRow['message'], seen: MailSeen): boolean {
   const norm = (list: readonly string[]) => list.map((x) => x.trim().toLowerCase())
@@ -53,8 +53,16 @@ export function stillSeen(message: MailRow['message'], seen: MailSeen): boolean 
     String(message.subject ?? '') === seen.subject &&
     String(message.text ?? '').trim() === seen.text.trim() &&
     String(message.html ?? '') === (seen.html ?? '') &&
-    same(rowFiles(message), files)
+    same(rowFiles(message), files) &&
+    String(message.accountId ?? '') === (seen.accountId ?? '') &&
+    sender(message.from) === sender(seen.from)
   )
+}
+
+/** A From as the press compares it: its name as written and its address in any case; none is the empty word. */
+const sender = (from: unknown): string => {
+  const f = from as { name?: unknown; address?: unknown } | null | undefined
+  return f?.address ? `${String(f.name ?? '').trim()}|${String(f.address).trim().toLowerCase()}` : ''
 }
 
 function mustApprove(by: Caller): void {

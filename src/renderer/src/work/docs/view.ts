@@ -13,6 +13,7 @@ export const docsView: WorkViewDef = {
   label: "Docs",
   icon: Doc,
   order: 3,
+  readsLifeos: true,
   fact: () => null,
   chunk: defineChunk("work-docs-view", () => import("./DocsView")),
 };

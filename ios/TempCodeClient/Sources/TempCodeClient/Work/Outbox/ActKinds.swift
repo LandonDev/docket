@@ -14,7 +14,7 @@ public extension OutboxModel {
         var body: String?
         switch kind {
         case .formPublish:
-            if let title = word(o["title"]) { rows.append(("Form", title)) }
+            // The form's name is the heading's (`kindHeading`), said once.
             if case .number(let n)? = o["questions"] { rows.append(("Questions", String(Int(n)))) }
             body = word(o["content"])
         case .shareGoogle:
@@ -38,9 +38,9 @@ public extension OutboxModel {
                     let span: Double? = if case .number(let n)? = o["durationFrames"] { n } else { nil }
                     rows.append(("At", span.map { $0 > 1 ? "\(at), for \(Int($0)) frames" : at } ?? at))
                 }
-                let marks = marksWords(pin: o["pin"], shapes: o["shapes"])
-                if let words = marks.words { rows.append(("Marks", words)) }
-                if let changes = marks.changes { rows.append(("Goes as", changes)) }
+                // Each mark where it lands and how big, so two posts that differ only there never read the same.
+                rows += markRows(pin: o["pin"], shapes: o["shapes"], height: o["height"])
+                if let changes = marksWords(pin: o["pin"], shapes: o["shapes"]).changes { rows.append(("Goes as", changes)) }
                 body = word(o["text"])
             }
         case .computerAct:
@@ -51,12 +51,33 @@ public extension OutboxModel {
             if let window = word(o["window"]) { rows.append(("Window", window)) }
             if case .object(let args)? = o["args"], let url = word(args["url"]) { rows.append(("URL", url)) }
             if case .object(let read)? = o["read"], let on = word(read["on"]) { rows.append(("On", on)) }
+            // Every step in order, what it types in full: a batch's tail never hides behind its cut title.
+            if case .object(let args)? = o["args"] { rows += stepRows(args: args, targets: o["targets"]) }
         default:
             return nil
         }
         var view = PayloadView(fields: rows.map { Field(key: $0.0.lowercased(), path: [$0.0], label: $0.0, value: $0.1, edit: nil) })
         if let body { view.body = .init(path: ["body"], text: body, readOnly: true) }
         return view
+    }
+
+    /// The detail's heading for a kind whose rows carry the rest, so each fact is said once there (the
+    /// list keeps the whole summary): a form's publish names the form, a Google share the file (Person and
+    /// Access are rows), a Teams post nothing but the act (the chat is the In row, the post the body). Nil
+    /// for any other kind. `sent` gives the past. The desktop's `kindHeading`, word for word.
+    nonisolated static func kindHeading(kind: OutboxItem.Kind, payload: JSONValue?, sent: Bool) -> String? {
+        let o: [String: JSONValue] = if case .object(let o)? = payload { o } else { [:] }
+        switch kind {
+        case .formPublish:
+            return word(o["title"]).map { "\(sent ? "Published" : "Publish") \($0)" }
+        case .shareGoogle:
+            return word(o["name"]).map { "\(sent ? "Shared" : "Share") \($0)" }
+        case .teamsPost:
+            if case .string? = o["html"] { return nil }
+            return sent ? "Posted in Teams" : "Post in Teams"
+        default:
+            return nil
+        }
     }
 
     /// What a row's second line says from the summary: the words after its first ": " ("Share
@@ -113,6 +134,187 @@ public extension OutboxModel {
         let changes = order.compactMap { lossy[$0] }.joined(separator: "; ")
         let cap = { (t: String) in t.prefix(1).uppercased() + t.dropFirst() }
         return (words.map(cap), changes.isEmpty ? nil : cap(changes))
+    }
+
+    // MARK: - a computer act's steps (the desktop's `stepRows`)
+
+    private nonisolated static let clicks = ["left_click": "Clicks", "right_click": "Right-clicks", "middle_click": "Middle-clicks", "double_click": "Double-clicks", "triple_click": "Triple-clicks"]
+
+    /// An element as the host bound it (`button:Send < group:Compose`): its own role and name, `button "Send"`.
+    nonisolated static func sigWords(_ sig: JSONValue?) -> String? {
+        guard case .string(let sig)? = sig, !sig.isEmpty else { return nil }
+        let own = sig.components(separatedBy: " < ")[0]
+        guard let colon = own.firstIndex(of: ":") else { return own }
+        let role = String(own[..<colon]), name = String(own[own.index(after: colon)...])
+        return name.isEmpty ? role : "\(role) \(json(.string(name)))"
+    }
+
+    /// Every step of the call in order, as he approves it: what each types or pastes in full (never
+    /// cut), what each clicks by the element the host bound, the keys it presses. A batch is a list of
+    /// these; a single act is one. Steps that send nothing (a screenshot, a zoom) are left out.
+    nonisolated static func stepRows(args: [String: JSONValue], targets: JSONValue?) -> [(String, String)] {
+        let steps: [[String: JSONValue]]
+        if case .array(let list)? = args["actions"] {
+            steps = list.compactMap { if case .object(let o) = $0 { o } else { nil } }
+        } else if case .string? = args["action"] {
+            steps = [args]
+        } else {
+            steps = []
+        }
+        let bound: [[String: JSONValue]] = if case .array(let list)? = targets { list.compactMap { if case .object(let o) = $0 { o } else { nil } } } else { [] }
+        var rows: [(String, String)] = []
+        // Where the focus is as the steps run: the element the host bound as focused when the call was held, then
+        // whatever a step puts it on (a click, a set value, a typed text into a named element); a Tab or a step on no
+        // named element leaves it unknown, said plainly.
+        var focus: String? = sigWords(bound.first { $0["param"] == .string("focus") }?["sig"])
+        for (i, a) in steps.enumerated() {
+            func target(_ param: String) -> [String: JSONValue]? {
+                bound.first { $0["step"] == .number(Double(i)) && $0["param"] == .string(param) }
+            }
+            func whereAt(_ param: String, _ point: JSONValue?, _ element: JSONValue?) -> String {
+                let t = target(param) ?? (param == "element" ? target("point") : nil)
+                if let name = sigWords(t?["sig"]) { return name }
+                if case .array(let xy)? = point, xy.count == 2 { return "the point \(number(xy[0])),\(number(xy[1]))" }
+                if case .number? = element { return "element \(number(element!))" }
+                return "where the cursor is"
+            }
+            let on = { whereAt("element", a["coordinate"], a["element"]) }
+            let text: String? = if case .string(let t)? = a["text"] { t } else { nil }
+            // A typed text, a paste or a key goes to its own element when it names one (bound by the host), else to the focus.
+            let own = sigWords((target("element") ?? target("point"))?["sig"])
+            let elementWords: String? = if case .number? = a["element"] { "element \(number(a["element"]!))" } else { nil }
+            let into = own ?? elementWords ?? focus ?? "the focus"
+            let count: (JSONValue?) -> Double? = { if case .number(let n)? = $0, n.isFinite, n != 0 { n } else { nil } }
+            guard case .string(let action)? = a["action"] else { continue }
+            switch action {
+            case "type": if let text { rows.append(("Types", "into \(into): \(text)")) }
+            case "paste": if let text { rows.append(("Pastes", "into \(into): \(text)")) }
+            case "set_value":
+                let value: String = if case .string(let v)? = a["value"] { v } else { text ?? "" }
+                rows.append(("Sets", "\(on()) to \(json(.string(value)))"))
+            case "key":
+                if let text { rows.append(("Presses", text + (count(a["repeat"]).map { $0 > 1 ? ", \(number(.number($0))) times" : "" } ?? "") + ", in \(into)")) }
+            case "hold_key":
+                if let text { rows.append(("Holds", text + (count(a["duration"]).map { " for \(number(.number($0))) s" } ?? "") + ", in \(into)")) }
+            case "left_click_drag":
+                rows.append(("Drags", "from \(whereAt("start_element", a["start_coordinate"], a["start_element"])) to \(on())"))
+            case "scroll":
+                let direction = word(a["scroll_direction"]) ?? "down"
+                rows.append(("Scrolls", "\(direction)\(count(a["scroll_amount"]).map { " \(number(.number($0)))" } ?? "") at \(on())"))
+            case "perform":
+                rows.append(("Performs", "\(word(a["name"]) ?? "an action") on \(on())"))
+            case "select_text":
+                rows.append(("Selects", json(.string(text ?? [word(a["prefix"]), word(a["suffix"])].compactMap { $0 }.joined(separator: " … ")))))
+            case "save_as":
+                rows.append(("Saves as", word(a["path"]) ?? word(a["named"]) ?? "a file"))
+            case "mouse_move":
+                rows.append(("Moves to", on()))
+            case "left_mouse_down", "left_mouse_up":
+                rows.append((action == "left_mouse_down" ? "Presses the mouse" : "Lets go of the mouse", on()))
+            default:
+                if let click = clicks[action] {
+                    rows.append((click, on()))
+                } else if !["screenshot", "zoom", "cursor_position", "wait"].contains(action) {
+                    let label = action.replacingOccurrences(of: "_", with: " ")
+                    rows.append((label.prefix(1).uppercased() + label.dropFirst(), text ?? on()))
+                }
+            }
+            // Where this step leaves the focus, for the steps after it.
+            let named = own ?? elementWords
+            if clicks[action] != nil || ["set_value", "select_text", "left_mouse_down"].contains(action) {
+                focus = named
+            } else if ["type", "paste", "key", "hold_key"].contains(action), let named {
+                focus = named
+            }
+            if action == "key" || action == "hold_key", let text, text.range(of: #"\btab\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+                focus = nil
+            }
+        }
+        return rows
+    }
+
+    /// A number as the desktop prints it: 3, 1.5.
+    private nonisolated static func number(_ value: JSONValue) -> String {
+        guard case .number(let n) = value else { return json(value) }
+        return n.rounded() == n && abs(n) < 1e15 ? String(Int(n)) : String(n)
+    }
+
+    // MARK: - a Frame.io comment's marks (the desktop's `markRows`)
+
+    /// A share of the frame as a percentage, exact (the value that goes, float noise trimmed): 31%, 15.5%,
+    /// 12.3456%. The desktop's `+(n * 100).toPrecision(10)`.
+    private nonisolated static func pct(_ value: JSONValue?) -> String {
+        guard case .number(let n)? = value else { return "?" }
+        return "\(percentFormat.string(from: NSNumber(value: n * 100)) ?? String(n * 100))%"
+    }
+
+    private nonisolated static let percentFormat: NumberFormatter = {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.numberStyle = .decimal
+        f.usesGroupingSeparator = false
+        f.usesSignificantDigits = true
+        f.maximumSignificantDigits = 10
+        return f
+    }()
+
+    /// A mark's line as Frame.io draws it: its share of the frame's height in pixels, at least 1 (frameio/map.ts `pixels`).
+    private nonisolated static func thickness(_ width: JSONValue?, _ height: Double) -> String {
+        guard case .number(let w)? = width else { return "" }
+        return ", \(max(1, Int((w * height).rounded()))) px thick"
+    }
+
+    private nonisolated static func at2(_ x: JSONValue?, _ y: JSONValue?) -> String { "\(pct(x)) across, \(pct(y)) down" }
+
+    /// A mark's colour as a word: the hue's name, or white, grey or black.
+    nonisolated static func colourWord(_ hex: JSONValue?) -> String {
+        guard case .string(let hex)? = hex, hex.count == 7, hex.hasPrefix("#"), let rgb = Int(hex.dropFirst(), radix: 16) else { return "" }
+        let r = Double((rgb >> 16) & 0xff) / 255, g = Double((rgb >> 8) & 0xff) / 255, b = Double(rgb & 0xff) / 255
+        let high = max(r, g, b), low = min(r, g, b)
+        let light = (high + low) / 2
+        let sat = high == low ? 0 : (high - low) / (1 - abs(2 * light - 1))
+        if sat < 0.2 { return light > 0.85 ? "white" : light < 0.15 ? "black" : "grey" }
+        let d = high - low
+        let hue = (high == r ? ((g - b) / d).truncatingRemainder(dividingBy: 6) : high == g ? (b - r) / d + 2 : (r - g) / d + 4) * 60
+        let h = (hue + 360).truncatingRemainder(dividingBy: 360)
+        return h < 15 || h >= 345 ? "red" : h < 45 ? "orange" : h < 70 ? "yellow" : h < 160 ? "green" : h < 200 ? "teal" : h < 255 ? "blue" : h < 290 ? "purple" : "pink"
+    }
+
+    /// One row per mark: the pin, then each shape's kind, where it is, how big and its colour.
+    nonisolated static func markRows(pin: JSONValue?, shapes: JSONValue?, height: JSONValue? = nil) -> [(String, String)] {
+        let frame: Double = if case .number(let h)? = height, h > 0 { h } else { 1080 }
+        var rows: [(String, String)] = []
+        if case .object(let p)? = pin { rows.append(("Pin", "at \(at2(p["x"], p["y"]))")) }
+        guard case .array(let list)? = shapes else { return rows }
+        for raw in list {
+            guard case .object(let s) = raw else { continue }
+            let colour = colourWord(s["color"])
+            let tail = (colour.isEmpty ? "" : ", \(colour)") + thickness(s["width"], frame)
+            let doubled: (JSONValue?) -> JSONValue? = { if case .number(let n)? = $0 { .number(n * 2) } else { nil } }
+            var words: String?
+            switch word(s["tool"]) {
+            case "rect": words = "A box at \(at2(s["x"], s["y"])), \(pct(s["w"])) wide and \(pct(s["h"])) high\(tail)"
+            case "ellipse": words = "An oval centred \(at2(s["cx"], s["cy"])), \(pct(doubled(s["rx"]))) wide and \(pct(doubled(s["ry"]))) high\(tail)"
+            case "line": words = "A line from \(at2(s["x1"], s["y1"])) to \(at2(s["x2"], s["y2"]))\(tail)"
+            case "arrow": words = "An arrow from \(at2(s["x1"], s["y1"])) to \(at2(s["x2"], s["y2"]))\(tail)"
+            case "pen":
+                // Every point, in order: Frame.io gets a straight line between each pair (frameio/map.ts), so the whole path is what goes.
+                let points: [String] = if case .array(let list)? = s["points"] {
+                    list.map { point in
+                        guard case .array(let xy) = point else { return at2(nil, nil) }
+                        return at2(xy.count > 0 ? xy[0] : nil, xy.count > 1 ? xy[1] : nil)
+                    }
+                } else { [] }
+                if points.count == 1 {
+                    words = "A single point at \(points[0]), which Frame.io does not draw\(tail)"
+                } else if points.count > 1 {
+                    words = "A drawn line through \(points.joined(separator: "; "))\(tail)"
+                }
+            default: break
+            }
+            if let words { rows.append(("Mark", words)) }
+        }
+        return rows
     }
 
     private nonisolated static let access = ["reader": "Can view", "commenter": "Can comment", "writer": "Can edit"]

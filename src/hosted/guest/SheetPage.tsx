@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { SheetCanvas, type SheetHandle } from "work-kit/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { StatusMark } from "@renderer/components/ui/status";
-import type { Opened, Session } from "./session";
+import { OpenFailed, type Opened, type Session } from "./session";
 
 /**
  * A sheet on the hosted page: the owner's grid (work-kit/sheet) on the live
@@ -48,12 +48,22 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
     let stopped = false;
     let tries = 0;
     const l = live.current;
+    // Again, with backoff: after five tries in a row, the page cannot be reached (the unavailable screen, with Retry).
+    const again = (delay?: number): void => {
+      if (++tries > 5) return onDown();
+      setTimeout(() => void connect(), delay ?? Math.min(8000, 500 * 2 ** tries));
+    };
     const connect = async (): Promise<void> => {
       let token: string;
       try {
         token = (await session.token()).token;
-      } catch {
-        return stopped ? undefined : onGone();
+      } catch (err) {
+        if (stopped) return;
+        // Only a link the service says is over (expired, revoked) ends the page; a token refresh that failed in passing
+        // (the network, the service, too many tries) keeps the grid under Reconnecting and tries again.
+        if (err instanceof OpenFailed && err.why === "gone") return onGone();
+        setOffline(true);
+        return again();
       }
       if (stopped) return;
       const ws = new WebSocket(session.socketUrl(opened));
@@ -104,9 +114,8 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
         if (stopped) return;
         setOffline(true);
         if (e.code === 4403) return onGone();
-        if (++tries > 5) return onDown();
         // 4401: the token ran out; anything else: the line dropped. Either way, again with a fresh token.
-        setTimeout(() => void connect(), e.code === 4401 ? 0 : Math.min(8000, 500 * 2 ** tries));
+        again(e.code === 4401 ? 0 : undefined);
       };
     };
     void connect();

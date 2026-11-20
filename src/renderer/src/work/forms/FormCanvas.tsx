@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import type { FormBody, FormQuestion, FormResponses, FormView } from "@shared/contract-work-forms";
 import { Check, ChevronDown, CircleDot, Copy, FileText, MoreHorizontal, Plus, TextCursor, Trash2, X, CaseSensitive } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -19,7 +19,7 @@ import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { Table } from "../icons";
 import { linkFormHost, type FormHost } from "./host";
-import { answerBars, chartQuestion, newId, optionDiff, plural, shownQuestions, submittedTime, TYPE_WORDS, type Shown } from "./model";
+import { answerBars, chartQuestion, newId, optionDiff, plural, resolvePick, shownQuestions, submittedTime, TYPE_WORDS, type Pick, type Shown } from "./model";
 
 /**
  * The form kind (docs/agents/work-forms.md; the approved page is
@@ -110,8 +110,12 @@ export function Body(props: Props) {
     if (state?.half !== half) setState({ half });
   }, [half, state?.half, setState]);
 
-  const [current, setCurrent] = useState(0);
-  useFeeds(shell, host, store, view, half, current, setCurrent, slot.edits !== null);
+  // One selection for the stepper and the body: the picked change by its id, re-seated when a decision takes it away.
+  const [pick, setPick] = useState<Pick>({ id: null, at: 0 });
+  const suggestions = view?.suggestions;
+  const current = resolvePick(suggestions ?? [], pick);
+  const step = useCallback((n: number) => setPick({ id: suggestions?.[n]?.id ?? null, at: n }), [suggestions]);
+  useFeeds(shell, host, store, view, half, current, step, slot.edits !== null, slot.edits !== null && slot.saveError !== null);
   const saveError = slot.saveError;
   const responsesError = half === "responses" ? slot.responsesError : null;
   useEffect(() => {
@@ -138,7 +142,7 @@ export function Body(props: Props) {
     <div data-form className="flex min-h-0 min-w-0 flex-1 flex-col">
       {view.state === "closed" && view.closedAt ? <ClosedLine at={view.closedAt} reopen={() => run(host.close(true), store, "Couldn't reopen the form")} /> : null}
       {half === "questions" ? (
-        <Questions key={view.itemId} view={view} host={host} store={store} current={view.suggestions.length ? current : -1} onStep={setCurrent} />
+        <Questions key={view.itemId} view={view} host={host} store={store} current={current} onStep={step} />
       ) : (
         <Responses view={view} host={host} store={store} item={props.item} shell={shell} />
       )}
@@ -163,6 +167,8 @@ function useFeeds(
   setCurrent: (n: number) => void,
   /** his edits stand unsaved (waiting, saving or refused), so the questions draw no suggested change (`Questions`) */
   editing: boolean,
+  /** the save that carries them failed: they stand until Retry lands them */
+  refused: boolean,
 ): void {
   const mode = view?.mode;
   const published = view ? view.state !== "draft" : false;
@@ -176,26 +182,29 @@ function useFeeds(
 
   const suggestions = view?.suggestions;
   // A change is decided only where it is drawn: on Questions, and only while no edit of his stands unsaved over them (the
-  // questions then draw his words, not the diffs, through a failed save too, until the save that carries them lands).
-  const shown = half === "questions" && !editing;
+  // questions then draw his words, not the diffs, until the save that carries them lands). While that save is on its way
+  // the stepper stays drawn with its verbs off (`held`), so the bar does not flicker at each pause in his typing; once it
+  // has failed, the state line says so with Retry and the stepper goes until the save lands.
+  const shown = half === "questions" && !refused;
   useEffect(() => {
     // A change is a question: while Responses shows none is on screen, so the frame draws no stepper (no "0/N", no verbs
-    // waiting on nothing) and the bar's Questions control is the way back to them (`Bar`). The same while his edits hide them.
+    // waiting on nothing) and the bar's Questions control is the way back to them (`Bar`).
     if (!suggestions?.length || !shown) return shell.review(null);
     // A press that reaches the adapter while his edits hide the diffs settles nothing he cannot see.
     const hidden = (): boolean => store.get().edits !== null;
     const ids = (w: number | { group: string } | "all"): { ids: string[] } | "all" => (typeof w === "number" ? { ids: [suggestions[w]?.id].filter(Boolean) } : "all");
     const review: ReviewAdapter = {
       groups: [{ id: "form", label: "Questions", by: suggestions[0].by, count: suggestions.length }],
-      index: Math.min(current, suggestions.length - 1),
+      index: current,
       count: suggestions.length,
+      held: editing,
       step: setCurrent,
       accept: (w) => (hidden() ? Promise.resolve() : run(host.review(ids(w), "accept"), store, "Couldn't accept the change")),
       reject: (w) => (hidden() ? Promise.resolve() : run(host.review(ids(w), "reject"), store, "Couldn't reject the change")),
     };
     shell.review(review);
     return () => shell.review(null);
-  }, [shell, host, store, suggestions, shown, current, setCurrent]);
+  }, [shell, host, store, suggestions, shown, editing, current, setCurrent]);
 
   const written = view?.written;
   const waiting = suggestions?.length ?? 0;
@@ -422,11 +431,13 @@ function Questions({ view, host, store, current, onStep }: { view: FormView; hos
   const editable = view.state !== "closed";
   const edit = (next: FormBody): void => saver.later(next);
 
-  const shown = useMemo(() => shownQuestions(body, edits ? [] : view.suggestions), [body, edits, view.suggestions]);
+  const shown = useMemo(() => shownQuestions(body, edits ? [] : view.suggestions, current), [body, edits, view.suggestions, current]);
   const list = useRef<HTMLDivElement>(null);
+  // The selected change comes into view whenever it is another change, a re-seat after a decision included.
+  const selected = view.suggestions[current]?.id;
   useEffect(() => {
-    if (current >= 0) list.current?.querySelector(`[data-change="${current}"]`)?.scrollIntoView?.({ block: "nearest" });
-  }, [current]);
+    if (selected) list.current?.querySelector(`[data-change="${current}"]`)?.scrollIntoView?.({ block: "nearest" });
+  }, [selected, current]);
 
   const setQuestion = (id: string, q: FormQuestion | null): void =>
     edit({ ...body, questions: q ? body.questions.map((x) => (x.id === id ? q : x)) : body.questions.filter((x) => x.id !== id) });
@@ -599,10 +610,10 @@ function QuestionBlock({
       ) : (
         <div className="text-sm leading-5 font-medium">
           {label}
-          {q.required && mark !== "del" ? <span className="text-muted-foreground"> *</span> : null}
+          <Required q={q} was={mark === "change" ? was : undefined} gone={mark === "del"} />
         </div>
       )}
-      <Field q={q} was={mark === "change" ? was : undefined} editing={editing} onChange={onChange} />
+      <Field q={q} was={mark === "change" ? was : undefined} proposed={mark === "add" || mark === "change"} editing={editing} onChange={onChange} />
       {editing ? <EditRow q={q} onChange={onChange} /> : null}
     </div>
   );
@@ -627,15 +638,34 @@ function SectionEdit({ q, onChange }: { q: FormQuestion; onChange(q: FormQuestio
   );
 }
 
+/**
+ * Whether an answer is needed: the filler's asterisk at rest; a change that turns it on or off says so in words, tinted as
+ * the label's own change is, since a lone struck asterisk is too small to read as a decision.
+ */
+function Required({ q, was, gone }: { q: FormQuestion; was?: FormQuestion; gone: boolean }) {
+  if (was && was.required !== q.required)
+    return q.required ? (
+      <span data-required="add" className="ms-1.5 bg-(--add-bg) px-0.5 text-xs font-normal text-muted-foreground">
+        Required
+      </span>
+    ) : (
+      <s data-required="del" className="ms-1.5 bg-(--del-bg) px-0.5 text-xs font-normal text-(--soft-foreground)">
+        Required
+      </s>
+    );
+  return q.required && !gone ? <span className="text-muted-foreground"> *</span> : null;
+}
+
 /** The answer's box as the filler sees it, drawn on the system field's own look; each type sets its own height and width. */
 const FIELD = cn(INPUT_FIELD_CLASS, "mt-2 block bg-background");
 
 /** The answer's place as the filler sees it; a choice's options, editable in place while he edits the question. */
-function Field({ q, was, editing, onChange }: { q: FormQuestion; was?: FormQuestion; editing: boolean; onChange(q: FormQuestion): void }) {
+function Field({ q, was, proposed, editing, onChange }: { q: FormQuestion; was?: FormQuestion; proposed?: boolean; editing: boolean; onChange(q: FormQuestion): void }) {
   if (q.type === "short") return <div data-field className={cn(FIELD, "h-8 max-w-[360px]")} />;
   if (q.type === "long") return <div data-field className={cn(FIELD, "h-[72px]")} />;
   if (editing) return <OptionsEdit q={q} onChange={onChange} />;
-  if (q.type === "dropdown")
+  // At rest a dropdown is the filler's closed box; a proposed one lists its choices, so a change to them can be seen.
+  if (q.type === "dropdown" && !proposed)
     return (
       <div data-field className={cn(FIELD, "flex h-8 max-w-[200px] items-center justify-between py-0 ps-3 pe-2 text-muted-foreground")}>
         Choose
@@ -647,8 +677,8 @@ function Field({ q, was, editing, onChange }: { q: FormQuestion; was?: FormQuest
     <div data-field className="mt-1.5 flex flex-col">
       {options.map((o) => (
         <div key={`${o.text}${o.mark ?? ""}`} className="flex min-h-7 items-start gap-2 py-1 text-sm leading-5">
-          <i aria-hidden className="mt-[3px] size-3.5 shrink-0 rounded-full ring-[1.5px] ring-foreground/40 ring-inset" />
-          <span className={o.mark === "add" ? "bg-(--add-bg) px-0.5" : o.mark === "del" ? "bg-(--del-bg) px-0.5 text-(--soft-foreground) line-through" : "px-0.5"}>{o.text}</span>
+          <i aria-hidden className={`mt-[3px] size-3.5 shrink-0 ring-[1.5px] ring-foreground/40 ring-inset ${q.type === "dropdown" ? "rounded-sm" : "rounded-full"}`} />
+          <span data-option={o.mark ?? ""} className={o.mark === "add" ? "bg-(--add-bg) px-0.5" : o.mark === "del" ? "bg-(--del-bg) px-0.5 text-(--soft-foreground) line-through" : "px-0.5"}>{o.text}</span>
         </div>
       ))}
     </div>

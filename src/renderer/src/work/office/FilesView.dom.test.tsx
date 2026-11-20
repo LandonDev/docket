@@ -10,6 +10,9 @@ const calls: { env: string; method: string; params: unknown }[] = [];
 let copyOn = false;
 let noLibs = false;
 let copyFails = false;
+let macDown = false;
+let searchFails = false;
+let searchNone = false;
 let fetchGate: Promise<void> = Promise.resolve();
 const opened: string[] = [];
 const T = "/c/S/Purdue Esports - Documents";
@@ -21,12 +24,15 @@ const answer = (env: string, method: string, params: unknown): Promise<unknown> 
   calls.push({ env, method, params });
   switch (method) {
     case "work.office.filesLibraries":
+      if (macDown && env === "local") return Promise.reject(new Error("not connected"));
       return Promise.resolve({ libraries: env === "local" && !noLibs ? [LIB] : [], roots: [], off: [] });
     case "work.office.filesCopyGet":
       return Promise.resolve({ on: copyOn });
     case "work.office.filesList":
       return Promise.resolve({ entries: ENTRIES });
     case "work.office.filesSearch":
+      if (searchFails) return Promise.reject(new Error("The host did not answer"));
+      if (searchNone) return Promise.resolve({ entries: [], more: false });
       return Promise.resolve({ entries: env === "local" ? [entry("Budget.xlsx")] : [], more: false });
     case "work.office.filesFetch":
       return fetchGate.then(() => ({ entry: { ...(params as { source: { path: string } }) && entry("Report.pdf") } }));
@@ -75,6 +81,9 @@ beforeEach(() => {
   copyOn = false;
   noLibs = false;
   copyFails = false;
+  macDown = false;
+  searchFails = false;
+  searchNone = false;
   fetchGate = Promise.resolve();
 });
 afterEach(cleanup);
@@ -143,5 +152,41 @@ describe("the Files view", () => {
     noLibs = true;
     await act(async () => void render(<View {...props("box")} />));
     expect(await screen.findByText("No Teams files")).toBeTruthy();
+  });
+
+  it("says a desktop that did not answer on the state line with Retry, and never calls that no Teams files", async () => {
+    macDown = true;
+    await act(async () => void render(<View {...props("box")} />));
+    const line = await screen.findByRole("status");
+    expect(line.getAttribute("data-view-state")).toBe("failed");
+    expect(line.textContent).toContain("This Mac did not answer");
+    expect(screen.queryByText("No Teams files")).toBeNull();
+    macDown = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(await screen.findByText("Purdue Esports")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("offers Retry when a search did not run, and says no match in one line", async () => {
+    searchFails = true;
+    const p = props("local");
+    await act(async () => void render(<><Head {...p} /><View {...p} /></>));
+    await act(async () => fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "budget" } }));
+    expect(await screen.findByText("Search did not run", {}, { timeout: 2000 })).toBeTruthy();
+    searchFails = false;
+    searchNone = true;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(await screen.findByText("No files match", {}, { timeout: 2000 })).toBeTruthy();
+    expect(screen.queryByText(/Nothing is named/)).toBeNull();
+  });
+
+  it("has the same search field as Docs: its ×, and narrower under a 640px header", async () => {
+    const p = props("local");
+    render(<Head {...p} />);
+    const field = screen.getByRole("search");
+    expect(field.className).toContain("@max-[640px]/viewhead:w-40");
+    fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect((screen.getByLabelText("Search files") as HTMLInputElement).value).toBe("");
   });
 });

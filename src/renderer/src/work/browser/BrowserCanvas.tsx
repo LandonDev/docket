@@ -264,10 +264,12 @@ function LiveView({ stream, box, label }: { stream: ReturnType<typeof useLiveStr
   const face = liveFace(stream);
   const size = streamSize(stream.state) ?? { width: 16, height: 10 };
   const ended = stream.state.status === "ended" ? stream.state : null;
+  // Bones only while a first frame is on its way: a stream that ended or failed leaves the empty well over its line and Retry.
+  const coming = stream.state.status === "starting" || (stream.state.status === "live" && !face.drawn);
   return (
     <div className={FADE_IN}>
       <div ref={box} role="img" aria-label={label} data-face="live" className="relative w-full overflow-hidden rounded-lg bg-card" style={{ aspectRatio: `${size.width} / ${size.height}` }}>
-        {!face.drawn ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
+        {coming ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
         {face.picture}
         <div className="pointer-events-none absolute inset-0">{face.mark}</div>
       </div>

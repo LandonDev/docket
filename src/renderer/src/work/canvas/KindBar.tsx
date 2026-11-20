@@ -214,6 +214,8 @@ function Stepper({ review }: { review: ReviewAdapter }) {
       .finally(() => setPending(null));
   };
   const busy = pending !== null;
+  // Held: still drawn, so the bar does not flicker, but nothing is decided until the kind lets go.
+  const off = busy || none || !!review.held;
   // One change, already the current one: there is nowhere to step, so only the verbs show.
   const steps = !(count === 1 && index === 0);
   return (
@@ -231,10 +233,10 @@ function Stepper({ review }: { review: ReviewAdapter }) {
           </Step>
         </>
       ) : null}
-      <Button variant="ghost" size="xs" disabled={busy || none} onClick={() => decide("reject")}>
+      <Button variant="ghost" size="xs" disabled={off} onClick={() => decide("reject")}>
         <BusyLabel busy={pending === "reject"} label="Reject" />
       </Button>
-      <Button variant="secondary" size="xs" disabled={busy || none} onClick={() => decide("accept")}>
+      <Button variant="secondary" size="xs" disabled={off} onClick={() => decide("accept")}>
         <BusyLabel busy={pending === "accept"} label="Accept" />
       </Button>
     </div>

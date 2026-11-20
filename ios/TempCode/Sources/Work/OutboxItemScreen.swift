@@ -110,7 +110,8 @@ struct OutboxItemScreen: View {
                         Text(HeldTime.of(item.createdAt))
                             .textStep(.stamp)
                     }
-                    Text(item.summary)
+                    // A form, a share or a Teams post says in its heading only what its rows do not (`kindHeading`).
+                    Text(OutboxModel.kindHeading(kind: item.kind, payload: item.payload, sent: item.state == .sent) ?? item.summary)
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let state = stateLine(item) {

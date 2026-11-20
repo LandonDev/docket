@@ -129,6 +129,82 @@ describe("the Docs view", () => {
     expect(screen.getByRole("button", { name: /Kickoff brief/ })).toBeTruthy();
   });
 
+  it("names the clear for what is set, with no second line saying the title again", async () => {
+    answers["work.docs.find"] = async () => ANSWER;
+    both();
+    await settle();
+    const search = screen.getByRole("textbox", { name: "Search documents" });
+    fireEvent.change(search, { target: { value: "zzz" } });
+    await settle(300);
+    expect(screen.getByText("No matches")).toBeTruthy();
+    expect(screen.queryByText(/Nothing here matches/)).toBeNull();
+    // The empty state's action, beside the field's own ×: both clear the search, and nothing more is set.
+    expect(screen.getAllByRole("button", { name: "Clear search" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    setSpec("ws-docs", { filter: { kinds: ["slides"] } });
+    await settle();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("button", { name: /Kickoff brief/ })).toBeTruthy();
+    expect((search as HTMLInputElement).value).toBe("");
+  });
+
+  it("clears its search from the field's ×, as Files does, and narrows with the header", async () => {
+    answers["work.docs.find"] = async () => ANSWER;
+    both();
+    await settle();
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+    const search = screen.getByRole("textbox", { name: "Search documents" }) as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "budget" } });
+    const field = search.closest("[role=search]")!;
+    expect(field.className).toContain("@max-[640px]/viewhead:w-40");
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear search" })[0]!);
+    expect(search.value).toBe("");
+  });
+
+  it("says LifeOS did not answer once: its own line only while the frame's is not showing, with Retry", async () => {
+    answers["work.docs.find"] = async () => ({ ...ANSWER, entries: ANSWER.entries.filter((e) => e.where !== "lifeos"), lifeos: "LifeOS did not answer in time" });
+    const view = render(<View {...props} />);
+    await settle();
+    const line = document.querySelector("[data-view-state='failed']")!;
+    expect(line.textContent).toContain("LifeOS did not answer");
+    expect(line.textContent).toContain("LifeOS did not answer in time");
+    expect(line.querySelector("button")!.textContent).toBe("Retry");
+    // What the host listed shows under the line, outside the column.
+    expect(line.closest("[data-find-list]")).toBeNull();
+    expect(screen.getByRole("button", { name: /scan\.pdf/ })).toBeTruthy();
+    view.unmount();
+    // The frame's line already says it: no second line, no second Retry.
+    render(<View {...({ ...(props as object), lifeos: { state: "unreachable" } } as never)} />);
+    await settle();
+    expect(document.querySelector("[data-view-state]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("button", { name: /scan\.pdf/ })).toBeTruthy();
+  });
+
+  it("with nothing listed for LifeOS's silence, draws the one line over nothing, or nothing under the frame's", async () => {
+    answers["work.docs.find"] = async () => ({ ...ANSWER, entries: [], lifeos: "LifeOS did not answer in time" });
+    const view = render(<View {...props} />);
+    await settle();
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    expect(screen.queryByText("No documents")).toBeNull();
+    view.unmount();
+    const under = render(<View {...({ ...(props as object), lifeos: { state: "unreachable" } } as never)} />);
+    await settle();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByText("No documents")).toBeNull();
+    under.unmount();
+  });
+
+  it("hangs a row's pick box 4px clear of a picked row's fill, inside the column's start padding", async () => {
+    answers["work.docs.find"] = async () => ANSWER;
+    const { container } = render(<View {...props} />);
+    await settle();
+    const box = container.querySelector("[role=listitem] > span.absolute")!;
+    expect(box.className).toContain("-start-7");
+    expect(container.querySelector("[data-find-list]")!.className).toContain("ps-7");
+  });
+
   it("picks rows by keyboard and asks about them in one thread", async () => {
     answers["work.docs.find"] = async () => ANSWER;
     both();

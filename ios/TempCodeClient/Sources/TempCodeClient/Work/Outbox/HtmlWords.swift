@@ -22,12 +22,19 @@ public enum HtmlWords {
             let alt = decode(attr(m.whole, "alt") ?? "").trimmingCharacters(in: .whitespaces)
             return "[image\(alt.isEmpty ? "" : " \(alt)")\(src.isEmpty ? "" : ": \(src)")]"
         }
-        out = replace(#"<a\b[^>]*>([\s\S]*?)</a\s*>"#, in: out) { m in
+        // A link's words run to its own close, never across another link's start: an unclosed one before
+        // it is named where it stands by the rule below, and the inner one keeps its own target.
+        out = replace(#"<a\b[^>]*>((?:(?!<a\b)[\s\S])*?)</a\s*>"#, in: out) { m in
             let open = m.whole.firstIndex(of: ">").map { String(m.whole[...$0]) } ?? m.whole
             let href = decode(attr(open, "href") ?? "").trimmingCharacters(in: .whitespaces)
             let words = decode(replace("<[^>]*>", in: m.groups[0] ?? "") { _ in "" }).trimmingCharacters(in: .whitespacesAndNewlines)
             if href.isEmpty || href == words || href == "mailto:\(words)" { return words.isEmpty ? href : words }
             return words.isEmpty ? href : "\(words) (\(href))"
+        }
+        // A link the html never closes still goes where it points: named where it stands.
+        out = replace(#"<a\b[^>]*>"#, in: out) { m in
+            let href = decode(attr(m.whole, "href") ?? "").trimmingCharacters(in: .whitespaces)
+            return href.isEmpty ? "" : "[link: \(href)] "
         }
         out = replace(#"<br\s*/?>"#, in: out) { _ in "\n" }
         out = replace(#"<li\b[^>]*>"#, in: out) { _ in "\n- " }

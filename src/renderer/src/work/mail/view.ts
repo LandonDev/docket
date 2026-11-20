@@ -13,6 +13,7 @@ export const mailView: WorkViewDef = {
   label: "Mail",
   icon: Mail,
   order: 0,
+  readsLifeos: true,
   fact: () => null,
   useFact: useUnreadCount,
   chunk: defineChunk("work-mail-view", () => import("./MailView")),

@@ -108,6 +108,8 @@ export interface ReviewAdapter {
   step(to: number): void;
   /** Whether Next steps into the changes from none (`index` -1) and shows the first: absent, it does (a deck's slide, a document's caret). False where stepping from none shows nothing (a form's Responses), so Next is not lit there. */
   enter?: boolean;
+  /** The changes are counted but cannot be decided now (a form while his edits save): the stepper stays drawn with its verbs off, and More's Accept all and Reject all are off. */
+  held?: boolean;
   accept(which: number | { group: string } | "all"): Promise<void>;
   reject(which: number | { group: string } | "all"): Promise<void>;
 }

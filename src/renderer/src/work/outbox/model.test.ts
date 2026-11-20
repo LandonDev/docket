@@ -100,6 +100,9 @@ describe("htmlWords", () => {
     // attributes set off by a slash or a quote, not a space
     expect(htmlWords('<a/href="https://hidden.test/secret">Report</a>')).toBe("Report (https://hidden.test/secret)");
     expect(htmlWords('<img alt="hello"src="https://hidden.test/pixel">')).toBe("[image hello: https://hidden.test/pixel]");
+    // a link never closed still names where it goes
+    expect(htmlWords('<p>See <a href="https://outside.example/secret">the report</p>')).toBe("See [link: https://outside.example/secret] the report");
+    expect(htmlWords('<a href="https://good.example">OK<a href="https://other.example">Pay here</a>')).toBe("[link: https://good.example] OKPay here (https://other.example)");
     // a tag is read whole wherever its quotes put a ">"
     expect(htmlWords(`<a title="><span" href="https://actual.test/private">Open</a>`)).toBe("Open (https://actual.test/private)");
     expect(htmlWords(`<img alt="a>b" src="https://actual.test/p.png">`)).toBe("[image a>b: https://actual.test/p.png]");
@@ -170,6 +173,8 @@ describe("the lists", () => {
     expect(pastOf("Move or rename files")).toBe("Moved or renamed files");
     expect(pastOf("Send invite")).toBe("Sent invite");
     expect(pastOf("Upload")).toBe("Uploaded");
+    // a computer act's verb is its control's own word (milestone 50's council, round 8)
+    for (const [verb, past] of [["Drop class", "Dropped class"], ["Transfer", "Transferred"], ["Ship order", "Shipped order"], ["Commit", "Committed"], ["Sell", "Sold"], ["Leave meeting", "Left meeting"], ["Withdraw", "Withdrew"], ["Stop", "Stopped"], ["Open", "Opened"], ["Visit", "Visited"], ["Fix", "Fixed"], ["Show", "Showed"], ["Sign", "Signed"], ["Join", "Joined"]]) expect(pastOf(verb!)).toBe(past);
     expect(grantLine("mail.send", Date.now())).toBe("Made today from a held mail");
     const now = new Date(2026, 10, 19, 12).getTime();
     expect([dayOf(now - 3_600_000, now), dayOf(now - 86_400_000, now), dayOf(now - 3 * 86_400_000, now)]).toEqual(["Today", "Yesterday", "Earlier"]);

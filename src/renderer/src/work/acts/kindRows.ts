@@ -36,12 +36,189 @@ export function marksWords(pin: unknown, shapes: unknown): { words: string | nul
   return { words: cap(words), changes: cap(lossy.join("; ") || null) };
 }
 
+// ── a computer act's steps ───────────────────────────────────────────────
+
+type Target = { step?: unknown; param?: unknown; sig?: unknown };
+
+/** An element as the host bound it (`button:Send < group:Compose`): its own role and name, `button "Send"`. */
+const sigWords = (sig: unknown): string | null => {
+  if (typeof sig !== "string" || !sig) return null;
+  const own = sig.split(" < ")[0]!;
+  const at = own.indexOf(":");
+  const role = at >= 0 ? own.slice(0, at) : own;
+  const name = at >= 0 ? own.slice(at + 1) : "";
+  return name ? `${role} ${JSON.stringify(name)}` : role;
+};
+
+const CLICK: Record<string, string> = { left_click: "Clicks", right_click: "Right-clicks", middle_click: "Middle-clicks", double_click: "Double-clicks", triple_click: "Triple-clicks" };
+
+/**
+ * Every step of the call in order, as he approves it: what each types or
+ * pastes in full (never cut), what each clicks by the element the host bound,
+ * the keys it presses. A batch is a list of these; a single act is one. Steps
+ * that send nothing (a screenshot, a zoom) are left out.
+ */
+export function stepRows(args: Rec, targets: unknown): { label: string; value: string }[] {
+  const steps = Array.isArray(args.actions) ? (args.actions as Rec[]) : typeof args.action === "string" ? [args] : [];
+  const bound = Array.isArray(targets) ? (targets as Target[]) : [];
+  const rows: { label: string; value: string }[] = [];
+  // Where the focus is as the steps run: the element the host bound as focused when the call was held, then whatever
+  // a step puts it on (a click, a set value, a typed text into a named element); a Tab or a step on no named element
+  // leaves it unknown, said plainly.
+  const focusAtHold = sigWords(bound.find((x) => x.param === "focus")?.sig);
+  let focus: string | null = focusAtHold;
+  steps.forEach((a, i) => {
+    const where = (param: string, point: unknown, element: unknown): string => {
+      const t = bound.find((x) => x.step === i && x.param === param) ?? (param === "element" ? bound.find((x) => x.step === i && x.param === "point") : undefined);
+      const name = sigWords(t?.sig);
+      if (name) return name;
+      if (Array.isArray(point) && point.length === 2) return `the point ${point[0]},${point[1]}`;
+      if (typeof element === "number") return `element ${element}`;
+      return "where the cursor is";
+    };
+    const on = () => where("element", a.coordinate, a.element);
+    const text = typeof a.text === "string" ? a.text : null;
+    // A typed text, a paste or a key goes to its own element when it names one (bound by the host), else to the focus.
+    const own = sigWords((bound.find((x) => x.step === i && x.param === "element") ?? bound.find((x) => x.step === i && x.param === "point"))?.sig);
+    const intoWhat = (): string => {
+      if (own) return own;
+      if (typeof a.element === "number") return `element ${a.element}`;
+      return focus ?? "the focus";
+    };
+    switch (a.action) {
+      case "type":
+        if (text !== null) rows.push({ label: "Types", value: `into ${intoWhat()}: ${text}` });
+        break;
+      case "paste":
+        if (text !== null) rows.push({ label: "Pastes", value: `into ${intoWhat()}: ${text}` });
+        break;
+      case "set_value":
+        rows.push({ label: "Sets", value: `${on()} to ${JSON.stringify(typeof a.value === "string" ? a.value : (text ?? ""))}` });
+        break;
+      case "key":
+        if (text !== null) rows.push({ label: "Presses", value: `${text}${num(a.repeat) && (a.repeat as number) > 1 ? `, ${a.repeat} times` : ""}, in ${intoWhat()}` });
+        break;
+      case "hold_key":
+        if (text !== null) rows.push({ label: "Holds", value: `${text}${num(a.duration) ? ` for ${a.duration} s` : ""}, in ${intoWhat()}` });
+        break;
+      case "left_click_drag":
+        rows.push({ label: "Drags", value: `from ${where("start_element", a.start_coordinate, a.start_element)} to ${on()}` });
+        break;
+      case "scroll":
+        rows.push({ label: "Scrolls", value: `${str(a.scroll_direction) ?? "down"}${num(a.scroll_amount) ? ` ${a.scroll_amount}` : ""} at ${on()}` });
+        break;
+      case "perform":
+        rows.push({ label: "Performs", value: `${str(a.name) ?? "an action"} on ${on()}` });
+        break;
+      case "select_text":
+        rows.push({ label: "Selects", value: JSON.stringify(text ?? [str(a.prefix), str(a.suffix)].filter(Boolean).join(" … ")) });
+        break;
+      case "save_as":
+        rows.push({ label: "Saves as", value: str(a.path) ?? str(a.named) ?? "a file" });
+        break;
+      case "mouse_move":
+        rows.push({ label: "Moves to", value: on() });
+        break;
+      case "left_mouse_down":
+      case "left_mouse_up":
+        rows.push({ label: a.action === "left_mouse_down" ? "Presses the mouse" : "Lets go of the mouse", value: on() });
+        break;
+      default:
+        if (typeof a.action === "string" && CLICK[a.action]) rows.push({ label: CLICK[a.action]!, value: on() });
+        else if (typeof a.action === "string" && !["screenshot", "zoom", "cursor_position", "wait"].includes(a.action))
+          rows.push({ label: a.action.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), value: text ?? on() });
+    }
+    // Where this step leaves the focus, for the steps after it.
+    const action = typeof a.action === "string" ? a.action : "";
+    const named = own ?? (typeof a.element === "number" ? `element ${a.element}` : null);
+    if (CLICK[action] || action === "set_value" || action === "select_text" || action === "left_mouse_down") focus = named;
+    else if ((action === "type" || action === "paste" || action === "key" || action === "hold_key") && named) focus = named;
+    if ((action === "key" || action === "hold_key") && /\btab\b/i.test(text ?? "")) focus = null;
+  });
+  return rows;
+}
+
+// ── a Frame.io comment's marks ───────────────────────────────────────────
+
+/** A share of the frame as a percentage, exact (the value that goes, float noise trimmed): 31%, 15.5%, 12.3456%. */
+const pct = (n: unknown): string => (typeof n === "number" ? `${+(n * 100).toPrecision(10)}%` : "?");
+const at2 = (x: unknown, y: unknown): string => `${pct(x)} across, ${pct(y)} down`;
+
+/** A mark's colour as a word: the hue's name, or white, grey or black. */
+export function colourWord(hex: unknown): string {
+  if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) return "";
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const light = (max + min) / 2;
+  const sat = max === min ? 0 : (max - min) / (1 - Math.abs(2 * light - 1));
+  if (sat < 0.2) return light > 0.85 ? "white" : light < 0.15 ? "black" : "grey";
+  const d = max - min;
+  const hue = (max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+  const h = (hue + 360) % 360;
+  return h < 15 || h >= 345 ? "red" : h < 45 ? "orange" : h < 70 ? "yellow" : h < 160 ? "green" : h < 200 ? "teal" : h < 255 ? "blue" : h < 290 ? "purple" : "pink";
+}
+
+/** One row per mark: the pin, then each shape's kind, where it is, how big and its colour. */
+/** A mark's line as Frame.io draws it: its share of the frame's height in pixels, at least 1 (frameio/map.ts `pixels`). */
+const thickness = (width: unknown, height: number): string => (typeof width === "number" ? `, ${Math.max(1, Math.round(width * height))} px thick` : "");
+
+export function markRows(pin: unknown, shapes: unknown, height: unknown = 1080): { label: string; value: string }[] {
+  const h = typeof height === "number" && height > 0 ? height : 1080;
+  const rows: { label: string; value: string }[] = [];
+  if (pin && typeof pin === "object") rows.push({ label: "Pin", value: `at ${at2((pin as Rec).x, (pin as Rec).y)}` });
+  for (const raw of Array.isArray(shapes) ? shapes : []) {
+    const s = (raw ?? {}) as Rec;
+    const colour = colourWord(s.color);
+    const tail = `${colour ? `, ${colour}` : ""}${thickness(s.width, h)}`;
+    let words: string | null = null;
+    if (s.tool === "rect") words = `A box at ${at2(s.x, s.y)}, ${pct(s.w)} wide and ${pct(s.h)} high${tail}`;
+    else if (s.tool === "ellipse")
+      words = `An oval centred ${at2(s.cx, s.cy)}, ${pct(typeof s.rx === "number" ? s.rx * 2 : undefined)} wide and ${pct(typeof s.ry === "number" ? s.ry * 2 : undefined)} high${tail}`;
+    else if (s.tool === "line" || s.tool === "arrow") words = `${s.tool === "line" ? "A line" : "An arrow"} from ${at2(s.x1, s.y1)} to ${at2(s.x2, s.y2)}${tail}`;
+    else if (s.tool === "pen") {
+      // Every point, in order: Frame.io gets a straight line between each pair (frameio/map.ts), so the whole path is what goes.
+      const pts = Array.isArray(s.points) ? (s.points as unknown[][]) : [];
+      if (pts.length === 1) words = `A single point at ${at2(pts[0]![0], pts[0]![1])}, which Frame.io does not draw${tail}`;
+      else if (pts.length > 1) words = `A drawn line through ${pts.map((pt) => at2(pt[0], pt[1])).join("; ")}${tail}`;
+    }
+    if (words) rows.push({ label: "Mark", value: words });
+  }
+  return rows;
+}
+
+/**
+ * The detail's heading for a kind whose rows carry the rest, so each fact is
+ * said once there (the list keeps the whole summary): a form's publish names
+ * the form, a Google share the file (Person and Access are rows), a Teams post
+ * nothing but the act (the chat is the In row, the post the body). Null for
+ * any other kind: its heading is its summary's act. `sent` gives the past.
+ */
+export function kindHeading(kind: string, payload: unknown, sent: boolean): string | null {
+  const p = (payload && typeof payload === "object" ? payload : {}) as Rec;
+  switch (kind) {
+    case "form.publish": {
+      const title = str(p.title);
+      return title ? `${sent ? "Published" : "Publish"} ${title}` : null;
+    }
+    case "share.google": {
+      const name = str(p.name);
+      return name ? `${sent ? "Shared" : "Share"} ${name}` : null;
+    }
+    case "teams.post":
+      return typeof p.html === "string" ? null : sent ? "Posted in Teams" : "Post in Teams";
+    default:
+      return null;
+  }
+}
+
 export function kindRows(kind: string, payload: unknown): KindRows | null {
   const p = (payload && typeof payload === "object" ? payload : {}) as Rec;
   switch (kind) {
     case "form.publish": {
       const n = num(p.questions);
-      return { fields: [...row("Form", str(p.title)), ...row("Questions", n === null ? null : String(n))], body: str(p.content) };
+      // The form's name is the heading's (kindHeading), said once.
+      return { fields: row("Questions", n === null ? null : String(n)), body: str(p.content) };
     }
     case "share.google": {
       const role = str(p.role);
@@ -71,7 +248,8 @@ export function kindRows(kind: string, payload: unknown): KindRows | null {
         fields: [
           ...row("File", str(p.fileName)),
           ...row("At", at ? (span && span > 1 ? `${at}, for ${span} frames` : at) : null),
-          ...row("Marks", marks.words),
+          // Each mark where it lands and how big, so two posts that differ only there never read the same.
+          ...markRows(p.pin, p.shapes, p.height),
           ...row("Goes as", marks.changes),
         ],
         body: str(p.text),
@@ -86,7 +264,10 @@ export function kindRows(kind: string, payload: unknown): KindRows | null {
       const app = p.app && typeof p.app === "object" ? str((p.app as Rec).name) : str(p.app);
       const args = (p.args && typeof p.args === "object" ? p.args : {}) as Rec;
       const read = (p.read && typeof p.read === "object" ? p.read : {}) as Rec;
-      return { fields: [...row("App", app), ...row("Window", str(p.window)), ...row("URL", str(args.url)), ...row("On", str(read.on))], body: null };
+      return {
+        fields: [...row("App", app), ...row("Window", str(p.window)), ...row("URL", str(args.url)), ...row("On", str(read.on)), ...stepRows(args, p.targets)],
+        body: null,
+      };
     }
     default:
       return null;

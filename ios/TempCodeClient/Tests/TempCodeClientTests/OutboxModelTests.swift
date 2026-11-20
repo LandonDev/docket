@@ -138,8 +138,8 @@ import TempCodeContract
 
     @Test func aFormAShareAndAFrameioPostReadAsTheirOwnRows() {
         let form = OutboxModel.actView(item("f1", kind: .formPublish, payload: .object(["itemId": .string("itm_1"), "title": .string("LAN sign-up"), "rev": .number(4), "questions": .number(6), "content": .string("Name (short answer, required)")])))
-        #expect(form.fields.map(\.label) == ["Form", "Questions"])
-        #expect(form.fields.map(\.value) == ["LAN sign-up", "6"])
+        #expect(form.fields.map(\.label) == ["Questions"])
+        #expect(form.fields.map(\.value) == ["6"])
         #expect(form.body?.text == "Name (short answer, required)")
         #expect(form.body?.readOnly == true)
 
@@ -149,9 +149,14 @@ import TempCodeContract
         let quiet = OutboxModel.actView(item("g2", kind: .shareGoogle, payload: .object(["email": .string("dana@purdue.edu"), "role": .string("reader"), "notify": .bool(false)])))
         #expect(quiet.fields.map(\.value) == ["dana@purdue.edu", "Can view"])
 
-        let comment = OutboxModel.actView(item("p1", kind: .frameioPost, payload: .object(["what": .string("comment"), "account": .string("acc_1"), "fileId": .string("f_1"), "fileName": .string("cut.mp4"), "text": .string("Tighten the open"), "clock": .string("0:12"), "durationFrames": .number(48), "pin": .object(["x": .number(0.31), "y": .number(0.62)]), "shapes": .array([.object(["tool": .string("arrow")]), .object(["tool": .string("rect")])]), "height": .number(1080)])))
-        #expect(comment.fields.map(\.label) == ["File", "At", "Marks"])
-        #expect(comment.fields.map(\.value) == ["cut.mp4", "0:12, for 48 frames", "A pin, an arrow and a box"])
+        let comment = OutboxModel.actView(item("p1", kind: .frameioPost, payload: .object(["what": .string("comment"), "account": .string("acc_1"), "fileId": .string("f_1"), "fileName": .string("cut.mp4"), "text": .string("Tighten the open"), "clock": .string("0:12"), "durationFrames": .number(48), "pin": .object(["x": .number(0.31), "y": .number(0.62)]), "shapes": .array([
+            .object(["tool": .string("arrow"), "color": .string("#ff0000"), "x1": .number(0.1), "y1": .number(0.2), "x2": .number(0.5), "y2": .number(0.6)]),
+            .object(["tool": .string("rect"), "color": .string("#ffffff"), "x": .number(0.2), "y": .number(0.3), "w": .number(0.25), "h": .number(0.1)]),
+        ]), "height": .number(1080)])))
+        #expect(comment.fields.map(\.label) == ["File", "At", "Pin", "Mark", "Mark"])
+        #expect(comment.fields.map(\.value) == ["cut.mp4", "0:12, for 48 frames", "at 31% across, 62% down",
+                                                "An arrow from 10% across, 20% down to 50% across, 60% down, red",
+                                                "A box at 20% across, 30% down, 25% wide and 10% high, white"])
         let drawn = OutboxModel.marksWords(pin: nil, shapes: .array([.object(["tool": .string("ellipse")]), .object(["tool": .string("rect")]), .object(["tool": .string("rect")]), .object(["tool": .string("pen")])]))
         #expect(drawn.words == "An oval, 2 boxes and a drawn line")
         #expect(drawn.changes == "An oval as its box; a drawn line as straight lines")
@@ -188,8 +193,24 @@ import TempCodeContract
             "args": .object(["action": .string("left_click"), "element": .number(14), "url": .string("https://arena.example/book"), "app": .string("Chromium")]),
             "read": .object(["step": .number(0), "why": .string("control"), "label": .string("Submit booking"), "on": .string("button \"Submit booking\"")]),
         ])))
-        #expect(act.fields.map(\.label) == ["App", "Window", "URL", "On"])
-        #expect(act.fields.map(\.value) == ["Chromium", "Arena booking", "https://arena.example/book", "button \"Submit booking\""])
+        #expect(act.fields.map(\.label) == ["App", "Window", "URL", "On", "Clicks"])
+        #expect(act.fields.map(\.value) == ["Chromium", "Arena booking", "https://arena.example/book", "button \"Submit booking\"", "element 14"])
+    }
+
+    /// The desktop's list (model.test.ts), word for word, then the same words as the undo capsule's progressive.
+    @Test(arguments: [("Make link", "Made link"), ("Reply", "Replied"), ("Pay", "Paid"), ("Answer maybe", "Answered maybe"), ("Move or rename files", "Moved or renamed files"),
+                      ("Send invite", "Sent invite"), ("Upload", "Uploaded"), ("Drop class", "Dropped class"), ("Transfer", "Transferred"), ("Ship order", "Shipped order"),
+                      ("Commit", "Committed"), ("Sell", "Sold"), ("Leave meeting", "Left meeting"), ("Withdraw", "Withdrew"), ("Stop", "Stopped"), ("Open", "Opened"),
+                      ("Visit", "Visited"), ("Fix", "Fixed"), ("Show", "Showed"), ("Sign", "Signed"), ("Join", "Joined")])
+    func thePastMatchesTheDesktops(verb: String, past: String) {
+        #expect(OutboxModel.pastOf(verb) == past)
+    }
+
+    @Test(arguments: [("Stop", "Stopping"), ("Transfer", "Transferring"), ("Drop class", "Dropping class"), ("Ship order", "Shipping order"), ("Commit", "Committing"),
+                      ("Run", "Running"), ("Quit", "Quitting"), ("Begin", "Beginning"), ("Open", "Opening"), ("Visit", "Visiting"), ("Fix", "Fixing"),
+                      ("Show", "Showing"), ("Leave meeting", "Leaving meeting"), ("Pay", "Paying"), ("Reply", "Replying")])
+    func theProgressiveDoublesAsThePastDoes(verb: String, progressive: String) {
+        #expect(OutboxModel.progressive(verb) == progressive)
     }
 
     @Test func pastAndProgressiveTurnEveryVerbOfALabel() {
@@ -235,9 +256,109 @@ import TempCodeContract
         #expect(rows[1].value.hasPrefix("Fri, Nov 20, 2:00 to 3:00"))
     }
 
+    @Test func aComputerBatchShowsEveryStepAndEveryTypedTextInFull() {
+        let long = String(repeating: "Dear Dana, the ballroom is booked. ", count: 6) + "Signed, Landon"
+        let args: [String: JSONValue] = ["actions": .array([
+            .object(["action": .string("type"), "text": .string(long)]),
+            .object(["action": .string("left_click"), "element": .number(4)]),
+            .object(["action": .string("key"), "text": .string("Return"), "repeat": .number(2)]),
+            .object(["action": .string("screenshot")]),
+            .object(["action": .string("scroll"), "scroll_direction": .string("up"), "scroll_amount": .number(3), "coordinate": .array([.number(10), .number(20)])]),
+            .object(["action": .string("set_value"), "element": .number(9), "value": .string("Room 210")]),
+        ])]
+        let targets: JSONValue = .array([.object(["step": .number(1), "param": .string("element"), "sig": .string("button:Send < group:Compose"), "ordinal": .number(0), "count": .number(1)])])
+        let rows = OutboxModel.stepRows(args: args, targets: targets)
+        #expect(rows.map(\.0) == ["Types", "Clicks", "Presses", "Scrolls", "Sets"])
+        #expect(rows[0].1 == "into the focus: " + long)
+        #expect(rows[1].1 == #"button "Send""#)
+        // The click put the focus on Send: the key goes there.
+        #expect(rows[2].1 == #"Return, 2 times, in button "Send""#)
+        #expect(rows[3].1 == "up 3 at the point 10,20")
+        #expect(rows[4].1 == #"element 9 to "Room 210""#)
+    }
+
+    private func typing(_ steps: [JSONValue], _ targets: [JSONValue]) -> [OutboxModel.Field] {
+        Array(OutboxModel.actView(item("c9", kind: .computerAct, payload: .object([
+            "args": .object(["actions": .array(steps)]), "app": .object(["name": .string("Mail")]), "window": .string("New Message"), "targets": .array(targets),
+        ]))).fields.dropFirst(2))
+    }
+
+    @Test func `names the field a typed text, a paste or a key goes to, so Bcc and Body never read the same`() {
+        let click: JSONValue = .object(["action": .string("left_click"), "element": .number(9)])
+        let send: JSONValue = .object(["step": .number(1), "param": .string("element"), "sig": .string("button:Send")])
+        let bcc = typing([.object(["action": .string("type"), "element": .number(7), "text": .string("dana@purdue.edu")]), click],
+                         [.object(["step": .number(0), "param": .string("element"), "sig": .string("textbox:Bcc < window:New Message")]), send])
+        let body = typing([.object(["action": .string("type"), "element": .number(8), "text": .string("dana@purdue.edu")]), click],
+                          [.object(["step": .number(0), "param": .string("element"), "sig": .string("textbox:Body < window:New Message")]), send])
+        #expect(bcc[0].label == "Types")
+        #expect(bcc[0].value == #"into textbox "Bcc": dana@purdue.edu"#)
+        #expect(body[0].value == #"into textbox "Body": dana@purdue.edu"#)
+        #expect(bcc.map(\.value) != body.map(\.value))
+    }
+
+    @Test func `sends a step with no target of its own to the focus the host bound, and says the focus once a Tab moves it`() {
+        let rows = typing([.object(["action": .string("paste"), "text": .string("Hello")]), .object(["action": .string("key"), "text": .string("tab")]), .object(["action": .string("type"), "text": .string("Dana")])],
+                          [.object(["step": .number(0), "param": .string("focus"), "sig": .string("textbox:Subject < window:New Message")])])
+        #expect(rows.map(\.label) == ["Pastes", "Presses", "Types"])
+        #expect(rows.map(\.value) == [#"into textbox "Subject": Hello"#, #"tab, in textbox "Subject""#, "into the focus: Dana"])
+    }
+
+    @Test func `a Frame.io drawn line draws every point of its path in order, exactly, with its thickness`() {
+        func pen(_ mid: [Double]) -> String {
+            let shape: JSONValue = .object(["tool": .string("pen"), "color": .string("#ff3b30"), "width": .number(0.003), "points": .array([[0.1, 0.1], mid, [0.5, 0.5]].map { .array($0.map(JSONValue.number)) })])
+            let view = OutboxModel.actView(item("p9", kind: .frameioPost, payload: .object(["what": .string("comment"), "fileName": .string("a.mp4"), "text": .string("Here"), "clock": .string("0:01"), "height": .number(1080), "shapes": .array([shape])])))
+            return view.fields.first { $0.label == "Mark" }?.value ?? ""
+        }
+        #expect(pen([0.2, 0.3]) == "A drawn line through 10% across, 10% down; 20% across, 30% down; 50% across, 50% down, red, 3 px thick")
+        // Same ends, another middle: another path, another row.
+        #expect(pen([0.155, 0.3]) != pen([0.2, 0.3]))
+        #expect(pen([0.155, 0.3]).contains("15.5% across"))
+        let dot = OutboxModel.markRows(pin: nil, shapes: .array([.object(["tool": .string("pen"), "color": .string("#ffffff"), "width": .number(0.004), "points": .array([.array([.number(0.25), .number(0.5)])])])]))
+        #expect(dot.map(\.1) == ["A single point at 25% across, 50% down, which Frame.io does not draw, white, 4 px thick"])
+    }
+
+    @Test func aMarksColourIsAWord() {
+        #expect(OutboxModel.colourWord(.string("#ff0000")) == "red")
+        #expect(OutboxModel.colourWord(.string("#2f6fe0")) == "blue")
+        #expect(OutboxModel.colourWord(.string("#808080")) == "grey")
+        #expect(OutboxModel.colourWord(.string("red")) == "")
+        let oval = OutboxModel.markRows(pin: nil, shapes: .array([.object(["tool": .string("ellipse"), "cx": .number(0.5), "cy": .number(0.5), "rx": .number(0.1), "ry": .number(0.05)])]))
+        #expect(oval.map(\.1) == ["An oval centred 50% across, 50% down, 20% wide and 10% high"])
+    }
+
+    @Test func anUnclosedLinkStillNamesWhereItGoes() {
+        #expect(HtmlWords.of(#"<p>See <a href="https://outside.example/secret">the report</p>"#) == "See [link: https://outside.example/secret] the report")
+        // A link's words never run across another link's start (the desktop's test, word for word).
+        #expect(HtmlWords.of(#"<a href="https://good.example">OK<a href="https://other.example">Pay here</a>"#) == "[link: https://good.example] OKPay here (https://other.example)")
+    }
+
+    @Test func aHeldMailListsItsFilesAndTheForwardedParts() {
+        let held: JSONValue = .object(["message": .object([
+            "subject": .string("Pay review"), "text": .string("Attached.\nThanks"),
+            "attachments": .array([.object(["storageId": .string("st_1"), "name": .string("budget.xlsx"), "contentType": .string("x"), "size": .number(10)])]),
+            "forwardParts": .array([.object(["partId": .string("2"), "name": .string("salary.csv")])]),
+        ])])
+        let view = OutboxModel.payloadView(held)
+        #expect(view.fields.map(\.label) == ["Subject", "Files"])
+        #expect(view.fields[1].value == "budget.xlsx, salary.csv")
+        // JSON keeps an address's slashes, as the desktop writes it.
+        let call = OutboxModel.payloadView(.object(["arguments": .object(["link": .object(["url": .string("https://a.example/b")])])]))
+        #expect(call.fields.first?.value == #"{"url":"https://a.example/b"}"#)
+    }
+
+    @Test func aFormAShareAndATeamsPostSayInTheirHeadingOnlyWhatTheirRowsDoNot() {
+        #expect(OutboxModel.kindHeading(kind: .formPublish, payload: .object(["title": .string("Spring LAN signup")]), sent: false) == "Publish Spring LAN signup")
+        #expect(OutboxModel.kindHeading(kind: .formPublish, payload: .object(["title": .string("Spring LAN signup")]), sent: true) == "Published Spring LAN signup")
+        #expect(OutboxModel.kindHeading(kind: .shareGoogle, payload: .object(["name": .string("Budget.xlsx"), "email": .string("dana@purdue.edu"), "role": .string("writer")]), sent: false) == "Share Budget.xlsx")
+        #expect(OutboxModel.kindHeading(kind: .shareGoogle, payload: .object(["name": .string("Budget.xlsx")]), sent: true) == "Shared Budget.xlsx")
+        #expect(OutboxModel.kindHeading(kind: .teamsPost, payload: .object(["chat": .string("Esports staff"), "text": .string("Hi")]), sent: false) == "Post in Teams")
+        #expect(OutboxModel.kindHeading(kind: .teamsPost, payload: .object(["chat": .string("Esports staff"), "text": .string("Hi")]), sent: true) == "Posted in Teams")
+        #expect(OutboxModel.kindHeading(kind: .mailSend, payload: .object([:]), sent: false) == nil)
+    }
+
     @Test func aComputerActDropsItsToolWordAndSaysURL() {
         let act = OutboxModel.actView(item("c1", kind: .computerAct, payload: .object(["args": .object(["action": .string("left_click"), "url": .string("https://concur.example/expense")])])))
-        #expect(act.fields.map(\.label) == ["URL"])
+        #expect(act.fields.map(\.label) == ["URL", "Clicks"])
     }
 
     @Test func aRowsTitleIsTheActAndItsLineTheWordsAfterIt() {

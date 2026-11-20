@@ -125,12 +125,15 @@ export function Body(props: Props) {
   );
 }
 
-/** Runs of figure blocks read as one hairline row of three; every other block stands alone. */
+/**
+ * Runs of settled figure blocks read as one hairline row of three; every other block stands alone. A proposed figure block
+ * is a row of its own with its own anchor, so the outline and the scroll mark exactly what the press will take or leave.
+ */
 function groups(blocks: Block[]): ({ kind: "figures"; blocks: Extract<Block, { kind: "figures" }>[] } | { kind: "one"; block: Block })[] {
   const out: ReturnType<typeof groups> = [];
   for (const b of blocks) {
     const last = out.at(-1);
-    if (b.kind === "figures" && last?.kind === "figures" && !last.blocks.some((x) => !!x.proposed !== !!b.proposed)) last.blocks.push(b);
+    if (b.kind === "figures" && !b.proposed && last?.kind === "figures" && !last.blocks.some((x) => x.proposed)) last.blocks.push(b);
     else out.push(b.kind === "figures" ? { kind: "figures", blocks: [b] } : { kind: "one", block: b });
   }
   return out;

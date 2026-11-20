@@ -173,15 +173,23 @@ final class WorkLifeHost: LifeActions {
         return try await QueryHTTP.fetch("compose:get", argsJSON: args, as: ComposeDoc.self, deploymentURL: token.deployment, jwt: token.jwt)
     }
 
-    /// The draft as LifeOS saved it goes to the host, which sends it only if it still says that.
+    /// The mail the composer showed goes to the host as `seen`, and the host sends the saved draft only
+    /// if it still says exactly that: a change after the save (another client, a late write) is refused,
+    /// never sent unseen. A composer from before the snapshot hands none: the draft is read and its
+    /// subject and recipients checked against the press, as before.
     func hold(_ send: LifeHeldSend) async throws -> String {
-        let message = try await draft(send.draftId).row.message
-        let to = (message.to ?? []).map(\.address), cc = (message.cc ?? []).map(\.address), bcc = (message.bcc ?? []).map(\.address)
-        // The host compares the draft with this `seen`, read just now; what the composer pressed on is checked here.
-        guard HeldSendCheck.matches(pressedSubject: send.subject, pressedTo: send.to, subject: message.subject, to: to, cc: cc, bcc: bcc) else {
-            throw HeldSendRefusal.changed
+        let message: Draft.Message
+        if let shown = send.message {
+            message = shown
+        } else {
+            message = try await draft(send.draftId).row.message
+            let to = (message.to ?? []).map(\.address), cc = (message.cc ?? []).map(\.address), bcc = (message.bcc ?? []).map(\.address)
+            guard HeldSendCheck.matches(pressedSubject: send.subject, pressedTo: send.to, subject: message.subject, to: to, cc: cc, bcc: bcc) else {
+                throw HeldSendRefusal.changed
+            }
         }
-        // The HTML and the files too: the host refuses a draft whose HTML or files are not the ones named here.
+        let to = (message.to ?? []).map(\.address), cc = (message.cc ?? []).map(\.address), bcc = (message.bcc ?? []).map(\.address)
+        // The HTML, the files and the sender too: the host refuses a draft whose HTML, files, account or From are not the ones named here.
         let files = (message.attachments ?? []).map { Methods.WorkMailSend.Params.Seen.Attachment(id: $0.storageId, name: $0.name) }
             + (message.forwardParts ?? []).map { Methods.WorkMailSend.Params.Seen.Attachment(id: "part:\($0.partId)", name: $0.name) }
         let seen = Methods.WorkMailSend.Params.Seen(
@@ -191,7 +199,9 @@ final class WorkLifeHost: LifeActions {
             subject: message.subject ?? "",
             text: message.text ?? "",
             html: message.html ?? "",
-            attachments: files
+            attachments: files,
+            accountId: message.accountId,
+            from: message.from.map { Methods.WorkMailSend.Params.Seen.From(name: $0.name, address: $0.address) }
         )
         let answer = try await client.work.sendMail(draftId: send.draftId, seen: seen, sendAt: send.sendAt)
         if answer.via == .hold { return "Waiting in the Outbox" }

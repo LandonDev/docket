@@ -92,6 +92,15 @@ describe('a held act', () => {
     expect(store.claim(live.id, 'owner')).toBeNull()
   })
 
+  it('takes a new revision at every change, even two in one millisecond, so a press from the first view never sends the second (the hold review)', () => {
+    const frozen = new HeldStore(db, () => 5_000)
+    const held = frozen.insert(act())
+    const first = frozen.edit(held.id, { payload: { tool: 'post', arguments: { text: 'one' } }, summary: 'Post one', verb: 'Send' })!
+    const second = frozen.edit(held.id, { payload: { tool: 'post', arguments: { text: 'two' } }, summary: 'Post two', verb: 'Send' })!
+    expect(first.updatedAt).toBeGreaterThan(held.updatedAt)
+    expect(second.updatedAt).toBeGreaterThan(first.updatedAt)
+  })
+
   it('is never deleted: every state stays in the log', () => {
     const ids = [store.insert(act()), store.insert(act()), store.insert(act())].map((r) => r.id)
     store.discard(ids[0]!, 'owner')

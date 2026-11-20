@@ -139,6 +139,11 @@ describe("a held mail in the Outbox", () => {
     expect(screen.getByText("A rewrite waits in the draft beside its thread.")).toBeTruthy();
   });
 
+  it("lists the parts it forwards with its own files, since both go", () => {
+    const view = mailActView({ message: { ...payload.message, attachments: [{ name: "Invoice-1042.pdf" }], forwardParts: [{ partId: "p2", name: "salary.csv" }] } });
+    expect(view.files).toEqual(["Invoice-1042.pdf", "salary.csv"]);
+  });
+
   it("shows the mail a reply answers, which goes under the body", () => {
     render(<MailAct item={item({ ...payload, quote: "<p>On Tue, Marisol wrote:</p><p>Can you resend invoice 1042?</p>" })} env="box" />);
     expect(document.querySelector("[data-mail-quote]")!.textContent).toBe("On Tue, Marisol wrote:\n\nCan you resend invoice 1042?");

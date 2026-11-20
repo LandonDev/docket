@@ -16,7 +16,7 @@ import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import type { FormHost } from "./host";
-import { optionDiff, shownQuestions } from "./model";
+import { optionDiff, resolvePick, shownQuestions } from "./model";
 
 const host = vi.hoisted(() => ({
   current: null as ReturnType<typeof import("../canvas/testkit").fakeHost> | null,
@@ -393,7 +393,7 @@ describe("the form kind, round seven", () => {
     fireEvent.change(input, { target: { value } });
   };
 
-  it("offers no way to decide a change while his unsaved edits hide it, and brings the stepper back once the save lands", async () => {
+  it("holds the stepper with its verbs off while his unsaved edits hide the change, and lets go once the save lands", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       open(waitingChange());
@@ -404,17 +404,27 @@ describe("the form kind, round seven", () => {
       const save = formHost.save.getMockImplementation()!;
       formHost.save.mockImplementationOnce((rev, body) => new Promise((done) => (land = () => done(save(rev, body) as never))));
       await edit("Full name");
-      // His words stand over the questions and the diff is gone: no stepper, no Accept all or Reject all in More.
+      // His words stand over the questions and the diff is gone. The stepper stays drawn, so the bar does not flicker at each
+      // pause in his typing, but neither it nor More decides anything he cannot see.
       await waitFor(() => expect(document.querySelector('[data-q="game"]')?.textContent).not.toContain("Marvel Rivals"));
-      await waitFor(() => expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull());
-      expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
-      expect(await moreRows()).not.toContain("Accept all");
+      const verbsOff = (): void => {
+        expect(screen.getByRole("toolbar", { name: "Review changes" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+        expect(screen.getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+      };
+      await waitFor(verbsOff);
+      fireEvent.click(screen.getAllByRole("button", { name: "More" })[0]);
+      const acceptAll = await screen.findByRole("menuitem", { name: /Accept all/ });
+      expect(acceptAll.getAttribute("aria-disabled") ?? acceptAll.getAttribute("data-disabled")).not.toBeNull();
+      fireEvent.click(acceptAll);
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
       // The save goes out, and while it is out nothing changes.
       await act(async () => void vi.advanceTimersByTime(600));
       expect(formHost.save).toHaveBeenCalledTimes(1);
-      expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+      verbsOff();
       await act(async () => land!());
-      await waitFor(() => expect(screen.getByRole("toolbar", { name: "Review changes" })).toBeTruthy());
+      await waitFor(() => expect(screen.getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
       expect(document.querySelector('[data-q="game"]')?.textContent).toContain("Marvel Rivals");
       expect(await moreRows()).toContain("Accept all");
       expect(formHost.review).not.toHaveBeenCalled();
@@ -497,5 +507,149 @@ describe("what the form canvas shows", () => {
   });
   it("keeps a dropped option where it stood", () => {
     expect(optionDiff(["A", "B", "C"], ["A", "C", "D"])).toEqual([{ text: "A" }, { text: "B", mark: "del" }, { text: "C" }, { text: "D", mark: "add" }]);
+  });
+});
+
+describe("the form kind, round eight", () => {
+  const by = "agent:env:t1" as const;
+  const game = BODY.questions[1];
+  const outlined = (): string | null => document.querySelector('[data-q][aria-current="true"]')?.getAttribute("data-change") ?? null;
+
+  it("draws each of two changes to one question against the saved question, and the outline, scroll and press follow the one shown", async () => {
+    const scrolled: Element[] = [];
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      open(
+        view({
+          suggestions: [
+            { id: "s1", op: "change", question: { ...game, options: ["Valorant", "Rocket League", "Marvel Rivals"] }, by, at: 1 },
+            { id: "s2", op: "change", question: { ...game, label: "Main game" }, by, at: 2 },
+          ],
+        }),
+      );
+      await found("[data-form]");
+      await waitFor(() => expect(screen.getByText("1/2")).toBeTruthy());
+      const row = (): Element => document.querySelector('[data-q="game"]')!;
+      // The first: its own options, never the second's label.
+      expect(row().textContent).toContain("Marvel Rivals");
+      expect(row().textContent).not.toContain("Main game");
+      expect(outlined()).toBe("0");
+      fireEvent.click(screen.getByRole("button", { name: "Next change" }));
+      await waitFor(() => expect(screen.getByText("2/2")).toBeTruthy());
+      // The second, against the saved question: its new label over the old, and the saved options with no diff.
+      expect(row().textContent).toContain("Main game");
+      expect(row().querySelector("s")?.textContent).toBe("Game");
+      expect(row().textContent).not.toContain("Marvel Rivals");
+      expect(outlined()).toBe("1");
+      await waitFor(() => expect(scrolled.at(-1)?.getAttribute("data-change")).toBe("1"));
+      fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+      await waitFor(() => expect(formHost.review).toHaveBeenLastCalledWith({ ids: ["s2"] }, "accept"));
+      // Decided, it goes: the selection re-seats on the change left, which the question now draws, outlined.
+      await waitFor(() => expect(row().textContent).toContain("Marvel Rivals"));
+      expect(outlined()).toBe("0");
+      fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+      await waitFor(() => expect(formHost.review).toHaveBeenLastCalledWith({ ids: ["s1"] }, "accept"));
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
+  it("after the last of several changes is decided, the stepper and the body take the one now last, and it comes into view", async () => {
+    const scrolled: Element[] = [];
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      open(
+        view({
+          suggestions: [
+            { id: "s1", op: "change", question: { ...BODY.questions[0], label: "Full name" }, by, at: 1 },
+            { id: "s2", op: "change", question: { ...game, label: "Main game" }, by, at: 1 },
+            { id: "s3", op: "remove", question: BODY.questions[2], by, at: 1 },
+          ],
+        }),
+      );
+      await found("[data-form]");
+      fireEvent.click(document.querySelector('[data-q="diet"]')!);
+      await waitFor(() => expect(screen.getByText("3/3")).toBeTruthy());
+      expect(outlined()).toBe("2");
+      fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+      await waitFor(() => expect(formHost.review).toHaveBeenLastCalledWith({ ids: ["s3"] }, "accept"));
+      await waitFor(() => expect(screen.getByText("2/2")).toBeTruthy());
+      // One selection: the body outlines what the bar's Accept would take, and scrolls to it.
+      expect(outlined()).toBe("1");
+      expect(document.querySelector('[data-change="1"]')?.getAttribute("data-q")).toBe("game");
+      await waitFor(() => expect(scrolled.at(-1)?.getAttribute("data-q")).toBe("game"));
+      fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+      await waitFor(() => expect(formHost.review).toHaveBeenLastCalledWith({ ids: ["s2"] }, "accept"));
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
+  it("lists a proposed dropdown's choices, with the options it adds and drops, and leaves a dropdown at rest a closed box", async () => {
+    const size = { id: "size", label: "T-shirt size", type: "dropdown" as const, required: false, options: ["S", "M", "L"] };
+    open(
+      view({
+        body: { ...BODY, questions: [...BODY.questions, size, { ...size, id: "team", label: "Team", options: ["Red", "Blue"] }] },
+        suggestions: [
+          { id: "s1", op: "change", question: { ...size, options: ["S", "M", "XL"] }, by, at: 1 },
+          { id: "s2", op: "add", question: { id: "shirt", label: "Hoodie size", type: "dropdown", required: false, options: ["S", "M"] }, after: "diet", by, at: 1 },
+        ],
+      }),
+    );
+    await found("[data-form]");
+    const options = (id: string) => [...document.querySelectorAll(`[data-q="${id}"] [data-option]`)].map((o) => `${o.textContent}${o.getAttribute("data-option") ? `:${o.getAttribute("data-option")}` : ""}`);
+    expect(options("size")).toEqual(["S", "M", "XL:add", "L:del"]);
+    expect(options("shirt")).toEqual(["S", "M"]);
+    // At rest: the filler's closed box, no list.
+    expect(document.querySelector('[data-q="team"]')?.textContent).toContain("Choose");
+    expect(options("team")).toEqual([]);
+  });
+
+  it("shows Required turned on or off by a change, either way", async () => {
+    open(
+      view({
+        suggestions: [
+          { id: "s1", op: "change", question: { ...BODY.questions[0], required: false }, by, at: 1 },
+          { id: "s2", op: "change", question: { ...BODY.questions[2], required: true }, by, at: 1 },
+        ],
+      }),
+    );
+    await found("[data-form]");
+    const off = document.querySelector('[data-q="name"] [data-required]');
+    expect(off?.getAttribute("data-required")).toBe("del");
+    expect(off?.textContent).toBe("Required");
+    const on = document.querySelector('[data-q="diet"] [data-required]');
+    expect(on?.getAttribute("data-required")).toBe("add");
+    expect(on?.textContent).toBe("Required");
+    // A question no change touches keeps the filler's asterisk alone.
+    expect(document.querySelector('[data-q="game"] [data-required]')).toBeNull();
+    expect(document.querySelector('[data-q="game"]')?.textContent).toContain("*");
+  });
+});
+
+describe("the form's one selection", () => {
+  const s = (id: string) => ({ id, op: "remove" as const, question: BODY.questions[0], by: "agent:env:t1" as const, at: 1 });
+  it("follows the picked change by its id, and re-seats where a decision took it away", () => {
+    expect(resolvePick([], { id: null, at: 0 })).toBe(-1);
+    expect(resolvePick([s("a"), s("b"), s("c")], { id: "b", at: 1 })).toBe(1);
+    // Another change decided before it: the pick moves with its change.
+    expect(resolvePick([s("b"), s("c")], { id: "b", at: 1 })).toBe(0);
+    // The pick itself decided: the change now in its place, or the last.
+    expect(resolvePick([s("a"), s("c")], { id: "b", at: 1 })).toBe(1);
+    expect(resolvePick([s("a"), s("b")], { id: "c", at: 2 })).toBe(1);
+  });
+  it("draws, of two changes to one question, the selected one, else the first", () => {
+    const two = [
+      { id: "s1", op: "change" as const, question: { ...BODY.questions[1], label: "First" }, by: "agent:env:t1" as const, at: 1 },
+      { id: "s2", op: "change" as const, question: { ...BODY.questions[1], label: "Second" }, by: "agent:env:t1" as const, at: 1 },
+    ];
+    expect(shownQuestions(BODY, two).find((x) => x.q.id === "game")).toMatchObject({ change: 0, q: { label: "First" }, was: { label: "Game" } });
+    expect(shownQuestions(BODY, two, 1).find((x) => x.q.id === "game")).toMatchObject({ change: 1, q: { label: "Second" }, was: { label: "Game" } });
   });
 });

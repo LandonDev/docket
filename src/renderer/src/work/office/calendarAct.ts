@@ -11,7 +11,8 @@ import { htmlWords } from "../outbox/model";
  */
 
 type Created = { op: "create"; event: { subject?: string; start?: string; end?: string; location?: string; body?: string; attendees?: string[]; account?: string } };
-type Answered = { op: "answer"; subject?: string; start?: string; organizer?: string; answer?: "accept" | "decline" | "tentative"; comment?: string };
+/** `end` and `location` are bound by the host when the answer is held (office/held.ts), and the press refuses an event that moved. */
+type Answered = { op: "answer"; subject?: string; start?: string; end?: string; location?: string; organizer?: string; answer?: "accept" | "decline" | "tentative"; comment?: string };
 export type OfficeCalendarOp = Created | Answered;
 
 const REPLY = { accept: "Yes", decline: "No", tentative: "Maybe" } as const;
@@ -39,7 +40,8 @@ export function officeOpFields(payload: unknown): { label: string; value: string
   }
   if (op.subject) rows.push({ label: "Event", value: op.subject });
   const start = at(op.start);
-  if (start !== undefined) rows.push({ label: "When", value: whenWords(start, undefined) });
+  if (start !== undefined) rows.push({ label: "When", value: whenWords(start, at(op.end)) });
+  if (op.location) rows.push({ label: "Where", value: op.location });
   if (op.organizer) rows.push({ label: "From", value: op.organizer });
   if (op.answer && REPLY[op.answer]) rows.push({ label: "Reply", value: REPLY[op.answer] });
   if (op.comment) rows.push({ label: "Note", value: op.comment });

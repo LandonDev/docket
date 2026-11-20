@@ -31,3 +31,15 @@ describe("a kind with its own rows", () => {
     expect(container.textContent).not.toContain("1AbC");
   });
 });
+
+describe("a computer batch in the Outbox", () => {
+  it("draws every typed text whole, line breaks kept, beside its other steps", () => {
+    const text = `Dear Dana,\n${"x".repeat(400)}\nThe end`;
+    const payload = { tool: "computer_batch", args: { actions: [{ action: "type", text }, { action: "key", text: "return" }] }, app: { name: "Mail", bundleId: null }, window: "New Message", targets: [] };
+    const { container } = render(<GenericActView item={{ kind: "computer.act", payload } as never} env="mac" />);
+    const typed = [...container.querySelectorAll("dd")].find((d) => d.textContent?.includes("Dear Dana"))!;
+    expect(typed.textContent).toBe(`into the focus: ${text}`);
+    expect(typed.className).toContain("whitespace-pre-wrap");
+    expect([...container.querySelectorAll("dt")].map((d) => d.textContent)).toEqual(["App", "Window", "Types", "Presses"]);
+  });
+});

@@ -34,14 +34,16 @@ struct SlidesItemView: View {
     private struct Loaded {
         var deck: DeckPhoneView
         var data: Data
+        var render: DeckRender
         /// Which render this is: a new one (after Accept or Reject, or the file's next version) gets a new viewer.
-        var key: String { "\(deck.rev):\(deck.changes.isEmpty ? "file" : "proposed")" }
+        var key: String { "\(deck.rev):\(render == .proposed ? "proposed" : "file")" }
     }
 
     var body: some View {
         ItemLoad(read: { try await load() }) { loaded, reload in
             VStack(spacing: 0) {
-                if !loaded.deck.changes.isEmpty, client.work.canApprove {
+                // The review row only over the render its changes propose (`DeckRender`).
+                if loaded.render == .proposed, client.work.canApprove {
                     DeckReviewRow(words: loaded.deck.changes.count == 1 ? "1 change" : "\(loaded.deck.changes.count) changes", busy: deciding) { accept in
                         Task { await decide(accept, reload: reload) }
                     }
@@ -59,12 +61,14 @@ struct SlidesItemView: View {
 
     private func load() async throws -> Loaded {
         let deck = try await client.work.canvas.deck(item.id)
-        let proposed = deck.renders.proposed != nil && !deck.changes.isEmpty
-        // The two renders are distinct generated types; only the size is read.
-        guard let size = proposed ? deck.renders.proposed?.size : deck.renders.file?.size else {
-            throw DeckError.notRendered(deck.renderError ?? "The deck has not been drawn yet.")
+        let waiting = !deck.changes.isEmpty
+        // While changes wait only their proposed render shows; a missing one is the Try Again state, never the
+        // file's render under live Reject and Accept. The two renders are distinct generated types; only the size is read.
+        guard let render = DeckRender.pick(changesWaiting: waiting, hasProposed: deck.renders.proposed != nil, hasFile: deck.renders.file != nil),
+              let size = render == .proposed ? deck.renders.proposed?.size : deck.renders.file?.size else {
+            throw DeckError.notRendered(deck.renderError ?? DeckRender.missingWords(changesWaiting: waiting))
         }
-        return Loaded(deck: deck, data: try await client.work.canvas.deckData(item.id, proposed: proposed, size: Int(size)))
+        return Loaded(deck: deck, data: try await client.work.canvas.deckData(item.id, proposed: render == .proposed, size: Int(size)), render: render)
     }
 
     private func decide(_ accept: Bool, reload: () -> Void) async {

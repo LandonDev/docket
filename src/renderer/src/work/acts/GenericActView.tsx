@@ -16,7 +16,7 @@ export function GenericActView({ item }: ActViewProps) {
   const own = kindRows(item.kind, item.payload);
   const view = own ? null : payloadView(item.payload);
   const body = own ? (own.body === null ? null : { text: own.body }) : view!.body;
-  const fields = own ? own.fields.map((f) => ({ ...f, key: f.label })) : view!.fields.map((f) => ({ ...f, key: f.path.join(".") }));
+  const fields = own ? own.fields.map((f, i) => ({ ...f, key: `${i}:${f.label}` })) : view!.fields.map((f) => ({ ...f, key: f.path.join(".") }));
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
       {fields.length ? (
@@ -24,7 +24,7 @@ export function GenericActView({ item }: ActViewProps) {
           {fields.map((field) => (
             <div key={field.key} className="contents">
               <dt className="truncate text-muted-foreground">{field.label}</dt>
-              <dd className="min-w-0 break-words text-foreground">{field.value}</dd>
+              <dd className="min-w-0 break-words whitespace-pre-wrap text-foreground">{field.value}</dd>
             </div>
           ))}
         </dl>

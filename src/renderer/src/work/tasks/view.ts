@@ -12,6 +12,7 @@ export const tasksView: WorkViewDef = {
   label: "Tasks",
   icon: Task,
   order: 1,
+  readsLifeos: true,
   fact: () => null,
   useFact: useOpenCount,
   chunk: defineChunk("work-tasks-view", () => import("./TasksView")),

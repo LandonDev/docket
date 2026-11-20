@@ -12,6 +12,7 @@ export const agendaView: WorkViewDef = {
   label: "Agenda",
   icon: Calendar,
   order: 2,
+  readsLifeos: true,
   fact: () => null,
   useFact: useNextEvent,
   chunk: defineChunk("work-agenda-view", () => import("./AgendaView")),

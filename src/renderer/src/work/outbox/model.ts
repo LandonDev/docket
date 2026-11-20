@@ -70,12 +70,42 @@ const PAST: Record<string, string> = {
   upload: "uploaded",
   forward: "forwarded",
   answer: "answered",
+  sell: "sold",
+  leave: "left",
+  withdraw: "withdrew",
+  give: "gave",
+  hold: "held",
+  take: "took",
+  get: "got",
+  keep: "kept",
+  tell: "told",
+  bring: "brought",
+  draw: "drew",
+  choose: "chose",
+  write: "wrote",
+  begin: "began",
+  find: "found",
+  spend: "spent",
+  build: "built",
+  meet: "met",
+  pick: "picked",
+  go: "went",
+  do: "did",
+  say: "said",
+  win: "won",
+  cut: "cut",
+  let: "let",
+  quit: "quit",
 };
-/** One verb's past, its first letter's case kept: "Reply" → "Replied", "rename" → "renamed". */
+/** Verbs stressed on a last syllable that doubles its consonant: "Transfer" → "Transferred". */
+const DOUBLES = new Set(["transfer", "commit", "submit", "admit", "permit", "omit", "refer", "prefer", "occur", "regret", "control", "patrol", "compel", "expel", "rebut", "unpin", "unplug", "quit", "begin"]);
+/** One syllable, one vowel, one closing consonant: "stop", "ship", "plan" double it. */
+const doubles = (w: string): boolean => DOUBLES.has(w) || /^[^aeiou]*[aeiou][b-df-hj-np-tvz]$/.test(w);
+/** One verb's past, its first letter's case kept: "Reply" → "Replied", "rename" → "renamed", "Stop" → "Stopped". */
 function pastWord(word: string): string {
   const lower = word.toLowerCase();
   const known = PAST[lower];
-  const past = known ?? (lower.endsWith("e") ? `${lower}d` : /[^aeiou]y$/.test(lower) ? `${lower.slice(0, -1)}ied` : `${lower}ed`);
+  const past = known ?? (lower.endsWith("e") ? `${lower}d` : /[^aeiou]y$/.test(lower) ? `${lower.slice(0, -1)}ied` : doubles(lower) ? `${lower}${lower.at(-1)}ed` : `${lower}ed`);
   return word[0] === word[0]!.toUpperCase() ? past[0]!.toUpperCase() + past.slice(1) : past;
 }
 
@@ -221,11 +251,17 @@ export function htmlWords(raw: string): string {
       const alt = decode(attr(tag, "alt") ?? "").trim();
       return `[image${alt ? ` ${alt}` : ""}${src ? `: ${src}` : ""}]`;
     })
-    .replace(/<a\b[^>]*>([\s\S]*?)<\/a\s*>/gi, (tag, inner: string) => {
+    // A link inside another closes neither for the reader: the inner one is read first, so each names where it goes.
+    .replace(/<a\b[^>]*>((?:(?!<a\b)[\s\S])*?)<\/a\s*>/gi, (tag, inner: string) => {
       const href = decode(attr(tag.slice(0, tag.indexOf(">") + 1), "href") ?? "").trim();
       const words = decode(inner.replace(/<[^>]*>/g, "")).trim();
       if (!href || href === words || href === `mailto:${words}`) return words || href;
       return words ? `${words} (${href})` : href;
+    })
+    // A link the html never closes still goes where it points: name it where it stands (the hold review).
+    .replace(/<a\b[^>]*>/gi, (tag) => {
+      const href = decode(attr(tag, "href") ?? "").trim();
+      return href ? `[link: ${href}] ` : "";
     })
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<li\b[^>]*>/gi, "\n- ")

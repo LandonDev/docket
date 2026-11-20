@@ -31,6 +31,7 @@ vi.mock("work-kit/sheet", () => ({
 }));
 const grid = vi.hoisted(() => ({ handle: null as unknown, emit: null as ((m: unknown) => void) | null }));
 const { SheetPage, refusedWords } = await import("./SheetPage");
+const { OpenFailed } = await import("./session");
 
 afterEach(cleanup);
 
@@ -101,5 +102,46 @@ describe("the hosted sheet", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
     vi.useRealTimers();
     grid.handle = null;
+  });
+
+  it("keeps a token refresh that failed in passing on the reconnect path, then the unavailable screen; only a link the service says is over ends the page", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let fail: Error | null = new OpenFailed("down");
+      const flaky = { token: async () => (fail ? Promise.reject(fail) : { token: "t" }), socketUrl: () => "wss://example/sheet" } as never;
+      const onGone = vi.fn();
+      const onDown = vi.fn();
+      const view = render(<SheetPage session={flaky} opened={opened} onGone={onGone} onDown={onDown} />);
+      await flush();
+      expect(onGone).not.toHaveBeenCalled();
+      // The service comes back: the next try opens the sheet.
+      fail = null;
+      const before = FakeSocket.last;
+      await act(async () => void vi.advanceTimersByTime(1000));
+      await flush();
+      expect(FakeSocket.last).not.toBe(before);
+      await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+      expect(onGone).not.toHaveBeenCalled();
+      view.unmount();
+
+      // Down for good: after five tries the page cannot be reached, never "ended".
+      fail = new Error("network");
+      render(<SheetPage session={flaky} opened={opened} onGone={onGone} onDown={onDown} />);
+      for (let i = 0; i < 6; i++) {
+        await flush();
+        await act(async () => void vi.advanceTimersByTime(9000));
+      }
+      expect(onDown).toHaveBeenCalledOnce();
+      expect(onGone).not.toHaveBeenCalled();
+      cleanup();
+
+      // A link that has ended or been revoked: the ended screen at once.
+      fail = new OpenFailed("gone");
+      render(<SheetPage session={flaky} opened={opened} onGone={onGone} onDown={onDown} />);
+      await flush();
+      expect(onGone).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

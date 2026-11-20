@@ -15,19 +15,48 @@ export interface Shown {
   change?: number;
 }
 
-export function shownQuestions(body: FormBody, suggestions: readonly FormSuggestion[]): Shown[] {
+/**
+ * The questions with the waiting changes laid in. Each change is drawn against the saved question, never against another
+ * change. A question two changes touch draws one of them, the selected one (`selected`, the stepper's index) if it is
+ * one of them, else the first, so the outline, the scroll target and the press are all about the change on screen.
+ */
+export function shownQuestions(body: FormBody, suggestions: readonly FormSuggestion[], selected = -1): Shown[] {
   const list: Shown[] = body.questions.map((q) => ({ q }));
+  // The change each saved question draws: the selected one among those that touch it, else the first.
+  const drawn = new Map<string, number>();
+  suggestions.forEach((s, change) => {
+    if (s.op === "add") return;
+    const id = s.question.id;
+    if (!drawn.has(id) || change === selected) drawn.set(id, change);
+  });
   suggestions.forEach((s, change) => {
     if (s.op === "add") {
       const at = s.after == null ? 0 : list.findIndex((x) => x.q.id === s.after) + 1;
       list.splice(s.after != null && at === 0 ? list.length : at, 0, { q: s.question, mark: "add", change });
       return;
     }
+    if (drawn.get(s.question.id) !== change) return;
     const i = list.findIndex((x) => x.q.id === s.question.id && x.mark !== "add");
     if (i < 0) return;
     list[i] = s.op === "remove" ? { ...list[i], mark: "del", change } : { q: s.question, was: list[i].q, mark: "change", change };
   });
   return list;
+}
+
+/** The stepper's pick: the change's id, and where it stood when picked. */
+export interface Pick {
+  id: string | null;
+  at: number;
+}
+
+/**
+ * The one selection the stepper and the body share: the picked change where it now stands, or, once a decision has
+ * taken it away, the change that stands in its place (the last one when it was the last). -1 when none waits.
+ */
+export function resolvePick(suggestions: readonly FormSuggestion[], pick: Pick): number {
+  if (!suggestions.length) return -1;
+  const at = pick.id ? suggestions.findIndex((s) => s.id === pick.id) : -1;
+  return at >= 0 ? at : Math.min(Math.max(pick.at, 0), suggestions.length - 1);
 }
 
 /** A changed choice's options: those it keeps, those it drops and those it adds, in reading order. */

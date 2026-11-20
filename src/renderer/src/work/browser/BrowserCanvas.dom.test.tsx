@@ -29,7 +29,7 @@ const host = vi.hoisted(() => ({
   /** the windows this desktop can draw live */
   drawn: [] as unknown[],
   /** the live view's stream, as the viewport would report it; null for the real one (jsdom draws no frame) */
-  stream: null as null | { status: "starting" } | { status: "live"; app: string; window: null; width: number; height: number; drawn: boolean } | { status: "ended"; reason: "lost" },
+  stream: null as null | { status: "starting" } | { status: "live"; app: string; window: null; width: number; height: number; drawn: boolean } | { status: "ended"; reason: "window-closed" },
   streamRetries: 0,
 }));
 vi.mock("../../lib/connection", async (original) => {
@@ -82,6 +82,7 @@ vi.mock("../../surfaces/threads/computer/Viewport", async (original) => {
 
 vi.mock("../../lib/threadResources", () => ({ hostName: () => "Landon's MacBook" }));
 
+import { ENDED_WORDS } from "../../surfaces/threads/computer/Viewport";
 import { Bar, Body } from "./BrowserCanvas";
 
 const ITEM: CanvasItem = { id: "i1", sessionId: "t1", workspaceId: "w1", kind: "browser", title: "Report: Columbus trip", source: { at: "browser", host: "local", sessionId: "t1" }, state: "open", position: 0, rev: 0, createdAt: 1, updatedAt: 1 };
@@ -342,9 +343,12 @@ describe("a held submit's primary waits on the page he approves", () => {
     rerender(<Pane />);
     expect(submit().hasAttribute("disabled")).toBe(true);
     // The stream ended: off, with the stream's own Retry; Take over's way back (Hand back) stays.
-    host.stream = { status: "ended", reason: "lost" };
+    host.stream = { status: "ended", reason: "window-closed" };
     rerender(<Pane />);
-    await waitFor(() => expect(container.querySelector("[data-face=live] [data-slot=skeleton]")).toBeTruthy());
+    // An ended stream draws no bones (no first frame is coming), only its line under the empty well.
+    await waitFor(() => expect(container.querySelector("[data-face=live] [data-slot=skeleton]")).toBeNull());
+    expect(container.querySelector("[data-face=live]")).toBeTruthy();
+    expect(screen.getByText(ENDED_WORDS["window-closed"])).toBeTruthy();
     expect(submit().hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Hand back" }).hasAttribute("disabled")).toBe(false);
     // The first frame on screen: on.

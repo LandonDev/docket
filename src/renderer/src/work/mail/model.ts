@@ -40,7 +40,9 @@ export function mailActView(payload: unknown): MailActView {
     if (people.length) rows.push({ label, people });
   }
   rows.push({ label: "Subject", text: typeof m.subject === "string" && m.subject.trim() ? m.subject : "(no subject)" });
-  const files = Array.isArray(m.attachments) ? (m.attachments as Array<{ name?: unknown }>).flatMap((a) => (typeof a?.name === "string" ? [a.name] : [])) : [];
+  // Files that go: its own attachments and the parts it forwards from the mail it answers (the hold review).
+  const named = (list: unknown): string[] => (Array.isArray(list) ? (list as Array<{ name?: unknown }>).flatMap((a) => (typeof a?.name === "string" ? [a.name] : [])) : []);
+  const files = [...named(m.attachments), ...named(m.forwardParts)];
   // The html is what goes when there is one, so the view reads from it (the hold review's finding 11).
   const body = typeof m.html === "string" && m.html.trim() ? htmlWords(m.html) : typeof m.text === "string" ? m.text.trim() : "";
   const quote = typeof p.quote === "string" && p.quote.trim() ? htmlWords(p.quote) || null : null;

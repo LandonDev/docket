@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { TeamsLibrary, TeamsRoot } from "@shared/contract-work-office";
 import type { Link } from "../../lib/connection/link";
@@ -13,25 +13,75 @@ const FOUND: TeamsLibrary = { id: "h~1", host: "h", path: "/c/S/Purdue Esports -
 function fakeHost() {
   let roots: TeamsRoot[] = [];
   const calls: { method: string; params: unknown }[] = [];
-  const state = () => ({ libraries: roots.some((r) => r.folder === FOUND.path && r.off) ? [] : [{ ...FOUND, web: roots.find((r) => r.folder === FOUND.path)?.web ?? null }], roots, off: roots.filter((r) => r.off).map((r) => r.folder) });
+  // A folder he added himself is a library the host did not find.
+  const added = (): TeamsLibrary[] => roots.filter((r) => r.folder !== FOUND.path && !r.off).map((r) => ({ ...FOUND, id: `h~${r.folder}`, path: r.folder, team: r.folder.split("/").pop()!, found: false }));
+  const state = () => ({
+    libraries: [...(roots.some((r) => r.folder === FOUND.path && r.off) ? [] : [{ ...FOUND, web: roots.find((r) => r.folder === FOUND.path)?.web ?? null }]), ...added()],
+    roots,
+    off: roots.filter((r) => r.off).map((r) => r.folder),
+  });
+  const host = { refuse: null as string | null };
   const link = {
     connected: true,
     onOpen: () => () => {},
     request: (method: string, params: unknown) => {
       calls.push({ method, params });
-      if (method === "work.office.filesSetRoots") roots = (params as { roots: TeamsRoot[] }).roots;
+      if (method === "work.office.filesSetRoots") {
+        if (host.refuse) return Promise.reject(new Error(host.refuse));
+        roots = (params as { roots: TeamsRoot[] }).roots;
+      }
       return Promise.resolve(state());
     },
   } as unknown as Link;
-  return { link, calls };
+  return { link, calls, host };
 }
 
 describe("Teams files in Settings", () => {
-  it("lists each library found, by team, with its folder", async () => {
+  it("names a found library by its team, its folder in the row's tip; a folder he added shows its path", async () => {
     const { link } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    expect(screen.getByText("Purdue Esports").closest("[data-library-path]")!.getAttribute("data-library-path")).toBe(FOUND.path);
+    expect(screen.queryByText(FOUND.path)).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/c/S/RecWell - Site Policies" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
+    expect(await screen.findByText("/c/S/RecWell - Site Policies")).toBeTruthy();
+  });
+
+  it("keeps what is shown when a dialog closes: no skeleton, a fresh read after Cancel, none after a save", async () => {
+    const { link, calls } = fakeHost();
+    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    const reads = () => calls.filter((c) => c.method === "work.office.filesLibraries").length;
+    const before = reads();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add web link…" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Cancel" })));
+    // The rows stay while the host is asked again.
     expect(screen.getByText("Purdue Esports")).toBeTruthy();
-    expect(screen.getByText(FOUND.path)).toBeTruthy();
+    await waitFor(() => expect(reads()).toBe(before + 1));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add web link…" })));
+    fireEvent.change(screen.getByLabelText("Link"), { target: { value: "https://p.sharepoint.com/x" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    await screen.findByRole("button", { name: "Web link…" });
+    expect(reads()).toBe(before + 1);
+  });
+
+  it("says a dialog's failed save in the dialog alone, and forgets it when the dialog closes", async () => {
+    const { link, host } = fakeHost();
+    await act(async () => void render(<TeamsFilesRow link={link} title="Teams files" editable />));
+    host.refuse = "That folder is not on this Mac";
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/nowhere" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("That folder is not on this Mac")).toBeTruthy();
+    expect(screen.getAllByText("That folder is not on this Mac")).toHaveLength(1);
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" })));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByText("That folder is not on this Mac")).toBeNull();
+    // Open again: the old error is gone.
+    host.refuse = null;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
+    expect(screen.queryByText("That folder is not on this Mac")).toBeNull();
   });
 
   it("turns a found folder off and on again", async () => {

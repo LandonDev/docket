@@ -8,6 +8,7 @@ import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import type { Link } from "../../lib/connection/link";
 import { useHostRead } from "../../lib/connection/hostRead";
 
@@ -23,6 +24,9 @@ type Libraries = { libraries: TeamsLibrary[]; roots: TeamsRoot[]; off: string[] 
 /** A library's name as the row reads it. */
 export const libraryTitle = (l: Pick<TeamsLibrary, "kind" | "team" | "library">): string => (l.kind === "mine" ? "My files" : l.library ? `${l.team} ${l.library}` : l.team);
 
+/** A folder he added himself: a library the host did not find. Off folders and found libraries are named by their team. */
+const added = (library: TeamsLibrary | null): boolean => !!library && !library.found;
+
 /** His list with one folder's row changed; a row that says nothing more is dropped. */
 export function withRoot(roots: readonly TeamsRoot[], folder: string, change: Partial<TeamsRoot> | null): TeamsRoot[] {
   const rest = roots.filter((r) => r.folder !== folder);
@@ -34,10 +38,11 @@ export function withRoot(roots: readonly TeamsRoot[], folder: string, change: Pa
 }
 
 export function TeamsFilesRow({ link, title, editable }: { link: Link | null | undefined; title: string; editable: boolean }) {
-  const [round, setRound] = useState(0);
-  const read = useHostRead(link, () => link!.request<Libraries>("work.office.filesLibraries", {}), String(round));
+  const read = useHostRead(link, () => link!.request<Libraries>("work.office.filesLibraries", {}));
   const [busy, setBusy] = useState<string | null>(null);
+  // A row's own save (a switch, Remove) says its failure on the Teams files row; a dialog's, in the dialog alone.
   const [error, setError] = useState<string | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "web"; library: TeamsLibrary } | null>(null);
   const value = read.value;
   if (!value) {
@@ -50,14 +55,15 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
       </PageRow>
     );
   }
-  const save = async (roots: TeamsRoot[], key: string): Promise<boolean> => {
+  const save = async (roots: TeamsRoot[], key: string, from: "row" | "dialog" = "row"): Promise<boolean> => {
+    const say = from === "dialog" ? setDialogError : setError;
     setBusy(key);
-    setError(null);
+    say(null);
     try {
       read.set(await link!.request<Libraries>("work.office.filesSetRoots", { roots }));
       return true;
     } catch (err) {
-      setError(errorText(err));
+      say(errorText(err));
       return false;
     } finally {
       setBusy(null);
@@ -74,7 +80,23 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
         ) : null}
       </PageRow>
       {shown.map((row) => (
-        <PageRow key={row.folder} title={row.title} description={row.folder}>
+        // A folder he added shows its path; a library found by its team and channel is named well enough, its path in a tip.
+        <PageRow
+          key={row.folder}
+          title={
+            added(row.library) ? (
+              row.title
+            ) : (
+              <Tooltip>
+                <TooltipTrigger render={<span data-library-path={row.folder} />}>{row.title}</TooltipTrigger>
+                <TooltipContent side="bottom" align="start" className="max-w-sm break-all">
+                  {row.folder}
+                </TooltipContent>
+              </Tooltip>
+            )
+          }
+          description={added(row.library) ? row.folder : undefined}
+        >
           {editable ? (
             <div className="flex items-center gap-2">
               {row.library && row.on ? (
@@ -97,32 +119,37 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
         <FolderDialog
           kind={dialog.kind}
           initial={dialog.kind === "web" ? (dialog.library.web ?? "") : ""}
-          onClose={() => {
+          onClose={(saved) => {
             setDialog(null);
-            setRound((n) => n + 1);
+            setDialogError(null);
+            // A save already holds the host's answer; otherwise ask again, keeping what is shown meanwhile.
+            if (!saved) read.retry();
           }}
-          onSave={(text) => (dialog.kind === "add" ? save(withRoot(value.roots, text, {}), "add") : save(withRoot(value.roots, dialog.library.path, { web: text || undefined }), dialog.library.path))}
-          error={error}
+          onSave={(text) =>
+            dialog.kind === "add" ? save(withRoot(value.roots, text, {}), "add", "dialog") : save(withRoot(value.roots, dialog.library.path, { web: text || undefined }), dialog.library.path, "dialog")
+          }
+          error={dialogError}
         />
       ) : null}
     </>
   );
 }
 
-function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" | "web"; initial: string; onSave: (text: string) => Promise<boolean>; onClose: () => void; error: string | null }) {
+function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" | "web"; initial: string; onSave: (text: string) => Promise<boolean>; onClose: (saved: boolean) => void; error: string | null }) {
   const [text, setText] = useState(initial);
   const [pending, setPending] = useState(false);
-  const { root, closeThen } = useClosingDialog(onClose, pending);
+  const cancel = (): void => onClose(false);
+  const { root, closeThen } = useClosingDialog(cancel, pending);
   const add = kind === "add";
   const confirm = async (): Promise<void> => {
     setPending(true);
     const ok = await onSave(text.trim());
     setPending(false);
-    if (ok) closeThen(onClose);
+    if (ok) closeThen(() => onClose(true));
   };
   return (
     <Dialog {...root}>
-      <ModalPanel onClose={() => closeThen(onClose)} title={add ? "Add a Teams folder" : "Web link"} description={add ? "A folder OneDrive syncs that was not found." : "Paste the channel's Files → Copy link."} size="sm">
+      <ModalPanel onClose={() => closeThen(cancel)} title={add ? "Add a Teams folder" : "Web link"} description={add ? "A folder OneDrive syncs that was not found." : "Paste the channel's Files → Copy link."} size="sm">
         <ModalBody>
           <Field label={add ? "Folder" : "Link"}>
             <Input
@@ -136,7 +163,7 @@ function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" |
           </Field>
           <ErrorLine error={error} />
         </ModalBody>
-        <DialogFooter onCancel={() => closeThen(onClose)} confirmLabel={add ? "Add" : "Save"} pending={pending} disabled={add && !text.trim()} onConfirm={() => void confirm()} />
+        <DialogFooter onCancel={() => closeThen(cancel)} confirmLabel={add ? "Add" : "Save"} pending={pending} disabled={add && !text.trim()} onConfirm={() => void confirm()} />
       </ModalPanel>
     </Dialog>
   );

@@ -35,7 +35,6 @@ import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { reveal } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
-import { StatusMark } from "../../components/ui/status";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
@@ -48,6 +47,8 @@ import { EmptyState, LoadingLine } from "../../surfaces/SurfaceSkeleton";
 import { Dashboard, Doc, Media, Mic, Pdf, Slides, Table as SheetIcon } from "../icons";
 import { useLifeosQuery } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
+import { SEARCH_FIELD } from "../views/searchField";
+import { ViewStateLine } from "../views/ViewStateLine";
 import { DocumentFrame, MARGIN_FROM, Scroller, useDocument, useOpened } from "./DocumentCanvas";
 import { chipOf, finderOf, opensHere, pick, sameSpec, setFinder, setFound, setSpec, useFinder, useFound } from "./finder";
 import type { DocHost } from "./host";
@@ -154,7 +155,18 @@ function SearchField({ workspaceId }: { workspaceId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   return (
-    <InputGroup role="search" className="h-7 w-56 min-w-28 shrink rounded-md @max-[640px]/viewhead:w-40" leading={<Search />}>
+    <InputGroup
+      role="search"
+      className={SEARCH_FIELD}
+      leading={<Search />}
+      trailing={
+        spec.query ? (
+          <Button variant="ghost" size="icon-xs" aria-label="Clear search" onClick={() => setSpec(workspaceId, { query: "" })}>
+            <X />
+          </Button>
+        ) : null
+      }
+    >
       <GroupInput
         ref={input}
         aria-label="Search documents"
@@ -524,22 +536,24 @@ function DocList(props: WorkViewProps) {
         <Skeleton className="h-3 w-[62%]" />
       </div>
     );
-  const narrowed = !!spec.query.trim() || filterCount(spec.filter) > 0;
-  const lifeosLine = found.answer?.lifeos ? (
-    <div className="mb-3 flex h-8 items-center">
-      <StatusMark state="failed" word="LifeOS did not answer" detail={found.answer.lifeos} className="min-w-0" />
-    </div>
-  ) : null;
+  const searched = !!spec.query.trim();
+  const filtered = filterCount(spec.filter) > 0;
+  const narrowed = searched || filtered;
+  // The host listed what it could and says LifeOS did not answer for the rest. While the frame's own line says LifeOS did
+  // not answer, that is the one line and its Retry: the view draws none of its own (DESIGN.md: never a second banner).
+  const frameSays = props.lifeos.state === "unreachable";
+  const lifeosLine = found.answer?.lifeos && !frameSays ? <ViewStateLine word="LifeOS did not answer" detail={found.answer.lifeos} onRetry={retry} /> : null;
   if (!shown.rows.length) {
     if (found.searching) return <LoadingLine label="Searching…" />;
-    // Nothing listed because LifeOS did not answer is not "no documents".
-    if (!narrowed) return found.answer?.lifeos ? <EmptyState title="LifeOS did not answer" line={found.answer.lifeos} action={{ label: "Retry", onClick: retry }} /> : <EmptyState title="No documents" />;
+    // Nothing listed because LifeOS did not answer is not "no documents": the line says it, once, over nothing.
+    if (!narrowed) return found.answer?.lifeos ? lifeosLine : <EmptyState title="No documents" />;
+    // The action names what it clears: the search, the filters, or both.
+    const clear = searched && filtered ? "Clear" : searched ? "Clear search" : "Clear filters";
     return (
-      <EmptyState
-        title="No matches"
-        line="Nothing here matches the search and filters."
-        action={{ label: "Clear filters", onClick: () => setSpec(workspaceId, { query: "", filter: {} }) }}
-      />
+      <>
+        {lifeosLine}
+        <EmptyState title="No matches" action={{ label: clear, onClick: () => setSpec(workspaceId, { query: "", filter: {} }) }} />
+      </>
     );
   }
 
@@ -576,11 +590,13 @@ function DocList(props: WorkViewProps) {
   };
   const list = { workspaceId, groups, selected, projects: shown.projects, spec, onPick, onOpen: (e: FindEntry) => openEntry(props, e) };
   return (
-    <div data-find-list={workspaceId} onKeyDown={onKeyDown} className={`mx-auto w-full px-6 py-5 ${spec.layout === "table" ? "max-w-[1040px]" : "max-w-[720px]"}`}>
+    <>
       {lifeosLine}
-      {spec.layout === "table" ? <TableLayout {...list} /> : <ListLayout {...list} />}
-      {found.answer && !found.answer.complete ? <p className="mt-4 text-xs text-muted-foreground">Older items are not listed.</p> : null}
-    </div>
+      <div data-find-list={workspaceId} onKeyDown={onKeyDown} className={`mx-auto w-full py-5 ${spec.layout === "table" ? "max-w-[1040px] px-6" : "max-w-[720px] ps-7 pe-6"}`}>
+        {spec.layout === "table" ? <TableLayout {...list} /> : <ListLayout {...list} />}
+        {found.answer && !found.answer.complete ? <p className="mt-4 text-xs text-muted-foreground">Older items are not listed.</p> : null}
+      </div>
+    </>
   );
 }
 
@@ -638,8 +654,8 @@ function ListLayout({ groups, selected, spec, onPick, onOpen }: LayoutProps) {
             const wait = waitWords(e);
             return (
               <div key={e.key} role="listitem" className="group/row relative">
-                {/* The box hangs in the gutter, so titles keep their line under the group's name. */}
-                <span className="absolute -start-6 top-2">
+                {/* The box hangs in the gutter, so titles keep their line under the group's name, 4px clear of a picked row's fill. */}
+                <span className="absolute -start-7 top-2">
                   <Pick e={e} on={selected.has(e.key)} onPick={onPick} shown={picking} />
                 </span>
                 <ItemButton

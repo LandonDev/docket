@@ -165,7 +165,7 @@ describe('nothing is sent without his press', () => {
     await run('office_mail_send', { to: ['boss@example.com'], subject: 'x', html: '<p>Yes</p><script>x()</script>', replyTo: '42' })
     expect(held[0].payload).toMatchObject({ to: ['dana@example.com'], subject: 'Re: Budget', html: '<p>Yes</p>' })
     // What Outlook adds under a reply is named, so the Outbox shows it (milestone 50's hold review, finding 1).
-    expect((held[0].payload as OfficeMail).outlookAdds).toMatch(/^The mail from dana@example\.com, "Budget" \(\d{4}-\d\d-\d\d\), under this one$/)
+    expect((held[0].payload as OfficeMail).outlookAdds).toMatch(/^The mail from dana@example\.com, "Budget" \([A-Z][a-z]{2} \d{1,2}\), under this one$/)
     const mail = officeActs({ carrier: () => office }).find((a) => a.kind === 'office.mail.send')!
     expect(mail.matches!({ domains: ['example.com'] }, OfficeMailSchema.parse({ host: 'env_mac', to: [], subject: 's', html: '' }))).toBe(false)
   })

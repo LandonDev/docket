@@ -78,8 +78,23 @@ public enum OutboxModel {
         return turned(verb, pastWord)
     }
 
-    private nonisolated static let past = ["send": "sent", "post": "posted", "make": "made", "accept": "accepted", "submit": "submitted", "share": "shared", "book": "booked", "run": "ran", "publish": "published", "decline": "declined", "reply": "replied", "pay": "paid", "buy": "bought", "put": "put", "set": "set", "upload": "uploaded", "forward": "forwarded", "answer": "answered"]
-    private nonisolated static let doubled = ["run": "running", "submit": "submitting", "put": "putting", "set": "setting"]
+    /// The desktop's PAST (work/outbox/model.ts), word for word.
+    private nonisolated static let past = [
+        "send": "sent", "post": "posted", "make": "made", "accept": "accepted", "submit": "submitted", "share": "shared", "book": "booked",
+        "run": "ran", "publish": "published", "decline": "declined", "reply": "replied", "pay": "paid", "buy": "bought", "put": "put", "set": "set",
+        "upload": "uploaded", "forward": "forwarded", "answer": "answered", "sell": "sold", "leave": "left", "withdraw": "withdrew", "give": "gave",
+        "hold": "held", "take": "took", "get": "got", "keep": "kept", "tell": "told", "bring": "brought", "draw": "drew", "choose": "chose",
+        "write": "wrote", "begin": "began", "find": "found", "spend": "spent", "build": "built", "meet": "met", "pick": "picked", "go": "went",
+        "do": "did", "say": "said", "win": "won", "cut": "cut", "let": "let", "quit": "quit",
+    ]
+    /// Verbs stressed on a last syllable that doubles its consonant: "Transfer" → "Transferred" (the desktop's DOUBLES).
+    private nonisolated static let doublesSet: Set<String> = ["transfer", "commit", "submit", "admit", "permit", "omit", "refer", "prefer", "occur", "regret", "control", "patrol", "compel", "expel", "rebut", "unpin", "unplug", "quit", "begin"]
+
+    /// One syllable, one vowel, one closing consonant ("stop", "ship", "plan"), or a stressed last syllable
+    /// in `doublesSet`: the final consonant doubles (the desktop's `doubles`).
+    nonisolated static func doubles(_ w: String) -> Bool {
+        doublesSet.contains(w) || w.range(of: "^[^aeiou]*[aeiou][b-df-hj-np-tvz]$", options: .regularExpression) != nil
+    }
 
     /// The verb words of a label turned by `word`, each keeping its first letter's case.
     private nonisolated static func turned(_ verb: String, _ word: (String) -> String) -> String {
@@ -97,12 +112,14 @@ public enum OutboxModel {
         if let known = past[w] { return known }
         if w.hasSuffix("e") { return w + "d" }
         if w.count > 1, w.hasSuffix("y"), let before = w.dropLast().last, !"aeiou".contains(before) { return w.dropLast() + "ied" }
+        if doubles(w), let last = w.last { return w + String(last) + "ed" }
         return w + "ed"
     }
 
+    /// "Stop" → "Stopping", "Transfer" → "Transferring", "Make" → "Making": the past's doubling, applied to -ing.
     private nonisolated static func progressiveWord(_ w: String) -> String {
-        if let known = doubled[w] { return known }
         if w.hasSuffix("e"), !w.hasSuffix("ee"), w.count > 2 { return w.dropLast() + "ing" }
+        if doubles(w), let last = w.last { return w + String(last) + "ing" }
         return w + "ing"
     }
 
@@ -240,6 +257,19 @@ public enum OutboxModel {
         return key == "subject" && (object["replyTo"] != nil || object["forward"] != nil)
     }
 
+    /// The names of a mail's files, its attachments then its forwarded parts; nil where the object has
+    /// neither list (not a mail), so their keys read as any other.
+    nonisolated static func fileNames(_ object: [String: JSONValue]) -> [String]? {
+        let lists = ["attachments", "forwardParts"].compactMap { key -> [JSONValue]? in
+            if case .array(let list)? = object[key] { list } else { nil }
+        }
+        guard !lists.isEmpty else { return nil }
+        return lists.flatMap { list in list.compactMap { item -> String? in
+            guard case .object(let o) = item, case .string(let name)? = o["name"] else { return nil }
+            return name
+        } }
+    }
+
     /// A value exactly as JSON writes it: `null`, `""`, an object or a list whole.
     nonisolated static func json(_ value: JSONValue) -> String {
         (try? String(decoding: JSONEncoder.sorted.encode(value), as: UTF8.self)) ?? ""
@@ -274,8 +304,12 @@ public enum OutboxModel {
                 let hasText: Bool = if case .string? = object["text"] { true } else { false }
                 view.body = .init(path: path + [hasText ? "text" : "html"], text: HtmlWords.of(html), readOnly: !hasText)
             }
+            // A mail's files are its own attachments and the parts it forwards from the mail it answers: one
+            // row of their names, as the desktop's mail lists them (the hold review).
+            let files = quiet ? fileNames(object) : nil
             for (key, v) in ordered(object) {
                 if quiet, OutboxModel.quiet.contains(key) { continue }
+                if files != nil, key == "attachments" || key == "forwardParts" { continue }
                 let at = path + [key]
                 if !quiet {
                     switch v {
@@ -320,6 +354,9 @@ public enum OutboxModel {
                         view.fields.append(Field(key: key, path: at, label: label(key), value: text(v), edit: nil))
                     }
                 }
+            }
+            if let files, !files.isEmpty {
+                view.fields.append(Field(key: "files", path: path + ["attachments"], label: "Files", value: files.joined(separator: ", "), edit: nil))
             }
         }
         if let payload { walk(payload, [], 0) }
@@ -583,7 +620,8 @@ extension JSONEncoder {
     /// Keys sorted, so a value prints the same every time.
     nonisolated static let sorted: JSONEncoder = {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        // As JSON.stringify writes it on the desktop: an address keeps its slashes.
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return encoder
     }()
 }

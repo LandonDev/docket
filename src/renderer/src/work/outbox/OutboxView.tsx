@@ -24,6 +24,7 @@ import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "../../surfaces/Sur
 import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ActView } from "../acts/ActView";
+import { kindHeading } from "../acts/kindRows";
 import { Calendar, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
@@ -489,7 +490,9 @@ function DetailHead({ item, facts, narrowOnly = [], menu }: { item: HostItem; fa
         </span>
         {menu}
       </div>
-      <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">{item.state === "sent" ? pastTense(act, item.verb) : act}</h1>
+      <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">
+        {kindHeading(item.kind, item.payload, item.state === "sent") ?? (item.state === "sent" ? pastTense(act, item.verb) : act)}
+      </h1>
     </header>
   );
 }

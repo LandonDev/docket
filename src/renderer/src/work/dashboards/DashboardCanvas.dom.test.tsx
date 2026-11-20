@@ -309,6 +309,41 @@ describe("the dashboard kind, round five", () => {
   });
 });
 
+describe("the dashboard kind, round eight", () => {
+  const proposal = { by: "agent:env:t1", at: 1 };
+  const fig = (id: string, label: string) => ({ id, label, format: "number" as const, from: { ...from("Invoices!E2:E48", label), agg: "count" as const }, value: "1" });
+
+  it("gives each proposed figure block its own row and anchor, and outlines only the one stepped to", async () => {
+    const base = page();
+    open({
+      ...base,
+      blocks: [
+        { id: "s1", kind: "figures", figures: [fig("a", "Open")] },
+        { id: "s2", kind: "figures", figures: [fig("b", "Closed")] },
+        { id: "p1", kind: "figures", figures: [fig("c", "Late")], proposed: proposal },
+        { id: "p2", kind: "figures", figures: [fig("d", "Paid")], proposed: proposal },
+      ],
+    });
+    const first = await found('[data-block="p1"]');
+    const second = await found('[data-block="p2"]');
+    expect(first).not.toBe(second);
+    // Each proposed row holds its own block's figures alone.
+    expect([...first.querySelectorAll("[data-figure]")].map((f) => f.getAttribute("data-figure"))).toEqual(["c"]);
+    expect([...second.querySelectorAll("[data-figure]")].map((f) => f.getAttribute("data-figure"))).toEqual(["d"]);
+    // Settled figures keep their one row.
+    const settled = document.querySelector('[data-figure="a"]')!.parentElement!;
+    expect(settled.querySelector('[data-figure="b"]')).not.toBeNull();
+    // The stepper's current change is outlined; the other proposal is not.
+    await waitFor(() => expect(first.className).toContain("outline-solid"));
+    expect(second.className).not.toContain("outline-solid");
+    fireEvent.click(screen.getByRole("button", { name: "Next change" }));
+    await waitFor(() => expect(second.className).toContain("outline-solid"));
+    expect(first.className).not.toContain("outline-solid");
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(dashHost.review).toHaveBeenCalledWith({ ids: ["p2"] }, "accept"));
+  });
+});
+
 describe("the chart's axis", () => {
   it("steps in three round steps whose top clears the largest bar, whole steps for whole numbers", () => {
     expect(axis(12300, true)).toEqual({ step: 5000, top: 15000 });

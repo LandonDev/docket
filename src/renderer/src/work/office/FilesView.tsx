@@ -23,6 +23,8 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { Cloud, Doc, File, Media, Pdf, Slides, Table, Video, Volume } from "../icons";
 import { linkIdOfHost, localHostId, workspaceSettings } from "../shell/actions";
 import type { WorkViewProps } from "../views/registry";
+import { SEARCH_FIELD } from "../views/searchField";
+import { ViewStateLine } from "../views/ViewStateLine";
 import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, type ShownLibrary } from "./files";
 
 /**
@@ -64,8 +66,9 @@ export function Head({ workspace }: WorkViewProps) {
   const { query } = useFilesState(workspace.id);
   return (
     <InputGroup
-      className="h-7 w-56"
-      leading={<Search className="size-3.5" />}
+      role="search"
+      className={SEARCH_FIELD}
+      leading={<Search />}
       trailing={
         query ? (
           <Button variant="ghost" size="icon-xs" aria-label="Clear search" onClick={() => patch(workspace.id, { query: "" })}>
@@ -133,11 +136,15 @@ export function View(props: WorkViewProps) {
   const { query, place } = useFilesState(workspace.id);
   if (!reach) return <Bones />;
   if ("error" in reach) return <EmptyState title="Files did not load" line={reach.error} action={{ label: "Retry", onClick: () => setAttempt((n) => n + 1) }} />;
-  if (!reach.libraries.length) return <EmptyState title="No Teams files" line="Sync a channel from Teams with OneDrive on the Mac." />;
+  // A desktop that did not answer is the state line, with Retry; what the others hold is listed under it.
+  const failedLine = reach.failed.length ? <ViewStateLine word={`${reach.failed.join(", ")} did not answer`} onRetry={() => setAttempt((n) => n + 1)} /> : null;
+  // Nothing listed while a host did not answer is not "no Teams files": the line says it, over nothing.
+  if (!reach.libraries.length) return failedLine ?? <EmptyState title="No Teams files" line="Sync a channel from Teams with OneDrive on the Mac." />;
   const library = place ? reach.libraries.find((l) => l.id === place.library) : undefined;
   return (
-    <div className="@container/files mx-auto w-full max-w-[880px] px-6 py-5">
-      {reach.failed.length ? <p className="mb-3 text-xs text-destructive">{`${reach.failed.join(", ")} did not answer`}</p> : null}
+    <>
+      {failedLine}
+      <div className="@container/files mx-auto w-full max-w-[880px] px-6 py-5">
       {query.trim() ? (
         <Results {...props} reach={reach} query={query.trim()} />
       ) : library && place ? (
@@ -145,7 +152,8 @@ export function View(props: WorkViewProps) {
       ) : (
         <Libraries workspace={workspace} libraries={reach.libraries} />
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -255,6 +263,7 @@ function Results(props: ViewProps & { query: string }) {
   }, [query]);
   const envs = [...new Set(reach.libraries.map((l) => l.env))];
   const [found, setFound] = useState<{ key: string; rows: { entry: TeamsEntry; library: ShownLibrary }[]; more: boolean; error?: string } | null>(null);
+  const [round, setRound] = useState(0);
   useEffect(() => {
     let live = true;
     void Promise.allSettled(envs.map((env) => registry.linkOf(env).request<{ entries: TeamsEntry[]; more: boolean }>("work.office.filesSearch", { query: asked }))).then((answers) => {
@@ -269,10 +278,23 @@ function Results(props: ViewProps & { query: string }) {
     return () => {
       live = false;
     };
-  }, [asked, envs.join(",")]);
+  }, [asked, envs.join(","), round]);
   if (!found || found.key !== asked) return <Bones />;
-  if (found.error) return <EmptyState title="Search did not run" line={found.error} />;
-  if (!found.rows.length) return <EmptyState title="No files match" line={`Nothing is named like “${asked}”.`} action={{ label: "Clear search", onClick: () => patch(workspace.id, { query: "" }) }} />;
+  if (found.error)
+    return (
+      <EmptyState
+        title="Search did not run"
+        line={found.error}
+        action={{
+          label: "Retry",
+          onClick: () => {
+            setFound(null);
+            setRound((n) => n + 1);
+          },
+        }}
+      />
+    );
+  if (!found.rows.length) return <EmptyState title="No files match" action={{ label: "Clear search", onClick: () => patch(workspace.id, { query: "" }) }} />;
   return (
     <>
       <Entries {...props} rows={found.rows} places />
