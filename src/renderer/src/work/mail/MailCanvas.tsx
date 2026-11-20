@@ -57,7 +57,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   }
   return (
     <ConvexProvider client={lifeos.client}>
-      <MailClientProvider client={mailClientFor(env, lifeos.client.url)}>
+      <MailClientProvider client={mailClientFor(env, lifeos.client.url, sector ?? "all")}>
         <MailKitProvider kit={kit}>
           <div className="tc-mail flex h-full min-h-0 flex-col">
             <Draft id={source.id} shell={shell} />

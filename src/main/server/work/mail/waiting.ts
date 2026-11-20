@@ -25,6 +25,8 @@ export interface WaitRow {
 export interface DropRow {
   _id: string
   threadId: string
+  /** the sector the mail is in now, which the thread told must hold */
+  sector?: string
   subject: string
   repliedBy: string
   origin?: { app?: string; threadId?: string; host?: string }
@@ -44,11 +46,11 @@ const who = (to: WaitRow['waiting']['to']): string => {
 const day = (t: number): string => new Date(t).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
 /** The first message of a thread a press on Draft a nudge starts. */
-export function nudgePrompt(mail: { id: string; subject: string; to: string; since: number }): string {
+export function nudgePrompt(mail: { id: string; subject: string; to: string; addresses: string; since: number }): string {
   return [
     `Draft a short follow-up to the mail “${mail.subject || '(no subject)'}” (LifeOS mail thread ${mail.id}). He wrote to ${mail.to} on ${day(mail.since)} and no one has answered.`,
     'Read the thread with read_mail_thread first. If someone has answered since, draft nothing and say so.',
-    'Otherwise write a reply in that same thread with draft_mail: two or three sentences in his voice, polite and plain, that ask again for what his last mail asked for. No apology for the follow-up, no new requests. He reads it and sends it himself; you never send.'
+    `Otherwise write a reply in that same thread with draft_mail, to ${mail.addresses}: two or three sentences in his voice, polite and plain, that ask again for what his last mail asked for. No apology for the follow-up, no new requests. He reads it and sends it himself; you never send.`
   ].join('\n\n')
 }
 
@@ -78,12 +80,16 @@ export function workSector(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Secto
 export async function startNudge(ctx: WorkCtx, by: Caller, workspaceId: string, threadId: string): Promise<{ sessionId: string }> {
   mustBePerson(by, 'operate')
   const sector = workSector(ctx, workspaceId)
-  const got = await ctx.lifeos.owner().query<{ thread: { _id: string; subject: string; sector?: string }; messages: { fromMe: boolean; sentAt: number; to?: { name?: string; address: string }[]; cc?: { name?: string; address: string }[] }[] } | null>('mail:thread', { id: threadId })
+  const owner = ctx.lifeos.owner()
+  const got = await owner.query<{ thread: { _id: string; subject: string; sector?: string }; messages: { fromMe: boolean; sentAt: number; to?: { name?: string; address: string }[]; cc?: { name?: string; address: string }[] }[] } | null>('mail:thread', { id: threadId })
   if (!got) throw new Error('LifeOS has no such mail')
   if (got.thread.sector !== sector) throw new Error(OTHER_SECTOR)
+  // The wait itself says when he wrote and to whom: an Outlook reply sent through a desktop is no stored message.
+  const wait = await owner.query<WaitRow['waiting'] | null>('mailWaits:get', { threadId }).catch(() => null)
   const mine = [...got.messages].reverse().find((m) => m.fromMe)
-  const to = mine ? who([...(mine.to ?? []), ...(mine.cc ?? [])]) : 'them'
-  const text = nudgePrompt({ id: threadId, subject: got.thread.subject, to, since: mine?.sentAt ?? Date.now() })
+  const people = wait?.to ?? (mine ? [...(mine.to ?? []), ...(mine.cc ?? [])] : [])
+  const addresses = people.map((a) => (a.name?.trim() ? `${a.name.trim()} <${a.address}>` : a.address)).join(', ')
+  const text = nudgePrompt({ id: threadId, subject: got.thread.subject, to: people.length ? who(people) : 'them', addresses: addresses || 'the people his last mail went to', since: wait?.since ?? mine?.sentAt ?? Date.now() })
   const sessionId = await ctx.threads.start({ workspaceId, text, about: { kind: 'mail', label: got.thread.subject || '(no subject)', ref: { at: 'lifeos', table: 'mailThreads', id: threadId } } })
   return { sessionId }
 }
@@ -93,6 +99,11 @@ export function ensureWaitingTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS work_mail_nudge_routines (
     workspace_id TEXT PRIMARY KEY,
     routine_id TEXT NOT NULL
+  )`)
+  // A dropped nudge told as a Result, so a retried acknowledgement never tells it twice.
+  db.exec(`CREATE TABLE IF NOT EXISTS work_mail_drops_told (
+    drop_id TEXT PRIMARY KEY,
+    at INTEGER NOT NULL
   )`)
 }
 
@@ -140,6 +151,18 @@ export async function waitingOf(ctx: WorkCtx, by: Caller, workspaceId: string): 
  */
 export async function setWaiting(ctx: WorkCtx, by: Caller, workspaceId: string, patch: { days?: number; routine?: boolean }): Promise<MailWaiting> {
   mustBePerson(by, 'admin')
+  // One change at a time per workspace: two windows turning the switch on at once make one routine, not two.
+  const before = changing.get(workspaceId) ?? Promise.resolve()
+  const mine = before.catch(() => undefined).then(() => changeWaiting(ctx, by, workspaceId, patch))
+  const tail = mine.catch(() => undefined)
+  changing.set(workspaceId, tail)
+  void tail.then(() => changing.get(workspaceId) === tail && changing.delete(workspaceId))
+  return mine
+}
+
+const changing = new Map<string, Promise<unknown>>()
+
+async function changeWaiting(ctx: WorkCtx, by: Caller, workspaceId: string, patch: { days?: number; routine?: boolean }): Promise<MailWaiting> {
   const sector = workSector(ctx, workspaceId)
   if (patch.days !== undefined) await ctx.lifeos.owner().mutation('mailWaits:setDays', { sector, days: patch.days })
   if (patch.routine !== undefined) {
@@ -166,12 +189,20 @@ export async function setWaiting(ctx: WorkCtx, by: Caller, workspaceId: string, 
  * thread this host no longer has is only forgotten.
  */
 export async function reportDrops(ctx: WorkCtx, drops: readonly DropRow[], told: Set<string>): Promise<void> {
+  const reported = ctx.db.prepare('SELECT 1 FROM work_mail_drops_told WHERE drop_id = ?')
+  const mark = ctx.db.prepare('INSERT OR IGNORE INTO work_mail_drops_told (drop_id, at) VALUES (?, ?)')
   for (const drop of drops) {
     if (told.has(drop._id)) continue
     told.add(drop._id)
     const sessionId = drop.origin?.threadId
     try {
-      if (sessionId && drop.origin?.host === ctx.host && ctx.scopeOf(sessionId)) {
+      // Another host's drop is that host's to tell and to acknowledge.
+      if (drop.origin?.host !== ctx.host) continue
+      const scope = sessionId ? ctx.scopeOf(sessionId) : null
+      // Told once, even when the acknowledgement fails and LifeOS answers the drop again; and only to a
+      // thread of the mail's own sector now, since the mail may have moved since the nudge was drafted.
+      if (sessionId && scope && scope.sector === drop.sector && !reported.get(drop._id)) {
+        mark.run(drop._id, Date.now())
         ctx.results.add({
           sessionId,
           kind: 'mail.nudge.dropped',
@@ -210,7 +241,8 @@ export const waitingTool: WorkTool = {
     const sector = ctx.scope.sector
     if (!sector) return { ...workText('This thread has no sector, so it has no Waiting on list.'), isError: true }
     if (!ctx.lifeos.connected()) return { ...workText('LifeOS is not connected.'), isError: true }
-    const page = await ctx.lifeos.owner().query<{ page: WaitRow[] }>('mailWaits:list', { paginationOpts: { numItems: PAGE, cursor: null } })
+    // LifeOS pages within the sector, so another sector's waits never crowd this one's out.
+    const page = await ctx.lifeos.owner().query<{ page: WaitRow[] }>('mailWaits:list', { sector, paginationOpts: { numItems: PAGE, cursor: null } })
     return workText(waitingText(page?.page ?? [], sector))
   }
 }

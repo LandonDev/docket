@@ -78,13 +78,13 @@ function usePage(workspaceId: string): MailPage {
 const NO_TASKS: ReadonlySet<string> = new Set();
 
 export function View(props: WorkViewProps) {
-  const { lifeos, env } = props;
+  const { lifeos, env, sector } = props;
   const convex = lifeos.client;
   // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
   if (!convex) return sessionWaits(lifeos) ? <MailBones /> : null;
   return (
     <ConvexProvider client={convex}>
-      <MailClientProvider client={mailClientFor(env, convex.url)}>
+      <MailClientProvider client={mailClientFor(env, convex.url, sector ?? "all")}>
         <MailKitProvider kit={tempcodeMailKit}>
           <MailPageBody {...props} />
         </MailKitProvider>

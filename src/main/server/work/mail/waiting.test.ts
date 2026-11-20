@@ -36,7 +36,7 @@ function fakeCtx(answers: Record<string, unknown> = {}) {
     db,
     host: 'box',
     log: () => {},
-    scopeOf: (id: string) => (id === 'gone' ? null : ({ sessionId: id } as WorkScope)),
+    scopeOf: (id: string) => (id === 'gone' ? null : ({ sessionId: id, sector: id === 't-cosmic' ? 'cosmic' : 'purdue' } as WorkScope)),
     lifeos: {
       connected: () => true,
       owner: () => ({
@@ -65,7 +65,7 @@ const thread = (sector: string) => ({
 
 describe('Draft a nudge', () => {
   it('starts a thread in the workspace, linked to the mail, that drafts and never sends', async () => {
-    const { ctx, started } = fakeCtx({ 'mail:thread': thread('purdue') })
+    const { ctx, started } = fakeCtx({ 'mail:thread': thread('purdue'), 'mailWaits:get': new Error('not deployed') })
     expect(await startNudge(ctx, owner, 'ws', 'mt1')).toEqual({ sessionId: 'nudge-thread' })
     expect(started).toHaveLength(1)
     expect(started[0]!.workspaceId).toBe('ws')
@@ -73,8 +73,16 @@ describe('Draft a nudge', () => {
     const text = started[0]!.text
     expect(text).toContain('“Quote for the spring refresh” (LifeOS mail thread mt1)')
     expect(text).toContain('He wrote to Maya Chen and tom@x.test on Fri, Nov 13')
-    expect(text).toContain('draft_mail')
+    expect(text).toContain('draft_mail, to Maya Chen <maya@x.test>, tom@x.test:')
     expect(text).toContain('you never send')
+  })
+
+  it('takes when he wrote and to whom from the wait itself, which knows an Outlook reply no message holds', async () => {
+    const wait = { since: Date.UTC(2026, 10, 16, 15), dueAt: 0, asked: true, to: [{ name: 'Dana Lee', address: 'dana@purdue.edu' }], state: 'due' }
+    const { ctx, started } = fakeCtx({ 'mail:thread': thread('purdue'), 'mailWaits:get': wait })
+    await startNudge(ctx, owner, 'ws', 'mt1')
+    expect(started[0]!.text).toContain('He wrote to Dana Lee on Mon, Nov 16')
+    expect(started[0]!.text).toContain('draft_mail, to Dana Lee <dana@purdue.edu>:')
   })
 
   it("is a person's press: a thread's own call is refused, and a mail of another sector", async () => {
@@ -87,7 +95,7 @@ describe('Draft a nudge', () => {
   })
 
   it('words the prompt with the subject and whom he wrote to', () => {
-    expect(nudgePrompt({ id: 'x', subject: '', to: 'Dana', since: Date.UTC(2026, 10, 2, 15) })).toContain('“(no subject)”')
+    expect(nudgePrompt({ id: 'x', subject: '', to: 'Dana', addresses: 'dana@x.test', since: Date.UTC(2026, 10, 2, 15) })).toContain('“(no subject)”')
   })
 })
 
@@ -105,7 +113,7 @@ describe("the workspace's Waiting on", () => {
       ensure: () => {},
       async handle(req, _ctx, by) {
         if (by.kind === 'model') throw new Error('a thread cannot change routines')
-        const params = req.params as Record<string, unknown>
+        const params = ('params' in req ? req.params : {}) as Record<string, unknown>
         routineCalls.push({ fn: req.method, args: params })
         if (req.method === 'work.routines.list') return { handled: true, result: { routines: rows } }
         if (req.method === 'work.routines.save') {
@@ -152,6 +160,14 @@ describe("the workspace's Waiting on", () => {
     expect(routineCalls.some((c) => /grant/.test(c.fn))).toBe(false)
   })
 
+  it('makes one routine when two windows turn the switch on at once, and an overlapping off wins after them', async () => {
+    const { ctx } = fakeCtx({ 'mailWaits:days': 3 })
+    const [a, b, c] = await Promise.all([setWaiting(ctx, owner, 'ws', { routine: true }), setWaiting(ctx, owner, 'ws', { routine: true }), setWaiting(ctx, owner, 'ws', { routine: false })])
+    expect([a.routine, b.routine, c.routine]).toEqual([true, true, false])
+    expect(routineCalls.filter((x) => x.fn === 'work.routines.save')).toHaveLength(1)
+    expect(rows.map((r) => r.enabled)).toEqual([false])
+  })
+
   it('reads off once he deleted the routine in Routines, and makes a new one when turned on', async () => {
     const { ctx } = fakeCtx({ 'mailWaits:days': 3 })
     await setWaiting(ctx, owner, 'ws', { routine: true })
@@ -170,7 +186,7 @@ describe("the workspace's Waiting on", () => {
 })
 
 describe('a nudge LifeOS dropped', () => {
-  const drop = (id: string, threadId: string, host = 'box'): DropRow => ({ _id: id, threadId: 'mt1', subject: 'Quote', repliedBy: 'Maya Chen', origin: { app: 'tempcode', threadId, host } })
+  const drop = (id: string, threadId: string, sector = 'purdue'): DropRow => ({ _id: id, threadId: 'mt1', sector, subject: 'Quote', repliedBy: 'Maya Chen', origin: { app: 'tempcode', threadId, host: 'box' } })
 
   it('is told to the thread that drafted it, once, then forgotten in LifeOS', async () => {
     const { ctx, calls, results } = fakeCtx({ 'mailWaits:ackDrop': null })
@@ -179,6 +195,20 @@ describe('a nudge LifeOS dropped', () => {
     await reportDrops(ctx, [drop('d1', 't-nudge')], told)
     expect(results).toEqual([{ sessionId: 't-nudge', kind: 'mail.nudge.dropped', summary: 'Dropped the unsent nudge “Quote”: Maya Chen replied', ref: { at: 'lifeos', table: 'mailThreads', id: 'mt1' } }])
     expect(calls.filter((c) => c.fn === 'mailWaits:ackDrop')).toEqual([{ fn: 'mailWaits:ackDrop', args: { id: 'd1' } }])
+  })
+
+  it("is never told to a thread of another sector than the mail's own now", async () => {
+    const moved = fakeCtx({ 'mailWaits:ackDrop': null })
+    await reportDrops(moved.ctx, [drop('d4', 't-nudge', 'life')], new Set())
+    expect(moved.results).toHaveLength(0)
+    expect(moved.calls).toEqual([{ fn: 'mailWaits:ackDrop', args: { id: 'd4' } }])
+  })
+
+  it('is told once even when its acknowledgement failed and LifeOS answers it again', async () => {
+    const { ctx, results } = fakeCtx({ 'mailWaits:ackDrop': new Error('down') })
+    await reportDrops(ctx, [drop('d5', 't-nudge')], new Set())
+    await reportDrops(ctx, [drop('d5', 't-nudge')], new Set())
+    expect(results).toHaveLength(1)
   })
 
   it('is only forgotten when its thread is gone, and asked again when the acknowledgement fails', async () => {
@@ -214,9 +244,11 @@ describe('mail_waiting, for a thread', () => {
     const scope = (sector: string | null) => ({ sessionId: 't', workspaceId: 'ws', sector, host: 'box', away: false, routineRunId: null, shared: () => false }) as WorkScope
     expect(mail.tools!(scope('purdue')).map((t) => t.name)).toEqual(['mail_waiting'])
     expect(mail.tools!(scope(null))).toEqual([])
-    const { ctx } = fakeCtx({ 'mailWaits:list': { page: [row('a', 'purdue')] } })
+    const { ctx, calls } = fakeCtx({ 'mailWaits:list': { page: [row('a', 'purdue')] } })
     const answer = await waitingTool.run({}, { ...ctx, scope: scope('purdue'), sessionId: 't', signal: new AbortController().signal } as ToolCtx)
     expect(answer.content[0]).toMatchObject({ type: 'text' })
+    // LifeOS pages within the sector.
+    expect(calls[0]).toEqual({ fn: 'mailWaits:list', args: { sector: 'purdue', paginationOpts: { numItems: 100, cursor: null } } })
     const refused = await waitingTool.run({}, { ...ctx, scope: scope(null), sessionId: 't', signal: new AbortController().signal } as ToolCtx)
     expect(refused.isError).toBe(true)
   })

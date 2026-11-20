@@ -115,9 +115,13 @@ function wrapClient(env: string, inner: MailClient): MailClient {
 
 const clients = new Map<string, MailClient>();
 
-/** The mail client for a host's LifeOS at `convexUrl`: made once, then the same object every time. */
-export function mailClientFor(env: string, convexUrl: string): MailClient {
-  const key = `${env}|${convexUrl}`;
+/**
+ * The mail client for a host's LifeOS at `convexUrl`, one per sector it reads (`scope`: the session's sector,
+ * "all" for the whole session): made once, then the same object every time. A client keeps the first page of
+ * each list it last showed, so two sectors never share one, or one sector's mail would stand in for the other's.
+ */
+export function mailClientFor(env: string, convexUrl: string, scope: string): MailClient {
+  const key = `${env}|${convexUrl}|${scope}`;
   let client = clients.get(key);
   if (!client) {
     client = wrapClient(env, createLifeosMailClient({ convexUrl, write }));

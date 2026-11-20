@@ -18,7 +18,7 @@ export function Section({ environmentId }: { environmentId: string }) {
   if (!lifeos.client) return sessionWaits(lifeos) ? <PageRowsSkeleton rows={3} /> : <PageEmpty>Sign in to LifeOS to set up Mail.</PageEmpty>;
   return (
     <ConvexProvider client={lifeos.client}>
-      <MailClientProvider client={mailClientFor(environmentId, lifeos.client.url)}>
+      <MailClientProvider client={mailClientFor(environmentId, lifeos.client.url, "all")}>
         <MailKitProvider kit={tempcodeMailKit}>
           <div data-mail-kit className="tc-mail pt-8">
             <MailSettings className="max-w-none" />
