@@ -23,6 +23,8 @@ public enum Route: Hashable, Codable, Sendable {
     case hosts
     /// The Outbox: every Work host's held items in bands (milestone 46).
     case outbox
+    /// Every computer being driven now, on every connected host, live (docs/agents/live-video.md).
+    case computers
     /// One held item; `ref` is `OutboxModel.key(_:)` of its `HeldRef`.
     case outboxItem(environmentId: String, ref: String)
     /// Settings → Work: the switch, LifeOS, grants and tool rules, per host.

@@ -31,6 +31,7 @@
 		23614D8185C5D979DC52454E /* DiffScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A24AC0457A2C05A169F1C11C /* DiffScreen.swift */; };
 		24AC734036A7AFF3146054A5 /* HostBuildRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5540D24130B97B147B763D83 /* HostBuildRow.swift */; };
 		25CDEB92E0D323C86DB62C81 /* ListGlide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F92C8E618A22AC688535D2B /* ListGlide.swift */; };
+		2703DF59A422FF9AB33D6507 /* ComputersScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCB0BC72A391976DE2F465C /* ComputersScreen.swift */; };
 		271AF1E8895AE817A5BAC8D0 /* ProjectShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA991F2A407C3A22B3D689E /* ProjectShell.swift */; };
 		28D82E2D2310815FA5C4B701 /* ProjectPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776798E4452947B1F6C08838 /* ProjectPlanView.swift */; };
 		2AD4C0EEE3EDB9E757479616 /* AddEnvironmentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C74571D102E72FCC26E83C /* AddEnvironmentSheet.swift */; };
@@ -136,6 +137,7 @@
 		AC36760D31F43952A102CAD5 /* StatusDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7BDB2F2EDCBB6066FB98164 /* StatusDot.swift */; };
 		AC8347C7FD000D5AA0B80548 /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9929B736C3C28B124C2DB5D1 /* Tokens.swift */; };
 		AD45C192E9C90A4CD74AE390 /* FleetStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A3930E0CEF933EAC509B6D /* FleetStyles.swift */; };
+		AE2B0B19751A364F5A2E45B7 /* LivePicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A679C70593F510284DB01258 /* LivePicture.swift */; };
 		AF490DAE7016CD0573402789 /* MacDevicesSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F09D3BA41F4844E626CD49E /* MacDevicesSection.swift */; };
 		AFC2E5D1E3E4B5C144C92DFE /* ProjectSettingsStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36EC9E0F01E8828FCDA4BCB /* ProjectSettingsStyles.swift */; };
 		B0B82BFF31590DE6E768A2F0 /* TempCodeActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6D2535CBE81AC0372C62332F /* TempCodeActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -328,6 +330,7 @@
 		82EDA91B7F122693424EAA79 /* PdfItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PdfItemView.swift; sourceTree = "<group>"; };
 		864CD2924E00F07F3B3495DC /* TestHooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHooks.swift; sourceTree = "<group>"; };
 		8CDDDF2CA8755F715E737220 /* HostActivitySections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostActivitySections.swift; sourceTree = "<group>"; };
+		8DCB0BC72A391976DE2F465C /* ComputersScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputersScreen.swift; sourceTree = "<group>"; };
 		8F8B110E0CA49C21D1DE3E14 /* ThreadGone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadGone.swift; sourceTree = "<group>"; };
 		938757E95FE02243EE0BAC64 /* ResultsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsSheet.swift; sourceTree = "<group>"; };
 		959A8761ECA42FCB61231272 /* ProjectPlanChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectPlanChip.swift; sourceTree = "<group>"; };
@@ -347,6 +350,7 @@
 		A35D3337968B0A77BDF419BF /* NavigationRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationRouter.swift; sourceTree = "<group>"; };
 		A5BDBCF2FD709D21B2A20C30 /* TempCodeNotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = TempCodeNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5F85B138E361FDF48F26370 /* TranscriptStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStyles.swift; sourceTree = "<group>"; };
+		A679C70593F510284DB01258 /* LivePicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePicture.swift; sourceTree = "<group>"; };
 		A97CD0E1CEDE6E34AFBFFEE6 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		ABF2A213AB83A542936993C6 /* DeployLogSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeployLogSheet.swift; sourceTree = "<group>"; };
 		AE78AA69F7DB6914EAA1DE17 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
@@ -711,6 +715,7 @@
 			isa = PBXGroup;
 			children = (
 				F960E9F3E4083280E5BFC5EF /* AwayReview.swift */,
+				8DCB0BC72A391976DE2F465C /* ComputersScreen.swift */,
 				DBFA885FA5B64708AE19E54D /* HeldInline.swift */,
 				F8AA18212F92E05107C5A0F6 /* HouseRulesScreen.swift */,
 				7A9C87051BFFD436F21E865C /* OutboxItemScreen.swift */,
@@ -733,6 +738,7 @@
 				F06A67F0BBD54F6912650EFB /* HostedItemView.swift */,
 				CD91DC41534E9CF1C1A6994D /* ItemKindViews.swift */,
 				0EF473EB384AD90B793F4D15 /* ItemPage.swift */,
+				A679C70593F510284DB01258 /* LivePicture.swift */,
 				41B4E5332F84B79B9D7613DC /* MediaItemView.swift */,
 				82EDA91B7F122693424EAA79 /* PdfItemView.swift */,
 				677666A3C0B28B3F3046D93C /* RoutinesScreen.swift */,
@@ -974,6 +980,7 @@
 				F0AA1E81A6C34F6010913756 /* ComposerAttachments.swift in Sources */,
 				EEF0FF5133467713DD83F7BA /* ComposerRow.swift in Sources */,
 				A11DD08A3B1135C82F6F1D78 /* ComposerStyles.swift in Sources */,
+				2703DF59A422FF9AB33D6507 /* ComputersScreen.swift in Sources */,
 				0DBCCA842B8C531ACF33700E /* DeployLogSheet.swift in Sources */,
 				608B67B454AF34A15FB4E3EC /* DiagnosticsScreen.swift in Sources */,
 				23614D8185C5D979DC52454E /* DiffScreen.swift in Sources */,
@@ -1020,6 +1027,7 @@
 				BAA13CB6B01BC86A33123E34 /* LayoutProbe.swift in Sources */,
 				1807533949520F200A5D7BB3 /* LifeViewScreen.swift in Sources */,
 				25CDEB92E0D323C86DB62C81 /* ListGlide.swift in Sources */,
+				AE2B0B19751A364F5A2E45B7 /* LivePicture.swift in Sources */,
 				8A1EC209985F3CA16F1171D5 /* LiveText.swift in Sources */,
 				2E0B5C7F69476698594FCD4B /* MacBridgeRows.swift in Sources */,
 				AF490DAE7016CD0573402789 /* MacDevicesSection.swift in Sources */,

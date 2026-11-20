@@ -43,6 +43,10 @@ struct HomeView: View {
                         if !home.work.isEmpty {
                             OutboxHomeRow(count: OutboxEntries.count(clients))
                         }
+                        // live video: while anything is being driven on a connected host
+                        if !ComputerEntries.tiles(clients).isEmpty {
+                            ComputersHomeRow()
+                        }
                         ForEach(home.mainEntries) { entry in
                             WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
                         }

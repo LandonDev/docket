@@ -7,6 +7,9 @@
 #   TC_TEST_PAIR_LINK="https://host/pair#XXXXX-XXXXX" TC_TEST_PAIR_NAME="The box" scripts/ios-sim-proof.sh
 #
 # TC_PROOF_SET picks the shots:
+#   video   Live video against the local server (bun scripts/ios-sim-proof-local.ts, TC_PROOF_SET=video): a Work
+#           thread's browser item playing the box engine's recorded stream, full screen, Home's Computers row and
+#           its list, light and dark; judged from the app's probe and the server's acks ($OUT/video-report.txt).
 #   work    Milestone 46, against the local server's work seeds (scripts/lib/ios-work-seeds.ts,
 #           pairs with the admin key): Home with the Outbox row and the Work band, the Outbox,
 #           a held mail, its Edit sheet, the mail edited and sent from the phone (the undo
@@ -445,6 +448,8 @@ pair() {
 if { [ "$SET" = duo ] || [ "$SET" = perf ]; } && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
 # The work set presses Send, Edit and Away and reads Settings → Work: it pairs with the admin key.
 if [ "$SET" = work ] && [ -n "${TC_TEST_PAIR_LINK_ADMIN:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_ADMIN; fi
+# The video set opens streams: video.open needs approve, which the acting key has.
+if [ "$SET" = video ] && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
 if [ -n "${TC_TEST_PAIR_LINK:-}" ]; then
   pair || { echo "ios-sim-proof: the app did not pair" >&2; exit 3; }
   rm -f "$OUT/shots/00-pairing.png" "$OUT/shots/$POSE/00-pairing.png" "$OUT/layout/$POSE/00-pairing.json"
@@ -1654,7 +1659,80 @@ perf_set() {
   python3 "$here/lib/ios_perf_check.py" --cores "$(sysctl -n hw.ncpu)" "$OUT/perf" ${TC_PERF_BASELINE:+--baseline $TC_PERF_BASELINE}
 }
 
+# Live video (docs/agents/live-video.md): the seeded Work thread's browser item plays the box engine's recorded
+# stream from the test server (POST /video, scripts/lib/videoLoopFeed.ts), then full screen, then Home's Computers
+# row and its list, in both appearances. The app's probe says how many frames it showed and every phase its stream
+# went through: the frames must grow between two reads and no phase may be over or refused; the test server says
+# the viewer's acks reached the feed. Report: $OUT/video-report.txt.
+video_report() {
+  local name=$1 container
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  mkdir -p "$OUT/layout"
+  [ -n "$container" ] && cp "$container/Documents/layout-report.json" "$OUT/layout/$name.json" 2>/dev/null || true
+  [ -n "$container" ] && cp "$container/Documents/layout-events.json" "$OUT/layout/$name.events.json" 2>/dev/null || true
+}
+video_set() {
+  local thread="Arena check-in"
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  for mode in light dark; do
+    appearance "$mode"
+    ( TC_ITEM=browser shot "v1-browser-live-$mode" thread "$thread" item "" 14 )
+    video_report "v1-$mode-a"
+    sleep 3
+    video_report "v1-$mode-b"
+    ( TC_ITEM=browser shot "v2-full-screen-$mode" thread "$thread" item live-full 16 )
+    video_report "v2-$mode"
+    ( shot "v3-home-$mode" home "" "" "" 10 )
+    video_report "v3-$mode"
+    ( shot "v4-computers-$mode" computers "" "" "" 14 )
+    video_report "v4-$mode"
+  done
+  local feed
+  feed=$(curl -s "${TC_TEST_CONTROL_URL:-http://127.0.0.1:1}/video" || echo '{}')
+  python3 - "$OUT" "$feed" <<'PY'
+import json, os, sys
+out, feed = sys.argv[1], json.loads(sys.argv[2] or '{}')
+lines, failed = [], False
+def report(name):
+    try:
+        return json.load(open(os.path.join(out, 'layout', name + '.json')))
+    except Exception:
+        return {}
+def phases(name):
+    try:
+        text = open(os.path.join(out, 'layout', name + '.events.json')).read()
+    except Exception:
+        return []
+    return [p for p in ('over-stopped', 'over-picture', 'over-kept', 'over-permission', 'refused') if '"' + p + '"' in text]
+for mode in ('light', 'dark'):
+    a = int((report('v1-%s-a' % mode).get('notes') or {}).get('videoFrames', '0') or 0)
+    b = int((report('v1-%s-b' % mode).get('notes') or {}).get('videoFrames', '0') or 0)
+    ok = b > a > 0
+    failed |= not ok
+    lines.append('%s browser item %s: frames shown %d, then %d three seconds later' % ('PASS' if ok else 'FAIL', mode, a, b))
+    full = int((report('v2-%s' % mode).get('notes') or {}).get('videoFrames', '0') or 0)
+    ok = full > 0
+    failed |= not ok
+    lines.append('%s full screen %s: %d frames shown' % ('PASS' if ok else 'FAIL', mode, full))
+    tiles = int((report('v4-%s' % mode).get('notes') or {}).get('computerTiles', '0') or 0)
+    ok = tiles >= 1
+    failed |= not ok
+    lines.append('%s computers list %s: %d tile(s)' % ('PASS' if ok else 'FAIL', mode, tiles))
+    for name in ('v1-%s-b' % mode, 'v2-%s' % mode, 'v4-%s' % mode):
+        bad = phases(name)
+        failed |= bool(bad)
+        lines.append('%s %s: the stream %s' % ('FAIL' if bad else 'PASS', name, 'went ' + ', '.join(bad) if bad else 'never closed'))
+ok = feed.get('acks', 0) > 0 and feed.get('sent', 0) > 0
+failed |= not ok
+lines.append('%s the test server: %s frames sent, %s acked, %s streams opened, %s open now' % ('PASS' if ok else 'FAIL', feed.get('sent'), feed.get('acks'), feed.get('opened'), feed.get('open')))
+open(os.path.join(out, 'video-report.txt'), 'w').write('\n'.join(lines) + '\n')
+print('\n'.join(lines))
+sys.exit(1 if failed else 0)
+PY
+}
+
 case "$SET" in
+  video) video_set ;;
   duo) duo_set ;;
   perf) perf_set ;;
   f4) f4_set ;;

@@ -276,6 +276,8 @@ struct RootView: View {
             HostsView()
         case .outbox:
             OutboxScreen()
+        case .computers:
+            ComputersScreen()
         case .outboxItem(let environmentId, let ref):
             OutboxItemScreen(environmentId: environmentId, refKey: ref)
         case .workSettings:
@@ -307,6 +309,12 @@ struct RootView: View {
             tab = .search
         case "settings":
             home.open(.settings)
+        case "computers":
+            // the video set: the Computers list once a host says something is driven
+            for _ in 0..<100 where ComputerEntries.tiles(model.registry.ordered).isEmpty {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            home.open(.computers)
         case "outbox", "outbox-item":
             // Milestone 46's proof: the Outbox, or its first held item, once a host has listed it.
             for _ in 0..<100 where OutboxEntries.of(model.registry.ordered).isEmpty {
