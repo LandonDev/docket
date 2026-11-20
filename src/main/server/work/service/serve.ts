@@ -152,6 +152,8 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     storeFor: (name) => (name.startsWith('file:') ? fileStore : (notServed ?? lifeosStore)),
     journalDir: join(config.dataDir, 'journal'),
     linkLive,
+    // A guest's caret carries the name the owner gave the link, whatever the page claims (work-kit guardPresence).
+    presenceName: (c) => (c.link ? ((links.get(c.link) as { guest?: { name?: string } } | undefined)?.guest?.name ?? 'A guest') : null),
     log: io.log
   })
   // Versions and branches are kept where the document is: LifeOS's rows, or inside the .tcdoc (milestone 19).

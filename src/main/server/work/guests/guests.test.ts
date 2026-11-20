@@ -471,6 +471,20 @@ describe('found by the projects reviews', () => {
     await until('the new token syncs', () => synced(now.client))
   })
 
+  it("a document guest's caret carries the link's name, whatever the page claims", async () => {
+    const r = await rig()
+    const a = await make(r, 'edit')
+    const guest = guestSocket(r, a.id, DOC, (await opened(r, a.id, a.secret)).body.token!)
+    const owner = ownerSocket(r, DOC, await ownerToken(r))
+    await until('both synced', () => synced(guest.client) && synced(owner))
+    const theirs = guest.client.provider.awareness!
+    theirs.setLocalState({ member: { id: 'owner' }, user: { id: 'owner', name: 'Landon Hale', color: '#000000', hue: 2, avatarUrl: 'https://evil.example/me.png' } })
+    const seen = () => owner.provider.awareness!.getStates().get(theirs.clientID) as { member?: { id: string }; user?: { id: string; name: string; avatarUrl: unknown } } | undefined
+    await until('the owner sees the guest', () => seen()?.user !== undefined)
+    expect(seen()!.user).toMatchObject({ id: `guest:${a.id}`, name: 'Dana Lee', avatarUrl: null })
+    expect(seen()!.member).toEqual({ id: `guest:${a.id}` })
+  })
+
   it("a new address ends a sheet link's open socket within a second", async () => {
     const r = await rig()
     r.convex.sheets.set('sheet1', { title: 'Budget', sector: 'life', ops: [] })
