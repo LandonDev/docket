@@ -149,7 +149,7 @@ async function open() {
   render(<OutboxView besideRail onClose={() => undefined} />);
   // the page keeps the tab it was left on; each test starts on Waiting
   fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
-  await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0));
+  await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
 }
 const sends = () => world.calls.filter((c) => c.method === "work.outbox.send");
 
@@ -158,7 +158,8 @@ describe("the Outbox", () => {
     await open();
     expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"))).toEqual(["Outbox", "A Work workspace", "A Work workspace"]);
     // the first is open: mail's own view (milestone 23), its fields and its body as plain text
-    await waitFor(() => expect([...document.querySelectorAll("dd")].map((d) => d.textContent)).toContain("Dana Lee dana@purdue.edu"));
+    // the mail act's own view loads as its own chunk: cold, under a full run's load, it takes longer than waitFor's second
+    await waitFor(() => expect([...document.querySelectorAll("dd")].map((d) => d.textContent)).toContain("Dana Lee dana@purdue.edu"), { timeout: 5000 });
     expect(screen.getByText(/About Budget\./)).toBeTruthy();
     fireEvent.click(screen.getByText("Post message with Slack"));
     expect(screen.getByText("staff")).toBeTruthy();
@@ -175,7 +176,7 @@ describe("the Outbox", () => {
     world.quote = "<p>On Tue, Dana wrote:</p><p>Can you send the budget?</p>";
     try {
       await open();
-      await waitFor(() => expect(document.querySelector("[data-mail-quote]")?.textContent).toBe("On Tue, Dana wrote:\n\nCan you send the budget?"));
+      await waitFor(() => expect(document.querySelector("[data-mail-quote]")?.textContent).toBe("On Tue, Dana wrote:\n\nCan you send the budget?"), { timeout: 5000 });
       expect(world.calls.some((c) => c.method === "work.outbox.get")).toBe(true);
       expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
     } finally {
