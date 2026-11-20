@@ -280,6 +280,20 @@ describe('the idle hibernate', () => {
     expect(r.keeper.state().state).toBe('asleep')
   })
 
+  it('counts its idle time from when it came awake, not from the keeper\'s start hours before, a failed setup too (1.0.356 hibernated a minute after setup)', async () => {
+    // the box's service has run for hours before he presses Set up, and the build has no service to copy in
+    const r = make({ disk: false, token: null, exe: null })
+    r.advance(4 * 3600_000)
+    await expect(r.keeper.setup()).rejects.toThrow(NO_SERVICE)
+    expect(r.keeper.state()).toMatchObject({ state: 'awake', error: NO_SERVICE })
+    r.advance(60_000)
+    r.keeper.tick()
+    // an idle hibernate the tick started would be done by now
+    for (let i = 0; i < 20; i++) await new Promise((done) => setTimeout(done, 0))
+    expect(r.guest.log).not.toContain('hibernate')
+    expect(r.keeper.state().state).toBe('awake')
+  })
+
   it('a call starts the wait again; a viewer or his driving holds it awake; never is never', async () => {
     const r = make()
     await r.keeper.wake()

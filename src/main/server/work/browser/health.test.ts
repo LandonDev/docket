@@ -102,10 +102,12 @@ describe('the sign-in cookies', () => {
 })
 
 describe('the Windows VM', () => {
-  it('says the standing machine runs, is stopped, or was never made', () => {
-    expect(byId(browserRows(probe()))['browser.winvm.machine']).toMatchObject({ group: 'Windows VM', state: 'working', line: 'Running' })
-    expect(byId(browserRows(probe({ vm: () => ({ builtAt: null, disk: true, running: false }) })))['browser.winvm.machine']).toMatchObject({ state: 'broken', line: expect.stringContaining('up.sh --instance standing') })
-    expect(byId(browserRows(probe({ vm: () => ({ builtAt: null, disk: false, running: false }) })))['browser.winvm.machine']!.state).toBe('needs-you')
+  it('says the standing machine is awake, asleep, or not set up, and points at Settings, not the rig', () => {
+    expect(byId(browserRows(probe()))['browser.winvm.machine']).toMatchObject({ group: 'Windows VM', state: 'working', line: 'Awake' })
+    expect(byId(browserRows(probe({ vm: () => ({ builtAt: null, disk: true, running: false }) })))['browser.winvm.machine']).toMatchObject({ state: 'working', line: expect.stringContaining('Asleep') })
+    const none = byId(browserRows(probe({ vm: () => ({ builtAt: null, disk: false, running: false }) })))['browser.winvm.machine']!
+    expect(none).toMatchObject({ state: 'needs-you', line: expect.stringContaining('Settings → Work → Windows VM → Set up') })
+    expect(none.line).not.toContain('up.sh')
     expect(browserRows(probe({ vm: () => null })).some((r) => r.group === 'Windows VM')).toBe(false)
   })
 

@@ -150,6 +150,9 @@ export class Keeper {
     this.step = step
     this.error = error
     if (changed) this.since = this.now()
+    // coming awake (a setup, a wake, a failed setup that left it running) is a use: the idle clock starts now, not
+    // at the keeper's own start, which a box's service may have had hours before (1.0.356 hibernated a minute after setup)
+    if (changed && name === 'awake') this.lastUse = this.now()
     const state = this.state()
     this.d.push(state)
     for (const fn of [...this.stateListeners]) fn(state)

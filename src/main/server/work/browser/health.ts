@@ -111,13 +111,13 @@ function vmRows(p: BrowserProbe): HealthRow[] {
   const vm = p.vm()
   if (!vm) return []
   const machine = { id: 'browser.winvm.machine', pillar: 'browser' as const, group: 'Windows VM', title: 'Standing machine' }
-  const start = 'scripts/win-vm/up.sh --instance standing'
   const rows: HealthRow[] = [
     !vm.disk
-      ? { ...machine, state: 'needs-you', line: `Not made yet. Start it once with ${start}.` }
+      ? { ...machine, state: 'needs-you', line: 'Not set up. Settings → Work → Windows VM → Set up.' }
       : vm.running
-        ? { ...machine, state: 'working', line: 'Running' }
-        : { ...machine, state: 'broken', line: `Stopped, so Work threads cannot use it. Start it with ${start}.` }
+        ? { ...machine, state: 'working', line: 'Awake' }
+        : // the keeper puts it to sleep when idle and wakes it at a thread's first call: asleep is its rest, not a fault
+          { ...machine, state: 'working', line: 'Asleep. It wakes at a thread\'s first call.' }
   ]
   // without its tools the VM runs with no window: the 4 fps picture, and no Take over
   const tool = p.vmPictureTool()
