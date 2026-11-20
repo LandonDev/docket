@@ -136,6 +136,14 @@ export interface BoxXDisplayOptions {
   tools: VideoTools
   /** the display's pixels for each of the page's; DISPLAY_SCALE by default */
   scale?: number
+  /** the display's own size, in place of the page's at `scale`: the Windows VM's display is the guest's screen */
+  size?: { width: number; height: number }
+  /**
+   * The server's command as it is started: the Windows VM's starts with the stop signals blocked
+   * (winvm/machine/daemons.ts `stopBlocked`), so it outlives a stop of the box's service with QEMU, and is then
+   * ended with SIGKILL.
+   */
+  command?: (cmd: string, args: string[]) => [string, string[]]
   spawn?: typeof nodeSpawn
   log?: (line: string) => void
   startMs?: number
@@ -149,6 +157,10 @@ export class BoxXDisplay {
 
   get scale(): number {
     return this.opts.scale ?? DISPLAY_SCALE
+  }
+  /** The display's own pixels. */
+  get size(): { width: number; height: number } {
+    return this.opts.size ?? displayPixels(this.scale)
   }
   get dir(): string {
     return join(this.opts.root, 'display')
@@ -178,9 +190,10 @@ export class BoxXDisplay {
     this.sweep()
     // A new cookie for every server: one that leaked from the last is worth nothing.
     writeFileSync(files.auth, xauthorityEntry(randomBytes(16)), { mode: 0o600 })
-    const { width, height } = displayPixels(this.scale)
+    const { width, height } = this.size
     writeFileSync(files.config, xorgConfig(width, height), { mode: 0o600 })
-    const child = (this.opts.spawn ?? nodeSpawn)(tools.xorg, xorgArgs(files), {
+    const [cmd, args] = this.opts.command ? this.opts.command(tools.xorg, xorgArgs(files)) : [tools.xorg, xorgArgs(files)]
+    const child = (this.opts.spawn ?? nodeSpawn)(cmd, args, {
       // The server needs nothing of this process's X, and gets none of it.
       env: { ...withoutDisplay(), ...videoToolsEnv(tools) },
       stdio: ['ignore', 'ignore', 'ignore', 'pipe'],
@@ -215,7 +228,8 @@ export class BoxXDisplay {
     this.pair = null
     if (child && child.exitCode === null && child.signalCode === null) {
       const exited = new Promise<void>((r) => child.once('exit', () => r()))
-      child.kill('SIGTERM')
+      // a server started with the stop signals blocked takes no SIGTERM
+      child.kill(this.opts.command ? 'SIGKILL' : 'SIGTERM')
       const timer = setTimeout(() => child.kill('SIGKILL'), STOP_MS)
       await exited
       clearTimeout(timer)
@@ -230,7 +244,7 @@ export class BoxXDisplay {
       const pid = Number(readFileSync(join(this.dir, 'pid'), 'utf8'))
       if (!(pid > 1)) return
       // only a process that was started on this folder's config: a pid can be reused
-      if (readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').includes(join(this.dir, 'xorg.conf'))) process.kill(pid, 'SIGTERM')
+      if (readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').includes(join(this.dir, 'xorg.conf'))) process.kill(pid, this.opts.command ? 'SIGKILL' : 'SIGTERM')
     } catch {
       // no pid kept, or the process is gone
     }

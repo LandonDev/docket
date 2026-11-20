@@ -1,0 +1,67 @@
+import { join } from 'node:path'
+import type { ComputerSessionRow } from '@shared/contract-computer'
+import type { ComputerSessions } from '../../computer/sessions'
+import type { VideoRelay } from '../../video/relay'
+import type { VideoRpc } from '../../video/rpc'
+import { winvmKeeper, onWinvmState } from './index'
+import { rigConfig, rigPaths } from './machine/config'
+import { qmp, screendump } from './machine/qmp'
+import { electronJpeg, qmpScreenshot, VmPicture } from './picture'
+import { vmScreen } from './window'
+
+type Rows = Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>
+
+/**
+ * The Windows VM's picture on the box's host (index.ts): its video source
+ * beside the box browser's, its row beside the box browser's rows, and its
+ * 4 fps picture beside theirs. Wired once at boot on a Linux host; the
+ * machine itself is the Work pillar's (index.ts here).
+ */
+export function wireVmPicture(o: {
+  dataDir: string
+  video: { relay: VideoRelay; rpc: Pick<VideoRpc, 'addSource'> }
+  /** the thread that holds the machine (the lease's), which titles its idle row */
+  holder?: () => string | null
+  log?: (line: string) => void
+}): VmPicture {
+  const p = rigPaths(rigConfig(process.env, undefined, 'standing'))
+  const screen = vmScreen(o.dataDir, o.log)
+  const picture = new VmPicture({
+    state: () => winvmKeeper()?.state() ?? null,
+    onState: onWinvmState,
+    setViewers: (n) => winvmKeeper()?.setViewers(n),
+    screen,
+    relay: o.video.relay,
+    screenshot: qmpScreenshot(join(o.dataDir, 'winvm', 'picture', 'shots'), async (file) => void (await qmp(p.qmp, screendump(file)))),
+    jpeg: electronJpeg,
+    ...(o.holder ? { holder: o.holder } : {}),
+    log: o.log
+  })
+  o.video.rpc.addSource(picture)
+  return picture
+}
+
+/**
+ * The VM's rows for the host's Computers: the sessions of the threads that drive it (vm.ts) while there are any, else
+ * the VM's own idle row while it is awake (picture.ts). Every one says `pictureOnly` while the VM has no window. Stop
+ * goes to the sessions; the idle row has nothing to stop.
+ */
+export function joinRows(sessions: Rows, vm: Pick<VmPicture, 'rows' | 'onRows' | 'stop' | 'windowless'>): Rows {
+  const all = (): ComputerSessionRow[] => {
+    const driven = sessions.rows()
+    const rows = driven.length ? driven : vm.rows()
+    return vm.windowless() ? rows.map((r) => ({ ...r, pictureOnly: true as const })) : rows
+  }
+  return {
+    rows: all,
+    onRows: (fn) => {
+      const a = sessions.onRows(() => fn(all()))
+      const b = vm.onRows(() => fn(all()))
+      return () => {
+        a()
+        b()
+      }
+    },
+    stop: async (threadId) => (sessions.rows().some((r) => r.threadId === threadId) ? sessions.stop(threadId) : vm.stop())
+  }
+}

@@ -4358,12 +4358,14 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public let threadId: String
+            public let computer: String?
             public let maxEdge: Int
             public let take: Bool?
             public let drive: Bool?
 
-            public init(threadId: String, maxEdge: Int, take: Bool? = nil, drive: Bool? = nil) {
+            public init(threadId: String, computer: String? = nil, maxEdge: Int, take: Bool? = nil, drive: Bool? = nil) {
                 self.threadId = threadId
+                self.computer = computer
                 self.maxEdge = maxEdge
                 self.take = take
                 self.drive = drive

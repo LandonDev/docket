@@ -4387,8 +4387,9 @@ public struct ComputerSessionRow: Codable, Hashable, Sendable {
     public let driver: String?
     public let computer: String?
     public let idle: Bool?
+    public let pictureOnly: Bool?
 
-    public init(threadId: String, since: Int, lastCallAt: Int, apps: [App], running: Running?, tier: Tier?, macPeer: String? = nil, macName: String? = nil, asking: Asking? = nil, driver: String? = nil, computer: String? = nil, idle: Bool? = nil) {
+    public init(threadId: String, since: Int, lastCallAt: Int, apps: [App], running: Running?, tier: Tier?, macPeer: String? = nil, macName: String? = nil, asking: Asking? = nil, driver: String? = nil, computer: String? = nil, idle: Bool? = nil, pictureOnly: Bool? = nil) {
         self.threadId = threadId
         self.since = since
         self.lastCallAt = lastCallAt
@@ -4401,10 +4402,11 @@ public struct ComputerSessionRow: Codable, Hashable, Sendable {
         self.driver = driver
         self.computer = computer
         self.idle = idle
+        self.pictureOnly = pictureOnly
     }
 
     private enum CodingKeys: String, CodingKey {
-        case threadId, since, lastCallAt, apps, running, tier, macPeer, macName, asking, driver, computer, idle
+        case threadId, since, lastCallAt, apps, running, tier, macPeer, macName, asking, driver, computer, idle, pictureOnly
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -4421,6 +4423,7 @@ public struct ComputerSessionRow: Codable, Hashable, Sendable {
         try container.encodeIfPresent(driver, forKey: .driver)
         try container.encodeIfPresent(computer, forKey: .computer)
         try container.encodeIfPresent(idle, forKey: .idle)
+        try container.encodeIfPresent(pictureOnly, forKey: .pictureOnly)
     }
 }
 

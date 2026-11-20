@@ -52,7 +52,9 @@ export type VideoOpenAnswer = z.infer<typeof VideoOpenAnswerSchema>
 export const VideoRequestSchemas = [
   /**
    * → VideoOpenAnswer. `threadId` is the key the host's sessions know, as in
-   * `computer.preview.start`. `take` asks for the box's one display when
+   * `computer.preview.start`. `computer` names a computer that outlives
+   * every thread (`vm:windows`), and the source of that computer answers
+   * whatever `threadId` says. `take` asks for the box's one display when
    * another page holds it; `drive` asks for a stream his pointer and keys go
    * down, which is given only while he is the driver.
    */
@@ -60,6 +62,7 @@ export const VideoRequestSchemas = [
     'video.open',
     z.object({
       threadId: z.string().min(1),
+      computer: z.string().min(3).max(300).optional(),
       maxEdge: z.number().int().min(VIDEO_MIN_EDGE).max(VIDEO_MAX_EDGE),
       take: z.boolean().optional(),
       drive: z.boolean().optional()

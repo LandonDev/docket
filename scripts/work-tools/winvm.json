@@ -1,0 +1,74 @@
+{
+  "pillar": "winvm",
+  "tools": [
+    {
+      "name": "qemu-window",
+      "version": "8.2.2+ds-0ubuntu1.18",
+      "licence": "GPL-2.0-only AND LGPL-3.0-or-later AND GPL-3.0-or-later",
+      "licenceNote": "Ubuntu 24.04's own QEMU window modules (ui-gtk and ui-opengl from qemu-system-gui and qemu-system-modules-opengl, GPL-2.0-only) and the VTE library they load (libvte-2.91, LGPL-3.0-or-later with GPL-3.0-or-later parts), unpacked on this host with no root and nothing registered. QEMU loads them into its own process, the box's own qemu-system-x86_64 of the same build, which the Windows VM's keeper runs as a separate, unmodified process; none is linked into our code, bundled, or shipped in the app. They must match the box's QEMU build exactly: the version is the one Ubuntu ships in noble-updates.",
+      "homepage": "https://www.qemu.org/",
+      "platforms": {
+        "linux-x64": {
+          "kind": "build",
+          "files": [
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/q/qemu/qemu-system-gui_8.2.2+ds-0ubuntu1.18_amd64.deb",
+              "sha256": "b642b544a1089b63f5da8dac5a1fa38511dc918ea73d27e39f9f7b726c2c9814",
+              "size": 312274,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/q/qemu/qemu-system-modules-opengl_8.2.2+ds-0ubuntu1.18_amd64.deb",
+              "sha256": "fc9129b9343ff138a7e9b41a8aa95e2b35b729548951232481966b4e8c787344",
+              "size": 186084,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/v/vte2.91/libvte-2.91-0_0.76.0-1ubuntu0.1_amd64.deb",
+              "sha256": "48a0aa9de99fdcdbcabf3a74f4c4f4072ce561c3e2c76ac349d4439a205d04c4",
+              "size": 229622,
+              "into": "sys"
+            },
+            {
+              "url": "https://snapshot.ubuntu.com/ubuntu/20261119T000000Z/pool/main/v/vte2.91/libvte-2.91-common_0.76.0-1ubuntu0.1_amd64.deb",
+              "sha256": "83b9048ec660d2a6078e4ee7bcad51c116e69645a6e78372736115db4d2bacaa",
+              "size": 13530,
+              "into": "sys"
+            }
+          ],
+          "bin": "mods/ui-gtk.so",
+          "check": [
+            "mods/ui-opengl.so",
+            "sys/usr/lib/x86_64-linux-gnu/libvte-2.91.so.0"
+          ],
+          "build": [
+            {
+              "run": [
+                "sh",
+                "-c",
+                "set -e; D=\"$1\"; Q=\"$D/sys/usr/lib/x86_64-linux-gnu/qemu\"; mkdir -p \"$D/mods\"; cp \"$Q/ui-gtk.so\" \"$Q/ui-opengl.so\" \"$D/mods/\"",
+                "build",
+                "{dir}"
+              ],
+              "expectFile": "{dir}/mods/ui-gtk.so"
+            }
+          ]
+        }
+      },
+      "probe": {
+        "steps": [
+          {
+            "run": [
+              "sh",
+              "-c",
+              "unset DISPLAY WAYLAND_DISPLAY; QEMU_MODULE_DIR=\"$1/mods\" LD_LIBRARY_PATH=\"$1/sys/usr/lib/x86_64-linux-gnu\" timeout 30 qemu-system-x86_64 -machine none -nodefaults -display gtk 2>&1; true",
+              "probe",
+              "{dir}"
+            ],
+            "expect": "gtk initialization failed"
+          }
+        ]
+      }
+    }
+  ]
+}

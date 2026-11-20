@@ -9,6 +9,7 @@ import { qmp, quit } from './machine/qmp'
 import { startWatcher } from './watcher'
 import type { VmMachine } from './keeper'
 import { QcowPoints, type PointStore } from './points'
+import type { VmScreen } from './window'
 
 const run = promisify(execFile)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -25,7 +26,13 @@ export class StandingMachine implements VmMachine {
   readonly c: RigConfig
   readonly p: RigPaths
 
-  constructor(instance: Instance = 'standing', env: NodeJS.ProcessEnv = process.env) {
+  /** `screen`: QEMU's window and its display (window.ts); without one the machine runs with no window */
+  constructor(
+    instance: Instance = 'standing',
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly screen: VmScreen | null = null,
+    private readonly log: (line: string) => void = () => {}
+  ) {
     this.c = rigConfig(env, undefined, instance)
     this.p = rigPaths(this.c)
   }
@@ -60,8 +67,24 @@ export class StandingMachine implements VmMachine {
     if (this.running()) return
     // a crash or the guest's own stop left the TPM newer than the run's copy: keep it, never roll it back
     await keepLiveTpm(this.c, this.p)
-    await startTpm(this.c, this.p, existsSync(this.p.runTpm) ? this.p.runTpm : this.p.baseTpm, { blockStop: true })
-    const pid = await startQemu(this.c, this.p, { disk: this.p.runDisk, vars: this.p.runVars }, { blockStop: true })
+    const boot = async (shown: Awaited<ReturnType<VmScreen['up']>>): Promise<number | null> => {
+      await startTpm(this.c, this.p, existsSync(this.p.runTpm) ? this.p.runTpm : this.p.baseTpm, { blockStop: true })
+      const machine = { disk: this.p.runDisk, vars: this.p.runVars, ...(shown ? { window: shown.window } : {}) }
+      return startQemu(this.c, this.p, machine, { blockStop: true, ...(shown ? { env: shown.env } : {}) })
+    }
+    // the window's display first: QEMU opens its window as it starts
+    const shown = (await this.screen?.up()) ?? null
+    let pid: number | null
+    try {
+      pid = await boot(shown)
+      if (pid === null && shown) throw new Error('it did not stay up')
+    } catch (e) {
+      if (!shown || this.running()) throw e
+      // a window QEMU will not open is no reason the machine cannot run: it runs without one
+      await this.screen!.broke(`QEMU did not start with its window: ${(e as Error).message}`)
+      this.log(`winvm: starting the machine with no window`)
+      pid = await boot(null)
+    }
     if (pid === null) throw new Error('QEMU did not stay up')
     const watcher = startWatcher(join(this.p.run, 'watcher.sh'), join(this.p.run, 'watcher.log'), {
       qemuPid: pid,
@@ -69,7 +92,8 @@ export class StandingMachine implements VmMachine {
       ssh: { key: this.p.key, port: this.c.sshPort, knownHosts: this.p.knownHosts, user: ADMIN_USER },
       tpmPidFile: this.p.tpmPid,
       tpmState: this.p.tpmState,
-      runTpm: this.p.runTpm
+      runTpm: this.p.runTpm,
+      ...(this.screen?.pid ? { display: { pid: this.screen.pid, config: this.screen.config } } : {})
     })
     writeFileSync(join(this.p.run, 'watcher.pid'), `${watcher ?? ''}\n`)
   }
@@ -80,10 +104,14 @@ export class StandingMachine implements VmMachine {
       if (Date.now() > end) return false
       await sleep(1000)
     }
+    // QEMU's window went with it: its display and engines go too
+    await this.screen?.down()
     return true
   }
 
+  /** After QEMU has exited (the keeper's sleep, or the guest's own stop): the TPM kept, and the window's display ended. */
   async keepTpm(): Promise<void> {
+    await this.screen?.down()
     await saveTpm(this.p, this.p.runTpm)
   }
 
@@ -94,6 +122,7 @@ export class StandingMachine implements VmMachine {
     await this.stopped(10_000)
     const pid = qemuPid(this.c, this.p)
     if (pid !== null) process.kill(pid, 'SIGKILL')
+    await this.screen?.down()
   }
 
   /** The restore points' files, one folder each, beside the run (never in it: a new disk clears the run). */

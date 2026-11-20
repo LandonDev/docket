@@ -16,6 +16,8 @@ import type { StreamInfo, VideoRelay } from './relay'
 
 export interface VideoAsk {
   thread: string
+  /** the computer asked for by its name (`vm:windows`), whose source answers whatever the thread */
+  computer?: string
   maxEdge: number
   take: boolean
   drive: boolean
@@ -99,13 +101,14 @@ export class VideoRpc {
    * this host reaches by the publish leg alone.
    */
   async open(
-    params: { threadId: string; maxEdge: number; take?: boolean; drive?: boolean },
+    params: { threadId: string; computer?: string; maxEdge: number; take?: boolean; drive?: boolean },
     caller: VideoCaller,
     via?: (ask: VideoAsk) => Promise<VideoOpening | null>
   ): Promise<VideoOpenAnswer> {
     if (!mayWatch(caller.principal, { desktop: this.desktop() })) return { ok: false, reason: 'refused' }
     const ask: VideoAsk = {
       thread: params.threadId,
+      ...(params.computer ? { computer: params.computer } : {}),
       maxEdge: params.maxEdge,
       take: params.take === true,
       drive: params.drive === true,

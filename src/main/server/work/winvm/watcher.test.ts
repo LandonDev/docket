@@ -109,6 +109,44 @@ describe('the stop watcher', () => {
     expect(existsSync(join(dir, 'run-tpm'))).toBe(false)
   })
 
+  /** A stand-in for the window's X server: started on its config, with the stop signals blocked as the real one is. */
+  function display(config: string): ChildProcess {
+    const [cmd, args] = stopBlocked('bash', ['-c', 'sleep 300; :', 'Xorg', '-config', config])
+    const p = spawn(cmd, args, { stdio: 'ignore' })
+    kids.push(p)
+    return p
+  }
+
+  it("ends the window's display once QEMU has gone, at the stop and when QEMU exits on its own", async () => {
+    const config = join(dir, 'xorg.conf')
+    const x = display(config)
+    const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), { ...spec(), display: { pid: x.pid!, config } }, env())!
+    await sleep(300)
+    process.kill(pid, 'SIGTERM')
+    expect(await exited(pid)).toBe(true)
+    expect(await exited(x.pid!, 2000)).toBe(true)
+    expect(readFileSync(join(dir, 'watcher.log'), 'utf8')).toContain("ended the window's display")
+
+    // QEMU on its own (the keeper's sleep): the same
+    qemu = spawn('sleep', ['300'], { stdio: 'ignore' })
+    kids.push(qemu)
+    const y = display(config)
+    const again = startWatcher(join(dir, 'watcher2.sh'), join(dir, 'watcher2.log'), { ...spec(), display: { pid: y.pid!, config } }, env())!
+    await sleep(300)
+    qemu.kill('SIGTERM')
+    expect(await exited(again, 4000)).toBe(true)
+    expect(await exited(y.pid!, 2000)).toBe(true)
+  })
+
+  it('never ends a process that is not the display it was started beside', async () => {
+    const other = display(join(dir, 'another.conf'))
+    const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), { ...spec(), display: { pid: other.pid!, config: join(dir, 'xorg.conf') } }, env())!
+    await sleep(300)
+    qemu.kill('SIGTERM')
+    expect(await exited(pid, 4000)).toBe(true)
+    expect(await exited(other.pid!, 500)).toBe(false)
+  })
+
   it('does not take a pid that came round again as QEMU', () => {
     expect(watcherScript({ ...spec(), qemuComm: 'tc-win11-stand' })).toContain(`[ "$(cat /proc/$QEMU/comm 2>/dev/null)" = 'tc-win11-stand' ]`)
   })

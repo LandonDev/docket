@@ -28,6 +28,12 @@ export interface WatcherSpec {
   runTpm: string
   /** how long it waits for QEMU to exit after the hibernate was asked, inside the stop's 30 s */
   waitSec?: number
+  /**
+   * The X server QEMU's window is on (window.ts), started with the stop signals blocked as QEMU is: ended with
+   * SIGKILL once QEMU has gone, by its pid when it watched began and only while that pid is still the server
+   * started on `config`, so a display started for the next run is never touched.
+   */
+  display?: { pid: number; config: string }
 }
 
 export const HIBERNATE_COMMAND = 'shutdown /h'
@@ -52,6 +58,10 @@ keep_tpm() {
   [ -d ${shq(w.tpmState)} ] || return 0
   rm -rf ${shq(`${w.runTpm}.new`)} && cp -a ${shq(w.tpmState)} ${shq(`${w.runTpm}.new`)} && rm -rf ${shq(w.runTpm)} && mv ${shq(`${w.runTpm}.new`)} ${shq(w.runTpm)} && say "kept the TPM state"
 }
+end_display() {
+${w.display ? `  grep -qF ${shq(w.display.config)} /proc/${w.display.pid}/cmdline 2>/dev/null && kill -KILL ${w.display.pid} 2>/dev/null && say "ended the window's display"` : '  :'}
+  return 0
+}
 on_stop() {
   trap '' TERM INT HUP
   say "stop signal: asking Windows to hibernate"
@@ -59,6 +69,7 @@ on_stop() {
   for _ in $(seq 1 ${ticks}); do alive || break; sleep 0.25; done
   if alive; then say "QEMU still runs; the stop will cut its power"; exit 1; fi
   say "QEMU exited: the guest hibernated"
+  end_display
   keep_tpm
   exit 0
 }
@@ -66,6 +77,7 @@ trap on_stop TERM INT HUP
 say "watching QEMU $QEMU"
 while alive; do sleep 1 & wait $!; done
 say "QEMU exited on its own"
+end_display
 exit 0
 `
 }

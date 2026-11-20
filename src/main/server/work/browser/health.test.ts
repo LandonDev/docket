@@ -22,6 +22,7 @@ function probe(o: Partial<BrowserProbe> = {}): BrowserProbe {
     cookies: () => SIGNED,
     owaAccount: () => 'ajohnson@purdue.edu',
     vm: () => ({ builtAt: Date.parse('2026-11-19T06:22:30.718Z'), disk: true, running: true }),
+    vmPictureTool: () => null,
     now: () => NOW,
     ...o
   }
@@ -106,6 +107,13 @@ describe('the Windows VM', () => {
     expect(byId(browserRows(probe({ vm: () => ({ builtAt: null, disk: true, running: false }) })))['browser.winvm.machine']).toMatchObject({ state: 'broken', line: expect.stringContaining('up.sh --instance standing') })
     expect(byId(browserRows(probe({ vm: () => ({ builtAt: null, disk: false, running: false }) })))['browser.winvm.machine']!.state).toBe('needs-you')
     expect(browserRows(probe({ vm: () => null })).some((r) => r.group === 'Windows VM')).toBe(false)
+  })
+
+  it('says which tool its live picture lacks, in the one row', () => {
+    expect(byId(browserRows(probe()))['browser.winvm.picture']).toMatchObject({ group: 'Windows VM', title: 'Live picture', state: 'working', line: 'On' })
+    const lacking = byId(browserRows(probe({ vmPictureTool: () => 'qemu-window' })))['browser.winvm.picture']
+    expect(lacking).toMatchObject({ state: 'needs-you', line: expect.stringContaining('qemu-window is installed: bun scripts/work-tools/install.ts --only qemu-window') })
+    expect(browserRows(probe()).filter((r) => r.group === 'Windows VM' && r.title === 'Live picture')).toHaveLength(1)
   })
 
   it("ends the evaluation 90 days after the image was built, on the 17th of February in his time", () => {

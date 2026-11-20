@@ -4,6 +4,27 @@ export interface Machine {
   disk: string
   vars: string
   install?: InstallMedia
+  /** QEMU's own window on an X display (the standing machine's picture); none by default */
+  window?: VmWindow
+}
+
+/** The guest's screen in QEMU's GTK window: the display QEMU draws on comes in its environment (DISPLAY). */
+export interface VmWindow {
+  width: number
+  height: number
+}
+
+/** The std VGA's EDID offers 1280×800 when it is given no size, which is the screen the image was made at. */
+export const VGA_DEFAULT = { width: 1280, height: 800 } as const
+
+/**
+ * The window: GTK with nothing of its own around the guest's screen (no menu bar, no tabs, drawn 1:1), and a close
+ * of the window never stops the machine. Another size is the same VGA device told its EDID's mode, so a hibernated
+ * guest wakes on the hardware it slept on.
+ */
+export function windowArgs(w: VmWindow): string[] {
+  const size = w.width === VGA_DEFAULT.width && w.height === VGA_DEFAULT.height ? [] : ['-global', `VGA.xres=${w.width}`, '-global', `VGA.yres=${w.height}`]
+  return ['-display', 'gtk,show-menubar=off,show-tabs=off,zoom-to-fit=off,window-close=off', ...size]
 }
 
 export interface InstallMedia {
@@ -15,9 +36,10 @@ export interface InstallMedia {
 /**
  * The machine: KVM with the Hyper-V enlightenments Windows expects, Secure Boot firmware, a software TPM 2.0,
  * an AHCI disk and an e1000e NIC (both have drivers in Windows, so no driver ISO), a USB tablet for absolute
- * pointer input, user-mode networking with forwards bound to 127.0.0.1 only, no display (QMP takes screenshots).
+ * pointer input, user-mode networking with forwards bound to 127.0.0.1 only, no display (QMP takes screenshots) unless
+ * it is given a window.
  */
-export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install }: Machine): string[] {
+export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, window }: Machine): string[] {
   const fwd = [`hostfwd=tcp:127.0.0.1:${c.sshPort}-:22`, ...(c.cdpPort === null ? [] : [`hostfwd=tcp:127.0.0.1:${c.cdpPort}-:${c.cdpPort}`])]
   const args = [
     '-name', `${c.process},process=${c.process}`,
@@ -39,7 +61,7 @@ export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install }: Mac
     '-device', 'qemu-xhci,id=xhci',
     '-device', 'usb-tablet,bus=xhci.0',
     '-vga', 'std',
-    '-display', 'none',
+    ...(window ? windowArgs(window) : ['-display', 'none']),
     '-monitor', 'none',
     '-qmp', `unix:${p.qmp},server=on,wait=off`,
     '-pidfile', p.pid,

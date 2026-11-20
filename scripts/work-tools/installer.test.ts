@@ -358,6 +358,33 @@ describe.skipIf(process.platform === 'win32')('the toolchain installer', () => {
     expect(tool.probe.steps[0].expect).toBe('Compiled backends: .*x11')
   })
 
+  it("the Windows VM's pillar names QEMU's window modules, pinned by hash, for the box's own QEMU build", () => {
+    const tool = loadManifests(join(import.meta.dirname)).find((t) => t.name === 'qemu-window')!
+    expect(tool).toMatchObject({ pillar: 'winvm', file: 'winvm.json', version: '8.2.2+ds-0ubuntu1.18' })
+    expect(Object.keys(tool.platforms)).toEqual(['linux-x64'])
+    const entry = tool.platforms['linux-x64']!
+    expect(entry.kind).toBe('build')
+    // ui-gtk loads only beside ui-opengl, and VTE beside both; every package of the one build, by sha256 and size, from a dated snapshot
+    const names = entry.files.map((f) => /\/([^/_]+)_[^/]+\.deb$/.exec(f.url)?.[1])
+    expect(names).toEqual(['qemu-system-gui', 'qemu-system-modules-opengl', 'libvte-2.91-0', 'libvte-2.91-common'])
+    for (const f of entry.files) {
+      expect(f.url).toMatch(/^https:\/\/snapshot\.ubuntu\.com\/ubuntu\/\d{8}T\d{6}Z\/pool\/main\/.+\.deb$/)
+      expect(f.sha256).toMatch(/^[0-9a-f]{64}$/)
+      expect(f.size).toBeGreaterThan(0)
+      expect(f.into).toBe('sys')
+    }
+    for (const f of entry.files.slice(0, 2)) expect(f.url).toContain(`_${tool.version}_amd64.deb`)
+    // QEMU_MODULE_DIR is a folder of the two window modules alone, and the module is the tool's bin
+    expect(entry.bin).toBe('mods/ui-gtk.so')
+    expect(entry.check).toContain('mods/ui-opengl.so')
+    expect(entry.build?.[0].run.join(' ')).toContain('ui-opengl.so')
+    // the probe proves the module loads: with no display GTK itself refuses, where a missing module would say gtk is not available
+    expect(tool.probe.steps[0].expect).toBe('gtk initialization failed')
+    expect(tool.probe.steps[0].run.join(' ')).toMatch(/unset DISPLAY/)
+    expect(tool.licenceNote).toMatch(/separate, unmodified process/)
+    expect(tool.licenceNote).toMatch(/none is linked into our code, bundled, or shipped in the app/)
+  })
+
   it('refuses a pip line with no hashes and a file that would land outside its folder', () => {
     const pip = (packages: string[]) => ({ pillar: 'p', tools: [{ ...(tool('pp', '1.0.0', { url: 'https://x.test/a.tgz', sha256: 'a'.repeat(64) }) as Record<string, unknown>), platforms: { [platform]: { kind: 'pip', packages, bin: 'bin/python' } } }] })
     expect(ToolManifestSchema.safeParse(pip(['python-pptx==1.0.2'])).success).toBe(false)

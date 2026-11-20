@@ -40,6 +40,11 @@ export function stopBlocked(cmd: string, args: string[]): [string, string[]] {
 /** Options for starting a daemon: `blockStop` starts it with the stop signals blocked (the standing machine's). */
 export interface DaemonOpts {
   blockStop?: boolean
+  /**
+   * Added to the clean environment of QEMU alone: a window's display and QEMU's window modules (window.ts). They go
+   * through `env` inside the command, since `sg` is setuid and the loader drops LD_LIBRARY_PATH from what it starts.
+   */
+  env?: Record<string, string>
 }
 
 /** The pid in a pid file, only while that pid is still the process it names (a pid comes round again after a restart). */
@@ -145,13 +150,21 @@ export async function keepLiveTpm(c: RigConfig, p: RigPaths): Promise<boolean> {
   return true
 }
 
+/**
+ * QEMU's whole command: its window's environment through `env`, the stop signals blocked, all inside `sg kvm` where
+ * this process lacks the group (the block inside it: sg starts its shell with a clear signal mask).
+ */
+export function qemuCommand(c: RigConfig, p: RigPaths, m: Machine, opts: DaemonOpts = {}, kvmOpen?: boolean): [string, string[]] {
+  const extra = Object.entries(opts.env ?? {}).map(([k, v]) => `${k}=${v}`)
+  const argv: [string, string[]] = extra.length ? ['env', [...extra, 'qemu-system-x86_64', ...qemuArgs(c, p, m)]] : ['qemu-system-x86_64', qemuArgs(c, p, m)]
+  return kvmWrapped(...(opts.blockStop ? stopBlocked(...argv) : argv), kvmOpen)
+}
+
 /** Starts QEMU as a daemon (it outlives the caller) with the clean environment; its pid. */
 export async function startQemu(c: RigConfig, p: RigPaths, m: Machine, opts: DaemonOpts = {}): Promise<number | null> {
   mkdirSync(p.run, { recursive: true })
   try {
-    // the block inside `sg`: sg starts its shell with a clear signal mask
-    const argv: [string, string[]] = ['qemu-system-x86_64', qemuArgs(c, p, m)]
-    await startDaemon('qemu-system-x86_64', kvmWrapped(...(opts.blockStop ? stopBlocked(...argv) : argv)))
+    await startDaemon('qemu-system-x86_64', qemuCommand(c, p, m, opts))
   } catch (e) {
     stopTpm(p)
     throw e

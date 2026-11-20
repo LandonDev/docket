@@ -84,6 +84,7 @@ import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './m
 import type { AppRef } from '@shared/computer/protocol'
 import { computerUnavailable } from './computer/binary'
 import { computerHooks, type ComputerHost } from './computer/mcp'
+import type { VmPreviews } from './work/winvm/picture'
 import { ComputerPreviews, handleComputerPreview } from './computer/preview'
 import { VideoRelay } from './video/relay'
 import { VideoRpc, handleVideo } from './video/rpc'
@@ -1512,6 +1513,8 @@ export async function startServer(
   })
   /** The previews are of the box's browser, not of a person's windows: a key that may watch gets them (computer/preview.ts `previewRefusal`). */
   let boxPreviews = false
+  /** The Windows VM's 4 fps picture (work/winvm/picture.ts), beside the box browser's previews, its ids its own. */
+  let vmPreviews: VmPreviews | null = null
   const holds = computer ? new SessionHolds({ ...computer, banner: () => computerBannerHooks.current }) : null
   // Wire slot.onHolder(holds.holder) here once the tier scheduler lands.
   // Computer use through the Mac bridge, the box side (computer/bridge.ts): where it cannot run here, a
@@ -1562,10 +1565,17 @@ export async function startServer(
       },
       (err) => console.log(`[box browser] did not load: ${String(err)}`)
     )
-  // The Windows VM's service for Work threads, on its own computer sessions (work/winvm/vm.ts); loaded apart, as all of Work is.
+  // The Windows VM's service for Work threads, on its own computer sessions (work/winvm/vm.ts), and its picture beside
+  // them (work/winvm/host.ts): its idle row, its video and its 4 fps picture; loaded apart, as all of Work is.
   if (process.platform === 'linux')
-    void import('./work/winvm/vm').then(
-      (m) => computerRpc.setBox(m.wireVm({ registry, store, dataDir: options.dataDir ?? dirname(dbPath) }).rows),
+    void Promise.all([import('./work/winvm/vm'), import('./work/winvm/host')]).then(
+      ([m, h]) => {
+        const dataDir = options.dataDir ?? dirname(dbPath)
+        const vm = m.wireVm({ registry, store, dataDir })
+        const picture = h.wireVmPicture({ dataDir, video: { relay: videoRelay, rpc: videoRpc }, holder: () => vm.lease.holderPane(), log: (line) => console.log(`[winvm] ${line}`) })
+        vmPreviews = picture.previews
+        computerRpc.setBox(h.joinRows(vm.rows, picture))
+      },
       (err) => console.log(`[winvm] did not load: ${String(err)}`)
     )
   computerBridgeHooks.current = computerBridge
@@ -2398,6 +2408,8 @@ export async function startServer(
         if (batched.handled) return sendFrame({ id: req.id, ok: true, result: batched.result })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
+        const vmPreview = vmPreviews ? await vmPreviews.handle(req, { connection: previewConnection, send: sendFrame }, { principal, desktop: hasDesktop(), box: true }) : { handled: false }
+        if (vmPreview.handled) return sendFrame({ id: req.id, ok: true, result: vmPreview.result })
         const preview = await handleComputerPreview(
           req,
           previews,
@@ -3738,6 +3750,7 @@ export async function startServer(
       peerCalls.drop(connection)
       hostDevices.dropConnection(connection)
       previews?.dropConnection(previewConnection)
+      vmPreviews?.dropConnection(previewConnection)
       videoRelay.dropConnection(previewConnection)
       computerHistoryRpc?.dropConnection(previewConnection)
       for (const off of unsubs.values()) off()

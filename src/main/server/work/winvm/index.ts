@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { WINVM_SLEEP_AFTER, type WinvmSettings, type WinvmSleepAfter } from '@shared/contract-work-winvm'
+import { WINVM_SLEEP_AFTER, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkCtx, WorkModule } from '../modules'
 import { Keeper, type KeeperDeps } from './keeper'
@@ -12,6 +12,7 @@ import { StandingMachine } from './standing'
 import { PendingCalls } from '../../computer/pending'
 import { VM_PREAMBLE, vmOffered, vmTools } from './tools'
 import { startVm } from './vm'
+import { vmScreen } from './window'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
@@ -55,7 +56,8 @@ export const hashFile = (path: string): string => createHash('sha256').update(re
 
 /** The keeper over the real standing machine and its guest. */
 export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push' | 'pushPoints'> {
-  const machine = new StandingMachine('standing')
+  // QEMU's window on a display of its own, where its tools are installed (window.ts)
+  const machine = new StandingMachine('standing', process.env, vmScreen(ctx.dataDir, (line) => ctx.log(line)), (line) => ctx.log(line))
   return {
     machine,
     guest: new SshGuest(machine.c, machine.p),
@@ -82,10 +84,24 @@ export function configureWinvmKeeper(f: KeeperFactory | null): void {
   factory = f ?? realKeeperDeps
 }
 
+const stateListeners = new Set<(state: WinvmState | null) => void>()
+const told = (state: WinvmState | null): void => {
+  for (const fn of [...stateListeners]) fn(state)
+}
+
+/** Every change of the keeper's state, as pushed, and null when Work goes off: the VM's picture and row follow it (picture.ts). */
+export function onWinvmState(fn: (state: WinvmState | null) => void): () => void {
+  stateListeners.add(fn)
+  return () => void stateListeners.delete(fn)
+}
+
 function keeperOf(ctx: WorkCtx): Keeper {
   keeper ??= new Keeper({
     ...factory(ctx),
-    push: (state) => ctx.push({ push: 'work.winvm', state }),
+    push: (state) => {
+      ctx.push({ push: 'work.winvm', state })
+      told(state)
+    },
     pushPoints: (points) => ctx.push({ push: 'work.winvm.points', points })
   })
   return keeper
@@ -146,6 +162,8 @@ export const winvm: WorkModule = {
     const stopVm = startVm(winvmKeeper, (id, notice) => {
       ctx.threads.resume(id, notice).catch((e) => ctx.log(`winvm: could not tell ${id} the Windows VM is free: ${String(e)}`))
     })
+    // a keeper started beside a running machine takes it as awake, and says so to nobody else
+    told(k.state())
     return () => {
       stopVm()
       pending.closeAll()
@@ -153,6 +171,7 @@ export const winvm: WorkModule = {
       k.close()
       if (keeper === k) keeper = null
       if (started === ctx) started = null
+      told(null)
     }
   },
   tools: (scope) => vmTools(scope, { ctx: () => started, keeper: winvmKeeper, pending }),

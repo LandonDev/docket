@@ -6,6 +6,7 @@ import type { HealthRow, Lapse } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import { rigConfig, rigPaths } from '../winvm/machine/config'
 import { qemuPid } from '../winvm/machine/daemons'
+import { pictureToolsAt } from '../winvm/window'
 import { boxBrowser } from './box'
 import { findChromium } from './box/chromium'
 import { browserVideoSetting, videoToolsAt } from './box/videoSetting'
@@ -48,6 +49,8 @@ export interface BrowserProbe {
   owaAccount(root: string): string | null
   /** the standing Windows VM; null where this host has no VM (no base image) */
   vm(): StandingVm | null
+  /** the tool the VM's live picture lacks (winvm/window.ts), by name; null when both are installed */
+  vmPictureTool(): string | null
   now(): number
 }
 
@@ -116,6 +119,10 @@ function vmRows(p: BrowserProbe): HealthRow[] {
         ? { ...machine, state: 'working', line: 'Running' }
         : { ...machine, state: 'broken', line: `Stopped, so Work threads cannot use it. Start it with ${start}.` }
   ]
+  // without its tools the VM runs with no window: the 4 fps picture, and no Take over
+  const tool = p.vmPictureTool()
+  const picture = { id: 'browser.winvm.picture', pillar: 'browser' as const, group: 'Windows VM', title: 'Live picture' }
+  rows.push(tool ? { ...picture, state: 'needs-you', line: `No live picture or Take over until ${tool} is installed: bun scripts/work-tools/install.ts --only ${tool}` } : { ...picture, state: 'working', line: 'On' })
   const until = evaluationEnd(vm)
   const left = until - p.now()
   const evaluation = { id: 'browser.winvm.evaluation', pillar: 'browser' as const, group: 'Windows VM', title: 'Windows evaluation', until }
@@ -203,6 +210,7 @@ export function browserProbe(ctx: WorkCtx, env: NodeJS.ProcessEnv = process.env)
       }
     },
     vm: () => standingVm(env),
+    vmPictureTool: () => pictureToolsAt(ctx.dataDir).missing,
     now: Date.now
   }
 }
