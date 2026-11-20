@@ -61,6 +61,7 @@ fn hold_lock(args: &[String]) -> i32 {
 }
 
 /// A loopback address to listen on, for the rig's proof only.
+#[cfg(windows)]
 fn proof_listener(addr: &str) -> Result<std::net::TcpListener, i32> {
     if std::env::var("TC_COMPUTER_PROOF").as_deref() != Ok("1") {
         eprintln!("--listen is for the rig's proof only (TC_COMPUTER_PROOF=1)");
