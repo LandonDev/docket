@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
 import { ProjectsRequestSchemas } from '@shared/contract-work-projects'
 import { requiredCapability } from '@shared/capabilities'
-import type { CanvasItem, CanvasSource, WorkScope } from '@shared/work'
+import type { CanvasItem, CanvasSource, MentionReach, WorkScope } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { projects, projectsTools } from '.'
 import { linkRefusal, linkToProject } from './link'
+import { cardMention } from './mentions'
 
 /*
  * The projects pillar's host side on a LifeOS that stands in: what a link
@@ -25,6 +26,12 @@ let sent: { fn: string; args: Record<string, unknown> }[]
 let results: { sessionId: string; kind: string; summary: string }[]
 let items: Map<string, CanvasItem>
 let ctx: WorkCtx
+let asked: { fn: string; args: unknown }[]
+const lifeosTasks = [
+  { _id: 't41', key: 'PUR-41', title: 'Network for 64 seats', description: 'Wired only.', sector: 'purdue', projectId: 'lp_1', dueAt: 99 },
+  { _id: 't42', key: 'PUR-42', title: 'Renew the parking pass', sector: 'purdue' },
+  { _id: 't7', key: 'COS-7', title: 'Loot table audit', sector: 'cosmic', projectId: 'lp_far' }
+]
 
 const lifeosProjects = [
   { _id: 'lp_1', name: 'Spring LAN', status: 'active', sector: 'purdue' },
@@ -44,6 +51,7 @@ beforeEach(() => {
   db.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?)').run('side', 'Side', 'work', null)
   db.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?)').run('repo', 'temp-code', 'code', 'purdue')
   sent = []
+  asked = []
   results = []
   items = new Map()
   ctx = {
@@ -54,7 +62,9 @@ beforeEach(() => {
     reaches: (by: Caller, path: string) => by.kind !== 'remote' || path.startsWith('/managed/'),
     lifeos: {
       owner: () => ({
-        query: async (fn: string, args: { sector?: string; id?: string }) => {
+        query: async (fn: string, args: { sector?: string; id?: string; keys?: string[] }) => {
+          asked.push({ fn, args })
+          if (fn === 'tasks:byKeys') return lifeosTasks.filter((t) => args.keys!.includes(t.key))
           if (fn === 'projects:list') return lifeosProjects.filter((p) => p.sector === args.sector)
           return lifeosRows[`${fn.split(':')[0]}:${args.id}`] ?? null
         },
@@ -217,5 +227,41 @@ describe('project_link_item', () => {
     expect(projects.tools!(scope()).map((t) => t.name)).toEqual(['project_link_item'])
     expect(projects.preamble!(scope())).toContain('project_link_item')
     expect(projects.preamble!(scope())).toContain('get_project')
+  })
+})
+
+describe("@ finds a project's card by its key", () => {
+  const purdue: MentionReach = { work: true, workspaceId: 'ws', sectors: ['purdue'], sessionId: 't-root' }
+  const everywhere: MentionReach = { work: true, workspaceId: null, sectors: 'all', sessionId: 't-chat' }
+  const find = (text: string, reach = purdue) => cardMention.search(text, reach, ctx)
+
+  it('answers the task as a card: its key and title, its project as the line under it, its due date', async () => {
+    expect(await find('pur-41')).toEqual([
+      { chip: { kind: 'card', label: 'PUR-41 Network for 64 seats', ref: { at: 'lifeos', table: 'tasks', id: 't41' }, excerpt: 'Wired only.' }, detail: 'Spring LAN', at: 99 }
+    ])
+    expect((await find(' PUR-41 '))[0].chip.label).toBe('PUR-41 Network for 64 seats')
+  })
+
+  it('finds nothing by words, by a key that is no key, or for a task in no project: those are the Tasks group\'s', async () => {
+    for (const text of ['', 'network', 'PUR', 'PUR-', 'PUR-0', 'XYZ-4']) expect(await find(text)).toEqual([])
+    expect(asked.filter((a) => a.fn === 'tasks:byKeys')).toEqual([])
+    expect(await find('PUR-42')).toEqual([])
+    expect(await find('PUR-999')).toEqual([])
+  })
+
+  it("never asks LifeOS for a key of a sector the thread may not read, and drops a row of another sector whatever came back", async () => {
+    expect(await find('COS-7')).toEqual([])
+    expect(asked).toEqual([])
+    // A Work Chat reads every sector.
+    expect((await find('COS-7', everywhere))[0].chip.ref).toEqual({ at: 'lifeos', table: 'tasks', id: 't7' })
+    // LifeOS answering a row of another sector for a key of this one: dropped.
+    lifeosTasks.push({ _id: 'tx', key: 'PUR-50', title: 'Moved away', sector: 'cosmic', projectId: 'lp_far' })
+    expect(await find('PUR-50')).toEqual([])
+    lifeosTasks.pop()
+  })
+
+  it('is one of the module\'s kinds, read from LifeOS', () => {
+    expect(projects.mentions).toEqual([cardMention])
+    expect(cardMention.lifeos).toBe(true)
   })
 })

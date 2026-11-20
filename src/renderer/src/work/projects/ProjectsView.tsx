@@ -50,13 +50,16 @@ export function View(props: WorkViewProps) {
   const doc = useOpenedDoc(workspace.id);
   // A card's Open project names where to stand: taken once, then cleared, so the row's own press comes back to where he was.
   const asked = useWorkView();
-  const target = asked?.workspaceId === workspace.id && asked.view === "projects" ? asked.project : undefined;
+  const mine = asked?.workspaceId === workspace.id && asked.view === "projects" ? asked : null;
+  const project = mine?.project;
+  const task = mine?.task;
   useEffect(() => {
-    if (!target) return;
+    if (!project && !task) return;
+    const was = placeOf(workspace.id);
     openDoc(workspace.id, null);
-    setPlace(workspace.id, projectPlace(target, placeOf(workspace.id)));
+    setPlace(workspace.id, task ? { at: "task", id: task, layout: was.layout, tab: "all", display: was.display } : projectPlace(project!, was));
     openWorkView({ workspaceId: workspace.id, view: "projects" });
-  }, [target, workspace.id]);
+  }, [project, task, workspace.id]);
   const [coding, setCoding] = useState<ProjectTask | null>(null);
   const [linking, setLinking] = useState<{ project: Project; kind: LinkKind } | null>(null);
   // What the kit reads at a press, set after each commit.

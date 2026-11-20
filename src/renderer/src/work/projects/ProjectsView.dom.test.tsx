@@ -16,7 +16,7 @@ import type { ContextChip } from "@shared/work";
 import { registry } from "../../lib/connection";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
-import { openWorkView, workOpenPort, workSwitch } from "../../lib/workSwitch";
+import { openWorkView, workOpenPort, workSwitch, workViewNow } from "../../lib/workSwitch";
 import type { LifeosSession } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
 
@@ -51,6 +51,7 @@ vi.mock("./Description", () => ({ Description: ({ docId, lead }: { docId: string
 const { View, Head, Title } = await import("./ProjectsView");
 const { addRows, openItemIn, projectChip, taskChip } = await import("./kit");
 const { placeOf, resetPlaces } = await import("./place");
+const { openerOf } = await import("../canvas/SentChips");
 
 const BOX = "env_box";
 const WORKSPACE = { id: "ws", name: "Purdue Esports", path: "/srv/work/Work/Purdue", git: false, kind: "work", sector: "purdue", createdAt: 1, environmentId: BOX } as WorkspaceMeta;
@@ -126,6 +127,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetPlaces();
+  openWorkView(null);
   workSwitch.reset();
   workOpenPort.set(null);
   vi.restoreAllMocks();
@@ -190,6 +192,27 @@ describe("the Projects view", () => {
     fireEvent.click(within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Projects" }));
     await flush();
     expect(placeOf("ws").at).toBe("list");
+  });
+});
+
+describe("a sent chip", () => {
+  const at = { environmentId: BOX, sessionId: "th1", workspaceId: "ws" };
+  const chip = (noun: string, ref: string) => ({ noun, label: "x", ref }) as Parameters<typeof openerOf>[0];
+
+  it("of a project opens its page, of a card the task's own page, and a plain task still opens Tasks", async () => {
+    render(<Screen {...props()} />);
+    void openerOf(chip("project", "LifeOS projects p-tryouts"), at)!();
+    await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-tryouts" }));
+    void openerOf(chip("card", "LifeOS tasks t-network"), at)!();
+    await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "task", id: "t-network" }));
+    expect(screen.getByText("Network for 64 seats")).toBeTruthy();
+    void openerOf(chip("task", "LifeOS tasks t-network"), at)!();
+    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks" });
+  });
+
+  it("outside a workspace names nothing to open", () => {
+    expect(openerOf(chip("project", "LifeOS projects p-lan"), { ...at, workspaceId: null })).toBeNull();
+    expect(openerOf(chip("card", "LifeOS tasks t-network"), { ...at, workspaceId: null })).toBeNull();
   });
 });
 

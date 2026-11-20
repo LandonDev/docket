@@ -28,6 +28,9 @@ export function openerOf(chip: SentChip, at: { environmentId: string; sessionId:
   const [head, table, id, ...more] = chip.ref.split(" ");
   if (!id || more.length > 0) return null;
   if (head === "LifeOS" && table === "docs") return () => openItem(at.environmentId, at.sessionId, { kind: "document", source: { at: "lifeos", table: "docs", id }, title: chip.label });
+  // A project and a project's card open in the Projects view, on the project's page and the task's own.
+  if (head === "LifeOS" && table === "projects" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "projects", project: id });
+  if (head === "LifeOS" && table === "tasks" && KIND_OF_NOUN.get(chip.noun) === "card" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "projects", task: id });
   if (head === "LifeOS" && VIEW_OF_TABLE[table] && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: VIEW_OF_TABLE[table] });
   if (head === "canvas" && table === "item") return () => openItem(at.environmentId, at.sessionId, { itemId: id });
   if (head === "Work" && table === "outbox") return () => openHeld({ at: "host", id }, at.environmentId);

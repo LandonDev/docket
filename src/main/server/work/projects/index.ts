@@ -4,6 +4,7 @@ import { CanvasSourceSchema, handled, NOT_HANDLED, workText, workspaceKindOf, ty
 import { errorText } from '@shared/work/ids'
 import type { WorkCtx, WorkModule, WorkTool } from '../modules'
 import { LINK_METHOD, linkToProject } from './link'
+import { cardMention } from './mentions'
 
 /**
  * The projects pillar's server module (docs/agents/work-projects.md). The
@@ -12,7 +13,8 @@ import { LINK_METHOD, linkToProject } from './link'
  * (`get_project`, `add_tasks`, `move_tasks`, `add_comment`, …). This module
  * carries what needs the host: linking a file or an item to a project
  * (link.ts), for a screen (`work.projects.link`) and for a thread
- * (`project_link_item`). The mirrors that hold a project's threads are a
+ * (`project_link_item`), and a project's card for the composer's `@`, by
+ * its key (mentions.ts). The mirrors that hold a project's threads are a
  * part of the context (mirrors.ts), not of this module.
  */
 
@@ -85,5 +87,7 @@ export const projects: WorkModule = {
     return handled(linked satisfies ProjectLinked)
   },
   tools: () => projectsTools,
+  // A project is found by name through LifeOS's own kinds (lifeos/mentions.ts); a project's card by its key, here.
+  mentions: [cardMention],
   preamble: () => PREAMBLE
 }
