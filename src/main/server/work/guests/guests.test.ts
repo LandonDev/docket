@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { WebSocket as WsSocket } from 'ws'
 import { createCollaborationClient, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner } from 'work-kit/collab-server'
 import { GUEST_KEEP_MS, guestRefusal, type GuestSource } from '@shared/contract-work-guests'
@@ -424,6 +425,65 @@ describe('after the review', () => {
     expect(cutDue('d|l', now)).toBe(true)
     expect(cutDue('d|l', now + 60_000)).toBe(false)
     expect(cutDue('d|l', now + 6 * 60_000)).toBe(true)
+  })
+})
+
+describe('found by the projects reviews', () => {
+  const sheetHello = (r: Rig, path: string, token: string) => {
+    const ws = new WsSocket(`${r.base.replace('http', 'ws')}${path}`)
+    const messages: { t: string }[] = []
+    ws.on('message', (d) => messages.push(JSON.parse(String(d)) as { t: string }))
+    ws.on('error', () => {})
+    ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', token })))
+    return { messages, closed: new Promise<number>((res) => ws.on('close', (code) => res(code))) }
+  }
+
+  it("a sheet's socket ends when its token runs out", async () => {
+    const r = await rig()
+    r.convex.sheets.set('ksheet1', { title: 'Budget', sector: 'life', ops: [] })
+    const s = sheetHello(r, '/w/sheet/ksheet1', (await r.signer.sign({ sheet: 'ksheet1', role: 'edit', principal: 'owner' }, 1)).token)
+    await until('the workbook arrives', () => s.messages.some((m) => m.t === 'state'))
+    const at = Date.now()
+    expect(await s.closed).toBe(4401)
+    expect(Date.now() - at).toBeLessThan(2500)
+  })
+
+  it("a new address ends the document link's tokens already handed out: its socket closes at once and the old token opens nothing", async () => {
+    const r = await rig()
+    const a = await make(r, 'edit')
+    const old = (await opened(r, a.id, a.secret)).body.token!
+    const guest = guestSocket(r, a.id, DOC, old)
+    await until('synced', () => synced(guest.client))
+    const at = Date.now()
+    const url = (await r.rt.rekey(a.id))!
+    await until('the old socket is closed', () => guest.closes.length > 0, 2500)
+    // The rekey waits for the next second's edge so new tokens are signed after it.
+    expect(Date.now() - at).toBeLessThan(2500)
+    expect((await fetch(`${r.base}/g/${a.id}/threads`, { headers: { Authorization: `Bearer ${old}` } })).status).toBe(403)
+    const again = guestSocket(r, a.id, DOC, old)
+    await sleep(500)
+    expect(again.client.provider.isSynced).toBe(false)
+    // The new address opens, and its token syncs.
+    const fresh = await opened(r, a.id, new URL(url).hash.slice(3))
+    expect(fresh.status).toBe(200)
+    expect(fresh.body.token).not.toBe(old)
+    const now = guestSocket(r, a.id, DOC, fresh.body.token!)
+    await until('the new token syncs', () => synced(now.client))
+  })
+
+  it("a new address ends a sheet link's open socket within a second", async () => {
+    const r = await rig()
+    r.convex.sheets.set('sheet1', { title: 'Budget', sector: 'life', ops: [] })
+    const a = await make(r, 'view', { at: 'lifeos', table: 'sheets', id: 'sheet1' })
+    const old = (await opened(r, a.id, a.secret)).body.token!
+    const s = sheetHello(r, `/g/ws/${a.id}`, old)
+    await until('the workbook arrives', () => s.messages.some((m) => m.t === 'state'))
+    await r.rt.rekey(a.id)
+    const at = Date.now()
+    expect(await s.closed).toBe(4403)
+    expect(Date.now() - at).toBeLessThan(1500)
+    // The old token at a fresh socket is shut at its hello.
+    expect(await sheetHello(r, `/g/ws/${a.id}`, old).closed).toBe(4403)
   })
 })
 

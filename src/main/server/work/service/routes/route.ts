@@ -21,7 +21,7 @@ export interface RouteCtx {
   /** what each project link shows, by link id, as main last pushed it */
   projects(): ReadonlyMap<string, ServiceProject>
   /** whether a token's link still stands and, for a project's link, still lists the token's document or sheet */
-  claimLive(claims: { link?: string; doc?: string; sheet?: string }): boolean
+  claimLive(claims: { link?: string; doc?: string; sheet?: string; iat?: number }): boolean
   wss: WebSocketServer
   log(line: string): void
 }

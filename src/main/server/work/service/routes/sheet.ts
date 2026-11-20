@@ -51,7 +51,8 @@ function listen(ctx: RouteCtx): void {
 }
 
 function live(claims: VerifiedClaims, ctx: RouteCtx): { code: number; reason: string } | null {
-  if (claims.exp * 1000 <= Date.now()) return { code: 4401, reason: 'the token ran out' }
+  // `exp` is in milliseconds already (the verifier answers it so).
+  if (claims.exp <= Date.now()) return { code: 4401, reason: 'the token ran out' }
   // A guest link's token: the link still stands, and a project's link still lists this sheet.
   if (!ctx.claimLive(claims)) return { code: 4403, reason: 'the link was revoked' }
   return null

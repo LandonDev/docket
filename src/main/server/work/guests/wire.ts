@@ -22,6 +22,8 @@ export interface GuestLinkFacts {
    */
   token: string
   tokenExp: number
+  /** a new address was made at this moment (ms, on a second's edge): a token of this link signed before it opens nothing */
+  keyedAt?: number
 }
 
 /** The owner's hosted editor: a ticket that opens once, then a session renewed by a key the service makes. */

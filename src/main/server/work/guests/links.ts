@@ -79,6 +79,8 @@ interface Pass {
 export class GuestRuntime {
   private readonly passes = new Map<string, Pass>()
   private readonly tokens = new Map<string, { token: string; exp: number; signer: unknown }>()
+  /** When each link last took a new address; its tokens from before then are refused by the service. */
+  private readonly keyedAt = new Map<string, number>()
   /** what LifeOS was last told of each row's `shared`, by `docs:<id>`, `sheets:<id>` or `projects:<id>` */
   private readonly told = new Map<string, boolean>()
   /** the live read of what each project with a live link shows; `undefined` until LifeOS first answers */
@@ -163,6 +165,12 @@ export class GuestRuntime {
   async rekey(id: string): Promise<string | null> {
     const secret = this.store.rekey(id)
     if (!secret) return null
+    // Every token handed out before now stops opening anything: the service refuses a token of this link
+    // issued before the next second's edge (tokens carry whole seconds), and main signs new ones from then.
+    const at = (Math.floor(Date.now() / 1000) + 1) * 1000
+    this.keyedAt.set(id, at)
+    for (const key of [...this.tokens.keys()]) if (key === id || key.startsWith(`${id}|`)) this.tokens.delete(key)
+    await new Promise((r) => setTimeout(r, Math.max(0, at - Date.now())))
     await this.sync()
     this.ctx.push({ push: 'work.guests' })
     return guestUrl(publicOrigin(this.ctx), id, secret)
@@ -361,7 +369,10 @@ export class GuestRuntime {
     const signer = this.service()?.tokenSigner()
     if (!signer) return null
     const held = this.tokens.get(key)
-    if (held && held.signer === signer && held.exp - Date.now() > RESIGN_MS) return held
+    // A token signed before its link took a new address is never handed out again.
+    const keyed = claims.link ? (this.keyedAt.get(claims.link) ?? 0) : 0
+    const issued = held ? held.exp - GUEST_TOKEN_SECONDS * 1000 : 0
+    if (held && held.signer === signer && held.exp - Date.now() > RESIGN_MS && issued >= keyed) return held
     const got = await signer.sign(claims, GUEST_TOKEN_SECONDS)
     const next = { token: got.token, exp: got.expiresAt, signer }
     this.tokens.set(key, next)
@@ -402,7 +413,7 @@ export class GuestRuntime {
         if (!shown) continue
         // LifeOS out of reach for a minute: the read may be old (a document moved out, a task changed), so the link shows nothing until it answers.
         if (!stale) projects.set(l.id, await this.projectFacts(l.id, shown, keep))
-        out.push({ linkId: l.id, item: { project: l.source.id }, role: 'view', expiresAt: l.expiresAt, revokedAt: null, guest: { secretHash: l.secretHash, name: l.name, title: l.title, owner, token: '', tokenExp: 0 } })
+        out.push({ linkId: l.id, item: { project: l.source.id }, role: 'view', expiresAt: l.expiresAt, revokedAt: null, guest: { secretHash: l.secretHash, name: l.name, title: l.title, owner, token: '', tokenExp: 0, keyedAt: this.keyedAt.get(l.id) ?? 0 } })
         continue
       }
       // A link that cannot be signed is left out, never left as it was: the service then refuses it.
@@ -415,7 +426,7 @@ export class GuestRuntime {
         role: l.role,
         expiresAt: l.expiresAt,
         revokedAt: null,
-        guest: { secretHash: l.secretHash, name: l.name, title: l.title, owner, token: t.token, tokenExp: t.exp }
+        guest: { secretHash: l.secretHash, name: l.name, title: l.title, owner, token: t.token, tokenExp: t.exp, keyedAt: this.keyedAt.get(l.id) ?? 0 }
       })
     }
     for (const p of this.passes.values()) {

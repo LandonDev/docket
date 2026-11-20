@@ -440,6 +440,27 @@ describe("a project's link", () => {
     return s
   }
 
+  it("a new address ends the sheet tokens it handed out: the open socket closes within a second and the old token opens nothing", async () => {
+    const r = await rig()
+    const a = await make(r)
+    const old = (await itemOf(r, a.id, a.secret, 'sheets', SHEET)).body.token!
+    const s = await sheetSocket(r, a.id, old)
+    await until('the workbook arrives', () => s.messages.some((m) => m.t === 'state'))
+    const url = (await r.rt.rekey(a.id))!
+    const before = Date.now()
+    expect(await s.closed).toBe(4403)
+    expect(Date.now() - before).toBeLessThan(1500)
+    const stale = await sheetSocket(r, a.id, old)
+    expect(await stale.closed).toBe(4403)
+    // The new address hands a new token, and it opens the sheet.
+    const secret = new URL(url).hash.slice(3)
+    expect((await itemOf(r, a.id, a.secret, 'sheets', SHEET)).status).toBe(403)
+    const fresh = (await itemOf(r, a.id, secret, 'sheets', SHEET)).body.token!
+    expect(fresh).not.toBe(old)
+    const now = await sheetSocket(r, a.id, fresh)
+    await until('the new token opens the sheet', () => now.messages.some((m) => m.t === 'state'))
+  })
+
   it('revoked, it closes its sheet within a second, opens nothing, and unmarks all it showed; a document with a link of its own stays shared', async () => {
     const r = await rig()
     const a = await make(r)

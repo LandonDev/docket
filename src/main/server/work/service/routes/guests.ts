@@ -254,6 +254,8 @@ async function bearer(req: IncomingMessage, ctx: RouteCtx, id: string): Promise<
   try {
     const claims = await verifier(ctx).verify(auth.slice(7))
     if (claims.link !== id || claims.principal !== `guest:${id}`) return null
+    // The link still stands and this token is no older than its address.
+    if (!ctx.claimLive(claims)) return null
     // A project's link has no token of its own: its items' tokens open their sockets and nothing here.
     if ('project' in link.item) return null
     if ('doc' in link.item ? claims.doc !== link.item.doc : claims.sheet !== link.item.sheet) return null

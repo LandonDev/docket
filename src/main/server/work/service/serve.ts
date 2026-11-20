@@ -127,10 +127,13 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
    * stands only while the projection lists that sheet, so one that left the project is shut at once
    * and opens nothing again, on any route, before the token runs out.
    */
-  const claimLive = (claims: { link?: string; doc?: string; sheet?: string }): boolean => {
+  const claimLive = (claims: { link?: string; doc?: string; sheet?: string; iat?: number }): boolean => {
     if (!claims.link) return true
     if (!linkLive(claims.link)) return false
     const link = links.get(claims.link)!
+    // A token signed before the link took a new address opens nothing (guests/links.ts rekey).
+    const keyed = (link as { guest?: { keyedAt?: number } }).guest?.keyedAt ?? 0
+    if (keyed && (claims.iat ?? 0) < keyed) return false
     if (!('project' in link.item)) return true
     const shown = projects.get(claims.link)?.projection
     if (!shown) return false
@@ -266,9 +269,13 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     port,
     collab,
     setLinks(next) {
+      const keyedOf = (l: ServiceLink | undefined): number => (l as { guest?: { keyedAt?: number } } | undefined)?.guest?.keyedAt ?? 0
+      const before = links
       links = new Map(next.map((l) => [l.linkId, l]))
+      // A link that took a new address: every socket on it came in on a token from before, so all close now.
+      const rekeyed = new Set([...links.values()].filter((l) => keyedOf(l) > keyedOf(before.get(l.linkId))).map((l) => l.linkId))
       // A link that went: its sockets close now, not at the next sweep.
-      collab.closeWhere((c, name) => !claimLive({ link: c.link, doc: name }), 'the link was revoked')
+      collab.closeWhere((c, name) => (!!c.link && rekeyed.has(c.link)) || !claimLive({ link: c.link, doc: name }), 'the link was revoked')
     },
     setProject(linkId, project) {
       if (project) projects.set(linkId, project)
