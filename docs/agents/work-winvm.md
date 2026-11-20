@@ -110,7 +110,11 @@ At a thread's first call (B5) or his Wake press. The call waits with "Waking the
    state newer than the machine's lasting copy (a crash, the guest's own stop) is kept, never rolled back.
 2. The keeper waits for SSH and tcuser's desktop.
 3. The service: the sha256 of the guest's `tc-computer.exe` against the box's own build (`tcComputerExe`,
-   serviceBin.ts). When they differ, the box's copy goes in over SCP as the admin, the running door is
+   serviceBin.ts, which finds the build's `resources/native` under the app's root, the folder holding
+   package.json (`appRoot`, server/appRoot.ts): the code lands in a lazy chunk, out/main/chunks, where two up
+   from `__dirname` is out/; 1.0.356 said "no tc-computer.exe" for that reason, and
+   scripts/e2e-winvm-work.ts now builds the exe into the tree's resources/native and goes through this lookup
+   rather than naming the file in TEMP_CODE_WINVM_EXE). When they differ, the box's copy goes in over SCP as the admin, the running door is
    stopped and the file replaced by a copy (a moved file would keep the admin profile's rights, which
    tcuser may not run); the new one's `version` goes to the log. So the guest's service updates
    with the box. Then the logon task is run unless the door already runs.

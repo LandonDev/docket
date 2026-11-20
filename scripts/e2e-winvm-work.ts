@@ -35,8 +35,14 @@ import { StandingMachine } from '../src/main/server/work/winvm/standing'
 const REPO = resolve(import.meta.dir, '..')
 const flag = process.argv.indexOf('--out')
 const OUT = resolve(flag > 0 ? process.argv[flag + 1]! : join(REPO, '..', '..', '..', '.temp-code/plans/landed/computers-vm/b10'))
-/** The VM's service: the one TEMP_CODE_WINVM_EXE names, else built from this tree for the run (a stale build fails the door). */
-let EXE = process.env.TEMP_CODE_WINVM_EXE ?? ''
+/**
+ * The VM's service. Built from this tree into its own resources/native, as the box's deploy builds it, so the
+ * instance finds it the way the installed box does (serviceBin.ts, from inside its lazy chunk): a run that named the
+ * file in TEMP_CODE_WINVM_EXE skipped that lookup and missed a broken one. TEMP_CODE_WINVM_EXE still names another
+ * file when the person running this asks for it.
+ */
+const NAMED = process.env.TEMP_CODE_WINVM_EXE ?? ''
+let EXE = NAMED'
 const TOOLS = process.env.E2E_WORK_TOOLS ?? '/srv/agents/temp-code-data/work-tools'
 const REAL_HOME = process.env.HOME ?? '/srv/agents/home'
 const MODEL = 'claude-opus-5-5'
@@ -118,7 +124,7 @@ class Instance {
       TEMP_CODE_WARM_HARNESS: '0',
       TEMP_CODE_DIRECT_PROVIDERS: 'claude',
       TEMP_CODE_WORK_ROOT: this.work,
-      TEMP_CODE_WINVM_EXE: EXE,
+      ...(NAMED ? { TEMP_CODE_WINVM_EXE: NAMED } : {}),
       CLAUDE_CONFIG_DIR: join(this.home, '.claude'),
       CODEX_HOME: join(this.home, '.codex'),
       AGENT_CLI_CREDENTIAL_STORE: 'file',
@@ -416,7 +422,7 @@ async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true })
   if (!existsSync(join(REPO, 'out', 'main', 'index.js'))) throw new Error('no build: run electron-vite build first')
   if (!EXE) {
-    const into = mkdtempSync(join(tmpdir(), 'b10-exe-'))
+    const into = join(REPO, 'resources', 'native')
     execFileSync('bun', [join(REPO, 'scripts', 'build-tc-computer-win.ts'), '--into', into], { cwd: REPO, stdio: 'inherit' })
     EXE = join(into, 'tc-computer.exe')
   }

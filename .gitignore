@@ -13,6 +13,7 @@ scripts/.out/
 resources/native/appshot-helper
 resources/native/tc-computer
 resources/native/tc-computer.stamp
+resources/native/tc-computer.exe
 native/tc-computer/.build/
 
 # Per-machine app state and build output that must never ship with the source.

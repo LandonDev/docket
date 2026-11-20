@@ -1,3 +1,4 @@
+import { appRoot } from '../appRoot'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { isHeadless } from '../../headless'
@@ -15,11 +16,10 @@ import { isHeadless } from '../../headless'
 /** The service's file name on a platform. */
 export const computerBinaryName = (platform: NodeJS.Platform = process.platform): string => (platform === 'win32' ? 'tc-computer.exe' : 'tc-computer')
 
-/** TEMP_CODE_COMPUTER_BIN, else resources/native/tc-computer (tc-computer.exe on Windows) next to out/main. */
+/** TEMP_CODE_COMPUTER_BIN, else resources/native/tc-computer (tc-computer.exe on Windows) under the app's root. */
 export function computerBinaryPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
-  // An ES module bundle (the iOS client tests' server, under node) has no __dirname, and naming it there throws at boot.
-  const here = typeof __dirname === 'string' ? __dirname : process.cwd()
-  return env.TEMP_CODE_COMPUTER_BIN || join(here, '../../resources/native', computerBinaryName(platform))
+  // the app's root by its package.json, whichever chunk of the bundle this code lands in (appRoot)
+  return env.TEMP_CODE_COMPUTER_BIN || join(appRoot(), 'resources', 'native', computerBinaryName(platform))
 }
 
 export interface AvailabilityProbe {

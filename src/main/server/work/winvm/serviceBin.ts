@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { appRoot } from '../../appRoot'
 
 /**
  * Where the box keeps tc-computer.exe, the Windows service the keeper copies into the VM at wake
@@ -17,7 +18,7 @@ export const SERVICE_EXE_PLACES = [
 ] as const
 
 export interface ServiceBinProbe {
-  /** The app's root: the build directory on the box, the checkout in a dev tree. Default: two up from out/main. */
+  /** The app's root: the build directory on the box, the checkout in a dev tree. Default: the folder holding package.json (appRoot). */
   root?: string
   env?: NodeJS.ProcessEnv
   exists?: (path: string) => boolean
@@ -31,8 +32,8 @@ export function tcComputerExe(opts: ServiceBinProbe = {}): string | null {
     const given = resolve(env.TEMP_CODE_WINVM_EXE)
     return exists(given) ? given : null
   }
-  // An ES module bundle has no __dirname (computer/binary.ts says the same).
-  const root = opts.root ?? resolve(typeof __dirname === 'string' ? __dirname : process.cwd(), '..', '..')
+  // never counted up from __dirname: this code lands in a lazy chunk, out/main/chunks, where two up is out/
+  const root = opts.root ?? appRoot()
   for (const place of SERVICE_EXE_PLACES) {
     const path = resolve(root, place)
     if (exists(path)) return path
