@@ -24,8 +24,22 @@ export function safeFileName(name: string): string {
     .replace(/^\.+/, '_')
     .replace(/[. ]+$/, '')
     .trim()
-    .slice(0, 180)
-  return cleaned && !/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(cleaned) ? cleaned : 'file'
+  const kept = clip(cleaned)
+  return kept && !/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(kept) ? kept : 'file'
+}
+
+/** The longest a saved name may be. */
+const NAME_MAX = 180
+
+/**
+ * A long name cut to fit, from its stem: the last extension is what says what the file is, so it
+ * is never the part that goes. Cut from the end, "report … .exe.txt" would be saved as an .exe.
+ */
+function clip(name: string): string {
+  if (name.length <= NAME_MAX) return name
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 && name.length - dot <= 20 ? name.slice(dot) : ''
+  return `${name.slice(0, NAME_MAX - ext.length).replace(/[. ]+$/, '')}${ext}`
 }
 
 /** `name` if free, else "name (2).ext", "name (3).ext", … */

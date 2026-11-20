@@ -30,6 +30,19 @@ describe('safeFileName and turned-round names', () => {
   })
 })
 
+describe('safeFileName and a long name', () => {
+  it('cuts a long name from its stem, so the extension that says what the file is stays', () => {
+    const name = `${'a'.repeat(176)}.exe.txt`
+    const kept = safeFileName(name)
+    expect(kept.length).toBe(180)
+    expect(kept.endsWith('.txt')).toBe(true)
+    expect(kept).not.toMatch(/\.exe$/)
+    // A name with no extension, or one too long to be one, is cut plainly.
+    expect(safeFileName('b'.repeat(400))).toBe('b'.repeat(180))
+    expect(safeFileName(`c.${'d'.repeat(300)}`).length).toBe(180)
+  })
+})
+
 describe('freeName', () => {
   it('numbers a name already taken, before its extension', () => {
     const taken = new Set(['a.pdf', 'a (2).pdf', 'README'])
