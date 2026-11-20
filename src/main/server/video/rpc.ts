@@ -66,6 +66,8 @@ export interface VideoCaller {
 
 export class VideoRpc {
   private readonly sources: VideoSource[] = []
+  /** asked after every other source, whenever each was added: one that reaches for another host */
+  private readonly last: VideoSource[] = []
   /** the source each open stream came from */
   private readonly origin = new Map<string, VideoSource>()
 
@@ -82,13 +84,25 @@ export class VideoRpc {
     })
   }
 
-  /** A source is asked in the order it was added; the first that knows the thread answers. */
-  addSource(source: VideoSource): () => void {
-    this.sources.push(source)
-    return () => void this.sources.splice(this.sources.indexOf(source), 1)
+  /**
+   * A source is asked in the order it was added; the first that knows the thread answers. A `last` source is asked
+   * after all the others: a thread whose page this host shows itself is never asked of another host.
+   */
+  addSource(source: VideoSource, where: 'first' | 'last' = 'first'): () => void {
+    const list = where === 'last' ? this.last : this.sources
+    list.push(source)
+    return () => void list.splice(list.indexOf(source), 1)
   }
 
-  async open(params: { threadId: string; maxEdge: number; take?: boolean; drive?: boolean }, caller: VideoCaller): Promise<VideoOpenAnswer> {
+  /**
+   * `via` answers in the sources' place: a relayed socket's ask is for a session on the host it is relayed to, which
+   * this host reaches by the publish leg alone.
+   */
+  async open(
+    params: { threadId: string; maxEdge: number; take?: boolean; drive?: boolean },
+    caller: VideoCaller,
+    via?: (ask: VideoAsk) => Promise<VideoOpening | null>
+  ): Promise<VideoOpenAnswer> {
     if (!mayWatch(caller.principal, { desktop: this.desktop() })) return { ok: false, reason: 'refused' }
     const ask: VideoAsk = {
       thread: params.threadId,
@@ -99,7 +113,7 @@ export class VideoRpc {
       local: caller.principal.kind === 'local',
       ...(caller.push ? { push: caller.push } : {})
     }
-    for (const source of [...this.sources]) {
+    for (const source of via ? [{ open: via } satisfies VideoSource] : [...this.sources, ...this.last]) {
       const opening = await source.open(ask)
       if (!opening) continue
       if (!opening.ok) return opening

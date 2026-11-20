@@ -10,6 +10,7 @@ import type { Store } from '../db'
 import type { BuildFacts } from '@shared/deployDrift'
 import { RELAY_HOST_QUERY, type HostPresence } from '@shared/contract-relay'
 import { VIDEO_PATH } from '@shared/contract-video'
+import { VIDEO_PUBLISH_PATH } from '@shared/contract-videopublish'
 import { refuseVideoUpgrade, type VideoSockets } from '../video/sockets'
 import { COOKIE_NAME, RemoteAuth, RemoteAuthError, SESSION_TTL_MS, type Verified } from './auth'
 import { pairingOrigin, readRemoteSettings, writeRemoteSettings } from './handlers'
@@ -69,6 +70,8 @@ export interface RemoteListenerOptions {
   relayOnline?: (envId: string) => boolean
   /** Live video's own sockets (video/sockets.ts): `/video/<stream>?ticket=…`, ahead of the `/ws` check. */
   video?: Pick<VideoSockets, 'upgrade'>
+  /** A machine of his publishing a window's video to this host (video/published.ts): `/video-publish/<id>?ticket=…`. */
+  videoPublish?: { upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): 400 | 401 | 403 | 404 | null }
   /** The relayed hosts with their presence, for `/api/hello` to a caller the host knows. */
   hosts?: () => HostPresence[]
   ui?: UiHandler
@@ -361,6 +364,15 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         if (refused === null) return
         if (refused === 401) auth.recordFailure(base.ip)
         log(`video upgrade refused from ${base.ip}: ${refused}`)
+        return refuseVideoUpgrade(socket, refused)
+      }
+      // A machine of his dialing in to publish a stream this host asked it for: the ticket the ask carried is the whole credential.
+      if (options.videoPublish && base.path.startsWith(VIDEO_PUBLISH_PATH)) {
+        if (auth.retryAfter(base.ip) > 0) return refuseVideoUpgrade(socket, 429)
+        const refused = options.videoPublish.upgrade(req, socket, head)
+        if (refused === null) return
+        if (refused === 401) auth.recordFailure(base.ip)
+        log(`video publish refused from ${base.ip}: ${refused}`)
         return refuseVideoUpgrade(socket, refused)
       }
       if (base.path !== '/ws') return refuseUpgrade(socket, 404, 'Not Found')

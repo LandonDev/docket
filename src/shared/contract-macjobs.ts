@@ -4,6 +4,7 @@ import type { CrossHostPeerMethod } from './contract-crosshost'
 import type { PublishPeerMethod } from './contract-publish'
 import type { HostDevicesPeerMethod } from './contract-hostdevices'
 import type { RelayPeerMethod } from './contract-relay'
+import type { VideoPeerMethod } from './contract-videopublish'
 import type { MacComputerPeerMethod } from './contract-maccomputer'
 
 // Interactive commands over the Mac bridge (docs/box.md "The Mac bridge",
@@ -58,6 +59,7 @@ export type MacPeerMethod =
   | HostDevicesPeerMethod
   | PublishPeerMethod
   | RelayPeerMethod
+  | VideoPeerMethod
 
 export const isMacJobPeerMethod = (m: string): m is MacJobPeerMethod =>
   (MAC_JOB_PEER_METHODS as readonly string[]).includes(m)

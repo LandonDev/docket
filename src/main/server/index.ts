@@ -89,11 +89,14 @@ import { VideoRelay } from './video/relay'
 import { VideoRpc, handleVideo } from './video/rpc'
 import { VideoSockets, refuseVideoUpgrade } from './video/sockets'
 import { VIDEO_PATH } from '@shared/contract-video'
+import { VIDEO_PUBLISH_PATH } from '@shared/contract-videopublish'
 import { BROWSER_VIDEO_SETTING, VIDEO_REMOTE_SETTING, browserVideoOn, videoRemoteOn } from '@shared/video/settings'
 import { SessionHolds, computerBannerHooks, handleComputerProofHold } from './computer/hold'
 import { ComputerRpc } from './computer/rpc'
 import { ComputerSettingsRpc } from './computer/settingsRpc'
 import { ComputerVideo } from './computer/videoFeed'
+import { VideoPublishing } from './video/published'
+import { VideoPublisher, videoOffers } from './video/publisher'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
 import { ComputerHistory, KEEP_PICTURES_SETTING, historyPicturesFromEnv, historyRoot } from './computer/history'
@@ -104,7 +107,7 @@ import { pruneStaleShots } from './computer/shots'
 import { ComputerBridge, computerBridgeHooks } from './computer/bridge'
 import { computerPinFromEnv } from './computer/pin'
 import { bridgedLanding } from './remote/macComputer'
-import { parseMacComputerKey } from '@shared/contract-maccomputer'
+import { macComputerKey, parseMacComputerKey } from '@shared/contract-maccomputer'
 import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
@@ -746,6 +749,7 @@ export async function startServer(
         if (crossHostThreads.onPeerPush(from, push)) return
         if (crossHostAgents.onPeerPush(from, push)) return
         if (macPublish.onPeerPush(from, push)) return
+        if (videoPublisher.onPeerPush(from, push)) return
         if (memorySync.onPeerPush(from, push)) return
         if (releaseAnnouncer.onPeerPush(from, push)) return
         if (keepAwake.onPeerPush(from, push)) return
@@ -1037,7 +1041,7 @@ export async function startServer(
       const link = peers.get(id)
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
     },
-    offers: () => [...crossHostOffers(), ...hostDevicesOffers(), ...macPublishOffers(), ...relayOffers(), PORTS_OFFER],
+    offers: () => [...crossHostOffers(), ...hostDevicesOffers(), ...macPublishOffers(), ...relayOffers(), ...videoOffers(computer !== null), PORTS_OFFER],
     // The thread cap counts the threads a host started here that are live (crossHostThreads below).
     liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId),
     // The relay's host row on the carrier: this host's name, presence and build.
@@ -1107,6 +1111,14 @@ export async function startServer(
       if (!answer.handled) throw new Error(`${req.method} is not answered here`)
       return answer.result
     },
+    // A phone relayed to a Mac asks for one of that Mac's windows: the Mac publishes it here (video/published.ts).
+    video: async (req, lane) => {
+      const caller = { principal: lane.principal, connection: lane.connection, connectionId: 'relay', alive: lane.alive }
+      if (req.method === 'video.open') return { handled: true, result: await videoRpc.open(req.params, caller, (ask) => videoPublishing.from(lane.envId, ask.thread, ask.maxEdge)) }
+      if (req.method === 'video.close') return { handled: true, result: videoRpc.close(req.params.stream, caller) }
+      return { handled: false }
+    },
+    videoGone: (connection) => videoRelay.dropConnection(connection),
     deliverNotice: async (from, relayed) => {
       const hostId = process.env.TEMP_CODE_HUB_HOST_ID || environmentId
       // An older host sends no kind: read it off the event.
@@ -1473,7 +1485,26 @@ export async function startServer(
   // (the box's browser sets its own once it is wired, below)
   let previews = computer ? new ComputerPreviews(computer) : null
   // A window in this machine's own computer service plays as video for its desktop (computer/videoFeed.ts).
-  if (computer) videoRpc.addSource(new ComputerVideo({ service: computer.service, sessions: computer.sessions, remote: () => videoRemoteOn(store.getSetting(VIDEO_REMOTE_SETTING)) }))
+  const videoRemote = (): boolean => videoRemoteOn(store.getSetting(VIDEO_REMOTE_SETTING))
+  const computerVideo = computer ? new ComputerVideo({ service: computer.service, sessions: computer.sessions, remote: videoRemote }) : null
+  if (computerVideo) videoRpc.addSource(computerVideo)
+  // The publish leg (video/published.ts, video/publisher.ts). A host asks a machine of his that holds a thread's
+  // session to send the stream up; that machine does so only while he has said its windows may be watched elsewhere.
+  const videoPublishing = new VideoPublishing({
+    auth: remoteAuth,
+    call: (mac, args, deadlineMs) => peerCalls.call(mac, 'video.publish', { from: environmentId, args }, deadlineMs),
+    macOf: (thread) => {
+      const mac = macTools.macPeerOf(thread).macPeer
+      return mac ? { mac, key: macComputerKey(environmentId, thread) } : null
+    }
+  })
+  videoRpc.addSource(videoPublishing, 'last')
+  const videoPublisher = new VideoPublisher({
+    remote: videoRemote,
+    source: computerVideo ?? { open: async () => null },
+    urlOf: (envId) => listEnvironments(store).find((e) => e.id === envId)?.routes[0]?.url ?? null,
+    link: peerRequest
+  })
   /** The previews are of the box's browser, not of a person's windows: a key that may watch gets them (computer/preview.ts `previewRefusal`). */
   let boxPreviews = false
   const holds = computer ? new SessionHolds({ ...computer, banner: () => computerBannerHooks.current }) : null
@@ -1538,7 +1569,11 @@ export async function startServer(
     host: computer ? { service: computer.service, verdicts: computer.sessions.verdicts } : null,
     store,
     unavailable: () => computerUnavailable(),
-    history: computerHistory
+    history: computerHistory,
+    // "Watch from my other devices" turned off: nothing of this machine's windows goes on leaving it
+    videoRemoteChanged: (on) => {
+      if (!on) videoPublisher.closeAll()
+    }
   })
   // The Computer section's reads (computer/historyRpc.ts): this desktop's own socket only.
   const computerHistoryRpc = computerHistory ? new ComputerHistoryRpc(computerHistory) : null
@@ -1945,6 +1980,7 @@ export async function startServer(
         attach: (ws, principal, host) => (host ? hostRelay.attachRelayed(ws, principal, host) : attach(ws, principal)),
         relayOnline: (id) => hostRelay.online(id),
         video: videoSockets,
+        videoPublish: videoPublishing,
         hosts: () => hostRelay.hosts(),
         mcp: createMcpHandler({
           auth: remoteAuth,
@@ -3703,6 +3739,12 @@ export async function startServer(
       if (refused !== null) refuseVideoUpgrade(socket, refused)
       return
     }
+    // A machine of his publishing to this host over loopback (the two-instance proof; a real one dials the listener).
+    if (url.startsWith(VIDEO_PUBLISH_PATH)) {
+      const refused = videoPublishing.upgrade(req, socket, head)
+      if (refused !== null) refuseVideoUpgrade(socket, refused)
+      return
+    }
     if (url.startsWith('/lsp/') || url.startsWith('/dap/')) {
       wssLocal.handleUpgrade(req, socket, head, (ws) => {
         if (url.startsWith('/lsp/')) attachLspSocket(url.slice('/lsp/'.length), ws)
@@ -3917,6 +3959,8 @@ export async function startServer(
       void previews?.close()
       videoRelay.shutdown()
       videoSockets.close()
+      videoPublisher.closeAll()
+      videoPublishing.close()
       scheduler?.dispose()
       if (scheduler) setSessionTierGate(null)
       void computer?.service.close()

@@ -5,6 +5,7 @@ import { MAC_RUN_BACKGROUND, type MacPeerMethod } from './contract-macjobs'
 import type { CrossHostCallParams } from './contract-crosshost'
 import type { HostDevicesCallParams } from './contract-hostdevices'
 import type { RelayCallParams } from './contract-relay'
+import type { VideoPublishCallParams } from './contract-videopublish'
 import { MacPresenceSchema } from './macPresence'
 import { ordinal } from './statusWords'
 
@@ -553,7 +554,7 @@ export type MacBridgePush =
       callId: string
       method: MacPeerMethod
       /** A mac.* call names its thread and args; a thread.* call (contract-crosshost.ts) its caller and args; a host.* call (contract-hostdevices.ts) its args; a publish.* call its caller and args; a relay.* call (contract-relay.ts) the box and its args. */
-      params: MacCallParams | CrossHostCallParams | HostDevicesCallParams | PublishCallParams | RelayCallParams
+      params: MacCallParams | CrossHostCallParams | HostDevicesCallParams | PublishCallParams | RelayCallParams | VideoPublishCallParams
       deadlineMs: number
     }
   | { push: 'macBridge.request'; request: MacBridgeRequest }

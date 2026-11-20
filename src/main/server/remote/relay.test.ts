@@ -121,6 +121,10 @@ function make(opts: { store?: Map<string, string>; now?: { t: number } } = {}) {
   const broadcasts: Extract<ServerPush, { push: 'presence' }>[] = []
   const pushLocal = vi.fn(async (req: { method: string }, p: Principal) => ({ answered: req.method, by: (p as { keyId: string }).keyId }))
   const delivered: { from: string; notice: unknown }[] = []
+  const video = vi.fn(async (req: { method: string; params?: unknown }, lane: { envId: string; principal: Principal; connection: object; alive: () => boolean }) =>
+    req.method === 'video.open' ? { handled: true, result: { ok: true, stream: 'st_1', for: lane.envId, by: (lane.principal as { keyId: string }).keyId } } : { handled: true, result: null }
+  )
+  const videoGone = vi.fn()
   const relay = new HostRelay({
     environmentId: 'env_box',
     transport,
@@ -128,6 +132,8 @@ function make(opts: { store?: Map<string, string>; now?: { t: number } } = {}) {
     store: { getSetting: (k) => store.get(k) ?? null, setSetting: (k, v) => (v === null ? store.delete(k) : store.set(k, v)) },
     broadcast: (push) => broadcasts.push(push),
     pushLocal: pushLocal as never,
+    video: video as never,
+    videoGone,
     deliverNotice: async (from, notice) => {
       delivered.push({ from, notice })
     },
@@ -136,7 +142,7 @@ function make(opts: { store?: Map<string, string>; now?: { t: number } } = {}) {
     timeZone: UTC,
     log: () => {}
   })
-  return { relay, calls, transport, store, broadcasts, pushLocal, delivered, now }
+  return { relay, calls, transport, store, broadcasts, pushLocal, delivered, now, video, videoGone }
 }
 
 afterEach(() => vi.useRealTimers())
@@ -363,6 +369,35 @@ describe('HostRelay lanes', () => {
     ])
     expect(pushLocal).toHaveBeenCalledTimes(1)
     expect(transport.frames).toEqual([])
+  })
+
+  it('answers a lane\'s video.open and video.close on the box: the phone cannot reach the Mac, so the stream comes here; and ends them with the lane', async () => {
+    const { ws, transport, video, videoGone } = lane({ caps: ['read', 'operate', 'approve'] })
+    await tick()
+    ws.request('1', 'video.open', { threadId: 't1', maxEdge: 1280 })
+    ws.request('2', 'video.close', { stream: 'st_1' })
+    await tick()
+    expect([...ws.answers()].sort((a, b) => (a as { id: string }).id.localeCompare((b as { id: string }).id))).toEqual([
+      { id: '1', ok: true, result: { ok: true, stream: 'st_1', for: 'env_mac', by: 'k1' } },
+      { id: '2', ok: true, result: null }
+    ])
+    // neither crossed to the Mac
+    expect(transport.frames).toEqual([])
+    const connection = video.mock.calls[0][1].connection
+    expect(video.mock.calls[1][1].connection).toBe(connection)
+    expect(video.mock.calls[0][1].alive()).toBe(true)
+    ws.close(1000, '')
+    expect(videoGone).toHaveBeenCalledWith(connection)
+    expect(video.mock.calls[0][1].alive()).toBe(false)
+  })
+
+  it('refuses video.open on a lane whose key may not watch, before anything is asked', async () => {
+    const { ws, video } = lane({ caps: ['read', 'operate'] })
+    await tick()
+    ws.request('1', 'video.open', { threadId: 't1', maxEdge: 1280 })
+    await tick()
+    expect(ws.answers()).toEqual([{ id: '1', ok: false, error: 'forbidden: video.open needs approve' }])
+    expect(video).not.toHaveBeenCalled()
   })
 
   it('a locked Mac refuses only the screen method; an asleep one refuses everything; awake again forwards', async () => {

@@ -68,7 +68,10 @@
   sentence: the wire never says whether a code existed. Bearer clients mint a 30 s ticket at
   `POST /api/ticket` and upgrade `/ws?ticket=…`; nothing else ever rides in
   a socket URL but a live video stream's own single-use ticket
-  (`/video/<stream>?ticket=…`, [live-video.md](live-video.md)). Revoking a
+  (`/video/<stream>?ticket=…` for a viewer, and
+  `/video-publish/<id>?ticket=…` for a machine of his sending a window's
+  video up to this host, which it does only when this host asked it over
+  the peer link; [live-video.md](live-video.md)). Revoking a
   key closes its sockets, its sessions and its video streams at once.
 - `/ui` serves the BUILT renderer (out/renderer, so `electron-vite build`
   first in a dev tree) behind the cookie; the bundle detects a missing

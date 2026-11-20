@@ -397,6 +397,78 @@ first wanted; nothing of it is in the first paint.
   stream's id rings the picture as a preview's does. No source sends one
   for a video stream yet (the box's browser never did for its picture).
 
+## A window on a Mac or a PC
+
+`src/main/server/computer/videoFeed.ts` (`ComputerVideo`, a `VideoSource`;
+`ServiceVideoFeed`). The service side is docs/computer-protocol.md §30.
+
+- **Which window.** `video.open` names a thread; the stream is of the
+  window that thread's session last read (`previewTarget`), as the 4 fps
+  preview's is.
+- **For this machine's own desktop** the service is asked in `quality` mode
+  at the window's own pixels (up to 3840 on the long edge). A viewer
+  elsewhere is refused here: `off` while the switch is off, else
+  `unsupported`, since a person's windows leave the machine only by the
+  publish leg below.
+- **Refusals.** `unsupported` when the service has no `video` feature or no
+  bytes pipe (an older build, Windows today), `permission` when Screen
+  Recording is off.
+- **Before the viewer joins.** The service sends as soon as it is asked,
+  which is before the viewer's socket has joined and may be before its own
+  answer has named the stream. Those frames are kept (the service sends no
+  more than its window of them) and passed on when the socket joins, the
+  keyframe first.
+- **Following the session.** When the thread reads another window the feed
+  stops the service's stream and starts one for the new window under the
+  same socket. The service numbers generations within each of its streams;
+  a viewer takes them in rising order only, so the feed numbers them itself
+  and writes its own number into each frame and the service's back into
+  each ack. An ack of a window the stream has left is dropped.
+- **Ends.** `ended` when the window closes or the session is gone,
+  `permission` when Screen Recording goes off, `error` when the service
+  fails or is restarted (the viewer opens again).
+- **The click ring.** A `capture/click` whose `stream` is the video
+  stream's number goes to the asking socket as `computer-click` under the
+  viewer's own stream id.
+
+## From his other devices
+
+A Mac's or a PC's windows are watched from elsewhere only through the host
+that machine dials, and only while "Watch from my other devices"
+(`computer.video.remote`) is on at that machine.
+
+1. The viewer (the phone, another desktop) asks the box `video.open`.
+2. The box asks the machine over the peer link: `video.publish { key,
+   publish, ticket, maxEdge }` (`src/shared/contract-videopublish.ts`). The
+   ticket is a stream ticket of scope `publish`, single use, 30 seconds.
+3. The machine checks its switch and that it has saved the asking host,
+   opens its own window source in `budget` mode at 1280 at most, and dials
+   that host's `/video-publish/<publish>?ticket=…` (subprotocol `nsl1`). It
+   sends frames up the socket and takes the viewer's acks down it
+   (`video/publisher.ts`, `VideoPublisher`). It answers the box with the
+   picture's size, or the refusal.
+4. On the box the socket feeds a `PublishedFeed` (`video/published.ts`),
+   which the relay treats as any feed. A machine that does not dial in
+   within ten seconds leaves no stream waiting.
+
+Which sessions the box asks a machine for:
+
+- **A box thread that drives the Mac** (`VideoPublishing.open`): the
+  machine is the thread's Mac (`macPeerOf`), the key
+  `macComputerKey(box, thread)`. This source is asked after every other
+  (`addSource(…, 'last')`), so a thread whose page the box shows itself is
+  never asked of another host.
+- **A phone relayed to the Mac** (`HostRelay`, `video` in its deps): the
+  phone's socket is the box's, so `video.open` and `video.close` on a lane
+  are answered by the box and never cross; the machine is the lane's host
+  and the key the thread's own id. The stream's socket is the box's too.
+
+What ends a published stream: the viewer's socket closing (the box closes
+the publish socket, the machine stops its capture), the viewer's key being
+revoked, the machine's own end (its close code carries the reason to the
+viewer), and the switch turned off, which closes every stream the machine
+is publishing at once (`closeAll`).
+
 ## Driving
 
 Only the box's browser takes his input. He presses Take over
@@ -449,7 +521,8 @@ first seen on the owner's Mac.
 - `computer.video.remote`, off unless turned on: this Mac's or PC's windows
   may be watched from his other devices. It is `videoRemote` in the computer
   settings and is set through `computer.settings.set`, which is `local`: no
-  key can turn it on.
+  key can turn it on. Settings → Computer use shows it as "Watch from my
+  other devices". Off closes what is being published.
 
 ## The proofs
 
@@ -514,6 +587,14 @@ socket and decoder, and its first decode on a Mac is still to be seen.
   windows; the box's browser goes to a key that may watch
 - `scripts/work-tools/installer.test.ts`: the `build` kind, and the
   manifest's pins
+- `src/main/server/computer/videoFeed.test.ts`: a window as video over the
+  fake service (frames, acks, the window of eight, refusals, ends, a change
+  of window, the click)
+- `src/main/server/video/publish.test.ts`: the publish leg between two
+  hosts in one process, with real sockets on both legs and the fake
+  service as the encoder: frames arrive, acks reach the encoder, the switch
+  off refuses and closes, a revoked key closes, the publish upgrade's
+  refusals; `src/main/server/remote/relay.test.ts` "video.open … on the box"
 - `src/renderer/src/lib/video/`: `pacing.test.ts`, `player.test.ts` (the
   stream's rules over a fake socket and decoder), `streams.test.ts` (the
   registry and the retry rule)

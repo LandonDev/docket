@@ -53,6 +53,7 @@ import { isCrossHostPeerMethod } from '@shared/contract-crosshost'
 import { isHostDevicesPeerMethod } from '@shared/contract-hostdevices'
 import { isPublishPeerMethod } from '@shared/contract-publish'
 import { isRelayPeerMethod } from '@shared/contract-relay'
+import { isVideoPeerMethod } from '@shared/contract-videopublish'
 import { MacJobs, type JobSpawner } from './macJobs'
 import { MacLoadGuard, type HoldEnd, type HoldKind, type LoadSample } from './macLoadGuard'
 import {
@@ -1014,7 +1015,7 @@ export class MacBridge {
     }
   ): Promise<unknown> {
     // Other offers route before the bridge. Refuse them here if their handler is absent.
-    if (isCrossHostPeerMethod(method) || isHostDevicesPeerMethod(method) || isPublishPeerMethod(method) || isRelayPeerMethod(method))
+    if (isCrossHostPeerMethod(method) || isHostDevicesPeerMethod(method) || isPublishPeerMethod(method) || isRelayPeerMethod(method) || isVideoPeerMethod(method))
       throw new Error(`${method} is not a Mac bridge call`)
     const params = wire as MacCallParams
     const env = this.deps.environments().find((e) => e.id === ctx.from)

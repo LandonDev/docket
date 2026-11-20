@@ -100,6 +100,13 @@ export interface HostRelayDeps {
   broadcast: (push: Extract<ServerPush, { push: 'presence' }>) => void
   /** A relayed lane's remote.push.* (handlers.ts handleRemote with the key as createdBy). */
   pushLocal: (req: ClientRequest, principal: Principal & { kind: 'remote' }) => Promise<unknown>
+  /**
+   * A relayed lane's `video.open` and `video.close`: the phone cannot reach the host it is relayed to, so this host
+   * answers and brings the stream here by the publish leg. Unhandled, the request is refused like any unrelayed one.
+   */
+  video?: (req: ClientRequest, lane: { envId: string; principal: Principal & { kind: 'remote' }; connection: object; alive: () => boolean }) => Promise<{ handled: boolean; result?: unknown }>
+  /** A lane closed: its streams end with it. */
+  videoGone?: (connection: object) => void
   /** A notice from a host: this host's sinks with environmentId = the host's. */
   deliverNotice: (from: string, notice: RelayNotice) => Promise<void>
   contract: number
@@ -328,6 +335,7 @@ export class HostRelay {
       if (lane.closed) return
       lane.closed = true
       this.lanes.delete(socketId)
+      this.deps.videoGone?.(lane)
       this.transport.close(envId, socketId, 'client closed').catch(() => {})
     })
     if (!row || row.link !== 'up') {
@@ -411,6 +419,14 @@ export class HostRelay {
         return this.send(lane, { id: req.id, ok: false, error: err instanceof Error ? err.message : String(err) })
       }
     }
+    if (this.deps.video && (req.method === 'video.open' || req.method === 'video.close')) {
+      try {
+        const answer = await this.deps.video(req, { envId: lane.envId, principal: lane.principal, connection: lane, alive: () => !lane.closed })
+        if (answer.handled) return this.send(lane, { id: req.id, ok: true, result: answer.result })
+      } catch (err) {
+        return this.send(lane, { id: req.id, ok: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
     const relayNeed = RELAY_METHODS[req.method]
     if (!relayNeed) return this.send(lane, { id: req.id, ok: false, error: relayForbidden(req.method) })
     const row = this.presenceOf(lane.envId)
@@ -450,6 +466,7 @@ export class HostRelay {
     if (lane.closed) return
     lane.closed = true
     this.lanes.delete(lane.socketId)
+    this.deps.videoGone?.(lane)
     try {
       lane.ws.close(code, reason)
     } catch {
