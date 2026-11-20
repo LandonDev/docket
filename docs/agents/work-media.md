@@ -27,6 +27,10 @@ No tool is installed for it: the toolchain's ffmpeg and ffprobe 9.0.2
 (`scripts/work-tools/base.json`, GPL, run only as separate processes) do
 the probes, the proxies, HEIC and the tiles. There is no `media.json`.
 
+## A mail's attachment
+
+A picture or a video from a mail (`{at: 'mail'}`) is the host's fetched copy in the item's folder (work-canvas.md "Fetched sources"). The preparer copies it into the version's cache as `original.<ext>` and serves that, since the media host serves its own cache; no person named the path, so the folders-this-host-shows check does not apply to it.
+
 ## Frames, never seconds
 
 A note on a video stores a **frame index** into its version's frame

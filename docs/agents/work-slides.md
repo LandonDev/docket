@@ -246,6 +246,10 @@ slide's.
   through LibreOffice, one page a slide, a suggestion shows on the proposed
   render, and `slides_image` returns a PNG.
 
+## A mail's attachment
+
+A .pptx from a mail (`{at: 'mail'}`) opens through the PDF pillar's `sourcePath`, which answers the copy the host fetched into the item's own folder (work-canvas.md "Fetched sources").
+
 ## The canvas
 
 All in `src/renderer/src/work/slides/`. The approved design is

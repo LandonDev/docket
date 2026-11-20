@@ -72,6 +72,40 @@ name (`main.ts` arrives as `video/mp2t`). The Docs view's list, which the
 host builds, reads extensions from `kindOfFile` (src/shared/work/docFind.ts);
 registry.test.ts holds the two to the same claims.
 
+## Fetched sources
+
+An item whose bytes live elsewhere comes to the host before its kind opens
+it: today a mail's attachment (`{at: 'mail'}`, work-mail.md
+"Attachments"). A pillar registers the fetcher for its `at`
+(`registerCanvasFetcher`, src/main/server/work/canvas/fetch.ts; the mail
+pillar's `start` registers `mail`), and `work.canvas.fetch {itemId}` runs it
+once per item into `canvas/<owner>/<item>/file/<name>`, a part file renamed
+into place only when whole, with `work.canvas.fetch` pushes
+`{itemId, received, total}` at most every 150 ms. `work.canvas.read
+{itemId, offset, length}` gives the bytes back by range (8 MB at most a
+read). A kind's host side opens the copy as it opens a file of his:
+`fetchedPath` in pdf/file.ts `sourcePath` (the PDF and the deck), sheets/held.ts
+`heldOf` (.xlsx, .xlsm, .csv) and media/prepare.ts (a copy in the version's
+cache, which the media host serves). The window's list of those kinds is
+`FETCHED_KINDS` (work/canvas/fetched.ts); a kind added there must read the
+copy first.
+
+In the pane (`CanvasPane`, `useItemFetch`) the kind's body and its own tools
+wait for the copy: the document's bones meanwhile, the first line a 4px bar
+and "2.1 of 8.4 MB" once the host says a size of a megabyte or more
+(`FetchState.tsx`); a failed fetch is `Couldn't open this PDF` (sheet, deck,
+file) with the host's sentence and Retry, never bones. Once it is there the
+bar has Download before History, its glyph alone in the narrow bar.
+
+## Panes that are not a thread
+
+A workspace's Mail view owns items as a thread does, under
+`mailPaneOf(workspaceId)`: `CanvasStore.open` and `reorder` take it for a
+Work workspace of this host (`workWorkspace`), and `workspaceRemoved` drops
+its rows and folders. `CanvasSeat` takes `onAsk` for such a pane (Ask goes
+where the view says; Open from Google… is not offered) and `chatToggle`
+for the word and glyph of the toggle that folds what sits beside the items.
+
 `ACT_VIEWS` (work/acts/registry.ts) holds one `ActKindView` per held act
 kind, in `work/<pillar>/act.ts` for the pillar `ACT_PILLAR` names.
 `chunk: null` means the Outbox's generic view (the summary and the payload

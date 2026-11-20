@@ -19,6 +19,10 @@ Agents suggest and the owner accepts. A value an agent fills is a
 suggestion with its source until he takes it. Signing places his saved
 drawn signature: no certificate, and no thread can call it.
 
+## A mail's attachment
+
+A PDF from a mail (`{at: 'mail'}`) is the copy the host fetched into the item's own folder (work-canvas.md "Fetched sources"): `sourcePath` answers it, and `snapshot` serves it as it is, as it does a thread's own file, since it never changes under the item. Until the pane has fetched it, `sourcePath` says it has not come yet.
+
 ## Files
 
 All in `src/main/server/work/pdf/`.

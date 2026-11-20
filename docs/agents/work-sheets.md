@@ -26,6 +26,10 @@ suggestions, mode and charts are kept under (`storeKey`: `file:<path>`,
 sector and LifeOS is connected, else a `.tcsheet` under
 `<userData>/sheets/made/<id>/`.
 
+## A mail's attachment
+
+A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the file the host fetched into the item's own folder (`heldOf`, work-canvas.md "Fetched sources"): a package, or a CSV's sheet of our own. Edits write that copy, never the mail or his folder; Download saves it. A .xls or .ods is not a kind `kindForFile` gives the sheet, so it is saved.
+
 ## Packages
 
 - **The sheet worker** (`worker.ts`, forked by `spawnWorker.ts` through

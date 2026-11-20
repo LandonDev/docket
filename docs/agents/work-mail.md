@@ -231,6 +231,47 @@ mail gave no name is named for its type by work-kit (`fileName`:
 store and main writes them: the file's address in the store is never handed
 to the browser, which would save it under the store's key.
 
+## Attachments
+
+A file of a mail opens where TempCode shows such a file, beside the mail;
+anything else is saved to Downloads as before. work-kit's reader draws the
+chips and asks TempCode's kit (`MailFile`: the store address, the name and
+type, the message and part):
+
+- **Which files open.** The canvas registry's one lookup, `kindForFile(name,
+  contentType)` (work/canvas/registry.ts, shared with the drop-to-open
+  thread), names the kind; the file opens when that kind reads a fetched file
+  (`FETCHED_KINDS` in work/canvas/fetched.ts: PDF, sheet, picture or video,
+  deck) and the reader has a mail thread open. Documents (.docx, .odt, .rtf,
+  .md, .txt), recordings and every other file are saved for now. The chip
+  says "View report.pdf" or "Download archive.zip" (`fileVerb`), and a
+  picture goes the same way (`viewsPictures`), so the reader's own picture
+  viewer is LifeOS desktop's alone.
+- **Where.** In a mail item beside a thread (`MailCanvas.tsx`) the file is
+  another item of that thread's pane. The Mail view has no thread, so it has
+  a pane of its own: the reader's half is a `CanvasSeat` on
+  `mailPaneOf(workspaceId)` (src/shared/work/canvas.ts), an owner of items
+  as a thread is (the store takes it only for a Work workspace of this host,
+  and drops its items when the workspace goes). The file at the left, the
+  mail at the right, the toggle named Mail folds the mail away; the tabs stay
+  while he moves between mails. Ask there starts a thread about the
+  selection, since there is no composer beside it. Both are `placedKit`
+  (`files.ts`): the window's one kit with the file members for that place.
+- **The bytes.** The item's source is `{at: 'mail', threadId, messageId,
+  partId, name, contentType?, size?}`. The pane asks the host
+  `work.canvas.fetch {itemId}` (approve, carried only while the far screen is
+  unlocked); the mail pillar's fetcher (`mail/attachment.ts`) reads the mail
+  as the owner with `mail:thread`, refuses a mail outside the pane's sector
+  whatever LifeOS answered (a thread's reach, `ctx.mentionReach`; the Mail
+  pane's by its workspace), asks `mail:requestAttachments` for a part the
+  worker has not fetched and waits up to two minutes, then streams the store's
+  bytes into the item's own folder (`canvas/<owner>/<item>/file/<name>`, the
+  name made safe as Downloads makes it). Never into his folder, and the page
+  itself still reaches only LifeOS: nothing here widens the page policy.
+- **Download** in the kind's bar reads the host's copy by range
+  (`work.canvas.read`) and saves it on this computer under the attachment's
+  own name, as Save does.
+
 ## Settings
 
 Settings, Work, Mail is work-kit's `MailSettings` on the host's whole LifeOS
