@@ -16,9 +16,15 @@ The look is the round-two prototype `mail.html` ("The thread drafts").
 |---|---|
 | The wire (`work.mail.send`) | `src/shared/contract-work-mail.ts` |
 | The press, a draft opened beside its thread, the preamble line | `src/main/server/work/mail/index.ts` |
-| The outgoing HTML rules | `src/main/server/work/mail/outgoing.ts` |
+| The outgoing HTML rules | `src/shared/work/mailOutgoing.ts` (the host sends through them; the Outbox draws through them) |
+| The mark of a press that already waited | `src/main/server/work/mail/waited.ts` |
 | The live proof (not shipped) | `src/main/server/work/mail/proof/live.ts` |
-| The client with Send through the host, and TempCode's `MailKit` | `src/renderer/src/work/mail/kit.tsx` |
+| The client with Send through the host | `src/renderer/src/work/mail/client.ts` |
+| TempCode's `MailKit` (toast with its countdown, faces, Save to Downloads, Print, who drafted a mail) | `src/renderer/src/work/mail/kit.tsx` |
+| Settings, Work, Mail | `MailSettingsSection.tsx` (work-kit's `MailSettings` on the host's whole session) |
+| The page policy and LifeOS's address | `src/shared/pagePolicy.ts` |
+| Save to Downloads (main) | `src/main/downloads.ts` |
+| The preview page, its scenes and the reader's proof (not shipped) | `src/renderer/src/work/mail/preview/`, `scripts/mail-preview.ts` |
 | The Mail view and its header (Start thread, Compose) | `MailView.tsx`, `view.ts` |
 | The mail kind: a draft beside its thread, a waiting rewrite | `MailCanvas.tsx`, `canvas.ts`, `proposal.ts` |
 | A held mail in the Outbox | `MailAct.tsx`, `act.ts`, `model.ts` |
@@ -46,6 +52,21 @@ older client) is refused for a row that has either, so nothing goes unseen:
 - **A draft another host's thread made** is refused: send it from that host.
 - **Anything else is his own mail** and goes as his `compose:send` with
   `cause: 'press'`, at `sendAt` when he chose a time.
+
+**Undo for a held draft is a wait in the window.** The hold has no queue to
+pull a mail back from, so for a draft that goes through it the composer
+(work-kit, `kit.holdsSend`) saves the draft as he sees it, shows "Sending
+to …" with a bar and Undo for the undo time from Mail's settings, and only
+when that time runs out calls `work.mail.send {…, waited: true}`, with
+`seen` as he pressed on it. Nothing has gone while it waits: Undo cancels
+the timer, and a window that closes takes the timer with it, so the draft
+stays held. `waited` marks the draft for that one call into the hold
+(`waited.ts`), and the hold's `mail.send` passes `immediate: true` to
+`compose:send` only for an owner's press that carries the mark, so LifeOS
+does not queue the mail a second time. Nothing on the Outbox's own wire
+carries it: a send from the Outbox page, by a grant or from the phone keeps
+LifeOS's queue and its Undo, and LifeOS refuses `immediate` with `cause:
+'grant'`. A held draft has no Send later.
 
 Either way LifeOS records the send as his, from this host's device session
 (`sentFrom` is the session's client; a minted proof session reads "from a
@@ -103,13 +124,62 @@ shared screens on TempCode's scale (subject 16/24, rows and fields 13/20,
 labels 12/16) and the menus' highlight to the muted fill through
 work-kit's `--ui-wash` (`HOST_WASH` in `work-kit/ui/host-rules`).
 
+## Pictures, and what the page may reach
+
+A mail frame never touches the network (work-kit's `prepareMail`: every
+outside address is taken out of a body, and the frame's own policy is
+`default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:`). The
+reader loads a picture as bytes and hands the frame a blob: an inline part
+from LifeOS's file store, a web picture from the copy LifeOS's worker
+fetched (`mail:requestPictures`, `mail:pictures`), so no sender's server
+ever sees this machine. A stored body over 100 KB is read the same way.
+
+So the page must be able to FETCH from LifeOS, and nothing more.
+`withLifeosConnect` (`src/shared/pagePolicy.ts`) writes the LifeOS address
+this host resolved (`lifeosAddress`: the owner's own, or
+`TEMP_CODE_LIFEOS_URL` for an isolated instance) into `connect-src` of the
+page's policy meta, for all three ways the page is served: the app scheme's
+handler (`src/main/appScheme.ts`), the dev server (`electron.vite.config.ts`,
+serve only) and the remote UI (`src/main/server/remote/ui.ts`). `img-src` is
+never widened: `pagePolicy.test.ts` fails if it ever holds `https:`, because
+that would let any transcript or page load a picture from anywhere.
+
+## Settings
+
+Settings, Work, Mail is work-kit's `MailSettings` on the host's whole LifeOS
+session (a sector's session may read mail's settings and change none): the
+account a new mail goes from, who a reply goes to, the undo time, pictures
+from the web (Show, Ask, Never, with the senders allowed under Ask), list
+rows, mark as read, the signatures, and each account's name, sector,
+signatures and notices. LifeOS keeps all of it, so LifeOS desktop reads the
+same values.
+
 ## The Outbox
 
 `mail.send`'s own view: From, To, Cc, Bcc, Subject, then the words as
 plain text exactly as they go, the files, and one muted line when a
-rewrite waits (it is taken or left beside the thread, never here).
+rewrite waits (it is taken or left beside the thread, never here). The
+plain text is what he is asked to read, since every word that goes is in
+it. One switch, "As it looks", draws the mail as it will arrive: the HTML
+this host sends (`outgoingMail`: the outgoing rules on his words, then the
+quote) in a mail frame on white, with no colour moved, nothing folded, and
+a link's real address under it while the pointer is on the link.
 
 ## Proving it
+
+`bun scripts/mail-preview.ts` serves Mail on dummy mail (work-kit's fixture
+client and corpus) under the app's own page policy, with no app, no host
+and no sign-in, and drives it in a real headless Chromium over the DevTools
+protocol (`work-kit/mail/proof`). `--proof` runs the reader's proof (an
+inline picture, a web picture and a CSS background paint; the mail frames
+make no network request; nothing is clipped after a late load; a real key
+and a real click inside a mail reach the page); `--policy <index.html>`
+runs it under another app's policy (LifeOS desktop's). `--shots <dir>`
+writes the review shots: every scene in `preview/scenes.ts`, dark and
+light, at 1280 and 640 wide. The box's sans is DejaVu, so the shots use
+Selawik as the stand-in for the system face.
+
+The live proof against LifeOS:
 
 `env -u ELECTRON_RUN_AS_NODE bun src/main/server/work/mail/proof/live.ts <0600 token file> <shots dir>`
 from the worktree after `electron-vite build`, with a token minted by

@@ -6,6 +6,8 @@ import { useColorScheme } from "../../hooks/useColorScheme";
 import { cn } from "../../lib/cn";
 import { keyHint, modOrCtrl } from "../../lib/keys";
 import { openUrl, saveDownload } from "../../lib/native";
+import { sessionStore } from "../../lib/tcserver/store";
+import { workOpenPort } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 
 /**
@@ -58,6 +60,14 @@ const toast = (input: string | MailToastInput): void => {
     else api(words, options);
   });
 };
+
+/** The thread that wrote a draft, by its title, with the way to it; a thread this window does not hold is named plainly. */
+function threadLabel(origin: MailOrigin): MailOriginLabel | undefined {
+  if (origin.app !== "tempcode") return undefined;
+  const meta = sessionStore.metaOf(origin.threadId);
+  if (!meta) return { label: "Drafted in a thread" };
+  return { label: `Drafted in ${meta.title?.trim() || "a thread"}`, open: () => workOpenPort.get()?.(origin.threadId) };
+}
 
 /**
  * Who made a draft, in TempCode's words: the thread that wrote it, with a
@@ -195,7 +205,7 @@ export const tempcodeMailKit: MailKit = {
   print: printInFrame,
   // A draft one of TempCode's threads made goes through the host's hold, which has no queue to pull a mail back from.
   holdsSend: (origin) => origin.app === "tempcode",
-  originLabel: (origin) => originNamer?.(origin) ?? (origin.app === "tempcode" ? { label: "Drafted in a thread" } : undefined),
+  originLabel: (origin) => originNamer?.(origin) ?? threadLabel(origin),
   fetchImage: async (url) => (await fetch(url)).blob(),
   Boundary,
 };

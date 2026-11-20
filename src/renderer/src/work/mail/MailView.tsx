@@ -77,14 +77,15 @@ export function View(props: WorkViewProps) {
   );
 }
 
-function MailPageBody({ workspace }: WorkViewProps) {
+function MailPageBody({ workspace, startThread }: WorkViewProps) {
   const id = workspace.id;
   const openTask = useCallback(() => openWorkView({ workspaceId: id, view: "tasks" }), [id]);
-  return <MailScreen id={id} onOpenTask={openTask} />;
+  const start = useCallback((mail: { id: string; subject: string }) => startThread(mailChip(mail.id, mail.subject)), [startThread]);
+  return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} />;
 }
 
 /** The page under its providers: the list beside the reading pane, for the workspace (or the preview) named `id`. */
-export function MailScreen({ id, onOpenTask }: { id: string; onOpenTask: () => void }) {
+export function MailScreen({ id, onOpenTask, onStartThread }: { id: string; onOpenTask: () => void; onStartThread?: (mail: { id: string; subject: string }) => void }) {
   const page = usePage(id);
   const client = useMailClient();
   const accounts = client.useMailAccounts();
@@ -125,7 +126,7 @@ export function MailScreen({ id, onOpenTask }: { id: string; onOpenTask: () => v
   );
   return (
     <div data-mail-kit className="tc-mail h-full min-h-0">
-      <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} sectors={false} />
+      <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} sectors={false} onStartThread={onStartThread} />
     </div>
   );
 }

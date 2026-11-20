@@ -75,7 +75,7 @@ Imports are by subpath; there is no root export: `work-kit/ui/<name>`
 ## The guard
 
 scripts/workKitPin.test.ts checks the pin's form and commit against bun.lock,
-the interface version this tree was built for (`WORK_KIT_API` 1), the Swift
+the interface version this tree was built for (`WORK_KIT_API` 2), the Swift
 revision in ios/TempCode/project.yml, the builder
 rule, the exclude, that `work-kit-sources.css` is what the generator writes
 for today's imports, and a render of `KitProbe` from
