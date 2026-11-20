@@ -7,11 +7,11 @@ frames a second, in place of the 4 fps JPEG picture. The plan is
 **Built:** the wire, the contract, who may watch, the stream ticket, the
 stream's own socket on both servers, the relay, the two settings; the box's
 browser as a source, with his pointer and keys into the page he drives; a
-Mac's window as a source (`tc-computer`, `capture.video.*`) and the publish
-leg that carries it to his other devices; the desktop's viewer, which every
-place that shows a live picture now asks first; and the Computers page.
-**Not built:** the phone's viewer and the Windows service's video, each
-set out under "What is not built" at the end.
+Mac's window as a source (`tc-computer`, `capture.video.*`) and a PC's
+(`tc-computer.exe`, the same calls; see "A Windows PC" below), and the
+publish leg that carries one to his other devices; the desktop's viewer,
+which every place that shows a live picture now asks first; and the
+Computers page. **Not built:** the phone's viewer.
 
 **What the owner must do before the box plays video:** run the tools
 installer on the box and update it (see "The box", "The tools"). Until then
@@ -419,8 +419,8 @@ first wanted; nothing of it is in the first paint.
   `unsupported`, since a person's windows leave the machine only by the
   publish leg below.
 - **Refusals.** `unsupported` when the service has no `video` feature or no
-  bytes pipe (an older build, Windows today), `permission` when Screen
-  Recording is off.
+  bytes pipe (an older build, or a Windows service whose named pipe did not
+  join), `permission` when Screen Recording is off.
 - **Before the viewer joins.** The service sends as soon as it is asked,
   which is before the viewer's socket has joined and may be before its own
   answer has named the stream. Those frames are kept (the service sends no
@@ -577,6 +577,19 @@ demand it needs before it probes. The stream now applies the flow's own probe
 beside it (§30 "The stream", `probeAtTheEdge` in ComputerService/Video.swift);
 the host's proof then ran `budget` at 60 to 86 fps and 12 to 16 Mbit/s.
 
+## A Windows PC (`tc-computer.exe`)
+
+The Windows service streams one window the same way (docs/computer-protocol.md
+§30, "The Windows service"): the host's named pipe dialed before
+`initialize` is answered, one Windows.Graphics.Capture capture per window
+(PrintWindow on a timer where that is refused), one Media Foundation H.264
+encoder per stream (a hardware one when the PC has one, else Microsoft's
+software encoder), and screen-relay's flow controller ported to Rust with
+every case of its test. The host side was already the Mac's: `ComputerVideo`
+asks any service that names `video`. Measured in the rig: "The proofs".
+Not proven: a hardware encoder (the rig has no GPU) and a PC's own desktop
+viewer on a real Windows host; the rig's proof reads the frames on the box.
+
 ## Settings
 
 `src/shared/video/settings.ts`.
@@ -617,6 +630,27 @@ The capture time is the engine's, on the kernel's monotonic clock; the
 script reads the same clock. The thin link is a proxy in the script between
 the viewer and the relay, so the engine sees it only through the acks, as it
 will through the tunnel.
+
+The Windows service, `bun scripts/e2e-computer-win.ts --legs video`, in the
+rig on 2026-11-19 (8 cores, no GPU, Windows 11 at 1280×800): a WinForms window
+that draws a moving bar and a counter on a 10 ms timer, the box's own
+`ComputerConnection` reading the records through `pipe-relay` and a second
+SSH tunnel and acking each one, 10 s per mode.
+
+| Mode | Picture | Frames a second (the window drew) | Bitrate | Encode p50 / p95 | Capture | Encoder |
+|---|---|---|---|---|---|---|
+| `quality`, 20 Mbit/s asked | 962×632 | 34.6 (62.7) | 0.52 Mbit/s | 3.05 / 4.16 ms | Windows.Graphics.Capture on the Microsoft Basic Render Driver | software (Microsoft H264 Encoder MFT) |
+| `budget`, from 8 Mbit/s | 962×632 | 35.8 (62.5) | 0.24 Mbit/s | 3.00 / 3.91 ms | the same | the same |
+
+Checked in the same run: video named at `initialize` with the pipe joined;
+one frame and no more before the first ack (the flow's window is one frame
+until an ack comes back, then grows with the round trip); the first frame a
+keyframe whose Annex B holds an SPS and a PPS; sequences 1, 2, 3 … with no
+gap; every frame the size the start answered; nothing after a stop once the
+frames in flight had landed; and `window-closed` when the window closed.
+The capture is the limit: Windows.Graphics.Capture on the rig's Basic Render
+Driver gave about 37 pictures a second of the 63 the window drew, none of
+them dropped on the service's side; 120 a second was not seen.
 
 Not proven: the stream through the real Cloudflare tunnel (it is first seen
 after the owner installs the tools and updates the box), and the box's
@@ -686,6 +720,12 @@ app's viewer opens its socket as soon as `video.open` answers.
   scripts/mac/proof-computer-capture.sh --scenes 20,21`, which shows a
   window and so runs only after five minutes with no input.
 
+- The Windows service, `cargo test` in `native/tc-computer-win` on the box:
+  `flow.rs` (every case of screen-relay's flow test), `video/wire.rs`,
+  `video/pacing.rs`, `video/annexb.rs`, `video/picture.rs`, and
+  `tests/video.rs` (the handlers over a fake desktop and an in-memory pipe).
+  The live proof is `bun scripts/e2e-computer-win.ts --legs video` in the
+  rig.
 - `src/shared/video/nsl1.parity.test.ts`, `src/shared/video/access.test.ts`
 - `src/main/server/remote/auth.test.ts` "stream tickets"
 - `src/main/server/video/relay.test.ts`: the relay and the RPC, with fakes

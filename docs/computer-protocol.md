@@ -2260,7 +2260,9 @@ app's job object and ends with it.
   session lock (2 s, else `session_unavailable { reason: 'in-use' }`).
 - Answers as on the Mac: both permissions are granted (Windows has no TCC);
   one display entry per monitor in physical pixels at scale 1 (the process
-  is per-monitor DPI aware, so a pixel is a point here); `features: []`.
+  is per-monitor DPI aware, so a pixel is a point here); `features: []`,
+  or `["video"]` when the service is on its bytes pipe and the host offered
+  `video` (§30, "The Windows service").
   `input.probe` answers `keyWindow: 'none'` with nothing tried (posted
   messages reach a background window's controls whatever has the focus,
   so there is no key window to learn). `apps/changed` (`launched`,
@@ -2564,6 +2566,9 @@ host-name text calls this machine "this PC" there (`thisDesktopInLine`).
   and a Work thread's flagged click on Edge's "Submit expense" becomes a
   live `computer.act` in the real Outbox that Away keeps and his press
   submits once. Without the variable it is skipped.
+- Live video on Windows, its parts and the rig's measured rates, are §30's
+  "The Windows service"; `bun scripts/e2e-computer-win.ts --legs video` runs
+  only that leg of the proof.
 
 ## 30. Live video
 
@@ -2742,6 +2747,97 @@ frame waited inside the viewer, in microseconds.
   on the window too: `stream` the video stream's number as a decimal string,
   `at` in its picture's pixels, `width` and `height` the picture's size, with
   the preview's carry for a stream that starts within `clickCarryMs`.
+
+### The Windows service (tc-computer.exe)
+
+- **Where.** The platform-free parts are in the crate and run under `cargo
+  test` on the box: the records and their reader (`src/video/wire.rs`),
+  screen-relay's flow controller with every case of its test
+  (`src/flow.rs`), the pacer and the still window (`src/video/pacing.rs`),
+  Annex B and the parameter sets (`src/video/annexb.rs`), the picture size
+  and BGRA to NV12 (`src/video/picture.rs`), the pipe's two threads
+  (`src/video/pipe.rs`), and the streams and the calls over the desktop's
+  two seams, `WindowCapture` and `VideoEncoder` (`src/video/mod.rs`);
+  `tests/video.rs` drives them over a fake desktop and an in-memory pipe.
+  Windows' own parts are `src/platform/video.rs`: the pipe, the capture and
+  the encoder. `main.rs` dials the pipe.
+- **The feature.** `serve` dials `TC_COMPUTER_VIDEO_PIPE` before it reads a
+  line, so before `initialize` is answered, trying for 2 s while the pipe is
+  not there or busy, and writes the 64 characters of
+  `TC_COMPUTER_VIDEO_TOKEN` first. The handle is overlapped, so a read and a
+  write wait at once on it (Windows queues plain I/O on one handle). The
+  service names `video` only with the pipe and a host that offered it;
+  otherwise the two calls answer -32601.
+- **The pipe.** As on the Mac: records go out whole and in order on a writer
+  thread, acks come in on a reader thread, and a failed write, the host
+  closing its end or a record that cannot be placed ends every stream with
+  `error`, after which `capture.video.start` answers `capture_failed`. A
+  record is queued under its stream's lock, so none is queued once
+  `capture.video.stop` has answered.
+- **Threads.** One capture thread per window hands each new picture to every
+  stream on the window. Each stream has a thread of its own that holds its
+  encoder, takes the newest picture (a newer one replaces one not yet
+  taken), and runs a 10 ms clock for the flow's update, the bitrate, the
+  still window and the three seconds without an ack.
+- **The capture.** Windows.Graphics.Capture: `CreateForWindow` on the HWND, a
+  D3D11 device (the hardware driver, else WARP; in the rig the hardware
+  driver type gave the Microsoft Basic Render Driver), a free-threaded
+  frame pool of two BGRA buffers, no cursor, and no border
+  (`IsBorderRequired` false, which Windows took in the rig). A frame wakes
+  the thread; the newest is copied to a staging texture and read on the CPU.
+  The picture is the window as Windows.Graphics.Capture sees it, its title
+  bar and borders included. A size change makes the pool again and gives
+  the stream a new encoder and generation. A window that is gone
+  (`IsWindow`) ends the capture with `window-closed`. Where
+  Windows.Graphics.Capture is not supported or refuses the window, the
+  capture is `PrintWindow` at the stream's fps, a picture only when its
+  pixels changed; the log says which ran.
+- **The encoder.** Media Foundation's H.264 encoder: the first hardware one
+  `MFTEnumEx` lists for NV12 to H.264 (asynchronous, unlocked and driven by
+  its events), else Microsoft's software encoder (`CLSID_MSH264EncoderMFT`,
+  synchronous). Through ICodecAPI: constant bitrate in `budget` and
+  unconstrained VBR in `quality` at `CODECAPI_AVEncCommonMeanBitRate`
+  (changed live as the flow moves it in `budget`), low latency, no
+  B-frames, the longest GOP the encoder takes, and
+  `CODECAPI_AVEncVideoForceKeyFrame` when a keyframe is needed. High
+  profile. The service turns the BGRA into NV12 itself (BT.709, limited
+  range, a mean of the pixels when it scales down). The encoder's output is
+  Annex B; `Normalizer` puts the last SPS and PPS ahead of an IDR that lacks
+  them and turns 4-byte lengths into start codes, should an encoder write
+  them. In the rig the software encoder's first frame held an access unit
+  delimiter, the SPS, the PPS, two SEIs and five IDR slices. An encoder that
+  fails is made again as a new generation, up to three times in a row, then
+  the stream ends with `error`.
+- **What differs from the Mac.** Windows has no Screen Recording grant, so
+  no `permission` end. The hardware encoder's path is not proven: the rig has
+  no GPU. Each stream's thread logs one line when it ends (frames,
+  pictures the capture gave, those the flow held back, encode p50 and p95,
+  what captured and what encoded); the proof reads it.
+- **Measured** in the rig on 2026-11-19 by `bun scripts/e2e-computer-win.ts
+  --legs video`: 8 cores and no GPU, Windows 11 at 1280×800 on QEMU's
+  standard VGA. The window is a WinForms form a PowerShell draws on a 10 ms
+  timer (a bar that moves and a counter); the host is the box's own
+  `ComputerConnection`, which acks each frame as it reads it; 10 s per mode.
+
+  | Mode | Picture | Frames a second (the window drew) | Bitrate | Encode p50 / p95 | Capture | Encoder |
+  |---|---|---|---|---|---|---|
+  | `quality`, 20 Mbit/s asked | 962×632 | 34.6 (62.7) | 0.52 Mbit/s | 3.05 / 4.16 ms | Windows.Graphics.Capture on the Microsoft Basic Render Driver | software (Microsoft H264 Encoder MFT) |
+  | `budget`, from 8 Mbit/s | 962×632 | 35.8 (62.5) | 0.24 Mbit/s | 3.00 / 3.91 ms | the same | the same |
+
+  The capture is the limit: Windows.Graphics.Capture on the Basic Render
+  Driver gave about 37 pictures a second of a window that drew 63 (413 in the 11 s of `quality`), with
+  none waiting in the pool, none paced out and none replaced in a stream's
+  mailbox. Encoding took 2 to 4 ms a frame, so the software encoder would
+  hold far more at this size. 120 frames a second was not seen. The bitrate
+  is low because the picture is simple.
+- **In the rig, the pipe crosses machines.** The proof's host is on the box
+  and the service in the guest, so `tc-computer pipe-relay NAME --listen
+  127.0.0.1:PORT` (only with `TC_COMPUTER_PROOF=1`) makes the named pipe the
+  service dials and carries it to a guest loopback port; a second SSH
+  tunnel brings that port to the box, where the proof's spawn
+  (`rigSpawn` in scripts/lib/winComputerRig.ts) checks and drops the
+  service's token and joins the rest to the host's own pipe after the
+  host's token.
 
 ### The host
 
