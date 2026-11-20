@@ -168,6 +168,13 @@ prototypes; no test holds it.
   the browser's system otherwise: from the phone, and from a dark window
   while dark is held (docs/agents/work-sheets.md).
 
+## The phone
+
+Checked in light, not redesigned. One value was fixed (the light
+`warningText` and `destructiveText` tints); the rest, 21 rows that come from
+Apple's label roles, status words in fill colours and shared values, is
+listed for the owner in [appearance-phone.md](appearance-phone.md).
+
 ## What only a real window shows
 
 The box cannot show these; their logic is held by tests. They need a look in

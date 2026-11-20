@@ -21,16 +21,16 @@ enum Tint {
     static let cyan = Color(.systemCyan)
     /// A state with no urgency: the queued dot, the stopped square.
     static let quiet = Color(.systemGray2)
-    /// Warning and destructive as small text on a group fill: in light mode
-    /// the system's increased-contrast orange and red (4.5:1 on `Surface.group`
-    /// where the plain ones read near 2:1 and 3:1); dark mode keeps the system's.
-    static let warningText = legible(.systemOrange)
-    static let destructiveText = legible(.systemRed)
+    /// Warning and destructive as small text on a group fill. In light mode
+    /// they are a step darker than the system's increased-contrast orange and
+    /// red, which measure 4.1:1 on `Surface.group`: these reach 4.9:1 and
+    /// 5.3:1 there, and more on white. Dark mode keeps the system's own.
+    static let warningText = legible(.systemOrange, light: UIColor(red: 0.690, green: 0.290, blue: 0, alpha: 1))
+    static let destructiveText = legible(.systemRed, light: UIColor(red: 0.784, green: 0.063, blue: 0.180, alpha: 1))
 
-    private static func legible(_ base: UIColor) -> Color {
+    private static func legible(_ base: UIColor, light: UIColor) -> Color {
         Color(UIColor { traits in
-            guard traits.userInterfaceStyle != .dark else { return base.resolvedColor(with: traits) }
-            return base.resolvedColor(with: UITraitCollection(traitsFrom: [traits, UITraitCollection(accessibilityContrast: .high)]))
+            traits.userInterfaceStyle == .dark ? base.resolvedColor(with: traits) : light
         })
     }
 }

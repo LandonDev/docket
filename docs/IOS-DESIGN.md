@@ -97,9 +97,11 @@ its last-active time in 12 tabular after it, then the ellipsis; the branch
 line 12/16 2 pt under it: the branch glyph and the branch (else "local
 checkout"), then "worktree" or "local". Then lines in 12/16 on 24 pt, in
 this order: needs you and failed roots (their mark, type glyph and title,
-the cue or detail under the title in amber or red: the increased-contrast
-`Tint.warningText` and `Tint.destructiveText` in light mode, 4.7:1 and
-4.8:1 on the fill where the system's read 2:1 and 3:1), master blocks (the
+the cue or detail under the title in amber or red: `Tint.warningText` and
+`Tint.destructiveText`, in light mode a step darker than the system's
+increased-contrast orange and red (which measured 4.1:1 on the fill, under
+the 4.5:1 this line is held to), 4.9:1 and 5.3:1 on the fill where the
+system's plain ones read 2:1 and 3:1; dark mode keeps the system's), master blocks (the
 master's line with the batch's done tally, its working subagents in the
 fleet's words, its marked batch threads one step in with working as a still
 dot, "N queued"; the master's line carries the block's one moving mark,
