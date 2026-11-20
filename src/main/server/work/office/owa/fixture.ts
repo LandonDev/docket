@@ -43,6 +43,10 @@ export interface OwaFixture {
   events: StoredEvent[]
   /** every action the page or the carrier called, with whether it was signed */
   calls: { action: string; signed: boolean }[]
+  /** the host each service.svc call reached, in order */
+  served: { action: string; host: string }[]
+  /** the stand-in for its own new address: its own host serves the page as before, and with `moved` its `/mail/` on 127.0.0.1 sends the page on to localhost, as outlook.office.com now sends it to outlook.cloud.microsoft */
+  moved: boolean
   expire(): void
   close(): Promise<void>
 }
@@ -64,6 +68,8 @@ export function serveOwaFixture(account = 'Dana.Lee@contoso.com'): Promise<OwaFi
   const mail: StoredMail[] = []
   const events: StoredEvent[] = []
   const calls: OwaFixture['calls'] = []
+  const served: OwaFixture['served'] = []
+  const state = { moved: false }
 
   const page = () => `<!doctype html><html><head><title>Mail - Dana Lee - Outlook</title></head><body><div role="main">Inbox</div><script>
     const canary = (document.cookie.match(/(?:^|; )X-OWA-CANARY=([^;]+)/) || [])[1];
@@ -177,6 +183,11 @@ export function serveOwaFixture(account = 'Dana.Lee@contoso.com'): Promise<OwaFi
 
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://x')
+    if ((url.pathname === '/mail/' || url.pathname === '/mail') && state.moved && req.headers.host?.startsWith('127.0.0.1')) {
+      const { port } = server.address() as { port: number }
+      res.writeHead(302, { location: `http://localhost:${port}/mail/` })
+      return void res.end()
+    }
     if (url.pathname === '/mail/' || url.pathname === '/mail') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'set-cookie': `X-OWA-CANARY=${canary}; Path=/` })
       return void res.end(page())
@@ -188,6 +199,7 @@ export function serveOwaFixture(account = 'Dana.Lee@contoso.com'): Promise<OwaFi
       const action = url.searchParams.get('action') ?? ''
       const isSigned = signed(req) && req.headers.action === action
       calls.push({ action, signed: isSigned })
+      served.push({ action, host: req.headers.host ?? '' })
       if (!isSigned) return void (res.writeHead(440), res.end())
       try {
         const answer = handle(action, raw ? JSON.parse(raw) : {})
@@ -208,6 +220,13 @@ export function serveOwaFixture(account = 'Dana.Lee@contoso.com'): Promise<OwaFi
         mail,
         events,
         calls,
+        served,
+        get moved() {
+          return state.moved
+        },
+        set moved(on: boolean) {
+          state.moved = on
+        },
         expire: () => void (token = `tok-${randomUUID()}`),
         close: () => new Promise((r) => (server.closeAllConnections(), server.close(() => r())))
       })

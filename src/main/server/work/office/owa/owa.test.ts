@@ -27,6 +27,23 @@ describe("Outlook on the web's requests", () => {
     })
   })
 
+  it('knows a sign-in by its cookies on the hosts Outlook lives on now', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const { profileHasSignIn } = await import('./index')
+    const dir = mkdtempSync(join(tmpdir(), 'm38-cookies-'))
+    const at = (host: string) => {
+      const file = join(dir, `${host}.db`)
+      const db = new DatabaseSync(file)
+      db.exec('CREATE TABLE cookies (host_key TEXT, name TEXT)')
+      db.prepare('INSERT INTO cookies VALUES (?, ?)').run(host, 'DefaultAnchorMailbox')
+      db.close()
+      return file
+    }
+    expect(profileHasSignIn(at('outlook.cloud.microsoft'))).toBe(true)
+    expect(profileHasSignIn(at('.bing.com'))).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
   it('answers an invitation by its item, and reads a refusal as its words', () => {
     expect((ews.answerEvent('E1', 'tentative').body as { Body: { Items: unknown[] } }).Body.Items[0]).toMatchObject({ __type: 'TentativelyAcceptItem:#Exchange', ReferenceItemId: { Id: 'E1' } })
     expect(() => ews.messageOf({ Body: { ResponseMessages: { Items: [{ ResponseClass: 'Error', ResponseCode: 'ErrorItemNotFound', MessageText: 'gone' }] } } })).toThrow('gone')
@@ -53,16 +70,18 @@ d('the Outlook on the web carrier, against a page in Outlook\'s shapes', () => {
   let browser: BoxChromium
   let owa: OwaFixture
   let page: OwaPage
+  let rig: ReturnType<typeof testBrowser>
   let carrier: OwaCarrier
   let clock = 0
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'm38-owa-'))
     // as the host wires it (owa/index.ts): the carrier's page is made by the stage, which keeps a headed one behind the display's curtain
-    const rig = testBrowser(root, bin!)
+    rig = testBrowser(root, bin!)
     browser = rig.browser
     owa = await serveOwaFixture()
-    page = new OwaPage({ endpoint: () => browser.endpoint(), open: (url) => rig.stage.open(url, 'carrier'), url: owa.url, waitMs: 10_000 })
+    // the stand-in's own origin is Outlook's here, as https://outlook.cloud.microsoft is live
+    page = new OwaPage({ endpoint: () => browser.endpoint(), open: (url) => rig.stage.open(url, 'carrier'), url: owa.url, origins: [new URL(owa.url).origin], waitMs: 10_000 })
     carrier = new OwaCarrier({ page: () => page, marker: () => join(root, 'owa.json'), running: () => browser.running, hasSignIn: () => true, now: () => clock })
   }, 30_000)
 
@@ -150,6 +169,39 @@ d('the Outlook on the web carrier, against a page in Outlook\'s shapes', () => {
     const before = owa.calls.length
     await carrier.listMail({ folder: 'sent', limit: 1 })
     expect(owa.calls.slice(before).filter((c) => c.action === 'FindItem')).toEqual([{ action: 'FindItem', signed: true }])
+  }, 30_000)
+
+  it('goes where the old address sends it: Outlook on its new origin, every call to the origin it landed on', async () => {
+    owa.moved = true
+    const local = owa.url.replace('127.0.0.1', 'localhost')
+    const moved = new OwaPage({ endpoint: () => browser.endpoint(), open: (url) => rig.stage.open(url, 'carrier'), url: owa.url, origins: [new URL(owa.url).origin, new URL(local).origin], waitMs: 10_000 })
+    try {
+      const before = owa.served.length
+      expect(ews.accountOf(await moved.call(ews.userConfiguration().action, ews.userConfiguration().body))).toBe('dana.lee@contoso.com')
+      const find = ews.findMail('inbox', 5)
+      await moved.call(find.action, find.body)
+      const mine = owa.served.slice(before)
+      expect(mine.map((c) => c.action)).toContain('FindItem')
+      expect(mine.every((c) => c.host.startsWith('localhost:'))).toBe(true)
+    } finally {
+      moved.close()
+      owa.moved = false
+    }
+  }, 30_000)
+
+  it("sends nothing to an origin that is not Outlook's own, wherever the address led", async () => {
+    owa.moved = true
+    // only the old address counts as Outlook here: the page lands somewhere else
+    const elsewhere = new OwaPage({ endpoint: () => browser.endpoint(), open: (url) => rig.stage.open(url, 'carrier'), url: owa.url, origins: [new URL(owa.url).origin], waitMs: 1_500 })
+    try {
+      const before = owa.served.length
+      const find = ews.findMail('inbox', 5)
+      await expect(elsewhere.call(find.action, find.body)).rejects.toMatchObject({ code: 'not-running' })
+      expect(owa.served.slice(before).filter((c) => c.action === 'FindItem')).toEqual([])
+    } finally {
+      elsewhere.close()
+      owa.moved = false
+    }
   }, 30_000)
 
   it('opens the page again when its session ends, and signs with the new token', async () => {

@@ -181,7 +181,12 @@ not his, and answers "not open".
 Excel, Word and PowerPoint answer "not on the box". The carrier keeps its
 own tab of Outlook on the web in the box's browser
 ([work-browser.md](work-browser.md) "The box's browser"), hidden from the
-agents' browser tools (`RESERVED_TARGETS`). It calls the page's own
+agents' browser tools (`RESERVED_TARGETS`). It opens
+`https://outlook.cloud.microsoft/mail/` (`OWA_URL`; Microsoft serves Outlook
+there now and sends `outlook.office.com` on to it) and accepts whichever of
+Outlook's own origins the page lands on (`OUTLOOK_ORIGINS`: exactly
+`outlook.cloud.microsoft`, `outlook.office.com`, `outlook.office365.com`,
+https). It calls that landed origin's own
 `/owa/service.svc?action=<Action>` from inside the page (`page.ts`), signed
 with the headers the page itself last sent there (its bearer token and
 canary, read off its own requests), so his session never leaves the
@@ -503,12 +508,18 @@ the helper would have to ship signed beside the app; the helper compiled
 by TempCode itself on Windows (the rig compiled it with the same command
 over SSH).
 
-**Outlook on the web**: nothing has run against his real Outlook on the web
-(no agent may sign in to it). The live test is in landed/M38.md. Unproven
-there: that the real page's `service.svc` takes these bodies as the stand-in
-does, which headers sign a call (the carrier keeps `authorization`,
-`x-owa-canary`, `x-anchormailbox` and the like off the page's own requests),
-and that `FindItem` returns `calendar:UID`.
+**Outlook on the web**: proven live on 2026-11-20 (the master thread, with
+his own sign-in, lphale@purdue.edu, on the box): reads. `GetOwaUserConfiguration`
+names him, `FindItem` on Sent and the Inbox and a `CalendarPageView` (20
+events) parse. The real page signs its calls with `authorization`,
+`x-anchormailbox`, `x-req-source`, `x-owa-hosted-ux`, `x-owa-sessionid` and
+`prefer`, and has no `X-OWA-CANARY` cookie. The first live run failed
+because the page now lands on `outlook.cloud.microsoft`, an origin the
+carrier did not yet accept; the landed-origin rule above fixes that, and
+the stand-in's redirect test (`owa.test.ts`) holds it. Not proven live: a
+send (`CreateItem` with `SendAndSaveCopy`), a reply or forward, booking an
+event, an answer to an invitation, and whether `FindItem` returns
+`calendar:UID` for `eventByUid`.
 
 None of this has run against real Excel or Outlook. The add-in has not run
 in any real Office host: its live test, with the sideload steps, is in the

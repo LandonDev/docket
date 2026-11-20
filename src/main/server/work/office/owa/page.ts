@@ -11,7 +11,10 @@ import { RESERVED_TARGETS, RESERVED_URL } from '../../browser/box/service'
  * canary), so nothing of his sign-in ever leaves the browser.
  */
 
-export const OWA_URL = 'https://outlook.office.com/mail/'
+/** Where the carrier opens Outlook: Microsoft serves it here now and sends the older addresses on to it (seen live 2026-11-20). */
+export const OWA_URL = 'https://outlook.cloud.microsoft/mail/'
+/** Outlook on the web's own origins, exact and https: the page may land on any of them, and calls go only to the one it is on. */
+export const OUTLOOK_ORIGINS: readonly string[] = ['https://outlook.cloud.microsoft', 'https://outlook.office.com', 'https://outlook.office365.com']
 const SIGN_IN = /(^|\.)(login\.microsoftonline\.com|login\.live\.com|login\.microsoft\.com|account\.live\.com)$/i
 /** the headers of the page's own calls that sign a call; not its action, body or ids */
 const SIGNING = /^(authorization|x-owa-canary|x-anchormailbox|x-req-source|x-owa-hosted-ux|prefer|x-ms-appname|x-owa-sessionid)$/i
@@ -35,6 +38,8 @@ export interface OwaPageOptions {
   /** marks the browser in use for the length of a call, so it is not stopped under one */
   use?: () => () => void
   url?: string
+  /** Outlook's own origins (`OUTLOOK_ORIGINS`); a test's stand-in names its own */
+  origins?: readonly string[]
   /** how long the page has to load and make its first call */
   waitMs?: number
   log?: (line: string) => void
@@ -51,6 +56,16 @@ export class OwaPage implements OwaTransport {
 
   private get url(): string {
     return this.o.url ?? OWA_URL
+  }
+  private get origins(): readonly string[] {
+    return this.o.origins ?? OUTLOOK_ORIGINS
+  }
+  private outlooks(url: string): boolean {
+    try {
+      return this.origins.includes(new URL(url).origin)
+    } catch {
+      return false
+    }
   }
 
   async call<T>(action: string, body: unknown, opts?: CallOptions): Promise<T> {
@@ -82,6 +97,8 @@ export class OwaPage implements OwaTransport {
         await opts?.afterReload?.()
         continue
       }
+      // Still off Outlook: a sign-in page wants him; any other host is no Outlook of his, and nothing went there.
+      if (r.status === -1 && !SIGN_IN.test(r.text)) throw new OfficeError(`Outlook on the web landed on ${r.text || 'a page'}, which is not Outlook's own; nothing was sent`, 'not-running')
       if (lost) throw new OfficeError(NEEDS_SIGN_IN, 'needs-consent')
       if (r.status < 200 || r.status >= 300) throw new OfficeError(`Outlook on the web answered ${r.status} to ${action}`, 'failed')
       try {
@@ -113,7 +130,8 @@ export class OwaPage implements OwaTransport {
       this.sid = this.target = null
       this.cdp.on('Network.requestWillBeSent', (p, sid) => {
         const req = p.request as { url: string; headers: Record<string, string> }
-        if (sid !== this.sid || !/\/service\.svc\b/i.test(req.url)) return
+        // only Outlook's own calls sign ours
+        if (sid !== this.sid || !/\/service\.svc\b/i.test(req.url) || !this.outlooks(req.url)) return
         const kept = Object.fromEntries(Object.entries(req.headers).filter(([k]) => SIGNING.test(k)))
         if (Object.keys(kept).length) this.headers = kept
       })
@@ -152,8 +170,9 @@ export class OwaPage implements OwaTransport {
       if (this.headers) return
       await new Promise((r) => setTimeout(r, 250))
     }
-    // The page made no call yet: its canary cookie alone signs a call in the classic page.
-    const canary = await this.eval<string>("(document.cookie.match(/(?:^|; )X-OWA-CANARY=([^;]+)/) || [])[1] || ''").catch(() => '')
+    // The page made no call yet: its canary cookie alone signs a call in the classic page, on Outlook's own origin only.
+    const origin = await this.eval<string>('location.origin').catch(() => '')
+    const canary = !this.origins.includes(origin) ? '' : await this.eval<string>("(document.cookie.match(/(?:^|; )X-OWA-CANARY=([^;]+)/) || [])[1] || ''").catch(() => '')
     if (canary) {
       this.headers = { 'x-owa-canary': canary }
       return
@@ -168,14 +187,15 @@ export class OwaPage implements OwaTransport {
   }
 
   /**
-   * One call from inside the page, to Outlook's own origin only: a page that
-   * moved to a sign-in host (or anywhere else) answers -1 and nothing is
-   * sent, so his mail and its signing headers never go to another host.
+   * One call from inside the page, to the Outlook origin it landed on and to
+   * no other: a page on a sign-in host or anywhere else answers -1 with its
+   * host and nothing is sent, so his mail and its signing headers never go
+   * to another host.
    */
   private fetch(action: string, body: unknown): Promise<{ status: number; text: string }> {
-    const origin = new URL(this.url).origin
     const headers = { ...this.headers, action, 'content-type': 'application/json; charset=utf-8' }
-    const call = `(async () => { if (location.origin !== ${JSON.stringify(origin)}) return { status: -1, text: '' }; const r = await fetch(${JSON.stringify(`${origin}/owa/service.svc?action=${encodeURIComponent(action)}&app=Mail`)}, { method: 'POST', credentials: 'include', headers: ${JSON.stringify(headers)}, body: ${JSON.stringify(JSON.stringify(body))} }); return { status: r.status, text: await r.text() } })()`
+    const path = `/owa/service.svc?action=${encodeURIComponent(action)}&app=Mail`
+    const call = `(async () => { if (!${JSON.stringify(this.origins)}.includes(location.origin)) return { status: -1, text: location.hostname }; const r = await fetch(location.origin + ${JSON.stringify(path)}, { method: 'POST', credentials: 'include', headers: ${JSON.stringify(headers)}, body: ${JSON.stringify(JSON.stringify(body))} }); return { status: r.status, text: await r.text() } })()`
     return this.eval<{ status: number; text: string }>(call)
   }
 }

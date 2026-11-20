@@ -135,4 +135,4 @@ export const onSites = (host: string, sites: readonly string[]): boolean => {
 }
 
 /** The sites an Outlook on the web sign-in needs. */
-export const OUTLOOK_SITES = ['outlook.office.com', 'outlook.office365.com', 'outlook.cloud.microsoft', 'login.microsoftonline.com', 'login.live.com', 'office.com', 'microsoft365.com']
+export const OUTLOOK_SITES = ['outlook.cloud.microsoft', 'outlook.office.com', 'outlook.office365.com', 'login.microsoftonline.com', 'login.microsoft.com', 'login.live.com', 'office.com', 'microsoft365.com']

@@ -215,6 +215,13 @@ The box never sees a password. Two ways in:
   then chrome://inspect, Configure, `localhost:9333`, and Inspect on the
   page.
 
+His Outlook sign-in lives in two places in the profile: Entra's session
+(`ESTSAUTHPERSISTENT` on `login.microsoftonline.com`, which Settings →
+Connections reads, browser/health.ts) and Outlook's own on
+`outlook.cloud.microsoft`, where Microsoft serves Outlook now
+(`outlook.office.com` keeps only a client id). The export takes both
+(`OUTLOOK_SITES`).
+
 The profile and its folder are the box's `agents` user's alone (0700), but
 DevTools on 127.0.0.1 has no key of its own: any process of that user, a
 code thread's shell among them, could drive the browser while it runs. That

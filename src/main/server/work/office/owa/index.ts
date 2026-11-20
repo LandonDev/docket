@@ -39,7 +39,7 @@ export function profileHasSignIn(cookies: string): boolean {
   try {
     const db = new DatabaseSync(cookies, { readOnly: true })
     try {
-      return !!db.prepare("SELECT 1 FROM cookies WHERE host_key LIKE '%login.microsoftonline.com' OR host_key LIKE '%login.live.com' OR host_key LIKE '%outlook.office.com' LIMIT 1").get()
+      return !!db.prepare("SELECT 1 FROM cookies WHERE host_key LIKE '%login.microsoftonline.com' OR host_key LIKE '%login.live.com' OR host_key LIKE '%outlook.office.com' OR host_key LIKE '%outlook.cloud.microsoft' LIMIT 1").get()
     } finally {
       db.close()
     }
