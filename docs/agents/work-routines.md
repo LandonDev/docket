@@ -109,6 +109,13 @@ A watch an agent set (`resume_session_id`) instead wakes that thread
 answer, cut at 4,000 characters, and ends unless it has a day; a watch
 whose thread is gone ends with a failed run.
 
+LifeOS's `mail.waiting` ("Sent mail gets no reply in time") fires when a
+mail he waits on passes its time (work-mail.md "Waiting on"); a run hears
+`mail.waiting mailThreads/<id>` for each. The mail pillar's Waiting on
+switch makes one routine on it per workspace through `work.routines.save`
+as the owner ("Nudge mail with no reply", which drafts a held follow-up in
+each thread) and pauses or resumes it; it starts off and makes no grant.
+
 ## Who may make what
 
 - `work.routines.save`, `remove`: `admin`; `pause`, `runNow`: `operate`.

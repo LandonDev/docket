@@ -58,11 +58,12 @@
 
 /* A menu Mail draws (`data-mail-menu`, set by work-kit on each) takes TempCode's menu row
    (docs/DESIGN.md "Spacing": 28px rows, 12px to a side; components/ui/menu-row.ts), where work-kit's
-   own row is 32px with 10px. A ticked row keeps its own end, where its mark sits. */
+   own row is 32px with 10px. A ticked row keeps its own end, where its mark sits; so does a
+   chosen one (the composer's Remind me if there is no reply). */
 [data-mail-menu] :is([data-slot="dropdown-menu-item"], [data-slot="dropdown-menu-sub-trigger"], [data-slot="context-menu-item"], [data-slot="context-menu-sub-trigger"]) {
   padding: 4px 12px;
 }
-[data-mail-menu] :is([data-slot="dropdown-menu-checkbox-item"], [data-slot="context-menu-checkbox-item"]) {
+[data-mail-menu] :is([data-slot="dropdown-menu-checkbox-item"], [data-slot="dropdown-menu-radio-item"], [data-slot="context-menu-checkbox-item"]) {
   padding-block: 4px;
   padding-inline-start: 12px;
 }

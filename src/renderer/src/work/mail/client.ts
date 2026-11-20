@@ -4,6 +4,8 @@ import { createLifeosMailClient } from "work-kit/lifeos";
 import type { MailSeen, MailSendAnswer } from "@shared/contract-work-mail";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { refusalWords } from "../../lib/settingsHome";
+import { workOpenPort } from "../../lib/workSwitch";
 
 /**
  * TempCode's `MailClient` (work-kit/mail README, "The two seams"): LifeOS's
@@ -48,6 +50,22 @@ export function sendThroughHost(env: string, actions: OutboxActions): OutboxActi
       heldSends.add(id);
     },
   };
+}
+
+/**
+ * Waiting on's Draft a nudge: the host starts a Work thread that drafts the follow-up (held, as every draft),
+ * and the thread opens. While the host starts it, a toast says so with a spinner; a refusal says why.
+ */
+export async function startNudge(env: string, workspaceId: string, threadId: string): Promise<void> {
+  const toast = await loadToast();
+  const id = toast.loading("Starting a thread to draft the nudge");
+  try {
+    const { sessionId } = await registry.linkOf(env).request<{ sessionId: string }>("work.mail.nudge", { workspaceId, threadId });
+    toast.dismiss(id);
+    workOpenPort.get()?.(sessionId);
+  } catch (err) {
+    toast.error("The nudge did not start", { id, description: refusalWords(err) || undefined });
+  }
 }
 
 /** How long the `z` key may still take back the last act: as long as its toast offers Undo. */

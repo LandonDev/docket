@@ -1312,7 +1312,7 @@ Around the canvas:
   480, kept), the reader beside it; at and under 640px of view they take
   turns, and the reader's toolbar leads with the way back.
   The head holds the mailbox (13px semibold, its unread count muted) on a
-  menu of all nine, then Filter and New mail as quiet 28px buttons, the
+  menu of all ten, then Filter and New mail as quiet 28px buttons, the
   same in every mailbox; under it the 28px search field, and one muted
   12px line when the network or an account's sync is down.
   A row is 68px (48px in two lines) at radius 6, 1px apart: a 20px gutter
@@ -1333,7 +1333,11 @@ Around the canvas:
   becomes "3 selected" with those acts, and no row shows its own. A search
   lights the words it found, where a word starts, in `foreground` medium.
   An empty mailbox says so in one line at the column's middle, level with
-  the pane's "No mail open".
+  the pane's "No mail open". In Waiting on a row leads with whom he wrote
+  to and its end says how long he has waited ("6 days"); under the pointer
+  that gives way to Draft a nudge, Put off and Dismiss. The composer's foot
+  holds "Remind me if there is no reply" as a quiet hourglass before
+  Discard; once set it says the time in ink ("3 days").
   The reader's toolbar is 44px of quiet 28px buttons (Archive, Delete,
   Snooze, Needs me, More), its place in the list at the end; in Trash,
   Restore alone with its word. Its menus are the app's 28px menu rows. The mail is a 680px column: the subject

@@ -29,6 +29,8 @@ The look is the round-two prototype `mail.html` ("The thread drafts").
 | The mail kind: a draft beside its thread, a waiting rewrite | `MailCanvas.tsx`, `canvas.ts`, `proposal.ts` |
 | A held mail in the Outbox | `MailAct.tsx`, `act.ts`, `model.ts` |
 | Type steps and the menu wash | `mail.css` |
+| Waiting on: the nudge press, the workspace's days and routine, dropped nudges, `mail_waiting` | `src/main/server/work/mail/waiting.ts` |
+| Waiting on in the workspace's settings | `WaitingSection.tsx` (and `WaitingSection.preview.tsx`) |
 
 ## Send
 
@@ -138,8 +140,8 @@ workspace's session narrowed to its sector, so it lists that sector's mail
 and no other. The frame draws no 40px header over it (`ownHead` on the
 view's def; the region keeps the name "Mail", and takes the focus the
 heading would, and the sign-in keeps the header): the mailbox
-menu (Inbox, Needs me, Unread, Drafts, Scheduled, Sent, Snoozed, Archive,
-Trash, then Mail settings), Filter, New mail and search are the list's own
+menu (Inbox, Needs me, Waiting on, Unread, Drafts, Scheduled, Sent,
+Snoozed, Archive, Trash, then Mail settings), Filter, New mail and search are the list's own
 head, inside work-kit, and Start thread is in the reader's More (a `mail`
 chip, `{at: 'lifeos', table: 'mailThreads', id}`; the first send links the
 thread to the mail). Which mailbox, which mail was open and the composer
@@ -317,6 +319,79 @@ type, the mail thread, the message and the part):
   (`work.canvas.read`) and saves it on this computer under the attachment's
   own name, as Save does.
 
+## Waiting on
+
+Mail he sent that no one answered. LifeOS keeps it (its `mailWaits`
+table, one row a mail thread, in the thread's sector), so LifeOS desktop
+shows the same list; the rows, the composer's control and the mailbox are
+work-kit's (its mail README, "Waiting on").
+
+**What counts.** A thread waits when his message is its newest, and either
+he marked it at send ("Remind me if there is no reply" in the composer's
+foot: tomorrow, in 3 days or in a week, calendar days, kept on the draft
+as `remindDays`) or his own words, above the quoted history, end a
+sentence with "?" (a "?" in a link does not count). A marked mail shows
+in Waiting on when its time comes; a question after the workspace's
+working days (Mon to Fri in his time zone; 3 unless set), which LifeOS
+keeps per sector (`settings.mail.waitDays`). A bulk, spam or deleted
+thread never waits, nor one whose recipients are all no-reply addresses
+(`no-reply@`, `donotreply@`, `notifications@`, `mailer-daemon@` and the
+like) or his own. His own follow-up starts the clock again; anyone else's
+newer message ends the wait. No model judges any of this. A cron in LifeOS
+lists each wait once its time has passed and fires `mail.waiting` on the
+sector's event feed, once.
+
+**What LifeOS holds of his mail.** Gmail: everything, since LifeOS syncs
+the sent folder, so mail he sent straight from Gmail counts (by the
+question rule; only LifeOS's and TempCode's composer can mark one). Outlook
+(Purdue): only a reply sent through LifeOS's or TempCode's composer, which
+an Outlook host sends and records (`localSent`); mail sent straight from
+Outlook never reaches LifeOS, and a new Outlook mail has no thread until
+someone answers, so neither counts, and the composer offers the mark on an
+Outlook mail only as a reply.
+
+**The list.** Waiting on is a mailbox after Needs me, in the Mail view's
+menu: newest wait first, a row leading with whom he wrote to and ending
+with how long he has waited ("6 days", then "2 weeks"). Its acts, under
+the pointer and in the row's menu, are Draft a nudge, Put off (the snooze
+times) and Dismiss, the last two with Undo. A dismissed wait comes back
+only when he writes in the thread again. It has no Filter and no count.
+
+**The nudge.** Draft a nudge asks the host `work.mail.nudge {workspaceId,
+threadId}` (operate; a thread's own call is refused, and so is a mail of
+another sector): it starts a root Work thread in the workspace, linked to
+the mail, whose first message asks it to read the thread and, if no one
+has answered, draft a two or three sentence follow-up in his voice as a
+reply in that thread with `draft_mail`. The window shows "Starting a thread
+to draft the nudge" and opens the thread. The draft is held as every draft
+is: it opens beside its thread and goes only on his Send.
+
+**The routine.** A Work workspace's settings page has a Waiting on section:
+"Questions wait" (1 to 10 working days; LifeOS's value for the sector) and
+"Draft nudges by themselves", off until he turns it on, since each firing
+is a model run. On, it makes one ordinary routine through the routines
+pillar (`work.routines.save`: "Nudge mail with no reply", a LifeOS trigger
+on `mail.waiting`, never ending), kept in `work_mail_nudge_routines`; off
+pauses it, so its runs stay readable in Routines; on again resumes it, and
+makes a new one if he deleted it there. No grant is made: each draft it
+writes is held ([work-routines.md](work-routines.md)).
+
+**A reply drops an unsent nudge.** When someone else's message ends a wait,
+LifeOS deletes, in the same write, every draft an agent made in that mail
+thread after his last message (an `origin` or a `botId`) that is still a
+draft: never one he wrote, never one queued or sent. It writes a line in
+LifeOS's activity log ("Dropped the nudge to Dana Lee: they replied"), and
+for a TempCode draft a `mailWaitDrops` row. This host subscribes to its
+drops (`mailWaits:drops {host}`) and adds a Result to the thread that
+drafted it ("Dropped the unsent nudge “…”: Maya Chen replied", kind
+`mail.nudge.dropped`), so he sees it in the thread's Results and in the
+return from Away, then acknowledges it (`mailWaits:ackDrop`).
+
+**For agents.** `mail_waiting` (read only, listed to a Work thread with a
+sector, and named in its preamble) lists the sector's due waits: the
+subject, whom it went to, when, whether he asked to be reminded, and the
+mail thread's id.
+
 ## Settings
 
 Settings, Work, Mail is work-kit's `MailSettings` on the host's whole LifeOS
@@ -352,6 +427,14 @@ runs it under another app's policy (LifeOS desktop's). `--shots <dir>`
 writes the review shots: every scene in `preview/scenes.ts`, dark and
 light, at 1280 and 640 wide. The box's sans is DejaVu, so the shots use
 Selawik as the stand-in for the system face.
+
+Waiting on's scenes are `list-waiting`, `list-waiting-hover` (its acts),
+`list-waiting-empty` and `new-mail-remind` (the composer's menu); the
+workspace page's section is `bun run ui:preview
+src/renderer/src/work/mail/WaitingSection.preview.tsx#WaitingPreview --props
+'{"state":"off"}'` (also `on`, `lifeos`, `loading`). Tests:
+`mail/waiting.test.ts` on the host, `work/mail/waiting.dom.test.tsx` in the
+window, and work-kit's and LifeOS's own (`mailWaits.test.ts`).
 
 `taskset -c 0-3 bun scripts/mail-preview.ts --speed` times the list
 (`preview/speed.ts`): the first paint of a mailbox of 5,000 dummy threads

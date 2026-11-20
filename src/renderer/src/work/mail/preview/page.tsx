@@ -30,7 +30,8 @@ const bulk = Number(params.get("threads") ?? 0);
 const client = createFixtureMailClient({
   write: async ({ run }) => run(),
   instant: params.get("late") !== "1",
-  threads: [...corpusThreads(), ...(bulk ? generateThreads(bulk) : [])],
+  // `waits=0`: Waiting on with nothing in it.
+  threads: [...corpusThreads().map((t) => (params.get("waits") === "0" ? { ...t, wait: undefined } : t)), ...(bulk ? generateThreads(bulk) : [])],
   settings: { pictures: (params.get("pictures") as "ask" | "show" | "never" | null) ?? "show", density: params.get("density") === "two" ? "two" : "three" },
   signatures: corpusSignatures,
   outbox: corpusOutbox(),
@@ -80,7 +81,7 @@ createRoot(document.getElementById("root")!).render(
           </div>
         ) : (
           <div className="h-screen bg-background text-foreground">
-            <MailScreen id={ID} onOpenTask={() => {}} onStartThread={() => {}} />
+            <MailScreen id={ID} onOpenTask={() => {}} onStartThread={() => {}} onNudge={() => {}} />
           </div>
         )}
       </MailKitProvider>

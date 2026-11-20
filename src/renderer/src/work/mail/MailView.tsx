@@ -8,7 +8,7 @@ import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
-import { mailClientFor } from "./client";
+import { mailClientFor, startNudge } from "./client";
 import { tempcodeMailKit } from "./kit";
 import { mailPaneOf, type ContextChip } from "@shared/work";
 import { CanvasSeat } from "../canvas/CanvasSeat";
@@ -107,7 +107,9 @@ function MailPageBody({ workspace, startThread, env }: WorkViewProps) {
   }, [id, mail]);
   // A file of the open mail opens in the view's own pane beside the reader; Ask there starts a thread about it.
   const files = useMemo(() => ({ env, onAsk: (chip: ContextChip) => startThread(chip) }), [env, startThread]);
-  return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} files={files} />;
+  // Waiting on's Draft a nudge: the host starts a thread that drafts it, and the thread opens.
+  const nudge = useCallback((thread: { id: string }) => void startNudge(env, id, thread.id), [env, id]);
+  return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} files={files} onNudge={nudge} />;
 }
 
 /** The toggle over the reader, when an attachment shares the pane with it. */
@@ -119,10 +121,13 @@ export function MailScreen({
   onOpenTask,
   onStartThread,
   files,
+  onNudge,
 }: {
   id: string;
   onOpenTask: () => void;
   onStartThread?: (mail: { id: string; subject: string }) => void;
+  /** Waiting on's Draft a nudge, where the host has threads to write it. Absent (the preview), the row offers none. */
+  onNudge?: (thread: { id: string }) => void;
   /** Where the reader's files open: the host and what Ask does there. Absent (the preview), files are saved. */
   files?: { env: string; onAsk(chip: ContextChip): void };
 }) {
@@ -130,7 +135,10 @@ export function MailScreen({
   const kit = useMailKit();
   const pane = mailPaneOf(id);
   const env = files?.env;
-  const placed = useMemo(() => (env ? placedKit(kit, { env, pane }) : null), [kit, env, pane]);
+  const placed = useMemo(() => {
+    const base = env ? placedKit(kit, { env, pane }) : kit;
+    return onNudge ? { ...base, nudge: onNudge } : env ? base : null;
+  }, [kit, env, pane, onNudge]);
   const client = useMailClient();
   const accounts = client.useMailAccounts();
   const actions = client.useMailActions();

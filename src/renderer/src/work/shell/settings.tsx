@@ -24,6 +24,7 @@ import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { HouseRules } from "../rules/HouseRules";
 import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
+import { WaitingSection } from "../mail/WaitingSection";
 import { hostIdOfLink, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -332,6 +333,7 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         ) : null}
       </PageSection>
       <HouseRules workspace={workspace} />
+      {workspace.sector ? <WaitingSection workspace={workspace} /> : null}
       <ThreadDefaultsEditor workspaceId={workspace.id} />
     </>
   );
