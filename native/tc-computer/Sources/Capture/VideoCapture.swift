@@ -466,7 +466,9 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
                 var pointer: UnsafePointer<UInt8>?
                 var length = 0
                 if CMVideoFormatDescriptionGetH264ParameterSetAtIndex(format, parameterSetIndex: index, parameterSetPointerOut: &pointer, parameterSetSizeOut: &length, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil) == noErr, let pointer {
-                    sets.append(Data(bytes: pointer, count: length))
+                    let set = Data(bytes: pointer, count: length)
+                    // the SPS says no frame is reordered, so a decoder gives each frame back at once (H264SPS)
+                    sets.append(set.first.map { $0 & 0x1F == 7 } == true ? (try? H264SPS.withoutReordering(set)) ?? set : set)
                 }
             }
         } else {

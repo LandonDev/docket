@@ -198,3 +198,68 @@ private final class Recorder: VideoOutput, @unchecked Sendable {
         #expect(!WindowVideoCapture.samePixels(a, try buffer(64, 42, value: 9)))
     }
 }
+
+@Suite struct H264SPSTests {
+    /// The SPS of an encoded keyframe's Annex B unit.
+    private func sps(_ unit: Data) -> Data? {
+        let bytes = [UInt8](unit)
+        var starts: [Int] = []
+        var i = 0
+        while i + 3 < bytes.count {
+            if bytes[i] == 0, bytes[i + 1] == 0, bytes[i + 2] == 0, bytes[i + 3] == 1 { starts.append(i + 4); i += 4 } else { i += 1 }
+        }
+        for (k, start) in starts.enumerated() where bytes[start] & 0x1F == 7 {
+            return Data(bytes[start..<((k + 1 < starts.count ? starts[k + 1] - 4 : bytes.count))])
+        }
+        return nil
+    }
+
+    @Test func aHandWrittenSPSGainsTheRestrictionAndKeepsItsFields() throws {
+        // Baseline 3.0, id 0, log2_max_frame_num 4, poc type 2, 1 ref frame, 40 × 30 macroblocks, frame mbs only, no VUI
+        var w = BitWriter()
+        w.write(66, bits: 8); w.write(0xC0, bits: 8); w.write(30, bits: 8)
+        w.writeUE(0); w.writeUE(0); w.writeUE(2); w.writeUE(1); w.write(0, bits: 1)
+        w.writeUE(39); w.writeUE(29); w.write(1, bits: 1); w.write(1, bits: 1); w.write(0, bits: 1)
+        w.write(0, bits: 1) // no VUI
+        w.write(1, bits: 1) // stop bit
+        let nal = Data([0x67]) + H264SPS.escape(w.bytes())
+        #expect(try H264SPS.restriction(nal) == nil)
+        let out = try H264SPS.withoutReordering(nal)
+        #expect(try H264SPS.restriction(out) == H264SPS.Restriction(maxNumReorderFrames: 0, maxDecFrameBuffering: 1))
+        #expect(out.first == 0x67)
+        // the fields before the VUI are the same bits: the prefix of both, as read
+        #expect(try H264SPS.withoutReordering(out) == out)
+    }
+
+    @Test func emulationPreventionGoesBothWays() {
+        #expect(H264SPS.unescape(Data([0, 0, 3, 1, 0, 0, 3, 0])) == [0, 0, 1, 0, 0, 0])
+        #expect([UInt8](H264SPS.escape([0, 0, 1, 0, 0, 0, 5])) == [0, 0, 3, 1, 0, 0, 3, 0, 5])
+    }
+
+    @Test func videoToolboxsSPSGainsTheRestriction() async throws {
+        let queue = DispatchQueue(label: "tc.test.sps")
+        let recorder = SPSRecorder()
+        let spec = VideoEncoderSpec(maxEdge: 3_840, fps: 60, mode: .quality, bitrate: 20_000_000, size: PixelSize(width: 640, height: 400))
+        let session = VideoEncoderSession(spec: spec, output: recorder, queue: queue) { nil }
+        try queue.sync { try session.open(size: spec.size) }
+        var made: CVPixelBuffer?
+        CVPixelBufferCreate(nil, 640, 400, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary] as CFDictionary, &made)
+        let buffer = try #require(made)
+        queue.sync { session.offer(VideoPicture(buffer: buffer, captureMicros: 1, enteredMicros: 1), again: false) }
+        for _ in 0..<200 where recorder.unit == nil { try? await Task.sleep(for: .milliseconds(10)) }
+        let unit = try #require(recorder.unit)
+        let set = try #require(sps(unit))
+        #expect(try H264SPS.restriction(set)?.maxNumReorderFrames == 0)
+        queue.sync { session.close() }
+    }
+}
+
+private final class SPSRecorder: VideoOutput, @unchecked Sendable {
+    private let lock = NSLock()
+    private var first: Data?
+    var unit: Data? { lock.withLock { first } }
+    func admit(captureMicros: UInt64, again: Bool) -> Bool { true }
+    func encoded(_ unit: EncodedVideo) { lock.withLock { if first == nil { first = unit.accessUnit } } }
+    func dropped() {}
+    func failed(_ why: String) {}
+}

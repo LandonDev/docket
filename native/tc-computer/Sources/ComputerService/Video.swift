@@ -41,10 +41,15 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
     private(set) var encoder: (any VideoEncoder)?
     private let write: @Sendable (Data) -> Void
     private let fail: @Sendable (String) -> Void
+    /// the trace's line, when tracing: each second's encode times of the frames sent (the host's proof reads them)
+    private let report: (@Sendable (String) -> Void)?
+    private var encodes: [UInt64] = []
+    private var reportedAt: UInt64 = 0
 
     /// `write` puts a record on the bytes pipe; `fail` ends the stream with `error`.
-    init(id: Int, session: String, windowID: UInt32, entry: WindowVideoEntry, spec: VideoEncoderSpec, write: @escaping @Sendable (Data) -> Void, fail: @escaping @Sendable (String) -> Void) {
+    init(id: Int, session: String, windowID: UInt32, entry: WindowVideoEntry, spec: VideoEncoderSpec, write: @escaping @Sendable (Data) -> Void, fail: @escaping @Sendable (String) -> Void, report: (@Sendable (String) -> Void)? = nil) {
         self.id = id
+        self.report = report
         self.session = session
         self.windowID = windowID
         self.entry = entry
@@ -121,6 +126,7 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
             }
             needKey = false
             picture = unit.size
+            if report != nil { encodes.append(unit.encodeMicros) }
             flow.sent(sequence, now)
             let frame = VideoFrame(
                 generation: generation, sequence: sequence, keyframe: unit.keyframe, width: unit.size.width, height: unit.size.height,
@@ -167,11 +173,17 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
 
     /// The video clock: the flow's own update, the bitrate it asks for, the still window and the timeout.
     func tick(now: UInt64 = monotonicMicros()) -> Tick {
-        let (result, newRate, sharpen, encoder) = lock.withLock { () -> (Tick, Int?, Bool, (any VideoEncoder)?) in
-            guard !over else { return (.running, nil, false, nil) }
+        let (result, newRate, sharpen, encoder, line) = lock.withLock { () -> (Tick, Int?, Bool, (any VideoEncoder)?, String?) in
+            guard !over else { return (.running, nil, false, nil, nil) }
+            var line: String?
+            if report != nil, now >= reportedAt + 1_000_000 {
+                if reportedAt != 0 { line = "video \(id) encode us: " + encodes.map(String.init).joined(separator: " ") }
+                encodes.removeAll(keepingCapacity: true)
+                reportedAt = now
+            }
             if flow.timedOut(now) {
                 defer { toldTimeout = true }
-                return (toldTimeout ? .running : .timedOut, nil, false, nil)
+                return (toldTimeout ? .running : .timedOut, nil, false, nil, line)
             }
             flow.update(now)
             var newRate: Int?
@@ -183,8 +195,9 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
                     newRate = wanted
                 }
             }
-            return (.running, newRate, still.due(atUs: now), self.encoder)
+            return (.running, newRate, still.due(atUs: now), self.encoder, line)
         }
+        if let line { report?(line) }
         if let newRate { encoder?.setBitrate(newRate) }
         if sharpen { encoder?.encodeLast() }
         return result
@@ -288,10 +301,14 @@ extension ComputerService {
             nextVideo += 1
             return nextVideo
         }
+        let trace = self.trace
+        var report: (@Sendable (String) -> Void)?
+        if trace.enabled { report = { @Sendable line in trace.note(line) } }
         let stream = VideoStream(
             id: id, session: target.session, windowID: target.windowID, entry: entry, spec: spec,
             write: { pipe.write($0) },
-            fail: { [weak self] why in Task { await self?.endVideo(id, reason: .error(why), tell: true) } }
+            fail: { [weak self] why in Task { await self?.endVideo(id, reason: .error(why), tell: true) } },
+            report: report
         )
         let encoder: any VideoEncoder
         do {
