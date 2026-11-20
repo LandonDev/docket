@@ -10,6 +10,7 @@ const texts = Object.fromEntries(['full', 'diff', 'unchanged', 'thin'].map((kind
 const initial = JSON.parse(fixture('wire/initialize.response.json')).result
 const streamJpeg = JSON.parse(fixture('wire/notify-capture-frame.json')).params.data
 const startedAt = Date.now()
+let clipboardText = null
 const epoch = 'e-' + Array.from({ length: 8 }, () => randomInt(36).toString(36)).join('')
 const frame = { x: 100, y: 100, w: 800, h: 670 }
 const space = { width: 1280, height: 1072, scale: 1.6 }
@@ -728,6 +729,9 @@ function handle({ id, method, params = {} }) {
       return
     }
     case 'clipboard.state': return reply(id, { changeCount: 1, foreignChangeAt: foreignChangeAt(), watchingSince })
+    // §29.8: the clipboard's text, as the Windows service answers it
+    case 'clipboard.read': return reply(id, { text: clipboardText, truncated: false })
+    case 'clipboard.write': clipboardText = params.text ?? null; return reply(id, {})
     case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'capture.video.start': case 'input.probe': {
       const ctx = target(params)
       if (ctx.app.name === 'Slow' && ['state.get', 'action.run', 'action.batch'].includes(method)) {
