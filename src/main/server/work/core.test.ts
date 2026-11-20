@@ -140,6 +140,17 @@ describe('a LifeOS project opened in a Work workspace', () => {
     expect(fake.calls.filter((c) => c.fn === 'projects:list').every((c) => c.args.sector === 'purdue')).toBe(true)
   })
 
+  it("answers a finished project's mirror for its settings, where he reopens it, and still refuses one for a thread", async () => {
+    await signedIn()
+    const id = await workWorkspace('Purdue', 'purdue')
+    fake.setProjects([...fake.projects, { _id: 'lp_done', name: 'Fall LAN', status: 'done', sector: 'purdue' }])
+    await expect(call('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_done' })).rejects.toThrow('Fall LAN is done: reopen it to start a thread in it')
+    const mirror = await call<ProjectMeta>('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_done', forSettings: true })
+    expect(mirror).toMatchObject({ name: 'Fall LAN', lifeosProjectId: 'lp_done' })
+    // Another sector's project is refused whatever it is asked for.
+    await expect(call('work.project.open', { workspaceId: id, lifeosProjectId: 'lp_far', forSettings: true })).rejects.toThrow("LifeOS has no such project in Purdue's sector")
+  })
+
   it('says why when LifeOS cannot be asked, and makes nothing', async () => {
     // Work on, and LifeOS does not answer the host.
     fake.reachable = false

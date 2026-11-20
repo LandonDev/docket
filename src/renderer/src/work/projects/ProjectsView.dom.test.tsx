@@ -209,12 +209,13 @@ describe("the Projects view", () => {
     await act(async () => {
       fireEvent.click(await screen.findByRole("menuitem", { name: "Project settings…" }));
     });
-    await waitFor(() => expect(hostCalls.find((c) => c.method === "work.project.open")?.params).toMatchObject({ workspaceId: "ws", lifeosProjectId: "p-lan" }));
+    // Asked for its settings, so the host answers a finished project's mirror too: the sheet is where he reopens it.
+    await waitFor(() => expect(hostCalls.find((c) => c.method === "work.project.open")?.params).toMatchObject({ workspaceId: "ws", lifeosProjectId: "p-lan", forSettings: true }));
     await waitFor(() => expect(document.querySelector("[data-settings-for='mirror-1']")).toBeTruthy());
   });
 
-  it("says why when its settings cannot open, and opens nothing", async () => {
-    refuse["work.project.open"] = "Fall LAN is done: reopen it to start a thread in it";
+  it("opens no sheet when the host refuses the mirror", async () => {
+    refuse["work.project.open"] = "LifeOS is not signed in on this host";
     render(<Screen {...props()} />);
     fireEvent.click(await screen.findByText("Spring LAN"));
     fireEvent.click(await screen.findByRole("button", { name: "Actions for Spring LAN" }));
@@ -300,7 +301,7 @@ describe("threads", () => {
     expect(started[0].about).toEqual({ kind: "project", label: "Spring LAN", ref: { at: "lifeos", table: "projects", id: "p-lan" } });
   });
 
-  it("says why when the mirror cannot be opened, and starts nothing", async () => {
+  it("starts nothing when the mirror cannot be opened", async () => {
     refuse["work.project.open"] = "Spring LAN is done: reopen it to start a thread in it";
     render(<Screen {...props()} />);
     fireEvent.click(screen.getByText("Spring LAN"));
@@ -389,13 +390,16 @@ describe("Documents", () => {
     expect(within(picker).getByRole("option", { name: /budget\.xlsx/ })).toBeTruthy();
   });
 
-  it("a press opens each thing where it lives: a document here, a sheet, a note and an item beside a thread, a link in the browser", async () => {
+  it("a press opens each thing where it lives: a document here, a sheet, a note and an item beside a thread in the project's mirror, a link in the browser", async () => {
     mounted();
     act(() => openItemIn("ws", { id: "i-run", kind: "doc", title: "Run of show" }, LAN));
     expect(document.querySelector("[data-document-frame='i-run']")).toBeTruthy();
     openItemIn("ws", { id: "i-seats", kind: "sheet", title: "Seat map" }, LAN);
     openItemIn("ws", { id: "n1", kind: "note", title: "Old notes" }, LAN);
     openItemIn("ws", { id: "x1", kind: "item", title: "Roster", source: { at: "google", account: "l@purdue.edu", fileId: "g1", mime: "application/vnd.google-apps.spreadsheet" } }, LAN);
+    await waitFor(() => expect(started).toHaveLength(3));
+    // Each thread starts in the project's own mirror, where its other threads live.
+    expect(started.every((s) => s.at?.projectId === "mirror-1")).toBe(true);
     expect(started.map((s) => (s.about as ContextChip).ref)).toEqual([
       { at: "lifeos", table: "sheets", id: "i-seats" },
       { at: "lifeos", table: "projectDocs", id: "n1" },

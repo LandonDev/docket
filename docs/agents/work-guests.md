@@ -30,7 +30,8 @@ with a test.
   dialog; an hour to a year on the wire). An ended or revoked link stays in
   the lists a week, muted.
 - **Shared.** While any live link names an item, its LifeOS row's `shared`
-  is on (`docs:setShared`, `sheets:setShared`); revoking the last link, or
+  is on (`docs:setShared`, `sheets:setShared`; a project's link marks more,
+  below); revoking the last link, or
   its end passing, turns it off within 30 s. A link goes live only once
   LifeOS has taken its item's `shared`: if it does not, the link is not made
   (the held act fails as not sent), and a live link whose item LifeOS has not
@@ -106,7 +107,9 @@ project's bar or in its settings, or asked for by an agent with
   keeps them in step, one run at a time: the service first, so what left
   is handed no more before its mark comes off; then the marks
   (`reconcile`); then the service again, so a document that joined is
-  sent only once LifeOS reads it shared. `reconcile` tells projects first
+  sent only once LifeOS reads it shared. An agent adds none: a thread's
+  link into a shared project is refused (`work/projects/link.ts`) and so
+  is a document made there (`/internal/doc/create`). `reconcile` tells projects first
   and then tells every document a live link shows again, because LifeOS
   marks a project's description with the project, both ways, and says
   nothing of it; and it never takes a mark off a row the service was last
@@ -161,7 +164,8 @@ Main tells it every live link and every open ticket through
 `ServiceLink` are typed in guests/wire.ts): the secret's hash, the guest's
 and the owner's names, the title, and a collab token main signed for the
 link's item (`principal: guest:<id>`, `link: <id>`, no file path, ten
-minutes, signed again with five left on a 30 s tick). A revoked or ended
+minutes, signed again with five left on a 30 s tick; a project's link
+carries none, and what it shows goes in a message of its own, above). A revoked or ended
 link is not sent, so the service no longer knows it: its document sockets
 close at once (`collab.closeWhere`), its sheet sockets at the sheet route's
 next second, and every route answers it as gone.
@@ -174,8 +178,8 @@ told apart by `CF-Connecting-IP`, else the peer address.
 | Route | What |
 |---|---|
 | `GET /g/<id>` | the page, the same bytes for any well-formed id |
-| `POST /g/<id>/open {secret}` | the link's facts and its current token; a wrong secret, an unknown, ended or revoked link all answer 403 `gone` |
-| `GET /g/ws/<id>` | the item's socket, bound to the link's item whatever the client names; the token is still checked inside (Hocuspocus for a document, the sheet route's hello for a sheet) |
+| `POST /g/<id>/open {secret}` | the link's facts and its current token (a project's link: its projection and no token, above); a wrong secret, an unknown, ended or revoked link all answer 403 `gone` |
+| `GET /g/ws/<id>` | a document's or a sheet's link: the item's socket, bound to the link's item whatever the client names (a project's link has none: 404); the token is still checked inside (Hocuspocus for a document, the sheet route's hello for a sheet) |
 | `GET /g/<id>/threads` | a document's comments, `Authorization: Bearer <token>`; authors other than the owner and this guest are named, not identified |
 | `POST /g/<id>/comment` | `{quote, text}` or `{threadId, text}`, bearer; plain words only, 4,000 at most, built into the comment by the service; a reply only on a thread of this document |
 | internal `/internal/guests/seen` | for the audit list: when each link was last opened, and its open sockets |

@@ -102,6 +102,7 @@ async function rig(): Promise<Rig> {
   open.convex.push(convex)
   for (const id of [DESC, RUN, LATE, OUTSIDE]) convex.docs.set(id, { _id: id, sector: 'purdue', seq: 0, title: id, shared: false, markdown: '', plain: '' })
   convex.sheets.set(SHEET, { title: 'Budget', sector: 'purdue', ops: [] })
+  convex.projects.set(PROJECT, { name: 'Spring LAN', sector: 'purdue', shared: false })
   const keys = await generateCollabKeys('k')
   const signer = await createCollabSigner({ privateJwk: keys.privateJwk, iss: 'tempcode:env_box' })
   const hosted = join(dir, 'hosted')
@@ -147,7 +148,11 @@ async function rig(): Promise<Rig> {
       connected: () => lifeos.up,
       owner: () => ({
         query: async (fn: string, args: { id: string }) => {
-          if (fn === 'projects:get') return args.id === PROJECT && !lifeos.deleted ? { project: { sector: 'purdue', name: 'Spring LAN' } } : null
+          if (fn === 'projects:get') {
+            // As LifeOS: a row that is gone is an error that says so, never an empty answer.
+            if (args.id !== PROJECT || lifeos.deleted) throw new Error('Uncaught ConvexError: not found')
+            return { project: { sector: 'purdue', name: 'Spring LAN' } }
+          }
           return convex.docs.get(args.id) ?? null
         },
         mutation: async (fn: string, args: { id: string; shared: boolean }) => {
@@ -162,6 +167,7 @@ async function rig(): Promise<Rig> {
             projectShared = args.shared
             // As LifeOS does: a project's description is marked with the project, both ways, with no word to the caller.
             convex.docs.get(DESC)!.shared = args.shared
+            convex.projects.set(PROJECT, { name: 'Spring LAN', sector: 'purdue', shared: args.shared })
             for (const w of [...watchers]) w(answer())
           }
           return null
@@ -586,6 +592,27 @@ describe("a project's link", () => {
     }
     // And a bot's comment there is refused, as on any shared document.
     expect((await internal(r.socketPath, '/internal/doc/comment', { docId: RUN, anchorText: 'x', body: 'y', botId: 'key1', fence })).status).toBe(403)
+  })
+
+  it("an agent cannot make a document in a shared project: it would be the guest's to read with nobody's press", async () => {
+    const r = await rig()
+    const create = () => internal(r.socketPath, '/internal/doc/create', { projectId: PROJECT, title: 'Vendor quotes', markdown: 'What the thread found in his mail.', botId: 'key1', fence: { sectors: 'all' } })
+    const docs = r.convex.docs.size
+    const a = await make(r)
+    const refused = await create()
+    expect(refused.status).toBe(403)
+    expect(refused.body.error).toBe('Spring LAN is shared with a guest: only the owner adds a document to it')
+    expect(r.convex.docs.size).toBe(docs)
+    // Once nobody outside sees the project, an agent may write there again.
+    await r.rt.revoke(a.id)
+    expect((await create()).status).toBe(200)
+    expect(r.convex.docs.size).toBe(docs + 1)
+  })
+
+  it("names a project's link as LifeOS names the project, whatever the caller said", async () => {
+    const r = await rig()
+    const made = await r.rt.create({ source: project, title: 'A name a client made up', name: 'Dana Lee', role: 'view', expiresAt: inDays(30), bySession: null })
+    expect(made.link.title).toBe('Spring LAN')
   })
 
   it('has no hosted-editor ticket: that opens a document or a sheet', async () => {

@@ -85,6 +85,8 @@ beforeEach(() => {
     onPush: () => () => {},
     request: async (method: string, params: Record<string, unknown> = {}) => {
       hostCalls.push({ method, params });
+      if (method === "work.guests.forItem") return [];
+      if (method === "work.guests.create") return { link: { id: "L1", name: params.name, role: "view", expiresAt: params.expiresAt }, url: "https://tempcode.landonhale.com/g/L1#k=secret" };
       return null;
     },
   } as never);
@@ -358,6 +360,28 @@ describe("Delete project", () => {
     });
     expect(sent).toEqual([]);
     expect(document.querySelector("[data-work-project-settings]")).toBeTruthy();
+  });
+});
+
+describe("Sharing", () => {
+  it("makes a guest link from the sheet: the address shows once, the sheet stays open and nothing of the project is saved", async () => {
+    const client = lifeosClient();
+    connected(client);
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    const root = await sheet();
+    // A change he has not saved: making a link must not save it for him.
+    fireEvent.change(within(root).getByLabelText("Name"), { target: { value: "Fall LAN" } });
+    fireEvent.click(await within(root).findByRole("button", { name: "New guest link…" }));
+    fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Dana Lee" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Create link" }));
+    });
+    // The dialog's submit is the dialog's alone: it never reaches the sheet's form around it.
+    expect(await screen.findByText("Link for Dana Lee")).toBeTruthy();
+    expect(screen.getByText(/shown only now/)).toBeTruthy();
+    expect(document.querySelector("[data-work-project-settings]")).toBeTruthy();
+    expect(sent).toEqual([]);
+    expect(hostCalls.find((c) => c.method === "work.guests.create")?.params).toMatchObject({ source: { at: "lifeos", table: "projects", id: MIRROR.lifeosProjectId }, name: "Dana Lee", role: "view" });
   });
 });
 

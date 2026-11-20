@@ -131,11 +131,11 @@ async function startIn(workspaceId: string, project: Pick<Project, "id" | "name"
   }
 }
 
-/** The settings sheet is the mirror's: made at this ask if the project has none yet; a refusal (a finished project, LifeOS out of reach) is said. */
+/** The settings sheet is the mirror's: made at this ask if the project has none yet, a finished project's too (the sheet is where he reopens it); a refusal (LifeOS out of reach) is said. */
 async function settingsOf(workspaceId: string, project: Pick<Project, "id" | "name">): Promise<void> {
   const host = hostOf(workspaceId);
   try {
-    host.settings(await openLifeosProject(host.workspace, project.id, project.name));
+    host.settings(await openLifeosProject(host.workspace, project.id, project.name, true));
   } catch (error) {
     failed(error);
   }
@@ -143,24 +143,24 @@ async function settingsOf(workspaceId: string, project: Pick<Project, "id" | "na
 
 /** What a press on a thing in a project's Documents opens (docs/agents/work-projects.md "Documents"). */
 export function openItemIn(workspaceId: string, item: ProjectItem, project: Pick<Project, "id" | "name">): void {
-  const host = hostOf(workspaceId);
   const label = item.title.slice(0, 500);
   switch (item.kind) {
     // A LifeOS document opens here, in the editor, with the way back to its project.
     case "doc":
       return openDoc(workspaceId, { source: { at: "lifeos", table: "docs", id: item.id }, project: { id: project.id, name: project.name } });
-    // A sheet, a note and any other source open beside a thread: the press starts one with the item in it, as the Docs view does.
+    // A sheet, a note and any other source open beside a thread: the press starts one with the item in it, as the Docs view does,
+    // in the project's own mirror, where the project's threads live.
     case "sheet":
-      return host.startThread({ kind: "selection", label, ref: { at: "lifeos", table: "sheets", id: item.id } });
+      return void startIn(workspaceId, project, { kind: "selection", label, ref: { at: "lifeos", table: "sheets", id: item.id } });
     case "note":
-      return host.startThread({ kind: "selection", label, ref: { at: "lifeos", table: "projectDocs", id: item.id } });
+      return void startIn(workspaceId, project, { kind: "selection", label, ref: { at: "lifeos", table: "projectDocs", id: item.id } });
     case "link":
     case "file":
       if (item.url) void openUrl(item.url).catch(failed);
       return;
     case "item": {
       const source = item.source as ContextChip["ref"] | undefined;
-      if (source && typeof source === "object" && "at" in source) host.startThread({ kind: "selection", label, ref: source });
+      if (source && typeof source === "object" && "at" in source) void startIn(workspaceId, project, { kind: "selection", label, ref: source });
       return;
     }
   }

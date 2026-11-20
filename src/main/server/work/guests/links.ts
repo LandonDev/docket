@@ -139,8 +139,9 @@ export class GuestRuntime {
     const refused = guestRefusal(o)
     if (refused) throw new Error(refused)
     await this.servedHere(o.source)
-    await this.itemRow(o.source)
-    const { link, secret } = this.store.create(o)
+    const row = await this.itemRow(o.source)
+    // A project's link is named as LifeOS names the project now, never as a client said.
+    const { link, secret } = this.store.create(o.source.table === 'projects' ? { ...o, title: row.title.slice(0, 200) } : o)
     // The item reads shared to every write guard before a guest can reach it: if LifeOS does not take it, no link is made.
     // In the passes' own turn, so this mark and a pass's unmark of the same row never reach LifeOS out of order.
     if (!(await this.inTurn(() => this.tell(sourceKey(o.source), true)))) {
@@ -277,7 +278,8 @@ export class GuestRuntime {
       .query<unknown>('projects:get', { id: projectId })
       .then(
         (row) => row === null,
-        () => false
+        // LifeOS says "not found" of a row that is gone; any other failure (out of reach) is not that.
+        (err: unknown) => /not found/i.test(err instanceof Error ? err.message : String(err))
       )
     if (!gone) return
     for (const l of this.store.live()) if (l.source.table === 'projects' && l.source.id === projectId) this.store.revoke(l.id)

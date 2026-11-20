@@ -226,7 +226,7 @@ member (as `routines/host.ts` is), running while Work is on:
   session's own words. `name` on the request is not read: the desktop
   still sends it for a host a release behind, which requires it. A mirror
   on show is answered at once, with no ask; an archived one is asked about
-  first, and answered only if its project is under way again.
+  first, and answered only if its project is under way again. Asked for its settings (`forSettings`, the Projects view's Project settings…), a finished project's mirror is answered too: the sheet is where he reopens it, and no thread starts there.
 - **Kept in step.** One live `projects:list` a linked Work workspace, on
   the host's own LifeOS session, which takes it up again after a reconnect.
   `mirrorMoves(rows, mirrors, busy)` is the whole rule: a mirror whose

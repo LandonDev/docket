@@ -112,6 +112,12 @@ export const internalDocRoutes: InternalRoute[] = [
       const sector = typeof body.sector === 'string' ? body.sector : undefined
       if (!projectId && !sector) throw new RouteError(400, 'a sector or a project is needed')
       if (sector && !inFence(fence, sector)) throw new RouteError(404, 'not found')
+      // A project a guest link shows: a document made in it would be the guest's to read at the next pass, with nobody's press
+      // (work-guests.md "A project's link"). The owner makes it, or links one, himself.
+      if (projectId) {
+        const got = (await ctx.convex('query', 'projects:get', { id: projectId })) as { project?: { shared?: boolean; name?: string } } | null
+        if (got?.project?.shared) throw new RouteError(403, `${got.project.name ?? 'This project'} is shared with a guest: only the owner adds a document to it`)
+      }
       // No seed: the first state is the creator's own write, so history credits it to them.
       const docId = (await ctx.convex('mutation', 'docs:create', { ...(projectId ? { projectId } : { sector }), title })) as string
       try {

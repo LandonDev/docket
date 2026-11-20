@@ -16,8 +16,9 @@ import { openItem } from "./store";
  * went, each a 24px chip with its kind's glyph and label. A chip that names
  * something this window can show opens it: a canvas item or a LifeOS
  * document in the thread's pane, a held act in the Outbox, a task, mail or
- * event in its workspace's view. One that names nothing to open (a person, a
- * project, a selection's file) is a label.
+ * event in its workspace's view, a project or a project's card in the Projects
+ * view. One that names nothing to open (a person, a selection's file) is a
+ * label.
  */
 
 const KIND_OF_NOUN = new Map<string, ChipKind>(Object.entries(CHIP_NOUN).map(([kind, noun]) => [noun, kind as ChipKind]));

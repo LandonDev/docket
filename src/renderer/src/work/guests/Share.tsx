@@ -278,6 +278,8 @@ function NewLinkDialog({ env, source, title, onMade, onClose }: { env: string; s
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
+    // The dialog may be mounted inside another form (a project's settings sheet): React sends a submit up through a portal, and this one is the dialog's alone.
+    event.stopPropagation();
     if (!name.trim() || pending) return;
     setPending(true);
     setError(null);

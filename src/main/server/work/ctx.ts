@@ -419,18 +419,19 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
         }
         case 'work.project.open': {
           if (!settings.enabled()) throw new Error('Work is off on this host')
-          const { workspaceId, lifeosProjectId } = req.params
+          const { workspaceId, lifeosProjectId, forSettings } = req.params
           const workspace = knownWorkspace(workspaceId)
           if (workspace.kind !== 'work' || !workspace.sector) throw new Error(`${workspace.name} is not a Work workspace linked to LifeOS`)
           const mine = deps.registry.listProjects().find((p) => p.workspaceId === workspaceId && p.lifeosProjectId === lifeosProjectId)
           // A mirror on show is answered at once. An archived one is asked about first: its project is over, or just came back.
-          if (mine) return handled(mine.archived ? (await lifeosProjectIn(ctx, workspace, lifeosProjectId), mine) : mine)
+          // For its settings a finished project's mirror is answered as it is: the sheet is where he reopens it, and no thread starts there.
+          if (mine) return handled(mine.archived && !forSettings ? (await lifeosProjectIn(ctx, workspace, lifeosProjectId), mine) : mine)
           // Two asks at once (a double click, a second window) make one project.
           const key = `${workspaceId}\0${lifeosProjectId}`
           let making = openingProjects.get(key)
           if (!making) {
             // LifeOS is asked, as the owner: the project must be one of this workspace's sector, and the mirror takes the name it has there, never a client's.
-            making = lifeosProjectIn(ctx, workspace, lifeosProjectId)
+            making = lifeosProjectIn(ctx, workspace, lifeosProjectId, forSettings ? { over: true } : undefined)
               .then((project) => deps.registry.createProject(workspaceId, project.name, 'local', { lifeosProjectId }))
               .finally(() => openingProjects.delete(key))
             openingProjects.set(key, making)

@@ -4,7 +4,7 @@ import { RichText } from "work-kit/editor";
 import { createGuestProjectsClient, Projects, ProjectsClientProvider, ProjectsKitProvider, type GuestProjection, type ProjectsKit, type ProjectsPlace } from "work-kit/projects";
 import "work-kit/projects/styles.css";
 import "@renderer/work/projects/projects.css";
-import { OpenFailed, type ChildItem, type Opened, type Session } from "./session";
+import { initials, OpenFailed, type ChildItem, type Opened, type Session } from "./session";
 
 /**
  * A project on the hosted page (docs/agents/work-guests.md "A project's
@@ -26,14 +26,6 @@ const usePage = () => {
   if (!page) throw new Error("The guest's project page is not mounted");
   return page;
 };
-
-const initials = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
 
 /**
  * The screens' bar in the page's one 44px line: List or Board at its end.

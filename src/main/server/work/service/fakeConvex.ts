@@ -50,6 +50,8 @@ export interface FakeBranch {
 export interface FakeConvex {
   url: string
   docs: Map<string, FakeDoc>
+  /** LifeOS projects by id, as `projects:get` answers the part the service reads */
+  projects: Map<string, { name: string; sector: string; shared: boolean }>
   versions: FakeVersion[]
   branches: FakeBranch[]
   files: Map<string, Uint8Array>
@@ -66,6 +68,7 @@ export interface FakeConvex {
 
 export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
   const docs = new Map<string, FakeDoc>()
+  const projects: FakeConvex['projects'] = new Map()
   const files = new Map<string, Uint8Array>()
   const threads: FakeConvex['threads'] = []
   const versions: FakeVersion[] = []
@@ -108,6 +111,10 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
     calls.push(fn)
     const doc = typeof args.id === 'string' ? docs.get(args.id) : undefined
     switch (fn) {
+      case 'projects:get': {
+        const project = projects.get(args.id as string)
+        return project ? json(200, ok({ project })) : json(200, fail('not found'))
+      }
       case 'docs:get':
         return json(200, ok(doc ? { ...doc, stateUrl: doc.stateFile ? `${url}/files/${doc.stateFile}` : null } : null))
       case 'docs:generateUploadUrl':
@@ -224,6 +231,7 @@ export async function startFakeConvex(jwt = 'owner-jwt'): Promise<FakeConvex> {
       state.failStores = v
     },
     docs,
+    projects,
     files,
     threads,
     sheets,
