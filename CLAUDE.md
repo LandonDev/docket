@@ -181,7 +181,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   the `windows_*` Work tools on a third `ComputerService` through the guest's door (work/winvm/vm.ts), one
   thread at a time; QEMU's GTK window on a display of the VM's own (`qemu-window` tool, winvm/window.ts), its
   `vm:windows` video source and idle row (winvm/picture.ts), QMP's 4 fps picture where the tools are missing; `windows_put`/`windows_get` (files.ts) and his clipboard in and out
-  (clipboard.ts, §29.8). [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
+  (clipboard.ts, §29.8); his Take over (winvm/drive.ts), Settings → Work's section, the whole job run by
+  `e2e-winvm-work.ts`. [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
 - **Search across hosts** — one query fanned out to every host
   (lib/crossHostSearch.ts), an FTS5 index per host (turnIndex.ts).
   [docs/agents/search-across-hosts.md](docs/agents/search-across-hosts.md)

@@ -314,6 +314,41 @@ In order, once the box runs a build with all of Track B:
 7. **Office, when he wants it** (B11): install Microsoft 365 Apps and classic Outlook in a Take over, sign in,
    and say so; until then Settings' Office row says "Not installed".
 
+## The whole job, proven
+
+`scripts/e2e-winvm-work.ts` (run from the repo root after `electron-vite build`, under
+`flock -o -n /srv/agents/win-vm/standing/.lock`; it refuses a standing machine that runs or has a disk) runs
+the job on an isolated windowed instance of the built tree under xvfb, with its own /tmp root, HOME, userData
+and ports, the box's tools linked read-only and the box's Claude login copied into its own config. It builds
+`tc-computer.exe` from the tree unless `TEMP_CODE_WINVM_EXE` names one (a build from before the door's
+`serve --listen` exits 64 in the guest and setup ends "The service in the Windows VM did not answer"). It sets
+the standing VM up through `work.winvm.setup`, turns Work and a workspace's "Computer use on the Windows VM"
+on, narrows the guest's `tc-block-host-tcp` to one port where it serves a form, and starts ONE Work thread on
+Claude Opus 5.5 at low effort: type a line in Notepad and save it with Ctrl+S, then fill and submit the form
+in Edge. At the end the rule is put back, the instance killed and its root removed, and the standing folder
+deleted, so his Set up starts clean.
+
+Run 2026-11-20 (pictures and numbers in `.temp-code/plans/landed/computers-vm/b10/`, `results.md`):
+
+| Check | Result |
+|---|---|
+| setup, from no disk to Awake | 81 s (45 to 81 s across seven runs) |
+| the thread's turn | 38 s, 30 tool calls, $0.72; the one model process of the run |
+| the submit | held as a `computer.act` with its picture 33 s in; nothing posted before the press; Send posted it once, 0.4 s after, with what the thread filled |
+| a viewer of `vm:windows` through the relay | 328 frames in 56 s, every one acked; 43 in the busiest second; none while still |
+| his Take over | `computer.drive` owner, a drive stream, his line typed into Notepad, Hand back |
+| Notepad's save | FAILS: see below |
+
+**Open, found by the run** (app code, not fixed here):
+- Notepad's Save in its Save dialog is held as "Forward": the hold's reading of a navigation button
+  (`navForward`, computer/outward.ts) takes Windows' "Back to … (Alt + Left Arrow)" for one. Its replay after
+  Send fills the file name and says `sent`, but nothing is saved.
+- A program the service starts runs in `C:\Windows\System32`, so Notepad's Save dialog opens there.
+- `windows_apps` refuses "Microsoft Edge" and "Edge" ("no app matches"): the name goes to ShellExecute as it
+  is, and only `msedge.exe` starts it, though `VM_LAUNCH_APPS` lists both names.
+- On a headless host the box's own socket may not watch video (`mayWatch`), so the run watches and takes over
+  with a client key on the listener, as his Mac or phone would.
+
 ## Proofs
 
 - `keeper.test.ts`: every change of state over a fake machine and guest, the idle hibernate and what holds
