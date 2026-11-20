@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { HISTORY_CAPS, type HistoryBranch, type HistoryCompare, type HistoryVersion, type HistoryVersions } from '@shared/contract-work-history'
 import { handled, NOT_HANDLED, type CanvasSource } from '@shared/work'
+import { fetchedItemOfPath } from '../canvas/fetch'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { canonicalPath } from '../service/ctx'
@@ -57,12 +58,19 @@ export function namesFor(ctx: WorkCtx, principals: Iterable<string>): Record<str
 
 const call = <T>(ctx: WorkCtx, route: string, body: Record<string, unknown>): Promise<T> => ctx.service.internal(`/internal/history/${route}`, body) as Promise<T>
 
+export const READ_ONLY = "This document is a mail's attachment, read only: keep it as a document of your own to decide its changes."
+
 export const history: WorkModule = {
   id: 'history',
   ensure() {},
   async handle(req, ctx, by) {
     if (!(req.method in HISTORY_CAPS)) return NOT_HANDLED
     const at = (source: CanvasSource) => targetOf(ctx, by, req.method, source)
+    // A mail's attachment read as a document is read only (work-mail.md "Attachments"): its versions and changes show, and none is cut, restored or decided.
+    if ((req.method === 'work.history.decide' || req.method === 'work.history.restore' || req.method === 'work.history.cut') && 'file' in at(req.params.source)) {
+      const target = at(req.params.source) as { file: string }
+      if (fetchedItemOfPath(ctx, target.file)) throw new Error(READ_ONLY)
+    }
     switch (req.method) {
       case 'work.history.versions': {
         const target = at(req.params.source)

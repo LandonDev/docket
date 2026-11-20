@@ -267,7 +267,10 @@ type, the mail thread, the message and the part):
   `<name>.tcdoc` beside the fetched copy, once, and opens and closes nothing,
   so the item stays the attachment (Download in its bar). The docs pillar
   answers that document with the `view` role for every caller (docs/index.ts
-  `roleOf`, `fetchedItemOfPath`): no mode, no Share, the editor not editable.
+  `roleOf`, `fetchedItemOfPath`): no mode, no Share, the editor not editable,
+  and a Word file's tracked changes tinted in the text with no stepper, Reject
+  or Accept (the document kind feeds no review on the `view` role; the host's
+  `work.history.decide`, `restore` and `cut` refuse it).
   An agent reads it by its item (`doc_read`) and is refused `doc_write`,
   `doc_suggest` and `doc_comment`. **Keep as document**, in More, saves the
   attachment to the workspace (below) and imports that copy into the pane,

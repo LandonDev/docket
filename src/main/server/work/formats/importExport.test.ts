@@ -175,6 +175,13 @@ describe('a Word file opened in the canvas', () => {
     expect(roleOf(local, r.ctx, await targetOf(r.ctx, local, 'work.docs.open', got.source))).toBe('view')
     const his = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path: word(r) } } })
     expect(roleOf(local, r.ctx, await targetOf(r.ctx, local, 'work.docs.open', his.source))).toBe('edit')
+    // Its tracked changes are shown and never decided, its versions never restored or cut.
+    const { history, READ_ONLY } = await import('../history/index')
+    const hist = (method: string, params: unknown) => history.handle!({ id: '1', method, params } as ClientRequest, r.ctx, local)
+    await expect(hist('work.history.decide', { source: got.source, branchId: 'b1', which: ['x'], accept: true })).rejects.toThrow(READ_ONLY)
+    await expect(hist('work.history.restore', { source: got.source, versionId: 'v1' })).rejects.toThrow(READ_ONLY)
+    await expect(hist('work.history.cut', { source: got.source })).rejects.toThrow(READ_ONLY)
+    expect((await hist('work.history.branches', { source: got.source })).handled).toBe(true)
   })
 
   it('a remote key reaches only files inside its roots', async () => {

@@ -25,7 +25,7 @@ vi.mock("../../lib/connection", () => ({
 const toasts = vi.hoisted(() => [] as string[]);
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: (m: string) => void toasts.push(m) }) }));
 
-const { Body, Bar, Scroller, TitleField, markOpen, selectionChip } = await import("./DocumentCanvas");
+const { Body, Bar, Scroller, TitleField, markOpen, selectionChip, useDocReview } = await import("./DocumentCanvas");
 
 afterEach(cleanup);
 
@@ -205,5 +205,29 @@ describe("a mail's attachment as a document", () => {
       { method: "work.canvas.keep", params: { itemId: "a1" } },
       { method: "work.formats.import", params: { sessionId: "mailpane_w1", itemId: "a1", from: { at: "source", source: { at: "file", host: "box", path: "/Cosmic/Brief.docx" } } } },
     ]);
+  });
+});
+
+describe("a document he may only view", () => {
+  function Probe({ role, shell }: { role: "edit" | "view"; shell: CanvasShell }) {
+    const source = { at: "file", host: "box", path: `/data/canvas/mailpane_w1/a1/file/Brief-${role}.tcdoc` } as const;
+    useDocReview({ env: "box" } as never, { doc: "d", source, title: "Brief", role, shared: false, mode: "suggests", written: null, me: "owner", names: {} } as never, shell, null);
+    return null;
+  }
+
+  it("offers no change to decide, while one he may edit steps its changes with Reject and Accept", async () => {
+    // A Word file's tracked change, as the import leaves it: one pending branch by its author.
+    const branch = { id: "b1", baseVersionId: "v1", authors: ["external:Ada Reviewer"], label: "Ada Reviewer", at: 1, editedAt: 1, diff: { rows: [{ id: "blk1", kind: "removed" }], lines: [{ id: "blk1", left: "Doors at nine", right: null }] } };
+    conn.answer = (method) => Promise.resolve(method === "work.history.branches" ? { branches: [branch], names: { "external:Ada Reviewer": "Ada Reviewer" } } : []);
+    const fed = { view: [] as unknown[], edit: [] as unknown[] };
+    const shellOf = (role: "view" | "edit") => ({ review: (r: unknown) => void fed[role].push(r) }) as unknown as CanvasShell;
+    render(
+      <>
+        <Probe role="edit" shell={shellOf("edit")} />
+        <Probe role="view" shell={shellOf("view")} />
+      </>,
+    );
+    await waitFor(() => expect(fed.edit.some((r) => (r as { count?: number } | null)?.count === 1)).toBe(true));
+    expect(fed.view.every((r) => r === null)).toBe(true);
   });
 });

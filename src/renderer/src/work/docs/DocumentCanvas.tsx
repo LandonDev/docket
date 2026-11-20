@@ -476,7 +476,7 @@ export function useDocument(host: DocHost, open: DocOpen): DocumentHandle {
 }
 
 /** Pending suggestions, drawn in the text and stepped from the pane's bar. */
-function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, editor: AnyEditor | null) {
+export function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, editor: AnyEditor | null) {
   const branches = useBranches(host.env, open.source);
   const value = branches.value;
   const { changes, groups } = useMemo(() => reviewOf(value?.branches ?? [], value?.names ?? {}), [value]);
@@ -505,7 +505,8 @@ function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, editor: 
   const hooks = review.hooks;
   const groupsKey = hooks?.groups.map((g) => `${g.id}:${g.count}`).join(",") ?? "";
   useEffect(() => {
-    if (!latest.current.hooks) return shell.review(null);
+    // A document he may only view (a mail's attachment, a read-only key) offers nothing to decide: its changes stay tinted in the text.
+    if (!latest.current.hooks || open.role === "view") return shell.review(null);
     const h = latest.current.hooks;
     shell.review({
       groups: h.groups.map((g) => ({ id: g.id, label: g.label, by: g.by as Principal, count: g.count })),
@@ -520,7 +521,7 @@ function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, editor: 
       reject: (which) => latest.current.hooks?.reject(which) ?? Promise.resolve(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shell, hooks?.index, hooks?.count, groupsKey]);
+  }, [shell, hooks?.index, hooks?.count, groupsKey, open.role]);
   useEffect(() => () => shell.review(null), [shell]);
   useEffect(() => (editor && pending ? editor.onChange(onChange) : undefined), [editor, pending, onChange]);
   return review;
