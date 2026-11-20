@@ -170,7 +170,8 @@ export class GuestRuntime {
     const at = (Math.floor(Date.now() / 1000) + 1) * 1000
     this.keyedAt.set(id, at)
     for (const key of [...this.tokens.keys()]) if (key === id || key.startsWith(`${id}|`)) this.tokens.delete(key)
-    await new Promise((r) => setTimeout(r, Math.max(0, at - Date.now())))
+    // On the wall clock the tokens carry: a timer may fire a moment early.
+    while (Date.now() < at) await new Promise((r) => setTimeout(r, at - Date.now() + 5))
     await this.sync()
     this.ctx.push({ push: 'work.guests' })
     return guestUrl(publicOrigin(this.ctx), id, secret)

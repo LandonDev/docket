@@ -80,14 +80,15 @@ export function SheetPage({
     let tries = 0;
     const l = live.current;
     // Again, with backoff: after five tries in a row, the page cannot be reached (the unavailable screen, with Retry).
-    const again = (delay?: number): void => {
+    const again = (delay?: number, expired = false): void => {
       if (++tries > 5) return onDown(standing.current);
-      setTimeout(() => void connect(), delay ?? Math.min(8000, 500 * 2 ** tries));
+      setTimeout(() => void connect(expired), delay ?? Math.min(8000, 500 * 2 ** tries));
     };
-    const connect = async (): Promise<void> => {
+    const connect = async (expired = false): Promise<void> => {
       let token: string;
       try {
-        token = (await session.token()).token;
+        // After the service said the token ran out, a new one is asked for whatever this browser's clock thinks.
+        token = expired ? (await session.refresh()).token : (await session.token()).token;
       } catch (err) {
         if (stopped) return;
         // Only a link the service says is over (expired, revoked) ends the page; a token refresh that failed in passing
@@ -146,7 +147,7 @@ export function SheetPage({
         setOffline(true);
         if (e.code === 4403) return onGone();
         // 4401: the token ran out; anything else: the line dropped. Either way, again with a fresh token.
-        again(e.code === 4401 ? 0 : undefined);
+        again(e.code === 4401 ? 0 : undefined, e.code === 4401);
       };
     };
     void connect();

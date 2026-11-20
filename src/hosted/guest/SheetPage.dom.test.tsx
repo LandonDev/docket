@@ -55,6 +55,22 @@ describe("the hosted sheet", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("after the service says the token ran out, it asks for a new one rather than trusting this browser's clock", async () => {
+    const asked: string[] = [];
+    const s = { token: async () => (asked.push("token"), { token: "old" }), refresh: async () => (asked.push("refresh"), { token: "new" }), socketUrl: () => "wss://example/sheet" } as never;
+    render(<SheetPage session={s} opened={opened} onGone={() => {}} onDown={() => {}} />);
+    await flush();
+    await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+    const first = FakeSocket.last!;
+    await act(async () => first.onclose?.({ code: 4401 }));
+    await flush();
+    await flush();
+    expect(asked).toEqual(["token", "refresh"]);
+    expect(FakeSocket.last).not.toBe(first);
+    await flush();
+    expect(FakeSocket.last!.sent[0]).toContain('"token":"new"');
+  });
+
   it("says the service's reasons in plain words", () => {
     expect(refusedWords("the sheet changed under that edit: reload and make it again")).toBe("Someone changed the sheet first. Type it again");
     expect(refusedWords("a guest cannot insert row")).toBe("Guests can change values and formats only");
