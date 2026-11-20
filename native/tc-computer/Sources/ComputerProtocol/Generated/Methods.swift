@@ -390,6 +390,60 @@ public enum Methods {
         public typealias Output = Empty
     }
 
+    public enum CaptureVideoStart: ContractMethod {
+        public static let name = "capture.video.start"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let session: String
+            public let app: AppRef
+            public let window: WindowRef?
+            public let launch: Bool?
+            public let epoch: String?
+            public let maxEdge: Int
+            public let fps: Int?
+            public let bitrate: Int?
+            public let mode: VideoMode
+
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, maxEdge: Int, fps: Int? = nil, bitrate: Int? = nil, mode: VideoMode) {
+                self.session = session
+                self.app = app
+                self.window = window
+                self.launch = launch
+                self.epoch = epoch
+                self.maxEdge = maxEdge
+                self.fps = fps
+                self.bitrate = bitrate
+                self.mode = mode
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let stream: Int
+            public let width: Int
+            public let height: Int
+
+            public init(stream: Int, width: Int, height: Int) {
+                self.stream = stream
+                self.width = width
+                self.height = height
+            }
+        }
+    }
+
+    public enum CaptureVideoStop: ContractMethod {
+        public static let name = "capture.video.stop"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let stream: Int
+
+            public init(stream: Int) {
+                self.stream = stream
+            }
+        }
+
+        public typealias Output = Empty
+    }
+
     public enum InputProbe: ContractMethod {
         public static let name = "input.probe"
 

@@ -92,6 +92,24 @@ pub mod preview {
     pub const CLICK_CARRY_MS: i64 = 2000;
 }
 
+/// Live video of one window (§30).
+pub mod video {
+    pub const DEFAULT_FPS: i64 = 120;
+    pub const MIN_FPS: i64 = 10;
+    pub const MAX_FPS: i64 = 120;
+    pub const MIN_MAX_EDGE: i64 = 256;
+    pub const MAX_MAX_EDGE: i64 = 3840;
+    pub const LINK_MAX_EDGE: i64 = 1280;
+    pub const QUALITY_BITRATE: i64 = 20000000;
+    pub const START_BITRATE: i64 = 8000000;
+    pub const MIN_BITRATE: i64 = 1000000;
+    pub const MAX_BITRATE: i64 = 20000000;
+    pub const SHARPEN_AFTER_MS: i64 = 150;
+    pub const SHARPEN_FRAMES: i64 = 4;
+    pub const PIPE_FD: i64 = 3;
+    pub const PIPE_ID_BYTES: i64 = 4;
+}
+
 /// The person's Escape while the session is held (§8).
 pub mod escape {
     pub const LEASE_MS: i64 = 30000;
@@ -150,4 +168,4 @@ pub mod grammar {
 }
 
 /// The method names, for the router (COMPUTER_METHODS' keys).
-pub const METHODS: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "input.probe", "input.restoreSession", "clipboard.state", "escape.watch"];
+pub const METHODS: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "escape.watch"];

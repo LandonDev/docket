@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "method": "capture/videoEnded",
+  "params": {
+    "stream": 1,
+    "reason": "window-closed"
+  }
+}

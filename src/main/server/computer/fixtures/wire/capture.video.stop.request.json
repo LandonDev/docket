@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 32,
+  "method": "capture.video.stop",
+  "params": {
+    "stream": 1
+  }
+}

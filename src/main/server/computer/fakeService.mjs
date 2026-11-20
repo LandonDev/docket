@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto'
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { Socket } from 'node:net'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 
@@ -92,6 +93,67 @@ function stopStream(id) {
   const stream = streams.get(id)
   if (stream) { clearInterval(stream.timer); clearTimeout(stream.endTimer) }
   streams.delete(id)
+}
+// Live video (§30): the bytes pipe is fd 3, when the host made one. A record is the stream's number, four bytes
+// big-endian, then one NSL1 message. FAKE_NO_VIDEO_PIPE=1 plays a service started with no pipe, FAKE_VIDEO_FPS sets
+// the rate (30), FAKE_VIDEO_END_MS ends each stream with FAKE_VIDEO_END_REASON, and at most eight frames are sent
+// ahead of the host's acks, so a host that does not pass acks on is seen to stall.
+const VIDEO_WINDOW = 8
+let videoPipe = null
+if (process.env.FAKE_NO_VIDEO_PIPE !== '1') {
+  try {
+    videoPipe = new Socket({ fd: 3, readable: true, writable: true })
+    videoPipe.on('error', () => { videoPipe = null })
+    videoPipe.on('data', onVideoBytes)
+  } catch {
+    videoPipe = null
+  }
+}
+const videos = new Map()
+let nextVideo = 0
+let videoBuffer = Buffer.alloc(0)
+function nsl1(type, flags, generation, sequence, payload) {
+  const m = Buffer.alloc(20 + payload.length)
+  m.write('NSL1', 0, 'latin1'); m[4] = 1; m[5] = type; m.writeUInt16BE(flags, 6)
+  m.writeUInt32BE(generation, 8); m.writeUInt32BE(sequence, 12); m.writeUInt32BE(payload.length, 16)
+  payload.copy(m, 20)
+  return m
+}
+function videoRecord(stream, message) {
+  const id = Buffer.alloc(4)
+  id.writeUInt32BE(stream)
+  return Buffer.concat([id, message])
+}
+// An access unit a decoder would refuse and a parser accepts: the SPS, PPS and slice headers of a baseline stream.
+const KEY_UNIT = Buffer.from([0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x2a, 0xda, 0x01, 0, 0, 0, 1, 0x68, 0xce, 0x3c, 0x80, 0, 0, 0, 1, 0x65, 0x88, 0x84])
+const DELTA_UNIT = Buffer.from([0, 0, 0, 1, 0x41, 0x9a, 0x24])
+function sendVideoFrame(video) {
+  if (!videoPipe || video.unacked >= VIDEO_WINDOW) return
+  const sequence = ++video.sequence
+  const head = Buffer.alloc(12)
+  head.writeUInt16BE(video.width, 0); head.writeUInt16BE(video.height, 2); head.writeBigUInt64BE(BigInt(Date.now()) * 1000n, 4)
+  video.unacked++
+  videoPipe.write(videoRecord(video.id, nsl1(1, sequence === 1 ? 1 : 0, video.generation, sequence, Buffer.concat([head, sequence === 1 ? KEY_UNIT : DELTA_UNIT]))))
+}
+function onVideoBytes(chunk) {
+  videoBuffer = Buffer.concat([videoBuffer, chunk])
+  while (videoBuffer.length >= 24) {
+    const length = 24 + videoBuffer.readUInt32BE(20)
+    if (videoBuffer.length < length) return
+    const video = videos.get(videoBuffer.readUInt32BE(0))
+    // an ack: its frame and every earlier one are covered
+    if (video && videoBuffer[9] === 2 && videoBuffer.readUInt32BE(12) === video.generation) {
+      const acked = videoBuffer.readUInt32BE(16)
+      if (acked > video.acked) { video.unacked -= acked - video.acked; video.acked = acked }
+      video.acks++
+    }
+    videoBuffer = videoBuffer.subarray(length)
+  }
+}
+function stopVideo(id) {
+  const video = videos.get(id)
+  if (video) { clearInterval(video.timer); clearTimeout(video.endTimer) }
+  videos.delete(id)
 }
 function clickNote(stream, at) {
   notify('capture/click', { stream: stream.id, at: at.map((v, i) => Math.round(v * (i ? stream.height / space.height : stream.width / space.width))), width: stream.width, height: stream.height })
@@ -594,7 +656,8 @@ function handle({ id, method, params = {} }) {
       initialized = true
       dataDir = params.dataDir
       hostFeatures = new Set(params.features ?? [])
-      const features = process.env.FAKE_NO_FEATURES === '1' ? [] : ['front', 'commit', 'save_as'].filter((f) => hostFeatures.has(f))
+      // `video` only when there is a pipe for its bytes
+      const features = process.env.FAKE_NO_FEATURES === '1' ? [] : ['front', 'commit', 'save_as', ...(videoPipe ? ['video'] : [])].filter((f) => hostFeatures.has(f))
       reply(id, { ...initial, protocol: 1, epoch, permissions, ...(features.length ? { features } : {}) })
       if (exiting) return
       if (process.env.FAKE_GARBAGE === '1') process.stdout.write('this is not json\n')
@@ -638,8 +701,9 @@ function handle({ id, method, params = {} }) {
       return
     }
     case 'session.open': sessions.add(params.session); return reply(id, {})
-    case 'session.close': for (const key of lastClicks.keys()) if (key.startsWith(params.session + ':')) lastClicks.delete(key); for (const stream of streams.values()) if (stream.session === params.session) stopStream(stream.id); sessions.delete(params.session); states.delete(params.session); shots.delete(params.session); return reply(id, {})
+    case 'session.close': for (const key of lastClicks.keys()) if (key.startsWith(params.session + ':')) lastClicks.delete(key); for (const stream of streams.values()) if (stream.session === params.session) stopStream(stream.id); for (const video of videos.values()) if (video.session === params.session) stopVideo(video.id); sessions.delete(params.session); states.delete(params.session); shots.delete(params.session); return reply(id, {})
     case 'capture.stream.stop': stopStream(params.stream); return reply(id, {})
+    case 'capture.video.stop': stopVideo(params.stream); return reply(id, {})
     case 'escape.watch': {
       if (process.env.FAKE_ESCAPE_UNSUPPORTED === '1') return reply(id, { code: -32601, message: 'The method is unknown.' }, true)
       escapeUntil = params.on ? Date.now() + (params.leaseMs ?? 30000) : 0
@@ -658,7 +722,7 @@ function handle({ id, method, params = {} }) {
       return
     }
     case 'clipboard.state': return reply(id, { changeCount: 1, foreignChangeAt: foreignChangeAt(), watchingSince })
-    case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'input.probe': {
+    case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'capture.video.start': case 'input.probe': {
       const ctx = target(params)
       if (ctx.app.name === 'Slow' && ['state.get', 'action.run', 'action.batch'].includes(method)) {
         pending.set(id, { ctx, params, method })
@@ -697,6 +761,27 @@ function handle({ id, method, params = {} }) {
         const hold = Number(process.env.FAKE_SHOT_MS ?? 0)
         if (hold > 0) slowShots.set(id, setTimeout(() => (slowShots.delete(id), answer()), hold))
         else answer()
+        return
+      }
+      if (method === 'capture.video.start') {
+        if (!videoPipe) return reply(id, { code: -32601, message: 'The method is unknown.' }, true)
+        if (!permissions.screenRecording || ctx.app.name === 'NoShot') return refuse(id, shotFailure())
+        if (ctx.window.minimized) return refuse(id, failure('window_minimized', 'Restore the window before watching it.'))
+        // the window's own pixels (twice its points), or as much of them as the long edge allows
+        const scale = Math.min(1, params.maxEdge / (Math.max(space.width, space.height) * 2))
+        const video = { id: ++nextVideo, session: params.session, generation: nextVideo, width: Math.round(space.width * 2 * scale), height: Math.round(space.height * 2 * scale), mode: params.mode, bitrate: params.bitrate ?? null, sequence: 0, unacked: 0, acked: 0, acks: 0 }
+        videos.set(video.id, video)
+        reply(id, { stream: video.id, width: video.width, height: video.height })
+        // FAKE_VIDEO_GARBAGE=1: bytes that are no record, as from a service that lost its place
+        if (process.env.FAKE_VIDEO_GARBAGE === '1') return void videoPipe.write(Buffer.alloc(32, 0x58))
+        if (process.env.FAKE_NO_FRAMES !== '1') {
+          sendVideoFrame(video)
+          video.timer = setInterval(() => sendVideoFrame(video), 1000 / Number(process.env.FAKE_VIDEO_FPS ?? 30))
+        }
+        if (process.env.FAKE_VIDEO_END_MS) video.endTimer = setTimeout(() => {
+          stopVideo(video.id)
+          notify('capture/videoEnded', { stream: video.id, reason: process.env.FAKE_VIDEO_END_REASON ?? 'window-closed' })
+        }, Number(process.env.FAKE_VIDEO_END_MS))
         return
       }
       if (method === 'capture.stream.start') {

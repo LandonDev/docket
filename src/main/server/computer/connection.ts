@@ -1,5 +1,6 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import type { Duplex } from 'node:stream'
 import { version as appVersion } from '../../../../package.json'
 import { adoptTree } from '../procTree'
 import {
@@ -11,6 +12,7 @@ import {
   RPC_ERROR,
   RpcErrorResponseSchema,
   SERVICE,
+  VIDEO_STREAM,
   type ComputerAction,
   type ComputerError,
   type ComputerMethod,
@@ -20,6 +22,7 @@ import {
   type HostNotification
 } from '@shared/computer/protocol'
 import { hostErrorLine, type HostErrorKind } from '@shared/computer/hostErrors'
+import { RecordReader, encodeRecord } from '@shared/computer/videoPipe'
 
 /**
  * One live `tc-computer serve` (docs/computer-protocol.md §1 and "The host"):
@@ -101,6 +104,8 @@ export const COMPUTER_DEADLINES = {
   'capture.screenshot': 30_000,
   'capture.stream.start': 5_000,
   'capture.stream.stop': 5_000,
+  'capture.video.start': 5_000,
+  'capture.video.stop': 5_000,
   'input.probe': 10_000,
   'input.restoreSession': 10_000,
   'clipboard.state': 5_000,
@@ -167,6 +172,10 @@ export class ComputerConnection {
   private readonly stderrTail: string[] = []
   private exit: ComputerExit | null = null
   private killedAs: ComputerExitKind | null = null
+  /** the bytes pipe (§30), when the service was started with one; null for an in-process service and on Windows */
+  private readonly pipe: Duplex | null
+  private readonly records = new RecordReader()
+  private readonly recordListeners = new Set<(stream: number, message: Uint8Array) => void>()
 
   private constructor(
     private readonly child: ChildProcess,
@@ -186,6 +195,9 @@ export class ComputerConnection {
       })
     })
     child.stdin?.on('error', () => undefined)
+    this.pipe = (child.stdio[VIDEO_STREAM.pipeFd] as Duplex | null | undefined) ?? null
+    this.pipe?.on('error', () => undefined)
+    this.pipe?.on('data', (chunk: Buffer) => this.received(chunk))
     createInterface({ input: child.stdout! }).on('line', (line) => this.onLine(line))
     createInterface({ input: child.stderr! }).on('line', (line) => {
       this.stderrTail.push(line)
@@ -198,7 +210,10 @@ export class ComputerConnection {
   static async start(opts: ComputerConnectionOptions): Promise<ComputerConnection> {
     const spawn = opts.spawn ?? nodeSpawn
     // on Windows the service joins the app's job object, so it ends with the app (procTree.ts)
-    const child = adoptTree(spawn(opts.bin, ['serve'], { stdio: ['pipe', 'pipe', 'pipe'], env: opts.env ?? process.env }))
+    // The fourth entry is the bytes pipe of live video (§30): a service that does not know it leaves it alone. On
+    // Windows the bytes go over a named pipe instead (§29), so no fourth entry is made there.
+    const stdio: ('pipe')[] = process.platform === 'win32' ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe', 'pipe']
+    const child = adoptTree(spawn(opts.bin, ['serve'], { stdio, env: opts.env ?? process.env }))
     const conn = new ComputerConnection(child, opts)
     const spawned = new Promise<void>((resolve, reject) => {
       child.once('spawn', () => resolve())
@@ -236,6 +251,35 @@ export class ComputerConnection {
 
   get epoch(): string {
     return this.initResult?.epoch ?? ''
+  }
+
+  /** The service can be asked for video: it said so at initialize, and there is a pipe for its bytes. */
+  get video(): boolean {
+    return this.pipe !== null && this.features.has('video')
+  }
+
+  /** One NSL1 message to a stream of the service (an ack), on the bytes pipe. Nothing when there is no pipe or the service is gone. */
+  sendBytes(stream: number, message: Uint8Array): void {
+    if (!this.pipe || this.exit || this.pipe.destroyed) return
+    this.pipe.write(encodeRecord(stream, message))
+  }
+
+  /** Every record the service writes on the bytes pipe: the stream's number and one NSL1 message. */
+  onBytes(fn: (stream: number, message: Uint8Array) => void): () => void {
+    this.recordListeners.add(fn)
+    return () => this.recordListeners.delete(fn)
+  }
+
+  private received(chunk: Buffer): void {
+    let records
+    try {
+      records = this.records.push(chunk)
+    } catch (err) {
+      // the pipe has lost its place and cannot find it again: the service is restarted, as for a line that is not JSON
+      this.log(`the bytes pipe failed: ${(err as Error).message}`)
+      return this.kill('bad-output')
+    }
+    for (const r of records) for (const fn of this.recordListeners) fn(r.stream, r.message)
   }
 
   get alive(): boolean {

@@ -130,6 +130,34 @@ export const PREVIEW_STREAM = {
   clickCarryMs: 2_000
 } as const
 
+/**
+ * Live video of one window (§30): H.264 from the system's own encoder, each
+ * access unit one NSL1 frame message (src/shared/video/nsl1.ts) on the bytes
+ * pipe, never a line of the JSON pipe.
+ */
+export const VIDEO_STREAM = {
+  defaultFps: 120,
+  minFps: 10,
+  maxFps: 120,
+  minMaxEdge: 256,
+  /** a viewer on the same machine gets the window's own pixels */
+  maxMaxEdge: 3_840,
+  /** a viewer across a link gets at most this on the long edge */
+  linkMaxEdge: 1_280,
+  /** bits a second: what `quality` asks of the encoder, and where `budget` starts and may move between */
+  qualityBitrate: 20_000_000,
+  startBitrate: 8_000_000,
+  minBitrate: 1_000_000,
+  maxBitrate: 20_000_000,
+  /** a window at rest this long has its last frame encoded again, this many times, to sharpen it */
+  sharpenAfterMs: 150,
+  sharpenFrames: 4,
+  /** the file descriptor of the bytes pipe in the service (the host's fourth stdio entry) */
+  pipeFd: 3,
+  /** a record on the bytes pipe is this many bytes of stream id, then one NSL1 message */
+  pipeIdBytes: 4
+} as const
+
 /** The person's Escape while the session is held (§8, P1): the host renews the watch, and it ends on its own when the host stops. */
 export const ESCAPE_WATCH = {
   leaseMs: 30_000,
@@ -207,7 +235,7 @@ export const FRONT = {
 } as const
 
 /** What a host or a service can speak beyond protocol 1 (§3, `initialize`); each side sends a field only when the other listed it. */
-export const COMPUTER_FEATURES = ['front', 'commit', 'save_as'] as const
+export const COMPUTER_FEATURES = ['front', 'commit', 'save_as', 'video'] as const
 export type ComputerFeature = (typeof COMPUTER_FEATURES)[number]
 
 /**
@@ -1117,6 +1145,22 @@ export const CaptureStreamStartParamsSchema = TargetSchema.extend({
   maxEdge: int().min(PREVIEW_STREAM.minMaxEdge).max(SHOT.maxMaxEdge).optional()
 })
 
+/**
+ * How a video stream holds its bitrate (§30). `quality`, for a viewer on the
+ * same machine: every frame kept. `budget`, for a viewer across a link: the
+ * bitrate follows the viewer's acks, and the encoder may drop frames to hold it.
+ */
+export const VideoModeSchema = z.enum(['quality', 'budget'])
+export type VideoMode = z.infer<typeof VideoModeSchema>
+
+export const CaptureVideoStartParamsSchema = TargetSchema.extend({
+  maxEdge: int().min(VIDEO_STREAM.minMaxEdge).max(VIDEO_STREAM.maxMaxEdge),
+  fps: int().min(VIDEO_STREAM.minFps).max(VIDEO_STREAM.maxFps).optional(),
+  /** bits a second to start from; the mode's own when left out */
+  bitrate: int().min(VIDEO_STREAM.minBitrate).max(VIDEO_STREAM.maxBitrate).optional(),
+  mode: VideoModeSchema
+})
+
 /** `input.probe`: the classes to try at the process tier; `scroll`, `key` and `click` when left out. */
 export const InputProbeParamsSchema = TargetSchema.extend({
   classes: z.array(ActionClassSchema).min(1).optional()
@@ -1251,6 +1295,12 @@ export const COMPUTER_METHODS = {
     result: z.object({ stream: z.string(), width: int().positive(), height: int().positive() })
   },
   'capture.stream.stop': { params: z.object({ stream: z.string().min(1) }), result: EmptySchema },
+  // §30, behind the `video` feature: the service picks the stream's number, which every record on the bytes pipe carries.
+  'capture.video.start': {
+    params: CaptureVideoStartParamsSchema,
+    result: z.object({ stream: int().positive(), width: int().positive(), height: int().positive() })
+  },
+  'capture.video.stop': { params: z.object({ stream: int().positive() }), result: EmptySchema },
   'input.probe': { params: InputProbeParamsSchema, result: ProbeReportSchema },
   'input.restoreSession': { params: InputRestoreParamsSchema, result: SessionRestoreSchema },
   'clipboard.state': { params: EmptySchema, result: ClipboardActivitySchema },
@@ -1299,6 +1349,8 @@ export const ComputerNotificationSchema = z.discriminatedUnion('method', [
     })
   ),
   notify('capture/streamEnded', z.object({ stream: z.string(), reason: StreamEndReasonSchema })),
+  /** §30: a video stream ended on the service's side: the window closed, Screen Recording went off, the encoder failed */
+  notify('capture/videoEnded', z.object({ stream: int().positive(), reason: StreamEndReasonSchema })),
   /** P2: the agent clicked in a streamed window; `at` in the pixels of a `width` × `height` frame, sent whether or not a pixel changed */
   notify('capture/click', z.object({ stream: z.string(), at: PointSchema, width: int().positive(), height: int().positive() })),
   /** P1: the person pressed Escape while the watch was on; epoch ms */

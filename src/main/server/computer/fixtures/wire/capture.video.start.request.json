@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 31,
+  "method": "capture.video.start",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "app": "TextEdit"
+    },
+    "maxEdge": 1280,
+    "fps": 120,
+    "bitrate": 8000000,
+    "mode": "budget"
+  }
+}

@@ -896,6 +896,29 @@ public enum TabsMode: RawRepresentable, Codable, Hashable, Sendable {
     }
 }
 
+public enum VideoMode: RawRepresentable, Codable, Hashable, Sendable {
+    case quality
+    case budget
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "quality": self = .quality
+        case "budget": self = .budget
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .quality: "quality"
+        case .budget: "budget"
+        case .unknown(let value): value
+        }
+    }
+}
+
 public enum FrontHoldRestore: RawRepresentable, Codable, Hashable, Sendable {
     case restored
     case personMoved

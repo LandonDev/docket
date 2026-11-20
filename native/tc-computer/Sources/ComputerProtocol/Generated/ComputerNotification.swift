@@ -255,6 +255,53 @@ public struct CaptureStreamEndedNotification: Codable, Hashable, Sendable {
     }
 }
 
+public struct CaptureVideoEndedNotification: Codable, Hashable, Sendable {
+    public struct Params: Codable, Hashable, Sendable {
+        public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
+            case stopped
+            case windowClosed
+            case permission
+            case error
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "stopped": self = .stopped
+                case "window-closed": self = .windowClosed
+                case "permission": self = .permission
+                case "error": self = .error
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .stopped: "stopped"
+                case .windowClosed: "window-closed"
+                case .permission: "permission"
+                case .error: "error"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let stream: Int
+        public let reason: Reason
+
+        public init(stream: Int, reason: Reason) {
+            self.stream = stream
+            self.reason = reason
+        }
+    }
+
+    public let params: Params
+
+    public init(params: Params) {
+        self.params = params
+    }
+}
+
 public struct CaptureClickNotification: Codable, Hashable, Sendable {
     public struct Params: Codable, Hashable, Sendable {
         public let stream: String
@@ -371,6 +418,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
     case sessionInterrupted(SessionInterruptedNotification)
     case captureFrame(CaptureFrameNotification)
     case captureStreamEnded(CaptureStreamEndedNotification)
+    case captureVideoEnded(CaptureVideoEndedNotification)
     case captureClick(CaptureClickNotification)
     case escapePressed(EscapePressedNotification)
     case appsFrontRestored(AppsFrontRestoredNotification)
@@ -391,6 +439,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
         case "session/interrupted": self = .sessionInterrupted(try SessionInterruptedNotification(from: decoder))
         case "capture/frame": self = .captureFrame(try CaptureFrameNotification(from: decoder))
         case "capture/streamEnded": self = .captureStreamEnded(try CaptureStreamEndedNotification(from: decoder))
+        case "capture/videoEnded": self = .captureVideoEnded(try CaptureVideoEndedNotification(from: decoder))
         case "capture/click": self = .captureClick(try CaptureClickNotification(from: decoder))
         case "escape/pressed": self = .escapePressed(try EscapePressedNotification(from: decoder))
         case "apps/frontRestored": self = .appsFrontRestored(try AppsFrontRestoredNotification(from: decoder))
@@ -407,6 +456,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
         case .sessionInterrupted(let value): try Self.encode(tag: "session/interrupted", value, to: encoder)
         case .captureFrame(let value): try Self.encode(tag: "capture/frame", value, to: encoder)
         case .captureStreamEnded(let value): try Self.encode(tag: "capture/streamEnded", value, to: encoder)
+        case .captureVideoEnded(let value): try Self.encode(tag: "capture/videoEnded", value, to: encoder)
         case .captureClick(let value): try Self.encode(tag: "capture/click", value, to: encoder)
         case .escapePressed(let value): try Self.encode(tag: "escape/pressed", value, to: encoder)
         case .appsFrontRestored(let value): try Self.encode(tag: "apps/frontRestored", value, to: encoder)

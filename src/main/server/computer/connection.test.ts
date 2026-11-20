@@ -1,7 +1,9 @@
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { spawn } from 'node:child_process'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { encodeAck, parseFrame } from '@shared/video/nsl1'
 import { InitializeResultSchema, type ComputerNotification } from '@shared/computer/protocol'
 import { ComputerConnection, ComputerHostError, ComputerRpcError, ComputerStartError, deadlineFor, exitKindOf, traceFrame, type ComputerConnectionOptions } from './connection'
 import { fakeServiceBin } from './testFake'
@@ -183,6 +185,47 @@ describe('ComputerConnection', () => {
     expect(long).toMatch(/…\(\+\d+\)$/)
     expect(long.length).toBeLessThan(2_020)
     expect(traceFrame('not json')).toBe('not json')
+  })
+
+  it('reads video off the bytes pipe by stream, and its acks reach the service', async () => {
+    const c = await start({ FAKE_VIDEO_FPS: '200' })
+    expect(c.video).toBe(true)
+    await c.request('session.open', { session: 's1' })
+    const got: { stream: number; sequence: number }[] = []
+    const off = c.onBytes((stream, message) => void got.push({ stream, sequence: parseFrame(message).sequence }))
+    const { stream } = await c.request('capture.video.start', { ...target('TextEdit'), maxEdge: 1280, mode: 'budget' })
+    await vi.waitFor(() => expect(got).toHaveLength(8))
+    await new Promise((r) => setTimeout(r, 60))
+    // the fake sends eight ahead of the acks and no more
+    expect(got.map((g) => g.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(got.every((g) => g.stream === stream)).toBe(true)
+    c.sendBytes(stream, encodeAck(stream, 8, 0))
+    await vi.waitFor(() => expect(got.length).toBe(16))
+    off()
+    c.sendBytes(stream, encodeAck(stream, 16, 0))
+    await new Promise((r) => setTimeout(r, 60))
+    expect(got).toHaveLength(16)
+    await c.request('capture.video.stop', { stream })
+  })
+
+  it('a service started with no pipe, or one that does not list video, is one the host never asks', async () => {
+    const bare = await start({ FAKE_NO_VIDEO_PIPE: '1' })
+    expect(bare.video).toBe(false)
+    const old = await start({ FAKE_NO_FEATURES: '1' })
+    expect(old.video).toBe(false)
+    // an in-process service has three pipes and no fourth: the connection works as it did
+    const three = await start({}, { spawn: ((bin: string, args: string[], options: { env: NodeJS.ProcessEnv }) => spawn(bin, args, { env: options.env, stdio: ['pipe', 'pipe', 'pipe'] })) as never })
+    expect(three.video).toBe(false)
+    expect(await three.request('permissions.get', {})).toEqual({ accessibility: true, screenRecording: true })
+    three.sendBytes(1, encodeAck(1, 1))
+    expect(three.alive).toBe(true)
+  })
+
+  it('bytes on the pipe that are no record kill the service as bad-output', async () => {
+    const c = await start({ FAKE_VIDEO_GARBAGE: '1' })
+    await c.request('session.open', { session: 's1' })
+    await c.request('capture.video.start', { ...target('TextEdit'), maxEdge: 1280, mode: 'budget' })
+    expect((await c.exited).kind).toBe('bad-output')
   })
 
   it('shuts down within two seconds', async () => {

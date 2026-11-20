@@ -900,6 +900,29 @@ impl TabsMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum VideoMode {
+    #[serde(rename = "quality")]
+    Quality,
+    #[serde(rename = "budget")]
+    Budget,
+    /// a value this build does not know (a newer host); never sent
+    #[serde(other)]
+    #[default]
+    Unrecognized,
+}
+
+impl VideoMode {
+    /// The wire word.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VideoMode::Quality => "quality",
+            VideoMode::Budget => "budget",
+            VideoMode::Unrecognized => "unrecognized",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum FrontHoldRestore {
     #[serde(rename = "restored")]
     Restored,
@@ -1936,6 +1959,46 @@ pub struct CaptureStreamEndedNotification {
     pub params: CaptureStreamEndedNotificationParams,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum CaptureVideoEndedNotificationParamsReason {
+    #[serde(rename = "stopped")]
+    Stopped,
+    #[serde(rename = "window-closed")]
+    WindowClosed,
+    #[serde(rename = "permission")]
+    Permission,
+    #[serde(rename = "error")]
+    Error,
+    /// a value this build does not know (a newer host); never sent
+    #[serde(other)]
+    #[default]
+    Unrecognized,
+}
+
+impl CaptureVideoEndedNotificationParamsReason {
+    /// The wire word.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CaptureVideoEndedNotificationParamsReason::Stopped => "stopped",
+            CaptureVideoEndedNotificationParamsReason::WindowClosed => "window-closed",
+            CaptureVideoEndedNotificationParamsReason::Permission => "permission",
+            CaptureVideoEndedNotificationParamsReason::Error => "error",
+            CaptureVideoEndedNotificationParamsReason::Unrecognized => "unrecognized",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaptureVideoEndedNotificationParams {
+    pub stream: i64,
+    pub reason: CaptureVideoEndedNotificationParamsReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaptureVideoEndedNotification {
+    pub params: CaptureVideoEndedNotificationParams,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct CaptureClickNotificationParams {
     pub stream: String,
@@ -2030,6 +2093,8 @@ pub enum ComputerNotification {
     CaptureFrame(CaptureFrameNotification),
     #[serde(rename = "capture/streamEnded")]
     CaptureStreamEnded(CaptureStreamEndedNotification),
+    #[serde(rename = "capture/videoEnded")]
+    CaptureVideoEnded(CaptureVideoEndedNotification),
     #[serde(rename = "capture/click")]
     CaptureClick(CaptureClickNotification),
     #[serde(rename = "escape/pressed")]
@@ -2315,6 +2380,37 @@ pub struct CaptureStreamStopParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaptureVideoStartParams {
+    pub session: String,
+    pub app: AppRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<WindowRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epoch: Option<String>,
+    #[serde(rename = "maxEdge")]
+    pub max_edge: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fps: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bitrate: Option<i64>,
+    pub mode: VideoMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaptureVideoStartResult {
+    pub stream: i64,
+    pub width: i64,
+    pub height: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaptureVideoStopParams {
+    pub stream: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct InputProbeParams {
     pub session: String,
     pub app: AppRef,
@@ -2371,6 +2467,10 @@ pub mod methods {
     pub type CaptureStreamStartResult = super::CaptureStreamStartResult;
     pub type CaptureStreamStopParams = super::CaptureStreamStopParams;
     pub type CaptureStreamStopResult = super::Empty;
+    pub type CaptureVideoStartParams = super::CaptureVideoStartParams;
+    pub type CaptureVideoStartResult = super::CaptureVideoStartResult;
+    pub type CaptureVideoStopParams = super::CaptureVideoStopParams;
+    pub type CaptureVideoStopResult = super::Empty;
     pub type InputProbeParams = super::InputProbeParams;
     pub type InputProbeResult = super::ProbeReport;
     pub type InputRestoreSessionParams = super::InputRestoreSessionParams;
@@ -2396,6 +2496,8 @@ pub mod methods {
             "capture.screenshot" => serde_json::from_value::<CaptureScreenshotParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "capture.stream.start" => serde_json::from_value::<CaptureStreamStartParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "capture.stream.stop" => serde_json::from_value::<CaptureStreamStopParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.video.start" => serde_json::from_value::<CaptureVideoStartParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.video.stop" => serde_json::from_value::<CaptureVideoStopParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "input.probe" => serde_json::from_value::<InputProbeParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "input.restoreSession" => serde_json::from_value::<InputRestoreSessionParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "clipboard.state" => serde_json::from_value::<ClipboardStateParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
@@ -2420,6 +2522,8 @@ pub mod methods {
             "capture.screenshot" => serde_json::from_value::<CaptureScreenshotResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "capture.stream.start" => serde_json::from_value::<CaptureStreamStartResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "capture.stream.stop" => serde_json::from_value::<CaptureStreamStopResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.video.start" => serde_json::from_value::<CaptureVideoStartResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "capture.video.stop" => serde_json::from_value::<CaptureVideoStopResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "input.probe" => serde_json::from_value::<InputProbeResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "input.restoreSession" => serde_json::from_value::<InputRestoreSessionResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "clipboard.state" => serde_json::from_value::<ClipboardStateResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
@@ -2428,5 +2532,5 @@ pub mod methods {
         }
     }
     /// The wire names, in COMPUTER_METHODS' order.
-    pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "input.probe", "input.restoreSession", "clipboard.state", "escape.watch"];
+    pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "escape.watch"];
 }

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { createInterface } from 'node:readline'
+import type { Duplex } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   PREVIEW_STREAM, COMPUTER_ACTION_NAMES, COMPUTER_METHODS, ComputerNotificationSchema, RpcErrorResponseSchema,
@@ -10,6 +11,8 @@ import {
   type ComputerAction, type ComputerMethod, type ComputerParams, type ComputerResult, type Observation, type Shot
 } from '../../../shared/computer/protocol'
 import { parseObservation } from '../../../shared/computer/observation'
+import { RecordReader, encodeRecord, type PipeRecord } from '../../../shared/computer/videoPipe'
+import { encodeAck, h264Codec, parseFrame } from '../../../shared/video/nsl1'
 import { codeImage } from '../../../../scripts/lib/codeImage'
 import { FAKE_APPS, fakeServiceBin } from './testFake'
 
@@ -59,6 +62,10 @@ class Client {
   features: string[] = []
   dataDir: string
   exit: Promise<number | null>
+  /** the bytes pipe, and every record the service wrote on it */
+  pipe!: Duplex
+  records: PipeRecord[] = []
+  private readonly reader = new RecordReader()
   private nextId = 0
   private waiting = new Map<number, (frame: Frame) => void>()
 
@@ -66,7 +73,11 @@ class Client {
     this.dataDir = dataDir
     const childEnv = { ...process.env }
     for (const key of Object.keys(childEnv)) if (key.startsWith('FAKE_')) delete childEnv[key]
-    this.child = spawn(fakeServiceBin(), ['serve'], { env: { ...childEnv, ...env } })
+    // as the host starts it: a fourth pipe for the bytes of live video (§30)
+    this.child = spawn(fakeServiceBin(), ['serve'], { env: { ...childEnv, ...env }, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] }) as never
+    this.pipe = this.child.stdio[3] as never as Duplex
+    this.pipe.on('error', () => undefined)
+    this.pipe.on('data', (chunk: Buffer) => this.records.push(...this.reader.push(chunk)))
     this.exit = new Promise((resolve, reject) => {
       this.child.once('error', reject)
       this.child.once('close', resolve)
@@ -124,7 +135,7 @@ class Client {
   }
 
   async initialize(): Promise<void> {
-    const result = await this.call('initialize', { protocol: 1, client: { name: 'fake-test', version: '1' }, dataDir: this.dataDir, features: ['front', 'commit', 'save_as'] })
+    const result = await this.call('initialize', { protocol: 1, client: { name: 'fake-test', version: '1' }, dataDir: this.dataDir, features: ['front', 'commit', 'save_as', 'video'] })
     this.epoch = result.epoch
     this.features = result.features ?? []
     expect(this.epoch).toMatch(/^e-[a-z0-9]{8}$/)
@@ -198,6 +209,9 @@ describe('fake tc-computer wire', () => {
     checkShot(await c.call('capture.screenshot', c.target()), 'screenshot')
     expect(await c.call('capture.stream.start', { ...c.target(), stream: 'preview' })).toEqual({ stream: 'preview', width: 960, height: 804 })
     await c.call('capture.stream.stop', { stream: 'preview' })
+    const video = await c.call('capture.video.start', { ...c.target(), maxEdge: 1280, mode: 'budget' })
+    expect(video).toEqual({ stream: 1, width: 1280, height: 1072 })
+    await c.call('capture.video.stop', { stream: video.stream })
     expect(await c.call('input.probe', c.target())).toEqual({ pid: 16800, bundleId: 'com.apple.TextEdit', keyWindow: 'target', results: ['scroll', 'key', 'click'].map((kind) => ({ class: kind, outcome: 'honoured', restored: true, ms: 5 })) })
     expect(await c.call('input.restoreSession', {})).toEqual({ frontmost: 'nothing', pointer: 'nothing', held: null })
     expect(await c.call('clipboard.state', {})).toMatchObject({ changeCount: 1, foreignChangeAt: null, watchingSince: expect.any(Number) })
@@ -208,6 +222,59 @@ describe('fake tc-computer wire', () => {
     expect(await c.exit).toBe(0)
     const methods = c.sent.map((line) => (JSON.parse(line) as { method: string }).method)
     expect(new Set(methods)).toEqual(new Set(Object.keys(COMPUTER_METHODS)))
+  })
+
+  it('sends video as NSL1 frames on the bytes pipe, numbered by stream, and only as far ahead as the acks allow', async () => {
+    const c = new Client({ FAKE_VIDEO_FPS: '200' })
+    await c.open()
+    expect(c.features).toContain('video')
+    const one = await c.call('capture.video.start', { ...c.target(), maxEdge: 3840, mode: 'quality' })
+    // the window's own pixels when the edge allows them
+    expect(one).toEqual({ stream: 1, width: 2560, height: 2144 })
+    await until(() => c.records.length >= 8)
+    await delay(60)
+    // eight frames out with none acked: the service waits
+    expect(c.records).toHaveLength(8)
+    const frames = c.records.map((r) => ({ stream: r.stream, ...parseFrame(r.message) }))
+    expect(frames.map((f) => f.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(frames.every((f) => f.stream === 1 && f.width === 2560 && f.height === 2144)).toBe(true)
+    expect(frames.map((f) => f.keyframe)).toEqual([true, false, false, false, false, false, false, false])
+    expect(h264Codec(frames[0].data)).toBe('avc1.42c02a')
+    // an ack covers its frame and every earlier one: four more may come
+    c.pipe.write(encodeRecord(1, encodeAck(frames[0].generation, 4, 1)))
+    await until(() => c.records.length >= 12)
+    await delay(60)
+    expect(c.records).toHaveLength(12)
+    // a second stream has its own number and its own count
+    const two = await c.call('capture.video.start', { ...c.target(), maxEdge: 1280, mode: 'budget' })
+    expect(two.stream).toBe(2)
+    await until(() => c.records.some((r) => r.stream === 2))
+    expect(parseFrame(c.records.find((r) => r.stream === 2)!.message)).toMatchObject({ sequence: 1, keyframe: true, width: 1280, height: 1072 })
+    // an ack for another connection's number moves nothing
+    c.pipe.write(encodeRecord(1, encodeAck(99, 12)))
+    await delay(60)
+    expect(c.records.filter((r) => r.stream === 1)).toHaveLength(12)
+    await c.call('capture.video.stop', { stream: 1 })
+    await c.call('capture.video.stop', { stream: 2 })
+    const settled = c.records.length
+    await delay(60)
+    expect(c.records).toHaveLength(settled)
+  })
+
+  it('ends a video stream with its reason, and refuses one when Screen Recording is off or it has no pipe', async () => {
+    const ending = new Client({ FAKE_VIDEO_END_MS: '30', FAKE_VIDEO_END_REASON: 'permission' })
+    await ending.open()
+    const { stream } = await ending.call('capture.video.start', { ...ending.target(), maxEdge: 1280, mode: 'budget' })
+    await until(() => ending.frames.some((f) => f.method === 'capture/videoEnded'))
+    expect(ComputerNotificationSchema.parse(ending.frames.find((f) => f.method === 'capture/videoEnded'))).toEqual({ method: 'capture/videoEnded', params: { stream, reason: 'permission' } })
+    const denied = new Client({ FAKE_SCREEN_RECORDING: '0' })
+    await denied.open()
+    expect((await denied.error('capture.video.start', { ...denied.target(), maxEdge: 1280, mode: 'budget' }, 'permission_missing'))?.which).toBe('screenRecording')
+    // started with no pipe: it does not say it speaks video, and does not know the method
+    const bare = new Client({ FAKE_NO_VIDEO_PIPE: '1' })
+    await bare.open()
+    expect(bare.features).not.toContain('video')
+    await bare.error('capture.video.start', { ...bare.target(), maxEdge: 1280, mode: 'budget' }, undefined, -32601)
   })
 
   it('rejects calls in target-check order and reports unknown methods without data', async () => {
@@ -728,7 +795,7 @@ describe('steps that need the app active (§26)', () => {
   it('answers its features to a host that lists them, and runs Fronty\'s Save only in front', async () => {
     const c = new Client()
     await c.open()
-    expect(c.features).toEqual(['front', 'commit', 'save_as'])
+    expect(c.features).toEqual(['front', 'commit', 'save_as', 'video'])
     await c.call('state.get', c.target('Fronty'))
     expect(await c.act('Fronty', { action: 'key', text: 'super+s' })).toMatchObject({ step: { error: { kind: 'needs_tier', needed: 'front', menu: ['File', 'Save'] } } })
     const saved = await c.act('Fronty', { action: 'key', text: 'super+s' }, ['ax', 'process', 'front'])

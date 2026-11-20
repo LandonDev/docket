@@ -5,7 +5,7 @@
 public let computerProtocol: Int = 1
 
 /// What each side may speak beyond protocol 1 (COMPUTER_FEATURES); `initialize` names them both ways.
-public let computerFeatures: [String] = ["front", "commit", "save_as"]
+public let computerFeatures: [String] = ["front", "commit", "save_as", "video"]
 
 /// Every number the service applies when the host leaves a field out, and its own limits.
 public enum ComputerDefaults {
@@ -73,6 +73,22 @@ public enum ComputerDefaults {
         public static let frameMaxBytes = 524288
         public static let maxUnacked = 2
         public static let clickCarryMs = 2000
+    }
+    public enum VideoStream {
+        public static let defaultFps = 120
+        public static let minFps = 10
+        public static let maxFps = 120
+        public static let minMaxEdge = 256
+        public static let maxMaxEdge = 3840
+        public static let linkMaxEdge = 1280
+        public static let qualityBitrate = 20000000
+        public static let startBitrate = 8000000
+        public static let minBitrate = 1000000
+        public static let maxBitrate = 20000000
+        public static let sharpenAfterMs = 150
+        public static let sharpenFrames = 4
+        public static let pipeFd = 3
+        public static let pipeIdBytes = 4
     }
     public enum EscapeWatch {
         public static let leaseMs = 30000

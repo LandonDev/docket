@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 31,
+  "result": {
+    "stream": 1,
+    "width": 1280,
+    "height": 1072
+  }
+}
