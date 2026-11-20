@@ -1,13 +1,15 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:net'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { makePassword, renderAnswerFile, xmlEscape } from './answer'
-import { daemonEnv, rigConfig, rigPaths, snapshotName } from './config'
-import { encodePowerShell, psQuote, psStdin, runInSessionScript, waitedProgramScript, winQuote } from './guest'
-import { qemuArgs, swtpmArgs } from './qemu'
-import { Qmp, qmp, screendump, sendKey } from './qmp'
+import { daemonEnv, instanceName, locksFor, onTheBase, rigConfig, rigPaths, snapshotName } from '../../src/main/server/work/winvm/machine/config'
+import { keepLiveTpm, kvmWrapped, liveTpmIsNewer } from '../../src/main/server/work/winvm/machine/daemons'
+import { encodePowerShell, psQuote, psStdin, runInSessionScript, waitedProgramScript, winQuote } from '../../src/main/server/work/winvm/machine/guest'
+import { qemuArgs, swtpmArgs } from '../../src/main/server/work/winvm/machine/qemu'
+import { Qmp, qmp, screendump, sendKey } from '../../src/main/server/work/winvm/machine/qmp'
 
 const cfg = rigConfig({ WINVM_DIR: '/srv/x/win-vm' }, 999)
 const paths = rigPaths(cfg)
@@ -32,6 +34,151 @@ describe('the rig config', () => {
 
   it('takes overrides from the environment', () => {
     expect(rigConfig({ WINVM_CPUS: '4', WINVM_MEM: '8G', WINVM_SSH_PORT: '2300' }, 1)).toMatchObject({ cpus: 4, memory: '8G', sshPort: 2300 })
+  })
+})
+
+describe('two instances', () => {
+  const sCfg = rigConfig({ WINVM_DIR: '/srv/x/win-vm' }, 999, 'standing')
+  const s = rigPaths(sCfg)
+
+  it('keeps the rig exactly where it was, and the standing machine in its own folder with 6 cores, 8 GB and ssh on 22230', () => {
+    expect(cfg).toMatchObject({ instance: 'rig', dir: '/srv/x/win-vm', process: 'tc-win11', cdpPort: 9333 })
+    expect([paths.run, paths.lock, paths.qmp, paths.knownHosts]).toEqual(['/srv/x/win-vm/run', '/srv/x/win-vm/.lock', '/srv/x/win-vm/run/qmp.sock', '/srv/x/win-vm/base/known_hosts'])
+    expect(sCfg).toMatchObject({ instance: 'standing', root: '/srv/x/win-vm', dir: '/srv/x/win-vm/standing', cpus: 6, memory: '8G', sshPort: 22230, cdpPort: null })
+    expect(sCfg.tpmDir).toBe('/tmp/win-vm-tpm-999-standing')
+    expect(s.runDisk).toBe('/srv/x/win-vm/standing/run/disk.qcow2')
+    expect(s.baseDisk).toBe(paths.baseDisk)
+    expect(sCfg.process.length).toBeLessThanOrEqual(15) // /proc's comm, by which its pid file is checked
+  })
+
+  it('never share a file that changes, nor a port', () => {
+    const own = (q: typeof paths) => [q.run, q.lock, q.shots, q.snapshots, q.knownHosts, q.tpmState, q.tpmSock, q.tpmPid, q.tpmLog]
+    const rigOwn = own(paths)
+    for (const f of own(s)) for (const r of rigOwn) expect(f === r || f.startsWith(`${r}/`) || r.startsWith(`${f}/`), `${f} / ${r}`).toBe(false)
+    expect(sCfg.process).not.toBe(cfg.process)
+    expect(sCfg.sshPort).not.toBe(cfg.sshPort)
+  })
+
+  it('gives each machine its own name, sockets, forwards and size', () => {
+    const a = qemuArgs(sCfg, s, { disk: s.runDisk, vars: s.runVars })
+    const valueOf = (flag: string) => a.filter((_, i) => a[i - 1] === flag)
+    expect(valueOf('-name')).toEqual(['tc-win11-stand,process=tc-win11-stand'])
+    expect(valueOf('-netdev')[0]).toBe('user,id=n0,hostfwd=tcp:127.0.0.1:22230-:22')
+    expect(valueOf('-smp')).toEqual(['6,sockets=1,cores=6,threads=1'])
+    expect(valueOf('-m')).toEqual(['8G'])
+    expect(valueOf('-qmp')).toEqual(['unix:/srv/x/win-vm/standing/run/qmp.sock,server=on,wait=off'])
+    expect(valueOf('-pidfile')).toEqual(['/srv/x/win-vm/standing/run/qemu.pid'])
+    expect(a.join(' ')).toContain('file=/srv/x/win-vm/standing/run/OVMF_VARS.fd')
+    expect(swtpmArgs(s).join(' ')).toContain('path=/tmp/win-vm-tpm-999-standing/swtpm.sock')
+  })
+
+  it('names the instance by flag, the rig by default, and refuses any other', () => {
+    expect(instanceName(undefined)).toBe('rig')
+    expect(instanceName('standing')).toBe('standing')
+    expect(() => instanceName('prod')).toThrow('no instance "prod"')
+    expect(rigConfig({}, 1).instance).toBe('rig')
+  })
+
+  it('locks each instance on its own, and install on both', () => {
+    expect(locksFor('up', cfg)).toEqual(['/srv/x/win-vm/.lock'])
+    expect(locksFor('down', sCfg)).toEqual(['/srv/x/win-vm/standing/.lock'])
+    expect(locksFor('install', cfg)).toEqual(['/srv/x/win-vm/standing/.lock', '/srv/x/win-vm/.lock'])
+  })
+
+  it('starts QEMU through sg kvm when the shell lacks the group', () => {
+    expect(kvmWrapped('qemu', ['-name', "a b'c"], true)).toEqual(['qemu', ['-name', "a b'c"]])
+    expect(kvmWrapped('qemu', ['-name', "a b'c"], false)).toEqual(['sg', ['kvm', '-c', `'qemu' '-name' 'a b'\\''c'`]])
+  })
+})
+
+describe('what stands on the base', () => {
+  let root = ''
+  afterEach(() => root && rmSync(root, { recursive: true, force: true }))
+  const touch = (f: string) => {
+    mkdirSync(join(f, '..'), { recursive: true })
+    writeFileSync(f, '')
+  }
+
+  it("lists the rig's finished snapshots and the standing machine's disk", () => {
+    root = mkdtempSync(join(tmpdir(), 'winvm-'))
+    expect(onTheBase(root)).toEqual([])
+    touch(join(root, 'snapshots', 'half.part', 'disk.qcow2'))
+    touch(join(root, 'run', 'disk.qcow2'))
+    expect(onTheBase(root)).toEqual([])
+    touch(join(root, 'snapshots', 'clean', 'FROM'))
+    touch(join(root, 'standing', 'run', 'disk.qcow2'))
+    expect(onTheBase(root)).toEqual(['snapshot clean', `the standing machine's disk (${join(root, 'standing', 'run', 'disk.qcow2')})`])
+  })
+
+  const bun = [join(homedir(), '.bun', 'bin', 'bun'), '/srv/agents/home/.bun/bin/bun'].find((b) => existsSync(b))
+  it.skipIf(!bun || process.platform !== 'linux')('install --force refuses while the standing disk stands on the base', () => {
+    root = mkdtempSync(join(tmpdir(), 'winvm-'))
+    touch(join(root, 'base', 'READY'))
+    touch(join(root, 'standing', 'run', 'disk.qcow2'))
+    const r = spawnSync(bun!, [join(__dirname, 'vm.ts'), 'install', '--force'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, WINVM_DIR: root, WINVM_TPM_DIR: join(root, 'tpm') } })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain("the standing machine's disk")
+    expect(existsSync(join(root, 'base', 'READY'))).toBe(true)
+    expect(existsSync(join(root, 'standing', '.lock')) && existsSync(join(root, '.lock'))).toBe(true)
+  })
+
+  it.skipIf(!bun || process.platform !== 'linux')("holds each instance's lock on its own: the rig's down runs while the standing machine's is held", () => {
+    root = mkdtempSync(join(tmpdir(), 'winvm-'))
+    touch(join(root, 'standing', '.lock'))
+    const env = { PATH: process.env.PATH, HOME: process.env.HOME, WINVM_DIR: root, WINVM_TPM_DIR: join(root, 'tpm') }
+    const underStandingLock = (...args: string[]) => spawnSync('flock', [join(root, 'standing', '.lock'), bun!, join(__dirname, 'vm.ts'), ...args], { encoding: 'utf8', env })
+    const standing = underStandingLock('down', '--instance', 'standing')
+    expect(standing.status).toBe(75)
+    expect(standing.stderr).toContain('another install, up, down, snapshot or fetch of the standing machine is running')
+    const rig = underStandingLock('down')
+    expect(rig.status).toBe(0)
+    expect(rig.stdout).toContain('not running')
+  })
+})
+
+describe('the TPM after a crash or a guest\'s own stop', () => {
+  let root = ''
+  afterEach(() => root && rmSync(root, { recursive: true, force: true }))
+  function machine(instance: 'rig' | 'standing') {
+    root = mkdtempSync(join(tmpdir(), 'winvm-'))
+    const c = rigConfig({ WINVM_DIR: root, WINVM_TPM_DIR: join(root, 'live') }, 1, instance)
+    const p = rigPaths(c)
+    const write = (dir: string, body: string, at: number) => {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'tpm2-00.permall'), body)
+      utimesSync(join(dir, 'tpm2-00.permall'), at, at)
+    }
+    return { c, p, write }
+  }
+
+  it('prefers the live state when it is newer than the run\'s copy, rather than roll back', async () => {
+    const { c, p, write } = machine('rig')
+    write(p.runTpm, 'saved at the last clean stop', 1000)
+    write(p.tpmState, 'changed after it (a PIN set up), then QEMU crashed', 2000)
+    expect(liveTpmIsNewer(p)).toBe(true)
+    expect(await keepLiveTpm(c, p)).toBe(true)
+    expect(readFileSync(join(p.runTpm, 'tpm2-00.permall'), 'utf8')).toBe('changed after it (a PIN set up), then QEMU crashed')
+    expect(liveTpmIsNewer(p)).toBe(false)
+  })
+
+  it("keeps the run's copy after a clean stop, and saves a first state for a run that has none", async () => {
+    const { c, p, write } = machine('standing')
+    write(p.tpmState, 'live', 1000)
+    write(p.runTpm, 'copied at the clean stop', 2000)
+    expect(await keepLiveTpm(c, p)).toBe(false)
+    expect(readFileSync(join(p.runTpm, 'tpm2-00.permall'), 'utf8')).toBe('copied at the clean stop')
+    rmSync(p.runTpm, { recursive: true })
+    expect(await keepLiveTpm(c, p)).toBe(true)
+    expect(readFileSync(join(p.runTpm, 'tpm2-00.permall'), 'utf8')).toBe('live')
+  })
+
+  it('does nothing with no live state or no run', async () => {
+    const { c, p, write } = machine('rig')
+    write(p.runTpm, 'saved', 1000)
+    expect(await keepLiveTpm(c, p)).toBe(false)
+    rmSync(p.run, { recursive: true, force: true })
+    write(p.tpmState, 'live', 1000)
+    expect(await keepLiveTpm(c, p)).toBe(false)
   })
 })
 

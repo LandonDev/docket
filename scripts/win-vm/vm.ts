@@ -13,21 +13,25 @@
  *   shot [FILE.png]                   a QMP screenshot of the desktop
  *   run-in-session [--wait] [--timeout S] [--cwd DIR] PROGRAM [ARGS...]   start a program on the logged-on desktop
  *   snapshot NAME | --list | --rm NAME   keep the stopped run as a named starting point
+ *
+ * Every command but fetch and install takes `--instance standing` as its first
+ * argument: the standing machine beside the rig, with its own lasting disk, lock and ports. The default is the rig.
  */
 import { spawnSync, type SpawnSyncOptions } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { accessSync, constants } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { ADMIN_USER, GIT, ISO_URL, STANDARD_USER, daemonEnv, rigConfig, rigPaths, snapshotName } from './config'
+import { fileURLToPath } from 'node:url'
+import { ADMIN_USER, GIT, ISO_URL, STANDARD_USER, instanceName, locksFor, onTheBase, rigConfig, rigPaths, snapshotName, type RigConfig, type RigPaths } from '../../src/main/server/work/winvm/machine/config'
+import { keepLiveTpm, qemuPid as qemuPidOf, saveTpm, startQemu as startQemuOf, startTpm as startTpmOf, stopTpm as stopTpmOf, waitFor as waitForOf } from '../../src/main/server/work/winvm/machine/daemons'
+import { WINVER_SCRIPT, psStdin, runInSessionScript } from '../../src/main/server/work/winvm/machine/guest'
+import { powerdown, qmp, quit, screendump, sendKey } from '../../src/main/server/work/winvm/machine/qmp'
 import { makePassword, renderAnswerFile } from './answer'
-import { WINVER_SCRIPT, psStdin, runInSessionScript } from './guest'
-import { qemuArgs, swtpmArgs } from './qemu'
-import { powerdown, qmp, quit, screendump, sendKey } from './qmp'
 
-const HERE = dirname(new URL(import.meta.url).pathname)
-const c = rigConfig()
-const p = rigPaths(c)
+const SCRIPT = fileURLToPath(import.meta.url)
+const HERE = dirname(SCRIPT)
+let c!: RigConfig
+let p!: RigPaths
 
 class Refusal extends Error {}
 const log = (msg: string) => console.log(`[win-vm ${new Date().toISOString().slice(11, 19)}] ${msg}`)
@@ -47,40 +51,13 @@ function must(cmd: string, args: string[], opts: SpawnSyncOptions = {}) {
   return r
 }
 
-const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
-
-/** A shell started before `usermod -aG kvm agents` lacks the group; `sg kvm` gives it to the child without a restart. */
-function kvmWrapped(cmd: string, args: string[]): [string, string[]] {
-  try {
-    accessSync('/dev/kvm', constants.R_OK | constants.W_OK)
-    return [cmd, args]
-  } catch {
-    return ['sg', ['kvm', '-c', [cmd, ...args].map(shq).join(' ')]]
-  }
-}
-
-/** The pid in a pid file, only while that pid is still the process it names (a pid comes round again after a restart). */
-function livePid(file: string, isIt: (pid: number) => boolean): number | null {
-  try {
-    const pid = Number(readFileSync(file, 'utf8').trim())
-    process.kill(pid, 0)
-    return isIt(pid) ? pid : null
-  } catch {
-    return null
-  }
-}
-const procFile = (pid: number, f: string) => readFileSync(`/proc/${pid}/${f}`, 'utf8')
-const qemuPid = () => livePid(p.pid, (pid) => procFile(pid, 'comm').trim() === 'tc-win11')
-const tpmPid = () => livePid(p.tpmPid, (pid) => procFile(pid, 'cmdline').includes(p.tpmSock))
-
-async function waitFor(what: string, timeoutSec: number, check: () => boolean | Promise<boolean>, everySec = 5): Promise<void> {
-  const end = Date.now() + timeoutSec * 1000
-  while (Date.now() < end) {
-    if (await check()) return
-    await sleep(everySec * 1000)
-  }
-  die(`timed out after ${timeoutSec} s waiting for ${what}`)
-}
+// The machine's code lives in src/main/server/work/winvm/machine/, shared with the server's keeper.
+const qemuPid = () => qemuPidOf(c, p)
+const stopTpm = () => stopTpmOf(p)
+const startTpm = (from: string | null) => startTpmOf(c, p, from)
+const waitFor = (what: string, timeoutSec: number, check: () => boolean | Promise<boolean>, everySec = 5) =>
+  waitForOf(what, timeoutSec, check, everySec).catch((e: Error) => die(e.message))
+const machineName = () => (c.instance === 'rig' ? 'the rig' : 'the standing machine')
 
 // ---- ssh -------------------------------------------------------------------------------------------------
 
@@ -113,33 +90,9 @@ function desktopUp(user = STANDARD_USER): boolean {
 
 // ---- the machine -----------------------------------------------------------------------------------------
 
-function stopTpm(): void {
-  const pid = tpmPid()
-  if (pid !== null) process.kill(pid, 'SIGTERM')
-}
-async function startTpm(from: string | null): Promise<void> {
-  stopTpm()
-  await waitFor('the old swtpm to exit', 10, () => tpmPid() === null, 0.2)
-  rmSync(c.tpmDir, { recursive: true, force: true })
-  mkdirSync(p.tpmState, { recursive: true, mode: 0o700 })
-  if (from && existsSync(from)) cpSync(from, p.tpmState, { recursive: true })
-  must('swtpm', swtpmArgs(p), { env: daemonEnv() })
-}
-async function saveTpm(to: string): Promise<void> {
-  await waitFor('swtpm to exit', 30, () => tpmPid() === null, 1)
-  rmSync(to, { recursive: true, force: true })
-  cpSync(p.tpmState, to, { recursive: true })
-}
-
-function startQemu(disk: string, vars: string, install?: { iso: string; configDir: string }): void {
-  mkdirSync(p.run, { recursive: true })
-  const [cmd, args] = kvmWrapped('qemu-system-x86_64', qemuArgs(c, p, { disk, vars, install }))
-  const r = run(cmd, args, { env: daemonEnv() })
-  if (r.status !== 0) {
-    stopTpm()
-    die(`qemu-system-x86_64 exited ${r.status}`)
-  }
-  log(`machine up (pid ${qemuPid()}): ${c.cpus} cores, ${c.memory}, ssh on 127.0.0.1:${c.sshPort}`)
+async function startQemu(disk: string, vars: string, install?: { iso: string; configDir: string }): Promise<void> {
+  const pid = await startQemuOf(c, p, { disk, vars, install }).catch((e: Error) => die(e.message))
+  log(`${machineName()} is up (pid ${pid}): ${c.cpus} cores, ${c.memory}, ssh on 127.0.0.1:${c.sshPort}`)
 }
 
 async function stopMachine(force: boolean): Promise<void> {
@@ -177,7 +130,8 @@ async function stopAfterFailure(): Promise<void> {
 async function install(force: boolean): Promise<void> {
   if (qemuPid() !== null) die('the machine is running; down.sh first')
   if (existsSync(p.baseReady) && !force) die(`a base image exists (${p.baseReady}); install --force rebuilds it`)
-  if (snapshotNames().length) die(`snapshots are built on the base image; remove them first (snapshot.sh --rm ${snapshotNames().join(', ')})`)
+  const onBase = onTheBase(c.root)
+  if (onBase.length) die(`a rebuild would break what stands on the base image; remove it first: ${onBase.join(', ')}`)
   if (!existsSync(p.iso)) die(`no ISO at ${p.iso}; run fetch.sh first`)
   const git = join(p.payload, GIT.name)
   if (!existsSync(git)) die(`no ${GIT.name} in ${p.payload}; run fetch.sh first`)
@@ -209,7 +163,7 @@ async function install(force: boolean): Promise<void> {
   const started = Date.now()
   try {
     await startTpm(null)
-    startQemu(p.baseDisk, p.baseVars, { iso: p.iso, configDir: stick })
+    await startQemu(p.baseDisk, p.baseVars, { iso: p.iso, configDir: stick })
     // The ISO's boot loader asks for a key before it boots from the disc.
     for (let i = 0; i < 30; i++) {
       await qmp(p.qmp, sendKey('ret')).catch(() => {})
@@ -235,7 +189,7 @@ async function install(force: boolean): Promise<void> {
     log(`${STANDARD_USER} is logged on; letting the first logon settle`)
     await sleep(90_000)
     await stopMachine(false)
-    await saveTpm(p.baseTpm)
+    await saveTpm(p, p.baseTpm)
   } catch (e) {
     await stopAfterFailure()
     throw e
@@ -256,11 +210,16 @@ function isoInfo(): { file: string; sha256: string } {
 async function up(mode: { keep: boolean; from: string | null; wait: boolean }): Promise<void> {
   const pid = qemuPid()
   if (pid !== null) die(`already running (pid ${pid}); down.sh first, or use it as it is`)
+  // The standing machine keeps its disk: up resumes it, and makes it from the base the first time.
+  const standing = c.instance === 'standing'
+  if (standing && mode.from) die('the standing machine keeps its own disk; --from is for the rig')
+  const keep = mode.keep || (standing && existsSync(p.runDisk))
   let tpmFrom: string
-  if (mode.keep) {
+  if (keep) {
     if (!existsSync(p.runDisk)) die('no run to keep; up.sh starts a fresh one')
+    if (await keepLiveTpm(c, p)) log('kept the TPM as the machine left it (newer than its last clean stop)')
     tpmFrom = existsSync(p.runTpm) ? p.runTpm : p.baseTpm
-    log('resuming the last run')
+    log(standing ? 'resuming the standing machine' : 'resuming the last run')
   } else {
     const src = mode.from ? join(p.snapshots, mode.from) : p.base
     if (!existsSync(mode.from ? join(src, 'FROM') : p.baseReady)) die(mode.from ? `no snapshot ${mode.from}` : 'no base image; run install.sh')
@@ -270,20 +229,20 @@ async function up(mode: { keep: boolean; from: string | null; wait: boolean }): 
     copyFileSync(join(src, 'OVMF_VARS.fd'), p.runVars)
     writeFileSync(join(p.run, 'FROM'), (mode.from ?? 'base') + '\n')
     tpmFrom = existsSync(join(src, 'tpm')) ? join(src, 'tpm') : p.baseTpm
-    log(`fresh overlay on ${mode.from ? `snapshot ${mode.from}` : 'the base image'}`)
+    log(standing ? "the standing machine's disk, made from the base image" : `fresh overlay on ${mode.from ? `snapshot ${mode.from}` : 'the base image'}`)
   }
   try {
     await startTpm(tpmFrom)
-    startQemu(p.runDisk, p.runVars)
+    await startQemu(p.runDisk, p.runVars)
     if (!mode.wait) return
     await waitFor('ssh', 300, () => sshOk(STANDARD_USER))
     await waitFor(`${STANDARD_USER}'s desktop`, 180, () => desktopUp())
   } catch (e) {
-    if (mode.keep && qemuPid() !== null) {
+    if (keep && qemuPid() !== null) {
       // A kept run is the user's: shut it down properly and keep its TPM, rather than pull the plug.
       log('stopping the kept run cleanly')
       await stopMachine(false)
-      await saveTpm(p.runTpm).catch(() => {})
+      await saveTpm(p, p.runTpm).catch(() => {})
     } else await stopAfterFailure()
     throw e
   }
@@ -293,24 +252,28 @@ async function up(mode: { keep: boolean; from: string | null; wait: boolean }): 
 async function down(force: boolean): Promise<void> {
   if (qemuPid() === null) {
     stopTpm()
+    // The guest stopped itself (or QEMU crashed): keep the TPM as it left it.
+    if (await keepLiveTpm(c, p)) log('saved the TPM state the machine stopped with')
     log('not running')
     return
   }
   await stopMachine(force)
-  await saveTpm(p.runTpm)
+  await saveTpm(p, p.runTpm)
   log('stopped')
 }
 
 function status(): void {
   const pid = qemuPid()
+  const flag = c.instance === 'rig' ? '' : ` --instance ${c.instance}`
   if (pid === null) {
-    console.log(`stopped${existsSync(p.runDisk) ? ' (a run is kept: up.sh --keep resumes it)' : ''}`)
+    const kept = c.instance === 'standing' ? ` (its disk is kept: up.sh${flag} resumes it)` : ' (a run is kept: up.sh --keep resumes it)'
+    console.log(`${machineName()}: stopped${existsSync(p.runDisk) ? kept : ''}`)
     console.log(`base image: ${existsSync(p.baseReady) ? readFileSync(p.baseReady, 'utf8').trim() : 'none'}`)
     return
   }
   const from = existsSync(join(p.run, 'FROM')) ? readFileSync(join(p.run, 'FROM'), 'utf8').trim() : '?'
-  console.log(`running: pid ${pid}, overlay on ${from}, ${c.cpus} cores, ${c.memory}`)
-  console.log(`ssh 127.0.0.1:${c.sshPort}, CDP forward 127.0.0.1:${c.cdpPort}`)
+  console.log(`${machineName()}: running, pid ${pid}, overlay on ${from}, ${c.cpus} cores, ${c.memory}`)
+  console.log(`ssh 127.0.0.1:${c.sshPort}${c.cdpPort === null ? '' : `, CDP forward 127.0.0.1:${c.cdpPort}`}`)
   console.log(psCapture(ADMIN_USER, WINVER_SCRIPT).out || '(guest not answering on ssh yet)')
 }
 
@@ -396,6 +359,7 @@ function snapshot(argv: string[]): void {
     return
   }
   const name = snapshotName(argv[0])
+  if (c.instance !== 'rig') die('snapshot is for the rig; the standing machine keeps one lasting disk')
   if (qemuPid() !== null) die('stop the machine first (down.sh); a snapshot is taken of a stopped run')
   if (!existsSync(p.runDisk)) die('no run to keep')
   const dest = join(p.snapshots, name)
@@ -443,8 +407,29 @@ function flags(argv: string[], known: Record<string, 'bool' | 'value'>): Record<
   return out
 }
 
+/** The commands that change a machine: one at a time per instance, under its lock (install takes both). */
+const LOCKED = ['install', 'up', 'down', 'snapshot', 'fetch']
+
+/** Runs this same command again under its locks; flock answers 75 when another holds one. */
+function underLocks(cmd: string): number {
+  const locks = locksFor(cmd, c)
+  for (const l of locks) mkdirSync(dirname(l), { recursive: true })
+  const r = spawnSync('flock', [...locks.flatMap((l, i) => [...(i ? ['flock'] : []), '-o', '-n', '-E', '75', l]), process.execPath, SCRIPT, ...process.argv.slice(2)], {
+    stdio: 'inherit',
+    env: { ...process.env, WINVM_LOCKED: '1' }
+  })
+  if (r.error) throw r.error
+  if (r.status === 75) console.error(`win-vm: another install, up, down, snapshot or fetch${c.instance === 'rig' ? '' : ` of ${machineName()}`} is running`)
+  return r.status ?? 1
+}
+
 async function main(): Promise<number> {
   const [cmd, ...argv] = process.argv.slice(2)
+  const named = argv[0] === '--instance' ? (argv.splice(0, 2)[1] ?? '') : undefined
+  c = rigConfig(process.env, undefined, instanceName(named))
+  p = rigPaths(c)
+  if ((cmd === 'install' || cmd === 'fetch') && c.instance !== 'rig') die(`${cmd} is for the base image both machines stand on; it takes no instance`)
+  if (LOCKED.includes(cmd) && process.env.WINVM_LOCKED !== '1') return underLocks(cmd)
   switch (cmd) {
     case 'fetch':
       flags(argv, {})

@@ -21,8 +21,8 @@ import { tmpdir } from 'node:os'
 import { connect, type Socket } from 'node:net'
 import { basename, join, resolve, win32 } from 'node:path'
 import { PassThrough } from 'node:stream'
-import { qmp, screendump, sendKey } from '../win-vm/qmp'
-import { STANDARD_USER, rigConfig, rigPaths } from '../win-vm/config'
+import { qmp, screendump, sendKey } from '../../src/main/server/work/winvm/machine/qmp'
+import { STANDARD_USER, rigConfig, rigPaths } from '../../src/main/server/work/winvm/machine/config'
 
 export const repo = resolve(import.meta.dirname, '..', '..')
 export const EXE = join(repo, 'native/tc-computer-win/target/x86_64-pc-windows-msvc/release/tc-computer.exe')

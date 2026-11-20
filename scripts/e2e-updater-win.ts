@@ -40,7 +40,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, wr
 import { join } from 'node:path'
 import { attach, type Cdp, prepareEnv, readPackage, REPO, sh, sleep, waitForReleaseTrain } from './lib/packagedApp'
 import { parseFeed, WIN_CONFIG, winReleaseFiles } from './lib/winRelease'
-import { rigConfig, rigPaths, STANDARD_USER } from './win-vm/config'
+import { rigConfig, rigPaths, STANDARD_USER } from '../src/main/server/work/winvm/machine/config'
 
 const ROOT = '/tmp/tc-updater-e2e-win'
 const APP_ID = 'dev.landon.tempcode.e2e'

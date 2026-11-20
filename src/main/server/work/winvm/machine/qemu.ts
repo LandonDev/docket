@@ -18,9 +18,9 @@ export interface InstallMedia {
  * pointer input, user-mode networking with forwards bound to 127.0.0.1 only, no display (QMP takes screenshots).
  */
 export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install }: Machine): string[] {
-  const fwd = [`hostfwd=tcp:127.0.0.1:${c.sshPort}-:22`, `hostfwd=tcp:127.0.0.1:${c.cdpPort}-:${c.cdpPort}`]
+  const fwd = [`hostfwd=tcp:127.0.0.1:${c.sshPort}-:22`, ...(c.cdpPort === null ? [] : [`hostfwd=tcp:127.0.0.1:${c.cdpPort}-:${c.cdpPort}`])]
   const args = [
-    '-name', 'tc-win11,process=tc-win11',
+    '-name', `${c.process},process=${c.process}`,
     '-machine', 'q35,smm=on,accel=kvm',
     '-cpu', 'host,hv_relaxed,hv_vapic,hv_spinlocks=0x1fff,hv_time,hv_vpindex,hv_synic,hv_stimer',
     '-smp', `${c.cpus},sockets=1,cores=${c.cpus},threads=1`,
@@ -56,7 +56,7 @@ export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install }: Mac
   return args
 }
 
-/** swtpm as a daemon that exits when QEMU lets go of it; state, socket, pid and log under /tmp (its AppArmor profile). */
+/** swtpm as a daemon that exits when QEMU lets go of it; live state, socket, pid and log under /tmp (its AppArmor profile). */
 export function swtpmArgs(p: RigPaths): string[] {
   return [
     'socket', '--tpm2',
