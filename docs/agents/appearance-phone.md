@@ -2,8 +2,10 @@
 
 The phone was checked in light, not redesigned (the plan of 2026-11-19).
 A helper on the Mac ran the simulator proof's shell, threads and work sets
-headless on an iPhone 17 Pro (iOS 27.0) and read all 66 light shots; ratios
-are measured from the PNGs. Floors: text 4.5:1, a glyph 3:1.
+headless on an iPhone 17 Pro (iOS 27.0) and read the 66 light shots; ratios
+are measured from the PNGs. Work screens 30 to 46 were read from a sheet of
+thumbnails, not one by one: they showed only the patterns below, and a small
+item on one of them could have been missed. Floors: text 4.5:1, a glyph 3:1.
 
 ## Fixed
 
