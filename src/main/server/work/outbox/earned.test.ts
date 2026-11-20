@@ -375,6 +375,19 @@ describe('an earned grant on the hold', () => {
     expect(rig.downstream).toHaveLength(1)
   })
 
+  it("tells each decided listener what the thread wrote, beside the act as it went: the house rules read his edits from it", async () => {
+    const slack = await rig.addon('slack', 'ws-purdue')
+    await rig.rpc<ToolRulesCard>('work.outbox.setRules', { addonId: slack.id, rules: { echo: 'held' } })
+    const seen: { sent: unknown; asHeld: unknown }[] = []
+    const off = rig.work.ctx.held.onDecided((item, asHeld) => seen.push({ sent: (item.payload as { arguments: unknown }).arguments, asHeld }))
+    await rig.claudeCall('t-work', slack.id, 'echo', { text: 'Sounds great!! See you at 7' })
+    const [item] = await rig.waiting()
+    const edited = await rig.rpc<OutboxItem>('work.outbox.edit', { ref: item!.ref, payload: { arguments: { text: 'See you at 7' } } })
+    await rig.rpc('work.outbox.send', { ref: edited.ref })
+    off()
+    expect(seen).toEqual([{ sent: { text: 'See you at 7' }, asHeld: { addonId: slack.id, tool: 'echo', arguments: { text: 'Sounds great!! See you at 7' } } }])
+  })
+
   it("a routine's acts earn a grant for that routine alone; taking it gives the routine's grant", async () => {
     rig.work.ctx.db.exec(`CREATE TABLE IF NOT EXISTS work_routine_runs (id TEXT PRIMARY KEY, routine_id TEXT NOT NULL)`)
     rig.work.ctx.db.exec(`INSERT INTO work_routine_runs (id, routine_id) VALUES ('run-a1', 'routine-a')`)

@@ -1,6 +1,6 @@
 import { errorText } from '@shared/work'
 import type { WorkCtx } from '../modules'
-import { dropDraft, noteDraft, recordSent, staleDrafts, trackDraft, trackedDraft, trackedDraftIds, TRACK_DAYS } from './store'
+import { dropDraft, noteDraft, recordPost, recordSent, staleDrafts, trackDraft, trackedDraft, trackedDraftIds, TRACK_DAYS } from './store'
 
 /**
  * Watches the drafts this host's Work threads make, from the moment the host
@@ -112,5 +112,44 @@ export function watchDrafts(ctx: WorkCtx, changed: (workspaceId: string) => void
     forget(draftIds) {
       for (const id of draftIds) unfollow(id)
     }
+  }
+}
+
+/** Who presses for himself: the owner here or on a paired device. */
+const BY_HIM = new Set(['owner', 'owner:remote'])
+
+/**
+ * A held Teams reply he changed with Edit before his press. The outbox
+ * keeps the words the thread wrote (`asHeld`) and no thread can change a
+ * held row, so what he sent against them is his edit alone. A Work Chat's
+ * post belongs to no workspace's rules.
+ */
+export function watchPosts(ctx: WorkCtx, changed: (workspaceId: string) => void): () => void {
+  try {
+    return ctx.held.onDecided((item, asHeld) => {
+      if (item.kind !== 'teams.post' || item.state !== 'sent' || !BY_HIM.has(item.decidedBy ?? '') || !item.sessionId || !item.workspaceId) return
+      const before = asHeld as { text?: unknown } | null
+      const after = item.payload as { chat?: unknown; text?: unknown } | null
+      if (typeof before?.text !== 'string' || typeof after?.text !== 'string') return
+      try {
+        const workspace = recordPost(ctx.db, {
+          draftId: `teams:${item.ref.id}`,
+          workspaceId: item.workspaceId,
+          sessionId: item.sessionId,
+          recipient: `${typeof after.chat === 'string' ? after.chat : 'a chat'} in Teams`,
+          subject: '',
+          sentAt: item.decidedAt ?? Date.now(),
+          agentText: before.text,
+          text: after.text
+        })
+        if (workspace) changed(workspace)
+      } catch (err) {
+        ctx.log(`rules: post ${item.ref.id}: ${errorText(err)}`)
+      }
+    })
+  } catch (err) {
+    // The hold did not come up on this host: there are no held posts to read.
+    ctx.log(`rules: held posts are not read: ${errorText(err)}`)
+    return () => {}
   }
 }

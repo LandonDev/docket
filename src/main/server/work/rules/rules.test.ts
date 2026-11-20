@@ -7,7 +7,8 @@ import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { modulePreambles, workPreamble, workPreambleHead } from '../preamble'
 import { habitsOf } from './habits'
 import { rules, rulesPreamble } from '.'
-import { watchDrafts } from './watch'
+import { watchDrafts, watchPosts } from './watch'
+import type { HeldItem } from '@shared/work'
 
 /**
  * House rules on the host (docs/agents/work-rules.md): drafts a Work thread
@@ -110,6 +111,63 @@ beforeEach(() => {
 })
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
+
+describe('proposals from his edits to a held Teams reply', () => {
+  /** The outbox's decided listener, as ctx.held hands it: the item as it went and the words the thread wrote. */
+  let decided: ((item: HeldItem, asHeld: unknown) => void) | null
+  const post = (n: number, agent: string, sent: string, over: Partial<HeldItem> = {}) =>
+    decided!(
+      { ref: { at: 'host', id: `ha_${n}` }, kind: 'teams.post', workspaceId: 'ws-purdue', sessionId: 't1', sector: 'purdue', summary: 's', verb: 'Post', account: null, state: 'sent', payload: { chat: 'Esports staff', text: sent }, createdAt: n, decidedBy: 'owner', decidedAt: 1000 + n, ...over } as HeldItem,
+      { chat: 'Esports staff', text: agent }
+    )
+  beforeEach(() => {
+    decided = null
+    ;(ctx as unknown as { held: unknown }).held = { onDecided: (fn: typeof decided) => ((decided = fn), () => (decided = null)) }
+  })
+
+  it('two posts he changed the same way make a proposal, read only for what a post shows plainly', async () => {
+    const changed: string[] = []
+    const stop = watchPosts(ctx, (w) => changed.push(w))
+    post(1, 'Sounds great!! Running a few minutes late, my apologies.', 'Running a few minutes late.')
+    post(2, 'Sounds great!! Scrims start at 7, my apologies.', 'Scrims start at 7.')
+    const { proposals } = await page()
+    expect(proposals.map((p) => p.text)).toEqual(['Leave out “Sounds great”'])
+    expect(proposals[0]!.edits.map((e) => e.to)).toEqual(['Esports staff in Teams', 'Esports staff in Teams'])
+    expect(changed).toEqual(['ws-purdue', 'ws-purdue'])
+    // a post cut hard twice is no "Keep mail to about N words": that reads a mail's length, not a post's
+    const long = Array.from({ length: 50 }, (_, i) => `word${i}`).join(' ')
+    post(3, `${long}. Thanks.`, 'Thanks.')
+    post(4, `${long} again. Thanks.`, 'Thanks.')
+    expect((await page()).proposals.some((p) => /words/.test(p.text))).toBe(false)
+    stop()
+    expect(decided).toBeNull()
+  })
+
+  it("reads no post a grant or another hand sent, none he did not change, none of a Work Chat, and none whose first words were not kept", async () => {
+    watchPosts(ctx, () => {})
+    const agent = 'Sounds great!! Running late.'
+    const his = 'Running late.'
+    post(1, agent, his, { decidedBy: 'grant:gr_1' })
+    post(2, agent, his, { decidedBy: 'grant:gr_1' })
+    post(3, agent, agent)
+    post(4, agent, agent)
+    post(5, agent, his, { workspaceId: null, sessionId: 'chat' })
+    post(6, agent, his, { workspaceId: null, sessionId: 'chat' })
+    post(7, agent, his, { state: 'discarded' })
+    post(8, agent, his, { state: 'discarded' })
+    decided!({ ref: { at: 'host', id: 'ha_9' }, kind: 'teams.post', workspaceId: 'ws-purdue', sessionId: 't1', state: 'sent', payload: { chat: 'c', text: his }, decidedBy: 'owner', decidedAt: 1 } as HeldItem, null)
+    decided!({ ref: { at: 'host', id: 'ha_10' }, kind: 'teams.post', workspaceId: 'ws-purdue', sessionId: 't1', state: 'sent', payload: { chat: 'c', text: his }, decidedBy: 'owner', decidedAt: 2 } as HeldItem, null)
+    expect((await page()).proposals).toEqual([])
+    // and one edited post with one edited mail is a habit: the same words cut in either place
+    post(11, agent, his)
+    expect((await page()).proposals).toEqual([])
+  })
+
+  it('a host whose hold did not come up reads no posts and starts anyway', () => {
+    ;(ctx as unknown as { held: unknown }).held = undefined
+    expect(() => watchPosts(ctx, () => {})()).not.toThrow()
+  })
+})
 
 describe('proposals from his edits', () => {
   it('three drafts he edited the same way make one proposal, with the three edits as its evidence', async () => {

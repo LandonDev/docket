@@ -250,7 +250,25 @@ export function recordSent(db: DatabaseSync, sent: SentDraft, now = Date.now()):
   const d = trackedDraft(db, sent.draftId)
   if (!d) return null
   dropDraft(db, sent.draftId)
-  const habits = habitsOf(d.agentText, sent.text)
+  return recordEdit(db, { ...sent, workspaceId: d.workspaceId, sessionId: d.sessionId, agentText: d.agentText }, now)
+}
+
+/** The habits a post shows plainly: a phrase swapped or cut, an exclamation mark. The rest read a mail's shape (a greeting, a sign-off, its length). */
+export const POST_HABITS = (key: string): boolean => key.startsWith('swap:') || key.startsWith('cut:') || key === 'exclaim'
+
+/**
+ * A held post he changed before his press (a Teams reply: the outbox keeps
+ * what the thread wrote, and only his Edit can change a held row), read as
+ * a sent mail is, with only the habits a post shows plainly.
+ */
+export function recordPost(db: DatabaseSync, post: SentDraft & { workspaceId: string; sessionId: string; agentText: string }, now = Date.now()): string | null {
+  return recordEdit(db, post, now, POST_HABITS)
+}
+
+/** One sent text against what the agent wrote: kept as evidence with the habits it shows, and each habit seen `PROPOSE_AT` times a proposal. */
+function recordEdit(db: DatabaseSync, sent: SentDraft & { workspaceId: string; sessionId: string; agentText: string }, now: number, only: (key: string) => boolean = () => true): string | null {
+  const d = sent
+  const habits = habitsOf(d.agentText, sent.text).filter((h) => only(h.key))
   if (habits.length === 0) return null
   const ops = evidenceOps(editOps(d.agentText, sent.text))
   db.prepare('INSERT OR IGNORE INTO work_rules_edits (draft_id, workspace_id, session_id, recipient, subject, sent_at, ops, habits) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(

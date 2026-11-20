@@ -19,7 +19,7 @@ import {
   removeRule
 } from './store'
 import { voiceExamples, voiceFacts, workspaceFacts, VOICE_EXAMPLES } from './voice'
-import { watchDrafts, type DraftWatch } from './watch'
+import { watchDrafts, watchPosts, type DraftWatch } from './watch'
 
 /**
  * The rules pillar's server module (docs/agents/work-rules.md): a Work
@@ -123,10 +123,13 @@ export const rules: WorkModule = {
   tools: (scope) => (scope.workspaceId ? [voiceTool] : []),
   preamble: (scope) => (rulesDb ? rulesPreamble(rulesDb, scope) : null),
   start(ctx) {
-    const watch = watchDrafts(ctx, (workspaceId) => ctx.push({ push: 'work.rules', workspaceId }, { need: 'read' }))
+    const changed = (workspaceId: string): void => ctx.push({ push: 'work.rules', workspaceId }, { need: 'read' })
+    const watch = watchDrafts(ctx, changed)
+    const offPosts = watchPosts(ctx, changed)
     watching = watch
     return () => {
       watch.stop()
+      offPosts()
       if (watching === watch) watching = null
     }
   },
