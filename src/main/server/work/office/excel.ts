@@ -299,7 +299,7 @@ export class ExcelHelper {
       capabilities: { formulas: 'store', write: true, formats: false, live: false, maxReadCells: EXCEL_MAX_CELLS, maxWriteCells: EXCEL_MAX_CELLS },
       async read(r: SheetRange): Promise<SheetBlock> {
         const block = await helper.read(book, r.sheet, r)
-        return { range: r, cells: cellsOf(block).map((row, i) => row.map((c, j) => ({ ...(c ?? {}), ...(block.formats[i]?.[j] && block.formats[i][j] !== 'General' ? { z: block.formats[i][j] } : {}) }))), hash: block.hash }
+        return { range: r, cells: cellsOf(block).map((row, i) => row.map((c, j) => ({ ...(c ?? {}), ...(c?.f && block.values[i][j] !== null ? { v: block.values[i][j] } : {}), ...(block.formats[i]?.[j] && block.formats[i][j] !== 'General' ? { z: block.formats[i][j] } : {}) }))), hash: block.hash }
       },
       async write(cells: SheetCellWrite[], baseHash: string) {
         const writes = cells.map((c) => ({ sheet: c.sheet, row: c.row, col: c.column, v: writable(c.cell?.f ? { f: c.cell.f } : c.cell?.v !== undefined && c.cell.v !== null ? { v: c.cell.v } : null) }))

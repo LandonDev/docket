@@ -101,6 +101,9 @@ describe('the Excel helper', () => {
     expect(heard[0]).toEqual({ kind: 'outline', sheets: [{ id: 'Sheet1', name: 'Sheet1', rowCount: 4, columnCount: 2 }] })
     const block = await src.read({ sheet: 'Sheet1', startRow: 1, startColumn: 1, endRow: 2, endColumn: 1 })
     expect(block.cells).toEqual([[{ v: 1200 }], [{ v: 300 }]])
+    // a formula cell carries the value Excel computed beside its formula
+    office.books.get(BOOK)!.sheets.get('Sheet1')!.get('3,1')!.v = 1500
+    expect((await src.read({ sheet: 'Sheet1', startRow: 3, startColumn: 1, endRow: 3, endColumn: 1 })).cells).toEqual([[{ f: '=SUM(B2:B3)', v: 1500 }]])
     const base = hashCells([{ v: 300 }])
     await expect(src.write([{ sheet: 'Sheet1', row: 2, column: 1, cell: { v: 333 } }], base)).resolves.toBe('ok')
     await expect(src.write([{ sheet: 'Sheet1', row: 2, column: 1, cell: { v: 444 } }], base)).resolves.toBe('conflict')

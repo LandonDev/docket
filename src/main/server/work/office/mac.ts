@@ -226,6 +226,8 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
       allowedSeen.set(app, 'yes')
       return JSON.parse(out || 'null') as T
     } catch (err) {
+      // A refusal the script threw names no app: name the one it was for.
+      if (err instanceof OfficeError && err.message.includes('the Office app')) err = new OfficeError(err.message.replace('the Office app', APP_NAMES[app]), err.code)
       // The app answered "no such item": it let us in.
       if (err instanceof OfficeError && err.code === 'not-found') allowedSeen.set(app, 'yes')
       if (err instanceof OfficeError && err.code === 'not-allowed') allowedSeen.set(app, 'no')

@@ -345,6 +345,11 @@ describe('the Mac carrier', () => {
     expect(seen).toEqual([['readRange', JSON.stringify({ book: '/tmp/B.xlsx', sheet: 'Sheet1', address: 'A1' })]])
   })
 
+  it('names the app in a refusal its script threw', async () => {
+    const c = macCarrier({ osa: recorded({ readRange: osaError('execution error: Error: Error: No open workbook /tmp/x.xlsx. (-1728) (-2700)') }), installed: () => true })
+    await expect(c.readRange('/tmp/x.xlsx', 'Sheet1', 'A1')).rejects.toMatchObject({ code: 'not-found', message: expect.stringMatching(/^Microsoft Excel has no such item: No open workbook/) })
+  })
+
   it('records an app as allowed when it answered, with an empty list or with "no such item"', async () => {
     const c = macCarrier({ osa: recorded({ workbooks: '[]', documents: osaError('execution error: Microsoft Word got an error: Can’t get document "x". (-1728)') }), installed: () => true, running: async () => true })
     await expect(c.workbooks()).resolves.toEqual([])
