@@ -1562,6 +1562,12 @@ export async function startServer(
       },
       (err) => console.log(`[box browser] did not load: ${String(err)}`)
     )
+  // The Windows VM's service for Work threads, on its own computer sessions (work/winvm/vm.ts); loaded apart, as all of Work is.
+  if (process.platform === 'linux')
+    void import('./work/winvm/vm').then(
+      (m) => computerRpc.setBox(m.wireVm({ registry, store, dataDir: options.dataDir ?? dirname(dbPath) }).rows),
+      (err) => console.log(`[winvm] did not load: ${String(err)}`)
+    )
   computerBridgeHooks.current = computerBridge
   computerBridgeHooks.tokens = computerBridge ? computerBridgeTokens : null
   const computerRpc = new ComputerRpc(computer, () => computerWhy, computerBridge ? { bridge: computerBridge, tokens: computerBridgeTokens } : null, {

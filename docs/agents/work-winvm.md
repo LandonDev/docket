@@ -3,8 +3,9 @@
 The box keeps one Windows 11 machine for Work threads to drive: the `standing` instance of the Windows rig
 (docs/agents/windows-vm.md), on the same read-only base image as the rig, with its own lasting disk. The plan is
 `.temp-code/plan-m1X24rQ6nikm.md`, Track B. This file covers the keeper (B3): its states, its methods, setup,
-sleep and wake, and the stop of the box's service; and its restore points (B4). The windows_* tools, the VM's gate and its share of the hold
-come with B5 and B6; the picture and Take over with B7 and B8.
+sleep and wake, and the stop of the box's service; its restore points (B4); and the service on the box with the
+`windows_*` tools (B5). The hold's rules for a command line are B6's (work-outbox.md); the picture and Take over
+come with B7 and B8.
 
 The code is `src/main/server/work/winvm/`: `keeper.ts` (the states, over a machine and a guest that are
 interfaces), `standing.ts` (the real machine, through `machine/`), `sshGuest.ts` (the real guest, over SSH),
@@ -152,6 +153,45 @@ is left 30 s later, as systemd does; QEMU must exit before that, and the guest m
 Notepad process, its text and the same boot time. `scripts/e2e-winvm-keeper.ts` on the standing instance
 runs setup, the policies' checks, sleep and wake.
 
+## The service on the box
+
+`wireVm` (vm.ts), wired by index.ts on a Linux host, is a third `ComputerService` on the box beside its own and
+the box browser's (docs/computer-protocol.md §28.7). Its spawn is the door through the keeper's forward
+(door.ts): it waits for `keeper.door()`, which wakes the machine, knocks with the token, and copies every
+picture the guest's service names home over SFTP on the forward's own SSH connection (tcuser's policies do not
+stop the SFTP subsystem). Its `ComputerSessions` run with `vm: true` and `VM_TIER_GATE`, so a chord, a held key
+and a paste run in the guest, the launch list is the VM's, a console's launch is refused, and the words are a
+Windows PC's. Every act goes through run.ts with the hold as on any computer: a send or submit there is a held
+`computer.act` with its picture in the Outbox. The machine going to sleep ends the service's connection (a clean
+exit), and the next call wakes it again.
+
+### The tools
+
+`windows_apps`, `windows_observe`, `windows_act`, `windows_batch` and `windows_result`: the computer tools in
+Windows' words (`computerToolSpecs` with `platform: 'windows'`), renamed, mounted as the `winvm` pillar's Work
+tools (tools.ts), and run on the VM's sessions. Their head says what the machine is: a Windows 11 PC on this
+host, his own, signed in as he left it; one thread uses it at a time; a send or submit is held for his press,
+so drive up to it and stop; never type a password, say he must take over; no command line. What they answer
+names `windows_*` where the shared words say `computer_*`.
+
+- **Who gets them**: a Work thread of a workspace whose Work settings turn on `windowsVm` ("Computer use on
+  the Windows VM", off by default; its switch is B10's), on the host whose VM is set up. A Work Chat never.
+  The setting is read when the tools are listed and again at every call (`vmOffered`), so turning it off
+  stops a running thread with "refused: computer use on the Windows VM is off for this workspace".
+- **Waking**: a call on a sleeping machine wakes it first; while it wakes, its row's hold reads "Waking the
+  Windows VM". A call held 20 s (a wake, a card) answers with an id, as a bridged computer call does
+  (pending.ts), and `windows_result` reads it again or cancels it; nothing runs unread.
+- **The preamble** gains one line where the tools are offered (`VM_PREAMBLE`).
+
+### One thread at a time
+
+A thread holds the VM from its first `windows_*` call until two minutes after its turn ends (`VmLease`,
+lease.ts); its subagents use it as it does. Another thread's call is answered "The Windows VM is in use by
+'<title>'", and that thread is woken with a notice (`ctx.threads.resume`) once the machine is free. A holder
+whose turn starts again inside the two minutes keeps it; a holder deleted frees it at once.
+`lease.ownerDrives(on)` is the hook for his Take over (B8): while on, every thread's call is refused, and
+handing back frees the machine.
+
 ## Restore points
 
 A point is the standing disk's internal qcow2 snapshot (`qemu-img snapshot -c tc-point-<id>`: copy on write
@@ -197,5 +237,11 @@ take 24 GB.
   the stored setting, the point methods.
 - `points.test.ts`: points over a real qcow2 overlay on a backing image (qemu-img, qemu-io): the disk, the
   firmware variables and the TPM put back, newest first, a delete, no path for an id.
+- `door.test.ts`: the spawn over a stand-in door (the knock first, `initialize` naming the guest's folder, a
+  picture copied home and its path rewritten in order, a clean exit at sleep, never a path out of the folder).
+- `vm.test.ts`: over the fake computer service, the VM's gate admitting the session tier a headless box
+  refuses, the tools offered and refused by the setting and never to a Work Chat, the setting read at each
+  call, the wake first, a console's launch refused in Windows' words, the lease's words, its two minutes, his
+  Take over, and the service ending with the machine.
 - The rig runs: `scripts/e2e-winvm-stop.ts` (the rig), `scripts/e2e-winvm-keeper.ts` and then
   `scripts/e2e-winvm-points.ts` (the standing instance: save, change a file, go back, the file as it was).

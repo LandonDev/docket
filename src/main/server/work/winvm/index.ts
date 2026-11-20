@@ -9,6 +9,9 @@ import { Keeper, type KeeperDeps } from './keeper'
 import { tcComputerExe } from './serviceBin'
 import { SshGuest } from './sshGuest'
 import { StandingMachine } from './standing'
+import { PendingCalls } from '../../computer/pending'
+import { VM_PREAMBLE, vmOffered, vmTools } from './tools'
+import { startVm } from './vm'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
@@ -91,6 +94,11 @@ function keeperOf(ctx: WorkCtx): Keeper {
 /** The running keeper, for the VM's service on the box (B5); null while Work is off. */
 export const winvmKeeper = (): Keeper | null => keeper
 
+/** Work's context while it is on: the tools read the workspace's setting through it. */
+let started: WorkCtx | null = null
+/** windows_* calls that answered early (a wake past 20 s): windows_result reads them */
+const pending = new PendingCalls()
+
 export const winvm: WorkModule = {
   id: 'winvm',
   ensure() {},
@@ -131,13 +139,22 @@ export const winvm: WorkModule = {
     }
   },
   start(ctx) {
+    started = ctx
     const k = keeperOf(ctx)
     const timer = setInterval(() => k.tick(), 60_000)
     timer.unref()
+    const stopVm = startVm(winvmKeeper, (id, notice) => {
+      ctx.threads.resume(id, notice).catch((e) => ctx.log(`winvm: could not tell ${id} the Windows VM is free: ${String(e)}`))
+    })
     return () => {
+      stopVm()
+      pending.closeAll()
       clearInterval(timer)
       k.close()
       if (keeper === k) keeper = null
+      if (started === ctx) started = null
     }
-  }
+  },
+  tools: (scope) => vmTools(scope, { ctx: () => started, keeper: winvmKeeper, pending }),
+  preamble: (scope) => (started && vmOffered(started, scope, keeper) ? VM_PREAMBLE : null)
 }

@@ -57,8 +57,8 @@ export class ComputerRpc {
   private readonly holds = new Map<string, string>()
   private readonly shown = new Map<string, string>()
   private readonly timings: HeldTimings
-  /** the box's own browser sessions (work/browser/box), once wired: listed and stopped here beside this host's */
-  private box: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'> | null = null
+  /** sessions of the box's own computers, once wired: its browser (work/browser/box) and its Windows VM (work/winvm), listed and stopped here beside this host's */
+  private boxes: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>[] = []
 
   constructor(
     private readonly host: ComputerHost | null,
@@ -81,22 +81,23 @@ export class ComputerRpc {
     for (const s of this.sockets) s.poke()
   }
 
-  /** The box browser's sessions, set once when it is wired (index.ts): their rows go out with this host's, and Stop reaches them. */
+  /** A box computer's sessions (its browser, its Windows VM), added once each is wired (index.ts): their rows go out with this host's, and Stop reaches them. */
   setBox(sessions: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>): void {
-    this.box = sessions
+    this.boxes.push(sessions)
     this.stops.push(sessions.onRows(() => this.moved()))
     this.moved()
   }
 
   sessions(): ComputerSessionsAnswer {
-    const mirrored = [...(this.bridged?.bridge.rows() ?? []), ...(this.box?.rows() ?? [])]
+    const mirrored = [...(this.bridged?.bridge.rows() ?? []), ...this.boxes.flatMap((b) => b.rows())]
     if (!this.host) return { service: { ...OFF, reason: this.unavailableReason() ?? OFF.reason }, sessions: mirrored }
     const own = this.host.sessions.rows().filter((r) => !parseMacComputerKey(r.threadId))
     return { service: this.host.service.state(), sessions: [...own, ...mirrored] }
   }
 
   async stop(sessionId: string): Promise<{ stopped: boolean }> {
-    if (this.box?.rows().some((r) => r.threadId === sessionId)) return { stopped: await this.box.stop(sessionId) }
+    const box = this.boxes.find((b) => b.rows().some((r) => r.threadId === sessionId))
+    if (box) return { stopped: await box.stop(sessionId) }
     if (this.bridged?.bridge.rows().some((r) => r.threadId === sessionId)) return { stopped: await this.bridged.bridge.stop(sessionId) }
     return { stopped: this.host ? await this.host.sessions.stop(sessionId) : false }
   }

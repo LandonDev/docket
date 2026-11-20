@@ -111,6 +111,7 @@ class FakeGuest implements VmGuest {
       closed
     }
   }
+  async fetch() {}
   async knock(_s: string, token: string) {
     this.knocks++
     return this.doorOpens && token === this.token()

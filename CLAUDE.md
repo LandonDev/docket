@@ -177,8 +177,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   [docs/agents/windows-vm.md](docs/agents/windows-vm.md)
 - **The Windows VM's keeper** — the `standing` rig instance as a computer for Work threads: the `winvm`
   pillar's states, `work.winvm.*`, setup with tcuser's policies, wake, hibernate on idle and at a stop of the
-  box's service (stop signals blocked, a watcher), restore points taken asleep (disk snapshot, firmware, TPM).
-  [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
+  box's service (stop signals blocked, a watcher), restore points taken asleep (disk snapshot, firmware, TPM);
+  the `windows_*` Work tools on a third `ComputerService` through the guest's door (work/winvm/vm.ts), one
+  thread at a time. [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
 - **Search across hosts** — one query fanned out to every host
   (lib/crossHostSearch.ts), an FTS5 index per host (turnIndex.ts).
   [docs/agents/search-across-hosts.md](docs/agents/search-across-hosts.md)

@@ -130,13 +130,20 @@ if ($task.State -ne 4) { $task.Run($null) | Out-Null }
 `)
   }
 
+  /** The forward's control socket: the pictures come back over the same connection (`fetch`). */
+  private control: string | null = null
+
   openDoor(socket: string, guestPort: number): Promise<DoorLink> {
     rmSync(socket, { force: true })
+    const control = `${socket}.ctl`
+    rmSync(control, { force: true })
     const child: ChildProcess = spawn(
       'ssh',
       [
         '-N', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
         '-o', 'StreamLocalBindMask=0177', '-o', 'StreamLocalBindUnlink=yes',
+        // the one connection is also the master the picture copies run over
+        '-o', 'ControlMaster=yes', '-o', `ControlPath=${control}`, '-o', 'ControlPersist=no',
         '-L', `${socket}:127.0.0.1:${guestPort}`,
         ...this.base(STANDARD_USER)
       ],
@@ -150,7 +157,13 @@ if ($task.State -ne 4) { $task.Run($null) | Out-Null }
       const end = Date.now() + 20_000
       const poll = () => {
         if (child.exitCode !== null || child.signalCode !== null) return reject(new Error(`the SSH forward to the door ended: ${err.trim() || `exit ${child.exitCode}`}`))
-        if (existsSync(socket)) return resolve({ close: () => void child.kill('SIGTERM'), closed })
+        if (existsSync(socket)) {
+          this.control = control
+          void closed.then(() => {
+            if (this.control === control) this.control = null
+          })
+          return resolve({ close: () => void child.kill('SIGTERM'), closed })
+        }
         if (Date.now() > end) {
           child.kill('SIGTERM')
           return reject(new Error('the SSH forward to the door did not open'))
@@ -163,6 +176,18 @@ if ($task.State -ne 4) { $task.Run($null) | Out-Null }
 
   knock(socket: string, token: string): Promise<boolean> {
     return knockDoor(socket, token)
+  }
+
+  /**
+   * Copies a file of tcuser's (`rel`, under its profile, with forward slashes) to `local`, over SFTP on the
+   * forward's own connection: the service's pictures. sftp-server runs as a subsystem, not through tcuser's
+   * shell, so tcuser's policies do not stop it.
+   */
+  async fetch(rel: string, local: string): Promise<void> {
+    if (!this.control) throw new Error('the Windows VM is not awake')
+    const args = ['-q', '-o', `ControlPath=${this.control}`, '-o', 'ControlMaster=no', ...this.base(STANDARD_USER).slice(0, -1).map((a) => (a === '-p' ? '-P' : a))]
+    const r = await this.run('scp', [...args, `${STANDARD_USER}@127.0.0.1:${rel}`, local], '', 60_000)
+    if (r.code !== 0) throw new Error(`copying a picture from the Windows VM failed: ${r.err.slice(-300)}`)
   }
 
   /**

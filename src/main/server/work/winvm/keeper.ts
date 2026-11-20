@@ -52,6 +52,8 @@ export interface VmGuest {
   openDoor(socket: string, guestPort: number): Promise<DoorLink>
   /** knocks with the token; true when the door kept the connection */
   knock(socket: string, token: string): Promise<boolean>
+  /** copies a file under tcuser's profile (`rel`, forward slashes) to `local` over the forward's connection */
+  fetch(rel: string, local: string): Promise<void>
 }
 
 export interface KeeperDeps {
@@ -129,13 +131,28 @@ export class Keeper {
     return { state: this.name, step: this.step, error: this.error, cannot: this.d.machine.cannot(), sleepAfter: this.d.sleepAfter(), since: this.since }
   }
 
+  private readonly stateListeners = new Set<(state: WinvmState) => void>()
+
+  /** Hears every change of state: the VM's service stops with the machine (vm.ts). */
+  onState(fn: (state: WinvmState) => void): () => void {
+    this.stateListeners.add(fn)
+    return () => this.stateListeners.delete(fn)
+  }
+
   private set(name: WinvmStateName, step: string | null = null, error: string | null = this.error): void {
     const changed = name !== this.name
     this.name = name
     this.step = step
     this.error = error
     if (changed) this.since = this.now()
-    this.d.push(this.state())
+    const state = this.state()
+    this.d.push(state)
+    for (const fn of [...this.stateListeners]) fn(state)
+  }
+
+  /** A picture of the service's, copied home over the door's connection (door.ts). */
+  fetch(rel: string, local: string): Promise<void> {
+    return this.d.guest.fetch(rel, local)
   }
 
   /** One change at a time, in the order asked. */
