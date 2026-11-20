@@ -161,6 +161,21 @@ export class BoxStage {
     return this.driven
   }
 
+  /** A page this stage has placed, still open. Headed only: a headless browser has no stage to speak of. */
+  knows(targetId: string): boolean {
+    return this.windows.has(targetId) && !this.carriers.has(targetId)
+  }
+
+  /** The address a page is at, or null when it is gone. */
+  async urlOf(targetId: string): Promise<string | null> {
+    try {
+      const cdp = await this.ready()
+      return (await cdp.send<{ targetInfo: TargetInfo }>('Target.getTargetInfo', { targetId })).targetInfo.url
+    } catch {
+      return null
+    }
+  }
+
   /** Told when the watched page, a tab of its window or a window it opened shows an address that is closed to agents. */
   onClosedHost(fn: (targetId: string) => void): () => void {
     this.closedListeners.add(fn)

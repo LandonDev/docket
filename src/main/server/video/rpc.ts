@@ -34,6 +34,8 @@ export type VideoOpening =
       scope: 'watch' | 'drive'
       group?: string
       tag?: string
+      /** told the stream's id once it is opened, for a source that keeps something beside each of its streams */
+      opened?: (stream: string) => void
     }
   | { ok: false; reason: VideoRefusal }
 
@@ -108,6 +110,7 @@ export class VideoRpc {
         tag: opening.tag
       })
       this.origin.set(stream, source)
+      opening.opened?.(stream)
       const { ticket } = this.auth.mintStreamTicket({ stream, scope: opening.scope, holder })
       return { ok: true, stream, ticket, width: opening.width, height: opening.height, fps: opening.fps }
     }

@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process'
+import { execFileSync, type ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { connect } from 'node:net'
@@ -228,8 +228,9 @@ describe.skipIf(!tools)('the real server, from the installed tools', () => {
       expect(await xHello(pair.DISPLAY, cookie)).toEqual({ ok: true, reason: '' })
       expect(await xHello(pair.DISPLAY, null)).toEqual({ ok: false, reason: 'Authorization required, but no authorization protocol specified' })
       expect(await xHello(pair.DISPLAY, Buffer.alloc(16, 7))).toEqual({ ok: false, reason: 'Invalid MIT-MAGIC-COOKIE-1 key' })
-      // no TCP port: X's is 6000 plus the number
-      await expect(new Promise((resolve, reject) => connect(6000 + Number(pair.DISPLAY.slice(1)), '127.0.0.1').on('connect', resolve).on('error', reject))).rejects.toThrow()
+      // it was told to take no TCP, and it listens on none (another program may hold X's usual port, so the server's own sockets are read)
+      expect(readFileSync(`/proc/${display.pid}/cmdline`, 'utf8').split('\0').join(' ')).toContain('-nolisten tcp')
+      expect(execFileSync('ss', ['-H', '-ltnp']).toString()).not.toContain(`pid=${display.pid},`)
       // the log says the mode it runs
       const log = readFileSync(join(root, 'display', 'Xorg.log'), 'utf8')
       expect(log).toMatch(/Virtual size is 1280x800/)

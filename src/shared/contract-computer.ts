@@ -55,7 +55,12 @@ export const ComputerSessionRowSchema = z.object({
   /** what this host calls the Mac */
   macName: z.string().optional(),
   /** a card waits on the Mac: its title as a question (approvalLine's form) */
-  asking: z.object({ line: z.string() }).optional()
+  asking: z.object({ line: z.string() }).optional(),
+  /**
+   * He drives this page himself: a pane of the box's browser he took over (work/browser/box). Its session is
+   * stopped, so the row is kept for him: `threadId` is the pane's thread, nothing runs, and Stop does nothing.
+   */
+  driver: z.literal('owner').optional()
 })
 export type ComputerSessionRow = z.infer<typeof ComputerSessionRowSchema>
 

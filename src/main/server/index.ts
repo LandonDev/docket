@@ -89,6 +89,7 @@ import { VideoRelay } from './video/relay'
 import { VideoRpc, handleVideo } from './video/rpc'
 import { VideoSockets, refuseVideoUpgrade } from './video/sockets'
 import { VIDEO_PATH } from '@shared/contract-video'
+import { BROWSER_VIDEO_SETTING, browserVideoOn } from '@shared/video/settings'
 import { SessionHolds, computerBannerHooks, handleComputerProofHold } from './computer/hold'
 import { ComputerRpc } from './computer/rpc'
 import { ComputerSettingsRpc } from './computer/settingsRpc'
@@ -1458,6 +1459,15 @@ export async function startServer(
       setSessionTierGate(scheduler)
     }
   }
+  // Keys, pairings and tickets for the fixed port; made here because live video's sockets check their tickets with it.
+  const remoteAuth = new RemoteAuth(db)
+  // Live video (video/): one relay for this host's streams, their own sockets on both servers, and the
+  // sources each part of the host adds (the box's browser, tc-computer's windows, another host's publish).
+  const hasDesktop = (): boolean => options.desktop ?? !isHeadless()
+  const videoRelay = new VideoRelay()
+  const videoSockets = new VideoSockets(videoRelay, remoteAuth)
+  const videoRpc = new VideoRpc(videoRelay, remoteAuth, hasDesktop)
+  remoteAuth.onRevoke((keyId) => videoRelay.revoke(keyId))
   computerHooks.current = computer
   // (the box's browser sets its own once it is wired, below)
   let previews = computer ? new ComputerPreviews(computer) : null
@@ -1496,14 +1506,20 @@ export async function startServer(
   if (computerWhy && process.platform === 'linux')
     void import('./work/browser/box').then(
       (m) => {
-        const box = m.wireBoxBrowser({ registry, store, dataDir: options.dataDir ?? dirname(dbPath) })
+        const box = m.wireBoxBrowser({
+          registry,
+          store,
+          dataDir: options.dataDir ?? dirname(dbPath),
+          videoOn: () => browserVideoOn(store.getSetting(BROWSER_VIDEO_SETTING)),
+          video: { relay: videoRelay, rpc: videoRpc }
+        })
         // Watch and Take over draw a box thread's page: its preview relay and its rows, on this host that has no computer use of its own.
         if (!box) return
         if (!previews) {
           previews = new ComputerPreviews({ service: box.service, sessions: box.sessions })
           boxPreviews = true
         }
-        computerRpc.setBox(box.sessions)
+        computerRpc.setBox(box.rows)
       },
       (err) => console.log(`[box browser] did not load: ${String(err)}`)
     )
@@ -1893,14 +1909,6 @@ export async function startServer(
   warmTimer.unref()
 
   const builder = new BuildRunner()
-  const remoteAuth = new RemoteAuth(db)
-  // Live video (video/): one relay for this host's streams, their own sockets on both servers, and the
-  // sources each part of the host adds (the box's browser, tc-computer's windows, another host's publish).
-  const hasDesktop = (): boolean => options.desktop ?? !isHeadless()
-  const videoRelay = new VideoRelay()
-  const videoSockets = new VideoSockets(videoRelay, remoteAuth)
-  const videoRpc = new VideoRpc(videoRelay, remoteAuth, hasDesktop)
-  remoteAuth.onRevoke((keyId) => videoRelay.revoke(keyId))
   // The fixed port behind the tunnel (remote/listener.ts). An env override
   // beats the settings so a dev instance never fights the installed app
   // for 7677; '0' turns it off.

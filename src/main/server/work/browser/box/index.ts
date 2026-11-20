@@ -10,10 +10,15 @@ import { ComputerSessions } from '../../../computer/sessions'
 import type { SettingsStore } from '../../../computer/verdicts'
 import type { WorkCtx, WorkTool } from '../../modules'
 import { DriveStore } from '../drive'
+import type { ComputerSessionRow } from '@shared/contract-computer'
+import type { VideoRelay } from '../../../video/relay'
+import type { VideoRpc } from '../../../video/rpc'
 import { BoxChromium } from './chromium'
+import { BoxEngines } from './engine'
 import { takeImports } from './logins'
-import { BoxComputerService, closedToAgents, inProcessSpawn } from './service'
+import { BOX_BROWSER_APP, BoxComputerService, closedToAgents, inProcessSpawn } from './service'
 import { BoxStage } from './stage'
+import { BoxVideo } from './video'
 import { videoToolsAt } from './videoSetting'
 
 /**
@@ -33,6 +38,10 @@ export interface BoxBrowserHost {
   stage: BoxStage
   service: ComputerService
   sessions: ComputerSessions
+  /** the browser as a source of live video (video.ts); null where the host gave it no relay */
+  video: BoxVideo | null
+  /** what the host lists and stops: the sessions' rows, and a row for each pane he drives himself */
+  rows: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>
 }
 
 let host: BoxBrowserHost | null = null
@@ -45,10 +54,11 @@ const WAIT_MAX_MS = 24 * 3_600_000
 const ASKED_MAX_MS = 2 * 3_600_000
 let started: WorkCtx | null = null
 
-/** Something waits on a page of the box browser: a held step, or him. */
+/** Something waits on a page of the box browser: a held step, a viewer of its video, or him. */
 function busy(): boolean {
   const now = Date.now()
   if (inUse > 0 || [...waiting.values()].flat().some((at) => now - at < WAIT_MAX_MS)) return true
+  if (host?.video?.inUse()) return true
   return !!started?.db
     .prepare("SELECT 1 FROM work_browser_drive WHERE (driver = 'owner' OR needs IS NOT NULL) AND since > ? LIMIT 1")
     .get(now - ASKED_MAX_MS)
@@ -66,14 +76,34 @@ export interface BoxRegistry extends ComputerRegistry {
  * profile lives in `work-browser/box/profile`, the service's pictures in
  * `work-browser/box/computer`.
  */
-export function wireBoxBrowser(o: { registry: BoxRegistry; store: SettingsStore; dataDir: string; log?: (line: string) => void; videoOn?: () => boolean }): BoxBrowserHost | null {
+export interface BoxWiring {
+  registry: BoxRegistry
+  store: SettingsStore
+  dataDir: string
+  log?: (line: string) => void
+  /** `work.browser.video` (video/settings.ts): off keeps the browser headless whatever is installed. Read at every start of the browser. */
+  videoOn?: () => boolean
+  /** the host's video relay and where a source is added; absent (a test of the browser alone) there is no video */
+  video?: { relay: VideoRelay; rpc: Pick<VideoRpc, 'addSource'> }
+}
+
+export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   const root = join(o.dataDir, 'work-browser', 'box')
   const log = o.log ?? ((line: string) => console.log(`[box browser] ${line}`))
+  const videoOn = (): boolean => o.videoOn?.() !== false
   // Headed for live video when the tools are installed and the setting is on (videoSetting.ts); read at every start of the browser.
-  const browser = new BoxChromium({ root, log, busy, video: () => (o.videoOn?.() === false ? null : videoToolsAt(o.dataDir)) })
+  const browser = new BoxChromium({ root, log, busy, video: () => (videoOn() ? videoToolsAt(o.dataDir) : null) })
   if (browser.unavailable()) return null
   const stage = new BoxStage({ endpoint: () => browser.endpoint(), display: () => browser.display }, { closed: closedToAgents, log })
-  browser.onStop(() => stage.close())
+  const paneOf = (thread: string): string => {
+    try {
+      return o.registry.rootSessionOf(thread) || thread
+    } catch {
+      return thread
+    }
+  }
+  /** the page each thread, and each pane, last used: what a stream shows after the session that used it stopped */
+  const lastPage = new Map<string, string>()
   const make = () =>
     new BoxComputerService({
       browser: {
@@ -83,6 +113,11 @@ export function wireBoxBrowser(o: { registry: BoxRegistry; store: SettingsStore;
         headed: () => stage.headed(),
         open: (url) => stage.open(url),
         ready: () => stage.ready()
+      },
+      onPage: (session, targetId) => {
+        const thread = sessions.threadOfServiceSession(session) ?? session
+        lastPage.set(thread, targetId)
+        lastPage.set(paneOf(thread), targetId)
       },
       use: (cdp) => takeImports(root, cdp, log),
       log
@@ -103,8 +138,83 @@ export function wireBoxBrowser(o: { registry: BoxRegistry; store: SettingsStore;
   })
   o.registry.onMeta((m) => sessions.onMeta(m))
   o.registry.onRemoved((ids) => void sessions.end(ids))
-  host = { root, browser, stage, service, sessions }
+
+  const pageOf = (thread: string): string | null => {
+    const target = lastPage.get(thread) ?? lastPage.get(paneOf(thread))
+    return target && stage.knows(target) ? target : null
+  }
+  const drives = (pane: string): boolean => !!started && new DriveStore(started.db).get(pane).driver === 'owner'
+  let video: BoxVideo | null = null
+  const engines = new BoxEngines({ root, tools: () => browser.tools, display: () => browser.display, log })
+  if (o.video) {
+    video = new BoxVideo({
+      browser,
+      stage,
+      engines,
+      relay: o.video.relay,
+      pageOf,
+      paneOf,
+      drives,
+      urlOf: (targetId) => stage.urlOf(targetId),
+      closed: closedToAgents,
+      setting: videoOn,
+      installed: () => videoToolsAt(o.dataDir) !== null,
+      log
+    })
+    o.video.rpc.addSource(video)
+  }
+  browser.onStop(() => {
+    // the display goes with the browser: its streams end, its engines stop, and no page of it is left to show
+    video?.stopped()
+    void engines.stopAll()
+    lastPage.clear()
+    stage.close()
+    rowsChanged()
+  })
+
+  // A pane he drives has no session (Take over stops it), so the host would list nothing for it: a row is kept, so
+  // every list can show the page with Hand back, and its video can be asked for by the pane's own thread.
+  const rowListeners = new Set<(rows: ComputerSessionRow[]) => void>()
+  const ownerRows = (live: ComputerSessionRow[]): ComputerSessionRow[] => {
+    if (!started) return []
+    const rows = started.db.prepare("SELECT session_id, since FROM work_browser_drive WHERE driver = 'owner'").all() as { session_id: string; since: number }[]
+    return rows.flatMap((r) =>
+      pageOf(r.session_id) && !live.some((l) => paneOf(l.threadId) === r.session_id)
+        ? [{ threadId: r.session_id, since: r.since, lastCallAt: r.since, apps: [{ name: BOX_BROWSER_APP.name, bundleId: BOX_BROWSER_APP.bundleId, window: null }], running: null, tier: null, driver: 'owner' as const }]
+        : []
+    )
+  }
+  const allRows = (): ComputerSessionRow[] => {
+    const live = sessions.rows()
+    return [...live, ...ownerRows(live)]
+  }
+  const rowsChanged = (): void => {
+    if (!rowListeners.size) return
+    const rows = allRows()
+    for (const fn of rowListeners) fn(rows)
+  }
+  sessions.onRows(() => rowsChanged())
+  const rows: BoxBrowserHost['rows'] = {
+    rows: allRows,
+    onRows: (fn) => {
+      rowListeners.add(fn)
+      return () => rowListeners.delete(fn)
+    },
+    // a pane he drives has nothing to stop: Hand back is how it ends
+    stop: (threadId) => (sessions.rowOf(threadId) ? sessions.stop(threadId) : Promise.resolve(false))
+  }
+  driveChanged = (pane, owner) => {
+    void video?.driver(pane, owner).then(rowsChanged, rowsChanged)
+    if (!video) rowsChanged()
+  }
+  host = { root, browser, stage, service, sessions, video, rows }
   return host
+}
+
+/** Told who drives a pane each time it changes (work/browser `work.browser.drive`, and a pane's thread being removed). */
+let driveChanged: (pane: string, owner: boolean) => void = () => {}
+export function boxDriveChanged(pane: string, owner: boolean): void {
+  driveChanged(pane, owner)
 }
 
 /** The box browser of this host, once wired. A test sets its own. */
@@ -172,8 +282,11 @@ export function boxBrowserTools(): WorkTool[] {
       // One browser for every thread: while he drives any page of it, no thread acts in it.
       if (spec.name !== 'computer_observe' && (new DriveStore(ctx.db).get(pane).driver === 'owner' || ownerDrives(ctx.db))) return { ...workText(BOX_OWNER_DRIVES), isError: true }
       const outcome = await h.sessions.run({ threadId: ctx.sessionId, signal: ctx.signal }, spec.name, args)
-      // A step kept for his press: the page it waits on stays until he decides.
-      if (!outcome.isError && !outcome.steps.length && (spec.name === 'computer_act' || spec.name === 'computer_batch')) waiting.set(ctx.sessionId, [...(waiting.get(ctx.sessionId) ?? []), Date.now()])
+      // A step kept for his press: the page it waits on stays until he decides, and what he judges is its kept picture, so the live one ends.
+      if (!outcome.isError && !outcome.steps.length && (spec.name === 'computer_act' || spec.name === 'computer_batch')) {
+        waiting.set(ctx.sessionId, [...(waiting.get(ctx.sessionId) ?? []), Date.now()])
+        h.video?.held(pane)
+      }
       return computerContent(outcome, 'parts')
     }
   }))

@@ -3,7 +3,7 @@ import { configureOwnerDrives } from '../../computer/run'
 import { PortalSourceSchema, type BrowserState, type BrowserVideo } from '@shared/contract-work-browser'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
 import type { ActKindDef, ToolCtx, WorkCtx, WorkModule, WorkTool } from '../modules'
-import { boxBrowserTools, startBoxBrowser } from './box'
+import { boxBrowserTools, boxDriveChanged, startBoxBrowser } from './box'
 import { DriveStore, ensureBrowserTables } from './drive'
 import { browserVideoSetting, setBrowserVideo, videoToolsAt } from './box/videoSetting'
 import { TEAMS_UNAVAILABLE, teamsCarrier, TeamsPostSchema, teamsPostKind } from './teams'
@@ -127,6 +127,8 @@ export const browser: WorkModule = {
         const store = new DriveStore(ctx.db)
         const was = store.get(sessionId)
         const state = send(ctx, store.drive(sessionId, driver))
+        // the box's browser shows its toolbar to a driver and takes his input, and the page alone to a watcher
+        if (was.driver !== state.driver) boxDriveChanged(sessionId, state.driver === 'owner')
         if (was.driver === 'owner' && state.driver === 'agent') await wake(ctx, store.actor(sessionId), sessionId)
         return handled(state)
       }
@@ -154,6 +156,9 @@ export const browser: WorkModule = {
   tools: () => [...tools(), ...boxBrowserTools()],
   acts: [teamsPostKind as unknown as ActKindDef],
   sessionsRemoved(ids, ctx) {
-    new DriveStore(ctx.db).remove(ids)
+    const store = new DriveStore(ctx.db)
+    // a pane removed while he drove is driven by nobody: its input stops with it
+    for (const id of ids) if (store.get(id).driver === 'owner') boxDriveChanged(id, false)
+    store.remove(ids)
   }
 }

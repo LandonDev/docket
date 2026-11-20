@@ -30,7 +30,7 @@ export interface XWindow {
 const pad4 = (n: number): number => (4 - (n % 4)) % 4
 
 export class XClient {
-  private buffer = Buffer.alloc(0)
+  private buffer: Buffer = Buffer.alloc(0)
   private waiting: { sequence: number; resolve: (reply: Buffer) => void; reject: (err: Error) => void } | null = null
   private closed = false
   /** requests sent so far: the server numbers them, and an error names the one it is about */

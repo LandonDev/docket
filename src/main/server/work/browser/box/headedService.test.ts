@@ -92,7 +92,7 @@ d('the box browser headed, driven by two threads', () => {
     expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
     // a read with its picture: the capture of a covered page comes, and raises nothing
     const read = await run('w2', 'computer_observe', { app: 'Chromium', window: 'green', screenshot: true })
-    expect(read.isError, read.body).toBe(false)
+    expect(read.isError, read.body ?? '').toBe(false)
     expect(read.body).toContain('window "green"')
     expect(read.shots.length).toBeGreaterThan(0)
     expect(pages.get('w2')).toBeTruthy()
@@ -108,7 +108,7 @@ d('the box browser headed, driven by two threads', () => {
         { action: 'left_click', named: 'Press' }
       ]
     })
-    expect(typed.isError, typed.body).toBe(false)
+    expect(typed.isError, typed.body ?? '').toBe(false)
     expect(typed.body).toContain('"covered"')
     expect(typed.body).toContain('window "pressed"')
     expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
@@ -132,7 +132,7 @@ d('the box browser headed, driven by two threads', () => {
     await rig.stage.drive(pages.get('w1')!)
     await sleep(600)
     const read = await run('w2', 'computer_observe', { app: 'Chromium', window: 'pressed', screenshot: true })
-    expect(read.isError, read.body).toBe(false)
+    expect(read.isError, read.body ?? '').toBe(false)
     const now = await seen()
     expect(pixelAt(now, 640, 400)).toBe(COLOURS.red)
     expect(pixelAt(now, 640, 5)).not.toBe(COLOURS.red)

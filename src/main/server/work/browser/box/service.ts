@@ -597,7 +597,7 @@ export class BoxComputerService {
     const bad = open.find((u) => !SAFE_URL.test(u))
     if (bad) refuse('open_refused', 'the box browser opens only http and https pages', { reason: 'scheme' })
     if (open.some(closedToAgents)) refuse('open_refused', CLOSED)
-    const cdp = await this.browser()
+    await this.browser()
     let window: { id: number; title: string } | undefined
     for (const url of open) {
       const blank = before.find((p) => p.url === 'about:blank')
