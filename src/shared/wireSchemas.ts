@@ -1265,7 +1265,7 @@ export const VideoOpenWireSchema = z.object({
 /** `computer.sessions`: this host's service and every thread being driven on it, as the `computer` push carries them. */
 export const ComputerSessionsAnswerSchema = z.object({ service: ComputerServiceStateSchema, sessions: z.array(ComputerSessionRowSchema) })
 export const RulesForDraftSchema = z.object({ workspaceId: z.string().nullable(), proposals: z.array(RuleProposalSchema) })
-export const WorkspaceWorkSettingsWireSchema = z.object({ mayUseDesktop: z.array(z.string()), model: z.string().optional(), reasoning: z.string().optional(), voice: z.boolean() })
+export const WorkspaceWorkSettingsWireSchema = z.object({ mayUseDesktop: z.array(z.string()), model: z.string().optional(), reasoning: z.string().optional(), voice: z.boolean(), windowsVm: z.boolean().optional() })
 export const GuestTicketSchema = z.object({ url: z.string(), expiresAt: z.number().int() })
 export const GuestCreatedSchema = z.object({ link: GuestLinkRowSchema, url: z.string() })
 export const CanvasItemsSchema = z.object({ items: z.array(CanvasItemSchema) })

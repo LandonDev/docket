@@ -3149,12 +3149,14 @@ public enum Methods {
             public let model: String?
             public let reasoning: String?
             public let voice: Bool
+            public let windowsVm: Bool?
 
-            public init(mayUseDesktop: [String], model: String? = nil, reasoning: String? = nil, voice: Bool) {
+            public init(mayUseDesktop: [String], model: String? = nil, reasoning: String? = nil, voice: Bool, windowsVm: Bool? = nil) {
                 self.mayUseDesktop = mayUseDesktop
                 self.model = model
                 self.reasoning = reasoning
                 self.voice = voice
+                self.windowsVm = windowsVm
             }
         }
     }
@@ -3168,12 +3170,14 @@ public enum Methods {
                 public let model: Patch<String>?
                 public let reasoning: Patch<String>?
                 public let voice: Bool?
+                public let windowsVm: Bool?
 
-                public init(mayUseDesktop: [String]? = nil, model: Patch<String>? = nil, reasoning: Patch<String>? = nil, voice: Bool? = nil) {
+                public init(mayUseDesktop: [String]? = nil, model: Patch<String>? = nil, reasoning: Patch<String>? = nil, voice: Bool? = nil, windowsVm: Bool? = nil) {
                     self.mayUseDesktop = mayUseDesktop
                     self.model = model
                     self.reasoning = reasoning
                     self.voice = voice
+                    self.windowsVm = windowsVm
                 }
             }
 
@@ -3191,12 +3195,14 @@ public enum Methods {
             public let model: String?
             public let reasoning: String?
             public let voice: Bool
+            public let windowsVm: Bool?
 
-            public init(mayUseDesktop: [String], model: String? = nil, reasoning: String? = nil, voice: Bool) {
+            public init(mayUseDesktop: [String], model: String? = nil, reasoning: String? = nil, voice: Bool, windowsVm: Bool? = nil) {
                 self.mayUseDesktop = mayUseDesktop
                 self.model = model
                 self.reasoning = reasoning
                 self.voice = voice
+                self.windowsVm = windowsVm
             }
         }
     }

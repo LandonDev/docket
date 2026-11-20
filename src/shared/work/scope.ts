@@ -28,12 +28,18 @@ export interface WorkspaceWorkSettings {
   model?: string
   reasoning?: string
   voice: boolean
+  /**
+   * "Computer use on the Windows VM": its threads get the `windows_*` tools (work/winvm). A setting of its own, off
+   * by default, never an entry in `mayUseDesktop`, which five places read as a list of hosts to dial.
+   */
+  windowsVm?: boolean
 }
 export const WorkspaceWorkSettingsSchema = z.object({
   mayUseDesktop: z.array(z.string()).default([]),
   model: z.string().optional(),
   reasoning: z.string().optional(),
-  voice: z.boolean().default(false)
+  voice: z.boolean().default(false),
+  windowsVm: z.boolean().optional()
 })
 export const DEFAULT_WORKSPACE_WORK_SETTINGS: WorkspaceWorkSettings = Object.freeze({ mayUseDesktop: Object.freeze([]) as unknown as HostId[], voice: false })
 /** The defaults as a value of the caller's own: a fresh list each time, so one caller's change is never another's default. */

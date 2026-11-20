@@ -55,4 +55,8 @@ it("a workspace's Work settings default, merge a patch, and refuse a workspace t
   expect(settings.workspace('w1')).toEqual({ mayUseDesktop: ['env_mac'], voice: true, model: 'claude-fable-5-1' })
   expect(() => settings.setWorkspace('nope', { voice: true })).toThrow('no such workspace: nope')
   expect(settings.workspace('nope')).toEqual({ mayUseDesktop: [], voice: false })
+  // the Windows VM is a setting of its own, off until it is turned on, and never a host in mayUseDesktop
+  expect(settings.workspace('w1').windowsVm).toBeUndefined()
+  settings.setWorkspace('w1', { windowsVm: true })
+  expect(settings.workspace('w1')).toMatchObject({ windowsVm: true, mayUseDesktop: ['env_mac'] })
 })

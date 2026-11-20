@@ -51,7 +51,7 @@ export const WorkCoreRequestSchemas = [
     'work.workspace.set',
     z.object({
       workspaceId: z.string(),
-      patch: z.object({ mayUseDesktop: z.array(z.string()).optional(), model: z.string().nullable().optional(), reasoning: z.string().nullable().optional(), voice: z.boolean().optional() })
+      patch: z.object({ mayUseDesktop: z.array(z.string()).optional(), model: z.string().nullable().optional(), reasoning: z.string().nullable().optional(), voice: z.boolean().optional(), windowsVm: z.boolean().optional() })
     })
   ),
   /** → ProjectMeta: the project that holds a Work workspace's threads about one LifeOS project, made at the first ask. The host asks LifeOS for the project and its name; `name` is what an older client still sends, and is not read. */
