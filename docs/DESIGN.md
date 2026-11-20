@@ -1258,8 +1258,8 @@ Around the canvas:
   An empty mailbox says so in one line at the column's middle, level with
   the pane's "No mail open".
   The reader's toolbar is 44px of quiet 28px buttons (Archive, Delete,
-  Snooze, Needs me, More; in Trash, Restore alone with its word), its
-  place in the list at the end. The mail is a 680px column: the subject
+  Snooze, Needs me, More), its place in the list at the end; in Trash,
+  Restore alone with its word. Its menus are the app's 28px menu rows. The mail is a 680px column: the subject
   (the 16px title), then each message under a hairline with a 28px face,
   the name at 600, the address, "to me" on its details, the time, Reply
   and its menu. A run of two or more read messages is one 40px row
