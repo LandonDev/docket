@@ -202,7 +202,7 @@ class Boundary extends Component<{ className?: string; onNotFound?: () => void; 
  * composer's own @ makes. With no thread open there is nothing to mention it
  * in, and the item is not drawn (Start thread, in the reader's More, makes one).
  */
-function MentionItem({ reference }: { reference: MailReference }) {
+function MentionItem({ reference, plain }: { reference: MailReference; plain?: boolean }) {
   const thread = currentActiveSession();
   if (!thread || thread.archived) return null;
   return (
@@ -213,7 +213,8 @@ function MentionItem({ reference }: { reference: MailReference }) {
         toast({ message: `Mentioned in ${thread.title?.trim() || "the thread"}`, action: { label: "Open", run: () => workOpenPort.get()?.(thread.id) } });
       }}
     >
-      <AtSign />
+      {/* A row's right-click menu draws no icons; the reader's menus do. */}
+      {plain ? null : <AtSign />}
       Mention in a thread
     </DropdownMenuItem>
   );
