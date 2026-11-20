@@ -87,7 +87,9 @@
 @source "../../../node_modules/work-kit/src/mail/editor/mail-editor.tsx";
 @source "../../../node_modules/work-kit/src/mail/editor/node-views.tsx";
 @source "../../../node_modules/work-kit/src/mail/editor/selection-bubble.tsx";
+@source "../../../node_modules/work-kit/src/mail/face.tsx";
 @source "../../../node_modules/work-kit/src/mail/fixtures/corpus.ts";
+@source "../../../node_modules/work-kit/src/mail/fixtures/faces.ts";
 @source "../../../node_modules/work-kit/src/mail/fixtures/index.ts";
 @source "../../../node_modules/work-kit/src/mail/fixtures/mail-fixtures.ts";
 @source "../../../node_modules/work-kit/src/mail/fixtures/outbox-fixtures.ts";
@@ -100,6 +102,7 @@
 @source "../../../node_modules/work-kit/src/mail/lib/colour.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/compose.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/editor-schema.ts";
+@source "../../../node_modules/work-kit/src/mail/lib/faces.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/files.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/folds.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/format.ts";
