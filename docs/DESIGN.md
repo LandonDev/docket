@@ -1056,6 +1056,19 @@ Every computer being driven now, on every connected host, in one place
   main window in front with that computer on the stage. The main window
   draws it, on the stream it already plays: it is never a second stream.
   The stage's caption opens it (Pop out, before Full window).
+- **The Windows VM in Settings → Work** (`WinvmSection`, work/winvm/): a
+  section of its own on each Work host that can have the VM (a host that
+  cannot shows nothing). Its first row, "Windows", says what the machine is
+  doing in a few words ("Not set up", "Asleep", "Awake", the keeper's step
+  while it works) with the one press that fits, secondary: Set up, Wake or
+  Sleep, spinning while the keeper works; a failure is the row's red line.
+  Once set up: "Sleeps after" (15 minutes, 30 minutes, 2 hours, Never),
+  "Restore points" (a row that opens a dialog of the points, newest first,
+  each with Go back… after a confirm naming what is lost, and Delete; Save
+  a point at its foot; saving and going back only while it sleeps), the
+  edition with its end date, and Office. A Work workspace's own page has
+  "Computer use on the Windows VM" under Where it runs, a switch shown only
+  where its host has the VM set up.
 - **Nothing says "live".** No mark, no frame counter, no quality menu. The
   video is never eased or blurred; ours is only the first frame's arrival
   and a tile's entry.

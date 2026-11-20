@@ -82,7 +82,7 @@ export function workspaceSettings(workspace: Pick<WorkspaceMeta, "id" | "environ
 
 export function setWorkspaceSettings(
   workspace: Pick<WorkspaceMeta, "id" | "environmentId">,
-  patch: { mayUseDesktop?: string[]; model?: string | null; reasoning?: string | null; voice?: boolean },
+  patch: { mayUseDesktop?: string[]; model?: string | null; reasoning?: string | null; voice?: boolean; windowsVm?: boolean },
 ): Promise<WorkspaceWorkSettings> {
   return registry.linkOf(workspace.environmentId).request<WorkspaceWorkSettings>("work.workspace.set", { workspaceId: workspace.id, patch });
 }

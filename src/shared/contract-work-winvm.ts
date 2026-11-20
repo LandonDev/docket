@@ -47,6 +47,9 @@ export interface WinvmPoint {
   by: 'owner' | 'keeper'
 }
 
+/** The Windows evaluation the base image was built from ends about this day (docs/agents/windows-vm.md); after it, a real key or a rebuild. */
+export const WINVM_EVALUATION_ENDS = '2027-02-17'
+
 /** How many restore points are kept: a new one past this drops the oldest. */
 export const WINVM_POINTS_KEPT = 3
 

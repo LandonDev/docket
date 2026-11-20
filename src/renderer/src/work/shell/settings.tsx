@@ -22,6 +22,7 @@ import { useWorkHosts } from "../../lib/workSwitch";
 import { TeamsCopyRow } from "../office/TeamsCopyRow";
 import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
+import { WinvmSection, WinvmWorkspaceRow } from "../winvm/WinvmSection";
 import { HouseRules } from "../rules/HouseRules";
 import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { WaitingSection } from "../mail/WaitingSection";
@@ -96,6 +97,7 @@ export function WorkSettingsBody() {
             <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Teams files on ${host.name}` : "Teams files"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
           ))}
       </PageSection>
+      <WinvmSection hosts={hosts.map((h) => h.id)} />
       <GuestLinksSection hosts={hosts.map((h) => h.id)} />
       {home ? <MailSettingsSection environmentId={home} /> : null}
     </>
@@ -308,6 +310,22 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
         ) : error ? null : (
           <PageRowsSkeleton rows={Math.max(1, desktops.length)} description control="switch" />
         )}
+        {settings ? (
+          <WinvmWorkspaceRow
+            env={workspace.environmentId}
+            on={!!settings.windowsVm}
+            onChange={async (next) => {
+              try {
+                setSettings(await setWorkspaceSettings(workspace, { windowsVm: next }));
+                setError(null);
+                return true;
+              } catch (err) {
+                setError(errorText(err));
+                return false;
+              }
+            }}
+          />
+        ) : null}
         {settings && host && otherDesktops(settings.mayUseDesktop).length ? (
           <TeamsCopyRow workspace={workspace} hostName={host.name} desktops={otherDesktops(settings.mayUseDesktop).map((id) => environments.find((e) => e.id === (linkIdOfHost(id, localHost) ?? id))?.name ?? id)} />
         ) : null}
