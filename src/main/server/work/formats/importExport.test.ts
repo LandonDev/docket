@@ -147,6 +147,36 @@ describe('a Word file opened in the canvas', () => {
     expect((again.source as { path: string }).path).toBe(join(r.work, 'review 3.tcdoc'))
   })
 
+  it("a mail's attachment is read once into a .tcdoc beside its fetched copy, opens and closes nothing, and is viewed, not edited", async () => {
+    const r = await rig()
+    const { fetchedFile } = await import('../canvas/fetch')
+    const { roleOf } = await import('../docs/index')
+    const { targetOf } = await import('../docs/target')
+    const source: CanvasSource = { at: 'mail', threadId: 'mt1', messageId: 'mm1', partId: '2', name: 'review.docx' }
+    const item = { id: 'm1', sessionId: 't1', workspaceId: 'w1', kind: 'document', title: 'review.docx', source, state: 'open', position: 0, rev: 0, createdAt: 0, updatedAt: 0 }
+    const was = r.ctx.canvas.get
+    ;(r.ctx.canvas as { get: (id: string) => unknown }).get = (id: string) => (id === 'm1' ? item : was(id))
+    const copy = fetchedFile(r.ctx.dataDir, item as never)
+    mkdirSync(dirname(copy), { recursive: true })
+    copyFileSync(join(CORPUS, 'review.docx'), copy)
+    const got = await r.ask<ImportAnswer>('work.formats.import', { itemId: 'm1', from: { at: 'source', source } })
+    expect(got.source).toEqual({ at: 'file', host: 'env_box', path: join(dirname(copy), 'review.tcdoc') })
+    expect(existsSync(join(dirname(copy), 'review.tcdoc'))).toBe(true)
+    expect(r.opened).toEqual([])
+    expect(r.closed).toEqual([])
+    // Asked again (a remount, another window), it is the same document: none made beside it.
+    const again = await r.ask<ImportAnswer>('work.formats.import', { itemId: 'm1', from: { at: 'source', source } })
+    expect(again.source).toEqual(got.source)
+    expect(existsSync(join(dirname(copy), 'review 2.tcdoc'))).toBe(false)
+    // An item that is not this attachment's is refused.
+    await expect(r.ask('work.formats.import', { itemId: 'i0', from: { at: 'source', source } })).rejects.toThrow("not this item's")
+    // Read only for every caller, this window too; a document of his edits as before.
+    const local = { kind: 'local', caps: [] } as Caller
+    expect(roleOf(local, r.ctx, await targetOf(r.ctx, local, 'work.docs.open', got.source))).toBe('view')
+    const his = await r.ask<ImportAnswer>('work.formats.import', { from: { at: 'source', source: { at: 'file', host: 'env_box', path: word(r) } } })
+    expect(roleOf(local, r.ctx, await targetOf(r.ctx, local, 'work.docs.open', his.source))).toBe('edit')
+  })
+
   it('a remote key reaches only files inside its roots', async () => {
     const r = await rig()
     const outside = join(r.dir, 'elsewhere.docx')

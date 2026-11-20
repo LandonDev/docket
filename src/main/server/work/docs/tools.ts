@@ -3,7 +3,8 @@ import { agentPrincipal, workText, type CanvasSource, type WorkToolResult } from
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { docsOf, modeOf, wrote } from './state'
-import { lifeosRow, pathOf, serviceTarget, targetOf, type DocTarget } from './target'
+import { attachmentDoc, ATTACHMENT_READ_ONLY, lifeosRow, pathOf, serviceTarget, targetOf, type DocTarget } from './target'
+import { fetchedItemOfPath } from '../canvas/fetch'
 import { changeThread } from './threads'
 import { EDITED_WITHIN, FIND_BY, FIND_KINDS, FIND_KIND_WORDS, FIND_SORTS, FIND_WHERE, FIND_WHERE_WORDS, findIn, type FindEntry, type FindFilter } from '@shared/work/docFind'
 
@@ -47,18 +48,26 @@ function orphaned(ctx: ToolCtx): boolean {
 /** The sectors a thread may reach: its workspace's one; none for a workspace with no sector or a thread with no Work home; every sector for a Work Chat (which reads through its own key). */
 const sectorsOf = (ctx: ToolCtx): string[] | 'all' => (ctx.scope.sector ? [ctx.scope.sector] : ctx.scope.workspaceId || orphaned(ctx) ? [] : 'all')
 
-async function resolve(ctx: ToolCtx, a: TargetArgs): Promise<{ t: DocTarget; shared: boolean; fence: string[] | 'all' }> {
+async function resolve(ctx: ToolCtx, a: TargetArgs, write = false): Promise<{ t: DocTarget; shared: boolean; fence: string[] | 'all' }> {
   let source: CanvasSource
   if (a.item) {
     const item = ctx.canvas.get(a.item)
     if (!item || item.kind !== 'document' || item.sessionId !== ctx.canvas.paneOf(ctx.sessionId)) throw new Error(`This thread has no document ${a.item} in its canvas.`)
     source = item.source
+    // A mail's document is read from the copy its pane made of it (attachmentDoc), and never written.
+    if (source.at === 'mail') {
+      if (write) throw new Error(ATTACHMENT_READ_ONLY)
+      const path = attachmentDoc(ctx, item)
+      if (!path) throw new Error(`${item.title} has not been opened yet: it is read once the person opens it.`)
+      source = { at: 'file', host: ctx.host, path }
+    }
     // Google is the truth for a Google Doc: an agent's change goes there as a suggestion.
     if (source.at === 'google') throw new Error(`${item.title} lives in Google: read it with google_doc_read and change it with google_doc_suggest.`)
   } else if (a.doc) source = { at: 'lifeos', table: 'docs', id: a.doc }
   else if (a.file) source = { at: 'file', host: ctx.host, path: a.file }
   else throw new Error('Pass `item` (a document open in the canvas), `doc` (a LifeOS document id) or `file` (a .tcdoc path).')
   const t = await targetOf(ctx, { kind: 'model', caps: [], sessionId: ctx.sessionId }, 'doc', source)
+  if (write && t.at === 'file' && fetchedItemOfPath(ctx, t.path)) throw new Error(ATTACHMENT_READ_ONLY)
   const row = await lifeosRow(ctx, t)
   const fence = sectorsOf(ctx)
   // A document of another sector is not this thread's to see, whatever id it was handed.
@@ -93,7 +102,7 @@ export function changedParts(before: string, after: string): { count: number; un
 const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
 
 async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 'asked' | 'routine' | 'own'; quote?: string; suggest?: boolean }): Promise<WorkToolResult> {
-  const { t, shared, fence } = await resolve(ctx, a)
+  const { t, shared, fence } = await resolve(ctx, a, true)
   const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
   // A routine's run writes directly only where nobody else reads: on a shared document no grant covers it, so it suggests (milestone 50's hold review, finding 6).
   const routine = a.because === 'routine' && !!ctx.scope.routineRunId && !shared
@@ -286,7 +295,7 @@ export const docTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as TargetArgs & { quote: string; body: string }
       try {
-        const { t, shared, fence } = await resolve(ctx, a)
+        const { t, shared, fence } = await resolve(ctx, a, true)
         // A comment on a shared document reaches its other readers at once, with no press of his (milestone 50's hold review, finding 7).
         if (shared) return fail(SHARED_COMMENT)
         const principal = agentPrincipal(ctx.host, ctx.sessionId)

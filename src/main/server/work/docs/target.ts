@@ -1,10 +1,11 @@
 import { existsSync } from 'node:fs'
-import { basename, join, relative, isAbsolute } from 'node:path'
+import { basename, dirname, extname, join, relative, isAbsolute } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
-import type { CanvasSource } from '@shared/work'
+import type { CanvasItem, CanvasSource } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { canonicalPath } from '../service/ctx'
+import { fetchedFile } from '../canvas/fetch'
 
 /**
  * What a source names, as the Work service and LifeOS know it
@@ -81,3 +82,18 @@ export const serviceTarget = (t: DocTarget, shared: boolean, sectors: readonly s
 
 /** A file document's path, for a push only callers who could name it receive. */
 export const pathOf = (t: DocTarget): string | undefined => (t.at === 'file' ? t.path : undefined)
+
+/** What a document read from a mail says to a write: it is his only once he keeps it. */
+export const ATTACHMENT_READ_ONLY = "This document is a mail's attachment, read only: the person keeps it as a document of his own (Keep as document) before it can change."
+
+/** The document a mail's attachment was read into: `<name>.tcdoc` beside the fetched file in the item's folder (formats/importer.ts). */
+export const attachmentDocPathOf = (dataDir: string, item: CanvasItem): string => {
+  const file = fetchedFile(dataDir, item)
+  return join(dirname(file), `${basename(file, extname(file))}.tcdoc`)
+}
+
+/** That document, when the pane has opened the attachment; null before. */
+export function attachmentDoc(ctx: Pick<WorkCtx, 'dataDir'>, item: CanvasItem): string | null {
+  const path = attachmentDocPathOf(ctx.dataDir, item)
+  return existsSync(path) ? path : null
+}

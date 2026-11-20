@@ -539,3 +539,20 @@ describe('Download recording', () => {
     await expect(range(vtt.id, 0, 1024)).rejects.toThrow('This meeting has no recording.')
   })
 })
+
+describe("a mail's recording", () => {
+  it('is transcribed from the copy its pane fetched into the item folder, and says so before it has come', async () => {
+    const { fetchedFile } = await import('../canvas/fetch')
+    const source: CanvasSource = { at: 'mail', threadId: 'mt1', messageId: 'mm1', partId: '2', name: 'Voice memo.m4a', contentType: 'audio/mp4' }
+    const item = work.ctx.canvas.open('t1', 'meeting', source, 'Voice memo.m4a')
+    await expect(call('work.meetings.start', { itemId: item.id })).rejects.toThrow('has not come from the mail yet')
+    const path = fetchedFile(dir, item)
+    mkdirSync(join(path, '..'), { recursive: true })
+    writeFileSync(path, 'audio')
+    plan = { raw: rawOf() }
+    await call('work.meetings.start', { itemId: item.id })
+    await idle(item.id)
+    expect(jobs.at(-1)?.input).toBe(path)
+    expect((await get(item.id)).status).toBe('ready')
+  })
+})

@@ -1,5 +1,5 @@
 import { handled, mailPaneOf, NOT_HANDLED, type CanvasItem } from '@shared/work'
-import { ensureFetched, isFetched, readFetched } from './fetch'
+import { ensureFetched, isFetched, keepFetched, readFetched } from './fetch'
 import { WORK_MODULES, type WorkModule } from '../modules'
 import { canvasMentions, searchMentions } from './mentions'
 import { ensureMovedTable, retryMoved } from './move'
@@ -37,11 +37,13 @@ export const canvas: WorkModule = {
       case 'work.canvas.reorder':
         return handled({ items: store.reorder(req.params.sessionId, req.params.order).map(shown) })
       case 'work.canvas.fetch':
+      case 'work.canvas.keep':
       case 'work.canvas.read': {
         const item = store.get(req.params.itemId)
         if (!item) throw new Error(`no canvas item ${req.params.itemId}`)
         if (!isFetched(item.source)) throw new Error(`${item.title} is read where it is: there is nothing to fetch.`)
         if (req.method === 'work.canvas.fetch') return handled(await ensureFetched(ctx, item))
+        if (req.method === 'work.canvas.keep') return handled(await keepFetched(ctx, item))
         return handled(readFetched(ctx.dataDir, item, req.params.offset, req.params.length))
       }
       case 'work.canvas.mentions': {

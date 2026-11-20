@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
@@ -86,6 +86,7 @@ async function rig(o: { ownerSaid?: string[]; shared?: boolean; routineRunId?: s
   const ctx = {
     db,
     host: 'env_box',
+    dataDir: join(dir, 'data'),
     log: () => {},
     push: (p: WorkPush) => pushes.push(p),
     reaches: (by: Caller) => by.kind !== 'remote',
@@ -179,6 +180,27 @@ describe('an agent writing a document', () => {
     const r = await rig()
     expect(await r.tool('doc_read', { item: 'nope' })).toEqual({ text: 'This thread has no document nope in its canvas.', error: true })
     expect((await r.tool('doc_read', { file: join(r.dir, 'notes.txt') })).text).toMatch(/LifeOS document, a .tcdoc or a Google Doc/)
+  })
+})
+
+describe("a mail's attachment read as a document", () => {
+  it('an agent reads it by its item and is refused a write or a comment, by item or by path', async () => {
+    const r = await rig()
+    const { attachmentDocPathOf, ATTACHMENT_READ_ONLY } = await import('./target')
+    const ctx = r.ctx as unknown as { dataDir: string; canvas: { get: (id: string) => unknown } }
+    const mail = { id: 'm1', sessionId: 't1', kind: 'document', title: 'Brief.docx', source: { at: 'mail', threadId: 'mt1', messageId: 'mm1', partId: '2', name: 'Brief.docx' } }
+    const was = ctx.canvas.get
+    ctx.canvas.get = (id: string) => (id === 'm1' ? mail : was(id))
+    expect((await r.tool('doc_read', { item: 'm1' })).text).toMatch(/has not been opened yet/)
+    const path = attachmentDocPathOf(ctx.dataDir, mail as never)
+    mkdirSync(dirname(path), { recursive: true })
+    await r.service.collab.writeMarkdown(fileDocName(path), 'owner', md('# Brief', 'Doors at nine'), { path })
+    // The service holds it open; its file on disk is what says the pane has read the attachment.
+    if (!existsSync(path)) writeFileSync(path, '')
+    expect(await r.tool('doc_read', { item: 'm1' })).toEqual({ text: '# Brief\n\nDoors at nine\n', error: false })
+    expect(await r.tool('doc_write', { item: 'm1', markdown: md('# Brief', 'Doors at ten'), because: 'own' })).toEqual({ text: ATTACHMENT_READ_ONLY, error: true })
+    expect(await r.tool('doc_write', { file: path, markdown: md('# Brief', 'Doors at ten'), because: 'own' })).toEqual({ text: ATTACHMENT_READ_ONLY, error: true })
+    expect(await r.tool('doc_comment', { item: 'm1', quote: 'Doors', body: 'Why nine?' })).toEqual({ text: ATTACHMENT_READ_ONLY, error: true })
   })
 })
 

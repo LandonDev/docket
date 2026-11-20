@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { WorkPush } from '@shared/contract-work'
 import type { SessionMeta } from '@shared/events'
@@ -141,6 +141,37 @@ describe('the kinds open a fetched attachment as a file', () => {
       const csv = store.open('t1', { kind: 'sheet', source: { ...attachment, partId: '4', name: 'export.csv' }, title: 'export.csv' })
       expect(heldOf(csv, dir)).toMatchObject({ at: 'service', csv: fetchedFile(dir, csv) })
       expect(() => heldOf({ source: attachment, title: 'x.xlsx' }, dir)).toThrow('has not come from the mail yet')
+    } finally {
+      off()
+    }
+  })
+})
+
+describe('Save to workspace', () => {
+  it("copies the fetched file into the item's workspace folder under its own name, numbered when taken", async () => {
+    const { keepFetched, fetchedItemOfPath } = await import('./fetch')
+    const folder = join(dir, 'Cosmic')
+    const { mkdirSync } = await import('node:fs')
+    mkdirSync(folder)
+    const wctx = { dataDir: dir, push: () => {}, db: { prepare: () => ({ get: (id: string) => (id === 'w1' ? { path: folder } : undefined) }) }, canvas: { get: (id: string) => store.get(id) } } as unknown as WorkCtx
+    const item = store.open('t1', { kind: 'pdf', source: attachment, title: 'Q3 report.pdf' })
+    const off = registerCanvasFetcher({ at: 'mail', fetch: async (_i, _c, to) => writeFileSync(to.dest, '%PDF-1.7 a') })
+    try {
+      expect(await keepFetched(wctx, item)).toEqual({ path: join(folder, 'Q3 report.pdf'), name: 'Q3 report.pdf' })
+      expect(await keepFetched(wctx, item)).toEqual({ path: join(folder, 'Q3 report (1).pdf'), name: 'Q3 report (1).pdf' })
+      expect(readFileSync(join(folder, 'Q3 report.pdf'), 'utf8')).toBe('%PDF-1.7 a')
+      // A Work Chat's pane has no workspace folder.
+      await expect(keepFetched(wctx, { ...item, workspaceId: null })).rejects.toThrow('no workspace folder')
+      // The fetched copy is known by its path; his saved copy and other files are not.
+      expect(fetchedItemOfPath(wctx, fetchedFile(dir, item))?.id).toBe(item.id)
+      writeFileSync(join(dirname(fetchedFile(dir, item)), 'Q3 report.tcdoc'), 'doc')
+      expect(fetchedItemOfPath(wctx, join(dirname(fetchedFile(dir, item)), 'Q3 report.tcdoc'))?.id).toBe(item.id)
+      expect(fetchedItemOfPath(wctx, join(folder, 'Q3 report.pdf'))).toBeNull()
+      const own = store.open('t1', { kind: 'pdf', source: { at: 'thread' }, title: 'Made here' })
+      const ownFile = join(dir, 'canvas', 't1', own.id, 'file', 'x.pdf')
+      mkdirSync(dirname(ownFile), { recursive: true })
+      writeFileSync(ownFile, 'x')
+      expect(fetchedItemOfPath(wctx, ownFile)).toBeNull()
     } finally {
       off()
     }

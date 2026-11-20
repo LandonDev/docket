@@ -13,6 +13,7 @@ import { checkNotes, undoneNotes, type NotesInput } from './notes'
 import { displayName, parseTranscript } from './parse'
 import { tokensOf } from './quotes'
 import { MEDIA_EXTS, MEETING_FORMAT, TRANSCRIPT_EXTS, type PipelineEvent, type RawTranscript, type RawVoices } from './raw'
+import { fetchedPath } from '../canvas/fetch'
 import { audioPathOf, emptyDoc, meetingOf, MeetingStore, type MeetingDoc, type MeetingRow, type StoredNotes } from './store'
 import { Voices } from './voices'
 
@@ -143,7 +144,8 @@ export class Meetings {
     const item = this.items.get(itemId)
     if (!item || item.kind !== 'meeting') throw new Error(`no meeting item ${itemId}`)
     const row = this.store.ensure(item)
-    const named = source ?? (item.source.at === 'file' ? item.source : null)
+    // A mail's recording is the copy its pane fetched into the item's folder (canvas/fetch.ts).
+    const named = source ?? (item.source.at === 'file' ? item.source : item.source.at === 'mail' ? { at: 'file' as const, host: ctx.host, path: fetchedPath(ctx.dataDir, item) } : null)
     if (!source && (row.status === 'ready' || this.jobs.has(itemId))) return this.wire(ctx, row)
     const from = named ?? row.source
     if (!from) throw new Error('This meeting has no recording yet.')

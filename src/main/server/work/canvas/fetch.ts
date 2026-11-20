@@ -1,5 +1,6 @@
-import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs'
+import { join, relative, sep } from 'node:path'
+import { freeKeptName, keptFileName } from '../../attachmentUploads'
 import { safeFileName } from '@shared/fileName'
 import type { CanvasItem, CanvasSource } from '@shared/work'
 import type { WorkCtx } from '../modules'
@@ -110,4 +111,46 @@ export function readFetched(dataDir: string, item: CanvasItem, offset: number, l
     closeSync(fd)
   }
   return { data: buf.toString('base64'), size }
+}
+
+/** The folder of the workspace the item's pane belongs to, when this host has it on disk; null for a Work Chat's. */
+export function workspaceFolderOfItem(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem): string | null {
+  if (!item.workspaceId) return null
+  const row = ctx.db.prepare('SELECT path FROM workspaces WHERE id = ?').get(item.workspaceId) as { path?: string } | undefined
+  return row?.path && existsSync(row.path) ? row.path : null
+}
+
+/**
+ * Save to workspace: a copy of the fetched file in the workspace's own folder under the attachment's name, made safe
+ * and numbered as a kept upload is (`keptFileName`, `freeKeptName`: "Budget (1).xlsx"). Refused for a pane with no
+ * workspace folder (a Work Chat's).
+ */
+export async function keepFetched(ctx: WorkCtx, item: CanvasItem): Promise<{ path: string; name: string }> {
+  const folder = workspaceFolderOfItem(ctx, item)
+  if (!folder) throw new Error('This pane has no workspace folder to save into.')
+  await ensureFetched(ctx, item)
+  const from = fetchedPath(ctx.dataDir, item)
+  const name = freeKeptName(folder, keptFileName(item.source.at === 'mail' ? item.source.name : item.title))
+  const path = join(folder, name)
+  copyFileSync(from, path)
+  return { path, name }
+}
+
+/**
+ * The item whose fetched folder holds `path` (`canvas/<owner>/<item>/file/…`): a mail's attachment, or a file made
+ * from one there (its document's `.tcdoc`). Null for anything else. Read by the real path, so a link cannot pass.
+ */
+export function fetchedItemOfPath(ctx: Pick<WorkCtx, 'dataDir' | 'canvas'>, path: string): CanvasItem | null {
+  let real: string
+  let root: string
+  try {
+    real = realpathSync(path)
+    root = realpathSync(join(ctx.dataDir, 'canvas'))
+  } catch {
+    return null
+  }
+  const parts = relative(root, real).split(sep)
+  if (parts.length < 4 || parts[0] === '..' || parts[2] !== 'file') return null
+  const item = ctx.canvas.get(parts[1]!)
+  return item && item.sessionId === parts[0] && isFetched(item.source) ? item : null
 }

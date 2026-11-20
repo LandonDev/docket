@@ -9,6 +9,7 @@ import { changeThread, ensureThreadTables, readThreads } from './threads'
 import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, listViews, saveView, workspaceOf } from './find'
 import { docTools } from './tools'
 import { guestNameOf } from '../guests/store'
+import { fetchedItemOfPath } from '../canvas/fetch'
 
 /**
  * The docs pillar's server module (docs/agents/work-docs.md): the document
@@ -20,8 +21,9 @@ import { guestNameOf } from '../guests/store'
  * holds for the Docs view and `doc_find` (find.ts).
  */
 
-/** A screen at this host or a key that may operate edits; a read-only key views. */
-const roleOf = (by: Caller): 'edit' | 'view' => (by.kind === 'local' || by.caps.includes('operate') ? 'edit' : 'view')
+/** A screen at this host or a key that may operate edits; a read-only key views. A mail's attachment read as a document is viewed by everyone until he keeps it. */
+export const roleOf = (by: Caller, ctx?: WorkCtx, t?: DocTarget): 'edit' | 'view' =>
+  ctx && t?.at === 'file' && fetchedItemOfPath(ctx, t.path) ? 'view' : by.kind === 'local' || by.caps.includes('operate') ? 'edit' : 'view'
 
 /** Words for each principal a document's rows and carets name. */
 export function namesFor(ctx: WorkCtx, principals: Iterable<string>): Record<string, string> {
@@ -59,7 +61,7 @@ async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> 
     doc: t.doc,
     source: t.source,
     title: titleOf(t, row),
-    role: roleOf(by),
+    role: roleOf(by, ctx, t),
     shared,
     mode: shared ? 'suggests' : modeOf(ctx, t.doc),
     written: docsOf(ctx).written.get(t.doc) ?? null,
@@ -71,7 +73,7 @@ async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> 
 /** A collaboration token from this host's service; a LifeOS document served by another host says which. */
 async function tokenFor(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocToken> {
   try {
-    const token = await ctx.service.token({ item: { doc: t.doc }, role: roleOf(by), principal: 'owner', source: t.source })
+    const token = await ctx.service.token({ item: { doc: t.doc }, role: roleOf(by, ctx, t), principal: 'owner', source: t.source })
     return { token, expiresAt: Date.now() + TOKEN_SECONDS * 1000 }
   } catch (err) {
     if (err instanceof ServedElsewhere) throw new Error(`served elsewhere: ${err.host}`)

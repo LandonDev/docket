@@ -8,6 +8,8 @@ import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { ensureThreadTables } from '../docs/threads'
 import { canonicalPath } from '../service/ctx'
+import { ensureFetched, fetchedPath } from '../canvas/fetch'
+import { attachmentDocPathOf } from '../docs/target'
 
 /**
  * A file in as a document (docs/agents/work-formats.md "Import and export"):
@@ -110,6 +112,7 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
   let name: string
   let folder: string
   let original: string | null = null
+  if (from.at === 'source' && from.source.at === 'mail') return importAttachment(ctx, params)
   if (from.at === 'source') {
     const path = canvasSourcePath(from.source)
     if (!path) throw new Error('only a file can be imported')
@@ -153,6 +156,32 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
   }
   ctx.log(`formats: imported ${name} as ${basename(target)} (${made.threads.length} threads, ${made.branches.length} authors of changes)`)
   return { source, title: stem, ...(itemId ? { itemId } : {}), warnings, outsiders: made.outsiders }
+}
+
+/**
+ * A mail's attachment read as a document (work-mail.md "Attachments"): the fetched copy in the item's own folder
+ * becomes `<name>.tcdoc` beside it, once, and the item stays the attachment, which the document kind shows read only
+ * (docs/index.ts `roleOf`). Nothing opens or closes here: keeping it as his own is an import of the copy saved to the
+ * workspace (`work.canvas.keep`, then an import from that file).
+ */
+async function importAttachment(ctx: WorkCtx, params: ImportParams): Promise<ImportAnswer> {
+  const item = params.itemId ? ctx.canvas.get(params.itemId) : null
+  const source = params.from.at === 'source' ? params.from.source : null
+  if (!item || !source || JSON.stringify(item.source) !== JSON.stringify(source)) throw new Error("that attachment is not this item's")
+  await ensureFetched(ctx, item)
+  const original = fetchedPath(ctx.dataDir, item)
+  const target = attachmentDocPathOf(ctx.dataDir, item)
+  const made: CanvasSource = { at: 'file', host: ctx.host, path: target }
+  const title = basename(target, '.tcdoc')
+  if (existsSync(target)) return { source: made, title, warnings: [], outsiders: false }
+  const name = basename(original)
+  const read = await readFile(ctx, original, extname(name).slice(1).toLowerCase())
+  read.imported.sidecar.source = { name, format: extname(name).slice(1).toLowerCase(), importedAt: Date.now() }
+  const { writeImportedTcdoc } = await import('work-kit/formats/tcdoc')
+  const written = await writeImportedTcdoc(target, read.imported, { principal: 'owner' })
+  ensureThreadTables(ctx.db)
+  ctx.db.prepare('INSERT OR REPLACE INTO work_docs_threads (doc, rows) VALUES (?, ?)').run(fileDocName(target), JSON.stringify(written.threads))
+  return { source: made, title, warnings: [...read.warnings, ...droppedWords(read.imported.sidecar.dropped)], outsiders: written.outsiders }
 }
 
 export type { ExportAnswer }

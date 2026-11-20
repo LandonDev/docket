@@ -32,6 +32,8 @@ export const CanvasRequestSchemas = [
    */
   request('work.canvas.fetch', z.object({ itemId: z.string() })),
   /** → { data, size }: base64 bytes of a fetched item's file, from `offset`, at most `length` (Download in the bar). */
+  /** → { path, name }: Save to workspace. A copy of a fetched item's file in its workspace's folder under its own name ("name (1).ext" when taken); refused for a pane with no workspace folder. */
+  request('work.canvas.keep', z.object({ itemId: z.string() })),
   request('work.canvas.read', z.object({ itemId: z.string(), offset: z.number().int().nonnegative(), length: z.number().int().positive().max(8 * 1024 * 1024) })),
   /**
    * → MentionAnswer (src/shared/work/mentions.ts): what the composer's `@` offers for `text`, found only in what
@@ -63,6 +65,8 @@ export const CANVAS_CAPS = {
   // An attachment's bytes are his mail, read as the JWT that reads the mail would.
   'work.canvas.fetch': 'approve',
   'work.canvas.read': 'approve',
+  // It writes into his folder, as a kept upload does.
+  'work.canvas.keep': 'operate',
   // It reads his mail, tasks and agenda as a LifeOS JWT would, so it needs what `work.lifeos.jwt` needs.
   'work.canvas.mentions': 'approve'
 } satisfies CapsOf<typeof CanvasRequestSchemas>
