@@ -39,8 +39,10 @@ struct VideoPicture: @unchecked Sendable {
 /// window's serial queue; the lock guards the end against `ended()` readers.
 final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     let windowID: UInt32
-    let pixels: PixelSize
     let queue: DispatchQueue
+    /// the window's own pixels now: set on the queue as the window resizes, read by the shell
+    private let current: OSAllocatedUnfairLock<PixelSize>
+    var pixels: PixelSize { current.withLock { $0 } }
     private let filter: SCContentFilter
     private let pointPixelScale: Double
     private let rate: Int
@@ -50,6 +52,7 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
     private var clock: DispatchSourceTimer?
     // on the queue
     private var encoders: [VideoEncoderSession] = []
+    private var stopping = false
     private(set) var last: VideoPicture?
     private var size: PixelSize
     private var points: CGSize
@@ -68,7 +71,8 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
         self.rate = rate
         self.trace = trace
         pointPixelScale = Double(filter.pointPixelScale)
-        pixels = Self.pixels(points, scale: Double(filter.pointPixelScale))
+        let pixels = Self.pixels(points, scale: Double(filter.pointPixelScale))
+        current = OSAllocatedUnfairLock(initialState: pixels)
         size = VideoGeometry.picture(pixels, maxEdge: maxEdge)
         queue = DispatchQueue(label: "tc.capture.video.\(windowID).\(UUID().uuidString.prefix(8))", qos: .userInteractive)
         super.init()
@@ -109,14 +113,18 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
     // MARK: WindowVideo
 
     func addEncoder(_ spec: VideoEncoderSpec, output: any VideoOutput) throws -> any VideoEncoder {
-        guard end.withLockUnchecked({ $0.finished == nil }) else { throw ComputerFailure.windowGone(windowID) }
         let encoder = VideoEncoderSession(spec: spec, rate: videoRate(spec.mode), output: output, queue: queue) { [weak self] in self?.last }
-        try queue.sync {
-            try encoder.open(size: spec.size)
+        let size = try queue.sync { () throws -> PixelSize in
+            // on the queue, so the capture cannot end between this check and the encoder joining it
+            guard end.withLockUnchecked({ $0.finished == nil }) else { throw ComputerFailure.windowGone(windowID) }
+            // the window's pixels now, which a resize since the shell read them may have changed
+            let size = VideoGeometry.picture(pixels, maxEdge: spec.maxEdge)
+            try encoder.open(size: size)
             encoders.append(encoder)
             fitCapture()
+            return size
         }
-        trace?(.videoEncoder(window: windowID, width: spec.size.width, height: spec.size.height, mode: spec.mode.rawValue))
+        trace?(.videoEncoder(window: windowID, width: size.width, height: size.height, mode: spec.mode.rawValue))
         return encoder
     }
 
@@ -131,12 +139,16 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
     func stop() async {
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             queue.async {
+                // an error ScreenCaptureKit reports while our own stop is in flight is still our stop
+                self.stopping = true
                 guard let stream = self.stream else { return done.resume() }
                 stream.stopCapture { _ in done.resume() }
             }
         }
         queue.sync { finish(.stopped) }
     }
+
+    var isOver: Bool { end.withLockUnchecked { $0.finished != nil } }
 
     func ended() async -> StreamEndReason {
         await withCheckedContinuation { continuation in
@@ -167,7 +179,7 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
         queue.async {
             var reason = CaptureErrors.endReason(error)
             if case .error = reason, LiveWindows.bounds(self.windowID) == nil { reason = .windowClosed }
-            self.finish(reason)
+            self.finish(self.stopping ? .stopped : reason)
         }
     }
 
@@ -213,6 +225,7 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
         guard off else { return }
         points = live
         let now = Self.pixels(live, scale: pointPixelScale)
+        current.withLock { $0 = now }
         for encoder in encoders { encoder.resize(to: now) }
         fitCapture()
         trace?(.videoResized(window: windowID, width: now.width, height: now.height))
@@ -265,9 +278,14 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
     private let queue: DispatchQueue
     /// the capture's last picture, read on the queue
     private let last: () -> VideoPicture?
+    /// the picture's size when the encoder joined: `capture.video.start`'s answer
+    private(set) var startSize: PixelSize
     // on the queue
     private(set) var size: PixelSize
     private var session: VTCompressionSession?
+    /// every frame submitted and not yet settled with the stream: each is settled exactly once
+    private var owed: [UInt64: Bool] = [:]
+    private var nextSubmit: UInt64 = 0
     private var transfer: VTPixelTransferSession?
     private var generation: UInt32 = 0
     private var keyNext = true
@@ -284,6 +302,7 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
         self.queue = queue
         self.last = last
         size = spec.size
+        startSize = spec.size
         bitrate = spec.bitrate
     }
 
@@ -300,7 +319,9 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
     func encodeLast() {
         queue.async { [self] in
             guard !closed, let picture = last() else { return }
-            offer(VideoPicture(buffer: picture.buffer, captureMicros: picture.captureMicros, enteredMicros: monotonicMicros()), again: true)
+            // a frame of now to the flow: the old picture's time would read as queue
+            let now = monotonicMicros()
+            offer(VideoPicture(buffer: picture.buffer, captureMicros: now, enteredMicros: now), again: true)
         }
     }
 
@@ -348,6 +369,7 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
         VTCompressionSessionPrepareToEncodeFrames(made)
         session = made
         self.size = size
+        if generation == 0 { startSize = size }
         generation += 1
         keyNext = true
         closed = false
@@ -375,9 +397,12 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
 
     func close(keepOpen: Bool = false) {
         if let session {
+            // the frames inside come out first; whatever is still owed to the stream is settled as dropped
+            VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             VTCompressionSessionInvalidate(session)
             self.session = nil
         }
+        settleOwed()
         if let transfer {
             VTPixelTransferSessionInvalidate(transfer)
             self.transfer = nil
@@ -395,21 +420,32 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
         // our own clock, strictly rising, so a repeated picture is a new frame to the encoder
         let pts = max(lastPTS + 1, Int64(monotonicMicros()))
         lastPTS = pts
-        let properties: CFDictionary? = keyNext ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary : nil
+        let forced = keyNext
+        let properties: CFDictionary? = forced ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary : nil
         keyNext = false
         let generation = self.generation
         let size = self.size
+        nextSubmit += 1
+        let submit = nextSubmit
+        owed[submit] = forced
         let status = VTCompressionSessionEncodeFrame(
             session, imageBuffer: buffer, presentationTimeStamp: CMTime(value: pts, timescale: 1_000_000), duration: .invalid,
             frameProperties: properties, infoFlagsOut: nil
         ) { [weak self, queue] status, flags, sample in
             let unit = Self.unit(status: status, flags: flags, sample: sample)
-            queue.async { self?.finished(unit, generation: generation, size: size, picture: picture) }
+            queue.async { self?.finished(unit, submit: submit, generation: generation, size: size, picture: picture) }
         }
-        if status != noErr {
+        if status != noErr, owed.removeValue(forKey: submit) != nil {
             output.dropped()
+            if forced { keyNext = true }
             failed(status)
         }
+    }
+
+    /// Every frame still owed to the stream goes as dropped; their handlers, if they come, change nothing.
+    private func settleOwed() {
+        for _ in owed { output.dropped() }
+        owed.removeAll()
     }
 
     private enum Result { case unit(Data, keyframe: Bool), dropped, failed(OSStatus) }
@@ -443,12 +479,18 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
     }
 
     /// On the queue: what the encoder gave for one admitted picture.
-    private func finished(_ result: Result, generation: UInt32, size: PixelSize, picture: VideoPicture) {
+    private func finished(_ result: Result, submit: UInt64, generation: UInt32, size: PixelSize, picture: VideoPicture) {
+        // settled already (the session closed, or its submit failed): nothing more to say
+        guard let forced = owed.removeValue(forKey: submit) else { return }
         // a frame of a session made again, or of a closed one, never reaches the stream
         guard !closed, generation == self.generation else {
             output.dropped()
             return
         }
+        // a forced keyframe that never came out is asked of the next frame
+        var keyframe = false
+        if case .unit(_, let key) = result { keyframe = key }
+        if forced && !keyframe { keyNext = true }
         switch result {
         case .unit(let data, let keyframe):
             failures = 0

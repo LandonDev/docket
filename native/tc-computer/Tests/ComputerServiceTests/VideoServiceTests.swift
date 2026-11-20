@@ -139,6 +139,41 @@ import Testing
         #expect(encoder.picture(at: t0 + 40_000))
     }
 
+    @Test func noFrameGoesOutUntilAKeyframe() async throws {
+        let rig = ServiceRig(videoPipe: true)
+        await ready(rig)
+        let stream = try #require(await start(rig).stream)
+        let encoder = try #require(rig.capture.videos.capture(7)?.encoders.first)
+        let t0 = monotonicMicros()
+        // the encoder dropped its forced keyframe: the P-frame that follows is not sent, and a keyframe is asked
+        #expect(encoder.picture(at: t0, keyframe: false))
+        #expect(encoder.calls.contains("keyframe"))
+        #expect(encoder.picture(at: t0 + 10_000, keyframe: true))
+        #expect(await eventually { rig.videoRecords().count == 1 })
+        #expect(rig.videoRecords().first?.sequence == 1 && rig.videoRecords().first?.flags == NSL1.keyframeFlag)
+        rig.ack(stream: stream, sequence: 1)
+        #expect(await acked(rig, stream, 1))
+        // a new generation whose first frame is no keyframe waits too
+        encoder.newGeneration()
+        #expect(encoder.picture(at: t0 + 20_000, keyframe: false))
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(rig.videoRecords().count == 1)
+    }
+
+    @Test func aCaptureThatEndsWhileAStreamStartsTakesNoStream() async throws {
+        let rig = ServiceRig(videoPipe: true)
+        rig.capture.videos.endOnAdd = true
+        await ready(rig)
+        #expect(await start(rig).error?.data?.kind == .windowNotFound)
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(rig.lines.notifications("capture/videoEnded").isEmpty)
+        #expect(rig.service.lock.withLock { rig.service.videos.isEmpty && rig.service.windowVideos.isEmpty })
+        // the next start makes a capture of its own
+        rig.capture.videos.endOnAdd = false
+        #expect(await start(rig).stream != nil)
+        #expect(rig.log.count("startVideo") == 2)
+    }
+
     @Test func aStillWindowIsSentAgainAndTheRepeatsSkipThePacing() async throws {
         let rig = ServiceRig(videoPipe: true)
         await ready(rig)

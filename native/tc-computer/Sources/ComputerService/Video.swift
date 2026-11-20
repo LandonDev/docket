@@ -13,8 +13,8 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
     let session: String
     let windowID: UInt32
     let mode: VideoMode
-    /// the picture's size at the start, `capture.video.start`'s answer
-    let size: PixelSize
+    /// the window's capture this stream joined: its end and its hold are this one's, never a newer one's
+    let entry: WindowVideoEntry
 
     private let lock = NSLock()
     private var flow = FlowControl()
@@ -26,17 +26,20 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
     private var bitrate: Int
     private var over = false
     private var toldTimeout = false
+    /// no frame goes out until a keyframe: at the start, in a new generation, after a frame the flow refused
+    private var needKey = true
+    private var broken = false
     private(set) var encoder: (any VideoEncoder)?
     private let write: @Sendable (Data) -> Void
     private let fail: @Sendable (String) -> Void
 
     /// `write` puts a record on the bytes pipe; `fail` ends the stream with `error`.
-    init(id: Int, session: String, windowID: UInt32, spec: VideoEncoderSpec, write: @escaping @Sendable (Data) -> Void, fail: @escaping @Sendable (String) -> Void) {
+    init(id: Int, session: String, windowID: UInt32, entry: WindowVideoEntry, spec: VideoEncoderSpec, write: @escaping @Sendable (Data) -> Void, fail: @escaping @Sendable (String) -> Void) {
         self.id = id
         self.session = session
         self.windowID = windowID
+        self.entry = entry
         self.mode = spec.mode
-        self.size = spec.size
         self.write = write
         self.fail = fail
         bitrate = spec.bitrate
@@ -87,14 +90,21 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
                 let rate = flow.targetBitrate
                 flow.reset()
                 flow.targetBitrate = rate
+                needKey = true
+            }
+            // a frame that leans on one never sent waits for the next keyframe
+            if needKey && !unit.keyframe {
+                encoder?.keyframe()
+                return nil
             }
             let now = monotonicMicros()
             let sequence = flow.lastEncoded &+ 1
             guard flow.enqueue(sequence, unit.accessUnit.count, unit.captureMicros, now) else {
-                // never sent, so the next frame must not lean on it
+                needKey = true
                 encoder?.keyframe()
                 return nil
             }
+            needKey = false
             flow.sent(sequence, now)
             let frame = VideoFrame(
                 generation: generation, sequence: sequence, keyframe: unit.keyframe, width: unit.size.width, height: unit.size.height,
@@ -111,8 +121,12 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
     }
 
     func failed(_ why: String) {
+        lock.withLock { broken = true }
         fail(why)
     }
+
+    /// The encoder failed for good, perhaps before the stream was in the table.
+    var hasFailed: Bool { lock.withLock { broken } }
 
     // MARK: Acks and the clock
 
@@ -223,7 +237,7 @@ extension ComputerService {
             return nextVideo
         }
         let stream = VideoStream(
-            id: id, session: target.session, windowID: target.windowID, spec: spec,
+            id: id, session: target.session, windowID: target.windowID, entry: entry, spec: spec,
             write: { pipe.write($0) },
             fail: { [weak self] why in Task { await self?.endVideo(id, reason: .error(why), tell: true) } }
         )
@@ -235,20 +249,24 @@ extension ComputerService {
             throw ComputerService.failure(error, or: .captureFailed)
         }
         stream.attach(encoder)
-        // a close that came while the stream started fences it out
-        let kept = lock.withLock { () -> Bool in
-            guard book.isOpen(target.session) && !ctx.cancel.isSet else { return false }
+        // a close that came while the stream started fences it out, and so does the capture's own end
+        enum Kept { case kept, closed, ended }
+        let kept = lock.withLock { () -> Kept in
+            guard book.isOpen(target.session) && !ctx.cancel.isSet else { return .closed }
+            // the capture may have ended before its watcher took the entry out
+            guard windowVideos[target.windowID] === entry, !video.isOver, !stream.hasFailed else { return .ended }
             videos[id] = stream
-            return true
+            return .kept
         }
-        guard kept else {
+        guard kept == .kept else {
             stream.end()
             video.removeEncoder(encoder)
             await releaseWindowVideo(entry)
+            if kept == .ended { throw ComputerError(kind: .windowNotFound, message: "The window's capture ended while the stream started.") }
             throw Router.cancelledError
         }
         startVideoClock()
-        return Methods.CaptureVideoStart.Output(stream: id, width: spec.size.width, height: spec.size.height)
+        return Methods.CaptureVideoStart.Output(stream: id, width: encoder.startSize.width, height: encoder.startSize.height)
     }
 
     /// The window's capture, started by the first stream and shared by the rest; one more hold on it.
@@ -292,7 +310,7 @@ extension ComputerService {
     private func windowVideoEnded(_ entry: WindowVideoEntry, reason: StreamEndReason) async {
         let ids = lock.withLock { () -> [Int] in
             if windowVideos[entry.windowID] === entry { windowVideos[entry.windowID] = nil }
-            return videos.values.filter { $0.windowID == entry.windowID }.map(\.id)
+            return videos.values.filter { $0.entry === entry }.map(\.id)
         }
         for id in ids { await endVideo(id, reason: reason, tell: true, capturing: false) }
     }
@@ -300,12 +318,9 @@ extension ComputerService {
     /// Ends one stream: its encoder goes, its hold on the capture goes, and `capture/videoEnded` is sent
     /// when `tell` (an end of its own). `capturing` false: the capture is over already.
     func endVideo(_ id: Int, reason: StreamEndReason?, tell: Bool, capturing: Bool = true) async {
-        let (stream, entry) = lock.withLock { () -> (VideoStream?, WindowVideoEntry?) in
-            guard let stream = videos.removeValue(forKey: id) else { return (nil, nil) }
-            return (stream, windowVideos[stream.windowID])
-        }
-        guard let stream, stream.end() else { return }
-        if capturing, let entry {
+        guard let stream = lock.withLock({ videos.removeValue(forKey: id) }), stream.end() else { return }
+        if capturing {
+            let entry = stream.entry
             if let video = try? await entry.start.value, let encoder = stream.encoder { video.removeEncoder(encoder) }
             await releaseWindowVideo(entry)
         }

@@ -256,9 +256,9 @@ extension Proof {
     func videoRun(_ window: UInt32, capture: ScreenCaptureKitCapture, mode: VideoMode, bitrate: Int, maxEdge: Int, warmup: Double, seconds: Double, followFlow: Bool, during: (@MainActor () async -> Void)? = nil) async throws -> (VideoRun, measuredFrom: UInt64) {
         let fps = ComputerDefaults.VideoStream.defaultFps
         let video = try await capture.startVideo(windowID: window, fps: fps, maxEdge: maxEdge)
-        let size = VideoGeometry.picture(video.pixels, maxEdge: maxEdge)
         let viewer = ProofViewer(fps: fps, bitrate: bitrate, followFlow: followFlow)
-        let encoder = try video.addEncoder(VideoEncoderSpec(maxEdge: maxEdge, fps: fps, mode: mode, bitrate: bitrate, size: size), output: viewer)
+        let encoder = try video.addEncoder(VideoEncoderSpec(maxEdge: maxEdge, fps: fps, mode: mode, bitrate: bitrate, size: VideoGeometry.picture(video.pixels, maxEdge: maxEdge)), output: viewer)
+        let size = encoder.startSize
         viewer.encoder = encoder
         let clock = Self.clock(viewer)
         await pause(Int(warmup * 1_000))

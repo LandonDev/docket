@@ -23,6 +23,8 @@ public protocol WindowVideo: AnyObject, Sendable {
     func stop() async
     /// Resolves once, when the capture ends: the window closed, the grant went, ScreenCaptureKit failed, or `stop`.
     func ended() async -> StreamEndReason
+    /// The capture has ended, as `ended()` will say.
+    var isOver: Bool { get }
 }
 
 /// A picture's size in pixels.
@@ -44,7 +46,8 @@ public struct VideoEncoderSpec: Equatable, Sendable {
     public let mode: VideoMode
     /// bits a second to start at
     public let bitrate: Int
-    /// the picture's size at the start, `VideoGeometry.picture` of the capture's pixels
+    /// the picture's size the shell expects, `VideoGeometry.picture` of the capture's pixels; the encoder
+    /// works its own out from the window's pixels as it joins (`VideoEncoder.startSize`)
     public let size: PixelSize
 
     public init(maxEdge: Int, fps: Int, mode: VideoMode, bitrate: Int, size: PixelSize) {
@@ -58,6 +61,8 @@ public struct VideoEncoderSpec: Equatable, Sendable {
 
 /// One stream's encoder. Every call returns at once; the work runs on the capture's queue.
 public protocol VideoEncoder: AnyObject, Sendable {
+    /// The picture's size when it joined, from the window's pixels at that moment: `capture.video.start`'s answer.
+    var startSize: PixelSize { get }
     /// `budget`: the bitrate the flow asks for now
     func setBitrate(_ bitsPerSecond: Int)
     /// The still window: the last picture the capture took is offered again (through `admit`).

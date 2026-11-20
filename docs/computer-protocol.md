@@ -2689,14 +2689,23 @@ frame waited inside the viewer, in microseconds.
   Annex B: a start code ahead of each NAL unit, the SPS and PPS ahead of a
   keyframe (an SEI may sit before the IDR slice). An encoder that fails is
   made again as a new generation, up to three times in a row, then the
-  stream ends with `error`.
+  stream ends with `error`. Each frame handed to the encoder is settled with
+  the stream exactly once, encoded or dropped; a session that closes
+  finishes its frames first. A forced keyframe the encoder dropped is asked
+  of the next frame. `capture.video.start` answers the size the encoder
+  worked out from the window's pixels as it joined.
 - **The stream.** The pacer takes the frames nearest an even 1/fps grid of
   ScreenCaptureKit's display times. Then screen-relay's flow, without TCP
   statistics: a picture is encoded only while the frames sent and not acked,
   with those still in the encoder, are fewer than its window and it is not
   paused. An ack of another generation is ignored; an ack of a later frame
   credits the frames before it. A new generation starts the flow again at
-  sequence 1 and keeps the bitrate it had. A 10 ms clock runs the flow's
+  sequence 1 and keeps the bitrate it had. No frame goes out until a
+  keyframe: at the start, in a new generation, and after a frame the flow
+  refused, the frames that lean on it are dropped and a keyframe asked for.
+  Each stream holds the capture it joined, so a capture's end, or a stop,
+  never reaches another capture of the same window; a start that finds its
+  capture over answers `window_not_found`. A 10 ms clock runs the flow's
   update, the bitrate, the still window and the three-second timeout.
 - **A still window.** ScreenCaptureKit sends no complete sample while a
   window is still. It marks all of a window dirty in every sample, so the
@@ -2705,7 +2714,8 @@ frame waited inside the viewer, in microseconds.
   pixels (compared row by row, only then) is no change. The proof's busy
   window sent one more sample about a second after it stopped drawing,
   whose pixels did differ; the still window ran again for it, then sent
-  nothing. Repeats skip the pacer but not the flow.
+  nothing. Repeats skip the pacer but not the flow, and reach the flow as
+  frames of the moment they are encoded.
 
 ### The host
 

@@ -51,6 +51,7 @@ private final class Recorder: VideoOutput, @unchecked Sendable {
 
     func encoded(_ unit: EncodedVideo) { lock.withLock { units.append(unit) } }
     func dropped() { lock.withLock { drops += 1 } }
+    var dropCount: Int { lock.withLock { drops } }
     func failed(_ why: String) { lock.withLock { failures.append(why) } }
 
     var encoded: [EncodedVideo] { lock.withLock { units } }
@@ -116,6 +117,18 @@ private final class Recorder: VideoOutput, @unchecked Sendable {
         }
     }
 
+    @Test func everyAdmittedPictureIsSettledOnceWhenTheSessionCloses() async throws {
+        let (session, recorder, queue) = try encoder(PixelSize(width: 640, height: 400))
+        let pictures = try (0..<8).map { try picture(640, 400, frame: $0) }
+        queue.sync {
+            for next in pictures { session.offer(next, again: false) }
+            session.close()
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(recorder.admitted.count == 8)
+        #expect(recorder.encoded.count + recorder.dropCount == 8)
+    }
+
     @Test func aPictureOfAnotherSizeIsScaledToTheStreams() async throws {
         let (session, recorder, queue) = try encoder(PixelSize(width: 320, height: 200))
         let big = try picture(640, 400, frame: 0)
@@ -152,6 +165,8 @@ private final class Recorder: VideoOutput, @unchecked Sendable {
         session.encodeLast()
         #expect(await settle(recorder, count: 2))
         #expect(recorder.admitted == [false, true])
+        // the repeat is a frame of now to the flow, not of the old picture's time
+        #expect(recorder.encoded[1].captureMicros > last.captureMicros)
         session.keyframe()
         queue.sync { session.offer(try! picture(640, 400, frame: 1), again: false) }
         #expect(await settle(recorder, count: 3))

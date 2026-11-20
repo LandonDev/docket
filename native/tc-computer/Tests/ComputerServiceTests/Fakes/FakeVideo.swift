@@ -10,6 +10,8 @@ final class FakeVideos: @unchecked Sendable {
     /// the window's own pixels every capture reports
     var pixels = PixelSize(width: 2_560, height: 1_600)
     var failStart: ComputerError?
+    /// the capture ends on its own while the first encoder joins (the window closed during a start)
+    var endOnAdd = false
 
     init(log: CallLog) {
         self.log = log
@@ -18,7 +20,7 @@ final class FakeVideos: @unchecked Sendable {
     func start(windowID: UInt32, fps: Int, maxEdge: Int) throws -> FakeWindowVideo {
         log.add("startVideo \(windowID) fps=\(fps) edge=\(maxEdge)")
         if let failStart = lock.withLock({ failStart }) { throw failStart }
-        let video = FakeWindowVideo(pixels: lock.withLock { pixels }, log: log)
+        let video = FakeWindowVideo(pixels: lock.withLock { pixels }, log: log, endOnAdd: lock.withLock { endOnAdd })
         lock.withLock { made[windowID, default: []].append(video) }
         return video
     }
@@ -35,18 +37,23 @@ final class FakeWindowVideo: WindowVideo, @unchecked Sendable {
     private var ending: [CheckedContinuation<StreamEndReason, Never>] = []
     private var endedWith: StreamEndReason?
 
-    init(pixels: PixelSize, log: CallLog) {
+    private let endOnAdd: Bool
+
+    init(pixels: PixelSize, log: CallLog, endOnAdd: Bool = false) {
         self.pixels = pixels
         self.log = log
+        self.endOnAdd = endOnAdd
     }
 
     var encoders: [FakeEncoder] { lock.withLock { live } }
     var stopped: Bool { lock.withLock { endedWith != nil } }
+    var isOver: Bool { stopped }
 
     func addEncoder(_ spec: VideoEncoderSpec, output: any VideoOutput) throws -> any VideoEncoder {
         log.add("addEncoder \(spec.size.width)x\(spec.size.height) \(spec.mode.rawValue) \(spec.bitrate)")
         let encoder = FakeEncoder(spec: spec, output: output)
         lock.withLock { live.append(encoder) }
+        if endOnAdd { end(.windowClosed) }
         return encoder
     }
 
@@ -97,6 +104,7 @@ final class FakeEncoder: VideoEncoder, @unchecked Sendable {
     }
 
     var calls: [String] { lock.withLock { asked } }
+    var startSize: PixelSize { spec.size }
 
     func setBitrate(_ bitsPerSecond: Int) { lock.withLock { asked.append("bitrate \(bitsPerSecond)") } }
     func encodeLast() { lock.withLock { asked.append("encodeLast") } }
@@ -105,9 +113,9 @@ final class FakeEncoder: VideoEncoder, @unchecked Sendable {
     /// A picture captured at `micros`: offered to the stream, and when it admits it, encoded at once.
     /// True when it was admitted.
     @discardableResult
-    func picture(at micros: UInt64, again: Bool = false, bytes: Int = 100, size: PixelSize? = nil) -> Bool {
+    func picture(at micros: UInt64, again: Bool = false, bytes: Int = 100, size: PixelSize? = nil, keyframe: Bool? = nil) -> Bool {
         guard output.admit(captureMicros: micros, again: again) else { return false }
-        let key = lock.withLock { () -> Bool in
+        let key = keyframe ?? lock.withLock { () -> Bool in
             defer { sinceKey += 1 }
             return sinceKey == 0
         }
