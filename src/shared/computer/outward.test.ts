@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  CONSOLE_EXES,
+  consoleRead,
   CHAT_APP_BUNDLES,
   CHAT_APP_NAMES,
   OUTWARD_VERBS,
@@ -1367,5 +1369,38 @@ describe('heldTargets and screenMark: what pass 21 closed', () => {
     // a mail list or a sidebar (a table, an outline) is not a choice: clicking around it voids nothing
     const mail = (row: number) => win(`  [2] table "Inbox"\n    [3] row "Budget"${row === 3 ? ' selected' : ''}\n    [4] row "Lunch"${row === 4 ? ' selected' : ''}\n  [9] button "Send"`)
     expect(screenMark(mail(3))).toBe(screenMark(mail(4)))
+  })
+})
+
+describe('a command line in Windows (the VM)', () => {
+  const blank = (bundleId: string, name: string, title: string | null = null): Screen => ({ app: { bundleId, name }, focused: null, elements: new Map(), title })
+  const terminal = blank('WindowsTerminal.exe', 'Terminal')
+
+  it('holds any step that writes or clicks in a console, whatever it says, with what it would type, and never as a grant', () => {
+    expect(consoleRead(steps({ action: 'type', text: 'dir' }), terminal)).toEqual({ step: 0, why: 'console', label: 'Run', on: 'text "dir" in Terminal', grantable: false })
+    // a click alone: a classic console pastes the clipboard on a click
+    expect(consoleRead(steps({ action: 'left_click', coordinate: [10, 10] }), blank('conhost.exe', 'Console Window Host'))).toMatchObject({ why: 'console', on: 'left click in Console Window Host', grantable: false })
+    expect(consoleRead(steps({ action: 'key', text: 'return' }), blank('cmd.exe', 'Command Prompt'))).toMatchObject({ on: 'keys "return" in Command Prompt' })
+    expect(consoleRead(steps({ action: 'paste', text: 'whoami' }), blank('pwsh.exe', 'PowerShell'))).toMatchObject({ on: 'text "whoami" in PowerShell' })
+    // the first step that acts is the one named
+    expect(consoleRead(steps({ action: 'scroll', coordinate: [1, 1] }, { action: 'type', text: 'x' }), terminal)).toMatchObject({ step: 1 })
+    for (const exe of CONSOLE_EXES) expect(consoleRead(steps({ action: 'left_click', element: 1 }), blank(exe.toUpperCase(), exe))).not.toBeNull()
+  })
+
+  it('leaves a look, a wait, a move and a scroll alone', () => {
+    expect(consoleRead(steps({ action: 'screenshot' }, { action: 'wait', duration: 1 }, { action: 'mouse_move', coordinate: [1, 1] }, { action: 'scroll', coordinate: [1, 1] }), terminal)).toBeNull()
+  })
+
+  it("holds the Run box and Task Manager's Create new task by their window's title, and not the rest of their apps", () => {
+    expect(consoleRead(steps({ action: 'type', text: 'notepad' }), blank('explorer.exe', 'Windows Explorer', 'Run'))).toMatchObject({ on: 'text "notepad" in the Run box', grantable: false })
+    expect(consoleRead(steps({ action: 'left_click', element: 3 }), blank('Taskmgr.exe', 'Task Manager', 'Create new task'))).toMatchObject({ on: 'left click in the Create new task box' })
+    expect(consoleRead(steps({ action: 'type', text: 'notes' }), blank('explorer.exe', 'Windows Explorer', 'Documents'))).toBeNull()
+    expect(consoleRead(steps({ action: 'left_click', element: 3 }), blank('Taskmgr.exe', 'Task Manager', 'Task Manager'))).toBeNull()
+    expect(consoleRead(steps({ action: 'type', text: 'hi' }), EDGE_WIN && blank('msedge.exe', 'Microsoft Edge', 'Run'))).toBeNull()
+  })
+
+  it('is what readOutward answers first, before any button is read', () => {
+    expect(readOutward(steps({ action: 'type', text: 'dir' }), terminal)).toMatchObject({ why: 'console', grantable: false })
+    expect(readOutward(steps({ action: 'type', text: 'dir' }), null)).toBeNull()
   })
 })

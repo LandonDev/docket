@@ -45,6 +45,8 @@ export interface ComputerSessionsOptions {
   trace?: boolean
   /** the threads' journal (history.ts): every call's entry and one picture of the window after it. Without it nothing is journaled. */
   history?: ComputerHistory
+  /** the service runs in the Windows VM (work/winvm): its launch list and open rule are the VM's (policy.ts) */
+  vm?: boolean
 }
 
 /** The settings row a thread's first computer call writes: its next harness loads the tools without a search (§27.11). */
@@ -115,7 +117,8 @@ export class ComputerSessions {
       now: () => this.clock.now(),
       log: (line) => (opts.log ?? console.log)(`[computer] ${line}`),
       touched: () => this.touched(),
-      ...(opts.history ? { history: opts.history } : {})
+      ...(opts.history ? { history: opts.history } : {}),
+      ...(opts.vm ? { vm: true } : {})
     }
   }
 

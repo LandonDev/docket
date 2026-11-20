@@ -22,7 +22,13 @@ import { discardedNote, failedNote, sentNote, staleNote } from './words'
 
 type LifeosRef = Extract<HeldRef, { at: 'lifeos' }>
 
+export const NO_GRANT_FROM_CONSOLE = 'refused: this act runs in a command line, which no grant may cover; it waits for your press every time'
+
+/** An act the host read as one no grant may cover (a command line's, `consoleRead`): it waits for his press every time. */
+export const notGrantable = (payload: unknown): boolean => (payload as { read?: { grantable?: unknown } | null } | null)?.read?.grantable === false
+
 /** What lifeosHeld.ts answers for the items LifeOS holds. */
+
 export interface LifeosHeld {
   /** The items LifeOS holds for this host's threads, as the watcher last read them: drafts and failed sends, whole payload included. */
   items(): OutboxItem[]
@@ -254,6 +260,7 @@ export class Outbox {
     if (item.state === 'discarded' || item.state === 'stale') throw new Error('refused: a grant is made from an item that waits or went, not from one that was dropped')
     const def = this.def(item.kind)
     if (!def.matcher || !def.matches) throw new Error(`refused: ${item.kind} is always held; no grant can be made for it`)
+    if (notGrantable(item.payload)) throw new Error(NO_GRANT_FROM_CONSOLE)
     const payload = def.payload.parse(item.payload)
     const seal = this.seals.get(item.kind)
     const parsed = seal ? def.matcher.parse(seal(def.matcher.parse(matcher) as never, payload as never)) : def.matcher.parse(matcher)
@@ -282,7 +289,7 @@ export class Outbox {
    * fits only grants that name no routine.
    */
   grantFor(act: { kind: ActKind; payload: unknown; sessionId: string | null; routineRunId: string | null; createdAt: number }, def: ActKindDef): OutboxGrant | null {
-    if (!def.matcher || !def.matches || !act.sessionId) return null
+    if (!def.matcher || !def.matches || !act.sessionId || notGrantable(act.payload)) return null
     const scope = this.deps.scopeKeyOf(act.sessionId)
     if (!scope) return null
     const routineId = act.routineRunId ? this.deps.routineOf(act.routineRunId) : null

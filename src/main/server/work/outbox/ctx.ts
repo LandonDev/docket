@@ -39,7 +39,7 @@ export const ComputerActPayloadSchema = z.object({
   /** the whole call in his words */
   title: z.string(),
   /** what the host read: which step, and what it lands on */
-  read: z.object({ step: z.number(), why: z.string(), label: z.string(), on: z.string() }).nullable(),
+  read: z.object({ step: z.number(), why: z.string(), label: z.string(), on: z.string(), grantable: z.literal(false).optional() }).nullable(),
   /** the window as it was read; the file stays on this host and a screen gets its bytes from `work.outbox.get` */
   picture: z.object({ path: z.string().optional(), mimeType: z.string(), width: z.number(), height: z.number(), data: z.string().optional() }).nullable(),
   mark: z.string(),

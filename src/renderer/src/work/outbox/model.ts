@@ -416,6 +416,8 @@ export const EDITABLE: readonly ActKind[] = ["mail.send", "addon.call", "teams.p
 export function grantFor(item: Pick<OutboxItem, "kind" | "payload">): { matcher: unknown; label: string } | null {
   const p = item.payload as Record<string, unknown> | null;
   if (!p) return null;
+  // an act the host read as no grant's (a command line's) offers none, whatever its kind
+  if ((p.read as { grantable?: unknown } | null | undefined)?.grantable === false) return null;
   if (item.kind === "mail.send") {
     const m = p.message as { accountId?: string; to?: Address[]; cc?: Address[]; bcc?: Address[] } | undefined;
     const people = [...(m?.to ?? []), ...(m?.cc ?? []), ...(m?.bcc ?? [])];

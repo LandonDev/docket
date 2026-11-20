@@ -255,17 +255,70 @@ export interface Screen {
   app: { bundleId: string | null; name: string }
   focused: number | null
   elements: ReadonlyMap<number, ScreenElement>
+  /** the window's title as the host last read it, where it knows one: it tells the Run box from Explorer */
+  title?: string | null
 }
 
 /** What the host read as outward: which step, and what it would carry out. */
 export interface OutwardRead {
   /** the step, 0-based */
   step: number
-  why: 'control' | 'position' | 'menu' | 'key' | 'chord' | 'typed'
+  why: 'control' | 'position' | 'menu' | 'key' | 'chord' | 'typed' | 'console'
   /** the act's own word, as the button says it: "Send" */
   label: string
   /** what the step lands on, for the card: `button "Send"`, `Return in text area "Message"` */
   on: string
+  /** no grant may be made from it: an act in a command line runs whatever it says (`consoleRead`) */
+  grantable?: false
+}
+
+/**
+ * Windows' command lines, by the exe the service names an app by (§29.2): a
+ * console or a terminal (cmd and PowerShell open inside Windows Terminal on
+ * Windows 11, with OpenConsole behind it), a shell, and the script hosts.
+ * Any act that writes or clicks in one runs as a command whatever it says (a
+ * click in a classic console pastes the clipboard), so it is held, and no
+ * grant is made from it.
+ */
+export const CONSOLE_EXES: readonly string[] = [
+  'windowsterminal.exe',
+  'openconsole.exe',
+  'conhost.exe',
+  'cmd.exe',
+  'powershell.exe',
+  'pwsh.exe',
+  'powershell_ise.exe',
+  'wsl.exe',
+  'bash.exe'
+]
+
+/** Windows' boxes that run what is typed into them, by their app and their window's title. */
+const RUN_BOXES: readonly { exe: string; title: RegExp }[] = [
+  { exe: 'explorer.exe', title: /^run$/i },
+  { exe: 'taskmgr.exe', title: /^create new task$/i }
+]
+
+/** The steps that do nothing to a window: a look, a wait, a move or a scroll. Any other step writes or clicks. */
+const LEAVES_IT: readonly string[] = ['screenshot', 'zoom', 'cursor_position', 'wait', 'mouse_move', 'scroll']
+
+/**
+ * A step that writes or clicks in a command line (`CONSOLE_EXES`), the Run
+ * box or Task Manager's "Create new task", read as outward whatever it says;
+ * null for any other window. It is never grantable.
+ */
+export function consoleRead(steps: readonly ComputerAction[], screen: Screen | null): OutwardRead | null {
+  const exe = screen?.app.bundleId?.toLowerCase() ?? null
+  if (!exe) return null
+  const title = screen?.title?.trim() ?? ''
+  const console = CONSOLE_EXES.includes(exe)
+  const box = !console && RUN_BOXES.some((b) => b.exe === exe && b.title.test(title))
+  if (!console && !box) return null
+  const step = steps.findIndex((a) => !LEAVES_IT.includes(a.action))
+  if (step < 0) return null
+  const a = steps[step]!
+  const typed = a.action === 'type' || a.action === 'paste' || a.action === 'set_value' ? (a.text ?? '') : a.action === 'key' || a.action === 'hold_key' ? (a.text ?? '') : null
+  const where = box ? `the ${title || 'Run'} box` : screen!.app.name
+  return { step, why: 'console', label: 'Run', on: typed !== null && typed !== '' ? `${a.action === 'key' || a.action === 'hold_key' ? 'keys' : 'text'} "${typed}" in ${where}` : `${a.action.replace(/_/g, ' ')} in ${where}`, grantable: false }
 }
 
 const TEXT_ROLES = ['input', 'text area', 'combo box', 'search', 'password', 'date']
@@ -706,6 +759,9 @@ export type PointerAt = { element: number } | { coordinate: readonly number[] } 
  * is where an earlier call left the pointer.
  */
 export function readOutward(steps: readonly ComputerAction[], screen: Screen | null, pointer: PointerAt = null): OutwardRead | null {
+  // a command line runs whatever is written or clicked in it: held before anything else is read
+  const console = consoleRead(steps, screen)
+  if (console) return console
   const at = (p: PointerAt): number | null => (!p || 'named' in p ? null : 'element' in p ? p.element : screen ? elementAt(screen, p.coordinate) : null)
   /** where the pointer is now, by element and by a name it was moved to: a button press with no target lands there */
   let pointerOn: number | null = at(pointer)

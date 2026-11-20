@@ -200,3 +200,11 @@ describe("the return from Away", () => {
     expect(awayLine({ held: 0, failed: 0, decided: 0, written: 0 })).toBeNull();
   });
 });
+
+describe("an act in a command line", () => {
+  it("offers no grant, whatever its kind", () => {
+    const read = { step: 0, why: "console", label: "Run", on: 'text "dir" in Terminal', grantable: false };
+    expect(grantFor({ kind: "addon.call", payload: { addonId: "a1", tool: "run", read } })).toBeNull();
+    expect(grantFor({ kind: "addon.call", payload: { addonId: "a1", tool: "run" } })).not.toBeNull();
+  });
+});

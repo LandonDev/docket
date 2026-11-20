@@ -11,6 +11,7 @@ import {
   refusedLaunchList,
   refusedOpenItem,
   refusedTarget,
+  VM_REFUSED_LAUNCH_EXES,
   type AppsSource
 } from './policy'
 import { checkComputerCall } from './run'
@@ -257,5 +258,36 @@ describe('the front guard at the resolver (§23)', () => {
       expect(refusedOpenItem(ok), ok).toBeNull()
     for (const bad of ['ftp://x.test/a', 'javascript:alert(1)', 'mailto:a@b.c', 'ssh://box', 'report.pdf', '~/a.txt'])
       expect(refusedOpenItem(bad), bad).toBe('only http, https and file items open; give a web page, a file or a folder')
+  })
+})
+
+describe('the Windows VM: no command line', () => {
+  it('refuses a console, a shell or a script host by its file, its path or the name a person gives it, in the VM alone', () => {
+    for (const q of ['cmd.exe', 'cmd', 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', 'pwsh', 'wt.exe', 'mshta', 'wscript.exe', 'regedit', 'rundll32.exe', 'msiexec', 'taskschd.msc', 'Command Prompt', 'Windows Terminal', 'PowerShell']) {
+      expect(refusedLaunch(q, true), q).toMatch(/no command line/)
+    }
+    // his own PC and the Mac keep their own lists: a code thread may open a terminal there
+    expect(refusedLaunch('cmd.exe')).toBeNull()
+    expect(refusedLaunch('Terminal')).toBeNull()
+    // the prompts and TempCode stay refused in the VM too
+    expect(refusedLaunch('consent.exe', true)).toMatch(/consent prompts/)
+    expect(refusedLaunch('Notepad', true)).toBeNull()
+  })
+
+  it("names the VM's list to the service, Windows' own with it, whatever the box's platform", () => {
+    const list = refusedLaunchList('linux', true)
+    expect(list).toEqual(expect.arrayContaining(['consent.exe', 'tempcode.exe', ...VM_REFUSED_LAUNCH_EXES]))
+    expect(list).not.toContain(TEMPCODE_BUNDLE_ID)
+    expect(refusedLaunchList('linux')).toContain(TEMPCODE_BUNDLE_ID)
+  })
+
+  it('refuses to open a file Windows runs, by a path or a web address, and opens a document', () => {
+    for (const item of ['C:\\Users\\tcuser\\Downloads\\x.bat', 'https://example.test/x.hta', 'file:///C:/Users/tcuser/a.ps1', 'C:\\Users\\tcuser\\Desktop\\App.lnk', 'https://example.test/setup.msi?v=1']) {
+      expect(refusedOpenItem(item, true), item).toMatch(/is a program/)
+    }
+    expect(refusedOpenItem('C:\\Users\\tcuser\\Documents\\report.pdf', true)).toBeNull()
+    expect(refusedOpenItem('https://example.test/form', true)).toBeNull()
+    // outside the VM the rule is as it was
+    expect(refusedOpenItem('C:\\Users\\tcuser\\Downloads\\x.bat')).toBeNull()
   })
 })

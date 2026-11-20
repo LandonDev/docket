@@ -240,6 +240,40 @@ remote desktop, a picture of a button); a control named off the list; an
 act split so that no single call reads as outward; a web address whose page
 acts on being fetched. A wrong match costs one press.
 
+**A command line in Windows** (the Windows VM, and a Work thread on any
+Windows host). A Windows desktop has more ways to a command line than a
+browser page, so three rules sit on top of the rest:
+
+- **Nothing to launch.** In the VM (`RunHost.vm`), `computer_apps` refuses a
+  console, a shell or a script host by its file, its path or the name a
+  person gives it, before the card and again in the service's own `refuse`
+  list: cmd, powershell, pwsh, powershell_ise, Windows Terminal (wt),
+  OpenConsole, conhost, wsl, bash, mshta, wscript, cscript, regedit, reg,
+  rundll32, regsvr32, msiexec, schtasks, the Task Scheduler's console, mmc,
+  certutil, bitsadmin (`VM_REFUSED_LAUNCH_EXES`, policy.ts). An item it
+  opens may not be a file Windows runs (a script, a program, a shortcut, a
+  registry file, an installer), as a path or a web address: in the VM an
+  `open` item is the launched app's argument. Threads get no shell there.
+  The prompts' floor (consent.exe, credentialuibroker.exe, logonui.exe)
+  stands as everywhere.
+- **A console is always held.** Any step that writes or clicks in a
+  console's window (`CONSOLE_EXES`, outward.ts `consoleRead`: Windows
+  Terminal, OpenConsole, conhost, cmd, PowerShell, pwsh, the ISE, wsl,
+  bash), one he opened or an app did, is held whatever it says, with what
+  it would type on the card; a click counts, since a click in a classic
+  console pastes the clipboard. The Run box (explorer.exe's window "Run")
+  and Task Manager's "Create new task" are held the same way: `Screen`
+  carries the window's title so they are told from Explorer.
+- **No grant from it.** Such a read says `grantable: false`; it rides in the
+  held act's payload to the Outbox, which offers no grant on it and refuses
+  one asked for (`notGrantable`, `NO_GRANT_FROM_CONSOLE`). Computer acts take
+  no grant today in any case; this holds if that ever changes.
+
+What these still cannot catch: Start's search box and Explorer's address
+bar running what is typed there; a script inside an Office file (a macro);
+a program the thread downloads and opens by a name off the list; and what
+the list above already names.
+
 A box thread's act on a Mac's screen is judged on the Mac but cannot be
 held there: the Mac answers `HELD_UNAVAILABLE` and nothing runs. The box
 sends a Work thread's act only to a Mac that offers `computer-hold`. A

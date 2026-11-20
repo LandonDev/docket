@@ -254,6 +254,8 @@ export interface RunHost {
   touched(t: ThreadComputer): void
   /** the thread's journal (history.ts); without it nothing is journaled, as in every script and test that builds its own sessions */
   history?: ComputerHistory
+  /** the service runs in the Windows VM (work/winvm): Windows' launch list with its command lines and script hosts, and no runnable file opened */
+  vm?: boolean
 }
 
 /** What a call's journal entry needs of how it went: runChecked and runApps fill it as they go, runComputerTool writes it. */
@@ -539,7 +541,7 @@ async function runChecked(
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
   if (tool === 'computer_apps') {
     const line =
-      (typeof args.launch === 'string' ? refusedLaunch(args.launch) : null) ?? (openOf(args).map(refusedOpenItem).find((l) => l !== null) ?? null)
+      (typeof args.launch === 'string' ? refusedLaunch(args.launch, !!host.vm) : null) ?? (openOf(args).map((item) => refusedOpenItem(item, !!host.vm)).find((l) => l !== null) ?? null)
     if (line) return refusalOf(line)
   }
 
@@ -751,7 +753,7 @@ async function runChecked(
         const notAllowed = await askCard()
         if (notAllowed) return notAllowed
       }
-      const apps = await runApps(call, args, t, note)
+      const apps = await runApps(call, args, t, note, !!host.vm)
       return abortedLine(signal) ? refusal(abortedLine(signal)!) : apps
     }
 
@@ -847,7 +849,8 @@ async function runChecked(
         }
         // A key or text to an element by a name the window does not hold once, as the service picks it: nobody can say where it goes.
         if (acting && screen && namedKeysUnplaced(steps, screen)) return refusal(HELD_UNPLACED)
-        const read = acting ? readOutward(steps, screen, pointer) : null
+        // the window's title tells the Run box and Task Manager's "Create new task" from the rest of their apps (consoleRead)
+        const read = acting ? readOutward(steps, screen && { ...screen, title: titleCtx().window }, pointer) : null
         if (read || flag) {
           // Kept for the owner's press: nothing of the call runs.
           const rerun = ctx.rerun
@@ -1108,12 +1111,13 @@ async function runApps(
   call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>,
   args: Args,
   t: ThreadComputer,
-  note: CallNote
+  note: CallNote,
+  vm = false
 ): Promise<ComputerToolOutcome> {
   const session = t.serviceSession
   const launch = typeof args.launch === 'string' ? args.launch : null
   const open = openOf(args)
-  const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: refusedLaunchList() }) : null
+  const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: refusedLaunchList(vm ? 'win32' : undefined, vm) }) : null
   // the launch is the journal's from its answer: a list that fails after it does not unsay it
   if (r) note.launched = { launched: r.launched, opened: open.length > 0 }
   if (r?.front) note.front = r.front
@@ -1166,7 +1170,7 @@ async function pinApp(
     proof?.app ?? query,
     {
       list: async () => (await call('apps.list', {})).apps,
-      launch: (app) => call('apps.launch', { app, session, refuse: refusedLaunchList() }),
+      launch: (app) => call('apps.launch', { app, session, refuse: refusedLaunchList(host.vm ? 'win32' : undefined, !!host.vm) }),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms))
     },
     (e) => (e instanceof ComputerRpcError ? (e.data ?? null) : null)

@@ -44,9 +44,46 @@ export const REFUSED_LAUNCH_BUNDLES: readonly string[] = [TEMPCODE_BUNDLE_ID, ..
 /** The same on a Windows host, by exe (§29.2). */
 export const REFUSED_LAUNCH_EXES: readonly string[] = [TEMPCODE_WINDOWS_EXE, ...WINDOWS_PROMPT_EXES]
 
-/** What `apps.launch` refuses on this host's service: the Mac's bundle ids, or a Windows PC's exes. */
-export const refusedLaunchList = (platform: NodeJS.Platform = process.platform): string[] =>
-  platform === 'win32' ? [...REFUSED_LAUNCH_EXES] : [...REFUSED_LAUNCH_BUNDLES]
+/**
+ * What a thread may not launch in the Windows VM besides (docs/agents/work-outbox.md "The Windows VM"): every
+ * console, shell and script host, and the tools that run or install what they are given. Threads get no command
+ * line there; a console he opened himself is still held on any act (`consoleRead`).
+ */
+export const VM_REFUSED_LAUNCH_EXES: readonly string[] = [
+  'cmd.exe',
+  'powershell.exe',
+  'pwsh.exe',
+  'powershell_ise.exe',
+  'windowsterminal.exe',
+  'wt.exe',
+  'openconsole.exe',
+  'conhost.exe',
+  'wsl.exe',
+  'bash.exe',
+  'mshta.exe',
+  'wscript.exe',
+  'cscript.exe',
+  'regedit.exe',
+  'reg.exe',
+  'rundll32.exe',
+  'regsvr32.exe',
+  'msiexec.exe',
+  'schtasks.exe',
+  'taskschd.msc',
+  'mmc.exe',
+  'certutil.exe',
+  'bitsadmin.exe'
+]
+
+/** The same apps as a person names them, which the service also matches (§29.2). */
+const VM_REFUSED_LAUNCH_NAMES: readonly string[] = ['command prompt', 'powershell', 'windows powershell', 'terminal', 'windows terminal', 'registry editor', 'task scheduler', 'windows script host']
+
+/** What `apps.launch` refuses on this host's service: the Mac's bundle ids, or a Windows PC's exes, and the VM's command lines. */
+export const refusedLaunchList = (platform: NodeJS.Platform = process.platform, vm = false): string[] =>
+  vm ? [...REFUSED_LAUNCH_EXES, ...VM_REFUSED_LAUNCH_EXES] : platform === 'win32' ? [...REFUSED_LAUNCH_EXES] : [...REFUSED_LAUNCH_BUNDLES]
+
+/** Files Windows runs when they are opened: an item a launch opens in the VM may not be one, whatever app it is handed to. */
+const VM_RUNNABLE = /\.(bat|cmd|com|exe|scr|pif|cpl|msc|msi|msp|ps1|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|hta|lnk|url|reg|inf|application|appref-ms|appx|msix|jar)$/i
 
 export interface PinnedApp {
   pid: number
@@ -131,11 +168,15 @@ export function refusedTarget(app: { pid: number; bundleId: string | null }, use
 
 const promptsOf = (id: string): 'prompts' | 'windows-prompts' => (WINDOWS_PROMPT_EXES.includes(id) ? 'windows-prompts' : 'prompts')
 
-/** computer_apps { launch }: a query naming TempCode or a refused prompt is refused before the service hears it. */
-export function refusedLaunch(query: string): string | null {
+/**
+ * computer_apps { launch }: a query naming TempCode or a refused prompt is refused before the service hears it; in
+ * the Windows VM (`vm`), a command line or a script host too, by its file or the name a person gives it.
+ */
+export function refusedLaunch(query: string, vm = false): string | null {
   // by the file's own name too, however the app was named: `C:\\Windows\\System32\\consent.exe`, `consent`
   const base = lower(query).split(/[\\/]/).pop() ?? ''
-  const exe = base.endsWith('.exe') ? base : `${base}.exe`
+  const exe = base.endsWith('.exe') || base.endsWith('.msc') ? base : `${base}.exe`
+  if (vm && (VM_REFUSED_LAUNCH_EXES.includes(exe) || VM_REFUSED_LAUNCH_EXES.includes(base) || VM_REFUSED_LAUNCH_NAMES.includes(lower(query).trim()))) return hostErrorLine('refused_app', 'console')
   if (exe !== lower(query) && (exe === TEMPCODE_WINDOWS_EXE || WINDOWS_PROMPT_EXES.includes(exe))) return refusedLaunch(exe)
   const q = lower(query)
   if (q === TEMPCODE_BUNDLE_ID || q === 'tempcode' || q === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
@@ -149,8 +190,13 @@ const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/
 /** Only these open, never the system's default handler for anything else (§23.2). */
 const OPEN_SCHEMES = /^(https?|file):/i
 
-/** computer_apps { open }: an item that is not a web page, a file URL or an absolute path is refused before the card. */
-export function refusedOpenItem(item: string): string | null {
+/**
+ * computer_apps { open }: an item that is not a web page, a file URL or an absolute path is refused before the card;
+ * in the Windows VM (`vm`), a file Windows would run too, a web page's or a path's (an `open` item is the launched
+ * app's argument there, §29.2).
+ */
+export function refusedOpenItem(item: string, vm = false): string | null {
+  if (vm && VM_RUNNABLE.test(item.split(/[?#]/)[0] ?? item)) return errorLine({ kind: 'open_refused', message: '', reason: 'executable' }, { open: [item] })
   if (OPEN_SCHEMES.test(item) || item.startsWith('/') || WINDOWS_ABSOLUTE.test(item)) return null
   return errorLine({ kind: 'open_refused', message: '', reason: 'scheme' }, { open: [item] })
 }

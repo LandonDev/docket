@@ -37,13 +37,14 @@ export type HostErrorKind = (typeof HOST_ERROR_KINDS)[number]
 /** Why the session tier was refused, and its words, are the tier scheduler's (scheduleRules.ts). */
 export { SESSION_REFUSALS, sessionRefusalWords, type SessionTierRefusal }
 
-/** Why refused_app refused: TempCode itself, the system's prompts, or a launched app the host could not identify. */
-export type RefusedApp = 'tempcode' | 'prompts' | 'windows-prompts' | 'unchecked'
+/** Why refused_app refused: TempCode itself, the system's prompts, a command line in the Windows VM, or a launched app the host could not identify. */
+export type RefusedApp = 'tempcode' | 'prompts' | 'windows-prompts' | 'console' | 'unchecked'
 
 const REFUSED_APP_WORDS: Readonly<Record<RefusedApp, string>> = {
   tempcode: "TempCode's own window is off limits to computer use",
   prompts: "macOS's password and Touch ID prompts are the person's to answer",
   'windows-prompts': "Windows' password and consent prompts are the person's to answer",
+  console: 'no command line, shell or script host may be launched in the Windows VM; do the step in an app, or say what is needed and leave it to the owner',
   unchecked: "couldn't check which app this is, so nothing was sent; try the call again"
 }
 
