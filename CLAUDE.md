@@ -198,6 +198,11 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   docs/computer-protocol.md §17.8, §18; bridge timing, held calls and proof wrapper ordering);
   the journal of each call's steps and pictures (computer/history.ts, §17.9) behind the
   right panel's Computer section. [docs/agents/computer-use.md](docs/agents/computer-use.md)
+- **Live video** — the computer an agent drives as H.264 video on screen-relay's NSL1 wire
+  (src/shared/video/nsl1.ts): `video.open`, `video.close`, `video.paste`, a ticket per stream, the
+  `/video/<stream>` socket and `VideoRelay` (src/main/server/video/), who may watch (`mayWatch`); the
+  box's browser headed on a private display under our own window manager, one `relay-engine` per
+  viewer (src/main/server/work/browser/box/). [docs/agents/live-video.md](docs/agents/live-video.md)
 - **Keep awake** — the Mac's display held awake while threads work (server/keepAwake.ts); a passwordless screen saver is not a lock (shared/screenState.ts). [docs/box.md](docs/box.md) "Keep awake"
 - **Background work and watching** — background tasks on the session row, the
   Watching state, the Activity section (src/shared/watch.ts, lib/activity.ts).

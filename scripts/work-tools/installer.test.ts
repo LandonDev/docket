@@ -316,11 +316,12 @@ describe.skipIf(process.platform === 'win32')('the toolchain installer', () => {
 
   it.skipIf(!hasDpkg)('a build step that fails, or leaves nothing, installs nothing', async () => {
     const dir = join(root, 'manifests')
-    const files = () => [{ ...deb('greeting'), into: 'sys' }, sources('built')]
+    // made once: a package built twice differs by its timestamps, and the address would serve only the last
+    const files = [{ ...deb('greeting'), into: 'sys' }, sources('built')]
     manifest(dir, 'p.json', 'pillar', [
-      buildTool('broken', files(), [{ run: ['sh', '-c', 'echo no compiler here >&2; exit 3'] }]),
-      buildTool('empty', files(), [{ run: ['true'], expectFile: '{dir}/out/greet' }]),
-      buildTool('stepless', files(), [])
+      buildTool('broken', files, [{ run: ['sh', '-c', 'echo no compiler here >&2; exit 3'] }]),
+      buildTool('empty', files, [{ run: ['true'], expectFile: '{dir}/out/greet' }]),
+      buildTool('stepless', files, [])
     ])
     const { state, failed } = await install(opts(dir))
     expect(failed.sort()).toEqual(['broken', 'empty', 'stepless'])
