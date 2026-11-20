@@ -1,59 +1,99 @@
-import { useRef, type ReactNode } from "react";
-import { Button } from "@renderer/components/ui/button";
-import { reveal, FADE_IN } from "@renderer/components/ui/reveal";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
+import { Kbd } from "@renderer/components/ui/kbd";
+import { FADE_IN } from "@renderer/components/ui/reveal";
+import { StatusMark } from "@renderer/components/ui/status";
+import { loadToast } from "@renderer/components/ui/toaster";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { TruncateTip } from "@renderer/components/tip";
-import { Desktop } from "../chrome/icons";
+import { Desktop, Square } from "../chrome/icons";
 import { openLightbox } from "../chrome/lightboxStore";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDocumentVisible } from "../hooks/paneVisibility";
 import { cn } from "../lib/cn";
-import { tileKey, useComputers, type ComputerTile } from "../lib/computers";
-import { previewContext } from "../lib/computerSessions";
+import { canTakeOver, handBack, takeOver, tileKey, useComputers, type ComputerTile } from "../lib/computers";
+import { previewContext, stopComputer } from "../lib/computerSessions";
+import { keyHint } from "../lib/keys";
+import { fitStage, stageLayout, stageOf, type Size } from "../lib/stageLayout";
+import { LEAVE_CHORD } from "../lib/video/videoInput";
+import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
 import { Facts } from "./settings/hosts/Facts";
 import { EmptyState } from "./SurfaceSkeleton";
-import { ComputerControls } from "./threads/computer/ComputerControls";
-import { ENDED_WORDS, RETRY_ENDS, Viewport, ViewportLine, liveFace, sharpOf, streamSize, useLiveStream } from "./threads/computer/Viewport";
+import { ENDED_WORDS, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
 
 /**
  * Computers (docs/DESIGN.md "Computers"): every computer being driven now,
  * on every connected host, in one page over the thread area, like the Inbox
- * and the Outbox. A tile is the live picture and a caption under it: the
- * thread's title (a press goes to the thread), what it is doing in the
- * step's own words, and where it runs. Its controls show on hover and on
- * focus. No card, no badge, no count.
+ * and the Outbox. One computer has the stage: its picture fits the page and
+ * its caption sits under it with its controls, never behind a hover. The
+ * others sit in a strip beside it, live, and a press puts one on the stage.
+ * No card, no badge, no count, and nothing moves to the stage by itself.
  *
- * A tile does not take the box's one display from the thread on screen: it
- * plays video where a stream is free and the 4 fps picture where it is not.
+ * Every tile is one element in one grid whatever its place: a swap changes
+ * only where it sits, so its canvas stays and no stream is opened again.
+ * The stage takes the box's one display and is where he drives; a strip
+ * tile plays video where a stream is free and the 4 fps picture where not.
  */
 
-/** What a tile says under its title: the step's words, or that he drives. */
-export const tileLine = (tile: ComputerTile): string | null => (tile.driving ? "You are driving" : tile.doing);
+/** What a tile says first: that he drives, a card's question, else the step's words. */
+export const tileLine = (tile: ComputerTile): string | null => (tile.driving ? "You are driving" : (tile.entry.row.asking?.line ?? tile.doing));
 
 const tileLabel = (tile: ComputerTile): string => {
   const app = tile.entry.row.apps[0];
   return app ? `Live view of ${app.window ? `${app.window} in ${app.name}` : app.name}` : "Live view";
 };
 
-/** A tile's picture, live: the stream while the page is seen, its own pixels at most, a click opening the full view. */
-function LivePicture({ tile }: { tile: ComputerTile }) {
+/** An element's size, live. */
+function useSize(ref: RefObject<HTMLElement | null>): Size {
+  const [size, setSize] = useState<Size>({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = (): void => setSize((was) => (was.width === el.clientWidth && was.height === el.clientHeight ? was : { width: el.clientWidth, height: el.clientHeight }));
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return size;
+}
+
+/** Where a tile is: on the stage with the room its picture may fill, or in the strip. */
+export type Place = { stage: true; room: Size } | { stage: false };
+
+/**
+ * A tile's picture, live, in the box its place gives it: the stage fits the stream's shape to its room, never past
+ * twice the stream's own pixels; the strip's is the strip's width. The stream is asked for at that size. On the stage
+ * it takes the box's one display and is his to drive; a press on Take over gives the picture the keyboard at once.
+ */
+function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place: Place; focusOnDrive: RefObject<boolean> }) {
   const seen = useDocumentVisible();
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
-  const stream = useLiveStream(tile.entry, seen, box, measure, { take: false, drive: false });
+  const stream = useLiveStream(tile.entry, seen, box, measure, { take: place.stage, drive: place.stage });
+  useDrivingInput(stream, box);
+  useEffect(() => {
+    if (!stream.drive || !focusOnDrive.current) return;
+    focusOnDrive.current = false;
+    box.current?.focus();
+  }, [focusOnDrive, stream.drive]);
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   const label = tileLabel(tile);
+  const frame = streamSize(state);
+  const fit = place.stage ? fitStage(place.room, frame, pixelRatioOf(measure.current)) : null;
   return (
-    <div ref={measure}>
+    <div ref={measure} data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
       <Viewport
         ref={box}
-        face={over ? { kind: "none" } : liveFace(stream, (from) => openLightbox([{ environmentId: tile.entry.host, name: label, live: { threadId: tile.entry.row.threadId } }], 0, from))}
+        fill
+        face={over ? { kind: "none" } : liveFace(stream, place.stage ? (from) => openLightbox([{ environmentId: tile.entry.host, name: label, live: { threadId: tile.entry.row.threadId } }], 0, from) : undefined)}
         label={label}
-        size={streamSize(state)}
-        sharp={sharpOf(stream)}
+        size={frame}
         line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
       />
     </div>
@@ -62,7 +102,72 @@ function LivePicture({ tile }: { tile: ComputerTile }) {
 
 /** In place of a picture this desktop may not draw: one muted line, naming the machine that does. */
 function ElsewherePicture({ machine }: { machine: string }) {
-  return <Viewport face={{ kind: "none" }} label={`Shown on ${machine} only`} line={<ViewportLine words={`Shown on ${machine} only`} />} />;
+  return <Viewport fill face={{ kind: "none" }} label={`Shown on ${machine} only`} line={<ViewportLine words={`Shown on ${machine} only`} />} />;
+}
+
+/**
+ * The stage's controls, at the caption's end and always shown: Take over (where the computer takes input from its
+ * picture) and Stop; while he drives, Hand back alone, the page's one primary, with the chord that leaves the picture.
+ */
+export function StageControls({ tile, onTookOver }: { tile: ComputerTile; onTookOver?: () => void }) {
+  const [busy, setBusy] = useState<"take" | "back" | "stop" | null>(null);
+  const pressing = useRef(false);
+  const press = (which: "take" | "back" | "stop", run: () => Promise<unknown>, failed: string): void => {
+    if (pressing.current) return;
+    pressing.current = true;
+    setBusy(which);
+    void run()
+      .catch(() => loadToast().then((toast) => toast.error(failed, { description: tile.title })))
+      .finally(() => {
+        pressing.current = false;
+        setBusy(null);
+      });
+  };
+  if (tile.driving)
+    return (
+      <span data-slot="computer-controls" className="flex shrink-0 items-center">
+        <Button size="sm" data-hand-back disabled={!!busy} onClick={() => press("back", () => handBack(tile), "Couldn't hand it back")}>
+          <BusyLabel busy={busy === "back"} label="Hand back" />
+          <Kbd size="sm" aria-hidden="true" className="border-transparent bg-transparent text-primary-foreground">
+            {keyHint(LEAVE_CHORD)}
+          </Kbd>
+        </Button>
+      </span>
+    );
+  return (
+    <span data-slot="computer-controls" className="flex shrink-0 items-center gap-1">
+      {canTakeOver(tile) ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!!busy}
+          onClick={() =>
+            press(
+              "take",
+              async () => {
+                onTookOver?.();
+                await takeOver(tile);
+              },
+              "Couldn't take over",
+            )
+          }
+        >
+          <BusyLabel busy={busy === "take"} label="Take over" />
+        </Button>
+      ) : null}
+      {/* an idle page has nothing running to stop */}
+      {tile.idle ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label={`Stop ${tile.title}`} disabled={!!busy} onClick={() => press("stop", () => stopComputer(tile.entry), "Couldn't stop it")} />}
+          >
+            <Square className="size-2.5 fill-current" />
+          </TooltipTrigger>
+          <TooltipContent>Stop</TooltipContent>
+        </Tooltip>
+      )}
+    </span>
+  );
 }
 
 export interface TileProps {
@@ -70,27 +175,53 @@ export interface TileProps {
   onOpenSession: (threadId: string, host: string) => void;
   /** the picture; left out where no desktop draws one (the browser /ui): the caption alone */
   picture?: ReactNode;
+  /** on the stage, with the controls; else a strip tile, a press on which puts it there */
+  stage?: boolean;
+  onStage?: () => void;
+  onTookOver?: () => void;
 }
 
-export function Tile({ tile, onOpenSession, picture }: TileProps) {
+/** One computer, on the stage or in the strip: the same element either way, so its picture's canvas stays. */
+export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTookOver }: TileProps) {
   const line = tileLine(tile);
+  const loud = tile.driving || !!tile.entry.row.asking;
+  // where it runs is said once: a picture this desktop may not draw already names the machine
+  const where = picture && tile.shownOn ? null : tile.where;
   return (
-    <article data-slot="computer-tile" aria-label={tile.title} className={`group/item flex min-w-0 flex-col gap-2 ${FADE_IN}`}>
+    <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", stage ? "gap-2" : "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98]", FADE_IN)}>
       {picture}
-      <div className="flex min-w-0 items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TruncateTip text={tile.title}>
-            <Button variant="link" size="xs" className="h-5 max-w-full justify-start p-0 text-[13px] leading-5 font-medium text-foreground" onClick={() => onOpenSession(tile.entry.row.threadId, tile.entry.host)}>
-              <span className="truncate">{tile.title}</span>
-            </Button>
-          </TruncateTip>
-          {/* where it runs is said once: a picture this desktop may not draw already names the machine */}
-          <Facts parts={[line && tile.driving ? <span className="text-foreground">{line}</span> : line, picture && tile.shownOn ? null : tile.where]} className="text-xs leading-4 text-muted-foreground" />
+      {stage ? (
+        // as wide as the picture and no wider, however long the title: it adds nothing to the tile's width
+        <div className="flex min-h-9 w-0 min-w-full items-center gap-3">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <TruncateTip text={tile.title}>
+              <Button variant="link" size="xs" className="h-5 max-w-full justify-start p-0 text-[13px] leading-5 font-medium text-foreground" onClick={() => onOpenSession(tile.entry.row.threadId, tile.entry.host)}>
+                <span className="truncate">{tile.title}</span>
+              </Button>
+            </TruncateTip>
+            {tile.entry.row.asking && !tile.driving ? (
+              // a card's question ends its own sentence: where it runs follows it, with no comma
+              <span className="flex min-w-0 gap-1 text-xs leading-4 text-muted-foreground">
+                <span className="min-w-0 truncate text-foreground">{line}</span>
+                {where ? <span className="shrink-0">{where}</span> : null}
+              </span>
+            ) : (
+              <Facts parts={[line && loud ? <span className="text-foreground">{line}</span> : line, where]} className="text-xs leading-4 text-muted-foreground" />
+            )}
+          </div>
+          <StageControls tile={tile} onTookOver={onTookOver} />
         </div>
-        <span className={reveal("item", { row: true })}>
-          <ComputerControls tile={tile} />
-        </span>
-      </div>
+      ) : (
+        <div className="flex min-w-0 flex-col">
+          <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 font-medium">
+            {tile.entry.row.asking ? <StatusMark state="waiting" word={false} /> : null}
+            <span className="min-w-0 truncate">{tile.title}</span>
+          </span>
+          <span className="truncate text-xs leading-4 text-muted-foreground">{line ?? where}</span>
+          {/* the whole tile is the press that puts it on the stage */}
+          <Button variant="link" aria-label={`Show ${tile.title}`} onClick={onStage} className="absolute inset-0 h-auto rounded-lg p-0" />
+        </div>
+      )}
     </article>
   );
 }
@@ -99,20 +230,59 @@ export interface ComputersPageProps {
   tiles: readonly ComputerTile[];
   onOpenSession: (threadId: string, host: string) => void;
   /** a tile's picture; the live one by default */
-  pictureOf?: (tile: ComputerTile) => ReactNode;
+  pictureOf?: (tile: ComputerTile, place: Place) => ReactNode;
+  /** the body's size before it is measured: a fixture's, drawn with no layout pass */
+  size?: Size;
 }
 
-/** The page's body, pure: the tiles one to three across by its own width, or the one empty state. */
-export function ComputersPage({ tiles, onOpenSession, pictureOf }: ComputersPageProps) {
+/** The page's body: the stage and the strip, or the one empty state. */
+export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: ComputersPageProps) {
+  const page = useRef<HTMLDivElement>(null);
+  const measured = useSize(page);
+  const size = measured.width > 0 || !given ? measured : given;
+  const [pick, setPick] = useState<string | null>(null);
+  const [kept, setKept] = useState<string | null>(null);
+  const focusOnDrive = useRef(false);
+  const keyed = tiles.map((tile) => ({ tile, key: tileKey(tile, tiles), asking: !!tile.entry.row.asking, lastCallAt: tile.entry.row.lastCallAt }));
+  const front = stageOf(keyed, pick, kept);
+  if (front !== kept) setKept(front);
   if (tiles.length === 0) return <EmptyState title="Nothing is being driven" line="A browser or an app an agent is using shows here, live." />;
-  const picture = pictureOf ?? ((tile: ComputerTile) => (tile.shownOn ? <ElsewherePicture machine={tile.shownOn} /> : <LivePicture tile={tile} />));
+  const layout = stageLayout(size, tiles.length);
+  const picture =
+    pictureOf ??
+    ((tile: ComputerTile, place: Place) => (tile.shownOn ? <ElsewherePicture machine={tile.shownOn} /> : <LivePicture tile={tile} place={place} focusOnDrive={focusOnDrive} />));
+  // the strip in the order they acted, the latest first; the elements stay in one order, so none is ever remade
+  const rank = new Map([...keyed].sort((a, b) => b.lastCallAt - a.lastCallAt || a.key.localeCompare(b.key)).map((k, i) => [k.key, i]));
+  const others = tiles.length - 1;
+  const grid: CSSProperties =
+    layout.strip === "side"
+      ? { gridTemplateColumns: `minmax(0, 1fr) ${layout.stripWidth}px`, gridTemplateRows: `repeat(${others}, auto) 1fr` }
+      : layout.strip === "below"
+        ? { gridTemplateColumns: `repeat(${Math.min(others, 2)}, minmax(0, 1fr))` }
+        : { gridTemplateColumns: "minmax(0, 1fr)" };
+  const stagePlace: CSSProperties =
+    layout.strip === "side" ? { gridColumn: 1, gridRow: `1 / span ${others + 1}` } : layout.strip === "below" ? { gridColumn: "1 / -1", gridRow: 1 } : {};
   return (
-    <div className="@container/computers min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
-      {/* at least 320px a tile: one across under 704px of page, two under 1056, then three; one alone has the page, at its own pixels */}
-      <div data-slot="computer-tiles" className={cn("grid grid-cols-1 gap-x-6 gap-y-8 p-4", tiles.length > 1 && "@[44rem]/computers:grid-cols-2", tiles.length > 2 && "@[66rem]/computers:grid-cols-3")}>
-        {tiles.map((tile) => (
-          <Tile key={tileKey(tile, tiles)} tile={tile} onOpenSession={onOpenSession} picture={picture(tile)} />
-        ))}
+    <div ref={page} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
+      <div data-slot="computer-tiles" data-strip={layout.strip} className="grid items-start gap-4 p-4" style={grid}>
+        {[...keyed]
+          .sort((a, b) => a.key.localeCompare(b.key))
+          .map(({ tile, key }) => {
+            const on = key === front;
+            const place: Place = on ? { stage: true, room: layout.room } : { stage: false };
+            return (
+              <div key={key} className={cn("min-w-0", on && "flex justify-center")} style={on ? stagePlace : { gridColumn: layout.strip === "side" ? 2 : undefined, order: rank.get(key) }}>
+                <Tile
+                  tile={tile}
+                  stage={on}
+                  onStage={() => setPick(key)}
+                  onTookOver={() => void (focusOnDrive.current = true)}
+                  onOpenSession={onOpenSession}
+                  picture={picture(tile, place)}
+                />
+              </div>
+            );
+          })}
       </div>
     </div>
   );

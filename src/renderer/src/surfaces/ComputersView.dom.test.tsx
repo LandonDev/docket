@@ -88,20 +88,46 @@ describe("the Computers page", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("is one to three across by how many there are: one alone has the page", () => {
-    const grid = (n: number): string => {
-      const view = render(<ComputersPage tiles={Array.from({ length: n }, (_, i) => tile({ id: `box\nt${i}` }))} onOpenSession={() => undefined} pictureOf={() => null} />);
-      const cls = view.container.querySelector('[data-slot="computer-tiles"]')!.className;
+  it("gives one computer the stage, with the others in a strip beside it, or under it on a narrow page", () => {
+    const layout = (n: number, width: number): { strip: string | undefined; stage: number } => {
+      const view = render(<ComputersPage tiles={Array.from({ length: n }, (_, i) => tile({ id: `box\nt${i}`, computer: `browser:t${i}` }))} onOpenSession={() => undefined} pictureOf={() => null} size={{ width, height: 860 }} />);
+      const found = { strip: view.container.querySelector<HTMLElement>('[data-slot="computer-tiles"]')!.dataset.strip, stage: view.container.querySelectorAll("[data-stage]").length };
       view.unmount();
-      return cls;
+      return found;
     };
-    expect(grid(1)).not.toContain("grid-cols-2");
-    expect(grid(2)).toContain("@[44rem]/computers:grid-cols-2");
-    expect(grid(2)).not.toContain("grid-cols-3");
-    expect(grid(3)).toContain("@[66rem]/computers:grid-cols-3");
+    expect(layout(1, 1200)).toEqual({ strip: "none", stage: 1 });
+    expect(layout(3, 1200)).toEqual({ strip: "side", stage: 1 });
+    expect(layout(3, 520)).toEqual({ strip: "below", stage: 1 });
   });
 
-  it("a tile says its thread, what it is doing and where, as one comma sentence; its title goes to the thread", () => {
+  it("puts on the stage the one that needs him, else the one that acted last, and a press on a strip tile puts that one there with the same element", () => {
+    const row = tile().entry.row;
+    const older = tile({ id: "box\na", title: "Older", computer: "browser:a", entry: { ...tile().entry, row: { ...row, threadId: "a", lastCallAt: 1 } } });
+    const newer = tile({ id: "box\nb", title: "Newer", computer: "browser:b", entry: { ...tile().entry, row: { ...row, threadId: "b", lastCallAt: 9 } } });
+    const view = render(<ComputersPage tiles={[older, newer]} onOpenSession={() => undefined} pictureOf={() => null} size={{ width: 1200, height: 860 }} />);
+    const staged = (): string | null => view.container.querySelector("[data-stage]")!.getAttribute("aria-label");
+    expect(staged()).toBe("Newer");
+    const olderTile = screen.getByRole("article", { name: "Older" });
+    fireEvent.click(screen.getByRole("button", { name: "Show Older" }));
+    expect(staged()).toBe("Older");
+    // the same element: only its place changed, so its picture is never made again
+    expect(screen.getByRole("article", { name: "Older" })).toBe(olderTile);
+    // nothing moves by itself: the newer one acting again leaves his pick where it is
+    view.rerender(<ComputersPage tiles={[older, { ...newer, entry: { ...newer.entry, row: { ...row, threadId: "b", lastCallAt: 50 } } }]} onOpenSession={() => undefined} pictureOf={() => null} size={{ width: 1200, height: 860 }} />);
+    expect(staged()).toBe("Older");
+    view.unmount();
+    // one that waits on him takes the stage when he opens the page
+    const asking = tile({ id: "local\nc", title: "Asks", computer: "window:c", browser: false, entry: { ...tile().entry, row: { ...row, threadId: "c", lastCallAt: 0, asking: { line: "Allow Frame.io to be used?" } } } });
+    render(<ComputersPage tiles={[newer, asking]} onOpenSession={() => undefined} pictureOf={() => null} size={{ width: 1200, height: 860 }} />);
+    expect(document.querySelector("[data-stage]")!.getAttribute("aria-label")).toBe("Asks");
+    // its question leads the caption, and where it runs follows it
+    expect(screen.getByText("Allow Frame.io to be used?").className).toContain("text-foreground");
+    // the strip tile of the other carries no buttons of its own but the press
+    const strip = screen.getByRole("article", { name: "Newer" });
+    expect(within(strip).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Show Newer"]);
+  });
+
+  it("a stage's caption says its thread, what it is doing and where, as one comma sentence; its title goes to the thread", () => {
     const opened: [string, string][] = [];
     render(<Tile tile={tile()} onOpenSession={(thread, host) => opened.push([thread, host])} />);
     const facts = screen.getByRole("article").querySelector('[data-slot="facts"]')!;
@@ -119,22 +145,38 @@ describe("the Computers page", () => {
     expect([...screen.getByRole("article").querySelector('[data-slot="facts"]')!.children].map((c) => c.textContent)).toEqual(["The box"]);
   });
 
-  it("keeps a tile's controls in the standard reveal: Take over or Hand back where it has a driver, and Stop", () => {
+  it("shows the stage's controls always: Take over only where the computer takes input, Stop unless it is idle, and Hand back alone while he drives", () => {
     render(<Tile tile={tile()} onOpenSession={() => undefined} />);
-    const controls = screen.getByRole("article").querySelector('[data-slot="computer-controls"]')!;
-    expect(controls.parentElement!.className).toContain("group-hover/item:opacity-100");
-    expect(controls.parentElement!.className).toContain("has-focus-visible:opacity-100");
-    expect(within(controls as HTMLElement).getByRole("button", { name: "Take over" })).not.toBeNull();
-    expect(within(controls as HTMLElement).getByRole("button", { name: "Stop File the March expense report" })).not.toBeNull();
+    const controls = screen.getByRole("article").querySelector<HTMLElement>('[data-slot="computer-controls"]')!;
+    // never behind a hover
+    expect(controls.parentElement!.className).not.toContain("opacity-0");
+    expect(within(controls).getByRole("button", { name: "Take over" }).getAttribute("data-variant")).toBe("secondary");
+    expect(within(controls).getByRole("button", { name: "Stop File the March expense report" })).not.toBeNull();
     cleanup();
-    render(<Tile tile={tile({ browser: false })} onOpenSession={() => undefined} />);
+    // a Mac's own window takes no input; the Windows VM does
+    render(<Tile tile={tile({ browser: false, computer: "window:t1" })} onOpenSession={() => undefined} />);
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+    cleanup();
+    render(<Tile tile={tile({ browser: false, computer: "vm:windows" })} onOpenSession={() => undefined} />);
+    expect(screen.getByRole("button", { name: "Take over" })).not.toBeNull();
+    cleanup();
+    // an idle page has nothing to stop
+    render(<Tile tile={tile({ idle: true, doing: null })} onOpenSession={() => undefined} />);
+    expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();
+    cleanup();
+    render(<Tile tile={tile({ driving: true, doing: null })} onOpenSession={() => undefined} />);
+    const back = screen.getByRole("button", { name: "Hand back" });
+    expect(back.getAttribute("data-variant")).toBe("default");
+    expect(back.hasAttribute("data-hand-back")).toBe(true);
+    expect(back.querySelector("kbd")).not.toBeNull();
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).not.toContain("Take over");
   });
 
-  it("plays a tile's stream without taking the box's display, and opens its full view on a click of the picture", () => {
-    h.tiles = [tile()];
+  it("plays the stage's stream as the one he watches, a strip tile's without taking the box's display, and opens the stage's full view on a click of its picture", () => {
+    h.tiles = [tile(), tile({ id: "box\nt2", computer: "browser:t2", entry: { ...tile().entry, previewKey: "t2", row: { ...tile().entry.row, threadId: "t2", lastCallAt: 0 } } })];
     render(<ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
-    expect(h.streams.at(-1)).toMatchObject({ key: "t1", take: false, run: true });
+    expect(h.streams.findLast((s) => s.key === "t1")).toMatchObject({ take: true, run: true });
+    expect(h.streams.findLast((s) => s.key === "t2")).toMatchObject({ take: false, run: true });
     fireEvent.click(screen.getByRole("button", { name: "Live view of Expense report in Chromium" }));
     expect(openLightbox).toHaveBeenCalledTimes(1);
     expect(openLightbox.mock.calls[0][0]).toEqual([{ environmentId: "box", name: "Live view of Expense report in Chromium", live: { threadId: "t1" } }]);

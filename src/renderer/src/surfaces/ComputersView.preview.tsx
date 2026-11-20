@@ -12,8 +12,8 @@ export function ComputersStates({ only }: { only?: number[] }) {
       {shown.map((fixture) => (
         <figure key={fixture.name} className="m-0 flex flex-col gap-2">
           <figcaption className="text-xs text-muted-foreground">{fixture.name}</figcaption>
-          <div className="flex min-h-64 flex-col border border-border bg-background" style={{ width: fixture.width }}>
-            <ComputersPage {...fixture.props} />
+          <div className="flex flex-col border border-border bg-background" style={{ width: fixture.width, height: fixture.height }}>
+            <ComputersPage {...fixture.props} size={{ width: fixture.width, height: fixture.height }} />
           </div>
         </figure>
       ))}

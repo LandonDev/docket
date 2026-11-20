@@ -131,6 +131,8 @@ export interface ViewportProps {
   /** the live face's counts as rendered; the stream then writes them by hand */
   frames?: number;
   marks?: number;
+  /** the place sizes the box (the Computers page's stage and strip): no cap on its height or width, its shape alone */
+  fill?: boolean;
 }
 
 /**
@@ -138,11 +140,11 @@ export interface ViewportProps {
  * aspect ratio under the cap), so a static render has the right size; pinned,
  * it keeps the height it is given and centres a picture of another shape.
  */
-export const Viewport = forwardRef(function Viewport({ face, label, size, sharp, line, height, frames = 0, marks = 0 }: ViewportProps, ref: Ref<HTMLElement>) {
+export const Viewport = forwardRef(function Viewport({ face, label, size, sharp, line, height, frames = 0, marks = 0, fill }: ViewportProps, ref: Ref<HTMLElement>) {
   const { width, height: tall } = size && size.width > 0 && size.height > 0 ? size : DEFAULT_SIZE;
   const aspect = `${width} / ${tall}`;
   const cap = sharp && sharp > 0 && !height ? { maxWidth: sharp } : null;
-  const boxStyle = height ? { height, maxHeight: VIEWPORT_MAX } : { aspectRatio: aspect, maxHeight: VIEWPORT_MAX, ...cap };
+  const boxStyle = fill ? { aspectRatio: aspect } : height ? { height, maxHeight: VIEWPORT_MAX } : { aspectRatio: aspect, maxHeight: VIEWPORT_MAX, ...cap };
   // In its own shape the picture fills the box's height. In a kept height it is as wide as that height allows and no
   // wider than the box, so a picture of any shape sits whole inside it, centred both ways.
   const fit = height ? { aspectRatio: aspect, width: `min(100%, ${Math.round((height * width) / tall)}px)` } : { aspectRatio: aspect };

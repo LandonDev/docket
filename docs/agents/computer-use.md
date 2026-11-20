@@ -230,10 +230,14 @@ why and the measured headline.
   on the service session that only looks (`owner:<pane>`), closed when the
   ten minutes are out. Nothing drives an idle page: Stop does nothing on it,
   and the rail's mark (`computersMark`) and Activity leave it out. A Mac's
-  or a PC's own window leaves when its turn ends. A tile's picture is the
-  viewport's (`useLiveStream` with `take: false`), its controls are
-  `ComputerControls` (Take over, Hand back, Stop), and a click on a live
-  picture anywhere opens the full view in the lightbox (`LiveFullView`).
+  or a PC's own window leaves when its turn ends. One computer has the
+  stage and the rest sit in a strip (`stageLayout`, `fitStage`, `stageOf`
+  in lib/stageLayout.ts): the stage's picture asks with `take` and is where
+  he drives, its caption holds `StageControls` (Take over where
+  `canTakeOver`, Stop, Hand back), and a strip tile's picture asks without
+  `take`. Every tile is one element in one grid, so a swap remakes no
+  canvas. A click on a live picture opens the full view in the lightbox
+  (`LiveFullView`).
 - **Video.** A live picture is video where its host answers `video.open`
   and the 4 fps preview where it does not; the places that show it did not
   change ([live-video.md](live-video.md) "The viewer").

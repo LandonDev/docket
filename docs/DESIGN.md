@@ -983,24 +983,47 @@ Every computer being driven now, on every connected host, in one place
   their 40px header (the `Desktop` glyph, "Computers"). Closing it returns
   him to the thread he left. To keep it in view while he works he opens it
   in a second window; nothing floats.
-- **A tile** is the live picture and a caption under it, with no card, no
-  border and no badge: the thread's title (13px medium; a press closes the
-  page and goes to the thread), then one 12px muted comma sentence: what
-  it is doing in the step's own words, where it runs ("Clicking Save in
-  TextEdit, Landon's MacBook"). A page he drives reads "You are driving"
-  in foreground in the words' place. Take over or Hand back (where the
-  session has a driver: the Work browser's page) and Stop show on hover
-  and on focus through the one reveal, at the caption's end.
-- **The picture** is the Computer section's viewport: the stream's shape,
-  at most its own pixels, a skeleton until the first frame, a click
-  opening the full view. A tile never takes the box's one display from the
-  thread on screen: it plays video where a stream is free and the 4 fps
-  picture where it is not. A session this desktop may not draw is one
-  muted line in the box's place, naming the machine: "Shown on Studio
-  only". The browser /ui lists the tiles with no picture at all.
-- **Layout.** Tiles are at least 320px wide: one across under 704px of
-  page, two under 1056px, then three, 24px apart and 32px between rows.
-  One tile alone has the page, at its own pixels.
+- **The stage.** One computer has the page (`ComputersPage`, the layout
+  in `lib/stageLayout.ts`). Its picture fits the room left by a 16px inset
+  and the caption, both ways, in its own shape, at the top of the room and
+  centred across it; it is never drawn past twice the stream's own pixels,
+  so a small window stays small instead of turning to blur. It takes the
+  box's one display and is where he drives.
+- **The strip.** Every other computer is a live tile beside the stage, 176
+  to 240px wide, 16px from it and 16px apart: its picture, its thread's
+  title (13px medium; the amber waiting mark before it while a card waits
+  on him) and one 12px muted line. The strip goes under the stage, two
+  across, when the page is narrower than 640px. The page never scrolls
+  sideways. A strip tile has no buttons: the whole tile is one press, and
+  it puts that computer on the stage. A strip tile never takes the box's
+  one display: it plays video where a stream is free and the 4 fps picture
+  where it is not.
+- **Which one has the stage.** His press, until that computer leaves. With
+  no pick, the one that has it keeps it; when the page opens with none, the
+  one a card waits on, else the one that acted last. Nothing moves to the
+  stage by itself while he watches. The swap is at once, with no motion:
+  every tile is one element in one grid, and only its place changes, so no
+  picture is made again and no stream is opened again.
+- **The caption** is one row under the stage's picture, 8px under it and as
+  wide as it: the thread's title (13px medium; a press closes the page and
+  goes to the thread) over one 12px muted comma sentence, what it is doing
+  in the step's own words, then where it runs ("Clicking Save in TextEdit,
+  Landon's MacBook"). While he drives the first words are "You are
+  driving", in foreground. While a card waits on him they are the card's
+  question, in foreground, and where it runs follows with no comma. At the
+  row's end, always shown and never behind a hover: Take over (secondary,
+  only where the computer takes input from its picture: the box's browser's
+  page and the Windows VM; a Mac's or a PC's own window has none) and Stop
+  (a quiet icon button with a tip; none on an idle page). While he drives,
+  Hand back alone, the page's one primary button, with the chord that
+  leaves the picture as a key cap inside it. Take over gives the picture
+  the keyboard as soon as it is his.
+- **The picture** is the Computer section's viewport with no cap of its
+  own (`fill`): its place sizes it. A skeleton until the first frame; a
+  click on the stage's picture opens the full view. A session this desktop
+  may not draw is one muted line in the box's place, naming the machine:
+  "Shown on Studio only". The browser /ui lists the tiles with no picture
+  at all.
 - **Nothing driven** is the one `EmptyState`: "Nothing is being driven",
   "A browser or an app an agent is using shows here, live." No action.
 - **The full view** is the lightbox's body for a live picture
