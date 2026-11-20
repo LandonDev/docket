@@ -108,6 +108,20 @@ const VM_REFUSED_LAUNCH_NAMES: readonly string[] = ['command prompt', 'powershel
 export const refusedLaunchList = (platform: NodeJS.Platform = process.platform, vm = false): string[] =>
   vm ? [...REFUSED_LAUNCH_EXES, ...VM_REFUSED_LAUNCH_EXES] : platform === 'win32' ? [...REFUSED_LAUNCH_EXES] : [...REFUSED_LAUNCH_BUNDLES]
 
+/**
+ * An item the VM would run, however it is written: its `%` escapes decoded, its query cut off, and an item Windows
+ * would read as another name refused outright (a trailing dot or space it drops, an 8.3 name's `~`, a stream's `::`).
+ */
+function vmRunnableItem(item: string): boolean {
+  let path = item.split(/[?#]/)[0] ?? item
+  try {
+    path = decodeURIComponent(path)
+  } catch {
+    return true
+  }
+  return /[. ]$/.test(path) || path.includes('~') || path.includes('::') || VM_RUNNABLE.test(path)
+}
+
 /** Files Windows runs when they are opened: an item a launch opens in the VM may not be one, whatever app it is handed to. */
 const VM_RUNNABLE = /\.(bat|cmd|com|exe|scr|pif|cpl|msc|msi|msp|ps1|psm1|psd1|ps1xml|vb|vbs|vbe|js|jse|wsf|wsh|wsc|sct|hta|chm|lnk|url|scf|settingcontent-ms|reg|inf|application|appref-ms|appx|msix|jar|dll)$/i
 
@@ -223,7 +237,7 @@ const OPEN_SCHEMES = /^(https?|file):/i
  * app's argument there, §29.2).
  */
 export function refusedOpenItem(item: string, vm = false): string | null {
-  if (vm && VM_RUNNABLE.test(item.split(/[?#]/)[0] ?? item)) return errorLine({ kind: 'open_refused', message: '', reason: 'executable' }, { open: [item] })
+  if (vm && vmRunnableItem(item)) return errorLine({ kind: 'open_refused', message: '', reason: 'executable' }, { open: [item] })
   if (OPEN_SCHEMES.test(item) || item.startsWith('/') || WINDOWS_ABSOLUTE.test(item)) return null
   return errorLine({ kind: 'open_refused', message: '', reason: 'scheme' }, { open: [item] })
 }
@@ -275,7 +289,7 @@ export function passwordTarget(actions: readonly ComputerAction[], book: Element
 
 /**
  * In the Windows VM the Windows key is his: Win+R opens the Run box, Win+X a menu with the Terminal, and Start's
- * search runs what is typed. A key or a held key with it is refused before the card.
+ * search runs what is typed. A key or a held key with it, or Ctrl+Esc, is refused before the card.
  */
 export function refusedVmKey(steps: readonly ComputerAction[]): string | null {
   for (const a of steps) {
@@ -288,6 +302,8 @@ export function refusedVmKey(steps: readonly ComputerAction[]): string | null {
       modifiers = (a.text ?? '').toLowerCase().split('+')
     }
     if (modifiers.some((m) => ['super', 'win', 'windows', 'meta', 'cmd', 'command'].includes(m))) return hostErrorLine('refused_app', 'vm-win-key')
+    // Ctrl+Esc opens Start as the Windows key does
+    if (modifiers.includes('ctrl') && ['escape', 'esc'].includes(modifiers.at(-1) ?? '')) return hostErrorLine('refused_app', 'vm-win-key')
   }
   return null
 }

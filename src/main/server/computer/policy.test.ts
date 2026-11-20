@@ -304,6 +304,7 @@ describe('the Windows VM: no command line', () => {
     expect(refusedVmKey(k('super+x'))).toMatch(/Windows key/)
     expect(refusedVmKey(k('super'))).toMatch(/Windows key/)
     expect(refusedVmKey([{ action: 'hold_key', text: 'super', duration: 1 } as unknown as ComputerAction])).toMatch(/Windows key/)
+    expect(refusedVmKey(k('ctrl+escape'))).toMatch(/Windows key/)
     expect(refusedVmKey(k('ctrl+s'))).toBeNull()
     expect(refusedVmKey([{ action: 'type', text: 'super' } as unknown as ComputerAction])).toBeNull()
   })
@@ -317,6 +318,10 @@ describe('the Windows VM: no command line', () => {
 
   it('refuses to open a file Windows runs, by a path or a web address, and opens a document', () => {
     for (const item of ['C:\\Users\\tcuser\\Downloads\\x.bat', 'https://example.test/x.hta', 'file:///C:/Users/tcuser/a.ps1', 'C:\\Users\\tcuser\\Desktop\\App.lnk', 'https://example.test/setup.msi?v=1']) {
+      expect(refusedOpenItem(item, true), item).toMatch(/is a program/)
+    }
+    // however it is written: a trailing dot or space Windows drops, a stream, an 8.3 name, an escaped extension
+    for (const item of ['C:\\Users\\tcuser\\Documents\\x.bat.', 'C:\\Users\\tcuser\\Documents\\x.bat ', 'C:\\Users\\tcuser\\x.bat::$DATA', 'C:\\Users\\tcuser\\LONGNA~1.BAT', 'file:///C:/Users/tcuser/x.b%61t']) {
       expect(refusedOpenItem(item, true), item).toMatch(/is a program/)
     }
     expect(refusedOpenItem('C:\\Users\\tcuser\\Documents\\report.pdf', true)).toBeNull()
