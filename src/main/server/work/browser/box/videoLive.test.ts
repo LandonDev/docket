@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -7,6 +7,7 @@ import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { VIDEO_CLOSE, type VideoOpenAnswer } from '@shared/contract-video'
 import type { SessionMeta } from '@shared/events'
 import { encodeAck, encodeInput, h264Codec, parseFrame, type Frame, type InputEvent } from '@shared/video/nsl1'
+import { setAttachmentDirContext } from '../../../attachmentDir'
 import type { StreamClaim } from '../../../remote/auth'
 import { VideoRelay, type ViewerSocket } from '../../../video/relay'
 import { VideoRpc } from '../../../video/rpc'
@@ -69,6 +70,12 @@ const until = async (what: () => boolean, ms = 8_000): Promise<void> => {
 /** A page that repaints every frame, with a field that takes the keyboard. */
 const moving = (title: string): string =>
   `<!doctype html><title>${title}</title><body style="margin:0"><input id="i" autofocus style="font:20px monospace;width:600px"><div id="b" style="height:700px"></div><script>let n=0;(function f(){n++;document.getElementById('b').style.background='hsl('+(n%360)+' 80% 50%)';requestAnimationFrame(f)})()</script>`
+/** A sign-in form at fixed places, as a real one is shaped: a name, a password the browser would offer to keep, a button. */
+const SIGN_IN = `<!doctype html><title>Sign in</title><body style="margin:0"><form action="/welcome" method="post">
+  <input id="i" name="username" autocomplete="username" style="position:fixed;left:40px;top:40px;width:300px;height:30px">
+  <input id="p" name="password" type="password" autocomplete="current-password" style="position:fixed;left:40px;top:100px;width:300px;height:30px">
+  <button style="position:fixed;left:40px;top:160px;width:120px;height:30px">Sign in</button></form>`
+const WELCOME = '<!doctype html><title>Welcome</title><body style="margin:0"><h1>Signed in</h1><input id="i">'
 const still = (title: string): string => `<!doctype html><title>${title}</title><body style="margin:0;background:rgb(30,60,200)"><input id="i" autofocus>`
 
 d('live video of the box browser, end to end', () => {
@@ -105,7 +112,9 @@ d('live video of the box browser, end to end', () => {
     // the installed tools, where the host looks for them: <userData>/work-tools
     symlinkSync(dirname(dirname(dirname(tools!.sys))), join(dataDir, 'work-tools'))
     mkdirSync(join(dataDir, 'attachments'), { recursive: true })
-    site = await serveTestSite({ '/moving': moving('moving'), '/still': still('still') })
+    // a read after the page changed keeps its picture: the threads here are drafts, so it lands under the scratch userData
+    setAttachmentDirContext({ dataDir, session: () => null, projectCwd: () => null, workspacePath: () => null })
+    site = await serveTestSite({ '/moving': moving('moving'), '/still': still('still'), '/signin': SIGN_IN, '/welcome': WELCOME })
     relay = new VideoRelay()
     rpc = new VideoRpc(relay, { mintStreamTicket: (claim) => (minted.push(claim), { ticket: 't', expiresIn: 30 }) }, () => true)
     setBoxBrowser(null)
@@ -139,6 +148,7 @@ d('live video of the box browser, end to end', () => {
     stopWork?.()
     await host?.browser.stop()
     setBoxBrowser(null)
+    setAttachmentDirContext(null)
     await site?.close()
     rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   })
@@ -260,6 +270,68 @@ d('live video of the box browser, end to end', () => {
     expect((await pageValue('moving')).value).toBe('hi there, ünïcode')
     expect(viewer.closed).toBeNull()
     expect(host.rows.rows().some((r) => r.driver === 'owner')).toBe(false)
+    viewer.leave()
+  }, 90_000)
+
+  it('a sign-in, whole: he takes over, types in the picture, nothing offers to keep his password, he hands back and the agent goes on', async () => {
+    // the agent reaches a page that asks who he is, and can go no further
+    await run('w3', 'computer_apps', { launch: 'Chromium', open: [`${site.url}/signin`] })
+    expect((await run('w3', 'computer_observe', { app: 'Chromium', window: 'Sign in' })).body).toContain('window "Sign in"')
+    // Take over: the wheel is his, and the picture takes his pointer and keys
+    new DriveStore(db).drive('w3', 'owner')
+    boxDriveChanged('w3', true)
+    const { viewer } = await watch('w3', { drive: true, take: true })
+    expect(relay.list().find((s) => s.thread === 'w3')).toMatchObject({ scope: 'drive' })
+    await until(() => viewer.frames.length > 0)
+    await sleep(600)
+    const click = (x: number, y: number): void => {
+      // the browser's toolbar is 87 of the 800 lines while he drives
+      const at = { x: x / 1280, y: (87 + y) / 800 }
+      viewer.input({ type: 'pointerMove', ...at })
+      viewer.input({ type: 'buttonDown', button: 1, ...at })
+      viewer.input({ type: 'buttonUp', button: 1, ...at })
+    }
+    const type = (...keys: number[]): void => {
+      for (const key of keys) {
+        viewer.input({ type: 'keyDown', key })
+        viewer.input({ type: 'keyUp', key })
+      }
+    }
+    click(100, 55)
+    await sleep(200)
+    type(4, 15) // a, l
+    click(100, 115)
+    await sleep(200)
+    type(22, 8, 6, 21, 8, 23) // s, e, c, r, e, t
+    await sleep(200)
+    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string }[] }>('Target.getTargets')
+    const target = targetInfos.find((t) => t.type === 'page' && t.title === 'Sign in')!
+    const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId: target.targetId, flatten: true })
+    const typed = await cdp.send<{ result: { value: string } }>('Runtime.evaluate', { expression: 'document.getElementById("i").value + "/" + document.getElementById("p").value.length', returnByValue: true }, sessionId)
+    expect(typed.result.value).toBe('al/6')
+    type(40) // Enter
+    await until(() => site.posts.includes('/welcome'))
+    // Nothing offers to keep the password: only the page is in front of the display's curtain, a moment later too
+    await sleep(1_500)
+    const wm = host.browser.wm!
+    expect(await wm.shown(false)).toHaveLength(1)
+    // and none was kept: the browser's own store of sign-ins is empty
+    const logins = join(dataDir, 'work-browser', 'box', 'profile', 'Default', 'Login Data')
+    if (existsSync(logins)) {
+      const copy = join(dataDir, 'logins-copy')
+      copyFileSync(logins, copy)
+      const kept = new DatabaseSync(copy, { readOnly: true })
+      expect(kept.prepare('select count(*) as n from logins').get()).toEqual({ n: 0 })
+      kept.close()
+    }
+    // Hand back: the page is whole again and the agent reads the page his sign-in opened
+    new DriveStore(db).drive('w3', 'agent')
+    boxDriveChanged('w3', false)
+    await until(() => host.stage.driving === null)
+    const read = await run('w3', 'computer_observe', { app: 'Chromium' })
+    expect(read.isError, read.body ?? '').toBe(false)
+    expect(read.body).toContain('window "Welcome"')
+    expect(read.body).toContain('Signed in')
     viewer.leave()
   }, 90_000)
 

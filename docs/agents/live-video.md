@@ -397,6 +397,47 @@ first wanted; nothing of it is in the first paint.
   stream's id rings the picture as a preview's does. No source sends one
   for a video stream yet (the box's browser never did for its picture).
 
+## Driving
+
+Only the box's browser takes his input. He presses Take over
+(`work.browser.drive`), and from then on:
+
+- **The stream.** A place that drives asks `video.open` with `drive`. The
+  host gives a `drive` stream only while he is the driver; a watch stream
+  is never turned into one, so the window's streams ask for a new one at
+  each take over (streams.ts). The Computer section and a Computers tile
+  show the page he drives and take no input; the browser canvas and the
+  full view do.
+- **The picture is his keyboard and pointer** (`useDrivingInput`,
+  Viewport.tsx): its box takes focus on a click and wears the focus ring
+  for as long as it holds the keyboard (`focus-ring-held`); a click outside
+  lets go, and so does the window losing focus. Nothing is sent before a
+  frame is on screen.
+- **What is sent** (`VideoInput`, videoInput.ts, with screen-relay's key
+  table and its notice): the pointer as shares of the picture, the three
+  buttons, the wheel in whole notches, and keys by their place on the
+  keyboard (HID usage codes), each with the buttons and modifiers held.
+  Letting go sends one release-all.
+- **A Mac's Command key** never crosses. ⌘C, ⌘X, ⌘A and ⌘Z go to the page
+  as the Ctrl chords; every other ⌘ chord stays the app's. The Control key
+  is Ctrl there.
+- **Paste** (⌘V, or Ctrl+V elsewhere) is his clipboard's text handed to
+  `video.paste`, never typed and never the far clipboard's own.
+- **Never sent**: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T and Ctrl+Shift+I, which
+  would close, quit or leave the shared browser. They are swallowed.
+- **Hand back** makes the stream a watch stream on the host, which lets go
+  of every key he held; the picture is a picture again.
+
+`videoLive.test.ts` "a sign-in, whole" proves the host's side on the box
+with the real browser and engine: the agent stops at a sign-in page, he
+takes over, clicks the fields and types through a drive stream, the form
+posts, only the page is in front of the display's curtain (no offer to keep
+the password) and the profile's store of sign-ins is empty, he hands back,
+and the agent reads the page the sign-in opened. The renderer's side is
+proven over fakes (`videoInput.test.ts`, `ViewportVideo.dom.test.tsx`
+"driving the page from the picture"); the two meeting in a real window are
+first seen on the owner's Mac.
+
 ## Settings
 
 `src/shared/video/settings.ts`.

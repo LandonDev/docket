@@ -199,10 +199,19 @@ The box never sees a password. Two ways in:
   browser takes it in (`Storage.setCookies`) and deletes it, and a file that
   does not parse is deleted too.
 - **When a site needs him**: the thread calls `browser_needs_you` and ends
-  its turn. He signs in through the browser's DevTools: on the Mac,
+  its turn. He presses Take over on the canvas's bar (or on the page's
+  Computers tile, or in its full view) and signs in in the picture itself:
+  the browser shows its own toolbar with the page's address, the picture
+  takes his pointer and keys ([live-video.md](live-video.md) "Driving"),
+  and ⌘V pastes his clipboard's text. Nothing offers to keep his password
+  and none is kept (the headed profile). Then he presses Hand back, and the
+  thread goes on from the page his sign-in opened. This needs the
+  `screen-relay` tool installed on the box and `work.browser.video` on;
+  without them the browser is headless and there is no picture to drive,
+  and the old way still works: on the Mac,
   `ssh -L 9333:127.0.0.1:$(ssh box head -1 /srv/agents/temp-code-data/work-browser/box/profile/DevToolsActivePort) box`,
-  then chrome://inspect, Configure, `localhost:9333`, and Inspect on the page:
-  its screencast takes his clicks and typing. Then he hands back.
+  then chrome://inspect, Configure, `localhost:9333`, and Inspect on the
+  page.
 
 The profile and its folder are the box's `agents` user's alone (0700), but
 DevTools on 127.0.0.1 has no key of its own: any process of that user, a
