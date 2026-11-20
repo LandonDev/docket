@@ -77,3 +77,72 @@ export function joinCaps(caps: readonly string[], mac = IS_MAC): string {
 export function keyHint(chord: string, mac = IS_MAC): string {
   return joinCaps(keyCaps(chord, mac), mac);
 }
+
+const CODE_KEYS: Record<string, string> = {
+  Space: "Space",
+  Enter: "Return",
+  Tab: "Tab",
+  Backspace: "Backspace",
+  Delete: "Delete",
+  ArrowUp: "Up",
+  ArrowDown: "Down",
+  ArrowLeft: "Left",
+  ArrowRight: "Right",
+  Home: "Home",
+  End: "End",
+  PageUp: "PageUp",
+  PageDown: "PageDown",
+  Minus: "-",
+  Equal: "=",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Semicolon: ";",
+  Quote: "'",
+  Backquote: "`",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backslash: "\\",
+};
+
+/**
+ * A key press as an Electron accelerator for a global key ("Command+Shift+Space"
+ * on a Mac, "Alt+Shift+Space" elsewhere), read by the key's place (`code`), so a
+ * layout or Option's typed character never changes it. Null until a key that is
+ * not a modifier is down with ⌘, Ctrl or Alt.
+ */
+export function acceleratorOf(e: AllMods & Pick<KeyboardEvent, "code">, mac = IS_MAC): string | null {
+  const key = /^Key([A-Z])$/.exec(e.code)?.[1] ?? /^Digit([0-9])$/.exec(e.code)?.[1] ?? (/^F([1-9]|1[0-9]|2[0-4])$/.test(e.code) ? e.code : CODE_KEYS[e.code]);
+  if (!key || !(e.metaKey || e.ctrlKey || e.altKey)) return null;
+  const mods = mac
+    ? [e.metaKey && "Command", e.ctrlKey && "Control", e.altKey && "Alt", e.shiftKey && "Shift"]
+    : [e.ctrlKey && "Control", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Super"];
+  return [...mods.filter(Boolean), key].join("+");
+}
+
+const ACCELERATOR_NAMES: Record<string, string> = {
+  Command: "mod",
+  Cmd: "mod",
+  CommandOrControl: "mod",
+  CmdOrCtrl: "mod",
+  Control: "ctrl",
+  Ctrl: "ctrl",
+  Alt: "alt",
+  Option: "alt",
+  Shift: "shift",
+  Return: "return",
+  Enter: "enter",
+  Super: "Win",
+  Meta: "Win",
+};
+
+/** An accelerator as its platform writes it: "Command+Shift+Space" is "⌘⇧Space" on a Mac; "Alt+Shift+Space" is "Alt+Shift+Space". */
+export function acceleratorHint(accelerator: string, mac = IS_MAC): string {
+  return keyHint(
+    accelerator
+      .split("+")
+      .map((part) => ACCELERATOR_NAMES[part] ?? part)
+      .join("+"),
+    mac,
+  );
+}

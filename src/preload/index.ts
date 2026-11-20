@@ -64,6 +64,14 @@ interface AppshotAttachment {
   textPath?: string
 }
 
+interface CaptureKeyState {
+  key: string | null
+  defaultKey: string
+  held: boolean
+  error: string | null
+  workOn: boolean
+}
+
 interface AppshotPermissions {
   available: boolean
   screen: boolean
@@ -74,6 +82,11 @@ const api = {
   /** This machine's `process.platform`, for its host glyph before the local hello. */
   platform: process.platform as string,
   getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port'),
+  /** The capture key (src/main/capture.ts): the one set, the default, and whether it is held; `set(null)` turns it off. */
+  captureKey: {
+    get: (): Promise<CaptureKeyState> => ipcRenderer.invoke('capture:key:get'),
+    set: (key: string | null): Promise<CaptureKeyState> => ipcRenderer.invoke('capture:key:set', key)
+  },
   /** The launch mirror (src/shared/launchMirror.ts): what every host last
    *  showed, read synchronously so the rail paints before any socket is up;
    *  writes are fire-and-forget, coalesced by the renderer. */

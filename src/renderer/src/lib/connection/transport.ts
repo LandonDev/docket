@@ -77,6 +77,8 @@ const LONG_WRITES: Readonly<Record<string, number>> = {
   "work.office.filesFetch": 660_000,
   "work.office.filesCopy": LONG_TIMEOUT_MS,
   "work.office.filesSearch": LONG_TIMEOUT_MS,
+  // A capture copies its files and may start a thread before it answers.
+  "work.capture.file": LONG_TIMEOUT_MS,
 };
 
 /** The deadline a method gets by default: by its name, so an unknown method gets the read's 30 s. */

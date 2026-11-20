@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- The capture window's page (src/main/capture.ts): its own entry, so
+         nothing of it is in the main window's first paint. It talks to the
+         local host's socket only. boot.js sets Work's theme before the first
+         paint (the address carries place=work). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws://127.0.0.1:* http://localhost:5173 ws://localhost:5173; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    />
+    <title>Capture</title>
+    <script src="./boot.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/work/capture/page.tsx"></script>
+  </body>
+</html>

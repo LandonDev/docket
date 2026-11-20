@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import { nanoid } from 'nanoid'
 import type { Attachment } from '@shared/events'
 import type { RunningServer } from './server'
+import { isCaptureWindow } from './captureWindow'
 import { targetWindow } from './windows'
 
 const exec = promisify(execFile)
@@ -177,7 +178,8 @@ async function capture(createWindow: () => void): Promise<void> {
     mime: 'image/jpeg',
     textPath
   }
-  if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  // The capture window waiting hidden for its key is not a window to show a shot in.
+  if (!BrowserWindow.getAllWindows().some((w) => !isCaptureWindow(w))) createWindow()
   const win = sendToRenderer('appshot', attachment) ?? targetWindow()
   if (win?.isMinimized()) win.restore()
   win?.show()

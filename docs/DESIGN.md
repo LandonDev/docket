@@ -1609,6 +1609,28 @@ its test holds them equal. The only motion is opacity: `--dur-base` on
 `--ease-out` in, `--dur-fast` on `--ease-exit` out before native hide;
 reduced motion uses `--dur-fast`. No position or size transition.
 
+### The capture window
+
+The main process's capture window (src/main/capture.ts, page
+work/capture/CaptureView.tsx) is an Operate surface he opens many times a
+day with one key, so it has no open or close motion: it is made hidden
+once the key is held and shown already painted, and it hides the moment
+Return is pressed. It is 680px wide, a fifth of the way down the display
+under the pointer, as tall as its page (no height transition). The window
+is the surface, on the `popover` fill of Work's theme, with the system's
+corners and shadow and no card inside it: the field (14/22 on 22px lines,
+16px inset, `faint-foreground` placeholder "Capture…", growing to twelve
+lines), the files he added as 28px rows (the file's glyph, its name, a
+ghost Remove), a red 12px line when something stops it, then a 48px row
+under a hairline: the sector as a `ChoiceToggle` (Unsorted first, then the
+six sectors), and at the end Start thread (secondary, its key cap in
+muted ink: the one key not plain) and File (primary): a capture on
+its way shows nothing, since the window is already gone and the next draft
+starts empty. While LifeOS does not answer, "LifeOS is not
+connected" sits muted in the red line's place and both buttons are off. A drag of
+a file over it shows the drop wash of the document surface ("Drop to
+add"). It wears Work's theme and follows it.
+
 ## The transcript
 
 The target is Claude desktop's Code tab with our tool icons and humanized

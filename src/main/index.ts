@@ -36,6 +36,7 @@ import { htmlPreviewer } from './htmlPreview'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
 import { clickMenuItem, registerMenu } from './menu'
+import { registerCapture } from './capture'
 import { queueNextPick, registerDialogs } from './dialogs'
 import { registerDownloads } from './downloads'
 import {
@@ -350,6 +351,9 @@ app.whenReady().then(async () => {
     })
     openSavedWindows()
     userWindowsOpened = true
+    // Capture from anywhere (capture.ts): his key opens the capture window while Work is on here.
+    const running = server
+    registerCapture({ work: running.workSwitch, port: () => running.port })
   }
   setTimeout(() => flushCompileCache(), FLUSH_AFTER_MS).unref()
 

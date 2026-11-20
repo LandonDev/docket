@@ -1,4 +1,4 @@
-import { copyFile, stat } from 'node:fs/promises'
+import { copyFile, rm, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { CaptureFiled, CaptureFileParams, CaptureState } from '@shared/contract-work-capture'
 import { WORK_HOME, type ContextChip, type SectorKey } from '@shared/work'
@@ -21,7 +21,12 @@ const LAST_KEY = 'last'
 
 export function ensureCaptureTables(db: WorkCtx['db']): void {
   db.exec('CREATE TABLE IF NOT EXISTS work_capture_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+  // What each capture made, by its key, so a repeat answers it again and copies nothing twice.
+  db.exec('CREATE TABLE IF NOT EXISTS work_capture_filed (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)')
 }
+
+/** Captures are kept by key for a week: long past any retry. */
+const FILED_KEEP_MS = 7 * 24 * 3600_000
 
 export const sectorName = (sector: SectorKey): string => sector.charAt(0).toUpperCase() + sector.slice(1)
 
@@ -33,10 +38,10 @@ export function homeOf(ctx: Pick<WorkCtx, 'db'>, sector: SectorKey): { id: strin
   return row ?? null
 }
 
-export function captureState(ctx: Pick<WorkCtx, 'db' | 'lifeos'>): CaptureState {
+export function captureState(ctx: Pick<WorkCtx, 'db' | 'lifeos' | 'host'>): CaptureState {
   const last = ctx.db.prepare('SELECT value FROM work_capture_state WHERE key = ?').get(LAST_KEY) as { value: string } | undefined
   const homes = (ctx.db.prepare("SELECT DISTINCT sector FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL").all() as { sector: string }[]).map((r) => r.sector)
-  return { last: last && last.value !== '' ? last.value : null, homes, connected: ctx.lifeos.connected() }
+  return { host: ctx.host, last: last && last.value !== '' ? last.value : null, homes, connected: ctx.lifeos.connected() }
 }
 
 /**
@@ -64,6 +69,15 @@ export function threadText(text: string, paths: string[]): string {
 }
 
 export async function fileCapture(ctx: WorkCtx, p: CaptureFileParams, by: Caller, now = Date.now()): Promise<CaptureFiled> {
+  const before = ctx.db.prepare('SELECT result FROM work_capture_filed WHERE key = ?').get(p.key) as { result: string } | undefined
+  if (before) return JSON.parse(before.result) as CaptureFiled
+  const filed = await fileOnce(ctx, p, by, now)
+  ctx.db.prepare('DELETE FROM work_capture_filed WHERE at < ?').run(now - FILED_KEEP_MS)
+  ctx.db.prepare('INSERT OR REPLACE INTO work_capture_filed (key, result, at) VALUES (?, ?, ?)').run(p.key, JSON.stringify(filed), now)
+  return filed
+}
+
+async function fileOnce(ctx: WorkCtx, p: CaptureFileParams, by: Caller, now: number): Promise<CaptureFiled> {
   const files = p.files ?? []
   if (!p.text.trim() && !files.length) throw new Error('Nothing to capture.')
   if (!ctx.lifeos.connected()) throw new Error('LifeOS is not connected on this computer.')
@@ -92,18 +106,30 @@ export async function fileCapture(ctx: WorkCtx, p: CaptureFileParams, by: Caller
 
   const { title, description } = taskWords(p.text, kept, home?.name ?? null)
   const key = `capture:${p.key}`
-  const taskId = await ctx.lifeos.owner().mutation<string>('tasks:create', {
-    sector,
-    title,
-    key,
-    source: { kind: 'manual', container: 'quick-add', channel: p.sector ? 'Capture' : 'Unsorted', messageId: key, sentAt: now },
-    ...(description ? { description } : {})
-  })
+  let taskId: string
+  try {
+    taskId = await ctx.lifeos.owner().mutation<string>('tasks:create', {
+      sector,
+      title,
+      key,
+      source: { kind: 'manual', container: 'quick-add', channel: p.sector ? 'Capture' : 'Unsorted', messageId: key, sentAt: now },
+      ...(description ? { description } : {})
+    })
+  } catch (err) {
+    // No task, no files: what was copied for it goes, so his next try leaves one copy.
+    await Promise.all(keptPaths.map((path) => rm(path, { force: true })))
+    throw err
+  }
   ctx.db.prepare('INSERT INTO work_capture_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(LAST_KEY, p.sector ?? '')
 
   if (!p.start) return { taskId, kept }
   const about: ContextChip = { kind: 'task', label: title, ref: { at: 'lifeos', table: 'tasks', id: taskId } }
   // A sorted capture starts in its sector's workspace; an unsorted one, or one with no workspace here, in Work Chats.
-  const threadId = await ctx.threads.start({ workspaceId: p.sector && home ? home.id : WORK_HOME, text: threadText(p.text, keptPaths), about })
-  return { taskId, kept, threadId }
+  // The task is filed whatever the thread does: a start that fails says so beside it, and his next try files nothing twice.
+  try {
+    const threadId = await ctx.threads.start({ workspaceId: p.sector && home ? home.id : WORK_HOME, text: threadText(p.text, keptPaths), about })
+    return { taskId, kept, threadId }
+  } catch (err) {
+    return { taskId, kept, threadError: err instanceof Error ? err.message : String(err) }
+  }
 }

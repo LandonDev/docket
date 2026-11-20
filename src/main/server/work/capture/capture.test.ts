@@ -23,6 +23,8 @@ let root: string
 let sent: { fn: string; args: Record<string, unknown> }[]
 let started: { workspaceId: string; text: string; about?: unknown }[]
 let connected: boolean
+let lifeosFails: boolean
+let threadFails: boolean
 let ctx: WorkCtx
 
 const req = (method: string, params: unknown) => ({ method, params }) as ClientRequest
@@ -45,6 +47,8 @@ beforeEach(() => {
   sent = []
   started = []
   connected = true
+  lifeosFails = false
+  threadFails = false
   ctx = {
     db,
     host: 'env_mac',
@@ -54,6 +58,7 @@ beforeEach(() => {
       connected: () => connected,
       owner: () => ({
         mutation: async (fn: string, args: Record<string, unknown>) => {
+          if (lifeosFails) throw new Error('LifeOS refused')
           sent.push({ fn, args })
           return 'task_1'
         }
@@ -61,6 +66,7 @@ beforeEach(() => {
     },
     threads: {
       start: async (o: { workspaceId: string; text: string; about?: unknown }) => {
+        if (threadFails) throw new Error('No model is signed in')
         started.push(o)
         return 'thread_1'
       }
@@ -92,7 +98,7 @@ describe('filing', () => {
         }
       }
     ])
-    expect(captureState(ctx)).toEqual({ last: 'purdue', homes: ['purdue', 'life'], connected: true })
+    expect(captureState(ctx)).toEqual({ host: 'env_mac', last: 'purdue', homes: ['purdue', 'life'], connected: true })
     expect(started).toEqual([])
   })
 
@@ -147,6 +153,35 @@ describe('filing', () => {
     await file({ text: 'Think about this', start: true, key: 'k-unsorted1' })
     await file({ text: 'Loot ideas', sector: 'cosmic', start: true, key: 'k-cosmic-01' })
     expect(started.slice(1).map((s) => s.workspaceId)).toEqual(['~work', '~work'])
+  })
+})
+
+describe('once per capture', () => {
+  it('answers a repeat of the same key with what the first made, copying nothing twice', async () => {
+    const from = join(root, 'Budget.xlsx')
+    writeFileSync(from, 'cells')
+    const params = { text: 'Budget', sector: 'purdue', start: true, files: [{ at: 'file', host: 'env_mac', path: from }] }
+    const first = await file(params)
+    const again = await file(params)
+    expect(again).toEqual(first)
+    expect(sent).toHaveLength(1)
+    expect(started).toHaveLength(1)
+    expect(readdirSync(join(root, 'Purdue'))).toEqual(['Budget.xlsx'])
+  })
+
+  it('takes back the copied files when LifeOS refuses the task', async () => {
+    const from = join(root, 'a.txt')
+    writeFileSync(from, 'a')
+    lifeosFails = true
+    await expect(file({ text: 'x', sector: 'purdue', files: [{ at: 'file', host: 'env_mac', path: from }] })).rejects.toThrow('LifeOS refused')
+    expect(readdirSync(join(root, 'Purdue'))).toEqual([])
+    lifeosFails = false
+    expect((await file({ text: 'x', sector: 'purdue', files: [{ at: 'file', host: 'env_mac', path: from }] })).kept).toEqual(['a.txt'])
+  })
+
+  it('files the task when the thread does not start, and says why', async () => {
+    threadFails = true
+    expect(await file({ text: 'Plan it', sector: 'purdue', start: true })).toEqual({ taskId: 'task_1', kept: [], threadError: 'No model is signed in' })
   })
 })
 

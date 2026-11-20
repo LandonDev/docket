@@ -23,6 +23,7 @@ import { TeamsCopyRow } from "../office/TeamsCopyRow";
 import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { HouseRules } from "../rules/HouseRules";
+import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { hostIdOfLink, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -60,10 +61,16 @@ export function WorkSettingsBody() {
   const on = useWorkHosts();
   const hosts = environments.filter((e) => on.has(e.id));
   const [home, setHome] = useState(() => workHome(environments));
+  const keyApi = useMemo(captureKeyApi, []);
   return (
     <>
       {/* Each host's sign-in is on Connections; the sectors it reads are a fact of LifeOS, said once here. */}
       {home ? <SectorsSection environmentId={home} /> : null}
+      {keyApi && on.has(LOCAL_ENVIRONMENT_ID) ? (
+        <PageSection title="Capture">
+          <CaptureKeyRow api={keyApi} />
+        </PageSection>
+      ) : null}
       <PageSection title="Models">
         <PageRow title="Work threads" description="Same as code threads" onOpen={() => requestSettings("defaults")} openLabel="Thread defaults" />
       </PageSection>

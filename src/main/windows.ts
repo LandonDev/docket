@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { appIndexUrl } from './appScheme'
+import { isCaptureWindow } from './captureWindow'
 import { badgeText, shouldBounce } from './dockBadge'
 import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
@@ -427,7 +428,7 @@ export async function confirmQuit(from: number): Promise<void> {
 }
 
 export function showAllWindows(): void {
-  for (const w of BrowserWindow.getAllWindows()) if (!w.isVisible()) w.show()
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isVisible() && !isCaptureWindow(w)) w.show()
 }
 
 // ── IPC ──────────────────────────────────────────────────────────────────
@@ -536,7 +537,8 @@ export function registerDock(): void {
 /** Clicking the dock icon should bring back a hidden window before it makes
  *  a new one. With none left, the kept slot comes back with its tabs. */
 export function activateWindows(): void {
-  const all = BrowserWindow.getAllWindows()
+  // The capture window waits hidden for its key (capture.ts): the dock click is not that key.
+  const all = BrowserWindow.getAllWindows().filter((w) => !isCaptureWindow(w))
   const hidden = all.filter((w) => !w.isVisible())
   if (hidden.length > 0) {
     for (const w of hidden) {

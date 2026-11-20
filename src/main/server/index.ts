@@ -375,6 +375,8 @@ function readAllowedFile(registry: SessionRegistry, path: string): string | null
 
 export interface RunningServer {
   port: number
+  /** The Work switch, for the main process's capture key (src/main/capture.ts): off, and never on, when Work could not come up. */
+  workSwitch: { enabled(): boolean; onChange(fn: () => void): () => void }
   /** This server's stable identity (<userData>/environment.json). */
   environmentId: string
   /** Serve the contract on a socket that already authenticated as `principal`. */
@@ -3914,6 +3916,22 @@ export async function startServer(
     hostDevices,
     projectPlans,
     macBridge,
+    workSwitch: {
+      enabled: () => {
+        try {
+          return work.settings.enabled()
+        } catch {
+          return false
+        }
+      },
+      onChange: (fn) => {
+        try {
+          return work.settings.onChange(() => fn())
+        } catch {
+          return () => {}
+        }
+      }
+    },
     close: async () => {
       await stopMirrors(registry)
       masterRelease.stop()

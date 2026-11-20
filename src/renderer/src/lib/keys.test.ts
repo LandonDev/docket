@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { altOnly, bareKey, chordKey, ctrlOnly, joinCaps, keyCaps, keyHint, macCommand, modKey, modOrCtrl } from "./keys";
+import { acceleratorHint, acceleratorOf, altOnly, bareKey, chordKey, ctrlOnly, joinCaps, keyCaps, keyHint, macCommand, modKey, modOrCtrl } from "./keys";
 
 const key = (mods: Partial<Record<"metaKey" | "ctrlKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
   metaKey: false,
@@ -79,5 +79,29 @@ describe("key hints", () => {
     expect(keyHint("mod++", true)).toBe("⌘+");
     expect(keyHint("mod+,", false)).toBe("Ctrl+,");
     expect(keyHint("mod+1", true)).toBe("⌘1");
+  });
+});
+
+describe("a global key", () => {
+  it("reads a chord by the key's place, in each platform's names", () => {
+    expect(acceleratorOf({ ...key({ metaKey: true, shiftKey: true }), code: "Space" }, true)).toBe("Command+Shift+Space");
+    expect(acceleratorOf({ ...key({ altKey: true, shiftKey: true }), code: "Space" }, false)).toBe("Alt+Shift+Space");
+    expect(acceleratorOf({ ...key({ ctrlKey: true, altKey: true }), code: "KeyK" }, true)).toBe("Control+Alt+K");
+    expect(acceleratorOf({ ...key({ metaKey: true }), code: "Digit3" }, false)).toBe("Super+3");
+    expect(acceleratorOf({ ...key({ ctrlKey: true }), code: "F12" }, false)).toBe("Control+F12");
+    expect(acceleratorOf({ ...key({ ctrlKey: true }), code: "Slash" }, false)).toBe("Control+/");
+  });
+
+  it("waits for a key that is not a modifier, with a modifier that is not Shift alone", () => {
+    expect(acceleratorOf({ ...key({ metaKey: true }), code: "MetaLeft" }, true)).toBeNull();
+    expect(acceleratorOf({ ...key({ shiftKey: true }), code: "KeyA" }, true)).toBeNull();
+    expect(acceleratorOf({ ...key(), code: "Space" }, true)).toBeNull();
+  });
+
+  it("writes an accelerator as the platform writes a hint", () => {
+    expect(acceleratorHint("Command+Shift+Space", true)).toBe("⌘⇧Space");
+    expect(acceleratorHint("Alt+Shift+Space", false)).toBe("Alt+Shift+Space");
+    expect(acceleratorHint("Control+Alt+K", true)).toBe("⌃⌥K");
+    expect(acceleratorHint("CommandOrControl+Return", false)).toBe("Ctrl+Enter");
   });
 });

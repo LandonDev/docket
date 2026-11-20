@@ -16,7 +16,7 @@ export const CAPTURE_TEXT_MAX = 20_000
 export const CAPTURE_FILES_MAX = 20
 
 export const CaptureFileParamsSchema = z.object({
-  /** the capture's own id: a retry with the same key files nothing twice */
+  /** the capture's own id: a repeat with the same key answers what the first made and files nothing twice */
   key: z.string().min(8).max(100),
   text: z.string().max(CAPTURE_TEXT_MAX),
   /** null: unsorted, filed in Life for LifeOS's bot to move */
@@ -37,6 +37,8 @@ export const CaptureRequestSchemas = [
 
 /** What the capture window needs before he types: where it went last and which sectors can keep a file here. */
 export interface CaptureState {
+  /** this host's id, which a file's source names */
+  host: string
   /** the sector of his last capture on this host; null when it was unsorted or there was none */
   last: SectorKey | null
   /** sectors with a Work workspace on this host, so a file or a thread has a home */
@@ -50,6 +52,8 @@ export interface CaptureFiled {
   taskId: string
   kept: string[]
   threadId?: string
+  /** the thread he asked for did not start: why (the task is filed all the same) */
+  threadError?: string
 }
 
 export type CapturePush = never

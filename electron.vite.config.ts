@@ -211,7 +211,9 @@ export default defineConfig({
     }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    // capture.js is the capture window's own bridge (src/main/capture.ts), nothing of the main window's.
+    build: { rollupOptions: { input: { index: resolve('src/preload/index.ts'), capture: resolve('src/preload/capture.ts') } } }
   },
   renderer: {
     resolve: {
@@ -240,6 +242,8 @@ export default defineConfig({
     ...(process.env.TEMP_CODE_RENDERER_PORT ? { server: { port: Number(process.env.TEMP_CODE_RENDERER_PORT), strictPort: true } } : {}),
     // Monaco's editor worker is a lazy chunk; iife workers cannot code-split.
     worker: { format: 'es' },
+    // capture.html is the capture window's own small page (src/main/capture.ts): nothing of it is in index's first paint.
+    build: { rollupOptions: { input: { index: resolve('src/renderer/index.html'), capture: resolve('src/renderer/capture.html') } } },
     plugins: [
       directIconImports(),
       react({ babel: { plugins: [reactCompiler] } }),
