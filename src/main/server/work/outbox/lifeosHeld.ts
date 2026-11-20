@@ -550,13 +550,15 @@ export const mailSendKind: ActKindDef<MailSendPayload, MailSendMatcher> = {
     // What goes is the mail as it was shown: a row edited since (in another app, by the thread's agent) is refused, as a calendar act is.
     const waiting = now.row.status === 'draft' || now.row.status === 'failed'
     if (waiting && p.editedAt !== undefined && now.row.editedAt !== p.editedAt) throw new ActStale('The mail was edited since it was shown')
-    if (now.row.status === 'failed') await owner.mutation(LIFEOS_HELD_FNS.mailRetry, { id: p.id })
+    // LifeOS checks the edit time again in the write's own transaction, so an edit after this read never goes on this press.
+    const shown = p.editedAt !== undefined ? { editedAt: p.editedAt } : {}
+    if (now.row.status === 'failed') await owner.mutation(LIFEOS_HELD_FNS.mailRetry, { id: p.id, ...shown })
     // The outgoing rules clean the HTML first: Outlook takes it as it is, and a draft can carry a raw signature.
     else if (now.row.status === 'draft') {
       // Due at once only for his own press that already waited out the undo time in the window (work/mail/waited.ts);
       // a grant never is, and LifeOS refuses `immediate` with `cause: 'grant'` besides.
       const immediate = takeWaited(p.id) && cause === 'press'
-      await owner.mutation(LIFEOS_HELD_FNS.mailSend, { id: p.id, message: { ...p.message, html: outgoingHtml(p.message.html) }, cause, ...(immediate ? { immediate: true } : {}) })
+      await owner.mutation(LIFEOS_HELD_FNS.mailSend, { id: p.id, message: { ...p.message, html: outgoingHtml(p.message.html) }, cause, ...(immediate ? { immediate: true } : {}), ...shown })
     }
     else if (!['queued', 'sending', 'sent'].includes(now.row.status)) throw new ActStale(`LifeOS holds this mail as ${now.row.status}`)
     // Already queued, sending or sent: it went by another hand (LifeOS's own app); nothing is sent twice.

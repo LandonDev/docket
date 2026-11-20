@@ -24,8 +24,8 @@ vi.mock("../../lib/connection", async (original) => ({
   },
 }));
 
-const { tempcodeMailKit } = await import("./kit");
-const { sendThroughHost } = await import("./client");
+const { mailLink, tempcodeMailKit } = await import("./kit");
+const { sendThroughHost, write } = await import("./client");
 const { View: MailAct } = await import("./MailAct");
 const { mailActView, mailChip } = await import("./model");
 const { proposalDiff } = await import("./proposal");
@@ -207,5 +207,33 @@ describe("the kit", () => {
     expect(container.innerHTML).toBe("");
     rerender(<SectorMark sector="life" />);
     expect(container.textContent).toBe("Life");
+  });
+
+  it("opens a link from a mail outside only as a web page, a mail address or a phone number", () => {
+    for (const href of ["https://a.test/x", "http://a.test", "mailto:a@b.test", "tel:+17655550142"]) expect(mailLink(href)).toBe(true);
+    for (const href of ["javascript:alert(1)", "file:///etc/passwd", "vscode://open", "data:text/html,x", "/relative", ""]) expect(mailLink(href)).toBe(false);
+  });
+
+  it("names a draft by the thread that wrote it, and says nothing for one a bot's key made", () => {
+    expect(tempcodeMailKit.originLabel?.({ botId: "bot_1" })).toBeUndefined();
+    expect(tempcodeMailKit.originLabel?.({ origin: { app: "tempcode", threadId: "t-unknown", host: "box" } })).toEqual({ label: "Drafted in a thread" });
+    expect(tempcodeMailKit.originLabel?.({ origin: { app: "lifeos", threadId: "x", host: "box" } })).toBeUndefined();
+  });
+
+  it("takes back the last act with z, once, as its toast's Undo would", async () => {
+    const undone: string[] = [];
+    await write({ run: async () => "a", failed: "archive", message: "Archived", undo: async () => void undone.push("archive") });
+    await write({ run: async () => "b", failed: "delete it", message: "Deleted", undo: async () => void undone.push("delete") });
+    // The toast module loads lazily; the last act is known once it has.
+    await vi.waitFor(() => {
+      tempcodeMailKit.undo?.();
+      expect(undone).toEqual(["delete"]);
+    });
+    tempcodeMailKit.undo?.();
+    expect(undone).toEqual(["delete"]);
+    // An act with nothing to take back leaves the last one that had.
+    await write({ run: async () => "c", failed: "mark it read" });
+    tempcodeMailKit.undo?.();
+    expect(undone).toEqual(["delete"]);
   });
 });

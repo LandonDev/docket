@@ -30,7 +30,7 @@ export async function runProof(page: Page, url: string): Promise<Claim[]> {
 
   // A slow fake worker, so pictures land well after the frame was first measured.
   await page.goto(`${url}?late=1`);
-  await page.until(`document.querySelector("[data-mail-list] li")`, "the list");
+  await page.until(`document.querySelector("[data-mail-list] [role=option]")`, "the list");
 
   // 1. A web picture and a CSS background, in mail written for white.
   await open("c-receipt");

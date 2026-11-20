@@ -41,14 +41,33 @@ export function sendThroughHost(env: string, actions: OutboxActions): OutboxActi
   };
 }
 
+/** How long the `z` key may still take back the last act: as long as its toast offers Undo. */
+const UNDO_FOR_MS = 8000;
+let last: { undo: () => void; until: number } | null = null;
+
+/** Takes back the last act whose toast offered Undo, as that toast's own Undo would; once, and only while the toast could. */
+export function undoLast(): void {
+  const act = last;
+  last = null;
+  if (act && Date.now() <= act.until) act.undo();
+}
+
 /** Every write a screen makes: its toast on success, with Undo where it has one, and its own words on failure. */
-const write: MailWrite = async ({ run, failed, message, undo }) => {
+export const write: MailWrite = async ({ run, failed, message, undo }) => {
   try {
     const result = await run();
     if (message) {
-      void loadToast().then((toast) =>
-        toast(message, undo ? { action: { label: "Undo", onClick: () => void undo(result).catch(() => toast.error("Undo did not go through")) } } : undefined),
-      );
+      void loadToast().then((toast) => {
+        if (!undo) return void toast(message);
+        let done = false;
+        const back = (): void => {
+          if (done) return;
+          done = true;
+          void undo(result).catch(() => toast.error("Undo did not go through"));
+        };
+        last = { undo: back, until: Date.now() + UNDO_FOR_MS };
+        toast(message, { duration: UNDO_FOR_MS, action: { label: "Undo", onClick: back } });
+      });
     }
     return result;
   } catch {

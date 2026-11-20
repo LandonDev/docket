@@ -36,6 +36,42 @@ const then =
   async (page: Page) => {
     for (const step of steps) await step(page);
   };
+/** A row of the list, and the list once its rows have drawn. */
+const ROW = "[data-mail-list] [role=option]";
+const ROWS = `document.querySelectorAll(${JSON.stringify(ROW)}).length > 5`;
+/** The pointer over an element, so a row shows what it shows under it. */
+function hover(selector: string) {
+  return async (page: Page) => {
+    await page.until(`document.querySelector(${JSON.stringify(selector)})`, selector);
+    const at = await page.centre(selector);
+    if (at) await page.hover(at.x, at.y);
+  };
+}
+/** A real click, with the mod key held, on the nth row: it ticks the row. */
+function tick(n: number) {
+  return async (page: Page) => {
+    const at = await page.centre(`${ROW}:nth-of-type(${n})`);
+    if (at) await page.click(at.x, at.y, { meta: true });
+    await page.wait(60);
+  };
+}
+/** Words typed into the search field with real keys. */
+function typed(text: string) {
+  return async (page: Page) => {
+    // The rows are on the page a moment before the page's key listener is: a person is never that quick.
+    await page.wait(150);
+    await page.press("/");
+    await page.until(`document.activeElement?.getAttribute("aria-label") === "Search mail"`, "the search field");
+    await page.type(text);
+  };
+}
+/** A real key, once the page's key listener is there. */
+function keyed(key: string, modifiers: { shift?: boolean } = {}) {
+  return async (page: Page) => {
+    await page.wait(150);
+    await page.press(key, modifiers);
+  };
+}
 const opened = (id: string) => async (page: Page) => {
   await page.eval(`window.__mail.open(${JSON.stringify(id)})`);
   await page.until(`document.querySelector("[data-mail-pane] h2")`, "the thread's subject");
@@ -60,7 +96,21 @@ export const SCENES: Scene[] = [
   { name: "settings", query: "page=settings", ready: `document.querySelector("h2")?.textContent === "Mail" && document.querySelectorAll("h3").length === 4` },
   { name: "settings-signature", query: "page=settings", set: press("section:nth-of-type(3) button.group\\/row"), ready: `document.querySelector("[role=dialog] .tiptap")` },
   { name: "settings-account", query: "page=settings", set: press("section:nth-of-type(4) button.group\\/row"), ready: `document.querySelector("[role=dialog]")` },
-  { name: "list", ready: `document.querySelectorAll("[data-mail-list] li").length > 5` },
+  { name: "invite", set: opened("c-invite"), ready: `${FRAMES_READY} && document.querySelector("[data-mail-pane] [aria-label=Invitation]")` },
+  { name: "list", ready: ROWS },
+  { name: "list-two-lines", query: "density=two", ready: ROWS },
+  { name: "list-open", set: opened("c-invoice"), ready: FRAMES_READY },
+  { name: "list-hover", set: hover(`${ROW}:nth-of-type(3)`), ready: ROWS },
+  { name: "list-selected", set: then(tick(4), tick(6), tick(9)), ready: `document.querySelector("[data-mail-list]").textContent.includes("3 selected")` },
+  { name: "list-menu", set: press("[data-mail-list] button[aria-haspopup=menu]"), ready: `document.querySelector("[role=menu]")` },
+  { name: "list-search", set: typed("from:marisol has:attachment"), ready: `document.querySelector("[role=listbox][aria-label='Search results']")` },
+  { name: "list-search-hint", set: typed("invoice ha"), ready: `[...document.querySelectorAll("[data-mail-list] button")].some((b) => b.textContent === "has:attachment")` },
+  { name: "list-trash", query: "box=trash", set: opened("c-trashed"), ready: `document.querySelector("[data-mail-pane] h2")` },
+  { name: "list-snoozed", query: "box=snoozed", ready: `document.querySelector(${JSON.stringify(ROW)})` },
+  { name: "list-drafts", query: "box=drafts", ready: `document.querySelector("[data-mail-list] li")` },
+  { name: "list-empty", query: "box=scheduled", ready: `document.querySelector("[data-mail-list]").textContent.includes("Nothing scheduled")` },
+  { name: "keys", set: keyed("?", { shift: true }), ready: `document.querySelector("[role=dialog]")?.textContent.includes("Keyboard shortcuts")` },
+  { name: "snooze", set: then(opened("c-invoice"), keyed("b")), ready: `document.querySelector("[role=dialog]")?.textContent.includes("Snooze until")` },
   { name: "loading", query: "late=1" },
 ];
 
@@ -74,7 +124,7 @@ export async function shoot(browser: Chromium, url: string, scene: Scene, dir: s
     for (const [width, height] of SIZES) {
       const page = await browser.page(width, height);
       await page.goto(`${url}?theme=${theme}${scene.query ? `&${scene.query}` : ""}`);
-      if (scene.name !== "loading" && !scene.query?.includes("page=")) await page.until(`document.querySelector("[data-mail-list] li")`, "the list");
+      if (scene.name !== "loading" && !scene.query?.includes("page=") && !scene.query?.includes("box=")) await page.until(`document.querySelector(${JSON.stringify(ROW)})`, "the list");
       await scene.set?.(page);
       if (scene.ready) await page.until(scene.ready, `${scene.name} to settle`);
       // Pictures land a turn after their frame; a shot waits for them.

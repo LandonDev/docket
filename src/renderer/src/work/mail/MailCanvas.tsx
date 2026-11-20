@@ -146,7 +146,7 @@ function Draft({ id, shell }: { id: string; shell: CanvasShell }) {
   }, [doc, id]);
 
   const nav = useMemo<MailNav>(
-    () => ({ account: null, inboxView: "everything", setInboxView: () => {}, threadId: shownThread, setThreadId: setShownThread, view: "inbox", sheetOpen: false }),
+    () => ({ account: null, box: "inbox", setBox: () => {}, threadId: shownThread, setThreadId: setShownThread, sheetOpen: false }),
     [shownThread],
   );
 

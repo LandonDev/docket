@@ -225,6 +225,11 @@ describe("a sent chip", () => {
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks" });
   });
 
+  it("of a mail opens Mail's reader on that mail", () => {
+    void openerOf(chip("mail", "LifeOS mailThreads mt_9"), at)!();
+    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "mail", mail: "mt_9" });
+  });
+
   it("outside a workspace names nothing to open", () => {
     expect(openerOf(chip("project", "LifeOS projects p-lan"), { ...at, workspaceId: null })).toBeNull();
     expect(openerOf(chip("card", "LifeOS tasks t-network"), { ...at, workspaceId: null })).toBeNull();

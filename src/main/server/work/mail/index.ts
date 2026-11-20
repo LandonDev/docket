@@ -105,7 +105,8 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
   }
   if (row.status !== 'draft') throw new Error(`LifeOS holds this mail as ${row.status}`)
   const message = { ...row.message, html: outgoingHtml(String(row.message.html ?? '')) }
-  await owner.mutation('compose:send', { id, message, cause: 'press', ...(sendAt !== undefined ? { sendAt } : {}) })
+  // The row as it was read and compared a moment ago: LifeOS refuses the send if it was edited since.
+  await owner.mutation('compose:send', { id, message, cause: 'press', ...(sendAt !== undefined ? { sendAt } : {}), ...(typeof row.editedAt === 'number' ? { editedAt: row.editedAt } : {}) })
   return { id, via: 'owner' }
 }
 

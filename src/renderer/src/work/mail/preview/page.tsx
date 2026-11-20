@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { MailClientProvider, MailKitProvider, MailSettings, opening, type ComposeState } from "work-kit/mail";
+import { MailClientProvider, MailKitProvider, MailSettings, opening, type ComposeState, type MailBox } from "work-kit/mail";
 import { corpusOutbox, corpusSignatures, corpusThreads, createFixtureMailClient, generateThreads } from "work-kit/mail/fixtures";
 import { Toaster } from "../../../components/ui/toaster";
 import { changeScheme } from "../../../lib/placeScheme";
@@ -14,8 +14,9 @@ import { MailScreen, patch, type MailPage } from "../MailView";
  * the app: nothing imports it, and nothing here reaches LifeOS.
  *
  * The address sets the scene: `?theme=light`, `?pictures=ask|show|never`,
- * `?threads=5000`, `?late=1` (a fake worker that answers slowly, to show what
- * a late picture does). `window.__mail` moves it on from there.
+ * `?density=two`, `?threads=5000`, `?late=1` (a fake worker that answers
+ * slowly, to show what a late picture does), `?box=trash`.
+ * `window.__mail` moves it on from there.
  */
 
 const params = new URLSearchParams(location.search);
@@ -30,7 +31,7 @@ const client = createFixtureMailClient({
   write: async ({ run }) => run(),
   instant: params.get("late") !== "1",
   threads: [...corpusThreads(), ...(bulk ? generateThreads(bulk) : [])],
-  settings: { pictures: (params.get("pictures") as "ask" | "show" | "never" | null) ?? "show" },
+  settings: { pictures: (params.get("pictures") as "ask" | "show" | "never" | null) ?? "show", density: params.get("density") === "two" ? "two" : "three" },
   signatures: corpusSignatures,
   outbox: corpusOutbox(),
 });
@@ -43,6 +44,8 @@ declare global {
       open: (threadId: string | null) => void;
       compose: (state: Omit<ComposeState, "key"> | null) => void;
       asked: () => readonly string[];
+      /** A new mail lands at the head of the inbox, as a sync would bring it. */
+      deliver: (id: string, subject: string) => void;
     };
   }
 }
@@ -52,7 +55,14 @@ window.__mail = {
   open: (threadId) => patch(ID, { threadId }),
   compose: (state) => patch(ID, { compose: state ? opening(state) : null }),
   asked: () => client.asked(),
+  deliver: (id, subject) => {
+    const [like] = corpusThreads();
+    if (like) client.deliver({ ...like, id, subject, needsMe: false, messages: like.messages.slice(-1).map((m) => ({ ...m, id: `${id}-1`, unread: true, sentAt: Date.now(), attachments: [] })) });
+  },
 };
+
+const box = params.get("box") as MailBox | null;
+if (box) patch(ID, { box });
 
 const open = params.get("open");
 if (open) patch(ID, { threadId: open });

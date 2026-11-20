@@ -143,6 +143,8 @@ describe("the owner's press on a LifeOS-held mail", () => {
     expect(again.summary).toBe('Send to dana@purdue.edu, someone@elsewhere.example: Re: budget')
     await rig.rpc('work.outbox.send', { ref: again.ref, rev: again.updatedAt })
     expect(sends()).toHaveLength(1)
+    // and LifeOS is told which edit he saw, so it can refuse in its own transaction a row edited after this read
+    expect(sends()[0]!.args.editedAt).toBe(again.updatedAt)
   })
 
   it('pressed twice at once sends once', async () => {

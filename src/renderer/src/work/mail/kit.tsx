@@ -1,5 +1,7 @@
 import { Component, useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { loadBytes, printInFrame, type MailFaceProps, type MailKit, type MailOrigin, type MailOriginLabel, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
+import { loadBytes, printInFrame, type MailFaceProps, type MailKit, type MailOrigin, type MailOriginLabel, type MailReference, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
+import { DropdownMenuItem } from "work-kit/ui/dropdown-menu";
+import { AtSign } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
@@ -7,7 +9,11 @@ import { cn } from "../../lib/cn";
 import { keyHint, modOrCtrl } from "../../lib/keys";
 import { openUrl, saveDownload } from "../../lib/native";
 import { sessionStore } from "../../lib/tcserver/store";
-import { workOpenPort } from "../../lib/workSwitch";
+import { openWorkView, workOpenPort, workViewNow } from "../../lib/workSwitch";
+import { shell } from "../../stores/shell";
+import { currentActiveSession } from "../../stores/subscriptions";
+import { undoLast } from "./client";
+import { mailChip } from "./model";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 
 /**
@@ -190,6 +196,29 @@ class Boundary extends Component<{ className?: string; onNotFound?: () => void; 
   }
 }
 
+/**
+ * "Mention in a thread", in a row's menu and a message's: the mail joins the
+ * composer of the thread this window has open, as a chip, the same chip the
+ * composer's own @ makes. With no thread open there is nothing to mention it
+ * in, and the item is not drawn (Start thread, in the reader's More, makes one).
+ */
+function MentionItem({ reference }: { reference: MailReference }) {
+  const thread = currentActiveSession();
+  if (!thread || thread.archived) return null;
+  return (
+    <DropdownMenuItem
+      onClick={() => {
+        // The chip store is the canvas chunk's; it is on the page by the time a thread is.
+        void import("../canvas/chips").then(({ addContextChip }) => addContextChip(thread.id, mailChip(reference.id, reference.title)));
+        toast({ message: `Mentioned in ${thread.title?.trim() || "the thread"}`, action: { label: "Open", run: () => workOpenPort.get()?.(thread.id) } });
+      }}
+    >
+      <AtSign />
+      Mention in a thread
+    </DropdownMenuItem>
+  );
+}
+
 /** What a link in a mail may open outside the app: a web page, a mail address or a phone number, as the browser reads it. */
 export function mailLink(href: string): boolean {
   try {
@@ -217,7 +246,17 @@ export const tempcodeMailKit: MailKit = {
   print: printInFrame,
   // A draft one of TempCode's threads made goes through the host's hold, which has no queue to pull a mail back from.
   holdsSend: (origin) => origin.app === "tempcode",
-  originLabel: (origin) => originNamer?.(origin) ?? threadLabel(origin),
+  // A draft a bot's key made carries no origin; TempCode names the threads it holds and nothing else.
+  originLabel: ({ origin }) => (origin ? originNamer?.(origin) ?? threadLabel(origin) : undefined),
+  reference: { props: () => ({}), MenuItem: MentionItem },
+  undo: undoLast,
+  // Mail's settings are under Settings, Work.
+  openSettings: () => shell.openSettings("work"),
+  // An invitation's event is in the workspace's Agenda.
+  openEvent: () => {
+    const at = workViewNow();
+    if (at) openWorkView({ workspaceId: at.workspaceId, view: "agenda" });
+  },
   fetchImage: async (url) => (await fetch(url)).blob(),
   Boundary,
 };

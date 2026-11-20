@@ -25,7 +25,7 @@ The look is the round-two prototype `mail.html` ("The thread drafts").
 | The page policy and LifeOS's address | `src/shared/pagePolicy.ts` |
 | Save to Downloads (main) | `src/main/downloads.ts` |
 | The preview page, its scenes and the reader's proof (not shipped) | `src/renderer/src/work/mail/preview/`, `scripts/mail-preview.ts` |
-| The Mail view and its header (Start thread, Compose) | `MailView.tsx`, `view.ts` |
+| The Mail view: the list beside the reader, the edge between them, where it stood | `MailView.tsx`, `view.ts` |
 | The mail kind: a draft beside its thread, a waiting rewrite | `MailCanvas.tsx`, `canvas.ts`, `proposal.ts` |
 | A held mail in the Outbox | `MailAct.tsx`, `act.ts`, `model.ts` |
 | Type steps and the menu wash | `mail.css` |
@@ -60,13 +60,26 @@ to …" with a bar and Undo for the undo time from Mail's settings, and only
 when that time runs out calls `work.mail.send {…, waited: true}`, with
 `seen` as he pressed on it. Nothing has gone while it waits: Undo cancels
 the timer, and a window that closes takes the timer with it, so the draft
-stays held. `waited` marks the draft for that one call into the hold
-(`waited.ts`), and the hold's `mail.send` passes `immediate: true` to
-`compose:send` only for an owner's press that carries the mark, so LifeOS
-does not queue the mail a second time. Nothing on the Outbox's own wire
-carries it: a send from the Outbox page, by a grant or from the phone keeps
-LifeOS's queue and its Undo, and LifeOS refuses `immediate` with `cause:
-'grant'`. A held draft has no Send later.
+stays held. That second call saves nothing (`client.ts`): what he pressed
+on is only compared, so an edit made while it waited is never written
+over, and the host refuses the send because the row no longer says what he
+saw. `waited` marks the draft inside that one call into the hold
+(`waited.ts`: an `AsyncLocalStorage` scope round the call, so only the act
+that runs in this call's own claim can take the mark, once), and the
+hold's `mail.send` passes `immediate: true` to `compose:send` only for an
+owner's press that carries it, so LifeOS does not queue the mail a second
+time. A press from the Outbox page, a grant's send and the phone's run in
+calls of their own, find no mark whoever wins the claim, and keep LifeOS's
+queue and its Undo; LifeOS takes `immediate` only with `cause: 'press'`
+named, and makes a grant's send wait the undo time whatever time it names.
+A held draft has no Send later.
+
+**What goes is the row he was shown, to the edit.** A held mail's payload
+carries LifeOS's `editedAt` as read with the item. The hold's `mail.send`
+refuses (stale) a row whose edit time has moved since, and names that time
+to `compose:send` and `compose:retry`, which compare it again in the
+write's own transaction ("this mail changed since it was shown"); his own
+mail's send names it too.
 
 Either way LifeOS records the send as his, from this host's device session
 (`sentFrom` is the session's client; a minted proof session reads "from a
@@ -112,13 +125,36 @@ nothing.
 
 `Mailbox` under `MailClientProvider` and TempCode's `MailKit`, on the
 workspace's session narrowed to its sector, so it lists that sector's mail
-and no other. The header carries Start thread for the open mail (a
-`mail` chip, `{at: 'lifeos', table: 'mailThreads', id}`; the first send
-links the thread to the mail) and Compose. Where it was, which mail was
-open and the composer stay per workspace while the window lives.
+and no other. The view's header carries nothing of Mail's: the mailbox
+menu (Inbox, Needs me, Unread, Drafts, Scheduled, Sent, Snoozed, Archive,
+Trash, then Mail settings), Filter, New mail and search are the list's own
+head, inside work-kit, and Start thread is in the reader's More (a `mail`
+chip, `{at: 'lifeos', table: 'mailThreads', id}`; the first send links the
+thread to the mail). Which mailbox, which mail was open and the composer
+stay per workspace while the window lives (`MailPage`).
+
+The list is 296px beside the reader and its edge takes a drag from 260 to
+480px, kept for the app (`tc.mail.listWidth`); the edge is a separator on
+its own tab stop, 16px an arrow key, and a double press puts it back. At
+and under 640px of view the list and the open mail take turns (`narrow`):
+the reader's toolbar leads with the way back, and the keys move a row
+without opening it until Enter.
+
+Keys, selection, bulk acts with one Undo, search operators, Snooze, Delete
+and Trash, Report spam, Unsubscribe and the invitation card are work-kit's
+(its mail README); an invitation is answered by LifeOS's own calendar act
+on his press (`calendarOps:save`, then `send` with `cause: 'press'`), the
+road the Agenda view's New event takes. "Mention in a thread", in a row's
+menu and a message's, puts the mail's chip in the composer of the thread
+this window has open (the composer's own `@` finds a mail by subject and
+sender through `mail:search`: lifeos/mentions.ts); with no thread open the
+item is not drawn. A sent mail chip opens this view on its mail
+(`openWorkView {view: 'mail', mail}`).
 
 TempCode's kit: toasts through its own stack (Undo where the write has
-one), initials faces, a sector mark by name and never a bare row dot (the
+one; `z` takes back the last such act while its toast still could), a link
+from a mail opened outside only as http, https, mailto or tel, initials
+faces, a sector mark by name and never a bare row dot (the
 screens hold one sector), its key hints, its theme. `mail.css` sets the
 shared screens on TempCode's scale (subject 16/24, rows and fields 13/20,
 labels 12/16) and the menus' highlight to the muted fill through
@@ -128,7 +164,11 @@ work-kit's `--ui-wash` (`HOST_WASH` in `work-kit/ui/host-rules`).
 
 A mail frame never touches the network (work-kit's `prepareMail`: every
 outside address is taken out of a body, and the frame's own policy is
-`default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:`). The
+`default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:`, in a
+sandbox with no scripts and no popups). Nothing a sender writes passes for
+the reader's own: a body loses its `data-` attributes and the reader's
+class names, a style block cannot close itself, a picture's bytes go only
+into a picture. The
 reader loads a picture as bytes and hands the frame a blob: an inline part
 from LifeOS's file store, a web picture from the copy LifeOS's worker
 fetched (`mail:requestPictures`, `mail:pictures`), so no sender's server
@@ -142,7 +182,12 @@ page's policy meta, for all three ways the page is served: the app scheme's
 handler (`src/main/appScheme.ts`), the dev server (`electron.vite.config.ts`,
 serve only) and the remote UI (`src/main/server/remote/ui.ts`). `img-src` is
 never widened: `pagePolicy.test.ts` fails if it ever holds `https:`, because
-that would let any transcript or page load a picture from anywhere.
+that would let any transcript or page load a picture from anywhere. The
+remote page's rewrite takes only a plain host from the request.
+
+A file saved from a mail goes to Downloads under its own name, made safe
+(`safeFileName`: no separators, no control characters, none of the marks
+that turn a name round).
 
 ## Settings
 
@@ -173,7 +218,8 @@ and no sign-in, and drives it in a real headless Chromium over the DevTools
 protocol (`work-kit/mail/proof`). `--proof` runs the reader's proof (an
 inline picture, a web picture and a CSS background paint; the mail frames
 make no network request; nothing is clipped after a late load; a real key
-and a real click inside a mail reach the page); `--policy <index.html>`
+and a real click inside a mail reach the page; a pressed link stays in the
+page's hands); `--policy <index.html>`
 runs it under another app's policy (LifeOS desktop's). `--shots <dir>`
 writes the review shots: every scene in `preview/scenes.ts`, dark and
 light, at 1280 and 640 wide. The box's sans is DejaVu, so the shots use

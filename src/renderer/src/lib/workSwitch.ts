@@ -226,11 +226,13 @@ export interface OpenWorkView {
   /** Projects alone: the LifeOS project to stand on (a card's Open project, a sent project chip), or the task (a sent card chip). The view takes it once and clears it. */
   project?: string;
   task?: string;
+  /** Mail alone: the LifeOS mail thread to open (a sent mail chip). The view takes it once and clears it. */
+  mail?: string;
 }
 let openView: OpenWorkView | null = null;
 
 export function openWorkView(next: OpenWorkView | null): void {
-  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task) return;
+  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task && openView?.mail === next?.mail) return;
   openView = next;
   for (const listener of listeners) listener();
 }
