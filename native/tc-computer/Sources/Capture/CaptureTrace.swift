@@ -33,6 +33,8 @@ public enum CaptureTrace: Sendable {
     case watchStopped(window: UInt32, cause: StopCause)
     /// Live video (§30): a stream's encoder joined the window's capture, the window resized, the capture ended.
     case videoEncoder(window: UInt32, width: Int, height: Int, mode: String)
+    /// A complete picture of the window's video capture: its display time (µs) and dirty rects as given.
+    case videoPicture(window: UInt32, captureMicros: UInt64, dirty: [CGRect]?)
     case videoResized(window: UInt32, width: Int, height: Int)
     case videoEnded(window: UInt32, reason: String)
 }

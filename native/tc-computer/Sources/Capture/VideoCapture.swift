@@ -154,6 +154,11 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
         let entered = monotonicMicros()
         guard type == .screen, let info = FrameInfo(sampleBuffer), info.status == .complete, let buffer = sampleBuffer.imageBuffer else { return }
         let picture = VideoPicture(buffer: buffer, captureMicros: machMicros(info.displayTime), enteredMicros: entered)
+        trace?(.videoPicture(window: windowID, captureMicros: picture.captureMicros, dirty: info.dirtyRects))
+        // ScreenCaptureKit sends a still window again about a second later, all of it marked dirty: a picture
+        // after a rest that holds the last one's pixels is no change, or the still window would never rest
+        if let last, picture.captureMicros >= last.captureMicros + UInt64(ComputerDefaults.VideoStream.sharpenAfterMs) * 1_000,
+           Self.samePixels(buffer, last.buffer) { return }
         last = picture
         for encoder in encoders { encoder.offer(picture, again: false) }
     }
@@ -164,6 +169,29 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
             if case .error = reason, LiveWindows.bounds(self.windowID) == nil { reason = .windowClosed }
             self.finish(reason)
         }
+    }
+
+    /// Whether two NV12 buffers hold the same pixels, row by row over both planes.
+    static func samePixels(_ a: CVPixelBuffer, _ b: CVPixelBuffer) -> Bool {
+        guard CVPixelBufferGetWidth(a) == CVPixelBufferGetWidth(b), CVPixelBufferGetHeight(a) == CVPixelBufferGetHeight(b),
+              CVPixelBufferGetPixelFormatType(a) == CVPixelBufferGetPixelFormatType(b),
+              CVPixelBufferLockBaseAddress(a, .readOnly) == kCVReturnSuccess else { return false }
+        defer { CVPixelBufferUnlockBaseAddress(a, .readOnly) }
+        guard CVPixelBufferLockBaseAddress(b, .readOnly) == kCVReturnSuccess else { return false }
+        defer { CVPixelBufferUnlockBaseAddress(b, .readOnly) }
+        let planes = max(1, CVPixelBufferGetPlaneCount(a))
+        for plane in 0..<planes {
+            let planar = CVPixelBufferIsPlanar(a)
+            guard let baseA = planar ? CVPixelBufferGetBaseAddressOfPlane(a, plane) : CVPixelBufferGetBaseAddress(a),
+                  let baseB = planar ? CVPixelBufferGetBaseAddressOfPlane(b, plane) : CVPixelBufferGetBaseAddress(b) else { return false }
+            let rows = planar ? CVPixelBufferGetHeightOfPlane(a, plane) : CVPixelBufferGetHeight(a)
+            let strideA = planar ? CVPixelBufferGetBytesPerRowOfPlane(a, plane) : CVPixelBufferGetBytesPerRow(a)
+            let strideB = planar ? CVPixelBufferGetBytesPerRowOfPlane(b, plane) : CVPixelBufferGetBytesPerRow(b)
+            let width = planar ? CVPixelBufferGetWidthOfPlane(a, plane) : CVPixelBufferGetWidth(a)
+            let rowBytes = min(strideA, strideB, width * (planar ? (plane == 0 ? 1 : 2) : 4))
+            for row in 0..<rows where memcmp(baseA + row * strideA, baseB + row * strideB, rowBytes) != 0 { return false }
+        }
+        return true
     }
 
     // MARK: Size

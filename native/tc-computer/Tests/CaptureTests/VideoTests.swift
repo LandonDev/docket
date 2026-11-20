@@ -159,3 +159,27 @@ private final class Recorder: VideoOutput, @unchecked Sendable {
         queue.sync { session.close() }
     }
 }
+
+@Suite struct SamePixelsTests {
+    private func buffer(_ width: Int, _ height: Int, value: UInt8) throws -> CVPixelBuffer {
+        var made: CVPixelBuffer?
+        #expect(CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, nil, &made) == kCVReturnSuccess)
+        let buffer = try #require(made)
+        CVPixelBufferLockBaseAddress(buffer, [])
+        for plane in 0..<2 {
+            memset(CVPixelBufferGetBaseAddressOfPlane(buffer, plane), Int32(value), CVPixelBufferGetBytesPerRowOfPlane(buffer, plane) * CVPixelBufferGetHeightOfPlane(buffer, plane))
+        }
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+        return buffer
+    }
+
+    @Test func onlyTheSamePixelsAreTheSame() throws {
+        let a = try buffer(64, 40, value: 9), b = try buffer(64, 40, value: 9)
+        #expect(WindowVideoCapture.samePixels(a, b))
+        CVPixelBufferLockBaseAddress(b, [])
+        CVPixelBufferGetBaseAddressOfPlane(b, 1)!.storeBytes(of: 10, toByteOffset: CVPixelBufferGetBytesPerRowOfPlane(b, 1) * 19 + 63, as: UInt8.self)
+        CVPixelBufferUnlockBaseAddress(b, [])
+        #expect(!WindowVideoCapture.samePixels(a, b))
+        #expect(!WindowVideoCapture.samePixels(a, try buffer(64, 42, value: 9)))
+    }
+}

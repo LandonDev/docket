@@ -260,10 +260,7 @@ extension Proof {
         let viewer = ProofViewer(fps: fps, bitrate: bitrate, followFlow: followFlow)
         let encoder = try video.addEncoder(VideoEncoderSpec(maxEdge: maxEdge, fps: fps, mode: mode, bitrate: bitrate, size: size), output: viewer)
         viewer.encoder = encoder
-        let clock = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "tc.proof.video.clock"))
-        clock.schedule(deadline: .now() + .milliseconds(10), repeating: .milliseconds(10))
-        clock.setEventHandler { viewer.tick() }
-        clock.resume()
+        let clock = Self.clock(viewer)
         await pause(Int(warmup * 1_000))
         let from = monotonicMicros()
         if let during { await during() } else { await pause(Int(seconds * 1_000)) }
@@ -272,6 +269,15 @@ extension Proof {
         await video.stop()
         let rate = capture.videoRate(mode)
         return (VideoRun(mode: mode, rate: rate, bitrate: bitrate, size: size, frames: viewer.frames, pictures: viewer.pictures, seconds: seconds, failures: viewer.failed), from)
+    }
+
+    /// The service's 10 ms clock for one viewer, off the main thread.
+    nonisolated static func clock(_ viewer: ProofViewer) -> DispatchSourceTimer {
+        let clock = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "tc.proof.video.clock"))
+        clock.schedule(deadline: .now() + .milliseconds(10), repeating: .milliseconds(10))
+        clock.setEventHandler { viewer.tick() }
+        clock.resume()
+        return clock
     }
 
     /// The numbers of one run's measured window: fps, encode p50 / p95 ms, Mbit/s.
@@ -354,10 +360,28 @@ extension Proof {
             stopped = monotonicMicros()
             await pause(2_500)
         }
-        // the last drawn frames may still be on their way out for a few refreshes after the stop
-        let after = still.frames.filter { $0.atMicros > stopped + 50_000 }
-        let repeats = after.filter(\.again).count
-        report.check("20", "a still window sends at most the sharpening frames", after.count <= ComputerDefaults.VideoStream.sharpenFrames, "\(after.count) frames from 50 ms after the window went still, \(repeats) of them repeats (sharpenFrames \(ComputerDefaults.VideoStream.sharpenFrames))")
+        report.measure("20", "stillPictures", trace.since(0).compactMap { entry -> [String: Any]? in
+            guard case let .videoPicture(id, captured, dirty) = entry.event, id == window.windowID, captured > stopped else { return nil }
+            return ["capturedMs": Double(captured - stopped) / 1_000, "dirty": dirty.map { $0.map { [$0.minX, $0.minY, $0.width, $0.height] } } ?? "none"]
+        })
+        report.measure("20", "stillTimeline", still.frames.filter { $0.atMicros > stopped }.map { frame -> [String: Any] in
+            let captured = frame.record.payload.prefix(12).suffix(8).reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+            return ["sentMs": Double(frame.atMicros - stopped) / 1_000, "capturedMs": (Double(captured) - Double(stopped)) / 1_000, "again": frame.again, "bytes": frame.bytes, "key": frame.record.flags == NSL1.keyframeFlag]
+        })
+        // after the stop: each new picture ScreenCaptureKit still sends is followed by at most the sharpening
+        // repeats, and the last second of rest sends nothing
+        let after = still.frames.filter { $0.atMicros > stopped }
+        var runs: [Int] = []
+        for frame in after {
+            if frame.again, !runs.isEmpty { runs[runs.count - 1] += 1 } else if !frame.again { runs.append(0) }
+        }
+        let lastSecond = after.filter { $0.atMicros > stopped + 1_500_000 }.count
+        let sharpen = ComputerDefaults.VideoStream.sharpenFrames
+        report.check("20", "a still window sends at most the sharpening frames, then nothing", runs.allSatisfy { $0 <= sharpen } && lastSecond == 0, "\(runs.count) new pictures after the stop, repeats after each \(runs) (sharpenFrames \(sharpen)), \(lastSecond) frames in the last second of rest")
+        let late = after.filter { !$0.again && $0.atMicros > stopped + 100_000 }
+        if !late.isEmpty {
+            report.check("20", "pictures after the window stopped drawing", false, late.map { String(format: "%.0f ms", Double($0.atMicros - stopped) / 1_000) }.joined(separator: ", ") + " after the stop, each with pixels unlike the last and all of the window marked dirty", finding: true)
+        }
     }
 
     // MARK: 21. The DataRateLimits trial
