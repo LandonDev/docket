@@ -28,6 +28,7 @@ import { DASHBOARDS_CAPS, DASHBOARDS_RELAY, DashboardsRequestSchemas, type Dashb
 import { BROWSER_CAPS, BROWSER_RELAY, BrowserRequestSchemas, type BrowserPush } from './contract-work-browser'
 import { PROJECTS_CAPS, PROJECTS_RELAY, ProjectsRequestSchemas, type ProjectsPush } from './contract-work-projects'
 import { WINVM_CAPS, WINVM_RELAY, WinvmRequestSchemas, type WinvmPush } from './contract-work-winvm'
+import { CAPTURE_CAPS, CAPTURE_RELAY, CaptureRequestSchemas, type CapturePush } from './contract-work-capture'
 
 /**
  * Work over the wire (docs/agents/work.md): the core's own methods, then
@@ -113,7 +114,8 @@ export const WorkRequestSchemas = [
   ...DashboardsRequestSchemas,
   ...BrowserRequestSchemas,
   ...ProjectsRequestSchemas,
-  ...WinvmRequestSchemas
+  ...WinvmRequestSchemas,
+  ...CaptureRequestSchemas
 ] as const
 
 export type WorkPush =
@@ -143,6 +145,7 @@ export type WorkPush =
   | BrowserPush
   | ProjectsPush
   | WinvmPush
+  | CapturePush
 
 export const WORK_CAPS = {
   ...WORK_CORE_CAPS,
@@ -170,7 +173,8 @@ export const WORK_CAPS = {
   ...DASHBOARDS_CAPS,
   ...BROWSER_CAPS,
   ...PROJECTS_CAPS,
-  ...WINVM_CAPS
+  ...WINVM_CAPS,
+  ...CAPTURE_CAPS
 }
 
 /** Each pillar's own requests, capability rows and relay rows, for the guards (contract-work.test.ts) and the router. */
@@ -199,7 +203,8 @@ export const WORK_PILLAR_CONTRACTS: Record<PillarId, { requests: readonly z.ZodT
   dashboards: { requests: DashboardsRequestSchemas, caps: DASHBOARDS_CAPS, relay: DASHBOARDS_RELAY },
   browser: { requests: BrowserRequestSchemas, caps: BROWSER_CAPS, relay: BROWSER_RELAY },
   projects: { requests: ProjectsRequestSchemas, caps: PROJECTS_CAPS, relay: PROJECTS_RELAY },
-  winvm: { requests: WinvmRequestSchemas, caps: WINVM_CAPS, relay: WINVM_RELAY }
+  winvm: { requests: WinvmRequestSchemas, caps: WINVM_CAPS, relay: WINVM_RELAY },
+  capture: { requests: CaptureRequestSchemas, caps: CAPTURE_CAPS, relay: CAPTURE_RELAY }
 }
 
 /**
