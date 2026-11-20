@@ -42,7 +42,7 @@ public final class VoiceNote {
 
     @ObservationIgnored private var host: (any CaptureHost)?
     @ObservationIgnored private var picked = false
-    @ObservationIgnored private var pending: (key: String, request: Request)?
+    @ObservationIgnored private var pending: (key: String, request: Request, host: any CaptureHost)?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let makeKey: () -> String
 
@@ -67,7 +67,9 @@ public final class VoiceNote {
     }
 
     /// The hold began: each take's words follow what is already written.
+    /// Not while a save is on its way: its answer clears the words it sent.
     public func press() {
+        guard !saving else { return }
         error = nil
         let before = text
         dictation.press { [weak self] words in self?.text = Self.join(before, words) }
@@ -107,20 +109,28 @@ public final class VoiceNote {
 
     /// Files the draft. On success the draft clears and the answer comes
     /// back; on a failure the words stay, with the reason.
+    private var current: Request {
+        Request(text: text.trimmingCharacters(in: .whitespacesAndNewlines), sector: sector, start: start)
+    }
+
     @discardableResult
     public func save(_ hosts: [any CaptureHost]) async -> CaptureFiled? {
         guard canSave else { return nil }
         saving = true
         defer { saving = false }
         error = nil
+        // A retry goes back to the host that may have filed it, while it answers: another host
+        // keeps no record of the key and would file it, and start its thread, a second time.
+        if let retry = pending, retry.request == current, (try? await retry.host.captureState())?.connected == true { host = retry.host }
         if host == nil { await find(hosts) }
         guard let host else {
             error = Self.noHost
             return nil
         }
-        let request = Request(text: text.trimmingCharacters(in: .whitespacesAndNewlines), sector: sector, start: start)
-        let key = pending?.request == request ? pending!.key : makeKey()
-        pending = (key, request)
+        // Built after the find, which may have set the default sector.
+        let request = current
+        let key = pending.flatMap { $0.request == request ? $0.key : nil } ?? makeKey()
+        pending = (key, request, host)
         do {
             let filed = try await host.capture(text: request.text, sector: request.sector, start: request.start, key: key)
             pending = nil

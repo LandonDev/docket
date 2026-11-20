@@ -89,12 +89,13 @@ final class OnDeviceSpeech: SpeechSource {
 
     private nonisolated static func deliver(to words: AsyncThrowingStream<String, any Error>.Continuation) -> @Sendable (SFSpeechRecognitionResult?, (any Error)?) -> Void {
         { result, error in
-            if let result {
-                words.yield(result.bestTranscription.formattedString)
-                if result.isFinal { words.finish() }
-            } else if let error {
+            // One callback can bring words and an error together: the words first, then the end.
+            if let result { words.yield(result.bestTranscription.formattedString) }
+            if let error {
                 // Released before any words, or stopped: the take simply ends.
                 if Self.silence(error) { words.finish() } else { words.finish(throwing: error) }
+            } else if result?.isFinal == true {
+                words.finish()
             }
         }
     }

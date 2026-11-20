@@ -32,7 +32,7 @@ struct VoiceNoteSheet: View {
                 Section {
                     TextField("Note", text: $note.text, axis: .vertical)
                         .lineLimit(CaptureMetrics.lines)
-                        .disabled(note.dictation.isBusy)
+                        .disabled(note.dictation.isBusy || note.saving)
                         .accessibilityIdentifier("voice-note-text")
                 }
                 Section {

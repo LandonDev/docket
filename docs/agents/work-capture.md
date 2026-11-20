@@ -134,6 +134,10 @@ sheet, "Voice Note":
   all keep it; only a Save the host answered clears it. A Save keeps its key
   while the request (words, sector, Start Thread) is unchanged, so a retry
   after a lost answer files nothing twice; a changed request gets a new key.
+  The retry goes back to the host that took the first try while it answers,
+  since another host keeps no record of the key and would file it (and
+  start its thread) again. Words cannot be added while a Save is on its
+  way: the field and the hold wait for its answer, which clears them.
   A thread that did not start (`threadError`) is said in the sheet; the task
   is filed.
 - **Code.** Client package `Work/Capture/`: `VoiceNote` (the draft, the host,
@@ -143,7 +147,9 @@ sheet, "Voice Note":
   the wire, `Methods.WorkCaptureState` and `Methods.WorkCaptureFile` in the
   generated contract (`CaptureState`, `CaptureFiled`). Tests:
   `VoiceNoteTests.swift` (both suites) and `WorkHostTests`'s capture case.
-  The sheet opens for a shot with `TC_TEST_SHEET=voice-note` (debug builds).
+  The sheet opens for a shot with `TC_TEST_SHEET=voice-note` (debug builds);
+  the work proof set ends with it light and dark (w60, w61), and
+  `TC_WORK_ONLY=capture` shoots it alone.
 
 
 LifeOS takes in his mail itself, so a forwarded mail needs nothing of

@@ -24,7 +24,8 @@
 #           the voice switch, and the Item segment of "Spring LAN check-in" for each kind seedWorkItems
 #           opens (TC_TEST_ITEM picks it): the PDF, the video with a comment posted at a frame, the
 #           picture, the meeting, the browser with its held submit and that act opened, the form, the
-#           dashboard and history. TC_WORK_ONLY=m47 shoots that part alone.
+#           dashboard and history. TC_WORK_ONLY=m47 shoots that part alone. Last, the voice note's
+#           sheet light and dark (w60, w61); TC_WORK_ONLY=capture shoots it alone.
 #           scripts/ios-sim-proof-local.ts then reads back on the host what went
 #           ($OUT/work-report.txt).
 #   shell   Home, a workspace's project cards, the archived list, Inbox,
@@ -1066,9 +1067,21 @@ transcript_report() {
 work_set() {
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
-  # TC_WORK_ONLY=m47 shoots milestone 47's part alone (a hand run while its screens change).
+  # TC_WORK_ONLY=m47 shoots milestone 47's part alone (a hand run while its screens change);
+  # TC_WORK_ONLY=capture the voice note alone.
+  [ "${TC_WORK_ONLY:-}" = capture ] && { work_capture; return; }
   [ "${TC_WORK_ONLY:-}" = m47 ] || work_m46
   work_m47
+  work_capture
+}
+
+# The voice note (docs/agents/work-capture.md "The phone"): Home's microphone opens the sheet
+# (TC_TEST_SHEET=voice-note), light and dark. The test server has no LifeOS, so Save would say no host can reach it.
+work_capture() {
+  ( TC_SHEET=voice-note shot w60-voice-note-light home )
+  appearance dark
+  ( TC_SHEET=voice-note shot w61-voice-note-dark home )
+  appearance light
 }
 
 # Milestone 47: a Work workspace's Mail, Tasks, Agenda and Routines (LifeKit's fixture day: the test server

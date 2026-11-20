@@ -12,6 +12,9 @@ private final class StubHost: CaptureHost {
     var asleep = false
     var failure: String?
     var threadError: String?
+    /// Holds `capture` until `answer()` (a save on its way).
+    var gated = false
+    private var gate: CheckedContinuation<Void, Never>?
     private(set) var filed: [(text: String, sector: String?, start: Bool, key: String)] = []
 
     init(_ hostId: String = "box", last: String? = nil, connected: Bool = true) {
@@ -27,8 +30,16 @@ private final class StubHost: CaptureHost {
 
     func capture(text: String, sector: String?, start: Bool, key: String) async throws -> CaptureFiled {
         filed.append((text, sector, start, key))
+        if gated { await withCheckedContinuation { gate = $0 } }
         if let failure { throw ActionError.refused(message: failure, forbidden: false) }
         return CaptureFiled(taskId: "t\(filed.count)", kept: [], threadId: start && threadError == nil ? "s1" : nil, threadError: threadError)
+    }
+
+    var holding: Bool { gate != nil }
+
+    func answer() {
+        gate?.resume()
+        gate = nil
     }
 }
 
@@ -158,6 +169,37 @@ private func makeNote(_ speech: StubSpeech = StubSpeech(), keys: [String] = ["k-
         #expect(await note.save([host]) != nil)
         #expect(host.filed.map(\.key) == ["k-0001", "k-0001"])
         #expect(note.error == nil)
+    }
+
+    @Test func `a retry goes back to the host that may have filed it, not to another`() async {
+        let first = StubHost("box")
+        first.failure = "timed out"
+        let (note, _) = makeNote()
+        note.text = "Start a thread on the sponsor deck"
+        note.start = true
+        await note.save([first])
+        first.failure = nil
+        let other = StubHost("mac")
+        await note.save([other, first])
+        #expect(other.filed.isEmpty)
+        #expect(first.filed.map(\.key) == ["k-0001", "k-0001"])
+    }
+
+    @Test func `nothing is heard while a save is on its way, so its answer clears only what it sent`() async {
+        let speech = StubSpeech()
+        let host = StubHost()
+        host.gated = true
+        let (note, _) = makeNote(speech)
+        note.text = "Email the venue"
+        let saving = Task { await note.save([host]) }
+        #expect(await eventually { host.holding })
+        #expect(note.saving)
+        note.press()
+        #expect(note.dictation.phase == .idle)
+        host.answer()
+        #expect(await saving.value?.taskId == "t1")
+        #expect(speech.starts == 0)
+        #expect(note.text.isEmpty)
     }
 
     @Test func `a changed request after a failure gets a new key`() async {
