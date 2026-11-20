@@ -3,7 +3,30 @@
 One Windows 11 machine under QEMU/KVM on the box, for the threads that build and test TempCode's Windows port
 (M12, M13, M41 to M44 of the Work plan). It runs as the `agents` user with no root, user-mode networking, every
 forward bound to 127.0.0.1, capped at 8 cores and 16 GB. Everything of it lives under `/srv/agents/win-vm/`; the
-scripts are `scripts/win-vm/` (`vm.ts` does the work, each `*.sh` is one of its commands).
+scripts are `scripts/win-vm/` (`vm.ts` does the work, each `*.sh` is one of its commands). The machine's own code
+(paths, QEMU's and swtpm's arguments, the QMP client, starting and stopping the daemons, the guest's PowerShell)
+is `src/main/server/work/winvm/machine/`, plain node, so the server's keeper of the standing machine shares it.
+
+## Two instances
+
+The one read-only base image carries two machines, chosen by `--instance NAME` as the first argument of any
+command but `fetch` and `install` (the rig when none is given; there is no environment variable, so nothing
+exported can turn a proof onto the other).
+
+| | `rig` | `standing` |
+|---|---|---|
+| For | the build threads' proofs, as before | the machine Work threads will drive (plan B, the keeper) |
+| Folder | `/srv/agents/win-vm/` (`run/`, `.lock`, `snapshots/`, `shots/`) | `/srv/agents/win-vm/standing/` (the same names) |
+| Disk | a fresh overlay on the base at every `up.sh` | one lasting overlay, made from the base at its first `up`; every later `up` resumes it |
+| Size | 8 cores, 16 GB | 6 cores, 8 GB |
+| SSH | 127.0.0.1:22220 | 127.0.0.1:22230 (no CDP forward) |
+| QEMU's name | `tc-win11` | `tc-win11-stand` |
+| TPM live state | `/tmp/win-vm-tpm-<uid>/` | `/tmp/win-vm-tpm-<uid>-standing/` |
+
+The ISO, the base image, the keys and the secrets are shared and only read; everything that changes (overlay,
+firmware variables, TPM, QMP socket, pid file, lock, known hosts, shots) is the instance's own, so the two run at
+once. `scripts/win-vm/up.sh --instance standing`, `ssh.sh --instance standing winver`, `down.sh --instance standing`.
+`snapshot` and `up --from` are the rig's only. **Proofs use the rig only.** With both up the box gives them 24 GB.
 
 ## What it is
 
@@ -71,13 +94,15 @@ scripts/win-vm/down.sh                    # shut Windows down and stop the machi
   (proven by M12: exit 0 after about five minutes with Defender on; give it 20), then `run-in-session.sh`
   starts the app on the desktop and `shot.sh` shows it. Its CDP port is reached over SSH (above);
   docs/agents/windows-build.md has the whole recipe.
-- **One machine at a time.** `up.sh` refuses while one runs, and `install`, `up`, `down`, `snapshot` and `fetch`
-  hold a lock (`/srv/agents/win-vm/.lock`), so two threads cannot start or stop it at once. Threads take turns:
+- **One command at a time per machine.** `up.sh` refuses while the machine runs, and `install`, `up`, `down`,
+  `snapshot` and `fetch` hold the instance's lock (`/srv/agents/win-vm/.lock`, or `standing/.lock`), so two threads
+  cannot start or stop it at once: `vm.ts` runs itself again under `flock -o -n` and says so when another holds
+  it. `install` holds both, since it rebuilds the base both stand on. Threads take turns:
   `status.sh` says whether it runs and what it was started from. A thread that finds it running and not its own
   leaves it alone. Stop it when done: it holds 16 GB of the agents slice's memory while it runs (`WINVM_MEM=8G`
   is the light option) and runs at the starting thread's nice level.
 - **It outlives the call that starts it, on purpose.** QEMU and swtpm start with a clean environment (`daemonEnv`
-  in config.ts), so the host's process guard, which kills a call's leftovers by the marks in their environment,
+  in machine/config.ts), so the host's process guard, which kills a call's leftovers by the marks in their environment,
   leaves them alone. `down.sh` is the way to stop it. On a failed `install` or `up` the scripts stop it
   themselves and keep the last screen as `shots/failed.png`; a failed `up.sh --keep` shuts the kept run down
   properly instead, so nothing of it is lost.
@@ -94,9 +119,15 @@ scripts/win-vm/down.sh                    # shut Windows down and stop the machi
 - **Reset** is `down.sh` then `up.sh`.
 - **After a box restart, or a restart of the `temp-code` service** (box-update restarts it), the machine is gone:
   QEMU runs inside the service's cgroup, since the box has no user systemd manager for `agents`. Start it again
-  with `up.sh` (or `up.sh --keep`). The TPM's live state sits under `/tmp/win-vm-tpm-<uid>/` (swtpm's AppArmor
-  profile allows only `/tmp` and home folders) and is copied into the run on a clean `down.sh`; after an
-  unclean stop, `--keep` resumes with the TPM as of the last clean stop.
+  with `up.sh` (or `up.sh --keep`).
+- **The TPM.** Its live state sits under `/tmp` (swtpm's AppArmor profile lets it write only there and under
+  `/home/*/`; the agents' home, `/srv/agents/home`, is not one, so no lasting folder is open to it) and is copied
+  into the run's `tpm/` on a clean `down.sh`. After a crash, or when Windows stops itself, the live state is newer
+  than that copy: the next `up --keep` (and every `up` of the standing machine) or `down.sh` saves it into the run
+  first, so the TPM is not rolled back (a rollback breaks TPM-bound sign-ins such as a PIN). Each fresh overlay
+  gets an id (`run/ID`) that the live state carries (`run-id` beside it), and only that run takes it back. What is
+  still lost: a box restart wipes `/tmp`, so a TPM change made since the last stop goes with it. swtpm takes no
+  signal from us (its profile has no signal rule); it ends when QEMU lets go of it.
 
 ## Building and rebuilding the image
 
@@ -114,7 +145,8 @@ for tcuser's desktop, shuts the machine down, keeps the TPM state, makes the dis
 the guest's own log is `C:\tc\setup.log`.
 
 **When the evaluation lapses** (90 days after `base/READY`'s date): `down.sh`, remove every snapshot
-(`snapshot.sh --rm`; `install.sh` refuses while any is built on the base), then `install.sh --force`. For
+(`snapshot.sh --rm`) and the standing machine's disk (`/srv/agents/win-vm/standing/run`, which holds what is signed
+in there; `install.sh` refuses while either stands on the base), then `install.sh --force`. For
 Microsoft's current build, delete `iso/win11-enterprise-eval.iso` first and run `fetch.sh`; if the link in
 config.ts (`ISO_URL`) stops answering, take the current Windows 11 Enterprise link from Microsoft's Evaluation
 Center. No rearm, no key, no activation workaround. The users' passwords never expire, so the automatic logon
@@ -131,6 +163,10 @@ and hugepages) and made a `swtpm` system user.
 ## Tests
 
 `scripts/win-vm/rig.test.ts`: the machine's arguments (caps, 127.0.0.1-only forwards, firmware, TPM, install
-media), the daemons' clean environment, snapshot names, the answer file's fields and escaping, the passwords,
+media), the daemons' clean environment, snapshot names, the two instances (their paths, ports, sizes and locks,
+no changing file shared, `sg kvm`), what stands on the base and `install --force`'s refusal, the TPM kept after a
+crash or the guest's own stop and never taken from another run, the answer file's fields and escaping, the passwords,
 PowerShell on stdin and the Windows quoting, the in-session task scripts, and the QMP client against a fake
-QEMU. The machine itself is proven by hand (`.temp-code/plans/landed/M11.md`).
+QEMU. The machine itself is proven by hand (`.temp-code/plans/landed/M11.md`); the two instances side by side by
+plan B1 (2026-11-20: rig up in 22 s, standing up beside it in 25 s, both answering SSH, the standing machine's
+TPM saved after Windows shut itself down).
