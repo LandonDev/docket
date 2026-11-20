@@ -57,6 +57,12 @@ import TempCodeContract
     /// Friday, November 20, 2026, 2:00 PM UTC, in milliseconds as the host keeps it.
     private let friday2pm = 1_795_183_200_000.0
 
+    @Test func aKindsRowsEachHaveTheirOwnIdThoughTheirLabelsRepeat() {
+        let fields = typing([.object(["action": .string("type"), "text": .string("one")]), .object(["action": .string("type"), "text": .string("two")])], [])
+        #expect(fields.filter { $0.label == "Types" }.count == 2)
+        #expect(Set(fields.map(\.id)).count == fields.count)
+    }
+
     @Test func aLifeosCalendarActReadsAsTheActWithItsBoundEventNeverItsRow() {
         let row: JSONValue = .object([
             "id": .string("op_1"), "kind": .string("accept"), "account": .string("landon@purdue.edu"), "calendarId": .string("landon@purdue.edu"),

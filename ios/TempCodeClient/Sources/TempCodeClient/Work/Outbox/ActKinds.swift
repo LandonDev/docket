@@ -56,7 +56,9 @@ public extension OutboxModel {
         default:
             return nil
         }
-        var view = PayloadView(fields: rows.map { Field(key: $0.0.lowercased(), path: [$0.0], label: $0.0, value: $0.1, edit: nil) })
+        // Each row its own id (its label and place): a batch's steps and a comment's marks share labels, and a
+        // list keyed by the label alone draws one of them in each of their places.
+        var view = PayloadView(fields: rows.enumerated().map { i, row in Field(key: row.0.lowercased(), path: [row.0, String(i)], label: row.0, value: row.1, edit: nil) })
         if let body { view.body = .init(path: ["body"], text: body, readOnly: true) }
         return view
     }

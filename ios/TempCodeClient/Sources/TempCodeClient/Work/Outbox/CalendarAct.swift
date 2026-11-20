@@ -64,7 +64,8 @@ public extension OutboxModel {
         default:
             return nil
         }
-        return rows.map { Field(key: $0.0.lowercased(), path: [$0.0], label: $0.0, value: $0.1, edit: nil) }
+        // Each row its own id (label and place), as `kindView`'s: a view keys rows by `Field.id`, and a label may repeat.
+        return rows.enumerated().map { i, row in Field(key: row.0.lowercased(), path: [row.0, String(i)], label: row.0, value: row.1, edit: nil) }
     }
 
     /// What the detail and the thread's card draw for an item: a calendar act as its fields, any
