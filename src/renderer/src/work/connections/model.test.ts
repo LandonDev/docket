@@ -23,9 +23,20 @@ describe("sectionsOf", () => {
   });
 
   it("shows a row two hosts give alike once: a LifeOS source both hosts read", () => {
-    const source = row({ id: "lifeos.source:1", group: "Mail and calendar", title: "Purdue mail", line: "Synced 14:02", sector: "purdue" });
+    const source = row({ id: "lifeos.source:1", group: "Mail and calendar", title: "Purdue mail", line: "Synced 2:02 PM", sector: "purdue", shared: true });
     const sections = sectionsOf([ready("box", "the box", [source]), ready("mac", "Mac", [{ ...source }])]);
     expect(sections).toEqual([{ group: "Mail and calendar", rows: [expect.objectContaining({ hostId: "box", title: "Purdue mail" })] }]);
+  });
+
+  it("never folds a host's own rows, nor a row with a fix: each press belongs to its host", () => {
+    const signedIn = row({ id: "lifeos.signin", group: "LifeOS", title: "LifeOS", line: "Signed in", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } });
+    const sections = sectionsOf([ready("box", "the box", [signedIn, row({ id: "excel", line: "Closed" })]), ready("mac", "Mac", [{ ...signedIn }, row({ id: "excel", line: "Closed" })])]);
+    expect(sections.flatMap((s) => s.rows.map((r) => [r.hostId, r.title]))).toEqual([
+      ["box", "LifeOS on the box"],
+      ["mac", "LifeOS on Mac"],
+      ["box", "Excel on the box"],
+      ["mac", "Excel on Mac"],
+    ]);
   });
 
   it("keeps a host's last rows while it checks again, and draws none for a host that never answered", () => {
@@ -49,9 +60,10 @@ describe("the rest of the page's words", () => {
     expect(fixVariant("broken")).toBe("secondary");
   });
 
-  it("never carries out a fix outside Work's methods or a page that is not https", () => {
+  it("carries out only the allowed fixes, whatever a host sent", () => {
     expect(usableFix({ kind: "run", label: "Go", method: "work.lifeos.signOut" })).not.toBeNull();
-    expect(usableFix({ kind: "run", label: "Go", method: "session.delete" as `work.${string}` })).toBeNull();
+    expect(usableFix({ kind: "run", label: "Go", method: "work.outbox.send" })).toBeNull();
+    expect(usableFix({ kind: "page", label: "Go", page: "settings:providers" })).toBeNull();
     expect(usableFix({ kind: "open", label: "Grant…", url: "javascript:alert(1)" })).toBeNull();
     expect(usableFix({ kind: "open", label: "Grant…", url: "https://accounts.google.com/" })).not.toBeNull();
     expect(usableFix(undefined)).toBeNull();
@@ -66,7 +78,7 @@ describe("dueNotices", () => {
   it("is due once at 14 days, again at the last day, and never twice for one stage", () => {
     expect(dueNotices("box", [vm], new Set(), now - 10 * DAY)).toEqual([]);
     const first = dueNotices("box", [vm], new Set(), now);
-    expect(first).toEqual([{ key: expect.stringContaining("browser.vm"), text: expect.stringMatching(/^Windows evaluation: Ends on 1[78] Feb$/) }]);
+    expect(first).toEqual([{ key: expect.stringContaining("browser.vm"), text: expect.stringMatching(/^Windows evaluation: Ends Feb 1[78], /) }]);
     expect(dueNotices("box", [vm], new Set([first[0]!.key]), now + 3 * DAY)).toEqual([]);
     const last = dueNotices("box", [vm], new Set([first[0]!.key]), vm.until - DAY / 2);
     expect(last).toHaveLength(1);

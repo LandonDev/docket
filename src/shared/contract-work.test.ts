@@ -22,21 +22,23 @@ describe("Work's contract", () => {
   it('mounts every pillar once, in order', () => {
     expect(Object.keys(WORK_PILLAR_CONTRACTS)).toEqual([...PILLAR_IDS])
   })
-  it("adds the core's eight methods and each pillar's own, and nothing else, to the contract", () => {
+  it("adds the core's ten methods and each pillar's own, and nothing else, to the contract", () => {
     const pillarMethods = PILLAR_IDS.flatMap((id) => WORK_PILLAR_CONTRACTS[id].requests.map(methodOf))
-    const core = ['app.workCall', 'app.workCancel', 'app.workTools', 'work.get', 'work.project.open', 'work.set', 'work.workspace.get', 'work.workspace.set']
+    const core = ['app.workCall', 'app.workCancel', 'app.workTools', 'work.get', 'work.health', 'work.lapses', 'work.project.open', 'work.set', 'work.workspace.get', 'work.workspace.set']
     expect(WorkRequestSchemas.map(methodOf).sort()).toEqual([...core, ...pillarMethods].sort())
     // every Work method the contract speaks came through this mount, and no method is declared twice
     expect(all.filter(isWorkMethod).sort()).toEqual([...core, ...pillarMethods].sort())
     expect(new Set(all).size).toBe(all.length)
   })
-  it('the switch and a workspace\'s settings are read by any key and set only by an admin, a project opened by operate; the bridge methods never leave the loopback', () => {
+  it('the switch, a workspace\'s settings and Connections are read by any key, set only by an admin, a project opened by operate; the bridge methods never leave the loopback', () => {
     expect(WORK_CORE_CAPS).toEqual({
       'work.get': 'read',
       'work.set': 'admin',
       'work.workspace.get': 'read',
       'work.workspace.set': 'admin',
       'work.project.open': 'operate',
+      'work.health': 'read',
+      'work.lapses': 'read',
       'app.workTools': 'local',
       'app.workCall': 'local',
       'app.workCancel': 'local'

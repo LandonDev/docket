@@ -30,7 +30,7 @@ import { SkillsPage } from "./settings/skills/SkillsPage";
 import { ComputerPage } from "./settings/Computer";
 import { WorkPage } from "./settings/Work";
 import { workShellChunk } from "./chunks";
-import { PageRowsSkeleton } from "../components/page";
+import { PageEmpty, PageRowsSkeleton } from "../components/page";
 import { useWorkOn } from "../lib/workSwitch";
 import { defineChunk } from "../lib/lazyChunk";
 
@@ -116,7 +116,7 @@ export function SettingsView({
             </>
           ) : null}
           {section === "work" ? <WorkPage /> : null}
-          {section === "connections" && workOn ? <ConnectionsPage /> : null}
+          {section === "connections" ? workOn ? <ConnectionsPage /> : <PageEmpty>Work is off</PageEmpty> : null}
           {section === "appearance" ? <AppearancePage /> : null}
           {section === "editor" ? <EditorPage /> : null}
           {section === "keybindings" ? <KeybindingsPage /> : null}

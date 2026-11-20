@@ -1,4 +1,4 @@
-import type { HealthFix, HealthReport, HealthRow, HealthState } from "@shared/work/health";
+import { fixAllowed, type HealthFix, type HealthReport, type HealthRow, type HealthState } from "@shared/work/health";
 import type { ThreadState } from "../../components/ui/status";
 
 /**
@@ -37,9 +37,10 @@ const rank = (group: string): number => {
 };
 
 /**
- * The sections, each host's rows in the order its host gave them. A row two
- * hosts give alike (a LifeOS source, which every signed-in host reads the
- * same) is shown once; a title two hosts both give is told apart by its
+ * The sections, each host's rows in the order its host gave them. A row the
+ * pillar marks `shared` (a LifeOS source, which every signed-in host reads
+ * the same) is shown once when two hosts give it alike; a host's own row
+ * never is, nor one with a fix, whose press belongs to its host; a title two hosts both give is told apart by its
  * host ("LifeOS on Mac"), and only then. A host still checking keeps the
  * rows it had, so Check again moves nothing.
  */
@@ -48,7 +49,7 @@ export function sectionsOf(hosts: readonly HostView[]): Section[] {
   for (const host of hosts) {
     if (!("report" in host) || !host.report) continue;
     for (const row of host.report.rows) {
-      const twin = placed.find((p) => p.row.id === row.id && p.row.state === row.state && p.row.line === row.line && p.row.group === row.group);
+      const twin = row.shared && !row.fix && placed.find((p) => p.row.shared && p.row.id === row.id && p.row.state === row.state && p.row.line === row.line && p.row.group === row.group);
       if (twin) continue;
       placed.push({ key: `${host.id}\0${row.id}`, hostId: host.id, hostName: host.name, title: row.title, row });
     }
@@ -85,10 +86,7 @@ export function fixVariant(state: HealthState): "secondary" | "ghost" {
   return state === "working" ? "ghost" : "secondary";
 }
 
-/** A fix the page can carry out; a `run` outside Work's methods is never sent. */
+/** A fix the page can carry out: only the allowed few (`fixAllowed`), whatever a host sent. */
 export function usableFix(fix: HealthFix | undefined): HealthFix | null {
-  if (!fix) return null;
-  if (fix.kind === "run") return fix.method.startsWith("work.") ? fix : null;
-  if (fix.kind === "open") return /^https:\/\//.test(fix.url) ? fix : null;
-  return fix;
+  return fix && fixAllowed(fix) ? fix : null;
 }

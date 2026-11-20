@@ -29,9 +29,9 @@ describe('the LifeOS sign-in row', () => {
     expect(signInRow({ state: 'signed-out' }, NOW)).toMatchObject({ state: 'needs-you', fix: { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } })
     expect(signInRow({ state: 'refused', error: 'revoked' }, NOW)).toMatchObject({ state: 'needs-you', fix: { label: 'Sign in…', page: 'lifeos-sign-in' } })
     const down = signInRow({ state: 'unreachable', since: NOW - 3_600_000, error: 'fetch failed' }, NOW)!
-    expect(down).toMatchObject({ state: 'broken', line: 'No answer since 14:00; it keeps trying' })
-    expect(down.fix).toBeUndefined()
-    expect(signInRow({ state: 'connecting' }, NOW)).toMatchObject({ state: 'broken' })
+    // Signed in but not answering keeps Sign out, so a host stuck on a wrong address can sign in again.
+    expect(down).toMatchObject({ state: 'broken', line: 'No answer since 2:00 PM; it keeps trying', fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } })
+    expect(signInRow({ state: 'connecting' }, NOW)).toMatchObject({ state: 'broken', fix: { label: 'Sign out' } })
     expect(signInRow({ state: 'off' }, NOW)).toBeNull()
   })
 
@@ -42,13 +42,15 @@ describe('the LifeOS sign-in row', () => {
 
 describe('a mail or calendar source', () => {
   it('works while it synced lately, and says when', () => {
-    expect(sourceRow(source({}), NOW)).toMatchObject({ id: 'lifeos.source:s1', group: 'Mail and calendar', title: 'Purdue mail', sector: 'purdue', state: 'working', line: 'Synced 14:59' })
+    expect(sourceRow(source({}), NOW)).toMatchObject({ id: 'lifeos.source:s1', group: 'Mail and calendar', title: 'Purdue mail', sector: 'purdue', shared: true, state: 'working', line: 'Synced 2:59 PM' })
+    // With no sector it names his account: a thread of a sector reads its state alone.
+    expect(sourceRow(source({ sector: undefined }), NOW)).toMatchObject({ shared: true, personal: true })
   })
 
   it('is broken on an error, after a long quiet, or never synced', () => {
     expect(sourceRow(source({ status: 'error', error: 'IMAP login failed' }), NOW)).toMatchObject({ state: 'broken', line: 'IMAP login failed' })
-    expect(sourceRow(source({ lastSyncAt: NOW - SOURCE_STALE_MS - 60_000 }), NOW)).toMatchObject({ state: 'broken', line: 'No sync since 08:59' })
-    expect(sourceRow(source({ lastSyncAt: new Date('2026-11-17T08:00:00').getTime() }), NOW)).toMatchObject({ line: 'No sync since 17 Nov' })
+    expect(sourceRow(source({ lastSyncAt: NOW - SOURCE_STALE_MS - 60_000 }), NOW)).toMatchObject({ state: 'broken', line: 'No sync since 8:59 AM' })
+    expect(sourceRow(source({ lastSyncAt: new Date('2026-11-17T08:00:00').getTime() }), NOW)).toMatchObject({ line: 'No sync since Nov 17' })
     expect(sourceRow(source({ lastSyncAt: undefined, status: 'idle' }), NOW)).toMatchObject({ state: 'broken', line: 'Never synced' })
   })
 

@@ -36,7 +36,6 @@ const MAC: HealthRow[] = [
   r({ id: "formats.tools", pillar: "formats", group: "Tools", title: "Conversion tools", state: "broken", line: "LibreOffice did not install", fix: { kind: "run", label: "Install", method: "work.formats.install" } }),
   r({ id: "office.excel", pillar: "office", group: "Office", title: "Excel", state: "working", line: "Running, signed in as lhale@purdue.edu" }),
   r({ id: "office.outlook", pillar: "office", group: "Office", title: "Outlook", state: "needs-you", line: "New Outlook cannot send for a workspace. Turn it off in Outlook's menu" }),
-  r({ id: "office.addin", pillar: "office", group: "Office", title: "Office add-in", state: "needs-you", line: "Sideloaded, not paired", fix: { kind: "page", label: "Pair…", page: "settings:work" } }),
   r({ id: "office.files:onedrive", pillar: "office", group: "Files", title: "OneDrive", state: "working", line: "Synced a minute ago" }),
   r({ id: "frameio.signin", pillar: "frameio", group: "Frame.io", title: "Frame.io", state: "working", line: "Signed in as Landon Hale", until: NOW + 9 * DAY }),
 ];

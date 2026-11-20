@@ -40,6 +40,10 @@ export interface HealthRow {
   until?: number
   /** the row is one sector's (a LifeOS source, a Google consent): a thread of another sector is not shown it */
   sector?: SectorKey
+  /** every host that reads it gives the same answer (a LifeOS source, read through LifeOS): the page shows it once */
+  shared?: true
+  /** its title or line names his accounts, tenants or folders and it has no one sector: a thread of a sector reads its state alone */
+  personal?: true
 }
 
 /** One host's answer to `work.health`. */
@@ -57,6 +61,23 @@ export interface Lapse {
   until: number
 }
 
+/**
+ * The only methods a `run` fix may name: the host drops any other from a
+ * row (work/health.ts `cleanRow`) and the page never sends one. A fix is a
+ * repair; nothing that sends, grants, or turns Work off is ever one.
+ */
+export const HEALTH_RUN_METHODS: readonly string[] = ['work.lifeos.signOut']
+
+/** The places a `page` fix may open: the LifeOS sign-in dialog, or one of these Settings pages. */
+export const HEALTH_PAGES: readonly string[] = ['lifeos-sign-in', 'settings:work', 'settings:remote', 'settings:connections']
+
+/** Whether a fix is one the host passes on and the page carries out. */
+export function fixAllowed(fix: HealthFix): boolean {
+  if (fix.kind === 'run') return HEALTH_RUN_METHODS.includes(fix.method)
+  if (fix.kind === 'open') return /^https:\/\/[^\s]+$/.test(fix.url)
+  return HEALTH_PAGES.includes(fix.page)
+}
+
 /** Days before a lapse that the app first says so, and again the day before. */
 export const LAPSE_NOTICE_DAYS = [14, 1] as const
 
@@ -72,18 +93,34 @@ export function lapseStage(until: number, now: number): number | null {
   return stage
 }
 
-/** "ends on 17 Feb", "ends tomorrow", "ended on 17 Feb": a lapse in his words. */
+/** "Ends today, 3:10 PM", "Ends tomorrow, 1:22 AM", "Ends Feb 17, 1:22 AM", "Ended Feb 17": a lapse in his words, in local time. */
 export function lapseLine(until: number, now: number): string {
-  const date = new Date(until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(new Date(until).getFullYear() !== new Date(now).getFullYear() ? { year: 'numeric' } : {}) })
-  if (until <= now) return `Ended on ${date}`
-  const days = Math.ceil((until - now) / DAY)
-  if (days <= 1) return 'Ends tomorrow'
-  return `Ends on ${date}`
+  const end = new Date(until)
+  const sameYear = end.getFullYear() === new Date(now).getFullYear()
+  const date = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })
+  if (until <= now) return `Ended ${date}`
+  const time = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const dayOf = (t: number): number => {
+    const d = new Date(t)
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  }
+  const days = Math.round((dayOf(until) - dayOf(now)) / DAY)
+  if (days === 0) return `Ends today, ${time}`
+  if (days === 1) return `Ends tomorrow, ${time}`
+  return `Ends ${date}, ${time}`
 }
 
-/** The rows a thread may read: every row of no sector, and its own sector's; `'all'` (a Work Chat, which reads every sector) reads them all. */
+/**
+ * The rows a thread may read: its own sector's, and every row of no sector,
+ * a personal one cut to its group and state (no account, tenant or folder
+ * of another sector reaches it); `'all'` (a Work Chat, which reads every
+ * sector) reads them all whole.
+ */
 export function rowsForSector(rows: readonly HealthRow[], sector: SectorKey | null | 'all'): HealthRow[] {
-  return sector === 'all' ? [...rows] : rows.filter((row) => !row.sector || row.sector === sector)
+  if (sector === 'all') return [...rows]
+  return rows
+    .filter((row) => !row.sector || row.sector === sector)
+    .map((row) => (row.personal && !row.sector ? { id: row.id, pillar: row.pillar, group: row.group, title: row.group, state: row.state, ...(row.until ? { until: row.until } : {}) } : row))
 }
 
 /** Worst first, then the order the host gave: what needs a press leads its group. */

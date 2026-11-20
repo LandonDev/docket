@@ -40,6 +40,7 @@ import { canvasPart } from './canvas/ctx'
 import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
 import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
+import type { HealthReport } from '@shared/work'
 import { checkHost, connectionsTool, lapsesOf, type HostHealth } from './health'
 import { heldPart } from './outbox/ctx'
 import { resultsPart } from './outbox/results'
@@ -401,8 +402,11 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
     const far = (deps.peers?.all() ?? []).map(async (link): Promise<HostHealth> => {
       if (!link.connected) return { name: link.env.name, offline: true }
       try {
-        return { name: link.env.name, report: await link.request('work.health', {}, { timeoutMs: 20_000 }) }
+        // The thread's cancel stops the wait; the far host's own checks end on their own deadline.
+        const cancelled = new Promise<never>((_, reject) => signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }))
+        return { name: link.env.name, report: await Promise.race([link.request<HealthReport>('work.health', {}, { timeoutMs: 20_000 }), cancelled]) }
       } catch (err) {
+        if (signal.aborted) throw err
         return link.connected ? { name: link.env.name, error: err instanceof Error ? err.message : String(err) } : { name: link.env.name, offline: true }
       }
     })

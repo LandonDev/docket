@@ -35,7 +35,8 @@ export async function googleRows(ctx: Pick<WorkCtx, 'db' | 'lifeos'>, o: { canPi
     )
   }
   for (const a of accounts) {
-    const row = { id: `google.consent:${a.account.toLowerCase()}`, pillar: 'google', group: 'Google', title: a.account, ...(a.sector ? { sector: a.sector } : {}) } as const
+    // Read from LifeOS, so every host answers the same: shared. With no sector it names an account of his: personal.
+    const row = { id: `google.consent:${a.account.toLowerCase()}`, pillar: 'google', group: 'Google', title: a.account, shared: true, ...(a.sector ? { sector: a.sector } : { personal: true as const }) } as const
     rows.push(a.files ? { ...row, state: 'working', line: 'Drive files allowed' } : { ...row, state: 'needs-you', line: "Reconnect it in LifeOS and tick every box on Google's page" })
   }
   return rows

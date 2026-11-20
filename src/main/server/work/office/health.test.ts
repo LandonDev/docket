@@ -1,5 +1,3 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -7,7 +5,7 @@ import type { OfficeAppState, TeamsLibrary } from '@shared/contract-work-office'
 import type { WorkCtx } from '../modules'
 import { AddinKeys, ensureAddinTables } from './addin/keys'
 import { ensureFilesTables, setRoots } from './files/library'
-import { ADDIN_ID, officeProbe, officeRows, parseTasklist, sideloadedOn, windowsOffice, type OfficeProbe } from './health'
+import { officeProbe, officeRows, parseTasklist, windowsOffice, type OfficeProbe } from './health'
 
 /** Connections' office rows: each app, the add-in and OneDrive, read from a probe that starts nothing. */
 const signal = new AbortController().signal
@@ -92,20 +90,6 @@ describe('the add-in', () => {
     expect(rows['office.addin']!.fix).toBeUndefined()
     const mac = byId(await officeRows(probe({ addinState: { paired: 0, holds: false, sideloaded: ['excel'] } }), signal))
     expect(mac['office.addin']).toMatchObject({ state: 'working', line: 'Sideloaded in Excel' })
-  })
-
-  it("finds our manifest in an app's wef folder, and nobody else's", () => {
-    const home = mkdtempSync(join(tmpdir(), 'office-health-'))
-    try {
-      const wef = (bundle: string) => join(home, 'Library', 'Containers', bundle, 'Data', 'Documents', 'wef')
-      mkdirSync(wef('com.microsoft.Excel'), { recursive: true })
-      writeFileSync(join(wef('com.microsoft.Excel'), 'manifest.xml'), `<Id>${ADDIN_ID}</Id>`)
-      mkdirSync(wef('com.microsoft.Word'), { recursive: true })
-      writeFileSync(join(wef('com.microsoft.Word'), 'other.xml'), '<Id>someone-else</Id>')
-      expect(sideloadedOn(home)).toEqual(['excel'])
-    } finally {
-      rmSync(home, { recursive: true, force: true })
-    }
   })
 })
 

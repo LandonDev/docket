@@ -19,7 +19,6 @@ import { requestSettings } from "../../lib/monaco/debugTab";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
-import { AddinRow } from "../office/AddinRow";
 import { TeamsCopyRow } from "../office/TeamsCopyRow";
 import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
@@ -83,9 +82,6 @@ export function WorkSettingsBody() {
             />
           </PageRow>
         ) : null}
-        {hosts.map((host) => (
-          <AddinRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Office add-in on ${host.name}` : "Office add-in"} />
-        ))}
         {hosts
           .filter((host) => isDesktop(host.platform) || host.id === LOCAL_ENVIRONMENT_ID)
           .map((host) => (

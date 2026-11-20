@@ -16,11 +16,16 @@ while Work is on for some host).
   does not know follows, in the order it came.
 - Each row: what it is, then its state as a `StatusMark` with this page's
   word (Working: the muted check; Needs you: amber; Broken: red) and one
-  line after it, then when it lapses ("Ends on 17 Feb 2027") and the fix.
+  line after it, then when it lapses ("Ends Feb 17, 2027, 1:22 AM": US
+  words, local time, "today" and "tomorrow" by the calendar) and the fix.
   No line says more than one thing.
-- A row two hosts give alike (a LifeOS source, which every signed-in host
-  reads the same) is shown once. A title two hosts both give is told apart
-  by its host ("LifeOS on Mac"), and only then.
+- A row the pillar marks `shared` (a LifeOS source or a Google consent,
+  which every signed-in host reads the same from LifeOS) is shown once when
+  two hosts give it alike. A host's own row is never folded, nor one with a
+  fix, whose press belongs to its host. A title two hosts both give is told
+  apart by its host ("LifeOS on Mac"), and only then.
+- The Office add-in's row is the add-in's own control (`AddinRow`): Pair…
+  and each paired add-in with Remove live here and nowhere else.
 - A host this window is not linked to now sits under **Hosts** as Offline
   ("Checked when it is back"), never as broken, and is checked the moment
   its link opens. A host that refuses (Work off there, an older build) is
@@ -33,12 +38,12 @@ while Work is on for some host).
   said in the line, with no button.
 
 **What left Settings → Work.** "Where it runs" gave way to Connections: each
-host's LifeOS sign-in row and the conversion-tools row (ToolchainRow) are
-Connections rows now, so no fact is said on both pages. The Work page keeps
-what he sets: the switch, the sectors LifeOS has (shown while signed in),
-models, where new Work workspaces are made, the Office add-in's pairings
-(Pair…, Remove), which folders count as Teams files, guest links and mail
-settings.
+host's LifeOS sign-in, the conversion tools (ToolchainRow, removed) and the
+Office add-in's pairings are on Connections now, so no fact is said on both
+pages. The Work page keeps what he sets: the switch, the sectors LifeOS has
+(shown while signed in), models, where new Work workspaces are made, which
+folders count as Teams files, guest links and mail settings. With Work off,
+a Connections page left open says "Work is off".
 
 ## The frame's side
 
@@ -54,12 +59,19 @@ One optional field on the module, two core reads and one frame tool
   broken row for everything that depends on it.
 - `HealthRow`: `id` (`<pillar>.<thing>[:<which>]`), `pillar`, `group`,
   `title`, `state` (`working`, `broken`, `needs-you`), `line?`, `fix?`,
-  `until?` (epoch ms), `sector?`. No row carries a password, a token or a
-  cookie's value: it says signed in or not, and as whom.
-- `HealthFix`: `run` (a `work.*` method on the row's host, under his
-  window's capabilities), `open` (an https page in his browser), `page`
-  (`lifeos-sign-in`, the LifeOS sign-in dialog for that host, or
-  `settings:<id>`). The page carries out nothing else (`usableFix`).
+  `until?` (epoch ms), `sector?`, `shared?` (every host answers alike),
+  `personal?` (it names his accounts, tenants or folders and has no one
+  sector). No row carries a password, a token or a cookie's value: it says
+  signed in or not, and as whom; and the frame blanks whatever looks like
+  one in any line (`redactLine`: a JWT, a bearer token, a LifeOS token, a
+  token or code in a query), whichever pillar wrote it.
+- `HealthFix`: `run`, `open` (an https page in his browser) or `page`, and
+  only from short lists (`fixAllowed`): a `run` names one of
+  `HEALTH_RUN_METHODS` (today only `work.lifeos.signOut`), a `page` one of
+  `HEALTH_PAGES` (`lifeos-sign-in`, the LifeOS sign-in dialog for that
+  host, or a Settings page). The host drops any other fix from a row
+  (`cleanRow`) and the page never carries one out (`usableFix`): nothing
+  that sends, grants or turns Work off is ever a fix.
 - `work.health` (read) answers `HealthReport {host, at, rows}`: every
   pillar's check at once, each held to `HEALTH_CHECK_MS` (10 s); a check
   that throws or runs out of time is one broken row ("Did not answer: …"),
@@ -71,9 +83,11 @@ One optional field on the module, two core reads and one frame tool
 - `work_connections` (read-only, every Work thread, Claude, Codex and Muse
   alike): this host's rows, then each linked host's over the host link
   (`deps.peers`, `work.health` on that host); a host whose link is down is
-  "offline (not checked; offline is not broken)". A thread of one sector
-  reads no other sector's rows (`rowsForSector`); a Work Chat reads every
-  sector, as its key does. Rows come worst first, with the fix he can press.
+  "offline (not checked; offline is not broken)"; a cancel stops the wait.
+  A thread of one sector reads no other sector's rows, and a `personal` row
+  of no sector only as its group and state (`rowsForSector`), so no Purdue
+  address reaches a Cosmic thread; a Work Chat reads every sector, as its
+  key does. Rows come worst first, with the fix he can press.
 
 ## Things that lapse
 
@@ -81,7 +95,7 @@ A row with a known end shows the date. The window asks each linked Work
 host `work.lapses` once its link opens and every six hours while Work is on
 (`LapseNotices`, mounted by WorkRailHost; a local read, it costs nothing),
 and raises a toast 14 days before an end and again the last day
-(`LAPSE_NOTICE_DAYS`, `lapseStage`): "Windows evaluation: Ends on 17 Feb",
+(`LAPSE_NOTICE_DAYS`, `lapseStage`): "Windows evaluation: Ends Feb 17, 2027, 1:22 AM",
 with Connections as its action. Each stage is said once per window
 (localStorage `work.lapsesNoticed`, keyed by host, id, end and stage); a new
 end date is a new lapse.
@@ -98,8 +112,8 @@ sessions have no end to read.
 | google | `google.clientId` (the Picker's client id, Mac and Windows only), `google.consent:<account>` (Drive files allowed, else reconnect in LifeOS) | google/health.ts |
 | guests | `guests.service` (the Work service answers on its port), and on the box `guests.hosted` and `guests.links`: one GET each through the tunnel to `/w/hosted/` and a guest page, working only on a 200 carrying the service's own headers | guests/health.ts |
 | frameio | `frameio.signin` (as whom; ran out; never used here gives no row) | frameio/health.ts |
-| office | on a Mac or Windows host: `office.app:excel`, `:word`, `:powerpoint`, `:outlook` for each installed app (Open or Closed; Outlook as whom, from the route's accounts; Automation refused says where to allow it; New Outlook is needs-you, since it cannot be scripted and so cannot send for a workspace), `office.addin` (sideloaded or not, paired or not; Pair… opens Settings → Work, where the pairings stay), group Files: `office.files.onedrive` (installed and running stands in for syncing) and `office.files.folder:<id>` for a folder he added that is gone | office/health.ts |
-| browser | on the box: `browser.box` (its Chromium), `browser.video` (live video on, off, or needs the screen relay), `browser.site:outlook` (Outlook on the web signed in, judged by the names of Microsoft's session cookies alone, the store opened read-only), and group Windows VM: `browser.winvm.machine` (the standing machine's disk and its QEMU process) and `browser.winvm.evaluation` (its end: `base/READY`'s build time plus 90 days, 2027-02-17; also its `lapses`) | browser/health.ts |
+| office | on a Mac or Windows host: `office.app:excel`, `:word`, `:powerpoint`, `:outlook` for each installed app (Open or Closed; Outlook as whom, from the route's accounts; Automation refused says where to allow it; New Outlook is needs-you, since it cannot be scripted and so cannot send for a workspace), `office.addin` (paired or not; on the page it is `AddinRow` itself; whether it is sideloaded is not read, since that lives in each Office app's own container and reading another app's container raises macOS's "access data from other apps" prompt), group Files: `office.files.onedrive` (installed and running stands in for syncing) and `office.files.folder:<id>` for a folder he added that is gone | office/health.ts |
+| browser | on the box: `browser.box` (its Chromium), `browser.video` (live video on, off, or needs the screen relay), `browser.site:outlook` (Outlook on the web signed in, judged by the names of Microsoft's session cookies alone, the store always opened immutable, which takes no lock), and group Windows VM: `browser.winvm.machine` (the standing machine's disk and its QEMU process) and `browser.winvm.evaluation` (its end: `base/READY`'s build time plus 90 days, 2027-02-17; also its `lapses`) | browser/health.ts |
 | formats | `formats.toolchain` (what ToolchainRow said: the base tools by name, the pillars' tools counted) and `formats.tool:<name>` for each that did not install or lost its files, naming `bun scripts/work-tools/install.ts --only <name>` | formats/health.ts |
 
 Nothing of these launches an app, starts the browser or the VM, or runs the

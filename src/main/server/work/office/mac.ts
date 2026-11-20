@@ -181,7 +181,8 @@ const readNewOutlook = (): Promise<boolean> =>
 
 const appPath = (app: OfficeApp): string => `/Applications/${APP_NAMES[app]}.app`
 
-const pgrep = (app: OfficeApp): Promise<boolean> => new Promise((resolve) => execFile('/usr/bin/pgrep', ['-x', APP_NAMES[app]], (err) => resolve(!err)))
+// By the bundle's executable path, not `-x <name>`: macOS cuts a process's name to 16 characters, so "Microsoft PowerPoint" and "Microsoft Outlook" never matched.
+const pgrep = (app: OfficeApp): Promise<boolean> => new Promise((resolve) => execFile('/usr/bin/pgrep', ['-f', `${appPath(app)}/Contents/MacOS/`], (err) => resolve(!err)))
 
 const openWith = (args: string[]): Promise<void> =>
   new Promise((resolve, reject) => execFile('/usr/bin/open', args, (err) => (err ? reject(new OfficeError(`The file did not open: ${err.message}`)) : resolve())))

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { errorText, HEALTH_ORDER, lapseLine, rowsForSector, workText, type HealthReport, type HealthRow, type Lapse, type PillarId, type SectorKey } from '@shared/work'
+import { errorText, fixAllowed, HEALTH_ORDER, lapseLine, rowsForSector, workText, type HealthReport, type HealthRow, type Lapse, type PillarId, type SectorKey } from '@shared/work'
 import type { WorkCtx, WorkModule, WorkTool } from './modules'
 
 /**
@@ -13,14 +13,32 @@ import type { WorkCtx, WorkModule, WorkTool } from './modules'
 export const HEALTH_CHECK_MS = 10_000
 const LINE_MAX = 200
 
+/** Whatever looks like a secret in a line, blanked: a JWT, a bearer token, a LifeOS token or key, a token or code in a query. Every row and fault goes through it, whichever pillar wrote it. */
+export const redactLine = (text: string): string =>
+  text
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[jwt]')
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [secret]')
+    .replace(/\blo[bp]?_[A-Za-z0-9_-]{8,}/g, '[secret]')
+    .replace(/\b(access_token|refresh_token|id_token|token|code|key|secret|password|sig)=[^&\s]+/gi, '$1=[secret]')
+
 const oneLine = (text: string | undefined, max = LINE_MAX): string | undefined => {
   if (text === undefined) return undefined
-  const flat = text.replace(/\s+/g, ' ').trim()
+  const flat = redactLine(text.replace(/\s+/g, ' ').trim())
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
 }
 
-/** A pillar's rows as the wire carries them: one line each, its own pillar named, nothing it did not declare. */
+/** A fix as the wire carries it: only one `fixAllowed` admits, its label one short line. */
+function cleanFix(fix: HealthRow['fix']): HealthRow['fix'] | undefined {
+  if (!fix || !fixAllowed(fix)) return undefined
+  const label = oneLine(fix.label, 30)!
+  if (fix.kind === 'run') return { kind: 'run', label, method: fix.method }
+  if (fix.kind === 'open') return { kind: 'open', label, url: fix.url.slice(0, 500) }
+  return { kind: 'page', label, page: fix.page }
+}
+
+/** A pillar's rows as the wire carries them: one line each, redacted, its own pillar named, nothing it did not declare, a fix only from the allowed list. */
 export function cleanRow(row: HealthRow, pillar: PillarId): HealthRow {
+  const fix = cleanFix(row.fix)
   return {
     id: oneLine(row.id, 120)!,
     pillar,
@@ -28,9 +46,11 @@ export function cleanRow(row: HealthRow, pillar: PillarId): HealthRow {
     title: oneLine(row.title, 120)!,
     state: row.state === 'working' || row.state === 'needs-you' ? row.state : 'broken',
     ...(row.line ? { line: oneLine(row.line) } : {}),
-    ...(row.fix ? { fix: row.fix } : {}),
+    ...(fix ? { fix } : {}),
     ...(typeof row.until === 'number' && Number.isFinite(row.until) ? { until: row.until } : {}),
-    ...(row.sector ? { sector: row.sector } : {})
+    ...(row.sector ? { sector: row.sector } : {}),
+    ...(row.shared ? { shared: true as const } : {}),
+    ...(row.personal ? { personal: true as const } : {})
   }
 }
 
@@ -56,6 +76,7 @@ export async function checkHost(ctx: WorkCtx, modules: readonly WorkModule[], fa
         const timer = setTimeout(() => stop.abort(), HEALTH_CHECK_MS)
         const both = AbortSignal.any([signal, stop.signal])
         try {
+          if (both.aborted) throw new Error('cancelled')
           const late = new Promise<never>((_, reject) => both.addEventListener('abort', () => reject(new Error(signal.aborted ? 'cancelled' : `no answer in ${HEALTH_CHECK_MS / 1000} s`)), { once: true }))
           const rows = await Promise.race([module.health!.check(ctx, both), late])
           return rows.map((row) => cleanRow(row, module.id))
@@ -63,6 +84,8 @@ export async function checkHost(ctx: WorkCtx, modules: readonly WorkModule[], fa
           return [faultRow(module.id, `Did not answer: ${errorText(err)}`)]
         } finally {
           clearTimeout(timer)
+          // Settled: the joined signal lets go of its listeners now, not when the caller's socket closes.
+          stop.abort()
         }
       })
   )
@@ -123,7 +146,7 @@ export function connectionsTool(read: (signal: AbortSignal) => Promise<HostHealt
   return {
     name: 'work_connections',
     description:
-      "Which of Work's sign-ins and helpers work on each of his hosts (LifeOS, mail and calendar sources, Google, Office, the add-in, files sync, the browser, the Work service, tools, the Windows VM, Frame.io): working, broken or needs him, with the one-line reason and the fix he can press in Settings → Work → Connections. Read it before guessing why a Work tool failed. Changes nothing.",
+      "Which of Work's sign-ins and helpers work on each of his hosts (LifeOS, mail and calendar sources, Google, Office, the add-in, files sync, the browser, the Work service, tools, the Windows VM, Frame.io): working, broken or needs him, with the one-line reason and the fix he can press in Settings → Connections. Read it before guessing why a Work tool failed. Changes nothing.",
     input: z.object({}),
     readOnly: true,
     run: async (_args, ctx) => workText(healthText(await read(ctx.signal), ctx.scope.workspaceId ? ctx.scope.sector : 'all'))

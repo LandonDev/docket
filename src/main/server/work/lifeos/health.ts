@@ -33,14 +33,15 @@ export interface LifeosSource {
   error?: string
 }
 
-/** "14:02" today, "17 Nov" before. */
+/** "2:02 PM" today, "Nov 17" before: his US words, in the host's local time. */
 export function whenWords(at: number, now: number): string {
   const d = new Date(at)
-  if (d.toDateString() === new Date(now).toDateString()) return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  if (d.toDateString() === new Date(now).toDateString()) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 const SIGN_IN = { kind: 'page', label: 'Sign in…', page: 'lifeos-sign-in' } as const
+const SIGN_OUT = { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } as const
 
 /** The sign-in row: what Settings → Work showed, with its button. Null when Work is off here. */
 export function signInRow(state: LifeosStatus['lifeos'], now: number): HealthRow | null {
@@ -49,25 +50,26 @@ export function signInRow(state: LifeosStatus['lifeos'], now: number): HealthRow
     case 'off':
       return null
     case 'connected':
-      return { ...row, state: 'working', line: 'Signed in', fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } }
+      return { ...row, state: 'working', line: 'Signed in', fix: SIGN_OUT }
     case 'pairing':
       return { ...row, state: 'needs-you', line: 'A sign-in waits for your approval in LifeOS', fix: { kind: 'page', label: 'Show code…', page: 'lifeos-sign-in' } }
     case 'signed-out':
       return { ...row, state: 'needs-you', line: 'Not signed in on this host', fix: SIGN_IN }
     case 'refused':
       return { ...row, state: 'needs-you', line: "LifeOS refused this host's sign-in. Sign in again.", fix: SIGN_IN }
+    // Signed in but not answering: Sign out stays, so a host stuck on a wrong address can sign in again. No retry method: the session tries again on its own steps.
     case 'connecting':
-      return { ...row, state: 'broken', line: 'Still connecting' }
+      return { ...row, state: 'broken', line: 'Still connecting', fix: SIGN_OUT }
     case 'unreachable':
-      // No retry method: the session tries again on its own steps.
-      return { ...row, state: 'broken', line: `No answer since ${whenWords(state.since, now)}; it keeps trying` }
+      return { ...row, state: 'broken', line: `No answer since ${whenWords(state.since, now)}; it keeps trying`, fix: SIGN_OUT }
   }
 }
 
 /** One mail or calendar source, or null for a kind or a source that has no row. */
 export function sourceRow(s: LifeosSource, now: number): HealthRow | null {
   if (!s.enabled || !MAIL_AND_CALENDAR.has(s.kind)) return null
-  const row = { id: `lifeos.source:${s._id}`, pillar: 'lifeos', group: 'Mail and calendar', title: s.label || s.accountName || s.account, ...(s.sector ? { sector: s.sector } : {}) } as const
+  // Every signed-in host reads the same source through LifeOS: shared, so the page shows it once. One with no sector names an account of his: personal.
+  const row = { id: `lifeos.source:${s._id}`, pillar: 'lifeos', group: 'Mail and calendar', title: s.label || s.accountName || s.account, shared: true, ...(s.sector ? { sector: s.sector } : { personal: true as const }) } as const
   if (s.status === 'error') return { ...row, state: 'broken', line: s.error ? redact(s.error) : 'The last sync failed' }
   if (!s.lastSyncAt) return { ...row, state: 'broken', line: 'Never synced' }
   if (now - s.lastSyncAt > SOURCE_STALE_MS) return { ...row, state: 'broken', line: `No sync since ${whenWords(s.lastSyncAt, now)}` }
@@ -83,7 +85,7 @@ export async function lifeosRows(o: { status: LifeosStatus; owner: LifeosClient;
   for (const key of o.status.keys) {
     if (key.state !== 'failed') continue
     const title = key.workspaceId === WORK_HOME ? 'Work Chats' : (o.workspaceName(key.workspaceId) ?? key.workspaceId)
-    rows.push({ id: `lifeos.key:${key.workspaceId}`, pillar: 'lifeos', group: 'LifeOS', title: `${title} key`, state: 'broken', line: key.error ? redact(key.error) : 'The key was not made; the next pass tries again', ...(key.sectors.length === 1 ? { sector: key.sectors[0] } : {}) })
+    rows.push({ id: `lifeos.key:${key.workspaceId}`, pillar: 'lifeos', group: 'LifeOS', title: `${title} key`, state: 'broken', line: key.error ? redact(key.error) : 'The key was not made; the next pass tries again', ...(key.sectors.length === 1 ? { sector: key.sectors[0] } : { personal: true as const }) })
   }
   const [ping, sources] = await Promise.allSettled([o.owner.query('health:ping', {}), o.owner.query<LifeosSource[]>('sources:list', {})])
   if (ping.status === 'rejected') {

@@ -1,3 +1,5 @@
+// His local time: the lapse words below are read in US Eastern, as on the box.
+process.env.TZ = 'America/New_York'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,7 +12,7 @@ import { openDb, Store } from '../db'
 import type { Peers } from '../remote/peers'
 import type { SessionRegistry } from '../sessions'
 import type { WorkPartDeps } from './ctx'
-import { checkHost, cleanRow, HEALTH_CHECK_MS, healthText, lapsesOf } from './health'
+import { checkHost, cleanRow, HEALTH_CHECK_MS, healthText, lapsesOf, redactLine } from './health'
 import type { WorkCtx, WorkModule } from './modules'
 
 const scopes = new Map<string, WorkScope>()
@@ -85,6 +87,14 @@ describe('checkHost', () => {
     }
   })
 
+  it('cuts off a pillar that ignores a signal already aborted, and answers at once', async () => {
+    const gone = new AbortController()
+    gone.abort()
+    const modules = [{ id: 'office', health: { check: () => new Promise<HealthRow[]>(() => {}) } }] as unknown as WorkModule[]
+    const { rows } = await checkHost(ctx, modules, new Map(), gone.signal)
+    expect(rows).toEqual([expect.objectContaining({ id: 'office.check', line: 'Did not answer: cancelled' })])
+  })
+
   it('lists a pillar that did not load as broken', async () => {
     const { rows } = await checkHost(ctx, [], new Map([['frameio', 'work: frameio did not load: no module']]), never)
     expect(rows).toEqual([expect.objectContaining({ id: 'frameio.check', group: 'Frame.io', state: 'broken', line: 'work: frameio did not load: no module' })])
@@ -92,6 +102,20 @@ describe('checkHost', () => {
 })
 
 describe('cleanRow', () => {
+  it('passes on only an allowed fix: never a send, a grant or the switch, nor a page it does not know', () => {
+    expect(cleanRow(row({ fix: { kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' } }), 'lifeos').fix).toEqual({ kind: 'run', label: 'Sign out', method: 'work.lifeos.signOut' })
+    for (const method of ['work.outbox.send', 'work.outbox.grant', 'work.set'] as const) expect(cleanRow(row({ fix: { kind: 'run', label: 'Fix', method } }), 'mail').fix).toBeUndefined()
+    expect(cleanRow(row({ fix: { kind: 'open', label: 'Open', url: 'javascript:alert(1)' } }), 'mail').fix).toBeUndefined()
+    expect(cleanRow(row({ fix: { kind: 'page', label: 'Go', page: 'settings:anything' } }), 'mail').fix).toBeUndefined()
+    expect(cleanRow(row({ fix: { kind: 'page', label: 'Pair…', page: 'settings:work' } }), 'office').fix).toEqual({ kind: 'page', label: 'Pair…', page: 'settings:work' })
+  })
+
+  it('blanks whatever looks like a secret in a line, whichever pillar wrote it', () => {
+    const jwt = `eyJ${'a'.repeat(12)}.${'b'.repeat(12)}.${'c'.repeat(12)}`
+    expect(redactLine(`refused ${jwt} with Bearer abc.def at https://x/cb?code=SECRET1&state=ok and lo_${'z'.repeat(12)}`)).toBe('refused [jwt] with Bearer [secret] at https://x/cb?code=[secret]&state=ok and [secret]')
+    expect(cleanRow(row({ line: `401 for token=${'q'.repeat(20)}` }), 'mail').line).toBe('401 for token=[secret]')
+  })
+
   it('drops what a row did not declare, reads an unknown state as broken and cuts a long line', () => {
     const dirty = { ...row({ line: 'x'.repeat(500) }), state: 'fine', secret: 'tok_123' } as unknown as HealthRow
     const clean = cleanRow(dirty, 'mail')
@@ -133,12 +157,14 @@ describe('lapses', () => {
     expect(lapseStage(now - DAY, now)).toBe(1)
   })
 
-  it('reads in his words', () => {
-    const now = Date.UTC(2026, 10, 20, 12)
-    expect(lapseLine(Date.UTC(2027, 1, 17, 12), now)).toBe('Ends on 17 Feb 2027')
-    expect(lapseLine(Date.UTC(2026, 11, 3, 12), now)).toBe('Ends on 3 Dec')
-    expect(lapseLine(now + DAY / 2, now)).toBe('Ends tomorrow')
-    expect(lapseLine(now - DAY, now)).toBe('Ended on 19 Nov')
+  it('reads in his words, in US time, today and tomorrow by the calendar', () => {
+    const now = new Date('2026-11-20T09:00:00').getTime()
+    // The Windows evaluation: 06:22 UTC on the 17th is 1:22 AM that day in Eastern.
+    expect(lapseLine(Date.UTC(2027, 1, 17, 6, 22), now)).toBe('Ends Feb 17, 2027, 1:22 AM')
+    expect(lapseLine(new Date('2026-12-03T17:00:00').getTime(), now)).toBe('Ends Dec 3, 5:00 PM')
+    expect(lapseLine(new Date('2026-11-20T10:00:00').getTime(), now)).toBe('Ends today, 10:00 AM')
+    expect(lapseLine(new Date('2026-11-21T08:00:00').getTime(), now)).toBe('Ends tomorrow, 8:00 AM')
+    expect(lapseLine(new Date('2026-11-19T08:00:00').getTime(), now)).toBe('Ended Nov 19')
   })
 })
 
@@ -163,6 +189,13 @@ describe('healthText', () => {
     ])
     expect(healthText([{ name: 'This host', report }], 'all')).toContain('cosmic mail')
     expect(rowsForSector(report.rows, null).map((r) => r.id)).toEqual(['office.outlook'])
+  })
+
+  it('reads a personal row of no sector to a sectored thread as its group and state alone', () => {
+    const outlook = row({ id: 'office.app:outlook', group: 'Office', title: 'Outlook', line: 'Open, signed in as a@purdue.edu', personal: true, fix: { kind: 'page', label: 'Pair…', page: 'settings:work' } })
+    expect(rowsForSector([outlook], 'cosmic')).toEqual([{ id: 'office.app:outlook', pillar: 'mail', group: 'Office', title: 'Office', state: 'working' }])
+    expect(healthText([{ name: 'This host', report: { host: 'h', at: 0, rows: [outlook] } }], 'cosmic')).not.toContain('purdue')
+    expect(rowsForSector([outlook], 'all')).toEqual([outlook])
   })
 
   it('says a host that is not linked now is offline, not broken', () => {

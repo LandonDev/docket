@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { HealthFix, HealthReport } from "@shared/work/health";
 import { lapseLine } from "@shared/work/health";
 import { errorText } from "../../chrome/ConfirmDialog";
@@ -9,6 +9,7 @@ import { registry, useEnvironments, useEnvironmentStatuses } from "../../lib/con
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { openUrl } from "../../lib/native";
 import { useWorkHosts } from "../../lib/workSwitch";
+import { AddinRow } from "../office/AddinRow";
 import { SignInDialog } from "../shell/settings";
 import { useLifeosStatus } from "../shell/lifeos";
 import { fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
@@ -44,16 +45,19 @@ export function ConnectionsPage() {
   }, []);
 
   const linked = (id: string): boolean => statuses.get(id)?.transport === "open";
-  const checkAll = useCallback(() => {
+  const checkAll = (): void => {
     for (const host of hosts) if (linked(host.id)) void checkHost(host.id, host.name);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hosts.map((h) => h.id).join(), checkHost]);
+  };
 
-  // Once when the page opens, and once for a host the moment its link comes up (a host offline at first is checked when it returns).
+  // Once when the page opens, and again each time a host's link comes back: a host that went offline is forgotten, so its return is checked, never its old rows shown as now.
   const asked = useRef(new Set<string>());
   useEffect(() => {
     for (const host of hosts) {
-      if (!linked(host.id) || asked.current.has(host.id)) continue;
+      if (!linked(host.id)) {
+        asked.current.delete(host.id);
+        continue;
+      }
+      if (asked.current.has(host.id)) continue;
       asked.current.add(host.id);
       void checkHost(host.id, host.name);
     }
@@ -123,8 +127,23 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
   );
 }
 
+/**
+ * A row the page draws with a pillar's own control rather than a fix: the
+ * Office add-in, whose pairings (Pair…, each paired add-in with Remove) live
+ * only here. The host's row still says the same for a thread.
+ */
+const OWN_ROWS: Record<string, (hostId: string, title: string) => ReactNode> = {
+  "office.addin": (hostId, title) => <AddinRow link={registry.linkOf(hostId)} title={title} />,
+};
+
 /** One connection: what it is, its state and its one line, then when it lapses and the fix. */
 function ConnectionRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDone: () => void }) {
+  const own = OWN_ROWS[placed.row.id];
+  if (own) return <>{own(placed.hostId, placed.title)}</>;
+  return <FixRow placed={placed} now={now} onDone={onDone} />;
+}
+
+function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDone: () => void }) {
   const { row, hostId } = placed;
   const mark = markOf(row.state);
   const fix = usableFix(row.fix);

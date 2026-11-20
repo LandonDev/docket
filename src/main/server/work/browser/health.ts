@@ -98,7 +98,7 @@ function boxRows(p: BrowserProbe): HealthRow[] {
     const live = cookies?.some((c) => listed(c, site) && (c.expires === 0 || chromiumMs(c.expires) > p.now()))
     const who = site.id === 'outlook' ? p.owaAccount(box.root) : null
     // An unreadable store (none yet, or held by the browser) leaves the marker to answer.
-    if (live || (cookies === null && who)) rows.push({ ...base, state: 'working', line: who ? `Signed in as ${who}` : 'Signed in' })
+    if (live || (cookies === null && who)) rows.push({ ...base, state: 'working', line: who ? `Signed in as ${who}` : 'Signed in', ...(who ? { personal: true as const } : {}) })
     else rows.push({ ...base, state: 'needs-you', line: "Not signed in. Copy your Mac's logins to the box, or sign in from a thread's browser." })
   }
   return rows
@@ -140,8 +140,9 @@ export function browserLapses(p: Pick<BrowserProbe, 'platform' | 'vm'>): Lapse[]
 
 /**
  * The sign-in cookies in Chromium's store: host, name and expiry only, never `value` or
- * `encrypted_value`. Opened read-only; while the browser holds the store locked it is read as
- * immutable, which takes no lock and writes nothing. Null when there is no store or it cannot be read.
+ * `encrypted_value`. Always opened immutable, which takes no lock and writes nothing, so the live
+ * browser's own cookie writes never meet a busy store; a read torn by one costs one wrong answer.
+ * Null when there is no store or it cannot be read.
  */
 export function signInCookies(store: string): SignInCookie[] | null {
   if (!existsSync(store)) return null
@@ -159,15 +160,11 @@ export function signInCookies(store: string): SignInCookie[] | null {
     }
   }
   try {
-    return read(new DatabaseSync(store, { readOnly: true }))
+    const url = pathToFileURL(store)
+    url.searchParams.set('immutable', '1')
+    return read(new DatabaseSync(url, { readOnly: true }))
   } catch {
-    try {
-      const url = pathToFileURL(store)
-      url.searchParams.set('immutable', '1')
-      return read(new DatabaseSync(url, { readOnly: true }))
-    } catch {
-      return null
-    }
+    return null
   }
 }
 

@@ -32,7 +32,7 @@ export function frameioRows(ctx: WorkCtx, now = Date.now()): HealthRow[] {
   // Lapsed with nothing to renew it, or the renewal refused: only a new sign-in helps.
   if ((until !== null && until <= now) || (t.expiresAt <= now && status.error)) return [{ ...ROW, state: 'needs-you', line: 'The sign-in ran out. Sign in again.', fix: SIGN_IN, ...(until !== null ? { until } : {}) }]
   const who = t.user?.email || t.user?.name
-  return [{ ...ROW, state: 'working', line: who ? `Signed in as ${who}` : 'Signed in', ...(until !== null ? { until } : {}) }]
+  return [{ ...ROW, state: 'working', line: who ? `Signed in as ${who}` : 'Signed in', ...(who ? { personal: true as const } : {}), ...(until !== null ? { until } : {}) }]
 }
 
 export const frameioHealth: HealthSource = {

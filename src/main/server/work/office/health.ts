@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { OFFICE_APPS, type OfficeApp, type OfficeAppState, type TeamsLibrary } from '@shared/contract-work-office'
 import type { HealthFix, HealthRow } from '@shared/work'
@@ -40,8 +39,6 @@ const NAME: Record<OfficeApp, string> = { excel: 'Excel', word: 'Word', powerpoi
 const PAIR: HealthFix = { kind: 'page', label: 'Pair…', page: 'settings:work' }
 const EDIT_LIST: HealthFix = { kind: 'page', label: 'Edit', page: 'settings:work' }
 
-/** Our add-in's manifest id (addins/office/manifest.xml): a sideloaded copy carries it. */
-export const ADDIN_ID = '4d4a9aee-3258-405a-bd8a-a18fc1d298b4'
 
 const listOf = (names: readonly string[]): string => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
 
@@ -60,7 +57,7 @@ function appRow(a: OfficeAppState, platform: NodeJS.Platform, outlook: { problem
   if (a.allowed === 'ask') return { ...base, state: 'needs-you', line: `Answer the Mac's prompt to let TempCode control ${name}.` }
   if (outlook?.route?.error) return { ...base, state: 'broken', line: outlook.route.error }
   const as = outlook?.route?.accounts.length ? `signed in as ${listOf(outlook.route.accounts)}` : null
-  return { ...base, state: 'working', line: [a.running ? 'Open' : 'Closed', as].filter(Boolean).join(', ') }
+  return { ...base, state: 'working', line: [a.running ? 'Open' : 'Closed', as].filter(Boolean).join(', '), ...(as ? { personal: true as const } : {}) }
 }
 
 /** One row for our add-in, on the host that holds the add-ins (the tunnel's) or a Mac it is sideloaded on; left out elsewhere. Each add-in's own state stays in Settings. */
@@ -81,13 +78,14 @@ async function filesRows(p: OfficeProbe, signal: AbortSignal): Promise<HealthRow
     pillar: 'office',
     group: 'Files',
     title: basename(folder) || folder,
+    personal: true,
     state: 'broken',
     line: 'This folder is gone. Sync it again in Teams, or take it off the list.',
     fix: EDIT_LIST
   }))
   if (!libs.length) return rows
   const od = await p.oneDrive(signal)
-  const base = { id: 'office.files.onedrive', pillar: 'office' as const, group: 'Files', title: 'OneDrive' }
+  const base = { id: 'office.files.onedrive', pillar: 'office' as const, group: 'Files', title: 'OneDrive', personal: true as const }
   const count = `${libs.length} ${libs.length === 1 ? 'library' : 'libraries'}`
   const sync = libs.length === 1 ? 'does not sync' : 'do not sync'
   const tenants = [...new Set(libs.map((l) => l.tenant).filter((t): t is string => !!t))]
@@ -111,19 +109,6 @@ export async function officeRows(p: OfficeProbe, signal: AbortSignal): Promise<H
 }
 
 // ── reading this host ────────────────────────────────────────────────
-
-/** The apps a sideloaded manifest of ours sits in on this Mac (work-office.md "Sideloading": each app's `wef` folder). */
-export function sideloadedOn(home: string): OfficeApp[] {
-  const BUNDLE = { excel: 'com.microsoft.Excel', word: 'com.microsoft.Word', powerpoint: 'com.microsoft.Powerpoint' } as const
-  return (Object.keys(BUNDLE) as (keyof typeof BUNDLE)[]).filter((app) => {
-    const wef = join(home, 'Library', 'Containers', BUNDLE[app], 'Data', 'Documents', 'wef')
-    try {
-      return readdirSync(wef).some((f) => f.toLowerCase().endsWith('.xml') && readFileSync(join(wef, f), 'utf8').includes(ADDIN_ID))
-    } catch {
-      return false
-    }
-  })
-}
 
 const WIN_EXE: Record<OfficeApp, string> = { excel: 'excel.exe', word: 'winword.exe', powerpoint: 'powerpnt.exe', outlook: 'outlook.exe' }
 
@@ -158,7 +143,6 @@ const pgrep = (name: string, signal: AbortSignal): Promise<boolean> => new Promi
  */
 export function officeProbe(ctx: WorkCtx, route: () => { accounts: string[]; error: string | null } | null, env: NodeJS.ProcessEnv = process.env): OfficeProbe {
   const platform = process.platform
-  const home = homedir()
   let win: Promise<{ apps: OfficeAppState[]; newOutlook: boolean }> | null = null
   let procs: Promise<Set<string>> | null = null
   const tasks = (signal: AbortSignal) => (procs ??= tasklist(signal))
@@ -174,7 +158,9 @@ export function officeProbe(ctx: WorkCtx, route: () => { accounts: string[]; err
     addin: () => ({
       paired: new AddinKeys(ctx.db).list().length,
       holds: platform === 'linux' && !isIsolatedInstance(env),
-      sideloaded: platform === 'darwin' ? sideloadedOn(home) : []
+      // Whether it is sideloaded lives in each Office app's own container, and reading another app's container raises macOS's
+      // "access data from other apps" prompt: a check never does that, so it says only paired or not.
+      sideloaded: []
     }),
     async oneDrive(signal) {
       if (platform === 'darwin') {

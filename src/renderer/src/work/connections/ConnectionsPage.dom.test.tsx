@@ -5,13 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HealthReport } from "@shared/work/health";
 import { registry } from "../../lib/connection";
 
+const links = vi.hoisted(() => ({ box: "open" as string }));
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   useEnvironments: () => [
     { id: "box", name: "the box", platform: "linux" },
     { id: "mac", name: "Mac", platform: "darwin" },
   ],
-  useEnvironmentStatuses: () => new Map([["box", { transport: "open" }], ["mac", { transport: "offline" }]]),
+  useEnvironmentStatuses: () => new Map([["box", { transport: links.box }], ["mac", { transport: "offline" }]]),
 }));
 vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object>()), useWorkHosts: () => new Set(["box", "mac"]) }));
 
@@ -20,6 +21,7 @@ const { ConnectionsPage } = await import("./ConnectionsPage");
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 
 afterEach(() => {
+  links.box = "open";
   cleanup();
   vi.restoreAllMocks();
 });
@@ -32,12 +34,12 @@ describe("Connections", () => {
       at: 1,
       rows: [
         tools === "broken"
-          ? { id: "formats.tools", pillar: "formats", group: "Tools", title: "Conversion tools", state: "broken", line: "LibreOffice did not install", fix: { kind: "run", label: "Install", method: "work.formats.install" } }
-          : { id: "formats.tools", pillar: "formats", group: "Tools", title: "Conversion tools", state: "working", line: "LibreOffice 26.8" },
+          ? { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "broken", line: "Still connecting", fix: { kind: "run", label: "Sign out", method: "work.lifeos.signOut" } }
+          : { id: "lifeos.signin", pillar: "lifeos", group: "LifeOS", title: "LifeOS", state: "needs-you", line: "Not signed in on this host" },
       ],
     });
     const request = vi.fn(async (method: string) => {
-      if (method === "work.formats.install") tools = "working";
+      if (method === "work.lifeos.signOut") tools = "working";
       return method === "work.health" ? report() : null;
     });
     const linkOf = vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
@@ -46,13 +48,28 @@ describe("Connections", () => {
     expect(linkOf).not.toHaveBeenCalledWith("mac");
     expect(screen.getByText("Offline")).toBeTruthy();
     expect(screen.getByText("Broken")).toBeTruthy();
-    expect(screen.getByText("LibreOffice did not install")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+    expect(screen.getByText("Still connecting")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await settle();
     await settle();
-    expect(request.mock.calls.map((c) => c[0])).toEqual(["work.health", "work.formats.install", "work.health"]);
-    expect(screen.getByText("Working")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+    expect(request.mock.calls.map((c) => c[0])).toEqual(["work.health", "work.lifeos.signOut", "work.health"]);
+    expect(screen.getByText("Needs you")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  it("checks a host again when its link comes back, never showing its old rows as now", async () => {
+    const request = vi.fn(async () => ({ host: "env_box", at: 1, rows: [] }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    const view = render(<ConnectionsPage />);
+    await settle();
+    links.box = "offline";
+    view.rerender(<ConnectionsPage />);
+    await settle();
+    expect(screen.getAllByText("Offline")).toHaveLength(2);
+    links.box = "open";
+    view.rerender(<ConnectionsPage />);
+    await settle();
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("says a host that refuses did not answer, with Retry", async () => {

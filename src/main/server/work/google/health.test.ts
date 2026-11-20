@@ -27,7 +27,7 @@ describe('google connections', () => {
     const rows = await googleRows(ctx, { canPick: true, env: {} })
     expect(rows).toEqual([
       { id: 'google.clientId', pillar: 'google', group: 'Google', title: 'Google Picker', state: 'working', line: "Knows LifeOS's Google client" },
-      { id: 'google.consent:me@purdue.edu', pillar: 'google', group: 'Google', title: 'Me@Purdue.edu', sector: 'purdue', state: 'working', line: 'Drive files allowed' }
+      { id: 'google.consent:me@purdue.edu', pillar: 'google', group: 'Google', title: 'Me@Purdue.edu', shared: true, sector: 'purdue', state: 'working', line: 'Drive files allowed' }
     ])
     // The client id is not a secret, but a row has no need of it.
     expect(JSON.stringify(rows)).not.toContain(CLIENT_ID)

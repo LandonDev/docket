@@ -39,7 +39,7 @@ describe('the Frame.io connection', () => {
   it('signed in with a refresh token: working, as whom, with no known end', () => {
     const ctx = ctxWith(tokens())
     const rows = frameioRows(ctx, NOW)
-    expect(rows).toEqual([{ id: 'frameio.signin', pillar: 'frameio', group: 'Frame.io', title: 'Frame.io', state: 'working', line: 'Signed in as landon@hypixel.net' }])
+    expect(rows).toEqual([{ id: 'frameio.signin', pillar: 'frameio', group: 'Frame.io', title: 'Frame.io', state: 'working', line: 'Signed in as landon@hypixel.net', personal: true }])
     expect(frameio.health!.lapses!(ctx)).toEqual([])
   })
 
