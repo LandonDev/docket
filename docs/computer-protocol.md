@@ -2197,6 +2197,13 @@ a non-Mac host drawable on that host's link (lib/computerSessions.ts).
 (there is no person's input to watch or restore); `clipboard.state` never
 changes. No notification is sent.
 
+The service has no `video` feature and is never asked `capture.video.start`
+(§30). The box's video is not the service's: with the tools installed the
+browser runs headed on a private display, screen-relay's engine captures
+that display, and the host answers `video.open` for the pane's page beside
+this service (docs/agents/live-video.md "The box"). The desktop asks for
+that first and falls back to this screencast.
+
 ### 28.6 Proof
 
 `src/main/server/work/browser/box/service.test.ts` is the wire conformance

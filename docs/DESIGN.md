@@ -798,9 +798,14 @@ is out of reach.
   picture is never shown as the new one's). A window that changes shape
   under the stream is drawn in its new shape: the box takes the frame's
   own. It shows the
-  live stream, or a pinned step's kept picture (a click opens the
-  lightbox), or the text the model read in a `CONSOLE` of the box's
-  shape, or nothing. While a step is pinned the box keeps its height: a
+  live stream (video where the host has it, else the 4 fps picture; the
+  box looks the same either way, and nothing says which), or a pinned
+  step's kept picture (a click opens the lightbox), or the text the model
+  read in a `CONSOLE` of the box's shape, or nothing. A live picture is
+  never stretched: its box is as wide as the pane and no wider than the
+  frame's own pixels on this screen (`sharpOf`), on the pane's inset. A
+  click on a live picture that has drawn opens its full view ("Computers",
+  below); there is no button for it. While a step is pinned the box keeps its height: a
   picture of another shape sits centred inside it, and a step that kept
   nothing holds the box with its line inside ("This picture is no longer
   kept"), so stepping through rows moves nothing. One 12px muted line
@@ -963,6 +968,54 @@ first, and a focused field lets go before the page closes (Settings puts
 the field's value back, Notes and Inbox keep the text; Search's one field
 is the page, so Escape there closes it).
 
+
+#### Computers
+
+Every computer being driven now, on every connected host, in one place
+(`surfaces/ComputersView.tsx`, `lib/computers.ts`).
+
+- **The rail's row**, "Computers", in the navigation group after Inbox and
+  the Outbox, in every workspace. It is always there. Its trailing mark is
+  the still working dot while anything is driven and the amber waiting mark
+  while a session's card needs him; it never carries a count. Go →
+  Computers, ⌘⇧L.
+- **The page** covers the thread area as the Inbox and the Outbox do, on
+  their 40px header (the `Desktop` glyph, "Computers"). Closing it returns
+  him to the thread he left. To keep it in view while he works he opens it
+  in a second window; nothing floats.
+- **A tile** is the live picture and a caption under it, with no card, no
+  border and no badge: the thread's title (13px medium; a press closes the
+  page and goes to the thread), then one 12px muted comma sentence: what
+  it is doing in the step's own words, where it runs ("Clicking Save in
+  TextEdit, Landon's MacBook"). A page he drives reads "You are driving"
+  in foreground in the words' place. Take over or Hand back (where the
+  session has a driver: the Work browser's page) and Stop show on hover
+  and on focus through the one reveal, at the caption's end.
+- **The picture** is the Computer section's viewport: the stream's shape,
+  at most its own pixels, a skeleton until the first frame, a click
+  opening the full view. A tile never takes the box's one display from the
+  thread on screen: it plays video where a stream is free and the 4 fps
+  picture where it is not. A session this desktop may not draw is one
+  muted line in the box's place, naming the machine: "Shown on Studio
+  only". The browser /ui lists the tiles with no picture at all.
+- **Layout.** Tiles are at least 320px wide: one across under 704px of
+  page, two under 1056px, then three, 24px apart and 32px between rows.
+  One tile alone has the page, at its own pixels.
+- **Nothing driven** is the one `EmptyState`: "Nothing is being driven",
+  "A browser or an app an agent is using shows here, live." No action.
+- **The full view** is the lightbox's body for a live picture
+  (`LiveFullView`): one `popover` surface on the dialog's radius, 12px
+  inside, holding the picture at its own pixels, or exactly twice them
+  where the window has the room, and one 36px row under it: the thread's
+  title, who drives in the canvas bar's words (12px muted; foreground
+  while he drives), then Take over or Hand back and Stop at the row's end.
+  It is another canvas on the stream the place already plays, never a
+  second stream. It opens from the picture and settles back to it as any
+  lightbox item does.
+- **Nothing says "live".** No mark, no frame counter, no quality menu. The
+  video is never eased or blurred; ours is only the first frame's arrival
+  and a tile's entry.
+
 #### The canvas pane
 
 Every kind's body is built on the pane's frame (the tab row, the kind's
@@ -1091,8 +1144,12 @@ The kinds, each a hand-made body built from components/ui:
   sits after the mode, and the mode is the fixed text "Agent writes".
   An unnamed speaker's first turn says "Sounds like <name>" when a kept
   voice matches; naming a speaker offers Use and Forget this voice.
-- **Live browser.** The Computer section's viewport rules filling the
-  body. Its bar holds the host (12px foreground, a lock glyph, never a
+- **Live browser.** The Computer section's viewport rules in the body:
+  the page as video, as wide as the body and no wider than its own pixels
+  (the box's 1280 by 800 page is 640 points wide on a 2× screen), on the
+  body's inset; a held submit's kept picture takes the same frame, so the
+  two swap without a jump. A click on the live page opens its full view.
+  Its bar holds the host (12px foreground, a lock glyph, never a
   field), who drives (12px muted, foreground while the person drives) and
   one verb, in place of the mode. Where it runs is said once, after the
   page title in the tab row ("Landon's MacBook"). A held submit ends the
@@ -1352,6 +1409,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
 | Switch (a setting's `Switch`, the rail's Away row) | the thumb slides on its clip-path, `--dur-slow` `--ease-out`, and grows 5px toward the other side on the track's hover; the track's fill changes over `--dur-fast`; the row around the Away track never moves | the same | snaps |
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
+| A Computers tile arriving | fades in over `--dur-fast` (`FADE_IN`); its controls come by the hover reveal | at once | the same fade |
 | The Computer section's viewport arriving | fades in over `--dur-fast` (`FADE_IN`, `@starting-style`, on its wrapper, which stays through every change of face: a pin, Go live and a step by key fade nothing) | at once | the same fade |
 | A frame, or a kept picture, replacing another in the viewport | none: the old picture stays until the new one has decoded, and dims to 40% over `--dur-fast` only when that takes more than 150 ms | — | the same |
 | A step landing at the top of the Computer section while it follows; a batch settling into its steps | `.step-land` (fade and rise 4px, `--dur-base`), `--stagger-step` apart; never at mount, for the first read's rows, for a page of earlier steps, while a row is pinned or on a key; the class is the landing commit's own, gone at the next landing, so a group that moves in the list never plays it again | — | none (the class's own rule) |

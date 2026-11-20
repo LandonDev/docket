@@ -337,6 +337,66 @@ bitrate follows that viewer's own link, and the relay stays a pipe.
   meanwhile. The clipboard is emptied 1.5 seconds later, and at once when he
   hands back, so nothing he pasted is there for an agent to paste again.
 
+## The viewer
+
+`src/renderer/src/lib/video/`, loaded as a chunk of its own when a stream is
+first wanted; nothing of it is in the first paint.
+
+- **A worker** (`video.worker.ts` on `StreamPlayer`, player.ts) owns each
+  stream's socket and a WebCodecs `VideoDecoder`, and draws each frame on
+  every canvas the window handed over (`transferControlToOffscreen`), on
+  the worker's own frame clock. React work in the window cannot make the
+  video stutter. The decoder is configured from the first keyframe's SPS
+  (`h264Codec`), for low latency.
+- **Pacing** (pacing.ts, ported from screen-relay's viewer with its notice):
+  frames are held up to 100 ms when they arrive unevenly, one frame at most
+  is drawn per refresh, and a line that grows is caught up by passing
+  frames over. A 60 Hz screen draws 60 and acks the rest as passed over.
+- **Acks.** Every frame is acked in the order it came, drawn or passed
+  over, with how long it waited in the viewer. Closing a stream acks what
+  still waits.
+- **What breaks a stream**: a gap in the sequence, a generation that does
+  not start with a keyframe numbered 1, bytes that are no frame, a decoder
+  error, no first frame within five seconds, a decoder that says nothing
+  for five seconds.
+- **One stream per host and thread in a window** (`VideoStreams`,
+  streams.ts). The browser canvas, the Computer section, a Computers tile
+  and the full view each put a canvas on the same stream; the host runs
+  one encoder. A stream closes 1.5 seconds after its last place has gone.
+  A place that grows 25% past the edge the stream was opened at has it
+  opened again, larger, when that edge is what held the picture down (a
+  Mac's window; the box's page is 1280 wide whatever is asked).
+- **A closed stream** (`afterClose`, messages.ts). A drop that named no
+  reason, `slow`, a decoder that failed or stalled: opened again with a
+  fresh ticket after 0.5, 1, 2, 4 and 4 seconds, the last frame staying on
+  the canvas, then the 4 fps picture. A frame drawn in between starts the
+  count again. `moved`, `busy` and `held` give way to the picture at once
+  and are never opened again by themselves; `ended`, `revoked`, `error` and
+  `permission` read as the preview's own ends ("The preview stopped", with
+  Retry for `error`; the Screen Recording line). A machine that cannot
+  decode the stream asks for no video again in that window.
+- **`useLiveStream`** (surfaces/threads/computer/Viewport.tsx) is video
+  first (`useComputerVideo`, lib/computerVideo.ts) and the preview when
+  video gives way: `video.open` refused or unknown to the host, no
+  `VideoDecoder`, the retries spent, the display gone to another page. It
+  speaks the preview's own states, so every place that shows a live
+  picture shows video with nothing changed around it. The two have a
+  canvas each, since one handed to the worker takes no other drawing. A
+  place shown again asks for video again.
+- **`take`.** The canvas, the Computer section and the full view are the
+  thread on screen and ask with `take`. A Computers tile does not.
+- **Sharp.** The canvas holds the stream's own pixels. Its box is as wide
+  as its column and no wider than those pixels on this screen
+  (`sharpWidth`); the full view draws them one to one, or exactly two to
+  one where the window has the room (`sharpSize`). A narrower column scales
+  the picture down, whole.
+- **Counts.** The worker says how many frames it drew and at what rate
+  four times a second; they go to the box's `data-frames` and `data-fps`
+  by hand, for the proofs. Nothing on screen shows them.
+- **The click ring.** A `computer-click` push whose `preview` is the
+  stream's id rings the picture as a preview's does. No source sends one
+  for a video stream yet (the box's browser never did for its picture).
+
 ## Settings
 
 `src/shared/video/settings.ts`.
@@ -378,8 +438,9 @@ the viewer and the relay, so the engine sees it only through the acks, as it
 will through the tunnel.
 
 Not proven: the stream through the real Cloudflare tunnel (it is first seen
-after the owner installs the tools and updates the box), and any viewer but
-the script's.
+after the owner installs the tools and updates the box), and the desktop's
+own viewer against a real stream: its rules are unit-tested over a fake
+socket and decoder, and its first decode on a Mac is still to be seen.
 
 ## What this cannot stop
 
@@ -412,6 +473,14 @@ the script's.
   windows; the box's browser goes to a key that may watch
 - `scripts/work-tools/installer.test.ts`: the `build` kind, and the
   manifest's pins
+- `src/renderer/src/lib/video/`: `pacing.test.ts`, `player.test.ts` (the
+  stream's rules over a fake socket and decoder), `streams.test.ts` (the
+  registry and the retry rule)
+- `src/renderer/src/surfaces/threads/computer/ViewportVideo.dom.test.tsx`
+  (live, ended, gave way, shown again), `LiveFullView.dom.test.tsx` (the
+  sharp sizes, the full view and its controls),
+  `src/renderer/src/surfaces/ComputersView.dom.test.tsx`,
+  `src/renderer/src/lib/computers.test.ts`
 - `src/main/server/work/browser/box/`: `display.test.ts`, `chromium.test.ts`,
   `engine.test.ts` and `video.test.ts` with fakes
 - The same folder, live where the tools are installed

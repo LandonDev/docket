@@ -120,8 +120,11 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   by this module's `start`, and asked by `runComputerTool` here and by the
   box's `ComputerBridge` before a call goes to the Mac; the hold's own press
   is his and runs, and a gate that throws refuses nothing (F3).
-- **The body**: the live window in its own shape, at most 720px wide, a
-  skeleton until the first frame; at a held submit the values under it
+- **The body**: the live window in its own shape, as wide as the body and
+  no wider than the picture's own pixels, a skeleton until the first
+  frame. It is video where the host has it (`video.open`, through
+  `useLiveStream`; [live-video.md](live-video.md)) and the 4 fps picture
+  otherwise. A click on it opens the full view; at a held submit the values under it
   (label, value, source; the values are the host's read of the page's
   fields from the held row's `mark`, password fields never in it, and only
   the source is the agent's word).
@@ -175,8 +178,9 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   through the host's preview relay, built over the box's sessions by
   index.ts; the box's rows reach the desktop in the `computer` push, and
   Take over stops them (§28.5). A held submit shows its picture in the
-  Outbox. A headed browser also answers `video.open` for the pane's page,
-  which the canvas does not yet ask for.
+  Outbox. A headed browser answers `video.open` for the pane's page, and
+  the canvas asks for that first: the page then plays as video, up to 120
+  frames a second, and falls back to the screencast when there is none.
 - **Frames** are read in place (§28.3): a portal that draws its form in a
   frame, of its own origin or another's, is read, filled, clicked and held
   like any page (`hold.test.ts`).

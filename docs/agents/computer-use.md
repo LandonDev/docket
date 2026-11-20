@@ -214,6 +214,19 @@ why and the measured headline.
   in the raised window; a person who was typing when the step began gets
   their plain typing back in the field they were in, never a shortcut,
   Return or Escape (docs/computer-protocol.md §14.9).
+- **Computers** (docs/DESIGN.md "Computers"): one page of every computer
+  being driven now on every connected host, from a row in the rail, Go →
+  Computers or ⌘⇧L (`surfaces/ComputersView.tsx`). `computerTiles`
+  (`lib/computers.ts`) reads the rows `computerSessionsStore` already holds
+  and joins each to its thread's title, where it runs, whether he drives it
+  and which machine alone draws one this desktop may not; a session a box
+  thread drives on this Mac is one tile, the box's. A tile's picture is the
+  viewport's (`useLiveStream` with `take: false`), its controls are
+  `ComputerControls` (Take over, Hand back, Stop), and a click on a live
+  picture anywhere opens the full view in the lightbox (`LiveFullView`).
+- **Video.** A live picture is video where its host answers `video.open`
+  and the 4 fps preview where it does not; the places that show it did not
+  change ([live-video.md](live-video.md) "The viewer").
 - **What the person sees** (§8 "What the person sees"). On the Mac's
   desktop, the right panel's **Computer** section
   (src/renderer/src/surfaces/threads/computer/, one lazy chunk;
