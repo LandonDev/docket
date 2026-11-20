@@ -5,7 +5,7 @@ import type { SessionMeta } from '@shared/events'
 import type { ActKind } from '@shared/work'
 import { earn, earnedOf, EarnedStore, ensureEarnedTables, EARN_AT, EARN_DAYS, sameWords, wordsOf, type RunDeps } from './earned'
 import { outbox as outboxModule, NOT_A_PERSON } from './index'
-import { NO_SUCH_OFFER } from './outbox'
+import { NO_SUCH_OFFER, sameAs } from './outbox'
 import { adminKey, approveKey, cast, makeRig, readKey, type Rig } from './rig'
 import type { HeldRow } from './store'
 
@@ -92,6 +92,17 @@ describe('what one act earns', () => {
     expect(sameWords('mail.send', null, null)).toBe(false)
     expect(wordsOf('teams.post', { chat: 'Esports staff', text: 'On my way' })).toEqual({ chat: 'Esports staff', text: 'On my way' })
     expect(wordsOf('computer.act', {})).toBeNull()
+  })
+})
+
+describe('grants alike', () => {
+  it("are alike as their kind matches them: a LifeOS mail's or invite's people in any case, spacing, order or repeat; a domain's \"@\" alone; any other kind as written", () => {
+    expect(sameAs('mail.send', { accountId: 'a', recipients: [' Dana@x.org', 'dana@x.org', 'b@x.org'], domains: [] })).toEqual({ accountId: 'a', recipients: ['b@x.org', 'dana@x.org'] })
+    expect(sameAs('mail.send', { recipients: ['@sam@x.org'], domains: ['@X.org'] })).toEqual({ recipients: ['@sam@x.org'], domains: ['x.org'] })
+    expect(sameAs('calendar.op', { kind: 'create', attendees: ['B@x.org', 'a@x.org'] })).toEqual({ kind: 'create', attendees: ['a@x.org', 'b@x.org'] })
+    const google = { recipients: [' sam@x.org '], domains: [] }
+    expect(sameAs('share.google', google)).toBe(google)
+    expect(sameAs('office.mail.send', google)).toBe(google)
   })
 })
 

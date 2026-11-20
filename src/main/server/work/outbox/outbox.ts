@@ -66,9 +66,13 @@ export interface OutboxDeps {
   earned?: EarnedStore
 }
 
-/** A matcher as its kind matches it: the people of a mail or an invite in any case, order or repeat are the same people. */
-function sameAs(matcher: unknown): unknown {
-  if (!matcher || typeof matcher !== 'object') return matcher
+/**
+ * A matcher as its kind matches it: the people of a LifeOS mail or invite in
+ * any case, spacing, order or repeat are the same people (mailGrantFits,
+ * calendarGrantFits). Any other kind's matcher is compared as written.
+ */
+export function sameAs(kind: ActKind, matcher: unknown): unknown {
+  if (!matcher || typeof matcher !== 'object' || (kind !== 'mail.send' && kind !== 'calendar.op')) return matcher
   const m = { ...(matcher as Record<string, unknown>) }
   for (const key of ['recipients', 'domains', 'attendees']) {
     if (!Array.isArray(m[key])) continue
@@ -305,7 +309,7 @@ export class Outbox {
     if (opts.routine && !routineId) throw new Error('refused: this item was not made by a routine')
     const label = (opts.label ?? '').trim() || `Like: ${item.summary}`
     // A grant like one that stands is that one: an offer taken and the same grant asked for by hand never make two, so one Remove ends it.
-    const same = this.store.grants({ workspaceId: scope }).find((g) => g.kind === item.kind && (g.routineId ?? null) === routineId && canonical(sameAs(g.matcher)) === canonical(sameAs(parsed)))
+    const same = this.store.grants({ workspaceId: scope }).find((g) => g.kind === item.kind && (g.routineId ?? null) === routineId && canonical(sameAs(item.kind, g.matcher)) === canonical(sameAs(item.kind, parsed)))
     if (same) {
       this.closeCovered(same, def)
       return same
