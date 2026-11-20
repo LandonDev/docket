@@ -17,6 +17,7 @@ import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import { fakeDoc, fakeEngine } from "../pdf/testkit";
 import { changeIndex, renderDetail, slideOfChange, stageWidth } from "./SlidesCanvas";
+import { RENDER_CHANGED } from "./deck";
 import { change, deckView, fakeDeckHost, slide } from "./testkit";
 
 const host = vi.hoisted(() => ({
@@ -48,6 +49,12 @@ let item: CanvasItem;
 /** How many of the next picture reads this window refuses, as a socket that closed mid-read would. */
 let refuseReads = 0;
 let reads = 0;
+/** The open (counted from 1) this window refuses, as a socket that closed mid-read of that one render would. */
+let refuseAt: number | null = null;
+/** While set, every picture open waits on it: a render still being read. */
+let gate: Promise<void> | null = null;
+/** While set, the next open fails as bytes from another revision would. */
+let moved = false;
 
 function kinds(width = 800): Record<string, CanvasKindDef> {
   // Each render a doc of its own: the file's 12 slides, the proposed deck's 13.
@@ -57,6 +64,13 @@ function kinds(width = 800): Record<string, CanvasKindDef> {
     ...pictures,
     open: async (file) => {
       reads++;
+      const at = reads;
+      if (gate) await gate;
+      if (moved) {
+        moved = false;
+        throw new Error(RENDER_CHANGED);
+      }
+      if (refuseAt === at) throw new Error("The socket closed");
       if (refuseReads > 0) {
         refuseReads--;
         throw new Error("The socket closed");
@@ -103,6 +117,9 @@ beforeEach(async () => {
   Element.prototype.scrollIntoView ??= () => undefined;
   localStorage.clear();
   resetCanvasStore();
+  refuseAt = null;
+  gate = null;
+  moved = false;
   await new Promise<void>((done) => openMenus(done));
 });
 afterEach(cleanup);
@@ -202,6 +219,8 @@ describe("the slides kind", () => {
     expect(thumbs().filter((t) => t.dataset.tint === "add")).toHaveLength(5);
     const ghost = thumbs().find((t) => t.dataset.slide === "ghost:6")!;
     expect(ghost.dataset.tint).toBe("del");
+    // The review is held until the proposed render is on screen.
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
     await waitFor(() => expect(within(bar).getByText("1/5")).toBeTruthy());
     expect(thumbs().find((t) => t.dataset.slide === "2")!.getAttribute("aria-current")).toBe("true");
@@ -213,7 +232,8 @@ describe("the slides kind", () => {
     fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
     await waitFor(() => expect(thumbs().find((t) => t.dataset.slide === "6")!.getAttribute("aria-current")).toBe("true"));
     fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
-    await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: ["c6"], verdict: "accept" }]));
+    // The press carries the revision of the proposed render on screen.
+    await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: ["c6"], verdict: "accept", rev: "p1" }]));
     await waitFor(() => expect(thumbs().some((t) => t.dataset.slide === "ghost:6")).toBe(false));
     // Four left: "n/4" with a change in hand, the count alone with none.
     expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByText(/^(\d+\/)?4$/)).toBeTruthy();
@@ -302,6 +322,71 @@ describe("the slides kind", () => {
     expect(reads).toBe(before + 1);
     await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 1"));
     expect(document.querySelector("[data-slide-edits]")?.textContent).toContain("Welcome");
+  });
+
+  it("Retry reads again only the render that failed, so the slides of the other never blank", async () => {
+    reads = 0;
+    // The file's render opens first and draws; the proposed one (the second open) fails.
+    refuseAt = 2;
+    open(revised());
+    const line = await found('[data-canvas-state="failed"]');
+    expect(line.textContent).toContain("The socket closed");
+    // The place slide 6 left is the file's picture: on the stage, drawn while the proposed render has failed.
+    fireEvent.click(thumbs().find((t) => t.dataset.slide === "ghost:6")!);
+    const left = () => document.querySelector("[data-slides-stage]")!;
+    await waitFor(() => expect(left().textContent).toContain("Slide 6"));
+    const before = reads;
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    // It stays drawn while the proposed render is read again.
+    expect(left().textContent).toContain("Slide 6");
+    await waitFor(() => expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull());
+    expect(reads).toBe(before + 1);
+    expect(left().textContent).toContain("Slide 6");
+  });
+
+  it("holds the review while the proposed render is being replaced, and binds each press to the one on screen", async () => {
+    open(revised());
+    const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+    // The agent revises again: a new proposed render, still being read.
+    let land!: () => void;
+    gate = new Promise((done) => (land = done));
+    act(() => deckHost.push({ ...deckHost.view, renders: { ...deckHost.view.renders, proposed: { rev: "p2", size: 1100, pages: 13 } } }));
+    const held = () => within(screen.getByRole("toolbar", { name: "Review changes" }));
+    await waitFor(() => expect(held().getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true));
+    expect(held().getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+    // The stepper stays drawn, its count and steps still there.
+    expect(held().getByRole("button", { name: "Next change" })).toBeTruthy();
+    gate = null;
+    act(() => land());
+    await waitFor(() => expect(held().getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(held().getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(deckHost.calls).toContainEqual(["review", { changes: ["c2"], verdict: "reject", rev: "p2" }]));
+  });
+
+  it("a press the host refuses because the changes moved on says so and reads the deck again", async () => {
+    open(revised());
+    const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+    deckHost.review = async (changes, verdict, rev) => {
+      deckHost.calls.push(["review", { changes, verdict, rev }]);
+      throw new Error("The suggestions changed since this preview. Nothing was accepted or rejected; look at them again.");
+    };
+    const opens = deckHost.calls.filter(([what]) => what === "open").length;
+    fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(deckHost.calls.filter(([what]) => what === "open").length).toBe(opens + 1));
+  });
+
+  it("bytes from another revision are no failure: the view is read again, with no failed line", async () => {
+    moved = true;
+    open(deckView());
+    await waitFor(() => expect(deckHost.calls.filter(([what]) => what === "open").length).toBe(2));
+    await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 1"));
+    expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
   });
 
   it("a deck the host has no picture of offers no Retry: there is nothing here to read again", async () => {

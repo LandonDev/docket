@@ -132,6 +132,8 @@ describe("the hosted sheet", () => {
         await act(async () => void vi.advanceTimersByTime(9000));
       }
       expect(onDown).toHaveBeenCalledOnce();
+      // Nothing was typed: no unsaved edit to warn of.
+      expect(onDown).toHaveBeenCalledWith(false);
       expect(onGone).not.toHaveBeenCalled();
       cleanup();
 
@@ -143,5 +145,48 @@ describe("the hosted sheet", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("says an edit stood unsaved when the tries run out after the line dropped under it", async () => {
+    grid.handle = { onMutation: (fn: (m: unknown) => void) => void (grid.emit = fn), apply: () => {} };
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let fail: Error | null = null;
+      const flaky = { token: async () => (fail ? Promise.reject(fail) : { token: "t" }), socketUrl: () => "wss://example/sheet" } as never;
+      const onDown = vi.fn();
+      render(<SheetPage session={flaky} opened={opened} onGone={() => {}} onDown={onDown} />);
+      await flush();
+      await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+      // An edit goes out, and the line drops before the sheet answers it.
+      await act(async () => grid.emit!({ id: "sheet.mutation.set-range-values", params: { unitId: "u1", subUnitId: "s1", cellValue: {} } }));
+      await act(async () => void vi.advanceTimersByTime(1000));
+      fail = new Error("network");
+      const sock = FakeSocket.last!;
+      sock.readyState = 3;
+      await act(async () => sock.onclose?.({ code: 1006 }));
+      for (let i = 0; i < 6; i++) {
+        await flush();
+        await act(async () => void vi.advanceTimersByTime(9000));
+      }
+      expect(onDown).toHaveBeenCalledWith(true);
+    } finally {
+      vi.useRealTimers();
+      grid.handle = null;
+    }
+  });
+});
+
+describe("the unreachable screen", () => {
+  it("keeps the unsaved-edit warning when an edit never reached the item, and claims nothing when it cannot know", async () => {
+    const { Ended } = await import("./GuestApp");
+    const view = render(<Ended why="down" unsaved owner={false} retry={() => {}} />);
+    expect(screen.getByText("This page cannot be reached right now")).toBeTruthy();
+    expect(screen.getByText(/Your last edit was not saved/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    view.unmount();
+    render(<Ended why="down" owner={false} retry={() => {}} />);
+    expect(screen.getByText("Try again in a minute.")).toBeTruthy();
+    expect(screen.queryByText(/Nothing you wrote is lost/)).toBeNull();
+    expect(screen.queryByText(/not saved/)).toBeNull();
   });
 });

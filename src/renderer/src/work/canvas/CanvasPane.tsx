@@ -8,6 +8,7 @@ import { ItemSkeleton } from "./ItemBones";
 import { StatusMark } from "../../components/ui/status";
 import type { Chunk } from "../../lib/lazyChunk";
 import type { Feeds } from "./frame";
+import { canvasPanelId, canvasTabId } from "./CanvasTabs";
 import { KindBar } from "./KindBar";
 import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection, CanvasShell, StatusLine } from "./kind";
 import { CANVAS } from "./registry";
@@ -101,6 +102,7 @@ export function CanvasPane({
   shell,
   onAsk,
   kinds = CANVAS,
+  tabbed = false,
 }: {
   item: CanvasItem;
   environmentId: string;
@@ -108,6 +110,8 @@ export function CanvasPane({
   shell: CanvasShell;
   onAsk(selection: CanvasSelection): void;
   kinds?: Record<CanvasKind, CanvasKindDef>;
+  /** The pane sits under a row of tabs (more than one item open). */
+  tabbed?: boolean;
 }) {
   const def = kinds[item.kind];
   const module = useKindModule(def.chunk);
@@ -116,7 +120,13 @@ export function CanvasPane({
   const props: CanvasBodyProps = { item, source: item.source, env: environmentId, state, setState, shell };
   const Bar = module?.Bar;
   return (
-    <div data-canvas-pane data-kind={item.kind} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <div
+      data-canvas-pane
+      data-kind={item.kind}
+      // Under the tab row the pane is the shown tab's panel, named by its tab; one item alone has no tabs, and no panel role.
+      {...(tabbed ? { role: "tabpanel", id: canvasPanelId(item.id), "aria-labelledby": canvasTabId(item.id) } : {})}
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+    >
       {/* History is for an item that has opened: not while the kind's code loads, nor while the kind says it is opening or could not open. */}
       {/* While the kind's code loads, the bar holds a bone where its tools will be, so the body does not drop 32px when the code lands. */}
       <KindBar

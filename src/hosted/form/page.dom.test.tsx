@@ -102,6 +102,27 @@ describe('the form page', () => {
     await vi.waitFor(() => expect(button.textContent).toBe('Send'))
   })
 
+  it('rests the answers while Send is in flight, and gives them back as they were, the refused one focused, if it fails', async () => {
+    let done: (r: Response) => void = () => undefined
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'POST' ? new Promise<Response>((r) => (done = r)) : json(200, FORM)))
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    type('#q0', 'Ava')
+    root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
+    submit()
+    const name = root.querySelector<HTMLInputElement>('#q0')!
+    const choice = root.querySelector<HTMLInputElement>('input[value="Valorant"]')!
+    expect(name.disabled).toBe(true)
+    expect(choice.disabled).toBe(true)
+    expect(root.querySelector('form')!.getAttribute('aria-busy')).toBe('true')
+    done(json(400, { error: 'That name is taken.', question: FORM.questions[0]!.id }))
+    await vi.waitFor(() => expect(name.disabled).toBe(false))
+    expect(choice.disabled).toBe(false)
+    expect(name.value).toBe('Ava')
+    expect(choice.checked).toBe(true)
+    expect(root.querySelector('form')!.hasAttribute('aria-busy')).toBe(false)
+    expect(document.activeElement).toBe(name)
+  })
+
   it('tells a form that failed to load from one that is not there, and Retry reads it again', async () => {
     let answer = json(503, {})
     const fetcher = vi.fn(async () => answer)

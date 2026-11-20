@@ -248,7 +248,7 @@ export function htmlWords(raw: string): string {
   }
   const out = html
     // Only what no reader shows goes: words put inside <head> are moved into the body by every browser and sent as they stand (the hold review).
-    .replace(/<(script|style|title)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<(script|style|title)(?=[\s/>])[\s\S]*?<\/\1\s*>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<img\b[^>]*>/gi, (tag) => {
       const src = decode(attr(tag, "src") ?? "").trim();

@@ -42,8 +42,8 @@ export function fakeDeckHost(initial: DeckView): DeckHost & { calls: Array<[stri
     async read() {
       return new Uint8Array();
     },
-    async review(changes: string[] | "all", verdict: "accept" | "reject") {
-      host.calls.push(["review", { changes, verdict }]);
+    async review(changes: string[] | "all", verdict: "accept" | "reject", rev?: string) {
+      host.calls.push(["review", rev === undefined ? { changes, verdict } : { changes, verdict, rev }]);
       const gone = new Set(changes === "all" ? host.view.changes.map((c) => c.id) : changes);
       host.view = {
         ...host.view,

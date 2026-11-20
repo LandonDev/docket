@@ -67,6 +67,21 @@ export function batchVerb(items: readonly (Pick<HostItem, "verb"> & { kind?: str
 }
 /** Where he looks to see whether a send that may have gone went. */
 const checkWords = (item: HostItem): string => (item.kind === "mail.send" || item.kind === "office.mail.send" ? "Check Sent first" : "Check whether it went first");
+/**
+ * A list row's title and second line. Most acts split their summary at its
+ * colon; a Google share's summary ("Share Budget Q3 final.xlsx with dana@…
+ * (can edit)") has none, so a long file name would cut the person off: its
+ * title is who and how ("Share with dana@purdue.edu (can edit)") and the file
+ * its second line. The detail keeps its own heading.
+ */
+export function rowWords(item: Pick<HostItem, "kind" | "summary" | "verb" | "payload">): { act: string; about: string | null } {
+  if (item.kind === "share.google") {
+    const p = (item.payload ?? {}) as { email?: unknown; name?: unknown };
+    const role = /\(([^)]*)\)\s*$/.exec(item.summary)?.[1];
+    if (typeof p.email === "string" && typeof p.name === "string") return { act: `${item.verb} with ${p.email}${role ? ` (${role})` : ""}`, about: p.name };
+  }
+  return splitSummary(item.summary);
+}
 /** "Send to Dana Lee: Re: budget" → the act and what it is about. */
 export function splitSummary(summary: string): { act: string; about: string | null } {
   const at = summary.indexOf(": ");
@@ -370,7 +385,7 @@ function WaitingList({
             </GroupHead>
             <ul className="flex flex-col gap-0.5">
               {group.items.map((item) => {
-                const { act, about } = splitSummary(item.summary);
+                const { act, about } = rowWords(item);
                 const active = !ticking && current !== null && keyOf(current) === keyOf(item);
                 return (
                   <li key={keyOf(item)} className="group/row relative">
@@ -433,7 +448,7 @@ function SentList({
           <div className="mt-3 flex h-7 items-center ps-2 text-xs font-medium text-muted-foreground first:mt-1">{day}</div>
           <ul className="flex flex-col gap-0.5">
             {rows.map((item) => {
-              const { act, about } = splitSummary(item.summary);
+              const { act, about } = rowWords(item);
               const active = current !== null && keyOf(current) === keyOf(item);
               const at = item.decidedAt ?? item.updatedAt;
               return (
@@ -678,8 +693,8 @@ function SentDetail({ item, workspace, grantLabel, onOpenSession }: { item: Host
         {!results.loaded ? null : results.error && !result ? (
           <>
             <span className="min-w-0 truncate text-[13px] text-destructive">{results.error}</span>
-            <Button variant="ghost" size="sm" onClick={() => loadResults(item.environmentId, item.sessionId ?? "")}>
-              Retry
+            <Button variant="ghost" size="sm" disabled={results.reading} onClick={() => loadResults(item.environmentId, item.sessionId ?? "")}>
+              <BusyLabel busy={results.reading} label="Retry" />
             </Button>
           </>
         ) : result?.undoneAt ? (
@@ -705,7 +720,7 @@ function TickedDetail({ items, onClear, onSend }: { items: HostItem[]; onClear: 
           <h1 className="text-base font-semibold leading-6 tracking-[-0.01em]">Ticked</h1>
           <ul className="flex flex-col">
             {items.map((item) => {
-              const { act, about } = splitSummary(item.summary);
+              const { act, about } = rowWords(item);
               return (
                 <li key={keyOf(item)} className="flex h-8 min-w-0 items-center gap-2 border-t border-border text-[13px] first:border-t-0">
                   <KindGlyph kind={item.kind} />

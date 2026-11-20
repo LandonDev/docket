@@ -8,7 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutboxItem, WorkResult } from "@shared/contract-work-outbox";
 
-const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], items: [] as OutboxItem[], results: [] as WorkResult[], writesDown: false, listDown: false }));
+const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], items: [] as OutboxItem[], results: [] as WorkResult[], writesDown: false, listDown: false, resultsDown: false, resultsGate: null as Promise<void> | null }));
 
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -23,6 +23,10 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.outbox.list") return params.show === "decided" ? { items: [] } : { items: world.items, waiting: world.items.length };
       if (method === "work.outbox.grants") return { grants: [] };
       if (method === "work.outbox.results" && params.since !== undefined && world.writesDown) throw new Error("socket closed");
+      if (method === "work.outbox.results" && params.since === undefined) {
+        if (world.resultsGate) await world.resultsGate;
+        if (world.resultsDown) throw new Error("The host did not answer");
+      }
       if (method === "work.outbox.results") return { results: params.since !== undefined ? world.results.filter((r) => r.createdAt >= (params.since as number)) : world.results };
       if (method === "work.outbox.undo") {
         const r = world.results.find((x) => x.id === params.id)!;
@@ -38,7 +42,7 @@ vi.mock("../../lib/connection", async (original) => {
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { AwayReturnWork, gatherAway, OUTBOX_DOWN_LINE, UNREAD_LINE } from "./AwayList";
 import { ResultsSection } from "./ResultsSection";
-import { resultsListed } from "./results";
+import { loadResults, resetResults, resultsListed } from "./results";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { resetOutboxStore } from "./store";
 
@@ -62,6 +66,8 @@ beforeEach(() => {
   world.calls = [];
   world.writesDown = false;
   world.listDown = false;
+  world.resultsDown = false;
+  world.resultsGate = null;
   world.items = [held("h1", "held", "Post message with Slack: “Standup at 10”"), held("h2", "failed", "Post message with Slack: “Lunch”")];
   world.results = [result("r1", "Added Dietary needs", true), result("r2", "Sent to Dana Lee", false, { ref: { held: { at: "lifeos", id: "o1" } } })];
   workSwitch.reset();
@@ -71,6 +77,29 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Results", () => {
+  it("keeps the rows and the error on screen while Retry reads again, its button busy and waiting", async () => {
+    resetResults();
+    render(<ResultsSection environmentId="box" sessionId="t1" />);
+    await screen.findByRole("region", { name: "Can undo" });
+    // A later read fails: the rows stay under the error and its Retry.
+    world.resultsDown = true;
+    await act(async () => loadResults("box", "t1"));
+    const alert = await screen.findByRole("alert");
+    let release: () => void = () => {};
+    world.resultsGate = new Promise((r) => (release = r));
+    await act(async () => fireEvent.click(within(alert).getByRole("button", { name: "Retry" })));
+    const retry = within(screen.getByRole("alert")).getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).toBeTruthy();
+    expect(screen.getByText("Added Dietary needs")).toBeTruthy();
+    world.resultsDown = false;
+    world.resultsGate = null;
+    await act(async () => release());
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.getByText("Added Dietary needs")).toBeTruthy();
+  });
+
+
   it("splits what can be taken back from what cannot, and Undo runs the way back once", async () => {
     render(<ResultsSection environmentId="box" sessionId="t1" />);
     const can = await screen.findByRole("region", { name: "Can undo" });

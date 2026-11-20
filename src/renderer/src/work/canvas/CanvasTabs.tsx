@@ -20,6 +20,10 @@ import { CANVAS } from "./registry";
  * selected tab brought into view. More and the toggle never move.
  */
 
+/** A tab's element id and its panel's: the tab names the panel (`aria-controls`), the panel takes its name from the tab. */
+export const canvasTabId = (itemId: string): string => `canvas-tab-${itemId}`;
+export const canvasPanelId = (itemId: string): string => `canvas-panel-${itemId}`;
+
 /** Mouse wheels only emit deltaY; turn it sideways. Trackpad swipes keep native scrolling. (The title strip's `wheelToX`.) */
 function wheelToX(event: WheelEvent<HTMLDivElement>): void {
   if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY;
@@ -115,6 +119,9 @@ export function CanvasTabs({
             <Button
               variant="ghost"
               role="tab"
+              id={canvasTabId(item.id)}
+              // Only the shown item's panel is drawn, so only its tab names one.
+              aria-controls={active ? canvasPanelId(item.id) : undefined}
               aria-selected={active}
               tabIndex={active ? 0 : -1}
               data-canvas-tab={item.id}

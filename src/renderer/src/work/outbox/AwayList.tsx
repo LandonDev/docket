@@ -14,7 +14,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { AWAY_HEADING, awayLine, awaySections, byWorkspace, spanWords, WORK_CHATS_KEY, type AwayCounts } from "./model";
 import { resultsSince, undoResult, type HostResult } from "./results";
 import { loadHost, outboxNow, useOutbox, type HostItem } from "./store";
-import { splitSummary } from "./OutboxView";
+import { rowWords } from "./OutboxView";
 
 /** One host's tally of the stretch, as its Away push carried it. */
 export type AwayHost = { environmentId: string; decided: AwayDecided };
@@ -174,7 +174,7 @@ export function AwayReturnWork({
               </>
             )
               : section === "failed"
-                ? failed.map((item) => <Row key={`${item.environmentId}:${item.ref.id}`} title={splitSummary(item.summary).act} line={item.error ?? "It couldn't be sent"} tone="failed" />)
+                ? failed.map((item) => <Row key={`${item.environmentId}:${item.ref.id}`} title={rowWords(item).act} line={item.error ?? "It couldn't be sent"} tone="failed" />)
                 : section === "decided"
                   ? report.decided.map((d) => (
                       <Row

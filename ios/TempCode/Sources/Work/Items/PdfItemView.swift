@@ -114,11 +114,10 @@ struct DeckReviewRow: View {
             if busy {
                 ProgressView()
             } else {
-                Button("Reject") { decide(false) }
-                    .buttonStyle(.bordered)
+                // The kit's row action: a compact capsule whose tap target reaches 44 pt, Accept the one tinted.
+                PillButton("Reject") { decide(false) }
                     .accessibilityIdentifier("review-reject")
-                Button("Accept") { decide(true) }
-                    .buttonStyle(.borderedProminent)
+                PillButton("Accept", tint: .accentColor) { decide(true) }
                     .accessibilityIdentifier("review-accept")
             }
         }

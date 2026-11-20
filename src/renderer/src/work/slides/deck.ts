@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { DeckMode, DeckView } from "@shared/contract-work-slides";
 import { registry } from "../../lib/connection";
 import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
@@ -6,20 +6,30 @@ import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/eng
 /** The host's side of a deck, as its canvas uses it (src/shared/contract-work-slides.ts). */
 export interface DeckHost {
   open(): Promise<DeckView>;
-  read(which: "file" | "proposed", offset: number, length: number): Promise<Uint8Array>;
-  review(changes: string[] | "all", verdict: "accept" | "reject"): Promise<DeckView>;
+  /** With `rev`, bytes of a render at another revision (the deck moved on mid-read) are refused (`RENDER_CHANGED`). */
+  read(which: "file" | "proposed", offset: number, length: number, rev?: string): Promise<Uint8Array>;
+  /** With `rev`, the proposed render the press was made on: the host refuses it once the changes moved on since. */
+  review(changes: string[] | "all", verdict: "accept" | "reject", rev?: string): Promise<DeckView>;
   mode(mode: DeckMode): Promise<DeckView>;
   undo(writeId: string): Promise<DeckView>;
   onView(listener: (view: DeckView) => void): () => void;
 }
+
+/** A render read whose bytes came from another revision than the view advertised: the preview is being replaced, never a failure to show. */
+export const RENDER_CHANGED = "The slides changed while they were read";
 
 export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
   const link = (): ReturnType<typeof registry.linkOf> => registry.linkOf(environmentId);
   const call = <T>(method: string, params: Record<string, unknown> = {}): Promise<T> => link().request<T>(method, { itemId, ...params });
   return {
     open: () => call("work.slides.open"),
-    read: async (which, offset, length) => fromBase64((await call<{ data: string }>("work.slides.read", { which, offset, length })).data),
-    review: (changes, verdict) => call("work.slides.review", { changes, verdict }),
+    read: async (which, offset, length, rev) => {
+      const got = await call<{ data: string; rev?: string }>("work.slides.read", { which, offset, length });
+      // Every frame of one picture comes from the revision the view advertised, as the phone's reads do.
+      if (rev !== undefined && got.rev !== undefined && got.rev !== rev) throw new Error(RENDER_CHANGED);
+      return fromBase64(got.data);
+    },
+    review: (changes, verdict, rev) => call("work.slides.review", { changes, verdict, ...(rev !== undefined ? { rev } : {}) }),
     mode: (mode) => call("work.slides.mode", { mode }),
     undo: (writeId) => call("work.slides.undo", { writeId }),
     onView: (listener) =>
@@ -100,31 +110,47 @@ export function useDeckView(host: DeckHost, store: DeckStore): void {
   }, [host, store]);
 }
 
-/** One of the deck's renders opened in the engine, at its revision: null until it is; `error` when it could not be read. */
+/**
+ * One of the deck's renders opened in the engine, at its revision: null until it is; `error` when it could not be read;
+ * `rev`, the revision the open doc was read at. Bytes from another revision (the deck moved on mid-read) are no failure:
+ * the doc stays null and `onChanged` asks for the view again, whose new revision reads afresh.
+ */
 export function useRender(
   host: DeckHost,
   which: "file" | "proposed",
   render: { rev: string; size: number } | null,
   engine: PdfEngine = pdfjsEngine,
-): { doc: PdfDoc | null; error: string | null; retry(): void } {
-  const [state, setState] = useState<{ doc: PdfDoc | null; error: string | null }>({ doc: null, error: null });
+  onChanged?: () => void,
+): { doc: PdfDoc | null; error: string | null; rev: string | null; retry(): void } {
+  const [state, setState] = useState<{ doc: PdfDoc | null; error: string | null; rev: string | null }>({ doc: null, error: null, rev: null });
+  const changed = useRef(onChanged);
+  changed.current = onChanged;
   // Each Retry reads the picture again from its first byte.
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const rev = render?.rev;
   const size = render?.size;
   useEffect(() => {
-    setState({ doc: null, error: null });
+    setState({ doc: null, error: null, rev: null });
     if (rev === undefined || size === undefined) return;
     let live = true;
     let opened: PdfDoc | null = null;
     const failed = (error: unknown): void => {
-      if (live) setState({ doc: null, error: error instanceof Error && error.message ? error.message : String(error) });
+      if (!live) return;
+      const message = error instanceof Error && error.message ? error.message : String(error);
+      if (message === RENDER_CHANGED) {
+        opened?.destroy();
+        opened = null;
+        setState({ doc: null, error: null, rev: null });
+        changed.current?.();
+        return;
+      }
+      setState({ doc: null, error: message, rev: null });
     };
-    engine.open({ size, read: (offset, length) => host.read(which, offset, length), onFail: (message) => failed(new Error(message)) }).then((got) => {
+    engine.open({ size, read: (offset, length) => host.read(which, offset, length, rev), onFail: (message) => failed(new Error(message)) }).then((got) => {
       if (!live) return got.destroy();
       opened = got;
-      setState({ doc: got, error: null });
+      setState({ doc: got, error: null, rev });
     }, failed);
     return () => {
       live = false;

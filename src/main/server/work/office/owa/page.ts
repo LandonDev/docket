@@ -18,8 +18,13 @@ const SIGNING = /^(authorization|x-owa-canary|x-anchormailbox|x-req-source|x-owa
 
 export const NEEDS_SIGN_IN = "Outlook on the web is not signed in on the box. Bring his sign-in from the Mac (export it there) or ask him to sign in once in the box's browser."
 
+/** What a call may ask of the transport: `afterReload` runs once the page was opened again for a lost session, before the request is retried; a throw there sends nothing. */
+export interface CallOptions {
+  afterReload?: () => Promise<void>
+}
+
 export interface OwaTransport {
-  call<T>(action: string, body: unknown): Promise<T>
+  call<T>(action: string, body: unknown, opts?: CallOptions): Promise<T>
   close(): void
 }
 
@@ -46,16 +51,16 @@ export class OwaPage implements OwaTransport {
     return this.o.url ?? OWA_URL
   }
 
-  async call<T>(action: string, body: unknown): Promise<T> {
+  async call<T>(action: string, body: unknown, opts?: CallOptions): Promise<T> {
     const done = this.o.use?.()
     try {
-      return await this.attempt<T>(action, body)
+      return await this.attempt<T>(action, body, opts)
     } finally {
       done?.()
     }
   }
 
-  private async attempt<T>(action: string, body: unknown): Promise<T> {
+  private async attempt<T>(action: string, body: unknown, opts?: CallOptions): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       // Anything that fails before the request goes out is a plain refusal: nothing was sent, and the route fails the row.
       try {
@@ -71,6 +76,8 @@ export class OwaPage implements OwaTransport {
         await this.reload().catch((err) => {
           throw err instanceof OfficeError ? err : new OfficeError(`Outlook on the web could not be opened on the box: ${(err as Error).message}`, 'not-running')
         })
+        // The page may have signed in again as someone else: a send checks who before it goes again.
+        await opts?.afterReload?.()
         continue
       }
       if (lost) throw new OfficeError(NEEDS_SIGN_IN, 'needs-consent')

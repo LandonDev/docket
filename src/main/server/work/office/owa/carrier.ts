@@ -3,7 +3,7 @@ import { dirname } from 'node:path'
 import type { OfficeAppState } from '@shared/contract-work-office'
 import { OfficeError, type EventAnswer, type EventOut, type MailFull, type MailOut, type OfficeCarrier } from '../carrier'
 import * as ews from './ews'
-import type { OwaTransport } from './page'
+import type { CallOptions, OwaTransport } from './page'
 
 /**
  * Outlook on the web as an Office carrier, on the box (docs/agents/work-office.md
@@ -58,11 +58,11 @@ export class OwaCarrier implements OfficeCarrier {
   }
 
   /** One request, its answer read by `read`; Outlook's refusals come out as the tools' own errors. */
-  private async call<R>(req: { action: string; body: unknown }, read: (answer: unknown) => R): Promise<R> {
+  private async call<R>(req: { action: string; body: unknown }, read: (answer: unknown) => R, opts?: CallOptions): Promise<R> {
     const page = this.d.page()
     if (!page) throw new OfficeError('The box has no browser for Outlook on the web.', 'not-installed')
     try {
-      return read(await page.call(req.action, req.body))
+      return read(await page.call(req.action, req.body, opts))
     } catch (err) {
       if (err instanceof OfficeError && err.code === 'needs-consent') this.remember(null)
       // Exchange answered with an error: nothing went, so the route fails the row. An answer it could not read may have sent: `failed`, kept as maybe sent.
@@ -106,6 +106,24 @@ export class OwaCarrier implements OfficeCarrier {
     return have
   }
 
+  /**
+   * Who the page is signed in as right now, asked of the page itself and never of the saved marker (the hold review's
+   * 17.2): an Exchange request names no sender and goes from the browser's session, which may have changed since the
+   * marker was written. A held act bound to another account is refused before anything is sent.
+   */
+  private async liveAccount(want: string | undefined): Promise<string> {
+    const have = await this.signedIn()
+    if (want && want.trim().toLowerCase() !== have)
+      throw new OfficeError(`Outlook on the web on the box is signed in as ${have} now, not ${want.trim()}, the account this was held to go from. Nothing was sent.`, 'not-found')
+    return have
+  }
+
+  /** A send: the live sign-in checked before it goes, and again if the page is opened anew before its retry. */
+  private async send<R>(req: { action: string; body: unknown }, read: (answer: unknown) => R, want: string | undefined): Promise<R> {
+    await this.liveAccount(want)
+    return this.call(req, read, { afterReload: async () => void (await this.liveAccount(want)) })
+  }
+
   async listMail(q: { folder: 'inbox' | 'sent' | 'drafts'; limit: number; query?: string }) {
     const folder = q.folder === 'sent' ? 'sentitems' : q.folder
     const account = await this.account()
@@ -132,8 +150,7 @@ export class OwaCarrier implements OfficeCarrier {
 
   /** Only from a held act's execute, after his press. Outlook answers no id for a sent mail: it is found in Sent. */
   async sendMail(m: MailOut): Promise<{ id: string | null }> {
-    await this.account(m.account)
-    await this.call(ews.sendMail(m, 'SendAndSaveCopy'), ews.messageOf)
+    await this.send(ews.sendMail(m, 'SendAndSaveCopy'), ews.messageOf, m.account)
     return { id: null }
   }
 
@@ -142,8 +159,7 @@ export class OwaCarrier implements OfficeCarrier {
   }
 
   async createEvent(e: EventOut): Promise<string> {
-    await this.account(e.account)
-    const id = await this.call(ews.createEvent(e), ews.createdId)
+    const id = await this.send(ews.createEvent(e), ews.createdId, e.account)
     if (!id) throw new OfficeError('Outlook on the web made the event but gave no id', 'failed')
     return id
   }

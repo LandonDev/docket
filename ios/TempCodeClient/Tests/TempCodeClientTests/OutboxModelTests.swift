@@ -309,6 +309,44 @@ import TempCodeContract
         #expect(rows.map(\.value) == [#"into textbox "Subject": Hello"#, #"tab, in textbox "Subject""#, "into the focus: Dana"])
     }
 
+    @Test func `says what a selection finds, in which field, and whether it selects it or puts the caret beside it`() {
+        // In "Pay $100": select Pay then paste OK sends "OK $100"; the caret after Pay then paste OK sends "PayOK $100".
+        func held(_ place: String? = nil) -> [OutboxModel.Field] {
+            var select: [String: JSONValue] = ["action": .string("select_text"), "named": .string("Message"), "text": .string("Pay")]
+            if let place { select["place"] = .string(place) }
+            return typing([.object(select), .object(["action": .string("paste"), "text": .string("OK")]), .object(["action": .string("left_click"), "element": .number(9)])],
+                          [.object(["step": .number(0), "param": .string("point"), "sig": .string("text area:Message < window:New Message")]),
+                           .object(["step": .number(2), "param": .string("element"), "sig": .string("button:Send")])])
+        }
+        #expect(held().map(\.label) == ["Selects", "Pastes", "Clicks"])
+        #expect(held().map(\.value) == [#"the first "Pay" in text area "Message""#, #"into text area "Message": OK"#, #"button "Send""#])
+        #expect(held("after")[0].label == "Puts the caret")
+        #expect(held("after")[0].value == #"after the first "Pay" in text area "Message""#)
+        #expect(held("before")[0].value == #"before the first "Pay" in text area "Message""#)
+        #expect(held("select").map(\.value) == held().map(\.value))
+        #expect(held("after").map(\.value) != held().map(\.value))
+        func one(_ step: [String: JSONValue]) -> OutboxModel.Field {
+            typing([.object(step)], [.object(["step": .number(0), "param": .string("element"), "sig": .string("text area:Message < window:New Message")])])[0]
+        }
+        let narrowed = one(["action": .string("select_text"), "element": .number(4), "text": .string("Pay"), "prefix": .string("Total: "), "suffix": .string(" now")])
+        #expect(narrowed.label == "Selects")
+        #expect(narrowed.value == #"the first "Pay" right after "Total: " and right before " now" in text area "Message""#)
+        let span = one(["action": .string("select_text"), "element": .number(4), "range": .array([.number(4), .number(9)]), "place": .string("after")])
+        #expect(span.label == "Puts the caret")
+        #expect(span.value == #"after characters 4 to 9 in text area "Message""#)
+    }
+
+    @Test func `keeps the field in every row of a long batch, whatever the title cuts`() {
+        let fields = ["To", "Cc", "Subject", "Message"]
+        let steps: [JSONValue] = fields.enumerated().flatMap { i, name in
+            [JSONValue.object(["action": .string("select_text"), "named": .string(name), "text": .string("x")]), .object(["action": .string("paste"), "text": .string("line \(i)")])]
+        }
+        let targets: [JSONValue] = fields.enumerated().map { i, name in .object(["step": .number(Double(i * 2)), "param": .string("point"), "sig": .string("text area:\(name) < window:New Message")]) }
+        let rows = typing(steps, targets)
+        #expect(rows.count == 8)
+        for (i, row) in rows.enumerated() { #expect(row.value.contains(#"text area ""# + fields[i / 2] + #"""#)) }
+    }
+
     @Test func `a Frame.io drawn line draws every point of its path in order, exactly, with its thickness`() {
         func pen(_ mid: [Double]) -> String {
             let shape: JSONValue = .object(["tool": .string("pen"), "color": .string("#ff3b30"), "width": .number(0.003), "points": .array([[0.1, 0.1], mid, [0.5, 0.5]].map { .array($0.map(JSONValue.number)) })])
@@ -346,6 +384,9 @@ import TempCodeContract
     @Test func `a head's paragraph reads, as the outgoing html keeps it; its title does not`() {
         #expect(HtmlWords.of("<head><title>Quote</title><p>I accept the revised price of $9000</p></head><p>Thanks.</p>") == "I accept the revised price of $9000\n\nThanks.")
         #expect(HtmlWords.of("<head><p>I accept the revised price of $9000</p></head><p>Thanks.</p>") == "I accept the revised price of $9000\n\nThanks.")
+        // Only a whole script, style or title name is stripped (the desktop's cases, word for word).
+        #expect(HtmlWords.of("<head><title-note>Extra words</title-note><title>Subject</title></head><p>Approved</p>") == "Extra wordsApproved")
+        #expect(HtmlWords.of("<p>Hi</p><style-x>Shown</style-x><script type=x>gone</script>") == "Hi\n\nShown")
     }
 
     @Test func anUnclosedLinkStillNamesWhereItGoes() {

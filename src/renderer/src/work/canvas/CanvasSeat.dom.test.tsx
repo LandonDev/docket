@@ -206,6 +206,26 @@ describe("a Work thread's canvas", () => {
     }
   });
 
+  it("ties the shown tab to its panel: the tab controls the pane, the pane is named by its tab", async () => {
+    await seat([DOC, SHEET]);
+    const tabs = within(screen.getByRole("tablist")).getAllByRole("tab");
+    const panel = screen.getByRole("tabpanel", { name: "Run of show" });
+    expect(panel.hasAttribute("data-canvas-pane")).toBe(true);
+    expect(tabs[0]!.getAttribute("aria-controls")).toBe(panel.id);
+    expect(panel.getAttribute("aria-labelledby")).toBe(tabs[0]!.id);
+    // A tab whose panel is not drawn names none.
+    expect(tabs[1]!.hasAttribute("aria-controls")).toBe(false);
+    fireEvent.pointerDown(tabs[1]!, { button: 0 });
+    await waitFor(() => expect(screen.getByRole("tabpanel", { name: "Travel budget" })).toBeTruthy());
+    expect(within(screen.getByRole("tablist")).getAllByRole("tab")[1]!.getAttribute("aria-controls")).toBe(screen.getByRole("tabpanel").id);
+  });
+
+  it("gives one item alone, which has no tabs, no panel role", async () => {
+    await seat([DOC]);
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tabpanel")).toBeNull();
+  });
+
   it("closes a tab on a middle click, and from More", async () => {
     await seat([DOC, SHEET]);
     const [, second] = within(screen.getByRole("tablist")).getAllByRole("tab");

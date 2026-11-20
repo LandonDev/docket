@@ -136,7 +136,7 @@ export function CanvasSeat({
             </CanvasMore>
           ) : undefined
         }
-        board={shown ? <CanvasPane key={shown.id} item={shown} environmentId={environmentId} feeds={feeds} shell={shell} onAsk={ask} kinds={kinds} /> : null}
+        board={shown ? <CanvasPane key={shown.id} item={shown} environmentId={environmentId} feeds={feeds} shell={shell} onAsk={ask} kinds={kinds} tabbed={view.items.length > 1} /> : null}
         chat={children}
       />
     </>

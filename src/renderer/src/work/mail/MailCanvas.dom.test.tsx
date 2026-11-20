@@ -157,6 +157,43 @@ describe("a waiting rewrite", () => {
   });
 });
 
+describe("mail.css outside Mail", () => {
+  it("steps work-kit's own popups to 13px and leaves TempCode's dialogs at their own size, whatever was opened first", async () => {
+    const { Dialog: TcDialog, DialogContent: TcContent, DialogTitle: TcTitle } = await import("../../components/ui/dialog");
+    const { Dialog: KitDialog, DialogContent: KitContent, DialogTitle: KitTitle } = await import("work-kit/ui/dialog");
+    const style = document.createElement("style");
+    style.textContent = MAIL_CSS;
+    document.head.append(style);
+    try {
+      render(
+        <>
+          <TcDialog open>
+            <TcContent>
+              <TcTitle>House rule</TcTitle>
+              <p className="text-sm">A house rule's evidence</p>
+            </TcContent>
+          </TcDialog>
+          <KitDialog open>
+            <KitContent>
+              <KitTitle>Mail settings</KitTitle>
+              <p className="text-sm">A row in Mail's settings</p>
+            </KitContent>
+          </KitDialog>
+        </>,
+      );
+      const ours = await screen.findByText("A house rule's evidence");
+      const kits = await screen.findByText("A row in Mail's settings");
+      // The two marks the rule keys on: work-kit's ring, never TempCode's.
+      expect(kits.closest("[data-slot=dialog-content]")!.className.split(" ")).toContain("ring-foreground/10");
+      expect(ours.closest("[data-slot=dialog-content]")!.className.split(" ")).not.toContain("ring-foreground/10");
+      expect(getComputedStyle(kits).fontSize).toBe("13px");
+      expect(getComputedStyle(ours).fontSize).not.toBe("13px");
+    } finally {
+      style.remove();
+    }
+  });
+});
+
 describe("a draft read only", () => {
   it("draws taken words then new ones a space apart, and the subject only when the rewrite changes it", () => {
     const { container, rerender } = render(<Letter draft={{ ...WORDS, text: "myself." }} proposed={{ text: "my own address." }} />);

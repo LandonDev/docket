@@ -158,6 +158,49 @@ describe("where a computer act's typing goes", () => {
       { label: "Types", value: "into the focus: Dana" },
     ]);
   });
+
+  it("says what a selection finds, in which field, and whether it selects it or puts the caret beside it", () => {
+    // In "Pay $100": select Pay then paste OK sends "OK $100"; the caret after Pay then paste OK sends "PayOK $100".
+    const held = (place?: string) =>
+      typing(
+        [
+          { action: "select_text", named: "Message", text: "Pay", ...(place ? { place } : {}) },
+          { action: "paste", text: "OK" },
+          { action: "left_click", element: 9 },
+        ],
+        [
+          { step: 0, param: "point", sig: "text area:Message < window:New Message" },
+          { step: 2, param: "element", sig: "button:Send" },
+        ],
+      );
+    expect(held()).toEqual([
+      { label: "Selects", value: 'the first "Pay" in text area "Message"' },
+      { label: "Pastes", value: 'into text area "Message": OK' },
+      { label: "Clicks", value: 'button "Send"' },
+    ]);
+    expect(held("after")[0]).toEqual({ label: "Puts the caret", value: 'after the first "Pay" in text area "Message"' });
+    expect(held("before")[0]).toEqual({ label: "Puts the caret", value: 'before the first "Pay" in text area "Message"' });
+    expect(held("select")).toEqual(held());
+    expect(held("after")).not.toEqual(held());
+    const one = (step: Record<string, unknown>) => typing([step], [{ step: 0, param: "element", sig: "text area:Message < window:New Message" }])[0];
+    expect(one({ action: "select_text", element: 4, text: "Pay", prefix: "Total: ", suffix: " now" })).toEqual({
+      label: "Selects",
+      value: 'the first "Pay" right after "Total: " and right before " now" in text area "Message"',
+    });
+    expect(one({ action: "select_text", element: 4, range: [4, 9], place: "after" })).toEqual({ label: "Puts the caret", value: 'after characters 4 to 9 in text area "Message"' });
+  });
+
+  it("keeps the field in every row of a long batch, whatever the title cuts", () => {
+    const fields = ["To", "Cc", "Subject", "Message"];
+    const steps = fields.flatMap((name, i) => [
+      { action: "select_text", named: name, text: "x" },
+      { action: "paste", text: `line ${i}` },
+    ]);
+    const targets = fields.map((name, i) => ({ step: i * 2, param: "point", sig: `text area:${name} < window:New Message` }));
+    const rows = typing(steps, targets);
+    expect(rows).toHaveLength(8);
+    rows.forEach((row, i) => expect(row.value).toContain(`text area "${fields[Math.floor(i / 2)]}"`));
+  });
 });
 
 describe("a Frame.io drawn line", () => {

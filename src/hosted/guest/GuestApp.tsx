@@ -42,7 +42,7 @@ export function GuestApp() {
     const mode = modeOf(location.pathname, location.hash);
     return mode.kind === "none" ? null : new Session(mode, location.origin, renewStore);
   }, []);
-  const [state, setState] = useState<{ at: "loading" } | { at: "open"; opened: Opened } | { at: "failed"; why: Failure }>(session ? { at: "loading" } : { at: "failed", why: "gone" });
+  const [state, setState] = useState<{ at: "loading" } | { at: "open"; opened: Opened } | { at: "failed"; why: Failure; unsaved?: boolean }>(session ? { at: "loading" } : { at: "failed", why: "gone" });
 
   const load = useCallback(() => {
     if (!session) return;
@@ -59,9 +59,10 @@ export function GuestApp() {
   }, [session]);
   useEffect(load, [load]);
   const gone = useCallback(() => setState({ at: "failed", why: "gone" }), []);
-  const down = useCallback(() => setState({ at: "failed", why: "down" }), []);
+  // A sheet that ran out of tries says whether an edit stood unsaved: the screen keeps that warning.
+  const down = useCallback((unsaved = false) => setState({ at: "failed", why: "down", unsaved }), []);
 
-  if (state.at === "failed") return <Ended why={state.why} owner={session?.mode.kind === "owner"} retry={load} />;
+  if (state.at === "failed") return <Ended why={state.why} unsaved={!!state.unsaved} owner={session?.mode.kind === "owner"} retry={load} />;
   const opened = state.at === "open" ? state.opened : null;
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -117,11 +118,15 @@ function Bones() {
 const ENDED: Record<Failure, { title: string; detail: string }> = {
   gone: { title: "This link no longer opens anything", detail: "Ask the person who sent it if you still need it." },
   busy: { title: "Too many tries from here", detail: "Try again in a few minutes." },
-  down: { title: "This page cannot be reached right now", detail: "Nothing you wrote is lost. Try again in a minute." },
+  // Says nothing of what was written: the page cannot know whether the last edit reached the item.
+  down: { title: "This page cannot be reached right now", detail: "Try again in a minute." },
 };
 
-function Ended({ why, owner, retry }: { why: Failure; owner: boolean; retry(): void }) {
-  const words = owner && why === "gone" ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : ENDED[why];
+/** The unreachable screen with an edit the item never took: the warning the grid showed stays. */
+const DOWN_UNSAVED = { title: "This page cannot be reached right now", detail: "Your last edit was not saved. Try again in a minute, then make it again." };
+
+export function Ended({ why, unsaved = false, owner, retry }: { why: Failure; unsaved?: boolean; owner: boolean; retry(): void }) {
+  const words = owner && why === "gone" ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : why === "down" && unsaved ? DOWN_UNSAVED : ENDED[why];
   return (
     <main className="grid h-dvh place-items-center bg-background px-6 text-foreground">
       <Empty>

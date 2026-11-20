@@ -86,8 +86,10 @@ export function Body(props: CanvasBodyProps<SlidesState> & SlidesDeps) {
 
 export function SlidesBody({ item, source, shell, host, store, engine, width: fixedWidth, height: fixedHeight }: CanvasBodyProps<SlidesState> & { host: DeckHost; store: DeckStore; engine: PdfEngine; width?: number; height?: number }) {
   const { view, error, current, side } = useDeck(store);
-  const fileRender = useRender(host, "file", view?.renders.file ?? null, engine);
-  const proposedRender = useRender(host, "proposed", view?.renders.proposed ?? null, engine);
+  // A render whose bytes moved on mid-read asks for the view again, whose new revision reads afresh.
+  const refresh = useCallback(() => void openDeck(host, store), [host, store]);
+  const fileRender = useRender(host, "file", view?.renders.file ?? null, engine, refresh);
+  const proposedRender = useRender(host, "proposed", view?.renders.proposed ?? null, engine, refresh);
   const fileDoc = fileRender.doc;
   const proposedDoc = proposedRender.doc;
   // The host's own word first; else a render this window could not read.
@@ -112,20 +114,27 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
   }, [host, store]);
   // A picture this window could not read is read again on Retry, the strip and the text diffs staying drawn meanwhile;
   // a deck the host has no picture of (its own word) has nothing here to read again.
-  const readFailed = !view?.renderError && (fileRender.error !== null || proposedRender.error !== null);
+  // Retry reads again only the render that failed, so the slides of the other never blank.
+  const fileFailed = fileRender.error !== null;
+  const proposedFailed = proposedRender.error !== null;
+  const readFailed = !view?.renderError && (fileFailed || proposedFailed);
   const retryFile = fileRender.retry;
   const retryProposed = proposedRender.retry;
   const retryRender = useMemo(
     () =>
       readFailed
         ? () => {
-            retryFile();
-            retryProposed();
+            if (fileFailed) retryFile();
+            if (proposedFailed) retryProposed();
           }
         : undefined,
-    [readFailed, retryFile, retryProposed],
+    [readFailed, fileFailed, proposedFailed, retryFile, retryProposed],
   );
-  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender);
+  // The review is bound to the proposed render on screen: its revision goes with every press, and while a new one is
+  // being read in its place (or the first is still coming) the stepper is held, its verbs off.
+  const proposedAt = view?.renders.proposed?.rev;
+  const replacing = !!proposedAt && !view?.renderError && !proposedFailed && (proposedRender.doc === null || proposedRender.rev !== proposedAt);
+  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, proposedAt, replacing, store);
 
   // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
   if (error) return null;
@@ -168,6 +177,9 @@ function useFeeds(
   run: (work: Promise<DeckView>, fallback: string) => Promise<void>,
   retry: () => Promise<void>,
   retryRender: (() => void) | undefined,
+  proposedAt: string | undefined,
+  replacing: boolean,
+  store: DeckStore,
 ): void {
   const inPowerPoint = side === "powerpoint";
   const mode = view?.mode;
@@ -210,13 +222,26 @@ function useFeeds(
         const slide = change && slideOfChange(view, change);
         if (slide) select(slide.key);
       },
-      accept: (w) => run(host.review(which(w), "accept"), "Couldn't accept the change"),
-      reject: (w) => run(host.review(which(w), "reject"), "Couldn't reject the change"),
+      held: replacing,
+      accept: (w) => decide(which(w), "accept"),
+      reject: (w) => decide(which(w), "reject"),
     };
+    // A press goes with the revision of the preview he saw; one the host refuses (the changes moved on since) says so,
+    // and the deck is read again, so he decides only on what is drawn.
+    function decide(changes: string[] | "all", verdict: "accept" | "reject"): Promise<void> {
+      if (replacing) return Promise.reject(new Error("The slides are still being drawn"));
+      return host.review(changes, verdict, proposedAt).then(
+        (next) => store.view(next),
+        (e: unknown) => {
+          sayError(e, verdict === "accept" ? "Couldn't accept the change" : "Couldn't reject the change");
+          return openDeck(host, store);
+        },
+      );
+    }
     shell.review(review);
     return () => shell.review(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shell, host, changes, index, inPowerPoint, run, select]);
+  }, [shell, host, changes, index, inPowerPoint, run, select, proposedAt, replacing, store]);
 }
 
 // ── the strip ────────────────────────────────────────────────────────

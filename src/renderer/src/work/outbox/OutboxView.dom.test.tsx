@@ -87,7 +87,7 @@ vi.mock("../../lib/connection", async (original) => {
 vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { batchVerb, canEdit, OutboxView } from "./OutboxView";
+import { batchVerb, canEdit, OutboxView, rowWords } from "./OutboxView";
 import { resetOutboxStore } from "./store";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({
@@ -450,10 +450,19 @@ describe("the Outbox", () => {
     // Esports staff once in the detail: the In row.
     const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
     expect(detail.textContent!.split("Esports staff").length - 1).toBe(1);
-    fireEvent.click(screen.getByText("Share Budget.xlsx with dana@purdue.edu (can edit)"));
+    // The list names who and how first, the file under it.
+    fireEvent.click(screen.getByText("Share with dana@purdue.edu (can edit)"));
     await waitFor(() => expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Share Budget.xlsx"));
     expect(detail.textContent!.split("dana@purdue.edu").length - 1).toBe(1);
+    expect(document.querySelector("[data-outbox-list]")!.textContent).toContain("Budget.xlsx");
     // The list keeps the whole summary.
     expect(document.querySelector("[data-outbox-list]")!.textContent).toContain("Esports staff");
+  });
+
+  it("keeps a Google share's person in its list title however long the file's name, the file on the line under it", () => {
+    const share = { kind: "share.google", verb: "Share", summary: "Share Spring LAN budget, final, with every vendor quote attached.xlsx with dana@purdue.edu (can edit)", payload: { name: "Spring LAN budget, final, with every vendor quote attached.xlsx", email: "dana@purdue.edu", role: "writer" } } as never;
+    expect(rowWords(share)).toEqual({ act: "Share with dana@purdue.edu (can edit)", about: "Spring LAN budget, final, with every vendor quote attached.xlsx" });
+    // Every other kind splits its summary at the colon, as before.
+    expect(rowWords({ kind: "mail.send", verb: "Send", summary: "Send to Dana Lee: Budget", payload: {} } as never)).toEqual({ act: "Send to Dana Lee", about: "Budget" });
   });
 });

@@ -35,10 +35,16 @@ export function refusedWords(reason: string | "lost"): string | null {
   return null;
 }
 
-export function SheetPage({ session, opened, onGone, onDown }: { session: Session; opened: Opened; onGone(): void; onDown(): void }) {
+export function SheetPage({ session, opened, onGone, onDown }: { session: Session; opened: Opened; onGone(): void; onDown(unsaved: boolean): void }) {
   const [book, setBook] = useState<{ snapshot: Record<string, unknown>; key: number } | null>(null);
   // Set: an edit the sheet does not have, and why in his words (null: the word alone).
-  const [refused, setRefused] = useState<{ why: string | null } | null>(null);
+  const [refused, setRefusedState] = useState<{ why: string | null } | null>(null);
+  // Whether an edit stands unsaved now: read when the tries run out, in the same tick a close may have set it.
+  const unsaved = useRef(false);
+  const setRefused = (next: { why: string | null } | null): void => {
+    unsaved.current = next !== null;
+    setRefusedState(next);
+  };
   // The socket is down: the grid stays as it was, read only, under one line, until a fresh state comes.
   const [offline, setOffline] = useState(false);
   const handle = useRef<SheetHandle | null>(null);
@@ -50,7 +56,7 @@ export function SheetPage({ session, opened, onGone, onDown }: { session: Sessio
     const l = live.current;
     // Again, with backoff: after five tries in a row, the page cannot be reached (the unavailable screen, with Retry).
     const again = (delay?: number): void => {
-      if (++tries > 5) return onDown();
+      if (++tries > 5) return onDown(unsaved.current);
       setTimeout(() => void connect(), delay ?? Math.min(8000, 500 * 2 ** tries));
     };
     const connect = async (): Promise<void> => {

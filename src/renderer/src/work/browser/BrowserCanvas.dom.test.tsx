@@ -82,6 +82,7 @@ vi.mock("../../surfaces/threads/computer/Viewport", async (original) => {
 
 vi.mock("../../lib/threadResources", () => ({ hostName: () => "Landon's MacBook" }));
 
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { ENDED_WORDS } from "../../surfaces/threads/computer/Viewport";
 import { Bar, Body } from "./BrowserCanvas";
 
@@ -173,6 +174,35 @@ describe("the browser's bar", () => {
     expect(group.className).toContain("ms-auto");
     expect(group.className).toContain("gap-2");
     expect(group.contains(screen.getByRole("button", { name: "Take over" }))).toBe(true);
+  });
+
+  it("a long site name cuts the primary's words to the room beside Discard, never its box, whole in its name and, while cut, its tooltip", async () => {
+    const site = "Concur Expense Reporting for the Purdue University Recreation and Wellness Department";
+    host.state = { ...host.state, site: { url: "https://us2.concursolutions.com/report", name: site } };
+    host.items = [HELD];
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    const { unmount } = render(<Bar {...props()} />);
+    const name = `Submit Report in ${site}`;
+    const primary = await screen.findByRole("button", { name });
+    // It may shrink and its words cut; the verbs beside it stay whole.
+    expect(primary.className).toContain("min-w-0");
+    expect(primary.className).toContain("[&_[data-slot=busy-label]:not([data-busy])>span]:truncate");
+    expect(primary.parentElement!.className).toContain("min-w-0");
+    expect(primary.parentElement!.className).not.toContain("shrink-0");
+    expect(screen.getByRole("button", { name: "Discard" }).className).toContain("shrink-0");
+    // Words that fit mount no tooltip.
+    expect(primary.getAttribute("data-slot")).toBe("button");
+    unmount();
+    // Words that are cut show whole on hover and focus.
+    const width = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    render(<Bar {...props()} />);
+    await waitFor(() => expect(screen.getByRole("button", { name }).getAttribute("data-slot")).toBe("tooltip-trigger"));
+    width.mockRestore();
+    client.mockRestore();
   });
 
   it("at a held submit, Take over gives way by the pane's width (a container query), never the window's", async () => {

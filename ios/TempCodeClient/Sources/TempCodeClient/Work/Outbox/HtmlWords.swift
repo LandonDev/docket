@@ -16,8 +16,9 @@ public enum HtmlWords {
         for m in matches(#"url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)"#, in: plain) { backgrounds.append(m.firstGroup.trimmingCharacters(in: .whitespaces)) }
 
         // A <head>'s content stays: the outgoing html keeps it and a browser shows a <p> found there. Only what
-        // never shows (script, style, the title) goes.
-        var out = replace(#"<(script|style|title)\b[\s\S]*?</\1\s*>"#, in: html) { _ in "" }
+        // never shows (script, style, the title) goes, named whole: the name ends at a space, a slash or the tag's
+        // end, so `<title-note>` or `<style-x>` is no title or style and its words read.
+        var out = replace(#"<(script|style|title)(?=[\s/>])[\s\S]*?</\1\s*>"#, in: html) { _ in "" }
         out = replace(#"<!--[\s\S]*?-->"#, in: out) { _ in "" }
         out = replace(#"<img\b[^>]*>"#, in: out) { m in
             let src = decode(attr(m.whole, "src") ?? "").trimmingCharacters(in: .whitespaces)

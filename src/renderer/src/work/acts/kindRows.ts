@@ -110,9 +110,18 @@ export function stepRows(args: Rec, targets: unknown): { label: string; value: s
       case "perform":
         rows.push({ label: "Performs", value: `${str(a.name) ?? "an action"} on ${on()}` });
         break;
-      case "select_text":
-        rows.push({ label: "Selects", value: JSON.stringify(text ?? [str(a.prefix), str(a.suffix)].filter(Boolean).join(" … ")) });
+      case "select_text": {
+        // What it finds (its first match, narrowed by the words right around it, or a span of characters), in which
+        // field, and whether it selects that or only puts the caret beside it: "select Pay" and "caret after Pay"
+        // then paste the same text to different ends.
+        const range = Array.isArray(a.range) && a.range.length === 2 ? `characters ${a.range[0]} to ${a.range[1]}` : null;
+        const around = [str(a.prefix) ? `right after ${JSON.stringify(a.prefix)}` : "", str(a.suffix) ? `right before ${JSON.stringify(a.suffix)}` : ""].filter(Boolean).join(" and ");
+        const match = range ?? `the first ${JSON.stringify(text ?? "")}${around ? ` ${around}` : ""}`;
+        const place = str(a.place);
+        if (place === "before" || place === "after") rows.push({ label: "Puts the caret", value: `${place} ${match} in ${intoWhat()}` });
+        else rows.push({ label: "Selects", value: `${match} in ${intoWhat()}` });
         break;
+      }
       case "save_as":
         rows.push({ label: "Saves as", value: str(a.path) ?? str(a.named) ?? "a file" });
         break;

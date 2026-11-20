@@ -104,6 +104,9 @@ describe("htmlWords", () => {
     expect(htmlWords('<p>See <a href="https://outside.example/secret">the report</p>')).toBe("See [link: https://outside.example/secret] the report");
     expect(htmlWords('<a href="https://good.example">OK<a href="https://other.example">Pay here</a>')).toBe("[link: https://good.example] OKPay here (https://other.example)");
     expect(htmlWords("<head><title>Quote</title><p>I accept the revised price of $9000</p></head><p>Thanks.</p>")).toBe("I accept the revised price of $9000\n\nThanks.");
+    // a tag whose name only starts like one of them is no such tag: its words show (the hold review's sixteenth pass)
+    expect(htmlWords("<head><title-note>Extra words</title-note><title>Subject</title></head><p>Approved</p>")).toBe("Extra wordsApproved");
+    expect(htmlWords("<p>Hi</p><style-x>Shown</style-x><script type=x>gone</script>")).toBe("Hi\n\nShown");
     // a tag is read whole wherever its quotes put a ">"
     expect(htmlWords(`<a title="><span" href="https://actual.test/private">Open</a>`)).toBe("Open (https://actual.test/private)");
     expect(htmlWords(`<img alt="a>b" src="https://actual.test/p.png">`)).toBe("[image a>b: https://actual.test/p.png]");

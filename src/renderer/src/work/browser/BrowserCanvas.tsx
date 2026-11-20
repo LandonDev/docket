@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { BrowserState } from "@shared/contract-work-browser";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 import { Lock } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { TruncateTip } from "../../components/tip";
 import { FADE_IN } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
@@ -177,26 +178,61 @@ function FaceEnd({
     case "held": {
       const ref = face.item.ref;
       return (
-        <span className="ms-auto flex shrink-0 items-center gap-1">
+        // The verbs stay whole; the primary takes the room left beside Discard and cuts its words there, never its box or its ring.
+        <span className="ms-auto flex min-w-0 items-center gap-1">
           {face.owner ? (
-            <Button variant="ghost" size="xs" disabled={!!busy} onClick={handBack}>
+            <Button variant="ghost" size="xs" className="shrink-0" disabled={!!busy} onClick={handBack}>
               <BusyLabel busy={busy === "back"} label="Hand back" />
             </Button>
           ) : (
-            <Button variant="ghost" size="xs" data-slot="browser-take-over" className="@max-[540px]/browser:hidden" disabled={!!busy} onClick={takeOver}>
+            <Button variant="ghost" size="xs" data-slot="browser-take-over" className="shrink-0 @max-[540px]/browser:hidden" disabled={!!busy} onClick={takeOver}>
               <BusyLabel busy={busy === "take"} label="Take over" />
             </Button>
           )}
-          <Button variant="ghost" size="xs" disabled={!!busy} onClick={() => press("discard", () => discardHeld(env, ref))}>
+          <Button variant="ghost" size="xs" className="shrink-0" disabled={!!busy} onClick={() => press("discard", () => discardHeld(env, ref))}>
             <BusyLabel busy={busy === "discard"} label="Discard" />
           </Button>
-          <Button size="xs" disabled={!!busy || !seen} onClick={() => press("submit", () => submitHeld(env, ref))}>
-            <BusyLabel busy={busy === "submit"} label={face.act} />
-          </Button>
+          <Primary label={face.act} busy={busy === "submit"} disabled={!!busy || !seen} onClick={() => press("submit", () => submitHeld(env, ref))} />
         </span>
       );
     }
   }
+}
+
+/** The held submit's one primary: its words cut to the room it has (a site's name runs to 80 characters), whole in its name and, while cut, in its tooltip. */
+function Primary({ label, busy, disabled, onClick }: { label: string; busy: boolean; disabled: boolean; onClick(): void }) {
+  const button = useRef<HTMLButtonElement>(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const words = button.current?.querySelector<HTMLElement>("[data-slot=busy-label] > span");
+    if (!words) return;
+    const measure = () => setCut(words.scrollWidth > words.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(words);
+    return () => observer.disconnect();
+  }, [label, busy]);
+  const primary = (
+    <Button
+      ref={button}
+      size="xs"
+      data-browser-submit
+      aria-label={label}
+      className="max-w-full min-w-0 [&_[data-slot=busy-label]]:min-w-0 [&_[data-slot=busy-label]:not([data-busy])>span]:block [&_[data-slot=busy-label]:not([data-busy])>span]:truncate"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <BusyLabel busy={busy} label={label} />
+    </Button>
+  );
+  if (!cut) return primary;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={primary} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function Body(props: CanvasBodyProps & BrowserSeam) {

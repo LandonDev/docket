@@ -12,11 +12,11 @@ import { registry } from "../../lib/connection";
 
 export type HostResult = WorkResult & { environmentId: string };
 
-/** `error`: why the newest read failed, kept apart from a list that is empty; the rows already read stay. */
-type Entry = { environmentId: string; rows: HostResult[]; loaded: boolean; error: string | null };
+/** `error`: why the newest read failed, kept apart from a list that is empty; the rows already read stay. `reading`: a read is out (Retry spins and waits). */
+type Entry = { environmentId: string; rows: HostResult[]; loaded: boolean; error: string | null; reading: boolean };
 const results = new Map<string, Entry>();
 const listeners = new Set<() => void>();
-const EMPTY: Omit<Entry, "environmentId"> = { rows: [], loaded: false, error: null };
+const EMPTY: Omit<Entry, "environmentId"> = { rows: [], loaded: false, error: null, reading: false };
 const loading = new Set<string>();
 const again = new Set<string>();
 
@@ -33,13 +33,25 @@ export function loadResults(environmentId: string, sessionId: string): void {
     return;
   }
   loading.add(sessionId);
+  // What was read stays on screen, its error too, while the next read is out.
+  const was = results.get(sessionId);
+  if (was) {
+    results.set(sessionId, { ...was, reading: true });
+    changed();
+  }
   void registry
     .linkOf(environmentId)
     .request<{ results: WorkResult[] }>("work.outbox.results", { sessionId })
     .then(
-      (answer) => void results.set(sessionId, { environmentId, rows: tag(environmentId, answer.results), loaded: true, error: null }),
+      (answer) => void results.set(sessionId, { environmentId, rows: tag(environmentId, answer.results), loaded: true, error: null, reading: false }),
       (err: unknown) =>
-        void results.set(sessionId, { environmentId, rows: results.get(sessionId)?.rows ?? [], loaded: true, error: (err instanceof Error ? err.message : String(err)) || "The host did not answer" }),
+        void results.set(sessionId, {
+          environmentId,
+          rows: results.get(sessionId)?.rows ?? [],
+          loaded: true,
+          error: (err instanceof Error ? err.message : String(err)) || "The host did not answer",
+          reading: false,
+        }),
     )
     .finally(() => {
       loading.delete(sessionId);

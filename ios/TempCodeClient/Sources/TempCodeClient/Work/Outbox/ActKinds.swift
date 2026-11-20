@@ -206,7 +206,21 @@ public extension OutboxModel {
             case "perform":
                 rows.append(("Performs", "\(word(a["name"]) ?? "an action") on \(on())"))
             case "select_text":
-                rows.append(("Selects", json(.string(text ?? [word(a["prefix"]), word(a["suffix"])].compactMap { $0 }.joined(separator: " … ")))))
+                // What it finds (its first match, narrowed by the words right around it, or a span of characters), in
+                // which field, and whether it selects that or only puts the caret beside it: "select Pay" and "caret
+                // after Pay" then paste the same text to different ends (the desktop's words).
+                let range: String? = if case .array(let ends)? = a["range"], ends.count == 2 { "characters \(number(ends[0])) to \(number(ends[1]))" } else { nil }
+                let around = [("right after", a["prefix"]), ("right before", a["suffix"])].compactMap { words, value -> String? in
+                    guard word(value) != nil, let value else { return nil }
+                    return "\(words) \(json(value))"
+                }.joined(separator: " and ")
+                let match = range ?? "the first \(json(.string(text ?? "")))\(around.isEmpty ? "" : " \(around)")"
+                let place = word(a["place"])
+                if place == "before" || place == "after" {
+                    rows.append(("Puts the caret", "\(place!) \(match) in \(into)"))
+                } else {
+                    rows.append(("Selects", "\(match) in \(into)"))
+                }
             case "save_as":
                 rows.append(("Saves as", word(a["path"]) ?? word(a["named"]) ?? "a file"))
             case "mouse_move":

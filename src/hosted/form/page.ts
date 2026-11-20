@@ -167,21 +167,32 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
     const answers = answersOf(form, f.questions)
     const missing = f.questions.find((q) => q.required && q.type !== 'section' && !answers[q.id])
     if (missing) return showError(missing.id, 'This question needs an answer.')
+    // What goes is what was read just now: the fields rest until the answer comes, and come back as they were (values kept) if it fails.
+    const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')].filter((c) => !c.disabled)
+    for (const c of fields) c.disabled = true
+    form.setAttribute('aria-busy', 'true')
     button.disabled = true
     button.setAttribute('aria-busy', 'true')
     button.textContent = 'Sending…'
+    // Back before any error is said, so the refused question can take the focus.
+    const release = (): void => {
+      for (const c of fields) c.disabled = false
+      form.removeAttribute('aria-busy')
+      button.disabled = false
+      button.removeAttribute('aria-busy')
+      button.textContent = 'Send'
+    }
     void fetcher(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers }) })
       .then(async (r) => {
         if (r.ok) return message(root, f.title, 'Your answer was sent. Thank you.')
         const body = (await r.json().catch(() => ({}))) as { error?: string; question?: string }
         if (r.status === 410) return message(root, f.title, 'This form is closed. It takes no more answers.')
+        release()
         showError(body.question, body.error ?? 'Your answer was not sent. Try again.')
       })
-      .catch(() => showError(undefined, 'Your answer was not sent. Check your connection and try again.'))
-      .finally(() => {
-        button.disabled = false
-        button.removeAttribute('aria-busy')
-        button.textContent = 'Send'
+      .catch(() => {
+        release()
+        showError(undefined, 'Your answer was not sent. Check your connection and try again.')
       })
   })
   root.append(form)
