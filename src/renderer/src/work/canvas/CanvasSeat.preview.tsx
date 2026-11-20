@@ -12,12 +12,13 @@ import { defineChunk } from "../../lib/lazyChunk";
 import { workCanvasChunk } from "../../surfaces/chunks";
 import { ChatFooter } from "../../surfaces/threads/chatSlots";
 import { CanvasSeat } from "./CanvasSeat";
+import { setOpening } from "./fileDrop";
 import type { CanvasBodyProps, CanvasKindDef } from "./kind";
 import { CANVAS } from "./registry";
 import { SelectionTools } from "./SelectionBar";
 import { applyCanvasPush, setFolded } from "./store";
 
-export type PreviewMoment = "three" | "one" | "folded" | "loading" | "unreachable" | "written" | "failed";
+export type PreviewMoment = "three" | "one" | "folded" | "loading" | "unreachable" | "written" | "failed" | "opening" | "uploading";
 
 const source: CanvasSource = { at: "lifeos", table: "docs", id: "doc-1" };
 const item = (id: string, kind: CanvasKind, title: string, position: number, sessionId: string): CanvasItem => ({
@@ -129,12 +130,16 @@ function kindsFor(moment: PreviewMoment): Record<CanvasKind, CanvasKindDef> {
   return { ...CANVAS, document: { ...CANVAS.document, chunk } };
 }
 
+const previewToken = {};
+
 export function CanvasPreview({ moment = "three" }: { moment?: PreviewMoment }) {
   const sessionId = `preview-${moment}`;
   const many = moment === "three" || moment === "folded";
+  // A file dropped from the desktop on its way in: a small one in a pane with no item yet, a big one beside an item.
+  setOpening(sessionId, previewToken, moment === "opening" ? { name: "Ballroom contract.pdf", sent: 0, total: 240_000, cancel: noop } : moment === "uploading" ? { name: "Keynote cut 3.mov", sent: 12 * 1024 * 1024, total: 48 * 1024 * 1024, cancel: noop } : null);
   applyCanvasPush({
     sessionId,
-    items: [
+    items: moment === "opening" ? [] : [
       item(`${sessionId}-doc`, "document", "Spring LAN run of show", 0, sessionId),
       ...(many ? [item(`${sessionId}-sheet`, "sheet", "Nationals travel budget", 1, sessionId), item(`${sessionId}-pdf`, "pdf", "Ballroom contract", 2, sessionId)] : []),
     ],

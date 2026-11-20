@@ -1,6 +1,9 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
 import type { CanvasKind, ContextChip } from "@shared/work";
-import { Check, FolderOpen, X } from "../../chrome/icons";
+import { Check, File, FolderOpen, X } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
+import { Progress } from "../../components/ui/progress";
+import { Spinner } from "../../components/ui/spinner";
 import type { MenuRow } from "../../chrome/menuRows";
 import { addContextChip } from "./chips";
 import type { Session } from "../../lib/session";
@@ -9,6 +12,7 @@ import { CanvasPane, useKindModule } from "./CanvasPane";
 import { CanvasMore, CanvasTabs } from "./CanvasTabs";
 import { sayError, useFrame } from "./frame";
 import type { CanvasKindDef, CanvasSelection } from "./kind";
+import { useOpening, type Opening } from "./fileDrop";
 import { CANVAS } from "./registry";
 import { closeItem, reorderItems, selectItem, setFolded, useCanvas, useKeptState } from "./store";
 
@@ -58,6 +62,9 @@ export function CanvasSeat({
   const TabEnd = shown ? module?.TabEnd : undefined;
   const [kept, keep] = useKeptState(shown?.id ?? "");
   const [picking, setPicking] = useState(false);
+  // A file from outside is said in the pane until it lands, items or none.
+  const opening = useOpening(sessionId);
+  const board = shown !== null || opening !== null;
 
   const close = (itemId: string): void => void closeItem(environmentId, sessionId, itemId).catch((error: unknown) => sayError(error, "Couldn't close the item"));
   const ask = (selection: CanvasSelection): void => {
@@ -78,6 +85,7 @@ export function CanvasSeat({
           { kind: "sep" },
         ] satisfies MenuRow[])
       : []),
+    { kind: "item", id: "open-file", label: "Open file…", icon: File },
     { kind: "item", id: "google-open", label: "Open from Google…", icon: FolderOpen },
     { kind: "sep" },
     { kind: "item", id: "close", label: "Close", icon: X },
@@ -93,6 +101,7 @@ export function CanvasSeat({
       return;
     }
     if (id === "google-open") setPicking(true);
+    if (id === "open-file") void import("./openOutside").then(({ pickAndOpen }) => pickAndOpen({ at: "thread", sessionId })).catch((error: unknown) => sayError(error, "Couldn't open the file"));
     if (id === "close") close(shown.id);
     if (id === "close-others") view.items.filter((item) => item.id !== shown.id).forEach((item) => close(item.id));
     if (review && !review.held && !review.verdictsHeld && (id === "accept-all" || id === "reject-all")) {
@@ -109,7 +118,7 @@ export function CanvasSeat({
         </Suspense>
       ) : null}
       <SplitShell
-        hasBoard={shown !== null}
+        hasBoard={board}
         collapsed={view.folded}
         onToggleChat={(open) => setFolded(sessionId, !open)}
         splitState={split}
@@ -136,9 +145,55 @@ export function CanvasSeat({
             </CanvasMore>
           ) : undefined
         }
-        board={shown ? <CanvasPane key={shown.id} item={shown} environmentId={environmentId} feeds={feeds} shell={shell} onAsk={ask} kinds={kinds} tabbed={view.items.length > 1} /> : null}
+        board={
+          board ? (
+            <>
+              {shown ? <CanvasPane key={shown.id} item={shown} environmentId={environmentId} feeds={feeds} shell={shell} onAsk={ask} kinds={kinds} tabbed={view.items.length > 1} /> : null}
+              {opening ? <OpeningState opening={opening} docked={shown !== null} /> : null}
+            </>
+          ) : null
+        }
         chat={children}
       />
     </>
+  );
+}
+
+/** An upload under this size opens with the spinner alone: it is over before a bar would mean anything. */
+export const BAR_FROM_BYTES = 4 * 1024 * 1024;
+
+/**
+ * A file from outside on its way into the pane: the spinner and its name, the upload's bar once it is big enough to take
+ * a while, and Cancel. In an empty pane it is the pane's one content, centred; beside an item it is a 36px row at the
+ * pane's foot, under the item, so the item stays readable while a big file goes up.
+ */
+function OpeningState({ opening, docked }: { opening: Opening; docked: boolean }) {
+  const { name, sent, total, cancel } = opening;
+  const what = (
+    <span aria-live="polite" className={`flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground ${docked ? "flex-1" : ""}`}>
+      <Spinner className="size-3.5 shrink-0" />
+      <span className="truncate">Opening {name}</span>
+    </span>
+  );
+  const bar = total >= BAR_FROM_BYTES ? <Progress value={(sent / total) * 100} aria-label={`Uploading ${name}`} className={docked ? "w-24 shrink-0" : "w-full"} /> : null;
+  const stop = (
+    <Button variant="ghost" size="xs" onClick={cancel}>
+      Cancel
+    </Button>
+  );
+  return docked ? (
+    <div data-file-opening className="flex h-9 shrink-0 items-center gap-3 border-t border-border bg-background pr-2 pl-3">
+      {what}
+      {bar}
+      {stop}
+    </div>
+  ) : (
+    <div data-file-opening className="grid min-h-0 flex-1 place-items-center">
+      <div className="flex w-64 max-w-[calc(100%-32px)] flex-col items-center gap-3">
+        {what}
+        {bar}
+        {stop}
+      </div>
+    </div>
   );
 }

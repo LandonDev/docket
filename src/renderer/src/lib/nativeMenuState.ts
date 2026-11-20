@@ -14,6 +14,7 @@ import { workspaceStore } from "./tcserver/workspaces";
 import type { BatchAction } from "./threadBatch";
 import { batchCounts, type BatchCounts } from "./threadBatchMenu";
 import { isUnread } from "./threadStripModel";
+import { workFilePort, workSwitch } from "./workSwitch";
 
 /**
  * What the native menu bar shows for this window (src/shared/menuTree.ts):
@@ -37,6 +38,7 @@ export type MenuFacts = {
   counts: BatchCounts;
   /** This machine's Away is on (lib/away.ts). */
   away: boolean;
+  workFile: boolean;
 };
 
 const FLEET_IDS: Record<BatchAction, string> = {
@@ -57,6 +59,7 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (f.split) open.push("close_tab");
   if (!f.dockUsable) disabled.push("toggle_terminal");
   if (f.unread === 0) disabled.push("mark_all_read");
+  if (!f.workFile) disabled.push("open_file");
   for (const action of Object.keys(FLEET_IDS) as BatchAction[]) {
     if (f.counts[action] === 0) disabled.push(FLEET_IDS[action]);
   }
@@ -87,6 +90,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
     unread,
     counts: batchCounts(metas, { catalog, lastSeen, floor, scope: EVERYWHERE, now: Date.now() }),
     away: awayEnabled(),
+    workFile: workFilePort.get()?.can() ?? false,
   };
 }
 
@@ -126,6 +130,7 @@ export function publishMenuState(
     workspaceTabsStore.subscribe(schedule),
     messageListFold.subscribe(schedule),
     awayStore.subscribe(schedule),
+    workSwitch.subscribe(schedule),
   ];
   const clock = setInterval(schedule, MENU_STATE_CLOCK_MS);
   flush();

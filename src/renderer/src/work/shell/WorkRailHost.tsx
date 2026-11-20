@@ -14,6 +14,7 @@ import { useEnvironments } from "../../lib/connection";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces, workspaceByPath } from "../../lib/tcserver/workspaces";
 import { workRailPort, useWorkHosts } from "../../lib/workSwitch";
+import { FileDrops } from "../canvas/fileDrop";
 import { openWorkSettings } from "./open";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
 import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
@@ -140,17 +141,23 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
     return () => workRailPort.set(null);
   }, [home, hosts, names, onOpenWorkspace, order, state, workspaces]);
 
-  return naming && home ? (
-    <NameWorkspaceDialog
-      environmentId={home}
-      taken={workspaces.filter((w) => w.environmentId === home).map((w) => w.name)}
-      onClose={() => setNaming(false)}
-      onCreated={(w) => {
-        setNaming(false);
-        onOpenWorkspace(w.path);
-      }}
-    />
-  ) : null;
+  return (
+    <>
+      {/* Files dropped on Work open in a thread's canvas, wherever Work is on screen (work/canvas/fileDrop.tsx). */}
+      <FileDrops />
+      {naming && home ? (
+        <NameWorkspaceDialog
+          environmentId={home}
+          taken={workspaces.filter((w) => w.environmentId === home).map((w) => w.name)}
+          onClose={() => setNaming(false)}
+          onCreated={(w) => {
+            setNaming(false);
+            onOpenWorkspace(w.path);
+          }}
+        />
+      ) : null}
+    </>
+  );
 }
 
 /** "Without a sector…": the one thing to choose is the name. */

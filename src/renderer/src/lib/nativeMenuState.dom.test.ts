@@ -21,6 +21,7 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   unread: 1,
   counts: { pause: 1, resume: 1, stop: 1, archiveDone: 1 },
   away: false,
+  workFile: true,
   ...over,
 });
 
@@ -58,6 +59,10 @@ describe("menuStateOf", () => {
 
   it("ticks Away from Computer while Away is on", () => {
     expect(menuStateOf(facts({ away: true })).checked).toEqual({ toggle_away: true });
+  });
+
+  it("greys Open File… with no Work thread, draft or view in front", () => {
+    expect(menuStateOf(facts({ workFile: false })).disabled).toEqual(["open_file"]);
   });
 });
 

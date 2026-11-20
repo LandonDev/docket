@@ -268,6 +268,22 @@ export const workOpenPort = {
   },
 };
 
+/** A file drop Work opens (work/canvas/fileDrop.tsx), marked first; the composer lets it pass. */
+const claimedDrops = new WeakSet<Event>();
+export const claimFileDrop = (event: Event): void => void claimedDrops.add(event);
+export const fileDropClaimed = (event: Event): boolean => claimedDrops.has(event);
+
+/** Open File…, filled by work/canvas/fileDrop.tsx; empty, the row is greyed. */
+type FilePort = { can(): boolean; open(): void };
+let filePort: FilePort | null = null;
+export const workFilePort = {
+  get: () => filePort,
+  set(next: FilePort | null): void {
+    filePort = next;
+    for (const listener of listeners) listener();
+  },
+};
+
 const HOME_KEY = "work.home.v1";
 
 /**

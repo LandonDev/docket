@@ -42,6 +42,7 @@ vi.mock("../../lib/connection", async (original) => {
 
 import { CanvasSeat } from "./CanvasSeat";
 import { applyCanvasPush, canvasOf, resetCanvasStore } from "./store";
+import { setOpening } from "./fileDrop";
 
 const session = { id: "t1", environmentId: "local" };
 const DOC = canvasItem("doc", { title: "Run of show" });
@@ -78,6 +79,40 @@ describe("the state line's words", () => {
     expect(detailWords("not connected")).toBe("The host is not connected");
     expect(detailWords("request timed out after 15 s")).toBe("The host did not answer in time");
     expect(detailWords("that file is not there any more")).toBe("that file is not there any more");
+  });
+});
+
+describe("a file from outside", () => {
+  it("says what is opening: alone in an empty pane, and the bar once it is big", async () => {
+    const { container } = await seat([]);
+    const cancel = vi.fn();
+    const token = {};
+    act(() => setOpening("t1", token, { name: "Cut 3.mov", sent: 4 * 1024 * 1024, total: 8 * 1024 * 1024, cancel }));
+    await waitFor(() => expect(container.querySelector("[data-file-opening]")).toBeTruthy());
+    expect(screen.getByText("Opening Cut 3.mov")).toBeTruthy();
+    expect(screen.getByRole("progressbar", { name: "Uploading Cut 3.mov" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(cancel).toHaveBeenCalledOnce();
+    // A small file has the spinner and its name alone.
+    act(() => setOpening("t1", token, { name: "Brief.pdf", sent: 0, total: 30_000, cancel }));
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    act(() => setOpening("t1", token, null));
+    await waitFor(() => expect(container.querySelector("[data-board]")).toBeNull());
+  });
+
+  it("beside an item it is a row at the pane's foot, and each open keeps its own line", async () => {
+    const { container } = await seat([DOC]);
+    const big = {};
+    const small = {};
+    act(() => setOpening("t1", big, { name: "Cut 3.mov", sent: 1, total: 8 * 1024 * 1024, cancel: () => undefined }));
+    act(() => setOpening("t1", small, { name: "Brief.pdf", sent: 0, total: 10, cancel: () => undefined }));
+    await waitFor(() => expect(screen.getByText("Opening Brief.pdf")).toBeTruthy());
+    expect(container.querySelector("[data-canvas-pane]")).toBeTruthy();
+    // The small one landing leaves the big one's line, with its Cancel.
+    act(() => setOpening("t1", small, null));
+    expect(screen.getByText("Opening Cut 3.mov")).toBeTruthy();
+    act(() => setOpening("t1", big, null));
+    expect(container.querySelector("[data-file-opening]")).toBeNull();
   });
 });
 
@@ -358,7 +393,7 @@ describe("the frame a kind drives through its shell", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent);
-    expect(rows).toEqual(["Export transcript", "Download recording", "Accept all", "Reject all", "Open from Google…", "Close", "Close others"]);
+    expect(rows).toEqual(["Export transcript", "Download recording", "Accept all", "Reject all", "Open file…", "Open from Google…", "Close", "Close others"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Export transcript" }));
     await waitFor(() => expect(exported).toHaveBeenCalledTimes(1));
     act(() => shell.more!(null));

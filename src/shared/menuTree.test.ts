@@ -96,6 +96,7 @@ describe('menu tree', () => {
       ['New Window', 'Shift+Cmd+N'],
       '—',
       ['Open Project…', 'Cmd+O'],
+      ['Open File…'],
       '—',
       ['Save All', 'Cmd+S'],
       '—',

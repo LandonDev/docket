@@ -1033,6 +1033,20 @@ the right, never under 360px, one conversation toggle that folds it away
 (docs/LAYOUT.md "The canvas pane"). Help inside a canvas is always the
 thread; nothing answers inside the canvas.
 
+- **A file from outside** (a drop from the desktop, Open file… in ⋯, the
+  File menu's Open File…): a Work thread's or Work draft's pane takes a drop
+  anywhere but the composer's box, and a Work view (Docs among them) anywhere.
+  While a file is over such a place, the place it will show in draws the
+  document surface's wash (`muted` 70%, 12px inside, a hairline, 8px radius,
+  one 13px muted line, "Drop to open"): the canvas when the thread has items,
+  else the pane. Nothing moves while a file is dragged. The composer's box
+  keeps its own wash and its meaning (attach), and a surface that takes files
+  itself (a document, an empty meeting, Mail's composer) keeps its own. While
+  the file goes up the pane says "Opening <name>" beside the spinner, with a
+  4px bar once the file is 4 MB or more and a ghost Cancel: centred in an empty
+  pane, else a 36px row at the canvas's foot under the item; nothing else says
+  it. A file no kind shows is one toast, "No viewer for <name>", whose one
+  action is Add to the thread as a file.
 - **The tab row** is 36px on `sidebar`, as the title bar's strip: tabs
   28px on the strip's chip shape (6px radius, 2px apart, 6px from the
   row's ends), the kind's 14px glyph, the name, no dirty dot; the selected

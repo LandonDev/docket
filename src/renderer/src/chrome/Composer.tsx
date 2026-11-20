@@ -79,7 +79,7 @@ import {
   type ComposerInputHandle,
   type ComposerToken
 } from './ComposerInput'
-import { saveComposerDraft, takeComposerDraft } from '../lib/composerDrafts'
+import { saveComposerDraft, takeComposerDraft, takeComposerFiles } from '../lib/composerDrafts'
 import { projectDrafts } from '../lib/projectDrafts'
 import { commandMenuChunk, lightboxChunk, workCanvasChunk } from '../surfaces/chunks'
 import { chipPort } from '../lib/contextChips'
@@ -110,7 +110,7 @@ import { tune as tuneSession } from '../lib/tcserver/commands'
 import { nativeModelId } from '../lib/models'
 import type { SessionMeta, ThreadType } from '../lib/tcserver/types'
 import { useProjects } from '../lib/tcserver/workspaces'
-import { useWorkHosts } from '../lib/workSwitch'
+import { useWorkHosts, fileDropClaimed } from '../lib/workSwitch'
 import { useWorkMentions } from './useWorkMentions'
 
 type Props = {
@@ -503,6 +503,7 @@ export function Composer({
     },
     [addAttachments, environmentId]
   )
+  useEffect(() => (sessionId ? takeComposerFiles(sessionId, admitAttachments) : undefined), [sessionId, admitAttachments])
   const attachFailed = useCallback((error: unknown) => {
     setAttachNote(error instanceof Error ? error.message : 'Could not attach the file')
   }, [])
@@ -699,6 +700,7 @@ export function Composer({
     const onDragOver = (event: DragEvent) => {
       const data = event.dataTransfer
       if (!hasFiles(data)) return
+      if (fileDropClaimed(event)) return setFileDrag(false)
       event.preventDefault()
       if (!attachmentsSupported) return
       data.dropEffect = 'copy'
@@ -714,8 +716,9 @@ export function Composer({
     const onDrop = (event: DragEvent) => {
       const data = event.dataTransfer
       if (!hasFiles(data)) return
-      event.preventDefault()
       setFileDrag(false)
+      if (fileDropClaimed(event)) return
+      event.preventDefault()
       if (!attachmentsSupported) return
       const files = [...data.files]
       if (files.length === 0) return

@@ -98,6 +98,7 @@ export const MENU_TREE: MenuSection[] = [
       cmd('new_window', 'New Window', 'CmdOrCtrl+Shift+N', { desktopOnly: true }),
       sep,
       cmd('open_project', 'Open Project…', 'CmdOrCtrl+O'),
+      cmd('open_file', 'Open File…', undefined, { desktopOnly: true }),
       sep,
       cmd('save_all', 'Save All', 'CmdOrCtrl+S'),
       sep,

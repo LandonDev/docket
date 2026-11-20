@@ -97,13 +97,13 @@ function hex(buffer: ArrayBuffer): string {
 }
 
 /** Where the bytes come from: the kept Blob, or ranged reads on the origin host. */
-type Source = {
+export type Source = {
   size: number;
   sha256: string;
   read(offset: number, length: number): Promise<string>;
 };
 
-async function blobSource(blob: Blob): Promise<Source> {
+export async function blobSource(blob: Blob): Promise<Source> {
   const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
   return {
     size: blob.size,
@@ -113,7 +113,7 @@ async function blobSource(blob: Blob): Promise<Source> {
   };
 }
 
-async function hostSource(environmentId: string, path: string): Promise<Source> {
+export async function hostSource(environmentId: string, path: string): Promise<Source> {
   const link = registry.linkOf(environmentId);
   const digest = await link.request<AttachmentDigest>("attachment.digest", { path });
   return {
@@ -139,24 +139,31 @@ export async function uploadFile(opts: {
   mime?: string;
   source: Source;
   onProgress?: (progress: UploadProgress) => void;
+  into?: "workspace";
+  /** Checked before each chunk; the catch below drops the host's partial. */
+  signal?: AbortSignal;
 }): Promise<CommittedAttachment> {
   const link = registry.linkOf(opts.threadEnv);
   const { size, sha256 } = opts.source;
+  opts.signal?.throwIfAborted();
   const begun = await link.request<AttachmentBeginAnswer>("attachment.begin", {
     sessionId: opts.sessionId,
     name: opts.name,
     size,
     sha256,
     ...(opts.mime ? { mime: opts.mime } : {}),
+    ...(opts.into ? { into: opts.into } : {}),
   });
   const chunk = Math.min(begun.chunkBytes || ATTACHMENT_CHUNK_BYTES, ATTACHMENT_CHUNK_BYTES);
   try {
     opts.onProgress?.({ sent: 0, total: size });
     for (let offset = 0, index = 0; offset < size; offset += chunk, index += 1) {
+      opts.signal?.throwIfAborted();
       const dataBase64 = await opts.source.read(offset, Math.min(chunk, size - offset));
       await link.request("attachment.chunk", { uploadId: begun.uploadId, index, dataBase64 });
       opts.onProgress?.({ sent: Math.min(offset + chunk, size), total: size });
     }
+    opts.signal?.throwIfAborted();
     return await link.request<CommittedAttachment>("attachment.commit", { uploadId: begun.uploadId });
   } catch (error) {
     void link.request("attachment.abort", { uploadId: begun.uploadId }).catch(() => undefined);

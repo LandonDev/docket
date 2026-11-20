@@ -258,6 +258,60 @@ The types are the contract a kind builds to; where they differ from
 - The push is `work.canvas` (the naming rule) and carries `opened`;
   `work.canvas.open` takes `itemId` to open a closed item again.
 
+## Opening a file from outside
+
+A file dragged from the desktop (Finder, Explorer, a Linux file manager)
+opens in the viewer of its kind; so does one picked with Open file… in the
+pane's More, or the File menu's Open File…, through the system's open dialog.
+
+**Where a drop opens** (work/canvas/fileDrop.tsx, `dropPlaceOf`). One
+listener on the document, mounted while Work is on (`FileDrops`, in
+WorkRailHost), marks a file drop that means "open" in the capture phase
+(`claimFileDrop`, lib/workSwitch.ts), so the composer, which takes a drop
+anywhere else in its pane, lets it pass (`fileDropClaimed`); it acts in the
+bubble phase, and only when no surface inside took the file first
+(`defaultPrevented`):
+
+| Where | Opens in |
+|---|---|
+| a Work thread's pane, anywhere but the composer's box | that thread's canvas; the wash covers the canvas when it has items, else the pane |
+| a Work draft's pane (a Work workspace's or a Work Chat's draft), anywhere but its composer | the draft, made a thread first (`ensureCreated`) |
+| a Work view (`[data-file-opens]` on its region: Docs, Tasks, Mail and the rest) | a new thread of the workspace |
+| the composer's box | attached to the message, as before |
+| a surface that takes files itself: a document (makes a document of a Word, markdown, HTML or PDF file), an empty meeting (its recording), Mail's composer (an attachment) | that surface, as before |
+
+Nothing moves while a file is dragged. The wash goes when the drag leaves:
+a drag from the desktop that leaves the window sends nothing more, so no
+dragover for 350 ms ends it (`DRAG_QUIET_MS`). Code workspaces are out of it:
+a code thread's or code draft's pane keeps the composer's drop. Open File…
+in the File menu is greyed unless a Work thread, draft or view is in front
+(`workFilePort`, which the router fills; lib/openFilePlace.ts `filePlaceOf`).
+
+**Which kind.** `kindForFile` (above). Several files at once open one after
+another, the first shown and the rest as its tabs. Files no kind shows are
+one toast, "No viewer for <name>", whose action, Add to the thread as a
+file, puts them in the thread's composer as attachments (`giveComposerFiles`,
+lib/composerDrafts.ts); from a view, the thread is started only then.
+
+**Where the bytes go** (work/canvas/fileOpen.ts, `openFiles`). A file a kind
+shows is uploaded to the thread's host with `attachment.begin {into:
+'workspace'}`: it lands in the workspace's own folder under its real name
+(`keptFileName`, `Name (1).ext` on a collision), or the thread's attachment
+dir for a Work Chat (which goes with the thread: deleted with it, or 30 days
+after it is archived), and opens as `{ at: 'file', host, path }` like any file item,
+which the Docs view then lists as the folder's. A file already inside the
+workspace's folder on the thread's own host opens in place, with no copy. A
+file with a path is read on its own host in ranges (`hostSource`), so a big
+one never sits whole in the window; the host's `attachment.maxBytes` holds
+(200 MB by default); a file with no path (dragged from another app's
+memory) is read whole in the window first. While it goes up, the pane says so
+(`setOpening`, one entry per open so two at once keep their own lines;
+CanvasSeat's `OpeningState`: the name, a bar from 4 MB, and Cancel); Cancel
+stops before the next chunk, or before the open once the last chunk is in, and
+the host drops the partial file, so nothing is written. A host that dies mid
+upload leaves its hidden `.upload-<id>.part` behind. An agent sees the item as any other
+(`work.canvas.list`, `canvas_open`'s list).
+
 ## The composer's chips
 
 What a message is about (a task, a mail, an event, a selection) is a

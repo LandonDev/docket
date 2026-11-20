@@ -294,7 +294,7 @@ import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workShellChunk } from "./surfaces/chunks";
-import { openWorkView, useWorkOn, useWorkView, workHome, workOpenPort, workStartPort } from "./lib/workSwitch";
+import { openWorkView, useWorkOn, useWorkView, workHome, workFilePort, workOpenPort, workStartPort } from "./lib/workSwitch";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -3220,6 +3220,7 @@ export default function App() {
           });
         case "toggle_message_list": return go(messageListFold.toggle);
         case "open_project": return go(() => void a.pickProject());
+        case "open_file": return go(() => workFilePort.get()?.open());
         case "go_to_file": return go(a.onGoToFile);
         case "go_to_symbol": return go(a.onGoToSymbol);
         case "show_hierarchy": return go(a.onShowHierarchy);

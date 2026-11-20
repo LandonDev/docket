@@ -59,6 +59,7 @@ export const APP_COMMANDS = [
   "toggle_panel",
   "toggle_message_list",
   "open_project",
+  "open_file",
   "go_to_file",
   "go_to_symbol",
   "show_hierarchy",

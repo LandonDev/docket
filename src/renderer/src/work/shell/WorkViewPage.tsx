@@ -101,6 +101,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
       aria-label={def.label}
       // Headless, the region itself takes the focus the heading would have, and says the view's name.
       tabIndex={headless ? -1 : undefined}
+      // A file dropped on a view opens in a new thread of the workspace (work/canvas/fileDrop.tsx).
+      data-file-opens
       className="absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col bg-background outline-none"
     >
       {headless ? null : (

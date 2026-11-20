@@ -20,3 +20,20 @@ export function takeComposerDraft(sessionId: string): ComposerDraft | undefined 
   drafts.delete(sessionId)
   return draft
 }
+
+const takers = new Map<string, (files: Attachment[]) => void>()
+
+/** Work's "Add to the thread as a file" (work/canvas/openOutside.tsx). */
+export function takeComposerFiles(sessionId: string, take: (files: Attachment[]) => void): () => void {
+  takers.set(sessionId, take)
+  return () => {
+    if (takers.get(sessionId) === take) takers.delete(sessionId)
+  }
+}
+
+export function giveComposerFiles(sessionId: string, files: Attachment[]): void {
+  const take = takers.get(sessionId)
+  if (take) return take(files)
+  const draft = drafts.get(sessionId)
+  drafts.set(sessionId, { segments: draft?.segments ?? [], attachments: [...(draft?.attachments ?? []), ...files] })
+}

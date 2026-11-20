@@ -7,4 +7,6 @@ export default [
   { name: "Loading", props: { moment: "loading" } },
   { name: "LifeOS unreachable", props: { moment: "unreachable" } },
   { name: "Couldn't open", props: { moment: "failed" } },
+  { name: "A dropped file opening, no item yet", props: { moment: "opening" } },
+  { name: "A big dropped file going up beside an item", props: { moment: "uploading" } },
 ];
