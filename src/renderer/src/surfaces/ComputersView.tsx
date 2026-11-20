@@ -271,7 +271,7 @@ export function ComputersHeader({
         <span className="min-w-0 truncate font-medium">Computers</span>
       </div>
       {vm ? (
-        <div className="shrink-0 pe-2">
+        <div className="flex shrink-0 items-center pe-2">
           <WakeVm vm={vm} onWake={() => onWake(vm)} />
         </div>
       ) : null}
