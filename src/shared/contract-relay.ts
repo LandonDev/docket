@@ -120,6 +120,8 @@ export function linkDownText(p: Pick<HostPresence, 'since'>, now: number, timeZo
 export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'screen'>> = {
   // the shell
   'catalog.get': 'link',
+  // the computers being driven on that host: the phone's Computers list and its live pictures name their threads by these rows
+  'computer.sessions': 'link',
   'workspace.list': 'link',
   // a new Work workspace from the phone's Work band, on the host the lane names (milestone 46)
   'workspace.create': 'link',
@@ -259,6 +261,9 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
  *  - macBridge.activity, macBridge.stop: the box's view of the calls its threads make into the Mac; under the
  *    Mac's id they would answer what the Mac serves instead, and Stop would act on the wrong side of the bridge.
  *  - away.get, away.set: Away is kept in step between linked hosts by their own peer leg; the box's answer stands for both.
+ *  - video.open, video.close: a lane's stream is the box's own to open and close. The phone cannot reach the host it is
+ *    relayed to, so the box asks that host to publish the window to it and answers the lane itself (remote/relay.ts
+ *    `video`, docs/agents/live-video.md "From his other devices"); neither call crosses as a frame.
  */
 export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = [
   'host.deployStatus',
@@ -269,6 +274,8 @@ export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = [
   // Away is one state the hosts keep in step themselves (remote/awaySync.ts): the phone reads and sets it on each lane's own host.
   'away.get',
   'away.set',
+  'video.open',
+  'video.close',
   // Work methods whose rows are this host's own (a pillar's relay row says `'never'`, contract-work.ts)
   ...WORK_NOT_CARRIED
 ]

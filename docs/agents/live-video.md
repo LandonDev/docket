@@ -600,7 +600,10 @@ The iPhone plays a stream as the desktop's viewer does, natively
   `VideoOpenWireSchema`: the desktop's union is tagged by a boolean, which the
   Swift generator cannot take), `video.close`, `computer.sessions` and the
   `computer` push are in the phone's subset. The push already reached a key's
-  socket; it only joined `RemotePushSchema`.
+  socket; it only joined `RemotePushSchema`. On a relayed lane
+  `computer.sessions` goes to the lane's host (`RELAY_METHODS`), and
+  `video.open` and `video.close` are the box's to answer and never cross
+  (`RELAY_NOT_CARRIED`).
 - **The stream** (`ios/TempCodeClient/Sources/TempCodeClient/Video/`):
   `NSL1.swift` reads frames and writes acks byte for byte as nsl1.ts;
   `AccessUnit.swift` turns an Annex B access unit into a `CMSampleBuffer` (the
