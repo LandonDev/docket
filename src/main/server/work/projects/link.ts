@@ -46,6 +46,8 @@ export async function linkToProject(ctx: WorkCtx, by: Caller, ask: LinkAsk): Pro
   const project = await lifeosProjectIn(ctx, ask.workspace, ask.lifeosProjectId, { over: true })
   const owner = ctx.lifeos.owner()
   if (ask.source.at === 'lifeos') {
+    // A guest of a shared project reads its documents: a thread never puts one before him. LifeOS refuses its own bot the same.
+    if (by.kind === 'model' && project.shared) throw new Error(`${project.name} is shared with a guest: only the owner links a document or sheet to it`)
     const table = ask.source.table as 'docs' | 'sheets'
     const what = table === 'docs' ? 'document' : 'sheet'
     const row = await owner.query<{ sector?: string } | null>(`${table}:get`, { id: ask.source.id }).catch(() => null)

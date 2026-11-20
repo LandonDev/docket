@@ -223,10 +223,21 @@ describe('project_link_item', () => {
     expect(results).toEqual([])
   })
 
+  it('never puts a document before a guest: a LifeOS document is not linked to a shared project by a thread, though a file is and the owner may', async () => {
+    lifeosProjects.push({ _id: 'lp_shared', name: 'Open house', status: 'active', sector: 'purdue', shared: true } as never)
+    item('i1', 't-root', { at: 'lifeos', table: 'docs', id: 'd_near' }, 'Run of show')
+    expect(await run({ project: 'lp_shared', item: 'i1' })).toEqual({ text: 'Open house is shared with a guest: only the owner links a document or sheet to it', isError: true })
+    expect(sent).toEqual([])
+    expect((await run({ project: 'lp_shared', source: file('/work/a.pdf'), title: 'Venue contract' })).isError).toBe(false)
+    expect((await link({ at: 'lifeos', table: 'docs', id: 'd_near' }, { project: 'lp_shared' })).linked).toEqual({ as: 'doc', id: 'd_near' })
+    lifeosProjects.pop()
+  })
+
   it('tells the thread what it is told in the preamble, and is the pillar\'s one tool', () => {
     expect(projects.tools!(scope()).map((t) => t.name)).toEqual(['project_link_item'])
     expect(projects.preamble!(scope())).toContain('project_link_item')
     expect(projects.preamble!(scope())).toContain('get_project')
+    for (const word of ['expected_state', 'add_comment', 'add_tasks', 'stale_state']) expect(projects.preamble!(scope())).toContain(word)
   })
 })
 

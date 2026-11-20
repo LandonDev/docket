@@ -22,6 +22,8 @@ export interface LifeosProject {
   _id: string
   name: string
   status: string
+  /** a live guest link shows it */
+  shared?: boolean
 }
 
 /** The states LifeOS calls finished: such a project's card leaves the column. */
