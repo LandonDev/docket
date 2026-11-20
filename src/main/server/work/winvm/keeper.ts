@@ -55,6 +55,8 @@ export interface VmGuest {
   knock(socket: string, token: string): Promise<boolean>
   /** copies a file under tcuser's profile (`rel`, forward slashes) to `local` over the forward's connection */
   fetch(rel: string, local: string): Promise<void>
+  /** copies `local` to a file under tcuser's profile (`rel`, forward slashes) over the same connection */
+  send(local: string, rel: string): Promise<void>
 }
 
 export interface KeeperDeps {
@@ -156,6 +158,16 @@ export class Keeper {
   /** A picture of the service's, copied home over the door's connection (door.ts). */
   fetch(rel: string, local: string): Promise<void> {
     return this.d.guest.fetch(rel, local)
+  }
+
+  /** A file into tcuser's profile over the door's connection (files.ts). */
+  send(local: string, rel: string): Promise<void> {
+    return this.d.guest.send(local, rel)
+  }
+
+  /** A PowerShell script as the guest's admin: the file tools' checks (files.ts). */
+  admin(script: string): Promise<string> {
+    return this.d.guest.admin(script)
   }
 
   /** One change at a time, in the order asked. */

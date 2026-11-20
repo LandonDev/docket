@@ -123,7 +123,7 @@ function vmRunnableItem(item: string): boolean {
 }
 
 /** Files Windows runs when they are opened: an item a launch opens in the VM may not be one, whatever app it is handed to. */
-const VM_RUNNABLE = /\.(bat|cmd|com|exe|scr|pif|cpl|msc|msi|msp|ps1|psm1|psd1|ps1xml|vb|vbs|vbe|js|jse|wsf|wsh|wsc|sct|hta|chm|lnk|url|scf|settingcontent-ms|reg|inf|application|appref-ms|appx|msix|jar|dll)$/i
+export const VM_RUNNABLE = /\.(bat|cmd|com|exe|scr|pif|cpl|msc|msi|msp|ps1|psm1|psd1|ps1xml|vb|vbs|vbe|js|jse|wsf|wsh|wsc|sct|hta|chm|lnk|url|scf|settingcontent-ms|reg|inf|application|appref-ms|appx|msix|jar|dll)$/i
 
 export interface PinnedApp {
   pid: number

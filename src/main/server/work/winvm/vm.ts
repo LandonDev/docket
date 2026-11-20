@@ -9,6 +9,7 @@ import { doorSpawn, type DoorSpawn } from './door'
 import { VM_TIER_GATE } from './gate'
 import type { Keeper } from './keeper'
 import { VmLease, type LeaseClock } from './lease'
+import { VmClipboard } from './clipboard'
 
 /**
  * The Windows VM's service on the box (docs/agents/work-winvm.md "The service
@@ -51,6 +52,8 @@ export interface VmHost {
   rows: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>
   /** ends the door's connections: the machine sleeps */
   closeDoor(): void
+  /** his paste in, his copy out, and the clipboard kept across his Take over (clipboard.ts) */
+  clipboard: VmClipboard
 }
 
 let host: VmHost | null = null
@@ -119,7 +122,8 @@ export function wireVm(o: VmWiring): VmHost {
       onRows: (fn) => sessions.onRows((rows) => fn(named(rows))),
       stop: (threadId) => sessions.stop(threadId)
     },
-    closeDoor: () => door.closeAll()
+    closeDoor: () => door.closeAll(),
+    clipboard: new VmClipboard({ service: () => service, wake: () => keeper().wake() })
   }
   return host
 }
@@ -148,3 +152,17 @@ export function startVm(keeper: () => Keeper | null, wake: (threadId: string, no
     wakeThread = () => {}
   }
 }
+
+const wired = (): VmHost => {
+  if (!host) throw new Error('the Windows VM is not on this host')
+  return host
+}
+
+/** His paste into the VM from the picture (B7's VideoSource for `vm:windows`): his text on the guest's clipboard, then Ctrl+V. */
+export const vmPaste = (text: string): Promise<void> => wired().clipboard.paste(text)
+/** His copy in the VM, for the viewer to hand to his own clipboard: the guest's text, cut at 1 MB. */
+export const vmCopied = (): ReturnType<VmClipboard['copied']> => wired().clipboard.copied()
+/** At his Take over (B8): the guest's clipboard kept as it is. */
+export const saveClipboard = (): Promise<void> => wired().clipboard.save()
+/** At his Hand back (B8): the guest's clipboard put back as it was at Take over, so nothing he copied is left for an agent. */
+export const restoreClipboard = (): Promise<void> => wired().clipboard.restore()

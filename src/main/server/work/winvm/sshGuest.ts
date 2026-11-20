@@ -188,8 +188,16 @@ if ($task.State -ne 4) { $task.Run($null) | Out-Null }
   async fetch(rel: string, local: string): Promise<void> {
     if (!this.control) throw new Error('the Windows VM is not awake')
     const args = ['-q', '-o', `ControlPath=${this.control}`, '-o', 'ControlMaster=no', ...this.base(ADMIN_USER).slice(0, -1).map((a) => (a === '-p' ? '-P' : a))]
-    const r = await this.run('scp', [...args, `${ADMIN_USER}@127.0.0.1:/C:/Users/${STANDARD_USER}/${rel}`, local], '', 60_000)
-    if (r.code !== 0) throw new Error(`copying a picture from the Windows VM failed: ${r.err.slice(-300)}`)
+    const r = await this.run('scp', [...args, `${ADMIN_USER}@127.0.0.1:/C:/Users/${STANDARD_USER}/${rel}`, local], '', 600_000)
+    if (r.code !== 0) throw new Error(`copying a file from the Windows VM failed: ${r.err.slice(-300)}`)
+  }
+
+  /** Copies `local` to a file of tcuser's (`rel`, under its profile, forward slashes), over the same connection. */
+  async send(local: string, rel: string): Promise<void> {
+    if (!this.control) throw new Error('the Windows VM is not awake')
+    const args = ['-q', '-o', `ControlPath=${this.control}`, '-o', 'ControlMaster=no', ...this.base(ADMIN_USER).slice(0, -1).map((a) => (a === '-p' ? '-P' : a))]
+    const r = await this.run('scp', [...args, local, `${ADMIN_USER}@127.0.0.1:/C:/Users/${STANDARD_USER}/${rel}`], '', 600_000)
+    if (r.code !== 0) throw new Error(`copying a file into the Windows VM failed: ${r.err.slice(-300)}`)
   }
 
   /**

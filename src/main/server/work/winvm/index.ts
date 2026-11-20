@@ -13,6 +13,7 @@ import { PendingCalls } from '../../computer/pending'
 import { VM_PREAMBLE, vmOffered, vmTools } from './tools'
 import { startVm } from './vm'
 import { vmScreen } from './window'
+import { ensurePuts } from './files'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
@@ -140,7 +141,9 @@ const pending = new PendingCalls()
 
 export const winvm: WorkModule = {
   id: 'winvm',
-  ensure() {},
+  ensure(db) {
+    ensurePuts(db)
+  },
   async handle(req, ctx, by) {
     switch (req.method) {
       case 'work.winvm.state':

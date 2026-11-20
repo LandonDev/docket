@@ -9,7 +9,9 @@ import type { Keeper } from './keeper'
 import { tcComputerExe } from './serviceBin'
 import { SshGuest } from './sshGuest'
 import { StandingMachine } from './standing'
-import { setVmHost, wireVm } from './vm'
+import { restoreClipboard, saveClipboard, setVmHost, vmCopied, vmPaste, wireVm } from './vm'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { loadWorkModules } from '../modules'
 
 /**
  * The live run on the STANDING machine (docs/agents/work-winvm.md "The service
@@ -50,6 +52,8 @@ d('the windows_* tools on the standing Windows VM', () => {
       points: machine.points(),
       log: (line) => (log.push(line), ctx.log(line))
     }))
+    // a Result's undo finds its pillar in the loaded module list, as at boot
+    await loadWorkModules()
     rig = await makeRig({ modules: [outboxModule, winvm] })
     cast(rig)
     // the rig's workspaces live in memory only: its settings read is turned on here, as the switch will in B10
@@ -101,7 +105,7 @@ d('the windows_* tools on the standing Windows VM', () => {
 
   it('lists the five tools for the thread whose workspace has the setting on', async () => {
     const names = (rig.work.tools.of({ id: 't-work', scope: 'work' })?.tools ?? []).map((t) => t.name).filter((n) => n.startsWith('windows_'))
-    expect(names).toEqual(['windows_apps', 'windows_observe', 'windows_act', 'windows_batch', 'windows_result'])
+    expect(names).toEqual(['windows_apps', 'windows_observe', 'windows_act', 'windows_batch', 'windows_result', 'windows_put', 'windows_get', 'windows_put_undo'])
   })
 
   it('launches Notepad, reads it, types in it, and opens the Save dialog with Ctrl+S', async () => {
@@ -133,6 +137,43 @@ d('the windows_* tools on the standing Windows VM', () => {
     console.log(`[live] windows_observe with a screenshot: ${image ? `an image of ${Math.round(((image.data?.length ?? 0) * 3) / 4)} bytes came home` : `no image: ${text(shot).split('\n').filter((l) => /shot|picture|screen/i.test(l)).join(' | ') || text(shot).split('\n')[0]}; ${log.filter((l) => /picture|winvm/.test(l)).slice(-3).join(' | ')}`}`)
     expect(image?.data?.length ?? 0).toBeGreaterThan(1000)
   }, 600_000)
+
+  it('puts a workspace file into Documents, gets it back, and the put\'s undo removes it', async () => {
+    const ws = join(rig.dir, 'Purdue')
+    mkdirSync(ws, { recursive: true })
+    writeFileSync(join(ws, 'B9 live notes.txt'), 'put through windows_put')
+    rig.work.ctx.db.prepare('INSERT OR REPLACE INTO workspaces (id, name, path, created_at) VALUES (?, ?, ?, ?)').run('ws-purdue', 'Purdue', ws, Date.now())
+    const put = await call('windows_put', { path: 'B9 live notes.txt', to: 'Documents' })
+    console.log(`[live] windows_put: ${text(put)}`)
+    expect(put.isError).toBeFalsy()
+    const got = await call('windows_get', { from: 'Documents', name: 'B9 live notes.txt' })
+    console.log(`[live] windows_get: ${text(got)}`)
+    expect(got.isError).toBeFalsy()
+    expect(readFileSync(join(ws, 'B9 live notes (1).txt'), 'utf8')).toBe('put through windows_put')
+    const refused = await call('windows_put', { path: 'B9 live notes.txt', to: 'Downloads', name: 'notes.ps1' })
+    console.log(`[live] windows_put as .ps1: ${text(refused)}`)
+    expect(refused.isError).toBe(true)
+    const result = (await rig.rpc<{ results: { id: string; kind: string }[] }>('work.outbox.results', { sessionId: 't-work' })).results.find((r) => r.kind === 'windows.put')!
+    const undone = await rig.rpc<{ undoneAt: number | null }>('work.outbox.undo', { id: result.id })
+    console.log(`[live] the put's Result undone: ${undone.undoneAt ? 'yes' : 'no'}`)
+    expect(undone.undoneAt).toBeTruthy()
+    const left = (await guest.admin("Test-Path -LiteralPath 'C:\\Users\\tcuser\\Documents\\B9 live notes.txt'")).trim()
+    console.log(`[live] the file still in Documents after the undo: ${left}`)
+    expect(left).toBe('False')
+  }, 600_000)
+
+  it('pastes his text in, reads a copy out, and puts the clipboard back at Hand back', async () => {
+    await vmPaste('seed before Take over')
+    await saveClipboard()
+    await vmPaste('his own copy, pasted at the picture')
+    const out = await vmCopied()
+    console.log(`[live] the guest's clipboard after his paste: ${JSON.stringify(out)}`)
+    expect(out).toEqual({ text: 'his own copy, pasted at the picture', truncated: false })
+    await restoreClipboard()
+    const back = await vmCopied()
+    console.log(`[live] after Hand back: ${JSON.stringify(back)}`)
+    expect(back.text).toBe('seed before Take over')
+  }, 300_000)
 
   it('refuses a console through windows_apps', async () => {
     const r = await call('windows_apps', { launch: 'cmd' })

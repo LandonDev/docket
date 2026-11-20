@@ -132,15 +132,15 @@ describe("the VM's sessions", () => {
 })
 
 describe('the tools', () => {
-  it('are five, windows_*, offered only to a workspace thread with the setting on and the VM set up; never to a Work Chat', () => {
-    expect(tools().map((t) => t.name)).toEqual(['windows_apps', 'windows_observe', 'windows_act', 'windows_batch', 'windows_result'])
+  it('are the five computer tools and the three file tools, windows_*, offered only to a workspace thread with the setting on and the VM set up; never to a Work Chat', () => {
+    expect(tools().map((t) => t.name)).toEqual(['windows_apps', 'windows_observe', 'windows_act', 'windows_batch', 'windows_result', 'windows_put', 'windows_get', 'windows_put_undo'])
     expect(tools()[0].description).toMatch(/^A Windows 11 PC on this host, his own, signed in as he left it/)
     expect(tools()[0].description).not.toMatch(/\bcomputer_apps\b/)
     expect(tools('t-a', null)).toEqual([])
     keeper.name = 'none'
     expect(tools()).toEqual([])
     keeper.name = 'asleep'
-    expect(tools()).toHaveLength(5)
+    expect(tools()).toHaveLength(8)
     windowsVm = false
     expect(tools()).toEqual([])
     expect(vmOffered(ctx, scope('t-a'), keeper as unknown as Keeper)).toBe(false)

@@ -1,10 +1,13 @@
 import { join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import { qmpKeys, rigSpawn, sleep, startService, tunnel, vm } from '../../../../scripts/lib/winComputerRig'
 import { VM_TIER_GATE } from '../work/winvm/gate'
+import { ensurePuts, fileTools, type GuestFiles } from '../work/winvm/files'
+import type { ToolCtx } from '../work/modules'
 import { cast, makeRig, type Rig } from '../work/outbox/rig'
 import { ComputerService } from './service'
 import { ComputerSessions } from './sessions'
@@ -154,5 +157,38 @@ d('a flagged submit in Edge on a Windows PC, held in the Outbox until his press'
     const item = (await rig.waiting()).filter((i) => i.sessionId === 't-vm').at(-1)!
     expect((item.payload as { read: { why: string; grantable?: boolean } }).read).toMatchObject({ why: 'console', grantable: false })
     await qmpKeys('esc')
+  }, 120_000)
+
+  it('B9: a file put into the guest is a Result whose undo removes it', async () => {
+    // the file tools over the rig's own scripts in place of the keeper's connection: the same scripts, run as the admin
+    const runAdmin = (script: string): Promise<string> => {
+      const r = vm('ssh', '-a', '--ps', script)
+      if (r.status !== 0) throw new Error(`the guest's script failed: ${r.stderr || r.stdout}`)
+      return Promise.resolve(r.stdout)
+    }
+    const guest: GuestFiles = {
+      enter: async () => null,
+      admin: runAdmin,
+      send: async (local, rel) => void expect(vm('scp', '-a', local, `guest:/C:/Users/tcuser/${rel}`).status).toBe(0),
+      fetch: async (rel, local) => void expect(vm('scp', '-a', `guest:/C:/Users/tcuser/${rel}`, local).status).toBe(0)
+    }
+    const ws = join(rig.dir, 'ws-files')
+    mkdirSync(ws, { recursive: true })
+    writeFileSync(join(ws, 'B9 notes.txt'), 'put by the rig proof')
+    const db = new DatabaseSync(':memory:')
+    db.exec('CREATE TABLE workspaces (id TEXT PRIMARY KEY, path TEXT)')
+    db.prepare('INSERT INTO workspaces (id, path) VALUES (?, ?)').run('ws-files', ws)
+    ensurePuts(db)
+    const added: { undo?: { args: unknown } }[] = []
+    const ctx = { ...rig.work.ctx, db, sessionId: 't-vm', scope: { sessionId: 't-vm', workspaceId: 'ws-files' }, signal: new AbortController().signal, reaches: () => true, results: { add: (r: { undo?: { args: unknown } }) => (rig.work.ctx.results.add(r as never), added.push(r)) } } as unknown as ToolCtx
+    const tools = fileTools(() => guest)
+    const put = await tools.find((t) => t.name === 'windows_put')!.run({ path: 'B9 notes.txt', to: 'Documents' }, ctx)
+    expect(put.isError).toBeFalsy()
+    const there = () => runAdmin("Test-Path -LiteralPath 'C:\\Users\\tcuser\\Documents\\B9 notes.txt'")
+    expect((await there()).trim()).toBe('True')
+    expect((await rig.rpc<{ results: { kind: string }[] }>('work.outbox.results', { sessionId: 't-vm' })).results.map((r) => r.kind)).toContain('windows.put')
+    const undone = await tools.find((t) => t.name === 'windows_put_undo')!.run(added[0]!.undo!.args, ctx)
+    expect(undone.isError).toBeFalsy()
+    expect((await there()).trim()).toBe('False')
   }, 120_000)
 })

@@ -10,6 +10,7 @@ import { refusal, type ComputerToolOutcome } from '../../computer/result'
 import type { WorkCtx, WorkTool } from '../modules'
 import type { Keeper } from './keeper'
 import { vmHost } from './vm'
+import { fileTools, type GuestFiles } from './files'
 
 /**
  * The five `windows_*` tools (docs/agents/work-winvm.md "The tools"): the
@@ -53,9 +54,37 @@ export interface VmToolsDeps {
   pending: PendingCalls
 }
 
+/** The file tools' way into the guest: the setting read again, the machine held for the thread and woken. */
+function guestFiles(keeper: () => Keeper | null): GuestFiles | null {
+  const h = vmHost()
+  const k = keeper()
+  if (!h || !k) return null
+  return {
+    async enter(ctx) {
+      if (!vmOffered(ctx, ctx.scope, k)) return NOT_ON_VM
+      const refused = h.lease.take(ctx.sessionId)
+      if (refused) return refused
+      k.touch()
+      try {
+        await k.wake()
+      } catch (e) {
+        return `refused: ${e instanceof Error ? e.message : String(e)}`
+      }
+      return null
+    },
+    admin: (script) => k.admin(script),
+    send: (local, rel) => k.send(local, rel),
+    fetch: (rel, local) => k.fetch(rel, local)
+  }
+}
+
 export function vmTools(scope: WorkScope, d: VmToolsDeps): WorkTool[] {
   const started = d.ctx()
   if (!started || !vmOffered(started, scope, d.keeper())) return []
+  return [...computerTools(d), ...fileTools(() => guestFiles(d.keeper))]
+}
+
+function computerTools(d: VmToolsDeps): WorkTool[] {
   return computerToolSpecs('anthropic', 'act', { result: true, platform: 'windows' }).map((spec) => ({
     name: rename(spec.name),
     description: LEAD + spec.description.replace(/\bcomputer_(apps|observe|act|batch|result)\b/g, 'windows_$1'),

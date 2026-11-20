@@ -214,6 +214,45 @@ names `windows_*` where the shared words say `computer_*`.
   (pending.ts), and `windows_result` reads it again or cancels it; nothing runs unread.
 - **The preamble** gains one line where the tools are offered (`VM_PREAMBLE`).
 
+### Files
+
+`windows_put` copies a file of the thread's workspace into tcuser's Documents, Downloads or Desktop;
+`windows_get` copies one from there into the workspace (files.ts). Both take the machine for the thread as
+the computer tools do (the setting read again, the lease, the wake) and go over the keeper's own SSH connection
+(SFTP, as the admin).
+
+- **Fenced on the box**: the file, or the folder a get lands in, is the workspace's own: its real path
+  inside the workspace's real folder (no `..`, no link out), and the host's fence (`ctx.reaches`) as for any
+  file a thread names. A Work Chat has no workspace folder and is refused.
+- **Fenced in the guest**: only those three folders of tcuser's; a plain file name (no `\` or `/`, no `..`,
+  no `:` and so no stream, no `~` and so no short name, no device name such as `CON`, no trailing dot or
+  space); and neither the folder nor the file a link elsewhere (a reparse point is refused), since the copy
+  runs as the admin, who could read or write where tcuser cannot. A taken name gets "(1)", never an
+  overwrite. Between the check and the copy is a short gap a racing change in the guest could use.
+- **200 MB** at most either way.
+- **A put refuses a file Windows runs**: policy.ts `VM_RUNNABLE` (programs, scripts, shortcuts, registry and
+  setup files, `.dll`), by the workspace file's name and the name asked for. The guest's NTFS deny of execute
+  in those folders is the first line.
+- **A put is a Result** (`ctx.results.add`, kind `windows.put`) whose undo is `windows_put_undo { put }`: it
+  removes the file it put (kept in `work_winvm_puts` with its sha256), only while it is as it was put, and only
+  for the thread that put it; a changed file is left with a refusal, a file already gone is no failure. The undo
+  runs as a tool of the pillar, so it is there while the workspace's setting is on and the VM is set up.
+
+### The clipboard
+
+His paste into the VM, his copy out of it, and the clipboard kept across his Take over, through the VM's own
+service (`clipboard.read`, `clipboard.write`, docs/computer-protocol.md §29.8), text only, 1 MB at most
+(clipboard.ts, `VmClipboard` on the VM's host). vm.ts exports the four calls the picture and Take over wire
+up; each wakes the machine first:
+
+- `vmPaste(text)`: his text on the guest's clipboard, then Ctrl+V to the app in front, at the session tier, on
+  a service session of his own (`owner:vm`), never a thread's. For B7's `VideoSource.paste` of `vm:windows`.
+- `vmCopied()`: the guest's clipboard text (cut at 1 MB, `truncated`) for the viewer to hand to his own.
+- `saveClipboard()` at his Take over and `restoreClipboard()` at Hand back (B8): the guest's clipboard comes
+  back as it was, so nothing he copied is left for an agent. A clipboard that held no text, or more than 1 MB,
+  comes back empty; a Hand back with nothing saved empties it. Only text is kept: an image or files on the
+  clipboard at Take over do not come back.
+
 ### One thread at a time
 
 A thread holds the VM from its first `windows_*` call until two minutes after its turn ends (`VmLease`,
@@ -273,6 +312,11 @@ take 24 GB.
   firmware variables and the TPM put back, newest first, a delete, no path for an id.
 - `door.test.ts`: the spawn over a stand-in door (the knock first, `initialize` naming the guest's folder, a
   picture copied home and its path rewritten in order, a clean exit at sleep, never a path out of the folder).
+- `files.test.ts`: the file tools over a fake guest and a real workspace folder: the copy each way, the free
+  name, the fence at both ends (a step out, a link out, a Work Chat, a bad name, a guest folder that is a
+  link), the cap, the refused types, the Result and its undo, a changed file left, another thread refused.
+- `clipboard.test.ts`: the paste (text then Ctrl+V to the app in front, at the session tier), the cap, the
+  copy out, the clipboard put back at Hand back, emptied when it cannot come back whole.
 - `vm.test.ts`: over the fake computer service, the VM's gate admitting the session tier a headless box
   refuses, the tools offered and refused by the setting and never to a Work Chat, the setting read at each
   call, the wake first, a console's launch refused in Windows' words, the lease's words, its two minutes, his
