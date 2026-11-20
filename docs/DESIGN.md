@@ -1149,6 +1149,10 @@ The kinds, each a hand-made body built from components/ui:
   (the box's 1280 by 800 page is 640 points wide on a 2× screen), on the
   body's inset; a held submit's kept picture takes the same frame, so the
   two swap without a jump. A click on the live page opens its full view.
+  While he drives, the page is his keyboard and wears the focus ring for
+  as long as it holds it; Tab and Escape are the page's, and Ctrl+Alt
+  alone (⌃⌥) sends the keyboard to Hand back. One toast says so, once a
+  launch: "Press ⌃⌥ to leave the page".
   Its bar holds the host (12px foreground, a lock glyph, never a
   field), who drives (12px muted, foreground while the person drives) and
   one verb, in place of the mode. Where it runs is said once, after the

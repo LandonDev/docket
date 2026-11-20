@@ -145,6 +145,7 @@ describe("the browser's bar", () => {
     expect(methods()).toEqual(["work.browser.drive"]);
     act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
     await screen.findByText("You are driving");
+    expect(screen.getByRole("button", { name: "Hand back" }).hasAttribute("data-hand-back")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Hand back" }));
     await waitFor(() => expect(host.calls.filter((c) => c.method === "work.browser.drive").map((c) => c.params.driver)).toEqual(["owner", "agent"]));
   });
@@ -305,7 +306,8 @@ describe("the browser's bar", () => {
     host.state = { ...host.state, driver: "owner" };
     render(<Bar {...props()} />);
     await screen.findByRole("button", { name: "Submit Report in Concur" });
-    expect(screen.getByRole("button", { name: "Hand back" })).toBeTruthy();
+    // the one the driven picture's Ctrl+Alt sends the keyboard to
+    expect(screen.getByRole("button", { name: "Hand back" }).hasAttribute("data-hand-back")).toBe(true);
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
   });
 });

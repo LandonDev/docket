@@ -505,6 +505,15 @@ Only the box's browser takes his input. He presses Take over
   `video.paste`, never typed and never the far clipboard's own.
 - **Never sent**: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T and Ctrl+Shift+I, which
   would close, quit or leave the shared browser. They are swallowed.
+- **The keyboard's way out** is Ctrl+Alt pressed with nothing else and let
+  go (⌃⌥ on a Mac; off a Mac only the left Alt, since the right one is
+  AltGr): Tab and Escape are the page's while the picture holds the
+  keyboard, so without it only a click would leave. Both keys still reach
+  the page. The keyboard goes to the nearest Hand back (`data-hand-back`:
+  the canvas bar's, the full view's), or just leaves the picture when
+  that button is busy. A toast says the chord once a launch, the first
+  time a picture becomes his to drive, and the box says it to a screen
+  reader (`aria-description`).
 - **Hand back** makes the stream a watch stream on the host, which lets go
   of every key he held; the picture is a picture again.
 

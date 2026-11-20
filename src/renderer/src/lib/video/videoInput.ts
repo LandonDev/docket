@@ -14,7 +14,9 @@ import { macCommand } from "../keys";
  * Changed here: the rules are a class with no DOM in it; on a Mac only five
  * ⌘ chords cross, as their Ctrl chords, and every other ⌘ chord stays the
  * app's; a paste is handed to the host, never typed; the chords that would
- * close or quit the shared browser are never sent.
+ * close or quit the shared browser are never sent; and Ctrl+Alt pressed with
+ * nothing else is his way out of the picture, since Tab and Escape are the
+ * page's while it holds the keyboard.
  */
 
 /** `KeyboardEvent.code` to HID usage code. */
@@ -38,6 +40,8 @@ export const HID_KEYS: Readonly<Record<string, number>> = (() => {
 const CONTROL = 224;
 const SHIFT_BITS = (1 << 1) | (1 << 5);
 const CONTROL_BITS = (1 << 0) | (1 << 4);
+const ALT_LEFT_BIT = 1 << 2;
+const ALT_BITS = ALT_LEFT_BIT | (1 << 6);
 const isModifier = (code: number): boolean => code >= 224 && code <= 231;
 const isMeta = (code: number): boolean => code === 227 || code === 231;
 
@@ -45,6 +49,8 @@ const isMeta = (code: number): boolean => code === 227 || code === 231;
 export const MAC_CHORDS: ReadonlySet<string> = new Set(["KeyC", "KeyX", "KeyA", "KeyZ"]);
 /** With Ctrl held these would close, quit or leave the shared browser: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T, and Ctrl+Shift+I. They are never sent. */
 export const NEVER_SENT: ReadonlySet<string> = new Set(["KeyW", "KeyQ", "KeyN", "KeyT"]);
+/** Held together and let go with no other key or button between: the keyboard goes back to the app (`leave`). The way a VM's window lets go. */
+export const LEAVE_CHORD = "ctrl+alt";
 
 /** What a key event says of itself: enough of `KeyboardEvent` to decide. */
 export interface KeyLike {
@@ -87,10 +93,12 @@ export class VideoInput {
   private buttons = 0;
   private remoteCaps = false;
   private readonly wheelRemainder = [0, 0];
+  /** Ctrl and Alt are down and nothing else has been pressed since: letting one go leaves the picture */
+  private leaving = false;
 
   constructor(
     private readonly send: (event: InputEvent) => void,
-    private readonly opts: { mac: boolean; paste: () => void },
+    private readonly opts: { mac: boolean; paste: () => void; leave?: () => void },
   ) {}
 
   private emit(event: InputEvent): void {
@@ -108,6 +116,12 @@ export class VideoInput {
     this.emit({ type: "keyUp", key: code });
   }
 
+  /** Ctrl and Alt held, and no other key. Off a Mac only the left Alt counts: the right one is AltGr, which some keyboards send as Ctrl with Alt. */
+  private chordAlone(): boolean {
+    const alt = this.opts.mac ? ALT_BITS : ALT_LEFT_BIT;
+    return (this.modifiers & CONTROL_BITS) !== 0 && (this.modifiers & alt) !== 0 && (this.modifiers & ~(CONTROL_BITS | alt)) === 0 && [...this.held].every(isModifier);
+  }
+
   /** The far Caps Lock follows his: the key is a toggle there too, so it is pressed only when the two differ. */
   private syncCaps(e: KeyLike): void {
     if (e.capsLock === undefined || e.capsLock === this.remoteCaps) return;
@@ -118,6 +132,8 @@ export class VideoInput {
   /** A key went down. True when it is the picture's: the caller stops it there, so the app does nothing with it. */
   keyDown(e: KeyLike): boolean {
     const code = HID_KEYS[e.code];
+    const leaving = this.leaving;
+    this.leaving = false;
     if (!code) return false;
     if (isMeta(code)) return this.opts.mac ? false : true;
     const command = this.opts.mac && !!e.command;
@@ -142,10 +158,15 @@ export class VideoInput {
     if (control && (NEVER_SENT.has(e.code) || (e.code === "KeyI" && ((this.modifiers & SHIFT_BITS) !== 0 || !!e.shiftKey)))) return true;
     this.syncCaps(e);
     if (e.code === "CapsLock") return true;
-    if (e.repeat || this.held.has(code)) return true;
+    if (e.repeat || this.held.has(code)) {
+      // a held modifier repeating is no other key
+      this.leaving = leaving && isModifier(code);
+      return true;
+    }
     this.held.add(code);
     this.setModifier(code, true);
     this.emit({ type: "keyDown", key: code });
+    this.leaving = isModifier(code) && this.chordAlone();
     return true;
   }
 
@@ -161,6 +182,10 @@ export class VideoInput {
     if (!this.held.delete(code)) return false;
     this.setModifier(code, false);
     this.emit({ type: "keyUp", key: code });
+    if (this.leaving) {
+      this.leaving = false;
+      this.opts.leave?.();
+    }
     return true;
   }
 
@@ -172,6 +197,7 @@ export class VideoInput {
   /** `button` is the DOM's: 0 left, 1 middle, 2 right. False for any other. */
   buttonDown(button: number, x: number, y: number): boolean {
     if (button < 0 || button > 2) return false;
+    this.leaving = false;
     this.buttons |= 1 << button;
     this.emit({ type: "buttonDown", button: (button + 1) as 1 | 2 | 3, x: share(x), y: share(y) });
     return true;
@@ -206,6 +232,7 @@ export class VideoInput {
   release(): void {
     const had = this.held.size > 0 || this.buttons !== 0 || this.modifiers !== 0;
     this.held.clear();
+    this.leaving = false;
     this.buttons = 0;
     this.modifiers = 0;
     this.wheelRemainder[0] = this.wheelRemainder[1] = 0;

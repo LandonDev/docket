@@ -10,7 +10,8 @@ import { useComputerPreview, type PreviewState } from "../../../lib/computerPrev
 import { loadToast } from "@renderer/components/ui/toaster";
 import { useComputerVideo, type VideoDrive } from "../../../lib/computerVideo";
 import { IS_MAC } from "../../../lib/platform";
-import { VideoInput, attachInput } from "../../../lib/video/videoInput";
+import { keyHint } from "../../../lib/keys";
+import { LEAVE_CHORD, VideoInput, attachInput } from "../../../lib/video/videoInput";
 import { sharpWidth } from "../../../lib/video/support";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 
@@ -217,13 +218,13 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
       >
         {picture}
         {open ? (
-          <button
-            type="button"
+          <Button
+            variant="link"
             aria-label={label}
             data-viewport-open
             disabled={closed}
             onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
-            className={cn("absolute inset-0 rounded-lg", closed ? "cursor-default" : "cursor-zoom-in")}
+            className={OPEN_OVER}
           />
         ) : null}
       </div>
@@ -232,12 +233,31 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
   );
 });
 
+/** The clear button laid over a picture that opens the full view: the picture's whole face, with nothing of its own to draw but the focus ring. */
+export const OPEN_OVER = "absolute inset-0 h-auto cursor-zoom-in rounded-lg p-0";
+
 /**
  * What the box of a picture he drives carries: it takes the keyboard, and a focus ring marks it for as long as it
- * holds it, however it took it (a click too). A click outside lets go.
+ * holds it, however it took it (a click too). A click outside lets go, and so does Ctrl+Alt: Tab and Escape are the
+ * page's here, so the chord is the keyboard's way out, said to a screen reader on the box itself.
  */
-export const DRIVEN = { role: "application", tabIndex: 0, "data-driving": "" } as const;
+export const DRIVEN = { role: "application", tabIndex: 0, "data-driving": "", "aria-description": `Press ${IS_MAC ? "Control and Option" : "Control and Alt"} together to leave the page` } as const;
 export const DRIVEN_CLASS = "focus-ring-held cursor-default touch-none select-none";
+
+/** Where the keyboard goes when he leaves the picture by the chord: the Hand back nearest it, else nowhere in particular. */
+function leavePicture(el: HTMLElement): void {
+  for (let up = el.parentElement; up; up = up.parentElement) {
+    const back = up.querySelector<HTMLElement>("[data-hand-back]:not(:disabled)");
+    if (back) return back.focus();
+  }
+  el.blur();
+}
+
+/** The chord is said once a launch, in a toast, the first time a picture becomes his to drive. */
+let leaveSaid = false;
+export function forgetLeaveSaid(): void {
+  leaveSaid = false;
+}
 
 /** The live stream for the viewport: its state, the canvas and the ring to draw into the live face, and Retry for one that stopped. */
 export interface LiveStream {
@@ -255,7 +275,8 @@ export interface LiveStream {
  * While he drives from this place, the box is his keyboard and pointer in
  * the page (docs/agents/live-video.md "Driving"): its events go down the
  * stream as input records, a paste goes to the host as text, and everything
- * he holds is let go when the box loses the keyboard.
+ * he holds is let go when the box loses the keyboard. Ctrl+Alt alone takes
+ * the keyboard out of it, to Hand back.
  */
 export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement | null>): boolean {
   const drive = stream.drive;
@@ -267,7 +288,11 @@ export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement |
         .readText()
         .then((text) => (text ? drive.paste(text) : undefined))
         .catch(() => loadToast().then((toast) => toast.error("Couldn't paste into the page")));
-    return attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste }));
+    if (!leaveSaid) {
+      leaveSaid = true;
+      void loadToast().then((toast) => toast(`Press ${keyHint(LEAVE_CHORD)} to leave the page`));
+    }
+    return attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el) }));
   }, [box, drive]);
   return drive !== null;
 }

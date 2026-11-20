@@ -30,7 +30,7 @@ export function ComputerControls({ tile, all, className }: { tile: ComputerTile;
     <span data-slot="computer-controls" className={className ?? "flex shrink-0 items-center gap-1"}>
       {tile.browser ? (
         tile.driving ? (
-          <Button variant="secondary" size="xs" disabled={!!busy} onClick={() => press("back", () => handBack(tile), "Couldn't hand it back")}>
+          <Button variant="secondary" size="xs" data-hand-back disabled={!!busy} onClick={() => press("back", () => handBack(tile), "Couldn't hand it back")}>
             <BusyLabel busy={busy === "back"} label="Hand back" />
           </Button>
         ) : (

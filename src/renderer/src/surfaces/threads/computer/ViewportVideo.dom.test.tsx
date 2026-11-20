@@ -7,10 +7,11 @@ import { registry } from "../../../lib/connection/registry";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 import type { StreamHandle, StreamView, StreamWant } from "../../../lib/video/streams";
 import { videoEdge } from "../../../lib/video/support";
-import { ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./Viewport";
+import { ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, Viewport, ViewportLine, forgetLeaveSaid, liveFace, streamSize, useDrivingInput, useLiveStream } from "./Viewport";
 
 /** The window's streams, stood in for: each acquire is kept, and the test says what its stream does. */
-const h = vi.hoisted(() => ({ supported: true, acquired: [] as FakeStream[] }));
+const h = vi.hoisted(() => ({ supported: true, acquired: [] as FakeStream[], said: [] as string[] }));
+vi.mock("@renderer/components/ui/toaster", () => ({ loadToast: async () => Object.assign((words: string) => void h.said.push(words), { error: () => undefined }) }));
 
 interface FakeStream {
   host: string;
@@ -75,6 +76,8 @@ let width = 304;
 beforeEach(() => {
   h.supported = true;
   h.acquired.length = 0;
+  h.said.length = 0;
+  forgetLeaveSaid();
   calls.length = 0;
   width = 304;
   const link = {
@@ -117,7 +120,7 @@ const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
 const entry = (key = "s1"): ComputerEntry => ({ host: "box", row: row({ threadId: key }), previewable: true, previewHost: "box", previewKey: key });
 const flush = () => act(async () => {});
 
-function Live({ entry: en, run, take, drive, onOpen }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; onOpen?: (from: DOMRect) => void }) {
+function Live({ entry: en, run, take, drive, onOpen, back }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy" }) {
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
   const stream = useLiveStream(en, run, box, root, take === undefined && drive === undefined ? undefined : { take, drive });
@@ -126,6 +129,11 @@ function Live({ entry: en, run, take, drive, onOpen }: { entry: ComputerEntry; r
   const over = state.status === "ended" || state.status === "failed";
   return (
     <div ref={root} data-mode={stream.mode} data-testid="section">
+      {back ? (
+        <button type="button" data-hand-back disabled={back === "busy"}>
+          Hand back
+        </button>
+      ) : null}
       <Viewport
         ref={box}
         face={over ? null : liveFace(stream, onOpen)}
@@ -137,9 +145,9 @@ function Live({ entry: en, run, take, drive, onOpen }: { entry: ComputerEntry; r
   );
 }
 
-type MountProps = { run?: boolean; take?: boolean; drive?: boolean; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void };
+type MountProps = { run?: boolean; take?: boolean; drive?: boolean; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy" };
 function mount(props: MountProps = {}) {
-  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} onOpen={p.onOpen ?? props.onOpen} />;
+  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} onOpen={p.onOpen ?? props.onOpen} back={p.back} />;
   const view = render(tree(props));
   return { ...view, again: (p: MountProps) => view.rerender(tree(p)) };
 }
@@ -392,6 +400,60 @@ describe("driving the page from the picture", () => {
     const sent = stream.inputs.length;
     fireEvent.keyDown(screen.getByRole("img"), { code: "KeyA" });
     expect(stream.inputs).toHaveLength(sent);
+  });
+
+  it("is no keyboard trap: Tab and Escape are the page's, and Ctrl+Alt alone takes the keyboard to Hand back", async () => {
+    mount({ entry: owned(), back: "ready" });
+    await flush();
+    const stream = h.acquired[0];
+    await act(async () => stream.set({ status: "live", width: 1280, height: 800 }));
+    const box = screen.getByRole("application");
+    expect(box.getAttribute("aria-description")).toMatch(/^Press Control and (Alt|Option) together to leave the page$/);
+    box.focus();
+    expect(document.activeElement).toBe(box);
+    for (const code of ["Tab", "Escape"]) {
+      const down = new KeyboardEvent("keydown", { code, bubbles: true, cancelable: true });
+      box.dispatchEvent(down);
+      expect(down.defaultPrevented).toBe(true);
+      fireEvent.keyUp(box, { code });
+    }
+    expect(document.activeElement).toBe(box);
+    fireEvent.keyDown(box, { code: "ControlLeft", ctrlKey: true });
+    fireEvent.keyDown(box, { code: "AltLeft", ctrlKey: true, altKey: true });
+    expect(document.activeElement).toBe(box);
+    fireEvent.keyUp(box, { code: "AltLeft", ctrlKey: true });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Hand back" }));
+    // the picture lost the keyboard, so everything he held there is let go
+    expect(stream.inputs.at(-1)).toEqual({ type: "releaseAll" });
+  });
+
+  it("gives the keyboard up even with no Hand back to take it (a press in flight)", async () => {
+    mount({ entry: owned(), back: "busy" });
+    await flush();
+    await act(async () => h.acquired[0].set({ status: "live", width: 1280, height: 800 }));
+    const box = screen.getByRole("application");
+    box.focus();
+    fireEvent.keyDown(box, { code: "ControlLeft", ctrlKey: true });
+    fireEvent.keyDown(box, { code: "AltLeft", ctrlKey: true, altKey: true });
+    fireEvent.keyUp(box, { code: "ControlLeft", altKey: true });
+    expect(document.activeElement).not.toBe(box);
+  });
+
+  it("says the chord once, when a picture first becomes his to drive, and not at the next take over", async () => {
+    const view = mount({ entry: owned() });
+    await flush();
+    expect(h.said).toEqual([]);
+    await act(async () => h.acquired[0].set({ status: "live", width: 1280, height: 800 }));
+    await flush();
+    expect(h.said).toHaveLength(1);
+    expect(h.said[0]).toMatch(/^Press (Ctrl\+Alt|⌃⌥) to leave the page$/);
+    view.again({ entry: entry() });
+    await flush();
+    view.again({ entry: owned() });
+    await flush();
+    await act(async () => h.acquired.at(-1)!.set({ status: "live", width: 1280, height: 800 }));
+    await flush();
+    expect(h.said).toHaveLength(1);
   });
 
   it("hands a paste to the host as his clipboard's text", async () => {

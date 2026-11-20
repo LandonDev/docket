@@ -9,7 +9,7 @@ import fixtures, { streamOf, tile } from "./LiveFullView.fixtures";
 const calls: { host: string; method: string; params: unknown }[] = [];
 let fail: string | null = null;
 const toastError = vi.hoisted(() => vi.fn());
-vi.mock("@renderer/components/ui/toaster", () => ({ loadToast: async () => ({ error: toastError }) }));
+vi.mock("@renderer/components/ui/toaster", () => ({ loadToast: async () => Object.assign(() => undefined, { error: toastError }) }));
 
 beforeEach(() => {
   calls.length = 0;
@@ -104,6 +104,7 @@ describe("the full view of a computer being driven", () => {
     view.rerender(<FullView tile={tile({ driving: true })} all={[]} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
     expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Hand back" }).hasAttribute("data-hand-back")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Hand back" }));
     await flush();
     expect(calls).toEqual([{ host: "box", method: "work.browser.drive", params: { sessionId: "t1", driver: "agent" } }]);

@@ -14,7 +14,7 @@ import { stopComputer, useComputerEntries, type ComputerEntry } from "../../lib/
 import { thisDesktopInLine } from "../../lib/native";
 import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
-import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useDrivingInput, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
+import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, OPEN_OVER, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useDrivingInput, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
 import { openLightbox } from "../../chrome/lightboxStore";
 import { sharpWidth } from "../../lib/video/support";
 import { sayError } from "../canvas/frame";
@@ -184,7 +184,7 @@ function FaceEnd({
       return (
         <span className="ms-auto flex shrink-0 items-center gap-2">
           <span data-narrow-hide className="whitespace-nowrap text-foreground @max-[320px]/browser:hidden">You are driving</span>
-          <Button variant="secondary" size="xs" disabled={!!busy} onClick={handBack}>
+          <Button variant="secondary" size="xs" data-hand-back disabled={!!busy} onClick={handBack}>
             <BusyLabel busy={busy === "back"} label="Hand back" />
           </Button>
         </span>
@@ -197,7 +197,7 @@ function FaceEnd({
         // The verbs stay whole; the primary takes the room left beside Discard and cuts its words there, never its box or its ring.
         <span className="ms-auto flex min-w-0 items-center gap-1">
           {face.owner ? (
-            <Button variant="ghost" size="xs" className="shrink-0" disabled={!!busy} onClick={handBack}>
+            <Button variant="ghost" size="xs" data-hand-back className="shrink-0" disabled={!!busy} onClick={handBack}>
               <BusyLabel busy={busy === "back"} label="Hand back" />
             </Button>
           ) : (
@@ -353,13 +353,13 @@ function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof us
       >
         {inside}
         {open ? (
-          <button
-            type="button"
+          <Button
+            variant="link"
             aria-label={label}
             data-viewport-open
             disabled={!face.drawn}
             onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
-            className={cn("absolute inset-0 rounded-lg", face.drawn ? "cursor-zoom-in" : "cursor-default")}
+            className={OPEN_OVER}
           />
         ) : null}
       </div>

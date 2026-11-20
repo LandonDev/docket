@@ -6,9 +6,10 @@ import { HID_KEYS, VideoInput } from "./videoInput";
 function rig(mac = false) {
   const sent: InputEvent[] = [];
   let pastes = 0;
-  const input = new VideoInput((e) => sent.push(e), { mac, paste: () => void pastes++ });
+  let left = 0;
+  const input = new VideoInput((e) => sent.push(e), { mac, paste: () => void pastes++, leave: () => void left++ });
   const keys = () => sent.map((e) => ("key" in e ? `${e.type === "keyDown" ? "+" : "-"}${e.key}` : e.type));
-  return { sent, input, keys, pastes: () => pastes };
+  return { sent, input, keys, pastes: () => pastes, left: () => left };
 }
 const K = HID_KEYS;
 
@@ -182,5 +183,60 @@ describe("letting go", () => {
     r.input.release();
     r.input.release();
     expect(r.sent.filter((e) => e.type === "releaseAll")).toHaveLength(2);
+  });
+});
+
+describe("leaving the picture", () => {
+  it("leaves on Ctrl+Alt pressed alone, when one of the two is let go, and still sends both to the page", () => {
+    const r = rig();
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyDown({ code: "AltLeft", ctrlKey: true });
+    expect(r.left()).toBe(0);
+    // the keyboard's own repeat of a held modifier is no other key
+    r.input.keyDown({ code: "AltLeft", ctrlKey: true, repeat: true });
+    r.input.keyUp({ code: "AltLeft" });
+    expect(r.left()).toBe(1);
+    expect(r.keys()).toEqual(["+224", "+226", "-226"]);
+    // the other of the two coming up is not a second leave
+    r.input.keyUp({ code: "ControlLeft" });
+    expect(r.left()).toBe(1);
+  });
+
+  it("does not leave when another key or a button came between: Ctrl+Alt+Delete and a Ctrl+Alt click are the page's", () => {
+    const r = rig();
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyDown({ code: "AltLeft", ctrlKey: true });
+    r.input.keyDown({ code: "Delete", ctrlKey: true });
+    r.input.keyUp({ code: "Delete" });
+    r.input.keyUp({ code: "AltLeft" });
+    r.input.keyUp({ code: "ControlLeft" });
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyDown({ code: "AltLeft", ctrlKey: true });
+    r.input.buttonDown(0, 0.5, 0.5);
+    r.input.buttonUp(0, 0.5, 0.5);
+    r.input.keyUp({ code: "AltLeft" });
+    r.input.keyUp({ code: "ControlLeft" });
+    // Shift beside them is another chord, and one of the two alone is no chord
+    r.input.keyDown({ code: "ShiftLeft" });
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyDown({ code: "AltLeft", ctrlKey: true });
+    r.input.keyUp({ code: "AltLeft" });
+    r.input.release();
+    r.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    r.input.keyUp({ code: "ControlLeft" });
+    expect(r.left()).toBe(0);
+  });
+
+  it("takes either Alt on a Mac, and only the left one elsewhere: the right one is AltGr, which arrives as Ctrl with Alt", () => {
+    const pc = rig();
+    pc.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    pc.input.keyDown({ code: "AltRight", ctrlKey: true });
+    pc.input.keyUp({ code: "AltRight" });
+    expect(pc.left()).toBe(0);
+    const mac = rig(true);
+    mac.input.keyDown({ code: "ControlLeft", ctrlKey: true });
+    mac.input.keyDown({ code: "AltRight", ctrlKey: true });
+    mac.input.keyUp({ code: "ControlLeft" });
+    expect(mac.left()).toBe(1);
   });
 });
