@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { heldTargets, screenMark, screenOfObservation, type Screen, type ScreenElement } from '@shared/computer/outward'
+import { cutFields, heldTargets, isCutValue, screenMark, screenOfObservation, withValues, type Screen, type ScreenElement } from '@shared/computer/outward'
 import type { ComputerAction } from '@shared/computer/protocol'
 import type { ComputerToolOutcome } from '../../computer/result'
 import type { ComputerToolContext } from '../../computer/run'
@@ -92,10 +92,21 @@ export function teamsCarrierOn(computer: TeamsComputer, app = TEAMS_APP): TeamsC
         if (!screen) throw nothing(`Teams could not be read${o.body ? `: ${o.body}` : '.'}`)
         return screen
       }
-      const act = (screen: Screen, steps: ComputerAction[]): Promise<ComputerToolOutcome> => {
+      /** The window with each field its read printed cut read again whole, as the press reads it (computer/run.ts `wholeFields`): a long message in the chat binds whole. */
+      const whole = async (screen: Screen): Promise<Screen> => {
+        const values = new Map<number, string>()
+        for (const element of cutFields(screen)) {
+          const o = await run('computer_observe', { app, element })
+          const value = o.isError ? undefined : screenOfObservation(o.body ?? '', identity())?.elements.get(element)?.value
+          if (value === undefined || isCutValue(value)) throw nothing('A field in Teams could not be read whole.')
+          values.set(element, value)
+        }
+        return values.size ? withValues(screen, values) : screen
+      }
+      const act = async (screen: Screen, steps: ComputerAction[]): Promise<ComputerToolOutcome> => {
         const targets = heldTargets(steps, screen)
         if (!targets) throw nothing('A step names nothing Teams shows.')
-        const pressed = { mark: screenMark(screen), targets }
+        const pressed = { mark: screenMark(await whole(screen)), targets }
         return steps.length === 1 ? run('computer_act', { app, ...steps[0] }, pressed) : run('computer_batch', { app, actions: steps }, pressed)
       }
 

@@ -30,7 +30,7 @@ import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
 import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
 import { loadResults, undoResult, useResults } from "./results";
-import { discardItem, fetchItem, grantAndSend, loadOutbox, notSentWords, sendItem, sendMany, useOutbox, wentOut, type HostItem } from "./store";
+import { discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, sendItem, sendMany, useOutbox, wentOut, type HostItem } from "./store";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
@@ -234,9 +234,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
           <span className="min-w-0 flex-1 truncate">
             {hostName(e.environmentId)} did not answer <span className="text-muted-foreground">{e.error}</span>
           </span>
-          <Button size="xs" variant="ghost" onClick={() => void loadOutbox()}>
-            Retry
-          </Button>
+          <HostRetry environmentId={e.environmentId} />
         </div>
       ))}
       <div className="@container/outbox flex min-h-0 min-w-0 flex-1">
@@ -832,4 +830,22 @@ function KeptPicture({ item, picture }: { item: HostItem; picture: Picture }) {
       </p>
     );
   return <img src={src} onLoad={picture.onLoad} onError={picture.onError} alt={`The window as it was read, ${item.summary}`} draggable={false} className="h-auto w-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" style={{ aspectRatio: shape }} />;
+}
+
+/** A host's error row's Retry: that host alone asked again, busy and off while it reads; the row goes once it answers. */
+export function HostRetry({ environmentId }: { environmentId: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void loadHost(environmentId).finally(() => setBusy(false));
+      }}
+    >
+      <BusyLabel busy={busy} label="Retry" />
+    </Button>
+  );
 }

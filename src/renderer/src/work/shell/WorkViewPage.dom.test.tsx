@@ -74,6 +74,48 @@ describe("a view's boundary", () => {
   });
 });
 
+describe("a view over the thread's pane", () => {
+  const host = () =>
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: "env_box",
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: vi.fn(async (method: string) => (method === "work.routines.list" ? { routines: [] } : { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] })),
+    } as never);
+  const Main = ({ view }: { view: boolean }) => (
+    <>
+      <button type="button">A thread in the strip</button>
+      <div data-main>
+        <div data-pane>
+          <textarea aria-label="Composer" />
+        </div>
+        {view ? <ViewFrame view="routines" environmentId="env_box" workspaceId="ws" sector="purdue" /> : null}
+      </div>
+    </>
+  );
+
+  it("takes the focus to its heading when the focus was in the pane it covers", async () => {
+    host();
+    const view = render(<Main view={false} />);
+    screen.getByRole("textbox", { name: "Composer" }).focus();
+    view.rerender(<Main view />);
+    await flush();
+    expect(document.activeElement).toBe(document.querySelector("[data-view-heading]"));
+    expect(document.querySelector("[data-view-heading]")!.textContent).toBe("Routines");
+  });
+
+  it("leaves the focus where it was outside the pane: the thread strip stays his", async () => {
+    host();
+    const view = render(<Main view={false} />);
+    const strip = screen.getByRole("button", { name: "A thread in the strip" });
+    strip.focus();
+    view.rerender(<Main view />);
+    await flush();
+    expect(document.activeElement).toBe(strip);
+  });
+});
+
 describe("a view opened before its chunk has landed", () => {
   it("draws its header's controls and its own title once the chunk lands, in place of the bare name", async () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => ({})) } as never);

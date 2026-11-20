@@ -11,7 +11,7 @@ import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEdit
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -19,6 +19,7 @@ vi.mock("../../lib/connection", async (original) => {
     onPush: () => () => undefined,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       calls.list.push({ env, method, params });
+      if (method === "work.guests.list" && calls.listGate) await calls.listGate;
       if (calls.down.has(env)) throw new Error("The host did not answer");
       // The Mac does not serve LifeOS's documents: it names the box, as the host does.
       if (env === "mac") throw new Error("served elsewhere: box");
@@ -185,6 +186,27 @@ describe("the held request and the audit list", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     await waitFor(() => expect(screen.queryByText("The host did not answer")).toBeNull());
     expect(screen.getByText("Sam Ortiz")).toBeTruthy();
+  });
+
+  it("spins a failed host's Retry while it asks, and takes no second press meanwhile", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [LINK];
+    calls.down.add("win");
+    render(<GuestLinksSection hosts={["box", "win"]} />);
+    await screen.findByText("The host did not answer");
+    calls.down.clear();
+    let open: () => void = () => {};
+    calls.listGate = new Promise((r) => (open = r));
+    const retry = screen.getByRole("button", { name: "Retry" });
+    const asked = calls.list.length;
+    fireEvent.click(retry);
+    expect(retry.hasAttribute("disabled")).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    fireEvent.click(retry);
+    expect(calls.list.filter((c) => c.method === "work.guests.list")).toHaveLength(calls.list.slice(0, asked).filter((c) => c.method === "work.guests.list").length + 2);
+    calls.listGate = null;
+    await act(async () => open());
+    await waitFor(() => expect(screen.queryByText("The host did not answer")).toBeNull());
   });
 
   it("Replace address… asks first, saying the old address stops opening, and rekeys only on Replace", async () => {

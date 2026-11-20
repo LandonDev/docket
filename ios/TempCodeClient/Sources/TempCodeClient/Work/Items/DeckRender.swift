@@ -13,6 +13,14 @@ public enum DeckRender: Sendable, Hashable {
         return hasFile ? .file : nil
     }
 
+    /// The verdicts are released only once the fetched bytes open as a document with a page: bytes PDFKit cannot read
+    /// (nil) or a document of no pages show the failure with Try Again, never Reject and Accept over nothing.
+    public static func opens(pageCount: Int?) -> Bool {
+        (pageCount ?? 0) > 0
+    }
+
+    public static let unreadable = "The slides did not open."
+
     /// Why nothing shows, when the host gave no reason of its own.
     public static func missingWords(changesWaiting: Bool) -> String {
         changesWaiting ? "The proposed changes have not been drawn yet." : "The deck has not been drawn yet."

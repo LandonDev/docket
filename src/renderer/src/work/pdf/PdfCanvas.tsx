@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PdfCite, PdfField, PdfSignature, PdfView } from "@shared/contract-work-pdf";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -263,6 +263,20 @@ export function Bar({ item, env, host: given }: CanvasBodyProps<PdfState> & PdfD
   const nav = navOf(item.id);
   const state = useNav(nav);
   const host = given ?? hostFor(env, item.id);
+  // Escape and Close find give the focus back to Find, or to the page when the narrow bar holds no Find: never to the body.
+  const findButton = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  const findOpen = state.find.open;
+  useLayoutEffect(() => {
+    if (findOpen || !refocus.current) return;
+    refocus.current = false;
+    const target = findButton.current ?? document.querySelector<HTMLElement>(`[data-pdf-column="${CSS.escape(item.id)}"]`);
+    target?.focus({ preventScroll: true });
+  }, [findOpen, item.id]);
+  const closeFind = useCallback(() => {
+    refocus.current = true;
+    nav.closeFind();
+  }, [nav]);
   // While the file opens the bar holds a bone where the pager will be, so the body does not move when it lands.
   if (state.pages === 0) return state.shut ? null : <Skeleton data-pdf-bar-bone className="h-3 w-30" />;
   const fits = barFits(state.width, state.reviewing, state.find.open);
@@ -271,10 +285,10 @@ export function Bar({ item, env, host: given }: CanvasBodyProps<PdfState> & PdfD
       {fits.pager ? <Pager nav={nav} page={state.page} pages={state.pages} arrows={fits.arrows} /> : null}
       {fits.zoom ? <ZoomMenu nav={nav} zoom={state.zoom} /> : null}
       {state.find.open ? (
-        <FindField nav={nav} />
+        <FindField nav={nav} onClose={closeFind} />
       ) : fits.find ? (
         <Tip label="Find">
-          <Button variant="ghost" size="icon-xs" aria-label="Find" onClick={() => nav.openFind()}>
+          <Button ref={findButton} variant="ghost" size="icon-xs" aria-label="Find" onClick={() => nav.openFind()}>
             <Search />
           </Button>
         </Tip>
@@ -330,7 +344,7 @@ function ZoomMenu({ nav, zoom }: { nav: PdfNav; zoom: Zoom }) {
   );
 }
 
-function FindField({ nav }: { nav: PdfNav }) {
+function FindField({ nav, onClose }: { nav: PdfNav; onClose(): void }) {
   const { find } = useNav(nav);
   const [text, setText] = useState(find.query);
   const input = useRef<HTMLInputElement>(null);
@@ -360,7 +374,7 @@ function FindField({ nav }: { nav: PdfNav }) {
             </Button>
           </Tip>
           <Tip label="Close find">
-            <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Close find" onClick={() => nav.closeFind()}>
+            <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Close find" onClick={onClose}>
               <X />
             </Button>
           </Tip>
@@ -381,7 +395,7 @@ function FindField({ nav }: { nav: PdfNav }) {
             else nav.step(event.shiftKey ? -1 : 1);
           } else if (event.key === "Escape") {
             event.preventDefault();
-            nav.closeFind();
+            onClose();
           }
         }}
         className="px-0.5 text-xs text-foreground"

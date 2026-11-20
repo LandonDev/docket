@@ -64,7 +64,7 @@ describe('the form page', () => {
     expect(document.activeElement).toBe(root.querySelector('h1'))
     const [url, init] = fetcher.mock.calls[1]
     expect(url).toBe('/f/abcdefghijklmnop')
-    expect(JSON.parse(String(init!.body))).toEqual({ answers: { n: 'Ava', g: 'Valorant', z: 'M' } })
+    expect(JSON.parse(String(init!.body))).toEqual({ answers: { n: 'Ava', g: 'Valorant', z: 'M' }, submission: expect.stringMatching(/^[A-Za-z0-9_-]{16,64}$/) })
   })
 
   it('shows the service\'s refusal at the question it names, and a closed form as closed', async () => {
@@ -171,7 +171,54 @@ describe('the form page', () => {
     type('#q0', 'Ava')
     root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
     submit()
-    await vi.waitFor(() => expect(document.querySelector('[data-fm-status]')!.textContent).toBe('Your answer was not sent. Check your connection and try again.'))
+    // No reply came: the answer may be in, so the page cannot say it was not sent.
+    await vi.waitFor(() => expect(document.querySelector('[data-fm-status]')!.textContent).toBe("We couldn't confirm your answer. Check your connection, then send it again: it is counted once."))
+  })
+
+  it('sends the same answers again under the same submission, and changed answers under a new one', async () => {
+    const bodies: { answers: Record<string, string>; submission: string }[] = []
+    let fail = true
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== 'POST') return json(200, FORM)
+      bodies.push(JSON.parse(String(init.body)))
+      if (fail) throw new TypeError('offline')
+      return json(201, { ok: true })
+    })
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    type('#q0', 'Ava')
+    root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
+    submit()
+    await vi.waitFor(() => expect(root.querySelector<HTMLButtonElement>('.fm-send')!.disabled).toBe(false))
+    submit()
+    await vi.waitFor(() => expect(bodies).toHaveLength(2))
+    await vi.waitFor(() => expect(root.querySelector<HTMLButtonElement>('.fm-send')!.disabled).toBe(false))
+    expect(bodies[0]!.submission).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
+    expect(bodies[1]!.submission).toBe(bodies[0]!.submission)
+    type('#q0', 'Ava Thompson')
+    fail = false
+    submit()
+    await vi.waitFor(() => expect(bodies).toHaveLength(3))
+    expect(bodies[2]!.submission).not.toBe(bodies[0]!.submission)
+  })
+
+  it('gives the focus back to Send after a general failure, when it fell to the page meanwhile', async () => {
+    let done: (r: Response) => void = () => undefined
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'POST' ? new Promise<Response>((r) => (done = r)) : json(200, FORM)))
+    await mount(root, '/f/abcdefghijklmnop', fetcher)
+    type('#q0', 'Ava')
+    root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
+    const send = root.querySelector<HTMLButtonElement>('.fm-send')!
+    send.focus()
+    submit()
+    // A browser drops the focus of the control it disables (jsdom does not, so the test does).
+    const gone = document.createElement('input')
+    document.body.append(gone)
+    gone.focus()
+    gone.remove()
+    // A gateway's 502 with none of the service's words: unconfirmed, and Send has the focus back.
+    done(new Response('Bad gateway', { status: 502 }))
+    await vi.waitFor(() => expect(document.activeElement).toBe(send))
+    expect(document.querySelector('[data-fm-status]')!.textContent).toBe("We couldn't confirm your answer. Check your connection, then send it again: it is counted once.")
   })
 
   it('tells a form that failed to load from one that is not there, and Retry reads it again', async () => {

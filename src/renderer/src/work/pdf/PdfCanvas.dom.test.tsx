@@ -195,6 +195,42 @@ describe("the PDF kind", () => {
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Find" })).toBeNull());
   });
 
+  it("gives the focus back to Find on Escape and on Close find, never to the body", async () => {
+    await open(pdfView());
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    let input = screen.getByRole("textbox", { name: "Find" });
+    input.focus();
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Find" })).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Find" }));
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+    input = screen.getByRole("textbox", { name: "Find" });
+    const close = screen.getByRole("button", { name: "Close find" });
+    close.focus();
+    fireEvent.click(close);
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Find" })).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Find" }));
+  });
+
+  it("gives the focus to the page when the narrow bar holds no Find to return to", async () => {
+    await open(pdfView());
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    const input = screen.getByRole("textbox", { name: "Find" });
+    input.focus();
+    // A change waits in a narrow canvas: once Find closes, the stepper's room leaves no Find in the bar.
+    act(() => {
+      navOf("pdf1").review(true);
+      navOf("pdf1").measured(420);
+    });
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Find" })).toBeNull());
+    expect(screen.queryByRole("button", { name: "Find" })).toBeNull();
+    const page = document.querySelector<HTMLElement>('[data-pdf-column="pdf1"]')!;
+    expect(document.activeElement).toBe(page);
+    expect(page.tabIndex).toBe(-1);
+    expect(page.className).toContain("focus-ring");
+  });
+
   it("opens Find on ⌘F or Ctrl+F while the PDF has the focus, and not otherwise", async () => {
     await open(pdfView());
     const find = await screen.findByRole("button", { name: "Find" });

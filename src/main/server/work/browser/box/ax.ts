@@ -181,7 +181,8 @@ export function readTree(nodes: readonly AxNode[], book: IndexBook, o: ReadOptio
           index,
           role: role!,
           ...(name ? { name: cutName(name) } : {}),
-          ...(value ? { value: cutValue(value) } : {}),
+          // An element read (`root`) answers its values uncut (§4.4): the hold binds a long field by what it holds whole.
+          ...(value ? { value: o.root !== undefined ? value : cutValue(value) } : {}),
           states,
           actions: []
         }

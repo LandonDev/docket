@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -149,6 +149,9 @@ const publicId = (view: FormView): string => view.link!.split('/f/')[1]
 const post = (id: string, answers: Record<string, string>, headers: Record<string, string> = {}) =>
   fetch(`http://127.0.0.1:${port}/f/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ answers }) })
 
+const postOnce = (id: string, answers: Record<string, string>, submission: string) =>
+  fetch(`http://127.0.0.1:${port}/f/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers, submission }) })
+
 describe('a form', () => {
   it('is made by a thread and opens in its pane, with ids on every question', async () => {
     const { view } = await made()
@@ -187,6 +190,26 @@ describe('a form', () => {
     const form = (await (await fetch(`http://127.0.0.1:${port}/f/${publicId(live)}/form`)).json()) as PublicForm
     expect(form).toMatchObject({ title: 'Spring LAN registration', open: true })
     expect(pushes.some((p) => p.push === 'work.forms' && p.itemId === itemId && p.view.state === 'open')).toBe(true)
+  })
+
+  it('writes one row for a submission sent twice (its reply lost on the way back), and a new row for a new one', async () => {
+    const { itemId } = await made()
+    const live = await publish(itemId)
+    const [name, game] = live.body.questions.map((q) => q.id)
+    const id = publicId(live)
+    const answers = { [name]: 'Ava Thompson', [game]: 'Valorant' }
+    expect((await postOnce(id, answers, 'sub_aaaaaaaaaaaaaaaa')).status).toBe(201)
+    // The page did not hear the reply and sends the same answers again: the answer it already wrote.
+    const again = await postOnce(id, answers, 'sub_aaaaaaaaaaaaaaaa')
+    expect(again.status).toBe(201)
+    expect(await again.json()).toEqual({ ok: true })
+    expect((await call<FormResponses>('work.forms.responses', { itemId })).count).toBe(1)
+    expect((await postOnce(id, { [name]: 'Marcus Lee', [game]: 'Rocket League' }, 'sub_bbbbbbbbbbbbbbbb')).status).toBe(201)
+    expect((await call<FormResponses>('work.forms.responses', { itemId })).count).toBe(2)
+    // The ids it took are noted with their rows, so a restart still knows them.
+    const log = readFileSync(join(dir, 'work-service', 'forms', `${id}.answers.jsonl`), 'utf8')
+    expect(log).toContain('"submission":"sub_aaaaaaaaaaaaaaaa"')
+    expect(log).toContain('"submission":"sub_bbbbbbbbbbbbbbbb"')
   })
 
   it('takes answers into its sheet, refuses a bad one by question, and stops when closed', async () => {

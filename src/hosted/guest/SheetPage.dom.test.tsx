@@ -92,7 +92,11 @@ describe("the hosted sheet", () => {
     expect(document.querySelector("[data-sheet-offline]")!.textContent).toContain("Reconnecting");
     expect(document.querySelector("[data-grid]")!.getAttribute("data-readonly")).toBe("true");
     await act(async () => grid.emit!({ id: "sheet.mutation.set-range-values", params: { unitId: "u1", subUnitId: "s1", cellValue: {} } }));
-    expect(screen.getByRole("alert").textContent).toContain("The connection dropped before the sheet answered. Check the cell");
+    // It never left the page: plainly not saved, nothing to check.
+    const alert = screen.getByRole("alert").textContent!;
+    expect(alert).toContain("Edit not saved");
+    expect(alert).toContain("The sheet was offline");
+    expect(alert).not.toMatch(/check the cell/i);
     expect(first.sent.some((m) => m.includes('"t":"ops"'))).toBe(false);
     // Back: a fresh state, the grid editable again; the unsaved line stays until an edit is taken.
     await act(async () => void vi.advanceTimersByTime(2000));
@@ -145,6 +149,29 @@ describe("the hosted sheet", () => {
       expect(onGone).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("says an edit still waiting to go when the line drops was not saved, not that it could not be confirmed", async () => {
+    grid.handle = { onMutation: (fn: (m: unknown) => void) => void (grid.emit = fn), apply: () => {} };
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    try {
+      render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} />);
+      await act(async () => void (await Promise.resolve()));
+      await act(async () => void vi.advanceTimersByTime(0));
+      await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+      const socket = FakeSocket.last!;
+      // Typed, and the line drops before the batch goes.
+      await act(async () => grid.emit!({ id: "sheet.mutation.set-range-values", params: { unitId: "u1", subUnitId: "s1", cellValue: {} } }));
+      expect(socket.sent.some((m) => m.includes('"t":"ops"'))).toBe(false);
+      await act(async () => socket.onclose?.({ code: 1006 }));
+      const alert = screen.getByRole("alert").textContent!;
+      expect(alert).toContain("Edit not saved");
+      expect(alert).toContain("The connection dropped before it was sent");
+      expect(alert).not.toContain("not confirmed");
+    } finally {
+      vi.useRealTimers();
+      grid.handle = null;
     }
   });
 

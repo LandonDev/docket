@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { configureComputerHold, configureOwnerDrives, HELD_STALE, HELD_UNAVAILABLE, HELD_UNPLACED, HELD_UNREAD, type HeldComputerCall } from './run'
+import { cutValue } from '@shared/computer/observation'
+import { configureComputerHold, configureOwnerDrives, HELD_PARTIAL, HELD_STALE, HELD_UNAVAILABLE, HELD_UNPLACED, HELD_UNREAD, type HeldComputerCall } from './run'
 import type { ComputerToolOutcome } from './result'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
@@ -53,13 +54,21 @@ interface Showing {
   unseen?: string
   /** [37] button "close" reads as button "Send" in the host's own fresh reads only: the same number, renamed since the thread's read */
   renamed?: boolean
+  /** the text area's value, long: a whole read prints it cut (`cutValue`), its own element read whole */
+  long?: string
+  /** the element read of the text area answers it cut too, as a reader that can only give a cut value would */
+  cutWhole?: boolean
+  /** [21] checkbox "bold" reads ticked */
+  bold?: boolean
 }
 /** Rewrites what the fake answers before the host reads it; change the returned object to change later answers. */
 const showing = (h: ComputerHarness, show: Showing): Showing => {
   const service = h.service as unknown as { request: (m: string, p: unknown, o?: unknown) => Promise<unknown> }
   const request = service.request.bind(service)
-  const text = (s: string, own: boolean): string => {
+  const text = (s: string, own: boolean, sub = false): string => {
     let out = s
+    if (show.long !== undefined) out = out.replace(/(\[3\] text area = )"(?:[^"\\]|\\.)*"/, `$1${JSON.stringify(sub && !show.cutWhole ? show.long : cutValue(show.long))}`)
+    if (show.bold) out = out.replace('checkbox "bold" unchecked', 'checkbox "bold" checked')
     if (own && show.shift) out = out.replace(/\[(\d+)\]/g, (_, n: string) => `[${Number(n) + show.shift!}]`)
     if (own && show.unseen && /^\[1\] window/m.test(out)) out = `${out}\n  ${show.unseen}`
     if (own && show.renamed) out = out.replace(/button "close"/g, 'button "Send"')
@@ -69,17 +78,17 @@ const showing = (h: ComputerHarness, show: Showing): Showing => {
     if (show.value !== undefined) out = out.replace(/(\[3\] text area = )"(?:[^"\\]|\\.)*"/, `$1${JSON.stringify(show.value)}`)
     return out
   }
-  const walk = (v: unknown, own: boolean): unknown => {
-    if (typeof v === 'string') return text(v, own)
-    if (Array.isArray(v)) return v.map((x) => walk(x, own))
+  const walk = (v: unknown, own: boolean, sub = false): unknown => {
+    if (typeof v === 'string') return text(v, own, sub)
+    if (Array.isArray(v)) return v.map((x) => walk(x, own, sub))
     if (!v || typeof v !== 'object') return v
-    const o = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, own)]))
+    const o = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, own, sub)]))
     if (show.chat && o.pid === 16800 && o.name === 'TextEdit') Object.assign(o, { name: 'Slack', bundleId: 'com.tinyspeck.slackmacgap' })
     return o
   }
   service.request = async (m, p, o) => {
-    const params = p as { geometry?: boolean; screenshot?: string }
-    return walk(await request(m, p, o), m === 'state.get' && params.geometry === true && params.screenshot === 'never')
+    const params = p as { geometry?: boolean; screenshot?: string; element?: number }
+    return walk(await request(m, p, o), m === 'state.get' && params.geometry === true && params.screenshot === 'never', m === 'state.get' && params.element !== undefined)
   }
   return show
 }
@@ -652,6 +661,40 @@ describe('the attacker under full access', () => {
     useHold()
     const { h } = await thread('work')
     expect(await h.run('computer_act', { app: 'TextEdit', action: 'paste', named: 'To', text: 'other@example.com' })).toMatchObject({ isError: true, body: HELD_UNPLACED })
+    expect(acts(h)).toBe(0)
+  })
+
+  it('binds a long message whole: a change past what a line shows makes the press stale', async () => {
+    useHold()
+    const long = `Hello Dana, ${'the plan for the spring LAN is below. '.repeat(8)}Wire the deposit to account 1234.`
+    const { h, shown } = await thread('work', 'auto', { send: true, long })
+    await click(h, SEND)
+    expect(held).toHaveLength(1)
+    // the host read the field whole once, beside the window's read
+    expect(h.requests().some((r) => r.method === 'state.get' && r.params.element === 3)).toBe(true)
+    shown.long = long.replace('1234.', '9999.')
+    expect(cutValue(shown.long)).toBe(cutValue(long))
+    expect(await held[0].carryOut()).toMatchObject({ stale: true, body: HELD_STALE })
+    expect(acts(h)).toBe(0)
+    shown.long = long
+    expect((await held[0].carryOut()).isError).toBe(false)
+    expect(acts(h)).toBe(1)
+  })
+
+  it('refuses to hold a Send over a long field the reader cannot give whole', async () => {
+    useHold()
+    const { h } = await thread('work', 'auto', { send: true, long: 'x'.repeat(400), cutWhole: true })
+    expect(await click(h, SEND)).toMatchObject({ isError: true, body: HELD_PARTIAL })
+    expect(held).toHaveLength(0)
+    expect(acts(h)).toBe(0)
+  })
+
+  it('binds what is ticked: ticking a box while a Send is held makes the press stale', async () => {
+    useHold()
+    const { h, shown } = await thread('work')
+    await click(h, SEND)
+    shown.bold = true
+    expect(await held[0].carryOut()).toMatchObject({ stale: true, body: HELD_STALE })
     expect(acts(h)).toBe(0)
   })
 

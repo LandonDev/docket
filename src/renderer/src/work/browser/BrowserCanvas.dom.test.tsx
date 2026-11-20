@@ -246,6 +246,32 @@ describe("the browser's bar", () => {
     vi.unstubAllGlobals();
   });
 
+  it("a host cut to its room takes the focus and shows whole in the shared tip; one that fits takes neither", async () => {
+    host.state = { ...host.state, site: { url: "https://us2.concursolutions.com/report", name: "Concur" } };
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    const tip = () => document.querySelector('[data-slot="tooltip-content"]');
+    const { unmount } = render(<Bar {...props()} />);
+    const fits = await screen.findByText("us2.concursolutions.com");
+    expect(fits.hasAttribute("tabindex")).toBe(false);
+    unmount();
+    // The bar is narrow: the host is cut.
+    const width = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    render(<Bar {...props()} />);
+    const cut = await screen.findByText("us2.concursolutions.com");
+    await waitFor(() => expect(cut.getAttribute("tabindex")).toBe("0"));
+    expect(cut.className).toContain("focus-ring");
+    // The keyboard reaches it and brings up the whole host.
+    act(() => cut.focus());
+    expect(document.activeElement).toBe(cut);
+    await waitFor(() => expect(tip()?.textContent).toBe("us2.concursolutions.com"));
+    width.mockRestore();
+    client.mockRestore();
+  });
+
   it("at a held submit, Take over gives way by the pane's width (a container query), never the window's", async () => {
     host.items = [HELD];
     const { container } = render(<Bar {...props()} />);

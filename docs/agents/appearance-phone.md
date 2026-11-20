@@ -16,6 +16,15 @@ increased-contrast orange and red in light, which measure 4.1:1 on
 step darker (`#b04a00`, `#c8102e`: 4.9:1 and 5.3:1 there). Dark keeps the
 system's. Parse-checked on the box; not built or shot again.
 
+The Outbox's band headers (w50; Work/OutboxScreen.swift `BandHeader`). The
+workspace name and the count used the hierarchical meta and stamp steps,
+which inside a list's section header nest under its dimming: 1.7:1 and
+1.3:1 on `Surface.chrome` in light. Both now draw in `Color(.label)` through
+`textStep`'s `tint`, keeping their two type steps (meta semibold, stamp):
+18.8:1 in light and 17:1 in dark on the chrome fill. `secondaryLabel` would
+measure only 3.3:1 there in light. Rows 3 and 13 (the stamp and meta steps
+everywhere else) stay the owner's call. Parse-checked on the box; not shot.
+
 ## Left for the owner
 
 The rest comes from three things, and each is a design choice about the

@@ -365,6 +365,19 @@ import TempCodeContract
         #expect(caret(["prefix": .string(#"say ""#)]) == #"after the first "Pay" right after "say \"" in text area "Message""#)
     }
 
+    @Test func `an affix escapes every character that cannot be seen or looks like a space, by its Unicode class`() {
+        // The desktop's examples (fix12-computer.md), word for word.
+        #expect(OutboxModel.exactQuote("a\u{2063}b") == #""a\u2063b""#)
+        #expect(OutboxModel.exactQuote("co\u{00AD}op") == #""co\u00adop""#)
+        #expect(OutboxModel.exactQuote("\u{200E}\u{202E}\u{2066}") == #""\u200e\u202e\u2066""#)
+        #expect(OutboxModel.exactQuote("\u{0085}\u{007F}") == #""\u0085\u007f""#)
+        #expect(OutboxModel.exactQuote("\u{2029}\u{3000}\u{205F}") == #""\u2029\u3000\u205f""#)
+        #expect(OutboxModel.exactQuote("tag\u{E0041}") == #""tag\u{e0041}""#)
+        #expect(OutboxModel.exactQuote("a\nb\t") == #""a\nb\t""#)
+        // A plain space stays; letters, symbols and emoji are left as they are.
+        #expect(OutboxModel.exactQuote("Pay $100 ✓ 🙂") == #""Pay $100 ✓ 🙂""#)
+    }
+
     @Test func `keeps the field in every row of a long batch, whatever the title cuts`() {
         let fields = ["To", "Cc", "Subject", "Message"]
         let steps: [JSONValue] = fields.enumerated().flatMap { i, name in
@@ -472,6 +485,8 @@ import TempCodeContract
         // Rows from another host never hide a failed read, and a failed read never shows as empty.
         #expect(OutboxModel.emptyState(bandsEmpty: false, anyReading: false, anyFailed: true) == nil)
         #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: false, anyFailed: true) == nil)
+        // A host still reading keeps its spinner, under another host's failed row.
+        #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: true, anyFailed: true) == .reading)
         #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: true, anyFailed: false) == .reading)
         #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: false, anyFailed: false) == .nothingHeld)
         #expect(OutboxModel.emptyState(bandsEmpty: false, anyReading: true, anyFailed: false) == nil)

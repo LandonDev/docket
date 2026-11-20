@@ -1,6 +1,6 @@
 /** The generic view's own rows for the kinds without a view: what goes in his words, never an id, a revision, a path or JSON. */
 import { describe, expect, it } from "vitest";
-import { kindHeading, kindRows, megabytes } from "./kindRows";
+import { exactQuote, kindHeading, kindRows, megabytes } from "./kindRows";
 
 const noise = (rows: ReturnType<typeof kindRows>) => JSON.stringify(rows);
 
@@ -202,6 +202,18 @@ describe("where a computer act's typing goes", () => {
     expect(caret({ prefix: "\u00a0" })).toBe('after the first "Pay" right after "\\u00a0" in text area "Message"');
     expect(caret({ prefix: "\u00a0" })).not.toBe(caret({ prefix: " " }));
     expect(caret({ prefix: 'say "' })).toBe('after the first "Pay" right after "say \\"" in text area "Message"');
+  });
+
+  it("escapes every character that cannot be seen by its Unicode class, not by a list", () => {
+    expect(exactQuote("a\u2063b")).toBe('"a\\u2063b"');
+    expect(exactQuote("co\u00adop")).toBe('"co\\u00adop"');
+    expect(exactQuote("\u200e\u202e\u2066")).toBe('"\\u200e\\u202e\\u2066"');
+    expect(exactQuote("\u0085\u007f")).toBe('"\\u0085\\u007f"');
+    expect(exactQuote("\u2029\u3000\u205f")).toBe('"\\u2029\\u3000\\u205f"');
+    expect(exactQuote("tag\u{e0041}")).toBe('"tag\\u{e0041}"');
+    // what is seen is left as it is: a plain space, letters, an emoji
+    expect(exactQuote("Pay $100 ✓ 🙂")).toBe('"Pay $100 ✓ 🙂"');
+    expect(exactQuote("a\nb\t")).toBe('"a\\nb\\t"');
   });
 
   it("keeps the field in every row of a long batch, whatever the title cuts", () => {

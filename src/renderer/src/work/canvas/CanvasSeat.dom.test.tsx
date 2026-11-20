@@ -596,6 +596,32 @@ describe("the frame a kind drives through its shell", () => {
     expect(within(stepper).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false);
   });
 
+  it("while the kind holds only its verdicts, rests Reject, Accept and More's Accept all and Reject all, and leaves Previous and Next live", async () => {
+    const { shell } = await driven();
+    const adapter = review({ index: 1, count: 3, verdictsHeld: true });
+    act(() => shell.review(adapter));
+    const stepper = screen.getByRole("toolbar", { name: "Review changes" });
+    expect(within(stepper).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+    expect(within(stepper).getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+    // The steps stay live, so a keyboard review keeps its place in the bar and the other changes stay reachable.
+    const next = within(stepper).getByRole("button", { name: "Next change" });
+    const previous = within(stepper).getByRole("button", { name: "Previous change" });
+    expect(next.hasAttribute("disabled")).toBe(false);
+    expect(previous.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(next);
+    expect(adapter.step).toHaveBeenCalledWith(2);
+    fireEvent.click(previous);
+    expect(adapter.step).toHaveBeenCalledWith(0);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const all = await screen.findByRole("menuitem", { name: "Accept all" });
+    expect(all.getAttribute("aria-disabled") ?? all.getAttribute("data-disabled")).not.toBeNull();
+    fireEvent.click(all);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reject all" }));
+    expect(adapter.accept).not.toHaveBeenCalled();
+    expect(adapter.reject).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+  });
+
   it("holds the bar's place with a bone while a kind's code loads, so the body does not drop when it lands", async () => {
     const { defineChunk } = await import("../../lib/lazyChunk");
     let land: (module: unknown) => void = () => {};

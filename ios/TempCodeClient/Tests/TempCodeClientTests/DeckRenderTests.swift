@@ -11,6 +11,12 @@ struct DeckRenderTests {
         #expect(DeckRender.missingWords(changesWaiting: true) == "The proposed changes have not been drawn yet.")
     }
 
+    @Test func `the verdicts wait for bytes that open as a document with a page`() {
+        #expect(DeckRender.opens(pageCount: 3))
+        #expect(!DeckRender.opens(pageCount: 0))
+        #expect(!DeckRender.opens(pageCount: nil))
+    }
+
     @Test func `with nothing waiting the file's render shows when there is one`() {
         #expect(DeckRender.pick(changesWaiting: false, hasProposed: true, hasFile: true) == .file)
         #expect(DeckRender.pick(changesWaiting: false, hasProposed: false, hasFile: false) == nil)

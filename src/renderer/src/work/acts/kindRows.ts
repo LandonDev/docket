@@ -51,11 +51,17 @@ const sigWords = (sig: unknown): string | null => {
 };
 
 /**
- * A string as it goes, in quotes: JSON's escapes for quotes, line breaks and tabs, and `\uXXXX` for the characters
- * that look like a space or like nothing (a no-break space, a zero-width space), so " " and "\u00a0" never read alike.
+ * A string as it goes, in quotes: JSON's escapes for quotes, backslashes and the C0 controls, and an escape for
+ * every other character that cannot be seen or looks like a space: any format character (soft hyphen, zero-width
+ * and invisible operators, bidi marks), control, line or paragraph separator, and any space but U+0020. Written as
+ * `\uXXXX`, or `\u{XXXXX}` past the first plane, so " " and "\u00a0" never read alike.
  */
 export const exactQuote = (v: string): string =>
-  JSON.stringify(v).replace(/[\u00a0\u1680\u180e\u2000-\u200f\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  JSON.stringify(v).replace(/[\p{Cf}\p{Cc}\p{Zl}\p{Zp}\p{Zs}]/gu, (c) => {
+    if (c === " ") return c;
+    const code = c.codePointAt(0)!;
+    return code > 0xffff ? `\\u{${code.toString(16)}}` : `\\u${code.toString(16).padStart(4, "0")}`;
+  });
 
 const CLICK: Record<string, string> = { left_click: "Clicks", right_click: "Right-clicks", middle_click: "Middle-clicks", double_click: "Double-clicks", triple_click: "Triple-clicks" };
 

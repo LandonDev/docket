@@ -75,6 +75,8 @@ struct SlidesItemView: View {
         }
         // The bytes must be the render the view named: a read that meets another (the changes moved on) fails, for Try Again.
         let data = try await client.work.canvas.deckData(item.id, proposed: render == .proposed, size: Int(size), rev: rev)
+        // The verdicts come only once PDFKit opens the bytes as a document with a page; a decode failure is Try Again.
+        guard DeckRender.opens(pageCount: PDFDocument(data: data)?.pageCount) else { throw DeckError.notRendered(DeckRender.unreadable) }
         return Loaded(deck: deck, data: data, render: render, rev: rev)
     }
 

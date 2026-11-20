@@ -30,7 +30,7 @@ import { CONFIRM_KIND_INFO, type ConfirmNeed } from '@shared/computer/policy'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayVerdict } from '@shared/away'
-import { clicksBlind, heldTargets, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
+import { clicksBlind, cutFields, heldTargets, isCutValue, withValues, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './batchPlan'
@@ -173,6 +173,7 @@ export function ownerDrivesLine(threadId: string): string | null {
 export const HELD_UNAVAILABLE =
   "held: this step sends, posts, pays, deletes or the like, and it cannot be kept for the owner's press from here, so it was not carried out. Do not reach the same effect another way; say what is ready to go and carry on with the rest."
 export const HELD_STALE = 'the window no longer holds what was shown when this was held'
+export const HELD_PARTIAL = "refused: a field's text is longer than the window's read shows, and it could not be read whole, so nothing could bind what would go. Nothing was sent. Read the window with computer_observe and try again."
 export const HELD_UNREAD = 'refused: the window could not be read just now, and in a Work thread nothing acts on a window the host has not read. Read it with computer_observe and try again.'
 export const HELD_UNPLACED = "refused: a step names an element or a point the window does not have, so it cannot be kept for the owner's press as it would run. Read the window and name what to act on."
 export const AWAY_PASSWORD = 'denied: the person is away, and text goes into a password field only with them there; finish around it and name it in your report'
@@ -788,12 +789,37 @@ async function runChecked(
           return null
         }
       }
+      /**
+       * The screen with every field the read printed cut read again whole (`state.get` with `element`, §4.4), so the
+       * hold binds what would go and not its first 160 characters; null when one cannot be read whole.
+       */
+      const wholeFields = async (screen: Screen, epoch: string | undefined): Promise<Screen | null> => {
+        const cut = cutFields(screen)
+        if (!cut.length) return screen
+        if (!epoch) return null
+        const st = app()
+        const window = args.window ? { title: args.window } : st?.window ? { id: st.window.id } : undefined
+        const values = new Map<number, string>()
+        for (const element of cut) {
+          try {
+            const obs = await call('state.get', { session: t.serviceSession, app: { pid: pin.app.pid }, ...(window ? { window } : {}), launch: false, tabs: 'background', element, epoch, geometry: false, screenshot: 'never', wait: COMPUTER_WAIT.observe })
+            const value = screenOfObservation(obs.text, identity)?.elements.get(element)?.value
+            if (value === undefined || isCutValue(value)) return null
+            values.set(element, value)
+          } catch {
+            return null
+          }
+        }
+        return withValues(screen, values)
+      }
       if (ctx.pressed) {
         // The owner pressed: the call runs as it was held, once the window still holds what he was shown. The targets are
         // found again by what they are, since the service may have numbered the window anew since. A click with no
         // target must find the pointer, wherever the thread's calls have put it since, still on what he was shown.
         const obs = await fresh(false)
-        const screen = obs ? screenOfObservation(obs.text, identity) : null
+        const read = obs ? screenOfObservation(obs.text, identity) : null
+        // A field that cannot be read whole cannot be checked against what he was shown: stale, nothing sent.
+        const screen = read ? await wholeFields(read, obs?.epoch) : null
         const staged = screen ? restage(steps, ctx.pressed.targets, ctx.pressed.mark, screen, t.pointer ?? null) : null
         if (!obs || !staged) return { ...refusal(HELD_STALE), stale: true } as ComputerToolOutcome
         remember(t, args.app!, obs)
@@ -830,7 +856,11 @@ async function runChecked(
           if (!computerHold || !rerun || ctx.work === true) return refusal(HELD_UNAVAILABLE)
           // He is shown the window as it is now.
           const obs = await fresh(true)
-          const shown = (obs ? screenOfObservation(obs.text, identity) : null) ?? screen ?? { app: identity, focused: null, elements: new Map() }
+          const now = (obs ? screenOfObservation(obs.text, identity) : null) ?? screen ?? { app: identity, focused: null, elements: new Map() }
+          // A long field is bound whole: one that cannot be read so is no binding at all.
+          // (the numbers it holds are the read's own: the window's just now, else the one the call was judged on)
+          const shown = await wholeFields(now, obs?.epoch ?? app()?.epoch)
+          if (!shown) return refusal(HELD_PARTIAL)
           // Every step's target is kept by what it is, so the press runs on what he was shown or not at all.
           const targets = heldTargets(steps, shown, pointer) ?? (screen ? heldTargets(steps, screen, pointer) : null)
           if (!targets) return refusal(HELD_UNPLACED)

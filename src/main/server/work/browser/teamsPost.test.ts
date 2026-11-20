@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { cutValue } from '@shared/computer/observation'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { OutboxItem } from '@shared/contract-work-outbox'
 import { configureComputerHold, type HeldComputerCall } from '../../computer/run'
@@ -32,6 +33,10 @@ interface Dress {
   draft?: string
   /** the chat Teams shows open, by its header; the listed chat when unset */
   open?: string
+  /** a long post the chat shows, as a read-only text area [90]: cut in a window's read, whole in its own element read */
+  last?: string
+  /** what that post becomes from the host's `at`-th read of the whole window with frames (a press's read) on */
+  lastAfter?: { at: number; text: string }
 }
 const harnesses: ComputerHarness[] = []
 let held: HeldComputerCall[] = []
@@ -43,6 +48,14 @@ function teams(dress: Dress = {}, thread = 't1'): ComputerHarness {
   h.set(thread, { scope: 'work' })
   const service = h.service as unknown as { request: (m: string, p: unknown, o?: unknown) => Promise<unknown> }
   const request = service.request.bind(service)
+  let pressReads = 0
+  let last = dress.last
+  const lastLine = (whole: boolean): string => `[90] text area "Last post" = ${JSON.stringify(whole ? last! : cutValue(last!))} read-only`
+  const withLast = (s: string, element: number | undefined): string => {
+    if (last === undefined) return s
+    if (element === 90) return s.replace('[90] group "Part"', lastLine(true))
+    return element === undefined && /^\[1\] window/m.test(s) ? `${s}\n  ${lastLine(false)}` : s
+  }
   const text = (s: string): string => {
     let out = s.replace(/^app "TextEdit"/, 'app "Microsoft Teams"').replace(/button "close"/g, `button "${dress.chat ?? 'Esports staff'}"`)
     out = out.replace(/button "minimize"/g, `heading "${dress.open ?? dress.chat ?? 'Esports staff'}"`)
@@ -59,7 +72,13 @@ function teams(dress: Dress = {}, thread = 't1'): ComputerHarness {
   }
   // what the host asks of "Microsoft Teams" goes to the fake's TextEdit
   const toFake = (v: unknown): unknown => JSON.parse(JSON.stringify(v ?? null).replaceAll('Microsoft Teams', 'TextEdit').replaceAll('com.microsoft.teams2', 'com.apple.TextEdit'))
-  service.request = async (m, p, o) => walk(await request(m, toFake(p), o))
+  service.request = async (m, p, o) => {
+    const params = (p ?? {}) as { geometry?: boolean; element?: number; mode?: string }
+    if (m === 'state.get' && params.geometry === true && params.element === undefined && ++pressReads === dress.lastAfter?.at) last = dress.lastAfter.text
+    const answer = await request(m, toFake(p), o)
+    const dressed = m === 'state.get' ? JSON.parse(JSON.stringify(answer), (k, v) => (k === 'text' && typeof v === 'string' ? withLast(v, params.element) : v)) : answer
+    return walk(dressed)
+  }
   return h
 }
 const acts = (h: ComputerHarness) => h.requests().filter((r) => r.method === 'action.run' || r.method === 'action.batch')
@@ -154,6 +173,35 @@ describe('a held Teams reply, end to end', () => {
     } finally {
       await rig.close()
     }
+  })
+})
+
+describe('a long post in the chat', () => {
+  const last = `Dana: ${'here is the plan for the spring LAN, room by room. '.repeat(6)}Bring the cables.`
+  const reply = `Thanks Dana. ${'All set on my side for the spring LAN. '.repeat(5)}See you Friday.`
+
+  it('is bound whole: a post over 160 characters goes on a press with nothing changed', async () => {
+    expect(last.length).toBeGreaterThan(160)
+    expect(reply.length).toBeGreaterThan(160)
+    const h = teams({ last })
+    await teamsCarrierOn(h.sessions).post({ chat: 'Esports staff', text: reply }, { sessionId: 't1' })
+    expect(acts(h)).toHaveLength(2)
+    expect(JSON.stringify(acts(h)[1]!.params)).toContain(reply)
+    // the carrier read the long post whole, as the press does
+    expect(h.requests().filter((r) => r.method === 'state.get' && r.params.element === 90).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('makes the post stale when the long post changes past what a line shows, and nothing is typed', async () => {
+    // the same length, so the line a read prints is the same: only the whole value tells them apart
+    const changed = last.replace('Bring the cables.', 'Bring the dollar.')
+    expect(cutValue(changed)).toBe(cutValue(last))
+    // the second press read is the one before the reply is typed
+    const h = teams({ last, lastAfter: { at: 2, text: changed } })
+    const post = teamsCarrierOn(h.sessions).post({ chat: 'Esports staff', text: reply }, { sessionId: 't1' })
+    await expect(post).rejects.toThrow('Teams changed before the reply went. Nothing was posted.')
+    await expect(post).rejects.toBeInstanceOf(ActStale)
+    expect(acts(h)).toHaveLength(1)
+    expect(JSON.stringify(acts(h))).not.toContain(reply)
   })
 })
 

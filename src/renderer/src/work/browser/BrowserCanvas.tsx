@@ -5,7 +5,7 @@ import { Lock } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
-import { Tip, TruncateTip } from "../../components/tip";
+import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { FADE_IN } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
 import { treeIds } from "../../lib/activity";
@@ -116,12 +116,27 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
       {face.face === "loading" ? (
         <Skeleton className="h-3 w-32" />
       ) : host ? (
-        <span data-slot="browser-host" className="flex min-w-0 items-center gap-1.5 text-foreground">
-          <Lock className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate">{host}</span>
-        </span>
+        <Host host={host} />
       ) : null}
       <FaceEnd face={face} env={env} busy={busy} seen={seen} press={press} takeOver={takeOver} handBack={handBack} />
+    </span>
+  );
+}
+
+/**
+ * The site's host, the destination he approves a submit for: cut to its room, and while cut it takes the focus too, so the
+ * keyboard brings up the whole of it in the same tip the pointer does. One tip stays mounted, off while the host fits.
+ */
+function Host({ host }: { host: string }) {
+  const { ref, cut } = useTruncated(host);
+  return (
+    <span data-slot="browser-host" className="flex min-w-0 items-center gap-1.5 text-foreground">
+      <Lock className="size-3 shrink-0 text-muted-foreground" />
+      <Tip label={host} disabled={!cut}>
+        <span ref={ref} tabIndex={cut ? 0 : undefined} className="focus-ring truncate rounded-sm">
+          {host}
+        </span>
+      </Tip>
     </span>
   );
 }

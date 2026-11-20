@@ -460,7 +460,8 @@ function Chart({ bars, format, stale, title }: { bars: { label: string; value: n
   const now = isTimeSeries(bars.map((b) => b.label)) ? bars.length - 1 : -1;
   const columns = `repeat(${bars.length}, minmax(0, 1fr))`;
   return (
-    <div role="img" aria-label={`${title}: ${bars.map((b) => `${b.label} ${tick(b.value, format)}`).join(", ")}`} className="grid h-[168px] grid-cols-[40px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_20px]">
+    // The values read aloud are the hover's whole ones, never the axis's rounded ticks: two bars that round alike stay apart.
+    <div role="img" aria-label={`${title}: ${bars.map((b) => `${b.label} ${full(b.value, format)}`).join(", ")}`} className="grid h-[168px] grid-cols-[40px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_20px]">
       <div className="relative text-xs text-muted-foreground tabular-nums">
         {ticks.map((t) => (
           <span key={t} data-tick={t} className="absolute right-2 translate-y-1/2" style={{ bottom: `${at(t)}%` }}>

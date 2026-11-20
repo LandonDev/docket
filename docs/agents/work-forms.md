@@ -61,7 +61,7 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
 |---|---|
 | `GET /f/<publicId>` | the page, `out/hosted/form/index.html` with the hosted CSP |
 | `GET /f/<publicId>/form` | `{title, description, questions, open}` |
-| `POST /f/<publicId>` | `{answers: {<question id>: text}}` as JSON → 201, or 400 naming the question, 410 closed, 413, 415, 429 |
+| `POST /f/<publicId>` | `{answers: {<question id>: text}, submission?: id}` as JSON → 201, or 400 naming the question, 410 closed, 413, 415, 429; a `submission` already taken (16–64 of `A-Za-z0-9_-`) is 201 again with no second row |
 
 - The service opens no database. Main writes what it serves into the
   service's own folder: `<userData>/work-service/forms/<publicId>.json`
@@ -74,9 +74,12 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
   choice one of its options, 500 characters for a short answer and 5,000 for
   a long one; anything else is dropped), then written as the next row of the
   sheet through the service's sheet host in process (`hostOf(ctx).cells`),
-  then noted in `forms/<publicId>.answers.jsonl` (row and time only), whose
+  then noted in `forms/<publicId>.answers.jsonl` (row, time and the page's submission id), whose
   length is the row count. Answers to one form are written one after
-  another.
+  another. The page sends one submission id per set of answers and sends it
+  again with the same answers, so a reply lost on the way back and sent
+  again is the row already written, never a second one; the page says "We
+  couldn't confirm your answer" when no reply came.
 - Each caller may send one form ten answers in ten minutes, counted by the
   tunnel's `CF-Connecting-IP`, and a form takes at most 600 in ten minutes in
   all. A body is at most 64 KiB.

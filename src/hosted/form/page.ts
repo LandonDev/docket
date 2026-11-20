@@ -30,6 +30,17 @@ function statusFor(root: HTMLElement): HTMLElement {
   return line
 }
 
+/** A sending whose reply never came: it may or may not be in, and a resend is counted once (the submission id). */
+const UNCONFIRMED = "We couldn't confirm your answer. Check your connection, then send it again: it is counted once."
+
+/** A page's id for one sending of one set of answers, as the service takes it (16 to 64 of A-Z a-z 0-9 _ -). */
+export function newSubmissionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 /** `focus`: whether the heading takes the focus; by default, when the focus was inside what it replaces. */
 function message(root: HTMLElement, title: string, line?: string, action?: { label: string; run: (button: HTMLButtonElement) => void }, focus?: boolean): void {
   // Focus inside the form (Send was just pressed) moves to the heading that replaces it, so a keyboard or a screen reader hears what happened.
@@ -177,6 +188,15 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
   form.addEventListener('input', answered)
   form.addEventListener('change', answered)
 
+  // One id per set of answers: the same answers sent again (a reply that never came back) carry it again, and the service
+  // answers with the row it already wrote rather than a second one; changed answers are a new submission.
+  let sending: { key: string; id: string } | null = null
+  const submissionFor = (answers: Record<string, string>): string => {
+    const key = JSON.stringify(answers)
+    if (sending?.key !== key) sending = { key, id: newSubmissionId() }
+    return sending.id
+  }
+
   form.addEventListener('submit', (e) => {
     e.preventDefault()
     const answers = answersOf(form, f.questions)
@@ -208,7 +228,12 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
       button.removeAttribute('aria-busy')
       button.textContent = 'Send'
     }
-    void fetcher(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers }) })
+    const submission = submissionFor(answers)
+    // A general failure (no question to point at) gives the focus back to Send, if the rest took it from there.
+    const backToSend = (): void => {
+      if (mayMove()) button.focus()
+    }
+    void fetcher(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers, submission }) })
       .then(async (r) => {
         if (r.ok) {
           outcome('Your answer was sent.')
@@ -219,16 +244,20 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
           outcome('Your answer was not sent: this form is closed.')
           return message(root, f.title, 'This form is closed. It takes no more answers.', undefined, mayMove())
         }
-        const text = body.error ?? 'Your answer was not sent. Try again.'
-        outcome(text.startsWith('Your answer was not sent') ? text : `Your answer was not sent. ${text}`)
+        // A gateway's failure with none of the service's words: the answer may have been written before it.
+        const unknown = r.status >= 500 && !body.error
+        const text = unknown ? UNCONFIRMED : (body.error ?? 'Your answer was not sent. Try again.')
+        outcome(unknown || text.startsWith('Your answer was not sent') ? text : `Your answer was not sent. ${text}`)
         release()
         showError(body.question, text)
+        if (!body.question) backToSend()
       })
       .catch(() => {
-        const text = 'Your answer was not sent. Check your connection and try again.'
-        outcome(text)
+        // No reply came: the service may have written the row before the line went, so this cannot say it was not sent.
+        outcome(UNCONFIRMED)
         release()
-        showError(undefined, text)
+        showError(undefined, UNCONFIRMED)
+        backToSend()
       })
   })
   root.append(form)

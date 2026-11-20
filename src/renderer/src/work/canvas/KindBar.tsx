@@ -219,8 +219,9 @@ function Stepper({ review }: { review: ReviewAdapter }) {
       .finally(() => setPending(null));
   };
   const busy = pending !== null;
-  // Held: still drawn, so the bar does not flicker, but nothing is decided until the kind lets go.
-  const off = busy || none || !!review.held;
+  // Held: still drawn, so the bar does not flicker, but nothing is decided until the kind lets go. Verdicts held: the same
+  // for Reject and Accept alone.
+  const off = busy || none || !!review.held || !!review.verdictsHeld;
   // Held, the steps rest too: the body draws no change to step to while his edits save. The count stays.
   const stepsOff = busy || !!review.held;
   const cannotEnter = none && review.enter === false;

@@ -277,7 +277,9 @@ export function Column(props: ColumnProps) {
       <div
         ref={scroller}
         data-pdf-column={itemId}
-        className="relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable]"
+        // Focusable from code alone (no Tab stop of its own): where Find gives the focus back when the bar holds no Find.
+        tabIndex={-1}
+        className="focus-ring relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable]"
         onScroll={onScroll}
         onPointerUp={onPointerUp}
         style={props.height ? { height: props.height } : undefined}

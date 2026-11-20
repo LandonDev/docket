@@ -73,8 +73,8 @@ export function CanvasSeat({
     ...(own.length > 0 ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
     ...(review
       ? ([
-          { kind: "item", id: "accept-all", label: "Accept all", icon: Check, disabled: review.held },
-          { kind: "item", id: "reject-all", label: "Reject all", icon: X, disabled: review.held },
+          { kind: "item", id: "accept-all", label: "Accept all", icon: Check, disabled: review.held || review.verdictsHeld },
+          { kind: "item", id: "reject-all", label: "Reject all", icon: X, disabled: review.held || review.verdictsHeld },
           { kind: "sep" },
         ] satisfies MenuRow[])
       : []),
@@ -95,7 +95,7 @@ export function CanvasSeat({
     if (id === "google-open") setPicking(true);
     if (id === "close") close(shown.id);
     if (id === "close-others") view.items.filter((item) => item.id !== shown.id).forEach((item) => close(item.id));
-    if (review && !review.held && (id === "accept-all" || id === "reject-all")) {
+    if (review && !review.held && !review.verdictsHeld && (id === "accept-all" || id === "reject-all")) {
       const accept = id === "accept-all";
       review[accept ? "accept" : "reject"]("all").catch((error: unknown) => sayError(error, accept ? "Couldn't accept the changes" : "Couldn't reject the changes"));
     }

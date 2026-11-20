@@ -119,7 +119,8 @@ describe("the dashboard kind", () => {
     open(page());
     const body = await found("[data-dashboard]");
     expect([...body.querySelectorAll("[data-figure]")].map((f) => f.textContent)).toEqual(["Outstanding$7,4204 invoices", "Overdue3$6,170", "Balance$2,180"]);
-    expect(screen.getByRole("img", { name: "Paid by month: Oct $10.4K, Nov $12.3K" })).toBeTruthy();
+    // Read aloud as the hover says them, whole: never the axis's rounded "$10.4K".
+    expect(screen.getByRole("img", { name: "Paid by month: Oct $10,400, Nov $12,300" })).toBeTruthy();
     expect(body.querySelector("table")?.textContent).toContain("Rivera Dental");
     const asOf = await found("[data-dash-asof]");
     expect(asOf.textContent).toMatch(/^As of /);
@@ -235,6 +236,15 @@ describe("the dashboard kind, round two", () => {
     await waitFor(() => expect(document.querySelector("[data-dash-asof]")?.textContent).toMatch(/^Out of dateAs of /));
   });
 
+  it("says each bar's whole value to a screen reader, so two that round to one tick stay apart", async () => {
+    const base = page();
+    const close = { ...base.blocks[1], title: "Paid by month", bars: [{ label: "Oct", value: 12340 }, { label: "Nov", value: 12310.5 }] } as (typeof base.blocks)[number];
+    open({ ...base, blocks: [close] });
+    const chart = (await found("[data-dashboard]")).querySelector<HTMLElement>('[role="img"]')!;
+    expect(chart.getAttribute("aria-label")).toBe("Paid by month: Oct $12,340, Nov $12,310.5");
+    expect(chart.getAttribute("aria-label")).not.toContain("K");
+  });
+
   it("draws a negative bar below zero on a signed axis, and says its amount with the minus sign", async () => {
     const base = page();
     const mixed = { ...base.blocks[1], title: "Net by month", bars: [{ label: "Oct", value: 10400 }, { label: "Nov", value: -2000 }] } as (typeof base.blocks)[number];
@@ -243,7 +253,7 @@ describe("the dashboard kind, round two", () => {
     const chart = body.querySelector<HTMLElement>('[role="img"]')!;
     // The compact form may keep a ".0" by the runtime's ICU; the sign is what is under test.
     const words = (s: string | null): string => (s ?? "").replace(/\.0(?=K|,|$)/g, "");
-    expect(words(chart.getAttribute("aria-label"))).toBe("Net by month: Oct $10.4K, Nov \u2212$2K");
+    expect(chart.getAttribute("aria-label")).toBe("Net by month: Oct $10,400, Nov \u2212$2,000");
     expect([...chart.querySelectorAll("[data-tick]")].map((t) => words(t.textContent))).toEqual(["\u2212$5K", "$0", "$5K", "$10K", "$15K"]);
     // Zero sits a quarter up the plot: the rise starts there, the fall hangs from it.
     const [up, down] = [...chart.querySelectorAll<HTMLElement>("i[data-bar]")];

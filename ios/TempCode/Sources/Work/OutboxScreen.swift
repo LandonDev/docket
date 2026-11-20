@@ -255,12 +255,16 @@ private struct BandHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             SectorDot(sector: sector, size: 7)
+            // Explicit inks, never the hierarchical steps: inside a list's section header those nest under the
+            // header's own dimming and measured 1.7:1 and 1.3:1 on the chrome fill in light. `label` keeps 18.8:1
+            // (light) and 17:1 (dark) on it; `secondaryLabel` would be 3.3:1 in light. The two type steps stay: the
+            // name in the meta step at semibold, the count in the stamp step.
             Text(name)
-                .textStep(.meta, weight: .semibold)
+                .textStep(.meta, weight: .semibold, tint: Color(.label))
                 .lineLimit(1)
             Spacer(minLength: 8)
             Text(count, format: .number)
-                .textStep(.stamp)
+                .textStep(.stamp, tint: Color(.label))
         }
         .padding(.horizontal, Layout.textEdge)
         .frame(maxWidth: .infinity, minHeight: 30)

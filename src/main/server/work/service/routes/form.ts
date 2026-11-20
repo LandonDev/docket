@@ -117,8 +117,31 @@ const letter = (i: number): string => {
   return s
 }
 
+/** A page's id for one sending of one set of answers: a resend of the same answers carries it again. */
+const SUBMISSION = /^[A-Za-z0-9_-]{16,64}$/
+
 /** Rows written per form, read from its log once; answers to one form are written one after another. */
 const rows = new Map<string, number>()
+/** The submissions each form has taken, read from its log once: a reply that was lost and sent again is the row it already has. */
+const taken = new Map<string, Set<string>>()
+function takenOf(ctx: RouteCtx, id: string): Set<string> {
+  const had = taken.get(id)
+  if (had) return had
+  const path = logPath(ctx, id)
+  const seen = new Set<string>()
+  if (existsSync(path))
+    for (const line of readFileSync(path, 'utf8').split('\n')) {
+      if (!line) continue
+      try {
+        const s = (JSON.parse(line) as { submission?: unknown }).submission
+        if (typeof s === 'string') seen.add(s)
+      } catch {
+        // A line that does not read is no submission.
+      }
+    }
+  taken.set(id, seen)
+  return seen
+}
 const queue = new Map<string, Promise<unknown>>()
 function countOf(ctx: RouteCtx, id: string): number {
   const had = rows.get(id)
@@ -129,22 +152,27 @@ function countOf(ctx: RouteCtx, id: string): number {
   return n
 }
 
-async function record(ctx: RouteCtx, form: PublishedForm, ok: Record<string, string>): Promise<void> {
-  const run = (queue.get(form.publicId) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+/** Writes one answer as the form's next row; a submission already taken writes nothing ("again"). */
+async function record(ctx: RouteCtx, form: PublishedForm, ok: Record<string, string>, submission?: string): Promise<'new' | 'again'> {
+  const run = (queue.get(form.publicId) ?? Promise.resolve()).catch(() => undefined).then(async (): Promise<'new' | 'again'> => {
+    // Asked inside the queue: two sendings of one submission that crossed are one row.
+    if (submission && takenOf(ctx, form.publicId).has(submission)) return 'again'
     const row = countOf(ctx, form.publicId) + 2
     const at = submittedAt(new Date())
     const cells: A1Cell[] = [{ at: `A${row}`, v: at }, ...form.columns.flatMap((id, i) => (ok[id] ? [{ at: `${letter(i + 1)}${row}`, v: ok[id] }] : []))]
     await hostOf(ctx).cells(form.sheet, cells, `form:${form.publicId}`, false)
     // The row is taken once the sheet has it, whatever happens to the note of it.
     rows.set(form.publicId, row - 1)
+    if (submission) takenOf(ctx, form.publicId).add(submission)
     try {
-      appendFileSync(logPath(ctx, form.publicId), `${JSON.stringify({ row, at })}\n`, { mode: 0o600 })
+      appendFileSync(logPath(ctx, form.publicId), `${JSON.stringify(submission ? { row, at, submission } : { row, at })}\n`, { mode: 0o600 })
     } catch (err) {
       ctx.log(`form ${form.publicId}: row ${row} was written but not noted: ${String(err)}`)
     }
+    return 'new'
   })
   queue.set(form.publicId, run)
-  await run
+  return run
 }
 
 function readBody(req: IncomingMessage): Promise<string | null> {
@@ -203,9 +231,13 @@ export const formRoute: PublicRoute = {
     if (!now2?.open) return send(res, 410, { error: 'This form is closed.' })
     const checked = checkAnswers(now2, raw)
     if ('error' in checked) return send(res, 400, checked)
+    const sent = (raw as { submission?: unknown }).submission
+    const submission = typeof sent === 'string' && SUBMISSION.test(sent) ? sent : undefined
+    // The same submission again (its reply was lost on the way back): the answer it already wrote, not a second row nor a second count.
+    if (submission && takenOf(ctx, id).has(submission)) return send(res, 201, { ok: true })
     if (!allowed(form.publicId, PER_FORM, Date.now())) return send(res, 429, { error: 'This form is taking too many answers. Try again in a few minutes.' })
     try {
-      await record(ctx, now2, checked.ok)
+      await record(ctx, now2, checked.ok, submission)
     } catch (err) {
       ctx.log(`form ${id}: an answer was not written: ${String(err)}`)
       return send(res, 503, { error: 'Your answer was not saved. Try again in a minute.' })

@@ -110,6 +110,8 @@ export interface ReviewAdapter {
   enter?: boolean;
   /** The changes are counted but cannot be decided now (a form while his edits save): the stepper stays drawn with its verbs off, and More's Accept all and Reject all are off. */
   held?: boolean;
+  /** The changes can be stepped through but not yet decided (a slide whose picture is still coming or failed to paint): only Reject and Accept rest, with More's Accept all and Reject all; Previous and Next stay live, so focus stays in the bar and the other changes stay reachable. */
+  verdictsHeld?: boolean;
   accept(which: number | { group: string } | "all"): Promise<void>;
   reject(which: number | { group: string } | "all"): Promise<void>;
 }

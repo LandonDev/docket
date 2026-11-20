@@ -139,9 +139,15 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
   const pictured = !!view && !view.renderError && !!view.renders.proposed;
   const shownSlide = view ? (view.slides.find((s) => s.key === current) ?? view.slides[0]) : undefined;
   const shownDoc = shownSlide && !view?.renderError ? (shownSlide.from === "proposed" ? proposedDoc : fileDoc) : null;
-  const [painted, setPainted] = useState<{ key: string; doc: PdfDoc } | null>(null);
+  // A paint counts only for the stage mounted now: each time the shown slide changes (A, then B, then A again) its stage
+  // mounts afresh with a token of its own, so an earlier paint of the same slide never opens the verdicts on a blank stage.
+  const stages = useRef(0);
+  const shownKey = shownSlide?.key;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stage = useMemo(() => ++stages.current, [shownKey]);
+  const [painted, setPainted] = useState<{ key: string; doc: PdfDoc; stage: number } | null>(null);
   const bound = pictured && proposedDoc !== null && proposedRender.rev === view?.renders.proposed?.rev;
-  const seen = !!shownSlide && !!shownDoc && painted?.key === shownSlide.key && painted.doc === shownDoc;
+  const seen = !!shownSlide && !!shownDoc && painted?.key === shownSlide.key && painted.doc === shownDoc && painted.stage === stage;
   const held = !reviewRev || (pictured && !(bound && seen));
   useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store);
 
@@ -158,11 +164,11 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
       <Strip view={view} current={shown?.key ?? null} narrow={narrow} docOf={docOf} pictures={!view.renderError} onPick={select} />
       {shown ? (
         <Main
-          key={shown.key}
+          key={`${shown.key}:${stage}`}
           view={view}
           slide={shown}
           doc={view.renderError ? null : docOf(shown)}
-          onPainted={(doc) => setPainted({ key: shown.key, doc })}
+          onPainted={(doc) => setPainted({ key: shown.key, doc, stage })}
           onPaintFailed={() => setPainted(null)}
           width={narrow ? size.width : size.width - STRIP}
           height={narrow ? size.height - 96 : size.height}
@@ -233,7 +239,9 @@ function useFeeds(
         const slide = change && slideOfChange(view, change);
         if (slide) select(slide.key);
       },
-      held,
+      // Only the verdicts wait on the paint: Previous and Next stay live, so a keyboard review keeps its place in the bar
+      // and a slide whose picture failed never stops him reaching the next change.
+      verdictsHeld: held,
       accept: (w) => decide(which(w), "accept"),
       reject: (w) => decide(which(w), "reject"),
     };

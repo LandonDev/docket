@@ -27,6 +27,7 @@
  * web address opened in a browser whose page acts on being fetched (a
  * one-click unsubscribe link). The hold does not claim otherwise.
  */
+import { sha256Hex } from '../sha256'
 import { parseKeyCombo, parseObservation, type Modifier } from './observation'
 import type { ComputerAction } from './protocol'
 import { menuPathSegments } from './tools'
@@ -1023,14 +1024,52 @@ function sendContext(screen: Screen): string[] {
   return [...kept].sort((a, b) => a[0] - b[0]).map(([, words]) => words)
 }
 
-/** What the window holds that would go: the app, every field's name and value as the screen reader prints them, and who it goes to (`sendContext`). */
-export function screenMark(screen: Screen): string {
-  const fields = [...screen.elements.values()]
-    .filter((e) => TEXT_ROLES.includes(e.role) && e.role !== 'search' && e.role !== 'password')
+/** The fields whose text would go, in reading order: every text field but a search field and a password. */
+const markFields = (screen: Screen): ScreenElement[] =>
+  [...screen.elements.values()].filter((e) => TEXT_ROLES.includes(e.role) && e.role !== 'search' && e.role !== 'password').sort((a, b) => a.index - b.index)
+
+/** A value the read printed cut (observation.ts `cutValue`): its first scalars, then `…(+n chars)`. */
+export const isCutValue = (value: string | undefined): boolean => !!value && /…\(\+\d+ chars\)$/.test(value)
+
+/** The fields the read printed cut: the hold reads each again whole (`state.get` with `element`, §4.4) before it binds the window. */
+export const cutFields = (screen: Screen): number[] => markFields(screen).filter((e) => isCutValue(e.value)).map((e) => e.index)
+
+/** The screen with these fields' values as read whole. */
+export function withValues(screen: Screen, values: ReadonlyMap<number, string>): Screen {
+  const elements = new Map(screen.elements)
+  for (const [index, value] of values) {
+    const e = elements.get(index)
+    if (e) elements.set(index, { ...e, value })
+  }
+  return { ...screen, elements }
+}
+
+/** A field's value as the mark binds it: a long one by its digest, so a change anywhere in it, past what a line shows too, is a change. */
+const boundValue = (value: string): string => (value.length > 160 ? `#${sha256Hex(value)}` : value)
+
+/** Controls whose state goes with a submit: what is ticked, switched on or chosen ("Include insurance", the plan picked). */
+const STATE_ROLES = ['checkbox', 'radio', 'switch', 'tab']
+const STATES_BOUND = ['checked', 'unchecked', 'mixed', 'selected']
+
+/** Each tickable control's state and each pop-up's chosen option, in reading order. */
+function controlMark(screen: Screen): string[] {
+  return [...screen.elements.values()]
+    .filter((e) => STATE_ROLES.includes(e.role) || e.role === 'pop up')
     .sort((a, b) => a.index - b.index)
-    .map((e) => `${e.role}|${e.name ?? ''}|${e.value ?? ''}`)
+    .map((e) => `${e.role}|${e.name ?? ''}|${e.role === 'pop up' ? (e.value ?? '') : e.states.filter((x) => STATES_BOUND.includes(x)).join(' ')}`)
+}
+
+/**
+ * What the window holds that would go: the app, every field's name and value (a long value by its digest), who it
+ * goes to (`sendContext`), and what is ticked or chosen (`controlMark`). A part with nothing in it is left out, so
+ * the mark of a window with none is what it was before that part was added.
+ */
+export function screenMark(screen: Screen): string {
+  const fields = markFields(screen).map((e) => `${e.role}|${e.name ?? ''}|${boundValue(e.value ?? '')}`)
   const context = sendContext(screen)
-  return JSON.stringify(context.length ? [screen.app.bundleId ?? screen.app.name, fields, context] : [screen.app.bundleId ?? screen.app.name, fields])
+  const controls = controlMark(screen)
+  const app = screen.app.bundleId ?? screen.app.name
+  return JSON.stringify(controls.length ? [app, fields, context, controls] : context.length ? [app, fields, context] : [app, fields])
 }
 
 /**

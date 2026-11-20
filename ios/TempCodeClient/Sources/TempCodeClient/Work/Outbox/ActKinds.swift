@@ -153,8 +153,11 @@ public extension OutboxModel {
 
     // MARK: - a computer act's steps (the desktop's `stepRows`)
 
-    /// Text quoted as `JSON.stringify` quotes it, then with the characters that look like a space or like nothing
-    /// (a no-break space, a zero-width space) written as `\uXXXX`, so " " and "\u00a0" never read alike. The
+    /// A string as it goes, in quotes: JSON's escapes for quotes, backslashes and the C0 controls (as
+    /// `JSON.stringify` writes them), then an escape for every other character that cannot be seen or looks like a
+    /// space, by its Unicode class: any format character (Cf: soft hyphen, zero-width and invisible operators, bidi
+    /// marks, tags), control (Cc), line or paragraph separator (Zl, Zp), and any space (Zs) but U+0020. Written as
+    /// `\uXXXX`, or `\u{XXXXX}` past the first plane, one per code point, so " " and "\u00a0" never read alike. The
     /// desktop's `exactQuote`.
     nonisolated static func exactQuote(_ text: String) -> String {
         var out = "\""
@@ -167,9 +170,10 @@ public extension OutboxModel {
             case "\t": out += "\\t"
             case "\u{08}": out += "\\b"
             case "\u{0C}": out += "\\f"
+            case " ": out += " "
             default:
-                if scalar.value < 0x20 || unseen.contains(scalar.value) {
-                    out += "\\u" + String(format: "%04x", scalar.value)
+                if scalar.value < 0x20 || unseen(scalar) {
+                    out += scalar.value > 0xFFFF ? "\\u{" + String(scalar.value, radix: 16) + "}" : "\\u" + String(format: "%04x", scalar.value)
                 } else {
                     out.unicodeScalars.append(scalar)
                 }
@@ -178,8 +182,13 @@ public extension OutboxModel {
         return out + "\""
     }
 
-    /// U+00A0, U+1680, U+180E, U+2000 to U+200F, U+2028, U+2029, U+202F, U+205F, U+2060, U+3000, U+FEFF.
-    private nonisolated static let unseen: Set<UInt32> = Set([0x00A0, 0x1680, 0x180E, 0x2028, 0x2029, 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF] + Array(0x2000...0x200F))
+    /// Cf, Cc, Zl, Zp and Zs: what cannot be seen or looks like a space.
+    private nonisolated static func unseen(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.properties.generalCategory {
+        case .format, .control, .lineSeparator, .paragraphSeparator, .spaceSeparator: true
+        default: false
+        }
+    }
 
     private nonisolated static let clicks = ["left_click": "Clicks", "right_click": "Right-clicks", "middle_click": "Middle-clicks", "double_click": "Double-clicks", "triple_click": "Triple-clicks"]
 

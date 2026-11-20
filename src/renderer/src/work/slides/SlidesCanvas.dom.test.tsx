@@ -400,6 +400,96 @@ describe("the slides kind", () => {
     }
   });
 
+  it("holds only the verdicts while a slide paints: Next stays live and keeps the focus across a slide change", async () => {
+    const paint = PROPOSED.paint;
+    let paintNow!: () => void;
+    let painting: Promise<void> | null = new Promise((done) => (paintNow = done));
+    // Every stage paint from the proposed render waits while `painting` is set; the strip's draw as before.
+    PROPOSED.paint = async (...args) => {
+      if (painting && args[1].closest("[data-slides-stage]")) await painting;
+      return paint(...args);
+    };
+    try {
+      open(revised());
+      const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+      const next = within(bar).getByRole("button", { name: "Next change" });
+      await waitFor(() => expect(next.hasAttribute("disabled")).toBe(false));
+      // A keyboard review: Next has the focus and is pressed; the stage moves to the first change's slide, not yet painted.
+      next.focus();
+      fireEvent.click(next);
+      await waitFor(() => expect(within(bar).getByText("1/5")).toBeTruthy());
+      // Only the verdicts rest; Next is the same button, still live, still focused.
+      expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+      expect(within(bar).getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+      expect(within(bar).getByRole("button", { name: "Next change" })).toBe(next);
+      expect(next.hasAttribute("disabled")).toBe(false);
+      expect(document.activeElement).toBe(next);
+      // Pressed again, it reaches the next change though the first never painted, and keeps the focus.
+      fireEvent.click(next);
+      await waitFor(() => expect(within(bar).getByText("2/5")).toBeTruthy());
+      expect(next.hasAttribute("disabled")).toBe(false);
+      expect(within(bar).getByRole("button", { name: "Previous change" }).hasAttribute("disabled")).toBe(false);
+      expect(document.activeElement).toBe(next);
+      expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+      // The slide paints: its verdicts open.
+      painting = null;
+      act(() => paintNow());
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+      // A step to a change whose slide has not painted holds its verdicts again until it does; the steps stay live.
+      painting = new Promise((done) => (paintNow = done));
+      fireEvent.click(next);
+      await waitFor(() => expect(within(bar).getByText("3/5")).toBeTruthy());
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true));
+      expect(next.hasAttribute("disabled")).toBe(false);
+      expect(document.activeElement).toBe(next);
+      painting = null;
+      act(() => paintNow());
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+    } finally {
+      PROPOSED.paint = paint;
+    }
+  });
+
+  it("a paint counts only for the stage mounted now: back on a slide painted before, its new blank stage holds the verdicts", async () => {
+    const paint = PROPOSED.paint;
+    let paintNow!: () => void;
+    let painting: Promise<void> | null = null;
+    // Stage paints from the proposed render wait while `painting` is set; the strip's draw as before.
+    PROPOSED.paint = async (...args) => {
+      if (painting && args[1].closest("[data-slides-stage]")) await painting;
+      return paint(...args);
+    };
+    try {
+      open(revised());
+      const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+      const next = within(bar).getByRole("button", { name: "Next change" });
+      const accept = () => within(bar).getByRole("button", { name: "Accept" });
+      await waitFor(() => expect(next.hasAttribute("disabled")).toBe(false));
+      // Slide A (the second change's) paints: its verdicts open.
+      fireEvent.click(next);
+      fireEvent.click(next);
+      await waitFor(() => expect(within(bar).getByText("2/5")).toBeTruthy());
+      await waitFor(() => expect(accept().hasAttribute("disabled")).toBe(false));
+      // B is picked while its paint waits, then A again before B's lands: A's stage is new and blank.
+      painting = new Promise((done) => (paintNow = done));
+      fireEvent.click(next);
+      await waitFor(() => expect(within(bar).getByText("3/5")).toBeTruthy());
+      await waitFor(() => expect(accept().hasAttribute("disabled")).toBe(true));
+      fireEvent.click(within(bar).getByRole("button", { name: "Previous change" }));
+      await waitFor(() => expect(within(bar).getByText("2/5")).toBeTruthy());
+      // A's earlier paint does not open the verdicts on the stage now blank.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(accept().hasAttribute("disabled")).toBe(true);
+      expect(within(bar).getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+      // Once this stage paints, they open.
+      painting = null;
+      act(() => paintNow());
+      await waitFor(() => expect(accept().hasAttribute("disabled")).toBe(false));
+    } finally {
+      PROPOSED.paint = paint;
+    }
+  });
+
   it("holds the verdicts through a failed paint of the slide on the stage, and opens them once Retry paints it", async () => {
     const paint = PROPOSED.paint;
     let refuse = true;

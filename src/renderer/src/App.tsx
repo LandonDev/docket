@@ -3539,9 +3539,9 @@ export default function App() {
               {tabs.map((tab) => mountedTabIds.has(tab.id) && (
                 <div
                   key={tab.id}
-                  aria-hidden={tab.id !== shownTabId}
-                  // A parked tab keeps its state mounted; Tab never lands in it.
-                  inert={tab.id !== shownTabId || undefined}
+                  aria-hidden={tab.id !== shownTabId || workViewShown}
+                  // A parked tab keeps its state mounted; Tab never lands in it, nor in the shown one while a Work view covers it.
+                  inert={tab.id !== shownTabId || workViewShown || undefined}
                   className={
                     tab.id === shownTabId
                       ? "absolute inset-0 flex h-full min-h-0 flex-col"

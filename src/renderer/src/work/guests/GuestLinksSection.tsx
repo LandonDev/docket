@@ -31,8 +31,9 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
   const [revoking, setRevoking] = useState<string | null>(null);
   const key = hosts.join(",");
 
-  const load = useCallback(() => {
-    void Promise.allSettled(
+  const load = useCallback(
+    (): Promise<void> =>
+      Promise.allSettled(
       key
         .split(",")
         .filter(Boolean)
@@ -44,9 +45,17 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
       setRows([...byId.values()].sort((a, b) => Number(isLive(b.link, now)) - Number(isLive(a.link, now)) || b.link.createdAt - a.link.createdAt));
       setFailed([...new Set(all.flatMap((r) => (r.status === "rejected" ? [errorText(r.reason)] : [])))]);
       setError(null);
-    });
-  }, [key]);
-  useEffect(load, [load]);
+    }),
+    [key],
+  );
+  useEffect(() => void load(), [load]);
+  // A failed host's Retry spins while the hosts are asked again, and takes no second press meanwhile.
+  const [retrying, setRetrying] = useState(false);
+  const retry = (): void => {
+    if (retrying) return;
+    setRetrying(true);
+    void load().finally(() => setRetrying(false));
+  };
   // A link made or revoked anywhere: the host says so.
   useEffect(() => {
     const offs = key
@@ -89,7 +98,7 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
     setRevoking(id);
     try {
       await registry.linkOf(env).request("work.guests.revoke", { linkId: id });
-      load();
+      void load();
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -103,8 +112,8 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
         <PageError
           key={why}
           action={
-            <Button variant="ghost" size="sm" onClick={load}>
-              Retry
+            <Button variant="ghost" size="sm" disabled={retrying} onClick={retry}>
+              <BusyLabel busy={retrying} label="Retry" />
             </Button>
           }
         >

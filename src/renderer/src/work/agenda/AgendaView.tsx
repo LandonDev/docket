@@ -46,6 +46,15 @@ export function shortMonth(day: number): string {
   return new Date(day).toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
+/** "Nov 17 – 23", or "Nov 30 – Dec 6" across months: the week a narrow Week view is on. */
+export function shortWeek(day: number, start = weekStart): string {
+  const { from, to } = viewRange("week", day, start);
+  const first = new Date(from);
+  const last = new Date(addDays(to, -1));
+  const monthDay = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return first.getMonth() === last.getMonth() ? `${monthDay(first)} – ${last.getDate()}` : `${monthDay(first)} – ${monthDay(last)}`;
+}
+
 export function Head(_props: WorkViewProps) {
   const { view, day } = useShared(state);
   return (
@@ -53,12 +62,10 @@ export function Head(_props: WorkViewProps) {
       {view !== "list" ? (
         <>
           <span className="hidden truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:inline">{formatPeriod(view, day, weekStart)}</span>
-          {/* Narrow, the month grid shows weekdays and dates alone: its month and year stay here, short, so Previous and Next never lose the date. */}
-          {view === "month" ? (
-            <span data-agenda-short-period className="truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:hidden">
-              {shortMonth(day)}
-            </span>
-          ) : null}
+          {/* Narrow, the grids show weekdays and dates alone: the period stays here, short, so Previous and Next never lose the date. */}
+          <span data-agenda-short-period className="truncate text-[13px] text-muted-foreground tabular-nums @min-[40rem]/viewhead:hidden">
+            {view === "month" ? shortMonth(day) : shortWeek(day)}
+          </span>
           <Button variant="ghost" size="sm" onClick={() => go({ day: startOfDay(Date.now()) })}>
             Today
           </Button>

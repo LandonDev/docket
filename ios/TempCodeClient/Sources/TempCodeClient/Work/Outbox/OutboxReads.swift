@@ -18,9 +18,12 @@ public extension OutboxModel {
 
     enum EmptyOutbox: Sendable, Hashable { case reading, nothingHeld }
 
-    /// Nil while any row shows or any host failed (its row says so); else still reading, or nothing held.
+    /// Nil while any row shows. With no rows: still reading whenever any host reads, even under another host's
+    /// failed row, so the screen says a read is running; nothing held only when no host failed and none reads; nil
+    /// when the failed rows are all there is to say.
     nonisolated static func emptyState(bandsEmpty: Bool, anyReading: Bool, anyFailed: Bool) -> EmptyOutbox? {
-        guard bandsEmpty, !anyFailed else { return nil }
-        return anyReading ? .reading : .nothingHeld
+        guard bandsEmpty else { return nil }
+        if anyReading { return .reading }
+        return anyFailed ? nil : .nothingHeld
     }
 }

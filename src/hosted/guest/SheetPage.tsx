@@ -27,8 +27,11 @@ const EDIT_WAIT = 150;
  * protocol words. A reason with no plain form leaves the line its word alone
  * (null); `lost` is an edit whose answer never came because the line dropped.
  */
-export function refusedWords(reason: string | "lost"): string | null {
+export function refusedWords(reason: string | "lost" | "offline" | "unsent"): string | null {
   if (reason === "lost") return "The connection dropped before the sheet answered. Check the cell";
+  // These never left the page, so they are known not to be on the sheet: nothing to check.
+  if (reason === "offline") return "The sheet was offline";
+  if (reason === "unsent") return "The connection dropped before it was sent";
   if (/changed under that edit/i.test(reason)) return "Someone changed the sheet first. Type it again";
   if (/^a guest cannot/i.test(reason)) return "Guests can change values and formats only";
   if (/can view, not edit/i.test(reason)) return "This link can view the sheet, not edit it";
@@ -130,9 +133,9 @@ export function SheetPage({
       };
       ws.onclose = (e) => {
         if (l.ws === ws) l.ws = null;
-        // An edit sent and not yet answered, or still waiting to go, is not on the sheet: say so, and take the sheet's own copy back.
+        // An edit sent and not yet answered may or may not be on the sheet; one still waiting to go is not. Say which, and take the sheet's own copy back.
         if (l.inflight || l.pending.length) {
-          setRefused(lost());
+          setRefused(l.inflight ? lost() : { why: refusedWords("unsent") });
           l.pending = [];
           if (l.timer) clearTimeout(l.timer);
           l.timer = null;
@@ -191,7 +194,7 @@ export function SheetPage({
             if (!m.id.startsWith("sheet.mutation.") || p?.unitId !== l.unit) return;
             // An edit made while the line is down cannot reach the sheet: it is not kept, it is said, and the sheet's copy comes back on reconnect.
             if (!l.ws || l.ws.readyState !== WebSocket.OPEN) {
-              setRefused(lost());
+              setRefused({ why: refusedWords("offline") });
               l.rev = -1;
               return;
             }
