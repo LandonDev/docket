@@ -7,6 +7,7 @@ pub mod book;
 pub mod capture;
 pub mod clip;
 pub mod desktop;
+pub mod door;
 pub mod flow;
 pub mod generated;
 pub mod input;

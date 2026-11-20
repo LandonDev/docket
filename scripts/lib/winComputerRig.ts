@@ -1,23 +1,23 @@
 /**
  * tc-computer.exe in the Windows rig, for the proofs (docs/computer-protocol.md
  * §29.6): the exe copied in and started on tcuser's desktop by the Task
- * Scheduler (run-in-session.sh) listening on a guest loopback port, an SSH
- * tunnel that carries that port to the box, what the desktop says (the
- * pointer and the front window), and QMP's screenshot and keys, which reach
- * the guest as the person's own input would.
+ * Scheduler (run-in-session.sh) as its door, `serve --listen` on a guest
+ * loopback port with a token file (§29.1), an SSH tunnel that carries that
+ * port to the box, what the desktop says (the pointer and the front window),
+ * and QMP's screenshot and keys, which reach the guest as the person's own
+ * input would.
  *
  * Live video's bytes pipe (§30) is a named pipe on the service's own machine,
- * and the host here is on the box. `startVideoService` starts `tc-computer
- * pipe-relay` beside the service: it makes the pipe the service dials and
- * carries it to a guest loopback port, which a second tunnel brings to the
- * box; `rigSpawn` joins that port to the host's own pipe, so the host's
+ * and the host here is on the box. The door makes that pipe for the `serve`
+ * it starts and carries it to a second connection on the same port;
+ * `rigSpawn` joins that connection to the host's own pipe, so the host's
  * ComputerConnection reads and writes records as on a Windows host.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { inflateSync } from 'node:zlib'
 import { EventEmitter } from 'node:events'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { basename, join, resolve, win32 } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -79,43 +79,19 @@ export const qmpShot = (file: string): Promise<unknown> => qmp(paths.qmp, screen
 /** Keys pressed as hardware: the guest sees the person's own input. */
 export const qmpKeys = (...keys: string[]): Promise<unknown> => qmp(paths.qmp, sendKey(...keys))
 
-/** Copies the exe in, ends any old service, starts `serve --listen` on tcuser's desktop. */
-export async function startService(guestPort: number): Promise<boolean> {
-  if (vm('scp', EXE, 'guest:tc-computer.exe').status !== 0) return false
+/**
+ * Copies the exe in, ends any old service, writes a fresh token into tcuser's `tc-token` and starts the door,
+ * `serve --listen 127.0.0.1:<guestPort> --token-file`, on tcuser's desktop. Returns the token, or null.
+ */
+export async function startService(guestPort: number): Promise<string | null> {
+  if (vm('scp', EXE, 'guest:tc-computer.exe').status !== 0) return null
   vm('ssh', '--ps', 'Stop-Process -Name tc-computer -Force -ErrorAction SilentlyContinue')
-  vm('ssh', '--ps', `Set-Content -Encoding ascii -Path "$env:USERPROFILE\\tc-serve.cmd" -Value "@echo off\`r\`nset TC_COMPUTER_PROOF=1\`r\`n""%USERPROFILE%\\tc-computer.exe"" serve --listen 127.0.0.1:${guestPort} 2> ""%USERPROFILE%\\tc-computer.log""\`r\`n"`)
+  const token = randomBytes(32).toString('hex')
+  vm('ssh', '--ps', `Set-Content -Encoding ascii -Path "$env:USERPROFILE\\tc-token" -Value '${token}'`)
+  vm('ssh', '--ps', `Set-Content -Encoding ascii -Path "$env:USERPROFILE\\tc-serve.cmd" -Value "@echo off\`r\`n""%USERPROFILE%\\tc-computer.exe"" serve --listen 127.0.0.1:${guestPort} --token-file ""%USERPROFILE%\\tc-token"" 2> ""%USERPROFILE%\\tc-computer.log""\`r\`n"`)
   const ok = vm('run-in-session', '%USERPROFILE%\\tc-serve.cmd').status === 0
   await sleep(2000)
-  return ok
-}
-
-/** The named pipe the rig's service dials for video, made by the relay. */
-export const PROOF_VIDEO_PIPE = '\\\\.\\pipe\\tc-proof-video'
-
-/**
- * As `startService`, with live video: `pipe-relay` makes PROOF_VIDEO_PIPE and listens on `relayPort`, then the
- * service starts told that pipe and `token` (the variables the host would set), so it dials the relay before it
- * answers initialize. The relay's log is `%USERPROFILE%\tc-relay.log`.
- */
-export async function startVideoService(guestPort: number, relayPort: number, token: string): Promise<boolean> {
-  if (vm('scp', EXE, 'guest:tc-computer.exe').status !== 0) return false
-  vm('ssh', '--ps', 'Stop-Process -Name tc-computer -Force -ErrorAction SilentlyContinue')
-  const exe = '"%USERPROFILE%\\tc-computer.exe"'
-  const cmd = [
-    '@echo off',
-    'set TC_COMPUTER_PROOF=1',
-    `start "" /b cmd /c "${exe} pipe-relay ${PROOF_VIDEO_PIPE} --listen 127.0.0.1:${relayPort} 2> "%USERPROFILE%\\tc-relay.log""`,
-    `set TC_COMPUTER_VIDEO_PIPE=${PROOF_VIDEO_PIPE}`,
-    `set TC_COMPUTER_VIDEO_TOKEN=${token}`,
-    `${exe} serve --listen 127.0.0.1:${guestPort} 2> "%USERPROFILE%\\tc-computer.log"`,
-    ''
-  ].join('\r\n')
-  const local = join(tmpdir(), `tc-serve-video-${process.pid}.cmd`)
-  writeFileSync(local, cmd)
-  if (vm('scp', local, 'guest:tc-serve-video.cmd').status !== 0) return false
-  const ok = vm('run-in-session', '%USERPROFILE%\\tc-serve-video.cmd').status === 0
-  await sleep(2000)
-  return ok
+  return ok ? token : null
 }
 
 /** An SSH forward of the guest's loopback port to the box's. */
@@ -141,13 +117,23 @@ export const socketTo = (port: number): Promise<Socket> =>
     s.once('error', no)
   })
 
+/** The door's knock (§29.1): the token, then `video` for a host that will open the bytes connection, or `bytes <its token>`. */
+export const knock = (token: string, then = ''): string => `${token}${then ? ` ${then}` : ''}\n`
+
+/** A connection through the door: its knock written first, so what follows is the wire. */
+export async function doorTo(port: number, token: string, then = ''): Promise<Socket> {
+  const s = await socketTo(port)
+  s.write(knock(token, then))
+  return s
+}
+
 /**
  * A `spawn` for the host's ComputerService whose child is the rig's service over the tunnel. The host's
  * data dir is a box path: `initialize` carries `guestDataDir` in its place, and every shot the service
  * writes there is copied to the same place under the box's dir, its path rewritten, before the frame
  * reaches the host, as if the service had written it on this machine.
  */
-export function rigSpawn(port: number, guestDataDir: string, hostDataDir: string, video?: { port: number; token: string }) {
+export function rigSpawn(port: number, token: string, guestDataDir: string, hostDataDir: string, video = false) {
   return ((_bin: string, _args: string[], opts?: { env?: NodeJS.ProcessEnv }) => {
     const child = new EventEmitter() as EventEmitter & { stdin: PassThrough; stdout: PassThrough; stderr: PassThrough; pid: number; exitCode: number | null; signalCode: null; kill(): boolean }
     child.stdin = new PassThrough()
@@ -157,7 +143,9 @@ export function rigSpawn(port: number, guestDataDir: string, hostDataDir: string
     child.exitCode = null
     child.signalCode = null
     let sock: Socket | null = null
-    const ready = socketTo(port).then((s) => (sock = s))
+    // the bytes connection first, so the door has it when the host asks for video
+    const piped = video ? joinVideoPipe(port, token, opts?.env ?? {}) : null
+    const ready = doorTo(port, token, piped ? 'video' : '').then((s) => (sock = s))
     let queue: Promise<void> = Promise.resolve()
     let inBuf = ''
     child.stdin.on('data', (b: Buffer) => {
@@ -190,7 +178,6 @@ export function rigSpawn(port: number, guestDataDir: string, hostDataDir: string
         setImmediate(() => child.emit('exit', 0, null))
       })
     })
-    const piped = video ? joinVideoPipe(video, opts?.env ?? {}) : null
     child.kill = () => {
       sock?.destroy()
       piped?.()
@@ -203,35 +190,25 @@ export function rigSpawn(port: number, guestDataDir: string, hostDataDir: string
 }
 
 /**
- * The host's named pipe (its name and token in the env the connection spawned with) joined to the relay's tunnel:
- * what comes from the relay is the service's token, checked and dropped, then its records; the host gets its own
- * token, then those records, and its acks go back the other way. Returns a close.
+ * The host's named pipe (its name and token in the env the connection spawned with) joined to the door's bytes
+ * connection, whose knock carries that token: the service writes it first, the host checks it, then the
+ * records go one way and the acks the other. Returns a close, or null without a pipe in the env.
  */
-function joinVideoPipe(video: { port: number; token: string }, env: NodeJS.ProcessEnv): () => void {
+function joinVideoPipe(port: number, token: string, env: NodeJS.ProcessEnv): (() => void) | null {
   const name = env.TC_COMPUTER_VIDEO_PIPE
-  const token = env.TC_COMPUTER_VIDEO_TOKEN
-  if (!name || !token) return () => undefined
+  const videoToken = env.TC_COMPUTER_VIDEO_TOKEN
+  if (!name || !videoToken) return null
   const host = connect(name)
-  const relay = connect(video.port, '127.0.0.1')
-  host.on('error', () => relay.destroy())
-  relay.on('error', () => host.destroy())
-  host.once('connect', () => host.write(token))
-  let head: Buffer = Buffer.alloc(0)
-  let through = false
-  relay.on('data', (b: Buffer) => {
-    if (through) return void host.write(b)
-    head = Buffer.concat([head, b])
-    if (head.length < video.token.length) return
-    if (head.subarray(0, video.token.length).toString('latin1') !== video.token) return void relay.destroy(new Error('the service said another token'))
-    through = true
-    if (head.length > video.token.length) host.write(head.subarray(video.token.length))
-  })
-  host.on('data', (b: Buffer) => relay.write(b))
-  host.on('close', () => relay.destroy())
-  relay.on('close', () => host.destroy())
+  const door = connect(port, '127.0.0.1', () => door.write(knock(token, `bytes ${videoToken}`)))
+  host.on('error', () => door.destroy())
+  door.on('error', () => host.destroy())
+  door.on('data', (b: Buffer) => host.write(b))
+  host.on('data', (b: Buffer) => door.write(b))
+  host.on('close', () => door.destroy())
+  door.on('close', () => host.destroy())
   return () => {
     host.destroy()
-    relay.destroy()
+    door.destroy()
   }
 }
 

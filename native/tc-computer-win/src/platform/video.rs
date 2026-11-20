@@ -24,7 +24,7 @@ use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::Media::MediaFoundation::*;
-use windows::Win32::Storage::FileSystem::{CreateFileW, ReadFile, WriteFile, FILE_FLAG_OVERLAPPED, FILE_SHARE_NONE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX};
+use windows::Win32::Storage::FileSystem::{CreateFileW, ReadFile, WriteFile, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, FILE_SHARE_NONE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX};
 use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
 use windows::Win32::System::Pipes::{ConnectNamedPipe, CreateNamedPipeW, WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_WAIT};
 use windows::Win32::System::Threading::CreateEventW;
@@ -139,34 +139,49 @@ pub fn dial(name: &str) -> std::io::Result<Ends> {
     }
 }
 
-/// The rig's proof only (`tc-computer pipe-relay`): makes the named pipe the service dials, takes one loopback TCP
-/// connection, and carries bytes both ways between them until either closes. The host is on another machine there.
-pub fn relay(name: &str, listener: std::net::TcpListener) -> std::io::Result<()> {
+/// A named pipe of one instance for a `serve` child to dial, made with FILE_FLAG_FIRST_PIPE_INSTANCE so no other
+/// process holds its name. `serve --listen` carries it to the bytes connection of the door (§29.1).
+pub struct PipeServer(Arc<PipeHandle>);
+
+pub fn pipe_server(name: &str) -> std::io::Result<PipeServer> {
     let wide = HSTRING::from(name);
-    let h = unsafe { CreateNamedPipeW(&wide, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 1 << 20, 1 << 20, 0, None) };
+    let flags = PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE;
+    let h = unsafe { CreateNamedPipeW(&wide, flags, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 1 << 20, 1 << 20, 0, None) };
     if h.is_invalid() {
         return Err(std::io::Error::last_os_error());
     }
-    let pipe = Arc::new(PipeHandle(h));
-    {
-        let mut end = PipeEnd::new(pipe.clone())?;
-        let connected = end.run(|h, ov| unsafe { ConnectNamedPipe(h, Some(ov)) });
-        // a client that came between the pipe's making and the call is already connected
-        if let Err(e) = connected {
-            if e.raw_os_error() != Some(ERROR_PIPE_CONNECTED.0 as i32) {
-                return Err(e);
+    Ok(PipeServer(Arc::new(PipeHandle(h))))
+}
+
+impl PipeServer {
+    /// Waits for the client to dial, then carries bytes both ways between it and `tcp` until either closes.
+    pub fn splice(self, tcp: std::net::TcpStream) -> std::io::Result<()> {
+        let pipe = self.0;
+        {
+            let mut end = PipeEnd::new(pipe.clone())?;
+            // a client that came between the pipe's making and the call is already connected
+            if let Err(e) = end.run(|h, ov| unsafe { ConnectNamedPipe(h, Some(ov)) }) {
+                if e.raw_os_error() != Some(ERROR_PIPE_CONNECTED.0 as i32) {
+                    return Err(e);
+                }
             }
         }
+        let (mut pipe_in, mut pipe_out) = (PipeEnd::new(pipe.clone())?, PipeEnd::new(pipe)?);
+        let (mut tcp_in, mut tcp_out) = (tcp.try_clone()?, tcp);
+        let down = std::thread::spawn(move || std::io::copy(&mut tcp_in, &mut pipe_out));
+        let _ = std::io::copy(&mut pipe_in, &mut tcp_out);
+        let _ = tcp_out.shutdown(std::net::Shutdown::Both);
+        let _ = down.join();
+        Ok(())
     }
-    eprintln!("relay: the service is on {name}");
-    let (tcp, _) = listener.accept()?;
-    eprintln!("relay: the host is on {}", tcp.local_addr()?);
-    let (mut pipe_in, mut pipe_out) = (PipeEnd::new(pipe.clone())?, PipeEnd::new(pipe)?);
-    let (mut tcp_in, mut tcp_out) = (tcp.try_clone()?, tcp);
-    let up = std::thread::spawn(move || std::io::copy(&mut pipe_in, &mut tcp_out));
-    let _ = std::io::copy(&mut tcp_in, &mut pipe_out);
-    let _ = up.join();
-    Ok(())
+}
+
+/// Dials a pipe once and lets go, so a `splice` whose client never came stops waiting.
+pub fn poke(name: &str) {
+    let wide = HSTRING::from(name);
+    if let Ok(h) = unsafe { CreateFileW(&wide, GENERIC_READ.0 | GENERIC_WRITE.0, FILE_SHARE_NONE, None, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, None) } {
+        drop(PipeHandle(h));
+    }
 }
 
 // ── capture ─────────────────────────────────────────────────────────────

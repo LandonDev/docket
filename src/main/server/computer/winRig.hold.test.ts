@@ -43,10 +43,11 @@ d('a flagged submit in Edge on a Windows PC, held in the Outbox until his press'
     vm('scp', page, 'guest:m43-expense.html')
     vm('run-in-session', 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', '--no-first-run', '--no-default-browser-check', '--inprivate', '--window-size=900,600', 'file:///C:/Users/tcuser/m43-expense.html')
     await sleep(6000)
-    expect(await startService(GUEST_PORT)).toBe(true)
+    const token = await startService(GUEST_PORT)
+    expect(token).toBeTruthy()
     ssh = await tunnel(LOCAL_PORT, GUEST_PORT)
     const dataDir = join(rig.dir, 'computer')
-    const service = new ComputerService({ dataDir, bin: () => 'tc-computer.exe', spawn: rigSpawn(LOCAL_PORT, GUEST_DATA, dataDir) })
+    const service = new ComputerService({ dataDir, bin: () => 'tc-computer.exe', spawn: rigSpawn(LOCAL_PORT, token ?? '', GUEST_DATA, dataDir) })
     sessions = new ComputerSessions({
       service,
       registry: { get: (id) => rig.sessions.get(id) ?? null, requestApproval: async () => true, awayOn: () => rig.away.enabled },

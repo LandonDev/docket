@@ -17,7 +17,7 @@
  *
  * The video leg (§30, "The Windows service"): a window that redraws steadily
  * (a WinForms form a PowerShell draws, 60 times a second at most), the
- * service started with its bytes pipe through `pipe-relay`, the host's own
+ * door carrying the bytes pipe on its second connection, the host's own
  * ComputerConnection on the box reading the records and acking them; the
  * checks of §30's rules, then frames a second, bitrate and encode times
  * measured in `quality` and in `budget`, written down as measured.
@@ -28,7 +28,7 @@
  * (bun scripts/build-tc-computer-win.ts). Writes each observation text, the
  * wire, the shots and QMP's screens into DIR (default .temp-code/plans/landed/M43).
  */
-import { randomBytes } from 'node:crypto'
+import type { Socket } from 'node:net'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -44,7 +44,7 @@ import {
 } from '../src/shared/computer/protocol'
 import { ComputerConnection } from '../src/main/server/computer/connection'
 import { encodeAck, parseFrame } from '../src/shared/video/nsl1'
-import { compareToScreen, desktopState, getClipboard, qmpKeys, qmpShot, readPng, repo, rigSpawn, setClipboard, sleep, socketTo, startService, startVideoService, tunnel, vm } from './lib/winComputerRig'
+import { compareToScreen, desktopState, getClipboard, qmpKeys, qmpShot, readPng, repo, rigSpawn, setClipboard, sleep, doorTo, startService, tunnel, vm } from './lib/winComputerRig'
 
 const arg = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
 const out = resolve(arg('--out') ?? join(repo, '.temp-code/plans/landed/M43'))
@@ -73,6 +73,28 @@ addEventListener('mouseup',e=>{if(d!==null){document.title='drag='+Math.round(e.
 addEventListener('scroll',()=>{document.title='y='+Math.round(scrollY)})
 </script>`
 
+/** What a connection is sent before the far end closes it (5 s at most). */
+const untilClosed = (s: Socket): Promise<string> =>
+  new Promise((ok) => {
+    let got = ''
+    const t = setTimeout(() => (s.destroy(), ok(got)), 5000)
+    s.on('data', (b: Buffer) => (got += b.toString()))
+    s.on('close', () => (clearTimeout(t), ok(got)))
+    s.on('error', () => undefined)
+  })
+
+/** The door's rules (§29.1), with the proof's host connected: a wrong token, a second host, a non-loopback address. */
+async function doorLeg(token: string): Promise<void> {
+  const wrong = await untilClosed(await doorTo(LOCAL_PORT, 'f'.repeat(64)))
+  check('the door closes a connection with the wrong token, saying nothing', wrong === '', JSON.stringify(wrong))
+  const none = await untilClosed(await doorTo(LOCAL_PORT, ''))
+  check('the door closes a connection with no token', none === '', JSON.stringify(none))
+  const second = await untilClosed(await doorTo(LOCAL_PORT, token))
+  check('the door refuses a second host while one is connected', second.includes('another host is connected'), second.trim())
+  const wide = vm('ssh', '%USERPROFILE%\\tc-computer.exe serve --listen 0.0.0.0:47899 --token-file %USERPROFILE%\\tc-token')
+  check('serve --listen refuses a non-loopback address', wide.status === 64 && wide.stderr.includes('loopback'), `${wide.status} ${wide.stderr.trim()}`)
+}
+
 async function wireLeg(): Promise<void> {
   vm('ssh', '--ps', 'Stop-Process -Name tc-computer,notepad,msedge,charmap -Force -ErrorAction SilentlyContinue')
   vm('ssh', '--ps', 'Set-Content -Path "$env:USERPROFILE\\Documents\\m42-scratch.txt" -Value "scratch file for the M42 proof"')
@@ -84,9 +106,11 @@ async function wireLeg(): Promise<void> {
   await sleep(6000)
   check('Explorer opens Documents on the desktop', vm('run-in-session', 'explorer.exe', 'C:\\Users\\tcuser\\Documents').status === 0)
   await sleep(4000)
-  check('the service starts on the desktop', await startService(GUEST_PORT))
+  const token = await startService(GUEST_PORT)
+  check('the service starts on the desktop as its door', token !== null)
   const ssh = await tunnel(LOCAL_PORT, GUEST_PORT)
-  const sock = await socketTo(LOCAL_PORT)
+  const sock = await doorTo(LOCAL_PORT, token ?? '')
+  await doorLeg(token ?? '')
   const waiting = new Map<number, (f: Record<string, unknown>) => void>()
   const frames: string[] = []
   const notes: Record<string, unknown>[] = []
@@ -415,7 +439,7 @@ interface Got {
 }
 
 async function videoLeg(): Promise<void> {
-  const [GUEST, LOCAL, RELAY_GUEST, RELAY_LOCAL] = [47830, 47831, 47832, 47833]
+  const [GUEST, LOCAL] = [47830, 47831]
   const guestData = 'C:\\Users\\tcuser\\AppData\\Local\\Temp\\video-proof'
   vm('ssh', '--ps', 'Stop-Process -Name tc-computer -Force -ErrorAction SilentlyContinue; Remove-Item "$env:USERPROFILE\\tc-video-close","$env:USERPROFILE\\tc-video-drawn.txt" -ErrorAction SilentlyContinue')
   writeFileSync(join(out, 'tc-video-window.ps1'), VIDEO_WINDOW)
@@ -423,16 +447,16 @@ async function videoLeg(): Promise<void> {
   const drawn = vm('run-in-session', 'powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\Users\\tcuser\\tc-video-window.ps1')
   check('a window that redraws starts on the desktop', drawn.status === 0, drawn.stderr.trim())
   await sleep(5000)
-  const token = randomBytes(32).toString('hex')
-  check('the service starts with pipe-relay beside it', await startVideoService(GUEST, RELAY_GUEST, token))
-  const tunnels = [await tunnel(LOCAL, GUEST), await tunnel(RELAY_LOCAL, RELAY_GUEST)]
+  const token = await startService(GUEST)
+  check('the service starts on the desktop as its door', token !== null)
+  const tunnels = [await tunnel(LOCAL, GUEST)]
   const hostDir = join(tmpdir(), `tc-video-proof-${process.pid}`)
   mkdirSync(hostDir, { recursive: true })
   const hostLog: string[] = []
   const conn = await ComputerConnection.start({
     bin: 'tc-computer.exe',
     dataDir: hostDir,
-    spawn: rigSpawn(LOCAL, guestData, hostDir, { port: RELAY_LOCAL, token }),
+    spawn: rigSpawn(LOCAL, token ?? '', guestData, hostDir, true),
     videoPipe: 'named',
     videoPipeName: join(hostDir, 'video.sock'),
     log: (l) => hostLog.push(l)
@@ -515,7 +539,6 @@ async function videoLeg(): Promise<void> {
   await sleep(500)
   const log = vm('ssh', 'type %USERPROFILE%\\tc-computer.log').stdout
   writeFileSync(join(out, 'video-service.log'), log)
-  writeFileSync(join(out, 'video-relay.log'), vm('ssh', 'type %USERPROFILE%\\tc-relay.log').stdout)
   writeFileSync(join(out, 'video-host.log'), hostLog.join('\n') + '\n')
   const stats = (stream: number): Record<string, string> => {
     const line = log.split(/\r?\n/).find((l) => l.startsWith(`video ${stream}: frames=`)) ?? ''
