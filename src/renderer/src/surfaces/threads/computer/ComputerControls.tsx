@@ -12,7 +12,7 @@ import { stopComputer } from "../../../lib/computerSessions";
  * has a driver (the Work browser's page), and Stop. One press at a time; a
  * press that fails says so once, in the toast stack.
  */
-export function ComputerControls({ tile, all, className }: { tile: ComputerTile; all: readonly ComputerTile[]; className?: string }) {
+export function ComputerControls({ tile, className }: { tile: ComputerTile; className?: string }) {
   const [busy, setBusy] = useState<"take" | "back" | "stop" | null>(null);
   const pressing = useRef(false);
   const press = (which: "take" | "back" | "stop", run: () => Promise<unknown>, failed: string): void => {
@@ -34,7 +34,7 @@ export function ComputerControls({ tile, all, className }: { tile: ComputerTile;
             <BusyLabel busy={busy === "back"} label="Hand back" />
           </Button>
         ) : (
-          <Button variant="secondary" size="xs" disabled={!!busy} onClick={() => press("take", () => takeOver(tile, all), "Couldn't take over")}>
+          <Button variant="secondary" size="xs" disabled={!!busy} onClick={() => press("take", () => takeOver(tile), "Couldn't take over")}>
             <BusyLabel busy={busy === "take"} label="Take over" />
           </Button>
         )

@@ -67,13 +67,12 @@ function ElsewherePicture({ machine }: { machine: string }) {
 
 export interface TileProps {
   tile: ComputerTile;
-  all: readonly ComputerTile[];
   onOpenSession: (threadId: string, host: string) => void;
   /** the picture; left out where no desktop draws one (the browser /ui): the caption alone */
   picture?: ReactNode;
 }
 
-export function Tile({ tile, all, onOpenSession, picture }: TileProps) {
+export function Tile({ tile, onOpenSession, picture }: TileProps) {
   const line = tileLine(tile);
   return (
     <article data-slot="computer-tile" aria-label={tile.title} className={`group/item flex min-w-0 flex-col gap-2 ${FADE_IN}`}>
@@ -89,7 +88,7 @@ export function Tile({ tile, all, onOpenSession, picture }: TileProps) {
           <Facts parts={[line && tile.driving ? <span className="text-foreground">{line}</span> : line, picture && tile.shownOn ? null : tile.where]} className="text-xs leading-4 text-muted-foreground" />
         </div>
         <span className={reveal("item", { row: true })}>
-          <ComputerControls tile={tile} all={all} />
+          <ComputerControls tile={tile} />
         </span>
       </div>
     </article>
@@ -112,7 +111,7 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf }: ComputersPage
       {/* at least 320px a tile: one across under 704px of page, two under 1056, then three; one alone has the page, at its own pixels */}
       <div data-slot="computer-tiles" className={cn("grid grid-cols-1 gap-x-6 gap-y-8 p-4", tiles.length > 1 && "@[44rem]/computers:grid-cols-2", tiles.length > 2 && "@[66rem]/computers:grid-cols-3")}>
         {tiles.map((tile) => (
-          <Tile key={tileKey(tile, tiles)} tile={tile} all={tiles} onOpenSession={onOpenSession} picture={picture(tile)} />
+          <Tile key={tileKey(tile, tiles)} tile={tile} onOpenSession={onOpenSession} picture={picture(tile)} />
         ))}
       </div>
     </div>

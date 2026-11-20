@@ -6,6 +6,7 @@ import type { CanvasItem } from '@shared/work'
 import { awayVerdict } from '@shared/away'
 import { CONFIRM_KIND_INFO } from '@shared/computer/policy'
 import { ownerDrivesLine } from '../../computer/run'
+import { configureDriveSessions } from '../../computer/drive'
 import { canvas } from '../canvas/index'
 import { outbox as outboxModule } from '../outbox/index'
 import { approveKey, cast, makeRig, readKey, type Rig } from '../outbox/rig'
@@ -107,6 +108,27 @@ describe('the live browser', () => {
     await drive('agent')
     expect(ownerDrivesLine('t-work')).toBeNull()
     expect(ownerDrivesLine('t-sub')).toBeNull()
+  })
+
+  it("Take over under its old name answers the state as before, and stops the pane's sessions, a subagent's too, once he holds the wheel", async () => {
+    rig.thread('t-sub', { scope: 'work', workspaceId: 'ws-purdue', parentId: 't-work' } as never)
+    rig.thread('t-other', { scope: 'work', workspaceId: 'ws-purdue' } as never)
+    await tool('browser_open', { url: 'https://arbitersports.com', name: 'Arbiter', title: 'My availability' })
+    const stopped: { id: string; driver: string }[] = []
+    const rows = ['t-work', 't-sub', 't-other'].map((threadId) => ({ threadId, apps: [], lastCallAt: 1, running: null }))
+    configureDriveSessions({ sessions: () => ({ sessions: rows as never }), stop: async (id) => (stopped.push({ id, driver: (await state()).driver }), { stopped: true }) })
+    try {
+      expect(await drive('owner')).toMatchObject({ driver: 'owner', site: { name: 'Arbiter' } })
+      expect(stopped).toEqual([
+        { id: 't-work', driver: 'owner' },
+        { id: 't-sub', driver: 'owner' }
+      ])
+      stopped.length = 0
+      expect(await drive('agent')).toMatchObject({ driver: 'agent' })
+      expect(stopped).toEqual([])
+    } finally {
+      configureDriveSessions(null)
+    }
   })
 
   it('the agent can neither take over nor hand itself back: a model caller is refused', async () => {

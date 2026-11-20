@@ -38,7 +38,9 @@ until he presses Post. [work.md](work.md) says how a pillar registers;
 | Method | Cap | Answers |
 |---|---|---|
 | `work.browser.state {sessionId}` | read | `BrowserState`: `driver` (`agent` or `owner`), `needs`, `site`, `sources`, `since` |
-| `work.browser.drive {sessionId, driver}` | operate | `BrowserState`; a `model` caller is refused (`NOT_A_PERSON`). Taking over or handing back clears `needs`. Handing back (owner → agent) wakes, once, with `HANDED_BACK` through `ctx.threads.resume`, the thread of the tree that last used a browser tool (a subagent, say), else the pane thread. Only a Work thread (`NOT_WORK`). |
+| `work.browser.drive {sessionId, driver}` | operate | `computer.drive` on `browser:<sessionId>` under its old name, answering `BrowserState`; a `model` caller is refused (`NOT_A_PERSON`). Taking over or handing back clears `needs`. Handing back (owner → agent) wakes, once, with `HANDED_BACK` through `ctx.threads.resume`, the thread of the tree that last used a browser tool (a subagent, say), else the pane thread. Only a Work thread (`NOT_WORK`). |
+
+Take over and Hand back are `computer.drive {computer: 'browser:<pane>', driver}` (src/main/server/computer/drive.ts, cap `operate`), answering `{driver}`. The wheel's store is this pillar's, so its `start` registers the `browser` hook (`browserWheel`), as it registers `configureOwnerDrives`. The host reads which sessions drive the page (every row whose thread's pane is it, on this host, the box's browser or a bridged Mac), changes the wheel, waits until the box's picture has its new driver (`boxDriveChanged` resolves then), and only then stops those sessions. A session already marked his is left alone; Hand back stops nothing. The phone, which sent no stop before, now gets the stop through the old name.
 
 Push: `{ push: 'work.browser', state }` on every change.
 
@@ -108,9 +110,8 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   are driving" in foreground and Hand back (secondary); a held submit's
   Take over and Discard (ghost) and the one primary named for the act
   ("Submit in Concur"), never counting down; after it, "Submitted 2:14 PM".
-  Take over first stops every live computer session of the tree on its
-  host (`computer.stop`; drawable here or not, so the box desktop and the
-  browser /ui stop it too), then sets him as driver. While he drives at a
+  Take over is one call (`computer.drive`): the host sets him as driver,
+  then stops every live computer session of the tree, drawable here or not. While he drives at a
   held submit the ghost beside the primary is Hand back, and his driving
   outranks the line after a press, so Hand back is never out of reach.
   While he drives, every computer call from the pane's tree (the thread and
@@ -225,9 +226,8 @@ code threads too.
 - Holding a box thread's act on the Mac (a Mac-side row the box presses
   over the peer link): a box thread's computer act on the Mac is refused,
   not held (milestone 10).
-- The phone's `work.browser.drive` stops nothing: the stop is the desktop's.
-  A computer call still running on the phone's Take over finishes; the gate
-  below refuses the next one.
+- A computer call already running when he takes over finishes; the stop
+  ends the turn's session after it, and the gate below refuses the next one.
 - The Mac locked: the canvas shows no "As it was at" line for a locked Mac.
 - `teams.post`'s own Outbox view: it uses the generic one (`act.ts`,
   `chunk: null`); Sent draws no picture of the post.

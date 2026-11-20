@@ -339,7 +339,7 @@ bitrate follows that viewer's own link, and the relay stays a pipe.
 - **A row is kept for a pane he drives** (`driver: 'owner'` on
   `ComputerSessionRow`), since its session is stopped. Stop does nothing on
   it; Hand back ends it.
-- **Driving.** `work.browser.drive` tells the box (`boxDriveChanged`): the
+- **Driving.** `computer.drive` tells the box (`boxDriveChanged`, which resolves once the relay has the new driver): the
   page's window shows the toolbar when it is the page on the display, and
   the relay passes his input on a `drive` stream. At hand back the feed lets
   go of every key he holds, the page returns to full screen, and his stream
@@ -493,7 +493,7 @@ is publishing at once (`closeAll`).
 ## Driving
 
 Only the box's browser takes his input. He presses Take over
-(`work.browser.drive`), and from then on:
+(`computer.drive {computer: 'browser:<pane>', driver: 'owner'}`), and from then on:
 
 - **The stream.** A place that drives asks `video.open` with `drive`. The
   host gives a `drive` stream only while he is the driver; a watch stream
@@ -537,12 +537,15 @@ Only the box's browser takes his input. He presses Take over
   reader (`aria-description`).
 - **Hand back** makes the stream a watch stream on the host, which lets go
   of every key he held; the picture is a picture again.
-- **Take over keeps the picture.** The app asks `work.browser.drive` first
-  and stops the pane's live sessions after (`takeOver`, lib/computers.ts;
-  the canvas bar the same). The host lists a pane he drives (`ownerRows`,
+- **Take over keeps the picture.** The app makes one call,
+  `computer.drive` (`takeOver`, lib/computers.ts; the full view and the
+  canvas bar the same), and the host does the rest in order
+  (computer/drive.ts): it reads which sessions drive the page, hands him
+  the wheel, waits for the box's picture to have its new driver, and only
+  then stops those sessions. The host lists a pane he drives (`ownerRows`,
   box/index.ts), and marks a session still live in it as his, so the page
-  has a row at every moment; asked the other way round it had none between
-  the two calls, and every place that showed it dropped it. A watch stream
+  has a row at every moment; done the other way round it had none between
+  the two steps, and every place that showed it dropped it. A watch stream
   is not ended by the drive change. Once the session is stopped the page's
   row is the pane's own thread's: the Computers page keeps it the same
   tile (`tileKey`), so its box and canvas stay, and a full view opened on

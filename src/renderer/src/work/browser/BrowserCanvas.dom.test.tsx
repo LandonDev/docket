@@ -20,8 +20,6 @@ const host = vi.hoisted(() => ({
   calls: [] as Array<{ method: string; params: Record<string, unknown> }>,
   pushes: [] as Array<(p: unknown) => void>,
   stopped: [] as string[],
-  /** for each stop, whether he already held the wheel when it was asked */
-  droveBeforeStop: [] as boolean[],
   pictureDown: false,
   stateDown: false,
   /** what the act kept: its bytes, no picture at all, or a picture whose bytes did not come */
@@ -44,7 +42,7 @@ vi.mock("../../lib/connection", async (original) => {
       host.calls.push({ method, params });
       if (method === "work.browser.state" && host.stateDown) throw new Error("not connected");
       if (method === "work.browser.state") return host.state;
-      if (method === "work.browser.drive") return (host.state = { ...host.state, driver: params.driver as BrowserState["driver"], needs: null });
+      if (method === "computer.drive") return void (host.state = { ...host.state, driver: params.driver as BrowserState["driver"], needs: null });
       if (method === "work.outbox.list") return params.show === "decided" ? { items: [], waiting: 0 } : { items: host.items, waiting: host.items.length };
       if (method === "work.outbox.get" && host.pictureGate) await host.pictureGate;
       if (method === "work.outbox.get" && host.pictureDown) throw new Error("socket closed");
@@ -66,14 +64,11 @@ vi.mock("../../lib/computerSection", async (original) => ({
   ...(await original<typeof import("../../lib/computerSection")>()),
   useComputerSection: () => ({ entries: host.drawn, keys: [], histories: {}, exists: true, loading: false, live: false }),
 }));
-// A session this desktop cannot draw (the box, the browser /ui): Take over still stops it.
+// A session this desktop cannot draw (the box, the browser /ui): Take over leaves stopping it to the host.
 vi.mock("../../lib/computerSessions", async (original) => ({
   ...(await original<typeof import("../../lib/computerSessions")>()),
   useComputerEntries: () => LIVE_ENTRIES,
-  stopComputer: async (entry: { row: { threadId: string } }) => {
-    host.droveBeforeStop.push(host.calls.some((c) => c.method === "work.browser.drive" && c.params.driver === "owner"));
-    host.stopped.push(entry.row.threadId);
-  },
+  stopComputer: async (entry: { row: { threadId: string } }) => void host.stopped.push(entry.row.threadId),
 }));
 
 vi.mock("../../surfaces/threads/computer/Viewport", async (original) => {
@@ -129,7 +124,6 @@ beforeEach(() => {
   host.calls = [];
   host.pushes = [];
   host.stopped = [];
-  host.droveBeforeStop = [];
   host.pictureDown = false;
   host.stateDown = false;
   host.picture = "bytes";
@@ -142,20 +136,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the browser's bar", () => {
-  it("shows the site's host and who drives; Take over stops the agent's computer use, Hand back gives it back", async () => {
+  it("shows the site's host and who drives; Take over is one call (the host stops the agent's computer use), Hand back gives it back", async () => {
     render(<Bar {...props()} />);
     await screen.findByText("The agent is driving");
     expect(screen.getByText("us2.concursolutions.com")).toBeTruthy();
-    // he holds the wheel before the agent's session is stopped: the host lists a pane he drives, so the page keeps a row
+    // one call: the host hands him the wheel and then stops the agent's session itself, so the page keeps a row
     fireEvent.click(screen.getByRole("button", { name: "Take over" }));
-    await waitFor(() => expect(host.stopped).toEqual(["t1"]));
-    expect(methods()).toEqual(["work.browser.drive"]);
-    expect(host.droveBeforeStop).toEqual([true]);
+    await waitFor(() => expect(methods()).toEqual(["computer.drive"]));
+    expect(host.calls.at(-1)?.params).toEqual({ computer: "browser:t1", driver: "owner" });
+    expect(host.stopped).toEqual([]);
     act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
     await screen.findByText("You are driving");
     expect(screen.getByRole("button", { name: "Hand back" }).hasAttribute("data-hand-back")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Hand back" }));
-    await waitFor(() => expect(host.calls.filter((c) => c.method === "work.browser.drive").map((c) => c.params.driver)).toEqual(["owner", "agent"]));
+    await waitFor(() => expect(host.calls.filter((c) => c.method === "computer.drive").map((c) => c.params.driver)).toEqual(["owner", "agent"]));
   });
 
   it("a page that needs him says so in its words, with Take over as the one primary", async () => {
@@ -420,7 +414,7 @@ describe("a held submit's primary waits on the page he approves", () => {
     expect(container.querySelector("[data-face=live]")).toBeNull();
     expect(submit().hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Take over" }));
-    await waitFor(() => expect(host.calls.some((c) => c.method === "work.browser.drive")).toBe(true));
+    await waitFor(() => expect(host.calls.some((c) => c.method === "computer.drive")).toBe(true));
     act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
     await screen.findByRole("button", { name: "Hand back" });
     await waitFor(() => expect(container.querySelector("[data-face=live]")).toBeTruthy());

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { configureComputerDrive, driveComputer, type ComputerDriveHook } from '../../computer/drive'
 import { configureOwnerDrives } from '../../computer/run'
 import { PortalSourceSchema, type BrowserState, type BrowserVideo } from '@shared/contract-work-browser'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
@@ -110,6 +111,26 @@ function tools(): WorkTool[] {
   ]
 }
 
+/**
+ * The wheel of a pane's browser page (`computer.drive` on `browser:<pane>`): its threads are those whose pane it is,
+ * and the change lands when the box's picture has its new driver. Handing back wakes the thread that drove it.
+ */
+function browserWheel(ctx: WorkCtx): ComputerDriveHook<BrowserState> {
+  return {
+    holds: (pane) => (threadId) => ctx.canvas.paneOf(threadId) === pane,
+    async drive(pane, driver) {
+      if (!ctx.scopeOf(pane)) throw new Error(NOT_WORK)
+      const store = new DriveStore(ctx.db)
+      const was = store.get(pane)
+      const state = send(ctx, store.drive(pane, driver))
+      // the box's browser shows its toolbar to a driver and takes his input, and the page alone to a watcher
+      if (was.driver !== state.driver) await boxDriveChanged(pane, state.driver === 'owner')
+      if (was.driver === 'owner' && state.driver === 'agent') await wake(ctx, store.actor(pane), pane)
+      return state
+    }
+  }
+}
+
 export const browser: WorkModule = {
   id: 'browser',
   ensure(db) {
@@ -119,18 +140,11 @@ export const browser: WorkModule = {
     switch (req.method) {
       case 'work.browser.state':
         return handled(new DriveStore(ctx.db).get(req.params.sessionId))
+      // `computer.drive` under its old name, with the same answer; it now stops what was driving the page as well.
       case 'work.browser.drive': {
         // The agent never hands itself the wheel, and never takes it from him.
         if (by.kind === 'model') throw new Error(NOT_A_PERSON)
-        const { sessionId, driver } = req.params
-        if (!ctx.scopeOf(sessionId)) throw new Error(NOT_WORK)
-        const store = new DriveStore(ctx.db)
-        const was = store.get(sessionId)
-        const state = send(ctx, store.drive(sessionId, driver))
-        // the box's browser shows its toolbar to a driver and takes his input, and the page alone to a watcher
-        if (was.driver !== state.driver) boxDriveChanged(sessionId, state.driver === 'owner')
-        if (was.driver === 'owner' && state.driver === 'agent') await wake(ctx, store.actor(sessionId), sessionId)
-        return handled(state)
+        return handled(await driveComputer<BrowserState>(`browser:${req.params.sessionId}`, req.params.driver, ctx.log))
       }
       case 'work.browser.video': {
         if (by.kind === 'model') throw new Error(NOT_A_PERSON_SETS)
@@ -147,9 +161,12 @@ export const browser: WorkModule = {
   start(ctx) {
     const gate = (threadId: string): string | null => (new DriveStore(ctx.db).get(ctx.canvas.paneOf(threadId)).driver === 'owner' ? OWNER_DRIVES : null)
     configureOwnerDrives(gate)
+    const wheel = browserWheel(ctx)
+    configureComputerDrive('browser', wheel)
     const stopBox = startBoxBrowser(ctx)
     return () => {
       configureOwnerDrives(null, gate)
+      configureComputerDrive('browser', null, wheel)
       stopBox()
     }
   },
@@ -158,7 +175,7 @@ export const browser: WorkModule = {
   sessionsRemoved(ids, ctx) {
     const store = new DriveStore(ctx.db)
     // a pane removed while he drove is driven by nobody: its input stops with it
-    for (const id of ids) if (store.get(id).driver === 'owner') boxDriveChanged(id, false)
+    for (const id of ids) if (store.get(id).driver === 'owner') void boxDriveChanged(id, false)
     store.remove(ids)
   }
 }

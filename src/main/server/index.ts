@@ -99,6 +99,7 @@ import { VideoPublishing } from './video/published'
 import { VideoPublisher, videoOffers } from './video/publisher'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
+import { configureDriveSessions, driveComputer } from './computer/drive'
 import { ComputerHistory, KEEP_PICTURES_SETTING, historyPicturesFromEnv, historyRoot } from './computer/history'
 import { ComputerHistoryRpc, handleComputerHistory } from './computer/historyRpc'
 import { SessionScheduler } from './computer/schedule'
@@ -1564,6 +1565,8 @@ export async function startServer(
   const computerRpc = new ComputerRpc(computer, () => computerWhy, computerBridge ? { bridge: computerBridge, tokens: computerBridgeTokens } : null, {
     setToolHold: (id, line) => registry.setToolHold(id, line)
   })
+  // Take over (computer/drive.ts): what a change of the wheel stops is every session this host lists
+  configureDriveSessions(computerRpc)
   // a turn that settles or pauses cancels the thread's held calls left pending on the bridge
   registry.onMeta((m) => computerRpc.onMeta(m))
   // Settings → Computer use (computer/settingsRpc.ts): the threshold, the learned apps, the grants, Try again.
@@ -3619,6 +3622,12 @@ export async function startServer(
           case 'computer.stop':
             sendFrame({ id: req.id, ok: true, result: await computerRpc.stop(req.params.sessionId) })
             break
+          case 'computer.drive': {
+            const { computer, driver } = req.params
+            await driveComputer(computer, driver)
+            sendFrame({ id: req.id, ok: true, result: { driver } })
+            break
+          }
           case 'power.status':
             sendFrame({ id: req.id, ok: true, result: keepAwake.status() })
             break

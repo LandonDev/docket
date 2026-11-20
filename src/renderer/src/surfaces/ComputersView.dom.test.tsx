@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 describe("the Computers page", () => {
-  it("keeps the same picture through Take over: he drives first, then the agent's session stops, and the page's tile, box and canvas stay as its row moves to the pane's thread", async () => {
+  it("keeps the same picture through Take over: one call, and the page's tile, box and canvas stay as its row moves to the pane's thread", async () => {
     const calls: { method: string; params: unknown }[] = [];
     vi.spyOn(registry, "link").mockImplementation(() => ({ request: async (method: string, params: unknown) => void calls.push({ method, params }) }) as never);
     const page = (): React.ReactElement => <ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />;
@@ -56,11 +56,8 @@ describe("the Computers page", () => {
     expect(canvas.className).not.toContain("invisible");
     fireEvent.click(screen.getByRole("button", { name: "Take over" }));
     await act(async () => {});
-    // the wheel first: the host lists a pane he drives, so the page never leaves the list between the two calls
-    expect(calls).toEqual([
-      { method: "work.browser.drive", params: { sessionId: "t1", driver: "owner" } },
-      { method: "computer.stop", params: { sessionId: "sub" } },
-    ]);
+    // one call: the host hands him the wheel, then stops the agent's session itself
+    expect(calls).toEqual([{ method: "computer.drive", params: { computer: "browser:t1", driver: "owner" } }]);
     // what the host lists once the session is stopped: the page under the pane's own thread, his
     h.tiles = [tile({ id: "box\nt1", pane: "t1", driving: true, doing: null, entry: { ...base.entry, row: { ...base.entry.row, threadId: "t1", running: null, driver: "owner" }, previewKey: "t1" } })];
     view.rerender(page());
@@ -106,31 +103,31 @@ describe("the Computers page", () => {
 
   it("a tile says its thread, what it is doing and where, as one comma sentence; its title goes to the thread", () => {
     const opened: [string, string][] = [];
-    render(<Tile tile={tile()} all={[]} onOpenSession={(thread, host) => opened.push([thread, host])} />);
+    render(<Tile tile={tile()} onOpenSession={(thread, host) => opened.push([thread, host])} />);
     const facts = screen.getByRole("article").querySelector('[data-slot="facts"]')!;
     expect([...facts.children].map((c) => c.textContent)).toEqual(["Clicking Submit in Chromium", "The box"]);
     fireEvent.click(screen.getByRole("button", { name: "File the March expense report" }));
     expect(opened).toEqual([["t1", "box"]]);
     // a page he drives reads so, in the foreground
     cleanup();
-    render(<Tile tile={tile({ driving: true, doing: null })} all={[]} onOpenSession={() => undefined} />);
+    render(<Tile tile={tile({ driving: true, doing: null })} onOpenSession={() => undefined} />);
     expect(tileLine(tile({ driving: true, doing: "stale" }))).toBe("You are driving");
     expect(screen.getByText("You are driving").className).toContain("text-foreground");
     // between calls there is only where it runs
     cleanup();
-    render(<Tile tile={tile({ doing: null })} all={[]} onOpenSession={() => undefined} />);
+    render(<Tile tile={tile({ doing: null })} onOpenSession={() => undefined} />);
     expect([...screen.getByRole("article").querySelector('[data-slot="facts"]')!.children].map((c) => c.textContent)).toEqual(["The box"]);
   });
 
   it("keeps a tile's controls in the standard reveal: Take over or Hand back where it has a driver, and Stop", () => {
-    render(<Tile tile={tile()} all={[]} onOpenSession={() => undefined} />);
+    render(<Tile tile={tile()} onOpenSession={() => undefined} />);
     const controls = screen.getByRole("article").querySelector('[data-slot="computer-controls"]')!;
     expect(controls.parentElement!.className).toContain("group-hover/item:opacity-100");
     expect(controls.parentElement!.className).toContain("has-focus-visible:opacity-100");
     expect(within(controls as HTMLElement).getByRole("button", { name: "Take over" })).not.toBeNull();
     expect(within(controls as HTMLElement).getByRole("button", { name: "Stop File the March expense report" })).not.toBeNull();
     cleanup();
-    render(<Tile tile={tile({ browser: false })} all={[]} onOpenSession={() => undefined} />);
+    render(<Tile tile={tile({ browser: false })} onOpenSession={() => undefined} />);
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
   });
 

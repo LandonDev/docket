@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { TruncateTip } from "@renderer/components/tip";
-import { useComputer, useComputers, type ComputerTile } from "../../../lib/computers";
+import { useComputer, type ComputerTile } from "../../../lib/computers";
 import { sharpSize } from "../../../lib/video/support";
 import { ComputerControls } from "./ComputerControls";
 import { cn } from "../../../lib/cn";
@@ -29,7 +29,6 @@ export const drivesWords = (tile: ComputerTile): string | null => (!tile.browser
 
 export interface FullViewProps {
   tile: ComputerTile | null;
-  all: readonly ComputerTile[];
   stream: LiveStream;
   /** the room the surface may take, in CSS pixels */
   room: { width: number; height: number };
@@ -41,7 +40,7 @@ export interface FullViewProps {
 }
 
 /** The surface, pure: what it draws for a tile, a stream and a room. */
-export function FullView({ tile, all, stream, room, name, boxRef, picture, dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1 }: FullViewProps) {
+export function FullView({ tile, stream, room, name, boxRef, picture, dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1 }: FullViewProps) {
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   const face = liveFace(stream);
@@ -78,7 +77,7 @@ export function FullView({ tile, all, stream, room, name, boxRef, picture, dpr =
         {/* on the title's own line height, so the two sizes share a baseline */}
         {words ? <span className={tile?.driving ? "shrink-0 text-xs leading-5 whitespace-nowrap text-foreground" : "shrink-0 text-xs leading-5 whitespace-nowrap text-muted-foreground"}>{words}</span> : null}
         <span className="flex-1" />
-        {tile ? <ComputerControls tile={tile} all={all} /> : null}
+        {tile ? <ComputerControls tile={tile} /> : null}
       </div>
     </div>
   );
@@ -87,7 +86,6 @@ export function FullView({ tile, all, stream, room, name, boxRef, picture, dpr =
 /** The full view of one thread's computer on one host, live. */
 export function LiveFullView({ host, threadId, name }: { host: string; threadId: string; name: string }) {
   const tile = useComputer(host, threadId);
-  const all = useComputers();
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState({ width: 0, height: 0 });
@@ -107,7 +105,7 @@ export function LiveFullView({ host, threadId, name }: { host: string; threadId:
   return (
     // the lightbox's own room: the window less its inset and the arrows' gutters
     <div ref={measure} className="flex h-[calc(100vh-112px)] w-[calc(100vw-160px)] items-center justify-center">
-      {room.width > 0 ? <FullView tile={tile} all={all} stream={stream} room={room} name={name} boxRef={box} /> : null}
+      {room.width > 0 ? <FullView tile={tile} stream={stream} room={room} name={name} boxRef={box} /> : null}
     </div>
   );
 }

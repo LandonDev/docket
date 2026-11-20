@@ -3,7 +3,7 @@ import { useStore } from "zustand";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { parseMacComputerKey } from "@server/shared/contract-maccomputer";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection/registry";
-import { BOX_BROWSER_BUNDLE, computerSessionsStore, entriesOf, previewContext, startComputerSessions, stopComputer, type ComputerEntry, type PreviewContext } from "./computerSessions";
+import { BOX_BROWSER_BUNDLE, computerSessionsStore, entriesOf, previewContext, startComputerSessions, type ComputerEntry, type PreviewContext } from "./computerSessions";
 import { threadRoot } from "./devServers";
 import { sessionStore, useSessionMetas } from "./tcserver/store";
 import { hostName } from "./threadResources";
@@ -123,25 +123,25 @@ export function tileKey(tile: ComputerTile, all: readonly ComputerTile[]): strin
   return alone ? `${tile.entry.host}\n${tile.pane}\nbrowser` : tile.id;
 }
 
+/** The name the host knows a tile's computer by for its wheel (computer/drive.ts): a browser tile's pane's page. */
+export const driveName = (tile: ComputerTile): string => `browser:${tile.pane}`;
+
 /**
- * Take over a tile's browser, as the canvas's bar does: he holds the wheel
- * first, which refuses the agent every further act and keeps the page in
- * every list (the host has a row for a pane he drives), then every live
- * session of the pane on its host is stopped for its turn. The other way
- * round the page had no row between the two calls, and its picture went.
+ * Take over a tile's computer: one call, and the host does the rest in order
+ * (computer/drive.ts). He holds the wheel first, which refuses the agent every
+ * further act and keeps the page listed; then every session that drove it is
+ * stopped for its turn, wherever it runs.
  */
-export async function takeOver(tile: ComputerTile, all: readonly ComputerTile[]): Promise<void> {
+export async function takeOver(tile: ComputerTile): Promise<void> {
   const link = registry.link(tile.entry.host);
   if (!link) throw new Error("the host is not connected");
-  const live = all.filter((t) => t.entry.host === tile.entry.host && t.pane === tile.pane && !t.driving);
-  await link.request("work.browser.drive", { sessionId: tile.pane, driver: "owner" });
-  await Promise.all(live.map((t) => stopComputer(t.entry)));
+  await link.request("computer.drive", { computer: driveName(tile), driver: "owner" });
 }
 
 export async function handBack(tile: ComputerTile): Promise<void> {
   const link = registry.link(tile.entry.host);
   if (!link) throw new Error("the host is not connected");
-  await link.request("work.browser.drive", { sessionId: tile.pane, driver: "agent" });
+  await link.request("computer.drive", { computer: driveName(tile), driver: "agent" });
 }
 
 /** The rail row's mark: waiting while a session's card needs him, working while anything is driven, else none. It carries no count. */

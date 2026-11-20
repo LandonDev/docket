@@ -220,6 +220,8 @@ export const ComputerRequestSchemas = [
   request('computer.sessions', z.object({})),
   /** → { stopped: boolean }: Stop on the Activity row; computer use ends for the thread's turn */
   request('computer.stop', z.object({ sessionId: z.string() })),
+  /** → { driver }: Take over and Hand back of a computer by its name (`browser:<pane>`, `vm:windows`); a Take over stops what was driving it */
+  request('computer.drive', z.object({ computer: z.string().min(3).max(300), driver: z.enum(['owner', 'agent']) })),
   // The codex and Muse bridge (scripts/app-mcp-bridge.mjs): `token` is the
   // thread's own, so one thread's bridge never acts as another.
   /** → AppComputerAnswer */

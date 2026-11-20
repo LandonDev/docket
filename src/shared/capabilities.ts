@@ -459,6 +459,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // Computer use (contract-computer.ts): the live sessions are anyone's to see; Stop is an act.
   'computer.sessions': 'read',
   'computer.stop': 'operate',
+  'computer.drive': 'operate',
   // The live preview and live video (contract-video.ts `mayWatch`): `approve` on a client key reaches the
   // box's browser, the picture and the video; a Mac's or a PC's own windows stay its desktop's, whatever the
   // key (computer/preview.ts `previewRefusal`), and leave it as video only by `computer.video.remote`.

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { macComputerKey } from "@server/shared/contract-maccomputer";
-import { computerTiles, computersMark, findComputer, takeOver, tileKey } from "./computers";
+import { computerTiles, computersMark, driveName, findComputer, handBack, takeOver, tileKey } from "./computers";
 import { registry } from "./connection/registry";
 import { BOX_BROWSER_BUNDLE } from "./computerSessions";
 
@@ -109,13 +109,19 @@ describe("every computer being driven now", () => {
     expect(findComputer(computerTiles({ box: [row({ threadId: "root" })] }, titleOf, nameOf, mac, paneOf), "box", "sub", "root")).toBeNull();
   });
 
-  it("takes over by holding the wheel first and stopping the pane's live sessions after, so the page is never without a row", async () => {
-    const calls: string[] = [];
-    const spy = vi.spyOn(registry, "link").mockImplementation(() => ({ request: async (method: string, params: { sessionId: string }) => void calls.push(`${method} ${params.sessionId}`) }) as never);
+  it("takes over and hands back in one call each, naming the pane's page: the host stops what drove it", async () => {
+    const calls: unknown[] = [];
+    const spy = vi.spyOn(registry, "link").mockImplementation(() => ({ request: async (method: string, params: unknown) => void calls.push([method, params]) }) as never);
     const paneOf = (id: string): string => (id === "sub" ? "root" : id);
     const tiles = computerTiles({ box: [row({ threadId: "sub", apps: chromium }), row({ threadId: "b2", apps: chromium })] }, titleOf, nameOf, mac, paneOf);
-    await takeOver(tiles.find((t) => t.pane === "root")!, tiles);
-    expect(calls).toEqual(["work.browser.drive root", "computer.stop sub"]);
+    const tile = tiles.find((t) => t.pane === "root")!;
+    expect(driveName(tile)).toBe("browser:root");
+    await takeOver(tile);
+    await handBack(tile);
+    expect(calls).toEqual([
+      ["computer.drive", { computer: "browser:root", driver: "owner" }],
+      ["computer.drive", { computer: "browser:root", driver: "agent" }],
+    ]);
     spy.mockRestore();
   });
 

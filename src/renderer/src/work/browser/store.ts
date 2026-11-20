@@ -97,8 +97,9 @@ export function useHeldActs(env: string, pane: string): OutboxItem[] {
   return items;
 }
 
-export function setDriver(env: string, sessionId: string, driver: BrowserDriver): Promise<BrowserState> {
-  return registry.linkOf(env).request<BrowserState>("work.browser.drive", { sessionId, driver });
+/** Take over or Hand back the pane's page: the host stops what was driving it after he has the wheel (computer/drive.ts); the state comes by its push. */
+export async function setDriver(env: string, sessionId: string, driver: BrowserDriver): Promise<void> {
+  await registry.linkOf(env).request("computer.drive", { computer: `browser:${sessionId}`, driver });
 }
 
 /** His press on the held submit: it runs once, as it was held, if the page still shows what he saw. */

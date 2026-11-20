@@ -65,12 +65,12 @@ describe("the full view of a computer being driven", () => {
   });
 
   it("holds the picture at its own pixels in the room it has, and the surface at the picture's width", () => {
-    const { container } = render(<FullView tile={tile()} all={[]} stream={streamOf({ status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true })} room={{ width: 1400, height: 900 }} name="Live view" dpr={2} />);
+    const { container } = render(<FullView tile={tile()} stream={streamOf({ status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true })} room={{ width: 1400, height: 900 }} name="Live view" dpr={2} />);
     const box = container.querySelector<HTMLElement>('[data-face="live"]')!;
     expect([box.style.width, box.style.height]).toEqual(["1280px", "800px"]);
     expect(container.querySelector<HTMLElement>('[data-slot="live-full-view"]')!.style.width).toBe("1304px");
     cleanup();
-    const small = render(<FullView tile={tile()} all={[]} stream={streamOf({ status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true })} room={{ width: 900, height: 700 }} name="Live view" dpr={2} />);
+    const small = render(<FullView tile={tile()} stream={streamOf({ status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true })} room={{ width: 900, height: 700 }} name="Live view" dpr={2} />);
     expect(small.container.querySelector<HTMLElement>('[data-face="live"]')!.style.width).toBe("640px");
   });
 
@@ -78,41 +78,35 @@ describe("the full view of a computer being driven", () => {
     expect(drivesWords(tile())).toBe("The agent is driving");
     expect(drivesWords(tile({ driving: true }))).toBe("You are driving");
     expect(drivesWords(tile({ browser: false }))).toBeNull();
-    render(<FullView tile={tile({ driving: true })} all={[]} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
+    render(<FullView tile={tile({ driving: true })} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
     expect(screen.getByText("You are driving").className).toContain("text-foreground");
     expect(screen.getByText("File the March expense report")).not.toBeNull();
   });
 
-  it("Take over takes the wheel, then stops the pane's live sessions on its host; Hand back gives it back; Stop stops the one", async () => {
+  it("Take over and Hand back are one call each to the host, which stops what drove the page itself; Stop stops the one", async () => {
     const mine = tile();
-    const sub = tile({ id: "box\nt1-sub", pane: "t1", entry: { ...mine.entry, row: { ...mine.entry.row, threadId: "t1-sub" } } });
-    const other = tile({ id: "box\nt9", pane: "t9", entry: { ...mine.entry, row: { ...mine.entry.row, threadId: "t9" } } });
-    const view = render(<FullView tile={mine} all={[mine, sub, other]} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
+    const view = render(<FullView tile={mine} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
     fireEvent.click(screen.getByRole("button", { name: "Take over" }));
     await flush();
-    expect(calls).toEqual([
-      { host: "box", method: "work.browser.drive", params: { sessionId: "t1", driver: "owner" } },
-      { host: "box", method: "computer.stop", params: { sessionId: "t1" } },
-      { host: "box", method: "computer.stop", params: { sessionId: "t1-sub" } },
-    ]);
+    expect(calls).toEqual([{ host: "box", method: "computer.drive", params: { computer: "browser:t1", driver: "owner" } }]);
     calls.length = 0;
     fireEvent.click(screen.getByRole("button", { name: "Stop File the March expense report" }));
     await flush();
     expect(calls).toEqual([{ host: "box", method: "computer.stop", params: { sessionId: "t1" } }]);
     // he drives: Hand back alone, since there is no session to stop
     calls.length = 0;
-    view.rerender(<FullView tile={tile({ driving: true })} all={[]} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
+    view.rerender(<FullView tile={tile({ driving: true })} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
     expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
     expect(screen.getByRole("button", { name: "Hand back" }).hasAttribute("data-hand-back")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Hand back" }));
     await flush();
-    expect(calls).toEqual([{ host: "box", method: "work.browser.drive", params: { sessionId: "t1", driver: "agent" } }]);
+    expect(calls).toEqual([{ host: "box", method: "computer.drive", params: { computer: "browser:t1", driver: "agent" } }]);
   });
 
   it("a window on a Mac has Stop alone, and a press that fails says so once", async () => {
     fail = "computer.stop";
-    render(<FullView tile={tile({ browser: false, title: "Tidy the Downloads folder" })} all={[]} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
+    render(<FullView tile={tile({ browser: false, title: "Tidy the Downloads folder" })} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" />);
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
     const stop = screen.getByRole("button", { name: "Stop Tidy the Downloads folder" });
     fireEvent.click(stop);
@@ -126,11 +120,11 @@ describe("the full view of a computer being driven", () => {
 
   it("offers Retry only for an end that trying again can help", () => {
     const retry = vi.fn();
-    render(<FullView tile={tile()} all={[]} stream={{ ...streamOf({ status: "ended", reason: "error" }), retry }} room={{ width: 900, height: 700 }} name="Live view" />);
+    render(<FullView tile={tile()} stream={{ ...streamOf({ status: "ended", reason: "error" }), retry }} room={{ width: 900, height: 700 }} name="Live view" />);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
     cleanup();
-    render(<FullView tile={tile()} all={[]} stream={streamOf({ status: "ended", reason: "permission" })} room={{ width: 900, height: 700 }} name="Live view" />);
+    render(<FullView tile={tile()} stream={streamOf({ status: "ended", reason: "permission" })} room={{ width: 900, height: 700 }} name="Live view" />);
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });

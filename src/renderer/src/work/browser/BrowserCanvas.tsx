@@ -10,7 +10,7 @@ import { FADE_IN } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
 import { treeIds } from "../../lib/activity";
 import { drawable, useComputerSection } from "../../lib/computerSection";
-import { stopComputer, useComputerEntries, type ComputerEntry } from "../../lib/computerSessions";
+import { useComputerEntries, type ComputerEntry } from "../../lib/computerSessions";
 import { thisDesktopInLine } from "../../lib/native";
 import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
@@ -87,7 +87,7 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const { env } = props;
   const pane = paneOf(props);
   const fetched = useBrowser(env, pane);
-  const { state, held, entry, live, error } = props.data ?? fetched;
+  const { state, held, entry, error } = props.data ?? fetched;
   const face = barFaceOf(state, held);
   // While a submit waits and the agent drives, the body draws the held page's kept picture, a live window or not: his press
   // approves what he has seen, so the primary waits until that picture has drawn (or none was kept), and stays off while it
@@ -99,15 +99,8 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const drawn = useLiveDrawn(`${env}\n${pane}`);
   const seen = takenOver ? drawn : !still || pictureShown(picture);
   const [busy, press] = usePress();
-  const takeOver = (): void =>
-    press("take", async () => {
-      // He holds the wheel first, which refuses the agent every further act and keeps the page listed (the host has a
-      // row for a pane he drives); then every live session of the tree stops for its turn. The other way round the
-      // page had no row between the two calls, and its picture went.
-      const sessions = live;
-      await setDriver(env, pane, "owner");
-      await Promise.all(sessions.map((e) => stopComputer(e)));
-    });
+  // one call: the host hands him the wheel, then stops every session of the tree for its turn
+  const takeOver = (): void => press("take", () => setDriver(env, pane, "owner"));
   const handBack = (): void => press("back", () => setDriver(env, pane, "agent"));
   const host = siteHost(state);
   // A first read that failed is the state line's alone: the bar holds no bone that would never fill.

@@ -253,8 +253,8 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
       // the pane's picture is drawn from another session of the service now
       for (const fn of targetListeners) fn(pane)
     }
-    void (video ? video.driver(pane, owner) : Promise.resolve()).then(told, told)
     if (!owner) void service.request('session.close', { session: OWNER_SESSION + pane }).catch(() => {})
+    return (video ? video.driver(pane, owner) : Promise.resolve()).then(told, told)
   }
   browser.onStop(() => lastTarget.clear())
   host = { root, browser, stage, service, sessions, video, rows, previews }
@@ -264,10 +264,10 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
 /** The service session his own look at a pane's page runs on, by the pane. */
 const OWNER_SESSION = 'owner:'
 
-/** Told who drives a pane each time it changes (work/browser `work.browser.drive`, and a pane's thread being removed). */
-let driveChanged: (pane: string, owner: boolean) => void = () => {}
-export function boxDriveChanged(pane: string, owner: boolean): void {
-  driveChanged(pane, owner)
+/** Told who drives a pane each time it changes (work/browser `computer.drive`, and a pane's thread being removed); resolves once the picture's driver has changed. */
+let driveChanged: (pane: string, owner: boolean) => Promise<void> = async () => {}
+export function boxDriveChanged(pane: string, owner: boolean): Promise<void> {
+  return driveChanged(pane, owner)
 }
 
 /** The box browser of this host, once wired. A test sets its own. */
