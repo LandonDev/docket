@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ConvexProvider } from "convex/react";
-import { Mailbox, MailClientProvider, MailKitProvider, useMailClient, type ComposeState, type MailBox, type MailNav, type MailTaskRequest } from "work-kit/mail";
+import { Mailbox, MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailBox, type MailNav, type MailTaskRequest } from "work-kit/mail";
 import "work-kit/mail/styles.css";
 import "./mail.css";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -10,6 +10,10 @@ import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
 import { mailClientFor } from "./client";
 import { tempcodeMailKit } from "./kit";
+import { mailPaneOf, type ContextChip } from "@shared/work";
+import { CanvasSeat } from "../canvas/CanvasSeat";
+import { Mail as MailGlyph } from "../icons";
+import { placedKit } from "./files";
 import { mailChip } from "./model";
 
 /**
@@ -89,7 +93,7 @@ export function View(props: WorkViewProps) {
   );
 }
 
-function MailPageBody({ workspace, startThread }: WorkViewProps) {
+function MailPageBody({ workspace, startThread, env }: WorkViewProps) {
   const id = workspace.id;
   const openTask = useCallback(() => openWorkView({ workspaceId: id, view: "tasks" }), [id]);
   const start = useCallback((mail: { id: string; subject: string }) => startThread(mailChip(mail.id, mail.subject)), [startThread]);
@@ -101,12 +105,35 @@ function MailPageBody({ workspace, startThread }: WorkViewProps) {
     patch(id, { threadId: mail, compose: null });
     openWorkView({ workspaceId: id, view: "mail" });
   }, [id, mail]);
-  return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} />;
+  // A file of the open mail opens in the view's own pane beside the reader; Ask there starts a thread about it.
+  const files = useMemo(() => ({ env, onAsk: (chip: ContextChip) => startThread(chip) }), [env, startThread]);
+  return <MailScreen id={id} onOpenTask={openTask} onStartThread={start} files={files} />;
 }
 
+/** The toggle over the reader, when an attachment shares the pane with it. */
+const READER_TOGGLE = { label: "Mail", icon: MailGlyph };
+
 /** The page under its providers: the list beside the reading pane, for the workspace (or the preview) named `id`. */
-export function MailScreen({ id, onOpenTask, onStartThread }: { id: string; onOpenTask: () => void; onStartThread?: (mail: { id: string; subject: string }) => void }) {
+export function MailScreen({
+  id,
+  onOpenTask,
+  onStartThread,
+  files,
+}: {
+  id: string;
+  onOpenTask: () => void;
+  onStartThread?: (mail: { id: string; subject: string }) => void;
+  /** Where the reader's files open: the host and what Ask does there. Absent (the preview), files are saved. */
+  files?: { env: string; onAsk(chip: ContextChip): void };
+}) {
   const page = usePage(id);
+  const kit = useMailKit();
+  // The open mail, read when a file is pressed: the reader shows only the thread it has open.
+  const open = useRef(page.threadId);
+  open.current = page.threadId;
+  const pane = mailPaneOf(id);
+  const env = files?.env;
+  const placed = useMemo(() => (env ? placedKit(kit, { env, pane, thread: () => open.current }) : null), [kit, env, pane]);
   const client = useMailClient();
   const accounts = client.useMailAccounts();
   const actions = client.useMailActions();
@@ -143,10 +170,28 @@ export function MailScreen({ id, onOpenTask, onStartThread }: { id: string; onOp
     watch.observe(el);
     return () => watch.disconnect();
   }, []);
-  const frame = useCallback(({ list, pane }: { list: ReactNode; pane: ReactNode }) => <MailFrame list={list} pane={pane} />, []);
+  const onAsk = files?.onAsk;
+  const frame = useCallback(
+    ({ list, pane: reader }: { list: ReactNode; pane: ReactNode }) => (
+      <MailFrame
+        list={list}
+        pane={
+          env && onAsk ? (
+            <CanvasSeat session={{ id: pane, environmentId: env }} onAsk={onAsk} chatToggle={READER_TOGGLE}>
+              {reader}
+            </CanvasSeat>
+          ) : (
+            reader
+          )
+        }
+      />
+    ),
+    [env, onAsk, pane],
+  );
+  const box = <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} narrow={narrow} sectors={false} onStartThread={onStartThread} />;
   return (
     <div ref={root} data-mail-kit className="tc-mail h-full min-h-0">
-      <Mailbox nav={nav} accounts={accounts} compose={page.compose} setCompose={setCompose} openTaskIds={NO_TASKS} onTask={onTask} frame={frame} narrow={narrow} sectors={false} onStartThread={onStartThread} />
+      {placed ? <MailKitProvider kit={placed}>{box}</MailKitProvider> : box}
     </div>
   );
 }

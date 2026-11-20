@@ -226,15 +226,20 @@ function useShownWidth(ref: React.RefObject<HTMLDivElement | null>, shown: boole
 }
 
 /** The header's conversation toggle: pressed while the chat is shown. */
-export function ChatToggle({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
+/** What the toggle folds, when it is not a conversation (the Mail view's reader beside an attachment). */
+export type ChatToggleWords = { label: string; icon: typeof MessageSquare };
+
+export function ChatToggle({ open, onToggle, words }: { open: boolean; onToggle: (open: boolean) => void; words?: ChatToggleWords }) {
+  const Icon = words?.icon ?? MessageSquare;
+  const label = words?.label ?? "Conversation";
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<Toggle size="sm" aria-label="Conversation" pressed={open} onPressedChange={(p) => onToggle(p)} />}
+        render={<Toggle size="sm" aria-label={label} pressed={open} onPressedChange={(p) => onToggle(p)} />}
       >
-        <MessageSquare />
+        <Icon />
       </TooltipTrigger>
-      <TooltipContent>Conversation</TooltipContent>
+      <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
 }
@@ -246,6 +251,7 @@ function ViewHeader({
   actions,
   chatOpen,
   onToggleChat,
+  chatToggle,
 }: {
   title?: ReactNode;
   detail?: ReactNode;
@@ -253,6 +259,7 @@ function ViewHeader({
   actions?: ReactNode;
   chatOpen: boolean;
   onToggleChat: (open: boolean) => void;
+  chatToggle?: ChatToggleWords;
 }) {
   const heading = <span data-view-title className="min-w-0 truncate text-sm font-semibold text-foreground">{title}</span>;
   // Opened from a master's board, the header leads with Back (viewBack.tsx)
@@ -287,7 +294,7 @@ function ViewHeader({
       <div data-view-actions className="flex shrink-0 items-center gap-0.5">
         <TooltipProvider>
           {actions}
-          <ChatToggle open={chatOpen} onToggle={onToggleChat} />
+          <ChatToggle open={chatOpen} onToggle={onToggleChat} words={chatToggle} />
         </TooltipProvider>
       </div>
     </div>
@@ -308,6 +315,7 @@ export function SplitShell({
   fit,
   splitState,
   narrowFold = false,
+  chatToggle,
   className = "",
 }: {
   /** The board's body; the header is drawn from `title`. */
@@ -338,6 +346,8 @@ export function SplitShell({
   splitState?: SplitState;
   /** Under `NARROW_FOLD` of shell the board keeps the full width and the open chat lies over its body; absent, the board yields to the chat's 360px. */
   narrowFold?: boolean;
+  /** The toggle's word and glyph, when the chat column is not a conversation. */
+  chatToggle?: ChatToggleWords;
   className?: string;
 }) {
   const ownSplit = useSplit(50);
@@ -405,6 +415,7 @@ export function SplitShell({
               actions={actions}
               chatOpen={!folded}
               onToggleChat={onToggleChat}
+              chatToggle={chatToggle}
             />
           ) : null}
           {showHeld ? (

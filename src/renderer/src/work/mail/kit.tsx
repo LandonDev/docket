@@ -1,5 +1,5 @@
 import { Component, useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { loadBytes, printInFrame, type MailFaceProps, type MailKit, type MailOrigin, type MailOriginLabel, type MailReference, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
+import { isPicture, loadBytes, printInFrame, type MailFaceProps, type MailKit, type MailOrigin, type MailOriginLabel, type MailReference, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
 import { DropdownMenuItem } from "work-kit/ui/dropdown-menu";
 import { AtSign, Users } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
@@ -300,8 +300,11 @@ export const tempcodeMailKit: MailKit = {
   openLink: (href) => {
     if (mailLink(href)) void openUrl(href);
   },
+  // Where no pane is beside the mail every file is saved, and a picture opens in the reader's own viewer;
+  // the Mail view and a mail item give their readers a kit whose files open in a canvas (files.ts `placedKit`).
   openFile: opened,
   saveFile: saved,
+  fileVerb: (file) => (isPicture(file.name, file.contentType ?? "") ? "view" : "save"),
   print: printInFrame,
   // A draft one of TempCode's threads made goes through the host's hold, which has no queue to pull a mail back from.
   holdsSend: (origin) => origin.app === "tempcode",

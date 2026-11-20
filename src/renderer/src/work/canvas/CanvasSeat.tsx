@@ -7,7 +7,7 @@ import { Spinner } from "../../components/ui/spinner";
 import type { MenuRow } from "../../chrome/menuRows";
 import { addContextChip } from "./chips";
 import type { Session } from "../../lib/session";
-import { SplitShell, useSplit } from "../../surfaces/threads/SplitShell";
+import { SplitShell, useSplit, type ChatToggleWords } from "../../surfaces/threads/SplitShell";
 import { CanvasPane, useKindModule } from "./CanvasPane";
 import { CanvasMore, CanvasTabs } from "./CanvasTabs";
 import { sayError, useFrame } from "./frame";
@@ -36,6 +36,8 @@ export function CanvasSeat({
   session,
   held,
   kinds = CANVAS,
+  onAsk,
+  chatToggle,
   children,
 }: {
   session: Pick<Session, "id" | "environmentId">;
@@ -43,6 +45,10 @@ export function CanvasSeat({
   held?: ReactNode;
   /** The registry; a test's or a preview's own kinds in its place. */
   kinds?: Record<CanvasKind, CanvasKindDef>;
+  /** Ask, for a pane with no composer beside it (the Mail view's): the chip goes where this says, not into a thread of the pane. */
+  onAsk?: (chip: ContextChip) => void;
+  /** The toggle's word and glyph when `children` is not a thread. */
+  chatToggle?: ChatToggleWords;
   /** The thread's own view. */
   children: ReactNode;
 }) {
@@ -52,6 +58,10 @@ export function CanvasSeat({
   const shown = view.items.find((item) => item.id === view.selected) ?? view.items[0] ?? null;
   // Ask, from the selection bar or a kind's own menu: the chip goes in, the thread unfolds, and its composer takes the caret once it is back in its slot.
   const putChip = (chip: ContextChip): void => {
+    if (onAsk) {
+      window.getSelection()?.removeAllRanges();
+      return onAsk(chip);
+    }
     addContextChip(sessionId, chip);
     window.getSelection()?.removeAllRanges();
     setFolded(sessionId, false);
@@ -85,9 +95,14 @@ export function CanvasSeat({
           { kind: "sep" },
         ] satisfies MenuRow[])
       : []),
-    { kind: "item", id: "open-file", label: "Open file…", icon: File },
-    { kind: "item", id: "google-open", label: "Open from Google…", icon: FolderOpen },
-    { kind: "sep" },
+    // A pane with no thread (the Mail view's) holds what its mail opens, and nothing else.
+    ...(onAsk
+      ? []
+      : ([
+          { kind: "item", id: "open-file", label: "Open file…", icon: File },
+          { kind: "item", id: "google-open", label: "Open from Google…", icon: FolderOpen },
+          { kind: "sep" },
+        ] satisfies MenuRow[])),
     { kind: "item", id: "close", label: "Close", icon: X },
     ...(view.items.length > 1 ? ([{ kind: "item", id: "close-others", label: "Close others", icon: X }] satisfies MenuRow[]) : []),
   ];
@@ -124,6 +139,7 @@ export function CanvasSeat({
         splitState={split}
         // Under the thread's 360px and the item's 320px, the item keeps the pane and the open thread lies over it, under the tab row and its toggle.
         narrowFold
+        chatToggle={chatToggle}
         held={held}
         lead={
           shown ? (

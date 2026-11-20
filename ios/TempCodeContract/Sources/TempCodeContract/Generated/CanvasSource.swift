@@ -179,6 +179,24 @@ public struct ThreadSource: Codable, Hashable, Sendable {
     public init() {}
 }
 
+public struct MailSource: Codable, Hashable, Sendable {
+    public let threadId: String
+    public let messageId: String
+    public let partId: String
+    public let name: String
+    public let contentType: String?
+    public let size: Int?
+
+    public init(threadId: String, messageId: String, partId: String, name: String, contentType: String? = nil, size: Int? = nil) {
+        self.threadId = threadId
+        self.messageId = messageId
+        self.partId = partId
+        self.name = name
+        self.contentType = contentType
+        self.size = size
+    }
+}
+
 public enum CanvasSource: Codable, Hashable, Sendable {
     case lifeos(LifeosSource)
     case file(FileSource)
@@ -187,6 +205,7 @@ public enum CanvasSource: Codable, Hashable, Sendable {
     case frameio(FrameioSource)
     case browser(BrowserSource)
     case thread(ThreadSource)
+    case mail(MailSource)
     /// A `at` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -204,6 +223,7 @@ public enum CanvasSource: Codable, Hashable, Sendable {
         case "frameio": self = .frameio(try FrameioSource(from: decoder))
         case "browser": self = .browser(try BrowserSource(from: decoder))
         case "thread": self = .thread(try ThreadSource(from: decoder))
+        case "mail": self = .mail(try MailSource(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -217,6 +237,7 @@ public enum CanvasSource: Codable, Hashable, Sendable {
         case .frameio(let value): try Self.encode(tag: "frameio", value, to: encoder)
         case .browser(let value): try Self.encode(tag: "browser", value, to: encoder)
         case .thread(let value): try Self.encode(tag: "thread", value, to: encoder)
+        case .mail(let value): try Self.encode(tag: "mail", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

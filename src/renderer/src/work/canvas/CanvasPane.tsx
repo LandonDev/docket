@@ -13,6 +13,8 @@ import { KindBar } from "./KindBar";
 import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection, CanvasShell, StatusLine } from "./kind";
 import { CANVAS } from "./registry";
 import { SelectionBar } from "./SelectionBar";
+import { FetchState } from "./FetchState";
+import { downloadItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
 
 /** The kind's module once its chunk has landed, else null: its optional parts (`Bar`, `TabEnd`) are read from it. */
@@ -119,6 +121,10 @@ export function CanvasPane({
   const Body = def.chunk.surface("Body", <ItemSkeleton />);
   const props: CanvasBodyProps = { item, source: item.source, env: environmentId, state, setState, shell };
   const Bar = module?.Bar;
+  // A mail's attachment comes to the host first: the kind mounts once its bytes are there (fetched.ts).
+  const fetched = useItemFetch(environmentId, item);
+  const waiting = fetched && fetched.fetch.phase !== "ready" ? fetched.fetch : null;
+  const tools = waiting ? (waiting.phase === "fetching" ? <Skeleton aria-hidden data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
   return (
     <div
       data-canvas-pane
@@ -131,12 +137,13 @@ export function CanvasPane({
       {/* While the kind's code loads, the bar holds a bone where its tools will be, so the body does not drop 32px when the code lands. */}
       <KindBar
         feeds={feeds}
-        tools={Bar ? <Bar {...props} /> : module ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />}
-        onHistory={def.history && module && feeds.ready !== false ? shell.openHistory : undefined}
+        tools={tools}
+        onDownload={fetched && !waiting ? () => downloadItem(environmentId, item) : undefined}
+        onHistory={def.history && module && !waiting && feeds.ready !== false ? shell.openHistory : undefined}
       />
       {feeds.status ? <StateLine line={feeds.status} /> : null}
       <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
-        <Body {...props} />
+        {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : <Body {...props} />}
       </div>
       <SelectionBar selection={feeds.selection} onAsk={onAsk} onDismiss={() => shell.selection(null)} />
     </div>

@@ -4,7 +4,8 @@ import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Tip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
-import { History } from "../icons";
+import { loadToast } from "../../components/ui/toaster";
+import { Download, History } from "../icons";
 import { sayError, type Feeds } from "./frame";
 import type { CanvasMode, Presence, ReviewAdapter, WrittenLine } from "./kind";
 
@@ -81,10 +82,10 @@ function useTight(ref: React.RefObject<HTMLElement | null>, drawn: boolean): boo
  * people go, the mode shortens, the group's name and History's word go; a
  * kind's tool goes whole or stays whole, and Reject and Accept never clip.
  */
-export function KindBar({ feeds, tools, onHistory }: { feeds: Feeds; tools?: ReactNode; onHistory?: () => void }) {
+export function KindBar({ feeds, tools, onHistory, onDownload }: { feeds: Feeds; tools?: ReactNode; onHistory?: () => void; onDownload?: () => Promise<void> }) {
   const slot = useRef<HTMLDivElement | null>(null);
   const tight = useTight(slot, !!tools);
-  const others = barShown(feeds, false, !!onHistory);
+  const others = barShown(feeds, false, !!onHistory || !!onDownload);
   if (!others && !tools) return null;
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
@@ -103,6 +104,7 @@ export function KindBar({ feeds, tools, onHistory }: { feeds: Feeds; tools?: Rea
         ) : null}
         {/* It gives up room only after the tools, and only through words: the group's name or a written line truncates; History, the count, Reject, Accept and Undo never shrink. */}
         <div className="ms-auto flex min-w-0 items-center gap-2 @max-[560px]/bar:gap-1">
+          {onDownload ? <DownloadButton run={onDownload} /> : null}
           {onHistory ? <HistoryButton onClick={onHistory} /> : null}
           {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}
         </div>
@@ -256,8 +258,11 @@ function Stepper({ review }: { review: ReviewAdapter }) {
   );
 }
 
-/** History at the bar's end: its glyph and word, or in a narrow bar its glyph alone, which then takes the standard tip. */
-function HistoryButton({ onClick }: { onClick(): void }) {
+/**
+ * A verb at the bar's end (History, Download): its glyph and word, or in a narrow bar its glyph alone, which then takes
+ * the standard tip. A busy verb's glyph turns to the spinner.
+ */
+function EndButton({ label, icon: Icon, busy = false, onClick }: { label: string; icon: typeof History; busy?: boolean; onClick(): void }) {
   const button = useRef<HTMLButtonElement | null>(null);
   const word = useRef<HTMLSpanElement | null>(null);
   const [bare, setBare] = useState(false);
@@ -272,15 +277,32 @@ function HistoryButton({ onClick }: { onClick(): void }) {
     return () => ro.disconnect();
   }, []);
   return (
-    <Tip label="History" disabled={!bare}>
-      <Button ref={button} variant="ghost" size="xs" aria-label="History" className="shrink-0 @max-[560px]/bar:px-1.5" onClick={onClick} onPointerEnter={look} onFocus={look}>
-        <History />
+    <Tip label={label} disabled={!bare}>
+      <Button ref={button} variant="ghost" size="xs" aria-label={label} aria-busy={busy || undefined} disabled={busy} className="shrink-0 @max-[560px]/bar:px-1.5" onClick={onClick} onPointerEnter={look} onFocus={look}>
+        {busy ? <BusyLabel busy label="" /> : <Icon />}
         <span ref={word} className={NARROW_HIDE}>
-          History
+          {label}
         </span>
       </Button>
     </Tip>
   );
+}
+
+const HistoryButton = ({ onClick }: { onClick(): void }) => <EndButton label="History" icon={History} onClick={onClick} />;
+
+/** Download, for an item that is a copy of someone else's file (a mail's attachment): saved into this computer's Downloads under its own name. */
+function DownloadButton({ run }: { run(): Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const press = (): void => {
+    setBusy(true);
+    run()
+      .then(
+        () => loadToast().then((toast) => void toast("Saved to Downloads")),
+        (error: unknown) => sayError(error, "Couldn't download the file"),
+      )
+      .finally(() => setBusy(false));
+  };
+  return <EndButton label="Download" icon={Download} busy={busy} onClick={press} />;
 }
 
 function Step({ label, tip = label, disabled = false, className, onClick, children }: { label: string; tip?: string; disabled?: boolean; className?: string; onClick(): void; children: ReactNode }) {
