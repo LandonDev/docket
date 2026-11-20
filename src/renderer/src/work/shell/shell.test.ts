@@ -110,6 +110,6 @@ describe("WORK_VIEWS", () => {
 
   it("has every view say whether it reads LifeOS: Files and Routines read the host alone, so no sign-in or LifeOS line stands over them", () => {
     const reads = Object.fromEntries(Object.values(WORK_VIEWS).map((view) => [view.id, view.readsLifeos]));
-    expect(reads).toEqual({ mail: true, tasks: true, agenda: true, docs: true, files: false, routines: false });
+    expect(reads).toEqual({ mail: true, tasks: true, projects: true, agenda: true, docs: true, files: false, routines: false });
   });
 });
