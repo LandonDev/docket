@@ -214,7 +214,12 @@ remote page's rewrite takes only a plain host from the request.
 
 A file saved from a mail goes to Downloads under its own name, made safe
 (`safeFileName`: no separators, no control characters, none of the marks
-that turn a name round).
+that turn a name round; a long name is cut from its stem, so its extension
+stays), and a name already there gets a number ("name (1).pdf"). A part the
+mail gave no name is named for its type by work-kit (`fileName`:
+"attachment.pdf", "picture.png"). The window reads the bytes from LifeOS's
+store and main writes them: the file's address in the store is never handed
+to the browser, which would save it under the store's key.
 
 ## Settings
 
