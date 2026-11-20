@@ -99,6 +99,18 @@ describe("Send", () => {
     expect(own.actions.cancel).toHaveBeenCalledWith("ob_own");
   });
 
+  it("tells the host when the composer already waited out the undo time, and only then", async () => {
+    const { actions } = fakeActions("ob_w");
+    const wrapped = sendThroughHost("box", actions);
+    await wrapped.send({ ...args, waited: true });
+    expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_w", seen, waited: true } }]);
+    calls.length = 0;
+    await wrapped.send({ ...args, waited: false });
+    expect(calls).toEqual([{ method: "work.mail.send", params: { id: "ob_w", seen } }]);
+    // Even then the window never sends: the host does.
+    expect(actions.send).not.toHaveBeenCalled();
+  });
+
   it("carries the time he chose, and the host's refusal reaches the composer", async () => {
     const { actions } = fakeActions("ob_late");
     await expect(sendThroughHost("box", actions).send({ ...args, sendAt: 1_800_000_000_000 })).rejects.toThrow("goes now or not at all");

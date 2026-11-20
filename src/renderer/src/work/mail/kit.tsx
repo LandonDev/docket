@@ -1,11 +1,11 @@
-import { Component, useEffect, useState, type ReactNode } from "react";
-import type { MailFaceProps, MailKit, MailOrigin, MailOriginLabel, MailSectorMarkProps, MailToastInput } from "work-kit/mail";
+import { Component, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { loadBytes, printInFrame, type MailFaceProps, type MailKit, type MailOrigin, type MailOriginLabel, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { cn } from "../../lib/cn";
 import { keyHint, modOrCtrl } from "../../lib/keys";
-import { openUrl } from "../../lib/native";
+import { openUrl, saveDownload } from "../../lib/native";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 
 /**
@@ -30,7 +30,7 @@ function Countdown({ ms }: { ms: number }) {
   }, []);
   return (
     <span aria-hidden className="ms-2 inline-block h-[3px] w-11 overflow-hidden rounded-full bg-muted align-middle">
-      <span className="block h-full origin-left bg-foreground ease-linear motion-reduce:hidden" style={{ transform: running ? "scaleX(0)" : "scaleX(1)", transitionProperty: "transform", transitionDuration: `${ms}ms` }} />
+      <span className="tc-mail-countdown block h-full origin-left bg-foreground motion-reduce:hidden" style={{ transform: running ? "scaleX(0)" : "scaleX(1)", "--tc-mail-countdown": `${ms}ms` } as CSSProperties} />
     </span>
   );
 }
@@ -154,6 +154,13 @@ const opened = async (file: { url: string }): Promise<"opened"> => {
   return "opened";
 };
 
+/** Save: the file's bytes, read from LifeOS's store, written into Downloads under its own name. */
+const saved = async (file: { url: string; name: string }): Promise<"saved"> => {
+  const blob = await loadBytes(file.url);
+  await saveDownload(file.name, new Uint8Array(await blob.arrayBuffer()));
+  return "saved";
+};
+
 class Boundary extends Component<{ className?: string; onNotFound?: () => void; children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError(): { failed: boolean } {
@@ -183,8 +190,8 @@ export const tempcodeMailKit: MailKit = {
   onMailto: () => () => {},
   openLink: (href) => void openUrl(href),
   openFile: opened,
-  saveFile: opened,
-  print: () => {},
+  saveFile: saved,
+  print: printInFrame,
   // A draft one of TempCode's threads made goes through the host's hold, which has no queue to pull a mail back from.
   holdsSend: (origin) => origin.app === "tempcode",
   originLabel: (origin) => originNamer?.(origin) ?? (origin.app === "tempcode" ? { label: "Drafted in a thread" } : undefined),

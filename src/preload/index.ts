@@ -196,6 +196,8 @@ const api = {
     homeDir: (): Promise<string> => ipcRenderer.invoke('app:home-dir'),
     defaultCwd: (): Promise<string> => ipcRenderer.invoke('app:default-cwd'),
     openUrl: (url: string): Promise<void> => ipcRenderer.invoke('shell:open-url', url),
+    /** Writes bytes the window holds into Downloads under a safe, free name; answers the path. */
+    saveDownload: (name: string, bytes: Uint8Array): Promise<string> => ipcRenderer.invoke('files:save-download', name, bytes),
     dockBadge: (count: number): Promise<void> => ipcRenderer.invoke('app:dock-badge', count),
     confirmQuit: (): Promise<void> => ipcRenderer.invoke('app:confirm-quit'),
     /** The user said no to the quit dialog; a restart armed behind it is dropped. */

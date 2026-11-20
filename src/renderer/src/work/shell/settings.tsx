@@ -14,6 +14,7 @@ import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
 import { clockTime } from "../../lib/duration";
+import { defineChunk } from "../../lib/lazyChunk";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
@@ -98,9 +99,14 @@ export function WorkSettingsBody() {
           ))}
       </PageSection>
       <GuestLinksSection hosts={hosts.map((h) => h.id)} />
+      {home ? <MailSettingsSection environmentId={home} /> : null}
     </>
   );
 }
+
+/** Mail's settings, in a chunk of their own: the mail client loads only when Settings shows them. */
+const mailSettingsChunk = defineChunk("work-mail-settings", () => import("../mail/MailSettingsSection"));
+const MailSettingsSection = mailSettingsChunk.surface("Section", <PageRowsSkeleton rows={3} />);
 
 /** One host's LifeOS sign-in: its state, then Sign in… or Sign out. */
 export function LifeosHostRow({ environmentId, name }: { environmentId: string; name: string }) {

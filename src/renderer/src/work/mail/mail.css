@@ -22,3 +22,46 @@
   font-size: 13px;
   line-height: 20px;
 }
+
+/* A message's fold (work-kit's `.collapsible-panel`): height with opacity over the base time on the
+   way open, a step quicker shut; reduced motion keeps the opacity alone. The tokens are the app's
+   own (index.css), as for `.collapsible-resize`. */
+.collapsible-panel {
+  height: var(--collapsible-panel-height);
+  overflow: hidden;
+  transition:
+    height var(--dur-base) var(--ease-out),
+    opacity var(--dur-base) var(--ease-out);
+}
+.collapsible-panel[data-starting-style],
+.collapsible-panel[data-ending-style] {
+  height: 0;
+  opacity: 0;
+}
+.collapsible-panel[data-ending-style] {
+  transition-duration: var(--dur-fast);
+}
+@media (prefers-reduced-motion: reduce) {
+  .collapsible-panel,
+  .collapsible-panel[data-starting-style],
+  .collapsible-panel[data-ending-style] {
+    height: var(--collapsible-panel-height);
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+}
+
+/* The bar of a wait he can still stop (kit.tsx Countdown): it empties, once, over exactly the time
+   the toast stays, at an even pace, which is what a countdown is. */
+.tc-mail-countdown {
+  transition: transform var(--tc-mail-countdown) var(--ease-reveal);
+}
+
+/* work-kit draws its dialogs and menus in a portal, outside `.tc-mail`: they take the same 13px
+   step there, so a row in Mail's settings and the select it opens read at one size. */
+[data-slot="dialog-content"] .text-sm,
+[data-slot="select-content"] .text-sm,
+[data-slot="dropdown-menu-content"] .text-sm,
+[data-slot="popover-content"] .text-sm {
+  font-size: 13px;
+  line-height: 20px;
+}

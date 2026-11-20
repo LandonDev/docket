@@ -37,6 +37,7 @@ import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
 import { clickMenuItem, registerMenu } from './menu'
 import { queueNextPick, registerDialogs } from './dialogs'
+import { registerDownloads } from './downloads'
 import {
   activateWindows,
   createWindow,
@@ -275,6 +276,7 @@ app.whenReady().then(async () => {
   const { store } = server
   registerWindows({ dropSnapshot: (slot) => store.dropWorkspaceSnapshot(slot) })
   registerDialogs()
+  registerDownloads()
   if (!headless) {
     registerMenu()
     registerDock()

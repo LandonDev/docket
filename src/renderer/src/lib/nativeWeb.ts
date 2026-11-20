@@ -163,6 +163,16 @@ export const webApi: Api = {
         .catch(() => "")),
     homeDir: () => Promise.resolve(""),
     defaultCwd: () => Promise.resolve(""),
+    // In a browser the save is the browser's own download, which lands in its Downloads.
+    saveDownload: async (name, bytes) => {
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      return name;
+    },
     openUrl: (url) => {
       window.open(url, "_blank", "noopener");
       return done();

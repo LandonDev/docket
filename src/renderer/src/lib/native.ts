@@ -569,6 +569,11 @@ export function getVersion(): Promise<string> {
   return api().app.version();
 }
 
+/** Saves bytes the window holds into the person's Downloads folder; a name already there gets a number. */
+export function saveDownload(name: string, bytes: Uint8Array): Promise<string> {
+  return api().app.saveDownload(name, bytes);
+}
+
 export function openUrl(url: string): Promise<void> {
   return api().app.openUrl(url);
 }
