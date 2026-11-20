@@ -57,7 +57,8 @@ export function nudgePrompt(mail: { id: string; subject: string; to: string; add
 /** What the routine runs: the threads it heard of come under its message as `mail.waiting mailThreads/<id>`. */
 export const ROUTINE_PROMPT = [
   'Each mail thread named below (mailThreads/<id>) is one he sent that no one has answered in the time he set.',
-  'For each: read it with read_mail_thread. If someone has answered since, or a draft already waits in the thread, leave it. Otherwise write a reply in that thread with draft_mail: two or three sentences in his voice, polite and plain, that ask again for what his last mail asked for.',
+  'First read mail_waiting: it lists each mail he still waits on, with when he wrote and to whom. Leave any thread named below that it does not list (someone answered, or he dismissed it).',
+  'For each one it lists: read it with read_mail_thread. If a draft already waits in the thread, leave it. Otherwise write a reply in that thread with draft_mail, to the people mail_waiting names: two or three sentences in his voice, polite and plain, that ask again for what his last mail asked for.',
   'He reads every draft and sends it himself; you never send.'
 ].join('\n\n')
 
@@ -86,6 +87,10 @@ export async function startNudge(ctx: WorkCtx, by: Caller, workspaceId: string, 
   if (got.thread.sector !== sector) throw new Error(OTHER_SECTOR)
   // The wait itself says when he wrote and to whom: an Outlook reply sent through a desktop is no stored message.
   const wait = await owner.query<WaitRow['waiting'] | null>('mailWaits:get', { threadId }).catch(() => null)
+  // Read on the owner's session, so the sector is asked again after it: a mail moved out of the sector
+  // between the two reads may have a wait whose people are the other sector's, and none of them reach the prompt.
+  const again = await owner.query<{ thread: { sector?: string } } | null>('mail:thread', { id: threadId })
+  if (again?.thread.sector !== sector) throw new Error(OTHER_SECTOR)
   const mine = [...got.messages].reverse().find((m) => m.fromMe)
   const people = wait?.to ?? (mine ? [...(mine.to ?? []), ...(mine.cc ?? [])] : [])
   const addresses = people.map((a) => (a.name?.trim() ? `${a.name.trim()} <${a.address}>` : a.address)).join(', ')
@@ -202,13 +207,14 @@ export async function reportDrops(ctx: WorkCtx, drops: readonly DropRow[], told:
       // Told once, even when the acknowledgement fails and LifeOS answers the drop again; and only to a
       // thread of the mail's own sector now, since the mail may have moved since the nudge was drafted.
       if (sessionId && scope && scope.sector === drop.sector && !reported.get(drop._id)) {
-        mark.run(drop._id, Date.now())
         ctx.results.add({
           sessionId,
           kind: 'mail.nudge.dropped',
           summary: `Dropped the unsent nudge “${drop.subject || '(no subject)'}”: ${drop.repliedBy} replied`,
           ref: { at: 'lifeos', table: 'mailThreads', id: drop.threadId }
         })
+        // Marked once the Result is written: a failed write is tried again, never lost.
+        mark.run(drop._id, Date.now())
       }
       await ctx.lifeos.owner().mutation('mailWaits:ackDrop', { id: drop._id })
     } catch (err) {
@@ -226,7 +232,7 @@ export function waitingText(rows: readonly WaitRow[], sector: string, now = Date
   const days = (t: number) => Math.max(1, Math.round((now - t) / 86_400_000))
   return [
     `Mail he sent that no one has answered (${mine.length}), newest first:`,
-    ...mine.map((r) => `- “${r.subject || '(no subject)'}” to ${who(r.waiting.to)}, sent ${day(r.waiting.since)} (${days(r.waiting.since)} days)${r.waiting.asked ? ', he asked to be reminded' : ''}; mail thread ${r._id}`)
+    ...mine.map((r) => `- “${r.subject || '(no subject)'}” to ${r.waiting.to.map((a) => (a.name?.trim() ? `${a.name.trim()} <${a.address}>` : a.address)).join(', ') || 'no one'}, sent ${day(r.waiting.since)} (${days(r.waiting.since)} days)${r.waiting.asked ? ', he asked to be reminded' : ''}; mail thread ${r._id}`)
   ].join('\n')
 }
 

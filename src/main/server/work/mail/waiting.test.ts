@@ -85,6 +85,27 @@ describe('Draft a nudge', () => {
     expect(started[0]!.text).toContain('draft_mail, to Dana Lee <dana@purdue.edu>:')
   })
 
+  it('refuses a mail that left the sector while its wait was read, and puts none of its people in a prompt', async () => {
+    let reads = 0
+    const { ctx, started } = fakeCtx({ 'mail:thread': () => thread(++reads === 1 ? 'purdue' : 'life'), 'mailWaits:get': { since: 1, dueAt: 0, asked: false, to: [{ address: 'someone@life.test' }], state: 'due' } })
+    await expect(startNudge(ctx, owner, 'ws', 'mt1')).rejects.toThrow("not in this workspace's sector")
+    expect(started).toHaveLength(0)
+  })
+
+  it('tells a drop again when writing its Result failed', async () => {
+    const { ctx, results } = fakeCtx({ 'mailWaits:ackDrop': null })
+    let fail = true
+    const add = ctx.results.add
+    ctx.results.add = (r) => {
+      if (fail) throw new Error('disk full')
+      add(r)
+    }
+    await reportDrops(ctx, [{ _id: 'd9', threadId: 'mt1', sector: 'purdue', subject: 'Quote', repliedBy: 'Maya', origin: { app: 'tempcode', threadId: 't-nudge', host: 'box' } }], new Set())
+    fail = false
+    await reportDrops(ctx, [{ _id: 'd9', threadId: 'mt1', sector: 'purdue', subject: 'Quote', repliedBy: 'Maya', origin: { app: 'tempcode', threadId: 't-nudge', host: 'box' } }], new Set())
+    expect(results).toHaveLength(1)
+  })
+
   it("is a person's press: a thread's own call is refused, and a mail of another sector", async () => {
     const { ctx, started } = fakeCtx({ 'mail:thread': thread('cosmic') })
     await expect(startNudge(ctx, model, 'ws', 'mt1')).rejects.toThrow('only a person')
@@ -234,7 +255,7 @@ describe('mail_waiting, for a thread', () => {
   it("lists its own sector's waits and no other's", () => {
     const text = waitingText([row('a', 'purdue', true), row('b', 'cosmic')], 'purdue', Date.UTC(2026, 10, 20, 15))
     expect(text).toContain('(1)')
-    expect(text).toContain('“Subject a” to Maya Chen and 2 more, sent Fri, Nov 13 (7 days), he asked to be reminded; mail thread a')
+    expect(text).toContain('“Subject a” to Maya Chen <maya@x.test>, b@x.test, c@x.test, sent Fri, Nov 13 (7 days), he asked to be reminded; mail thread a')
     expect(text).not.toContain('Subject b')
     expect(waitingText([], 'purdue')).toBe('Nothing in this sector is waiting on a reply.')
   })
