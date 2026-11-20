@@ -38,6 +38,8 @@ export function computerHarness(
     log?: (line: string) => void
     /** journal the calls (history.ts) under the data dir; `pictures` is its switch, on when left out */
     history?: boolean | { pictures: () => boolean }
+    /** the sessions are the Windows VM's (work/winvm): its launch list and open rule */
+    vm?: boolean
   } = {}
 ) {
   const dataDir = mkdtempSync(join(tmpdir(), 'tc-computer-run-'))
@@ -79,7 +81,8 @@ export function computerHarness(
     clock: opts.clock,
     log: opts.log ?? (() => undefined),
     trace: opts.trace,
-    ...(history ? { history } : {})
+    ...(history ? { history } : {}),
+    ...(opts.vm ? { vm: true } : {})
   })
   if (opts.makeGate) gate = opts.makeGate({ service, sessions })
   const set = (threadId: string, meta: Partial<{ status: SessionStatus; permission: PermissionPolicy; provider: string; model: string; scope: SessionScope }>): void => {

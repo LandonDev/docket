@@ -717,7 +717,9 @@ async function runChecked(
     app: args.app ?? (typeof args.launch === 'string' ? args.launch : undefined),
     window: args.window,
     ...(tool === 'computer_act' ? { action: steps[0] } : {}),
-    ...(tool === 'computer_apps' && openOf(args).length ? { open: openOf(args) } : {})
+    ...(tool === 'computer_apps' && openOf(args).length ? { open: openOf(args) } : {}),
+    // the VM's errors are a Windows PC's, whatever the box is (§29.5)
+    ...(host.vm ? { platform: 'windows' as const } : {})
   }
   try {
     if (tool === 'computer_apps') {

@@ -1907,3 +1907,18 @@ describe('the journal (history.ts): one start and one end per call', () => {
     expect(existsSync(join(h.dataDir, 'history', 't1', 'log.jsonl'))).toBe(true)
   })
 })
+
+describe('the Windows VM', () => {
+  it('refuses a console before the service hears it, and names its whole list to the service on a launch it sends', async () => {
+    const h = make({ vm: true })
+    const o = await h.run('computer_apps', { launch: 'powershell' })
+    expect(o.isError).toBe(true)
+    expect(o.body).toMatch(/no command line/)
+    expect(count(h, 'apps.launch')).toBe(0)
+    const runnable = await h.run('computer_apps', { launch: 'Notepad', open: ['C:\\Users\\tcuser\\Downloads\\x.bat'] })
+    expect(runnable.body).toMatch(/is a program/)
+    expect(count(h, 'apps.launch')).toBe(0)
+    await h.run('computer_apps', { launch: 'Preview' })
+    expect(last(h, 'apps.launch').params.refuse).toEqual(expect.arrayContaining(['consent.exe', 'cmd.exe', 'powershell.exe', 'mshta.exe']))
+  })
+})
