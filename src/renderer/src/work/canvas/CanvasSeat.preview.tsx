@@ -14,7 +14,10 @@ import { ChatFooter } from "../../surfaces/threads/chatSlots";
 import { CanvasSeat } from "./CanvasSeat";
 import { setOpening } from "./fileDrop";
 import type { CanvasBodyProps, CanvasKindDef } from "./kind";
-import { CANVAS } from "./registry";
+import { CANVAS, kindForFile } from "./registry";
+import * as PdfCanvas from "../pdf/PdfCanvas";
+import { contractPages } from "../pdf/PdfCanvas.preview.fixtures";
+import { fakeDoc, fakeEngine, fakePdfHost, pdfView } from "../pdf/testkit";
 import { SelectionTools } from "./SelectionBar";
 import { seedFetch } from "./fetched";
 import { applyCanvasPush, setFolded } from "./store";
@@ -22,7 +25,7 @@ import { applyCanvasPush, setFolded } from "./store";
 export type PreviewMoment = "three" | "one" | "folded" | "loading" | "unreachable" | "written" | "failed" | "opening" | "uploading" | "attachment" | "attachment-failed" | "attachment-open";
 
 /** A mail's attachment: its bytes on their way, failed, or here (Download in the bar). */
-const ATTACHMENT: CanvasSource = { at: "mail", threadId: "mt1", messageId: "mm1", partId: "2", name: "Ballroom contract.pdf", contentType: "application/pdf", size: 8_800_000 };
+const ATTACHMENT = { at: "mail" as const, threadId: "mt1", messageId: "mm1", partId: "2", name: "Ballroom contract.pdf", contentType: "application/pdf", size: 8_800_000 } satisfies CanvasSource;
 const attachmentMoment = (moment: PreviewMoment): boolean => moment.startsWith("attachment");
 
 const source: CanvasSource = { at: "lifeos", table: "docs", id: "doc-1" };
@@ -125,9 +128,28 @@ const never = new Promise<never>(() => undefined);
 // The composer's chip row is lazy: landed before the first render, so a static page draws it.
 void workCanvasChunk.load();
 
-function kindsFor(moment: PreviewMoment): Record<CanvasKind, CanvasKindDef> {
+/**
+ * A mail's PDF once its bytes are here: the PDF kind's own body and bar, on a stand-in host and a file of words drawn
+ * as paper (the PDF preview's testkit), so the shot is what the app draws for the attachment, never a document's.
+ */
+function attachmentPdfKinds(sessionId: string): Record<CanvasKind, CanvasKindDef> {
+  const host = fakePdfHost(pdfView({ itemId: `${sessionId}-doc`, sessionId }));
+  const engine = fakeEngine(fakeDoc(contractPages()));
+  const module = {
+    Body: (props: CanvasBodyProps) => <PdfCanvas.Body {...(props as CanvasBodyProps<undefined>)} host={host} engine={engine} width={454} height={452} />,
+    Bar: (props: CanvasBodyProps) => <PdfCanvas.Bar {...(props as CanvasBodyProps<undefined>)} host={host} />,
+  };
+  const chunk = defineChunk(`preview-attachment-pdf-${sessionId}`, () => Promise.resolve(module));
+  void chunk.load();
+  return { ...CANVAS, pdf: { ...CANVAS.pdf, chunk: chunk as never } };
+}
+
+function kindsFor(moment: PreviewMoment, sessionId: string): Record<CanvasKind, CanvasKindDef> {
   // The real document kind, with no host to open it on: the tab row and the state line, as every failed open draws.
   if (moment === "failed") return CANVAS;
+  // The real kinds: while the bytes come, or after they failed, the frame draws its own state and never the kind's body.
+  if (moment === "attachment" || moment === "attachment-failed") return CANVAS;
+  if (moment === "attachment-open") return attachmentPdfKinds(sessionId);
   const Body = bodyFor(moment);
   const chunk = defineChunk(`preview-${moment}`, () => (moment === "loading" ? never : Promise.resolve({ Body })));
   // Already landed, so the first render draws the body (a static page never sees the second).
@@ -149,7 +171,8 @@ export function CanvasPreview({ moment = "three" }: { moment?: PreviewMoment }) 
   applyCanvasPush({
     sessionId,
     items: moment === "opening" ? [] : [
-      attachmentMoment(moment) ? { ...item(docId, "document", "Ballroom contract.pdf", 0, sessionId), source: ATTACHMENT } : item(docId, "document", "Spring LAN run of show", 0, sessionId),
+      // The kind the app gives the file: the registry's one lookup, as the mail's kit asks it (work/mail/files.ts).
+      attachmentMoment(moment) ? { ...item(docId, kindForFile(ATTACHMENT.name, ATTACHMENT.contentType) ?? "pdf", ATTACHMENT.name, 0, sessionId), source: ATTACHMENT } : item(docId, "document", "Spring LAN run of show", 0, sessionId),
       ...(many ? [item(`${sessionId}-sheet`, "sheet", "Nationals travel budget", 1, sessionId), item(`${sessionId}-pdf`, "pdf", "Ballroom contract", 2, sessionId)] : []),
     ],
     opened: `${sessionId}-doc`,
@@ -157,7 +180,7 @@ export function CanvasPreview({ moment = "three" }: { moment?: PreviewMoment }) 
   setFolded(sessionId, moment === "folded");
   resetContextChips();
   if (moment === "three") addContextChip(sessionId, { kind: "selection", label: "“Pools run on 24 stations”, Spring LAN run of show", ref: source, quote: "Pools run on 24 stations" });
-  const kinds = kindsFor(moment);
+  const kinds = kindsFor(moment, sessionId);
   return (
     <div className="flex h-[560px] w-full overflow-hidden rounded-xl border border-border">
       <CanvasSeat session={{ id: sessionId, environmentId: "local" }} kinds={kinds}>
