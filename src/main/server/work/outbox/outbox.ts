@@ -1,7 +1,8 @@
 import type { GrantOffer, HeldWhy, OutboxGrant, OutboxItem } from '@shared/contract-work-outbox'
 import { ACT_PILLAR, errorText, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
-import { earn, wireOffer, type EarnedStore, type StoredOffer } from './earned'
+import { canonical } from '../../addonStore'
+import { EARN_DAYS, earn, wireOffer, type EarnedStore, type StoredOffer } from './earned'
 import { ActNotSent, ActStale, type ActKinds } from './kinds'
 import { itemOfRow, lifeosRunKey, PRESSABLE, type HeldRow, type HeldStore } from './store'
 import { discardedNote, failedNote, sentNote, staleNote } from './words'
@@ -66,7 +67,7 @@ export interface OutboxDeps {
 }
 
 /** A LifeOS draft first seen this long after it was made, and edited since it was made, holds words nobody can name the writer of. */
-const FIRST_SIGHT_SLACK = 60_000
+const FIRST_SIGHT_SLACK = 2_000
 
 /** Kinds whose result the thread needs to go on: carrying one out wakes its thread with what came back. The others are told quietly, ahead of the thread's next turn. */
 const WAKES: readonly ActKind[] = ['addon.call', 'computer.act']
@@ -174,8 +175,10 @@ export class Outbox {
     if (item.ref.at !== 'lifeos' || this.store.byRef(item.ref)) return
     // What the thread wrote, unless the draft was already changed when the host first saw it (made while it was off):
     // then nobody can say whose words it holds, and its send never counts toward an earned grant.
+    // One made before the run's window began is never taken up with today's words either.
     const editedAt = (item.payload as { editedAt?: unknown } | null)?.editedAt
-    if (typeof editedAt !== 'number' || editedAt - item.createdAt <= FIRST_SIGHT_SLACK) this.noteFirst(lifeosRunKey(item.ref.table, item.ref.id), item.kind, item.payload)
+    const fresh = item.createdAt >= Date.now() - EARN_DAYS * 86_400_000
+    if (fresh && (typeof editedAt !== 'number' || editedAt - item.createdAt <= FIRST_SIGHT_SLACK)) this.noteFirst(lifeosRunKey(item.ref.table, item.ref.id), item.kind, item.payload)
     const def = this.deps.kinds.get(item.kind)
     const grant = def && item.state === 'held' ? this.grantFor({ kind: item.kind, payload: item.payload, sessionId: item.sessionId, routineRunId: item.routineRunId, createdAt: item.createdAt }, def) : null
     if (!def || !grant) return void (opts.quiet ? undefined : this.deps.notify?.(item))
@@ -192,7 +195,7 @@ export class Outbox {
    * the row taken (sent, being sent, discarded) answers the row as it
    * stands and runs nothing.
    */
-  async send(ref: HeldRef, opts: { rev?: number; by?: string; again?: boolean } = {}): Promise<OutboxItem> {
+  async send(ref: HeldRef, opts: { rev?: number; by?: string; again?: boolean; /** one of several sent by one press */ many?: boolean } = {}): Promise<OutboxItem> {
     let row = this.store.byRef(ref)
     if (ref.at === 'lifeos' && (!row || PRESSABLE.includes(row.state))) {
       // What goes is what LifeOS holds now, and only if that is what he was shown.
@@ -217,6 +220,7 @@ export class Outbox {
     if (row.state === 'failed' && row.outcomeUnknown && !opts.again) throw new Error(MAY_HAVE_GONE)
     const claimed = this.store.claim(row.id, opts.by ?? 'owner', null, { again: opts.again === true })
     if (!claimed) return this.wire(this.store.get(row.id)!)
+    if (opts.many) this.markBatch(claimed.runKey)
     return this.wire(await this.run(claimed, def))
   }
 
@@ -284,6 +288,12 @@ export class Outbox {
     if (item.routineRunId && !routineId) throw new Error("refused: this item's routine is not known on this host, so no grant can be made from it")
     if (opts.routine && !routineId) throw new Error('refused: this item was not made by a routine')
     const label = (opts.label ?? '').trim() || `Like: ${item.summary}`
+    // A grant like one that stands is that one: an offer taken and the same grant asked for by hand never make two, so one Remove ends it.
+    const same = this.store.grants({ workspaceId: scope }).find((g) => g.kind === item.kind && (g.routineId ?? null) === routineId && canonical(g.matcher) === canonical(parsed))
+    if (same) {
+      this.closeCovered(same, def)
+      return same
+    }
     const grant = this.store.addGrant({ workspaceId: scope, kind: item.kind, matcher: parsed, label: label.slice(0, 200), madeFrom: item.ref, routineId })
     this.closeCovered(grant, def)
     return grant
@@ -308,22 +318,13 @@ export class Outbox {
     const earned = this.deps.earned
     const open = earned?.get(id)
     if (!earned || !open || open.state !== 'open' || !this.offerStands(open)) throw new Error(NO_SUCH_OFFER)
-    const taken = earned.claim(id, 'made')
-    if (!taken) throw new Error(NO_SUCH_OFFER)
-    let grant: OutboxGrant | null = null
-    try {
-      grant = await this.grant(taken.from, taken.matcher, { label: taken.label, ...(taken.routineId ? { routine: true } : {}) })
-      if ((grant.routineId ?? null) !== taken.routineId) {
-        // The item's routine is no longer the one that earned it: no grant other than the one offered.
-        this.store.removeGrant(grant.id)
-        grant = null
-        throw new Error(NO_SUCH_OFFER)
-      }
-      return grant
-    } finally {
-      earned.settle(id, grant?.id ?? null)
-      this.changed(null)
-    }
+    // The grant first, then the offer marked: a stop between them leaves the offer open, never decided with no grant. Two
+    // presses at once make one grant (`grant` answers the one that stands).
+    const grant = await this.grant(open.from, open.matcher, { label: open.label, ...(open.routineId ? { routine: true } : {}) })
+    if ((grant.routineId ?? null) !== open.routineId) throw new Error(NO_SUCH_OFFER)
+    if (earned.claim(id, 'made')) earned.settle(id, grant.id)
+    this.changed(null)
+    return grant
   }
 
   /** Never offered again, whatever he sends after. */
@@ -334,10 +335,15 @@ export class Outbox {
     return wireOffer(gone)
   }
 
-  /** An offer still stands while its item is in the workspace it was earned in, under the same routine, and no standing grant fits it. */
+  /**
+   * An offer still stands while every send that earned it still reads sent,
+   * its item is in the workspace it was earned in and was held in, under
+   * the same routine, and no standing grant fits it.
+   */
   private offerStands(o: StoredOffer): boolean {
+    if (o.run.some((runKey) => this.store.byRunKey(runKey)?.state !== 'sent')) return false
     const row = this.store.byRef(o.from)
-    if (!row?.sessionId || row.state !== 'sent' || this.deps.scopeKeyOf(row.sessionId) !== o.workspaceId) return false
+    if (!row?.sessionId || row.state !== 'sent' || row.workspaceId !== o.workspaceId || this.deps.scopeKeyOf(row.sessionId) !== o.workspaceId) return false
     const routineId = row.routineRunId ? this.deps.routineOf(row.routineRunId) : null
     if ((row.routineRunId && !routineId) || routineId !== o.routineId) return false
     const def = this.deps.kinds.get(row.kind)
@@ -360,6 +366,14 @@ export class Outbox {
     }
   }
 
+  private markBatch(runKey: string): void {
+    try {
+      this.deps.earned?.markBatch(runKey)
+    } catch (err) {
+      this.deps.ctx.log(`outbox: a send of several was not marked: ${errorText(err)}`)
+    }
+  }
+
   /** What the thread wrote, kept at first sight. Never in the way of a hold. */
   private noteFirst(runKey: string, kind: ActKind, payload: unknown): void {
     try {
@@ -377,8 +391,7 @@ export class Outbox {
       const made = earn(
         {
           earned,
-          decidedSince: (kind, since) => this.store.decidedSince(kind, since),
-          scopeKeyOf: (id) => this.deps.scopeKeyOf(id),
+          decidedSince: (kind, workspaceId, since) => this.store.decidedSince(kind, workspaceId, since),
           routineOf: (id) => this.deps.routineOf(id),
           granted: (r) => {
             const def = this.deps.kinds.get(r.kind)

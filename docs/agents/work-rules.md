@@ -54,6 +54,19 @@ off is read then. A draft is let go when its thread or workspace is deleted
 month after it was first seen (`TRACK_DAYS`); one made more than a month ago
 is never taken up.
 
+**A held Teams reply.** A `teams.post` he changed with Edit before his
+press is read the same way (`watchPosts`, `recordPost`): the outbox hands
+each decided listener the words the thread wrote (`ctx.held.onDecided`'s
+`asHeld`, kept at the hold; no thread can change a held row), and only the
+habits a post shows plainly count (`POST_HABITS`: a phrase swapped or cut,
+an exclamation mark; a greeting, a sign-off or a length are a mail's). Its
+evidence reads "To <chat> in Teams". A grant's send, a Work Chat's post and
+one he did not change leave nothing. A calendar invite's words are not read:
+the Outbox has no Edit for them, and in LifeOS an agent's rewrite cannot be
+told from his. An offered grant (work-outbox.md "Offered grants") counts
+only sends he did not change, so it never shows the same send as a
+proposal.
+
 **What an edit shows** (`habitsOf`, a plain reading on purpose: a proposal
 names only what the edits show, and he rewords it before adding):
 

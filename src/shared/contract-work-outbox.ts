@@ -172,7 +172,7 @@ export const OutboxRequestSchemas = [
   request('work.outbox.get', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: the owner's press. Runs the act once: a second press, another client's press and a restart never run it again. */
   /** `rev`: the item's `updatedAt` as the screen read it. Required for an item LifeOS holds, so what goes is what was shown; for a host row a press on a stale view is refused when given. */
-  request('work.outbox.send', z.object({ ref: HeldRefSchema, rev: z.number().int().optional(), /** he checked Sent and chose Send again on an item whose last send may have gone */ again: z.boolean().optional() })),
+  request('work.outbox.send', z.object({ ref: HeldRefSchema, rev: z.number().int().optional(), /** he checked Sent and chose Send again on an item whose last send may have gone */ again: z.boolean().optional(), /** one of several sent by one press (a group's Send N, ticked rows): it earns no offered grant */ many: z.boolean().optional() })),
   /** → OutboxItem: the act will never go */
   request('work.outbox.discard', z.object({ ref: HeldRefSchema })),
   /** → OutboxItem: change exactly what will go, while it waits. `payload` is the kind's own shape. */

@@ -363,11 +363,11 @@ export class HeldStore {
     return rows.map(decode)
   }
 
-  /** Rows of one kind sent or discarded since a time, newest decision first: what an earned grant counts (earned.ts). */
-  decidedSince(kind: ActKind, since: number, limit = 500): HeldRow[] {
+  /** Rows of one kind in one workspace that someone decided since a time (sent, discarded, going or failed), newest decision first: what an earned grant counts (earned.ts). */
+  decidedSince(kind: ActKind, workspaceId: string, since: number, limit = 500): HeldRow[] {
     const rows = this.db
-      .prepare(`${SELECT} WHERE kind = ? AND state IN ('sent', 'discarded') AND decided_at >= ? ORDER BY decided_at DESC, rowid DESC LIMIT ?`)
-      .all(kind, since, limit) as unknown as Row[]
+      .prepare(`${SELECT} WHERE kind = ? AND workspace_id = ? AND decided_at IS NOT NULL AND decided_at >= ? ORDER BY decided_at DESC, rowid DESC LIMIT ?`)
+      .all(kind, workspaceId, since, limit) as unknown as Row[]
     return rows.map(decode)
   }
 

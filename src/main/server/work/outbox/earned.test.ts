@@ -39,6 +39,10 @@ const call = (args: Record<string, unknown>, digests = true) => ({ addonId: 'ad_
 describe('what one act earns', () => {
   it('mail: one person on one account, never a domain, never several people', () => {
     expect(earnedOf('mail.send', mail(['Dana@Purdue.edu']))).toEqual({ key: 'mail|acct_purdue|dana@purdue.edu', matcher: { accountId: 'acct_purdue', recipients: ['dana@purdue.edu'] }, label: 'Mail to dana@purdue.edu' })
+    // named by the address, never by a display name the draft carries, and from the address it goes from
+    const named = mail(['dana@purdue.edu'])
+    Object.assign(named.message, { to: [{ name: 'Dana Lee', address: 'dana@purdue.edu' }], from: { address: 'Landon@purdue.edu' } })
+    expect(earnedOf('mail.send', named)?.label).toBe('Mail to dana@purdue.edu from landon@purdue.edu')
     expect(earnedOf('mail.send', mail(['dana@purdue.edu'], { cc: ['sam@purdue.edu'] }))).toBeNull()
     expect(earnedOf('mail.send', mail(['dana@purdue.edu', 'sam@purdue.edu']))).toBeNull()
     expect(earnedOf('mail.send', mail([]))).toBeNull()
@@ -50,7 +54,7 @@ describe('what one act earns', () => {
   it('a calendar act: one answer kind on one account and calendar, or an invite of one person; a change, a cancel or a series earns none', () => {
     const op = (kind: string, payload: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({ id: 'op_1', kind, account: 'landon@purdue.edu', calendarId: 'cal_1', payload, ...extra })
     expect(earnedOf('calendar.op', op('accept'))).toMatchObject({ matcher: { kind: 'accept', account: 'landon@purdue.edu', calendarId: 'cal_1' }, label: 'Accept invitations on landon@purdue.edu' })
-    expect(earnedOf('calendar.op', op('create', { attendees: [{ address: 'dana@purdue.edu', name: 'Dana' }] }))).toMatchObject({ matcher: { kind: 'create', attendees: ['dana@purdue.edu'] }, label: 'Invites to Dana on landon@purdue.edu' })
+    expect(earnedOf('calendar.op', op('create', { attendees: [{ address: 'dana@purdue.edu', name: 'Dana' }] }))).toMatchObject({ matcher: { kind: 'create', attendees: ['dana@purdue.edu'] }, label: 'Invites to dana@purdue.edu on landon@purdue.edu' })
     expect(earnedOf('calendar.op', op('create', { attendees: [{ address: 'dana@purdue.edu' }, { address: 'sam@purdue.edu' }] }))).toBeNull()
     expect(earnedOf('calendar.op', op('create'))).toBeNull()
     for (const kind of ['update', 'cancel', 'propose']) expect(earnedOf('calendar.op', op(kind)), kind).toBeNull()
@@ -73,10 +77,19 @@ describe('what one act earns', () => {
   })
 
   it("an act's words are what he could change; spacing alone is no edit", () => {
-    expect(sameWords(wordsOf('mail.send', mail(['dana@purdue.edu'], { text: 'Attached.\n\nLandon' })), wordsOf('mail.send', mail(['dana@purdue.edu'], { text: 'Attached.\r\n\r\nLandon ' })))).toBe(true)
-    expect(sameWords(wordsOf('mail.send', mail(['dana@purdue.edu'])), wordsOf('mail.send', mail(['dana@purdue.edu'], { text: 'Attached, thanks.' })))).toBe(false)
-    expect(sameWords(wordsOf('mail.send', mail(['dana@purdue.edu'])), wordsOf('mail.send', mail(['dana@purdue.edu'], { subject: 'Budget' })))).toBe(false)
-    expect(sameWords(null, null)).toBe(false)
+    const same = (a: unknown, b: unknown, kind: ActKind = 'mail.send') => sameWords(kind, wordsOf(kind, a), wordsOf(kind, b))
+    expect(same(mail(['dana@purdue.edu'], { text: 'Attached.\n\nLandon' }), mail(['dana@purdue.edu'], { text: 'Attached.\r\n\r\nLandon ' }))).toBe(true)
+    expect(same(mail(['dana@purdue.edu']), mail(['dana@purdue.edu'], { text: 'Attached, thanks.' }))).toBe(false)
+    expect(same(mail(['dana@purdue.edu']), mail(['dana@purdue.edu'], { subject: 'Budget' }))).toBe(false)
+    // what goes besides the plain text: a link changed in the html, a file put on, another From
+    const linked = mail(['dana@purdue.edu'])
+    linked.message.html = '<p>Attached: <a href="https://evil.test">the sheet</a></p>'
+    expect(same(mail(['dana@purdue.edu']), linked)).toBe(false)
+    expect(same(mail(['dana@purdue.edu']), { ...mail(['dana@purdue.edu']), message: { ...mail(['dana@purdue.edu']).message, attachments: [{ name: 'x.pdf' }] } })).toBe(false)
+    expect(same(mail(['dana@purdue.edu']), { ...mail(['dana@purdue.edu']), message: { ...mail(['dana@purdue.edu']).message, from: { address: 'alias@purdue.edu' } } })).toBe(false)
+    // an add-on's arguments are compared exactly: a tool may tell two spaces from one
+    expect(same(call({ id: 'a  b' }), call({ id: 'a b' }), 'addon.call')).toBe(false)
+    expect(sameWords('mail.send', null, null)).toBe(false)
     expect(wordsOf('teams.post', { chat: 'Esports staff', text: 'On my way' })).toEqual({ chat: 'Esports staff', text: 'On my way' })
     expect(wordsOf('computer.act', {})).toBeNull()
   })
@@ -94,15 +107,14 @@ describe('the run', () => {
   let granted = false
   const deps = (): RunDeps => ({
     earned,
-    decidedSince: (kind, since) => rows.filter((r) => r.kind === kind && (r.decidedAt ?? 0) >= since).sort((a, b) => (b.decidedAt ?? 0) - (a.decidedAt ?? 0) || b.n - a.n),
-    scopeKeyOf: (id) => (id.startsWith('t-') ? 'ws-purdue' : null),
+    decidedSince: (kind, ws, since) => rows.filter((r) => r.kind === kind && r.workspaceId === ws && (r.decidedAt ?? 0) >= since).sort((a, b) => (b.decidedAt ?? 0) - (a.decidedAt ?? 0) || b.n - a.n),
     routineOf: (id) => routines[id] ?? null,
     granted: () => granted,
     notGrantable: (p) => (p as { read?: { grantable?: boolean } }).read?.grantable === false,
     now: () => now
   })
   /** One act he decided, its first sight kept as the thread wrote it unless `edited`. */
-  const act = (o: { to?: string[]; state?: 'sent' | 'discarded'; by?: string; edited?: boolean; at?: number; session?: string; run?: string; why?: string; kind?: ActKind; payload?: unknown } = {}): HeldRow => {
+  const act = (o: { to?: string[]; state?: HeldRow['state']; by?: string; edited?: boolean | unknown; at?: number; ws?: string | null; run?: string; why?: string; kind?: ActKind; payload?: unknown } = {}): HeldRow => {
     const id = `ha_${++n}`
     const kind = o.kind ?? 'mail.send'
     const payload = o.payload ?? mail(o.to ?? ['dana@purdue.edu'])
@@ -112,14 +124,16 @@ describe('the run', () => {
       runKey: `host:${id}`,
       kind,
       payload,
-      sessionId: o.session ?? 't-work',
+      sessionId: 't-work',
+      workspaceId: o.ws === undefined ? 'ws-purdue' : o.ws,
       state: o.state ?? 'sent',
       decidedBy: o.by ?? 'owner',
       decidedAt: o.at ?? now - (100 - n) * 1000,
       why: o.why ?? 'lifeos',
       routineRunId: o.run ?? null
     } as unknown as HeldRow
-    earned.noteFirst(row.runKey, kind, o.edited ? mail(o.to ?? ['dana@purdue.edu'], { text: 'What the agent wrote.' }) : payload)
+    // edited: what the thread first wrote, when it was not what went (true: other words to the same people)
+    earned.noteFirst(row.runKey, kind, o.edited === true ? mail(o.to ?? ['dana@purdue.edu'], { text: 'What the agent wrote.' }) : (o.edited ?? payload))
     rows.push(row)
     return row
   }
@@ -180,8 +194,41 @@ describe('the run', () => {
     act({ payload: mail(['dana@purdue.edu'], { accountId: 'acct_life' }) })
     expect(press()).not.toBeNull()
     rows = []
-    for (let i = 0; i < EARN_AT - 1; i++) act({ session: 'x-elsewhere' })
+    for (let i = 0; i < EARN_AT - 1; i++) act({ ws: 'ws-ref', to: ['lee@purdue.edu'] })
     expect(press({ to: ['lee@purdue.edu'] })).toBeNull()
+    // a Work Chat's act (no workspace) earns nothing
+    for (let i = 0; i < EARN_AT; i++) expect(press({ ws: null, to: ['kim@purdue.edu'] })).toBeNull()
+  })
+
+  it('a send he moved from one person to another breaks the first person\'s run too', () => {
+    for (let i = 0; i < EARN_AT - 1; i++) press()
+    // the thread wrote to Dana; he sent it to Sam
+    act({ to: ['sam@purdue.edu'], edited: mail(['dana@purdue.edu']) })
+    expect(press()).toBeNull()
+  })
+
+  it('a send still going, or one that failed, is no clean press and breaks the run until it is decided again', () => {
+    for (let i = 0; i < EARN_AT - 1; i++) press()
+    act({ state: 'sending' })
+    expect(press()).toBeNull()
+    for (let i = 0; i < EARN_AT - 2; i++) press()
+    act({ state: 'failed' })
+    expect(press()).toBeNull()
+  })
+
+  it('several sent by one press are one gesture: none of them counts, and they break the run', () => {
+    for (let i = 0; i < EARN_AT - 1; i++) press()
+    const batch = act()
+    earned.markBatch(batch.runKey)
+    expect(press()).toBeNull()
+    for (let i = 0; i < EARN_AT - 2; i++) expect(press()).toBeNull()
+    expect(press()).not.toBeNull()
+  })
+
+  it("keeps the run's sends with the offer", () => {
+    for (let i = 0; i < EARN_AT - 1; i++) press()
+    const offer = press()!
+    expect(offer.run).toEqual(rows.slice(-EARN_AT).map((r) => r.runKey).reverse())
   })
 
   it('none for a call held only because its add-on was never reviewed, for an act read as no grant\'s, or while a grant already fits', () => {
@@ -250,13 +297,13 @@ describe('an earned grant on the hold', () => {
     const fifth = await pressMail()
     expect(fifth.state).toBe('sent')
     const [offer] = await offers()
-    expect(offer).toMatchObject({ workspaceId: 'ws-purdue', kind: 'mail.send', label: 'Mail to dana@purdue.edu', routineId: null, from: fifth.ref, count: EARN_AT })
+    expect(offer).toMatchObject({ workspaceId: 'ws-purdue', kind: 'mail.send', label: 'Mail to dana@purdue.edu from landon@purdue.edu', routineId: null, from: fifth.ref, count: EARN_AT })
     // the screen never gets the matcher: the host keeps it
     expect(offer).not.toHaveProperty('matcher')
     // the thread is not told it earned anything
     expect(rig.whispers.map((w) => w.text).join('\n')).not.toMatch(/grant|offer/i)
     const grant = await rig.rpc<OutboxGrant>('work.outbox.takeOffer', { id: offer!.id })
-    expect(grant).toMatchObject({ workspaceId: 'ws-purdue', kind: 'mail.send', matcher: { accountId: 'acct_purdue', recipients: ['dana@purdue.edu'] }, label: 'Mail to dana@purdue.edu', madeFrom: fifth.ref, routineId: null })
+    expect(grant).toMatchObject({ workspaceId: 'ws-purdue', kind: 'mail.send', matcher: { accountId: 'acct_purdue', recipients: ['dana@purdue.edu'] }, label: 'Mail to dana@purdue.edu from landon@purdue.edu', madeFrom: fifth.ref, routineId: null })
     expect(await offers()).toEqual([])
     await expect(rig.rpc('work.outbox.takeOffer', { id: offer!.id })).rejects.toThrow(NO_SUCH_OFFER)
     expect(rig.host.store.grants()).toHaveLength(1)
@@ -353,6 +400,52 @@ describe('an earned grant on the hold', () => {
     await rig.rpc<OutboxGrant>('work.outbox.grant', { from: offer!.from, matcher: { domains: ['purdue.edu'] } })
     expect(await offers()).toEqual([])
     await expect(rig.rpc('work.outbox.takeOffer', { id: offer!.id })).rejects.toThrow(NO_SUCH_OFFER)
+  })
+
+  it('five sent by one press of Send N earn nothing', async () => {
+    const ids = Array.from({ length: EARN_AT }, () => rig.lifeos.draft({ to: ['dana@purdue.edu'] }))
+    rig.lifeos.fire()
+    await settled()
+    const items = (await list()).filter((i) => i.ref.at === 'lifeos' && ids.includes(i.ref.id))
+    for (const item of items) await rig.rpc('work.outbox.send', { ref: item.ref, rev: item.updatedAt, many: true })
+    expect(await offers()).toEqual([])
+  })
+
+  it("a deleted thread's discard still breaks the run: history is the row's, not the thread's", async () => {
+    rig.thread('t-other', { scope: 'work', workspaceId: 'ws-purdue' } as Partial<SessionMeta>)
+    for (let i = 0; i < EARN_AT - 1; i++) await pressMail()
+    const id = rig.lifeos.draft({ to: ['dana@purdue.edu'], threadId: 't-other' })
+    rig.lifeos.fire()
+    await settled()
+    const item = (await list()).find((i) => i.ref.id === id)!
+    await rig.rpc('work.outbox.discard', { ref: item.ref })
+    outboxModule.sessionsRemoved!(['t-other'], rig.work.ctx)
+    rig.sessions.delete('t-other')
+    await pressMail()
+    expect(await offers()).toEqual([])
+  })
+
+  it('stops standing once a send that earned it comes back failed', async () => {
+    for (let i = 0; i < EARN_AT; i++) await pressMail()
+    const [offer] = await offers()
+    const first = rig.host.store.byRunKey(`lifeos:outbox:${(await offers())[0]!.from.id}`)!
+    expect(first.state).toBe('sent')
+    // an earlier send of the run: LifeOS's own lane failed it after the host recorded it gone
+    const earlier = rig.host.store.list({ show: 'decided' }).find((r) => r.id !== first.id && r.state === 'sent')!
+    rig.host.store.failSent(earlier.id, 'Gmail refused it')
+    expect(await offers()).toEqual([])
+    await expect(rig.rpc('work.outbox.takeOffer', { id: offer!.id })).rejects.toThrow(NO_SUCH_OFFER)
+  })
+
+  it('taken, and then asked for by hand from the same item, is one grant: one Remove ends it', async () => {
+    for (let i = 0; i < EARN_AT; i++) await pressMail()
+    const [offer] = await offers()
+    const taken = await rig.rpc<OutboxGrant>('work.outbox.takeOffer', { id: offer!.id })
+    const again = await rig.rpc<OutboxGrant>('work.outbox.grant', { from: offer!.from, matcher: { accountId: 'acct_purdue', recipients: ['dana@purdue.edu'] } })
+    expect(again.id).toBe(taken.id)
+    expect(rig.host.store.grants()).toHaveLength(1)
+    await rig.rpc('work.outbox.ungrant', { id: taken.id })
+    expect(rig.host.store.grants()).toEqual([])
   })
 
   it("an add-on call earns its tool with every argument fixed: a call that differs in any argument is still held after he takes it", async () => {

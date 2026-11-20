@@ -450,7 +450,7 @@ export function grantFor(item: Pick<OutboxItem, "kind" | "payload">): { matcher:
   return null;
 }
 
-/** An earned grant's line, beside the item that completed its run: "Mail to Dana Lee: you sent the last 5 as written." */
+/** An earned grant's line, beside the item that completed its run: "Mail to dana@purdue.edu from landon@purdue.edu: you sent the last 5 as written." */
 export function offerLine(offer: Pick<GrantOffer, "label" | "count" | "routineId">): string {
   return `${offer.label}${offer.routineId ? " from this routine" : ""}: you sent the last ${offer.count} as written.`;
 }

@@ -85,7 +85,12 @@ export const outbox: WorkModule = {
   mentions: outboxMentions,
   ensure(db) {
     ensureOutboxTables(db)
-    ensureEarnedTables(db)
+    // Offers are a shortcut: a fault in their tables never takes the Outbox down with it.
+    try {
+      ensureEarnedTables(db)
+    } catch {
+      // the Outbox runs without offers (outbox.ts reads them under try)
+    }
     ensureResults(db)
   },
   async handle(req, ctx, by, signal) {
@@ -99,7 +104,7 @@ export const outbox: WorkModule = {
         return handled(await withPicture(host, await box.get(req.params.ref)))
       case 'work.outbox.send':
         mustBePerson(by, 'approve')
-        return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), ...(req.params.again ? { again: true } : {}), by: person(by) }))
+        return handled(await box.send(req.params.ref, { ...(req.params.rev !== undefined ? { rev: req.params.rev } : {}), ...(req.params.again ? { again: true } : {}), ...(req.params.many ? { many: true } : {}), by: person(by) }))
       case 'work.outbox.discard':
         mustBePerson(by, 'approve')
         return handled(await box.discard(req.params.ref, person(by)))

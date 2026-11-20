@@ -102,15 +102,13 @@ export function loadHost(environmentId: string): Promise<void> {
     link.request<{ items: OutboxItem[]; waiting: number }>("work.outbox.list", { show: "waiting" }),
     link.request<{ items: OutboxItem[] }>("work.outbox.list", { show: "decided", limit: 100 }),
     link.request<{ grants: OutboxGrant[] }>("work.outbox.grants", {}),
-    // A key without approve, or a host from before offers, has none to show: the rest of the Outbox still loads.
-    link.request<{ offers: GrantOffer[] }>("work.outbox.offers", {}).catch(() => ({ offers: [] as GrantOffer[] })),
   ])
-    .then(([waiting, decided, grants, offers]) => {
+    .then(([waiting, decided, grants]) => {
       hosts.set(environmentId, {
         waiting: tag(environmentId, waiting.items),
         sent: tag(environmentId, decided.items.filter((item) => item.state === "sent")),
         grants: tag(environmentId, grants.grants),
-        offers: tag(environmentId, offers.offers),
+        offers: hosts.get(environmentId)?.offers ?? [],
         count: waiting.waiting,
         failed: waiting.items.filter((item) => item.state === "failed").length,
         loaded: true,
@@ -126,7 +124,23 @@ export function loadHost(environmentId: string): Promise<void> {
       if (again.delete(environmentId)) void loadHost(environmentId);
     });
   loading.set(environmentId, load);
+  loadOffers(environmentId);
   return load;
+}
+
+/**
+ * The grants a host offers, read beside its list and never in its way: a key
+ * without approve, or a host from before offers, has none to show.
+ */
+function loadOffers(environmentId: string): void {
+  void registry
+    .linkOf(environmentId)
+    .request<{ offers: GrantOffer[] }>("work.outbox.offers", {})
+    .catch(() => ({ offers: [] as GrantOffer[] }))
+    .then(({ offers }) => {
+      hosts.set(environmentId, { ...(hosts.get(environmentId) ?? emptyHost()), offers: tag(environmentId, offers) });
+      changed();
+    });
 }
 
 /** Every host with Work on, asked again. */
@@ -270,7 +284,7 @@ export async function sendMany(items: readonly HostItem[]): Promise<{ sent: numb
       }),
   );
   const pressed = items.filter((item) => !waiting.has(item) && !unread.has(item));
-  const outcomes = await Promise.allSettled(pressed.map((item) => registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt })));
+  const outcomes = await Promise.allSettled(pressed.map((item) => registry.linkOf(item.environmentId).request<OutboxItem>("work.outbox.send", { ref: item.ref, rev: item.updatedAt, many: true })));
   for (const id of new Set(items.map((item) => item.environmentId))) void loadHost(id);
   const failed = [
     ...[...unread].map((item) => ({ item, error: "The mail did not load" })),

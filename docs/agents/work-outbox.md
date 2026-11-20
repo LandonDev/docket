@@ -193,6 +193,49 @@ of the tool. For mail, every recipient (copied and blind-copied too) must be a
 person or an exact domain the grant names. A computer act takes no grant.
 Away makes none, and no agent can.
 
+### Offered grants
+
+He need not think of a grant: one he has earned is offered
+(`work/outbox/earned.ts`). When his own press (`owner` or `owner:remote`,
+never a grant's) has sent five held acts in a row (`EARN_AT`) that one
+narrow matcher fits, each as the thread wrote it and all within 30 days
+(`EARN_DAYS`), the host keeps one offer for that matcher, beside the item
+whose press completed the run. The matcher is the one each act earns on its
+own (`earnedOf`), so it is never wider than any of them:
+
+| Kind | Earns | Earns nothing |
+|---|---|---|
+| `mail.send` | its account and its one recipient | two or more people (to, cc and bcc together); a domain is never offered |
+| `calendar.op` | an answer (accept, decline, maybe) on one account and calendar; an invite of one person there | a change, a cancel, a proposal, a series, an uninvite, no account |
+| `addon.call` | its server and tool (digests sealed as for any grant) with every argument fixed and none free | a call held without the digests, or held only because the add-on was never reviewed |
+
+Every other kind (a computer act, a Teams post, a form, a guest link,
+Office mail, a Google share) earns nothing. Why five in thirty days: one
+press shows nothing; five unedited presses on the same narrow target is a
+habit he has already decided on five times, and a month keeps an old habit
+from counting.
+
+- **As the thread wrote it.** The host keeps an act's words at first sight
+  (`work_held_first`: a host row at `hold`, a LifeOS draft when the watcher
+  first lists it), and a send counts only when its words are those (spacing
+  aside). A LifeOS draft already edited when the host first saw it (made
+  while the host was off) never counts; nor does an agent's rewrite or one
+  he took. **An edited send or a discard breaks the run**; a grant's send is
+  passed over. A routine's acts count only toward that routine's offer, and
+  a run the host cannot place (`ROUTINE_UNKNOWN`) toward none.
+- **Once.** An offer is kept per workspace, kind and matcher
+  (`work_grant_offers`), whatever became of it: dismissed, taken, or closed
+  by a grant he made by hand that fits its item. None is made while a
+  standing grant already fits.
+- **Only his press makes it.** `work.outbox.offers` (approve),
+  `takeOffer` and `dismissOffer` (admin) refuse a thread's own call as the
+  other methods do, and no tool names them. The screen never gets the
+  matcher: `takeOffer({id})` runs the same `grant` from the offer's item
+  with the matcher the host worked out, and every check of a grant made by
+  hand applies. The thread is not told it earned anything, and Away presses
+  nothing. An offer whose item left its workspace or routine, or that a
+  grant now covers, is not listed.
+
 ## Computer use
 
 In a Work thread the host classes each call from the screen, whatever the
@@ -396,7 +439,12 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   add-on call its server and tool, a computer act takes none). Sent groups
   what left by day; its detail says who pressed and when ("Sent by you at
   9:31 AM", "by the grant …", "from another device") and offers the
-  Result's way back, or says it cannot be taken back. Grants is a sheet:
+  Result's way back, or says it cannot be taken back. Under the sent item
+  whose press earned a grant (`OfferLine.tsx`), past a hairline: one muted
+  line, the open lock, "Mail to dana.lee@purdue.edu from landon@purdue.edu: you sent the last 5 as written.",
+  Dismiss and Stop holding; taken, "Grant made: Mail to dana.lee@purdue.edu …" with
+  Undo (which removes the grant). The press that earned it says so in its
+  toast, whose Review opens that item in Sent. Grants is a sheet:
   each standing grant by workspace with Remove, no confirm. Held is never
   amber; only a failed send takes the red mark.
 - **Edit** (`EditDialog.tsx`) changes each field a person reads and the
@@ -449,6 +497,10 @@ Claude thread's add-on call that will be held (in `safe` it asks, then
 holds).
 
 ## Proofs
+
+Offered grants: `work/outbox/earned.test.ts` (the reading, the count, and
+the offer on the real hold: each way it must not appear or be taken).
+Look: `bun run ui:preview src/renderer/src/work/outbox/Outbox.preview.tsx#OutboxPreview --props '{"state":"offer"}'` (also `plain`).
 
 The screens: `work/outbox/{model.test.ts, OutboxView.dom.test.tsx,
 screens.dom.test.tsx}`, `surfaces/transcript/ApprovalCard.dom.test.tsx`
