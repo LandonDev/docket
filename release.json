@@ -1,5 +1,5 @@
 {
-  "n": 350,
-  "notes": "Work, from the first day of live use: LifeOS documents open (the installed box serves them on its fixed port); the Work column's project cards keep LifeOS's order when clicked; @ in the composer offers mail, tasks, events, projects, documents and more; the Docs view has search, filters, grouping and saved views; a Files view for Teams libraries synced by OneDrive; the Mac's Office carrier reads an empty Excel as empty and says when New Outlook answers no accounts; the hold review's fixes and the design council's through round 6; the first commits of the light theme.",
-  "ts": 1795131302574
+  "n": 351,
+  "notes": "Work, from the first day of live use: LifeOS documents open (the installed box serves them on its fixed port); the Work column's project cards keep LifeOS's order when clicked; @ in the composer offers mail, tasks, events, projects, documents and more; the Docs view has search, filters, grouping and saved views; a Files view for Teams libraries synced by OneDrive; the Mac's Office carrier reads an empty Excel as empty and says when New Outlook answers no accounts; the hold review's fixes and the design council's through round 6; the first commits of the light theme. 1.0.350 was tagged and never published: it did not build on the Mac (two file names that differed only in case).",
+  "ts": 1795133348610
 }
