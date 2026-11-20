@@ -17,7 +17,7 @@ import { Cdp } from './cdp'
 import { findChromium } from './chromium'
 import { boxDriveChanged, setBoxBrowser, startBoxBrowser, wireBoxBrowser, type BoxBrowserHost } from './index'
 import { serveTestSite, type TestSite } from './testSite'
-import { testVideoTools } from './testTools'
+import { spsReorder, testVideoTools } from './testTools'
 
 /**
  * Live video of the box's browser, whole: the host's own wiring
@@ -162,6 +162,9 @@ d('live video of the box browser, end to end', () => {
     expect(first).toMatchObject({ sequence: 1, keyframe: true, width: 1280, height: 800 })
     // the stream Electron's decoder was proven on: constrained baseline H.264
     expect(h264Codec(first.data)).toMatch(/^avc1\.42/)
+    // and its SPS says no frame is reordered: a hardware decoder holds its output for a stream that does not say so
+    // (found on the Mac's own encoder), and a viewer that draws nothing acks nothing
+    expect(spsReorder(first.data)).toEqual({ restriction: true, reorder: 0 })
     const before = viewer.frames.length
     await sleep(1_500)
     const perSecond = (viewer.frames.length - before) / 1.5

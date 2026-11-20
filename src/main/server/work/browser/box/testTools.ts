@@ -113,3 +113,105 @@ export function pixelAt(p: { width: number; rgb: Uint8Array }, x: number, y: num
   const i = (y * p.width + x) * 3
   return `${p.rgb[i]},${p.rgb[i + 1]},${p.rgb[i + 2]}`
 }
+
+/**
+ * What an H.264 stream's SPS says of reordering: whether it carries the
+ * bitstream restriction at all, and how many frames a decoder must be ready
+ * to hold back. A hardware decoder holds its output for a stream that does
+ * not say it reorders nothing, and a viewer that draws nothing acks nothing.
+ * Null when the access unit holds no SPS it can read.
+ */
+export function spsReorder(annexB: Uint8Array): { restriction: boolean; reorder: number | null } | null {
+  let at = -1
+  for (let i = 0; i + 4 < annexB.length; i++) {
+    if (annexB[i] === 0 && annexB[i + 1] === 0 && annexB[i + 2] === 1 && (annexB[i + 3] & 31) === 7) {
+      at = i + 4
+      break
+    }
+  }
+  if (at < 0) return null
+  // the SPS's own bytes: up to the next start code, with the emulation prevention bytes taken out
+  const raw: number[] = []
+  for (let i = at; i < annexB.length; i++) {
+    if (annexB[i] === 0 && annexB[i + 1] === 0 && (annexB[i + 2] === 1 || (annexB[i + 2] === 0 && annexB[i + 3] === 1))) break
+    if (i >= at + 2 && annexB[i] === 3 && annexB[i - 1] === 0 && annexB[i - 2] === 0) continue
+    raw.push(annexB[i])
+  }
+  let bit = 0
+  const u = (n: number): number => {
+    let v = 0
+    for (let i = 0; i < n; i++, bit++) v = v * 2 + ((raw[bit >> 3] >> (7 - (bit & 7))) & 1)
+    return v
+  }
+  const ue = (): number => {
+    let zeros = 0
+    while (u(1) === 0 && zeros < 32) zeros++
+    return 2 ** zeros - 1 + u(zeros)
+  }
+  const se = (): number => ue()
+  const hrd = (): void => {
+    const count = ue() + 1
+    u(8)
+    for (let i = 0; i < count; i++) {
+      ue()
+      ue()
+      u(1)
+    }
+    u(20)
+  }
+  const profile = u(8)
+  u(16)
+  ue()
+  if ([100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135].includes(profile)) {
+    if (ue() === 3) u(1)
+    ue()
+    ue()
+    u(1)
+    // scaling lists are not read: no stream here carries them
+    if (u(1)) return null
+  }
+  ue()
+  const poc = ue()
+  if (poc === 0) ue()
+  else if (poc === 1) {
+    u(1)
+    se()
+    se()
+    const cycle = ue()
+    for (let i = 0; i < cycle; i++) se()
+  }
+  ue()
+  u(1)
+  ue()
+  ue()
+  if (!u(1)) u(1)
+  u(1)
+  if (u(1)) for (let i = 0; i < 4; i++) ue()
+  if (!u(1)) return { restriction: false, reorder: null }
+  // the VUI, as far as the restriction
+  if (u(1) && u(8) === 255) u(32)
+  if (u(1)) u(1)
+  if (u(1)) {
+    u(4)
+    if (u(1)) u(24)
+  }
+  if (u(1)) {
+    ue()
+    ue()
+  }
+  if (u(1)) {
+    u(32)
+    u(32)
+    u(1)
+  }
+  const nal = u(1)
+  if (nal) hrd()
+  const vcl = u(1)
+  if (vcl) hrd()
+  if (nal || vcl) u(1)
+  u(1)
+  if (!u(1)) return { restriction: false, reorder: null }
+  u(1)
+  for (let i = 0; i < 4; i++) ue()
+  return { restriction: true, reorder: ue() }
+}

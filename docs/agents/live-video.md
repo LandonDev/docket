@@ -305,6 +305,11 @@ bitrate follows that viewer's own link, and the relay stays a pipe.
 - The engine drops a connection that sends it anything it does not expect.
   The feed passes only an ack of 20 or 24 bytes and an input of 36, each
   with the connection's own number.
+- The engine's SPS carries the bitstream restriction with no frame
+  reordered (`videoLive.test.ts` reads it with `spsReorder`). That matters:
+  a hardware decoder holds its output for a stream that does not say so, a
+  viewer that draws nothing acks nothing, and the stream dies. The Mac's
+  encoder did not say it; its service rewrites the SPS (§30).
 - The engine closes a stream after three seconds with no ack. The feed says
   `slow`, and the viewer opens another. An engine that exits says `error`.
   After a crash the next start waits, twice as long each time up to 30 s.
