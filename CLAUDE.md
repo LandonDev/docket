@@ -204,7 +204,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   box's browser headed on a private display under our own window manager, one `relay-engine` per
   viewer (src/main/server/work/browser/box/); the Mac's windows from tc-computer (`capture.video.*`
   on descriptor 3: Capture/VideoCapture.swift, ComputerService/Video.swift, the flow in
-  ComputerServiceKit/FlowControl.swift). [docs/agents/live-video.md](docs/agents/live-video.md)
+  ComputerServiceKit/FlowControl.swift); a PC's from tc-computer.exe on a named pipe: Windows.Graphics.Capture and
+  Media Foundation's H.264 encoder, native/tc-computer-win/src/video and src/platform/video.rs, §30 "The Windows service"). [docs/agents/live-video.md](docs/agents/live-video.md)
 - **Keep awake** — the Mac's display held awake while threads work (server/keepAwake.ts); a passwordless screen saver is not a lock (shared/screenState.ts). [docs/box.md](docs/box.md) "Keep awake"
 - **Background work and watching** — background tasks on the session row, the
   Watching state, the Activity section (src/shared/watch.ts, lib/activity.ts).

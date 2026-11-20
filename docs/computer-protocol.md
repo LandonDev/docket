@@ -2827,7 +2827,7 @@ frame waited inside the viewer, in microseconds.
   The capture is the limit: Windows.Graphics.Capture on the Basic Render
   Driver gave about 37 pictures a second of a window that drew 63 (413 in the 11 s of `quality`), with
   none waiting in the pool, none paced out and none replaced in a stream's
-  mailbox. Encoding took 2 to 4 ms a frame, so the software encoder would
+  mailbox. Encoding (the NV12 conversion included) took 3 to 4 ms a frame, so the software encoder would
   hold far more at this size. 120 frames a second was not seen. The bitrate
   is low because the picture is simple.
 - **In the rig, the pipe crosses machines.** The proof's host is on the box
