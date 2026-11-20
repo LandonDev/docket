@@ -41,6 +41,7 @@ const keeper = new Keeper({
   doorSocket: join(machine.p.run, 'door.sock'),
   sleepAfter: () => sleepAfter,
   setSleepAfter: (v) => (sleepAfter = v),
+  points: machine.points(),
   push: (s) => log(`push: ${s.state}${s.step ? ` (${s.step})` : ''}${s.error ? ` error: ${s.error}` : ''}`),
   log
 })

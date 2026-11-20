@@ -16,7 +16,7 @@ import { StandingMachine } from './standing'
  * The windows_* tools that drive it come with the service on the box (B5).
  */
 
-export const NOT_A_PERSON = 'refused: only a person sets the Windows VM up, puts it to sleep or changes its settings'
+export const NOT_A_PERSON = 'refused: only a person sets the Windows VM up, puts it to sleep, changes its settings or its restore points'
 
 /** The host setting that holds how long an idle machine stays awake. */
 export const SLEEP_AFTER_SETTING = 'work.winvm.sleepAfter'
@@ -51,7 +51,7 @@ function tokenFile(dir: string): KeeperDeps['token'] {
 export const hashFile = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex')
 
 /** The keeper over the real standing machine and its guest. */
-export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push'> {
+export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push' | 'pushPoints'> {
   const machine = new StandingMachine('standing')
   return {
     machine,
@@ -63,11 +63,12 @@ export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push'> {
     doorSocket: join(machine.p.run, 'door.sock'),
     sleepAfter: () => sleepAfterSetting(ctx.db),
     setSleepAfter: (v) => setSleepAfter(ctx.db, v),
+    points: machine.points(),
     log: (line) => ctx.log(line)
   }
 }
 
-type KeeperFactory = (ctx: WorkCtx) => Omit<KeeperDeps, 'push'>
+type KeeperFactory = (ctx: WorkCtx) => Omit<KeeperDeps, 'push' | 'pushPoints'>
 let factory: KeeperFactory = realKeeperDeps
 let keeper: Keeper | null = null
 
@@ -79,7 +80,11 @@ export function configureWinvmKeeper(f: KeeperFactory | null): void {
 }
 
 function keeperOf(ctx: WorkCtx): Keeper {
-  keeper ??= new Keeper({ ...factory(ctx), push: (state) => ctx.push({ push: 'work.winvm', state }) })
+  keeper ??= new Keeper({
+    ...factory(ctx),
+    push: (state) => ctx.push({ push: 'work.winvm', state }),
+    pushPoints: (points) => ctx.push({ push: 'work.winvm.points', points })
+  })
   return keeper
 }
 
@@ -110,6 +115,17 @@ export const winvm: WorkModule = {
         const answer: WinvmSettings = keeperOf(ctx).settings(req.params.sleepAfter)
         return handled(answer)
       }
+      case 'work.winvm.points':
+        return handled({ points: keeperOf(ctx).points() })
+      case 'work.winvm.point.save':
+        if (by.kind === 'model') throw new Error(NOT_A_PERSON)
+        return handled(await keeperOf(ctx).savePoint(req.params.name))
+      case 'work.winvm.point.restore':
+        if (by.kind === 'model') throw new Error(NOT_A_PERSON)
+        return handled(await keeperOf(ctx).restorePoint(req.params.id))
+      case 'work.winvm.point.delete':
+        if (by.kind === 'model') throw new Error(NOT_A_PERSON)
+        return handled({ points: await keeperOf(ctx).deletePoint(req.params.id) })
       default:
         return NOT_HANDLED
     }

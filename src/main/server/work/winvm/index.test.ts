@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { METHOD_CAPABILITY } from '@shared/capabilities'
-import type { WinvmSettings, WinvmState } from '@shared/contract-work-winvm'
+import type { WinvmPoint, WinvmSettings, WinvmState } from '@shared/contract-work-winvm'
 import { makeRig, type Rig } from '../outbox/rig'
 import type { DoorLink, KeeperDeps } from './keeper'
 import { configureWinvmKeeper, NOT_A_PERSON, setSleepAfter, sleepAfterSetting, winvm, winvmKeeper } from './index'
@@ -13,6 +13,7 @@ import { configureWinvmKeeper, NOT_A_PERSON, setSleepAfter, sleepAfterSetting, w
 
 let rig: Rig
 const machine = { disk: true, up: false }
+let kept: WinvmPoint[] = []
 
 function fakeDeps(ctx: Parameters<Parameters<typeof configureWinvmKeeper>[0] & object>[0]): Omit<KeeperDeps, 'push'> {
   let token: string | null = 't'.repeat(64)
@@ -44,6 +45,12 @@ function fakeDeps(ctx: Parameters<Parameters<typeof configureWinvmKeeper>[0] & o
     // the real host setting, as realKeeperDeps keeps it
     sleepAfter: () => sleepAfterSetting(ctx.db),
     setSleepAfter: (v) => setSleepAfter(ctx.db, v),
+    points: {
+      list: () => [...kept].sort((a, b) => b.at - a.at),
+      save: async (p) => void kept.push(p),
+      restore: async () => {},
+      remove: async (id) => void (kept = kept.filter((p) => p.id !== id))
+    },
     log: () => {}
   }
 }
@@ -55,6 +62,7 @@ const states = () => rig.pushes.filter((p) => p.push === 'work.winvm').map((p) =
 beforeEach(async () => {
   machine.disk = true
   machine.up = false
+  kept = []
   configureWinvmKeeper(fakeDeps)
   rig = await makeRig({ modules: [winvm] })
 })
@@ -88,7 +96,9 @@ describe('the Windows VM pillar', () => {
 
   it('a model caller may wake it but not set it up, put it to sleep or change its settings', async () => {
     const call = (method: string, params: unknown = {}) => winvm.handle!({ id: '1', method, params } as never, workCtx(), model)
-    for (const m of ['work.winvm.setup', 'work.winvm.sleep', 'work.winvm.settings']) await expect(call(m)).rejects.toThrow(NOT_A_PERSON)
+    for (const m of ['work.winvm.setup', 'work.winvm.sleep', 'work.winvm.settings', 'work.winvm.point.save']) await expect(call(m)).rejects.toThrow(NOT_A_PERSON)
+    for (const m of ['work.winvm.point.restore', 'work.winvm.point.delete']) await expect(call(m, { id: 'abcdef' })).rejects.toThrow(NOT_A_PERSON)
+    expect(await call('work.winvm.points')).toMatchObject({ handled: true })
     expect(await call('work.winvm.wake')).toMatchObject({ handled: true })
   })
 
@@ -98,6 +108,22 @@ describe('the Windows VM pillar', () => {
     expect(METHOD_CAPABILITY['work.winvm.sleep']).toBe('operate')
     expect(METHOD_CAPABILITY['work.winvm.setup']).toBe('admin')
     expect(METHOD_CAPABILITY['work.winvm.settings']).toBe('admin')
+    expect(METHOD_CAPABILITY['work.winvm.points']).toBe('read')
+    expect(METHOD_CAPABILITY['work.winvm.point.save']).toBe('operate')
+    expect(METHOD_CAPABILITY['work.winvm.point.restore']).toBe('admin')
+    expect(METHOD_CAPABILITY['work.winvm.point.delete']).toBe('admin')
+  })
+
+  it('saves, lists, goes back to and deletes restore points while it sleeps, pushing the list', async () => {
+    const p = await rig.rpc<WinvmPoint>('work.winvm.point.save', { name: 'Clean' })
+    expect(p).toMatchObject({ name: 'Clean', by: 'owner' })
+    expect((await rig.rpc<{ points: WinvmPoint[] }>('work.winvm.points', {})).points.map((x) => x.id)).toEqual([p.id])
+    expect((await rig.rpc<WinvmState>('work.winvm.point.restore', { id: p.id })).state).toBe('asleep')
+    expect((await rig.rpc<{ points: WinvmPoint[] }>('work.winvm.point.delete', { id: p.id })).points).toEqual([])
+    const lists = rig.pushes.filter((x) => x.push === 'work.winvm.points').map((x) => (x as { points: WinvmPoint[] }).points.length)
+    expect(lists).toEqual([1, 0])
+    await rig.rpc('work.winvm.wake', {})
+    await expect(rig.rpc('work.winvm.point.save', {})).rejects.toThrow('only while the Windows VM sleeps')
   })
 
   it('the keeper the VM service will use is there while Work is on, and gone when it turns off', async () => {

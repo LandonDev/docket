@@ -3,12 +3,13 @@
 The box keeps one Windows 11 machine for Work threads to drive: the `standing` instance of the Windows rig
 (docs/agents/windows-vm.md), on the same read-only base image as the rig, with its own lasting disk. The plan is
 `.temp-code/plan-m1X24rQ6nikm.md`, Track B. This file covers the keeper (B3): its states, its methods, setup,
-sleep and wake, and the stop of the box's service. The windows_* tools, the VM's gate and its share of the hold
+sleep and wake, and the stop of the box's service; and its restore points (B4). The windows_* tools, the VM's gate and its share of the hold
 come with B5 and B6; the picture and Take over with B7 and B8.
 
 The code is `src/main/server/work/winvm/`: `keeper.ts` (the states, over a machine and a guest that are
 interfaces), `standing.ts` (the real machine, through `machine/`), `sshGuest.ts` (the real guest, over SSH),
-`setup.ts` (the guest's admin script), `watcher.ts` (the stop watcher), `index.ts` (the Work module `winvm`).
+`setup.ts` (the guest's admin script), `watcher.ts` (the stop watcher), `points.ts` (restore points),
+`index.ts` (the Work module `winvm`).
 The wire is `src/shared/contract-work-winvm.ts`.
 
 ## States
@@ -37,9 +38,14 @@ and opens the door at the next call.
 | `work.winvm.sleep` | operate | hibernates it and answers once QEMU has exited |
 | `work.winvm.setup` | admin | answers at once; the progress and the end come as pushes |
 | `work.winvm.settings` | admin | `{ sleepAfter }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter` |
+| `work.winvm.points` | read | `{ points }`, newest first |
+| `work.winvm.point.save` | operate | `{ name? }`: a point of the sleeping machine |
+| `work.winvm.point.restore` | admin | `{ id }`: back to a point; the machine stays asleep |
+| `work.winvm.point.delete` | admin | `{ id }` |
 
-A model caller (a thread's `app.work*` call) may read and wake, never set up, sleep or change the settings.
-Every change of state pushes `{ push: 'work.winvm', state }` to every client socket. The methods answer
+A model caller (a thread's `app.work*` call) may read and wake, never set up, sleep, change the settings or
+touch a restore point. Every change of state pushes `{ push: 'work.winvm', state }` to every client socket,
+and every change to the points `{ push: 'work.winvm.points', points }`. The methods answer
 `Work is off on this host` while the switch is off, as every pillar's do.
 
 `winvmKeeper()` is the keeper for the VM's service on the box (B5): `door()` wakes the machine and answers
@@ -146,6 +152,26 @@ is left 30 s later, as systemd does; QEMU must exit before that, and the guest m
 Notepad process, its text and the same boot time. `scripts/e2e-winvm-keeper.ts` on the standing instance
 runs setup, the policies' checks, sleep and wake.
 
+## Restore points
+
+A point is the standing disk's internal qcow2 snapshot (`qemu-img snapshot -c tc-point-<id>`: copy on write
+inside the one file, so it costs only what changes after it), with the firmware variables and the TPM's state
+copied beside it into `/srv/agents/win-vm/standing/points/<id>/` with its record (`point.json`: id, name,
+time, `owner` or `keeper`). All three go back together: a disk without the TPM it was sealed with breaks
+TPM-bound sign-ins, and a hibernated guest's memory image is on the disk.
+
+- **Only while it sleeps.** Save, go back and delete each refuse while QEMU runs ("Put it to sleep first").
+  A TPM state newer than the run's copy is kept before a point is taken or put back.
+- **Three at most.** A fourth point drops the oldest first.
+- **Going back** puts the disk, the firmware and the TPM as the point holds them; the state stays `asleep`
+  and the next wake resumes the guest as it was at the point. What changed after the point is gone: the
+  confirm that names this is the screen's (B10).
+- **The keeper's own.** Setup on a machine that has a disk hibernates it if it is awake and keeps a point
+  named "Before setup" (`by: 'keeper'`) before it changes anything in the guest. A first setup has nothing
+  to keep.
+- A new disk (`makeDisk`) drops the old points with it. The points are local to the box and not in its
+  backups.
+
 ## Memory and the box
 
 The standing machine has 6 cores and 8 GB (`WINVM_CPUS`, `WINVM_MEM`); QEMU holds the memory it is given
@@ -168,5 +194,8 @@ take 24 GB.
   as the admin, the TPM kept, a second signal ignored, QEMU exiting by itself), and a process started
   through `stopBlocked` surviving SIGTERM, SIGINT and SIGHUP.
 - `index.test.ts`: the methods through the Work router, the model refusal, the capability rows, the push,
-  the stored setting.
-- The two rig runs above.
+  the stored setting, the point methods.
+- `points.test.ts`: points over a real qcow2 overlay on a backing image (qemu-img, qemu-io): the disk, the
+  firmware variables and the TPM put back, newest first, a delete, no path for an id.
+- The rig runs: `scripts/e2e-winvm-stop.ts` (the rig), `scripts/e2e-winvm-keeper.ts` and then
+  `scripts/e2e-winvm-points.ts` (the standing instance: save, change a file, go back, the file as it was).

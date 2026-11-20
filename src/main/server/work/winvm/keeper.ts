@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { WAKING_WORDS, type WinvmSleepAfter, type WinvmState, type WinvmStateName } from '@shared/contract-work-winvm'
+import { WAKING_WORDS, WINVM_POINTS_KEPT, type WinvmPoint, type WinvmSleepAfter, type WinvmState, type WinvmStateName } from '@shared/contract-work-winvm'
+import type { PointStore } from './points'
 import { DOOR_PORT, setupScript } from './setup'
 
 /**
@@ -65,7 +66,11 @@ export interface KeeperDeps {
   doorSocket: string
   sleepAfter(): WinvmSleepAfter
   setSleepAfter(v: WinvmSleepAfter): void
+  /** the restore points (points.ts) */
+  points: PointStore
   push(state: WinvmState): void
+  /** the points changed */
+  pushPoints?(points: WinvmPoint[]): void
   log(line: string): void
   now?: () => number
   /** how long a wake waits for Windows; default 5 min, setup's first boot and restart 10 min */
@@ -87,6 +92,9 @@ export const NOT_SET_UP = 'The Windows VM is not set up. Set it up in Settings â
 export const NO_SERVICE = "This box's build has no tc-computer.exe for the Windows VM."
 export const NO_DOOR = 'The service in the Windows VM did not answer.'
 export const NOT_HIBERNATED = 'Windows did not hibernate.'
+export const ONLY_ASLEEP = 'Restore points are made and used only while the Windows VM sleeps. Put it to sleep first.'
+export const NO_POINT = 'That restore point is gone.'
+export const BEFORE_SETUP = 'Before setup'
 
 const words = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
@@ -200,24 +208,89 @@ export class Keeper {
 
   /** Hibernates the guest. Resolves once QEMU has exited and the TPM is kept. */
   sleep(): Promise<WinvmState> {
+    return this.serial(() => this.hibernate())
+  }
+
+  /** The sleep itself, inside a change already running. */
+  private async hibernate(): Promise<WinvmState> {
+    if (!this.d.machine.running()) {
+      if (this.name === 'awake') this.set('asleep', null)
+      return this.state()
+    }
+    this.set('going-to-sleep', 'Hibernating Windows', null)
+    this.closeLink()
+    try {
+      await this.d.guest.hibernate()
+      if (!(await this.d.machine.stopped(this.t.hibernate))) throw new Error(NOT_HIBERNATED)
+      await this.d.machine.keepTpm()
+      this.set('asleep', null, null)
+      return this.state()
+    } catch (e) {
+      this.fail(e)
+      throw e
+    }
+  }
+
+  points(): WinvmPoint[] {
+    return this.d.points.list()
+  }
+
+  /** A restore point of the sleeping machine; past three, the oldest goes first. */
+  savePoint(name?: string, by: WinvmPoint['by'] = 'owner'): Promise<WinvmPoint> {
     return this.serial(async () => {
-      if (!this.d.machine.running()) {
-        if (this.name === 'awake') this.set('asleep', null)
-        return this.state()
-      }
-      this.set('going-to-sleep', 'Hibernating Windows', null)
-      this.closeLink()
+      this.mustSleep()
+      return this.keepPoint(name ?? 'Restore point', by)
+    })
+  }
+
+  /** Puts the disk, the firmware variables and the TPM back as the point holds them. The machine stays asleep; its next wake resumes the point. */
+  restorePoint(id: string): Promise<WinvmState> {
+    return this.serial(async () => {
+      this.mustSleep()
+      const point = this.d.points.list().find((p) => p.id === id)
+      if (!point) throw new Error(NO_POINT)
+      this.set('asleep', `Going back to ${point.name}`, null)
       try {
-        await this.d.guest.hibernate()
-        if (!(await this.d.machine.stopped(this.t.hibernate))) throw new Error(NOT_HIBERNATED)
-        await this.d.machine.keepTpm()
+        await this.d.points.restore(id)
+        this.d.log(`winvm: went back to the restore point ${point.name} of ${new Date(point.at).toISOString()}`)
         this.set('asleep', null, null)
         return this.state()
       } catch (e) {
-        this.fail(e)
+        this.set('asleep', null, words(e))
         throw e
       }
     })
+  }
+
+  deletePoint(id: string): Promise<WinvmPoint[]> {
+    return this.serial(async () => {
+      this.mustSleep()
+      if (!this.d.points.list().some((p) => p.id === id)) throw new Error(NO_POINT)
+      await this.d.points.remove(id)
+      return this.pointsChanged()
+    })
+  }
+
+  private mustSleep(): void {
+    const cannot = this.d.machine.cannot()
+    if (cannot) throw new Error(cannot)
+    if (!this.d.machine.hasDisk()) throw new Error(NOT_SET_UP)
+    if (this.d.machine.running() || this.name !== 'asleep') throw new Error(ONLY_ASLEEP)
+  }
+
+  private async keepPoint(name: string, by: WinvmPoint['by']): Promise<WinvmPoint> {
+    const kept = this.d.points.list()
+    for (const old of kept.slice(WINVM_POINTS_KEPT - 1)) await this.d.points.remove(old.id)
+    const point: WinvmPoint = { id: randomBytes(6).toString('hex'), name, at: this.now(), by }
+    await this.d.points.save(point)
+    this.pointsChanged()
+    return point
+  }
+
+  private pointsChanged(): WinvmPoint[] {
+    const points = this.d.points.list()
+    this.d.pushPoints?.(points)
+    return points
   }
 
   /**
@@ -229,9 +302,16 @@ export class Keeper {
     return this.serial(async () => {
       const cannot = this.d.machine.cannot()
       if (cannot) throw new Error(cannot)
-      this.set('setting-up', 'Making the disk', null)
       try {
-        if (!this.d.machine.hasDisk()) await this.d.machine.makeDisk()
+        if (this.d.machine.hasDisk()) {
+          // the keeper's own point before it changes the guest's setup, taken asleep
+          if (this.d.machine.running()) await this.hibernate()
+          this.set('setting-up', 'Keeping a restore point', null)
+          await this.keepPoint(BEFORE_SETUP, 'keeper')
+        } else {
+          this.set('setting-up', 'Making the disk', null)
+          await this.d.machine.makeDisk()
+        }
         this.set('setting-up', 'Starting Windows')
         this.closeLink()
         if (!this.d.machine.running()) await this.d.machine.start()

@@ -8,6 +8,7 @@ import { keepLiveTpm, qemuPid, saveTpm, startQemu, startTpm, stopTpm } from './m
 import { qmp, quit } from './machine/qmp'
 import { startWatcher } from './watcher'
 import type { VmMachine } from './keeper'
+import { QcowPoints, type PointStore } from './points'
 
 const run = promisify(execFile)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -46,6 +47,8 @@ export class StandingMachine implements VmMachine {
   async makeDisk(): Promise<void> {
     if (this.running()) throw new Error('the machine is running')
     rmSync(this.p.run, { recursive: true, force: true })
+    // a new disk has none of the old one's snapshots
+    rmSync(this.pointsDir, { recursive: true, force: true })
     mkdirSync(this.p.run, { recursive: true })
     await run('qemu-img', ['create', '-q', '-f', 'qcow2', '-b', this.p.baseDisk, '-F', 'qcow2', this.p.runDisk], { env: daemonEnv() })
     copyFileSync(this.p.baseVars, this.p.runVars)
@@ -91,6 +94,35 @@ export class StandingMachine implements VmMachine {
     await this.stopped(10_000)
     const pid = qemuPid(this.c, this.p)
     if (pid !== null) process.kill(pid, 'SIGKILL')
+  }
+
+  /** The restore points' files, one folder each, beside the run (never in it: a new disk clears the run). */
+  get pointsDir(): string {
+    return join(this.c.dir, 'points')
+  }
+
+  /**
+   * The restore points of this machine's disk. A point is taken of the stopped machine only, so the TPM's
+   * live state is kept first when it is newer than the run's copy (a crash, the guest's own stop).
+   */
+  points(): PointStore {
+    const qcow = new QcowPoints({ disk: this.p.runDisk, vars: this.p.runVars, tpm: this.p.runTpm, dir: this.pointsDir })
+    const settled = async () => {
+      if (this.running()) throw new Error('the machine is running')
+      await keepLiveTpm(this.c, this.p)
+    }
+    return {
+      list: () => qcow.list(),
+      save: async (point) => {
+        await settled()
+        await qcow.save(point)
+      },
+      restore: async (id) => {
+        await settled()
+        await qcow.restore(id)
+      },
+      remove: (id) => qcow.remove(id)
+    }
   }
 
   /** The QEMU pid, for a proof that signals it. */

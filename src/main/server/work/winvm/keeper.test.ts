@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { WAKING_WORDS, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
-import { Keeper, NO_DOOR, NO_SERVICE, NOT_HIBERNATED, NOT_SET_UP, type DoorLink, type KeeperDeps, type VmGuest, type VmMachine } from './keeper'
+import type { WinvmPoint } from '@shared/contract-work-winvm'
+import { BEFORE_SETUP, Keeper, NO_DOOR, NO_POINT, NO_SERVICE, NOT_HIBERNATED, NOT_SET_UP, ONLY_ASLEEP, type DoorLink, type KeeperDeps, type VmGuest, type VmMachine } from './keeper'
+import type { PointStore } from './points'
 import { DISALLOWED, NO_RUN_FOLDERS, SETUP_STEPS, TERMINAL_DELEGATION } from './setup'
 
 /**
@@ -17,6 +19,8 @@ class FakeMachine implements VmMachine {
   tpmKept = 0
   /** the guest's hibernate stops QEMU unless this is set */
   hangs = false
+  /** what is on the disk, for the points */
+  contents = 'v1'
   cannot = () => (this.base ? null : 'The box has no Windows base image yet.')
   hasDisk = () => this.disk
   running = () => this.up
@@ -32,6 +36,27 @@ class FakeMachine implements VmMachine {
   }
   async keepTpm() {
     this.tpmKept++
+  }
+}
+
+/** Points over the fake machine: each holds the machine's "disk" as it was. */
+class FakePoints implements PointStore {
+  kept: (WinvmPoint & { disk: string })[] = []
+  restored: string[] = []
+  constructor(private m: FakeMachine) {}
+  list() {
+    return this.kept.map(({ disk: _d, ...p }) => p).sort((a, b) => b.at - a.at)
+  }
+  async save(p: WinvmPoint) {
+    if (this.m.up) throw new Error('running')
+    this.kept.push({ ...p, disk: this.m.contents })
+  }
+  async restore(id: string) {
+    this.m.contents = this.kept.find((p) => p.id === id)!.disk
+    this.restored.push(id)
+  }
+  async remove(id: string) {
+    this.kept = this.kept.filter((p) => p.id !== id)
   }
 }
 
@@ -98,6 +123,8 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
   machine.disk = o.disk ?? true
   machine.up = o.up ?? false
   const guest = new FakeGuest(machine, () => token)
+  const points = new FakePoints(machine)
+  const pointPushes: WinvmPoint[][] = []
   const pushes: WinvmState[] = []
   let sleepAfter: WinvmSleepAfter = '30m'
   let now = 1_000_000
@@ -110,7 +137,9 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
     doorSocket: '/run/door.sock',
     sleepAfter: () => sleepAfter,
     setSleepAfter: (v) => (sleepAfter = v),
+    points,
     push: (s) => pushes.push(s),
+    pushPoints: (p) => pointPushes.push(p),
     log: () => {},
     now: () => now,
     timeouts: { knock: 0, knockEvery: 1 }
@@ -121,6 +150,8 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
     machine,
     guest,
     pushes,
+    points,
+    pointPushes,
     states: () => pushes.map((p) => p.state),
     advance: (ms: number) => (now += ms),
     token: () => token
@@ -325,11 +356,23 @@ describe('setup', () => {
     expect(script).toContain('T'.repeat(64))
   })
 
-  it('on a machine already set up keeps its disk and its token', async () => {
+  it('on a machine already set up keeps its disk and its token, and keeps a point of its own first', async () => {
     const r = make({ disk: true })
     await r.keeper.setup()
     expect(r.token()).toBe('T'.repeat(64))
     expect(r.machine.starts).toBe(1)
+    expect(r.keeper.points()).toMatchObject([{ name: BEFORE_SETUP, by: 'keeper' }])
+    expect(r.pushes.map((p) => p.step)).toContain('Keeping a restore point')
+  })
+
+  it('on an awake machine hibernates it before its own point, then sets it up', async () => {
+    const r = make({ disk: true })
+    await r.keeper.wake()
+    r.pushes.length = 0
+    await r.keeper.setup()
+    expect(r.states().slice(0, 3)).toEqual(['going-to-sleep', 'asleep', 'setting-up'])
+    expect(r.points.kept).toHaveLength(1)
+    expect(r.keeper.state().state).toBe('awake')
   })
 
   it('a failure leaves the state that is true, with what went wrong', async () => {
@@ -347,3 +390,50 @@ describe('setup', () => {
     await expect(r.keeper.setup()).rejects.toThrow('no Windows base image')
   })
 })
+
+describe('restore points', () => {
+  it('saves, lists newest first, and pushes the list', async () => {
+    const r = make()
+    const a = await r.keeper.savePoint('Clean')
+    r.advance(1000)
+    const b = await r.keeper.savePoint()
+    expect(r.keeper.points().map((p) => p.id)).toEqual([b.id, a.id])
+    expect(b).toMatchObject({ name: 'Restore point', by: 'owner' })
+    expect(r.pointPushes.at(-1)?.map((p) => p.id)).toEqual([b.id, a.id])
+  })
+
+  it('keeps three at most: a fourth drops the oldest', async () => {
+    const r = make()
+    const ids: string[] = []
+    for (let i = 0; i < 4; i++) {
+      ids.push((await r.keeper.savePoint(`p${i}`)).id)
+      r.advance(1000)
+    }
+    expect(r.keeper.points().map((p) => p.name)).toEqual(['p3', 'p2', 'p1'])
+    expect(r.keeper.points().some((p) => p.id === ids[0])).toBe(false)
+  })
+
+  it('goes back to a point: the disk as it was, the machine still asleep', async () => {
+    const r = make()
+    const p = await r.keeper.savePoint('Clean')
+    r.machine.contents = 'v2'
+    const s = await r.keeper.restorePoint(p.id)
+    expect(r.machine.contents).toBe('v1')
+    expect(s).toMatchObject({ state: 'asleep', step: null, error: null })
+    expect(r.pushes.map((x) => x.step)).toContain('Going back to Clean')
+  })
+
+  it('refuses all three unless it sleeps, and a point that is gone', async () => {
+    const r = make()
+    const p = await r.keeper.savePoint('Clean')
+    await r.keeper.wake()
+    await expect(r.keeper.savePoint()).rejects.toThrow(ONLY_ASLEEP)
+    await expect(r.keeper.restorePoint(p.id)).rejects.toThrow(ONLY_ASLEEP)
+    await expect(r.keeper.deletePoint(p.id)).rejects.toThrow(ONLY_ASLEEP)
+    await r.keeper.sleep()
+    await expect(r.keeper.restorePoint('nope00')).rejects.toThrow(NO_POINT)
+    expect(await r.keeper.deletePoint(p.id)).toEqual([])
+    await expect(make({ disk: false }).keeper.savePoint()).rejects.toThrow(NOT_SET_UP)
+  })
+})
+

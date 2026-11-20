@@ -36,6 +36,20 @@ export interface WinvmState {
   since: number
 }
 
+/**
+ * A restore point: the disk's snapshot taken while the machine slept, with its firmware variables and its
+ * TPM's state beside it. `by`: his press, or the keeper's own before it changed the guest's setup.
+ */
+export interface WinvmPoint {
+  id: string
+  name: string
+  at: number
+  by: 'owner' | 'keeper'
+}
+
+/** How many restore points are kept: a new one past this drops the oldest. */
+export const WINVM_POINTS_KEPT = 3
+
 export interface WinvmSettings {
   sleepAfter: WinvmSleepAfter
 }
@@ -50,10 +64,18 @@ export const WinvmRequestSchemas = [
   /** → WinvmState: makes the disk from the base image and sets the guest up (the service, its logon task, hibernate, the policies). A person's alone. */
   request('work.winvm.setup', z.object({})),
   /** → WinvmSettings, with `sleepAfter` set when given. A person's alone. */
-  request('work.winvm.settings', z.object({ sleepAfter: z.enum(WINVM_SLEEP_AFTER).optional() }))
+  request('work.winvm.settings', z.object({ sleepAfter: z.enum(WINVM_SLEEP_AFTER).optional() })),
+  /** → { points: WinvmPoint[] }, newest first */
+  request('work.winvm.points', z.object({})),
+  /** → WinvmPoint: only while it sleeps; past three, the oldest goes. A person's alone. */
+  request('work.winvm.point.save', z.object({ name: z.string().trim().min(1).max(80).optional() })),
+  /** → WinvmState: the disk, firmware and TPM put back as the point holds them; only while it sleeps. The confirm is the screen's. A person's alone. */
+  request('work.winvm.point.restore', z.object({ id: z.string().min(1).max(64) })),
+  /** → { points: WinvmPoint[] }: only while it sleeps. A person's alone. */
+  request('work.winvm.point.delete', z.object({ id: z.string().min(1).max(64) }))
 ] as const
 
-export type WinvmPush = { push: 'work.winvm'; state: WinvmState }
+export type WinvmPush = { push: 'work.winvm'; state: WinvmState } | { push: 'work.winvm.points'; points: WinvmPoint[] }
 
 export const WINVM_CAPS = {
   'work.winvm.state': 'read',
@@ -62,6 +84,11 @@ export const WINVM_CAPS = {
   // changes the machine itself: an admin's
   'work.winvm.setup': 'admin',
   // reads and sets a host setting: an admin's
-  'work.winvm.settings': 'admin'
+  'work.winvm.settings': 'admin',
+  'work.winvm.points': 'read',
+  'work.winvm.point.save': 'operate',
+  // each puts the machine back or drops a point for good: an admin's
+  'work.winvm.point.restore': 'admin',
+  'work.winvm.point.delete': 'admin'
 } satisfies CapsOf<typeof WinvmRequestSchemas>
 export const WINVM_RELAY = {} satisfies RelayOf<typeof WinvmRequestSchemas>
