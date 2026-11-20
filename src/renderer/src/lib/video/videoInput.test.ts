@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { InputEvent } from "@server/shared/video/nsl1";
 import { encodeInput, parseInput } from "@server/shared/video/nsl1";
-import { HID_KEYS, VideoInput } from "./videoInput";
+import { HID_KEYS, VideoInput, attachInput } from "./videoInput";
 
 function rig(mac = false) {
   const sent: InputEvent[] = [];
@@ -238,5 +238,20 @@ describe("leaving the picture", () => {
     mac.input.keyDown({ code: "AltRight", ctrlKey: true });
     mac.input.keyUp({ code: "ControlLeft" });
     expect(mac.left()).toBe(1);
+  });
+});
+
+describe("the window the picture is in", () => {
+  it("lets go of every key he holds when that window loses focus, the pop-out's own and not the main window's", () => {
+    const r = rig();
+    const view = new EventTarget();
+    const el = Object.assign(new EventTarget(), { ownerDocument: { defaultView: view }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) }) as unknown as HTMLElement;
+    const detach = attachInput(el, r.input);
+    r.input.keyDown({ code: "KeyA" });
+    expect(r.keys()).toEqual(["+4"]);
+    view.dispatchEvent(new Event("blur"));
+    // the far side lets go of everything at once
+    expect(r.keys()).toEqual(["+4", "releaseAll"]);
+    detach();
   });
 });

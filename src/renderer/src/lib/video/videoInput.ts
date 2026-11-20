@@ -285,7 +285,9 @@ export function attachInput(el: HTMLElement, input: VideoInput): () => void {
   el.addEventListener("wheel", onWheel, { passive: false });
   el.addEventListener("contextmenu", onMenu);
   el.addEventListener("blur", release);
-  window.addEventListener("blur", release);
+  // the window the picture is in, which is the pop-out's own for a picture there: when it loses focus, what he holds is let go
+  const view = el.ownerDocument.defaultView ?? window;
+  view.addEventListener("blur", release);
   return () => {
     el.removeEventListener("keydown", onKeyDown);
     el.removeEventListener("keyup", onKeyUp);
@@ -297,7 +299,7 @@ export function attachInput(el: HTMLElement, input: VideoInput): () => void {
     el.removeEventListener("wheel", onWheel);
     el.removeEventListener("contextmenu", onMenu);
     el.removeEventListener("blur", release);
-    window.removeEventListener("blur", release);
+    view.removeEventListener("blur", release);
     input.release();
   };
 }
