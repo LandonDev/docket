@@ -40,8 +40,10 @@ export type OutboxView = {
   waiting: HostItem[];
   sent: HostItem[];
   grants: HostGrant[];
-  /** every host with Work on has answered once */
+  /** every host with Work on has answered once, or failed to */
   loaded: boolean;
+  /** every host with Work on has answered, none failed: only then is an empty list known to be clear */
+  complete: boolean;
   /** hosts whose list did not come back, with why */
   errors: { environmentId: string; error: string }[];
 };
@@ -70,6 +72,7 @@ function view(): OutboxView {
     sent: on.flatMap((h) => h.sent).sort((a, b) => (b.decidedAt ?? b.updatedAt) - (a.decidedAt ?? a.updatedAt)),
     grants: on.flatMap((h) => h.grants).sort((a, b) => b.createdAt - a.createdAt),
     loaded: workSwitch.hosts().size > 0 && [...workSwitch.hosts()].every((id) => hosts.get(id)?.loaded),
+    complete: workSwitch.hosts().size > 0 && [...workSwitch.hosts()].every((id) => hosts.get(id)?.loaded && !hosts.get(id)?.error),
     errors: [...hosts].filter(([id, h]) => workSwitch.hosts().has(id) && h.error).map(([environmentId, h]) => ({ environmentId, error: h.error! })),
   };
   return snapshot;

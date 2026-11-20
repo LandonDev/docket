@@ -253,10 +253,10 @@ export const tempcodeMailKit: MailKit = {
   undo: undoLast,
   // Mail's settings are under Settings, Work.
   openSettings: () => shell.openSettings("work"),
-  // An invitation's event is in the workspace's Agenda.
-  openEvent: () => {
+  // An invitation's event is in the workspace's Agenda: it opens on that event's week, whatever month it is in.
+  openEvent: (eventId) => {
     const at = workViewNow();
-    if (at) openWorkView({ workspaceId: at.workspaceId, view: "agenda" });
+    if (at) openWorkView({ workspaceId: at.workspaceId, view: "agenda", event: eventId });
   },
   fetchImage: async (url) => (await fetch(url)).blob(),
   Boundary,

@@ -208,6 +208,9 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
   }
   if ((face.kind === "picture" || face.kind === "live") && face.onOpen) {
     const open = face.onOpen;
+    // One element from the stream's start: a live box that opens is this button before its first frame too (off until
+    // a frame is there to open), so the frame's arrival never swaps the element and drops the canvas that took it.
+    const closed = face.kind === "live" && !face.drawn;
     return (
       <div {...wrap}>
         <button
@@ -215,9 +218,10 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
           type="button"
           aria-label={label}
           data-face={face.kind}
+          disabled={closed}
           {...(face.kind === "live" ? { "data-frames": frames, "data-marks": marks } : {})}
           onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
-          className={cn(boxClass, "cursor-zoom-in")}
+          className={cn(boxClass, closed ? "cursor-default" : "cursor-zoom-in")}
           style={boxStyle}
         >
           {picture}
@@ -347,10 +351,11 @@ export function liveFace(stream: LiveStream, onOpen?: (from: DOMRect) => void): 
   const drawn = stream.state.status === "live" && stream.state.drawn;
   // keyed by what draws on it: when video gives way to the picture, the picture gets a canvas nothing was handed off
   const picture = <canvas key={stream.mode} ref={stream.canvas} aria-hidden="true" className={pictureClass(drawn)} />;
-  // while he drives from here the picture is his way into the page, and a click on it is the page's; otherwise
-  // the full view opens from a picture that is there to open
+  // while he drives from here the picture is his way into the page, and a click on it is the page's; otherwise the box
+  // that opens the full view is the same element before and after the first frame (Viewport turns it on once `drawn`),
+  // so the canvas that took the frame stays
   if (stream.drive) return { kind: "live", drawn, picture, mark: <ClickMark ref={stream.ring} />, driving: true };
-  return { kind: "live", drawn, picture, mark: <ClickMark ref={stream.ring} />, ...(onOpen && drawn ? { onOpen } : {}) };
+  return { kind: "live", drawn, picture, mark: <ClickMark ref={stream.ring} />, ...(onOpen ? { onOpen } : {}) };
 }
 
 /** The widest a stream's box is drawn: the frame's own pixels on this screen. Null before a frame's size is known. */

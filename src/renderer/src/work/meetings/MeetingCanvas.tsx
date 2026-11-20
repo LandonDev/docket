@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Meeting } from "@shared/contract-work-meetings";
 import type { CanvasSource } from "@shared/work";
 import { ChevronLeft, ChevronRight, Copy, Search, X } from "../../chrome/icons";
@@ -280,7 +280,8 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   return (
     <div data-meeting={meeting.status} className="flex min-h-0 flex-1 flex-col">
       {hasPlayer ? <PlayerRow meeting={meeting} player={player} span={span} /> : null}
-      <div ref={scroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+      {/* Focusable from code alone (no Tab stop of its own): where Find gives the focus back when the bar holds no Find. */}
+      <div ref={scroller} data-meeting-pane={item.id} tabIndex={-1} className="focus-ring min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {meeting.status === "failed" ? (
           <Failed meeting={meeting} onRetry={() => startMeeting(env, item.id).then(() => undefined, (err: unknown) => sayError(err, "Couldn't start it again"))} />
         ) : tab === "notes" ? (
@@ -316,6 +317,21 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
   const view = state ?? FIRST;
   const { meeting, loaded, error } = useMeeting(env, item.id);
   const input = useRef<HTMLInputElement>(null);
+  // Escape and Close find give the focus back to Find, or to the transcript pane when the bar holds no Find (it gives way
+  // to the stepper while tasks wait): never to the body.
+  const findButton = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  const finding = !!view.find;
+  useLayoutEffect(() => {
+    if (finding || !refocus.current) return;
+    refocus.current = false;
+    const target = findButton.current ?? document.querySelector<HTMLElement>(`[data-meeting-pane="${CSS.escape(item.id)}"]`);
+    target?.focus({ preventScroll: true });
+  }, [finding, item.id]);
+  const closeFind = (): void => {
+    refocus.current = true;
+    setState({ ...view, find: null });
+  };
   if (!meeting && !loaded) return <Skeleton data-meeting-bar-bone className="h-3 w-24" />;
   if (!meeting || meeting.status === "empty" || (error && !meeting)) return null;
   const notes = meeting.status === "ready" && meeting.notes !== null;
@@ -364,7 +380,7 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
                   move(event.shiftKey ? -1 : 1);
                 } else if (event.key === "Escape") {
                   event.preventDefault();
-                  setState({ ...view, find: null });
+                  closeFind();
                 }
               }}
             />
@@ -383,14 +399,14 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
             </Button>
           </Tip>
           <Tip label="Close find">
-            <Button variant="ghost" size="icon-xs" aria-label="Close find" onClick={() => setState({ ...view, find: null })}>
+            <Button variant="ghost" size="icon-xs" aria-label="Close find" onClick={closeFind}>
               <X />
             </Button>
           </Tip>
         </div>
       ) : (
         <Tip label="Find">
-          <Button variant="ghost" size="icon-xs" aria-label="Find" className="ms-auto text-muted-foreground" onClick={() => setState({ ...view, tab: "transcript", find: { query: "", index: 0 } })}>
+          <Button ref={findButton} variant="ghost" size="icon-xs" aria-label="Find" className="ms-auto text-muted-foreground" onClick={() => setState({ ...view, tab: "transcript", find: { query: "", index: 0 } })}>
             <Search />
           </Button>
         </Tip>

@@ -17,8 +17,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 /**
- * The page's one status line, beside the root and never redrawn with it: it says each Send's outcome and keeps
- * saying it, so a screen reader hears what happened even when the focus did not move.
+ * The page's one status line, beside the root and never redrawn with it: it says an outcome that replaces the form
+ * (sent, closed) and keeps saying it, so a screen reader hears what happened even when the focus did not move. A
+ * failure leaves the form standing and is said once, by its own alert beside Send or its question's error.
  */
 function statusFor(root: HTMLElement): HTMLElement {
   const next = root.nextElementSibling
@@ -247,14 +248,12 @@ export function renderForm(root: HTMLElement, f: PublicForm, base: string, fetch
         // A gateway's failure with none of the service's words: the answer may have been written before it.
         const unknown = r.status >= 500 && !body.error
         const text = unknown ? UNCONFIRMED : (body.error ?? 'Your answer was not sent. Try again.')
-        outcome(unknown || text.startsWith('Your answer was not sent') ? text : `Your answer was not sent. ${text}`)
         release()
         showError(body.question, text)
         if (!body.question) backToSend()
       })
       .catch(() => {
         // No reply came: the service may have written the row before the line went, so this cannot say it was not sent.
-        outcome(UNCONFIRMED)
         release()
         showError(undefined, UNCONFIRMED)
         backToSend()

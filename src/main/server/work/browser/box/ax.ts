@@ -120,7 +120,10 @@ export class IndexBook {
 }
 
 const prop = (n: AxNode, name: string): unknown => n.properties?.find((p) => p.name === name)?.value.value
-const text = (v: AxValue | undefined): string => (v?.value === undefined || v.value === null ? '' : String(v.value)).trim()
+const rawText = (v: AxValue | undefined): string => (v?.value === undefined || v.value === null ? '' : String(v.value))
+const text = (v: AxValue | undefined): string => rawText(v).trim()
+/** Roles whose value is what a send would carry: always printed, raw (outward.ts `screenMark` binds them). */
+const EDITABLE_ROLES: ReadonlySet<string> = new Set(['input', 'text area', 'combo box', 'search', 'pop up'])
 
 export interface ReadOptions {
   /** the page's key in the book: its target id */
@@ -160,8 +163,11 @@ export function readTree(nodes: readonly AxNode[], book: IndexBook, o: ReadOptio
     if (role === 'input' && backend !== null && o.passwords.has(`${frame}:${backend}`)) role = 'password'
     if (role === 'input' && prop(n, 'multiline') === true) role = 'text area'
     const name = text(n.name)
-    let value = role && !['password', 'checkbox', 'switch', 'radio'].includes(role) ? text(n.value) : ''
-    if (value && (STRUCTURAL_ROLES.has(role!) || ['group', 'heading', 'row', 'cell', 'tabs', 'toolbar', 'menu bar'].includes(role!) || value === name)) value = ''
+    // A field's value is what would go: printed raw, never trimmed, and even when it repeats the field's name (a
+    // composer named by its own text), so a change anywhere in it is seen and a long one is read again whole.
+    const editable = !!role && EDITABLE_ROLES.has(role)
+    let value = role && !['password', 'checkbox', 'switch', 'radio'].includes(role) ? (editable ? rawText(n.value) : text(n.value)) : ''
+    if (value && !editable && (STRUCTURAL_ROLES.has(role!) || ['group', 'heading', 'row', 'cell', 'tabs', 'toolbar', 'menu bar'].includes(role!) || value === name)) value = ''
     const states = role ? statesOf(n, role) : []
     const keep =
       !!role &&

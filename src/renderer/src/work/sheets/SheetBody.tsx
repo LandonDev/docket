@@ -350,8 +350,10 @@ function PlacedChart({ chart, grid, handle, tick, locked, width, remove }: { cha
 
 /** One of our charts: plain bars on the neutral, named by the range's first column, one series, no legend. */
 export function ChartObject({ chart, bars, locked, width = CHART_WIDTH, remove }: { chart: SheetChart; bars: Bars[]; locked: boolean; width?: number; remove(): void }) {
-  const { top, ticks } = chartTicks(bars.reduce((m, b) => Math.max(m, b.value), 0));
-  const pct = (n: number): string => `${Math.max(0, Math.min(100, (n / top) * 100)).toFixed(1)}%`;
+  // A signed scale: a credit runs left of the zero line by its size, never drawn as a zero.
+  const { top, bottom, ticks } = chartTicks(bars.reduce((m, b) => Math.max(m, b.value), 0), bars.reduce((m, b) => Math.min(m, b.value), 0));
+  const at = (n: number): number => Math.max(0, Math.min(100, ((n - bottom) / (top - bottom)) * 100));
+  const pct = (n: number): string => `${at(n).toFixed(1)}%`;
   return (
     <div data-sheet-chart={chart.id} className="flex max-w-full flex-col gap-2 rounded-lg border border-border bg-background p-3" style={{ width }}>
       <div className="flex h-5 min-w-0 items-center gap-2 text-xs">
@@ -373,12 +375,21 @@ export function ChartObject({ chart, bars, locked, width = CHART_WIDTH, remove }
       {bars.length === 0 ? (
         <div className="flex h-[22px] items-center text-xs text-muted-foreground">No numbers in {chart.range}</div>
       ) : (
-        <div>
+        <div className="relative">
+          {/* Zero is the bars' start; with a credit among them it sits inside the plot as a hairline the bars leave from. */}
+          {bottom < 0 ? (
+            <i aria-hidden data-sheet-zero className="pointer-events-none absolute inset-y-0 w-0 border-s border-border" style={{ left: `calc(84px + (100% - 84px) * ${(at(0) / 100).toFixed(4)})` }} />
+          ) : null}
           {bars.map((bar, i) => (
             <div key={i} className="flex h-[22px] items-center gap-2 text-xs text-muted-foreground">
               <span className="w-[76px] flex-none truncate">{bar.label}</span>
-              <span className="min-w-0 flex-1">
-                <span data-sheet-bar className="block h-1.5 rounded-[2px] bg-(--chart-neutral)" style={{ width: pct(bar.value) }} />
+              <span className="relative h-1.5 min-w-0 flex-1">
+                <span
+                  data-sheet-bar
+                  data-sign={bar.value < 0 ? "negative" : undefined}
+                  className="absolute inset-y-0 rounded-[2px] bg-(--chart-neutral)"
+                  style={{ left: pct(Math.min(0, bar.value)), width: `${(at(Math.max(0, bar.value)) - at(Math.min(0, bar.value))).toFixed(1)}%` }}
+                />
               </span>
             </div>
           ))}

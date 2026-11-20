@@ -16,7 +16,7 @@ import { defineChunk } from "../../lib/lazyChunk";
 import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
-import { chartWidth } from "./SheetBody";
+import { ChartObject, chartWidth } from "./SheetBody";
 import { EDIT_MAX, LOAD_MAX } from "./host";
 import { EDIT_WAIT, resetSheetSyncs } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, suggestion, workbookOf, type FakeGrid, type FakeSheetHost } from "./testkit";
@@ -317,6 +317,40 @@ describe("the sheet kind", () => {
     // A1:E5's first column names the bars and its second sizes them; the header and Ground (no quantity) have no number.
     expect(chart.querySelectorAll("[data-sheet-bar]")).toHaveLength(3);
     expect(within(chart).getByText("Flights")).toBeTruthy();
+  });
+
+  it("draws a credit left of a zero line by its size, never as a zero, on a signed axis", () => {
+    const chart = { id: "c2", sheet: "budget", range: "A1:B4", title: "Net", row: 1, col: 4 };
+    const { container, unmount } = render(
+      <ChartObject chart={chart} locked bars={[{ label: "Flights", value: 4000 }, { label: "Refund", value: -2000 }, { label: "Fees", value: 0 }]} remove={() => undefined} />,
+    );
+    const bars = [...container.querySelectorAll<HTMLElement>("[data-sheet-bar]")];
+    // The axis runs -2k to 4k: zero sits a third of the way along, and the credit fills the third left of it.
+    expect([...container.querySelectorAll("[data-sheet-chart] .tabular-nums span")].map((t) => t.textContent)).toEqual(["\u22122k", "0", "2k", "4k"]);
+    const zero = container.querySelector<HTMLElement>("[data-sheet-zero]")!;
+    expect(zero).not.toBeNull();
+    expect(zero.className).toContain("border-border");
+    expect(zero.style.left).toContain("0.3333");
+    expect(parseFloat(bars[0]!.style.left)).toBeCloseTo(33.3, 1);
+    expect(parseFloat(bars[0]!.style.width)).toBeCloseTo(66.7, 1);
+    expect(bars[1]!.getAttribute("data-sign")).toBe("negative");
+    expect(parseFloat(bars[1]!.style.left)).toBeCloseTo(0.0, 1);
+    expect(parseFloat(bars[1]!.style.width)).toBeCloseTo(33.3, 1);
+    // A true zero is a zero: no length.
+    expect(parseFloat(bars[2]!.style.width)).toBeCloseTo(0.0, 1);
+    unmount();
+    // All credits: the bars run left from zero at the right end; the ticks are all signed.
+    const all = render(<ChartObject chart={chart} locked bars={[{ label: "Refund", value: -3000 }, { label: "Credit", value: -1000 }]} remove={() => undefined} />).container;
+    const credit = [...all.querySelectorAll<HTMLElement>("[data-sheet-bar]")];
+    expect(credit.map((b) => b.getAttribute("data-sign"))).toEqual(["negative", "negative"]);
+    expect(parseFloat(credit[0]!.style.left)).toBeCloseTo(0.0, 1);
+    expect(parseFloat(credit[0]!.style.width)).toBeCloseTo(100.0, 1);
+    expect(parseFloat(credit[1]!.style.left)).toBeCloseTo(66.7, 1);
+    expect(parseFloat(credit[1]!.style.width)).toBeCloseTo(33.3, 1);
+    expect(all.querySelector<HTMLElement>("[data-sheet-zero]")!.style.left).toMatch(/84px \+ 1 \*|\* 1\.0000/);
+    // An all-positive chart keeps its look: zero is the bars' start, with no line drawn in the plot.
+    const plain = render(<ChartObject chart={chart} locked bars={[{ label: "Flights", value: 5768 }]} remove={() => undefined} />).container;
+    expect(plain.querySelector("[data-sheet-zero]")).toBeNull();
   });
 
   it("makes a chart from a selection two columns wide through More", async () => {

@@ -5,7 +5,7 @@
  * the bar, a figure opening where it came from, a proposed block stepped
  * from the bar, the stale page, an empty one and a read that failed.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardView, DashFrom } from "@shared/contract-work-dashboards";
 import type { CanvasItem } from "@shared/work";
@@ -120,7 +120,8 @@ describe("the dashboard kind", () => {
     const body = await found("[data-dashboard]");
     expect([...body.querySelectorAll("[data-figure]")].map((f) => f.textContent)).toEqual(["Outstanding$7,4204 invoices", "Overdue3$6,170", "Balance$2,180"]);
     // Read aloud as the hover says them, whole: never the axis's rounded "$10.4K".
-    expect(screen.getByRole("img", { name: "Paid by month: Oct $10,400, Nov $12,300" })).toBeTruthy();
+    const chart = screen.getByRole("group", { name: "Paid by month" });
+    expect(within(chart).getAllByRole("img").map((m) => m.getAttribute("aria-label"))).toEqual(["Oct, $10,400", "Nov, $12,300"]);
     expect(body.querySelector("table")?.textContent).toContain("Rivera Dental");
     const asOf = await found("[data-dash-asof]");
     expect(asOf.textContent).toMatch(/^As of /);
@@ -240,9 +241,10 @@ describe("the dashboard kind, round two", () => {
     const base = page();
     const close = { ...base.blocks[1], title: "Paid by month", bars: [{ label: "Oct", value: 12340 }, { label: "Nov", value: 12310.5 }] } as (typeof base.blocks)[number];
     open({ ...base, blocks: [close] });
-    const chart = (await found("[data-dashboard]")).querySelector<HTMLElement>('[role="img"]')!;
-    expect(chart.getAttribute("aria-label")).toBe("Paid by month: Oct $12,340, Nov $12,310.5");
-    expect(chart.getAttribute("aria-label")).not.toContain("K");
+    const chart = (await found("[data-dashboard]")).querySelector<HTMLElement>("[data-chart]")!;
+    const said = [...chart.querySelectorAll('[role="img"]')].map((m) => m.getAttribute("aria-label"));
+    expect(said).toEqual(["Oct, $12,340", "Nov, $12,310.5"]);
+    expect(said.join()).not.toContain("K");
   });
 
   it("draws a negative bar below zero on a signed axis, and says its amount with the minus sign", async () => {
@@ -250,10 +252,10 @@ describe("the dashboard kind, round two", () => {
     const mixed = { ...base.blocks[1], title: "Net by month", bars: [{ label: "Oct", value: 10400 }, { label: "Nov", value: -2000 }] } as (typeof base.blocks)[number];
     open({ ...base, blocks: [mixed] });
     const body = await found("[data-dashboard]");
-    const chart = body.querySelector<HTMLElement>('[role="img"]')!;
+    const chart = body.querySelector<HTMLElement>("[data-chart]")!;
     // The compact form may keep a ".0" by the runtime's ICU; the sign is what is under test.
     const words = (s: string | null): string => (s ?? "").replace(/\.0(?=K|,|$)/g, "");
-    expect(chart.getAttribute("aria-label")).toBe("Net by month: Oct $10,400, Nov \u2212$2,000");
+    expect([...chart.querySelectorAll('[role="img"]')].map((m) => m.getAttribute("aria-label"))).toEqual(["Oct, $10,400", "Nov, \u2212$2,000"]);
     expect([...chart.querySelectorAll("[data-tick]")].map((t) => words(t.textContent))).toEqual(["\u2212$5K", "$0", "$5K", "$10K", "$15K"]);
     // Zero sits a quarter up the plot: the rise starts there, the fall hangs from it.
     const [up, down] = [...chart.querySelectorAll<HTMLElement>("i[data-bar]")];
@@ -266,7 +268,7 @@ describe("the dashboard kind, round two", () => {
     cleanup();
     const loss = { ...base.blocks[1], title: "Refunds", bars: [{ label: "Valorant", value: -300 }, { label: "Marvel Rivals", value: -1200 }] } as (typeof base.blocks)[number];
     open({ ...base, blocks: [loss] });
-    const all = (await found("[data-dashboard]")).querySelector<HTMLElement>('[role="img"]')!;
+    const all = (await found("[data-dashboard]")).querySelector<HTMLElement>("[data-chart]")!;
     expect([...all.querySelectorAll("[data-tick]")].map((t) => words(t.textContent))).toEqual(["\u2212$1.5K", "\u2212$1K", "\u2212$500", "$0"]);
     for (const bar of all.querySelectorAll<HTMLElement>("i[data-bar]")) expect(bar.dataset.sign).toBe("negative");
     expect(all.querySelectorAll("i[data-bar]")[1]!.getAttribute("style")).toContain("height: 80%");
@@ -281,6 +283,33 @@ describe("the dashboard kind, round two", () => {
     const sub = [...body.querySelectorAll('[data-figure="f1"] span')].find((el) => el.textContent === "4 invoices")!;
     expect(sub.className).toContain("truncate");
     expect(sub.className).not.toContain("whitespace-nowrap");
+  });
+});
+
+describe("the dashboard kind, round thirteen", () => {
+  it("lets the keyboard walk the chart's marks, one Tab stop, each showing on focus the readout it shows on hover", async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    open(page());
+    const chart = (await found("[data-dashboard]")).querySelector<HTMLElement>("[data-chart]")!;
+    expect(chart.getAttribute("role")).toBe("group");
+    // The ticks and the labels are for the eye: each value is said once, by its mark.
+    expect(chart.querySelector("[data-tick]")!.closest("[aria-hidden]")).toBeTruthy();
+    expect(chart.querySelector("[data-chart-labels]")!.getAttribute("aria-hidden")).toBe("true");
+    const marks = [...chart.querySelectorAll<HTMLElement>('[role="img"]')];
+    expect(marks.map((m) => m.getAttribute("tabindex"))).toEqual(["0", "-1"]);
+    expect(marks[0]!.className).toContain("focus-ring");
+    const tip = () => document.querySelector('[data-slot="tooltip-content"]')?.textContent;
+    act(() => marks[0]!.focus());
+    await waitFor(() => expect(tip()).toBe("Oct, $10,400"));
+    fireEvent.keyDown(marks[0]!, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(marks[1]);
+    await waitFor(() => expect(tip()).toBe("Nov, $12,300"));
+    expect(marks.map((m) => m.getAttribute("tabindex"))).toEqual(["-1", "0"]);
+    fireEvent.keyDown(marks[1]!, { key: "Home" });
+    expect(document.activeElement).toBe(marks[0]);
   });
 });
 
@@ -299,7 +328,7 @@ describe("the dashboard kind, round five", () => {
       });
       open({ ...base, blocks: [base.blocks[0], chart] });
       const body = await found("[data-dashboard]");
-      const plot = body.querySelector<HTMLElement>('[role="img"]')!;
+      const plot = body.querySelector<HTMLElement>("[data-chart]")!;
       const labels = plot.querySelector<HTMLElement>("[data-chart-labels]")!;
       // The labels' row and the bars' row share one column per bar.
       expect(labels.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");

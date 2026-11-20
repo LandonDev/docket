@@ -212,7 +212,6 @@ export const formRoute: PublicRoute = {
       return void res.end(method === 'HEAD' ? undefined : readFileSync(page))
     }
     if (method !== 'POST') return sendText(res, 405, 'Not allowed.')
-    if (!form.open) return send(res, 410, { error: 'This form is closed.' })
     if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) return send(res, 415, { error: 'Send the answers as JSON.' })
     // One caller's every post counts against it; the form's own limit counts only answers it takes, so junk cannot use it up.
     const now = Date.now()
@@ -226,15 +225,16 @@ export const formRoute: PublicRoute = {
     } catch {
       return send(res, 400, { error: 'Nothing was sent.' })
     }
+    // The same submission again (its reply was lost on the way back): the answer it already wrote, first of all. The form
+    // may have closed or changed its questions since, and that answer is saved all the same; not a second row nor a second count.
+    const sent = (raw as { submission?: unknown } | null)?.submission
+    const submission = typeof sent === 'string' && SUBMISSION.test(sent) ? sent : undefined
+    if (submission && takenOf(ctx, id).has(submission)) return send(res, 201, { ok: true })
     // Read again: the form may have closed while the answer came in.
     const now2 = readForm(ctx, id)
     if (!now2?.open) return send(res, 410, { error: 'This form is closed.' })
     const checked = checkAnswers(now2, raw)
     if ('error' in checked) return send(res, 400, checked)
-    const sent = (raw as { submission?: unknown }).submission
-    const submission = typeof sent === 'string' && SUBMISSION.test(sent) ? sent : undefined
-    // The same submission again (its reply was lost on the way back): the answer it already wrote, not a second row nor a second count.
-    if (submission && takenOf(ctx, id).has(submission)) return send(res, 201, { ok: true })
     if (!allowed(form.publicId, PER_FORM, Date.now())) return send(res, 429, { error: 'This form is taking too many answers. Try again in a few minutes.' })
     try {
       await record(ctx, now2, checked.ok, submission)

@@ -139,15 +139,23 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
   const pictured = !!view && !view.renderError && !!view.renders.proposed;
   const shownSlide = view ? (view.slides.find((s) => s.key === current) ?? view.slides[0]) : undefined;
   const shownDoc = shownSlide && !view?.renderError ? (shownSlide.from === "proposed" ? proposedDoc : fileDoc) : null;
-  // A paint counts only for the stage mounted now: each time the shown slide changes (A, then B, then A again) its stage
-  // mounts afresh with a token of its own, so an earlier paint of the same slide never opens the verdicts on a blank stage.
-  const stages = useRef(0);
-  const shownKey = shownSlide?.key;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const stage = useMemo(() => ++stages.current, [shownKey]);
+  // A paint counts only for the stage mounted now. Each mount of the stage takes a token of its own and says when it
+  // comes and goes: another slide (A, then B, then A again), PowerPoint and back, a failed open, any remount. The approval
+  // leaves with its stage, and a paint from a stage already gone never counts, so the verdicts never open on a blank stage.
+  const live = useRef(new Set<number>());
+  const [stageOn, setStageOn] = useState<number | null>(null);
   const [painted, setPainted] = useState<{ key: string; doc: PdfDoc; stage: number } | null>(null);
+  const stageCame = useCallback((token: number) => {
+    live.current.add(token);
+    setStageOn(token);
+  }, []);
+  const stageWent = useCallback((token: number) => {
+    live.current.delete(token);
+    setStageOn((on) => (on === token ? null : on));
+    setPainted((p) => (p?.stage === token ? null : p));
+  }, []);
   const bound = pictured && proposedDoc !== null && proposedRender.rev === view?.renders.proposed?.rev;
-  const seen = !!shownSlide && !!shownDoc && painted?.key === shownSlide.key && painted.doc === shownDoc && painted.stage === stage;
+  const seen = !!shownSlide && !!shownDoc && painted?.key === shownSlide.key && painted.doc === shownDoc && stageOn !== null && painted.stage === stageOn;
   const held = !reviewRev || (pictured && !(bound && seen));
   useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store);
 
@@ -164,12 +172,14 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
       <Strip view={view} current={shown?.key ?? null} narrow={narrow} docOf={docOf} pictures={!view.renderError} onPick={select} />
       {shown ? (
         <Main
-          key={`${shown.key}:${stage}`}
+          key={shown.key}
           view={view}
           slide={shown}
           doc={view.renderError ? null : docOf(shown)}
-          onPainted={(doc) => setPainted({ key: shown.key, doc, stage })}
-          onPaintFailed={() => setPainted(null)}
+          onMount={stageCame}
+          onUnmount={stageWent}
+          onPainted={(doc, stage) => live.current.has(stage) && setPainted({ key: shown.key, doc, stage })}
+          onPaintFailed={(stage) => setPainted((p) => (p?.stage === stage ? null : p))}
           width={narrow ? size.width : size.width - STRIP}
           height={narrow ? size.height - 96 : size.height}
           itemTitle={item.title}
@@ -461,6 +471,9 @@ export function toneOf(host: HTMLElement): "dark" | "light" {
   return sum / n < 128 ? "dark" : "light";
 }
 
+/** Every stage mount ever made in this window, counted: each takes the next as its token. */
+let stageMounts = 0;
+
 function Main({
   view,
   slide,
@@ -472,6 +485,8 @@ function Main({
   shell,
   onPainted,
   onPaintFailed,
+  onMount,
+  onUnmount,
 }: {
   view: DeckView;
   slide: DeckSlide;
@@ -481,10 +496,19 @@ function Main({
   itemTitle: string;
   source: CanvasBodyProps["source"];
   shell: CanvasShell;
-  /** the stage painted this slide from `doc`: the review it shows may open */
-  onPainted(doc: PdfDoc): void;
-  onPaintFailed(): void;
+  /** this stage (its mount's token) painted this slide from `doc`: the review it shows may open */
+  onPainted(doc: PdfDoc, stage: number): void;
+  onPaintFailed(stage: number): void;
+  /** this mount of the stage came, or went: an approval lives no longer than the stage that earned it */
+  onMount(stage: number): void;
+  onUnmount(stage: number): void;
 }) {
+  // A token for this mount alone, taken when it mounts: a remount of the same slide is another stage.
+  const [stage] = useState(() => ++stageMounts);
+  useLayoutEffect(() => {
+    onMount(stage);
+    return () => onUnmount(stage);
+  }, [stage, onMount, onUnmount]);
   const size = doc?.size(slide.page);
   const aspect = size ? size.width / size.height : 16 / 9;
   const w = width > 0 ? stageWidth(width, height, aspect) : STAGE_MAX;
@@ -518,9 +542,9 @@ function Main({
             title={slide.title}
             onPainted={(el) => {
               setTone(toneOf(el));
-              if (doc) onPainted(doc);
+              if (doc) onPainted(doc, stage);
             }}
-            onFailed={onPaintFailed}
+            onFailed={() => onPaintFailed(stage)}
           />
           <div className="absolute inset-0">
             {slide.changed.map((b: Bbox, i) => (

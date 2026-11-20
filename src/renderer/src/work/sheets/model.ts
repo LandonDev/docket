@@ -86,20 +86,28 @@ export function chartBars(values: ReadonlyArray<ReadonlyArray<unknown>>): ChartB
   return bars;
 }
 
-/** Round steps for the axis under the bars: 0 and up to three more, past the largest bar. */
-export function chartTicks(max: number): { top: number; ticks: number[] } {
-  if (!(max > 0)) return { top: 1, ticks: [0] };
-  const rough = max / 3;
+/**
+ * Round steps for the axis under the bars, signed: zero is always on it, and a step of 1, 2 or 5 times a power of ten
+ * (about three of them across the whole span) runs out past the largest bar and, when a bar is below zero (a credit),
+ * past the smallest. The ticks run from the left end to the right.
+ */
+export function chartTicks(max: number, min = 0): { top: number; bottom: number; ticks: number[] } {
+  const hi = Math.max(max, 0);
+  const lo = Math.min(min, 0);
+  if (!(hi > 0) && !(lo < 0)) return { top: 1, bottom: 0, ticks: [0] };
+  const rough = (hi - lo) / 3;
   const power = 10 ** Math.floor(Math.log10(rough));
   const step = [1, 2, 5, 10].map((m) => m * power).find((s) => s >= rough) ?? 10 * power;
-  const top = Math.ceil(max / step) * step;
+  const top = Math.ceil(hi / step - 1e-9) * step || 0;
+  const bottom = lo < 0 ? -Math.ceil(-lo / step - 1e-9) * step : 0;
   const ticks: number[] = [];
-  for (let t = 0; t <= top + step / 2; t += step) ticks.push(t);
-  return { top, ticks };
+  for (let i = 0; i <= Math.round((top - bottom) / step); i++) ticks.push(Number((bottom + i * step).toPrecision(12)) || 0);
+  return { top, bottom, ticks };
 }
 
-/** "$2k", "40", "1.5M": a tick's words. */
+/** "$2k", "40", "1.5M", "\u22122k": a tick's words, a credit with its minus sign. */
 export function tickText(n: number): string {
+  if (n < 0) return `\u2212${tickText(-n)}`;
   if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1000) return `${+(n / 1000).toFixed(1)}k`;
   return String(+n.toFixed(2));

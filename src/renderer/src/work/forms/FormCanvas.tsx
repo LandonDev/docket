@@ -19,8 +19,9 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { Table } from "../icons";
+import { AddQuestion } from "./AddQuestion";
 import { linkFormHost, type FormHost } from "./host";
-import { answerBars, chartQuestion, liveView, newId, optionDiff, plural, resolvePick, shownQuestions, submittedTime, TYPE_WORDS, type Pick, type Shown } from "./model";
+import { answerBars, chartQuestion, liveView, optionDiff, plural, resolvePick, shownQuestions, submittedTime, TYPE_WORDS, type Pick, type Shown } from "./model";
 
 /**
  * The form kind (docs/agents/work-forms.md; the approved page is
@@ -377,6 +378,11 @@ interface Saver {
   later(next: FormBody): void;
   flush(): void;
   retry(): Promise<void>;
+  /**
+   * Saves `next` at once, after any save in flight, and settles with it: a refusal rejects and puts back the edits that
+   * stood before, so what was asked for never shows as made (Add question).
+   */
+  now(next: FormBody): Promise<void>;
 }
 const savers = new WeakMap<FormStore, Saver>();
 function saverOf(store: FormStore, host: FormHost): Saver {
@@ -386,6 +392,7 @@ function saverOf(store: FormStore, host: FormHost): Saver {
   let waiting: FormBody | null = null;
   let busy = false;
   let queued: FormBody | null = null;
+  let current: Promise<void> = Promise.resolve();
   const send = (next: FormBody): Promise<void> => {
     if (busy) {
       queued = next;
@@ -394,7 +401,7 @@ function saverOf(store: FormStore, host: FormHost): Saver {
     const rev = store.get().view?.rev;
     if (rev === undefined) return Promise.resolve();
     busy = true;
-    return host
+    return (current = host
       .save(rev, next)
       .then(
         (v) => store.set({ view: v, saveError: null, edits: store.get().edits === next ? null : store.get().edits }),
@@ -405,7 +412,7 @@ function saverOf(store: FormStore, host: FormHost): Saver {
         const again = queued;
         queued = null;
         if (again) void send(again);
-      });
+      }));
   };
   const saver: Saver = {
     later(next) {
@@ -429,6 +436,22 @@ function saverOf(store: FormStore, host: FormHost): Saver {
     retry() {
       const edits = store.get().edits;
       return edits ? send(edits) : Promise.resolve();
+    },
+    async now(next) {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      waiting = null;
+      // `next` carries every edit that stood, a queued one included.
+      queued = null;
+      const before = store.get().edits;
+      store.set({ edits: next });
+      while (busy) await current;
+      await send(next);
+      const refused = store.get().saveError;
+      if (refused === null) return;
+      // Nothing was made: the edits that stood before are back, and the state line keeps its Retry only for them.
+      store.set({ edits: before, saveError: before ? refused : null });
+      throw new Error(refused);
     },
   };
   savers.set(store, saver);
@@ -455,10 +478,12 @@ function Questions({ view, host, store, current, onStep }: { view: FormView; hos
 
   const setQuestion = (id: string, q: FormQuestion | null): void =>
     edit({ ...body, questions: q ? body.questions.map((x) => (x.id === id ? q : x)) : body.questions.filter((x) => x.id !== id) });
-  const add = (): void => {
-    const q: FormQuestion = { id: newId(), label: "Question", type: "short", required: false };
-    edit({ ...body, questions: [...body.questions, q] });
-    setFocus(q.id);
+  // A new question is written in a dialog and made on its Add, never as a placeholder on the form.
+  const [adding, setAdding] = useState(false);
+  const addQuestion = async (q: FormQuestion): Promise<void> => {
+    const now = store.get().edits ?? store.get().view?.body ?? body;
+    await saver.now({ ...now, questions: [...now.questions, q] });
+    requestAnimationFrame(() => list.current?.querySelector(`[data-q="${q.id}"]`)?.scrollIntoView?.({ block: "nearest" }));
   };
   const sections = shown.filter((s) => s.q.type === "section");
 
@@ -495,11 +520,12 @@ function Questions({ view, host, store, current, onStep }: { view: FormView; hos
             ))}
           </div>
           {editable ? (
-            <Button variant="ghost" size="sm" className="mt-2 ms-1 text-muted-foreground" onClick={add}>
+            <Button variant="ghost" size="sm" className="mt-2 ms-1 text-muted-foreground" onClick={() => setAdding(true)}>
               <Plus />
               Add question
             </Button>
           ) : null}
+          {adding ? <AddQuestion onAdd={addQuestion} onClose={() => setAdding(false)} /> : null}
         </div>
       </div>
     </div>

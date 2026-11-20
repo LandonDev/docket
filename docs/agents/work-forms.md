@@ -43,7 +43,11 @@ Publishing shares a link anyone can answer, so it is an outward act:
 - Once a form is published, an agent's change always waits for his Accept,
   whatever the mode, so nothing reaches the public page without him. Before
   that, the mode decides ("Agent suggests", the default, or "Agent writes").
-  His own edits go live at once.
+  His own edits go live at once. A new question is written in full in the
+  Add question dialog (its words, kind, options for a choice or dropdown,
+  Required) and made on Add, saved at once; nothing reaches the form, or a
+  published form's page, before that, and a refused Add keeps the dialog
+  and his words with the reason (forms/AddQuestion.tsx).
 - **His close and reopen are not held**: they stop or restart answers on
   his own form (`work.forms.close {itemId, open}`). An agent's close
   (`form_close` with `open: false`) runs at once; its reopen shares the link
@@ -78,8 +82,12 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
   length is the row count. Answers to one form are written one after
   another. The page sends one submission id per set of answers and sends it
   again with the same answers, so a reply lost on the way back and sent
-  again is the row already written, never a second one; the page says "We
-  couldn't confirm your answer" when no reply came.
+  again is the row already written, never a second one, even when the form
+  has closed or its questions changed since (the route looks the submission
+  up first, right after reading the body). The page says "We couldn't
+  confirm your answer" when no reply came. A failure is said once, in the
+  alert beside Send or under its question; the page's status line says only
+  what replaces the form (sent, closed).
 - Each caller may send one form ten answers in ten minutes, counted by the
   tunnel's `CF-Connecting-IP`, and a form takes at most 600 in ten minutes in
   all. A body is at most 64 KiB.

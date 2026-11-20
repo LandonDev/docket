@@ -336,6 +336,8 @@ function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof us
     </>
   );
   const open = face.onOpen;
+  // A box that opens is one button from the stream's start, off until its first frame: the frame's arrival never swaps
+  // the element, so the canvas that took it stays (a still page sends one frame, then waits for a change).
   return (
     <div className={FADE_IN}>
       {open ? (
@@ -344,8 +346,9 @@ function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof us
           type="button"
           aria-label={label}
           data-face="live"
+          disabled={!face.drawn}
           onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
-          className="relative block w-full cursor-zoom-in overflow-hidden rounded-lg bg-card"
+          className={cn("relative block w-full overflow-hidden rounded-lg bg-card", face.drawn ? "cursor-zoom-in" : "cursor-default")}
           style={shape}
         >
           {inside}
@@ -397,9 +400,10 @@ function Values({ values }: { values: PortalValue[] }) {
         <div
           key={`${v.label}-${i}`}
           role="row"
-          className="grid min-h-7 grid-cols-[112px_minmax(0,1fr)] items-center gap-x-3 @[480px]/values:grid-cols-[112px_minmax(80px,max-content)_minmax(0,1fr)] border-t border-border py-1 text-[13px] leading-5 first:border-t-0"
+          className="grid min-h-7 grid-cols-[112px_minmax(0,1fr)] items-baseline gap-x-3 @[480px]/values:grid-cols-[112px_minmax(80px,max-content)_minmax(0,1fr)] border-t border-border py-1 text-[13px] leading-5 first:border-t-0"
         >
-          <span role="cell" className="truncate font-medium">
+          {/* A field's name wraps in its column, whole, so two that open with the same words stay told apart. */}
+          <span role="cell" data-value-label className="min-w-0 font-medium break-words">
             {v.label}
           </span>
           <span role="cell" className="min-w-0 break-words tabular-nums">

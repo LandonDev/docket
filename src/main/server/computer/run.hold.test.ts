@@ -60,6 +60,8 @@ interface Showing {
   cutWhole?: boolean
   /** [21] checkbox "bold" reads ticked */
   bold?: boolean
+  /** [27] pop up "typeface" holds this long choice: a whole read prints it cut, its own element read whole */
+  choice?: string
 }
 /** Rewrites what the fake answers before the host reads it; change the returned object to change later answers. */
 const showing = (h: ComputerHarness, show: Showing): Showing => {
@@ -69,6 +71,10 @@ const showing = (h: ComputerHarness, show: Showing): Showing => {
     let out = s
     if (show.long !== undefined) out = out.replace(/(\[3\] text area = )"(?:[^"\\]|\\.)*"/, `$1${JSON.stringify(sub && !show.cutWhole ? show.long : cutValue(show.long))}`)
     if (show.bold) out = out.replace('checkbox "bold" unchecked', 'checkbox "bold" checked')
+    if (show.choice !== undefined) {
+      const popUp = (whole: boolean) => `[27] pop up "typeface" = ${JSON.stringify(whole ? show.choice! : cutValue(show.choice!))}`
+      out = sub ? out.replace('[27] group "Part"', popUp(true)) : out.replace('[27] pop up "typeface" = "Helvetica"', popUp(false))
+    }
     if (own && show.shift) out = out.replace(/\[(\d+)\]/g, (_, n: string) => `[${Number(n) + show.shift!}]`)
     if (own && show.unseen && /^\[1\] window/m.test(out)) out = `${out}\n  ${show.unseen}`
     if (own && show.renamed) out = out.replace(/button "close"/g, 'button "Send"')
@@ -687,6 +693,22 @@ describe('the attacker under full access', () => {
     expect(await click(h, SEND)).toMatchObject({ isError: true, body: HELD_PARTIAL })
     expect(held).toHaveLength(0)
     expect(acts(h)).toBe(0)
+  })
+
+  it('binds a long pop-up choice whole: another choice with the same start and length makes the press stale', async () => {
+    useHold()
+    const choice = `Helvetica ${'Neue Condensed Extra '.repeat(8)}Bold`
+    const { h, shown } = await thread('work', 'auto', { send: true, choice })
+    await click(h, SEND)
+    expect(held).toHaveLength(1)
+    expect(h.requests().some((r) => r.method === 'state.get' && r.params.element === 27)).toBe(true)
+    shown.choice = choice.replace(/Bold$/, 'Thin')
+    expect(cutValue(shown.choice)).toBe(cutValue(choice))
+    expect(await held[0].carryOut()).toMatchObject({ stale: true, body: HELD_STALE })
+    expect(acts(h)).toBe(0)
+    shown.choice = choice
+    expect((await held[0].carryOut()).isError).toBe(false)
+    expect(acts(h)).toBe(1)
   })
 
   it('binds what is ticked: ticking a box while a Send is held makes the press stale', async () => {

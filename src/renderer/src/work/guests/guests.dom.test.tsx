@@ -11,7 +11,7 @@ import { DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEdit
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -20,7 +20,7 @@ vi.mock("../../lib/connection", async (original) => {
     request: async (method: string, params: Record<string, unknown> = {}) => {
       calls.list.push({ env, method, params });
       if (method === "work.guests.list" && calls.listGate) await calls.listGate;
-      if (calls.down.has(env)) throw new Error("The host did not answer");
+      if (calls.down.has(env)) throw new Error(calls.downWords[env] ?? "The host did not answer");
       // The Mac does not serve LifeOS's documents: it names the box, as the host does.
       if (env === "mac") throw new Error("served elsewhere: box");
       if (calls.failOnce && method === "work.guests.forItem") {
@@ -73,6 +73,7 @@ afterEach(() => {
   calls.list.length = 0;
   calls.links = [];
   calls.down.clear();
+  calls.downWords = {};
   calls.revokeGate = null;
   calls.revokeRefusal = null;
 });
@@ -296,6 +297,24 @@ describe("the held request and the audit list", () => {
     await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Copy" })));
     expect(dialog.textContent).toContain("It didn't copy");
     clip.fail = false;
+  });
+
+  it("keeps a line for each host that did not answer, with one Retry for the section", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [LINK];
+    calls.down.add("win");
+    calls.down.add("phone");
+    calls.downWords = { win: "The Windows PC did not answer", phone: "The phone did not answer" };
+    render(<GuestLinksSection hosts={["box", "win", "phone"]} />);
+    await screen.findByText("Sam Ortiz");
+    await screen.findByText("The Windows PC did not answer");
+    expect(screen.getByText("The phone did not answer")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    // That one Retry reads every host again.
+    calls.down.clear();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await waitFor(() => expect(screen.queryByText("The phone did not answer")).toBeNull());
+    expect(screen.queryByText("The Windows PC did not answer")).toBeNull();
   });
 
   it("says an empty list in a plain line", async () => {

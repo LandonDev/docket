@@ -179,3 +179,34 @@ describe("views outside LifeOS's gate, and a view that did not import", () => {
     }
   });
 });
+
+describe("a view that draws its own head", () => {
+  it("has no 40px header over Mail's list head; the region names the view and takes the focus from the pane it covers, and the sign-in keeps the header", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => ({})) } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    expect(WORK_VIEWS.mail.ownHead).toBe(true);
+    const was = WORK_VIEWS.mail.chunk;
+    WORK_VIEWS.mail.chunk = defineChunk("test-mail", async () => ({ View: () => <p>The list's head</p> })) as never;
+    try {
+      const Main = ({ view }: { view: boolean }) => (
+        <div data-main>
+          <textarea aria-label="Composer" />
+          {view ? <ViewFrame view="mail" environmentId="env_box" workspaceId="ws" sector="purdue" /> : null}
+        </div>
+      );
+      const page = render(<Main view={false} />);
+      screen.getByRole("textbox", { name: "Composer" }).focus();
+      page.rerender(<Main view />);
+      await vi.waitFor(() => expect(screen.getByText("The list's head")).toBeTruthy());
+      const region = screen.getByRole("region", { name: "Mail" });
+      expect(region.querySelector("[data-view-heading]")).toBeNull();
+      expect(region.querySelector(".h-10")).toBeNull();
+      expect(document.activeElement).toBe(region);
+      act(() => setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] }));
+      expect(screen.getByText("Sign in to LifeOS")).toBeTruthy();
+      expect(region.querySelector("[data-view-heading]")!.textContent).toBe("Mail");
+    } finally {
+      WORK_VIEWS.mail.chunk = was;
+    }
+  });
+});

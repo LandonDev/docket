@@ -95,6 +95,9 @@ pub fn cut_name(s: &str) -> String {
     if n > max { s.chars().take(max).collect::<String>() + "…" } else { s.to_string() }
 }
 
+/// Roles whose value would go with a send: printed even when it repeats the name.
+const BOUND_VALUE_ROLES: &[&str] = &["input", "search", "text area", "combo box", "date", "pop up"];
+
 /// At most 160 scalars, then `…(+<n> chars)`.
 pub fn cut_value(s: &str) -> String {
     let max = limits::VALUE_MAX_CHARS as usize;
@@ -213,7 +216,9 @@ impl<H: Clone> Walk<'_, H> {
         if let Some(n) = name {
             s += &format!(" {}", quote(&cut_name(n)));
         }
-        let value = node.value.as_deref().filter(|v| !v.is_empty() && Some(*v) != name && node.role != "password");
+        // a value repeating the name prints once, but a field's value always prints: it is what would go (the host binds it whole)
+        let bound = BOUND_VALUE_ROLES.contains(&node.role.as_str());
+        let value = node.value.as_deref().filter(|v| !v.is_empty() && (bound || Some(*v) != name) && node.role != "password");
         if let Some(v) = value {
             let v = if self.opts.whole_values { v.to_string() } else { cut_value(v) };
             s += &format!(" = {}", quote(&v));
@@ -375,6 +380,22 @@ mod tests {
             partial: false,
             read_ms: 3,
         }
+    }
+
+    #[test]
+    fn a_field_value_repeating_its_name_still_prints() {
+        // a composer named by its own text: its value is what would go, so it prints, cut as any long value is
+        let body = format!("Hi Dana, {}", "the wire details follow. ".repeat(10));
+        let mut field = n("text area", Some(&body), 4, vec![]);
+        field.value = Some(body.clone());
+        let mut label = n("text", Some("Same"), 6, vec![]);
+        label.value = Some("Same".into());
+        let w = win(n("window", Some("Untitled - Notepad"), 1, vec![field, label]));
+        let r = render(&w, &w.root, &mut AppBook::default(), TextOptions::default(), false);
+        assert!(r.text.contains(&format!(" = {}", quote(&cut_value(&body)))), "{}", r.text);
+        // whole in an element read
+        let whole = render(&w, &w.root, &mut AppBook::default(), TextOptions { whole_values: true, ..TextOptions::default() }, false);
+        assert!(whole.text.contains(&format!(" = {}", quote(&body))), "{}", whole.text);
     }
 
     fn notepad() -> RawNode<()> {

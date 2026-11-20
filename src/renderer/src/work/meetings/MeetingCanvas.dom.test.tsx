@@ -211,6 +211,24 @@ describe("the meeting canvas", () => {
     await waitFor(() => expect(container.querySelectorAll("mark[data-hit]")).toHaveLength(0));
   });
 
+  it("Escape and Close find give the focus back to Find, never to the body", async () => {
+    const { container } = await seat(sampleMeeting());
+    await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());
+    const bar = container.querySelector("[data-canvas-bar]") as HTMLElement;
+    fireEvent.click(within(bar).getByRole("button", { name: "Find" }));
+    const field = await screen.findByRole("textbox", { name: "Find in the transcript" });
+    act(() => field.focus());
+    fireEvent.keyDown(field, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(within(bar).getByRole("button", { name: "Find" })));
+    fireEvent.click(within(bar).getByRole("button", { name: "Find" }));
+    act(() => within(bar).getByRole("button", { name: "Close find" }).focus());
+    fireEvent.click(within(bar).getByRole("button", { name: "Close find" }));
+    await waitFor(() => expect(document.activeElement).toBe(within(bar).getByRole("button", { name: "Find" })));
+    expect(document.activeElement).not.toBe(document.body);
+    // The transcript pane is where the focus goes when the bar holds no Find: focusable from code, no Tab stop of its own.
+    expect(container.querySelector('[data-meeting-pane="m1"]')!.getAttribute("tabindex")).toBe("-1");
+  });
+
   it("while it transcribes: the turns heard so far, the working line, turns still to come; a push with a newer rev fetches it again", async () => {
     const busy = sampleMeeting({ status: "transcribing", rev: 2, segments: sampleMeeting().segments.slice(0, 4), progress: { phase: "words", done: 840, total: 2530 } });
     const { container } = await seat(busy);

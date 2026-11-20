@@ -14,12 +14,23 @@ struct PdfItemView: View {
     var body: some View {
         ItemLoad(read: {
             let view = try await client.work.canvas.pdf(item.id)
-            return try await client.work.canvas.pdfData(view)
+            let data = try await client.work.canvas.pdfData(view)
+            // Only bytes PDFKit opens with a page reach the viewer; anything else is the item's failure with Try Again,
+            // never a blank viewer saying "1 of 1" (as the deck does, `DeckRender.opens`).
+            guard DeckRender.opens(pageCount: PDFDocument(data: data)?.pageCount) else { throw PdfUnreadable() }
+            return data
         }) { data, _ in
             PdfPages(data: data, filmstrip: false, onAsk: { quote in ask(ChipWords.selection(in: item, quote: quote)) })
         }
         .accessibilityIdentifier("pdf-item")
     }
+}
+
+/// A PDF's bytes that PDFKit cannot open as a document with a page. Its `description` is the sentence, since
+/// `ActionError.wrap` words an error it does not know by `String(describing:)`.
+private struct PdfUnreadable: LocalizedError, CustomStringConvertible {
+    var description: String { "The PDF did not open." }
+    var errorDescription: String? { description }
 }
 
 /// A deck (milestone 47): its render, a PDF, with the filmstrip under it. While the agent's changes
@@ -93,13 +104,16 @@ struct SlidesItemView: View {
         reload()
     }
 
-    private enum DeckError: LocalizedError {
+    /// Its `description` is the sentence: `ActionError.wrap` words an error it does not know by `String(describing:)`,
+    /// which would otherwise print the case ("notRendered(…)").
+    private enum DeckError: LocalizedError, CustomStringConvertible {
         case notRendered(String)
-        var errorDescription: String? {
+        var description: String {
             switch self {
             case .notRendered(let words): words
             }
         }
+        var errorDescription: String? { description }
     }
 }
 

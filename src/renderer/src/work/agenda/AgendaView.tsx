@@ -15,7 +15,8 @@ import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/clie
 import { useMinute } from "../tasks/minute";
 import { shared, useShared } from "../tasks/store";
 import { NewEventDialog } from "./NewEventDialog";
-import { sessionWaits } from "../shell/lifeos";
+import { openWorkView, useWorkView } from "../../lib/workSwitch";
+import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
 import "./agenda.css";
 import type { WorkViewProps } from "../views/registry";
 
@@ -86,15 +87,33 @@ export function Head(_props: WorkViewProps) {
   );
 }
 
+/**
+ * The event an invitation named: once LifeOS answers with it, the Week it falls in, whatever month that is. A read that
+ * fails, or an event gone, leaves the view as it is. Either way the ask is cleared, so the view's own presses lead after.
+ */
+function OpenEvent({ workspaceId, id, lifeos }: { workspaceId: string; id: string; lifeos: WorkViewProps["lifeos"] }) {
+  const read = useLifeosQuery<{ startsAt: number } | null>(lifeos, "events:get", { id });
+  useEffect(() => {
+    if (read.status === "loading") return;
+    if (read.status === "ready" && read.value) go({ view: "week", day: startOfDay(read.value.startsAt), adding: null });
+    openWorkView({ workspaceId, view: "agenda" });
+  }, [read, workspaceId]);
+  return null;
+}
+
 export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
   const { adding } = useShared(state);
+  // An invitation's Open in Agenda names its event (`openWorkView {event}`): taken once, then cleared.
+  const wanted = useWorkView();
+  const event = wanted?.workspaceId === workspace.id && wanted.view === "agenda" ? wanted.event : undefined;
   // Each visit opens on today's list.
   useEffect(() => () => state.set({ view: "list", day: startOfDay(Date.now()), adding: null }), []);
   // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
   if (!lifeos.client) return sessionWaits(lifeos) ? <AgendaSkeleton /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
+      {event ? <OpenEvent workspaceId={workspace.id} id={event} lifeos={lifeos} /> : null}
       <Agenda client={clients.agenda} startThread={startThread} />
       {adding !== null ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} onClose={() => go({ adding: null })} /> : null}
     </ConvexProvider>

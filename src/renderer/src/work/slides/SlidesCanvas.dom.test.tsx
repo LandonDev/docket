@@ -490,6 +490,78 @@ describe("the slides kind", () => {
     }
   });
 
+  it("an approval leaves with its stage: PowerPoint and back on the same slide holds the verdicts until the new stage paints", async () => {
+    const paint = PROPOSED.paint;
+    let paintNow!: () => void;
+    let painting: Promise<void> | null = null;
+    PROPOSED.paint = async (...args) => {
+      if (painting && args[1].closest("[data-slides-stage]")) await painting;
+      return paint(...args);
+    };
+    try {
+      open({ ...revised(), hosted: true });
+      const tabs = await screen.findByRole("tablist", { name: "Open in" });
+      let bar = await screen.findByRole("toolbar", { name: "Review changes" });
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
+      fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+      // To PowerPoint: the stage goes. Back to TempCode on the same slide while its new paint waits.
+      painting = new Promise((done) => (paintNow = done));
+      fireEvent.click(within(tabs).getByRole("tab", { name: "PowerPoint" }));
+      await waitFor(() => expect(document.querySelector("[data-slides-stage]")).toBeNull());
+      fireEvent.click(within(tabs).getByRole("tab", { name: "TempCode" }));
+      await found("[data-slides-stage]");
+      bar = await screen.findByRole("toolbar", { name: "Review changes" });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+      expect(within(bar).getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+      painting = null;
+      act(() => paintNow());
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+    } finally {
+      PROPOSED.paint = paint;
+    }
+  });
+
+  it("an approval leaves with its stage: a deck that fails to open takes the stage away, and the stage back holds until it paints", async () => {
+    const paint = PROPOSED.paint;
+    let paintNow!: () => void;
+    let painting: Promise<void> | null = null;
+    PROPOSED.paint = async (...args) => {
+      if (painting && args[1].closest("[data-slides-stage]")) await painting;
+      return paint(...args);
+    };
+    try {
+      open(revised());
+      const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
+      fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+      await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+      // The host refuses the press, and reading the deck again fails: the stage leaves for the state line.
+      const opened = deckHost.open;
+      deckHost.review = async () => {
+        throw new Error("The suggestions changed since this preview. Nothing was accepted or rejected; look at them again.");
+      };
+      deckHost.open = () => Promise.reject(new Error("The deck is not where it was."));
+      fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
+      const line = await found('[data-canvas-state="failed"]');
+      await waitFor(() => expect(document.querySelector("[data-slides-stage]")).toBeNull());
+      // Retry brings the deck back on the same slide, its paint waiting: no verdict over the blank stage.
+      deckHost.open = opened;
+      painting = new Promise((done) => (paintNow = done));
+      fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+      await found("[data-slides-stage]");
+      const back = await screen.findByRole("toolbar", { name: "Review changes" });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(within(back).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+      painting = null;
+      act(() => paintNow());
+      await waitFor(() => expect(within(back).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
+    } finally {
+      PROPOSED.paint = paint;
+    }
+  });
+
   it("holds the verdicts through a failed paint of the slide on the stage, and opens them once Retry paints it", async () => {
     const paint = PROPOSED.paint;
     let refuse = true;

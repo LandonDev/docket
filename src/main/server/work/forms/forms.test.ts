@@ -212,6 +212,24 @@ describe('a form', () => {
     expect(log).toContain('"submission":"sub_bbbbbbbbbbbbbbbb"')
   })
 
+  it('answers a resend with the answer it recorded before checking the form as it is now: closed since, or its questions changed', async () => {
+    const { itemId } = await made()
+    const live = await publish(itemId)
+    const [name, game] = live.body.questions.map((q) => q.id)
+    const id = publicId(live)
+    expect((await postOnce(id, { [name]: 'Ava Thompson', [game]: 'Valorant' }, 'sub_cccccccccccccccc')).status).toBe(201)
+    // The reply was lost, and the answers the page holds would not pass the questions now (a required one left empty).
+    expect((await postOnce(id, { [game]: 'Valorant' }, 'sub_cccccccccccccccc')).status).toBe(201)
+    // The form closes before the page sends again: the saved answer still stands.
+    expect((await call<FormView>('work.forms.close', { itemId, open: false })).state).toBe('closed')
+    const again = await postOnce(id, { [name]: 'Ava Thompson', [game]: 'Valorant' }, 'sub_cccccccccccccccc')
+    expect(again.status).toBe(201)
+    expect(await again.json()).toEqual({ ok: true })
+    // One row, and a submission it never took is refused as closed.
+    expect((await call<FormResponses>('work.forms.responses', { itemId })).count).toBe(1)
+    expect((await postOnce(id, { [name]: 'Marcus Lee', [game]: 'Valorant' }, 'sub_dddddddddddddddd')).status).toBe(410)
+  })
+
   it('takes answers into its sheet, refuses a bad one by question, and stops when closed', async () => {
     const { itemId } = await made()
     const live = await publish(itemId)

@@ -47,7 +47,16 @@ struct OutboxItemScreen: View {
             if let item, let client {
                 content(item, client: client)
             } else if let loadError {
-                ContentUnavailableView("Can’t Open This", systemImage: "exclamationmark.triangle", description: Text(loadError))
+                // On a paired host the read can be tried again, as other Work item pages offer; with no host there is nothing to retry.
+                ContentUnavailableView {
+                    Label("Can’t Open This", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(loadError)
+                } actions: {
+                    if client != nil {
+                        Button("Try Again") { self.loadError = nil; Task { await load() } }
+                    }
+                }
             } else {
                 ProgressView()
             }
@@ -103,12 +112,14 @@ struct OutboxItemScreen: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 4) {
+                    // Readable inks at the same steps (as the Outbox's bands): the hierarchical meta and stamp measured
+                    // 3.44:1 and 1.73:1 on white in light; `label` is 21:1 in both themes. The sizes keep the order.
                     HStack(spacing: 6) {
                         SectorDot(sector: item.sector ?? place.sector, size: 7)
                         Text(place.name)
-                            .textStep(.meta)
+                            .textStep(.meta, tint: Color(.label))
                         Text(HeldTime.of(item.createdAt))
-                            .textStep(.stamp)
+                            .textStep(.stamp, tint: Color(.label))
                     }
                     // A form, a share or a Teams post says in its heading only what its rows do not (`kindHeading`), in the
                     // present always: the state line under it says the past ("Posted 4:02 PM").
@@ -117,7 +128,7 @@ struct OutboxItemScreen: View {
                         .fixedSize(horizontal: false, vertical: true)
                     if let state = stateLine(item) {
                         Text(state.text)
-                            .textStep(.meta, tint: state.failed ? Tint.destructiveText : nil)
+                            .textStep(.meta, tint: state.failed ? Tint.destructiveText : Color(.label))
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, 2)
                     }
@@ -130,7 +141,7 @@ struct OutboxItemScreen: View {
                     Hairline()
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(field.label)
-                            .textStep(.meta)
+                            .textStep(.meta, tint: Color(.label))
                             .frame(width: labelWidth, alignment: .leading)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(field.value)
@@ -139,7 +150,7 @@ struct OutboxItemScreen: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             if let detail = field.detail {
                                 Text(detail)
-                                    .textStep(.meta)
+                                    .textStep(.meta, tint: Color(.label))
                             }
                         }
                         Spacer(minLength: 0)

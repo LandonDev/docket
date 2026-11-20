@@ -530,6 +530,36 @@ describe("the browser's body", () => {
     expect(source.className).toContain("@[480px]/values:col-span-1");
   });
 
+  it("a field's name wraps in its column, whole, never cut", async () => {
+    host.items = [HELD];
+    const { container } = render(<Body {...props()} />);
+    await screen.findAllByRole("row");
+    const label = container.querySelector("[data-value-label]")!;
+    expect(label.textContent).toBe("Hotel");
+    const tokens = label.className.split(/\s+/);
+    expect(tokens).not.toContain("truncate");
+    expect(tokens).toContain("break-words");
+    expect(tokens).toContain("min-w-0");
+    // A wrapped name keeps its value on its first line.
+    expect(screen.getAllByRole("row")[0]!.className.split(/\s+/)).toContain("items-baseline");
+  });
+
+  it("a live window that opens the full view keeps the canvas that took its first frame: one button, off until then", async () => {
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    host.stream = { status: "starting" };
+    const { rerender } = render(<Body {...props()} />);
+    const button = await screen.findByRole("button", { name: "Live view" });
+    const canvas = button.querySelector("canvas")!;
+    expect(canvas).toBeTruthy();
+    expect(button.hasAttribute("disabled")).toBe(true);
+    host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: true };
+    rerender(<Body {...props()} />);
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+    // The same element and the same canvas: the frame's arrival swaps nothing.
+    expect(screen.getByRole("button", { name: "Live view" })).toBe(button);
+    expect(button.querySelector("canvas")).toBe(canvas);
+  });
+
   it("with nothing held and no window to draw, says so in one line", async () => {
     render(<Body {...props()} />);
     await screen.findByText("The agent is not driving the browser now");

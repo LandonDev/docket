@@ -6,6 +6,7 @@ import {
   CHAT_APP_NAMES,
   OUTWARD_VERBS,
   clicksBlind,
+  cutFields,
   heldTargets,
   landsByPosition,
   namedKeysUnplaced,
@@ -21,6 +22,8 @@ import {
   type Screen
 } from './outward'
 import type { ComputerAction } from './protocol'
+import { sha256Hex } from '../sha256'
+import { cutValue } from './observation'
 
 const FIXTURES = join(__dirname, '../../main/server/computer/fixtures')
 const fixture = (rel: string): string => readFileSync(join(FIXTURES, rel), 'utf8').replace(/\n$/, '')
@@ -591,7 +594,7 @@ describe('heldTargets, screenMark and restage', () => {
   })
 
   it('marks the app and every field\'s name and value, and nothing else', () => {
-    expect(screenMark(screen(COMPOSE, MAIL))).toBe(JSON.stringify(['com.apple.mail', ['input|To:|dana@example.com', 'text area|Body|Hi Dana']]))
+    expect(screenMark(screen(COMPOSE, MAIL))).toBe(JSON.stringify(['com.apple.mail', ['input|To:|=dana@example.com', 'text area|Body|=Hi Dana']]))
     expect(screenMark(screen(COMPOSE.replace('button "Attach"', 'button "Attach file"'), MAIL))).toBe(screenMark(screen(COMPOSE, MAIL)))
   })
 
@@ -1282,5 +1285,30 @@ describe('heldTargets and restage: a paste, a value or a selection by name', () 
     }
     expect(namedKeysUnplaced(steps({ action: 'paste', named: 'Bcc', text: 'x' }), now)).toBe(true)
     expect(heldTargets(steps({ action: 'paste', named: 'Bcc', text: 'x' }), now)).toBeNull()
+  })
+})
+
+describe('screenMark and cutFields: what pass 19 closed', () => {
+  const sheet = (value: string, choice = 'Standard') =>
+    screen(
+      `app "Mail" · window "Order" · 800×600\n[1] window "Order"\n  [2] text area "Note" = ${JSON.stringify(value)}\n  [3] pop up "Plan" = ${JSON.stringify(choice)}\n  [4] button "Submit"`,
+      MAIL
+    )
+
+  it('reads a pop-up printed cut again whole, as a field is', () => {
+    const long = `Premium ${'with every add-on, '.repeat(12)}billed yearly`
+    expect(cutFields(sheet('Hi', cutValue(long)))).toEqual([3])
+    expect(cutFields(sheet(cutValue(long), cutValue(long)))).toEqual([2, 3])
+    expect(cutFields(sheet('Hi', 'Standard'))).toEqual([])
+    // the same prefix and length with another tail is another choice once read whole
+    expect(screenMark(sheet('Hi', long))).not.toBe(screenMark(sheet('Hi', long.replace('billed yearly', 'billed weekly'))))
+  })
+
+  it('never binds a text as the digest it spells', () => {
+    const long = `Hello Dana, ${'the plan is below. '.repeat(12)}`
+    const spelled = `#${sha256Hex(long)}`
+    expect(spelled.length).toBeLessThanOrEqual(160)
+    expect(screenMark(sheet(spelled))).not.toBe(screenMark(sheet(long)))
+    expect(screenMark(sheet(spelled, spelled))).not.toBe(screenMark(sheet(long, long)))
   })
 })

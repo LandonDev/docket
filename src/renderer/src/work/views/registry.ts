@@ -49,6 +49,8 @@ export interface WorkViewDef {
   useFact?: (workspace: WorkspaceMeta, sector: SectorKey) => string | null;
   /** Whether the view reads LifeOS. Every view says: true puts it behind LifeOS's sign-in and its "did not answer" line; false (Routines, Files: the host's own data) never is. */
   readsLifeos: boolean;
+  /** The view draws its own head (Mail: the list's head and the reader's toolbar), so the frame draws no 40px header over it. The view's region still carries its name, and the header comes back over the sign-in. */
+  ownHead?: true;
   chunk: Chunk<WorkViewModule>;
 }
 

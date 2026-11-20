@@ -260,6 +260,75 @@ describe("the form kind", () => {
     }
   });
 
+  it("Add question opens a dialog and makes nothing until Add; Cancel makes nothing", async () => {
+    open(view());
+    await found("[data-form]");
+    fireEvent.click(screen.getByRole("button", { name: "Add question" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add question" });
+    // Nothing reaches the form while he writes it: no save, no placeholder question.
+    fireEvent.change(screen.getByRole("textbox", { name: "Question" }), { target: { value: "Team name" } });
+    await new Promise((r) => setTimeout(r, 700));
+    expect(formHost.save).not.toHaveBeenCalled();
+    expect(document.querySelectorAll("[data-q]")).toHaveLength(3);
+    expect(dialog.textContent).not.toContain("Not saved");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await new Promise((r) => setTimeout(r, 700));
+    expect(formHost.save).not.toHaveBeenCalled();
+    expect(document.querySelectorAll("[data-q]")).toHaveLength(3);
+  });
+
+  it("Add makes one question with what he typed, at once", async () => {
+    open(view());
+    await found("[data-form]");
+    fireEvent.click(screen.getByRole("button", { name: "Add question" }));
+    await screen.findByRole("dialog", { name: "Add question" });
+    const add = screen.getByRole("button", { name: "Add" });
+    // Add waits for words.
+    expect(add.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByRole("textbox", { name: "Question" }), { target: { value: "Platform" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Kind" }));
+    });
+    const option = await screen.findByRole("option", { name: "Dropdown" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    // A dropdown needs its options before it can be added.
+    expect(screen.getByRole("button", { name: "Add" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByRole("textbox", { name: "Options" }), { target: { value: "PC\n\nConsole\n" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Required" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(formHost.save).toHaveBeenCalledTimes(1));
+    const saved = formHost.save.mock.calls[0][1].questions;
+    expect(saved).toHaveLength(4);
+    expect(saved[3]).toMatchObject({ label: "Platform", type: "dropdown", required: true, options: ["PC", "Console"] });
+    expect(saved.some((q) => q.label === "Question")).toBe(false);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.querySelector(`[data-q="${saved[3].id}"]`)?.textContent).toContain("Platform");
+  });
+
+  it("a refused Add keeps the dialog and his words, with the reason, and shows nothing on the form", async () => {
+    open(view());
+    await found("[data-form]");
+    formHost.save.mockRejectedValueOnce(new Error("The form changed since"));
+    fireEvent.click(screen.getByRole("button", { name: "Add question" }));
+    await screen.findByRole("dialog", { name: "Add question" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Question" }), { target: { value: "Team name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Add question" }).textContent).toContain("The form changed since"));
+    expect((screen.getByRole("textbox", { name: "Question" }) as HTMLInputElement).value).toBe("Team name");
+    // The form shows only what was made: no new question, no second account of the failure.
+    expect(document.querySelectorAll("[data-q]")).toHaveLength(3);
+    expect(screen.queryByText("Not saved")).toBeNull();
+    // Add again lands it.
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(formHost.save).toHaveBeenCalledTimes(2);
+    expect(formHost.save.mock.calls[1][1].questions.at(-1)).toMatchObject({ label: "Team name", type: "short", required: false });
+  });
+
   it("opens a question from the keyboard, and a closed form's questions only read", async () => {
     open(view());
     await found("[data-form]");

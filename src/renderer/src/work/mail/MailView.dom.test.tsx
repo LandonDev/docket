@@ -7,7 +7,7 @@
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clampList, LIST_WIDTH, MailFrame, View } from "./MailView";
+import { clampList, LIST_WIDTH, MailFrame, PANE_ROOM, View } from "./MailView";
 
 beforeEach(() => localStorage.clear());
 afterEach(cleanup);
@@ -55,6 +55,26 @@ describe("the Mail view", () => {
     // A double press puts it back.
     fireEvent.doubleClick(edge);
     expect(width()).toBe("296px");
+  });
+
+  it("draws the list narrower when the view has no room for the kept width, keeps the kept width, and steps from what is drawn", () => {
+    localStorage.setItem(LIST_WIDTH.key, "420");
+    const clientWidth = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth")!;
+    Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get: () => 700 });
+    try {
+      render(<MailFrame list={null} pane={null} />);
+      const list = document.querySelector<HTMLElement>("[data-mail-list]")!;
+      const edge = screen.getByRole("separator", { name: "Resize the list" });
+      expect(PANE_ROOM).toBe(360);
+      expect(list.style.width).toBe("340px");
+      expect(edge.getAttribute("aria-valuenow")).toBe("340");
+      expect(localStorage.getItem(LIST_WIDTH.key)).toBe("420");
+      fireEvent.keyDown(edge, { key: "ArrowLeft" });
+      expect(list.style.width).toBe("324px");
+      expect(localStorage.getItem(LIST_WIDTH.key)).toBe("324");
+    } finally {
+      Object.defineProperty(Element.prototype, "clientWidth", clientWidth);
+    }
   });
 
   it("opens at the width the app kept, and reads a kept width that makes no sense as the default", () => {

@@ -18,7 +18,8 @@ import { clockTime } from "../../lib/duration";
 /**
  * The main pane while one of a Work workspace's views is open (App mounts it
  * over the thread panes, under the strip): the view's 40px header (its glyph,
- * its name, the controls the view's chunk puts there), then the view, which
+ * its name, the controls the view's chunk puts there; none for a view that
+ * draws its own head, as Mail does), then the view, which
  * reads LifeOS through the workspace's own sector. Signed out it is one
  * sign-in; unreachable, one state line over what was last shown. While the
  * view's chunk loads it is a column of rows; a view that throws (a LifeOS
@@ -72,6 +73,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // The session's own state counts too: its JWT can be refused or go unanswered while the host says connected.
   const signedOut = gated && (state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused");
   const unreachable = gated && (state === "unreachable" || session.state === "unreachable");
+  // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header.
+  const headless = !!def.ownHead && !signedOut;
   // The view covers the thread's pane, which goes inert under it (App.tsx): focus that was in the pane, or fell to the
   // page with it, lands on the view's heading, never on a composer or canvas control no one can see.
   const region = useRef<HTMLDivElement | null>(null);
@@ -80,7 +83,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
     const at = document.activeElement;
     const covered = region.current?.parentElement;
     if (!covered) return;
-    if (!at || at === document.body || (covered.contains(at) && !region.current!.contains(at))) heading.current?.focus({ preventScroll: true });
+    if (!at || at === document.body || (covered.contains(at) && !region.current!.contains(at))) (heading.current ?? region.current)?.focus({ preventScroll: true });
   }, []);
   const [retrying, setRetrying] = useState(false);
   const retry = (): void => {
@@ -92,15 +95,24 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   return (
     // Over every layer a thread's pane raises (its composer and queue reach z-30), under dialogs and menus (--layer-dialog 90):
     // the draft composer must not float over a view's body.
-    <div ref={region} role="region" aria-label={def.label} className="absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col bg-background">
-      <div className="@container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
-        <Icon className="size-3.5 text-muted-foreground" />
-        <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring flex min-w-0 items-center rounded-sm">
-          {Title && !signedOut ? <Title {...props} /> : <span className="font-medium text-foreground">{def.label}</span>}
-        </span>
-        <span className="flex-1" />
-        {Head && !signedOut ? <Head {...props} /> : null}
-      </div>
+    <div
+      ref={region}
+      role="region"
+      aria-label={def.label}
+      // Headless, the region itself takes the focus the heading would have, and says the view's name.
+      tabIndex={headless ? -1 : undefined}
+      className="absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col bg-background outline-none"
+    >
+      {headless ? null : (
+        <div className="@container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
+          <Icon className="size-3.5 text-muted-foreground" />
+          <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring flex min-w-0 items-center rounded-sm">
+            {Title && !signedOut ? <Title {...props} /> : <span className="font-medium text-foreground">{def.label}</span>}
+          </span>
+          <span className="flex-1" />
+          {Head && !signedOut ? <Head {...props} /> : null}
+        </div>
+      )}
       {unreachable && !signedOut ? (
         // The state line's shape (DESIGN.md "The state line"): 32px, glyph, the word in its tone, a muted detail, one action.
         <div data-view-state="failed" role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">

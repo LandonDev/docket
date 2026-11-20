@@ -77,6 +77,8 @@ public enum Facts {
     public static let textEntryRoles: Set<String> = ["input", "search", "password", "text area", "combo box", "date"]
     /// The roles a caret or selection prints on.
     static let caretRoles: Set<String> = ["input", "search", "password", "text area", "combo box"]
+    /// A value that would go with a send (the host binds it whole): printed even when it repeats the name.
+    static let boundValueRoles: Set<String> = ["input", "search", "text area", "combo box", "date", "pop up"]
     /// `read-only` applies to these when AXValue is not settable.
     static let readOnlyRoles: Set<String> = ["input", "search", "text area", "combo box", "date"]
     public static let listRoles: Set<String> = ["list", "outline", "table"]
@@ -191,8 +193,8 @@ public enum Facts {
         // a heading's number is its level; a container's number (Swing's 0 on every panel) says nothing
         let number = { if case .number = node.value { true } else { false } }()
         let quiet = number && (role == "heading" || containerRoles.contains(role))
-        // a value repeating the name prints once
-        let repeatsName = rawValue.map { $0.trimmed } == named?.0
+        // a value repeating the name prints once, but a field's value always prints: it is what would go
+        let repeatsName = !boundValueRoles.contains(role) && rawValue.map { $0.trimmed } == named?.0
         if let v = rawValue, !v.isEmpty, !toggle, !disclosed, !quiet, !repeatsName, role != "password" {
             // a prefix-read value: AX gives the whole length in UTF-16 units only, so the
             // unread part counts in scalars at the prefix's own ratio (exact for uniform text)

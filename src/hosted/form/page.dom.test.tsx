@@ -165,14 +165,21 @@ describe('the form page', () => {
     expect(document.querySelector('[data-fm-status]')!.textContent).toBe('Your answer was sent.')
   })
 
-  it('says a send that failed in the same status line', async () => {
+  it('says a send that failed once, in its alert beside Send, and leaves the status line to outcomes that replace the form', async () => {
     const fetcher = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'POST' ? Promise.reject(new TypeError('offline')) : json(200, FORM)))
     await mount(root, '/f/abcdefghijklmnop', fetcher)
     type('#q0', 'Ava')
     root.querySelector<HTMLInputElement>('input[value="Valorant"]')!.checked = true
     submit()
     // No reply came: the answer may be in, so the page cannot say it was not sent.
-    await vi.waitFor(() => expect(document.querySelector('[data-fm-status]')!.textContent).toBe("We couldn't confirm your answer. Check your connection, then send it again: it is counted once."))
+    const alert = await vi.waitFor(() => {
+      const shown = document.querySelector<HTMLElement>('[role=alert]:not([hidden])')
+      if (!shown) throw new Error('no alert yet')
+      return shown
+    })
+    expect(alert.textContent).toBe("We couldn't confirm your answer. Check your connection, then send it again: it is counted once.")
+    expect(document.querySelector('[data-fm-status]')!.textContent).toBe('')
+    expect([...document.querySelectorAll('[role=alert], [role=status]')].filter((n) => n.textContent === alert.textContent)).toHaveLength(1)
   })
 
   it('sends the same answers again under the same submission, and changed answers under a new one', async () => {
@@ -218,7 +225,8 @@ describe('the form page', () => {
     // A gateway's 502 with none of the service's words: unconfirmed, and Send has the focus back.
     done(new Response('Bad gateway', { status: 502 }))
     await vi.waitFor(() => expect(document.activeElement).toBe(send))
-    expect(document.querySelector('[data-fm-status]')!.textContent).toBe("We couldn't confirm your answer. Check your connection, then send it again: it is counted once.")
+    expect(document.querySelector('[role=alert]:not([hidden])')!.textContent).toBe("We couldn't confirm your answer. Check your connection, then send it again: it is counted once.")
+    expect(document.querySelector('[data-fm-status]')!.textContent).toBe('')
   })
 
   it('tells a form that failed to load from one that is not there, and Retry reads it again', async () => {

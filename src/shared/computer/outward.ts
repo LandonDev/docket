@@ -1031,8 +1031,9 @@ const markFields = (screen: Screen): ScreenElement[] =>
 /** A value the read printed cut (observation.ts `cutValue`): its first scalars, then `…(+n chars)`. */
 export const isCutValue = (value: string | undefined): boolean => !!value && /…\(\+\d+ chars\)$/.test(value)
 
-/** The fields the read printed cut: the hold reads each again whole (`state.get` with `element`, §4.4) before it binds the window. */
-export const cutFields = (screen: Screen): number[] => markFields(screen).filter((e) => isCutValue(e.value)).map((e) => e.index)
+/** The fields and pop-ups the read printed cut: the hold reads each again whole (`state.get` with `element`, §4.4) before it binds the window. */
+export const cutFields = (screen: Screen): number[] =>
+  [...markFields(screen), ...[...screen.elements.values()].filter((e) => e.role === 'pop up')].filter((e) => isCutValue(e.value)).map((e) => e.index)
 
 /** The screen with these fields' values as read whole. */
 export function withValues(screen: Screen, values: ReadonlyMap<number, string>): Screen {
@@ -1044,8 +1045,12 @@ export function withValues(screen: Screen, values: ReadonlyMap<number, string>):
   return { ...screen, elements }
 }
 
-/** A field's value as the mark binds it: a long one by its digest, so a change anywhere in it, past what a line shows too, is a change. */
-const boundValue = (value: string): string => (value.length > 160 ? `#${sha256Hex(value)}` : value)
+/**
+ * A value as the mark binds it: a long one by its digest, so a change anywhere in it, past what a line shows too, is
+ * a change. The two forms are tagged apart (`=` the text itself, `#` a digest), so a field holding the literal text
+ * "#<digest of another value>" never binds as that value does.
+ */
+const boundValue = (value: string): string => (value.length > 160 ? `#${sha256Hex(value)}` : `=${value}`)
 
 /** Controls whose state goes with a submit: what is ticked, switched on or chosen ("Include insurance", the plan picked). */
 const STATE_ROLES = ['checkbox', 'radio', 'switch', 'tab']
@@ -1056,7 +1061,7 @@ function controlMark(screen: Screen): string[] {
   return [...screen.elements.values()]
     .filter((e) => STATE_ROLES.includes(e.role) || e.role === 'pop up')
     .sort((a, b) => a.index - b.index)
-    .map((e) => `${e.role}|${e.name ?? ''}|${e.role === 'pop up' ? (e.value ?? '') : e.states.filter((x) => STATES_BOUND.includes(x)).join(' ')}`)
+    .map((e) => `${e.role}|${e.name ?? ''}|${e.role === 'pop up' ? boundValue(e.value ?? '') : e.states.filter((x) => STATES_BOUND.includes(x)).join(' ')}`)
 }
 
 /**

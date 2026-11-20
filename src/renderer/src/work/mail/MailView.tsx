@@ -20,7 +20,8 @@ import { mailChip } from "./model";
  * between 260 and 480, kept for the app. Under 640px of pane the list and
  * the open mail take turns, and the reader's toolbar leads with the way
  * back. New mail and Start thread are the mail client's own (the list's
- * head, the reader's More), so the view's header carries nothing.
+ * head, the reader's More), so the frame draws no header over the list's
+ * head (`ownHead`); the region still names the view.
  */
 
 /** The list's width: its default, its bounds, and where the app keeps it. */
@@ -150,13 +151,31 @@ export function MailScreen({ id, onOpenTask, onStartThread }: { id: string; onOp
   );
 }
 
+/** The room the reading pane keeps beside the list. */
+export const PANE_ROOM = 360;
+
 /**
  * The list beside the reading pane, with the edge between them to drag: 260 to 480px, kept for the
- * app. The arrow keys move the edge 16px on its own tab stop, and a double press puts it back.
+ * app. The arrow keys move the edge 16px on its own tab stop, and a double press puts it back. In a
+ * view too narrow for the kept width the list draws narrower, leaving the pane its 360px, and the
+ * kept width comes back when the room does.
  */
 export function MailFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) {
   const [width, setWidth] = useState(readListWidth);
+  const [room, setRoom] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const measure = (): void => setRoom(el.clientWidth);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  // Unmeasured (0) draws the kept width.
+  const drawn = room > 0 ? Math.max(LIST_WIDTH.min, Math.min(width, room - PANE_ROOM)) : width;
   const keep = (next: number): void => {
     const clamped = clampList(next);
     setWidth(clamped);
@@ -167,8 +186,8 @@ export function MailFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) 
     }
   };
   return (
-    <div className="flex h-full min-h-0">
-      <div data-mail-list="" style={{ width }} className="flex shrink-0 flex-col">
+    <div ref={root} className="flex h-full min-h-0">
+      <div data-mail-list="" style={{ width: drawn }} className="flex shrink-0 flex-col">
         {list}
       </div>
       {/* biome-ignore lint/a11y/useSemanticElements: a draggable edge is a separator with a value, which no element is */}
@@ -176,7 +195,7 @@ export function MailFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) 
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize the list"
-        aria-valuenow={width}
+        aria-valuenow={drawn}
         aria-valuemin={LIST_WIDTH.min}
         aria-valuemax={LIST_WIDTH.max}
         tabIndex={0}
@@ -184,7 +203,7 @@ export function MailFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) 
         onPointerDown={(event) => {
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
-          drag.current = { x: event.clientX, width };
+          drag.current = { x: event.clientX, width: drawn };
         }}
         onPointerMove={(event) => {
           if (drag.current) keep(drag.current.width + event.clientX - drag.current.x);
@@ -196,7 +215,7 @@ export function MailFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) 
           const step = event.key === "ArrowLeft" ? -16 : event.key === "ArrowRight" ? 16 : 0;
           if (!step) return;
           event.preventDefault();
-          keep(width + step);
+          keep(drawn + step);
         }}
       >
         <span className="absolute inset-y-0 left-[3px] w-px bg-border transition-colors duration-(--dur-fast) ease-(--ease-out) group-hover/edge:bg-ring group-focus-visible/edge:bg-ring group-active/edge:bg-ring" />

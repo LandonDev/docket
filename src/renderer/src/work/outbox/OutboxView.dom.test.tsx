@@ -16,6 +16,7 @@ const world = vi.hoisted(() => ({
   items: new Map<string, OutboxItem[]>(),
   grants: new Map<string, OutboxGrant[]>(),
   resultsDown: false,
+  listDown: new Set<string>(),
   quote: null as string | null,
   getFails: false,
 }));
@@ -34,6 +35,7 @@ vi.mock("../../lib/connection", async (original) => {
       const now = Date.now();
       switch (method) {
         case "work.outbox.list": {
+          if (world.listDown.has(env)) throw new Error("socket closed");
           const waiting = items.filter((i) => ["held", "live", "failed", "sending"].includes(i.state));
           return { items: params.show === "decided" ? items.filter((i) => i.state === "sent" || i.state === "discarded") : waiting, waiting: waiting.length };
         }
@@ -135,6 +137,7 @@ beforeEach(() => {
   ]);
   world.grants = new Map();
   world.resultsDown = false;
+  world.listDown.clear();
   workSwitch.reset();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -464,5 +467,40 @@ describe("the Outbox", () => {
     expect(rowWords(share)).toEqual({ act: "Share with dana@purdue.edu (can edit)", about: "Spring LAN budget, final, with every vendor quote attached.xlsx" });
     // Every other kind splits its summary at the colon, as before.
     expect(rowWords({ kind: "mail.send", verb: "Send", summary: "Send to Dana Lee: Budget", payload: {} } as never)).toEqual({ act: "Send to Dana Lee", about: "Budget" });
+  });
+
+  it("says an empty list once at either width: in the list when narrow, in the detail when wide", async () => {
+    world.items.set("box", []);
+    world.items.set("mac", []);
+    resetOutboxStore();
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getAllByText("Nothing held").length).toBe(2));
+    const inList = document.querySelector("[data-outbox-list] [data-outbox-empty=list]") as HTMLElement;
+    const inDetail = document.querySelector("[data-outbox-detail] [data-outbox-empty=detail]") as HTMLElement;
+    // The list's copy shows only under 640px, where the detail (and its copy) is hidden: one on screen at either width.
+    expect(inList.className).toContain("hidden");
+    expect(inList.className).toContain("@max-[40rem]/outbox:flex");
+    expect((document.querySelector("[data-outbox-detail]") as HTMLElement).className).toContain("@max-[40rem]/outbox:hidden");
+    expect(inDetail.textContent).toContain("Nothing held");
+  });
+
+  it("never says Nothing held beside a host that did not answer: it names the host and says nothing is known", async () => {
+    world.items.set("box", []);
+    world.items.set("mac", []);
+    world.listDown.add("mac");
+    resetOutboxStore();
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    await waitFor(() => expect(screen.getAllByText("Not known yet").length).toBe(2));
+    expect(screen.queryByText("Nothing held")).toBeNull();
+    // The named failure and its Retry stay in view.
+    const failure = [...document.querySelectorAll("[role=status]")].find((n) => n.textContent?.includes("did not answer"))!;
+    expect(failure.querySelector("button")!.textContent).toContain("Retry");
+    // Once it answers, the empty list is known to be clear.
+    world.listDown.clear();
+    const { loadOutbox } = await import("./store");
+    await act(async () => loadOutbox());
+    await waitFor(() => expect(screen.getAllByText("Nothing held").length).toBe(2));
   });
 });

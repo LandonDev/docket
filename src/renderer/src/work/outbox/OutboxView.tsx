@@ -214,6 +214,20 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     if (failed.length) toastError(`${failed.length} could not go: ${failed[0]!.error}`);
   };
 
+  // An empty list is clear only when every host answered: a host that failed is named above with its Retry, and its
+  // items are not known, so the words never say "Nothing held" beside a failed read.
+  const downNames = outbox.errors.map((e) => hostName(e.environmentId));
+  const emptyWords = !outbox.complete ? (
+    <EmptyState
+      title="Not known yet"
+      line={`${downNames.length ? `${downNames.length === 1 ? downNames[0] : `${downNames.length} hosts`} did not answer, so` : "Until every host answers,"} what ${tab === "waiting" ? "waits" : "was sent"} there is not shown.`}
+    />
+  ) : tab === "waiting" ? (
+    <EmptyState title="Nothing held" line="What a thread would send, post or accept waits here for your press." />
+  ) : (
+    <EmptyState title="Nothing sent yet" line="What left the machine shows here, newest first." />
+  );
+
   return (
     <div role="region" aria-label="Outbox" data-work-outbox className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
       <div className="flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
@@ -274,7 +288,12 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
             {!outbox.loaded && list.length === 0 ? (
               <SurfaceSkeleton kind="rows" lines={2} count={6} label="Loading the Outbox" />
-            ) : list.length === 0 ? null : tab === "waiting" ? (
+            ) : list.length === 0 ? (
+              // Narrow, the list is the pane on screen: an empty list says so here (the detail's copy is hidden then).
+              <div data-outbox-empty="list" className="hidden h-full @max-[40rem]/outbox:flex">
+                {emptyWords}
+              </div>
+            ) : tab === "waiting" ? (
               <WaitingList
                 items={outbox.waiting}
                 current={current}
@@ -309,10 +328,10 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
           ) : !current ? (
             list.length > 0 ? (
               <EmptyState title="No longer waiting" line="Another press or device decided it. Pick an item from the list." />
-            ) : tab === "waiting" ? (
-              <EmptyState title="Nothing held" line="What a thread would send, post or accept waits here for your press." />
             ) : (
-              <EmptyState title="Nothing sent yet" line="What left the machine shows here, newest first." />
+              <div data-outbox-empty="detail" className="flex h-full">
+                {emptyWords}
+              </div>
             )
           ) : tab === "waiting" ? (
             <HeldDetail key={keyOf(current)} item={current} workspace={nameOf(current.environmentId, current.workspaceId)} host={hostName(current.environmentId)} onOpenSession={onOpenSession} onPressed={afterPress} />

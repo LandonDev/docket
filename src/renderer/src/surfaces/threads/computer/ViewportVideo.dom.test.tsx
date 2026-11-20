@@ -117,7 +117,7 @@ const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
 const entry = (key = "s1"): ComputerEntry => ({ host: "box", row: row({ threadId: key }), previewable: true, previewHost: "box", previewKey: key });
 const flush = () => act(async () => {});
 
-function Live({ entry: en, run, take, drive }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean }) {
+function Live({ entry: en, run, take, drive, onOpen }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; onOpen?: (from: DOMRect) => void }) {
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
   const stream = useLiveStream(en, run, box, root, take === undefined && drive === undefined ? undefined : { take, drive });
@@ -128,7 +128,7 @@ function Live({ entry: en, run, take, drive }: { entry: ComputerEntry; run: bool
     <div ref={root} data-mode={stream.mode} data-testid="section">
       <Viewport
         ref={box}
-        face={over ? null : liveFace(stream)}
+        face={over ? null : liveFace(stream, onOpen)}
         label="Live view of Concur in Chromium"
         size={streamSize(state)}
         line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : "The preview stopped"} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
@@ -137,9 +137,9 @@ function Live({ entry: en, run, take, drive }: { entry: ComputerEntry; run: bool
   );
 }
 
-type MountProps = { run?: boolean; take?: boolean; drive?: boolean; entry?: ComputerEntry };
+type MountProps = { run?: boolean; take?: boolean; drive?: boolean; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void };
 function mount(props: MountProps = {}) {
-  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} />;
+  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} onOpen={p.onOpen ?? props.onOpen} />;
   const view = render(tree(props));
   return { ...view, again: (p: MountProps) => view.rerender(tree(p)) };
 }
@@ -179,6 +179,27 @@ describe("the live viewport, as video", () => {
     expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
     // nothing here draws on a canvas that is the worker's
     expect(HTMLCanvasElement.prototype.getContext).not.toHaveBeenCalled();
+  });
+
+  it("a box that opens the full view keeps the canvas that took the first frame: one button from the start, off until then", async () => {
+    const onOpen = vi.fn();
+    mount({ onOpen });
+    await flush();
+    const stream = h.acquired[0];
+    const button = screen.getByRole("button", { name: "Live view of Concur in Chromium" });
+    const canvas = button.querySelector("canvas")!;
+    expect(stream.shown).toEqual([canvas]);
+    // Nothing to open before a frame is there: the same button, off.
+    expect(button.hasAttribute("disabled")).toBe(true);
+    await act(async () => stream.set({ status: "opening", width: 1280, height: 800 }));
+    await act(async () => stream.set({ status: "live", width: 1280, height: 800 }));
+    // The first frame swaps nothing: the same element and the same canvas, handed to the stream once.
+    expect(screen.getByRole("button", { name: "Live view of Concur in Chromium" })).toBe(button);
+    expect(button.querySelector("canvas")).toBe(canvas);
+    expect(stream.shown).toEqual([canvas]);
+    expect(button.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(button);
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("writes the frame count and the rate on the box by hand, and rings the agent's click", async () => {

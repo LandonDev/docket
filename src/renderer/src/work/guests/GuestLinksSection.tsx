@@ -108,13 +108,16 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
 
   return (
     <PageSection title="Guest links">
-      {failed.map((why) => (
+      {/* One line per host that did not answer, and one Retry for them all: each would run the same read of every host. */}
+      {failed.map((why, i) => (
         <PageError
           key={why}
           action={
-            <Button variant="ghost" size="sm" disabled={retrying} onClick={retry}>
-              <BusyLabel busy={retrying} label="Retry" />
-            </Button>
+            i === failed.length - 1 ? (
+              <Button variant="ghost" size="sm" disabled={retrying} onClick={retry}>
+                <BusyLabel busy={retrying} label="Retry" />
+              </Button>
+            ) : undefined
           }
         >
           {why}

@@ -135,7 +135,9 @@ nothing.
 
 `Mailbox` under `MailClientProvider` and TempCode's `MailKit`, on the
 workspace's session narrowed to its sector, so it lists that sector's mail
-and no other. The view's header carries nothing of Mail's: the mailbox
+and no other. The frame draws no 40px header over it (`ownHead` on the
+view's def; the region keeps the name "Mail", and takes the focus the
+heading would, and the sign-in keeps the header): the mailbox
 menu (Inbox, Needs me, Unread, Drafts, Scheduled, Sent, Snoozed, Archive,
 Trash, then Mail settings), Filter, New mail and search are the list's own
 head, inside work-kit, and Start thread is in the reader's More (a `mail`
@@ -144,7 +146,9 @@ thread to the mail). Which mailbox, which mail was open and the composer
 stay per workspace while the window lives (`MailPage`).
 
 The list is 296px beside the reader and its edge takes a drag from 260 to
-480px, kept for the app (`tc.mail.listWidth`); the edge is a separator on
+480px, kept for the app (`tc.mail.listWidth`). A view too narrow for the
+kept width draws the list at its width less the reader's 360px, and the
+kept width comes back with the room; the edge is a separator on
 its own tab stop, 16px an arrow key, and a double press puts it back. At
 and under 640px of view the list and the open mail take turns (`narrow`):
 the reader's toolbar leads with the way back, and the keys move a row

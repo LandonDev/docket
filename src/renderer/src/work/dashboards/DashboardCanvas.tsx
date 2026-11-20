@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { DashBlock, DashboardView, DashFigure, DashFormat, DashFrom, DashProposal, DashSheet } from "@shared/contract-work-dashboards";
 import { ExternalLink, RefreshCw } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
@@ -459,10 +459,23 @@ function Chart({ bars, format, stale, title }: { bars: { label: string; value: n
   const at = (v: number): number => ((v - bottom) / span) * 100;
   const now = isTimeSeries(bars.map((b) => b.label)) ? bars.length - 1 : -1;
   const columns = `repeat(${bars.length}, minmax(0, 1fr))`;
+  // The marks are one Tab stop: the arrows walk them, each shows on focus the readout it shows on hover.
+  const [active, setActive] = useState(0);
+  const marks = useRef<(HTMLSpanElement | null)[]>([]);
+  const walk = (event: KeyboardEvent<HTMLSpanElement>, i: number): void => {
+    const to = event.key === "ArrowRight" ? i + 1 : event.key === "ArrowLeft" ? i - 1 : event.key === "Home" ? 0 : event.key === "End" ? bars.length - 1 : null;
+    if (to === null) return;
+    event.preventDefault();
+    const next = Math.max(0, Math.min(bars.length - 1, to));
+    setActive(next);
+    marks.current[next]?.focus();
+  };
+  const seat = Math.min(active, bars.length - 1);
   return (
-    // The values read aloud are the hover's whole ones, never the axis's rounded ticks: two bars that round alike stay apart.
-    <div role="img" aria-label={`${title}: ${bars.map((b) => `${b.label} ${full(b.value, format)}`).join(", ")}`} className="grid h-[168px] grid-cols-[40px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_20px]">
-      <div className="relative text-xs text-muted-foreground tabular-nums">
+    // A group named for the chart, its marks each read once with the hover's whole value, never the axis's rounded ticks:
+    // two bars that round alike stay apart. The ticks and the labels under the bars are drawn for the eye alone.
+    <div data-chart role="group" aria-label={title} className="grid h-[168px] grid-cols-[40px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_20px]">
+      <div aria-hidden className="relative text-xs text-muted-foreground tabular-nums">
         {ticks.map((t) => (
           <span key={t} data-tick={t} className="absolute right-2 translate-y-1/2" style={{ bottom: `${at(t)}%` }}>
             {tick(t, format)}
@@ -478,20 +491,33 @@ function Chart({ bars, format, stale, title }: { bars: { label: string; value: n
             ),
           )}
           {bars.map((b, i) => (
-            <span key={`${b.label}${i}`} className="relative z-1 h-full w-[min(32px,56%)]">
-              <Tip label={`${b.label}, ${full(b.value, format)}`}>
+            // The whole column is the mark: the pointer finds a short bar's readout anywhere above it, and the focus ring
+            // has a box to draw on. The bar itself draws inside it.
+            <Tip key={`${b.label}${i}`} label={`${b.label}, ${full(b.value, format)}`}>
+              <span
+                ref={(el) => {
+                  marks.current[i] = el;
+                }}
+                data-mark={i}
+                role="img"
+                aria-label={`${b.label}, ${full(b.value, format)}`}
+                tabIndex={i === seat ? 0 : -1}
+                onFocus={() => setActive(i)}
+                onKeyDown={(event) => walk(event, i)}
+                className="focus-ring relative z-1 h-full w-[min(32px,56%)] rounded-sm"
+              >
                 <i
                   data-bar={i === now ? "now" : ""}
                   data-sign={b.value < 0 ? "negative" : undefined}
                   className={`absolute inset-x-0 ${b.value < 0 ? "rounded-b-[3px]" : "rounded-t-[3px]"} ${i === now ? (stale ? "bg-(--chart-neutral-stale)" : "bg-foreground") : "bg-(--chart-neutral-rest)"}`}
                   style={{ bottom: `${at(Math.min(0, b.value))}%`, height: `${(Math.abs(b.value) / span) * 100}%` }}
                 />
-              </Tip>
-            </span>
+              </span>
+            </Tip>
           ))}
         </div>
       </TooltipProvider>
-      <div data-chart-labels className="col-start-2 grid text-xs leading-5 text-muted-foreground" style={{ gridTemplateColumns: columns }}>
+      <div data-chart-labels aria-hidden className="col-start-2 grid text-xs leading-5 text-muted-foreground" style={{ gridTemplateColumns: columns }}>
         {bars.map((b, i) => (
           <TruncateTip key={`${b.label}${i}`} text={b.label}>
             <span data-chart-label className={`min-w-0 truncate px-0.5 text-center ${i === now ? "font-medium text-foreground" : ""}`}>

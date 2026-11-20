@@ -228,11 +228,13 @@ export interface OpenWorkView {
   task?: string;
   /** Mail alone: the LifeOS mail thread to open (a sent mail chip). The view takes it once and clears it. */
   mail?: string;
+  /** Agenda alone: the LifeOS event to stand on (an invitation's Open in Agenda): the view opens Week at its day, then clears it. */
+  event?: string;
 }
 let openView: OpenWorkView | null = null;
 
 export function openWorkView(next: OpenWorkView | null): void {
-  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task && openView?.mail === next?.mail) return;
+  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task && openView?.mail === next?.mail && openView?.event === next?.event) return;
   openView = next;
   for (const listener of listeners) listener();
 }
