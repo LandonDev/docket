@@ -2715,6 +2715,11 @@ frame waited inside the viewer, in microseconds.
   sequence 1 and keeps the bitrate it had. No frame goes out until a
   keyframe: at the start, in a new generation, and after a frame the flow
   refused, the frames that lean on it are dropped and a keyframe asked for.
+  In `budget` the encoder's own drops leave gaps between sent frames that
+  the flow takes for idleness, so it would never probe; the stream applies
+  the flow's probe beside it (a tenth more a second while the encoder drops
+  admitted pictures, at least 8 acks come, the pressure is clear and the flow
+  made no cut in 2 s), and every cut stays the flow's (`probeAtTheEdge`).
   Each stream holds the capture it joined, so a capture's end, or a stop,
   never reaches another capture of the same window; a start that finds its
   capture over answers `window_not_found`. A 10 ms clock runs the flow's
@@ -2728,6 +2733,10 @@ frame waited inside the viewer, in microseconds.
   whose pixels did differ; the still window ran again for it, then sent
   nothing. Repeats skip the pacer but not the flow, and reach the flow as
   frames of the moment they are encoded.
+- **The agent's click.** `capture/click` goes to the session's video streams
+  on the window too: `stream` the video stream's number as a decimal string,
+  `at` in its picture's pixels, `width` and `height` the picture's size, with
+  the preview's carry for a stream that starts within `clickCarryMs`.
 
 ### The host
 

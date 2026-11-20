@@ -29,6 +29,15 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
     /// no frame goes out until a keyframe: at the start, in a new generation, after a frame the flow refused
     private var needKey = true
     private var broken = false
+    /// the picture's size now: the start size, then each sent frame's; a click maps into it
+    private var picture = PixelSize(width: 0, height: 0)
+    // `budget`'s probe at the flow's edge (`probeAtTheEdge`)
+    private var edgeSince: UInt64 = 0
+    private var edgeAcked: UInt64 = 0
+    private var edgeDrops = 0
+    private var edgeTarget: UInt64 = 0
+    private var lastTarget: UInt64 = 0
+    private var lastCutUs: UInt64 = 0
     private(set) var encoder: (any VideoEncoder)?
     private let write: @Sendable (Data) -> Void
     private let fail: @Sendable (String) -> Void
@@ -51,8 +60,13 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
     }
 
     func attach(_ encoder: any VideoEncoder) {
-        lock.withLock { self.encoder = encoder }
+        lock.withLock {
+            self.encoder = encoder
+            picture = encoder.startSize
+        }
     }
+
+    var pictureSize: PixelSize { lock.withLock { picture } }
 
     /// The stream is over: nothing more is admitted or written. True the first time.
     @discardableResult
@@ -90,6 +104,7 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
                 let rate = flow.targetBitrate
                 flow.reset()
                 flow.targetBitrate = rate
+                edgeAcked = 0
                 needKey = true
             }
             // a frame that leans on one never sent waits for the next keyframe
@@ -105,6 +120,7 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
                 return nil
             }
             needKey = false
+            picture = unit.size
             flow.sent(sequence, now)
             let frame = VideoFrame(
                 generation: generation, sequence: sequence, keyframe: unit.keyframe, width: unit.size.width, height: unit.size.height,
@@ -117,7 +133,10 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
     }
 
     func dropped() {
-        lock.withLock { reserved = max(0, reserved - 1) }
+        lock.withLock {
+            reserved = max(0, reserved - 1)
+            edgeDrops += 1
+        }
     }
 
     func failed(_ why: String) {
@@ -157,6 +176,7 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
             flow.update(now)
             var newRate: Int?
             if mode == .budget {
+                probeAtTheEdge(now)
                 let wanted = Int(min(max(flow.frameBitrate(), UInt64(ComputerDefaults.VideoStream.minBitrate)), UInt64(ComputerDefaults.VideoStream.maxBitrate)))
                 if wanted != bitrate {
                     bitrate = wanted
@@ -168,6 +188,38 @@ final class VideoStream: VideoOutput, @unchecked Sendable {
         if let newRate { encoder?.setBitrate(newRate) }
         if sharpen { encoder?.encodeLast() }
         return result
+    }
+
+    /// Not in screen-relay, under the lock: `budget`'s bitrate rising while the encoder drops frames.
+    ///
+    /// The flow raises its bitrate only from a sample of steady demand, and it starts the sample again
+    /// whenever two sent frames are more than three frame intervals apart (`ack`'s gap test, meant for a
+    /// source that went idle). screen-relay's x264 never drops a frame, so for it a gap is idleness. Our
+    /// encoder in `budget` holds the bitrate with low-latency rate control, which drops most frames of a
+    /// busy window: the gaps are the cap at work, not idleness, and the flow never probes. So the stream
+    /// keeps the flow exactly as it is and applies the flow's own probe beside it, with the flow's numbers:
+    /// a second in which the encoder dropped pictures the flow had admitted (the demand the flow cannot
+    /// see), at least 8 acks came, the flow's network pressure is clear, the flow did not rise itself, and
+    /// it made no cut in the last 2 s, raises `targetBitrate` by a tenth, up to the flow's maximum. Cuts
+    /// stay the flow's own.
+    private func probeAtTheEdge(_ now: UInt64) {
+        if flow.targetBitrate < lastTarget { lastCutUs = now }
+        defer { lastTarget = flow.targetBitrate }
+        if edgeSince == 0 {
+            edgeSince = now
+            edgeTarget = flow.targetBitrate
+            return
+        }
+        guard now >= edgeSince + 1_000_000 else { return }
+        let acked = flow.acknowledged >= edgeAcked ? flow.acknowledged - edgeAcked : flow.acknowledged
+        let drops = edgeDrops, rose = flow.targetBitrate > edgeTarget
+        edgeSince = now
+        edgeAcked = flow.acknowledged
+        edgeDrops = 0
+        edgeTarget = flow.targetBitrate
+        guard drops > 0, acked >= 8, !rose, flow.networkPressure(now) == .clear, now >= lastCutUs + 2_000_000 else { return }
+        flow.targetBitrate = min(flow.maxBitrate, flow.targetBitrate + flow.targetBitrate / 10)
+        edgeTarget = flow.targetBitrate
     }
 
     /// What the stream has done, for the proof and a debug log.
@@ -250,19 +302,24 @@ extension ComputerService {
         }
         stream.attach(encoder)
         // a close that came while the stream started fences it out, and so does the capture's own end
-        enum Kept { case kept, closed, ended }
+        enum Kept { case kept(ClickCarry.Click?), closed, ended }
+        let now = env.system.now()
         let kept = lock.withLock { () -> Kept in
             guard book.isOpen(target.session) && !ctx.cancel.isSet else { return .closed }
             // the capture may have ended before its watcher took the entry out
             guard windowVideos[target.windowID] === entry, !video.isOver, !stream.hasFailed else { return .ended }
             videos[id] = stream
-            return .kept
+            // a click still carried on the window is taken in the same turn of the lock (P2), as for a preview
+            return .kept(clicks.pending(session: target.session, windowID: target.windowID, now: now))
         }
-        guard kept == .kept else {
+        if case .kept(let carried?) = kept {
+            ctx.afterAnswer { [self] in sendClick(carried, onVideo: stream) }
+        }
+        if case .kept = kept {} else {
             stream.end()
             video.removeEncoder(encoder)
             await releaseWindowVideo(entry)
-            if kept == .ended { throw ComputerError(kind: .windowNotFound, message: "The window's capture ended while the stream started.") }
+            if case .ended = kept { throw ComputerError(kind: .windowNotFound, message: "The window's capture ended while the stream started.") }
             throw Router.cancelledError
         }
         startVideoClock()
