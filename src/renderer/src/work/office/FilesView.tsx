@@ -26,7 +26,7 @@ import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { playRunner } from "../routines/plays/runOn";
-import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, type ShownLibrary } from "./files";
+import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, showsHeading, type ShownLibrary } from "./files";
 
 /**
  * The Files view of a Work workspace (docs/agents/work-files.md "The Files view"): the Teams and
@@ -177,7 +177,7 @@ function Libraries({ workspace, libraries }: { workspace: WorkspaceMeta; librari
     <>
       {groups.map((g, i) => (
         <section key={g.name || "other"} className={i ? "mt-5" : undefined}>
-          {g.name ? <h2 className="mb-1 text-xs font-medium text-muted-foreground">{g.name}</h2> : null}
+          {showsHeading(g) ? <h2 className="mb-1 text-xs font-medium text-muted-foreground">{g.name}</h2> : null}
           {g.rows.map((row) => (
             <ItemButton key={row.key} size="xs" className={ROW} onClick={() => patch(workspace.id, { place: { library: row.library.id, folder: row.folder } })}>
               <Folder className="size-4 shrink-0 text-muted-foreground" />

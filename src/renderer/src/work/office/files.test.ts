@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TeamsLibrary } from "@shared/contract-work-office";
-import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, type ShownLibrary } from "./files";
+import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, showsHeading, type ShownLibrary } from "./files";
 
 const lib = (over: Partial<TeamsLibrary> & Pick<TeamsLibrary, "id" | "path" | "team" | "kind">): ShownLibrary => ({ host: "env_mac", library: null, tenant: "Purdue University", channels: [], web: null, found: true, env: "local", ...over });
 const esports = lib({ id: "m~1", path: "/c/S/Purdue Esports - Documents", team: "Purdue Esports", kind: "channels", channels: ["Events", "General"] });
@@ -14,6 +14,15 @@ describe("the Files view's rules", () => {
       ["RecWell", [["Site Policies", "/c/S/RecWell - Site Policies"]]],
       ["", [["My files", "/c/OneDrive-Purdue University"]]],
     ]);
+  });
+
+  it("shows a library OneDrive named in one word as one row by that name, with no heading saying it again", () => {
+    const recwell = lib({ id: "m~4", path: "/c/OneDrive-purdue.edu-RecWell-TeamRecWell", team: "RecWell-TeamRecWell", kind: "library", tenant: "purdue.edu" });
+    const [group] = libraryGroups([recwell]);
+    expect(group!.rows.map((r) => [r.label, r.folder])).toEqual([["RecWell-TeamRecWell", recwell.path]]);
+    expect(showsHeading(group!)).toBe(false);
+    expect(showsHeading(libraryGroups([esports])[0]!)).toBe(true);
+    expect(crumbsOf(recwell, `${recwell.path}/Operations`).map((c) => c.label)).toEqual(["RecWell-TeamRecWell", "Operations"]);
   });
 
   it("gives a team with no channel folders its Documents row", () => {

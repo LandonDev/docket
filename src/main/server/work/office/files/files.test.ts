@@ -10,7 +10,7 @@ import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
 import { FakeOffice } from '../fake'
 import { office as module, setCarrier } from '../index'
 import { copyDirOf, setFilesOpener } from './handle'
-import { isLocal, setCloudDir, splitLibraryName } from './library'
+import { isLocal, setCloudDir, splitLibraryName, tenantOfSynced } from './library'
 import { teamsTools } from './tools'
 import { zipEntries } from './zip'
 
@@ -347,6 +347,61 @@ describe('from the review', () => {
   it('lets a name that starts with two dots through the fence', async () => {
     writeFileSync(join(team, '..notes'), 'ok')
     await expect(call('work.office.filesRead', file(join(team, '..notes')))).rejects.toThrow('no text')
+  })
+})
+
+describe('the layout OneDrive 26 writes (his Mac, 2026-11-20)', () => {
+  // Names as they are on his Mac: his own OneDrive, and a team's library synced from Teams → Files → Sync beside it.
+  let real26: string
+  let recwell: string
+  beforeEach(() => {
+    real26 = join(base, 'CloudStorage-26')
+    recwell = join(real26, 'OneDrive-purdue.edu-RecWell-TeamRecWell')
+    for (const dir of ['Attachments', 'Meetings', 'Microsoft Copilot Chat Files', 'Recordings']) mkdirSync(join(real26, 'OneDrive-purdue.edu', dir), { recursive: true })
+    for (const dir of ['Business Office', 'Engagement', 'IMs', 'Operations', 'Outreach', 'PD & Travel', 'Personnel', 'Photos']) mkdirSync(join(recwell, dir), { recursive: true })
+    for (const dir of ['Club Sports', 'Esports', 'Intramurals']) mkdirSync(join(real26, 'OneDrive-purdue.edu-RecWell-SportPrograms', dir), { recursive: true })
+    writeFileSync(join(recwell, 'Staff schedule.xlsx'), '')
+    truncateSync(join(recwell, 'Staff schedule.xlsx'), 40_000)
+    setCloudDir((host) => (host === 'env_mac' ? real26 : join(base, 'no-cloud')))
+  })
+
+  it("reads OneDrive-<tenant>-<name> beside OneDrive-<tenant> as a library of that tenant, named as OneDrive wrote it", async () => {
+    const { libraries } = (await call('work.office.filesLibraries', {})) as { libraries: TeamsLibrary[] }
+    expect(libraries.map((l) => [l.team, l.library, l.kind, l.tenant, l.channels])).toEqual([
+      ['My files', null, 'mine', 'purdue.edu', []],
+      ['RecWell-SportPrograms', null, 'library', 'purdue.edu', []],
+      ['RecWell-TeamRecWell', null, 'library', 'purdue.edu', []]
+    ])
+    const { entries } = (await call('work.office.filesList', file(recwell))) as { entries: TeamsEntry[] }
+    expect(entries.map((e) => e.name)).toContain('PD & Travel')
+    expect(entries.find((e) => e.name === 'Staff schedule.xlsx')).toMatchObject({ kind: 'workbook', local: false })
+  })
+
+  it('reads its top folders as channels when one is General, the channel every team has', async () => {
+    mkdirSync(join(recwell, 'General'))
+    const { libraries } = (await call('work.office.filesLibraries', {})) as { libraries: TeamsLibrary[] }
+    expect(libraries[2]).toMatchObject({ team: 'RecWell-TeamRecWell', kind: 'channels', channels: expect.arrayContaining(['General', 'Operations']) })
+  })
+
+  it('finds the tenant by the plain OneDrive folder, the longest that fits', () => {
+    const names = ['purdue.edu', 'purdue.edu-RecWell-SportPrograms', 'purdue.edu-RecWell-TeamRecWell']
+    expect(tenantOfSynced('purdue.edu-RecWell-TeamRecWell', names)).toBe('purdue.edu')
+    expect(tenantOfSynced('purdue.edu', names)).toBeNull()
+    expect(tenantOfSynced('purdue.edu-Ops', ['purdue', 'purdue.edu', 'purdue.edu-Ops'])).toBe('purdue.edu')
+    // With no plain folder to tell the tenant by, a name is his own OneDrive.
+    expect(tenantOfSynced('contoso-Sales', ['contoso-Sales'])).toBeNull()
+  })
+
+  it("holds its files to the shared-file rule and the copy switch, as a team's library", async () => {
+    const book = join(recwell, 'Staff schedule.xlsx')
+    office.addBook(book, { Sheet1: { A1: 1 } })
+    const peer: Caller = { kind: 'remote', caps: ['read', 'operate'], peer: 'env_box' }
+    const got = await call('work.office.write', { tool: 'office_range_write', args: { workbook: book, range: 'Sheet1!A1', values: [[2]], because: 'own' }, by: 'agent:env_box:t1' }, peer)
+    expect(JSON.stringify(got)).toContain('nothing was written')
+    // A box thread whose workspace has not turned the copy on gets no copy of it.
+    const boxCtx = ctxOn('env_box', { scopeOf: () => ({ sessionId: 's1', workspaceId: 'w1' }) } as Partial<WorkCtx>)
+    await expect(call('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: 'env_mac', path: book } }, window, boxCtx)).rejects.toThrow('keeps Teams files where they are')
+    await expect(call('work.office.filesRead', { ...file(book), as: 'bytes' })).rejects.toThrow('another host')
   })
 })
 

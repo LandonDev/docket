@@ -10,13 +10,37 @@ its Office apps and its rule for a file others can open.
 ## The way in: the synced folder
 
 The OneDrive app on a Mac syncs a channel's library (Teams → Files → Sync, or
-Add shortcut to My files) under `~/Library/CloudStorage`:
+Add shortcut to My files) under `~/Library/CloudStorage`, in one of two
+layouts (`found` in `office/files/library.ts` reads both):
 
-- `OneDrive-<Tenant>/`: his own files (`kind: 'mine'`), with any shortcut in it;
-- `OneDrive-SharedLibraries-<Tenant>/<Team or site> - <Library>/`: each synced
-  library. A team's library is "Documents" (or "Shared Documents") and its top
-  folders are the channels (`kind: 'channels'`); any other library is
-  `kind: 'library'`. The last " - " parts the team from the library.
+- **As observed on his Mac** (OneDrive 26.189, 2026-11-20): every folder sits
+  at the top of CloudStorage. `OneDrive-<tenant>/` is his own files
+  (`OneDrive-purdue.edu`, `kind: 'mine'`), and each library synced from Teams
+  is `OneDrive-<tenant>-<name>/` beside it (`OneDrive-purdue.edu-RecWell-TeamRecWell`,
+  `OneDrive-purdue.edu-RecWell-SportPrograms`). The tenant is known from the
+  plain folder, so a top folder that starts with `OneDrive-<tenant>-` is a
+  library of that tenant (`tenantOfSynced`; the longest tenant that fits). Its
+  `<name>` probably reads `<site>-<library>` (both of his share `RecWell-`), but
+  a dash also stands for a name's own dashes and its dropped spaces, so it is
+  shown as OneDrive wrote it, one row by that name, with no team heading. No
+  attribute, Spotlight field or hidden entry on the folder names the site, the
+  library or its web address (looked at read only: the folder's only attribute
+  is its File Provider domain id); the names live inside OneDrive's own
+  databases, which TempCode does not read.
+- **As Microsoft documents it**:
+  `OneDrive-SharedLibraries-<Tenant>/<Team or site> - <Library>/`. A team's
+  library is "Documents" (or "Shared Documents"). The last " - " parts the
+  team from the library.
+
+Channels or not: a library's top folders are read as a team's channels
+(`kind: 'channels'`) when the library is a team's Documents in the documented
+layout, or, in the observed one, when one of them is `General`, the channel
+every team has; otherwise it is `kind: 'library'`, its folders plain folders.
+His RecWell libraries have no `General` at the top (Business Office,
+Engagement, Operations…), so they read as libraries. Whatever the kind, every
+file in a library counts as one others can open (the Office tools' shared-file
+rule) and stays on the Mac unless the workspace's copy switch is on: neither
+rule asks the kind.
 
 Other folders under CloudStorage (Dropbox, Google Drive, iCloud, a consumer
 `OneDrive-Personal`) are not Teams files. His work OneDrive is, since the

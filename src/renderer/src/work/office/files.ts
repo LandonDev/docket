@@ -34,12 +34,16 @@ export function libraryGroups(libraries: readonly ShownLibrary[]): LibraryGroup[
     }
     if (library.kind === "channels" && library.channels.length)
       for (const channel of library.channels) add(library.team, { key: `${library.id}/${channel}`, label: channel, library, folder: join(library.path, channel) });
-    else add(library.team, { key: library.id, label: library.library ?? "Documents", library, folder: library.path });
+    // A team's Documents is named so; a library OneDrive named only as one word (its newer layout) keeps that name.
+    else add(library.team, { key: library.id, label: library.library ?? (library.kind === "channels" ? "Documents" : library.team), library, folder: library.path });
   }
   return [...groups]
     .map(([name, rows]) => ({ name, rows }))
     .sort((a, b) => (a.name === "" ? 1 : b.name === "" ? -1 : a.name.localeCompare(b.name)));
 }
+
+/** A group's heading is drawn unless its one row already says it (a library known by one name). */
+export const showsHeading = (group: LibraryGroup): boolean => group.name !== "" && group.rows.some((row) => row.label !== group.name);
 
 /** The parts of a folder's path inside its library. */
 const partsOf = (library: Pick<TeamsLibrary, "path">, path: string): string[] => path.slice(library.path.length).split(/[\\/]/).filter(Boolean);

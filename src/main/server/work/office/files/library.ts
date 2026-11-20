@@ -78,11 +78,28 @@ export function splitLibraryName(name: string): { team: string; library: string 
   return at > 0 ? { team: name.slice(0, at), library: name.slice(at + 3) } : { team: name, library: null }
 }
 
-/** What OneDrive syncs here, as it lies on disk. */
+/**
+ * The tenant a top folder `OneDrive-<name>` belongs to, when another top folder is that tenant's
+ * own OneDrive: OneDrive 26 names a library synced from Teams `OneDrive-<tenant>-<rest>` beside his
+ * `OneDrive-<tenant>` (observed: `OneDrive-purdue.edu-RecWell-TeamRecWell` beside
+ * `OneDrive-purdue.edu`). The longest tenant that fits wins; null: his own OneDrive.
+ */
+export function tenantOfSynced(name: string, tenants: readonly string[]): string | null {
+  const fits = tenants.filter((t) => t !== name && name.startsWith(`${t}-`) && name.length > t.length + 1)
+  return fits.sort((a, b) => b.length - a.length)[0] ?? null
+}
+
+/** Every team has a General channel, and its folder sits at the top of the team's library: the one sign on disk that the top folders are channels. */
+const hasChannels = (dirs: readonly string[]): boolean => dirs.some((d) => d.toLowerCase() === 'general')
+
+/** What OneDrive syncs here, as it lies on disk, in either of the two layouts docs/agents/work-files.md describes. */
 function found(host: string): TeamsLibrary[] {
   const base = cloudDir(host)
   const out: TeamsLibrary[] = []
-  for (const top of dirsIn(base)) {
+  const tops = dirsIn(base)
+  // `OneDrive-<name>` folders, less the older layout's SharedLibraries and a consumer OneDrive (no Teams file).
+  const names = tops.map((top) => /^OneDrive-(.+)$/.exec(top)?.[1]).filter((n): n is string => !!n && !n.startsWith('SharedLibraries-') && n !== 'Personal')
+  for (const top of tops) {
     const shared = /^OneDrive-SharedLibraries-(.+)$/.exec(top)
     const mine = /^OneDrive-(.+)$/.exec(top)
     if (shared) {
@@ -92,10 +109,19 @@ function found(host: string): TeamsLibrary[] {
         const channels = library === null || TEAM_LIBRARIES.test(library)
         out.push({ id: libraryId(host, path), host, path, team, library: channels ? null : library, tenant: shared[1]!, kind: channels ? 'channels' : 'library', channels: channels ? dirsIn(path) : [], web: null, found: true })
       }
-    } else if (mine && mine[1] !== 'Personal') {
-      // A consumer OneDrive (`OneDrive-Personal`) is no Teams file; his work OneDrive holds the shortcuts he adds to My files.
+    } else if (mine && names.includes(mine[1]!)) {
       const path = join(base, top)
-      out.push({ id: libraryId(host, path), host, path, team: 'My files', library: null, tenant: mine[1]!, kind: 'mine', channels: [], web: null, found: true })
+      const tenant = tenantOfSynced(mine[1]!, names)
+      if (!tenant) {
+        // His own OneDrive, which holds the shortcuts he adds to My files.
+        out.push({ id: libraryId(host, path), host, path, team: 'My files', library: null, tenant: mine[1]!, kind: 'mine', channels: [], web: null, found: true })
+        continue
+      }
+      // A synced library: its name as OneDrive wrote it. Site and library are joined by a dash, as a name's own dashes and
+      // its dropped spaces are, so the two cannot be told apart from the name alone; nothing is guessed.
+      const dirs = dirsIn(path)
+      const channels = hasChannels(dirs)
+      out.push({ id: libraryId(host, path), host, path, team: mine[1]!.slice(tenant.length + 1), library: null, tenant, kind: channels ? 'channels' : 'library', channels: channels ? dirs : [], web: null, found: true })
     }
   }
   return out
