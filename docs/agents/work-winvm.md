@@ -81,6 +81,10 @@ One press later (B10, Settings → Work); `work.winvm.setup` now. It needs the b
      `DISALLOWED`. Windows' own policies were tried first on this image (Enterprise Evaluation 25H2): Software
      Restriction Policies are not enforced, and an AppLocker policy that `Test-AppLockerPolicy` reads as
      Denied leaves its EXE cache empty and the program runs.
+   The script notes each step it reaches in `C:\Windows\Temp\tc-setup.log`. On a fresh guest it has now
+   and then hung before its first step while Windows was busy after its first logon (two of six fresh setups
+   on 2026-11-20, nothing done in the guest), so the keeper gives it 4 minutes and runs it once more; a last
+   failure names the step it reached.
 4. The box's service copied in (below), then a restart, since tcuser's policies are read at logon.
 5. The door knocked: the service runs under the new policies. The state is then `awake`.
 
@@ -109,7 +113,7 @@ At a thread's first call (B5) or his Wake press. The call waits with "Waking the
    stopped and the file replaced by a copy (a moved file would keep the admin profile's rights, which
    tcuser may not run); the new one's `version` goes to the log. So the guest's service updates
    with the box. Then the logon task is run unless the door already runs.
-4. One SSH connection as tcuser holds the forward: a unix socket beside the machine's run files
+4. One SSH connection as the admin holds the forward (and is the master the picture copies run over): a unix socket beside the machine's run files
    (`run/door.sock`, mode 0600) to the guest's 127.0.0.1:47800. The keeper knocks with the token and sends
    one request (an unknown method, which the service answers with an error before `initialize` too): only
    the answer counts, since the forward accepts a connection whether or not anything listens behind it.
@@ -158,8 +162,11 @@ runs setup, the policies' checks, sleep and wake.
 `wireVm` (vm.ts), wired by index.ts on a Linux host, is a third `ComputerService` on the box beside its own and
 the box browser's (docs/computer-protocol.md §28.7). Its spawn is the door through the keeper's forward
 (door.ts): it waits for `keeper.door()`, which wakes the machine, knocks with the token, and copies every
-picture the guest's service names home over SFTP on the forward's own SSH connection (tcuser's policies do not
-stop the SFTP subsystem). Its `ComputerSessions` run with `vm: true` and `VM_TIER_GATE`, so a chord, a held key
+picture the guest's service names home over SFTP on the forward's own SSH connection. That connection is the
+admin's: sshd starts the SFTP subsystem through cmd.exe, which tcuser's DisableCMD refuses, and the refusal's
+words then break the SFTP stream ("Received message too long"). The door lets one host in at a time and frees
+its place only once the last host's service has ended, so a spawn that hears "another host is connected" (the
+keeper's own knock still ending) asks again for up to 10 s. Its `ComputerSessions` run with `vm: true` and `VM_TIER_GATE`, so a chord, a held key
 and a paste run in the guest, the launch list is the VM's, a console's launch is refused, and the words are a
 Windows PC's. Every act goes through run.ts with the hold as on any computer: a send or submit there is a held
 `computer.act` with its picture in the Outbox. The machine going to sleep ends the service's connection (a clean
@@ -243,5 +250,10 @@ take 24 GB.
   refuses, the tools offered and refused by the setting and never to a Work Chat, the setting read at each
   call, the wake first, a console's launch refused in Windows' words, the lease's words, its two minutes, his
   Take over, and the service ending with the machine.
+- `standing.live.test.ts` (TC_WINVM_STANDING=1, the standing machine set up fresh): the five tools listed
+  through the real Work mount, Notepad launched, read and typed in, Ctrl+S at the session tier opening the
+  Save as dialog, a screenshot copied home, a console's launch refused. `computer/winRig.hold.test.ts`
+  (TC_WIN_RIG=1, the rig) carries B6's live cases on the VM's sessions: a console's launch refused, a click in
+  an open Windows Terminal held with `grantable: false`, typing in the Run box held.
 - The rig runs: `scripts/e2e-winvm-stop.ts` (the rig), `scripts/e2e-winvm-keeper.ts` and then
   `scripts/e2e-winvm-points.ts` (the standing instance: save, change a file, go back, the file as it was).

@@ -100,6 +100,38 @@ describe("the VM's spawn through the door", () => {
     expect(await exit).toBe(0)
   })
 
+  it('asks again while the door says another host is in (the keeper\'s knock still ending), then gets in', async () => {
+    let busy = 2
+    server.removeAllListeners('connection')
+    server.on('connection', (s: Socket) => {
+      conns.push(s)
+      s.once('data', () => {
+        if (busy-- > 0) {
+          s.write('{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"another host is connected"}}\n')
+          s.end()
+        } else s.on('data', (b) => received.push(...b.toString().split('\n').filter(Boolean)))
+      })
+    })
+    const { child } = spawnDoor()
+    await new Promise<void>((r) => child.once('spawn', () => r()))
+    child.stdin!.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'state.get', params: {} }) + '\n')
+    await until(() => received.length >= 1)
+    expect(conns).toHaveLength(3)
+    expect(JSON.parse(received[0]).method).toBe('state.get')
+  })
+
+  it('gives up on a door that stays busy, saying so', async () => {
+    server.removeAllListeners('connection')
+    server.on('connection', (s: Socket) => {
+      conns.push(s)
+      s.once('data', () => s.end('{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"another host is connected"}}\n'))
+    })
+    const door = doorSpawn({ door: async () => ({ socket: join(dir, 'door.sock'), token: TOKEN }), fetch: async () => {}, hostDataDir: dir, busyWaitMs: 400 })
+    const child = door.spawn('x', [], {}) as unknown as import('node:child_process').ChildProcess
+    const err = await new Promise<Error>((r) => child.once('error', r))
+    expect(err.message).toBe('another host is connected to the service in the Windows VM')
+  })
+
   it('a door that cannot be woken fails the spawn with why', async () => {
     const door = doorSpawn({ door: async () => Promise.reject(new Error('The Windows VM is not set up.')), fetch: async () => {}, hostDataDir: dir })
     const child = door.spawn('x', [], {}) as unknown as import('node:child_process').ChildProcess

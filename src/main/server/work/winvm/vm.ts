@@ -37,8 +37,9 @@ export interface VmWiring {
   /** <userData>: the service's pictures land in `winvm/computer` */
   dataDir: string
   log?: (line: string) => void
-  /** test seams */
+  /** test seams: the spawn, where a thread's pictures land (attachmentDir(thread)/computer on a host) */
   spawn?: DoorSpawn['spawn']
+  landing?: (threadId: string) => string
   leaseClock?: LeaseClock
 }
 
@@ -84,7 +85,8 @@ export function wireVm(o: VmWiring): VmHost {
     rootOf: (id) => o.registry.rootSessionOf(id),
     gate: () => VM_TIER_GATE,
     vm: true,
-    log
+    log,
+    ...(o.landing ? { landing: o.landing } : {})
   })
   const pane = (id: string): string => {
     try {

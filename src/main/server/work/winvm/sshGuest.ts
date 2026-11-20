@@ -145,7 +145,8 @@ if ($task.State -ne 4) { $task.Run($null) | Out-Null }
         // the one connection is also the master the picture copies run over
         '-o', 'ControlMaster=yes', '-o', `ControlPath=${control}`, '-o', 'ControlPersist=no',
         '-L', `${socket}:127.0.0.1:${guestPort}`,
-        ...this.base(STANDARD_USER)
+        // as the admin: sshd starts the SFTP subsystem through cmd.exe, which tcuser's DisableCMD refuses
+        ...this.base(ADMIN_USER)
       ],
       // the forward is the keeper's own and dies with the server: no daemon environment needed, and no marks either
       { env: daemonEnv(), stdio: ['ignore', 'ignore', 'pipe'] }
@@ -180,13 +181,14 @@ if ($task.State -ne 4) { $task.Run($null) | Out-Null }
 
   /**
    * Copies a file of tcuser's (`rel`, under its profile, with forward slashes) to `local`, over SFTP on the
-   * forward's own connection: the service's pictures. sftp-server runs as a subsystem, not through tcuser's
-   * shell, so tcuser's policies do not stop it.
+   * forward's own connection: the service's pictures. The connection is the admin's, who reads tcuser's
+   * files: sshd starts the SFTP subsystem through cmd.exe, and tcuser's DisableCMD would refuse it (its words
+   * then break the SFTP stream: "Received message too long").
    */
   async fetch(rel: string, local: string): Promise<void> {
     if (!this.control) throw new Error('the Windows VM is not awake')
-    const args = ['-q', '-o', `ControlPath=${this.control}`, '-o', 'ControlMaster=no', ...this.base(STANDARD_USER).slice(0, -1).map((a) => (a === '-p' ? '-P' : a))]
-    const r = await this.run('scp', [...args, `${STANDARD_USER}@127.0.0.1:${rel}`, local], '', 60_000)
+    const args = ['-q', '-o', `ControlPath=${this.control}`, '-o', 'ControlMaster=no', ...this.base(ADMIN_USER).slice(0, -1).map((a) => (a === '-p' ? '-P' : a))]
+    const r = await this.run('scp', [...args, `${ADMIN_USER}@127.0.0.1:/C:/Users/${STANDARD_USER}/${rel}`, local], '', 60_000)
     if (r.code !== 0) throw new Error(`copying a picture from the Windows VM failed: ${r.err.slice(-300)}`)
   }
 

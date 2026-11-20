@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import { WAKING_WORDS, WINVM_POINTS_KEPT, type WinvmPoint, type WinvmSleepAfter, type WinvmState, type WinvmStateName } from '@shared/contract-work-winvm'
 import type { PointStore } from './points'
-import { DOOR_PORT, setupScript } from './setup'
+import { psQuote } from './machine/guest'
+import { DOOR_PORT, SETUP_LOG, setupScript } from './setup'
 
 /**
  * The keeper of the box's standing Windows machine (docs/agents/work-winvm.md):
@@ -38,8 +39,8 @@ export interface DoorLink {
 export interface VmGuest {
   /** SSH answers and tcuser's desktop is up */
   ready(timeoutMs: number, signal?: AbortSignal): Promise<void>
-  /** a PowerShell script as the admin; its output, or a throw when it failed */
-  admin(script: string): Promise<string>
+  /** a PowerShell script as the admin; its output, or a throw when it failed or ran past `timeoutMs` */
+  admin(script: string, timeoutMs?: number): Promise<string>
   hibernate(): Promise<void>
   /** restarts Windows and returns once it has gone down */
   reboot(): Promise<void>
@@ -80,13 +81,15 @@ export interface KeeperDeps {
 }
 
 interface Timeouts {
+  /** one run of the setup script */
+  setupScript: number
   ready: number
   setupReady: number
   hibernate: number
   knock: number
   knockEvery: number
 }
-const TIMEOUTS: Timeouts = { ready: 300_000, setupReady: 600_000, hibernate: 180_000, knock: 30_000, knockEvery: 1000 }
+const TIMEOUTS: Timeouts = { setupScript: 240_000, ready: 300_000, setupReady: 600_000, hibernate: 180_000, knock: 30_000, knockEvery: 1000 }
 
 export const SLEEP_AFTER_MS: Record<WinvmSleepAfter, number | null> = { '15m': 15 * 60_000, '30m': 30 * 60_000, '2h': 120 * 60_000, never: null }
 
@@ -336,7 +339,7 @@ export class Keeper {
         let token = this.d.token.get()
         if (!token) this.d.token.set((token = randomBytes(32).toString('hex')))
         this.set('setting-up', 'Setting Windows up')
-        this.d.log(`winvm: setup: ${(await this.d.guest.admin(setupScript({ token, port: DOOR_PORT }))).split('\n').filter((l) => l.startsWith('step:')).join(', ')}`)
+        this.d.log(`winvm: setup: ${(await this.setupScript(token)).split('\n').filter((l) => l.startsWith('step:')).join(', ')}`)
         this.set('setting-up', 'Copying the service in')
         await this.serviceUp()
         this.set('setting-up', 'Restarting Windows')
@@ -391,6 +394,24 @@ export class Keeper {
     const l = this.link
     this.link = null
     l?.close()
+  }
+
+  /**
+   * The setup script, given SETUP_SCRIPT_MS and run once more when it does not finish: on a fresh guest it has
+   * now and then hung before its first step, with nothing done, while Windows is busy after its first logon
+   * (the rig runs of 2026-11-20). Every step is safe to run again. A last failure says the steps it reached.
+   */
+  private async setupScript(token: string): Promise<string> {
+    const script = setupScript({ token, port: DOOR_PORT })
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.d.guest.admin(script, this.t.setupScript)
+      } catch (e) {
+        const reached = await this.d.guest.admin(`Get-Content -LiteralPath ${psQuote(SETUP_LOG)} -Tail 3 -ErrorAction SilentlyContinue`, 60_000).catch(() => '')
+        this.d.log(`winvm: the setup script failed (attempt ${attempt}): ${words(e)}${reached.trim() ? `; it reached: ${reached.trim().split('\n').join(' | ')}` : ''}`)
+        if (attempt >= 2) throw new Error(`${words(e)}${reached.trim() ? ` (it reached: ${reached.trim().split('\n').pop()})` : ' (it reached no step)'}`)
+      }
+    }
   }
 
   /** Copies the box's service in when the guest's differs from it (sha256 of the file), then starts its door. */

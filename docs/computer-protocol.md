@@ -2227,10 +2227,12 @@ wakes the machine through the keeper, connects to the forward's unix socket,
 knocks with the token (§29.1) and carries the wire over that connection.
 `initialize` names the guest's own folder
 (`C:\Users\tcuser\AppData\Local\TempCode\computer`); each picture a frame
-names under it is copied home over SFTP on the forward's own SSH connection and
+names under it is copied home over SFTP on the forward's own SSH connection (the
+admin's: tcuser's DisableCMD refuses the subsystem, which sshd starts through cmd.exe) and
 its path rewritten before the frame reaches the host, in order. The machine
 going to sleep ends the connection with a clean exit, and the next request
-wakes it again.
+wakes it again. The door frees its one place only once the last host's service has
+ended, so a spawn told "another host is connected" asks again for up to 10 s.
 
 Its `ComputerSessions` are built with `vm: true` (the VM's launch list, the
 rule on what may be opened, the Windows key refused, the error words of a

@@ -16,6 +16,8 @@ export const DATA_DIR = 'C:\\ProgramData\\TempCode'
 export const TOKEN_PATH = `${DATA_DIR}\\token`
 /** The guest's loopback port the door listens on; the keeper's SSH forward reaches it. */
 export const DOOR_PORT = 47800
+/** Where the setup script notes each step as it reaches it: read back when a setup fails part way. */
+export const SETUP_LOG = 'C:\\Windows\\Temp\\tc-setup.log'
 /** The logon task, in its own folder of the Task Scheduler. */
 export const TASK_FOLDER = '\\TempCode'
 export const TASK_NAME = 'door'
@@ -63,6 +65,8 @@ export function setupScript({ token, port = DOOR_PORT, user = STANDARD_USER }: S
   if (!/^[\x21-\x7e]{32,}$/.test(token)) throw new Error('the door token must be 32 printable characters at least')
   return `
 $ErrorActionPreference = 'Stop'
+function Step($what) { "step: $what"; Add-Content -LiteralPath ${psQuote(SETUP_LOG)} -Value "$((Get-Date).ToString('o')) $what" -ErrorAction SilentlyContinue }
+Step 'started'
 $user = ${psQuote(user)}
 $account = "$env:COMPUTERNAME\\$user"
 function Ensure-Key($path) { if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null } }
@@ -74,7 +78,7 @@ New-Item -ItemType Directory -Force ${psQuote(DATA_DIR)} | Out-Null
 icacls ${psQuote(DATA_DIR)} /inheritance:r /grant:r 'Administrators:(OI)(CI)F' 'SYSTEM:(OI)(CI)F' "$($user):(OI)(CI)RX" | Out-Null
 if ($LASTEXITCODE) { throw "icacls exited $LASTEXITCODE" }
 [IO.File]::WriteAllText(${psQuote(TOKEN_PATH)}, ${psQuote(token)} + [Environment]::NewLine)
-"step: service folder and token"
+Step "service folder and token"
 
 # 2. The logon task: at each logon of tcuser, the door on its desktop.
 $svc = New-Object -ComObject Schedule.Service
@@ -95,7 +99,7 @@ $action = $def.Actions.Create(0)
 $action.Path = ${psQuote(SERVICE_PATH)}
 $action.Arguments = ${psQuote(`serve --listen 127.0.0.1:${port} --token-file "${TOKEN_PATH}"`)}
 $folder.RegisterTaskDefinition(${psQuote(TASK_NAME)}, $def, 6, $account, $null, 3) | Out-Null
-"step: logon task"
+Step "logon task"
 
 # 3. Hibernate on (the keeper's sleep), never by Windows itself, and no sign-in asked on resume.
 powercfg /hibernate on
@@ -107,12 +111,12 @@ powercfg /setactive SCHEME_CURRENT
 $wake = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\0e796bdb-100d-47d6-a2d5-f7d2daa51f51'
 Set-Value $wake 'ACSettingIndex' 0 DWord
 Set-Value $wake 'DCSettingIndex' 0 DWord
-"step: hibernate, no lock on resume"
+Step "hibernate, no lock on resume"
 
 # 4. Windows Update on (the rig's image turned it off).
 Remove-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU' -Name NoAutoUpdate -ErrorAction SilentlyContinue
 Set-Service wuauserv -StartupType Manual
-"step: Windows Update"
+Step "Windows Update"
 
 # 5. tcuser's own policies: no command line. Its hive is loaded while it is logged on; otherwise load it here.
 $sid = (New-Object Security.Principal.NTAccount($user)).Translate([Security.Principal.SecurityIdentifier]).Value
@@ -136,7 +140,7 @@ try {
 } finally {
   if (-not $loaded) { [gc]::Collect(); reg unload "HKU\\tc-$user" | Out-Null }
 }
-"step: tcuser's policies"
+Step "tcuser's policies"
 
 # 6. No program runs from tcuser's own folders: execute denied to tcuser on everything under them.
 foreach ($sub in ${list(NO_RUN_FOLDERS)}) {
@@ -149,7 +153,7 @@ foreach ($sub in ${list(NO_RUN_FOLDERS)}) {
   icacls $d /setowner Administrators /Q | Out-Null
   if ($LASTEXITCODE) { throw "icacls $d exited $LASTEXITCODE" }
 }
-"step: no programs from tcuser's folders"
+Step "no programs from tcuser's folders"
 "setup done"
 `
 }

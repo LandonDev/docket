@@ -24,6 +24,48 @@ import { PassThrough } from 'node:stream'
 export const GUEST_DATA_DIR = 'C:\\Users\\tcuser\\AppData\\Local\\TempCode\\computer'
 const GUEST_HOME = 'C:\\Users\\tcuser'
 
+/** How long a spawn asks again while the door says another host is in. */
+export const BUSY_WAIT_MS = 10_000
+/** How long a spawn waits after its knock for the door's busy line: a door that lets it in says nothing first. */
+const BUSY_LISTEN_MS = 250
+const BUSY = 'another host is connected'
+
+/**
+ * One knock: the connection once the door let it in, or null when it said another host is in. Anything the
+ * door sends past its silence is the service's own and is handed back to the stream.
+ */
+function enter(socket: string, token: string): Promise<Socket | null> {
+  return new Promise((resolve, reject) => {
+    const s = connect(socket)
+    let got = ''
+    let timer: NodeJS.Timeout | null = null
+    const onData = (b: Buffer): void => {
+      got += b.toString()
+      if (got.includes(BUSY)) {
+        if (timer) clearTimeout(timer)
+        s.off('data', onData)
+        s.destroy()
+        resolve(null)
+      }
+    }
+    s.once('connect', () => {
+      s.write(`${token}\n`)
+      s.on('data', onData)
+      timer = setTimeout(() => {
+        s.off('data', onData)
+        // held until the stream reads it, so nothing the service says first is lost
+        s.pause()
+        if (got) s.unshift(Buffer.from(got))
+        resolve(s)
+      }, BUSY_LISTEN_MS)
+    })
+    s.once('error', (e) => {
+      if (timer) clearTimeout(timer)
+      reject(e)
+    })
+  })
+}
+
 export interface DoorSpawnOptions {
   /** wakes the machine and answers the forward's socket and the token (the keeper's `door()`) */
   door(): Promise<{ socket: string; token: string }>
@@ -33,6 +75,8 @@ export interface DoorSpawnOptions {
   hostDataDir: string
   guestDataDir?: string
   log?(line: string): void
+  /** BUSY_WAIT_MS but in a test */
+  busyWaitMs?: number
 }
 
 type FakeChild = EventEmitter & {
@@ -82,18 +126,18 @@ export function doorSpawn(o: DoorSpawnOptions): DoorSpawn {
         child.emit('close', code, null)
       })
     }
-    const ready: Promise<Socket> = o.door().then(
-      ({ socket, token }) =>
-        new Promise<Socket>((resolve, reject) => {
-          if (ended) return reject(new Error('stopped before the door opened'))
-          const s = connect(socket)
-          s.once('connect', () => {
-            s.write(`${token}\n`)
-            resolve(s)
-          })
-          s.once('error', reject)
-        })
-    )
+    const ready: Promise<Socket> = o.door().then(async ({ socket, token }) => {
+      const end = Date.now() + (o.busyWaitMs ?? BUSY_WAIT_MS)
+      for (;;) {
+        if (ended) throw new Error('stopped before the door opened')
+        const s = await enter(socket, token)
+        if (s) return s
+        // the door lets one host in at a time, and frees the place only once the last host's service has ended
+        // (the keeper's knock, a service just stopped): it is asked again for a few seconds
+        if (Date.now() >= end) throw new Error('another host is connected to the service in the Windows VM')
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    })
     let inBuf = ''
     child.stdin.on('data', (b: Buffer) => {
       inBuf += b.toString()
@@ -128,6 +172,7 @@ export function doorSpawn(o: DoorSpawnOptions): DoorSpawn {
         })
         s.on('close', () => void queue.then(() => exit(0)))
         s.on('error', () => {})
+        s.resume()
       },
       (e: Error) => {
         child.stderr.write(`${e.message}\n`)

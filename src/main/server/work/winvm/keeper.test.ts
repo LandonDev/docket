@@ -339,7 +339,7 @@ describe('setup', () => {
     const r = make({ disk: false })
     await r.keeper.setup()
     const script = r.guest.scripts[0]
-    for (const step of SETUP_STEPS) expect(script).toContain(`"step: ${step}"`)
+    for (const step of SETUP_STEPS) expect(script).toContain(`Step "${step}"`)
     expect(script).toContain("'DisableCMD' 1 DWord")
     expect(script).toContain("'NoRun' 1 DWord")
     expect(script).toContain("'DisallowRun' 1 DWord")
@@ -382,7 +382,26 @@ describe('setup', () => {
       throw new Error("the guest's script failed (exit 1): no")
     }
     await expect(r.keeper.setup()).rejects.toThrow('no')
-    expect(r.keeper.state()).toMatchObject({ state: 'awake', error: "the guest's script failed (exit 1): no", step: null })
+    expect(r.keeper.state()).toMatchObject({ state: 'awake', error: "the guest's script failed (exit 1): no (it reached no step)", step: null })
+  })
+
+  it('runs a setup script that does not finish once more, and a second failure says the step it reached', async () => {
+    const r = make({ disk: false })
+    let runs = 0
+    const admin = r.guest.admin.bind(r.guest)
+    r.guest.admin = async (script: string) => {
+      if (script.includes('Get-Content')) return '2026-11-20T09:33:01 started\n2026-11-20T09:33:02 service folder and token'
+      if (++runs === 1) throw new Error("the guest's script failed (exit null): ")
+      return admin(script)
+    }
+    expect((await r.keeper.setup()).state).toBe('awake')
+    expect(runs).toBe(2)
+    const again = make({ disk: false })
+    again.guest.admin = async (script: string) => {
+      if (script.includes('Get-Content')) return '2026-11-20T09:33:01 started'
+      throw new Error("the guest's script failed (exit null): ")
+    }
+    await expect(again.keeper.setup()).rejects.toThrow("(it reached: 2026-11-20T09:33:01 started)")
   })
 
   it('refuses a host that cannot have it', async () => {
