@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import { MailClientProvider, MailKitProvider, MailSettings, opening, type ComposeState } from "work-kit/mail";
 import { corpusOutbox, corpusSignatures, corpusThreads, createFixtureMailClient, generateThreads } from "work-kit/mail/fixtures";
 import { Toaster } from "../../../components/ui/toaster";
-import { applyThemePreference, saveThemePreference } from "../../../lib/appearance";
+import { changeScheme } from "../../../lib/placeScheme";
 import { nameOrigins, tempcodeMailKit } from "../kit";
 import { MailScreen, patch, type MailPage } from "../MailView";
 
@@ -21,9 +21,7 @@ import { MailScreen, patch, type MailPage } from "../MailView";
 const params = new URLSearchParams(location.search);
 const ID = "preview";
 
-const theme = params.get("theme") === "light" ? "light" : "dark";
-saveThemePreference(theme);
-applyThemePreference(theme);
+changeScheme(params.get("theme") === "light" ? "light" : "dark", true);
 
 nameOrigins(() => ({ label: "Drafted in Overdue invoices, Nov 18", open: () => {} }));
 

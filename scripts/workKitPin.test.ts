@@ -39,7 +39,7 @@ describe('the work-kit pin', () => {
   })
 
   it('was built for interface version 1', () => {
-    expect(WORK_KIT_API).toBe(1)
+    expect(WORK_KIT_API).toBe(2)
   })
 
   it('pins the same commit in the phone app once the phone app pins work-kit', () => {

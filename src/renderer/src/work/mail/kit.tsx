@@ -78,11 +78,12 @@ const initials = (name: string | undefined): string =>
     .map((part) => part[0]!.toUpperCase())
     .join("");
 
+// Initials are the 11px label step (docs/DESIGN.md "Type scale"), medium, at every size that holds two letters or one.
 const FACE: Record<NonNullable<MailFaceProps["size"]>, string> = {
-  line: "size-4 text-[9px]",
+  line: "size-4 text-[11px] font-medium",
   chip: "size-[18px] text-[11px] font-medium",
-  row: "size-6 text-[11px]",
-  head: "size-7 text-[11px]",
+  row: "size-6 text-[11px] font-medium",
+  head: "size-7 text-[11px] font-medium",
 };
 
 /**
@@ -97,7 +98,7 @@ function Face({ name, size = "row", className }: MailFaceProps) {
     <span
       aria-hidden
       className={cn(
-        "inline-grid shrink-0 place-items-center rounded-full bg-muted font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
+        "inline-grid shrink-0 place-items-center rounded-full bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
         FACE[size],
         className,
       )}
