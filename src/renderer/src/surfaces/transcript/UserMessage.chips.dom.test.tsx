@@ -2,7 +2,8 @@
 /**
  * A sent message's chips (docs/agents/work-canvas.md "Mentions"): the lines
  * the model read are drawn as chips over his words, and
- * a chip that names something this window can show opens it.
+ * a chip that names something this window can show opens it, a person
+ * on their page in People.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
@@ -68,16 +69,17 @@ describe("a sent message's chips", () => {
     for (const li of bubble.querySelectorAll("[data-sent-chips] li")) expect(li.querySelector("svg")).not.toBeNull();
   });
 
-  it("open the task's view, the held act, the item; a person is a label", async () => {
+  it("open the task's view, the held act, the item, and a person's page in People", async () => {
     const { container } = mount();
     await waitFor(() => expect(container.querySelector("[data-sent-chips]")).not.toBeNull());
     const chip = (kind: string) => container.querySelector<HTMLElement>(`[data-sent-chips] [data-chip="${kind}"]`)!;
-    expect(chip("person").querySelector("button")).toBeNull();
     await act(async () => fireEvent.click(chip("task").querySelector("button")!));
     expect(view).toEqual({ workspaceId: "ws-purdue", view: "tasks" });
     await act(async () => fireEvent.click(chip("held").querySelector("button")!));
     expect(opened.held).toEqual([[{ at: "host", id: "h1" }, "env_a"]]);
     await act(async () => fireEvent.click(chip("item").querySelector("button")!));
     expect(opened.items).toEqual([["env_a", "w1", { itemId: "i1" }]]);
+    await act(async () => fireEvent.click(chip("person").querySelector("button")!));
+    expect(view).toEqual({ workspaceId: "ws-purdue", view: "people", person: "u1" });
   });
 });
