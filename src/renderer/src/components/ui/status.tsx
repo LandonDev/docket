@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import type { SessionStatus } from "@shared/events";
-import { COMPUTER_CRASHES_TO_DOWN, type ComputerServiceState } from "@shared/contract-computer";
+import type { ComputerServiceState } from "@shared/contract-computer";
+import { COMPUTER_CRASHES_TO_DOWN } from "@shared/computer/limits";
 import { Check, Circle, CircleAlert, CircleDashed, CircleDot, FileText, Pause, Square } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
 import { clockTime } from "@renderer/lib/duration";

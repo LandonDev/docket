@@ -9,8 +9,8 @@ import type {
   ComputerHistoryStepAnswer,
   ComputerSessionRow,
 } from "@server/shared/contract-computer";
-import { HISTORY_READ_MAX_KEYS } from "@server/shared/contract-computer";
-import { macComputerKey } from "@server/shared/contract-maccomputer";
+import { HISTORY_READ_MAX_KEYS } from "@server/shared/computer/limits";
+import { macComputerKey } from "@server/shared/computer/macKey";
 import type { EnvLink } from "./connection/link";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection/registry";
 import type { ComputerEntry, PreviewContext } from "./computerSessions";

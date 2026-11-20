@@ -70,17 +70,7 @@ export function bridgedDeadlineMs(call: ComputerToolCall): number {
 }
 
 // ── the session a box thread owns on the Mac ─────────────────────────
-const ENV_ID = /^env_[A-Za-z0-9_-]{22}$/
-
-export const macComputerKey = (envId: string, threadId: string): string => `${envId}:${threadId}`
-
-export function parseMacComputerKey(key: string): { envId: string; threadId: string } | null {
-  const at = key.indexOf(':')
-  if (at < 0) return null
-  const envId = key.slice(0, at)
-  const threadId = key.slice(at + 1)
-  return ENV_ID.test(envId) && threadId.length > 0 ? { envId, threadId } : null
-}
+export { macComputerKey, parseMacComputerKey } from './computer/macKey'
 
 // ── payloads ─────────────────────────────────────────────────────────
 export const MacComputerCallArgsSchema = z.object({

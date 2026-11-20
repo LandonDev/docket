@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useStore } from "zustand";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
-import { parseMacComputerKey } from "@server/shared/contract-maccomputer";
+import { parseMacComputerKey } from "@server/shared/computer/macKey";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection/registry";
 import { BOX_BROWSER_BUNDLE, computerSessionsStore, entriesOf, previewContext, startComputerSessions, type ComputerEntry, type PreviewContext } from "./computerSessions";
 import { threadRoot } from "./devServers";

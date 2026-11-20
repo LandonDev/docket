@@ -14,8 +14,8 @@ import { ComputerToolResultSchema, TierVerdictSchema } from './computer/tools'
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
   z.object({ id: z.string(), method: z.literal(method), params })
 
-/** Crashes in two minutes that put the service down for five (computer/service.ts). */
-export const COMPUTER_CRASHES_TO_DOWN = 5
+import { HISTORY_READ_MAX_KEYS } from './computer/limits'
+export { COMPUTER_CRASHES_TO_DOWN, HISTORY_READ_MAX_KEYS } from './computer/limits'
 
 /** This host's service: never started, starting, up, shut down after idling, down after crashes, or unavailable here. */
 export const ComputerServiceStateSchema = z.object({
@@ -184,8 +184,6 @@ export const ComputerHistoryCallSchema = z.object({
 })
 export type ComputerHistoryCall = z.infer<typeof ComputerHistoryCallSchema>
 
-/** The keys one `computer.history.read` may name, and one read's calls per key (computer/history.ts HISTORY_PAGE). */
-export const HISTORY_READ_MAX_KEYS = 64
 
 /** `computer.history.read`: each key's newest calls, oldest first; `more` says older ones exist. */
 export interface ComputerHistoryReadAnswer {
