@@ -28,8 +28,17 @@ function app(name){ var a = Application(name); if (!a.running()) throw new Error
 function grid(x){ if (!Array.isArray(x)) return [[x]]; if (x.length && !Array.isArray(x[0])) return [x]; return x }
 function cell(v){ if (v === undefined || v === null || v === '') return null; if (v instanceof Date) return v.toISOString(); return v }
 function book(xl, key){ var bs = all(xl.workbooks()); for (var i = 0; i < bs.length; i++) if (bs[i].fullName() === key || bs[i].name() === key) return bs[i]; throw new Error('No open workbook ' + key + '. (-1728)') }
-function byKey(list, key){ list = all(list); for (var i = 0; i < list.length; i++) if (list[i].fullName() === key || list[i].name() === key) return list[i]; throw new Error('Nothing open named ' + key + '. (-1728)') }
-function files(list){ return all(list).map(function(f){ return { key: f.fullName(), name: f.name() } }) }
+// Word gives a document's full name as an HFS path ("Macintosh HD:private:tmp:a.docx"); Excel and PowerPoint as a POSIX one.
+// Keys are POSIX everywhere, and a key matches either form, /tmp and /private/tmp alike.
+function posix(n){ n = String(n); if (!/^[^\\/:]+:/.test(n) || /^https?:/i.test(n)) return n;
+  var parts = n.split(':'), vol = parts.shift(); ObjC.import('Foundation'); var boot = ObjC.unwrap($.NSFileManager.defaultManager.displayNameAtPath('/'));
+  return (vol === boot ? '' : '/Volumes/' + vol) + '/' + parts.map(function(c){ return c.replace(/\\//g, ':') }).join('/') }
+function same(a, b){ var t = function(x){ return String(x).replace(/^\\/private(?=\\/(tmp|var|etc)\\/)/, '') }; return t(a) === t(b) }
+function byKey(coll, key){ var n = coll.length || 0; for (var i = 0; i < n; i++) { var x = coll[i]; if (same(posix(x.fullName()), key) || x.name() === key) return x } throw new Error('Nothing open named ' + key + '. (-1728)') }
+// Each text box of a deck, slide by slide and shape by shape; a shape with no text frame (a picture, a line) is passed over.
+function eachText(p, fn){ for (var i = 0; i < p.slides.length; i++) { var sl = p.slides[i]; for (var k = 0; k < sl.shapes.length; k++) { var h = sl.shapes[k], t;
+  try { if (!h.hasTextFrame()) continue; t = h.textFrame.textRange; t.content() } catch (e) { continue } fn(i, t) } } }
+function files(list){ return all(list).map(function(f){ return { key: posix(f.fullName()), name: f.name() } }) }
 function addr(m){ return m && m.address ? m.address : String(m || '') }
 function account(o, address){ var accs = [].concat(all(o.exchangeAccounts()), all(o.imapAccounts()), all(o.popAccounts())); var acc = accs.filter(function(x){ return String(x.emailAddress()).toLowerCase() === address.toLowerCase() })[0];
   if (!acc) throw new Error('Outlook has no account ' + address + '. (-1728)'); return acc }
@@ -81,19 +90,21 @@ export const SCRIPTS = {
     if (a.formulas) r.formula2 = one ? String(g[0][0]) : g.map(function(row){ return row.map(String) }); else r.value = one ? g[0][0] : g;
     return 'null'`),
   documents: js(`return JSON.stringify(files(app('Microsoft Word').documents()))`),
-  readDocument: js(`var d = byKey(app('Microsoft Word').documents(), a.doc); return JSON.stringify(String(d.textObject.content()).split('\\r'))`),
-  editDocument: js(`var w = app('Microsoft Word'); var d = byKey(w.documents(), a.doc); var was = d.trackRevisions(); d.trackRevisions = a.tracked; var n = 0;
+  readDocument: js(`var d = byKey(app('Microsoft Word').documents, a.doc); return JSON.stringify(String(d.textObject.content()).split('\\r'))`),
+  editDocument: js(`var w = app('Microsoft Word'); var d = byKey(w.documents, a.doc); var was = d.trackRevisions(); d.trackRevisions = a.tracked; var n = 0;
     try {
-      if (a.edit.insert !== undefined) { if (a.edit.at === 'start') w.insertBefore(d.textObject, { text: a.edit.insert }); else w.insertAfter(d.textObject, { text: a.edit.insert }); n = 1 }
+      if (a.edit.insert !== undefined) { var e = a.edit.at === 'start' ? 0 : Math.max(0, d.textObject.endOfContent() - 1); w.createRange(d, { start: e, end: e }).content = a.edit.insert; n = 1 }
       else { n = String(d.textObject.content()).split(a.edit.find).length - 1; if (n) w.executeFind(d.textObject.findObject, { findText: a.edit.find, replaceWith: a.edit.replace, replace: 'replace all', matchCase: true }) }
     } finally { d.trackRevisions = was }
     return JSON.stringify(n)`),
   presentations: js(`return JSON.stringify(files(app('Microsoft PowerPoint').presentations()))`),
-  readSlides: js(`var p = byKey(app('Microsoft PowerPoint').presentations(), a.pres);
-    return JSON.stringify(all(p.slides()).map(function(s, i){ return { index: i + 1, texts: all(s.shapes()).filter(function(h){ return h.hasTextFrame() }).map(function(h){ return String(h.textFrame.textRange.content()) }) } }))`),
-  replaceSlideText: js(`var p = byKey(app('Microsoft PowerPoint').presentations(), a.pres); var n = 0;
-    all(p.slides()).forEach(function(s){ all(s.shapes()).forEach(function(h){ if (!h.hasTextFrame()) return; var t = h.textFrame.textRange; var c = String(t.content());
-      if (c.indexOf(a.find) >= 0) { t.content = c.split(a.find).join(a.replace); n++ } }) });
+  // PowerPoint answers one shape at a time, by index: a list read of slides or shapes, or of their text, fails or comes back null.
+  readSlides: js(`var p = byKey(app('Microsoft PowerPoint').presentations, a.pres), out = [];
+    eachText(p, function(i, t){ (out[i] = out[i] || { index: i + 1, texts: [] }).texts.push(String(t.content())) });
+    for (var i = 0; i < p.slides.length; i++) out[i] = out[i] || { index: i + 1, texts: [] };
+    return JSON.stringify(out)`),
+  replaceSlideText: js(`var p = byKey(app('Microsoft PowerPoint').presentations, a.pres), n = 0;
+    eachText(p, function(i, t){ var c = String(t.content()); if (c.indexOf(a.find) >= 0) { t.content = c.split(a.find).join(a.replace); n++ } });
     return JSON.stringify(n)`),
   accounts: js(`var o = app('Microsoft Outlook'); var accs = [].concat(all(o.exchangeAccounts()), all(o.imapAccounts()), all(o.popAccounts()));
     return JSON.stringify(accs.map(function(x){ return String(x.emailAddress()) }).filter(Boolean))`),

@@ -7,7 +7,7 @@ import { ensureExcelTables, excelStore, ExcelHelper } from './excel'
 import { ActStale } from '../outbox/kinds'
 import { FakeOffice } from './fake'
 import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeMailSchema, type OfficeCalendarOp, type OfficeMail } from './held'
-import { OFFICE_TOOLS, sharedKey, workTools, type Env } from './tools'
+import { fileKey, OFFICE_TOOLS, sharedKey, type Env, workTools } from './tools'
 
 /**
  * The tool set over a fake Office: what is written, what waits as a
@@ -334,5 +334,13 @@ describe("the account a held mail or invitation goes from (the hold review's 16.
     ).rejects.toThrow('before the account it goes from was kept')
     expect(office.sent).toEqual([])
     expect(office.log.map((l) => l.verb).filter((v) => v === 'createEvent')).toEqual([])
+  })
+})
+
+describe('fileKey', () => {
+  it("finds Word's /private/tmp key from the /tmp path an agent names", async () => {
+    const office = new FakeOffice()
+    office.docs.set('/private/tmp/office-live/doc-test.docx', { paragraphs: [], tracked: [] })
+    await expect(fileKey({ carrier: office }, 'document', '/tmp/office-live/doc-test.docx')).resolves.toBe('/private/tmp/office-live/doc-test.docx')
   })
 })

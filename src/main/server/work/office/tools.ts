@@ -68,7 +68,8 @@ export async function fileKey(env: Pick<Env, 'carrier'>, kind: 'workbook' | 'doc
   } catch {
     return null
   }
-  const slash = (s: string): string => s.replace(/\\/g, '/')
+  // either separator, and /tmp for /private/tmp (Word's keys are the resolved form)
+  const slash = (s: string): string => s.replace(/\\/g, '/').replace(/^\/private(?=\/(tmp|var|etc)\/)/, '')
   const byKey = open.filter((f) => f.key === name || slash(f.key) === slash(name))
   if (byKey.length === 1) return byKey[0]!.key
   const byName = open.filter((f) => f.name === name)

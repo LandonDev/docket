@@ -18,7 +18,7 @@ function prop<T>(obj: Record<string, unknown>, name: string, value: T, writes: [
 }
 
 function runScript(name: ScriptName, args: unknown, apps: Record<string, unknown>): unknown {
-  const out = runInNewContext(`${SCRIPTS[name]}\nrun([${JSON.stringify(JSON.stringify(args))}])`, { Application: (n: string) => apps[n], JSON, Date, Math, String, Number, Error })
+  const out = runInNewContext(`${SCRIPTS[name]}\nrun([${JSON.stringify(JSON.stringify(args))}])`, { Application: (n: string) => apps[n], JSON, Date, Math, String, Number, Error, ObjC: { import: () => {}, unwrap: (x: unknown) => x }, $: { NSFileManager: { defaultManager: { displayNameAtPath: () => 'Macintosh HD' } } } })
   return JSON.parse(String(out))
 }
 
@@ -227,6 +227,75 @@ describe('the Outlook mail script', () => {
       const c = macCarrier({ osa, installed: () => true })
       await expect(c.sendMail({ ...m, replyTo: '42' })).rejects.toMatchObject({ code: 'refused', message: expect.stringContaining('so nothing was sent') })
     })
+  })
+})
+
+/** A JXA element collection: called, it answers the list; indexed and counted, one item at a time. */
+function elements<T>(list: T[]): (() => T[]) & Record<number, T> {
+  const f = (() => list) as (() => T[]) & Record<number, T>
+  Object.defineProperty(f, 'length', { value: list.length })
+  list.forEach((x, i) => (f[i] = x))
+  return f
+}
+
+describe('Word edits', () => {
+  it('insert at the end before the last paragraph mark, and at the start, through a range (Word has no insertAfter)', () => {
+    const log: unknown[] = []
+    const d: Record<string, unknown> = { fullName: () => '/tmp/a.docx', name: () => 'a.docx', trackRevisions: () => false, textObject: { endOfContent: () => 12 } }
+    Object.defineProperty(d, 'trackRevisions', { get: () => () => false, set: (v: boolean) => log.push(['track', v]) })
+    const range = (at: { start: number; end: number }) => ({ set content(t: string) { log.push(['put', at.start, at.end, t]) } })
+    const w = { running: () => true, documents: elements([d]), createRange: (_d: unknown, at: { start: number; end: number }) => range(at) }
+    expect(runScript('editDocument', { doc: '/tmp/a.docx', edit: { insert: ' end', at: 'end' }, tracked: true }, { 'Microsoft Word': w })).toBe(1)
+    runScript('editDocument', { doc: 'a.docx', edit: { insert: 'start ', at: 'start' }, tracked: false }, { 'Microsoft Word': w })
+    expect(log).toEqual([['track', true], ['put', 11, 11, ' end'], ['track', false], ['track', false], ['put', 0, 0, 'start '], ['track', false]])
+  })
+})
+
+describe('PowerPoint decks', () => {
+  /** A shape as PowerPoint answers it; `text: null` has no text frame, `broken` throws on its text (a placeholder that is gone). */
+  const shape = (text: string | null, broken = false) => {
+    const range: Record<string, unknown> = {}
+    let t = text ?? ''
+    Object.defineProperty(range, 'content', { get: () => () => (broken ? (() => { throw new Error('The object you are trying to access does not exist (-1728)') })() : t), set: (v: string) => (t = v) })
+    return { hasTextFrame: () => text !== null, textFrame: { textRange: range }, read: () => t }
+  }
+  const deck = (slides: ReturnType<typeof shape>[][]) => ({ fullName: () => '/tmp/office-live/deck-test.pptx', name: () => 'deck-test.pptx', slides: elements(slides.map((sh) => ({ shapes: elements(sh) }))) })
+  const ppt = (d: ReturnType<typeof deck>) => ({ 'Microsoft PowerPoint': { running: () => true, presentations: elements([d]) } })
+
+  it('read every text box, shape by shape, passing over pictures and shapes that cannot be read', () => {
+    const d = deck([[shape('Dummy deck'), shape('First body')], [shape(null), shape('Second', true), shape('Second body')], []])
+    expect(runScript('readSlides', { pres: '/tmp/office-live/deck-test.pptx' }, ppt(d))).toEqual([
+      { index: 1, texts: ['Dummy deck', 'First body'] },
+      { index: 2, texts: ['Second body'] },
+      { index: 3, texts: [] }
+    ])
+  })
+
+  it('replace text in each box that holds it, and count the boxes', () => {
+    const a = shape('Q1 plan')
+    const b = shape('See Q1')
+    const d = deck([[a, shape('none')], [b]])
+    expect(runScript('replaceSlideText', { pres: 'deck-test.pptx', find: 'Q1', replace: 'Q2' }, ppt(d))).toBe(2)
+    expect([a.read(), b.read()]).toEqual(['Q2 plan', 'See Q2'])
+  })
+})
+
+describe("Word's HFS names", () => {
+  const doc = (full: string) => ({ fullName: () => full, name: () => full.split(/[:/]/).pop(), textObject: { content: () => 'One\rTwo' } })
+  const word = (...docs: ReturnType<typeof doc>[]) => ({ 'Microsoft Word': { running: () => true, documents: elements(docs) } })
+
+  it('become POSIX keys: the startup disk at the root, another disk under /Volumes', () => {
+    expect(runScript('documents', {}, word(doc('Macintosh HD:private:tmp:office-live:doc-test.docx'), doc('Backup:Notes:a/b.docx'), doc('/Users/o/c.docx')))).toEqual([
+      { key: '/private/tmp/office-live/doc-test.docx', name: 'doc-test.docx' },
+      { key: '/Volumes/Backup/Notes/a:b.docx', name: 'b.docx' },
+      { key: '/Users/o/c.docx', name: 'c.docx' }
+    ])
+  })
+
+  it('are found by the POSIX key, by /tmp for /private/tmp, and by name', () => {
+    const apps = word(doc('Macintosh HD:private:tmp:office-live:doc-test.docx'))
+    for (const key of ['/private/tmp/office-live/doc-test.docx', '/tmp/office-live/doc-test.docx', 'doc-test.docx']) expect(runScript('readDocument', { doc: key }, apps)).toEqual(['One', 'Two'])
+    expect(() => runScript('readDocument', { doc: '/tmp/other.docx' }, apps)).toThrow('(-1728)')
   })
 })
 
