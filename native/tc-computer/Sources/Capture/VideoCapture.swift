@@ -155,8 +155,8 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
         guard type == .screen, let info = FrameInfo(sampleBuffer), info.status == .complete, let buffer = sampleBuffer.imageBuffer else { return }
         let picture = VideoPicture(buffer: buffer, captureMicros: machMicros(info.displayTime), enteredMicros: entered)
         trace?(.videoPicture(window: windowID, captureMicros: picture.captureMicros, dirty: info.dirtyRects))
-        // ScreenCaptureKit sends a still window again about a second later, all of it marked dirty: a picture
-        // after a rest that holds the last one's pixels is no change, or the still window would never rest
+        // ScreenCaptureKit marks all of the window dirty in every sample, so a sample after a rest is held
+        // against the last: the same pixels are no change, and the still window stays at rest
         if let last, picture.captureMicros >= last.captureMicros + UInt64(ComputerDefaults.VideoStream.sharpenAfterMs) * 1_000,
            Self.samePixels(buffer, last.buffer) { return }
         last = picture

@@ -8,7 +8,7 @@ work-kit (bundled into the app) changes Univer 1.5.2's formula engine (`@univerj
 
 pdf.js's character maps, two standard fonts and two image decoders ship as lazy assets, each beside its own licence notice (`src/renderer/src/work/pdf/pdfjsData.ts`). The JetBrains Mono font ships under the SIL Open Font License 1.1 (`src/renderer/src/assets/fonts/JetBrainsMono-OFL.txt`). Electron carries its own notices for Chromium and Node.js inside the app (`LICENSES.chromium.html`).
 
-Live video speaks screen-relay's wire (github.com/vercel-labs/screen-relay, version 0.1.2, Apache-2.0, given below). `src/shared/video/nsl1.ts` is ported from its `src/protocol/index.ts` and PROTOCOL.md and says in its head what was changed: only the frame, the ack and the input message are kept, and a frame encoder is added. screen-relay's engine itself is not in the app: it is a tool, below.
+Live video speaks screen-relay's wire (github.com/vercel-labs/screen-relay, version 0.1.2, Apache-2.0, given below). `src/shared/video/nsl1.ts` is ported from its `src/protocol/index.ts` and PROTOCOL.md and says in its head what was changed: only the frame, the ack and the input message are kept, and a frame encoder is added. `native/tc-computer/Sources/ComputerServiceKit/FlowControl.swift` is ported from its `src/engine/core/flow.hpp`, and its tests from its flow test (`flow-test.cpp`); its head says what was changed: C++ to Swift, Swift's names, the wrapping sums written as such, the rules and numbers as they were. screen-relay's engine itself is not in the app: it is a tool, below.
 
 ## Tools run as separate processes
 

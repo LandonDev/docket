@@ -2650,6 +2650,63 @@ frame waited inside the viewer, in microseconds.
   drops to the asked `fps`: a cap asked of the capture itself on a 144 Hz
   display gave 105 frames a second, not 120.
 
+### The Mac service (tc-computer)
+
+- **Where.** The pure parts are in `ComputerServiceKit`: the records and
+  their reader (`VideoWire.swift`), the pipe (`VideoPipe.swift`),
+  screen-relay's flow controller (`FlowControl.swift`), the pacer and the
+  still window (`VideoPacing.swift`). The seams and the picture size
+  (`VideoGeometry`) are in `ComputerCore/VideoSeams.swift`; the capture and
+  the encoder in `Capture/VideoCapture.swift`, with Annex B in
+  `AnnexB.swift` and every choice in `VideoTuning.swift`; the streams and
+  the calls in `ComputerService/Video.swift`.
+- **The feature.** At start the service reads descriptor 3 (`fcntl`, then
+  `fstat`): only a socket or a pipe is the bytes pipe. Without one it leaves
+  `video` out of `initialize`'s features. It registers the two calls only
+  when it has the pipe and the host listed `video`; otherwise they answer
+  -32601 as any unknown method does.
+- **The pipe.** Records go out whole and in order on a writer queue of their
+  own, so a slow host holds up neither the capture nor stdout; acks come in
+  on a reader thread. A failed write, the host closing its end, or a record
+  that cannot be placed loses the pipe for good: every stream ends with
+  `error`, and a later `capture.video.start` answers `capture_failed`.
+- **The capture.** One `SCStream` per window in NV12 (`420v`, BT.709), with
+  no cursor, sized to the window's own pixels fitted to the first stream's
+  `maxEdge`, and grown to the largest stream's picture as streams join. Its
+  `minimumFrameInterval` is one refresh of the window's screen
+  (`NSScreen.maximumFramesPerSecond`, at least `fps`). Only `complete`
+  samples count. The window's bounds are read every 250 ms: gone is
+  `window-closed`; a size off by more than 1% gives each stream a new
+  picture size, and a stream whose size changes starts a new generation.
+- **The encoder.** One `VTCompressionSession` per stream: H.264 High at
+  AutoLevel (the viewer reads its codec string from the SPS, and Chromium's
+  WebCodecs decodes High), hardware required, the software encoder only on a
+  Mac with none; `RealTime`, no frame reordering, `ExpectedFrameRate` the
+  stream's fps, no periodic keyframes, BT.709 tags. `quality` asks the
+  default rate control for `qualityBitrate`; `budget` turns on low-latency
+  rate control and sets `AverageBitRate` as the flow moves it. A picture of
+  another size is scaled with `VTPixelTransferSession`. The output becomes
+  Annex B: a start code ahead of each NAL unit, the SPS and PPS ahead of a
+  keyframe (an SEI may sit before the IDR slice). An encoder that fails is
+  made again as a new generation, up to three times in a row, then the
+  stream ends with `error`.
+- **The stream.** The pacer takes the frames nearest an even 1/fps grid of
+  ScreenCaptureKit's display times. Then screen-relay's flow, without TCP
+  statistics: a picture is encoded only while the frames sent and not acked,
+  with those still in the encoder, are fewer than its window and it is not
+  paused. An ack of another generation is ignored; an ack of a later frame
+  credits the frames before it. A new generation starts the flow again at
+  sequence 1 and keeps the bitrate it had. A 10 ms clock runs the flow's
+  update, the bitrate, the still window and the three-second timeout.
+- **A still window.** ScreenCaptureKit sends no complete sample while a
+  window is still. It marks all of a window dirty in every sample, so the
+  dirty rects cannot say whether a late sample changed anything: a picture
+  that comes after a rest of `sharpenAfterMs` and holds the last one's
+  pixels (compared row by row, only then) is no change. The proof's busy
+  window sent one more sample about a second after it stopped drawing,
+  whose pixels did differ; the still window ran again for it, then sent
+  nothing. Repeats skip the pacer but not the flow.
+
 ### The host
 
 `ServiceConnection` (`computer/connection.ts`) opens the pipe, reads records

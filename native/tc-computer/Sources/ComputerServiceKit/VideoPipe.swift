@@ -39,8 +39,9 @@ public final class VideoPipe: @unchecked Sendable {
         guard fcntl(fd, F_GETFD) != -1 else { return false }
         var info = stat()
         guard fstat(fd, &info) == 0 else { return false }
-        let kind = info.st_mode & S_IFMT
-        return kind == S_IFSOCK || kind == S_IFIFO
+        // the constants are mode_t on Darwin and Int32 under Glibc
+        let kind = info.st_mode & mode_t(S_IFMT)
+        return kind == mode_t(S_IFSOCK) || kind == mode_t(S_IFIFO)
     }
 
     /// Starts the reader thread; `onRecord` hears each record in order on it.

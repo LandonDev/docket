@@ -5,10 +5,11 @@ frames a second, in place of the 4 fps JPEG picture. The plan is
 `.temp-code/plan-WqCU4GKXKSM6.md`; this file says what is built.
 
 **Built so far:** the wire, the contract, who may watch, the stream ticket,
-the stream's own socket on both servers, the relay, the two settings, and the
-box's browser as a source. No viewer asks for a stream yet: every client
-still draws the JPEG picture, and the Mac and Windows have no source, so
-`video.open` answers `unsupported` there.
+the stream's own socket on both servers, the relay, the two settings, the
+box's browser as a source, and the Mac's computer service as a source of its
+windows (`capture.video.*`, below). No viewer asks for a stream yet: every
+client still draws the JPEG picture. `video.open` does not ask the Mac's
+service yet, so it answers `unsupported` on the Mac, as on Windows.
 
 **What the owner must do before the box plays video:** run the tools
 installer on the box and update it (see "The box", "The tools"). Until then
@@ -510,6 +511,55 @@ proven over fakes (`videoInput.test.ts`, `ViewportVideo.dom.test.tsx`
 "driving the page from the picture"); the two meeting in a real window are
 first seen on the owner's Mac.
 
+## The Mac (`tc-computer`)
+
+The computer service streams one window as H.264 on its bytes pipe,
+descriptor 3 (docs/computer-protocol.md §30, "The Mac service"): one
+ScreenCaptureKit capture per window, one VideoToolbox encoder per stream,
+screen-relay's flow controller ported to Swift with every case of its test.
+
+Measured 2026-11-19 on the M4 Max (the 144 Hz display at 2×, load 5 to 7,
+after more than an hour with no input) by `capture-proof` scene 20: an inert
+borderless window of 1280×800 points that changes everywhere on every
+refresh, 5 s per mode after a 1 s warm-up, a viewer on the same Mac that
+acks each frame 2 ms after it is written.
+
+| Mode | Picture | Encoded fps (capture) | Encode p50 / p95 | Bitrate |
+|---|---|---|---|---|
+| `quality` | 2560×1600 | 119.0 (153.6) | 8.6 / 14.5 ms | 65.0 Mbit/s |
+| `budget`, starting at 8 Mbit/s | 1280×800 | 32.2 (153.4) | 4.2 / 5.6 ms | 7.9 Mbit/s |
+
+Encode is the capture callback to the access unit's bytes. The capture runs
+past the display's rate (about 153 a second on a 144 Hz display): a window
+capture follows the window's own drawing. The first frame of each run was a
+keyframe with its SPS and PPS, the sequences ran 1, 2, 3 … with no gap, and
+every frame had the size the start answered. Stopped, the window sent its
+last drawn frames, four repeats 150 ms later, and nothing in its last second
+of rest.
+
+The DataRateLimits trial (scene 21, the same window, 2560×1600, 8 s per run
+after 2 s, the rate held fixed), two runs on 2026-11-19:
+
+| Rate control | Encoded fps of captured | Bitrate | Encode p50 / p95 |
+|---|---|---|---|
+| `quality`: default, 20 Mbit/s | 119.1 of 161.0; 119.0 of 159.9 | 65.0; 65.1 Mbit/s | 8.8 / 13.4; 9.0 / 15.6 ms |
+| `quality`: DataRateLimits 20 Mbit/s | 118.5 of 161.8; 112.1 of 160.0 | 37.6; 35.6 Mbit/s | 7.4 / 26.6; 25.2 / 42.0 ms |
+| `budget`: low-latency, 8 Mbit/s | 15.0 of 162.0; 15.0 of 160.9 | 8.2; 8.2 Mbit/s | 9.1 / 10.2; 9.2 / 10.0 ms |
+| `budget`: DataRateLimits, no low latency, 8 Mbit/s | 119.2 of 161.1; 110.2 of 160.5 | 30.6; 28.4 Mbit/s | 7.2 / 7.9; 30.8 / 41.7 ms |
+
+DataRateLimits does not hold `quality` near 20 Mbit/s (1.8 to 1.9 times it;
+one run dropped frames and its encode p95 reached 42 ms), and it does not
+hold `budget` within 1.5 times 8 Mbit/s (3.5 to 3.8 times). So `quality` keeps
+the default rate control and `budget` keeps low-latency rate control
+(`VideoTuning.qualityDataRateLimits` and `budgetDataRateLimits` are false).
+
+Open: in `budget` the flow never raised the bitrate, though every ack came at
+once. The likely reason, from the code: low-latency rate control drops most
+frames of a busy window (32 a second of the 120 offered), and screen-relay's flow takes a gap
+of more than three frame intervals between sent frames as idle and starts its
+sample again, so it never sees the steady demand it needs before it probes.
+It still lowers the bitrate on a congested link; it cannot raise it again.
+
 ## Settings
 
 `src/shared/video/settings.ts`.
@@ -575,6 +625,17 @@ socket and decoder, and its first decode on a Mac is still to be seen.
   stays.
 
 ## Tests
+
+- The Mac's service, `sh scripts/computer-test.sh` on the Mac:
+  `FlowControlTests` (every case of screen-relay's flow test),
+  `VideoWireTests`, `VideoPipeTests` (a real socket pair), `FramePacerTests`
+  and `StillWindowTests` in ComputerServiceKitTests; `AnnexBTests`,
+  `VideoGeometryTests`, `SamePixelsTests` and `VideoEncoderTests` (the real
+  VideoToolbox encoder on pictures made in the test) in CaptureTests;
+  `VideoServiceTests` (the handlers over fakes and a socket pair) in
+  ComputerServiceTests. The live proof is `bash
+  scripts/mac/proof-computer-capture.sh --scenes 20,21`, which shows a
+  window and so runs only after five minutes with no input.
 
 - `src/shared/video/nsl1.parity.test.ts`, `src/shared/video/access.test.ts`
 - `src/main/server/remote/auth.test.ts` "stream tickets"

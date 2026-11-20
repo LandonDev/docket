@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-// Every case of screen-relay 0.1.2's `test/core/flow-test.cpp`, with its numbers and, where they
+// Every case of screen-relay 0.1.2's flow test (`flow-test.cpp`), with its numbers and, where they
 // translate, its names (FlowControl.swift says what the port changed).
 @Suite struct FlowControlTests {
     private typealias Flow = FlowControl
