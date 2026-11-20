@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
+import type { GrantOffer, OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
 import type { HeldRef } from "@shared/work";
 import { registry } from "../../lib/connection";
 import { setOutboxFailed, setOutboxWaiting, workSwitch } from "../../lib/workSwitch";
@@ -19,12 +19,14 @@ import { applyResult, reloadResults, resetResults } from "./results";
 /** An item with the host that holds it. */
 export type HostItem = OutboxItem & { environmentId: string };
 export type HostGrant = OutboxGrant & { environmentId: string };
+export type HostOffer = GrantOffer & { environmentId: string };
 export type { HostResult } from "./results";
 
 type HostState = {
   waiting: HostItem[];
   sent: HostItem[];
   grants: HostGrant[];
+  offers: HostOffer[];
   count: number;
   /** of `count`, the sends that failed */
   failed: number;
@@ -40,6 +42,8 @@ export type OutboxView = {
   waiting: HostItem[];
   sent: HostItem[];
   grants: HostGrant[];
+  /** grants he has earned and not yet decided, each beside the item that completed its run */
+  offers: HostOffer[];
   /** every host with Work on has answered once, or failed to */
   loaded: boolean;
   /** every host with Work on has answered, none failed: only then is an empty list known to be clear */
@@ -48,7 +52,7 @@ export type OutboxView = {
   errors: { environmentId: string; error: string }[];
 };
 
-const emptyHost = (): HostState => ({ waiting: [], sent: [], grants: [], count: 0, failed: 0, loaded: false, error: null });
+const emptyHost = (): HostState => ({ waiting: [], sent: [], grants: [], offers: [], count: 0, failed: 0, loaded: false, error: null });
 
 function changed(): void {
   snapshot = null;
@@ -71,6 +75,7 @@ function view(): OutboxView {
     waiting: on.flatMap((h) => h.waiting).sort((a, b) => a.createdAt - b.createdAt),
     sent: on.flatMap((h) => h.sent).sort((a, b) => (b.decidedAt ?? b.updatedAt) - (a.decidedAt ?? a.updatedAt)),
     grants: on.flatMap((h) => h.grants).sort((a, b) => b.createdAt - a.createdAt),
+    offers: on.flatMap((h) => h.offers),
     loaded: workSwitch.hosts().size > 0 && [...workSwitch.hosts()].every((id) => hosts.get(id)?.loaded),
     complete: workSwitch.hosts().size > 0 && [...workSwitch.hosts()].every((id) => hosts.get(id)?.loaded && !hosts.get(id)?.error),
     errors: [...hosts].filter(([id, h]) => workSwitch.hosts().has(id) && h.error).map(([environmentId, h]) => ({ environmentId, error: h.error! })),
@@ -97,12 +102,15 @@ export function loadHost(environmentId: string): Promise<void> {
     link.request<{ items: OutboxItem[]; waiting: number }>("work.outbox.list", { show: "waiting" }),
     link.request<{ items: OutboxItem[] }>("work.outbox.list", { show: "decided", limit: 100 }),
     link.request<{ grants: OutboxGrant[] }>("work.outbox.grants", {}),
+    // A key without approve, or a host from before offers, has none to show: the rest of the Outbox still loads.
+    link.request<{ offers: GrantOffer[] }>("work.outbox.offers", {}).catch(() => ({ offers: [] as GrantOffer[] })),
   ])
-    .then(([waiting, decided, grants]) => {
+    .then(([waiting, decided, grants, offers]) => {
       hosts.set(environmentId, {
         waiting: tag(environmentId, waiting.items),
         sent: tag(environmentId, decided.items.filter((item) => item.state === "sent")),
         grants: tag(environmentId, grants.grants),
+        offers: tag(environmentId, offers.offers),
         count: waiting.waiting,
         failed: waiting.items.filter((item) => item.state === "failed").length,
         loaded: true,
@@ -197,6 +205,39 @@ export function fetchItem(environmentId: string, ref: HeldRef): Promise<OutboxIt
 export async function grantAndSend(item: HostItem, grant: { matcher: unknown; label: string }): Promise<OutboxItem> {
   await registry.linkOf(item.environmentId).request<OutboxGrant>("work.outbox.grant", { from: item.ref, matcher: grant.matcher, label: grant.label });
   return sendItem(item);
+}
+
+/** The offer whose run this item completed, if one is open. */
+export const offerFrom = (offers: readonly HostOffer[], item: Pick<HostItem, "environmentId" | "ref">): HostOffer | null =>
+  offers.find((o) => o.environmentId === item.environmentId && o.from.at === item.ref.at && o.from.id === item.ref.id) ?? null;
+
+/** Whether the press just made completed a run: read from the host, which makes the offer before the press answers. */
+export async function offerAfterPress(item: HostItem): Promise<HostOffer | null> {
+  try {
+    const { offers } = await registry.linkOf(item.environmentId).request<{ offers: GrantOffer[] }>("work.outbox.offers", {});
+    return offerFrom(tag(item.environmentId, offers), item);
+  } catch {
+    return null;
+  }
+}
+
+/** Make the grant he earned. The host makes it from the offer's item with the matcher it worked out: only the offer is named. */
+export async function takeOffer(offer: HostOffer): Promise<HostGrant> {
+  try {
+    const grant = await registry.linkOf(offer.environmentId).request<OutboxGrant>("work.outbox.takeOffer", { id: offer.id });
+    return { ...grant, environmentId: offer.environmentId };
+  } finally {
+    void loadHost(offer.environmentId);
+  }
+}
+
+/** Never offered again. */
+export async function dismissOffer(offer: HostOffer): Promise<void> {
+  try {
+    await registry.linkOf(offer.environmentId).request<GrantOffer>("work.outbox.dismissOffer", { id: offer.id });
+  } finally {
+    void loadHost(offer.environmentId);
+  }
 }
 
 export async function removeGrant(grant: HostGrant): Promise<void> {

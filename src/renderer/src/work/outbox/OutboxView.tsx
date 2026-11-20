@@ -28,14 +28,19 @@ import { kindHeading } from "../acts/kindRows";
 import { Calendar, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
-import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
+import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
 import { loadResults, undoResult, useResults } from "./results";
-import { discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, sendItem, sendMany, useOutbox, wentOut, type HostItem } from "./store";
+import { OfferLine } from "./OfferLine";
+import { discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, offerAfterPress, offerFrom, sendItem, sendMany, useOutbox, wentOut, type HostItem, type HostOffer } from "./store";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
 let rememberedWidth = PAGE_LIST_WIDTH;
 let rememberedTab: "waiting" | "sent" = "waiting";
+/** The tab the page opens on (its preview opens Sent). */
+export function rememberOutboxTab(tab: "waiting" | "sent"): void {
+  rememberedTab = tab;
+}
 
 /** An item's key across hosts. */
 const keyOf = (item: Pick<HostItem, "environmentId" | "ref">): string => `${item.environmentId}:${item.ref.at}:${item.ref.id}`;
@@ -104,6 +109,9 @@ function KindGlyph({ kind, className }: { kind: ActKind; className?: string }) {
 
 const toast = (line: string) => void loadToast().then((t) => t(line));
 const toastError = (line: string) => void loadToast().then((t) => t.error(line));
+/** What a press says when it completed a run: the line of the grant it earned, with Review, which opens the item in Sent. */
+const toastEarned = (line: string, offer: HostOffer, review: () => void) =>
+  void loadToast().then((t) => t(line, { description: offerLine(offer), action: { label: "Review", onClick: review } }));
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 type Props = {
@@ -207,6 +215,12 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     const at = outbox.waiting.findIndex((x) => keyOf(x) === keyOf(item));
     const next = outbox.waiting[at + 1] ?? outbox.waiting[at - 1];
     setSelected(next ? keyOf(next) : null);
+  };
+  // A press that earned a grant: Review opens the item in Sent, where the offer waits beside it.
+  const review = (item: HostItem) => {
+    setTab("sent");
+    setSelected(keyOf(item));
+    setOpened(true);
   };
 
   const sendSeveral = async (items: readonly HostItem[], where?: string): Promise<void> => {
@@ -335,9 +349,9 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
               </div>
             )
           ) : tab === "waiting" ? (
-            <HeldDetail key={keyOf(current)} item={current} workspace={nameOf(current.environmentId, current.workspaceId)} host={hostName(current.environmentId)} onOpenSession={onOpenSession} onPressed={afterPress} />
+            <HeldDetail key={keyOf(current)} item={current} workspace={nameOf(current.environmentId, current.workspaceId)} host={hostName(current.environmentId)} onOpenSession={onOpenSession} onPressed={afterPress} onReview={review} />
           ) : (
-            <SentDetail key={keyOf(current)} item={current} workspace={nameOf(current.environmentId, current.workspaceId)} grantLabel={outbox.grants.find((g) => current.decidedBy === `grant:${g.id}`)?.label ?? null} onOpenSession={onOpenSession} />
+            <SentDetail key={keyOf(current)} item={current} offer={offerFrom(outbox.offers, current)} workspace={nameOf(current.environmentId, current.workspaceId)} grantLabel={outbox.grants.find((g) => current.decidedBy === `grant:${g.id}`)?.label ?? null} onOpenSession={onOpenSession} />
           )}
         </div>
       </div>
@@ -578,7 +592,21 @@ function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: bo
   return { shown: mine?.item ?? item, ready: !!mine?.item, failed: !!mine && !mine.item, retry: () => setAttempt((n) => n + 1) };
 }
 
-function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }: { item: HostItem; workspace: string; host: string; onOpenSession?: Props["onOpenSession"]; onPressed: (item: HostItem) => void }) {
+function HeldDetail({
+  item: listed,
+  workspace,
+  host,
+  onOpenSession,
+  onPressed,
+  onReview,
+}: {
+  item: HostItem;
+  workspace: string;
+  host: string;
+  onOpenSession?: Props["onOpenSession"];
+  onPressed: (item: HostItem) => void;
+  onReview: (item: HostItem) => void;
+}) {
   const { shown: item, ready: read, failed: unread, retry } = useWhole(listed);
   const picture = usePicture(listed);
   // Send waits until all he approves is on screen: the act's own view loaded, the mail read whole, the act's kept picture drawn (the hold review).
@@ -595,7 +623,11 @@ function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }:
       const after = which === "discard" ? await discardItem(item) : which === "grant" ? await grantAndSend(item, grant!) : await sendItem(item, { again: which === "again" });
       if (which !== "discard" && !wentOut(after)) return void toastError(notSentWords(after));
       onPressed(item);
-      toast(which === "discard" ? "Discarded" : `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`);
+      const done = which === "discard" ? "Discarded" : `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`;
+      // A plain press may have completed a run: the host makes the offer before it answers.
+      const earned = which === "send" || which === "again" ? await offerAfterPress(item) : null;
+      if (earned) toastEarned(done, earned, () => onReview(item));
+      else toast(done);
       if (which === "grant") toast(`Grant made: ${grant!.label}`);
     } catch (err) {
       toastError(errorText(err));
@@ -675,8 +707,25 @@ function HeldDetail({ item: listed, workspace, host, onOpenSession, onPressed }:
   );
 }
 
-function SentDetail({ item, workspace, grantLabel, onOpenSession }: { item: HostItem; workspace: string; grantLabel: string | null; onOpenSession?: Props["onOpenSession"] }) {
+function SentDetail({
+  item,
+  offer: listed,
+  workspace,
+  grantLabel,
+  onOpenSession,
+}: {
+  item: HostItem;
+  offer: HostOffer | null;
+  workspace: string;
+  grantLabel: string | null;
+  onOpenSession?: Props["onOpenSession"];
+}) {
   const picture = usePicture(item);
+  // The offer stays on screen once shown, so taking it can say so (with Undo) after the host stops listing it.
+  const [offer, setOffer] = useState<HostOffer | null>(listed);
+  useEffect(() => {
+    if (listed) setOffer(listed);
+  }, [listed]);
   // The act's Result carries its way back (work_results); a mail has none.
   const results = useResults(item.environmentId, item.sessionId ?? "", !!item.sessionId);
   const result = results.rows.find((r) => {
@@ -704,6 +753,7 @@ function SentDetail({ item, workspace, grantLabel, onOpenSession }: { item: Host
           <DetailHead item={item} facts={[workspace, `${decidedWords(item, grantLabel)} ${dayOf(at) === "Today" ? "at" : "on"} ${timeOf(at)}`]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
           <ActView item={item} env={item.environmentId} />
           {item.kind === "computer.act" ? <KeptPicture item={item} picture={picture} /> : null}
+          {offer ? <OfferLine offer={offer} /> : null}
         </div>
       </div>
       <VerbBar>

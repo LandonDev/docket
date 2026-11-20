@@ -8,13 +8,14 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
+import type { GrantOffer, OutboxGrant, OutboxItem } from "@shared/contract-work-outbox";
 
 type Call = { env: string; method: string; params: Record<string, unknown> };
 const world = vi.hoisted(() => ({
   calls: [] as Call[],
   items: new Map<string, OutboxItem[]>(),
   grants: new Map<string, OutboxGrant[]>(),
+  offers: new Map<string, GrantOffer[]>(),
   resultsDown: false,
   listDown: new Set<string>(),
   quote: null as string | null,
@@ -59,6 +60,20 @@ vi.mock("../../lib/connection", async (original) => {
           const grant = { id: `g${now}`, workspaceId: "ws1", kind: "mail.send", matcher: params.matcher, label: String(params.label), madeFrom: params.from, routineId: null, createdAt: now, removedAt: null } as OutboxGrant;
           world.grants.set(env, [...(world.grants.get(env) ?? []), grant]);
           return grant;
+        }
+        case "work.outbox.offers":
+          return { offers: world.offers.get(env) ?? [] };
+        case "work.outbox.takeOffer": {
+          const offer = (world.offers.get(env) ?? []).find((o) => o.id === params.id)!;
+          world.offers.set(env, (world.offers.get(env) ?? []).filter((o) => o !== offer));
+          const grant = { id: `g${now}`, workspaceId: offer.workspaceId, kind: offer.kind, matcher: {}, label: offer.label, madeFrom: offer.from, routineId: null, createdAt: now, removedAt: null } as OutboxGrant;
+          world.grants.set(env, [...(world.grants.get(env) ?? []), grant]);
+          return grant;
+        }
+        case "work.outbox.dismissOffer": {
+          const offer = (world.offers.get(env) ?? []).find((o) => o.id === params.id)!;
+          world.offers.set(env, (world.offers.get(env) ?? []).filter((o) => o !== offer));
+          return offer;
         }
         case "work.outbox.ungrant": {
           const grant = (world.grants.get(env) ?? []).find((g) => g.id === params.id)!;
@@ -139,6 +154,7 @@ beforeEach(() => {
     ["mac", [{ ...addonCall }]],
   ]);
   world.grants = new Map();
+  world.offers = new Map();
   world.resultsDown = false;
   world.listDown.clear();
   world.sendHeld = null;
@@ -574,5 +590,64 @@ describe("the Outbox", () => {
     expect(act.className).toContain("@max-[40rem]/outbox:shrink");
     expect(act.className).toContain("@max-[40rem]/outbox:break-words");
     expect(row.className).not.toMatch(/(^| )h-8( |$)/);
+  });
+});
+
+describe("a grant he has earned", () => {
+  const offer = (from: OutboxItem): GrantOffer => ({ id: "go_1", workspaceId: "ws1", kind: "mail.send", label: "Mail to Dana Lee", routineId: null, from: from.ref, count: 5, createdAt: 2_000 });
+  const sentDana = () => {
+    const item = world.items.get("box")![0]!;
+    Object.assign(item, { state: "sent", decidedBy: "owner", decidedAt: 2_000 });
+    return item;
+  };
+  async function openSent() {
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Sent" }));
+    await waitFor(() => expect(screen.getAllByText("Sent to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
+  }
+
+  it("waits under the sent item that completed the run; Stop holding names only the offer, and the line turns to the grant with Undo", async () => {
+    world.offers.set("box", [offer(sentDana())]);
+    await openSent();
+    const line = await waitFor(() => document.querySelector("[data-offer-line]") as HTMLElement);
+    expect(line.textContent).toContain("Mail to Dana Lee: you sent the last 5 as written.");
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Stop holding" })));
+    expect(world.calls.filter((c) => c.method === "work.outbox.takeOffer").map((c) => c.params)).toEqual([{ id: "go_1" }]);
+    // never a grant made from a matcher the screen chose
+    expect(world.calls.some((c) => c.method === "work.outbox.grant")).toBe(false);
+    await waitFor(() => expect(document.querySelector("[data-offer-line]")?.textContent).toContain("Grant made: Mail to Dana Lee"));
+    await act(async () => fireEvent.click(within(document.querySelector("[data-offer-line]") as HTMLElement).getByRole("button", { name: "Undo" })));
+    expect(world.calls.filter((c) => c.method === "work.outbox.ungrant")).toHaveLength(1);
+    await waitFor(() => expect(document.querySelector("[data-offer-line]")).toBeNull());
+  });
+
+  it("Dismiss is for good, and an item that completed no run shows no line", async () => {
+    world.offers.set("box", [offer(sentDana())]);
+    Object.assign(world.items.get("box")![1]!, { state: "sent", decidedBy: "owner", decidedAt: 1_500 });
+    await openSent();
+    const line = await waitFor(() => document.querySelector("[data-offer-line]") as HTMLElement);
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Dismiss" })));
+    expect(world.calls.filter((c) => c.method === "work.outbox.dismissOffer").map((c) => c.params)).toEqual([{ id: "go_1" }]);
+    await waitFor(() => expect(document.querySelector("[data-offer-line]")).toBeNull());
+    fireEvent.click(screen.getByText("Sent to Sam Ortiz"));
+    expect(document.querySelector("[data-offer-line]")).toBeNull();
+  });
+
+  it("a press that completed a run says so in its toast, whose Review opens the item in Sent with the offer beside it", async () => {
+    const { Toaster } = await import("../../components/ui/toaster");
+    render(<Toaster />);
+    await open();
+    // the host makes the offer before the press answers
+    const send = world.calls.length;
+    await act(async () => {
+      world.offers.set("box", [offer(world.items.get("box")![0]!)]);
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    });
+    expect(world.calls.slice(send).map((c) => c.method)).toContain("work.outbox.offers");
+    const review = await screen.findByRole("button", { name: "Review" }, { timeout: 5000 });
+    expect(document.body.textContent).toContain("Mail to Dana Lee: you sent the last 5 as written.");
+    await act(async () => fireEvent.click(review));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Sent" }).getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(document.querySelector("[data-offer-line]")?.textContent).toContain("Mail to Dana Lee"));
   });
 });

@@ -9,8 +9,8 @@ import { removeGrant, type HostGrant } from "./store";
 /**
  * The standing grants, by workspace (docs/DESIGN.md "Settings for Work", a
  * grant row): its name, where and when it was made, and Remove with no
- * confirm. A grant is made only from a held item's Send menu; here it can
- * only go. Each workspace's heading leads with its sector's dot, since the
+ * confirm. A grant is made only from a held item (its Send menu, or the offer
+ * under a sent item that earned one); here it can only go. Each workspace's heading leads with its sector's dot, since the
  * groups mix sectors; groups sit 16px apart.
  */
 export function GrantsSheet({

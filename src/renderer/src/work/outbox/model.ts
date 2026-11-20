@@ -1,4 +1,4 @@
-import type { OutboxItem } from "@shared/contract-work-outbox";
+import type { GrantOffer, OutboxItem } from "@shared/contract-work-outbox";
 import type { ActKind } from "@shared/work";
 
 /**
@@ -448,6 +448,11 @@ export function grantFor(item: Pick<OutboxItem, "kind" | "payload">): { matcher:
     return { matcher: { addonId: p.addonId, tool: p.tool }, label: `${String(p.words ?? p.tool)} with ${String(p.addon ?? "the add-on")}` };
   }
   return null;
+}
+
+/** An earned grant's line, beside the item that completed its run: "Mail to Dana Lee: you sent the last 5 as written." */
+export function offerLine(offer: Pick<GrantOffer, "label" | "count" | "routineId">): string {
+  return `${offer.label}${offer.routineId ? " from this routine" : ""}: you sent the last ${offer.count} as written.`;
 }
 
 const KIND_WORDS: Partial<Record<ActKind, string>> = { "mail.send": "mail", "office.mail.send": "mail", "addon.call": "add-on call", "teams.post": "post", "calendar.op": "calendar act" };

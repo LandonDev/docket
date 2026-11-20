@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEdits, awayLine, awaySections, byWorkspace, dayOf, decidedWords, grantFor, grantLine, htmlWords, parseAddresses, pastOf, payloadView } from "./model";
+import { applyEdits, awayLine, awaySections, byWorkspace, dayOf, decidedWords, grantFor, grantLine, htmlWords, offerLine, parseAddresses, pastOf, payloadView } from "./model";
 
 const MAIL = {
   id: "o1",
@@ -206,5 +206,12 @@ describe("an act in a command line", () => {
     const read = { step: 0, why: "console", label: "Run", on: 'text "dir" in Terminal', grantable: false };
     expect(grantFor({ kind: "addon.call", payload: { addonId: "a1", tool: "run", read } })).toBeNull();
     expect(grantFor({ kind: "addon.call", payload: { addonId: "a1", tool: "run" } })).not.toBeNull();
+  });
+});
+
+describe("an earned grant's line", () => {
+  it("names the grant and why it is offered, and a routine's as that routine's", () => {
+    expect(offerLine({ label: "Mail to Dana Lee", count: 5, routineId: null })).toBe("Mail to Dana Lee: you sent the last 5 as written.");
+    expect(offerLine({ label: "Accept invitations on landon@purdue.edu", count: 5, routineId: "r1" })).toBe("Accept invitations on landon@purdue.edu from this routine: you sent the last 5 as written.");
   });
 });
