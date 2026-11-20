@@ -922,6 +922,38 @@
 - **Routes**: `.workView(environmentId:workspaceId:view:)` (`mail`,
   `tasks`, `agenda`, `routines`), in the detail column.
 
+## A Work workspace's projects (the projects plan, milestone 8)
+
+- **The Projects row** is `LifeViewScreen.Kind.projects`
+  (Work/Life/LifeViewScreen.swift): `WorkViewRows` draws every kind, so it
+  sits with Mail, Tasks and Agenda above the cards and pushes
+  `.workView(view: "projects")`. Its body is LifeKitUI's
+  `ProjectsList(sector:)` with `.projectDestinations()`, inside the
+  workspace's `WorkLifeHost` chrome, so a project (`ProjectScreen`) pushes
+  in the shell's own stack and a task opens LifeOS's sheet through the
+  host's sheet. The data is LifeOS's (`projects:counts`, `projects:page`,
+  `comments:list`) over the workspace's narrowed JWT; nothing new crosses
+  TempCode's wire, so the contract did not move.
+- **The host's members.** `WorkLifeHost` keeps `showsProjects` false (the
+  Projects row is its place, so Tasks' menu does not offer it) and
+  `offers(document:)` false: a project's LifeOS document or sheet is a
+  plain row on the phone until a later milestone opens it through
+  `work.guests.ticket`, as an item's document does.
+- **A Work project's card** (`ProjectCardView`, `showsBranch` false from
+  `WorkspaceScreen` when the workspace's kind is `work`) draws no branch
+  line.
+- **A Work project's settings** (`ProjectSettingsSheet`, `isWork` from the
+  workspace's kind): `ProjectSettingsModel.loadWork()` reads nothing of
+  review or plans, so `review.set` and `plans.set` (which the server
+  refuses for a Work project) are never offered or sent; the sheet holds
+  the project's Rules row and a Done button. Sharing joins it with
+  milestone 7 (a project's guest links).
+- **The pin.** work-kit's Swift for this is on `projects-swift-tc`, a
+  branch from the commit TempCode pinned (`fb39587`), merged into work-kit
+  main with no change to main's tree, so TempCode's JS side moves nothing
+  when its pin (package.json, bun.lock and ios/TempCode/project.yml, equal)
+  takes the branch's head.
+
 ## The data path's two contracts (the performance pass, 2026-11)
 
 What a push and a key may re-run is written down in docs/IOS-DESIGN.md

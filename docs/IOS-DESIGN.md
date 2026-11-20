@@ -2399,16 +2399,31 @@ phone does everything the desktop does. What milestone 46 built:
 What milestone 47 added (approved pages `phone-life.html` and
 `phone-canvas.html`):
 
-- **A Work workspace's screen** leads with Mail, Tasks, Agenda and
-  Routines on the Home row grid, then House Rules. While its host is
-  signed out of LifeOS or cannot reach it, the three LifeOS rows sit at
-  half strength under the one status line.
+- **A Work workspace's screen** leads with Mail, Tasks, Agenda,
+  Projects and Routines on the Home row grid, then House Rules. While its
+  host is signed out of LifeOS or cannot reach it, the four LifeOS rows sit
+  at half strength under the one status line.
 - **Mail, Tasks and Agenda are LifeOS's own screens** (work-kit's
   LifeKitUI), narrowed to the workspace's sector, so no sector dot shows.
   They keep LifeOS's type ladder (body and subheadline), beside the app's
   15/13/11 list ladder, as the approved page draws them. Their sheets are
   LifeOS's. Send in their composer goes to the host (the hold, for a
   thread's draft); Start Thread leads the task, event and mail menus.
+- **Projects** (the projects plan's milestone 8) is LifeOS's own list and
+  project screen too (LifeKitUI's `ProjectsList` and `ProjectScreen`), for
+  the workspace's sector: one group a state, Done and Dropped folded, each
+  row its glyph, name, 4 pt meter and `done/all`; a project shows its name,
+  state, meter, the description's lead (four lines), the tasks as a folding
+  tree with their keys, "Done n", and Documents; a task opens LifeOS's
+  task sheet, which now holds the task's sub-tasks and comments. No board,
+  no drag, no editing of a project on the phone. Below the rows the
+  project cards stay the places threads live; a Work project's card has no
+  branch line.
+- **A Work project's settings** hold Rules for its threads (the project's
+  rules row, which pushes the rules editor) and, with the project guest
+  links (the projects plan's milestone 7), Sharing; nothing of code: no
+  review before merge, no plan flow, no workspace default row. Its one
+  button is Done, since the rules save in their own editor.
 - **Start Thread** opens a form sheet, "New Thread": the item as a chip
   (28 pt, radius 8, the fill, the kind's glyph and its label) above his
   words, Cancel and Start. Nothing runs until Start; the thread opens.
