@@ -288,13 +288,17 @@ held there: the Mac answers `HELD_UNAVAILABLE` and nothing runs. The box
 sends a Work thread's act only to a Mac that offers `computer-hold`. A
 Work thread's `security`, `sudo` and the rest of the bridge's always-ask
 list stay a prompt on the Mac under full access and under Away, and so does
-its `osascript`, save one run as argv with `-e` text that names only apps
-in `WORK_LOCAL_SCRIPT_APPS` (Contacts, Reminders, Notes, Photos, TextEdit,
-Preview, Numbers, Pages, Keynote) as plain strings and nothing that reaches
-past them (a shell, a URL, another script, raw events, the ObjC bridge):
-that one runs as any full-access command does (`workFloor`,
-`osaStaysLocal` in remote/macBridgeRules.ts). Mail, Messages, Outlook,
-Calendar, the browsers, Finder and System Events are not on the list.
+its `osascript`, save one: Apple's (`/usr/bin/osascript` as argv[0]),
+with `-e` text that names only apps in `WORK_LOCAL_SCRIPT_APPS` (Contacts,
+TextEdit, Preview) as plain strings and nothing that reaches past them (a
+shell, a URL, a network volume or a printer, a loaded script or framework,
+raw events, the ObjC bridge, JXA's standard additions or `\u` spellings). That one runs as any full-access command
+does (`workFloor`, `osaStaysLocal` in remote/macBridgeRules.ts). Mail,
+Messages, Outlook, Calendar, the browsers, Finder and System Events are
+not on the list, nor are Notes, Reminders, Photos, Pages, Numbers and
+Keynote, whose plain edit reaches whoever shares the list, album or
+document. It reads an honest script: the shell is not fenced
+(work-scope.md "What the fence does not do").
 Its text into a password field is denied on the Mac under Away as it
 is here (`req.awayDenies` in `MacComputer.ask`, `AWAY_PASSWORD`).
 
@@ -307,6 +311,27 @@ is held; text into a password field is denied; `addon_add` and
 a held act or makes a grant: neither is a card. The held notice
 (`Notifier.held`) goes out whether or not he is away, with no approval a
 lock screen could answer.
+
+## Where a Work thread in full access still asks
+
+A Work thread starts in full access on every path (`ctx.threads.start`
+says `auto`; a composer start takes his defaults, `auto` on the box; a
+subagent or a thread it starts takes its parent's mode). Files, the shell
+and the box's own tools run without a card. A card, or a prompt on the Mac,
+is the rule only for:
+
+| What | Where | Under Away |
+| --- | --- | --- |
+| `security`, `sudo`, `su`, `doas`, `launchctl`, `defaults write` and kin, `rm -r` of `/` or home, a credential path, an `osascript` that is not local (`workFloor`) | the Mac bridge's prompt, for a box thread's `mac_run` and `mac_job_start` | still asks |
+| a Mac read or write of keys and credentials (`macDenied`) | the Mac bridge's prompt | the Mac's Away allows it |
+| text into a password field | the computer card | denied |
+| `addon_add`, `addon_remove` | the card for an admin | denied |
+
+What sends, posts, shares, books, submits or pays is not on this list: it
+is held, which is no card (above). On 2026-11-20 the record of his Work
+threads held five Mac prompts in two days, all a local `osascript` on
+Contacts, and no card; that row is gone
+(`.temp-code/plans/landed/F-work-asks.md`).
 
 ## A shared file: "asked" must be his words
 

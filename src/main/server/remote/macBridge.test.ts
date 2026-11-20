@@ -169,7 +169,7 @@ describe('asText', () => {
   })
 })
 
-function bridge(opts: { managed?: string[]; load?: { load: number; cores: number }; away?: { on: boolean } } = {}) {
+function bridge(opts: { managed?: string[]; load?: { load: number; cores: number }; away?: { on: boolean }; run?: ConstructorParameters<typeof MacBridge>[0]['run'] } = {}) {
   const settings = new Map<string, string>()
   const pushes: MacBridgePush[] = []
   const lines: string[] = []
@@ -188,7 +188,8 @@ function bridge(opts: { managed?: string[]; load?: { load: number; cores: number
     shell: '/bin/sh',
     log: (l) => lines.push(l),
     load: { sample: () => ({ ...sample }), intervalMs: 0 },
-    ...(opts.away ? { away: () => opts.away!.on } : {})
+    ...(opts.away ? { away: () => opts.away!.on } : {}),
+    ...(opts.run ? { run: opts.run } : {})
   })
   mb.subscribe((p) => pushes.push(p))
   const requests = (): MacBridgeRequest[] =>
@@ -859,26 +860,34 @@ describe('MacBridge while the person is away', () => {
 
   it("a Work thread in full access runs an osascript that drives only local apps with no prompt, under Away or not; one that could send still asks", async () => {
     const away = { on: false }
-    const b = bridge({ away })
+    const started: string[][] = []
+    const b = bridge({
+      away,
+      run: (o) => {
+        started.push(o.argv ?? [])
+        return { result: Promise.resolve({ exitCode: 0, signal: null, stdout: '234\n', stderr: '', truncated: false, timedOut: false, durationMs: 1 }), stop: () => {}, pid: 1 }
+      }
+    })
     b.mb.setPolicy('env_box', 'read+run')
     const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
     const work = { id: 'w2', title: 'a Work thread', permission: 'auto', scope: 'work' }
-    const contacts = { argv: ['/usr/bin/osascript', '-l', 'JavaScript', '-e', "Application('Contacts'); 'counted'"], cwd: shared }
-    const lines = b.lines.length
-    await b.mb.handle('mac.run', { thread: work, args: contacts } as never, ctx).catch(() => undefined)
+    const contacts = { argv: ['/usr/bin/osascript', '-l', 'JavaScript', '-e', "Application('Contacts').people.length"], cwd: shared }
+    expect(((await b.mb.handle('mac.run', { thread: work, args: contacts } as never, ctx)) as MacRunResult).stdout).toBe('234\n')
     away.on = true
-    await b.mb.handle('mac.run', { thread: work, args: contacts } as never, ctx).catch(() => undefined)
-    const ran = b.lines.slice(lines).filter((l) => l.includes('thread=w2') && l.includes('allowed (full access') && l.endsWith('argv0=osascript'))
-    expect(ran).toHaveLength(2)
-    // the same thread's Mail script waits for the owner, Away or not
+    expect(((await b.mb.handle('mac.run', { thread: work, args: contacts } as never, ctx)) as MacRunResult).stdout).toBe('234\n')
+    expect(started).toEqual([contacts.argv, contacts.argv])
+    expect(b.lines.filter((l) => l.includes('thread=w2') && l.includes('allowed (full access') && l.endsWith('argv0=osascript'))).toHaveLength(2)
+    // the same thread's Mail script waits for the owner, Away or not, and never starts unless he allows it
     const before = b.requests().length
     const mail = b.mb.handle('mac.run', { thread: work, args: { argv: ['/usr/bin/osascript', '-e', 'tell application "Mail" to send (make new outgoing message)'], cwd: shared } } as never, ctx)
     const card = await b.nextRequest(before)
     await new Promise((r) => setTimeout(r, 20))
-    expect(b.lines.some((l) => l.includes('thread=w2') && l.includes('away'))).toBe(false)
     expect(card).toMatchObject({ kind: 'run', status: 'pending', sessionId: 'w2' })
+    expect(b.pushes.some((p) => p.push === 'macBridge.resolved' && p.id === card.id)).toBe(false)
+    expect(started).toHaveLength(2)
     b.mb.decide(card.id, false, false)
-    await expect(mail).rejects.toThrow()
+    await expect(mail).rejects.toThrow(/denied/)
+    expect(started).toHaveLength(2)
   })
 
   it('runs what needs no prompt: a remembered command, a read inside the shared roots, a full-access thread', async () => {

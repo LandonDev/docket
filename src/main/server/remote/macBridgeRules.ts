@@ -318,26 +318,25 @@ function windowsWide(word: string, cwd: string, home: string, realHome: string, 
 
 /**
  * Apps whose scripting reaches no one: a Work thread's `osascript` that
- * drives only these runs under full access and Away (workFloor). Mail,
- * Messages, Outlook, Calendar (invites), the browsers, Finder (it opens
- * anything) and System Events (keys into any app) are not here.
+ * drives only these runs under full access and Away (workFloor). Not here:
+ * Mail, Messages, Outlook, Calendar (invites), the browsers, Finder (it
+ * opens anything), System Events (keys into any app), and every app whose
+ * plain edit can reach someone through a shared list, album or document
+ * (Notes, Reminders, Photos, Pages, Numbers, Keynote).
  */
-export const WORK_LOCAL_SCRIPT_APPS = [
-  'Contacts',
-  'Reminders',
-  'Notes',
-  'Photos',
-  'TextEdit',
-  'Preview',
-  'Numbers',
-  'Pages',
-  'Keynote'
-] as const
+export const WORK_LOCAL_SCRIPT_APPS = ['Contacts', 'TextEdit', 'Preview'] as const
 
-/** Script words that reach past the app they name: a shell, a URL, a loaded script, raw Apple Events, the ObjC bridge, code built at run time. */
-const OSA_LEAVES_AS = /do\s+shell\s+script|open\s+location|(run|load|store)\s+script|«|<<\s*event|using\s+terms\s+from|application\s+id\b/i
+/** Script words that reach past the app they name: a shell, a URL, a network volume or a printer, a loaded script or framework, raw Apple Events, the ObjC bridge, code built at run time. */
+const OSA_LEAVES_AS =
+  /do\s+shell\s+script|open\s+location|mount\s+volume|\bprint\b|\/Volumes\/|(run|load|store)\s+script|\buse\s+(script|framework)\b|«|<<\s*event|using\s+terms\s+from|application\s+id\b|\|/i
 const OSA_LEAVES_JS =
-  /\b(doShellScript|openLocation|runScript|loadScript|storeScript|currentApplication|ObjC|Library|eval|Function|constructor|__proto__|this|globalThis|Reflect|Proxy|import|require|NS[A-Z]\w*)\b|\$(?=\s*(?:[.(\[;,)]|$))/
+  /\/Volumes\/|\b(print|doShellScript|openLocation|mountVolume|runScript|loadScript|storeScript|includeStandardAdditions|currentApplication|ObjC|Library|eval|Function|constructor|__proto__|this|globalThis|Reflect|Proxy|import|require|NS[A-Z]\w*)\b|\$(?=\s*(?:[.(\[;,)]|$))/
+/** JXA text with its \u escapes read as the characters they stand for: an identifier may be spelled with them. */
+const unescapeJs = (text: string): string =>
+  text.replace(/\\u\{([0-9a-fA-F]+)\}|\\u([0-9a-fA-F]{4})/g, (whole, braced?: string, four?: string) => {
+    const code = parseInt(braced ?? four ?? '', 16)
+    return code <= 0x10ffff ? String.fromCodePoint(code) : whole
+  })
 const localApp = (name: string): boolean => (WORK_LOCAL_SCRIPT_APPS as readonly string[]).includes(name)
 
 /**
@@ -349,7 +348,8 @@ const localApp = (name: string): boolean => (WORK_LOCAL_SCRIPT_APPS as readonly 
  * "What the fence does not do").
  */
 export function osaStaysLocal(argv: readonly string[]): boolean {
-  if (strip(argv[0] ?? '') !== 'osascript') return false
+  // Apple's own osascript by its path: any other file of that name, or one PATH finds first, is just another program
+  if (argv[0] !== '/usr/bin/osascript') return false
   let lang = 'AppleScript'
   const texts: string[] = []
   let i = 1
@@ -361,17 +361,18 @@ export function osaStaysLocal(argv: readonly string[]): boolean {
     else if (argv[i] !== '-s') return false
   }
   if (texts.length === 0) return false
-  const text = texts.join('\n')
+  const raw = texts.join('\n')
   if (lang === 'JavaScript') {
+    const text = unescapeJs(raw)
     if (OSA_LEAVES_JS.test(text)) return false
     return [...text.matchAll(/\bApplication\b/g)].every((m) => {
       const named = /^\s*\(\s*(['"])([^'"\\]*)\1\s*\)/.exec(text.slice(m.index + m[0].length))
       return !!named && localApp(named[2])
     })
   }
-  if (lang !== 'AppleScript' || OSA_LEAVES_AS.test(text)) return false
-  return [...text.matchAll(/\b(application|app)\b/gi)].every((m) => {
-    const named = /^\s*"([^"\\]*)"/.exec(text.slice(m.index + m[0].length))
+  if (lang !== 'AppleScript' || OSA_LEAVES_AS.test(raw)) return false
+  return [...raw.matchAll(/\b(application|app)\b/gi)].every((m) => {
+    const named = /^\s*"([^"\\]*)"/.exec(raw.slice(m.index + m[0].length))
     return !!named && localApp(named[1])
   })
 }

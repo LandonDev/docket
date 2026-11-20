@@ -333,9 +333,9 @@ describe('limits and timers', () => {
     const work = { id: 'w7', title: 'work', permission: 'auto', scope: 'work' }
     const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
     const before = m.requests().length
-    await m.mb.handle('mac.jobStart', { thread: work, args: { argv: ['osascript', '-e', 'tell application "Contacts" to count people'], cwd: root } } as never, ctx)
+    await m.mb.handle('mac.jobStart', { thread: work, args: { argv: ['/usr/bin/osascript', '-e', 'tell application "Contacts" to count people'], cwd: root } } as never, ctx)
     expect(m.requests().slice(before).map((r) => r.status)).toEqual(['pending', 'running'])
-    const asked = m.mb.handle('mac.jobStart', { thread: work, args: { argv: ['osascript', '-e', 'tell application "Mail" to activate'], cwd: root } } as never, ctx)
+    const asked = m.mb.handle('mac.jobStart', { thread: work, args: { argv: ['/usr/bin/osascript', '-e', 'tell application "Mail" to activate'], cwd: root } } as never, ctx)
     for (let i = 0; i < 50 && m.requests().length === before + 2; i++) await Promise.resolve()
     expect(m.requests().at(-1)?.status).toBe('pending')
     m.mb.decide(m.requests().at(-1)!.id, false)
