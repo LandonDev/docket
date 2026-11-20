@@ -78,6 +78,8 @@ export interface PackedApp {
   ptyPrebuild: boolean
   /** Mach-O or ELF helpers under resources/native (the Mac's own), as paths */
   foreignBinaries: string[]
+  /** resources/native/tc-computer.exe's first bytes (the computer-use service, §29), null when it is missing */
+  serviceHead: Uint8Array | null
 }
 
 /**
@@ -103,6 +105,8 @@ export function packedAppProblems(app: PackedApp): string[] {
   }
   if (!app.ptyPrebuild) problems.push('node-pty has no win32-x64 prebuild in the app')
   for (const file of app.foreignBinaries) problems.push(`${file} is not a Windows binary`)
+  if (!app.serviceHead) problems.push('resources/native/tc-computer.exe is missing: run `bun scripts/build-tc-computer-win.ts` before the Windows pack')
+  else if (binaryKind(app.serviceHead) !== 'pe-x64') problems.push(`resources/native/tc-computer.exe is not a 64-bit Windows executable (${binaryKind(app.serviceHead)})`)
   return problems
 }
 

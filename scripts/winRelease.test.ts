@@ -41,7 +41,8 @@ const good: PackedApp = {
   sdkWants: '0.3.280',
   muse: {},
   ptyPrebuild: true,
-  foreignBinaries: []
+  foreignBinaries: [],
+  serviceHead: pe(0x8664)
 }
 
 describe('the Windows release file list', () => {
@@ -86,6 +87,9 @@ describe('the Windows release file list', () => {
     const guarded = [...script.matchAll(/^if \[ "\$WIN" = 1 \]; then\n([\s\S]*?)^fi$/gm)].map((m) => m[1]).join('\n')
     expect(guarded).toContain(`electron-builder --win --x64 --publish never --config ${WIN_CONFIG}`)
     expect(guarded).toContain('win-stage.ts stage')
+    // tc-computer.exe is built before the pack that carries it
+    expect(guarded).toContain('bun scripts/build-tc-computer-win.ts')
+    expect(guarded.indexOf('build-tc-computer-win.ts')).toBeLessThan(guarded.indexOf('electron-builder --win'))
     expect(guarded).toContain('win-stage.ts check-app')
     expect(guarded).toContain('win-stage.ts check-files')
     expect(guarded).toContain('dist/latest.yml')
@@ -236,6 +240,11 @@ describe('the release check on a packed Windows app', () => {
   it("fails without node-pty's Windows prebuild and with a Mac helper left in resources/native", () => {
     expect(packedAppProblems({ ...good, ptyPrebuild: false })).toEqual(['node-pty has no win32-x64 prebuild in the app'])
     expect(packedAppProblems({ ...good, foreignBinaries: ['resources/native/tc-computer'] })).toEqual(['resources/native/tc-computer is not a Windows binary'])
+  })
+
+  it('refuses an app without tc-computer.exe, or with one that is not x64 Windows', () => {
+    expect(packedAppProblems({ ...good, serviceHead: null })).toEqual(['resources/native/tc-computer.exe is missing: run `bun scripts/build-tc-computer-win.ts` before the Windows pack'])
+    expect(packedAppProblems({ ...good, serviceHead: MACH_O })).toEqual(['resources/native/tc-computer.exe is not a 64-bit Windows executable (mach-o)'])
   })
 
   it('the installed Muse SDK is plain JavaScript today', () => {

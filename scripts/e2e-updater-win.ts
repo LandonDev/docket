@@ -13,7 +13,8 @@
  *   bun scripts/e2e-updater.ts --win --no-vite    out/ is already built: pack it as it is
  *
  * What it does:
- *   1. Builds out/ (electron-vite), stages the win32 Claude CLI (scripts/win-stage.ts), and packs
+ *   1. Builds out/ (electron-vite), stages the win32 Claude CLI (scripts/win-stage.ts), builds
+ *      tc-computer.exe (scripts/build-tc-computer-win.ts), and packs
  *      the tree twice with electron-builder on the Windows config, unsigned: once at 1.0.N-1 ("old")
  *      and once at 1.0.N ("new"). Both carry app id dev.landon.tempcode.e2e, product name
  *      TempCodeE2E and a `tempcodeHarness` block (src/main/harness.ts) naming their userData, CDP
@@ -206,6 +207,8 @@ if (!reuse) {
   }
   log('staging the win32 Claude CLI')
   await sh(['bun', 'scripts/win-stage.ts', 'stage'], { quiet: true })
+  log('building tc-computer.exe')
+  await sh(['bun', 'scripts/build-tc-computer-win.ts'], { quiet: true })
   await pack(OLD, 'old')
   await pack(NEW, 'new')
 } else {

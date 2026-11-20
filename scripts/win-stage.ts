@@ -103,7 +103,8 @@ function readPackedApp(appDir: string): PackedApp {
     ptyPrebuild: existsSync(join(modules, 'node-pty', 'prebuilds', 'win32-x64')),
     foreignBinaries: (existsSync(native) ? readdirSync(native) : [])
       .map((name) => join(native, name))
-      .filter((file) => statSync(file).isFile() && ['mach-o', 'elf'].includes(binaryKind(head(file) ?? new Uint8Array())))
+      .filter((file) => statSync(file).isFile() && ['mach-o', 'elf'].includes(binaryKind(head(file) ?? new Uint8Array()))),
+    serviceHead: head(join(native, 'tc-computer.exe'))
   }
 }
 

@@ -274,10 +274,15 @@ fi
 # this machine has only its own, so the win32 one is staged first
 # (scripts/win-stage.ts, checked against bun.lock's checksum), and the packed
 # app is refused without a claude.exe, with another platform's package in it,
-# or without the feed config. Nothing here touches the Mac's files above.
+# or without the feed config. tc-computer.exe, the computer-use service the
+# pack carries in resources/native, is cross-built first with cargo-xwin
+# (scripts/build-tc-computer-win.ts): a release with an old or no exe would
+# leave computer use off on Windows. Nothing here touches the Mac's files above.
 if [ "$WIN" = 1 ]; then
   echo "building the Windows installer and zip (unsigned)"
   bun scripts/win-stage.ts stage >"$STAGE/win.log" 2>&1 || { tail -20 "$STAGE/win.log" >&2; exit 1; }
+  bun scripts/build-tc-computer-win.ts >>"$STAGE/win.log" 2>&1 ||
+    { tail -20 "$STAGE/win.log" >&2; echo "REFUSING TO PUBLISH $VERSION: tc-computer.exe did not build (cargo-xwin, docs/computer-protocol.md §29.6)" >&2; exit 1; }
   bunx electron-builder --win --x64 --publish never --config build/electron-builder.win.yml \
     -c.extraMetadata.tempcodeBuild.sha="$SHA" \
     >>"$STAGE/win.log" 2>&1 || { tail -40 "$STAGE/win.log" >&2; exit 1; }
