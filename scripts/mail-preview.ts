@@ -54,6 +54,26 @@ async function bundle(): Promise<string> {
     jsx: 'automatic',
     tsconfig: join(root, 'tsconfig.web.json'),
     alias: { 'work-kit': join(root, 'node_modules/work-kit/src') },
+    plugins: [
+      {
+        name: 'as-the-app-resolves',
+        setup(b) {
+          // A work-kit path its package names another file for (`work-kit/projects/order`) goes where the package says.
+          const named = JSON.parse(readFileSync(join(root, 'node_modules/work-kit/package.json'), 'utf8')).exports as Record<string, unknown>
+          b.onResolve({ filter: /^work-kit\// }, (args) => {
+            const to = named[`./${args.path.slice('work-kit/'.length)}`]
+            return typeof to === 'string' ? { path: join(root, 'node_modules/work-kit', to) } : undefined
+          })
+          // Vite's `?raw`: the file's text (the release notes the app's shell reads).
+          b.onResolve({ filter: /\?raw$/ }, (args) => ({ path: join(args.resolveDir, args.path.replace(/\?raw$/, '')), namespace: 'raw' }))
+          b.onLoad({ filter: /.*/, namespace: 'raw' }, (args) => ({ contents: readFileSync(args.path, 'utf8'), loader: 'text' }))
+          // Vite's `?worker` and `?url`: the Mail view opens a file's canvas beside the mail, so its bundle names the
+          // editors' workers; the preview never starts one.
+          b.onResolve({ filter: /\?(worker|url)(&.*)?$/ }, (args) => ({ path: args.path, namespace: 'never' }))
+          b.onLoad({ filter: /.*/, namespace: 'never' }, () => ({ contents: 'export default class { postMessage() {} terminate() {} addEventListener() {} }', loader: 'js' }))
+        }
+      }
+    ],
     loader: { '.css': 'empty', '.wav': 'empty', '.svg': 'dataurl', '.png': 'dataurl' },
     define: { 'import.meta.env.DEV': 'true', 'import.meta.env.PROD': 'false', 'import.meta.env.MODE': '"preview"', 'process.env.NODE_ENV': '"production"' },
     logLevel: 'warning'
