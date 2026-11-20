@@ -134,7 +134,9 @@ A real Chromium on the box, so a box thread can drive a website with no Mac
 awake. The code is `src/main/server/work/browser/box/`; the protocol's
 §28 is its wire.
 
-- **One browser** (`chromium.ts`): headless, its own profile under
+- **One browser** (`chromium.ts`): headless, or headed on a private display
+  for live video when the tools are installed and `work.browser.video` is
+  not off ([live-video.md](live-video.md) "The box"); its own profile under
   `<userData>/work-browser/box/profile`, DevTools on 127.0.0.1 only, the
   sandbox on, never root. Started on first use; stopped after ten idle
   minutes, or when its whole process tree passes 2 GB (`/proc`, every 15 s),
@@ -173,7 +175,8 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   through the host's preview relay, built over the box's sessions by
   index.ts; the box's rows reach the desktop in the `computer` push, and
   Take over stops them (§28.5). A held submit shows its picture in the
-  Outbox.
+  Outbox. A headed browser also answers `video.open` for the pane's page,
+  which the canvas does not yet ask for.
 - **Frames** are read in place (§28.3): a portal that draws its form in a
   frame, of its own origin or another's, is read, filled, clicked and held
   like any page (`hold.test.ts`).

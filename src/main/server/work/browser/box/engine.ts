@@ -74,6 +74,8 @@ export function freePort(): Promise<number> {
 export interface EngineLease {
   port: number
   token: string
+  /** the engine's process, for a proof that measures it */
+  pid: number | null
   /** the engine process exited under the viewer */
   onExit(fn: () => void): void
   /** the viewer is gone: the engine waits for the next one, then stops */
@@ -148,6 +150,7 @@ export class BoxEngines {
     return {
       port: held.port,
       token: held.token,
+      pid: held.child.pid ?? null,
       onExit: (fn) => void held.exits.add(fn),
       release: () => {
         if (released) return

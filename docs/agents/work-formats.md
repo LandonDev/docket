@@ -45,6 +45,13 @@ adding its file: neither the installer nor `base.json` changes. The schema is
   - `archive`: each file unpacked (tar, zip) into the folder, `strip`
     leading folders dropped, `into` a subfolder; `raw` keeps a file as it is
   - `debs`: a tarball of .deb packages, each extracted with `dpkg-deb -x`
+  - `build`: a tool compiled on the host against a library tree of its own.
+    Each file is put in place (a `.deb` extracted with `dpkg-deb -x`, an
+    archive unpacked, a `raw` file kept), then the entry's `build` steps
+    run in the tool's own folder, where it will stay, with the host's
+    compiler. The steps take the probe's placeholders. Nothing is installed
+    on the system and no root is used. The browser pillar's `screen-relay`
+    tool is the one that uses it ([live-video.md](live-video.md))
   - `dmg`: mounted read-only and hidden (`hdiutil attach -nobrowse`), its
     `app` copied out
   - `npm`: package tarballs, each into its `into` (`node_modules/<name>`)

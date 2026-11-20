@@ -223,7 +223,7 @@ describe('EngineFeed', () => {
   function rig(drive: boolean) {
     const exits: (() => void)[] = []
     let released = 0
-    const lease: EngineLease = { port: 4100, token: 'f'.repeat(64), onExit: (fn) => void exits.push(fn), release: () => void released++ }
+    const lease: EngineLease = { port: 4100, token: 'f'.repeat(64), pid: null, onExit: (fn) => void exits.push(fn), release: () => void released++ }
     let socket!: FakeEngineSocket
     const feed = new EngineFeed(lease, drive, (url, protocols) => (socket = new FakeEngineSocket(url, protocols)) as unknown as WebSocket)
     const frames: Uint8Array[] = []

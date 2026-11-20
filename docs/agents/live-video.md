@@ -5,9 +5,14 @@ frames a second, in place of the 4 fps JPEG picture. The plan is
 `.temp-code/plan-WqCU4GKXKSM6.md`; this file says what is built.
 
 **Built so far:** the wire, the contract, who may watch, the stream ticket,
-the stream's own socket on both servers, the relay, and the two settings. No
-source is wired yet, so `video.open` answers `unsupported` on every host and
-every viewer draws the JPEG picture as before.
+the stream's own socket on both servers, the relay, the two settings, and the
+box's browser as a source. No viewer asks for a stream yet: every client
+still draws the JPEG picture, and the Mac and Windows have no source, so
+`video.open` answers `unsupported` there.
+
+**What the owner must do before the box plays video:** run the tools
+installer on the box and update it (see "The box", "The tools"). Until then
+the box's browser is headless and nothing changes there.
 
 ## The wire
 
@@ -136,6 +141,169 @@ A feed (`VideoFeed`, video/feed.ts) is one viewer's stream at its source.
 `VideoRpc` (video/rpc.ts) asks each `VideoSource` in turn; the first that
 knows the thread answers. `FakeFeed` is the feed the tests drive by hand.
 
+## The box
+
+The box's browser is the first source: `src/main/server/work/browser/box/`.
+screen-relay's engine runs beside our server as its own unmodified process
+and captures the X display the box's Chromium draws on.
+
+### The tools
+
+`scripts/work-tools/browser.json` names one tool, `screen-relay`, for
+`linux-x64` only. The installer's `build` kind
+([work-formats.md](work-formats.md)) unpacks 43 Ubuntu 24.04 packages, each
+pinned by sha256 from snapshot.ubuntu.com, beside the published 0.1.2 npm
+package (pinned by npm's integrity), and compiles `relay-engine` there with
+the host's own `g++` and `make`. No root, nothing installed on the system.
+
+```bash
+bun scripts/work-tools/install.ts --data <userData> --only screen-relay
+```
+
+| What | Where under `<userData>/work-tools/screen-relay/0.1.2/` |
+|---|---|
+| the engine | `pkg/relay-engine`, with a library path that follows the folder |
+| x264, libwebsockets, the X client libraries | `sys/usr/lib/x86_64-linux-gnu/` |
+| the X.Org server and its dummy driver | `sys/usr/lib/xorg/` |
+| xclip | `sys/usr/bin/xclip` |
+
+x264 and xclip are GPL. They, the engine and the X server run only as
+separate, unmodified processes; none is linked into our code or shipped in
+the app (`THIRD-PARTY-NOTICES.md`). The X server also needs what the box
+already has for Xvfb (`xkbcomp`, the keyboard data, pixman and the like). A
+host without them fails the probe and stays headless.
+
+`videoToolsAt` (`box/videoSetting.ts`) reads the installer's `state.json`.
+The browser is headed only when the tools are there and `work.browser.video`
+is not off; both are read each time the browser starts.
+
+### The display (`display.ts`)
+
+A rootless `Xorg` with the dummy driver: one mode, 1280×800 at 120 Hz.
+Chromium reads the refresh rate when it starts, so the display is 120 Hz for
+the browser's whole life and lives exactly as long as the browser does.
+
+- It picks its own free display number (`-displayfd`).
+- It takes no TCP, and a client needs the cookie: a new one for every
+  server, in `<userData>/work-browser/box/display/Xauthority`, mode 0600.
+- The box's own server runs under a display of its own (`xvfb-run`).
+  `displayEnv` hands the browser, the engine and xclip this display's pair
+  and nothing of that one.
+- A server left behind by a host that was killed is ended before the next
+  starts (a pid file beside the config).
+- A display that will not start is not an error: the browser starts
+  headless and says so in the log.
+
+### The stage (`stage.ts`, `xclient.ts`)
+
+The engine captures the whole display, so what is on the display is what he
+sees. No window manager runs. `BoxStage` places the windows over DevTools,
+and `xclient.ts` makes the few X requests a window manager would.
+
+- **One window per page, full screen.** The frame is the page alone: no tab
+  strip and no address bar, so no full address is in any frame. Every page
+  the service or the Outlook carrier makes goes through `stage.open`.
+- **Exactly the screen's size.** Chromium takes one pixel off any window as
+  large as the screen, and nothing answers its ask to be full screen. So
+  `fitWindows` sets each page window to 1280×800 through X, after the
+  browser says the window's state has changed.
+- **A new page never covers the watched one.** It is made off the screen
+  (x = 2000) and put on it under the others (`landWindows`).
+- **The watched page is on top.** `video.open` raises it
+  (`Target.activateTarget`). A window another page opens is put back under
+  it, unless the watched page opened it (a sign-in popup is part of what he
+  watches) or he is driving (a window he opens stays).
+- **Nothing else raises a page.** In headed mode the service no longer calls
+  `Page.bringToFront` before a picture or an act. A covered window keeps
+  painting (`--disable-backgrounding-occluded-windows`), and focus emulation
+  keeps it acting focused for keys sent through DevTools.
+- **The Outlook carrier's window lives off the screen** (x = 6000) and is
+  never raised.
+- **While he drives**, the page's window leaves full screen, so the
+  browser's own toolbar shows inside the picture (87 of the 800 lines). It
+  returns to full screen when he hands back.
+- **A closed address ends the picture.** When the watched page, a tab of its
+  window or a window it opened goes to an address `closedToAgents` names,
+  the stream ends.
+
+A Chrome for Testing build draws a bar in every window that says so, full
+screen too. `--test-type=gpu` is the one switch found to leave it out (a bare
+`--test-type` does not in Chromium 156), so only such a build gets it.
+
+When the browser enters full screen it shows "To exit full screen, press and
+hold Esc" for about four seconds. That notice is in the picture when a page
+opens and when he hands back.
+
+### The headed profile (`chromium.ts` `headedPrefs`)
+
+Written into the profile before a headed start. A headless browser shows
+none of this, so it is left as it was.
+
+- No password is offered to be saved and none is filled, so one he types
+  while he drives is never kept for the agent to submit. No address or card
+  is saved or filled.
+- Every permission a page can ask for is refused without a prompt
+  (`HEADED_BLOCKED`).
+- A file chooser is handed to DevTools and never drawn
+  (`Page.setInterceptFileChooserDialog`).
+- A download lands in `<userData>/work-browser/box/downloads` with no
+  dialog. Headless, downloads go where they went before.
+- No sign-in to the browser itself, no translate bubble, and no offer to
+  restore pages after a kill.
+
+### The engine (`engine.ts`, `engineFeed.ts`)
+
+The published 0.1.2 engine takes one WebSocket client. So `BoxEngines` runs
+one engine for each viewer, four at most. Each has its own encoder, whose
+bitrate follows that viewer's own link, and the relay stays a pipe.
+
+- An engine starts when a viewer needs one and none is free. It stops 60
+  seconds after its viewer left; a viewer who comes in that time takes it
+  warm. A still page costs an engine nothing: it captures by damage.
+- Flags: `--backend x11 --bind 127.0.0.1 --port <free> --fps 120
+  --bitrate-min 1M --bitrate-start 8M --bitrate-max 20M --token-file <file>
+  --behind-tls-proxy --viewer-dir <folder>`. The token is 64 hex characters
+  in a 0600 file under `<userData>/work-browser/box/engine/`, never on a
+  command line.
+- A watcher's feed is the engine's `/stream?view=1`, which owns no input. A
+  driver's is the plain `/stream`, on an engine of its own. The token is
+  offered as the `bearer.` subprotocol, never in the address.
+- The engine drops a connection that sends it anything it does not expect.
+  The feed passes only an ack of 20 or 24 bytes and an input of 36, each
+  with the connection's own number.
+- The engine closes a stream after three seconds with no ack. The feed says
+  `slow`, and the viewer opens another. An engine that exits says `error`.
+  After a crash the next start waits, twice as long each time up to 30 s.
+
+### `video.open` on the box (`video.ts`)
+
+- **A stream belongs to a page, not to a session.** Take over stops the
+  agent's computer session. The service says which page each session last
+  used (`onPage`), and the box keeps it by thread and by pane, so a stream
+  of that pane goes on after the session stopped.
+- **One page in video at a time.** A caller that asks with `take` gets the
+  display; the page that lost it closes with `moved`. Without `take` the
+  answer is `busy`. `busy` is also the answer when four engines have
+  viewers.
+- **Refusals:** `off` when the setting is off, `no-tools` when the tools are
+  not installed, `unsupported` when the display or the engine did not
+  start, `refused` for a page at a closed address.
+- **A held act ends the live picture** of its pane with `held`, since what
+  he judges is the kept picture. A page he drives himself is still shown.
+- **A viewer counts as use** of the browser for the idle stop, for two
+  hours at most, as driving does.
+- **A row is kept for a pane he drives** (`driver: 'owner'` on
+  `ComputerSessionRow`), since its session is stopped. Stop does nothing on
+  it; Hand back ends it.
+- **Driving.** `work.browser.drive` tells the box (`boxDriveChanged`): the
+  page's window shows the toolbar, and the relay passes his input on a
+  `drive` stream. At hand back the feed lets go of every key he holds, the
+  page returns to full screen, and his stream is a watch stream.
+- **Paste** (`video.paste`). The text goes to xclip on its stdin and is put
+  on the display's clipboard, then Ctrl+V is pressed. The clipboard is
+  emptied 1.5 seconds later, and at once when he hands back, so nothing he
+  pasted is there for an agent to paste again.
+
 ## Settings
 
 `src/shared/video/settings.ts`.
@@ -149,6 +317,15 @@ knows the thread answers. `FakeFeed` is the feed the tests drive by hand.
   settings and is set through `computer.settings.set`, which is `local`: no
   key can turn it on.
 
+## What this cannot stop
+
+- A process of the `agents` user on the box that reads an engine's token
+  file can reach that engine, as it can reach DevTools today.
+- A desktop's own local socket has no key. Any process of that user on that
+  machine can ask for what the desktop's own app can. That is the app's
+  existing rule for the local socket, not a new one. The only source that
+  takes input is the box's, and the box's local socket gets no stream.
+
 ## Tests
 
 - `src/shared/video/nsl1.parity.test.ts`, `src/shared/video/access.test.ts`
@@ -160,3 +337,23 @@ knows the thread answers. `FakeFeed` is the feed the tests drive by hand.
   `computer.video.remote`
 - `src/main/server/computer/preview.test.ts`: a key never gets a person's
   windows; the box's browser goes to a key that may watch
+- `scripts/work-tools/installer.test.ts`: the `build` kind, and the
+  manifest's pins
+- `src/main/server/work/browser/box/`: `display.test.ts`, `chromium.test.ts`,
+  `engine.test.ts` and `video.test.ts` with fakes
+
+The live tests need the tools installed and skip without them. Point them at
+an install with `TEMP_CODE_TEST_VIDEO_TOOLS=<userData>`:
+
+- `headed.test.ts`: the real display, Chromium and engine. The viewport
+  reads 1280×800, the engine's picture equals DevTools' own picture of the
+  page, a new page lands under the watched one, the carrier stays off the
+  screen, the toolbar shows while he drives, the preferences are read back
+  from the running browser.
+- `headedService.test.ts`: two threads through the box's own sessions; all
+  one does to its page leaves the other's on top.
+- `videoLive.test.ts`: the host's own wiring end to end. H.264 frames
+  arrive, a still page falls silent, `take` and `moved`, the owner's row,
+  his clicks, keys and paste land in the page, hand back.
+- `TC_BOX_HEADED=1` runs the browser's existing tests headed too (the
+  service, the hold, the outbox, the preview, the Outlook carrier).

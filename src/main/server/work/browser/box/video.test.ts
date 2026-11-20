@@ -56,7 +56,7 @@ function rig(over: Partial<BoxVideoDeps> = {}) {
     async lease() {
       if (this.broken) throw new Error('no engine')
       if (this.full) return null
-      const lease = { port: 4100 + leases.length, token: 'f'.repeat(64), onExit: () => {}, release: () => void lease.released++, released: 0 }
+      const lease = { port: 4100 + leases.length, token: 'f'.repeat(64), pid: null, onExit: () => {}, release: () => void lease.released++, released: 0 }
       leases.push(lease)
       return lease
     }

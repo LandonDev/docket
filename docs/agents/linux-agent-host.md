@@ -25,6 +25,14 @@
   say which path ran (scripts/box/box-update-lib.sh, docs/box.md "Build
   once"); stage 85 installs the launcher and its library without
   restarting. Proof from the Mac is `bun scripts/e2e-box-remote.ts`.
+- Live video of the box's browser needs the `screen-relay` tool installed
+  once into the box's data, as the `agents` user and with no root:
+  `bun scripts/work-tools/install.ts --data /srv/agents/temp-code-data --only screen-relay`.
+  The browser then runs headed on a private X display of its own, apart
+  from the service's Xvfb, with one `relay-engine` process for each viewer
+  ([live-video.md](live-video.md) "The box"). Without the tool the browser
+  stays headless and the picture is the JPEG one. `work.browser.video`
+  (admin) turns it off.
 - Deploy drift: every host's hello (and `/api/hello` for a known caller)
   carries `build` (release.json `n`, `1.0.N`, the commit, the platform;
   src/main/buildInfo.ts: the box's `.git/HEAD`, a published Mac build's
