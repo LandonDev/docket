@@ -43,7 +43,8 @@ export const PILLAR_IDS = [
   'forms',
   'dashboards',
   'browser',
-  'projects'
+  'projects',
+  'winvm'
 ] as const
 export type PillarId = (typeof PILLAR_IDS)[number]
 export const PillarIdSchema = z.enum(PILLAR_IDS)
@@ -75,7 +76,9 @@ export const PILLAR_MILESTONE: Record<PillarId, number> = {
   dashboards: 36,
   browser: 37,
   /** the project tracking suite's own plan (plan-3OjTu0_U7Ed6), numbered past the Work plan's fifty */
-  projects: 51
+  projects: 51,
+  /** the Computers and Windows VM plan (plan-m1X24rQ6nikm), B3, numbered past the projects suite */
+  winvm: 52
 }
 
 /**

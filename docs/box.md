@@ -2348,6 +2348,30 @@ every host:
 Unit tests: processGuard.test.ts, over fake process trees; the first case
 is the incident's tinypool worker.
 
+### The Windows VM: a standing machine the server keeps
+
+The box keeps one Windows 11 machine for Work threads to drive, the
+`standing` instance of the Windows rig (docs/agents/windows-vm.md),
+started, woken, set up and hibernated by the server's keeper
+(src/main/server/work/winvm/, docs/agents/work-winvm.md). What it means
+for the box:
+- **Memory.** It runs with 6 cores and 8 GB while awake. QEMU starts from
+  the server, so it sits in temp-code.service's cgroup and its memory is
+  charged to the service, inside `agents.slice`. Asleep (hibernated after
+  30 minutes idle by default) it holds none. With the rig up too, 24 GB.
+- **The process guard** leaves QEMU, swtpm and the stop watcher alone:
+  they start with `daemonEnv`'s clean environment, which carries none of a
+  call's marks.
+- **A stop of the service** signals the whole cgroup at once. QEMU and
+  swtpm start with SIGTERM, SIGINT and SIGHUP blocked, and a small watcher
+  beside them takes the signal and asks Windows to hibernate over SSH
+  inside the 30 s `TimeoutStopSec`; it then keeps the TPM's state. Proven
+  on the rig instance by `scripts/e2e-winvm-stop.ts`. No `ExecStop` and no
+  stage 85 change is needed for it. A crash still cuts the VM's power.
+- **After a restart** the machine sleeps until its next use.
+- **The service it copies in** is the box build's own `tc-computer.exe`
+  ("What box-update does with it" below).
+
 ### Threads across hosts
 
 iOS builds, the simulator, screenshots, computer use and every Mac app

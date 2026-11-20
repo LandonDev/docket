@@ -198,6 +198,11 @@
   "Computer use from a box thread". A Windows PC is a bridge host the same way
   (milestone 41): its rules, paths and shells are in docs/agents/windows-host.md, "A Windows host
   linked to the box".
+- The Windows VM: the box's server keeps the rig's `standing` instance as a Windows machine for Work
+  threads (src/main/server/work/winvm/, `work.winvm.*`): set up, woken at a call, hibernated when idle
+  and at a stop of the service (QEMU starts with the stop signals blocked; a watcher beside it hibernates
+  the guest inside the 30 s stop). Its 8 GB are charged to temp-code.service while it is awake.
+  docs/agents/work-winvm.md; docs/box.md "The Windows VM: a standing machine the server keeps".
 - Thread resources: what a thread created (git worktrees, simulators, dev
   instances), on its own host or on the Mac through the bridge, is on the
   host's `thread_resources` table (src/main/server/threadResources.ts; the

@@ -28,6 +28,13 @@ firmware variables, TPM, QMP socket, pid file, lock, known hosts, shots) is the 
 once. `scripts/win-vm/up.sh --instance standing`, `ssh.sh --instance standing winver`, `down.sh --instance standing`.
 `snapshot` and `up --from` are the rig's only. **Proofs use the rig only.** With both up the box gives them 24 GB.
 
+**The standing machine is the server's.** Its keeper (src/main/server/work/winvm/, docs/agents/work-winvm.md)
+starts it with the stop signals blocked and a watcher beside it, wakes it, sets it up and hibernates it; use the
+scripts on it only while the keeper leaves it asleep. After its setup tcuser has no command line, over SSH too
+(sshd runs commands through cmd.exe, which tcuser's policy refuses): `ssh.sh --instance standing -a` works,
+`run-in-session.sh --instance standing` does not. The keeper's proofs are `scripts/e2e-winvm-keeper.ts` (standing)
+and `scripts/e2e-winvm-stop.ts` (the rig, signalled as a stop of the box's service would signal it).
+
 ## What it is
 
 - **Windows:** Microsoft's own Windows 11 Enterprise **Evaluation**, downloaded from Microsoft by `fetch.sh`

@@ -1,0 +1,162 @@
+# The Windows VM: the keeper of the box's standing machine
+
+The box keeps one Windows 11 machine for Work threads to drive: the `standing` instance of the Windows rig
+(docs/agents/windows-vm.md), on the same read-only base image as the rig, with its own lasting disk. The plan is
+`.temp-code/plan-m1X24rQ6nikm.md`, Track B. This file covers the keeper (B3): its states, its methods, setup,
+sleep and wake, and the stop of the box's service. The windows_* tools, the VM's gate and its share of the hold
+come with B5 and B6; the picture and Take over with B7 and B8.
+
+The code is `src/main/server/work/winvm/`: `keeper.ts` (the states, over a machine and a guest that are
+interfaces), `standing.ts` (the real machine, through `machine/`), `sshGuest.ts` (the real guest, over SSH),
+`setup.ts` (the guest's admin script), `watcher.ts` (the stop watcher), `index.ts` (the Work module `winvm`).
+The wire is `src/shared/contract-work-winvm.ts`.
+
+## States
+
+| State | What is true |
+|---|---|
+| `none` | no standing disk, or this host cannot have one (`cannot` says why: not the box, no base image) |
+| `setting-up` | setup runs; `step` names the part ("Making the disk", "Setting Windows up", "Restarting Windows", …) |
+| `asleep` | QEMU is not running: the guest is hibernated, or shut down |
+| `waking` | QEMU starts or resumes, the service is checked and the door knocked; `step` is "Waking the Windows VM" |
+| `awake` | QEMU runs and the keeper holds the SSH forward to the door |
+| `going-to-sleep` | Windows was asked to hibernate; the keeper waits for QEMU to exit |
+
+One change runs at a time, in the order asked: a wake asked while the machine goes to sleep waits for the
+sleep, then wakes it; two wakes at once start it once. A failure leaves the state that is true (`awake` if
+QEMU still runs, else `asleep` or `none`) with `error` in words. After a box restart the machine is `asleep`
+until its next use. A keeper that starts beside a running QEMU (Work turned off and on) takes it as `awake`
+and opens the door at the next call.
+
+## Methods and the push
+
+| Method | Capability | |
+|---|---|---|
+| `work.winvm.state` | read | the state |
+| `work.winvm.wake` | operate | wakes it and answers once it is awake (about 13 s from hibernate, 20 to 26 s cold) |
+| `work.winvm.sleep` | operate | hibernates it and answers once QEMU has exited |
+| `work.winvm.setup` | admin | answers at once; the progress and the end come as pushes |
+| `work.winvm.settings` | admin | `{ sleepAfter }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter` |
+
+A model caller (a thread's `app.work*` call) may read and wake, never set up, sleep or change the settings.
+Every change of state pushes `{ push: 'work.winvm', state }` to every client socket. The methods answer
+`Work is off on this host` while the switch is off, as every pillar's do.
+
+`winvmKeeper()` is the keeper for the VM's service on the box (B5): `door()` wakes the machine and answers
+the forward's unix socket and the token; `touch()` marks a call; `setViewers(n)` and `setDriving(on)` hold it
+awake while anyone watches or he drives. `WAKING_WORDS` is what a waking call says.
+
+## Setup
+
+One press later (B10, Settings → Work); `work.winvm.setup` now. It needs the base image the rig has
+(`install.sh`). In order:
+
+1. The disk: an overlay on the base image under `/srv/agents/win-vm/standing/run/`, with its own firmware
+   variables and run id. A machine that has a disk keeps it; setup then only runs the steps again.
+2. Windows starts and the keeper waits for tcuser's desktop.
+3. One admin script over SSH (`setupScript`), each step safe to run again:
+   - the service's folder `C:\Program Files\TempCode\` (tcuser can run it, not replace it), and the door's
+     token in `C:\ProgramData\TempCode\token` (admins write it, tcuser only reads it). The box keeps the
+     token in `<userData>/winvm/token` (0600), made at the first setup;
+   - the logon task `\TempCode\door`: at each logon of tcuser, on its desktop (an interactive token),
+     `tc-computer.exe serve --listen 127.0.0.1:47800 --token-file C:\ProgramData\TempCode\token`;
+   - hibernate on (full), never by Windows itself, no sign-in asked on resume (`CONSOLELOCK 0` and the
+     policy);
+   - Windows Update on (the rig's image turns it off);
+   - tcuser's own policies: `DisableCMD=1`, `NoRun=1`, `DisallowRun=1` with the list in `DISALLOWED` (the
+     consoles, the script hosts, regedit, rundll32, msiexec, schtasks, mmc, certutil, msbuild and the
+     rest), and Windows Terminal as the default terminal (`Console\%%Startup`), so a console is always
+     hosted by `WindowsTerminal.exe`;
+   - Software Restriction Policies: nothing of the types in `RESTRICTED_TYPES` (`.exe .com .bat .cmd .ps1
+     .vbs .js .hta .msi .lnk` and SRP's own) runs from tcuser's Downloads, Documents, Desktop or
+     `AppData\Local\Temp`. Admins are not bound.
+4. The box's service copied in (below), then a restart, since tcuser's policies are read at logon.
+5. The door knocked: the service runs under the new policies. The state is then `awake`.
+
+**These policies are the first line; the host's hold rules (B6) are the second.** A thread acts in the guest
+as tcuser and gets no command line there from Explorer, Run, Start, a double-click or a file it saved. The
+owner in a Take over has the same limits as tcuser; he can lift them as the admin. After setup tcuser's own
+SSH runs nothing (sshd's shell is cmd.exe), so every command of the keeper and of `ssh.sh --instance
+standing` goes as the admin (`-a`), and a program on tcuser's desktop is started by the admin through a task
+of tcuser's (`SshGuest.onDesktop`).
+
+## Wake
+
+At a thread's first call (B5) or his Wake press. The call waits with "Waking the Windows VM".
+
+1. QEMU and swtpm start (`StandingMachine.start`), resuming the hibernated guest, through the rig's own code
+   (`machine/`): the clean environment `daemonEnv` gives and `sg kvm`, so the process guard's orphan sweep
+   leaves them alone. Both start with the stop signals blocked (below) and the watcher beside them. A TPM
+   state newer than the machine's lasting copy (a crash, the guest's own stop) is kept, never rolled back.
+2. The keeper waits for SSH and tcuser's desktop.
+3. The service: the sha256 of the guest's `tc-computer.exe` against the box's own build (`tcComputerExe`,
+   serviceBin.ts). When they differ, the box's copy goes in over SCP as the admin, the running door is
+   stopped and the file replaced; the new one's `version` goes to the log. So the guest's service updates
+   with the box. Then the logon task is run unless the door already runs.
+4. One SSH connection as tcuser holds the forward: a unix socket beside the machine's run files
+   (`run/door.sock`, mode 0600) to the guest's 127.0.0.1:47800. The keeper knocks with the token; the door
+   keeps a connection that brings it and closes one that does not.
+
+A box build with no `tc-computer.exe` wakes the machine and says so in `error`.
+
+## Sleep
+
+Sleep is hibernate (`shutdown /h` as the admin): QEMU exits once Windows has written its image, about 5 s;
+the keeper then keeps the TPM's state. Apps and sign-ins are there at the next wake, and the guest's clock is
+right after it. It happens:
+
+- after the sleep-after setting with no thread's call, no viewer and him not driving (checked every minute);
+- on `work.winvm.sleep`;
+- at a stop of the box's service, by the watcher.
+
+A machine that stopped by itself (he shut Windows down in a Take over) is noticed within a minute and reads
+`asleep`.
+
+## The stop
+
+The service's unit has systemd's default `KillMode=control-group`: a stop sends SIGTERM to every process of
+the cgroup at once, and on the box the main process can die at that moment (the D-Bus abort under
+`dbus-run-session`). QEMU would die with it, the guest's power cut. So:
+
+- QEMU and swtpm start with SIGTERM, SIGINT and SIGHUP blocked (`stopBlocked` in machine/daemons.ts: Perl's
+  `sigprocmask`, then exec). A blocked signal stays blocked across exec, the daemons only install handlers,
+  and every thread QEMU makes starts with all signals blocked. `sg` clears the mask, so the block sits inside
+  it. The stop leaves both running.
+- A watcher (`watcher.sh`, written beside the run files and started detached with the clean environment)
+  takes the signal instead. It asks Windows to hibernate over a fresh SSH connection as the admin, waits up
+  to 25 s for QEMU to exit, then copies the TPM's live state into the machine's lasting copy (`run/tpm`;
+  the live state is under /tmp, which a reboot clears). systemd's SIGKILL comes at 30 s
+  (`TimeoutStopSec=30`). The watcher exits by itself when QEMU exits for any other reason.
+- A crash of the box, or a kill of QEMU itself, still cuts the power. Windows recovers; unsaved work in open
+  apps does not.
+
+The proof is `scripts/e2e-winvm-stop.ts` on the RIG instance (never the box's service): it signals a test
+group (QEMU, swtpm, the watcher and a stand-in for the main process) with SIGTERM at once and SIGKILLs what
+is left 30 s later, as systemd does; QEMU must exit before that, and the guest must come back with the same
+Notepad process, its text and the same boot time. `scripts/e2e-winvm-keeper.ts` on the standing instance
+runs setup, the policies' checks, sleep and wake.
+
+## Memory and the box
+
+The standing machine has 6 cores and 8 GB (`WINVM_CPUS`, `WINVM_MEM`); QEMU holds the memory it is given
+while it runs. QEMU starts from the server, so it runs in temp-code.service's cgroup and its memory is
+charged to the box's service, inside `agents.slice`. Asleep, it holds none. With the rig up as well, the two
+take 24 GB.
+
+## What the owner does
+
+- Nothing for the stop: it hibernates the VM by itself; no stage needs re-applying for it.
+- Set the machine up when B10's Settings press exists (or `work.winvm.setup` before then).
+- A box deploy built from source places the service the keeper copies in (docs/box.md, "What box-update
+  does with it"); that step runs once stage 85 has been reapplied.
+
+## Proofs
+
+- `keeper.test.ts`: every change of state over a fake machine and guest, the idle hibernate and what holds
+  it off, the service copied only when its hash differs, the door's knock, setup's steps and script.
+- `watcher.test.ts`: the watcher run under bash with a stand-in for QEMU and a stub ssh (the hibernate asked
+  as the admin, the TPM kept, a second signal ignored, QEMU exiting by itself), and a process started
+  through `stopBlocked` surviving SIGTERM, SIGINT and SIGHUP.
+- `index.test.ts`: the methods through the Work router, the model refusal, the capability rows, the push,
+  the stored setting.
+- The two rig runs above.

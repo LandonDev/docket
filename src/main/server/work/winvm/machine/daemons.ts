@@ -24,6 +24,24 @@ function canOpenKvm(): boolean {
   }
 }
 
+/**
+ * The signals a stop of the box's service sends the whole cgroup at once (systemd's default `control-group`).
+ * The standing machine's daemons start with them blocked: a blocked signal stays blocked across exec, QEMU and
+ * swtpm only install handlers (which a block outlives), and every thread QEMU makes starts with all signals
+ * blocked. So the stop leaves both running, and the watcher beside them (watcher.ts) has the stop's 30 seconds to
+ * hibernate the guest. `sg` clears the mask, so the block goes inside it (kvmWrapped(stopBlocked(…))). Perl's POSIX module is on every Ubuntu box; node cannot set a child's signal mask.
+ */
+export const STOP_SIGNALS = ['TERM', 'INT', 'HUP'] as const
+export function stopBlocked(cmd: string, args: string[]): [string, string[]] {
+  const block = `use POSIX; sigprocmask(SIG_BLOCK, POSIX::SigSet->new(${STOP_SIGNALS.map((s) => `SIG${s}`).join(', ')})) or die "sigprocmask: $!"; exec { $ARGV[0] } @ARGV or die "exec $ARGV[0]: $!"`
+  return ['perl', ['-e', block, cmd, ...args]]
+}
+
+/** Options for starting a daemon: `blockStop` starts it with the stop signals blocked (the standing machine's). */
+export interface DaemonOpts {
+  blockStop?: boolean
+}
+
 /** The pid in a pid file, only while that pid is still the process it names (a pid comes round again after a restart). */
 export function livePid(file: string, isIt: (pid: number) => boolean): number | null {
   try {
@@ -73,14 +91,14 @@ const readOr = (file: string, none: string) => (existsSync(file) ? readFileSync(
  * Starts swtpm on a fresh live state copied from `from` (a saved state), or a blank TPM when there is none. The
  * live state is marked with the run's id, so only that run ever takes it back.
  */
-export async function startTpm(c: RigConfig, p: RigPaths, from: string | null): Promise<void> {
+export async function startTpm(c: RigConfig, p: RigPaths, from: string | null, opts: DaemonOpts = {}): Promise<void> {
   stopTpm(p)
   await waitFor('the old swtpm to exit', 10, () => tpmPid(p) === null, 0.2)
   rmSync(c.tpmDir, { recursive: true, force: true })
   mkdirSync(p.tpmState, { recursive: true, mode: 0o700 })
   if (from && existsSync(from)) cpSync(from, p.tpmState, { recursive: true })
   writeFileSync(p.tpmRunId, readOr(p.runId, ''))
-  await startDaemon('swtpm', ['swtpm', swtpmArgs(p)])
+  await startDaemon('swtpm', opts.blockStop ? stopBlocked('swtpm', swtpmArgs(p)) : ['swtpm', swtpmArgs(p)])
 }
 
 /** After QEMU stops: waits for swtpm to let go, then keeps its live state at `to`. */
@@ -128,10 +146,12 @@ export async function keepLiveTpm(c: RigConfig, p: RigPaths): Promise<boolean> {
 }
 
 /** Starts QEMU as a daemon (it outlives the caller) with the clean environment; its pid. */
-export async function startQemu(c: RigConfig, p: RigPaths, m: Machine): Promise<number | null> {
+export async function startQemu(c: RigConfig, p: RigPaths, m: Machine, opts: DaemonOpts = {}): Promise<number | null> {
   mkdirSync(p.run, { recursive: true })
   try {
-    await startDaemon('qemu-system-x86_64', kvmWrapped('qemu-system-x86_64', qemuArgs(c, p, m)))
+    // the block inside `sg`: sg starts its shell with a clear signal mask
+    const argv: [string, string[]] = ['qemu-system-x86_64', qemuArgs(c, p, m)]
+    await startDaemon('qemu-system-x86_64', kvmWrapped(...(opts.blockStop ? stopBlocked(...argv) : argv)))
   } catch (e) {
     stopTpm(p)
     throw e

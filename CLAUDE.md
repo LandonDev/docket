@@ -175,6 +175,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   (proofs) and `--instance standing` (Work's, a lasting disk, SSH 22230); their
   code is src/main/server/work/winvm/machine/.
   [docs/agents/windows-vm.md](docs/agents/windows-vm.md)
+- **The Windows VM's keeper** — the `standing` rig instance as a computer for Work threads: the `winvm`
+  pillar's states, `work.winvm.*`, setup with tcuser's policies, wake, hibernate on idle and at a stop of the
+  box's service (stop signals blocked, a watcher). [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
 - **Search across hosts** — one query fanned out to every host
   (lib/crossHostSearch.ts), an FTS5 index per host (turnIndex.ts).
   [docs/agents/search-across-hosts.md](docs/agents/search-across-hosts.md)
