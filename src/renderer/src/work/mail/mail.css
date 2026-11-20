@@ -56,16 +56,27 @@
   transition: transform var(--tc-mail-countdown) var(--ease-reveal);
 }
 
+/* Snooze's dialog is new with this Mail and holds work-kit's date picker: its chosen day and today
+   take the values light gives the picker (index.css), in both themes, so the dialog shows the date
+   its button would snooze to. The picker's other homes keep what index.css gives them ("Held in
+   dark"). */
+[data-mail-snooze] {
+  --calendar-selected: var(--primary);
+  --calendar-selected-foreground: var(--primary-foreground);
+  --calendar-active: var(--primary);
+  --calendar-active-foreground: var(--primary-foreground);
+  --calendar-range: var(--muted);
+  --calendar-today: var(--muted);
+  --calendar-today-foreground: var(--foreground);
+}
+
 /* work-kit draws its dialogs and menus in a portal, outside `.tc-mail`: they take the same 13px
    step there, so a row in Mail's settings and the select it opens read at one size. Only work-kit's
-   own popups: they draw their ring as `ring-foreground/10`, where TempCode's components/ui draw
-   `ring-border`, so TempCode's dialogs and popovers (a house rule's evidence, any `text-sm` in them)
-   keep their own 14px whatever was opened first (mail.dom.test.tsx holds both marks). The rule is
-   unlayered on purpose: it has to win over work-kit's own `text-sm` utility. */
-[data-slot="dialog-content"][class~="ring-foreground/10"] .text-sm,
-[data-slot="select-content"][class~="ring-foreground/10"] .text-sm,
-[data-slot="dropdown-menu-content"][class~="ring-foreground/10"] .text-sm,
-[data-slot="popover-content"][class~="ring-foreground/10"] .text-sm {
+   own popups, which carry `data-work-kit` (its ui/ sets it on every pop-up it draws): TempCode's
+   dialogs and popovers (a house rule's evidence, any `text-sm` in them) keep their own 14px
+   whatever was opened first (MailCanvas.dom.test.tsx holds both). The rule is unlayered on
+   purpose: it has to win over work-kit's own `text-sm` utility. */
+[data-work-kit] .text-sm {
   font-size: 13px;
   line-height: 20px;
 }

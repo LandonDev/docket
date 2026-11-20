@@ -91,6 +91,7 @@
 @source "../../../node_modules/work-kit/src/mail/fixtures/index.ts";
 @source "../../../node_modules/work-kit/src/mail/fixtures/mail-fixtures.ts";
 @source "../../../node_modules/work-kit/src/mail/fixtures/outbox-fixtures.ts";
+@source "../../../node_modules/work-kit/src/mail/held-mark.tsx";
 @source "../../../node_modules/work-kit/src/mail/index.ts";
 @source "../../../node_modules/work-kit/src/mail/invite-card.tsx";
 @source "../../../node_modules/work-kit/src/mail/kit.tsx";

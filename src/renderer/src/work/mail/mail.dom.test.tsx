@@ -25,6 +25,7 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 
 const { mailLink, tempcodeMailKit } = await import("./kit");
+const { sessionStore } = await import("../../lib/tcserver/store");
 const { sendThroughHost, write } = await import("./client");
 const { View: MailAct } = await import("./MailAct");
 const { mailActView, mailChip } = await import("./model");
@@ -231,6 +232,13 @@ describe("the kit", () => {
     expect(tempcodeMailKit.originLabel?.({ botId: "bot_1" })).toBeUndefined();
     expect(tempcodeMailKit.originLabel?.({ origin: { app: "tempcode", threadId: "t-unknown", host: "box" } })).toEqual({ label: "Drafted in a thread" });
     expect(tempcodeMailKit.originLabel?.({ origin: { app: "lifeos", threadId: "x", host: "box" } })).toBeUndefined();
+    // A thread this window holds is named, apart from the words before it, so the kit can draw the name stronger.
+    const known = vi.spyOn(sessionStore, "metaOf").mockReturnValue({ title: " Overdue invoices, Nov 18 " } as ReturnType<typeof sessionStore.metaOf>);
+    const label = tempcodeMailKit.originLabel?.({ origin: { app: "tempcode", threadId: "t-1", host: "box" } });
+    expect(label).toMatchObject({ label: "Drafted in", name: "Overdue invoices, Nov 18" });
+    known.mockReturnValue({ title: "" } as ReturnType<typeof sessionStore.metaOf>);
+    expect(tempcodeMailKit.originLabel?.({ origin: { app: "tempcode", threadId: "t-1", host: "box" } })).toMatchObject({ label: "Drafted in a thread" });
+    known.mockRestore();
   });
 
   it("takes back the last act with z, once, as its toast's Undo would", async () => {

@@ -183,9 +183,9 @@ describe("mail.css outside Mail", () => {
       );
       const ours = await screen.findByText("A house rule's evidence");
       const kits = await screen.findByText("A row in Mail's settings");
-      // The two marks the rule keys on: work-kit's ring, never TempCode's.
-      expect(kits.closest("[data-slot=dialog-content]")!.className.split(" ")).toContain("ring-foreground/10");
-      expect(ours.closest("[data-slot=dialog-content]")!.className.split(" ")).not.toContain("ring-foreground/10");
+      // The mark the rule keys on is work-kit's own, set on its pop-ups and never on TempCode's.
+      expect(kits.closest("[data-slot=dialog-content]")!.hasAttribute("data-work-kit")).toBe(true);
+      expect(ours.closest("[data-slot=dialog-content]")!.hasAttribute("data-work-kit")).toBe(false);
       expect(getComputedStyle(kits).fontSize).toBe("13px");
       expect(getComputedStyle(ours).fontSize).not.toBe("13px");
     } finally {

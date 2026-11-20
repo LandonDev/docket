@@ -20,7 +20,9 @@ export interface Scene {
 /** Every mail frame on the page has been measured and shown, and every picture it may show has landed. */
 const FRAMES = `[...document.querySelectorAll("iframe[data-mail]")]`;
 const FRAMES_SHOWN = `${FRAMES}.length > 0 && ${FRAMES}.every((f) => f.classList.contains("opacity-100"))`;
-const FRAMES_READY = `${FRAMES_SHOWN} && ${FRAMES}.every((f) => !f.contentDocument.querySelector("img[data-pic-held]"))`;
+/** Every picture among a mail's files shows itself in its chip's tile (the reader fetches them as the mail opens). */
+const TILES_READY = `[...document.querySelectorAll("[data-mail-pane] button[aria-label^='View ']")].every((b) => b.querySelector("img"))`;
+const FRAMES_READY = `${FRAMES_SHOWN} && ${FRAMES}.every((f) => !f.contentDocument.querySelector("img[data-pic-held]")) && ${TILES_READY}`;
 /** A real click on the first element the selector finds, once it is there. */
 const press = (selector: string) => async (page: Page) => {
   await page.until(`document.querySelector(${JSON.stringify(selector)})`, selector);
@@ -96,7 +98,7 @@ export const SCENES: Scene[] = [
   { name: "viewer", set: then(opened("c-bios"), press("[data-mail-pane] button[aria-label^='View ana-portrait']")), ready: `document.querySelector("[role=dialog] img")` },
   { name: "thread", set: opened("c-invoice"), ready: FRAMES_READY },
   { name: "thread-six", set: opened("c-sitemap"), ready: FRAMES_READY },
-  { name: "reader-files", set: opened("c-bios") },
+  { name: "reader-files", set: opened("c-bios"), ready: `document.querySelector("[data-mail-pane] button[aria-label^='View ']") && ${TILES_READY}` },
   { name: "reader-plain-quotes", set: opened("c-frontdesk") },
   { name: "reader-inline", set: opened("c-logo"), ready: FRAMES_READY },
   { name: "reader-arabic", set: opened("c-arabic"), ready: FRAMES_READY },

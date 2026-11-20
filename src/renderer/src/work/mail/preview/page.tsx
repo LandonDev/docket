@@ -24,7 +24,7 @@ const ID = "preview";
 
 changeScheme(params.get("theme") === "light" ? "light" : "dark", true);
 
-nameOrigins(() => ({ label: "Drafted in Overdue invoices, Nov 18", open: () => {} }));
+nameOrigins(() => ({ label: "Drafted in", name: "Overdue invoices, Nov 18", open: () => {} }));
 
 const bulk = Number(params.get("threads") ?? 0);
 const client = createFixtureMailClient({
@@ -80,7 +80,7 @@ createRoot(document.getElementById("root")!).render(
           </div>
         ) : (
           <div className="h-screen bg-background text-foreground">
-            <MailScreen id={ID} onOpenTask={() => {}} />
+            <MailScreen id={ID} onOpenTask={() => {}} onStartThread={() => {}} />
           </div>
         )}
       </MailKitProvider>

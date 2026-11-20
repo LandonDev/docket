@@ -26,9 +26,10 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 // ── the kit ────────────────────────────────────────────────────────────
 
 /**
- * The bar of a wait he can still stop (a send inside its undo time): full at
- * first, empty when the time is up. It runs once, on transform, for exactly
- * the time the toast stays.
+ * The bar of a wait he can still stop (a send inside its undo time): a track
+ * under the toast's words, as wide as they are, full at first and empty when
+ * the time is up. It runs once, on transform, for exactly the time the toast
+ * stays.
  */
 function Countdown({ ms }: { ms: number }) {
   const [running, setRunning] = useState(false);
@@ -37,8 +38,8 @@ function Countdown({ ms }: { ms: number }) {
     return () => cancelAnimationFrame(frame);
   }, []);
   return (
-    <span aria-hidden className="ms-2 inline-block h-[3px] w-11 overflow-hidden rounded-full bg-muted align-middle">
-      <span className="tc-mail-countdown block h-full origin-left bg-foreground motion-reduce:hidden" style={{ transform: running ? "scaleX(0)" : "scaleX(1)", "--tc-mail-countdown": `${ms}ms` } as CSSProperties} />
+    <span aria-hidden className="block h-[3px] w-full overflow-hidden rounded-full bg-foreground/15">
+      <span className="tc-mail-countdown block h-full origin-left rounded-full bg-foreground motion-reduce:hidden" style={{ transform: running ? "scaleX(0)" : "scaleX(1)", "--tc-mail-countdown": `${ms}ms` } as CSSProperties} />
     </span>
   );
 }
@@ -55,7 +56,7 @@ const toast = (input: string | MailToastInput): void => {
     };
     const words =
       t.countdown && t.lifetime ? (
-        <span className="inline-flex items-center">
+        <span className="inline-flex min-w-28 flex-col gap-1.5">
           {t.message}
           <Countdown ms={t.lifetime} />
         </span>
@@ -72,7 +73,9 @@ function threadLabel(origin: MailOrigin): MailOriginLabel | undefined {
   if (origin.app !== "tempcode") return undefined;
   const meta = sessionStore.metaOf(origin.threadId);
   if (!meta) return { label: "Drafted in a thread" };
-  return { label: `Drafted in ${meta.title?.trim() || "a thread"}`, open: () => workOpenPort.get()?.(origin.threadId) };
+  const title = meta.title?.trim();
+  // The thread's name is the fact on the line, so the kit draws it a step stronger than "Drafted in".
+  return { label: title ? "Drafted in" : "Drafted in a thread", ...(title ? { name: title } : {}), open: () => workOpenPort.get()?.(origin.threadId) };
 }
 
 /**

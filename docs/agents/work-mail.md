@@ -169,10 +169,21 @@ TempCode's kit: toasts through its own stack (Undo where the write has
 one; `z` takes back the last such act while its toast still could), a link
 from a mail opened outside only as http, https, mailto or tel, initials
 faces, a sector mark by name and never a bare row dot (the
-screens hold one sector), its key hints, its theme. `mail.css` sets the
+screens hold one sector), its key hints, its theme. A draft a thread wrote
+is named in two parts ("Drafted in", then the thread's title, which the
+composer draws a step stronger). A send inside its undo time is a toast
+with the words over a track that empties across exactly that time, and
+Undo. `mail.css` sets the
 shared screens on TempCode's scale (subject 16/24, rows and fields 13/20,
 labels 12/16) and the menus' highlight to the muted fill through
-work-kit's `--ui-wash` (`HOST_WASH` in `work-kit/ui/host-rules`).
+work-kit's `--ui-wash` (`HOST_WASH` in `work-kit/ui/host-rules`); it finds
+work-kit's pop-ups, which draw in a portal outside the view, by the
+`data-work-kit` attribute work-kit sets on each (never by a class). Snooze's
+dialog is new with this Mail, so its date picker shows the chosen day and
+today in both themes (`[data-mail-snooze]` gives the `--calendar-*` names
+the values light gives them); the picker's older home, Send later, keeps
+what `index.css` gives it in dark (appearance.md "Dark is held" lists the
+edit that flips it).
 
 ## Pictures, and what the page may reach
 
