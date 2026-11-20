@@ -17,7 +17,7 @@ extension ScreenCaptureKitCapture: VideoCapturing {
         let (window, bounds) = try await target(windowID)
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let refresh = await MainActor.run { WindowVideoCapture.refreshRate(of: bounds) }
-        let capture = WindowVideoCapture(windowID: windowID, filter: filter, points: bounds.size, rate: max(refresh, fps), maxEdge: maxEdge, trace: trace)
+        let capture = WindowVideoCapture(windowID: windowID, filter: filter, points: bounds.size, rate: max(refresh, fps), maxEdge: maxEdge, videoRate: videoRate, trace: trace)
         do {
             try await capture.start()
         } catch {
@@ -44,6 +44,7 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
     private let filter: SCContentFilter
     private let pointPixelScale: Double
     private let rate: Int
+    private let videoRate: @Sendable (VideoMode) -> VideoRate
     private let trace: CaptureTraceHandler?
     private var stream: SCStream?
     private var clock: DispatchSourceTimer?
@@ -59,8 +60,9 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
     }
     private let end = OSAllocatedUnfairLock(uncheckedState: End())
 
-    init(windowID: UInt32, filter: SCContentFilter, points: CGSize, rate: Int, maxEdge: Int, trace: CaptureTraceHandler?) {
+    init(windowID: UInt32, filter: SCContentFilter, points: CGSize, rate: Int, maxEdge: Int, videoRate: @escaping @Sendable (VideoMode) -> VideoRate, trace: CaptureTraceHandler?) {
         self.windowID = windowID
+        self.videoRate = videoRate
         self.filter = filter
         self.points = points
         self.rate = rate
@@ -108,7 +110,7 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
 
     func addEncoder(_ spec: VideoEncoderSpec, output: any VideoOutput) throws -> any VideoEncoder {
         guard end.withLockUnchecked({ $0.finished == nil }) else { throw ComputerFailure.windowGone(windowID) }
-        let encoder = VideoEncoderSession(spec: spec, output: output, queue: queue) { [weak self] in self?.last }
+        let encoder = VideoEncoderSession(spec: spec, rate: videoRate(spec.mode), output: output, queue: queue) { [weak self] in self?.last }
         try queue.sync {
             try encoder.open(size: spec.size)
             encoders.append(encoder)
@@ -230,6 +232,7 @@ final class WindowVideoCapture: NSObject, WindowVideo, SCStreamOutput, SCStreamD
 /// One stream's encoder: a VTCompressionSession of its picture's size, H.264, on the capture's queue.
 final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
     let spec: VideoEncoderSpec
+    let rate: VideoRate
     private let output: any VideoOutput
     private let queue: DispatchQueue
     /// the capture's last picture, read on the queue
@@ -246,8 +249,9 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
     private var closed = false
 
     /// Every call but the four of `VideoEncoder` runs on `queue`, the capture's.
-    init(spec: VideoEncoderSpec, output: any VideoOutput, queue: DispatchQueue, last: @escaping () -> VideoPicture?) {
+    init(spec: VideoEncoderSpec, rate: VideoRate? = nil, output: any VideoOutput, queue: DispatchQueue, last: @escaping () -> VideoPicture?) {
         self.spec = spec
+        self.rate = rate ?? .standard(spec.mode)
         self.output = output
         self.queue = queue
         self.last = last
@@ -281,8 +285,7 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
     /// Makes the session of `size`: a new generation, whose first frame is a keyframe.
     func open(size: PixelSize) throws {
         close(keepOpen: true)
-        let mode = spec.mode
-        let lowLatency = mode == .budget && !VideoTuning.budgetDataRateLimits
+        let lowLatency = rate.lowLatency
         var made: VTCompressionSession?
         var status: OSStatus = -1
         // hardware when there is one; the software encoder only when the Mac has none
@@ -324,8 +327,7 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
 
     private func applyBitrate(_ session: VTCompressionSession) {
         _ = VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrate as CFTypeRef)
-        let limits = spec.mode == .quality ? VideoTuning.qualityDataRateLimits : VideoTuning.budgetDataRateLimits
-        if limits {
+        if rate.dataRateLimits {
             let bytes = Double(bitrate) / 8 * VideoTuning.dataRateWindowSeconds
             _ = VTSessionSetProperty(session, key: kVTCompressionPropertyKey_DataRateLimits, value: [bytes, VideoTuning.dataRateWindowSeconds] as CFArray)
         }
@@ -372,11 +374,14 @@ final class VideoEncoderSession: VideoEncoder, @unchecked Sendable {
         let status = VTCompressionSessionEncodeFrame(
             session, imageBuffer: buffer, presentationTimeStamp: CMTime(value: pts, timescale: 1_000_000), duration: .invalid,
             frameProperties: properties, infoFlagsOut: nil
-        ) { [weak self] status, flags, sample in
+        ) { [weak self, queue] status, flags, sample in
             let unit = Self.unit(status: status, flags: flags, sample: sample)
-            self?.queue.async { self?.finished(unit, generation: generation, size: size, picture: picture) }
+            queue.async { self?.finished(unit, generation: generation, size: size, picture: picture) }
         }
-        if status != noErr { failed(status) }
+        if status != noErr {
+            output.dropped()
+            failed(status)
+        }
     }
 
     private enum Result { case unit(Data, keyframe: Bool), dropped, failed(OSStatus) }

@@ -14,10 +14,11 @@ import Testing
 
     @Test func theListIsReadByNameAndAnUnknownNameIsIgnored() {
         let some = HostFeatures(["front", "teleport"])
-        #expect(some.front && !some.commit && !some.saveAs)
+        #expect(some.front && !some.commit && !some.saveAs && !some.video)
         #expect(HostFeatures(nil) == .none)
         #expect(HostFeatures([]) == .none)
-        #expect(HostFeatures(["front", "commit", "save_as"]) == .all)
+        #expect(HostFeatures(["front", "commit", "save_as", "video"]) == .all)
+        #expect(HostFeatures(["video"]).video && !HostFeatures(["front", "commit", "save_as"]).video)
         #expect(HostFeatures.all.documentLine && !HostFeatures(["front"]).documentLine)
     }
 

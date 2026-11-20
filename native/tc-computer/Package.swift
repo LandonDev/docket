@@ -41,7 +41,7 @@ let package = Package(
         .executableTarget(name: "tc-computer", dependencies: ["ComputerService"]),
         // Capture's live proof on the Mac (scripts/mac/proof-computer-capture.sh); never shipped:
         // the app's build makes --product tc-computer alone.
-        .executableTarget(name: "capture-proof", dependencies: ["Capture", "ComputerCore", "ComputerProtocol"]),
+        .executableTarget(name: "capture-proof", dependencies: ["Capture", "ComputerCore", "ComputerProtocol", "ComputerServiceKit"]),
         // Input's live proof on scratch windows (scripts/mac/input-proof.sh); never shipped, as capture-proof.
         .executableTarget(name: "tc-input-proof", dependencies: ["Input"]),
         .testTarget(name: "ComputerProtocolTests", dependencies: ["ComputerProtocol"]),

@@ -18,20 +18,24 @@ public final class ScreenCaptureKitCapture: WindowCapturing, PixelWatching, @unc
     private let windows: any ShareableWindowSource
     private let log: @Sendable (String) -> Void
     let trace: CaptureTraceHandler?
+    public let videoRate: @Sendable (VideoMode) -> VideoRate
     private let watches = OSAllocatedUnfairLock<[UInt32: WatchStream]>(initialState: [:])
 
     /// `log` reaches the shell's `log` notification; `trace` hears what the streams do
-    /// (`CaptureTrace`), for the proof and a debug log.
+    /// (`CaptureTrace`), for the proof and a debug log; `videoRate` is how a video encoder of each mode
+    /// holds its bitrate (the proof's DataRateLimits trial gives its own).
     public init(
         granted: @escaping @Sendable () -> Bool = ScreenRecordingAccess.granted,
         windows: any ShareableWindowSource = ShareableWindows(),
         log: @escaping @Sendable (String) -> Void = { _ in },
-        trace: CaptureTraceHandler? = nil
+        trace: CaptureTraceHandler? = nil,
+        videoRate: @escaping @Sendable (VideoMode) -> VideoRate = VideoRate.standard
     ) {
         self.granted = granted
         self.windows = windows
         self.log = log
         self.trace = trace
+        self.videoRate = videoRate
     }
 
     /// The shell calls this on `window/changed`.

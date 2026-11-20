@@ -33,3 +33,22 @@ public enum VideoTuning {
     /// The display's rate when it cannot be read.
     public static let fallbackRefresh = 60
 }
+
+/// How an encoder holds its bitrate: the mode's choice from `VideoTuning`, or the trial's own.
+public struct VideoRate: Sendable, Equatable {
+    /// `EnableLowLatencyRateControl`: the bitrate held by dropping frames
+    public var lowLatency: Bool
+    /// `DataRateLimits` at the bitrate over `VideoTuning.dataRateWindowSeconds`
+    public var dataRateLimits: Bool
+
+    public init(lowLatency: Bool, dataRateLimits: Bool) {
+        self.lowLatency = lowLatency
+        self.dataRateLimits = dataRateLimits
+    }
+
+    public static func standard(_ mode: VideoMode) -> VideoRate {
+        mode == .budget
+            ? VideoRate(lowLatency: !VideoTuning.budgetDataRateLimits, dataRateLimits: VideoTuning.budgetDataRateLimits)
+            : VideoRate(lowLatency: false, dataRateLimits: VideoTuning.qualityDataRateLimits)
+    }
+}

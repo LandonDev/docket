@@ -8,6 +8,8 @@ import Foundation
 import os
 @preconcurrency import ScreenCaptureKit
 
+private struct SetupSkipped: Error {}
+
 /// The scenes of plan §10, in the order they run. Each prints one line per check.
 @MainActor final class Proof {
     let out: URL
@@ -43,7 +45,10 @@ import os
             try? report.write()
             return 2
         }
+        // the video scenes open their own window: alone, they need none of the others' setup
+        let videoOnly = only.map { $0.isSubset(of: ["20", "21"]) } ?? false
         do {
+            guard !videoOnly else { throw SetupSkipped() }
             try FileManager.default.createDirectory(at: out.appendingPathComponent("frames"), withIntermediateDirectories: true)
             target = try await TargetProcess.launch()
             let screen = screenIndex.flatMap { NSScreen.screens.indices.contains($0) ? NSScreen.screens[$0] : nil } ?? Screens.primary
@@ -60,6 +65,7 @@ import os
             report.measure("setup", "sceneWindow", ["id": Int(scene.windowID), "frame": scene.cgFrame ?? .zero])
             report.measure("setup", "targetWindow", ["id": Int(target!.windowID), "frame": target!.frame ?? .zero, "pid": Int(target!.process.processIdentifier)])
             await pause(800)
+        } catch is SetupSkipped {
         } catch {
             report.check("setup", "scratch windows", false, "\(error)")
             await cleanup()
@@ -70,7 +76,7 @@ import os
             ("1", scene1), ("2", scene2), ("0", scene0), ("3", scene3), ("4", scene4), ("5", scene5),
             ("6", scene6), ("7", scene7), ("8", scene8), ("9", scene9), ("10", scene10),
             ("12", scene12), ("13", scene13), ("14", scene14), ("15", scene15), ("16", scene16), ("13b", scene13b),
-            ("11", scene11), ("17", scene17), ("18", scene18),
+            ("11", scene11), ("17", scene17), ("18", scene18), ("20", scene20), ("21", scene21),
         ]
         for (name, body) in scenes where only?.contains(name) ?? true {
             print("---- scene \(name)")
@@ -79,7 +85,7 @@ import os
             } catch {
                 report.check(name, "scene ran", false, "threw \(error)")
             }
-            scene.stopAll()
+            scene?.stopAll()
             grey.hide()
         }
         await cleanup()
