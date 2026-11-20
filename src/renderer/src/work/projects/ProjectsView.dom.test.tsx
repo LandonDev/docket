@@ -46,6 +46,11 @@ vi.mock("../docs/DocumentCanvas", () => ({
   useDocument: () => ({}),
   DocumentFrame: ({ open }: { open: { doc: string } }) => <div data-document-frame={open.doc} />,
 }));
+// The Work project's sheet is its own, proven in work/shell: here it is a mark of which mirror it was opened on.
+vi.mock("../../surfaces/chunks", async (original) => ({
+  ...(await original<object>()),
+  dialogsChunk: { surface: () => ({ project }: { project: { id: string } }) => <div data-settings-for={project.id} /> },
+}));
 vi.mock("./Description", () => ({ Description: ({ docId, lead }: { docId: string; lead: string }) => <div data-description={docId}>{lead}</div> }));
 
 const { View, Head, Title } = await import("./ProjectsView");
@@ -164,14 +169,60 @@ describe("the Projects view", () => {
     fireEvent.click(screen.getByText("Spring LAN"));
     expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-lan" });
     expect(screen.getByText("Network for 64 seats")).toBeTruthy();
-    const back = within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Projects" });
+    const back = within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Back to Projects" });
     // Leaving the view and coming back lands on the project.
     first.unmount();
     render(<Screen {...props()} />);
     expect(screen.getByText("Network for 64 seats")).toBeTruthy();
     expect(back.isConnected).toBe(false);
-    fireEvent.click(within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Projects" }));
+    fireEvent.click(within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Back to Projects" }));
     expect(placeOf("ws").at).toBe("list");
+  });
+
+  it("draws one way back on every screen: an arrow, then where it goes, then what the screen adds beside it", async () => {
+    render(<Screen {...props()} />);
+    const title = () => head().querySelector("[data-projects-title]") as HTMLElement;
+    // The list: the view's name, and nothing to go back to.
+    expect(title().textContent).toBe("Projects");
+    expect(within(title()).queryByRole("button")).toBeNull();
+    // A project: back to Projects.
+    fireEvent.click(await screen.findByText("Spring LAN"));
+    expect(within(title()).getByRole("button", { name: "Back to Projects" })).toBeTruthy();
+    expect(title().textContent).toBe("Projects");
+    // A task's own page: back, with the task's key beside it.
+    act(() => openWorkView({ workspaceId: "ws", view: "projects", task: "t-network" }));
+    await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "task", id: "t-network" }));
+    await waitFor(() => expect(within(title()).getByRole("button", { name: "Back" })).toBeTruthy());
+    expect(title().textContent).toContain("PUR-2");
+    // New project: back to Projects, and what he is making.
+    fireEvent.click(within(title()).getByRole("button", { name: "Back" }));
+    fireEvent.click(within(title()).getByRole("button", { name: "Back to Projects" }));
+    fireEvent.click(within(head()).getByRole("button", { name: "New project" }));
+    expect(title().textContent).toBe("ProjectsNew project");
+    expect(within(title()).getByRole("button", { name: "Back to Projects" })).toBeTruthy();
+  });
+
+  it("a project's menu reaches its settings: the mirror is made at the ask and the Work project's sheet opens on it", async () => {
+    render(<Screen {...props()} />);
+    fireEvent.click(await screen.findByText("Spring LAN"));
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Spring LAN" }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Project settings…" }));
+    });
+    await waitFor(() => expect(hostCalls.find((c) => c.method === "work.project.open")?.params).toMatchObject({ workspaceId: "ws", lifeosProjectId: "p-lan" }));
+    await waitFor(() => expect(document.querySelector("[data-settings-for='mirror-1']")).toBeTruthy());
+  });
+
+  it("says why when its settings cannot open, and opens nothing", async () => {
+    refuse["work.project.open"] = "Fall LAN is done: reopen it to start a thread in it";
+    render(<Screen {...props()} />);
+    fireEvent.click(await screen.findByText("Spring LAN"));
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Spring LAN" }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Project settings…" }));
+    });
+    await flush();
+    expect(document.querySelector("[data-settings-for]")).toBeNull();
   });
 
   it("makes a new project on the workspace's sector, from the header's New project", async () => {
@@ -193,7 +244,7 @@ describe("the Projects view", () => {
     await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-tryouts" }));
     expect(screen.getByText("Sign-up sheet")).toBeTruthy();
     // Taken once: going back to the list is not undone by the ask.
-    fireEvent.click(within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Projects" }));
+    fireEvent.click(within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Back to Projects" }));
     await flush();
     expect(placeOf("ws").at).toBe("list");
   });

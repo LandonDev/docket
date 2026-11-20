@@ -1,6 +1,6 @@
 import type { ContextChip, SectorKey } from "@shared/work";
 import type { MenuRow, Project, ProjectItem, ProjectsKit, ProjectTask } from "work-kit/projects";
-import { MessageSquare } from "../../chrome/icons";
+import { MessageSquare, Settings } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { Tip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
@@ -11,7 +11,7 @@ import { keyCaps, keyHint } from "../../lib/keys";
 import { openUrl } from "../../lib/native";
 import { rowState } from "../../lib/sidebarRows";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
-import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
 import { registry } from "../../lib/connection";
@@ -43,6 +43,8 @@ export interface ProjectsHost {
   link(project: Project, kind: LinkKind): void;
   /** A new LifeOS sheet in the project (the view's own session writes it). */
   newSheet(project: Project): Promise<void>;
+  /** The Work project's settings sheet, on the project's mirror. */
+  settings(mirror: ProjectMeta): void;
 }
 
 const hosts = new Map<string, ProjectsHost>();
@@ -124,6 +126,16 @@ async function startIn(workspaceId: string, project: Pick<Project, "id" | "name"
   try {
     const mirror = await openLifeosProject(host.workspace, project.id, project.name);
     host.startThread(chip, { cwd: host.workspace.path, projectId: mirror.id });
+  } catch (error) {
+    failed(error);
+  }
+}
+
+/** The settings sheet is the mirror's: made at this ask if the project has none yet; a refusal (a finished project, LifeOS out of reach) is said. */
+async function settingsOf(workspaceId: string, project: Pick<Project, "id" | "name">): Promise<void> {
+  const host = hostOf(workspaceId);
+  try {
+    host.settings(await openLifeosProject(host.workspace, project.id, project.name));
   } catch (error) {
     failed(error);
   }
@@ -219,6 +231,8 @@ export function projectsKitFor(env: string, workspaceId: string): ProjectsKit {
     },
     menuLead: (task) => [{ id: "code-thread", label: "Open a code thread…", run: () => hostOf(workspaceId).codeThread(task) }],
     addItems: (project) => addRows(env, workspaceId, project),
+    // A project's menu reaches its settings (name, state, rules, accounts, sharing) without leaving the page.
+    projectMenu: (project) => [{ id: "settings", label: "Project settings…", icon: Settings, run: () => void settingsOf(workspaceId, project) }],
     // Share on a project's bar: its guest links, and New guest link… (view only).
     share: ({ project }) => <ProjectShare env={env} project={project} />,
   };

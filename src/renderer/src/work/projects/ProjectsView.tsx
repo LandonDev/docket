@@ -5,10 +5,10 @@ import { createLifeosProjectsClient, type SectorKey as KitSector } from "work-ki
 import { projectPlace, Projects, ProjectsClientProvider, ProjectsKitProvider, type Project, type ProjectsPlace, type ProjectTask } from "work-kit/projects";
 import "work-kit/projects/styles.css";
 import "./projects.css";
-import { ArrowLeft } from "../../chrome/icons";
-import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
+import type { ProjectMeta } from "../../lib/tcserver/types";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
+import { dialogsChunk } from "../../surfaces/chunks";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { DocumentFrame, MARGIN_FROM, Scroller, useDocument, useOpened } from "../docs/DocumentCanvas";
 import { CodeThreadDialog } from "../tasks/CodeThreadDialog";
@@ -17,6 +17,8 @@ import { Bar, BarControls, BarTitle } from "./bar";
 import { projectsKitFor, setProjectsHost } from "./kit";
 import { LinkPicker, type LinkKind } from "./LinkPicker";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
+
+const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
 
 const TASK_GET = makeFunctionReference<"query", { id: string }, { task: { projectId?: string } } | null>("tasks:get");
 
@@ -72,6 +74,8 @@ export function View(props: WorkViewProps) {
   }, [project, task, workspace.id, convex]);
   const [coding, setCoding] = useState<ProjectTask | null>(null);
   const [linking, setLinking] = useState<{ project: Project; kind: LinkKind } | null>(null);
+  // Project settings… in a project's menu: the Work project's sheet, on the project's mirror.
+  const [settingsFor, setSettingsFor] = useState<ProjectMeta | null>(null);
   // What the kit reads at a press, set after each commit.
   useLayoutEffect(() => {
     setProjectsHost({
@@ -80,6 +84,7 @@ export function View(props: WorkViewProps) {
       startThread,
       codeThread: setCoding,
       link: (project, kind) => setLinking({ project, kind }),
+      settings: setSettingsFor,
       // LifeOS makes the sheet in the project's own sector; it shows in Documents as the page's live read lands.
       newSheet: async (project) => {
         if (!convex) throw new Error("LifeOS is not connected");
@@ -95,6 +100,7 @@ export function View(props: WorkViewProps) {
         <ProjectsClientProvider client={client}>
           <div className="tc-projects h-full min-h-0">{doc ? <DocInPlace env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</div>
           {coding ? <CodeThreadDialog task={{ _id: coding.id, title: coding.title }} sector={sector} onStart={startThread} onClose={() => setCoding(null)} /> : null}
+          {settingsFor ? <ProjectSettingsDialog project={settingsFor} workspace={workspace} onClose={() => setSettingsFor(null)} /> : null}
           {linking ? <LinkPicker env={env} workspaceId={workspace.id} project={linking.project} kind={linking.kind} onClose={() => setLinking(null)} /> : null}
         </ProjectsClientProvider>
       </ProjectsKitProvider>
@@ -125,18 +131,7 @@ function DocInPlace({ env, workspaceId, doc }: { env: string; workspaceId: strin
   const back = (): void => openDoc(workspaceId, null);
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Bar
-        crumb={
-          <>
-            <Button type="button" variant="ghost" size="icon-xs" aria-label={`Back to ${doc.project.name}`} className="text-muted-foreground" onClick={back}>
-              <ArrowLeft />
-            </Button>
-            <span className="min-w-0 truncate">{doc.project.name}</span>
-          </>
-        }
-      >
-        {null}
-      </Bar>
+      <Bar back={{ label: doc.project.name, run: back }}>{null}</Bar>
       <div className="min-h-0 flex-1 pt-4">
         <Scroller scrollTop={scrollTop} onScroll={setScrollTop}>
           {(width) =>

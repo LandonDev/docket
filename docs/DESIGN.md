@@ -86,7 +86,7 @@ light one is built is "The light theme".
 | `link` | a link's words, in prose, a document, a form | `accent` | hsl(214 90% 38%) |
 | `warning` | the person is needed; the context meter from 85% full | amber | `#92450a` |
 | `waiting` | work parked on someone else: a task that waits | orange `#fb923c` | `#b93a0c` |
-| `stage-doing`, `stage-waiting`, `stage-done` | a stage of work as a mark on the project screens (a state's glyph, a meter's segment), never a word | `warning`, `waiting`, `success` | `chart-4`, `chart-2`, `chart-3` |
+| `stage-doing`, `stage-waiting`, `stage-done` | a stage of work as a mark on the project screens (a state's glyph, a meter's segment), never a word. Work in hand takes no hue, as a working thread takes none | `muted-foreground`, `waiting`, `success` | the same three |
 | `destructive` / `destructive-foreground` | failed, delete; the label on a solid red button | red / white | `#b91c1c` / white |
 | `success` | lines added, passed | green | `#046c4e` |
 | `info` | the one informational tint | blue | `#1d4ed8` |
@@ -1230,9 +1230,13 @@ Around the canvas:
   LifeOS to …"), never disabled controls.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
-  holds the screens' bar: the view's name, or the way back from inside a
-  project, then the controls at its end, all quiet 28px buttons (List or
-  Board, New project, New thread, New task). No second bar is drawn. A
+  holds the screens' bar: the view's name on the list, else the way
+  back, then the controls at its end, all quiet 28px buttons (List or
+  Board, New project, New thread, Share, New task). No second bar is
+  drawn. The way back is one shape on every screen: a 24px ghost arrow,
+  then the name of where it goes in 13px medium ("Projects", or the
+  project a document was opened from), then what the screen adds beside
+  it in `muted-foreground` (a task's key, "New project"). A
   row is 32px of 13px words on 20px a level, its bar the row radius
   (8px), `foreground` at 5% in hand and at 9% selected or pressed, at
   once. A project's name is the document title's recipe (18/26
@@ -1244,12 +1248,15 @@ Around the canvas:
   the work. A stage of work is a mark, never a word in its colour: a
   state's 14px glyph and a meter's segment in `stage-doing`,
   `stage-waiting` and `stage-done`, the rest of a meter a dotted line in
-  `chart-neutral-stale`; the meter is 4px, square, with no track, and
+  `chart-neutral-stale`. Work in hand takes no hue (`muted-foreground`),
+  as a working thread takes none: amber stays the one sign that he is
+  needed, so a list of active projects does not read as a list of asks; the meter is 4px, square, with no track, and
   never moves. A count is said once: the list and the board say done of
   all beside the meter, a project's page in its tabs. A task a thread
   works on shows that thread's mark in its row, which opens the thread.
-  A Work project's settings are a sheet with its name, state, rules and
-  accounts and nothing of code; what LifeOS cannot take now is shown as
+  A project's menu holds Project settings…, which opens its sheet from
+  the page. A Work project's settings are a sheet with its name, state,
+  rules, accounts and sharing and nothing of code; what LifeOS cannot take now is shown as
   words, never as disabled controls.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
