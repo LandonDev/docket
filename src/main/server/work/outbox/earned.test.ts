@@ -237,6 +237,12 @@ describe('the run', () => {
   it('an open offer whose run no longer stands gives way to a fresh run; one dismissed or taken never does', () => {
     for (let i = 0; i < EARN_AT; i++) press()
     standing = false
+    // a press that completes no run leaves the old offer where it is
+    act({ state: 'discarded' })
+    expect(press()).toBeNull()
+    expect(earned.open()).toHaveLength(1)
+    for (let i = 0; i < EARN_AT - 2; i++) expect(press()).toBeNull()
+    expect(earned.open()).toHaveLength(1)
     // the latest five are still clean: the next press makes a fresh offer from them, in the old one's place
     const fresh = press()!
     expect(fresh).not.toBeNull()
@@ -478,6 +484,11 @@ describe('an earned grant on the hold', () => {
     const again = await rig.rpc<OutboxGrant>('work.outbox.grant', { from: offer!.from, matcher: { accountId: 'acct_purdue', recipients: ['DANA@purdue.edu', 'dana@purdue.edu'] } })
     expect(again.id).toBe(taken.id)
     expect(rig.host.store.grants()).toHaveLength(1)
+    expect((await rig.rpc<OutboxGrant>('work.outbox.grant', { from: offer!.from, matcher: { accountId: 'acct_purdue', recipients: ['dana@purdue.edu'], domains: [] } })).id).toBe(taken.id)
+    // a recipient written like a domain is not the domain: no grant is taken for another one
+    const other = await rig.rpc<OutboxGrant>('work.outbox.grant', { from: offer!.from, matcher: { accountId: 'acct_purdue', recipients: ['dana@purdue.edu', 'sam@purdue.edu'] } })
+    expect(other.id).not.toBe(taken.id)
+    expect(rig.host.store.grants()).toHaveLength(2)
   })
 
   it('taken, and then asked for by hand from the same item, is one grant: one Remove ends it', async () => {

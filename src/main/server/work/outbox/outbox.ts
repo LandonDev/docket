@@ -70,8 +70,13 @@ export interface OutboxDeps {
 function sameAs(matcher: unknown): unknown {
   if (!matcher || typeof matcher !== 'object') return matcher
   const m = { ...(matcher as Record<string, unknown>) }
-  for (const key of ['recipients', 'domains', 'attendees'])
-    if (Array.isArray(m[key])) m[key] = [...new Set((m[key] as unknown[]).map((v) => (typeof v === 'string' ? v.trim().toLowerCase().replace(/^@/, '') : v)))].sort()
+  for (const key of ['recipients', 'domains', 'attendees']) {
+    if (!Array.isArray(m[key])) continue
+    // As the kind matches them: an address trimmed and in lower case; a domain with its "@" taken off too. None is no list.
+    const list = [...new Set((m[key] as unknown[]).map((v) => (typeof v !== 'string' ? v : key === 'domains' ? v.trim().toLowerCase().replace(/^@/, '') : v.trim().toLowerCase())))].sort()
+    if (list.length) m[key] = list
+    else delete m[key]
+  }
   return m
 }
 

@@ -421,7 +421,6 @@ export function earn(deps: RunDeps, row: HeldRow): StoredOffer | null {
   // Dismissed or taken is for good; an offer whose run no longer stands gives way to a fresh run.
   if (before && (before.state !== 'open' || deps.stands(before))) return null
   if (deps.granted(row)) return null
-  if (before) deps.earned.drop(before.id)
   const target = targetOf(row.kind, wordsOf(row.kind, row.payload), row.payload)
   const run: StoredOffer['run'] = []
   for (const other of deps.decidedSince(row.kind, place.scope, deps.now() - EARN_DAYS * DAY)) {
@@ -437,5 +436,7 @@ export function earn(deps: RunDeps, row: HeldRow): StoredOffer | null {
     if (run.length >= EARN_AT) break
   }
   if (run.length < EARN_AT) return null
+  // The old offer gives way only to a run that qualifies.
+  if (before) deps.earned.drop(before.id)
   return deps.earned.add({ workspaceId: place.scope, kind: row.kind, key, matcher: mine.matcher, label: mine.label, routineId: place.routineId, from: refOfRow(row), run })
 }
