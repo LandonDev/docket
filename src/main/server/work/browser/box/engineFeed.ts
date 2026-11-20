@@ -30,7 +30,9 @@ export class EngineFeed implements VideoFeed {
   constructor(
     private readonly lease: EngineLease,
     private readonly drive: boolean,
-    private readonly socket: (url: string, protocols: string[]) => WebSocket = (url, protocols) => new WebSocket(url, protocols)
+    private readonly socket: (url: string, protocols: string[]) => WebSocket = (url, protocols) => new WebSocket(url, protocols),
+    /** `close` once, when the feed is closed, started or not; `input` at each of his input records passed on */
+    private readonly on: { close?: () => void; input?: () => void } = {}
   ) {}
 
   start(sink: FeedSink): void {
@@ -66,6 +68,7 @@ export class EngineFeed implements VideoFeed {
   input(bytes: Uint8Array): void {
     if (!this.drive || bytes.byteLength !== HEADER_SIZE + INPUT_SIZE || !this.mine(bytes)) return
     if (new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(12) !== 0) return
+    this.on.input?.()
     this.send(bytes)
   }
 
@@ -97,6 +100,7 @@ export class EngineFeed implements VideoFeed {
       // closed already
     }
     this.lease.release()
+    this.on.close?.()
   }
 
   private send(bytes: Uint8Array): void {

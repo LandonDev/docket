@@ -181,7 +181,7 @@ const check = (name: string, ok: boolean, detail: string): void => {
 }
 
 const browser = new BoxChromium({ root, bin: () => bin, video: () => tools, spawn: pinned, makeDisplay: (t) => new BoxXDisplay({ root, tools: t, spawn: pinned }) })
-const stage = new BoxStage({ endpoint: () => browser.endpoint(), display: () => browser.display })
+const stage = new BoxStage({ endpoint: () => browser.endpoint(), wm: () => browser.wm })
 const engines = new BoxEngines({ root, tools: () => browser.tools, display: () => browser.display, spawn: pinned })
 const relay = new VideoRelay()
 /** capture to relay, in ms, for every frame the relay passes while a scene is measured */

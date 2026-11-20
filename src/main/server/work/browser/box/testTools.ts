@@ -35,7 +35,7 @@ export function testBrowser(root: string, bin: string, o: { headed?: boolean; pi
   const { headed = testHeaded(), pid = true, ...rest } = o
   const tools = headed ? testVideoTools() : null
   const browser = new BoxChromium({ root, bin: () => bin, video: () => tools, ...rest })
-  const stage = new BoxStage({ endpoint: () => browser.endpoint(), display: () => browser.display }, { closed: closedToAgents })
+  const stage = new BoxStage({ endpoint: () => browser.endpoint(), wm: () => browser.wm }, { closed: closedToAgents })
   browser.onStop(() => stage.close())
   return {
     browser,

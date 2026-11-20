@@ -197,11 +197,19 @@ d('live video of the box browser, end to end', () => {
 
   it('lists a row for the page he took over, though its session was stopped, and streams it by the pane’s thread', async () => {
     expect(host.rows.rows().map((r) => r.threadId).sort()).toEqual(['w1', 'w2'])
+    // he is watching the page when he takes over
+    const watching = await watch('w1', { take: true })
+    await until(() => watching.viewer.frames.length > 0)
     // Take over: the agent's sessions of the pane are stopped, then he is the driver
     expect(await host.rows.stop('w1')).toBe(true)
     new DriveStore(db).drive('w1', 'owner')
     boxDriveChanged('w1', true)
     await until(() => host.stage.driving !== null)
+    // the stream he was watching goes on through it: its page outlives the session that used it
+    expect(watching.viewer.closed).toBeNull()
+    const before = watching.viewer.frames.length
+    await until(() => watching.viewer.frames.length > before)
+    watching.viewer.leave()
     const rows = host.rows.rows()
     expect(rows.find((r) => r.threadId === 'w1')).toMatchObject({ driver: 'owner', running: null, apps: [{ name: 'Chromium', bundleId: 'org.chromium.Chromium' }] })
     // nothing of his to stop: Hand back is how it ends

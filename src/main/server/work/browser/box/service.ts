@@ -401,7 +401,8 @@ export class BoxComputerService {
           .catch(() => {})
       })
       this.cdp = cdp
-      await this.opts.browser.ready?.()
+      // the stage's own connection failing is not this one failing: the page is still read and acted on
+      await this.opts.browser.ready?.().catch((err) => this.opts.log?.(`box browser: its windows were not placed: ${(err as Error).message}`))
       return cdp
     })().finally(() => (this.connecting = null))
     return this.connecting

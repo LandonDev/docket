@@ -7,7 +7,8 @@ import { HEADED_BLOCKED, findChromium } from './chromium'
 import { BoxEngines, engineScreenshot } from './engine'
 import { serveTestSite, type TestSite } from './testSite'
 import { pixelAt, pixelsApart, pngPixels, testBrowser, testVideoTools, type TestBrowser } from './testTools'
-import { XClient, pageWindows } from './xclient'
+import { XClient } from './xclient'
+import { BoxWindowManager } from './xwm'
 
 /**
  * The box's browser headed on its private display, with the real Chromium,
@@ -21,7 +22,7 @@ const d = bin && tools ? describe : describe.skip
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 /** A page of one flat colour with a mark in its far corner, so a picture that is cut short or shifted shows. */
 const flat = (colour: string, title: string): string =>
-  `<!doctype html><title>${title}</title><body style="margin:0;background:${colour}"><input id=i><div style="position:fixed;right:0;bottom:0;width:16px;height:16px;background:rgb(255,0,255)"></div>`
+  `<!doctype html><title>${title}</title><body style="margin:0;background:${colour}"><input id=i><select id=s style="position:fixed;left:100px;top:300px;width:200px;height:30px"><option>one<option>two<option>three</select><div style="position:fixed;right:0;bottom:0;width:16px;height:16px;background:rgb(255,0,255)"></div>`
 const COLOURS = { red: '200,30,30', green: '30,160,60', blue: '30,60,200', mark: '255,0,255' }
 let site: TestSite
 const page = (name: 'red' | 'green' | 'blue'): string => `${site.url}/${name}`
@@ -79,22 +80,42 @@ d('the box browser, headed', () => {
     expect(args.some((a) => /no-sandbox/.test(a))).toBe(false)
   })
 
+  it('has one window manager, and an engine that answers nobody without its token', async () => {
+    // the display asks one client about its windows: a second cannot take that place
+    await expect(BoxWindowManager.start(rig.browser.display!)).rejects.toThrow('another client manages the display')
+    const lease = (await engines.lease())!
+    try {
+      for (const headers of [undefined, { Authorization: `Bearer ${'0'.repeat(64)}` }]) expect((await fetch(`http://127.0.0.1:${lease.port}/screenshot.png`, { headers })).status).toBe(401)
+      const refused = await new Promise<boolean>((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${lease.port}/stream?view=1`, ['nsl1'])
+        ws.addEventListener('open', () => resolve(false))
+        ws.addEventListener('error', () => resolve(true))
+        ws.addEventListener('close', () => resolve(true))
+      })
+      expect(refused).toBe(true)
+    } finally {
+      lease.release()
+    }
+  }, 30_000)
+
   it('shows a page alone at the display’s own size: its viewport reads 1280×800, and the engine’s picture is the page’s own', async () => {
     const target = await rig.stage.open(page('red'))
     const sid = await attach(target)
     await rig.stage.watch(target)
+    // the browser lays the page out again a moment after its window is full screen
+    for (let i = 0; i < 40 && (await evaluate(sid, 'innerHeight')) !== 800; i++) await sleep(50)
     const m = await cdp.send<{ cssVisualViewport: { clientWidth: number; clientHeight: number } }>('Page.getLayoutMetrics', {}, sid)
     expect([m.cssVisualViewport.clientWidth, m.cssVisualViewport.clientHeight]).toEqual([1280, 800])
     expect(await evaluate(sid, '[innerWidth, innerHeight, outerWidth, outerHeight, screenX, screenY].join()')).toBe('1280,800,1280,800,0,0')
     // every window of a page is the screen's size, at its corner
     const x = await XClient.open(rig.browser.display!)
-    const windows = pageWindows(await x.windows(), { width: x.width, height: x.height })
+    const windows = (await x.windows()).filter((w) => w.viewable && !w.overrideRedirect && w.width > 1)
     expect([x.width, x.height]).toEqual([1280, 800])
     x.close()
     expect(windows.length).toBeGreaterThan(0)
     for (const w of windows) expect([w.x, w.y, w.width, w.height]).toEqual([0, 0, 1280, 800])
-    // the notice that says how to leave full screen goes after a few seconds
-    await sleep(4_500)
+    // the browser's notice of how to leave full screen is behind the curtain from the start: it is not his to act on
+    await sleep(500)
     const engine = await seen()
     expect([engine.width, engine.height]).toEqual([1280, 800])
     const { data } = await cdp.send<{ data: string }>('Page.captureScreenshot', { format: 'png' }, sid)
@@ -112,6 +133,8 @@ d('the box browser, headed', () => {
     const sid = await attach(other)
     await sleep(300)
     expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
+    // nor does the new page's full-screen notice show over him
+    expect(pixelAt(await seen(), 640, 70)).toBe(COLOURS.red)
     // the covered page is whole and still paints: it has the screen's size, a capture of it comes, and keys land in it
     expect(await evaluate(sid, '[innerWidth, innerHeight].join()')).toBe('1280,800')
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sid)
@@ -142,6 +165,9 @@ d('the box browser, headed', () => {
     await cdp.send('Runtime.evaluate', { expression: `window.open(${JSON.stringify(page('blue'))}, '_blank', 'popup,width=400,height=300')`, userGesture: true }, greenSid)
     await sleep(1_200)
     expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
+    const openedBy = async (opener: string): Promise<string[]> =>
+      (await cdp.send<{ targetInfos: { targetId: string; type: string; openerId?: string }[] }>('Target.getTargets')).targetInfos.filter((t) => t.type === 'page' && t.openerId === opener).map((t) => t.targetId)
+    for (const id of await openedBy(green)) await cdp.send('Target.closeTarget', { targetId: id })
     // the watched page's own popup is part of what he watches: it stays on top, full screen like the rest
     const watchedSid = await attach(watched)
     await cdp.send('Runtime.evaluate', { expression: `window.open(${JSON.stringify(page('blue'))}, '_blank', 'popup,width=400,height=300')`, userGesture: true }, watchedSid)
@@ -149,26 +175,109 @@ d('the box browser, headed', () => {
     const now = await seen()
     expect(pixelAt(now, 640, 400)).toBe(COLOURS.blue)
     expect(pixelAt(now, 1275, 795)).toBe(COLOURS.mark)
+    // it is over that page whenever that page is watched: another page watched in between does not lose it
+    await rig.stage.watch(green)
+    await sleep(300)
+    expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.green)
     await rig.stage.watch(watched)
     await sleep(300)
+    expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.blue)
+    // until it closes
+    for (const id of await openedBy(watched)) await cdp.send('Target.closeTarget', { targetId: id })
+    await sleep(500)
     expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
+    // a window that may not reach back to the page that opened it is still that page's: the browser says who opened it
+    await cdp.send('Runtime.evaluate', { expression: `window.open(${JSON.stringify(page('blue'))}, '_blank', 'noopener,popup,width=400,height=300')`, userGesture: true }, greenSid)
+    await sleep(1_200)
+    expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
+    expect((await openedBy(green)).length).toBe(1)
+    for (const id of await openedBy(green)) await cdp.send('Target.closeTarget', { targetId: id })
   }, 60_000)
 
-  it('keeps the carrier’s page off the screen and unraised, and it still runs there', async () => {
+  it('keeps the keyboard with the watched page, whatever opens, is clicked through DevTools or asks to come forward', async () => {
+    const wm = rig.browser.wm!
+    const watched = rig.stage.watching!
+    const holder = await wm.focused()
+    const top = (await wm.shown()).at(-1)
+    expect(holder).toBe(top)
+    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string }[] }>('Target.getTargets')
+    const green = targetInfos.find((t) => t.type === 'page' && t.title === 'green')!.targetId
+    const sid = await attach(green)
+    // an agent's click, as its tools send it
+    for (const type of ['mousePressed', 'mouseReleased']) await cdp.send('Input.dispatchMouseEvent', { type, x: 300, y: 300, button: 'left', clickCount: 1 }, sid)
+    // the browser's own ask to bring a page forward
+    await cdp.send('Target.activateTarget', { targetId: green })
+    await cdp.send('Page.bringToFront', {}, sid)
+    const fresh = await rig.stage.open(page('blue'))
+    await sleep(500)
+    expect(await wm.focused()).toBe(holder)
+    expect((await wm.shown()).at(-1)).toBe(top)
+    expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
+    // the keyboard goes with the watched page
+    await rig.stage.watch(green)
+    const moved = await wm.focused()
+    expect(moved).not.toBe(holder)
+    expect((await wm.shown()).at(-1)).toBe(moved)
+    await rig.stage.watch(watched)
+    expect(await wm.focused()).toBe(holder)
+    await cdp.send('Target.closeTarget', { targetId: fresh })
+  }, 60_000)
+
+  it('puts a menu behind the curtain unless he drives and his input came just before it', async () => {
+    const wm = rig.browser.wm!
+    const watched = rig.stage.watching!
+    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; title: string }[] }>('Target.getTargets')
+    const green = targetInfos.find((t) => t.type === 'page' && t.title === 'green')!.targetId
+    const front = await wm.shown(false)
+    expect(front.length).toBe(1)
+    const press = async (targetId: string, key?: string): Promise<void> => {
+      const sid = await attach(targetId)
+      if (key) for (const type of ['keyDown', 'keyUp']) await cdp.send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: 27 }, sid)
+      else for (const type of ['mousePressed', 'mouseReleased']) await cdp.send('Input.dispatchMouseEvent', { type, x: 150, y: 315, button: 'left', clickCount: 1 }, sid)
+      await sleep(600)
+    }
+    // an agent opens a list on a page under the curtain, then on the page he watches: the list is drawn over neither
+    for (const target of [green, watched]) {
+      await press(target)
+      expect(await wm.shown(false), target === green ? 'another page' : 'the watched page').toEqual(front)
+      expect(pixelAt(await seen(), 150, 350)).toBe(COLOURS.red)
+      await press(target, 'Escape')
+    }
+    // he drives, and a list opens with no input of his before it: still another page's, for all the display knows
+    await rig.stage.drive(watched)
+    await sleep(600)
+    await press(green)
+    expect(await wm.shown(false)).toEqual(front)
+    await press(green, 'Escape')
+    // his own click, then the list it opened
+    rig.stage.touched()
+    await press(watched)
+    expect((await wm.shown(false)).length).toBe(2)
+    expect(pixelAt(await seen(), 150, 480)).not.toBe(COLOURS.red)
+    await press(watched, 'Escape')
+    await rig.stage.drive(null)
+    await sleep(600)
+    expect(await wm.shown(false)).toEqual(front)
+  }, 60_000)
+
+  it('never shows the carrier’s page, and it still runs behind the curtain', async () => {
+    const wm = rig.browser.wm!
+    const before = await wm.shown()
     const carrier = await rig.stage.open(page('blue'), 'carrier')
     const sid = await attach(carrier)
     await sleep(500)
     expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
-    expect(Number(await evaluate(sid, 'screenX'))).toBeGreaterThanOrEqual(1280)
+    expect(await wm.shown()).toEqual(before)
+    expect(rig.stage.knows(carrier)).toBe(false)
     // it loads, runs script, fetches and paints where nobody sees it
     expect(await evaluate(sid, 'document.title')).toBe('blue')
     expect(await evaluate(sid, 'fetch("data:text/plain,ok").then((r) => r.text())')).toBe('ok')
     expect(await evaluate<number>(sid, 'new Promise((r) => { let n = 0; const t = performance.now(); (function f() { n++; performance.now() - t < 500 ? requestAnimationFrame(f) : r(n) })() })')).toBeGreaterThan(30)
-    // a new page after it still lands under the watched one, and the carrier stays where it is
-    await rig.stage.open(page('green'))
+    // its own ask to come forward is refused like any other
+    await cdp.send('Target.activateTarget', { targetId: carrier })
     await sleep(300)
     expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
-    expect(Number(await evaluate(sid, 'screenX'))).toBeGreaterThanOrEqual(1280)
+    expect(await wm.shown()).toEqual(before)
   }, 60_000)
 
   it('shows the browser’s own toolbar while he drives, and the page alone again when he hands back', async () => {
@@ -187,7 +296,6 @@ d('the box browser, headed', () => {
     await rig.stage.drive(null)
     await sleep(600)
     expect(await evaluate(sid, '[innerWidth, innerHeight].join()')).toBe('1280,800')
-    await sleep(4_500)
     const back = await seen()
     expect(pixelAt(back, 640, 5)).toBe(COLOURS.red)
     expect(pixelAt(back, 1275, 795)).toBe(COLOURS.mark)
@@ -196,7 +304,7 @@ d('the box browser, headed', () => {
   it('says so when the watched page goes to an address that is closed to agents', async () => {
     const watched = rig.stage.watching!
     const closed: string[] = []
-    const off = rig.stage.onClosedHost((id) => closed.push(id))
+    const off = rig.stage.onEnd((id) => closed.push(id))
     const sid = await attach(watched)
     // the address alone decides: nothing has to load from it
     await cdp.send('Page.navigate', { url: 'https://outlook.office.com/mail/' }, sid).catch(() => {})
@@ -204,6 +312,28 @@ d('the box browser, headed', () => {
     off()
     expect(closed).toEqual([watched])
     await cdp.send('Page.navigate', { url: page('red') }, sid)
+  }, 60_000)
+
+  it('shows the curtain, and ends what he is shown, when the watched page closes', async () => {
+    const wm = rig.browser.wm!
+    const kept = rig.stage.watching!
+    const doomed = await rig.stage.open(page('green'))
+    await rig.stage.watch(doomed)
+    await sleep(300)
+    expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.green)
+    const ended: string[] = []
+    const off = rig.stage.onEnd((id) => ended.push(id))
+    await cdp.send('Target.closeTarget', { targetId: doomed })
+    for (let i = 0; i < 100 && !ended.length; i++) await sleep(50)
+    off()
+    expect(ended).toEqual([doomed])
+    expect(rig.stage.watching).toBeNull()
+    // every other page is still behind the curtain: he is shown none of them
+    expect(await wm.shown(false)).toEqual([])
+    expect(pixelAt(await seen(), 640, 400)).toBe('0,0,0')
+    await rig.stage.watch(kept)
+    await sleep(300)
+    expect(pixelAt(await seen(), 640, 400)).toBe(COLOURS.red)
   }, 60_000)
 
   it('saves no password, fills none, refuses every prompt, and keeps downloads in its own folder: read back from the running browser', async () => {

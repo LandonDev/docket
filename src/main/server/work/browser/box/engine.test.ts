@@ -225,11 +225,12 @@ describe('EngineFeed', () => {
     let released = 0
     const lease: EngineLease = { port: 4100, token: 'f'.repeat(64), pid: null, onExit: (fn) => void exits.push(fn), release: () => void released++ }
     let socket!: FakeEngineSocket
-    const feed = new EngineFeed(lease, drive, (url, protocols) => (socket = new FakeEngineSocket(url, protocols)) as unknown as WebSocket)
+    const told = { input: 0, close: 0 }
+    const feed = new EngineFeed(lease, drive, (url, protocols) => (socket = new FakeEngineSocket(url, protocols)) as unknown as WebSocket, { input: () => void told.input++, close: () => void told.close++ })
     const frames: Uint8Array[] = []
     const ends: VideoCloseReason[] = []
     feed.start({ frame: (b) => frames.push(b), end: (r) => ends.push(r) })
-    return { feed, socket: () => socket, frames, ends, exits, released: () => released }
+    return { feed, socket: () => socket, frames, ends, exits, released: () => released, told }
   }
   const FRAME = (generation: number, sequence: number): Uint8Array => encodeFrame({ generation, sequence, keyframe: sequence === 1, width: 1280, height: 800, timestamp: 1, data: Uint8Array.of(1, 2, 3) })
 
@@ -257,6 +258,7 @@ describe('EngineFeed', () => {
     r.feed.input(encodeInput({ type: 'keyDown', key: 4 }, 3))
     expect(r.feed.type({ type: 'releaseAll' })).toBe(false)
     expect(r.socket().sent).toEqual([])
+    expect(r.told.input).toBe(0)
   })
 
   it('a driver’s feed is the engine’s input socket: his records pass, and this host’s are numbered for the connection', () => {
@@ -271,6 +273,8 @@ describe('EngineFeed', () => {
     expect([...r.socket().sent[0]]).toEqual([...his])
     expect(new DataView(r.socket().sent[1].buffer).getUint32(8)).toBe(9)
     expect(parseInput(r.socket().sent[1])).toMatchObject({ type: 'keyDown', key: 224 })
+    // only his own input is told of: a menu that opens after it is his
+    expect(r.told.input).toBe(1)
   })
 
   it('passes the engine only what it takes: it drops a connection that sends anything else', () => {

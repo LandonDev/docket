@@ -195,7 +195,8 @@ export class ComputerConnection {
       })
     })
     child.stdin?.on('error', () => undefined)
-    this.pipe = (child.stdio[VIDEO_STREAM.pipeFd] as Duplex | null | undefined) ?? null
+    // (an in-process service is no child process: it has three streams and no `stdio` at all)
+    this.pipe = ((child.stdio as ChildProcess['stdio'] | undefined)?.[VIDEO_STREAM.pipeFd] as Duplex | null | undefined) ?? null
     this.pipe?.on('error', () => undefined)
     this.pipe?.on('data', (chunk: Buffer) => this.received(chunk))
     createInterface({ input: child.stdout! }).on('line', (line) => this.onLine(line))

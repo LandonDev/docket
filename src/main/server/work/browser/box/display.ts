@@ -165,6 +165,10 @@ export class BoxXDisplay {
     })
     this.child = child
     if (child.pid) writeFileSync(join(this.dir, 'pid'), String(child.pid))
+    // a host that quits without stopping its browser still ends the display: it is no child of anything by then
+    const atExit = (): void => void child.kill('SIGTERM')
+    process.once('exit', atExit)
+    child.once('exit', () => process.off('exit', atExit))
     child.once('exit', () => {
       if (this.child !== child) return
       this.child = null

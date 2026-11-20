@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { BoxChromium, HEADED_BLOCKED, chromiumArgs, findChromium, headedPrefs, mergePrefs, treeRssMb, writeHeadedPrefs } from './chromium'
+import { BoxChromium, HEADED_BLOCKED, chromiumArgs, clearHeadedPrefs, findChromium, headedPrefs, mergePrefs, treeRssMb, withoutPrefs, writeHeadedPrefs } from './chromium'
+import type { BoxWindowManager } from './xwm'
 
 const dirs: string[] = []
 const tmp = () => {
@@ -84,6 +85,26 @@ describe('the box browser', () => {
     expect(mergePrefs({ a: { b: 1, c: 2 }, d: [1] }, { a: { b: 9 }, d: [2], e: 3 })).toEqual({ a: { b: 9, c: 2 }, d: [2], e: 3 })
   })
 
+  it('a headless start after a headed one takes back what the headed start wrote, and nothing else', () => {
+    const profile = tmp()
+    mkdirSync(join(profile, 'Default'), { recursive: true })
+    const file = join(profile, 'Default', 'Preferences')
+    const own = { profile: { name: 'Person 1', default_content_setting_values: { cookies: 1 } }, intl: { accept_languages: 'en-US' } }
+    writeFileSync(file, JSON.stringify(own))
+    // a profile no headed start wrote into is left as it is, byte for byte
+    clearHeadedPrefs(profile)
+    expect(readFileSync(file, 'utf8')).toBe(JSON.stringify(own))
+    writeHeadedPrefs(profile, join(profile, 'downloads'))
+    expect(JSON.parse(readFileSync(file, 'utf8')).credentials_enable_service).toBe(false)
+    clearHeadedPrefs(profile)
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(own)
+    // once: the next headless start has nothing to take back
+    writeFileSync(file, JSON.stringify({ ...own, credentials_enable_service: false }))
+    clearHeadedPrefs(profile)
+    expect(JSON.parse(readFileSync(file, 'utf8')).credentials_enable_service).toBe(false)
+    expect(withoutPrefs({ a: { b: 1, c: 2 }, d: 1, e: { f: 1 } }, { a: { b: 0 }, e: { f: 0 }, g: 0 })).toEqual({ a: { c: 2 }, d: 1 })
+  })
+
   /** A browser that never runs: it writes the DevTools file a real one would, and remembers what it was started with. */
   function fakeBrowser() {
     const calls: { args: string[]; env?: NodeJS.ProcessEnv }[] = []
@@ -135,10 +156,17 @@ describe('the box browser', () => {
       const fake = fakeBrowser()
       const display = fakeDisplay()
       const root = tmp()
-      const b = new BoxChromium({ root, bin: () => '/bin/chromium', spawn: fake.spawn, video: () => TOOLS, makeDisplay: display.make, testing: async () => true })
+      // the display is taken in hand before the browser is started on it
+      const managed: string[] = []
+      let closed = 0
+      const wm = { close: () => void closed++ } as unknown as BoxWindowManager
+      const manage = async (pair: { DISPLAY: string }): Promise<BoxWindowManager> => (managed.push(`${pair.DISPLAY} with ${fake.calls.length} browsers started`), wm)
+      const b = new BoxChromium({ root, bin: () => '/bin/chromium', spawn: fake.spawn, video: () => TOOLS, makeDisplay: display.make, manage, testing: async () => true })
       await b.endpoint()
+      expect(managed).toEqual([':41 with 0 browsers started'])
       expect(b.display).toEqual({ DISPLAY: ':41', XAUTHORITY: '/d/Xauthority' })
       expect(b.tools).toBe(TOOLS)
+      expect(b.wm).toBe(wm)
       const call = fake.calls[0]
       expect(call.env?.DISPLAY).toBe(':41')
       expect(call.env?.XAUTHORITY).toBe('/d/Xauthority')
@@ -153,18 +181,45 @@ describe('the box browser', () => {
       expect(display.state).toEqual({ started: 1, stopped: 1 })
       expect(b.display).toBeNull()
       expect(b.tools).toBeNull()
+      expect(b.wm).toBeNull()
+      expect(closed).toBe(1)
     } finally {
       for (const [k, v] of Object.entries(before)) v === undefined ? delete process.env[k] : (process.env[k] = v)
     }
   })
 
-  it('without the tools, with the setting off, or when its display will not start, it starts headless exactly as before', async () => {
-    for (const how of ['no tools', 'the display fails'] as const) {
+  it('launches nothing when it is stopped while it asks the binary what it is, and leaves no display behind', async () => {
+    const fake = fakeBrowser()
+    const display = fakeDisplay()
+    let asked!: () => void
+    const answer = new Promise<boolean>((resolve) => (asked = () => resolve(true)))
+    const b = new BoxChromium({ root: tmp(), bin: () => '/bin/chromium', spawn: fake.spawn, video: () => TOOLS, makeDisplay: display.make, manage: async () => ({ close: () => {} }) as unknown as BoxWindowManager, testing: () => answer })
+    const starting = b.endpoint()
+    const failed = expect(starting).rejects.toThrow('stopped as it started')
+    for (let i = 0; i < 50 && !display.state.started; i++) await new Promise((r) => setTimeout(r, 5))
+    await b.stop()
+    asked()
+    await failed
+    expect(fake.calls).toEqual([])
+    expect(display.state).toEqual({ started: 1, stopped: 1 })
+  })
+
+  it('without the tools, with the setting off, or when its display will not start or cannot be managed, it starts headless exactly as before', async () => {
+    for (const how of ['no tools', 'the display fails', 'the display is not ours to manage'] as const) {
       const fake = fakeBrowser()
       const display = fakeDisplay(how === 'the display fails')
       const logs: string[] = []
-      const b = new BoxChromium({ root: tmp(), bin: () => '/bin/chromium', spawn: fake.spawn, video: () => (how === 'no tools' ? null : TOOLS), makeDisplay: display.make, log: (l) => logs.push(l) })
+      const manage = async (): Promise<BoxWindowManager> => {
+        if (how === 'the display is not ours to manage') throw new Error('another client manages the display')
+        return { close: () => {} } as unknown as BoxWindowManager
+      }
+      const b = new BoxChromium({ root: tmp(), bin: () => '/bin/chromium', spawn: fake.spawn, video: () => (how === 'no tools' ? null : TOOLS), makeDisplay: display.make, manage, log: (l) => logs.push(l) })
       await b.endpoint()
+      if (how === 'the display is not ours to manage') {
+        // a display with no window manager would show whatever the browser raised: it is stopped, never drawn on
+        expect(display.state).toEqual({ started: 1, stopped: 1 })
+        expect(logs.join('\n')).toContain('its display did not start (another client manages the display); it runs headless')
+      }
       expect(b.display, how).toBeNull()
       expect(fake.calls[0].args, how).toEqual(chromiumArgs(b.profile))
       // a headless browser inherits what it always did: no environment is made for it

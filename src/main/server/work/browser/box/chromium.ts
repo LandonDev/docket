@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { BoxXDisplay, DISPLAY_HEIGHT, DISPLAY_WIDTH, displayEnv, type BoxDisplay } from './display'
 import type { VideoTools } from './videoSetting'
+import { BoxWindowManager } from './xwm'
 
 /**
  * The box's one Chromium (docs/agents/work-browser.md "The box's browser"):
@@ -158,6 +159,43 @@ export function writeHeadedPrefs(profile: string, downloads: string): void {
   writeFileSync(file, JSON.stringify(mergePrefs(kept, headedPrefs(downloads))), { mode: 0o600 })
   // a file that was already there keeps its old mode through the write
   chmodSync(file, 0o600)
+  writeFileSync(join(dir, HEADED_MARK), '', { mode: 0o600 })
+}
+
+/** Beside the preferences while they hold what a headed start wrote. */
+const HEADED_MARK = '.tc-headed-prefs'
+
+/** `prefs` without every leaf `drop` names: the browser then reads its own default for each. */
+export function withoutPrefs(prefs: Record<string, unknown>, drop: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...prefs }
+  for (const [key, value] of Object.entries(drop)) {
+    if (!(key in out)) continue
+    if (isObject(value) && isObject(out[key])) {
+      const inner = withoutPrefs(out[key] as Record<string, unknown>, value)
+      if (Object.keys(inner).length) out[key] = inner
+      else delete out[key]
+    } else delete out[key]
+  }
+  return out
+}
+
+/**
+ * A headless start after a headed one takes back what the headed start wrote
+ * into the profile, so the browser is as it was before video: each of those
+ * preferences returns to the browser's own default.
+ */
+export function clearHeadedPrefs(profile: string): void {
+  const dir = join(profile, 'Default')
+  const mark = join(dir, HEADED_MARK)
+  if (!existsSync(mark)) return
+  const file = join(dir, 'Preferences')
+  try {
+    const read: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    if (isObject(read)) writeFileSync(file, JSON.stringify(withoutPrefs(read, headedPrefs(''))), { mode: 0o600 })
+  } catch {
+    // no preferences to take anything out of
+  }
+  rmSync(mark, { force: true })
 }
 
 /** True for a Chrome for Testing build, by what the binary says of itself. */
@@ -207,6 +245,8 @@ export interface BoxChromiumOptions {
   testing?: (bin: string) => Promise<boolean>
   /** the private display a headed browser draws on; a `BoxXDisplay` on the tools by default */
   makeDisplay?: (tools: VideoTools) => Pick<BoxXDisplay, 'start' | 'stop' | 'env'>
+  /** takes that display in hand before the browser draws on it; `BoxWindowManager.start` by default */
+  manage?: (display: BoxDisplay, log: (line: string) => void) => Promise<BoxWindowManager>
   log?: (line: string) => void
 }
 
@@ -233,6 +273,7 @@ export class BoxChromium {
   /** the private display of a headed browser, for exactly as long as that browser runs */
   private xdisplay: Pick<BoxXDisplay, 'start' | 'stop' | 'env'> | null = null
   private videoTools: VideoTools | null = null
+  private manager: BoxWindowManager | null = null
 
   constructor(private readonly opts: BoxChromiumOptions) {}
 
@@ -248,6 +289,10 @@ export class BoxChromium {
   /** The display a headed browser draws on, while it runs; null for a headless one. */
   get display(): BoxDisplay | null {
     return this.running ? (this.xdisplay?.env ?? null) : null
+  }
+  /** The window manager of that display: what decides which of the browser's windows is on top of it. */
+  get wm(): BoxWindowManager | null {
+    return this.display ? this.manager : null
   }
   /** The tools the running headed browser was started with. */
   get tools(): VideoTools | null {
@@ -302,7 +347,12 @@ export class BoxChromium {
     if (pair) {
       writeHeadedPrefs(this.profile, join(this.opts.root, 'downloads'))
       args = chromiumArgs(this.profile, { testing: await (this.opts.testing ?? isChromeForTesting)(bin) })
-    }
+      // the binary was asked what it is: a stop that came meanwhile still means no launch
+      if (generation !== this.generation) {
+        await this.stopDisplay()
+        throw new Error('the box browser was stopped as it started')
+      }
+    } else clearHeadedPrefs(this.profile)
     // A headed browser is handed its own display and nothing of this process's; a headless one needs none.
     const child = (this.opts.spawn ?? nodeSpawn)(bin, args, { stdio: 'ignore', detached: true, ...(pair ? { env: displayEnv(pair) } : {}) })
     this.child = child
@@ -311,7 +361,8 @@ export class BoxChromium {
       this.child = null
       this.ws = null
       this.clear()
-      void this.stopDisplay()
+      // the next start waits for this: a new display must not write its cookie where the old one is still being removed
+      this.exiting = this.exiting.then(() => this.stopDisplay())
       this.tell('exited')
     })
     const until = Date.now() + START_MS
@@ -387,10 +438,13 @@ export class BoxChromium {
     const xdisplay = this.opts.makeDisplay?.(tools) ?? new BoxXDisplay({ root: this.opts.root, tools, log: this.opts.log })
     try {
       const pair = await xdisplay.start()
+      // nothing draws on the display before it has its window manager: the browser's first window is asked about too
+      this.manager = await (this.opts.manage ?? BoxWindowManager.start)(pair, this.opts.log ?? (() => {}))
       this.xdisplay = xdisplay
       this.videoTools = tools
       return pair
     } catch (err) {
+      await xdisplay.stop().catch(() => {})
       this.opts.log?.(`box browser: its display did not start (${(err as Error).message}); it runs headless`)
       return null
     }
@@ -398,6 +452,8 @@ export class BoxChromium {
 
   private async stopDisplay(): Promise<void> {
     const xdisplay = this.xdisplay
+    this.manager?.close()
+    this.manager = null
     this.xdisplay = null
     this.videoTools = null
     await xdisplay?.stop()

@@ -193,46 +193,77 @@ the browser's whole life and lives exactly as long as the browser does.
   starts (a pid file beside the config).
 - A display that will not start is not an error: the browser starts
   headless and says so in the log.
+- When the host process exits, the server is ended with it.
 
-### The stage (`stage.ts`, `xclient.ts`)
+### The window manager and the stage (`xwm.ts`, `xclient.ts`, `stage.ts`)
 
-The engine captures the whole display, so what is on the display is what he
-sees. No window manager runs. `BoxStage` places the windows over DevTools,
-and `xclient.ts` makes the few X requests a window manager would.
+The engine captures the whole display, and his keys reach it as real key
+presses. So what is on top of the display is what he sees, and the window
+that holds the keyboard is where he types. A browser left alone gives both
+away: it raises a window that is clicked, even by an agent through DevTools,
+and gives it the keyboard; it opens a new window over the others; it takes a
+pixel off a window as large as the screen.
+
+So the display has a window manager of ours, `BoxWindowManager`, started
+before the browser. `xclient.ts` speaks the X protocol by hand for it. It is
+the one client the display asks before a top-level window is mapped, moved,
+sized or restacked (`SubstructureRedirect`), and it tells the browser that it
+brings windows forward (`_NET_ACTIVE_WINDOW`), so the browser asks instead of
+raising and focusing a window itself. A display that cannot be managed is
+stopped and the browser starts headless.
+
+Its rules:
+
+- **A page's window is exactly the screen**, whatever size the browser asks
+  for.
+- **A black curtain covers the screen**, and every window comes onto the
+  screen behind it. Nothing that is not named below is ever seen. When the
+  watched page closes he sees the curtain, not the next page down.
+- **In front of the curtain** are only the front window (the page he
+  watches), the windows let above it (a popup that page opened) and their
+  dialogs. Only they get the keyboard: the one that asked last.
+- **Menus, tooltips and notices** are not asked about by the display, and
+  nothing on them says which window they belong to. One goes behind the
+  curtain as soon as it shows, and again if the browser raises it. The one
+  exception: he drives and his input reached the display in the two seconds
+  before (`HIS_MENU_MS`); then it is taken for his and stays.
+
+`BoxStage` names the windows for it, over DevTools:
 
 - **One window per page, full screen.** The frame is the page alone: no tab
-  strip and no address bar, so no full address is in any frame. Every page
-  the service or the Outlook carrier makes goes through `stage.open`.
-- **Exactly the screen's size.** Chromium takes one pixel off any window as
-  large as the screen, and nothing answers its ask to be full screen. So
-  `fitWindows` sets each page window to 1280×800 through X, after the
-  browser says the window's state has changed.
-- **A new page never covers the watched one.** It is made off the screen
-  (x = 2000) and put on it under the others (`landWindows`).
-- **The watched page is on top.** `video.open` raises it
-  (`Target.activateTarget`). A window another page opens is put back under
-  it, unless the watched page opened it (a sign-in popup is part of what he
-  watches) or he is driving (a window he opens stays).
-- **Nothing else raises a page.** In headed mode the service no longer calls
-  `Page.bringToFront` before a picture or an act. A covered window keeps
-  painting (`--disable-backgrounding-occluded-windows`), and focus emulation
-  keeps it acting focused for keys sent through DevTools.
-- **The Outlook carrier's window lives off the screen** (x = 6000) and is
-  never raised.
+  strip and no address bar, so no full address is in a watcher's frame. Every
+  page the service or the Outlook carrier makes goes through `stage.open`.
+- **Which window is which.** The browser does not say which X window is a
+  page's. A new page is made at a place of its own far to the right
+  (`wm.expect`), and the manager sees which window shows up there. A window
+  that already exists (the browser's first, a popup) is asked through
+  DevTools to move to such a place; the manager sees which window asks and
+  leaves it where it is.
+- **The watched page is the front window.** `video.open` makes it so
+  (`stage.watch`). A window it opens is let above it: a sign-in popup is part
+  of what he watches. The browser says who opened a window even when the
+  page asked for `noopener`.
+- **Every other window stays behind the curtain**: a new page, a window
+  another page opens, a window with no opener, the Outlook carrier's.
+- **Nothing else brings a page forward.** In headed mode the service does
+  not call `Page.bringToFront`, and the manager refuses the browser's own
+  asks. A covered window keeps painting
+  (`--disable-backgrounding-occluded-windows`), and focus emulation keeps it
+  acting focused for keys sent through DevTools.
 - **While he drives**, the page's window leaves full screen, so the
-  browser's own toolbar shows inside the picture (87 of the 800 lines). It
-  returns to full screen when he hands back.
-- **A closed address ends the picture.** When the watched page, a tab of its
-  window or a window it opened goes to an address `closedToAgents` names,
-  the stream ends.
+  browser's own toolbar shows inside the picture (87 of the 800 lines), with
+  the page's address. A window that page opens for him is left as the
+  browser made it. The page returns to full screen when he hands back.
+- **The picture ends** when the watched page closes, and when it, a tab of
+  its window or a window it opened goes to an address `closedToAgents`
+  names (`stage.onEnd`).
 
 A Chrome for Testing build draws a bar in every window that says so, full
 screen too. `--test-type=gpu` is the one switch found to leave it out (a bare
 `--test-type` does not in Chromium 156), so only such a build gets it.
 
-When the browser enters full screen it shows "To exit full screen, press and
-hold Esc" for about four seconds. That notice is in the picture when a page
-opens and when he hands back.
+The browser's "To exit full screen, press and hold Esc" notice is one of the
+notices that go behind the curtain: it is never in the picture.
 
 ### The headed profile (`chromium.ts` `headedPrefs`)
 
@@ -284,7 +315,8 @@ bitrate follows that viewer's own link, and the relay stays a pipe.
 - **One page in video at a time.** A caller that asks with `take` gets the
   display; the page that lost it closes with `moved`. Without `take` the
   answer is `busy`. `busy` is also the answer when four engines have
-  viewers.
+  viewers. Opens are decided one at a time, and a page loses the display
+  only once the taker has an engine in hand.
 - **Refusals:** `off` when the setting is off, `no-tools` when the tools are
   not installed, `unsupported` when the display or the engine did not
   start, `refused` for a page at a closed address.
@@ -296,13 +328,14 @@ bitrate follows that viewer's own link, and the relay stays a pipe.
   `ComputerSessionRow`), since its session is stopped. Stop does nothing on
   it; Hand back ends it.
 - **Driving.** `work.browser.drive` tells the box (`boxDriveChanged`): the
-  page's window shows the toolbar, and the relay passes his input on a
-  `drive` stream. At hand back the feed lets go of every key he holds, the
-  page returns to full screen, and his stream is a watch stream.
+  page's window shows the toolbar when it is the page on the display, and
+  the relay passes his input on a `drive` stream. At hand back the feed lets
+  go of every key he holds, the page returns to full screen, and his stream
+  is a watch stream.
 - **Paste** (`video.paste`). The text goes to xclip on its stdin and is put
-  on the display's clipboard, then Ctrl+V is pressed. The clipboard is
-  emptied 1.5 seconds later, and at once when he hands back, so nothing he
-  pasted is there for an agent to paste again.
+  on the display's clipboard, then Ctrl+V is pressed, unless he handed back
+  meanwhile. The clipboard is emptied 1.5 seconds later, and at once when he
+  hands back, so nothing he pasted is there for an agent to paste again.
 
 ## Settings
 
@@ -357,6 +390,15 @@ the script's.
   existing rule for the local socket, not a new one. The only source that
   takes input is the box's, and the box's local socket gets no stream.
 
+- A menu or a notice of a page behind the curtain can be in one frame: the
+  display shows it before the manager hears of it and puts it behind.
+- While he drives, a menu another thread's agent opens within two seconds of
+  his own input is taken for his and shows over his page. Nothing on the
+  display says whose a menu is.
+- A headless start after a headed one takes back the preferences the headed
+  start wrote. What he changed in the browser's own settings while he drove
+  stays.
+
 ## Tests
 
 - `src/shared/video/nsl1.parity.test.ts`, `src/shared/video/access.test.ts`
@@ -372,6 +414,14 @@ the script's.
   manifest's pins
 - `src/main/server/work/browser/box/`: `display.test.ts`, `chromium.test.ts`,
   `engine.test.ts` and `video.test.ts` with fakes
+- The same folder, live where the tools are installed
+  (`TEMP_CODE_TEST_VIDEO_TOOLS=<userData>`, else skipped): `headed.test.ts`
+  (the window manager and the stage against the real Xorg, Chromium and
+  engine: the page alone at 1280×800, what stays behind the curtain, the
+  keyboard, menus, the closed page), `headedService.test.ts` (the service's
+  acts on covered pages), `videoLive.test.ts` (frames, input, paste, take
+  and hand back through the relay). `TC_BOX_HEADED=1` runs the box browser's
+  older tests headed.
 
 The live tests need the tools installed and skip without them. Point them at
 an install with `TEMP_CODE_TEST_VIDEO_TOOLS=<userData>`:

@@ -61,21 +61,35 @@ export interface BoxVideoDeps {
 export class BoxVideo implements VideoSource {
   /** the feed and the start of each open stream, by its id */
   private readonly feeds = new Map<string, { feed: EngineFeed; since: number }>()
-  private clipboard: { kill(): void } | null = null
+  /** feeds handed to the RPC whose streams are not open yet, by the page each will show: a second open must see them */
+  private readonly granted = new Map<EngineFeed, string>()
+  /** every xclip that holds the clipboard now */
+  private readonly clipboards = new Set<{ kill(): void }>()
   private clearing: NodeJS.Timeout | null = null
   private readonly offs: (() => void)[] = []
+  /** one open at a time: which page has the display is decided and acted on before the next is asked */
+  private opening: Promise<unknown> = Promise.resolve()
 
   constructor(private readonly deps: BoxVideoDeps) {
     this.offs.push(deps.relay.onChange(() => this.changed()))
-    // The watched page went to an address that is closed to agents: what he is shown of it ends.
-    this.offs.push(deps.stage.onClosedHost((targetId) => void deps.relay.endWhere((s) => s.tag === boxTag(targetId), 'ended')))
+    // The watched page went to an address that is closed to agents, or closed: what he is shown of it ends.
+    this.offs.push(deps.stage.onEnd((targetId) => void deps.relay.endWhere((s) => s.tag === boxTag(targetId), 'ended')))
   }
 
   private now(): number {
     return (this.deps.now ?? Date.now)()
   }
 
-  async open(ask: VideoAsk): Promise<VideoOpening | null> {
+  open(ask: VideoAsk): Promise<VideoOpening | null> {
+    const run = this.opening.then(
+      () => this.openOne(ask),
+      () => this.openOne(ask)
+    )
+    this.opening = run.catch(() => {})
+    return run
+  }
+
+  private async openOne(ask: VideoAsk): Promise<VideoOpening | null> {
     const { deps } = this
     const target = deps.pageOf(ask.thread)
     // not a page of this browser: another source may know the thread
@@ -86,11 +100,9 @@ export class BoxVideo implements VideoSource {
     if (url === null) return null
     if (deps.closed(url)) return this.refuse('refused')
     const tag = boxTag(target)
-    const others = deps.relay.list().filter((s) => isBox(s) && s.tag !== tag)
-    if (others.length) {
-      if (!ask.take) return this.refuse('busy')
-      deps.relay.endWhere((s) => isBox(s) && s.tag !== tag, 'moved')
-    }
+    // another page has the display: one with a stream, or one a stream is being opened for
+    const elsewhere = (): boolean => deps.relay.list().some((s) => isBox(s) && s.tag !== tag) || [...this.granted.values()].some((t) => t !== tag)
+    if (elsewhere() && !ask.take) return this.refuse('busy')
     const pane = deps.paneOf(ask.thread)
     const driving = deps.drives(pane)
     // the relay passes input by what it was told, so it is told at every open: a host that restarted while he drove knows again
@@ -103,6 +115,9 @@ export class BoxVideo implements VideoSource {
       return this.refuse('unsupported')
     }
     if (!lease) return this.refuse('busy')
+    // only now, with an engine in hand, does the page that had the display lose it
+    deps.relay.endWhere((s) => isBox(s) && s.tag !== tag, 'moved')
+    for (const [other, t] of [...this.granted]) if (t !== tag) other.close()
     try {
       await deps.stage.watch(target)
       if (driving) await deps.stage.drive(target)
@@ -112,7 +127,8 @@ export class BoxVideo implements VideoSource {
       return this.refuse('unsupported')
     }
     const scope = ask.drive && driving ? 'drive' : 'watch'
-    const feed = new EngineFeed(lease, scope === 'drive')
+    const feed: EngineFeed = new EngineFeed(lease, scope === 'drive', undefined, { close: () => void this.granted.delete(feed), input: () => deps.stage.touched() })
+    this.granted.set(feed, tag)
     return {
       ok: true,
       feed,
@@ -122,7 +138,10 @@ export class BoxVideo implements VideoSource {
       scope,
       group: pane,
       tag,
-      opened: (stream) => void this.feeds.set(stream, { feed, since: this.now() })
+      opened: (stream) => {
+        this.granted.delete(feed)
+        this.feeds.set(stream, { feed, since: this.now() })
+      }
     }
   }
 
@@ -141,15 +160,21 @@ export class BoxVideo implements VideoSource {
     if (!entry || !display || !tools) throw new Error('This stream takes no paste')
     this.clearClipboard()
     const child = (deps.spawn ?? nodeSpawn)(tools.xclip, ['-selection', 'clipboard', '-in', '-quiet'], { env: { ...displayEnv(display), ...videoToolsEnv(tools) }, stdio: ['pipe', 'ignore', 'ignore'] })
+    // held from the start, so a hand back that comes while the text is still being written empties it too
+    this.clipboards.add(child)
     await new Promise<void>((resolve, reject) => {
       child.once('error', reject)
       child.stdin?.once('error', reject)
       // xclip reads to the end of its input, then holds the clipboard for as long as it runs (`-quiet` keeps it in this process, so ending it empties the clipboard)
       child.stdin?.end(text, () => resolve())
     })
-    this.clipboard = child
     // a beat for xclip to own the clipboard before the browser asks for it
     await new Promise((r) => setTimeout(r, 60))
+    // he may have handed back in that beat: then nothing of his is pressed, and nothing of his stays
+    if (!stream.group || !deps.relay.driving(stream.group)) {
+      this.clearClipboard()
+      throw new Error('forbidden: video.paste needs a stream you are driving')
+    }
     const pressed =
       entry.feed.type({ type: 'keyDown', key: KEY_CONTROL }) &&
       entry.feed.type({ type: 'keyDown', key: KEY_V }) &&
@@ -178,8 +203,9 @@ export class BoxVideo implements VideoSource {
     if (!deps.browser.running || !deps.browser.display) return
     const target = deps.pageOf(pane)
     try {
-      if (owner && target) await deps.stage.drive(target)
-      else if (!owner) await deps.stage.drive(null)
+      // only the page he is shown changes face: a pane he took over from elsewhere shows its toolbar once its stream is opened
+      if (owner && target && deps.stage.watching === target) await deps.stage.drive(target)
+      else if (!owner && (!target || deps.stage.driving === target)) await deps.stage.drive(null)
     } catch (err) {
       deps.log?.(`box video: the page did not change for the driver: ${(err as Error).message}`)
     }
@@ -211,8 +237,8 @@ export class BoxVideo implements VideoSource {
   private clearClipboard(): void {
     if (this.clearing) clearTimeout(this.clearing)
     this.clearing = null
-    this.clipboard?.kill()
-    this.clipboard = null
+    for (const child of this.clipboards) child.kill()
+    this.clipboards.clear()
   }
 
   /** A stream opened, joined or went: forget the gone ones, and with the last gone nothing is watched. */

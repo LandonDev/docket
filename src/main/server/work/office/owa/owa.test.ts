@@ -58,7 +58,7 @@ d('the Outlook on the web carrier, against a page in Outlook\'s shapes', () => {
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'm38-owa-'))
-    // as the host wires it (owa/index.ts): the carrier's page is made by the stage, which keeps a headed one off the screen
+    // as the host wires it (owa/index.ts): the carrier's page is made by the stage, which keeps a headed one behind the display's curtain
     const rig = testBrowser(root, bin!)
     browser = rig.browser
     owa = await serveOwaFixture()

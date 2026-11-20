@@ -94,7 +94,7 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   // Headed for live video when the tools are installed and the setting is on (videoSetting.ts); read at every start of the browser.
   const browser = new BoxChromium({ root, log, busy, video: () => (videoOn() ? videoToolsAt(o.dataDir) : null) })
   if (browser.unavailable()) return null
-  const stage = new BoxStage({ endpoint: () => browser.endpoint(), display: () => browser.display }, { closed: closedToAgents, log })
+  const stage = new BoxStage({ endpoint: () => browser.endpoint(), wm: () => browser.wm }, { closed: closedToAgents, log })
   const paneOf = (thread: string): string => {
     try {
       return o.registry.rootSessionOf(thread) || thread

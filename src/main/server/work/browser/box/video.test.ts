@@ -44,9 +44,13 @@ function rig(over: Partial<BoxVideoDeps> = {}) {
       this.driving = id
       this.driven.push(id)
     },
-    onClosedHost(fn: (id: string) => void) {
+    onEnd(fn: (id: string) => void) {
       this.closedListeners.add(fn)
       return () => this.closedListeners.delete(fn)
+    },
+    touches: 0,
+    touched() {
+      this.touches++
     }
   }
   const leases: (EngineLease & { released: number })[] = []
@@ -178,6 +182,52 @@ describe('the box browser as a source of video', () => {
     expect(r.relay.list().map((s) => s.tag)).toEqual(['box:B'])
     // another viewer of the same page is no taking at all
     expect(await r.ask('b')).toMatchObject({ ok: true })
+  })
+
+  it('decides one open at a time: two pages asked for at once do not both get the display', async () => {
+    const r = rig()
+    const [a, b] = await Promise.all([r.ask('a'), r.ask('b')])
+    expect(a).toMatchObject({ ok: true })
+    expect(b).toEqual({ ok: false, reason: 'busy' })
+    expect(r.stage.watching).toBe('A')
+    expect(r.leases).toHaveLength(1)
+    // nor two that both take it: the second takes it from the first, and the first's feed is let go
+    const r2 = rig()
+    const [c, d] = await Promise.all([r2.ask('a', { take: true }), r2.ask('b', { take: true })])
+    expect([c.ok, d.ok]).toEqual([true, true])
+    expect(r2.stage.watching).toBe('B')
+    expect(r2.relay.list().map((s) => s.tag)).toEqual(['box:B'])
+    expect(r2.leases.map((l) => l.released)).toEqual([1, 0])
+  })
+
+  it('takes the display from a page only with an engine in hand: with none, the page that had it keeps its stream', async () => {
+    const r = rig()
+    await r.ask('a')
+    const first = r.join()
+    r.engines.full = true
+    expect(await r.ask('b', { take: true })).toEqual({ ok: false, reason: 'busy' })
+    r.engines.full = false
+    r.engines.broken = true
+    expect(await r.ask('b', { take: true })).toEqual({ ok: false, reason: 'unsupported' })
+    expect(first.closed).toBeNull()
+    expect(r.stage.watching).toBe('A')
+    expect(r.relay.list().map((s) => s.tag)).toEqual(['box:A'])
+  })
+
+  it('changes a page’s face for the driver only when that page is the one he is shown', async () => {
+    const r = rig()
+    await r.ask('a')
+    // he took over pane b from its own place: its page is not on the display, so nothing of the display changes
+    r.state.owner.add('b')
+    await r.video.driver('b', true)
+    expect(r.stage.driven).toEqual([])
+    expect(r.relay.driving('b')).toBe(true)
+    // its stream, once opened, shows the toolbar
+    await r.ask('b', { take: true, drive: true })
+    expect(r.stage.driving).toBe('B')
+    // pane a handed back meanwhile changes nothing of what is shown
+    await r.video.driver('a', false)
+    expect(r.stage.driving).toBe('B')
   })
 
   it('is busy when every engine has a viewer, and says unsupported when the engine will not start', async () => {
@@ -318,6 +368,24 @@ describe('the box browser as a source of video', () => {
     expect(xclip.killed).toBe(false)
     await vi.advanceTimersByTimeAsync(PASTE_CLEAR_MS)
     expect(xclip.killed).toBe(true)
+  })
+
+  it('presses no paste for a driver who handed back while the text was on its way to the clipboard', async () => {
+    const r = rig()
+    r.state.owner.add('a')
+    const answer = await r.ask('a', { drive: true })
+    if (!answer.ok) throw new Error()
+    r.join()
+    const stream = r.relay.list()[0]
+    vi.useFakeTimers()
+    const pasting = r.video.paste(stream, 'hunter2')
+    const refused = expect(pasting).rejects.toThrow('needs a stream you are driving')
+    // he hands back before the keys are pressed
+    r.state.owner.delete('a')
+    await r.video.driver('a', false)
+    await vi.advanceTimersByTimeAsync(100)
+    await refused
+    expect(r.spawned.every((x) => x.killed)).toBe(true)
   })
 
   it('empties the clipboard at once when he hands back, and when the browser stops', async () => {
