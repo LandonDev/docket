@@ -37,6 +37,8 @@ export interface RoutinesHost {
   threadOfRun(runId: string): string | null
   /** Whether the add-on's server calls this tool read-only (its listing or its hints): only such a tool may be watched by a thread. */
   readOnly(addonId: string, tool: string): boolean
+  /** A thread's messages, oldest first: what was asked and the agent's whole answers (no streamed pieces), to draft a play from. */
+  words(sessionId: string): { by: 'person' | 'agent'; text: string }[]
 }
 
 /** Statuses of a thread that still works or waits to. */
@@ -91,6 +93,10 @@ export function routinesHostPart(deps: WorkPartDeps): void {
     },
     busyBelow: (sessionId) => treeOf(sessionId).some((id) => id !== sessionId && BUSY.has(registry.get(id)?.status ?? '')),
     threadOfRun: (runId) => (db.prepare(`SELECT id FROM sessions WHERE routine_run_id = ? LIMIT 1`).get(runId) as { id: string } | undefined)?.id ?? null,
+    words: (sessionId) =>
+      registry.eventsAfter(sessionId, 0).flatMap(({ event }): { by: 'person' | 'agent'; text: string }[] =>
+        event.type === 'user-text' ? [{ by: 'person', text: event.text }] : event.type === 'assistant-text' && !event.delta ? [{ by: 'agent', text: event.text }] : []
+      ),
     readOnly(addonId, tool) {
       const listed = deps.addons?.tools(addonId)?.tools.find((t) => t.name === tool)
       const hints = deps.addons?.toolHints(addonId)[tool]

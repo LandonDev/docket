@@ -8,7 +8,7 @@ import {
   type RoutineRun
 } from '@shared/contract-work-routines'
 import type { ClientRequest } from '@shared/contract'
-import { handled, NOT_HANDLED, WORK_HOME, workText, type Trigger } from '@shared/work'
+import { handled, NOT_HANDLED, WORK_HOME, workText, type Trigger, type WorkScope } from '@shared/work'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
 import { outboxHostOf } from '../outbox/ctx'
 import { RoutinesEngine, triggerWords, type EngineDeps } from './engine'
@@ -16,12 +16,16 @@ import { routinesHost, type RoutinesHost } from './host'
 import { knownZone, nextAt } from './schedule'
 import { ensureRoutineTables, type Cursor } from './store'
 import { routineMentions } from './mentions'
+import { handlePlays, playTools } from './playMethods'
+import { PlayStore } from './plays'
 
 /**
  * The routines pillar (docs/agents/work-routines.md): the scheduler and its
  * four triggers (engine.ts), the rows (store.ts), the methods a screen
  * calls, and two tools: `watch_create`, which an agent uses to be woken when
- * a read changes, and `routine_propose`, which only offers.
+ * a read changes, and `routine_propose`, which only offers. And the plays
+ * (plays.ts, playMethods.ts): work he starts by hand, which a routine may
+ * run.
  */
 
 /** A thread may keep this many watches going at once. */
@@ -93,6 +97,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Ret
   const now = e.clock()
   const p = (req as { params?: Record<string, unknown> }).params ?? {}
   const mine = (id: unknown) => store.get(String(id)) ?? refuse(`no routine ${String(id)}`)
+  if (req.method.startsWith('work.routines.play')) return handlePlays(req, ctx, by, routinesSeams.current?.host ?? routinesHost()!, now)
   switch (req.method) {
     case 'work.routines.list': {
       const routines: RoutineRow[] = store.list(p.workspaceId as string | undefined).map((r) => e.row(r))
@@ -109,7 +114,12 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Ret
       const host = routinesSeams.current?.host ?? routinesHost()!
       if (q.workspaceId !== WORK_HOME && !host.workspace(q.workspaceId)) refuse(`no workspace ${q.workspaceId}`)
       const t = checked(q.trigger, q.workspaceId, host, now)
-      const fields = { workspaceId: q.workspaceId, projectId: q.projectId ?? null, kind: kindOf(q.ends), name: q.name, prompt: q.prompt, model: q.model ?? null, reasoning: q.reasoning ?? null, trigger: t.trigger, ends: q.ends, nextAt: t.nextAt, cursor: t.cursor }
+      if (q.playId) {
+        const play = new PlayStore(ctx.db).get(q.playId)
+        if (!play || play.proposed || play.workspaceId !== q.workspaceId) refuse(`no play ${q.playId} in this workspace`)
+        if (play!.takes.length) refuse(`“${play!.name}” takes ${play!.takes.join(', ')}: a routine runs only a play that takes nothing`)
+      } else if (!q.prompt) refuse('say what it does, or pick a play for it to run')
+      const fields = { workspaceId: q.workspaceId, projectId: q.projectId ?? null, kind: kindOf(q.ends), name: q.name, prompt: q.prompt, playId: q.playId ?? null, model: q.model ?? null, reasoning: q.reasoning ?? null, trigger: t.trigger, ends: q.ends, nextAt: t.nextAt, cursor: t.cursor }
       const saved = q.id ? (mine(q.id), store.update(q.id, fields)!) : store.create({ ...fields, createdBy: 'owner' }, now)
       ctx.push({ push: 'work.routines', workspaceId: saved.workspaceId, id: saved.id })
       return handled(e.row(saved))
@@ -168,8 +178,9 @@ const ProposeInput = z.object({
 
 const localZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
-function tools(): WorkTool[] {
+function tools(scope: WorkScope): WorkTool[] {
   return [
+    ...playTools(scope),
     {
       name: 'watch_create',
       description:
@@ -251,5 +262,6 @@ export const routines: WorkModule = {
   },
   workspaceRemoved(workspaceId, ctx) {
     routinesEngine(ctx).store.removeWorkspace(workspaceId)
+    new PlayStore(ctx.db).removeWorkspace(workspaceId)
   }
 }

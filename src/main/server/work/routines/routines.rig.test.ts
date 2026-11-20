@@ -39,7 +39,8 @@ beforeEach(async () => {
       heldIn: () => 0,
       busyBelow: () => false,
       threadOfRun: () => null,
-      readOnly: (addon, tool) => routinesHost()!.readOnly(addon, tool)
+      readOnly: (addon, tool) => routinesHost()!.readOnly(addon, tool),
+      words: () => []
     } satisfies RoutinesHost
   }
   rig = await makeRig({ modules: [outboxModule, routines] })

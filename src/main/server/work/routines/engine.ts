@@ -16,6 +16,7 @@ import type { WorkCtx } from '../modules'
 import type { LifeosHeld } from '../outbox/outbox'
 import { BUSY, type RoutinesHost } from './host'
 import { dueCount, nextAt } from './schedule'
+import { PlayStore } from './plays'
 import { RoutineStore, type Cursor, type Routine } from './store'
 
 /**
@@ -332,7 +333,11 @@ export class RoutinesEngine {
     if (r.once) this.store.end(r.id, 'Ran once')
     this.changed(r)
     try {
-      const text = `${r.prompt}\n\n---\nStarted by the routine “${r.name}”: ${cause}${folded ? ` (${folded + 1} times due since the last run; this one run covers them)` : ''}.${o.detail ? `\n${cut(o.detail)}` : ''}`
+      // A routine that runs a play reads it now, so his last edit of the play is what runs.
+      const play = r.playId ? new PlayStore(this.ctx.db).get(r.playId) : null
+      if (r.playId && (!play || play.proposed)) throw new Error('its play was removed')
+      const body = play ? [play.instructions.trim(), r.prompt.trim()].filter(Boolean).join('\n\n') : r.prompt
+      const text = `${body}\n\n---\nStarted by the routine “${r.name}”${play ? `, which runs the play “${play.name}”` : ''}: ${cause}${folded ? ` (${folded + 1} times due since the last run; this one run covers them)` : ''}.${o.detail ? `\n${cut(o.detail)}` : ''}`
       const sessionId = await this.ctx.threads.start({
         workspaceId: r.workspaceId,
         ...(r.projectId ? { projectId: r.projectId } : {}),
@@ -625,6 +630,7 @@ export class RoutinesEngine {
       kind: r.kind,
       name: r.name,
       prompt: r.prompt,
+      playId: r.playId,
       model: r.model,
       reasoning: r.reasoning,
       trigger: r.trigger,

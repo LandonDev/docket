@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { nanoid } from 'nanoid'
 import type { RoutineEnds, RoutineKind, RoutineRun, RoutineRunState } from '@shared/contract-work-routines'
 import { TriggerSchema, type Trigger } from '@shared/work'
+import { ensurePlayTable } from './plays'
 
 /**
  * The routines' rows (architecture §3.1). Every change is written the
@@ -57,6 +58,10 @@ export function ensureRoutineTables(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS work_routine_runs_routine ON ${RUNS_TABLE}(routine_id, fired_at);
     CREATE INDEX IF NOT EXISTS work_routine_runs_state ON ${RUNS_TABLE}(state);
   `)
+  // Added with plays: the play a routine runs. A column added, never a table remade, so the build before still reads it.
+  const columns = (db.prepare(`PRAGMA table_info(${ROUTINES_TABLE})`).all() as { name: string }[]).map((c) => c.name)
+  if (!columns.includes('play_id')) db.exec(`ALTER TABLE ${ROUTINES_TABLE} ADD COLUMN play_id TEXT`)
+  ensurePlayTable(db)
 }
 
 /** A routine as the engine holds it. */
@@ -67,6 +72,8 @@ export interface Routine {
   kind: RoutineKind
   name: string
   prompt: string
+  /** the play each run starts, or null */
+  playId: string | null
   model: string | null
   reasoning: string | null
   trigger: Trigger
@@ -120,6 +127,7 @@ const routineOf = (r: Row): Routine | null => {
     kind: r.kind === 'watch' ? 'watch' : 'routine',
     name: String(r.name),
     prompt: String(r.prompt),
+    playId: (r.play_id as string | null) ?? null,
     model: (r.model as string | null) ?? null,
     reasoning: (r.reasoning as string | null) ?? null,
     trigger: trigger.data as Trigger,
@@ -159,6 +167,7 @@ export interface NewRoutine {
   kind: RoutineKind
   name: string
   prompt: string
+  playId?: string | null
   model?: string | null
   reasoning?: string | null
   trigger: Trigger
@@ -195,8 +204,8 @@ export class RoutineStore {
     const id = nanoid(12)
     this.db
       .prepare(
-        `INSERT INTO ${ROUTINES_TABLE} (id, workspace_id, project_id, kind, name, prompt, model, reasoning, trigger_spec, enabled, until_at, once,
-          resume_session_id, next_at, cursor, proposed, made_in, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO ${ROUTINES_TABLE} (id, workspace_id, project_id, kind, name, prompt, play_id, model, reasoning, trigger_spec, enabled, until_at, once,
+          resume_session_id, next_at, cursor, proposed, made_in, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -205,6 +214,7 @@ export class RoutineStore {
         n.kind,
         n.name,
         n.prompt,
+        n.playId ?? null,
         n.model ?? null,
         n.reasoning ?? null,
         JSON.stringify(n.trigger),
@@ -226,7 +236,7 @@ export class RoutineStore {
   update(id: string, n: Omit<NewRoutine, 'createdBy' | 'madeIn' | 'resumeSessionId'>): Routine | null {
     this.db
       .prepare(
-        `UPDATE ${ROUTINES_TABLE} SET workspace_id = ?, project_id = ?, kind = ?, name = ?, prompt = ?, model = ?, reasoning = ?, trigger_spec = ?,
+        `UPDATE ${ROUTINES_TABLE} SET workspace_id = ?, project_id = ?, kind = ?, name = ?, prompt = ?, play_id = ?, model = ?, reasoning = ?, trigger_spec = ?,
           until_at = ?, once = ?, next_at = ?, cursor = ?, proposed = 0, enabled = 1, ended = 0 WHERE id = ?`
       )
       .run(
@@ -235,6 +245,7 @@ export class RoutineStore {
         n.kind,
         n.name,
         n.prompt,
+        n.playId ?? null,
         n.model ?? null,
         n.reasoning ?? null,
         JSON.stringify(n.trigger),
@@ -276,6 +287,11 @@ export class RoutineStore {
   }
 
   /** Every routine of the workspace, and their runs. Their threads stay. */
+  /** The routines that run this play. */
+  runningPlay(playId: string): Routine[] {
+    return (this.db.prepare(`SELECT * FROM ${ROUTINES_TABLE} WHERE play_id = ?`).all(playId) as Row[]).flatMap((r) => routineOf(r) ?? [])
+  }
+
   removeWorkspace(workspaceId: string): string[] {
     const ids = (this.db.prepare(`SELECT id FROM ${ROUTINES_TABLE} WHERE workspace_id = ?`).all(workspaceId) as { id: string }[]).map((r) => r.id)
     for (const id of ids) this.remove(id)

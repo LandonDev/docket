@@ -95,7 +95,8 @@ function makeRig(): Rig {
     heldIn: (id, o) => (o?.drafts === false ? rig.heldActs : rig.held).get(id) ?? 0,
     busyBelow: (id) => [...sessions.values()].some((t) => t.parentId === id && ['running', 'starting', 'queued', 'waiting', 'watching'].includes(t.status)),
     threadOfRun: (runId) => [...sessions.values()].find((t) => t.routineRunId === runId)?.id ?? null,
-    readOnly: () => true
+    readOnly: () => true,
+    words: () => []
   }
   const make = (): RoutinesEngine => {
     const deps: EngineDeps = {
