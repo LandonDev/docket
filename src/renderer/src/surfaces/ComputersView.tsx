@@ -42,7 +42,7 @@ function LivePicture({ tile }: { tile: ComputerTile }) {
   const seen = useDocumentVisible();
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
-  const stream = useLiveStream(tile.entry, seen, box, measure, { take: false });
+  const stream = useLiveStream(tile.entry, seen, box, measure, { take: false, drive: false });
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   const label = tileLabel(tile);

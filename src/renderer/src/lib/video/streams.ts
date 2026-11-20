@@ -1,4 +1,5 @@
 import type { ServerPush } from "@server/shared/contract";
+import type { InputEvent } from "@server/shared/video/nsl1";
 import { VIDEO_MIN_EDGE, type VideoCloseFace, type VideoOpenAnswer } from "@server/shared/contract-video";
 import { registry } from "../connection/registry";
 import { afterClose, streamUrl, type FromWorker, type ToWorker } from "./messages";
@@ -31,6 +32,8 @@ export interface StreamWant {
   edge: number;
   /** this place is the thread on screen: it takes the box's one display from another page */
   take: boolean;
+  /** he drives this page: the stream is one his pointer and keys go down */
+  drive?: boolean;
 }
 
 export interface StreamHandle {
@@ -42,6 +45,10 @@ export interface StreamHandle {
   onCount(fn: (frames: number, fps: number) => void): () => void;
   /** the agent's click, as shares of the picture */
   onClick(fn: (x: number, y: number) => void): () => void;
+  /** one of his input events; it goes nowhere unless the host gave a stream he drives */
+  input(event: InputEvent): void;
+  /** his clipboard's text into the page he drives, as a paste */
+  paste(text: string): Promise<void>;
   /** opens a stream that is over once more */
   retry(): void;
   release(): void;
@@ -80,7 +87,7 @@ interface Entry {
   wants: Map<object, StreamWant>;
   view: StreamView;
   /** the host's own id of the open stream, the edge it was asked at and the long edge it answered */
-  opened: { stream: string; edge: number; take: boolean; long: number } | null;
+  opened: { stream: string; edge: number; take: boolean; drive: boolean; long: number } | null;
   /** times it was opened again since a frame was last drawn */
   tries: number;
   /** moves with every open: an answer to an older one is dropped */
@@ -135,6 +142,14 @@ export class VideoStreams {
       show: (canvas) => this.show(mine, canvas),
       onCount: (fn) => (mine.counts.add(fn), () => void mine.counts.delete(fn)),
       onClick: (fn) => (mine.clicks.add(fn), () => void mine.clicks.delete(fn)),
+      input: (event) => {
+        if (mine.opened?.drive && mine.view.status === "live" && this.worker) this.post({ t: "input", stream: mine.id, event });
+      },
+      paste: async (text) => {
+        const stream = mine.opened;
+        if (!stream?.drive || !text) return;
+        await this.deps.link(mine.host)?.request("video.paste", { stream: stream.stream, text });
+      },
       retry: () => {
         if (mine.view.status !== "over" || this.entries.get(id) !== mine) return;
         mine.tries = 0;
@@ -144,6 +159,8 @@ export class VideoStreams {
         if (released) return;
         released = true;
         mine.wants.delete(token);
+        // nobody drives it from here any more: the host has made it a watch stream, and the next driver asks for a new one
+        if (mine.opened?.drive && !this.want(mine).drive) mine.opened.drive = false;
         if (mine.wants.size || this.entries.get(id) !== mine) return;
         mine.linger = setTimeout(() => this.drop(mine), LINGER_MS);
       },
@@ -153,11 +170,13 @@ export class VideoStreams {
   private want(entry: Entry): StreamWant {
     let edge = VIDEO_MIN_EDGE;
     let take = false;
+    let drive = false;
     for (const w of entry.wants.values()) {
       edge = Math.max(edge, w.edge);
       take ||= w.take;
+      drive ||= !!w.drive;
     }
-    return { edge, take };
+    return { edge, take, drive };
   }
 
   /** A place joined a stream that is there already: it is opened again only when that gets the place more than it has. */
@@ -169,6 +188,8 @@ export class VideoStreams {
       if (entry.view.face === "picture" && want.take && !(opened?.take ?? false) && !this.broken) this.open(entry);
       return;
     }
+    // he took over: a watch stream is never turned into one that takes input, so a new one is asked for
+    if (opened && want.drive && !opened.drive) return this.open(entry);
     // larger only when the edge we asked for is what held the picture down: the box's page comes at one size whatever is asked
     if (opened && want.edge > opened.edge * REGROW && opened.long <= opened.edge && opened.long >= opened.edge - 2) this.open(entry);
   }
@@ -205,7 +226,7 @@ export class VideoStreams {
     if (entry.view.status === "over") this.set(entry, { status: "opening" });
     const want = this.want(entry);
     link
-      .request<VideoOpenAnswer>("video.open", { threadId: entry.key, maxEdge: want.edge, ...(want.take ? { take: true } : {}) })
+      .request<VideoOpenAnswer>("video.open", { threadId: entry.key, maxEdge: want.edge, ...(want.take ? { take: true } : {}), ...(want.drive ? { drive: true } : {}) })
       .then((answer) => {
         if (entry.round !== round || !this.byId.has(entry.id)) {
           if (answer.ok) void link.request("video.close", { stream: answer.stream }).catch(() => undefined);
@@ -213,7 +234,7 @@ export class VideoStreams {
         }
         // every refusal gives way to the picture, which says what there is to say (Screen Recording off, no window)
         if (!answer.ok) return this.set(entry, { status: "over", face: "picture" });
-        entry.opened = { stream: answer.stream, edge: want.edge, take: want.take, long: Math.max(answer.width, answer.height) };
+        entry.opened = { stream: answer.stream, edge: want.edge, take: want.take, drive: !!want.drive, long: Math.max(answer.width, answer.height) };
         if (entry.view.status === "opening") this.set(entry, { status: "opening", width: answer.width, height: answer.height });
         this.post({ t: "open", stream: entry.id, url: streamUrl(rpcUrl, answer.stream, answer.ticket) });
       })

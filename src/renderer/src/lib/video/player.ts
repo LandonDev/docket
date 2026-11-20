@@ -1,4 +1,4 @@
-import { encodeAck, h264Codec, parseFrame, SUBPROTOCOL } from "@server/shared/video/nsl1";
+import { encodeAck, encodeInput, h264Codec, parseFrame, SUBPROTOCOL, type InputEvent } from "@server/shared/video/nsl1";
 import { ArrivalClock, Presenter, type Decoded } from "./pacing";
 
 /**
@@ -135,6 +135,19 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
 
   hide(surface: Surface<F>): void {
     this.surfaces.delete(surface);
+  }
+
+  /**
+   * One of his input events, numbered for the source's connection. Nothing is sent before the first frame has said
+   * that number, and the host passes it on only on a stream he drives.
+   */
+  input(event: InputEvent): void {
+    if (this.over || !this.generation || this.socket.readyState !== OPEN) return;
+    try {
+      this.socket.send(encodeInput(event, this.generation));
+    } catch {
+      // an event the wire does not take, or a socket that is going
+    }
   }
 
   /** One tick of the frame clock. True when another is wanted. */

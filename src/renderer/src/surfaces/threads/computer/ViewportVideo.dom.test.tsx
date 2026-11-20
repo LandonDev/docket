@@ -7,7 +7,7 @@ import { registry } from "../../../lib/connection/registry";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 import type { StreamHandle, StreamView, StreamWant } from "../../../lib/video/streams";
 import { videoEdge } from "../../../lib/video/support";
-import { ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, Viewport, ViewportLine, liveFace, streamSize, useLiveStream } from "./Viewport";
+import { ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./Viewport";
 
 /** The window's streams, stood in for: each acquire is kept, and the test says what its stream does. */
 const h = vi.hoisted(() => ({ supported: true, acquired: [] as FakeStream[] }));
@@ -24,6 +24,8 @@ interface FakeStream {
   hidden: number;
   retried: number;
   released: number;
+  inputs: unknown[];
+  pasted: string[];
   set(view: StreamView): void;
 }
 
@@ -43,6 +45,8 @@ vi.mock("../../../lib/video/streams", () => ({
         hidden: 0,
         retried: 0,
         released: 0,
+        inputs: [],
+        pasted: [],
         set(view) {
           stream.state = view;
           for (const fn of [...stream.listeners]) fn();
@@ -55,6 +59,8 @@ vi.mock("../../../lib/video/streams", () => ({
         show: (canvas) => (stream.shown.push(canvas), () => void stream.hidden++),
         onCount: (fn) => (stream.counts.add(fn), () => void stream.counts.delete(fn)),
         onClick: (fn) => (stream.clicks.add(fn), () => void stream.clicks.delete(fn)),
+        input: (event) => void stream.inputs.push(event),
+        paste: async (text) => void stream.pasted.push(text),
         retry: () => void stream.retried++,
         release: () => void stream.released++,
       };
@@ -111,10 +117,11 @@ const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
 const entry = (key = "s1"): ComputerEntry => ({ host: "box", row: row({ threadId: key }), previewable: true, previewHost: "box", previewKey: key });
 const flush = () => act(async () => {});
 
-function Live({ entry: en, run, take }: { entry: ComputerEntry; run: boolean; take?: boolean }) {
+function Live({ entry: en, run, take, drive }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
-  const stream = useLiveStream(en, run, box, root, take === undefined ? undefined : { take });
+  const stream = useLiveStream(en, run, box, root, take === undefined && drive === undefined ? undefined : { take, drive });
+  useDrivingInput(stream, box);
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   return (
@@ -130,10 +137,11 @@ function Live({ entry: en, run, take }: { entry: ComputerEntry; run: boolean; ta
   );
 }
 
-function mount(props: { run?: boolean; take?: boolean; entry?: ComputerEntry } = {}) {
-  const tree = (p: { run?: boolean; take?: boolean; entry?: ComputerEntry }) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} />;
+type MountProps = { run?: boolean; take?: boolean; drive?: boolean; entry?: ComputerEntry };
+function mount(props: MountProps = {}) {
+  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} />;
   const view = render(tree(props));
-  return { ...view, again: (p: { run?: boolean; take?: boolean; entry?: ComputerEntry }) => view.rerender(tree(p)) };
+  return { ...view, again: (p: MountProps) => view.rerender(tree(p)) };
 }
 const box = () => screen.getByRole("img");
 const mode = () => screen.getByTestId("section").dataset.mode;
@@ -258,4 +266,85 @@ describe("the live viewport, as video", () => {
     expect(box().querySelector("canvas")!.className).toContain("invisible");
     expect(h.acquired[1].shown).toHaveLength(1);
   });
+
+describe("driving the page from the picture", () => {
+  const owned = (): ComputerEntry => ({ ...entry(), row: { ...entry().row, driver: "owner" } });
+
+  it("asks for a stream he drives only for a page he drives, and only from a place that drives", async () => {
+    mount();
+    await flush();
+    expect(h.acquired[0].want.drive).toBe(false);
+    cleanup();
+    h.acquired.length = 0;
+    mount({ entry: owned() });
+    await flush();
+    expect(h.acquired[0].want.drive).toBe(true);
+    // a place that only shows it (the Computer section, a tile)
+    cleanup();
+    h.acquired.length = 0;
+    mount({ entry: owned(), drive: false });
+    await flush();
+    expect(h.acquired[0].want.drive).toBe(false);
+  });
+
+  it("makes the picture his keyboard and pointer once its video is live: a box that takes focus, with no full view to open", async () => {
+    mount({ entry: owned() });
+    await flush();
+    const stream = h.acquired[0];
+    // nothing to act on before a frame is on screen
+    expect(screen.queryByRole("application")).toBeNull();
+    await act(async () => stream.set({ status: "live", width: 1280, height: 800 }));
+    const box = screen.getByRole("application", { name: "Live view of Concur in Chromium" });
+    expect(box.tabIndex).toBe(0);
+    expect(box.className).toContain("focus-ring-held");
+    expect(box.dataset.driving).toBe("");
+    box.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 400, right: 640, bottom: 400, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.keyDown(box, { code: "KeyA" });
+    fireEvent.keyUp(box, { code: "KeyA" });
+    fireEvent.pointerDown(box, { button: 0, clientX: 320, clientY: 100 });
+    fireEvent.pointerUp(box, { button: 0, clientX: 320, clientY: 100 });
+    expect(stream.inputs).toEqual([
+      { type: "keyDown", key: 4, buttons: 0, modifiers: 0 },
+      { type: "keyUp", key: 4, buttons: 0, modifiers: 0 },
+      { type: "buttonDown", button: 1, x: 0.5, y: 0.25, buttons: 1, modifiers: 0 },
+      { type: "buttonUp", button: 1, x: 0.5, y: 0.25, buttons: 0, modifiers: 0 },
+    ]);
+    // a key that is the page's is stopped here: the app does nothing with it
+    const down = new KeyboardEvent("keydown", { code: "KeyK", bubbles: true, cancelable: true });
+    box.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+  });
+
+  it("lets go of everything he holds when the picture loses the keyboard, and when he hands back", async () => {
+    const view = mount({ entry: owned() });
+    await flush();
+    const stream = h.acquired[0];
+    await act(async () => stream.set({ status: "live", width: 1280, height: 800 }));
+    const box = screen.getByRole("application");
+    fireEvent.keyDown(box, { code: "ShiftLeft" });
+    fireEvent.blur(box);
+    expect(stream.inputs.at(-1)).toEqual({ type: "releaseAll" });
+    // he hands back: the row is the agent's once more, and the picture is no keyboard (the host lets go of his keys itself)
+    view.again({ entry: entry() });
+    await flush();
+    expect(screen.queryByRole("application")).toBeNull();
+    const sent = stream.inputs.length;
+    fireEvent.keyDown(screen.getByRole("img"), { code: "KeyA" });
+    expect(stream.inputs).toHaveLength(sent);
+  });
+
+  it("hands a paste to the host as his clipboard's text", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: async () => "hunter2" } });
+    mount({ entry: owned() });
+    await flush();
+    const stream = h.acquired[0];
+    await act(async () => stream.set({ status: "live", width: 1280, height: 800 }));
+    const box = screen.getByRole("application");
+    fireEvent.keyDown(box, { code: "ControlLeft", ctrlKey: true });
+    fireEvent.keyDown(box, { code: "KeyV", ctrlKey: true });
+    await flush();
+    expect(stream.pasted).toEqual(["hunter2"]);
+    expect(stream.inputs.filter((e) => (e as { key?: number }).key === 25)).toEqual([]);
+  });
+});
 });

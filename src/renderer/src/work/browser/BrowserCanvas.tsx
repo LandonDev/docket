@@ -14,7 +14,7 @@ import { stopComputer, useComputerEntries, type ComputerEntry } from "../../lib/
 import { thisDesktopInLine } from "../../lib/native";
 import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
-import { ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
+import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useDrivingInput, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
 import { openLightbox } from "../../chrome/lightboxStore";
 import { sharpWidth } from "../../lib/video/support";
 import { sayError } from "../canvas/frame";
@@ -321,6 +321,8 @@ const liveLabel = (entry: ComputerEntry): string => {
  */
 function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof useLiveStream>; box: RefObject<HTMLDivElement | null>; label: string; onOpen?: (from: DOMRect) => void }) {
   const face = liveFace(stream, onOpen);
+  // while he drives, the picture is his way into the page: his pointer and keys go down the stream
+  useDrivingInput(stream, box);
   const size = streamSize(stream.state) ?? { width: 16, height: 10 };
   const ended = stream.state.status === "ended" ? stream.state : null;
   // Bones only while a first frame is on its way: a stream that ended or failed leaves the empty well over its line and Retry.
@@ -349,7 +351,7 @@ function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof us
           {inside}
         </button>
       ) : (
-        <div ref={box} role="img" aria-label={label} data-face="live" className="relative w-full overflow-hidden rounded-lg bg-card" style={shape}>
+        <div ref={box} {...(face.driving ? DRIVEN : { role: "img" })} aria-label={label} data-face="live" className={cn("relative w-full overflow-hidden rounded-lg bg-card", face.driving && DRIVEN_CLASS)} style={shape}>
           {inside}
         </div>
       )}

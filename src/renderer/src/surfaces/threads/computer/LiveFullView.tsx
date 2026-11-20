@@ -4,7 +4,8 @@ import { TruncateTip } from "@renderer/components/tip";
 import { useComputer, useComputers, type ComputerTile } from "../../../lib/computers";
 import { sharpSize } from "../../../lib/video/support";
 import { ComputerControls } from "./ComputerControls";
-import { ENDED_WORDS, RETRY_ENDS, ViewportLine, liveFace, streamSize, useLiveStream, type LiveStream } from "./Viewport";
+import { cn } from "../../../lib/cn";
+import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, RETRY_ENDS, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
 
 /**
  * The full view of a computer being driven (docs/DESIGN.md "Computers"):
@@ -50,7 +51,14 @@ export function FullView({ tile, all, stream, room, name, boxRef, picture, dpr =
   return (
     <div data-slot="live-full-view" className="flex flex-col gap-2 rounded-2xl bg-popover p-3 text-popover-foreground shadow-overlay ring-1 ring-border" style={{ width: size.width + PAD * 2 }}>
       {tile && !over ? (
-        <div ref={boxRef} role="img" aria-label={name} data-face="live" className="relative overflow-hidden rounded-lg bg-card" style={{ width: size.width, height: size.height }}>
+        <div
+          ref={boxRef}
+          {...(face.driving ? DRIVEN : { role: "img" })}
+          aria-label={name}
+          data-face="live"
+          className={cn("relative overflow-hidden rounded-lg bg-card", face.driving && DRIVEN_CLASS)}
+          style={{ width: size.width, height: size.height }}
+        >
           {face.drawn ? null : <Skeleton className="absolute inset-0 rounded-lg" />}
           {picture ?? face.picture}
           <div className="pointer-events-none absolute inset-0">{face.mark}</div>
@@ -95,6 +103,7 @@ export function LiveFullView({ host, threadId, name }: { host: string; threadId:
   }, []);
   // the thread on screen is the one he opened this from: it takes the display as its own place does
   const stream = useLiveStream(tile?.entry ?? null, true, box, measure);
+  useDrivingInput(stream, box);
   return (
     // the lightbox's own room: the window less its inset and the arrows' gutters
     <div ref={measure} className="flex h-[calc(100vh-112px)] w-[calc(100vw-160px)] items-center justify-center">

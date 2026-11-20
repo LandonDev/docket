@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeFrame, parseAck } from "@server/shared/video/nsl1";
+import { encodeFrame, parseAck, parseHeader, parseInput } from "@server/shared/video/nsl1";
 import { MAX_PENDING, STALL_MS, StreamPlayer, type DecoderConfig, type PlayerDeps, type PlayerFault, type PlayerSocket, type Surface } from "./player";
 
 interface FakeFrame {
@@ -257,5 +257,26 @@ describe("a live stream in the worker", () => {
     // and nothing is said twice
     r.player.close();
     expect(r.closed).toHaveLength(1);
+  });
+
+  it("sends his input numbered for the source's connection, and nothing before a frame has said that number", () => {
+    const r = rig();
+    r.player.input({ type: "keyDown", key: 4 });
+    expect(r.socket().sent).toEqual([]);
+    r.send(1, { generation: 7 });
+    const before = r.socket().sent.length;
+    r.player.input({ type: "keyDown", key: 4, modifiers: 2 });
+    r.player.input({ type: "pointerMove", x: 0.5, y: 0.25 });
+    const [key, move] = r.socket().sent.slice(before);
+    expect(parseHeader(key)).toMatchObject({ generation: 7, sequence: 0 });
+    expect(parseInput(key)).toMatchObject({ type: "keyDown", key: 4, modifiers: 2 });
+    expect(parseInput(move).type).toBe("pointerMove");
+    // an event the wire does not take is dropped, and breaks nothing
+    r.player.input({ type: "keyDown", key: -1 });
+    expect(r.socket().sent).toHaveLength(before + 2);
+    expect(r.closed).toEqual([]);
+    r.player.close();
+    r.player.input({ type: "keyUp", key: 4 });
+    expect(r.socket().sent).toHaveLength(before + 2);
   });
 });

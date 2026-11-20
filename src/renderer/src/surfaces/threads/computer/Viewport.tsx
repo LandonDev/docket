@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import type { ComputerPreviewEndReason, HistoryPictureNone } from "@server/shared/contract-computer";
 import { Button } from "@renderer/components/ui/button";
 import { CONSOLE } from "@renderer/components/ui/console";
@@ -7,7 +7,10 @@ import { FADE_IN } from "@renderer/components/ui/reveal";
 import { cn } from "@renderer/lib/cn";
 import { CLICK_MARK } from "../../../lib/ease";
 import { useComputerPreview, type PreviewState } from "../../../lib/computerPreview";
-import { useComputerVideo } from "../../../lib/computerVideo";
+import { loadToast } from "@renderer/components/ui/toaster";
+import { useComputerVideo, type VideoDrive } from "../../../lib/computerVideo";
+import { IS_MAC } from "../../../lib/platform";
+import { VideoInput, attachInput } from "../../../lib/video/videoInput";
 import { sharpWidth } from "../../../lib/video/support";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 
@@ -97,8 +100,11 @@ export const pictureClass = (drawn: boolean): string =>
   cn("block size-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline", !drawn && "invisible");
 
 export type ViewportFace =
-  /** the live stream: `picture` is the canvas (a still in a fixture); a click opens the full view from the box */
-  | { kind: "live"; picture: ReactNode; drawn: boolean; mark?: ReactNode; onOpen?: (from: DOMRect) => void }
+  /**
+   * the live stream: `picture` is the canvas (a still in a fixture); a click opens the full view from the box.
+   * `driving`: he drives the page from this picture, so the box takes the keyboard and his pointer, and opens nothing.
+   */
+  | { kind: "live"; picture: ReactNode; drawn: boolean; mark?: ReactNode; onOpen?: (from: DOMRect) => void; driving?: boolean }
   /** a kept picture; `dim` while the next one is on its way; a click opens the lightbox from the box */
   | { kind: "picture"; src: string; dim?: boolean; onOpen?: (from: DOMRect) => void }
   /** what the model read, where there is no picture */
@@ -190,6 +196,16 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
       {face.kind === "live" ? <div className="pointer-events-none absolute inset-0">{face.mark}</div> : null}
     </div>
   );
+  if (face.kind === "live" && face.driving) {
+    return (
+      <div {...wrap}>
+        <div ref={ref as Ref<HTMLDivElement>} {...DRIVEN} aria-label={label} data-face="live" data-frames={frames} data-marks={marks} className={cn(boxClass, DRIVEN_CLASS)} style={boxStyle}>
+          {picture}
+        </div>
+        {below}
+      </div>
+    );
+  }
   if ((face.kind === "picture" || face.kind === "live") && face.onOpen) {
     const open = face.onOpen;
     return (
@@ -228,6 +244,13 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
   );
 });
 
+/**
+ * What the box of a picture he drives carries: it takes the keyboard, and a focus ring marks it for as long as it
+ * holds it, however it took it (a click too). A click outside lets go.
+ */
+export const DRIVEN = { role: "application", tabIndex: 0, "data-driving": "" } as const;
+export const DRIVEN_CLASS = "focus-ring-held cursor-default touch-none select-none";
+
 /** The live stream for the viewport: its state, the canvas and the ring to draw into the live face, and Retry for one that stopped. */
 export interface LiveStream {
   state: PreviewState;
@@ -236,6 +259,29 @@ export interface LiveStream {
   ring: RefObject<HTMLDivElement | null>;
   /** what draws on the canvas: the video's worker, or the 4 fps picture. Each has a canvas of its own, since one handed to the worker takes no other drawing. */
   mode: "video" | "picture";
+  /** his way into the page, while he drives it from this place and its video is live; null otherwise */
+  drive: VideoDrive | null;
+}
+
+/**
+ * While he drives from this place, the box is his keyboard and pointer in
+ * the page (docs/agents/live-video.md "Driving"): its events go down the
+ * stream as input records, a paste goes to the host as text, and everything
+ * he holds is let go when the box loses the keyboard.
+ */
+export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement | null>): boolean {
+  const drive = stream.drive;
+  useEffect(() => {
+    const el = box.current;
+    if (!drive || !el) return;
+    const paste = (): void =>
+      void navigator.clipboard
+        .readText()
+        .then((text) => (text ? drive.paste(text) : undefined))
+        .catch(() => loadToast().then((toast) => toast.error("Couldn't paste into the page")));
+    return attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste }));
+  }, [box, drive]);
+  return drive !== null;
 }
 
 /**
@@ -253,7 +299,7 @@ export function useLiveStream(
   run: boolean,
   box: RefObject<HTMLElement | null>,
   measure: RefObject<HTMLElement | null>,
-  { take = true }: { take?: boolean } = {},
+  { take = true, drive = true }: { take?: boolean; /** false for a place that only shows it: a tile */ drive?: boolean } = {},
 ): LiveStream {
   const pictureCanvas = useRef<HTMLCanvasElement>(null);
   const videoCanvas = useRef<HTMLCanvasElement>(null);
@@ -289,10 +335,11 @@ export function useLiveStream(
   );
 
   const on = run && !!entry && boxWidth > 0;
-  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take });
+  // he drives the page of a row kept for him: its stream is the one his input goes down
+  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take, drive: drive && entry?.row.driver === "owner" });
   const picture = useComputerPreview(entry ?? NO_ENTRY, { run: on && video.gaveWay, boxWidth, canvas: pictureCanvas, box, onClick });
-  if (video.gaveWay) return { state: picture.state, retry: picture.retry, canvas: pictureCanvas, ring, mode: "picture" };
-  return { state: video.state, retry: video.retry, canvas: videoCanvas, ring, mode: "video" };
+  if (video.gaveWay) return { state: picture.state, retry: picture.retry, canvas: pictureCanvas, ring, mode: "picture", drive: null };
+  return { state: video.state, retry: video.retry, canvas: videoCanvas, ring, mode: "video", drive: video.drive };
 }
 
 /** The live face from a stream: its canvas, hidden until the first frame, and the ring a click plays. */
@@ -300,7 +347,9 @@ export function liveFace(stream: LiveStream, onOpen?: (from: DOMRect) => void): 
   const drawn = stream.state.status === "live" && stream.state.drawn;
   // keyed by what draws on it: when video gives way to the picture, the picture gets a canvas nothing was handed off
   const picture = <canvas key={stream.mode} ref={stream.canvas} aria-hidden="true" className={pictureClass(drawn)} />;
+  // while he drives from here the picture is his way into the page, and a click on it is the page's; otherwise
   // the full view opens from a picture that is there to open
+  if (stream.drive) return { kind: "live", drawn, picture, mark: <ClickMark ref={stream.ring} />, driving: true };
   return { kind: "live", drawn, picture, mark: <ClickMark ref={stream.ring} />, ...(onOpen && drawn ? { onOpen } : {}) };
 }
 

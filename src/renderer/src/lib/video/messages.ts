@@ -1,4 +1,5 @@
 import { VIDEO_PATH, VIDEO_RETRIES, videoCloseShows, type VideoCloseFace } from "@server/shared/contract-video";
+import type { InputEvent } from "@server/shared/video/nsl1";
 import type { PlayerFault } from "./player";
 
 /**
@@ -14,7 +15,9 @@ export type ToWorker =
   | { t: "close"; stream: number }
   | { t: "surface"; surface: number; canvas: OffscreenCanvas }
   | { t: "bind"; surface: number; stream: number | null }
-  | { t: "forget"; surface: number };
+  | { t: "forget"; surface: number }
+  /** one of his input events, for a stream he drives */
+  | { t: "input"; stream: number; event: InputEvent };
 
 /** Worker to window. */
 export type FromWorker =

@@ -12,7 +12,9 @@ const still = (app: string, state: string): string => new URL(`../../../../../ma
 const PAGE = { width: 1200, height: 800 };
 const noop = (): void => {};
 
-export const streamOf = (state: PreviewState, mode: LiveStream["mode"] = "video"): LiveStream => ({ state, retry: noop, canvas: { current: null }, ring: { current: null }, mode });
+export const streamOf = (state: PreviewState, mode: LiveStream["mode"] = "video", drive: LiveStream["drive"] = null): LiveStream => ({ state, retry: noop, canvas: { current: null }, ring: { current: null }, mode, drive });
+/** A stream he drives from the place that shows it: its box takes the keyboard. */
+export const driven: NonNullable<LiveStream["drive"]> = { send: noop, paste: async () => undefined };
 const live = (size = PAGE): PreviewState => ({ status: "live", app: "Chromium", window: "Expense report", ...size, drawn: true });
 
 export const tile = (over: Partial<ComputerTile> = {}): ComputerTile => ({
@@ -46,7 +48,7 @@ const base = { all: [], room: ROOM, name: "Live view of Expense report in Chromi
 
 const fixtures: FullViewFixture[] = [
   { name: "The agent drives the box's browser: the picture at its own pixels", props: { ...base, tile: tile(), stream: streamOf(live()), picture: page } },
-  { name: "He drives: the row says so, and offers Hand back alone", props: { ...base, tile: tile({ driving: true, doing: null }), stream: streamOf(live()), picture: page } },
+  { name: "He drives: the row says so, and offers Hand back alone; the picture takes his keys and pointer", props: { ...base, tile: tile({ driving: true, doing: null }), stream: streamOf(live(), "video", driven), picture: page } },
   { name: "A window on a Mac: no driver to speak of, Stop alone", props: { ...base, tile: tile({ browser: false, title: "Tidy the Downloads folder", where: "Landon's MacBook" }), stream: streamOf(live(), "picture"), picture: page } },
   { name: "A narrow window: the picture scaled down whole, the row under it at its width", props: { ...base, room: { width: 420, height: 520 }, tile: tile(), stream: streamOf(live()), picture: page } },
   { name: "On its way: the skeleton in the picture's shape", props: { ...base, tile: tile(), stream: streamOf({ status: "starting", ...PAGE }) } },

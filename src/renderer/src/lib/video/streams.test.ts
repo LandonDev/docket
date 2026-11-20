@@ -338,4 +338,48 @@ describe("the window's streams", () => {
     expect(r.closes()).toEqual(["late"]);
     expect(r.posted.filter((m) => m.t === "open")).toEqual([]);
   });
+
+  it("asks for a stream he drives when a place drives, and a new one each time he takes over", async () => {
+    const r = rig();
+    const watching = r.streams.acquire("box", "t1", { edge: 640, take: true });
+    await settle();
+    expect(r.opens()).toEqual([{ threadId: "t1", maxEdge: 640, take: true }]);
+    // he took over: a watch stream is never turned into a drive stream
+    const driving = r.streams.acquire("box", "t1", { edge: 640, take: true, drive: true });
+    await settle();
+    expect(r.opens()[1]).toEqual({ threadId: "t1", maxEdge: 640, take: true, drive: true });
+    expect(r.closes()).toEqual(["s1"]);
+    // he handed back: the stream plays on as a watch stream, with no new one
+    driving.release();
+    await settle();
+    expect(r.opens()).toHaveLength(2);
+    // and took over again: the host made the old one a watch stream, so a new one is asked for
+    r.streams.acquire("box", "t1", { edge: 640, take: true, drive: true });
+    await settle();
+    expect(r.opens()).toHaveLength(3);
+    expect(r.opens()[2]).toMatchObject({ drive: true });
+    watching.release();
+  });
+
+  it("passes his input and his paste only on a stream he drives that is live", async () => {
+    const r = rig();
+    const watch = r.streams.acquire("box", "t1", { edge: 640, take: true });
+    await settle();
+    r.say({ t: "drawn", stream: 1, width: 1280, height: 800 });
+    watch.input({ type: "keyDown", key: 4 });
+    await watch.paste("hunter2");
+    expect(r.posted.filter((m) => m.t === "input")).toEqual([]);
+    expect(r.calls.filter((c) => c.method === "video.paste")).toEqual([]);
+    const drive = r.streams.acquire("box", "t2", { edge: 640, take: true, drive: true });
+    await settle();
+    // not before a frame is on screen: he cannot act on what he does not see
+    drive.input({ type: "keyDown", key: 4 });
+    expect(r.posted.filter((m) => m.t === "input")).toEqual([]);
+    r.say({ t: "drawn", stream: 2, width: 1280, height: 800 });
+    drive.input({ type: "keyDown", key: 4 });
+    expect(r.posted.at(-1)).toEqual({ t: "input", stream: 2, event: { type: "keyDown", key: 4 } });
+    await drive.paste("hunter2");
+    await drive.paste("");
+    expect(r.calls.filter((c) => c.method === "video.paste").map((c) => c.params)).toEqual([{ stream: "s2", text: "hunter2" }]);
+  });
 });

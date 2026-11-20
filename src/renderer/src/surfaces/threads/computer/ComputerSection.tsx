@@ -297,7 +297,8 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     const timer = setTimeout(() => setHoldTick((n) => n + 1), wait + 16);
     return () => clearTimeout(timer);
   }, [data.entries, heldLead, holdTick, lead, leadId]);
-  const stream = useLiveStream(lead, !pinnedRow && paneShown && docShown, box, root);
+  // the section shows a page he drives; he drives it from the canvas or the full view
+  const stream = useLiveStream(lead, !pinnedRow && paneShown && docShown, box, root, { drive: false });
   const over = stream.state.status === "ended" || stream.state.status === "failed";
 
   // ── kept pictures and read texts ──

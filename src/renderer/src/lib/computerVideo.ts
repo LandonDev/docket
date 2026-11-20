@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PreviewOptions, PreviewState } from "./computerPreview";
 import type { ComputerEntry } from "./computerSessions";
+import type { InputEvent } from "@server/shared/video/nsl1";
 import type { StreamHandle, StreamView } from "./video/streams";
 import { REGROW, REGROW_QUIET_MS, videoEdge, videoSupported } from "./video/support";
 
@@ -20,6 +21,14 @@ import { REGROW, REGROW_QUIET_MS, videoEdge, videoSupported } from "./video/supp
 export interface VideoOptions extends PreviewOptions {
   /** this place is the thread on screen: it takes the box's one display from another page */
   take: boolean;
+  /** he drives this page from this place: the stream is asked for as one his pointer and keys go down */
+  drive?: boolean;
+}
+
+/** His input into the page he drives, while a stream that takes it is live. */
+export interface VideoDrive {
+  send(event: InputEvent): void;
+  paste(text: string): Promise<void>;
 }
 
 let loading: Promise<typeof import("./video/streams")> | null = null;
@@ -38,7 +47,7 @@ export function videoState(view: StreamView, app: string, window: string | null)
   return { status: "ended", reason: view.retry ? "error" : "closed" };
 }
 
-export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { state: PreviewState; gaveWay: boolean; retry: () => void } {
+export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { state: PreviewState; gaveWay: boolean; retry: () => void; drive: VideoDrive | null } {
   const [state, setState] = useState<PreviewState>({ status: "starting" });
   const [gaveWay, setGaveWay] = useState(() => !videoSupported());
   const [attempt, setAttempt] = useState(0);
@@ -48,6 +57,7 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
   /** the canvas the stream is on now, and the undo */
   const shown = useRef<{ canvas: HTMLCanvasElement; off: () => void } | null>(null);
   const { canvas, box, take } = opts;
+  const drive = !!opts.drive;
   const host = entry.previewHost;
   const key = entry.previewKey;
   const app = entry.row.apps[0]?.name ?? "";
@@ -104,7 +114,7 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
     void loadStreams().then(
       ({ videoStreams }) => {
         if (!alive) return;
-        const stream = videoStreams.acquire(host, key, { edge, take });
+        const stream = videoStreams.acquire(host, key, { edge, take, drive });
         handle.current = stream;
         const read = (): void => {
           const next = videoState(stream.view(), names.current.app, names.current.window);
@@ -135,11 +145,13 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
       handle.current = null;
       setState((prev) => (prev.status === "live" ? starting(prev) : prev));
     };
-  }, [attempt, box, edge, host, key, run, sync, take]);
+  }, [attempt, box, drive, edge, host, key, run, sync, take]);
+
+  const driving = useMemo<VideoDrive>(() => ({ send: (event) => handle.current?.input(event), paste: async (text) => handle.current?.paste(text) }), []);
 
   const retry = useCallback(() => {
     handle.current?.retry();
     setAttempt((n) => n + 1);
   }, []);
-  return { state, gaveWay, retry };
+  return { state, gaveWay, retry, drive: drive && run && state.status === "live" ? driving : null };
 }

@@ -94,7 +94,8 @@ scope.onmessage = (event: MessageEvent<ToWorker>) => {
     if (surface.stream !== null) players.get(surface.stream)?.player.hide(surface);
     surface.stream = message.stream;
     if (message.stream !== null) players.get(message.stream)?.player.show(surface);
-  } else if (message.t === "forget") {
+  } else if (message.t === "input") players.get(message.stream)?.player.input(message.event);
+  else if (message.t === "forget") {
     const surface = surfaces.get(message.surface);
     if (surface?.stream != null) players.get(surface.stream)?.player.hide(surface);
     surfaces.delete(message.surface);
