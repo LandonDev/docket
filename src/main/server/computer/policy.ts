@@ -75,6 +75,32 @@ export const VM_REFUSED_LAUNCH_EXES: readonly string[] = [
   'bitsadmin.exe'
 ]
 
+/**
+ * The apps a thread may launch in the Windows VM, by the name a person gives them or their file, and no other: a
+ * list of what may be launched can be complete, a list of what may not cannot (MSBuild with a project file, ftp's
+ * `!`, a help file). A launch is a bare name here, never a path, a link or a file: Windows opens whatever it is
+ * handed. What is running already may still be read and acted in; the hold judges each act.
+ */
+export const VM_LAUNCH_APPS: readonly string[] = [
+  'microsoft edge', 'edge', 'msedge.exe',
+  'notepad', 'notepad.exe',
+  'file explorer', 'explorer', 'explorer.exe',
+  'word', 'microsoft word', 'winword.exe',
+  'excel', 'microsoft excel', 'excel.exe',
+  'powerpoint', 'microsoft powerpoint', 'powerpnt.exe',
+  'outlook', 'microsoft outlook', 'outlook.exe',
+  'onenote', 'microsoft onenote', 'onenote.exe',
+  'teams', 'microsoft teams', 'ms-teams.exe', 'msteams.exe',
+  'calculator', 'calculatorapp.exe', 'calc.exe',
+  'paint', 'mspaint.exe',
+  'photos', 'photos.exe',
+  'snipping tool', 'snippingtool.exe',
+  'adobe acrobat', 'adobe acrobat reader', 'acrobat reader', 'acrobat.exe', 'acrord32.exe'
+]
+
+/** What a launch in the VM may not hold: a path, a drive or a link's colon, a quote, an 8.3 name's tilde, a trailing dot or space. */
+const NOT_A_BARE_NAME = /[\\/:"~]|[. ]$/
+
 /** The same apps as a person names them, which the service also matches (§29.2). */
 const VM_REFUSED_LAUNCH_NAMES: readonly string[] = ['command prompt', 'powershell', 'windows powershell', 'terminal', 'windows terminal', 'registry editor', 'task scheduler', 'windows script host']
 
@@ -83,7 +109,7 @@ export const refusedLaunchList = (platform: NodeJS.Platform = process.platform, 
   vm ? [...REFUSED_LAUNCH_EXES, ...VM_REFUSED_LAUNCH_EXES] : platform === 'win32' ? [...REFUSED_LAUNCH_EXES] : [...REFUSED_LAUNCH_BUNDLES]
 
 /** Files Windows runs when they are opened: an item a launch opens in the VM may not be one, whatever app it is handed to. */
-const VM_RUNNABLE = /\.(bat|cmd|com|exe|scr|pif|cpl|msc|msi|msp|ps1|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|hta|lnk|url|reg|inf|application|appref-ms|appx|msix|jar)$/i
+const VM_RUNNABLE = /\.(bat|cmd|com|exe|scr|pif|cpl|msc|msi|msp|ps1|psm1|psd1|ps1xml|vb|vbs|vbe|js|jse|wsf|wsh|wsc|sct|hta|chm|lnk|url|scf|settingcontent-ms|reg|inf|application|appref-ms|appx|msix|jar|dll)$/i
 
 export interface PinnedApp {
   pid: number
@@ -177,6 +203,7 @@ export function refusedLaunch(query: string, vm = false): string | null {
   const base = lower(query).split(/[\\/]/).pop() ?? ''
   const exe = base.endsWith('.exe') || base.endsWith('.msc') ? base : `${base}.exe`
   if (vm && (VM_REFUSED_LAUNCH_EXES.includes(exe) || VM_REFUSED_LAUNCH_EXES.includes(base) || VM_REFUSED_LAUNCH_NAMES.includes(lower(query).trim()))) return hostErrorLine('refused_app', 'console')
+  if (vm && (NOT_A_BARE_NAME.test(query) || !VM_LAUNCH_APPS.includes(lower(query)))) return hostErrorLine('refused_app', 'vm-apps')
   if (exe !== lower(query) && (exe === TEMPCODE_WINDOWS_EXE || WINDOWS_PROMPT_EXES.includes(exe))) return refusedLaunch(exe)
   const q = lower(query)
   if (q === TEMPCODE_BUNDLE_ID || q === 'tempcode' || q === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
@@ -242,6 +269,25 @@ export function passwordTarget(actions: readonly ComputerAction[], book: Element
     if (!writes(a) || a.named !== undefined || blindTextAfterInput) continue
     const at = a.element ?? book.focused
     if (at !== null && at !== undefined ? isPasswordLine(book, at) : book.hasRole('password')) return { kind: 'password', what: '' }
+  }
+  return null
+}
+
+/**
+ * In the Windows VM the Windows key is his: Win+R opens the Run box, Win+X a menu with the Terminal, and Start's
+ * search runs what is typed. A key or a held key with it is refused before the card.
+ */
+export function refusedVmKey(steps: readonly ComputerAction[]): string | null {
+  for (const a of steps) {
+    if (a.action !== 'key' && a.action !== 'hold_key') continue
+    let modifiers: string[] = []
+    try {
+      const combo = parseKeyCombo(a.text ?? '')
+      modifiers = [...combo.modifiers, combo.key?.toLowerCase() ?? '']
+    } catch {
+      modifiers = (a.text ?? '').toLowerCase().split('+')
+    }
+    if (modifiers.some((m) => ['super', 'win', 'windows', 'meta', 'cmd', 'command'].includes(m))) return hostErrorLine('refused_app', 'vm-win-key')
   }
   return null
 }

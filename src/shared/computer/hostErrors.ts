@@ -38,13 +38,15 @@ export type HostErrorKind = (typeof HOST_ERROR_KINDS)[number]
 export { SESSION_REFUSALS, sessionRefusalWords, type SessionTierRefusal }
 
 /** Why refused_app refused: TempCode itself, the system's prompts, a command line in the Windows VM, or a launched app the host could not identify. */
-export type RefusedApp = 'tempcode' | 'prompts' | 'windows-prompts' | 'console' | 'unchecked'
+export type RefusedApp = 'tempcode' | 'prompts' | 'windows-prompts' | 'console' | 'vm-apps' | 'vm-win-key' | 'unchecked'
 
 const REFUSED_APP_WORDS: Readonly<Record<RefusedApp, string>> = {
   tempcode: "TempCode's own window is off limits to computer use",
   prompts: "macOS's password and Touch ID prompts are the person's to answer",
   'windows-prompts': "Windows' password and consent prompts are the person's to answer",
   console: 'no command line, shell or script host may be launched in the Windows VM; do the step in an app, or say what is needed and leave it to the owner',
+  'vm-apps': 'in the Windows VM an app is launched by its name alone, and only these: Microsoft Edge, Notepad, File Explorer, Word, Excel, PowerPoint, Outlook, OneNote, Teams, Calculator, Paint, Photos, Snipping Tool, Adobe Acrobat; to open a file, launch its app with the file in open',
+  'vm-win-key': "the Windows key is the owner's in the Windows VM; reach the app through its own window or launch it by name",
   unchecked: "couldn't check which app this is, so nothing was sent; try the call again"
 }
 

@@ -30,7 +30,7 @@ import { CONFIRM_KIND_INFO, type ConfirmNeed } from '@shared/computer/policy'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayVerdict } from '@shared/away'
-import { clicksBlind, cutFields, heldTargets, isCutValue, withValues, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
+import { RUN_BOX_EXES, clicksBlind, cutFields, heldTargets, isCutValue, withValues, namedKeysUnplaced, needsFreshRead, pointerAfter, readOutward, restage, screenMark, screenOfBook, screenOfObservation, type HeldTarget, type OutwardRead, type PointerAt, type Screen } from '@shared/computer/outward'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './batchPlan'
@@ -40,6 +40,7 @@ import {
   passwordTarget,
   refusedLaunch,
   refusedLaunchList,
+  refusedVmKey,
   refusedOpenItem,
   refusedTarget,
   type Resolved,
@@ -544,6 +545,11 @@ async function runChecked(
       (typeof args.launch === 'string' ? refusedLaunch(args.launch, !!host.vm) : null) ?? (openOf(args).map((item) => refusedOpenItem(item, !!host.vm)).find((l) => l !== null) ?? null)
     if (line) return refusalOf(line)
   }
+  // in the Windows VM the Windows key is his: Win+R and Win+X are ways to a command line
+  if (host.vm) {
+    const line = refusedVmKey(steps)
+    if (line) return refusalOf(line)
+  }
 
   // 3. the card, the permission read now: safe and edits ask for every act, every mode for a flag or a password field
   // A call the owner pressed: his press is every card's answer, the tier gate's own included, and the gate asks at once.
@@ -842,7 +848,9 @@ async function runChecked(
         // And a step that names an element the book lacks (one the host's own reads numbered and the model never saw)
         // is judged from a fresh read too: nothing acts on a control the host has not read.
         const unread = !!screen && steps.some((s) => actionElements(s).some((i) => !screen!.elements.has(i)))
-        if (acting && (!screen || unread || needsFreshRead(steps, pointer))) {
+        // Explorer and Task Manager own the boxes that run what is typed: their window's title is read now, never the book's
+        const runBoxApp = RUN_BOX_EXES.includes(identity.bundleId?.toLowerCase() ?? '')
+        if (acting && (!screen || unread || runBoxApp || needsFreshRead(steps, pointer))) {
           const obs = await fresh(false)
           const now = obs ? screenOfObservation(obs.text, identity) : null
           // Never judged against a stale book or an empty screen: a read that failed holds nothing back, so nothing runs.
@@ -851,8 +859,8 @@ async function runChecked(
         }
         // A key or text to an element by a name the window does not hold once, as the service picks it: nobody can say where it goes.
         if (acting && screen && namedKeysUnplaced(steps, screen)) return refusal(HELD_UNPLACED)
-        // the window's title tells the Run box and Task Manager's "Create new task" from the rest of their apps (consoleRead)
-        const read = acting ? readOutward(steps, screen && { ...screen, title: titleCtx().window }, pointer) : null
+        // a fresh read carries its window's title, which tells the Run box and Task Manager's "Create new task" from the rest of their apps (consoleRead)
+        const read = acting ? readOutward(steps, screen, pointer) : null
         if (read || flag) {
           // Kept for the owner's press: nothing of the call runs.
           const rerun = ctx.rerun

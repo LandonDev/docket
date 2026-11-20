@@ -11,6 +11,7 @@ import {
   refusedLaunchList,
   refusedOpenItem,
   refusedTarget,
+  refusedVmKey,
   VM_REFUSED_LAUNCH_EXES,
   type AppsSource
 } from './policy'
@@ -270,8 +271,41 @@ describe('the Windows VM: no command line', () => {
     expect(refusedLaunch('cmd.exe')).toBeNull()
     expect(refusedLaunch('Terminal')).toBeNull()
     // the prompts and TempCode stay refused in the VM too
-    expect(refusedLaunch('consent.exe', true)).toMatch(/consent prompts/)
+    expect(refusedLaunch('consent.exe', true)).toMatch(/consent prompts|launched by its name alone/)
     expect(refusedLaunch('Notepad', true)).toBeNull()
+  })
+
+  it('launches only the apps Work needs, by a bare name: never a path, a link, a file or a name off the list', () => {
+    for (const q of ['Notepad', 'Microsoft Edge', 'msedge.exe', 'Excel', 'File Explorer', 'Adobe Acrobat']) expect(refusedLaunch(q, true), q).toBeNull()
+    for (const q of [
+      'C:\\Users\\tcuser\\Documents\\x.bat',
+      'x.vbs',
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\POWERS~1.EXE',
+      'search-ms:query=x',
+      'ms-settings:',
+      'MSBuild.exe',
+      'installutil',
+      'ftp',
+      'hh.exe',
+      'msconfig',
+      'Notepad.',
+      'Notepad ',
+      '"notepad"'
+    ]) {
+      expect(refusedLaunch(q, true), q).toMatch(/launched by its name alone|no command line/)
+    }
+    // outside the VM a launch is as it was
+    expect(refusedLaunch('MSBuild.exe')).toBeNull()
+  })
+
+  it("keeps the Windows key his in the VM: Win+R, Win+X and any chord with it are refused", () => {
+    const k = (text: string) => [{ action: 'key', text } as unknown as ComputerAction]
+    expect(refusedVmKey(k('super+r'))).toMatch(/Windows key/)
+    expect(refusedVmKey(k('super+x'))).toMatch(/Windows key/)
+    expect(refusedVmKey(k('super'))).toMatch(/Windows key/)
+    expect(refusedVmKey([{ action: 'hold_key', text: 'super', duration: 1 } as unknown as ComputerAction])).toMatch(/Windows key/)
+    expect(refusedVmKey(k('ctrl+s'))).toBeNull()
+    expect(refusedVmKey([{ action: 'type', text: 'super' } as unknown as ComputerAction])).toBeNull()
   })
 
   it("names the VM's list to the service, Windows' own with it, whatever the box's platform", () => {

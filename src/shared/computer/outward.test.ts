@@ -1399,6 +1399,12 @@ describe('a command line in Windows (the VM)', () => {
     expect(consoleRead(steps({ action: 'type', text: 'hi' }), EDGE_WIN && blank('msedge.exe', 'Microsoft Edge', 'Run'))).toBeNull()
   })
 
+  it("reads a window's title from the read it is judged on", () => {
+    const run = screenOfObservation(`app "Windows Explorer" · window "Run" · 400×200 · focused [2]\n[1] dialog "Run"\n  [2] combo box "Open"`, { bundleId: 'explorer.exe', name: 'Windows Explorer' })!
+    expect(run.title).toBe('Run')
+    expect(readOutward(steps({ action: 'type', text: 'cmd', element: 2 }), run)).toMatchObject({ why: 'console', grantable: false })
+  })
+
   it('is what readOutward answers first, before any button is read', () => {
     expect(readOutward(steps({ action: 'type', text: 'dir' }), terminal)).toMatchObject({ why: 'console', grantable: false })
     expect(readOutward(steps({ action: 'type', text: 'dir' }), null)).toBeNull()

@@ -292,7 +292,10 @@ export const CONSOLE_EXES: readonly string[] = [
   'bash.exe'
 ]
 
-/** Windows' boxes that run what is typed into them, by their app and their window's title. */
+/** The apps whose boxes run what is typed into them: a call in one is judged on a fresh read, so its title is the window's now. */
+export const RUN_BOX_EXES: readonly string[] = ['explorer.exe', 'taskmgr.exe']
+
+/** Windows' boxes that run what is typed into them, by their app and their window's title (an English image). */
 const RUN_BOXES: readonly { exe: string; title: RegExp }[] = [
   { exe: 'explorer.exe', title: /^run$/i },
   { exe: 'taskmgr.exe', title: /^create new task$/i }
@@ -410,7 +413,7 @@ export function screenOfObservation(text: string, app: Screen['app']): Screen | 
     }
     stack.length = l.depth + 1
   }
-  return { app, focused: parsed.header.focused ?? null, elements }
+  return { app, focused: parsed.header.focused ?? null, elements, title: parsed.header.window }
 }
 
 /** What the thread's own book of elements answers (computer/elements.ts): each element's line and its ancestors. */

@@ -1918,7 +1918,13 @@ describe('the Windows VM', () => {
     const runnable = await h.run('computer_apps', { launch: 'Notepad', open: ['C:\\Users\\tcuser\\Downloads\\x.bat'] })
     expect(runnable.body).toMatch(/is a program/)
     expect(count(h, 'apps.launch')).toBe(0)
-    await h.run('computer_apps', { launch: 'Preview' })
+    // an app off the VM's list, or a path, never reaches the service
+    expect((await h.run('computer_apps', { launch: 'Preview' })).body).toMatch(/launched by its name alone/)
+    expect(count(h, 'apps.launch')).toBe(0)
+    await h.run('computer_apps', { launch: 'Notepad' })
     expect(last(h, 'apps.launch').params.refuse).toEqual(expect.arrayContaining(['consent.exe', 'cmd.exe', 'powershell.exe', 'mshta.exe']))
+    // the Windows key is his
+    const key = await h.run('computer_act', { app: 'TextEdit', action: 'key', text: 'super+r' })
+    expect(key.body).toMatch(/Windows key/)
   })
 })

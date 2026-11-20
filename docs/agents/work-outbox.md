@@ -242,37 +242,46 @@ acts on being fetched. A wrong match costs one press.
 
 **A command line in Windows** (the Windows VM, and a Work thread on any
 Windows host). A Windows desktop has more ways to a command line than a
-browser page, so three rules sit on top of the rest:
+browser page. The first line is the VM's own image: setup turns on
+DisableCMD, NoRun and a DisallowRun list for tcuser, refuses programs and
+scripts in the user's folders by Software Restriction Policies, and pins
+Windows Terminal as the console (docs/agents/work-winvm.md). The host's
+rules here are the second line, on top of the rest:
 
-- **Nothing to launch.** In the VM (`RunHost.vm`), `computer_apps` refuses a
-  console, a shell or a script host by its file, its path or the name a
-  person gives it, before the card and again in the service's own `refuse`
-  list: cmd, powershell, pwsh, powershell_ise, Windows Terminal (wt),
-  OpenConsole, conhost, wsl, bash, mshta, wscript, cscript, regedit, reg,
-  rundll32, regsvr32, msiexec, schtasks, the Task Scheduler's console, mmc,
-  certutil, bitsadmin (`VM_REFUSED_LAUNCH_EXES`, policy.ts). An item it
-  opens may not be a file Windows runs (a script, a program, a shortcut, a
-  registry file, an installer), as a path or a web address: in the VM an
-  `open` item is the launched app's argument. Threads get no shell there.
-  The prompts' floor (consent.exe, credentialuibroker.exe, logonui.exe)
-  stands as everywhere.
+- **Launch by name, from a short list.** In the VM (`RunHost.vm`, set by
+  the VM's computer service) `computer_apps` launches only the apps Work
+  needs, by a bare name or their file (`VM_LAUNCH_APPS`, policy.ts: Edge,
+  Notepad, File Explorer, the Office apps, Teams, Calculator, Paint,
+  Photos, the Snipping Tool, Acrobat); never a path, a link, a quote, an
+  8.3 name or a trailing dot, since Windows opens whatever it is handed. A
+  list of what may not be launched cannot be complete (MSBuild with a
+  project file, ftp's `!`, a help file); the console list
+  (`VM_REFUSED_LAUNCH_EXES`) still goes to the service as its own `refuse`.
+  An item a launch opens may not be a file Windows runs (a script, a
+  program, a shortcut, a help file, a registry file, an installer), by a
+  path or a web address. The prompts' floor stands as everywhere.
+- **The Windows key is his.** In the VM a key or a held key with it is
+  refused (`refusedVmKey`): Win+R opens the Run box, Win+X the Terminal.
 - **A console is always held.** Any step that writes or clicks in a
   console's window (`CONSOLE_EXES`, outward.ts `consoleRead`: Windows
   Terminal, OpenConsole, conhost, cmd, PowerShell, pwsh, the ISE, wsl,
   bash), one he opened or an app did, is held whatever it says, with what
   it would type on the card; a click counts, since a click in a classic
   console pastes the clipboard. The Run box (explorer.exe's window "Run")
-  and Task Manager's "Create new task" are held the same way: `Screen`
-  carries the window's title so they are told from Explorer.
+  and Task Manager's "Create new task" are held the same way, told from
+  the rest of their apps by the window's title in the read the call is
+  judged on, always a fresh one for those two apps (an English image).
 - **No grant from it.** Such a read says `grantable: false`; it rides in the
   held act's payload to the Outbox, which offers no grant on it and refuses
   one asked for (`notGrantable`, `NO_GRANT_FROM_CONSOLE`). Computer acts take
   no grant today in any case; this holds if that ever changes.
 
-What these still cannot catch: Start's search box and Explorer's address
-bar running what is typed there; a script inside an Office file (a macro);
-a program the thread downloads and opens by a name off the list; and what
-the list above already names.
+What these still cannot catch, and the image's policies must: a double
+click on a script in Explorer or a file dialog; Explorer's address bar or
+Start's search running what is typed there; a script inside an Office file
+(a macro); a console hosted by conhost that reports as the program inside it
+(Windows Terminal pinned as the console closes it); and a window title in
+another language.
 
 A box thread's act on a Mac's screen is judged on the Mac but cannot be
 held there: the Mac answers `HELD_UNAVAILABLE` and nothing runs. The box
