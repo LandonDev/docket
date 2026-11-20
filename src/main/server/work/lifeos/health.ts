@@ -14,8 +14,21 @@ import { redact } from './transport'
  * on it. LifeOS gives a device session no end, so nothing here lapses.
  */
 
-/** A source with no sync for longer than this reads as broken. */
-export const SOURCE_STALE_MS = 6 * 60 * 60_000
+/**
+ * How long a source may go without checking in before its row says so, by
+ * kind, as LifeOS's own health rule judges it (packages/shared/src/health.ts
+ * `SOURCE_SILENT_MINUTES`): only a kind that checks in on every poll has
+ * one. Gmail reports ok at least once a minute (gmail/sync.ts), so ten
+ * minutes leaves room for the worker's start; an ICS feed stamps every poll,
+ * which may be up to 24 hours apart, and its row does not say how far, so a
+ * day and an hour. A Google calendar reports only when its state changes
+ * (calendar/google.ts: "on change only, so a quiet minute writes nothing"),
+ * so its times say when the worker last started, not whether it syncs: it is
+ * judged by its status and error alone.
+ */
+export const SOURCE_SILENT_MS: Readonly<Record<string, number>> = { email: 10 * 60_000, ics: 25 * 60 * 60_000 }
+/** The word that says what a source is, after its name: mail or a calendar. */
+const KIND_WORD: Readonly<Record<string, string>> = { email: 'mail', gcal: 'calendar', ics: 'calendar' }
 /** The kinds that are his mail and calendars; chat and the rest have rows of their own elsewhere, or none. */
 const MAIL_AND_CALENDAR = new Set(['email', 'gcal', 'ics'])
 
@@ -30,7 +43,16 @@ export interface LifeosSource {
   enabled: boolean
   status: 'idle' | 'ok' | 'error'
   lastSyncAt?: number
+  /** when it last checked in, ok or not (LifeOS's `reportedAt`) */
+  reportedAt?: number
   error?: string
+}
+
+/** "Cosmic mail", "landon@cosmic.games calendar": its name, then what it is, unless the name says it already ("Hypixel Calendar"). */
+export function sourceTitle(s: Pick<LifeosSource, 'kind' | 'label' | 'accountName' | 'account'>): string {
+  const name = s.label || s.accountName || s.account
+  const word = KIND_WORD[s.kind]
+  return !word || name.toLowerCase().includes(word) ? name : `${name} ${word}`
 }
 
 /** "2:02 PM" today, "Nov 17" before: his US words, in the host's local time. */
@@ -69,11 +91,16 @@ export function signInRow(state: LifeosStatus['lifeos'], now: number): HealthRow
 export function sourceRow(s: LifeosSource, now: number): HealthRow | null {
   if (!s.enabled || !MAIL_AND_CALENDAR.has(s.kind)) return null
   // Every signed-in host reads the same source through LifeOS: shared, so the page shows it once. One with no sector names an account of his: personal.
-  const row = { id: `lifeos.source:${s._id}`, pillar: 'lifeos', group: 'Mail and calendar', title: s.label || s.accountName || s.account, shared: true, ...(s.sector ? { sector: s.sector } : { personal: true as const }) } as const
+  const row = { id: `lifeos.source:${s._id}`, pillar: 'lifeos', group: 'Mail and calendar', title: sourceTitle(s), shared: true, ...(s.sector ? { sector: s.sector } : { personal: true as const }) } as const
   if (s.status === 'error') return { ...row, state: 'broken', line: s.error ? redact(s.error) : 'The last sync failed' }
-  if (!s.lastSyncAt) return { ...row, state: 'broken', line: 'Never synced' }
-  if (now - s.lastSyncAt > SOURCE_STALE_MS) return { ...row, state: 'broken', line: `No sync since ${whenWords(s.lastSyncAt, now)}` }
-  return { ...row, state: 'working', line: `Synced ${whenWords(s.lastSyncAt, now)}` }
+  // Idle with a reason: LifeOS stopped reading it (the account was disconnected); only he can connect it again there.
+  if (s.status === 'idle' && s.error) return { ...row, state: 'needs-you', line: `Stopped in LifeOS: ${redact(s.error)}` }
+  const silent = SOURCE_SILENT_MS[s.kind]
+  if (silent === undefined) return { ...row, state: 'working', line: 'Syncing' }
+  const seen = s.reportedAt ?? s.lastSyncAt
+  if (!seen) return { ...row, state: 'broken', line: 'Never synced' }
+  if (now - seen > silent) return { ...row, state: 'broken', line: `No sync since ${whenWords(seen, now)}` }
+  return { ...row, state: 'working', line: `Synced ${whenWords(seen, now)}` }
 }
 
 /** Every row, from the host's status and, while signed in, its owner's client. */

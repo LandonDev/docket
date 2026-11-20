@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { LifeosState, LifeosStatus } from '@shared/contract-work-lifeos'
 import { WORK_HOME } from '@shared/work'
 import type { LifeosClient } from './ctx'
-import { lifeosRows, signInRow, SOURCE_STALE_MS, sourceRow, type LifeosSource } from './health'
+import { lifeosRows, signInRow, SOURCE_SILENT_MS, sourceRow, sourceTitle, type LifeosSource } from './health'
 import { lifeos } from './index'
 
 const NOW = new Date('2026-11-20T15:00:00').getTime()
@@ -41,24 +41,47 @@ describe('the LifeOS sign-in row', () => {
 })
 
 describe('a mail or calendar source', () => {
-  it('works while it synced lately, and says when', () => {
-    expect(sourceRow(source({}), NOW)).toMatchObject({ id: 'lifeos.source:s1', group: 'Mail and calendar', title: 'Purdue mail', sector: 'purdue', shared: true, state: 'working', line: 'Synced 2:59 PM' })
+  const H = 3_600_000
+  // Shapes as LifeOS's sources:list answers them on 2026-11-20, the worker last started at 3:12 AM.
+  const gcal = (extra: Partial<LifeosSource> = {}): LifeosSource => ({ _id: 'g1', kind: 'gcal', account: 'landon@cosmic.games', label: 'landon@cosmic.games', sector: 'cosmic', enabled: true, status: 'ok', lastSyncAt: new Date('2026-11-20T03:12:00').getTime(), reportedAt: new Date('2026-11-20T03:12:00').getTime(), ...extra })
+  const mail = (extra: Partial<LifeosSource> = {}): LifeosSource => ({ _id: 'm1', kind: 'email', account: 'landon@cosmic.games', label: 'Cosmic', sector: 'cosmic', enabled: true, status: 'ok', lastSyncAt: NOW - 40_000, reportedAt: NOW - 40_000, ...extra })
+
+  it('works while mail checked in lately, and says when', () => {
+    expect(sourceRow(mail(), NOW)).toMatchObject({ id: 'lifeos.source:m1', group: 'Mail and calendar', title: 'Cosmic mail', sector: 'cosmic', shared: true, state: 'working', line: 'Synced 2:59 PM' })
     // With no sector it names his account: a thread of a sector reads its state alone.
-    expect(sourceRow(source({ sector: undefined }), NOW)).toMatchObject({ shared: true, personal: true })
+    expect(sourceRow(mail({ sector: undefined }), NOW)).toMatchObject({ shared: true, personal: true })
   })
 
-  it('is broken on an error, after a long quiet, or never synced', () => {
-    expect(sourceRow(source({ status: 'error', error: 'IMAP login failed' }), NOW)).toMatchObject({ state: 'broken', line: 'IMAP login failed' })
-    expect(sourceRow(source({ lastSyncAt: NOW - SOURCE_STALE_MS - 60_000 }), NOW)).toMatchObject({ state: 'broken', line: 'No sync since 8:59 AM' })
-    expect(sourceRow(source({ lastSyncAt: new Date('2026-11-17T08:00:00').getTime() }), NOW)).toMatchObject({ line: 'No sync since Nov 17' })
-    expect(sourceRow(source({ lastSyncAt: undefined, status: 'idle' }), NOW)).toMatchObject({ state: 'broken', line: 'Never synced' })
+  it('reads an ok Google calendar as working however old its times: it reports only on a change, so they say when the worker started', () => {
+    expect(sourceRow(gcal(), NOW)).toMatchObject({ title: 'landon@cosmic.games calendar', state: 'working', line: 'Syncing' })
+    expect(sourceRow(gcal({ label: 'Hypixel Calendar', lastSyncAt: NOW - 9 * H, reportedAt: NOW - 9 * H }), NOW)).toMatchObject({ title: 'Hypixel Calendar', state: 'working' })
+    expect(sourceRow(gcal({ lastSyncAt: NOW - 30 * 24 * H, reportedAt: undefined }), NOW)).toMatchObject({ state: 'working' })
+    expect(sourceRow(gcal({ status: 'error', error: 'invalid_grant' }), NOW)).toMatchObject({ state: 'broken', line: 'invalid_grant' })
+  })
+
+  it('reads silence only for a kind that checks in on every poll: mail after ten minutes, a feed after a day', () => {
+    expect(sourceRow(mail({ reportedAt: NOW - 9 * 60_000 }), NOW)).toMatchObject({ state: 'working' })
+    expect(sourceRow(mail({ reportedAt: NOW - SOURCE_SILENT_MS.email! - 60_000 }), NOW)).toMatchObject({ state: 'broken', line: 'No sync since 2:49 PM' })
+    const ics = (reportedAt: number): LifeosSource => ({ _id: 'f1', kind: 'ics', account: 'ics', label: 'School', enabled: true, status: 'ok', lastSyncAt: reportedAt, reportedAt })
+    expect(sourceRow(ics(NOW - 9 * H), NOW)).toMatchObject({ title: 'School calendar', state: 'working' })
+    expect(sourceRow(ics(new Date('2026-11-18T08:00:00').getTime()), NOW)).toMatchObject({ state: 'broken', line: 'No sync since Nov 18' })
+  })
+
+  it('is broken on an error or never synced, and needs him when LifeOS stopped reading it', () => {
+    expect(sourceRow(mail({ status: 'error', error: 'IMAP login failed' }), NOW)).toMatchObject({ state: 'broken', line: 'IMAP login failed' })
+    expect(sourceRow(mail({ lastSyncAt: undefined, reportedAt: undefined, status: 'idle' }), NOW)).toMatchObject({ state: 'broken', line: 'Never synced' })
+    expect(sourceRow(mail({ status: 'idle', error: 'disconnected' }), NOW)).toMatchObject({ state: 'needs-you', line: 'Stopped in LifeOS: disconnected' })
+  })
+
+  it('says what each is in a word, so a mail account and its calendar never read as one thing twice', () => {
+    expect([sourceTitle(mail()), sourceTitle(gcal())]).toEqual(['Cosmic mail', 'landon@cosmic.games calendar'])
+    expect(sourceTitle({ kind: 'email', label: 'Purdue Mail', account: 'x' })).toBe('Purdue Mail')
+    expect(sourceTitle({ kind: 'ics', label: '', accountName: 'School', account: 'ics' })).toBe('School calendar')
   })
 
   it('leaves out a source that is off, and kinds that are not mail or calendar', () => {
-    expect(sourceRow(source({ enabled: false }), NOW)).toBeNull()
-    expect(sourceRow(source({ kind: 'slack' }), NOW)).toBeNull()
-    expect(sourceRow(source({ kind: 'gcal' }), NOW)).not.toBeNull()
-    expect(sourceRow(source({ kind: 'ics', label: '', accountName: 'School' }), NOW)).toMatchObject({ title: 'School' })
+    expect(sourceRow(mail({ enabled: false }), NOW)).toBeNull()
+    for (const kind of ['slack', 'discord', 'imessage', 'linear', 'teams']) expect(sourceRow(mail({ kind }), NOW)).toBeNull()
   })
 })
 
