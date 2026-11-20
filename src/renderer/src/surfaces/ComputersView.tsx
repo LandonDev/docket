@@ -8,7 +8,7 @@ import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDocumentVisible } from "../hooks/paneVisibility";
 import { cn } from "../lib/cn";
-import { useComputers, type ComputerTile } from "../lib/computers";
+import { tileKey, useComputers, type ComputerTile } from "../lib/computers";
 import { previewContext } from "../lib/computerSessions";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
@@ -53,7 +53,7 @@ function LivePicture({ tile }: { tile: ComputerTile }) {
         face={over ? { kind: "none" } : liveFace(stream, (from) => openLightbox([{ environmentId: tile.entry.host, name: label, live: { threadId: tile.entry.row.threadId } }], 0, from))}
         label={label}
         size={streamSize(state)}
-        sharp={sharpOf(state)}
+        sharp={sharpOf(stream)}
         line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
       />
     </div>
@@ -112,7 +112,7 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf }: ComputersPage
       {/* at least 320px a tile: one across under 704px of page, two under 1056, then three; one alone has the page, at its own pixels */}
       <div data-slot="computer-tiles" className={cn("grid grid-cols-1 gap-x-6 gap-y-8 p-4", tiles.length > 1 && "@[44rem]/computers:grid-cols-2", tiles.length > 2 && "@[66rem]/computers:grid-cols-3")}>
         {tiles.map((tile) => (
-          <Tile key={tile.id} tile={tile} all={tiles} onOpenSession={onOpenSession} picture={picture(tile)} />
+          <Tile key={tileKey(tile, tiles)} tile={tile} all={tiles} onOpenSession={onOpenSession} picture={picture(tile)} />
         ))}
       </div>
     </div>

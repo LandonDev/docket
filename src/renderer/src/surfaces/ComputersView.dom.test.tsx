@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerTile } from "../lib/computers";
+import { registry } from "../lib/connection/registry";
 import { ComputersPage, ComputersView, Tile, tileLine } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
 import { tile } from "./threads/computer/LiveFullView.fixtures";
@@ -35,9 +36,45 @@ beforeEach(() => {
   h.retried = 0;
   openLightbox.mockReset();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("the Computers page", () => {
+  it("keeps the same picture through Take over: he drives first, then the agent's session stops, and the page's tile, box and canvas stay as its row moves to the pane's thread", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    vi.spyOn(registry, "link").mockImplementation(() => ({ request: async (method: string, params: unknown) => void calls.push({ method, params }) }) as never);
+    const page = (): React.ReactElement => <ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />;
+    // a subagent's thread drives the page of the pane t1
+    const base = tile();
+    h.tiles = [tile({ id: "box\nsub", pane: "t1", entry: { ...base.entry, row: { ...base.entry.row, threadId: "sub" }, previewKey: "sub" } })];
+    const view = render(page());
+    const article = screen.getByRole("article");
+    const face = document.querySelector<HTMLElement>('[data-face="live"]')!;
+    const canvas = face.querySelector("canvas")!;
+    expect(canvas.className).not.toContain("invisible");
+    fireEvent.click(screen.getByRole("button", { name: "Take over" }));
+    await act(async () => {});
+    // the wheel first: the host lists a pane he drives, so the page never leaves the list between the two calls
+    expect(calls).toEqual([
+      { method: "work.browser.drive", params: { sessionId: "t1", driver: "owner" } },
+      { method: "computer.stop", params: { sessionId: "sub" } },
+    ]);
+    // what the host lists once the session is stopped: the page under the pane's own thread, his
+    h.tiles = [tile({ id: "box\nt1", pane: "t1", driving: true, doing: null, entry: { ...base.entry, row: { ...base.entry.row, threadId: "t1", running: null, driver: "owner" }, previewKey: "t1" } })];
+    view.rerender(page());
+    expect(screen.getByRole("article")).toBe(article);
+    expect(document.querySelector('[data-face="live"]')).toBe(face);
+    expect(face.querySelector("canvas")).toBe(canvas);
+    // still playing: the stream of the pane's page runs on it, and its frame is not hidden
+    expect(h.streams.at(-1)).toMatchObject({ key: "t1", run: true });
+    expect(canvas.className).not.toContain("invisible");
+    expect(screen.getByText("You are driving")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Hand back" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+  });
+
   it("draws every fixture: a tile for each computer, or the one empty state", () => {
     for (const fixture of fixtures) {
       const view = render(<ComputersPage {...fixture.props} />);

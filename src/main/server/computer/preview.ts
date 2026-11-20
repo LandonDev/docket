@@ -47,6 +47,9 @@ interface Stream {
   /** the stream's window has been said to its watchers (the start's answer, or the `live` push of a restart): frames may go */
   announced: boolean
 }
+/** What a preview needs of the sessions: whose window, when it changes, which threads still have one, and its service session open. */
+export type PreviewSessions = Pick<ComputerSessions, 'previewTarget' | 'onTarget' | 'onRows' | 'ensureOpen'>
+
 export class ComputerPreviews {
   private readonly streams = new Map<string, Stream>()
   private readonly off: (() => void)[] = []
@@ -56,7 +59,7 @@ export class ComputerPreviews {
   constructor(
     private readonly deps: {
       service: ComputerService
-      sessions: ComputerSessions
+      sessions: PreviewSessions
       log?: (line: string) => void
       clock?: Clock
       /** runs a watcher's first frame after its start answer has been sent; default the next macrotask */

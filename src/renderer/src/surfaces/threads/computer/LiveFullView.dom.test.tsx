@@ -83,7 +83,7 @@ describe("the full view of a computer being driven", () => {
     expect(screen.getByText("File the March expense report")).not.toBeNull();
   });
 
-  it("Take over stops the pane's live sessions on its host, then takes the wheel; Hand back gives it back; Stop stops the one", async () => {
+  it("Take over takes the wheel, then stops the pane's live sessions on its host; Hand back gives it back; Stop stops the one", async () => {
     const mine = tile();
     const sub = tile({ id: "box\nt1-sub", pane: "t1", entry: { ...mine.entry, row: { ...mine.entry.row, threadId: "t1-sub" } } });
     const other = tile({ id: "box\nt9", pane: "t9", entry: { ...mine.entry, row: { ...mine.entry.row, threadId: "t9" } } });
@@ -91,9 +91,9 @@ describe("the full view of a computer being driven", () => {
     fireEvent.click(screen.getByRole("button", { name: "Take over" }));
     await flush();
     expect(calls).toEqual([
+      { host: "box", method: "work.browser.drive", params: { sessionId: "t1", driver: "owner" } },
       { host: "box", method: "computer.stop", params: { sessionId: "t1" } },
       { host: "box", method: "computer.stop", params: { sessionId: "t1-sub" } },
-      { host: "box", method: "work.browser.drive", params: { sessionId: "t1", driver: "owner" } },
     ]);
     calls.length = 0;
     fireEvent.click(screen.getByRole("button", { name: "Stop File the March expense report" }));

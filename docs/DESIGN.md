@@ -1149,6 +1149,10 @@ The kinds, each a hand-made body built from components/ui:
   (the box's 1280 by 800 page is 640 points wide on a 2× screen), on the
   body's inset; a held submit's kept picture takes the same frame, so the
   two swap without a jump. A click on the live page opens its full view.
+  The 4 fps picture, shown where video is not to be had, is a copy the
+  host scaled down (960 on its long edge at most): it is drawn up to its
+  width in CSS pixels, not held to its own pixels as video is, or on a 2×
+  screen it would be half the width the video has.
   While he drives, the page is his keyboard and wears the focus ring for
   as long as it holds it; Tab and Escape are the page's, and Ctrl+Alt
   alone (⌃⌥) sends the keyboard to Hand back. One toast says so, once a

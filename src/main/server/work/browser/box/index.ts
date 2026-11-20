@@ -6,6 +6,7 @@ import { workText, type WorkToolResult } from '@shared/work'
 import { computerContent } from '../../../computer/mcp'
 import type { ComputerRegistry } from '../../../computer/run'
 import { ComputerService } from '../../../computer/service'
+import type { PreviewSessions, PreviewTarget } from '../../../computer/preview'
 import { ComputerSessions } from '../../../computer/sessions'
 import type { SettingsStore } from '../../../computer/verdicts'
 import type { WorkCtx, WorkTool } from '../../modules'
@@ -42,6 +43,8 @@ export interface BoxBrowserHost {
   video: BoxVideo | null
   /** what the host lists and stops: the sessions' rows, and a row for each pane he drives himself */
   rows: Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>
+  /** what the 4 fps picture is drawn from: a session's window, and the page of a pane he drives, which has no session */
+  previews: PreviewSessions
 }
 
 let host: BoxBrowserHost | null = null
@@ -115,6 +118,8 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
         ready: () => stage.ready()
       },
       onPage: (session, targetId) => {
+        // his own look at a page he drives is no thread's use of it
+        if (session.startsWith(OWNER_SESSION)) return
         const thread = sessions.threadOfServiceSession(session) ?? session
         lastPage.set(thread, targetId)
         lastPage.set(paneOf(thread), targetId)
@@ -144,9 +149,11 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
     video?.removed(ids)
   })
 
+  // A headed browser's pages are the stage's windows, and it knows when one closed. A headless one has no stage:
+  // there a page a thread used is taken to be open for as long as the browser runs.
   const pageOf = (thread: string): string | null => {
     const target = lastPage.get(thread) ?? lastPage.get(paneOf(thread))
-    return target && stage.knows(target) ? target : null
+    return target && (stage.headed() ? stage.knows(target) : browser.running) ? target : null
   }
   const drives = (pane: string): boolean => !!started && new DriveStore(started.db).get(pane).driver === 'owner'
   let video: BoxVideo | null = null
@@ -191,7 +198,8 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
   }
   const allRows = (): ComputerSessionRow[] => {
     const live = sessions.rows()
-    return [...live, ...ownerRows(live)]
+    // a session still live in a pane he has just taken is his page already: its row says so until the session is stopped
+    return [...live.map((r) => (drives(paneOf(r.threadId)) ? { ...r, driver: 'owner' as const } : r)), ...ownerRows(live)]
   }
   const rowsChanged = (): void => {
     if (!rowListeners.size) return
@@ -208,13 +216,53 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
     // a pane he drives has nothing to stop: Hand back is how it ends
     stop: (threadId) => (sessions.rowOf(threadId) ? sessions.stop(threadId) : Promise.resolve(false))
   }
-  driveChanged = (pane, owner) => {
-    void video?.driver(pane, owner).then(rowsChanged, rowsChanged)
-    if (!video) rowsChanged()
+  // The 4 fps picture of a pane he drives. Take over stops the pane's sessions, and the picture was a session's: it
+  // goes on from the window that session last read, on a session of the service that only looks, until he hands back.
+  const lastTarget = new Map<string, PreviewTarget>()
+  const targetListeners = new Set<(threadId: string) => void>()
+  const ownerTarget = (thread: string): PreviewTarget | null => {
+    const kept = lastTarget.get(thread)
+    return kept && drives(thread) && pageOf(thread) ? { ...kept, serviceSession: OWNER_SESSION + thread } : null
   }
-  host = { root, browser, stage, service, sessions, video, rows }
+  sessions.onTarget((thread) => {
+    const target = sessions.previewTarget(thread)
+    if (!target) return
+    lastTarget.set(thread, target)
+    lastTarget.set(paneOf(thread), target)
+  })
+  const previews: PreviewSessions = {
+    previewTarget: (thread) => sessions.previewTarget(thread) ?? ownerTarget(thread),
+    onTarget: (fn) => {
+      targetListeners.add(fn)
+      const off = sessions.onTarget(fn)
+      return () => {
+        targetListeners.delete(fn)
+        off()
+      }
+    },
+    onRows: rows.onRows,
+    ensureOpen: async (thread) => {
+      if (sessions.previewTarget(thread)) return sessions.ensureOpen(thread)
+      await service.request('session.open', { session: OWNER_SESSION + thread })
+      return OWNER_SESSION + thread
+    }
+  }
+  driveChanged = (pane, owner) => {
+    const told = (): void => {
+      rowsChanged()
+      // the pane's picture is drawn from another session of the service now
+      for (const fn of targetListeners) fn(pane)
+    }
+    void (video ? video.driver(pane, owner) : Promise.resolve()).then(told, told)
+    if (!owner) void service.request('session.close', { session: OWNER_SESSION + pane }).catch(() => {})
+  }
+  browser.onStop(() => lastTarget.clear())
+  host = { root, browser, stage, service, sessions, video, rows, previews }
   return host
 }
+
+/** The service session his own look at a pane's page runs on, by the pane. */
+const OWNER_SESSION = 'owner:'
 
 /** Told who drives a pane each time it changes (work/browser `work.browser.drive`, and a pane's thread being removed). */
 let driveChanged: (pane: string, owner: boolean) => void = () => {}

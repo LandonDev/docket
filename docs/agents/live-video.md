@@ -537,6 +537,25 @@ Only the box's browser takes his input. He presses Take over
   reader (`aria-description`).
 - **Hand back** makes the stream a watch stream on the host, which lets go
   of every key he held; the picture is a picture again.
+- **Take over keeps the picture.** The app asks `work.browser.drive` first
+  and stops the pane's live sessions after (`takeOver`, lib/computers.ts;
+  the canvas bar the same). The host lists a pane he drives (`ownerRows`,
+  box/index.ts), and marks a session still live in it as his, so the page
+  has a row at every moment; asked the other way round it had none between
+  the two calls, and every place that showed it dropped it. A watch stream
+  is not ended by the drive change. Once the session is stopped the page's
+  row is the pane's own thread's: the Computers page keeps it the same
+  tile (`tileKey`), so its box and canvas stay, and a full view opened on
+  the thread that drove it follows it (`findComputer`).
+- **A headless box browser** (the tools not installed, or the setting off)
+  has no video and takes no input from the picture. Take over still keeps
+  the page listed with Hand back, and its 4 fps picture goes on: the
+  preview is drawn from the window the stopped session last read, on a
+  session of the box's service that only looks (`previews`, box/index.ts,
+  `owner:<pane>`), closed at Hand back. 1.0.352 lost both: a pane he drove
+  had a row only when the browser was headed, and the picture was the
+  stopped session's. To drive from the picture, install the tools ("The
+  box", "The tools").
 
 `videoLive.test.ts` "a sign-in, whole" proves the host's side on the box
 with the real browser and engine: the agent stops at a sign-in page, he

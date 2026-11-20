@@ -1552,7 +1552,7 @@ export async function startServer(
         // Watch and Take over draw a box thread's page: its preview relay and its rows, on this host that has no computer use of its own.
         if (!box) return
         if (!previews) {
-          previews = new ComputerPreviews({ service: box.service, sessions: box.sessions })
+          previews = new ComputerPreviews({ service: box.service, sessions: box.previews })
           boxPreviews = true
         }
         computerRpc.setBox(box.rows)

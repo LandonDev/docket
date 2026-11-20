@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { macComputerKey } from "@server/shared/contract-maccomputer";
-import { computerTiles, computersMark } from "./computers";
+import { computerTiles, computersMark, findComputer, takeOver, tileKey } from "./computers";
+import { registry } from "./connection/registry";
 import { BOX_BROWSER_BUNDLE } from "./computerSessions";
 
 const row = (over: Partial<ComputerSessionRow> & { threadId: string }): ComputerSessionRow => ({
@@ -81,6 +82,41 @@ describe("every computer being driven now", () => {
   it("gives each tile the thread whose pane holds its browser, so Take over is asked of the pane", () => {
     const tiles = computerTiles({ box: [row({ threadId: "sub", apps: chromium })] }, titleOf, nameOf, mac, (id) => (id === "sub" ? "root" : id));
     expect(tiles[0].pane).toBe("root");
+  });
+
+  it("keeps a pane's one browser page the same tile when its row moves from the thread that drove it to the pane's own", () => {
+    const paneOf = (id: string): string => (id === "sub" ? "root" : id);
+    const before = computerTiles({ box: [row({ threadId: "sub", apps: chromium })] }, titleOf, nameOf, mac, paneOf);
+    const after = computerTiles({ box: [row({ threadId: "root", apps: chromium, driver: "owner" })] }, titleOf, nameOf, mac, paneOf);
+    expect(before[0].id).not.toBe(after[0].id);
+    expect(tileKey(before[0], before)).toBe(tileKey(after[0], after));
+    // two pages of one pane are two tiles, each its thread's; a window that is no browser page is its thread's
+    const two = computerTiles({ box: [row({ threadId: "sub", apps: chromium }), row({ threadId: "root", apps: chromium })] }, titleOf, nameOf, mac, paneOf);
+    expect(two.map((t) => tileKey(t, two)).sort()).toEqual(two.map((t) => t.id).sort());
+    const window = computerTiles({ local: [row({ threadId: "t1" })] }, titleOf, nameOf, mac);
+    expect(tileKey(window[0], window)).toBe(window[0].id);
+  });
+
+  it("finds the page a full view was opened on after Take over moved its row to the pane's thread", () => {
+    const paneOf = (id: string): string => (id === "sub" ? "root" : id);
+    const before = computerTiles({ box: [row({ threadId: "sub", apps: chromium })] }, titleOf, nameOf, mac, paneOf);
+    const after = computerTiles({ box: [row({ threadId: "root", apps: chromium, driver: "owner" })] }, titleOf, nameOf, mac, paneOf);
+    expect(findComputer(before, "box", "sub", "root")).toBe(before[0]);
+    expect(findComputer(after, "box", "sub", "root")).toBe(after[0]);
+    // another pane's page, another host's, and a window that is no browser page are not it
+    expect(findComputer(after, "box", "b2", "b2")).toBeNull();
+    expect(findComputer(after, "local", "sub", "root")).toBeNull();
+    expect(findComputer(computerTiles({ box: [row({ threadId: "root" })] }, titleOf, nameOf, mac, paneOf), "box", "sub", "root")).toBeNull();
+  });
+
+  it("takes over by holding the wheel first and stopping the pane's live sessions after, so the page is never without a row", async () => {
+    const calls: string[] = [];
+    const spy = vi.spyOn(registry, "link").mockImplementation(() => ({ request: async (method: string, params: { sessionId: string }) => void calls.push(`${method} ${params.sessionId}`) }) as never);
+    const paneOf = (id: string): string => (id === "sub" ? "root" : id);
+    const tiles = computerTiles({ box: [row({ threadId: "sub", apps: chromium }), row({ threadId: "b2", apps: chromium })] }, titleOf, nameOf, mac, paneOf);
+    await takeOver(tiles.find((t) => t.pane === "root")!, tiles);
+    expect(calls).toEqual(["work.browser.drive root", "computer.stop sub"]);
+    spy.mockRestore();
   });
 
   it("marks the rail's row: waiting while a card needs him, working while anything is driven, nothing otherwise, and never a count", () => {

@@ -207,8 +207,9 @@ The box never sees a password. Two ways in:
   and none is kept (the headed profile). Then he presses Hand back, and the
   thread goes on from the page his sign-in opened. This needs the
   `screen-relay` tool installed on the box and `work.browser.video` on;
-  without them the browser is headless and there is no picture to drive,
-  and the old way still works: on the Mac,
+  without them the browser is headless: Take over keeps the page listed
+  with its 4 fps picture and Hand back, but the picture takes no input,
+  and the old way to reach the page still works: on the Mac,
   `ssh -L 9333:127.0.0.1:$(ssh box head -1 /srv/agents/temp-code-data/work-browser/box/profile/DevToolsActivePort) box`,
   then chrome://inspect, Configure, `localhost:9333`, and Inspect on the
   page.

@@ -20,6 +20,8 @@ const host = vi.hoisted(() => ({
   calls: [] as Array<{ method: string; params: Record<string, unknown> }>,
   pushes: [] as Array<(p: unknown) => void>,
   stopped: [] as string[],
+  /** for each stop, whether he already held the wheel when it was asked */
+  droveBeforeStop: [] as boolean[],
   pictureDown: false,
   stateDown: false,
   /** what the act kept: its bytes, no picture at all, or a picture whose bytes did not come */
@@ -68,7 +70,10 @@ vi.mock("../../lib/computerSection", async (original) => ({
 vi.mock("../../lib/computerSessions", async (original) => ({
   ...(await original<typeof import("../../lib/computerSessions")>()),
   useComputerEntries: () => LIVE_ENTRIES,
-  stopComputer: async (entry: { row: { threadId: string } }) => void host.stopped.push(entry.row.threadId),
+  stopComputer: async (entry: { row: { threadId: string } }) => {
+    host.droveBeforeStop.push(host.calls.some((c) => c.method === "work.browser.drive" && c.params.driver === "owner"));
+    host.stopped.push(entry.row.threadId);
+  },
 }));
 
 vi.mock("../../surfaces/threads/computer/Viewport", async (original) => {
@@ -124,6 +129,7 @@ beforeEach(() => {
   host.calls = [];
   host.pushes = [];
   host.stopped = [];
+  host.droveBeforeStop = [];
   host.pictureDown = false;
   host.stateDown = false;
   host.picture = "bytes";
@@ -140,9 +146,11 @@ describe("the browser's bar", () => {
     render(<Bar {...props()} />);
     await screen.findByText("The agent is driving");
     expect(screen.getByText("us2.concursolutions.com")).toBeTruthy();
+    // he holds the wheel before the agent's session is stopped: the host lists a pane he drives, so the page keeps a row
     fireEvent.click(screen.getByRole("button", { name: "Take over" }));
     await waitFor(() => expect(host.stopped).toEqual(["t1"]));
     expect(methods()).toEqual(["work.browser.drive"]);
+    expect(host.droveBeforeStop).toEqual([true]);
     act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
     await screen.findByText("You are driving");
     expect(screen.getByRole("button", { name: "Hand back" }).hasAttribute("data-hand-back")).toBe(true);

@@ -101,9 +101,12 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const [busy, press] = usePress();
   const takeOver = (): void =>
     press("take", async () => {
-      // The agent's hands come off first: every live session of the tree stops for its turn, then he holds the wheel.
-      await Promise.all(live.map((e) => stopComputer(e)));
+      // He holds the wheel first, which refuses the agent every further act and keeps the page listed (the host has a
+      // row for a pane he drives); then every live session of the tree stops for its turn. The other way round the
+      // page had no row between the two calls, and its picture went.
+      const sessions = live;
       await setDriver(env, pane, "owner");
+      await Promise.all(sessions.map((e) => stopComputer(e)));
     });
   const handBack = (): void => press("back", () => setDriver(env, pane, "agent"));
   const host = siteHost(state);
@@ -327,7 +330,7 @@ export function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<ty
   const ended = stream.state.status === "ended" ? stream.state : null;
   // Bones only while a first frame is on its way: a stream that ended or failed leaves the empty well over its line and Retry.
   const coming = stream.state.status === "starting" || (stream.state.status === "live" && !face.drawn);
-  const shape = { aspectRatio: `${size.width} / ${size.height}`, maxWidth: sharpOf(stream.state) ?? undefined };
+  const shape = { aspectRatio: `${size.width} / ${size.height}`, maxWidth: sharpOf(stream) ?? undefined };
   const inside = (
     <>
       {coming ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}

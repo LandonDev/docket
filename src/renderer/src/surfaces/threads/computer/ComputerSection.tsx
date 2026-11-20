@@ -166,7 +166,7 @@ export function viewportOf(v: {
   if (live && !pinned && !over) {
     const label = `Live view of ${liveName(live.entry, state)}`;
     const open = v.onOpenLive;
-    return { face: liveFace(live.stream, open ? (from) => open(live.entry, label, from) : undefined), label, size: streamSize(live.stream.state), sharp: sharpOf(live.stream.state) };
+    return { face: liveFace(live.stream, open ? (from) => open(live.entry, label, from) : undefined), label, size: streamSize(live.stream.state), sharp: sharpOf(live.stream) };
   }
   // The stream ended: today's line, under the newest step's kept picture when there is one.
   const endedWords = live && !pinned && state && over ? (state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error) : null;

@@ -283,6 +283,27 @@ describe('the box browser as a source of video', () => {
     expect(r.stage.driving).toBe('A')
   })
 
+  it('keeps a stream he was watching through Take over and through Hand back: the drive change ends nothing', async () => {
+    const r = rig()
+    // a tile's stream: it watches, takes no display from another and never drives
+    const answer = await r.ask('a')
+    if (!answer.ok) throw new Error()
+    const watching = r.join()
+    r.state.owner.add('a')
+    await r.video.driver('a', true)
+    expect(watching.closed).toBeNull()
+    expect(r.relay.list().map((s) => ({ id: s.id, scope: s.scope, joined: s.joined }))).toEqual([{ id: answer.stream, scope: 'watch', joined: true }])
+    // the place that drives opens its own stream beside it, on the same page: neither ends the other
+    const driven = await r.ask('a', { drive: true })
+    expect(driven.ok).toBe(true)
+    r.join()
+    expect(watching.closed).toBeNull()
+    r.state.owner.delete('a')
+    await r.video.driver('a', false)
+    expect(watching.closed).toBeNull()
+    expect(r.relay.list().find((s) => s.id === answer.stream)).toMatchObject({ scope: 'watch', joined: true })
+  })
+
   it('returns the page to full screen and stops his input when he hands back', async () => {
     const r = rig()
     r.state.owner.add('a')

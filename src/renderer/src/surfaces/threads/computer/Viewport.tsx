@@ -367,10 +367,16 @@ export function liveFace(stream: LiveStream, onOpen?: (from: DOMRect) => void): 
   return { kind: "live", drawn, picture, mark: <ClickMark ref={stream.ring} />, ...(onOpen ? { onOpen } : {}) };
 }
 
-/** The widest a stream's box is drawn: the frame's own pixels on this screen. Null before a frame's size is known. */
-export function sharpOf(state: PreviewState): number | null {
-  const size = streamSize(state);
-  return size && typeof window !== "undefined" ? sharpWidth(size.width, window.devicePixelRatio || 1) : null;
+/**
+ * The widest a stream's box is drawn. Video is the window's own pixels, so it is drawn at them on this screen and
+ * never stretched. The 4 fps picture is a copy the host scaled down to at most 960 on its long edge: its pixels say
+ * nothing of the window's size, and held to them on a 2× screen it was half the width video has. It is drawn up to
+ * its width in CSS pixels, which is what a 1× screen shows. Null before a frame's size is known.
+ */
+export function sharpOf(stream: Pick<LiveStream, "state" | "mode">): number | null {
+  const size = streamSize(stream.state);
+  if (!size || typeof window === "undefined") return null;
+  return stream.mode === "picture" ? size.width : sharpWidth(size.width, window.devicePixelRatio || 1);
 }
 
 /** The stream's shape while it starts or runs; null before it is known. */

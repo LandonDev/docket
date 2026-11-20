@@ -94,22 +94,48 @@ export function useComputers(): ComputerTile[] {
   );
 }
 
+/**
+ * The tile a view opened on `threadId` shows now: that thread's, else the
+ * browser page of its pane. Take over moves a page's row from the thread
+ * that drove it to the pane's own thread, and a full view opened before it
+ * is still looking at that page.
+ */
+export function findComputer(tiles: readonly ComputerTile[], host: string, threadId: string, pane: string): ComputerTile | null {
+  return tiles.find((t) => t.id === tileId(host, threadId)) ?? tiles.find((t) => t.browser && t.entry.host === host && t.pane === pane) ?? null;
+}
+
 /** One tile by its host and thread, or null once nothing drives it. */
 export function useComputer(host: string, threadId: string): ComputerTile | null {
   const tiles = useComputers();
-  return tiles.find((t) => t.id === tileId(host, threadId)) ?? null;
+  return findComputer(tiles, host, threadId, threadRoot(threadId, (t) => sessionStore.metaOf(t)?.parentId));
 }
 
 /**
- * Take over a tile's browser, as the canvas's bar does: the agent's hands
- * come off first (every live session of the pane on its host stops for its
- * turn), then he holds the wheel.
+ * What a tile is to React: its thread, except the one browser page of a
+ * pane, which is the pane's. Take over stops the session of the thread that
+ * drove the page and the host lists the page under the pane's own thread
+ * from then on; it is the same page, so it stays the same tile, and its
+ * picture the same element.
+ */
+export function tileKey(tile: ComputerTile, all: readonly ComputerTile[]): string {
+  if (!tile.browser) return tile.id;
+  const alone = all.every((t) => t === tile || !t.browser || t.entry.host !== tile.entry.host || t.pane !== tile.pane);
+  return alone ? `${tile.entry.host}\n${tile.pane}\nbrowser` : tile.id;
+}
+
+/**
+ * Take over a tile's browser, as the canvas's bar does: he holds the wheel
+ * first, which refuses the agent every further act and keeps the page in
+ * every list (the host has a row for a pane he drives), then every live
+ * session of the pane on its host is stopped for its turn. The other way
+ * round the page had no row between the two calls, and its picture went.
  */
 export async function takeOver(tile: ComputerTile, all: readonly ComputerTile[]): Promise<void> {
   const link = registry.link(tile.entry.host);
   if (!link) throw new Error("the host is not connected");
-  await Promise.all(all.filter((t) => t.entry.host === tile.entry.host && t.pane === tile.pane && !t.driving).map((t) => stopComputer(t.entry)));
+  const live = all.filter((t) => t.entry.host === tile.entry.host && t.pane === tile.pane && !t.driving);
   await link.request("work.browser.drive", { sessionId: tile.pane, driver: "owner" });
+  await Promise.all(live.map((t) => stopComputer(t.entry)));
 }
 
 export async function handBack(tile: ComputerTile): Promise<void> {
