@@ -14,7 +14,9 @@ import { stopComputer, useComputerEntries, type ComputerEntry } from "../../lib/
 import { thisDesktopInLine } from "../../lib/native";
 import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
-import { ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, streamSize, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
+import { ENDED_WORDS, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
+import { openLightbox } from "../../chrome/lightboxStore";
+import { sharpWidth } from "../../lib/video/support";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { barFaceOf, heldSubmitOf, portalValues, siteHost, type BarFace, type HeldSubmitPayload, type PortalValue } from "./portal";
@@ -281,7 +283,7 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
           (still ? (
             <StillView env={env} held={still} />
           ) : entry ? (
-            <LiveView stream={stream} box={box} label={liveLabel(entry)} />
+            <LiveView stream={stream} box={box} label={liveLabel(entry)} onOpen={(from) => openLightbox([{ environmentId: entry.host, name: liveLabel(entry), live: { threadId: entry.row.threadId } }], 0, from)} />
           ) : state ? (
             <StillView env={env} held={waiting} />
           ) : (
@@ -298,20 +300,44 @@ const liveLabel = (entry: ComputerEntry): string => {
   return app ? `Live view of ${app.window ? `${app.window} in ${app.name}` : app.name}` : "Live view";
 };
 
-/** The window live, in its own shape at the column's width, a skeleton in that shape until its first frame. */
-function LiveView({ stream, box, label }: { stream: ReturnType<typeof useLiveStream>; box: RefObject<HTMLDivElement | null>; label: string }) {
-  const face = liveFace(stream);
+/**
+ * The window live, in its own shape, a skeleton in that shape until its first frame. It is as wide as the column and no
+ * wider than its own pixels, so the picture is never stretched; a click on it opens the full view.
+ */
+function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof useLiveStream>; box: RefObject<HTMLDivElement | null>; label: string; onOpen?: (from: DOMRect) => void }) {
+  const face = liveFace(stream, onOpen);
   const size = streamSize(stream.state) ?? { width: 16, height: 10 };
   const ended = stream.state.status === "ended" ? stream.state : null;
   // Bones only while a first frame is on its way: a stream that ended or failed leaves the empty well over its line and Retry.
   const coming = stream.state.status === "starting" || (stream.state.status === "live" && !face.drawn);
+  const shape = { aspectRatio: `${size.width} / ${size.height}`, maxWidth: sharpOf(stream.state) ?? undefined };
+  const inside = (
+    <>
+      {coming ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
+      {face.picture}
+      <div className="pointer-events-none absolute inset-0">{face.mark}</div>
+    </>
+  );
+  const open = face.onOpen;
   return (
     <div className={FADE_IN}>
-      <div ref={box} role="img" aria-label={label} data-face="live" className="relative w-full overflow-hidden rounded-lg bg-card" style={{ aspectRatio: `${size.width} / ${size.height}` }}>
-        {coming ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
-        {face.picture}
-        <div className="pointer-events-none absolute inset-0">{face.mark}</div>
-      </div>
+      {open ? (
+        <button
+          ref={box as RefObject<never>}
+          type="button"
+          aria-label={label}
+          data-face="live"
+          onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
+          className="relative mx-auto block w-full cursor-zoom-in overflow-hidden rounded-lg bg-card"
+          style={shape}
+        >
+          {inside}
+        </button>
+      ) : (
+        <div ref={box} role="img" aria-label={label} data-face="live" className="relative mx-auto w-full overflow-hidden rounded-lg bg-card" style={shape}>
+          {inside}
+        </div>
+      )}
       {ended ? (
         <div className="pt-1">
           <ViewportLine words={ENDED_WORDS[ended.reason]} onRetry={RETRY_ENDS.has(ended.reason) ? stream.retry : undefined} />
@@ -338,8 +364,9 @@ function StillView({ env, held }: { env: string; held: OutboxItem | null }) {
       draggable={false}
       onLoad={picture.onLoad}
       onError={picture.onError}
-      className={cn(pictureClass(true), "h-auto")}
-      style={{ aspectRatio: shape }}
+      // in the live picture's own frame: no wider than its pixels, so the two swap without a jump
+      className={cn(pictureClass(true), "mx-auto h-auto")}
+      style={{ aspectRatio: shape, maxWidth: payload?.picture ? sharpWidth(payload.picture.width, window.devicePixelRatio || 1) : undefined }}
     />
   );
 }

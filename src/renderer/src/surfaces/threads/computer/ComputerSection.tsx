@@ -26,7 +26,7 @@ import { useSessionTitles } from "../../../lib/tcserver/store";
 import { ComputerView, type LiveSession } from "./ComputerView";
 import { rowWords, type RunningLine } from "./StepList";
 import { StepMediaCache, keepsMedia, useStepMedia, type MediaWant } from "./stepMedia";
-import { ENDED_WORDS, NO_PICTURE_WORDS, RETRY_ENDS, ViewportLine, liveFace, streamSize, useLiveStream, type LiveStream, type ViewportProps } from "./Viewport";
+import { ENDED_WORDS, NO_PICTURE_WORDS, RETRY_ENDS, ViewportLine, liveFace, sharpOf, streamSize, useLiveStream, type LiveStream, type ViewportProps } from "./Viewport";
 
 /**
  * The Computer section's container (docs/LAYOUT.md "The right side"): it
@@ -156,12 +156,18 @@ export function viewportOf(v: {
   /** the stand-in is of another window than the open row's step: the line names it */
   another?: boolean;
   onOpen: (label: string, url: string, from: DOMRect) => void;
+  /** the live picture's click: the full view of that session, from the box */
+  onOpenLive?: (entry: ComputerEntry, label: string, from: DOMRect) => void;
 }): ViewportProps | null {
   const { live, pinned, shown, media, keptHeight } = v;
   const state = live?.stream.state;
   const over = state?.status === "ended" || state?.status === "failed";
   // Following a live window: the stream, a skeleton in its shape until the first frame.
-  if (live && !pinned && !over) return { face: liveFace(live.stream), label: `Live view of ${liveName(live.entry, state)}`, size: streamSize(live.stream.state) };
+  if (live && !pinned && !over) {
+    const label = `Live view of ${liveName(live.entry, state)}`;
+    const open = v.onOpenLive;
+    return { face: liveFace(live.stream, open ? (from) => open(live.entry, label, from) : undefined), label, size: streamSize(live.stream.state), sharp: sharpOf(live.stream.state) };
+  }
   // The stream ended: today's line, under the newest step's kept picture when there is one.
   const endedWords = live && !pinned && state && over ? (state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error) : null;
   const endedRetry = live && state && (state.status === "failed" || (state.status === "ended" && RETRY_ENDS.has(state.reason))) ? live.stream.retry : undefined;
@@ -456,8 +462,9 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     keptHeight,
     asOf,
     another,
-    // a kept picture opens the lightbox from the box; the live box does not
+    // a kept picture opens the lightbox from the box, and the live picture its full view
     onOpen: (label, url, from) => openLightbox([{ environmentId: LOCAL_ENVIRONMENT_ID, name: label, src: url }], 0, from),
+    onOpenLive: (entry, label, from) => openLightbox([{ environmentId: entry.host, name: label, live: { threadId: entry.row.threadId } }], 0, from),
   });
 
   return (

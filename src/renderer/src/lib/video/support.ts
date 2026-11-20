@@ -20,3 +20,21 @@ export function videoEdge(cssWidth: number, dpr: number): number {
 /** A place that grew this much past the edge the stream was opened at has it opened again, larger, once the resize has been quiet this long. */
 export const REGROW = 1.25;
 export const REGROW_QUIET_MS = 500;
+
+/**
+ * A picture is drawn at its own pixels, never stretched by a fraction: one
+ * frame pixel to one device pixel, or to `most` of them where that fits the
+ * room (the full view doubles), and scaled down, whole, only where even its
+ * own size does not fit. Sizes in CSS pixels.
+ */
+export function sharpSize(frame: { width: number; height: number }, dpr: number, room: { width: number; height: number }, most = 1): { width: number; height: number } {
+  const unit = { width: frame.width / Math.max(1, dpr), height: frame.height / Math.max(1, dpr) };
+  for (let k = Math.max(1, Math.floor(most)); k >= 1; k--) {
+    if (unit.width * k <= room.width && unit.height * k <= room.height) return { width: unit.width * k, height: unit.height * k };
+  }
+  const fit = Math.min(room.width / unit.width, room.height / unit.height);
+  return { width: Math.max(0, unit.width * fit), height: Math.max(0, unit.height * fit) };
+}
+
+/** The widest a frame is drawn in a column: its own pixels. A narrower column scales it down. */
+export const sharpWidth = (frameWidth: number, dpr: number): number => frameWidth / Math.max(1, dpr);

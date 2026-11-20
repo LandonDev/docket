@@ -173,8 +173,8 @@ describe("following", () => {
     h.preview.state = live();
     mount(data([call(1), call(2, { steps: [step("Typed", "into Save As", { kind: "type", target: '"Total"', tier: "ax" })] }), running(3)], [entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT } })]));
     await flush();
-    // the live box: a picture, not a button, named for the window
-    expect(box()!.getAttribute("role")).toBe("img");
+    // the live box, once a frame is on it: a button that opens the full view, named for the window
+    expect(box()!.tagName).toBe("BUTTON");
     expect(box()!.getAttribute("data-face")).toBe("live");
     expect(box()!.getAttribute("aria-label")).toBe("Live view of Untitled in TextEdit");
     expect(h.preview.runs.at(-1)).toBe(true);
@@ -820,12 +820,14 @@ describe("pinning", () => {
     expect(box()!.getAttribute("aria-label")).toBe(`First in TextEdit at ${dayTime(AT + 1450)}`);
   });
 
-  it("a kept picture opens the lightbox from the box, and the live box does not", async () => {
+  it("a kept picture opens the lightbox from the box, and the live picture its full view", async () => {
     h.preview.state = live();
     mount(data([call(1), call(2)], [entry()]));
     await flush();
     fireEvent.click(box()!);
-    expect(h.openLightbox).not.toHaveBeenCalled();
+    expect(h.openLightbox).toHaveBeenCalledTimes(1);
+    expect(h.openLightbox.mock.calls[0][0]).toEqual([{ environmentId: "local", name: "Live view of Untitled in TextEdit", live: { threadId: "t1" } }]);
+    h.openLightbox.mockClear();
     fireEvent.click(rowButton("t1:1:0"));
     await flush();
     fireEvent.click(box()!);

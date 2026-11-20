@@ -8,6 +8,7 @@ import { cn } from "@renderer/lib/cn";
 import { CLICK_MARK } from "../../../lib/ease";
 import { useComputerPreview, type PreviewState } from "../../../lib/computerPreview";
 import { useComputerVideo } from "../../../lib/computerVideo";
+import { sharpWidth } from "../../../lib/video/support";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 
 /**
@@ -96,8 +97,8 @@ export const pictureClass = (drawn: boolean): string =>
   cn("block size-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline", !drawn && "invisible");
 
 export type ViewportFace =
-  /** the live stream: `picture` is the canvas (a still in a fixture) */
-  | { kind: "live"; picture: ReactNode; drawn: boolean; mark?: ReactNode }
+  /** the live stream: `picture` is the canvas (a still in a fixture); a click opens the full view from the box */
+  | { kind: "live"; picture: ReactNode; drawn: boolean; mark?: ReactNode; onOpen?: (from: DOMRect) => void }
   /** a kept picture; `dim` while the next one is on its way; a click opens the lightbox from the box */
   | { kind: "picture"; src: string; dim?: boolean; onOpen?: (from: DOMRect) => void }
   /** what the model read, where there is no picture */
@@ -114,6 +115,8 @@ export interface ViewportProps {
   label: string;
   /** the picture's shape; 16:10 until one says its own */
   size?: { width: number; height: number } | null;
+  /** the widest the box is drawn, in CSS pixels: a live picture's own pixels, so it is never stretched (`sharpOf`) */
+  sharp?: number | null;
   /** one line, only when it has something to say */
   line?: ReactNode;
   /** while a row is pinned: the height the box had when the pin began, so a picture of another shape sits inside it */
@@ -128,14 +131,15 @@ export interface ViewportProps {
  * aspect ratio under the cap), so a static render has the right size; pinned,
  * it keeps the height it is given and centres a picture of another shape.
  */
-export const Viewport = forwardRef(function Viewport({ face, label, size, line, height, frames = 0, marks = 0 }: ViewportProps, ref: Ref<HTMLElement>) {
+export const Viewport = forwardRef(function Viewport({ face, label, size, sharp, line, height, frames = 0, marks = 0 }: ViewportProps, ref: Ref<HTMLElement>) {
   const { width, height: tall } = size && size.width > 0 && size.height > 0 ? size : DEFAULT_SIZE;
   const aspect = `${width} / ${tall}`;
-  const boxStyle = height ? { height, maxHeight: VIEWPORT_MAX } : { aspectRatio: aspect, maxHeight: VIEWPORT_MAX };
+  const cap = sharp && sharp > 0 && !height ? { maxWidth: sharp } : null;
+  const boxStyle = height ? { height, maxHeight: VIEWPORT_MAX } : { aspectRatio: aspect, maxHeight: VIEWPORT_MAX, ...cap };
   // In its own shape the picture fills the box's height. In a kept height it is as wide as that height allows and no
   // wider than the box, so a picture of any shape sits whole inside it, centred both ways.
   const fit = height ? { aspectRatio: aspect, width: `min(100%, ${Math.round((height * width) / tall)}px)` } : { aspectRatio: aspect };
-  const boxClass = cn("relative flex w-full justify-center overflow-hidden rounded-lg bg-card", height && "items-center");
+  const boxClass = cn("relative flex w-full justify-center overflow-hidden rounded-lg bg-card", height && "items-center", cap && "mx-auto");
   // The fade is the section's first picture arriving: it rides the wrapper, which stays through every change of face,
   // so a pin, Go live and a step by key swap one face for another with nothing moving.
   const wrap = { "data-slot": "computer-viewport", className: FADE_IN } as const;
@@ -186,7 +190,7 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, line, 
       {face.kind === "live" ? <div className="pointer-events-none absolute inset-0">{face.mark}</div> : null}
     </div>
   );
-  if (face.kind === "picture" && face.onOpen) {
+  if ((face.kind === "picture" || face.kind === "live") && face.onOpen) {
     const open = face.onOpen;
     return (
       <div {...wrap}>
@@ -194,7 +198,8 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, line, 
           ref={ref as Ref<HTMLButtonElement>}
           type="button"
           aria-label={label}
-          data-face="picture"
+          data-face={face.kind}
+          {...(face.kind === "live" ? { "data-frames": frames, "data-marks": marks } : {})}
           onClick={(e) => open(e.currentTarget.getBoundingClientRect())}
           className={cn(boxClass, "cursor-zoom-in")}
           style={boxStyle}
@@ -291,10 +296,18 @@ export function useLiveStream(
 }
 
 /** The live face from a stream: its canvas, hidden until the first frame, and the ring a click plays. */
-export function liveFace(stream: LiveStream): Extract<ViewportFace, { kind: "live" }> {
+export function liveFace(stream: LiveStream, onOpen?: (from: DOMRect) => void): Extract<ViewportFace, { kind: "live" }> {
   const drawn = stream.state.status === "live" && stream.state.drawn;
   // keyed by what draws on it: when video gives way to the picture, the picture gets a canvas nothing was handed off
-  return { kind: "live", drawn, picture: <canvas key={stream.mode} ref={stream.canvas} aria-hidden="true" className={pictureClass(drawn)} />, mark: <ClickMark ref={stream.ring} /> };
+  const picture = <canvas key={stream.mode} ref={stream.canvas} aria-hidden="true" className={pictureClass(drawn)} />;
+  // the full view opens from a picture that is there to open
+  return { kind: "live", drawn, picture, mark: <ClickMark ref={stream.ring} />, ...(onOpen && drawn ? { onOpen } : {}) };
+}
+
+/** The widest a stream's box is drawn: the frame's own pixels on this screen. Null before a frame's size is known. */
+export function sharpOf(state: PreviewState): number | null {
+  const size = streamSize(state);
+  return size && typeof window !== "undefined" ? sharpWidth(size.width, window.devicePixelRatio || 1) : null;
 }
 
 /** The stream's shape while it starts or runs; null before it is known. */
