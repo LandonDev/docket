@@ -736,11 +736,13 @@ UAC prompt and the lock screen), and nothing runs in the guest for it.
   missing, `unsupported` while it sleeps. While anyone watches, the keeper
   does not put it to sleep. When it sleeps its streams end with `ended`.
   Who may watch is `mayWatch`, as for the box's browser.
-- **Its row** is the VM's own while it is awake: `computer: 'vm:windows'`,
-  `threadId` the thread that holds it (B5's lease) or `vm:windows`, idle
-  when none does, and `pictureOnly` when it has no window. The desktop asks
-  for its picture by that name (`previewKey`), so the tile and its stream
-  stay as the holder changes.
+- **Its rows** (`joinRows`, work/winvm/host.ts): while threads drive it,
+  the rows of their sessions on the VM's service (work/winvm/vm.ts), each
+  `computer: 'vm:windows'`; while none does and it is awake, one idle row of
+  its own, `threadId` the thread the lease still holds it for or
+  `vm:windows`; every one `pictureOnly` while it has no window. The desktop
+  asks for its picture by that name (`previewKey`), so the tile and its
+  stream stay as the thread changes.
 - **No window** (a tool missing, QEMU refusing the modules, a display that
   will not start): the machine runs with `-display none`, the page shows the
   4 fps picture from QMP's screenshots (`VmPreviews`, ids `vm-preview_N`,
