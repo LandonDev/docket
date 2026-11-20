@@ -26,7 +26,7 @@ import { useSessionTitles } from "../../../lib/tcserver/store";
 import { ComputerView, type LiveSession } from "./ComputerView";
 import { rowWords, type RunningLine } from "./StepList";
 import { StepMediaCache, keepsMedia, useStepMedia, type MediaWant } from "./stepMedia";
-import { ENDED_WORDS, NO_PICTURE_WORDS, RETRY_ENDS, ViewportLine, liveFace, sharpOf, streamSize, useLiveStream, type LiveStream, type ViewportProps } from "./Viewport";
+import { ENDED_WORDS, NO_PICTURE_WORDS, RETRY_ENDS, VIEWPORT_INSETS, ViewportLine, liveFace, sharpOf, streamSize, useLiveStream, type LiveStream, type ViewportProps } from "./Viewport";
 
 /**
  * The Computer section's container (docs/LAYOUT.md "The right side"): it
@@ -298,7 +298,7 @@ export function ComputerSectionBody({ threadId, data }: { threadId: string; data
     return () => clearTimeout(timer);
   }, [data.entries, heldLead, holdTick, lead, leadId]);
   // the section shows a page he drives; he drives it from the canvas or the full view
-  const stream = useLiveStream(lead, !pinnedRow && paneShown && docShown, box, root, { drive: false });
+  const stream = useLiveStream(lead, !pinnedRow && paneShown && docShown, box, root, { drive: false, inset: VIEWPORT_INSETS });
   const over = stream.state.status === "ended" || stream.state.status === "failed";
 
   // ── kept pictures and read texts ──

@@ -14,7 +14,7 @@ import { useComputerEntries, type ComputerEntry } from "../../lib/computerSessio
 import { thisDesktopInLine } from "../../lib/native";
 import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
-import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, OPEN_OVER, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useDrivingInput, useLiveStream, ViewportLine } from "../../surfaces/threads/computer/Viewport";
+import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, OPEN_OVER, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useDrivingInput, useLiveStream, VIEWPORT_INSETS, ViewportLine } from "../../surfaces/threads/computer/Viewport";
 import { openLightbox } from "../../chrome/lightboxStore";
 import { sharpWidth } from "../../lib/video/support";
 import { sayError } from "../canvas/frame";
@@ -262,7 +262,8 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
   // A waiting submit shows the page it kept, never the live window's placeholder, so the stream rests until it is decided;
   // once he takes over he drives the live window, so the body draws it (browser.html "You took over").
   const still = waiting && !(state?.driver === "owner" && entry) ? waiting : null;
-  const stream = useLiveStream(entry, !still, box, measure);
+  // the view's p-3 is around the picture: 12px a side
+  const stream = useLiveStream(entry, !still, box, measure, { inset: VIEWPORT_INSETS });
   // The bar's primary, after he takes over, waits on this view's first frame: say when one is on screen.
   const framed = !props.picture && !still && !!entry && stream.state.status === "live" && stream.state.drawn;
   const liveKey = `${env}\n${pane}`;

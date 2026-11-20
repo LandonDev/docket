@@ -120,10 +120,10 @@ const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
 const entry = (key = "s1"): ComputerEntry => ({ host: "box", row: row({ threadId: key }), previewable: true, previewHost: "box", previewKey: key });
 const flush = () => act(async () => {});
 
-function Live({ entry: en, run, take, drive, onOpen, back }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy" }) {
+function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, back }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; inset?: number; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy" }) {
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
-  const stream = useLiveStream(en, run, box, root, take === undefined && drive === undefined ? undefined : { take, drive });
+  const stream = useLiveStream(en, run, box, root, { inset, ...(take === undefined ? {} : { take }), ...(drive === undefined ? {} : { drive }) });
   useDrivingInput(stream, box);
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
@@ -145,9 +145,9 @@ function Live({ entry: en, run, take, drive, onOpen, back }: { entry: ComputerEn
   );
 }
 
-type MountProps = { run?: boolean; take?: boolean; drive?: boolean; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy" };
+type MountProps = { run?: boolean; take?: boolean; drive?: boolean; inset?: number; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy" };
 function mount(props: MountProps = {}) {
-  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} onOpen={p.onOpen ?? props.onOpen} back={p.back} />;
+  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} inset={p.inset} onOpen={p.onOpen ?? props.onOpen} back={p.back} />;
   const view = render(tree(props));
   return { ...view, again: (p: MountProps) => view.rerender(tree(p)) };
 }
@@ -163,6 +163,12 @@ describe("the live viewport, as video", () => {
     expect(h.acquired[0]).toMatchObject({ host: "box", key: "s1", want: { edge: videoEdge(304 - VIEWPORT_INSETS, window.devicePixelRatio), take: true } });
     expect(mode()).toBe("video");
     expect(previewStarts()).toBe(0);
+    // a place with nothing around the picture (a tile, the stage) asks for its whole width
+    cleanup();
+    h.acquired.length = 0;
+    mount({ inset: 0 });
+    await flush();
+    expect(h.acquired[0]!.want.edge).toBe(videoEdge(304, window.devicePixelRatio));
     // a tile is not the thread on screen: it does not take the display
     cleanup();
     h.acquired.length = 0;

@@ -3,7 +3,7 @@ import type { PreviewOptions, PreviewState } from "./computerPreview";
 import type { ComputerEntry } from "./computerSessions";
 import type { InputEvent } from "@server/shared/video/nsl1";
 import type { StreamHandle, StreamView } from "./video/streams";
-import { REGROW, REGROW_QUIET_MS, videoEdge, videoSupported } from "./video/support";
+import { REGROW_QUIET_MS, nextEdge, pixelRatioOf, videoEdge, videoSupported } from "./video/support";
 
 /**
  * A computer session as live video (docs/agents/live-video.md "The viewer"):
@@ -85,14 +85,16 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
     names.current = { app, window: window_ };
   });
 
+  // The edge follows the size shown, in the pixels of the window that shows it: larger past REGROW, smaller below SHRINK
+  // (the stream itself waits until every place has shrunk, streams.ts), each once the resize has been quiet.
   useEffect(() => {
     if (opts.boxWidth <= 0) return;
-    const next = videoEdge(opts.boxWidth, window.devicePixelRatio);
+    const next = nextEdge(edge, videoEdge(opts.boxWidth, pixelRatioOf(box?.current ?? canvas.current)));
     if (edge === null) return setEdge(next);
-    if (next <= edge * REGROW) return;
+    if (next === edge) return;
     const timer = setTimeout(() => setEdge(next), REGROW_QUIET_MS);
     return () => clearTimeout(timer);
-  }, [edge, opts.boxWidth]);
+  }, [box, canvas, edge, opts.boxWidth]);
 
   /** The stream is drawn on the canvas that is there now: it may mount after the stream opened, or be another one. */
   const sync = useCallback(() => {

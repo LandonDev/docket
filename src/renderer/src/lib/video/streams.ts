@@ -3,7 +3,7 @@ import type { InputEvent } from "@server/shared/video/nsl1";
 import { VIDEO_MIN_EDGE, type VideoCloseFace, type VideoOpenAnswer } from "@server/shared/contract-video";
 import { registry } from "../connection/registry";
 import { afterClose, streamUrl, type FromWorker, type ToWorker } from "./messages";
-import { REGROW } from "./support";
+import { REGROW, SHRINK, SHRINK_QUIET_MS } from "./support";
 
 /**
  * The live streams of this window (docs/agents/live-video.md "The viewer").
@@ -97,10 +97,15 @@ interface Entry {
   clicks: Set<(x: number, y: number) => void>;
   timer: ReturnType<typeof setTimeout> | null;
   linger: ReturnType<typeof setTimeout> | null;
+  /** set while every place has shrunk below SHRINK: the stream is opened again, smaller, when it fires */
+  shrink: ReturnType<typeof setTimeout> | null;
   offs: (() => void)[];
 }
 
 const keyOf = (host: string, key: string): string => `${host}\n${key}`;
+
+/** The source answered at the edge asked for, so the edge is what sizes it: a window smaller than that, or the box's page, comes at its own size whatever is asked. */
+const heldDown = (opened: { edge: number; long: number }): boolean => opened.long <= opened.edge && opened.long >= opened.edge - 2;
 
 export class VideoStreams {
   private readonly entries = new Map<string, Entry>();
@@ -120,7 +125,7 @@ export class VideoStreams {
     const id = keyOf(host, key);
     let entry = this.entries.get(id);
     if (!entry) {
-      entry = { id: this.nextId++, host, key, wants: new Map(), view: { status: "opening" }, opened: null, tries: 0, round: 0, listeners: new Set(), counts: new Set(), clicks: new Set(), timer: null, linger: null, offs: [] };
+      entry = { id: this.nextId++, host, key, wants: new Map(), view: { status: "opening" }, opened: null, tries: 0, round: 0, listeners: new Set(), counts: new Set(), clicks: new Set(), timer: null, linger: null, shrink: null, offs: [] };
       this.entries.set(id, entry);
       this.byId.set(entry.id, entry);
     }
@@ -161,6 +166,7 @@ export class VideoStreams {
         mine.wants.delete(token);
         // nobody drives it from here any more: the host has made it a watch stream, and the next driver asks for a new one
         if (mine.opened?.drive && !this.want(mine).drive) mine.opened.drive = false;
+        if (mine.wants.size && this.entries.get(id) === mine) this.shrunk(mine);
         if (mine.wants.size || this.entries.get(id) !== mine) return;
         mine.linger = setTimeout(() => this.drop(mine), LINGER_MS);
       },
@@ -191,7 +197,25 @@ export class VideoStreams {
     // he took over: a watch stream is never turned into one that takes input, so a new one is asked for
     if (opened && want.drive && !opened.drive) return this.open(entry);
     // larger only when the edge we asked for is what held the picture down: the box's page comes at one size whatever is asked
-    if (opened && want.edge > opened.edge * REGROW && opened.long <= opened.edge && opened.long >= opened.edge - 2) this.open(entry);
+    if (opened && want.edge > opened.edge * REGROW && heldDown(opened)) return this.open(entry);
+    this.shrunk(entry);
+  }
+
+  /** Every place shows it far smaller than it was opened at: once that has held SHRINK_QUIET_MS, it is opened again at their size. */
+  private shrunk(entry: Entry): void {
+    const small = (): boolean => {
+      const opened = entry.opened;
+      return !!opened && entry.view.status !== "over" && heldDown(opened) && this.want(entry).edge < opened.edge * SHRINK;
+    };
+    if (!small()) {
+      if (entry.shrink) clearTimeout(entry.shrink);
+      entry.shrink = null;
+      return;
+    }
+    entry.shrink ??= setTimeout(() => {
+      entry.shrink = null;
+      if (small() && entry.wants.size && this.entries.get(keyOf(entry.host, entry.key)) === entry) this.open(entry);
+    }, SHRINK_QUIET_MS);
   }
 
   private set(entry: Entry, view: StreamView): void {
@@ -202,7 +226,8 @@ export class VideoStreams {
   private open(entry: Entry): void {
     const round = ++entry.round;
     if (entry.timer) clearTimeout(entry.timer);
-    entry.timer = null;
+    if (entry.shrink) clearTimeout(entry.shrink);
+    entry.timer = entry.shrink = null;
     const link = this.broken ? null : this.deps.link(entry.host);
     const rpcUrl = link?.transport?.url;
     if (!link || !rpcUrl) return this.set(entry, { status: "over", face: "picture" });
@@ -250,6 +275,7 @@ export class VideoStreams {
     this.byId.delete(entry.id);
     entry.round++;
     if (entry.timer) clearTimeout(entry.timer);
+    if (entry.shrink) clearTimeout(entry.shrink);
     for (const off of entry.offs.splice(0)) off();
     for (const [surface, stream] of this.bound) if (stream === entry.id) this.bound.delete(surface);
     if (this.worker) this.post({ t: "close", stream: entry.id });

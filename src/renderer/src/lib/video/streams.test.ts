@@ -3,7 +3,7 @@ import type { ServerPush } from "@server/shared/contract";
 import { VIDEO_CLOSE, VIDEO_RETRIES, type VideoOpenAnswer } from "@server/shared/contract-video";
 import { afterClose, RETRY_DELAYS_MS, streamUrl, type FromWorker, type ToWorker } from "./messages";
 import { LINGER_MS, VideoStreams, type StreamLink, type WorkerLike } from "./streams";
-import { videoEdge } from "./support";
+import { nextEdge, pixelRatioOf, SHRINK_QUIET_MS, videoEdge } from "./support";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -74,6 +74,18 @@ describe("where a stream's socket is, and what a closed one does next", () => {
     expect(afterClose(VIDEO_CLOSE.error, undefined, 0)).toEqual({ then: "over", face: "stopped", retry: true });
     expect(afterClose(VIDEO_CLOSE.permission, undefined, 0)).toEqual({ then: "over", face: "permission" });
     expect(afterClose(0, "unsupported", 0)).toEqual({ then: "over", face: "picture" });
+  });
+
+  it("asks again only past a quarter larger or below six tenths, and in the pixels of the window the picture is in", () => {
+    expect(nextEdge(null, 1280)).toBe(1280);
+    expect(nextEdge(1280, 1536)).toBe(1280);
+    expect(nextEdge(1280, 1664)).toBe(1664);
+    expect(nextEdge(1280, 832)).toBe(1280);
+    expect(nextEdge(1280, 704)).toBe(704);
+    const inPopOut = { ownerDocument: { defaultView: { devicePixelRatio: 1 } } } as unknown as Element;
+    const onRetina = { ownerDocument: { defaultView: { devicePixelRatio: 2 } } } as unknown as Element;
+    expect(pixelRatioOf(inPopOut)).toBe(1);
+    expect(pixelRatioOf(onRetina)).toBe(2);
   });
 
   it("asks for the place's width in device pixels, in steps of 64, inside the wire's bounds", () => {
@@ -267,6 +279,55 @@ describe("the window's streams", () => {
     box.streams.acquire("box", "t1", { edge: 2560, take: true });
     await settle();
     expect(box.opens()).toHaveLength(1);
+  });
+
+  it("opens it again smaller once every place has shown it below six tenths of its edge for five seconds, and not while one still shows it large", async () => {
+    const mac = rig([
+      { ok: true, stream: "m1", ticket: "t", width: 2560, height: 1600, fps: 120 },
+      { ok: true, stream: "m2", ticket: "t", width: 1280, height: 800, fps: 120 },
+    ]);
+    // the stage asks large, the pop-out small
+    const stage = mac.streams.acquire("mac", "t1", { edge: 2560, take: true });
+    await settle();
+    const pop = mac.streams.acquire("mac", "t1", { edge: 1280, take: false });
+    await settle();
+    vi.advanceTimersByTime(SHRINK_QUIET_MS * 2);
+    await settle();
+    expect(mac.opens()).toHaveLength(1);
+    // he leaves the page: the pop-out alone does not hold the large stream open
+    stage.release();
+    vi.advanceTimersByTime(SHRINK_QUIET_MS - 1);
+    await settle();
+    expect(mac.opens()).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    await settle();
+    expect(mac.opens()[1]).toEqual({ threadId: "t1", maxEdge: 1280 });
+    expect(mac.closes()).toEqual(["m1"]);
+    pop.release();
+  });
+
+  it("does not shrink a stream that comes at the source's own size, and a place that grows back in time keeps it", async () => {
+    const box = rig();
+    const a = box.streams.acquire("box", "t1", { edge: 2560, take: true });
+    await settle();
+    box.streams.acquire("box", "t1", { edge: 512, take: false });
+    a.release();
+    vi.advanceTimersByTime(SHRINK_QUIET_MS * 2);
+    await settle();
+    // the box's page answered 1280 to an ask of 2560: the edge is not what sizes it
+    expect(box.opens()).toHaveLength(1);
+    const mac = rig([{ ok: true, stream: "m1", ticket: "t", width: 2560, height: 1600, fps: 120 }]);
+    const big = mac.streams.acquire("mac", "t1", { edge: 2560, take: true });
+    await settle();
+    const small = mac.streams.acquire("mac", "t1", { edge: 1024, take: false });
+    big.release();
+    vi.advanceTimersByTime(SHRINK_QUIET_MS - 100);
+    // back on the stage before the five seconds are out
+    mac.streams.acquire("mac", "t1", { edge: 2560, take: true });
+    vi.advanceTimersByTime(SHRINK_QUIET_MS);
+    await settle();
+    expect(mac.opens()).toHaveLength(1);
+    small.release();
   });
 
   it("keeps a stream a moment after its last place has gone, then closes it on the host and in the worker", async () => {

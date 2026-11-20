@@ -377,9 +377,18 @@ first wanted; nothing of it is in the first paint.
   streams.ts). The browser canvas, the Computer section, a Computers tile
   and the full view each put a canvas on the same stream; the host runs
   one encoder. A stream closes 1.5 seconds after its last place has gone.
-  A place that grows 25% past the edge the stream was opened at has it
-  opened again, larger, when that edge is what held the picture down (a
-  Mac's window; the box's page is 1280 wide whatever is asked).
+  A place asks for the width it shows the picture at, less only what its
+  measured element holds around it (`inset`: the right panel's section and
+  the browser canvas have 12px a side, a tile and the stage none), in the
+  device pixels of the window the picture is in (`pixelRatioOf`, so a
+  pop-out on another screen asks in its own). It asks again half a second
+  after it grows past a quarter larger or shrinks below six tenths
+  (`nextEdge`). The stream takes the largest ask of its places: it is
+  opened again, larger, as soon as one grows past a quarter, and smaller
+  once every place has stayed below six tenths for five seconds
+  (`SHRINK_QUIET_MS`), so a pop-out left alone does not hold a 4K stream
+  open. Either only when the edge is what held the picture down (a Mac's
+  window; the box's page is 1280 wide whatever is asked).
 - **A closed stream** (`afterClose`, messages.ts). A drop that named no
   reason, `slow`, a decoder that failed or stalled: opened again with a
   fresh ticket after 0.5, 1, 2, 4 and 4 seconds, the last frame staying on

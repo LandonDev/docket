@@ -312,7 +312,17 @@ export function useLiveStream(
   run: boolean,
   box: RefObject<HTMLElement | null>,
   measure: RefObject<HTMLElement | null>,
-  { take = true, drive = true }: { take?: boolean; /** false for a place that only shows it: a tile */ drive?: boolean } = {},
+  {
+    take = true,
+    drive = true,
+    inset = 0,
+  }: {
+    take?: boolean;
+    /** false for a place that only shows it: a tile */
+    drive?: boolean;
+    /** what the measured element holds around the picture, in CSS pixels (the right panel's section, VIEWPORT_INSETS) */
+    inset?: number;
+  } = {},
 ): LiveStream {
   const pictureCanvas = useRef<HTMLCanvasElement>(null);
   const videoCanvas = useRef<HTMLCanvasElement>(null);
@@ -324,13 +334,13 @@ export function useLiveStream(
   useLayoutEffect(() => {
     const el = measure.current;
     if (!el) return;
-    const inner = (w: number): number => Math.max(0, Math.round(w) - VIEWPORT_INSETS);
+    const inner = (w: number): number => Math.max(0, Math.round(w) - inset);
     setBoxWidth(inner(el.clientWidth));
     if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => setBoxWidth(inner(entries[0]?.contentRect.width ?? el.clientWidth)));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [measure]);
+  }, [inset, measure]);
 
   const onClick = useCallback(
     (x: number, y: number) => {
