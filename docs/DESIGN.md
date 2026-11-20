@@ -1022,8 +1022,10 @@ Every computer being driven now, on every connected host, in one place
   window has none, and neither has the VM with no window, `pictureOnly`) and Stop
   (a quiet icon button with a tip; none on an idle page). While he drives,
   Hand back alone, the page's one primary button, with the chord that
-  leaves the picture as a key cap inside it. Take over gives the picture
-  the keyboard as soon as it is his.
+  leaves the picture as a key cap inside it; on the Windows VM one quiet
+  Keys button before it (a ghost icon button with a tip, 4px apart) opens a
+  menu of the keys his own keyboard keeps: Windows key, Ctrl+Alt+Del,
+  Alt+Tab. Take over gives the picture the keyboard as soon as it is his.
 - **The picture** is the Computer section's viewport with no cap of its
   own (`fill`): its place sizes it. A skeleton until the first frame; a
   click on the stage's picture opens the full window. A session this desktop

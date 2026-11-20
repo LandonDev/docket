@@ -555,9 +555,10 @@ is publishing at once (`closeAll`).
 
 ## Driving
 
-Only the box's browser takes his input. He presses Take over
-(`computer.drive {computer: 'browser:<pane>', driver: 'owner'}`), on the
-desktop or on the phone's full screen ("The phone" below), and from then on:
+Two computers take his input: the box's browser and the Windows VM ("The
+Windows VM" below). He presses Take over (`computer.drive {computer:
+'browser:<pane>' | 'vm:windows', driver: 'owner'}`), on the desktop or on the
+phone's full screen ("The phone" below), and from then on:
 
 - **The stream.** A place that drives asks `video.open` with `drive`. The
   host gives a `drive` stream only while he is the driver; a watch stream
@@ -580,10 +581,25 @@ desktop or on the phone's full screen ("The phone" below), and from then on:
   is Ctrl there.
 - **Paste** (⌘V, or Ctrl+V elsewhere) is his clipboard's text handed to
   `video.paste`, never typed and never the far clipboard's own.
-- **Never sent**: Ctrl+W, Ctrl+Q, Ctrl+N, Ctrl+T and Ctrl+Shift+I, which
-  would close, quit or leave the shared browser. They are swallowed in the
-  viewer, and the box drops them again whoever sends them (`EngineFeed`
-  follows Ctrl and Shift from the records themselves).
+- **Never sent**, one list per screen (`DrivenScreen` in videoInput.ts,
+  `NeverSent` in box/engineFeed.ts). The box's browser: Ctrl+W, Ctrl+Q,
+  Ctrl+N, Ctrl+T and Ctrl+Shift+I, which would close, quit or leave the
+  browser every thread shares; swallowed in the viewer, and dropped again by
+  the box whoever sends them (`EngineFeed` follows Ctrl, Shift and Alt from
+  the records themselves). The Windows VM is his: every chord is the
+  guest's, Ctrl+W included. The box drops only QEMU's own window's Ctrl+Alt
+  keys there (Q, which quits QEMU and cuts the guest's power; F, G, M, U,
+  0, minus, plus and 1 to 9, its full screen, grab, menu bar, zoom and
+  consoles), and every `text` record: QEMU reads X's keycodes, and a
+  character the engine types on a spare keycode lands as the wrong key, so
+  a phone types into the VM with keys or a paste. A layout that makes
+  characters with AltGr as Ctrl+Alt cannot type those few there.
+- **The VM's keys menu.** While he drives the VM, the caption on the stage
+  and in the full window has one quiet Keys button before Hand back, with
+  the keys his own keyboard keeps for itself: Windows key, Ctrl+Alt+Del and
+  Alt+Tab, pressed on his drive stream (`VideoStreams.press`, `VM_KEYS` in
+  ComputerCaption.tsx). Off a Mac the Windows key on his keyboard is never
+  sent; the menu sends it.
 - **The app leaves the page's keys alone.** While the picture holds the
   keyboard the app's own key listener passes every key by (`pageOwnsKey`,
   lib/appCommands.ts): Escape and the arrows do not close or step the full
@@ -601,6 +617,21 @@ desktop or on the phone's full screen ("The phone" below), and from then on:
   reader (`aria-description`).
 - **Hand back** makes the stream a watch stream on the host, which lets go
   of every key he held; the picture is a picture again.
+- **The VM's wheel** (work/winvm/drive.ts `vmWheel`, the `vm` kind's hook):
+  refused while the VM sleeps, has no window (`pictureOnly`) or Work is off.
+  Take over hands him the lease (every thread's `windows_*` call is refused
+  with "He is driving the Windows VM", and the thread is woken when he hands
+  back), holds the keeper awake, and marks his streams (`setDriving`); then
+  computer/drive.ts stops every thread's session on the VM. Its row is his
+  (`driver: 'owner'`, under `vm:windows`) in place of the threads', and the
+  tile, the full window and the pop-out follow it by that name. His keys and
+  pointer go engine → XTEST on the VM's display → QEMU's GTK window → the
+  guest's PS/2 keyboard and USB tablet, so they work at the UAC prompt and
+  the lock screen. Hand back puts the guest's clipboard back as it was at
+  Take over (B9's `saveClipboard` and `restoreClipboard`, through
+  `configureVmClipboard`); his paste goes in through B9's `vmPaste`
+  (`configureVmPaste`) and is refused in words until B9 lands. A sleep
+  while he drives hands back by itself.
 - **Take over keeps the picture.** The app makes one call,
   `computer.drive` (`takeOver`, lib/computers.ts; the full view and the
   canvas bar the same), and the host does the rest in order
@@ -623,6 +654,12 @@ desktop or on the phone's full screen ("The phone" below), and from then on:
   had a row only when the browser was headed, and the picture was the
   stopped session's. To drive from the picture, install the tools ("The
   box", "The tools").
+
+`winvm/drive.live.test.ts` (`TC_WINVM_STANDING=1`, a fresh standing disk,
+deleted after) proves the VM's: his click and typed keys land in a
+maximized Notepad, Ctrl+N opens a tab and Ctrl+W closes it in the guest,
+Ctrl+Alt+Q leaves QEMU running, and a Shift held at Hand back is let go
+(his next "a" is a small one).
 
 `videoLive.test.ts` "a sign-in, whole" proves the host's side on the box
 with the real browser and engine: the agent stops at a sign-in page, he

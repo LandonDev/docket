@@ -5,7 +5,7 @@ The box keeps one Windows 11 machine for Work threads to drive: the `standing` i
 `.temp-code/plan-m1X24rQ6nikm.md`, Track B. This file covers the keeper (B3): its states, its methods, setup,
 sleep and wake, and the stop of the box's service; its restore points (B4); the service on the box with the
 `windows_*` tools (B5); and its picture (B7, below and in live-video.md "The Windows VM"). The hold's rules for a
-command line are B6's (work-outbox.md); Take over comes with B8.
+command line are B6's (work-outbox.md); his Take over (B8) is below.
 
 The code is `src/main/server/work/winvm/`: `keeper.ts` (the states, over a machine and a guest that are
 interfaces), `standing.ts` (the real machine, through `machine/`), `sshGuest.ts` (the real guest, over SSH),
@@ -133,6 +133,16 @@ started beside once QEMU has gone. A host started beside a running machine takes
 another QEMU build is refused); a tool missing, a refusal, a display that will not start, or QEMU failing with its
 window all start the machine with no window, and `pictureOnly` on its row takes Take over away. The rest, the engines
 and the numbers, is live-video.md "The Windows VM".
+
+## Take over
+
+`computer.drive { computer: 'vm:windows', driver }` reaches the `vm` hook (`vmWheel`, drive.ts), registered at the
+host's wiring (host.ts `wireVmDrive`). It is refused while the machine is not awake ("Wake it first"), has no window,
+or Work is off. Take over: the lease is his (`ownerDrives`: every thread's call refused, the turned-away threads
+noted), the keeper holds the machine awake (`setDriving`), his streams take his input, then every thread's session
+on the VM is stopped. Hand back: his keys let go, the guest's clipboard put back (B9), the keeper and the lease
+freed, and the threads turned away woken with `VM_FREE_NOTICE`. The machine going to sleep under him hands back by
+itself. The keys and the menu are live-video.md "Driving".
 
 ## Sleep
 
