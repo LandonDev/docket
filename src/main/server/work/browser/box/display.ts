@@ -22,8 +22,13 @@ import { videoToolsEnv, type VideoTools } from './videoSetting'
 /** What a page lays out at, in CSS pixels, whatever the display's scale. */
 export const PAGE_WIDTH = 1280
 export const PAGE_HEIGHT = 800
-/** The display's pixels for each of the page's: the browser draws at this scale. */
-export const DISPLAY_SCALE = 1
+/**
+ * The display's pixels for each of the page's: the browser draws at this
+ * scale, so the page is sharp on a 2× screen. Measured against 1280×800 by
+ * `script:e2e-box-video --scale 2` (docs/agents/live-video.md "The proofs"):
+ * the scrolling page holds 120 fps with the engine at 1.6 cores.
+ */
+export const DISPLAY_SCALE = 2
 export const DISPLAY_HZ = 120
 const START_MS = 10_000
 const STOP_MS = 3_000

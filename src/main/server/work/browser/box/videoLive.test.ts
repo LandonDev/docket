@@ -15,6 +15,7 @@ import type { WorkCtx } from '../../modules'
 import { DriveStore, ensureBrowserTables } from '../drive'
 import { Cdp } from './cdp'
 import { findChromium } from './chromium'
+import { DISPLAY_SCALE, displayPixels } from './display'
 import { boxDriveChanged, setBoxBrowser, startBoxBrowser, wireBoxBrowser, type BoxBrowserHost } from './index'
 import { serveTestSite, type TestSite } from './testSite'
 import { spsReorder, testVideoTools } from './testTools'
@@ -156,10 +157,12 @@ d('live video of the box browser, end to end', () => {
   it('runs headed, and plays the page a thread drives as H.264 at the display’s size, well past the old four frames a second', async () => {
     expect(host.browser.display).not.toBeNull()
     const { answer, viewer } = await watch('w1')
-    expect(answer).toMatchObject({ width: 1280, height: 800, fps: 120 })
+    // the display's own pixels, at the scale it ships with
+    const { width, height } = displayPixels(DISPLAY_SCALE)
+    expect(answer).toMatchObject({ width, height, fps: 120 })
     await until(() => viewer.frames.length > 0)
     const first = viewer.frames[0]
-    expect(first).toMatchObject({ sequence: 1, keyframe: true, width: 1280, height: 800 })
+    expect(first).toMatchObject({ sequence: 1, keyframe: true, width, height })
     // the stream Electron's decoder was proven on: constrained baseline H.264
     expect(h264Codec(first.data)).toMatch(/^avc1\.42/)
     // and its SPS says no frame is reordered: a hardware decoder holds its output for a stream that does not say so

@@ -203,7 +203,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **Live video** — the computer an agent drives as H.264 video on screen-relay's NSL1 wire
   (src/shared/video/nsl1.ts): `video.open`, `video.close`, `video.paste`, a ticket per stream, the
   `/video/<stream>` socket and `VideoRelay` (src/main/server/video/), who may watch (`mayWatch`); the
-  box's browser headed on a private display under our own window manager, one `relay-engine` per
+  box's browser headed on a private display at twice the page's pixels (2560×1600, scale 2) under our own window manager, one `relay-engine` per
   viewer (src/main/server/work/browser/box/); the Mac's windows from tc-computer (`capture.video.*`
   on descriptor 3: Capture/VideoCapture.swift, ComputerService/Video.swift, the flow in
   ComputerServiceKit/FlowControl.swift); a PC's from tc-computer.exe on a named pipe: Windows.Graphics.Capture and

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { BoxXDisplay, DISPLAY_HZ, PAGE_HEIGHT, PAGE_WIDTH, displayEnv, displayPixels, withoutDisplay, xauthorityEntry, xorgArgs, xorgConfig } from './display'
+import { BoxXDisplay, DISPLAY_HZ, DISPLAY_SCALE, PAGE_HEIGHT, PAGE_WIDTH, displayEnv, displayPixels, withoutDisplay, xauthorityEntry, xorgArgs, xorgConfig } from './display'
 import { testVideoTools } from './testTools'
 import { videoToolsEnv, type VideoTools } from './videoSetting'
 
@@ -247,7 +247,9 @@ describe.skipIf(!tools)('the real server, from the installed tools', () => {
       expect(execFileSync('ss', ['-H', '-ltnp']).toString()).not.toContain(`pid=${display.pid},`)
       // the log says the mode it runs
       const log = readFileSync(join(root, 'display', 'Xorg.log'), 'utf8')
-      expect(log).toMatch(/Virtual size is 1280x800/)
+      // at the scale it ships with
+      const { width, height } = displayPixels(DISPLAY_SCALE)
+      expect(log).toContain(`Virtual size is ${width}x${height}`)
       expect(log).toMatch(/Modeline "m"x120\.0/)
     } finally {
       const pid = display.pid!

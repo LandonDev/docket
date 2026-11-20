@@ -52,7 +52,8 @@ d('the box browser, headed', () => {
     site = await serveTestSite({ '/red': flat(`rgb(${COLOURS.red})`, 'red'), '/green': flat(`rgb(${COLOURS.green})`, 'green'), '/blue': flat(`rgb(${COLOURS.blue})`, 'blue') })
     // the host's own server runs under a display of its own: the browser must not end up on it
     process.env.DISPLAY = ':99'
-    rig = testBrowser(root, bin!, { headed: true })
+    // its pixels are the page's: headedScale.test.ts runs the display at more
+    rig = testBrowser(root, bin!, { headed: true, scale: 1 })
     cdp = await Cdp.open(await rig.browser.endpoint())
     await rig.stage.ready()
     engines = new BoxEngines({ root, tools: () => rig.browser.tools, display: () => rig.browser.display })

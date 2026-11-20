@@ -1216,7 +1216,7 @@ The kinds, each a hand-made body built from components/ui:
   voice matches; naming a speaker offers Use and Forget this voice.
 - **Live browser.** The Computer section's viewport rules in the body:
   the page as video, as wide as the body and no wider than its own pixels
-  (the box's 1280 by 800 page is 640 points wide on a 2× screen), on the
+  (the box's page, 2560 by 1600 pixels, is 1280 points wide on a 2× screen), on the
   body's inset; a held submit's kept picture takes the same frame, so the
   two swap without a jump. A click on the live page opens its full view.
   The 4 fps picture, shown where video is not to be had, is a copy the

@@ -186,9 +186,19 @@ is not off; both are read each time the browser starts.
 
 ### The display (`display.ts`)
 
-A rootless `Xorg` with the dummy driver: one mode, 1280×800 at 120 Hz.
-Chromium reads the refresh rate when it starts, so the display is 120 Hz for
-the browser's whole life and lives exactly as long as the browser does.
+A rootless `Xorg` with the dummy driver: one mode, 2560×1600 at 120 Hz.
+That is the page's 1280×800 at scale 2 (`DISPLAY_SCALE`), and the browser
+draws at that scale (`--force-device-scale-factor=2`), so a page still lays
+out at 1280×800 CSS pixels and is sharp on a 2× screen. Chromium reads the
+refresh rate when it starts, so the display is 120 Hz for the browser's
+whole life and lives exactly as long as the browser does.
+
+- The driver refuses a pixel clock above 300 MHz unless told otherwise, and
+  falls back to a mode of its own. 2560×1600 at 120 Hz is 504 MHz, so the
+  config says `DacSpeed 1000`. The Xorg log in `display/Xorg.log` names
+  the mode it took.
+- `BoxXDisplay` takes any scale (`headedScale.test.ts` runs 2 and 1.5). The
+  numbers behind 2 are in "The proofs".
 
 - It picks its own free display number (`-displayfd`).
 - It takes no TCP, and a client needs the cookie: a new one for every
@@ -245,7 +255,10 @@ Its rules:
   (`wm.expect`), and the manager sees which window shows up there. A window
   that already exists (the browser's first, a popup) is asked through
   DevTools to move to such a place; the manager sees which window asks and
-  leaves it where it is.
+  leaves it where it is. A place is in the page's units, as DevTools places
+  a window; on a display at scale 2 the window shows up at twice it, and the
+  manager reads the pixel back as the place (`placeAt`: the nearest place,
+  so the browser's rounding at 1.5 does not matter).
 - **The watched page is the front window.** `video.open` makes it so
   (`stage.watch`). A window it opens is let above it: a sign-in popup is part
   of what he watches. The browser says who opened a window even when the
@@ -258,7 +271,7 @@ Its rules:
   (`--disable-backgrounding-occluded-windows`), and focus emulation keeps it
   acting focused for keys sent through DevTools.
 - **While he drives**, the page's window leaves full screen, so the
-  browser's own toolbar shows inside the picture (87 of the 800 lines), with
+  browser's own toolbar shows inside the picture (87 of the page's 800 lines), with
   the page's address. A window that page opens for him is left as the
   browser made it. The page returns to full screen when he hands back.
 - **The picture ends** when the watched page closes, and when it, a tab of
@@ -271,6 +284,18 @@ screen too. `--test-type=gpu` is the one switch found to leave it out (a bare
 
 The browser's "To exit full screen, press and hold Esc" notice is one of the
 notices that go behind the curtain: it is never in the picture.
+
+### The agent sees the page in its own units
+
+The display has twice the page's pixels; the agent never sees that.
+
+- A screenshot (`capture.screenshot`, an observation's picture) divides
+  `Page.captureScreenshot`'s clip scale by the display's, so the picture
+  is 1280×800 at most (under `maxEdge`, 1568 by default), and its width
+  and height say so.
+- `initialize` answers one display of 1280×800 points at scale 2.
+- The 4 fps picture answers the size its frames really have: the page's
+  device pixels, cut down to `maxEdge`.
 
 ### The headed profile (`chromium.ts` `headedPrefs`)
 
@@ -324,6 +349,8 @@ bitrate follows that viewer's own link, and the relay stays a pipe.
   agent's computer session. The service says which page each session last
   used (`onPage`), and the box keeps it by thread and by pane, so a stream
   of that pane goes on after the session stopped.
+- **The stream is the display's own pixels**: 2560×1600, whatever the
+  viewer asks (the size its window manager reads off the display).
 - **One page in video at a time.** A caller that asks with `take` gets the
   display; the page that lost it closes with `moved`. Without `take` the
   answer is `busy`. `busy` is also the answer when four engines have
@@ -388,7 +415,7 @@ first wanted; nothing of it is in the first paint.
   once every place has stayed below six tenths for five seconds
   (`SHRINK_QUIET_MS`), so a pop-out left alone does not hold a 4K stream
   open. Either only when the edge is what held the picture down (a Mac's
-  window; the box's page is 1280 wide whatever is asked).
+  window; the box's page is 2560 wide whatever is asked).
 - **A closed stream** (`afterClose`, messages.ts). A drop that named no
   reason, `slow`, a decoder that failed or stalled: opened again with a
   fresh ticket after 0.5, 1, 2, 4 and 4 seconds, the last frame staying on
@@ -743,6 +770,28 @@ average 11 to 15 from other threads. Medians of five runs of 15 s:
 | A link cut for 4 s | the stream closes | closed with `slow` (4107) after 180 frames |
 | The next open after the cut | it plays | 181 frames in 1.5 s |
 
+`--scale 2` (or 1.5) runs the display at that many pixels for each of the
+page's. The rule to ship such a display: the scrolling page holds 100 fps
+with the engine under 3 cores. Measured 2026-11-20 on the box (32 cores, no
+GPU), cores 24 to 31, the three sizes taking turns (1, 2, 1.5) for five
+rounds of one 15 s run each, load average 2.6 to 8.8 from other threads.
+Medians:
+
+| Display (scale) | Scroll fps (runs) | Engine | Bitrate | Capture to relay p50 / p95 | Thin link fps |
+|---|---|---|---|---|---|
+| 1280×800 (1) | 120.0 (120.1, 120.0, 119.5, 120.0, 119.8) | 0.47 cores | 4.4 Mbit/s | 1.1 / 1.7 ms | 120.7 |
+| 2560×1600 (2) | 119.6 (119.7, 119.7, 119.6, 115.0, 119.3) | 1.63 cores | 12.4 Mbit/s | 5.0 / 7.2 ms | 118.9 |
+| 1920×1200 (1.5) | 119.6 (120.0, 119.6, 119.9, 119.2, 118.7) | 1.13 cores | 16.6 Mbit/s | 3.3 / 5.9 ms | 119.7 |
+
+Load average beside the scroll runs: 4.7, 4.0, 4.4, 4.5, 8.8 at scale 1;
+4.2, 2.6, 3.8, 8.1, 6.1 at 2; 3.9, 4.5, 5.2, 6.5, 6.5 at 1.5. Each of the
+15 runs also passed the cut and the reopen. Both larger sizes pass, so the
+display ships at 2, the sharper. Its cost beside 1: the engine takes 3.5
+times the CPU, and the browser takes about 0.08 of a core more while it
+scrolls and about 120 MB more memory (1440 MB for the whole tree, under its
+2048 MB cap). The thin link holds its 5 Mbit/s at every size: the engine's
+rate control spends what the link has on the larger picture.
+
 The capture time is the engine's, on the kernel's monotonic clock; the
 script reads the same clock. The thin link is a proxy in the script between
 the viewer and the relay, so the engine sees it only through the acks, as it
@@ -923,11 +972,13 @@ is first seen in the owner's own use:
 - The same folder, live where the tools are installed
   (`TEMP_CODE_TEST_VIDEO_TOOLS=<userData>`, else skipped): `headed.test.ts`
   (the window manager and the stage against the real Xorg, Chromium and
-  engine: the page alone at 1280×800, what stays behind the curtain, the
+  engine at scale 1: the page alone at 1280×800, what stays behind the curtain, the
   keyboard, menus, the closed page), `headedService.test.ts` (the service's
   acts on covered pages), `videoLive.test.ts` (frames, input, paste, take
-  and hand back through the relay). `TC_BOX_HEADED=1` runs the box browser's
-  older tests headed.
+  and hand back through the relay), `headedScale.test.ts` (the display at
+  scale 2 and 1.5: the dummy driver's mode, the page at 1280×800, the window
+  manager finding the stage's windows, the agent's pictures in page units).
+  `TC_BOX_HEADED=1` runs the box browser's older tests headed.
 
 The live tests need the tools installed and skip without them. Point them at
 an install with `TEMP_CODE_TEST_VIDEO_TOOLS=<userData>`:

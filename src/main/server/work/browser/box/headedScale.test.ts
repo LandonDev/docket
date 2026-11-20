@@ -78,7 +78,7 @@ d.each([
     engines = new BoxEngines({ root, tools: () => rig.browser.tools, display: () => rig.browser.display })
     child = inProcessSpawn(() => new BoxComputerService({ browser: rig.link }))('box', ['serve']) as never
     createInterface({ input: child.stdout }).on('line', (line) => {
-      const f = JSON.parse(line) as { id?: number; method?: string; params?: { width: number; height: number; data: string } }
+      const f = JSON.parse(line) as { id?: number; method?: string; params?: { width: number; height: number; data: string }; result?: unknown; error?: unknown }
       if (f.method === 'capture/frame') frames.push(f.params!)
       else if (!f.method && f.id !== undefined) answers.get(f.id)?.(f)
     })
