@@ -621,7 +621,11 @@ The iPhone plays a stream as the desktop's viewer does, natively
 - **The proof** (`TC_PROOF_SET=video`, docs/agents/ios-client.md): the test
   server plays the box engine's own 180 recorded frames
   (`scripts/fixtures/ios-test-server/box-stream.nsl1`, `LoopFeed`) for a
-  seeded Work thread and lists it as driven.
+  seeded Work thread and lists it as driven. Run 2026-11-19 on an iPhone 17
+  Pro simulator (iOS 27.0), light and dark: the browser item showed 1,452
+  frames, then 1,753 three seconds later; full screen and the Computers
+  list played; no stream closed; the server sent 10,530 frames and took
+  10,523 acks. The rate is a simulator's.
 
 ## Settings
 
@@ -721,6 +725,42 @@ stream whose SPS says nothing of reordering (0 out of 6 until `flush()`, at
 (§30 "The encoder") each came back at once. A viewer that joins more than
 three seconds after `video.open` is ended the same way, with `error`: the
 app's viewer opens its socket as soon as `video.open` answers.
+
+## What is unproven
+
+Each layer has its own proof above. These joints have none yet, and each
+is first seen in the owner's own use:
+
+- **The whole desktop app on a real stream.** The host and its sockets are
+  proven with real servers, the Mac's service and host path on the Mac, the
+  viewer's own worker in Electron, and the renderer's wiring over fakes. No
+  run has had the installed app's Computer section, browser canvas or
+  Computers page play a real stream.
+- **The box's stream in the desktop's viewer.** The viewer's proof ran on a
+  Mac window's stream; the box's ran against a script's viewer. The box
+  engine's SPS is checked to carry what the Mac's decoder needed
+  (`videoLive.test.ts`).
+- **The box through the real tunnel.** The thin link in the box's proof is a
+  proxy in the script.
+- **Driving from a real window.** The host's side is proven on the box with
+  the real browser and engine, the renderer's over fakes.
+- **A Mac's window watched from another device.** The publish leg is proven
+  between two hosts on one machine with a recorded stream, not from a real
+  Mac through the real box to a real viewer.
+- **The Mac's encode time.** The rule is a p95 under 12 ms at 2560×1664; it
+  measured 9.0 ms in one quiet run and 12.38 ms in another.
+- **Windows.** No hardware encoder (the rig has no GPU), no PrintWindow
+  fallback (Windows.Graphics.Capture worked), no viewer on a real PC, and
+  37 frames a second, the rig's capture limit, not 120.
+- **The phone.** A simulator only: no real iPhone, no mobile data (the
+  simulator has no metered link, so the tap to start was not shown), no
+  Mac reached through the box. The failed re-read line in the browser item
+  was built after the proof's shots and is covered by its model's test
+  alone.
+- **The bundle budget.** `bun run check:bundle` needs a build, which this
+  work did not run; `scripts/entryGraph.test.ts` passes. If the index
+  chunk is over, `LiveFullView` in chrome/Lightbox.tsx is the import to
+  make lazy.
 
 ## What this cannot stop
 
