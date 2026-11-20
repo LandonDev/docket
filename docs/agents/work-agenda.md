@@ -8,6 +8,8 @@ A linked Work workspace's Agenda view, the held calendar act's own view in the O
 
 New event (`agenda/NewEventDialog.tsx`) is a calendar act LifeOS holds (`calendarOps:save {kind: 'create', sourceId}` on one of the sector's Google calendars), sent by his press in the dialog, Add or Send invites (`calendarOps:send`). It has no thread origin, so it never lists in the Outbox.
 
+A List row names the event's attendees who are the sector's people ("With Maya Chen, Tom Beck, and 2 more"), each name opening their page in People ([work-people.md](work-people.md)); the people come from `people:directory` on the view's session.
+
 ## `calendar.op` in the Outbox
 
 The kind is held and sent by the hold (`work/outbox/lifeosHeld.ts`): the watcher reads `calendarOps:held {host}`, and the words come from the act's kind, payload and the event's title (read once per event with `events:get`). At the press the act is read again (`calendarOps:get`): a draft or failed act goes with `calendarOps:send {id, cause}`; one edited since it was shown goes stale; one already queued, sending or done is not sent twice. Edit is `calendarOps:save` with the act's own kind and event (and, for a new Google event, the source of the same account's calendar). A grant (`CalendarOpMatcherSchema`) fits one kind on one account's one calendar: an invitation's answer, or an invite that names its people. A change, a cancel, a proposal, a series or an uninvite is always his press.

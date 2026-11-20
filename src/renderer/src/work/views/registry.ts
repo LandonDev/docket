@@ -8,17 +8,18 @@ import { agendaView } from "../agenda/view";
 import { docsView } from "../docs/view";
 import { filesView } from "../office/view";
 import { mailView } from "../mail/view";
+import { peopleView } from "../people/view";
 import { projectsView } from "../projects/view";
 import { routinesView } from "../routines/view";
 import { tasksView } from "../tasks/view";
 
 /**
  * The rows over a linked Work workspace's projects (architecture §7.3):
- * Mail, Tasks, Projects (the project screens, docs/agents/work-projects.md), Agenda, Docs and Files (Teams files, docs/agents/work-files.md), then Routines (milestone 32). A row opens its view in the main pane under
+ * Mail, Tasks, Projects (the project screens, docs/agents/work-projects.md), Agenda, People (docs/agents/work-people.md), Docs and Files (Teams files, docs/agents/work-files.md), then Routines (milestone 32). A row opens its view in the main pane under
  * the thread strip. One closed list; each pillar fills its own `view.ts`
  * (milestones 23 and 25, and Docs after them) and edits nothing here.
  */
-export type WorkViewId = "mail" | "tasks" | "projects" | "agenda" | "docs" | "files" | "routines";
+export type WorkViewId = "mail" | "tasks" | "projects" | "agenda" | "people" | "docs" | "files" | "routines";
 
 export interface WorkViewProps {
   env: string;
@@ -59,6 +60,7 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
   tasks: tasksView,
   projects: projectsView,
   agenda: agendaView,
+  people: peopleView,
   docs: docsView,
   files: filesView,
   routines: routinesView,

@@ -145,6 +145,12 @@ chip, `{at: 'lifeos', table: 'mailThreads', id}`; the first send links the
 thread to the mail). Which mailbox, which mail was open and the composer
 stay per workspace while the window lives (`MailPage`).
 
+A sender, and each known person in a message's Details, opens their page
+in People when the address is one of the sector's people (work-kit's
+`MailKit.openPerson`; [work-people.md](work-people.md)). People's Write
+opens a new mail here through the kit's `onMailto` (`work/mail/mailto.ts`).
+The face Mail draws is `work/mail/face.tsx`, which People draws too.
+
 The list is 296px beside the reader and its edge takes a drag from 260 to
 480px, kept for the app (`tc.mail.listWidth`). A view too narrow for the
 kept width draws the list at its width less the reader's 360px, and the

@@ -1,7 +1,7 @@
-import { Component, useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { isPicture, loadBytes, printInFrame, type MailFaceProps, type MailKit, type MailOrigin, type MailOriginLabel, type MailReference, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
+import { Component, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { isPicture, loadBytes, printInFrame, type MailKit, type MailOrigin, type MailOriginLabel, type MailReference, type MailSectorMarkProps, type MailToastInput } from "work-kit/mail";
 import { DropdownMenuItem } from "work-kit/ui/dropdown-menu";
-import { AtSign, Users } from "../../chrome/icons";
+import { AtSign } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
@@ -13,7 +13,8 @@ import { openWorkView, workOpenPort, workViewNow } from "../../lib/workSwitch";
 import { shell } from "../../stores/shell";
 import { currentActiveSession } from "../../stores/subscriptions";
 import { undoLast } from "./client";
-import { News } from "../icons";
+import { Face } from "./face";
+import { onMailto } from "./mailto";
 import { mailChip } from "./model";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 
@@ -87,97 +88,6 @@ function threadLabel(origin: MailOrigin): MailOriginLabel | undefined {
 let originNamer: ((origin: MailOrigin) => MailOriginLabel | undefined) | null = null;
 export function nameOrigins(namer: typeof originNamer): void {
   originNamer = namer;
-}
-
-const initials = (name: string | undefined): string =>
-  (name ?? "")
-    .replace(/<[^>]*>|["']/g, "")
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
-
-// Initials are the 11px label step (docs/DESIGN.md "Type scale"), medium, at every size that holds two letters or one.
-const FACE: Record<NonNullable<MailFaceProps["size"]>, string> = {
-  line: "size-4 text-[11px] font-medium",
-  chip: "size-[18px] text-[11px] font-medium",
-  row: "size-6 text-[11px] font-medium",
-  head: "size-7 text-[11px] font-medium",
-};
-
-/**
- * Pictures of faces this window has read, by their address in LifeOS's store: a blob the page may
- * draw (its policy lets no picture load from the web, so the bytes are fetched from LifeOS and
- * handed over), or null for one that did not load. Kept for the session, so a face seen once
- * never shows its initials again; a `data:` picture needs no reading.
- */
-const facePictures = new Map<string, string | null>();
-const faceReads = new Set<string>();
-const faceWaits = new Set<() => void>();
-const drawable = (url: string) => url.startsWith("data:") || url.startsWith("blob:");
-
-function readFace(url: string): void {
-  if (drawable(url) || facePictures.has(url) || faceReads.has(url)) return;
-  faceReads.add(url);
-  void loadBytes(url)
-    .then(
-      (blob) => facePictures.set(url, URL.createObjectURL(blob)),
-      () => facePictures.set(url, null),
-    )
-    .finally(() => {
-      faceReads.delete(url);
-      for (const wake of faceWaits) wake();
-    });
-}
-
-const waitForFaces = (wake: () => void) => {
-  faceWaits.add(wake);
-  return () => void faceWaits.delete(wake);
-};
-
-/** The picture to draw for a stored one: there at once when it was read before, undefined until it is or when it failed. */
-export function useFacePicture(url: string | undefined): string | undefined {
-  const held = useSyncExternalStore(waitForFaces, () => (!url ? undefined : drawable(url) ? url : (facePictures.get(url) ?? undefined)));
-  useEffect(() => {
-    if (url) readFace(url);
-  }, [url]);
-  return held;
-}
-
-/**
- * A face in a circle on `muted` (docs/DESIGN.md, avatars): 28px beside an open message's sender,
- * 24px in a list row, 18px in a recipient chip and a fold row. It is the person's picture where
- * LifeOS holds one; else a glyph for a mailing list or a shared mailbox; else initials (the two
- * small sizes hold one letter, which reads at 11px; two would not). A picture that fails to load
- * gives way to what would have stood there, quietly.
- */
-function Face({ name, picture, mark, size = "row", className }: MailFaceProps) {
-  const letters = initials(name);
-  const src = useFacePicture(picture);
-  const [broken, setBroken] = useState<string | null>(null);
-  const small = size === "chip" || size === "line";
-  const Mark = mark === "list" ? News : mark === "group" ? Users : null;
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
-        FACE[size],
-        className,
-      )}
-    >
-      {src && broken !== src ? (
-        <img src={src} alt="" draggable={false} className="size-full object-cover" onError={() => setBroken(src)} />
-      ) : Mark ? (
-        <Mark className={small ? "size-2.5" : "size-3.5"} />
-      ) : small ? (
-        letters.slice(0, 1)
-      ) : (
-        letters
-      )}
-    </span>
-  );
 }
 
 const SECTOR_NAMES: Record<string, string> = { cosmic: "Cosmic", hypixel: "Hypixel", purdue: "Purdue", ref: "Ref", unify: "Unify", life: "Life" };
@@ -295,7 +205,8 @@ export const tempcodeMailKit: MailKit = {
   useDark: () => useColorScheme() === "dark",
   useToday,
   useKey,
-  onMailto: () => () => {},
+  // A person's Write (People) opens a new mail to them in the Mail view.
+  onMailto,
   // Work-kit hands on only what a mail may open; the host checks again at its own door.
   openLink: (href) => {
     if (mailLink(href)) void openUrl(href);
@@ -314,6 +225,12 @@ export const tempcodeMailKit: MailKit = {
   undo: undoLast,
   // Mail's settings are under Settings, Work.
   openSettings: () => shell.openSettings("work"),
+  // A sender or recipient who is one of the sector's people opens their page in People, by address: in the
+  // workspace whose view is open, else the one of the thread whose pane holds the mail.
+  openPerson: ({ address }) => {
+    const workspaceId = workViewNow()?.workspaceId ?? currentActiveSession()?.workspaceId;
+    if (workspaceId) openWorkView({ workspaceId, view: "people", person: address });
+  },
   // An invitation's event is in the workspace's Agenda: it opens on that event's week, whatever month it is in.
   openEvent: (eventId) => {
     const at = workViewNow();

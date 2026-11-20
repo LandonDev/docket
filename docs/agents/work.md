@@ -107,7 +107,7 @@ Settings → Work.
   workspace offers no New project and no Orchestration; a linked one shows
   `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Projects
   (the project screens, [work-projects.md](work-projects.md)), Agenda,
-  Docs and Files (Teams files, [work-files.md](work-files.md)) from
+  People ([work-people.md](work-people.md)), Docs and Files (Teams files, [work-files.md](work-files.md)) from
   `WORK_VIEWS`, then the project cards. Those are LifeOS's,
   live: the head keeps `projects:list {sector}` (backlog, active, paused)
   in `setLifeosProjects`, and `withLifeosCards` (lib/workspaceSessions.ts)

@@ -42,7 +42,7 @@ import { cn } from "../../lib/cn";
 import { dayTime } from "../../lib/duration";
 import { chordKey, modKey } from "../../lib/keys";
 import { refusalWords } from "../../lib/settingsHome";
-import { workOpenPort } from "../../lib/workSwitch";
+import { openWorkView, useWorkView, workOpenPort } from "../../lib/workSwitch";
 import { EmptyState, LoadingLine } from "../../surfaces/SurfaceSkeleton";
 import { Dashboard, Doc, Media, Mic, Pdf, Slides, Table as SheetIcon } from "../icons";
 import { useLifeosQuery } from "../shell/lifeos";
@@ -112,6 +112,14 @@ function openEntry(props: WorkViewProps, e: FindEntry): void {
 
 export function View(props: WorkViewProps) {
   const doc = useOpenedDoc(props.workspace.id);
+  // A LifeOS document asked for from elsewhere (a person's page) opens here: taken once, then cleared.
+  const wanted = useWorkView();
+  const asked = wanted?.workspaceId === props.workspace.id && wanted.view === "docs" ? wanted.doc : undefined;
+  useEffect(() => {
+    if (!asked) return;
+    setOpened(props.workspace.id, { source: { at: "lifeos", table: "docs", id: asked.id }, title: asked.title });
+    openWorkView({ workspaceId: props.workspace.id, view: "docs" });
+  }, [asked, props.workspace.id]);
   return doc ? <OpenDoc {...props} doc={doc} /> : <DocList {...props} />;
 }
 

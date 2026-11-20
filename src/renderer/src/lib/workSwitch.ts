@@ -225,16 +225,21 @@ export interface OpenWorkView {
   view: string;
   /** Projects alone: the LifeOS project to stand on (a card's Open project, a sent project chip), or the task (a sent card chip). The view takes it once and clears it. */
   project?: string;
+  /** Projects: the task of a sent card chip; Tasks: the task whose sheet to open (a person's page). Taken once, then cleared. */
   task?: string;
   /** Mail alone: the LifeOS mail thread to open (a sent mail chip). The view takes it once and clears it. */
   mail?: string;
   /** Agenda alone: the LifeOS event to stand on (an invitation's Open in Agenda): the view opens Week at its day, then clears it. */
   event?: string;
+  /** People alone: the LifeOS person whose page to open (a sender pressed in Mail, an attendee in Agenda, a sent person chip). Taken once, then cleared. */
+  person?: string;
+  /** Docs alone: the LifeOS document to open in place (a person's page). Taken once, then cleared. */
+  doc?: { id: string; title: string };
 }
 let openView: OpenWorkView | null = null;
 
 export function openWorkView(next: OpenWorkView | null): void {
-  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task && openView?.mail === next?.mail && openView?.event === next?.event) return;
+  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task && openView?.mail === next?.mail && openView?.event === next?.event && openView?.person === next?.person && openView?.doc === next?.doc) return;
   openView = next;
   for (const listener of listeners) listener();
 }

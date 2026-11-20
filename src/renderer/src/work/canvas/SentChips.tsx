@@ -17,8 +17,8 @@ import { openItem } from "./store";
  * something this window can show opens it: a canvas item or a LifeOS
  * document in the thread's pane, a held act in the Outbox, a task, mail or
  * event in its workspace's view, a project or a project's card in the Projects
- * view. One that names nothing to open (a person, a selection's file) is a
- * label.
+ * view, a person on their page in People. One that names nothing to open (a
+ * selection's file) is a label.
  */
 
 const KIND_OF_NOUN = new Map<string, ChipKind>(Object.entries(CHIP_NOUN).map(([kind, noun]) => [noun, kind as ChipKind]));
@@ -32,6 +32,8 @@ export function openerOf(chip: SentChip, at: { environmentId: string; sessionId:
   // A project and a project's card open in the Projects view, on the project's page and the task's own.
   if (head === "LifeOS" && table === "projects" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "projects", project: id });
   if (head === "LifeOS" && table === "tasks" && KIND_OF_NOUN.get(chip.noun) === "card" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "projects", task: id });
+  // A person opens on their page in People.
+  if (head === "LifeOS" && table === "people" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "people", person: id });
   // A mail opens in Mail's reader, on that mail.
   if (head === "LifeOS" && table === "mailThreads" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "mail", mail: id });
   if (head === "LifeOS" && VIEW_OF_TABLE[table] && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: VIEW_OF_TABLE[table] });

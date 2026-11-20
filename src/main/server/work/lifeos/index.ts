@@ -6,6 +6,7 @@ import { ensureKeysTable } from './keys'
 import { ensureLinksTable } from './links'
 import { LifeosUnavailable } from './session'
 import { lifeosMentions } from './mentions'
+import { personPageTool } from './people'
 
 /**
  * The lifeos pillar's server module (docs/agents/work-lifeos.md): its two
@@ -15,6 +16,8 @@ import { lifeosMentions } from './mentions'
 export const lifeos: WorkModule = {
   id: 'lifeos',
   mentions: lifeosMentions,
+  // A person's page, as the People view draws it (people.ts): read-only, in the thread's own sector.
+  tools: () => [personPageTool],
   ensure(db) {
     ensureKeysTable(db)
     ensureLinksTable(db)

@@ -290,6 +290,16 @@ describe("the Docs view", () => {
     expect(calls.some((c) => c.method === "work.docs.open")).toBe(true);
   });
 
+  it("opens a LifeOS document a person's page asks for, then lets go of the ask", async () => {
+    const { openWorkView, workViewNow } = await import("../../lib/workSwitch");
+    openWorkView({ workspaceId: "ws-docs", view: "docs", doc: { id: "d9", title: "Run of show" } });
+    both();
+    await settle();
+    expect(calls).toContainEqual({ method: "work.docs.open", params: expect.objectContaining({ source: { at: "lifeos", table: "docs", id: "d9" } }) });
+    expect(workViewNow()).toEqual({ workspaceId: "ws-docs", view: "docs" });
+    openWorkView(null);
+  });
+
   it("lays out a table without the column the grouping names", async () => {
     answers["work.docs.find"] = async () => ANSWER;
     both();

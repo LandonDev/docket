@@ -1370,6 +1370,20 @@ Around the canvas:
   headings; a signature and an account open as dialogs in the one dialog
   shape (the title beside a quiet Close, a hairline over the footer), every
   control in the account dialog at one width.
+- **People** (the People view, work/people/; docs/agents/work-people.md).
+  The list is the Docs list's shape: a 720px column, one 32px row a
+  person, the 24px face, the name in `foreground`, the first address 4px
+  after it in 12px `muted-foreground` on one baseline, when they were
+  last heard from at the end, tabular. A person's page takes the Projects
+  way back in the 40px header (the arrow, "People", their name muted) and
+  its two quiet verbs, Write and New thread. The body leads with the 40px
+  face beside the name (the 16px title recipe) and their addresses and
+  numbers as one comma line in 12px muted, then the notes at 14/22; then
+  each section that has something, 24px apart, under a 12px medium muted
+  heading: rows of the Docs list's shape, a title, a 12px muted second
+  line, a time at the end. A section with nothing is not drawn, and no
+  row repeats what its heading says. An Agenda row names the people at
+  an event as one muted comma line ("With …"), each name a link on hover.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way

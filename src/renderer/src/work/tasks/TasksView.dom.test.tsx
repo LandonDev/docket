@@ -74,6 +74,13 @@ describe("the Tasks view", () => {
     expect(screen.getByText("Waiting on Sam Ortiz")).toBeTruthy();
   });
 
+  it("opens the sheet of a task a person's page asks for", async () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask="t3" />);
+    const dialog = await screen.findByRole("dialog");
+    // The sheet reads the task from LifeOS (`tasks:get`): here its notes stand in.
+    expect(within(dialog).getByText("Ask for the east hall")).toBeTruthy();
+  });
+
   it("starts a thread with the task as its chip, and nothing else", () => {
     const startThread = vi.fn();
     render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} />);

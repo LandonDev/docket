@@ -24,7 +24,7 @@ import { StatusMark } from "../../components/ui/status";
 import { useSessionMeta } from "../../lib/tcserver/store";
 import { rowState } from "../../lib/sidebarRows";
 import { marksAtRest } from "../../lib/threadStripModel";
-import { workOpenPort } from "../../lib/workSwitch";
+import { openWorkView, useWorkView, workOpenPort } from "../../lib/workSwitch";
 import { useLinkedThread } from "./links";
 import { TaskSheet } from "./TaskSheet";
 import { CodeThreadDialog, type CodeThreadStart } from "./CodeThreadDialog";
@@ -62,11 +62,20 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
   const adding = useShared(newTask);
   useEffect(() => () => newTask.set(false), []);
+  // A task asked for from elsewhere (a person's page) opens in its sheet: taken once, then cleared.
+  const wanted = useWorkView();
+  const asked = wanted?.workspaceId === workspace.id && wanted.view === "tasks" ? wanted.task : undefined;
+  const [openTask, setOpenTask] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!asked) return;
+    setOpenTask(asked);
+    openWorkView({ workspaceId: workspace.id, view: "tasks" });
+  }, [asked, workspace.id]);
   // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
   if (!lifeos.client) return sessionWaits(lifeos) ? <TasksSkeleton /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
-      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} />
+      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} />
       {adding ? <NewTaskDialog sector={sector} onClose={() => newTask.set(false)} /> : null}
     </ConvexProvider>
   );
@@ -94,8 +103,11 @@ export function Tasks({
   sector = null,
   startThread,
   useThread = noThread,
+  openTask,
 }: {
   client: TasksClient;
+  /** A task whose sheet opens when it is given (a person's page asked for it). */
+  openTask?: string | undefined;
   /** The workspace's sector: a code workspace linked to it reads the task in LifeOS. */
   sector?: string | null;
   startThread: (about: ContextChip, at?: { cwd: string; projectId: string | null }) => void;
@@ -112,6 +124,9 @@ export function Tasks({
   const startCode = useMemo((): CodeThreadStart => (about, at) => latest.current(about, at), []);
   const [opened, setOpened] = useState<string | null>(null);
   const open = useMemo(() => (task: Task) => setOpened(task._id), []);
+  useEffect(() => {
+    if (openTask) setOpened(openTask);
+  }, [openTask]);
   const [coding, setCoding] = useState<Task | null>(null);
   const code = useMemo(() => (task: Task) => setCoding(task), []);
   const groups = useMemo(() => (tasks ? groupTasks(tasks, now, zone) : null), [tasks, now]);

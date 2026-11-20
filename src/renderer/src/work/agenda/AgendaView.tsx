@@ -17,6 +17,7 @@ import { shared, useShared } from "../tasks/store";
 import { NewEventDialog } from "./NewEventDialog";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
+import { knownAttendees, type DirectoryPerson } from "../people/model";
 import "./agenda.css";
 import type { WorkViewProps } from "../views/registry";
 
@@ -107,6 +108,9 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   // An invitation's Open in Agenda names its event (`openWorkView {event}`): taken once, then cleared.
   const wanted = useWorkView();
   const event = wanted?.workspaceId === workspace.id && wanted.view === "agenda" ? wanted.event : undefined;
+  // The sector's people, so an attendee who is one is named on the row and opens their page.
+  const directory = useLifeosQuery<DirectoryPerson[]>(lifeos, "people:directory", { sector });
+  const people = directory.status === "ready" ? directory.value : NO_PEOPLE;
   // Each visit opens on today's list.
   useEffect(() => () => state.set({ view: "list", day: startOfDay(Date.now()), adding: null }), []);
   // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
@@ -115,7 +119,7 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
     <ConvexProvider client={lifeos.client}>
       {event ? <OpenEvent workspaceId={workspace.id} id={event} lifeos={lifeos} /> : null}
       {/* While the event is read, its bones: today's list never paints before the event's week. */}
-      {event ? <AgendaSkeleton /> : <Agenda client={clients.agenda} startThread={startThread} />}
+      {event ? <AgendaSkeleton /> : <Agenda client={clients.agenda} startThread={startThread} people={people} workspaceId={workspace.id} />}
       {adding !== null ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} onClose={() => go({ adding: null })} /> : null}
     </ConvexProvider>
   );
@@ -128,7 +132,9 @@ const kit: ViewsKit = {
   openTask: () => {},
 };
 
-function Agenda({ client, startThread }: { client: AgendaClient; startThread: (about: ContextChip) => void }) {
+const NO_PEOPLE: DirectoryPerson[] = [];
+
+function Agenda({ client, startThread, people = NO_PEOPLE, workspaceId }: { client: AgendaClient; startThread: (about: ContextChip) => void; people?: readonly DirectoryPerson[]; workspaceId?: string }) {
   const { view, day } = useShared(state);
   const now = useMinute();
   const range = view === "list" ? { from: day, to: addDays(day, DAYS) } : viewRange(view, day, weekStart);
@@ -160,7 +166,7 @@ function Agenda({ client, startThread }: { client: AgendaClient; startThread: (a
         <section key={day} aria-label={formatDayHeading(day, now)} className="flex flex-col">
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{formatDayHeading(day, now)}</h2>
           {rows.map((event) => (
-            <EventRow key={event._id} event={event} past={endOf(event) < now} leave={leaveAt(event, now)} onPrepare={prepare} />
+            <EventRow key={event._id} event={event} past={endOf(event) < now} leave={leaveAt(event, now)} onPrepare={prepare} people={people} workspaceId={workspaceId} />
           ))}
         </section>
       ))}
@@ -169,7 +175,9 @@ function Agenda({ client, startThread }: { client: AgendaClient; startThread: (a
 }
 
 /** One event: its time (with when to leave under it while that is ahead), its title over where it is, Prepare on hover. */
-const EventRow = memo(function EventRow({ event, past, leave, onPrepare }: { event: AgendaEvent; past: boolean; leave: number | undefined; onPrepare: (event: AgendaEvent) => void }) {
+const EventRow = memo(function EventRow({ event, past, leave, onPrepare, people, workspaceId }: { event: AgendaEvent; past: boolean; leave: number | undefined; onPrepare: (event: AgendaEvent) => void; people: readonly DirectoryPerson[]; workspaceId: string | undefined }) {
+  // LifeOS's event carries its attendees; the shared type does not name them.
+  const met = knownAttendees((event as AgendaEvent & { attendees?: { address: string }[] }).attendees, people);
   return (
     <div role="listitem" className="group/row relative grid min-h-9 grid-cols-[72px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5">
       <span className="flex flex-col text-xs leading-5 text-muted-foreground tabular-nums">
@@ -179,6 +187,7 @@ const EventRow = memo(function EventRow({ event, past, leave, onPrepare }: { eve
       <span className="flex min-w-0 flex-col pr-20">
         <span className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
         {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
+        {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
       </span>
       {past ? null : (
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
@@ -190,6 +199,25 @@ const EventRow = memo(function EventRow({ event, past, leave, onPrepare }: { eve
     </div>
   );
 });
+
+/** Who of the sector's people is at an event, as one comma sentence of names; a name opens their page. */
+function With({ people, workspaceId }: { people: readonly DirectoryPerson[]; workspaceId: string }) {
+  const shown = people.slice(0, 3);
+  const more = people.length - shown.length;
+  return (
+    <span className="truncate text-xs text-muted-foreground">
+      With{" "}
+      {shown.map((p, i) => (
+        <span key={p._id}>
+          <button type="button" className="relative cursor-pointer rounded-sm hover:text-foreground hover:underline hover:underline-offset-2" onClick={() => openWorkView({ workspaceId, view: "people", person: p._id })}>
+            {p.name}
+          </button>
+          {i < shown.length - 1 ? ", " : more ? `, and ${more} more` : null}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 function AgendaSkeleton() {
   return (
