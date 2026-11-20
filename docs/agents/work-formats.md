@@ -252,6 +252,8 @@ taken); the original is never touched.
   in a table cell, a nested table, a paragraph-format change); the window
   shows them in one toast.
 
+- A mail's attachment (`{at: 'source'}` naming `{at: 'mail'}` and its `itemId`) is read from the copy the host fetched into the item's folder into `<name>.tcdoc` beside it, once (asked again, the answer is the same document), and nothing opens or closes: the docs pillar holds it read only (work-mail.md "Attachments").
+
 **Out** (`work.formats.export`, `read`, → `ExportAnswer` with the file as
 base64): main reads the thread rows and names and asks the Work service's
 `/internal/formats/export`, which reads the live state, the pending branches

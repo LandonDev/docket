@@ -85,8 +85,13 @@ into place only when whole, with `work.canvas.fetch` pushes
 {itemId, offset, length}` gives the bytes back by range (8 MB at most a
 read). A kind's host side opens the copy as it opens a file of his:
 `fetchedPath` in pdf/file.ts `sourcePath` (the PDF and the deck), sheets/held.ts
-`heldOf` (.xlsx, .xlsm, .csv) and media/prepare.ts (a copy in the version's
-cache, which the media host serves). The window's list of those kinds is
+`heldOf` (.xlsx, .xlsm, .csv), media/prepare.ts (a copy in the version's
+cache, which the media host serves), the meetings service's start (the
+recording) and formats/importer.ts (a document read into `<name>.tcdoc`
+beside the copy, which the docs pillar holds read only: `fetchedItemOfPath`
+knows any file in an attachment's folder). `work.canvas.keep {itemId}`
+copies the file into the item's workspace folder (`keepFetched`: Save to
+workspace, and the first half of Keep as document). The window's list of those kinds is
 `FETCHED_KINDS` (work/canvas/fetched.ts); a kind added there must read the
 copy first.
 
@@ -95,7 +100,8 @@ wait for the copy: the document's bones meanwhile, the first line a 4px bar
 and "2.1 of 8.4 MB" once the host says a size of a megabyte or more
 (`FetchState.tsx`); a failed fetch is `Couldn't open this PDF` (sheet, deck,
 file) with the host's sentence and Retry, never bones. Once it is there the
-bar has Download before History, its glyph alone in the narrow bar.
+bar has Download, then Save to workspace in a pane with a workspace, before
+History, each its glyph alone in the narrow bar.
 
 ## Panes that are not a thread
 

@@ -13,6 +13,10 @@ Files: the wire is `src/shared/contract-work-meetings.ts`; the server is
 `src/renderer/src/work/meetings/`; the tools manifest is
 `scripts/work-tools/meetings.json`.
 
+## A mail's recording
+
+An audio attachment opened from a mail (`{at: 'mail'}`) is a meeting item whose recording is the copy the host fetched into the item's folder (work-canvas.md "Fetched sources"): `start` takes that path as it takes a file of his, and the canvas starts it once the copy has come. A video attachment is the media kind's, so it plays and is not transcribed.
+
 ## The pipeline
 
 A recording becomes a `RawTranscript` (raw.ts) through one converter per

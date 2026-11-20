@@ -1055,8 +1055,9 @@ thread; nothing answers inside the canvas.
 - **The kind's bar** is 32px on `background` (the editor's `FileHeader`
   row), 12px muted, in a fixed order: other people as 20px avatars, the
   mode ("Agent suggests" or "Agent writes", a quiet menu button), the
-  kind's own tools, Download (a copy of someone else's file: a mail's
-  attachment), History, then the review stepper at the end. A kind
+  kind's own tools, Download and Save to workspace (a copy of someone
+  else's file: a mail's attachment), History, then the review stepper at
+  the end. A kind
   with nothing to put there draws no bar. The agent suggests on what
   other people can edit and writes, with history and Undo, on what only
   the person sees; the mode says which.
@@ -1071,7 +1072,9 @@ thread; nothing answers inside the canvas.
 - **A mail's attachment** waits for the host's copy in the document's
   bones; from a megabyte, the first line is a 4px bar with "2.1 of 8.4 MB"
   in 12px muted tabular figures beside it. A failed fetch is the kind's
-  failure (`Couldn't open this PDF`, the sentence, Retry). In the Mail view
+  failure (`Couldn't open this PDF`, the sentence, Retry). A document from
+  a mail is read only (no mode, no Share), and Keep as document in ⋯ makes
+  it his. In the Mail view
   the reader's half holds the items at the left and the mail at the right,
   the toggle a Mail glyph named Mail.
 - **The state line** is one line across the surface for a source that

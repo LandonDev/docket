@@ -236,17 +236,52 @@ to the browser, which would save it under the store's key.
 A file of a mail opens where TempCode shows such a file, beside the mail;
 anything else is saved to Downloads as before. work-kit's reader draws the
 chips and asks TempCode's kit (`MailFile`: the store address, the name and
-type, the message and part):
+type, the mail thread, the message and the part):
 
 - **Which files open.** The canvas registry's one lookup, `kindForFile(name,
   contentType)` (work/canvas/registry.ts, shared with the drop-to-open
   thread), names the kind; the file opens when that kind reads a fetched file
-  (`FETCHED_KINDS` in work/canvas/fetched.ts: PDF, sheet, picture or video,
-  deck) and the reader has a mail thread open. Documents (.docx, .odt, .rtf,
-  .md, .txt), recordings and every other file are saved for now. The chip
-  says "View report.pdf" or "Download archive.zip" (`fileVerb`), and a
-  picture goes the same way (`viewsPictures`), so the reader's own picture
-  viewer is LifeOS desktop's alone.
+  (`FETCHED_KINDS` in work/canvas/fetched.ts) and the file names its thread,
+  message and part:
+
+  | Kind | Files | How |
+  |---|---|---|
+  | PDF | .pdf | the fetched copy, as a file |
+  | Sheet | .xlsx, .xlsm, .csv | the copy held as a workbook; edits stay in it |
+  | Media | pictures and video | a copy in the version's cache |
+  | Slides | .pptx | the copy, through the PDF pillar's `sourcePath` |
+  | Document | .docx, .doc, .odt, .rtf, .md, .markdown, .txt | read once into a `.tcdoc` beside the copy, **read only** |
+  | Meeting | audio (the meetings kind's extensions and `audio/*`) | transcribed on the host from the copy |
+
+  Everything else is saved: an archive, and .xls and .ods, which
+  `kindForFile` gives no kind (the sheet claims neither, and its host reads
+  only .xlsx, .xlsm, .tcsheet and .csv; LibreOffice converts both to .xlsx,
+  but nothing calls it for a sheet yet). A video is the media kind's
+  (`video/*` there wins), so a meeting recorded as video plays and is not
+  transcribed; drop it on a meeting to transcribe it. The chip says "View
+  report.pdf" or "Download archive.zip" (`fileVerb`), and a picture goes
+  the same way (`viewsPictures`), so the reader's own picture viewer is
+  LifeOS desktop's alone.
+- **A document is read only.** The document kind reads the attachment with
+  `work.formats.import` naming the mail source and its item: the host writes
+  `<name>.tcdoc` beside the fetched copy, once, and opens and closes nothing,
+  so the item stays the attachment (Download in its bar). The docs pillar
+  answers that document with the `view` role for every caller (docs/index.ts
+  `roleOf`, `fetchedItemOfPath`): no mode, no Share, the editor not editable.
+  An agent reads it by its item (`doc_read`) and is refused `doc_write`,
+  `doc_suggest` and `doc_comment`. **Keep as document**, in More, saves the
+  attachment to the workspace (below) and imports that copy into the pane,
+  where the document it becomes is his to edit and takes the attachment's
+  place.
+- **Save to workspace**, in the bar beside Download for an attachment in a
+  workspace's pane (a thread's or the Mail view's; a Work Chat has no
+  folder), copies the host's file into the workspace's folder under its own
+  name, made safe and numbered as a kept upload is ("Budget (1).xlsx";
+  `work.canvas.keep`, `operate`). It is not `attachment.begin {into:
+  'workspace'}`: that takes bytes from the window for a thread, and a mail's
+  file is already on the host and the Mail view's pane is no thread. The
+  chip in the mail has no menu TempCode can add to (work-kit draws a press
+  and a Save button alone), so Save to workspace is the canvas's only.
 - **Where.** In a mail item beside a thread (`MailCanvas.tsx`) the file is
   another item of that thread's pane. The Mail view has no thread, so it has
   a pane of its own: the reader's half is a `CanvasSeat` on
