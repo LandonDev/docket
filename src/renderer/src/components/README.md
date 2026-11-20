@@ -98,7 +98,9 @@ foot and the settings list.
 Work adds its canvas shapes to that list: the canvas pane's tab row and
 kind bar, the sheet grid, the document editor (the tracker's block
 editor, shared), the mail client and the task and agenda lists (LifeOS's,
-shared), the PDF page, the slide stage, the media viewer, the meeting
+shared), the project screens (work-kit/projects, the tracker's, shared;
+work/projects mounts them with TempCode's kit and scale), the PDF page,
+the slide stage, the media viewer, the meeting
 view, the live browser, the form canvas, the dashboard page, the compare
 and History views, the Outbox and the routines' week grid. Each kind's
 body is a "Not built yet" stub until its milestone.

@@ -105,7 +105,8 @@ Settings → Work.
   `ensureCreated` sends on `session.create`.
 - **The column** (chrome/Sidebar.tsx, WorkspaceSessions.tsx): a Work
   workspace offers no New project and no Orchestration; a linked one shows
-  `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Agenda,
+  `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Projects
+  (the project screens, [work-projects.md](work-projects.md)), Agenda,
   Docs and Files (Teams files, [work-files.md](work-files.md)) from
   `WORK_VIEWS`, then the project cards. Those are LifeOS's,
   live: the head keeps `projects:list {sector}` (backlog, active, paused)
@@ -114,7 +115,8 @@ Settings → Work.
   pick or New thread calls `work.project.open`, which makes the project
   (`projects.lifeos_project_id`) in the card's place: its mirror ("Mirrors
   follow LifeOS" below). The cards keep
-  LifeOS's order (its `order`, then name) whatever is picked, made or
+  the Projects view's own order (`projectOrder` from
+  `work-kit/projects/order`: oldest first) whatever is picked, made or
   worked in; a project of the workspace that mirrors none of them follows,
   newest first (`railOrder` in the same file). A view row opens `WorkViewSurface` over
   the thread panes under the strip; picking a thread or the row again
@@ -122,7 +124,9 @@ Settings → Work.
 - **A view registers** in `src/renderer/src/work/views/registry.ts`: the
   milestone fills its own `work/<pillar>/view.ts` (mail, tasks, agenda,
   docs) and nothing else. The view's chunk exports `View` and, optionally,
-  `Head` (the controls after its name in the 40px header); `fact` is the
+  `Head` (the controls after its name in the 40px header) and `Title` (in
+  place of its name there, for a view that stands somewhere inside itself:
+  the way back from a project's page); `fact` is the
   row's one muted trailing fact. `WorkViewProps` hands it the workspace,
   its sector, `lifeos` (a session narrowed to that sector) and
   `startThread(chip)`, which opens a new thread's composer in the workspace
@@ -155,8 +159,9 @@ Settings → Work.
   the default), `work.project.open` (operate), and the `url` on
   `work.lifeos.jwt`'s answer. Tests: work/core.test.ts.
 - **A Work project's card menu** (chrome/WorkspaceSessions.tsx): New chat,
-  Project settings, the fleet's rows over its threads and Archive dormant
-  threads. No Rename, no Preamble, no Archive project, no Delete project:
+  Open project (its page in the Projects view; a card with no mirror yet
+  has it too), Project settings, the fleet's rows over its threads and
+  Archive dormant threads. No Rename, no Preamble, no Archive project, no Delete project:
   LifeOS names and ends the project, and its rules are in its sheet.
 - **A Work project's settings** (work/shell/ProjectSettings.tsx,
   `WorkProjectSettings`, a surface of the `work-shell` chunk that
@@ -337,7 +342,7 @@ edits none of these.
 
 Pillar ids, in mount order: `outbox, canvas, lifeos, routines, rules, mail,
 tasks, agenda, docs, history, formats, sheets, office, google, guests, pdf,
-slides, media, frameio, meetings, forms, dashboards, browser`.
+slides, media, frameio, meetings, forms, dashboards, browser, projects`.
 `PILLAR_MILESTONE` names the plan milestone that builds each. Canvas kinds
 map to pillars once (`CANVAS_PILLAR`), act kinds too (`ACT_PILLAR`).
 

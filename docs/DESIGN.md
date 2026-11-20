@@ -45,7 +45,8 @@ charts (`aliax/charts`, on recharts and the `--chart-1..4` tokens), and
 Work's canvas shapes: the canvas pane's tab row and kind bar, the sheet
 grid (its formula bar, sheet tabs and chart object), the document editor
 (the tracker's block editor, shared), the mail client and the task and
-agenda lists (LifeOS's, shared), the PDF page, the slide stage, the media
+agenda lists (LifeOS's, shared), the project screens (the tracker's,
+shared), the PDF page, the slide stage, the media
 viewer, the meeting view, the live browser, the form canvas, the dashboard
 page, the compare and History views, the Outbox, and the routines' week
 grid. They are built from the components above wherever they have a
@@ -84,6 +85,8 @@ light one is built is "The light theme".
 | `accent` / `accent-foreground` | focus rings, a selection's edge, the rare call to action | blue 62% / white | hsl(214 88% 44%) / white |
 | `link` | a link's words, in prose, a document, a form | `accent` | hsl(214 90% 38%) |
 | `warning` | the person is needed; the context meter from 85% full | amber | `#92450a` |
+| `waiting` | work parked on someone else: a task that waits | orange `#fb923c` | `#b93a0c` |
+| `stage-doing`, `stage-waiting`, `stage-done` | a stage of work as a mark on the project screens (a state's glyph, a meter's segment), never a word | `warning`, `waiting`, `success` | `chart-4`, `chart-2`, `chart-3` |
 | `destructive` / `destructive-foreground` | failed, delete; the label on a solid red button | red / white | `#b91c1c` / white |
 | `success` | lines added, passed | green | `#046c4e` |
 | `info` | the one informational tint | blue | `#1d4ed8` |
@@ -1168,6 +1171,27 @@ Around the canvas:
   host on each workspace's page. A section that needs an account the person is
   signed out of shows one muted line naming the sign-in ("Sign in to
   LifeOS to …"), never disabled controls.
+- **Project screens** (the Projects view; the tracker's projects screens,
+  shared with LifeOS, on TempCode's scale). The view's one 40px header
+  holds the screens' bar: the view's name, or the way back from inside a
+  project, then the controls at its end, all quiet 28px buttons (List or
+  Board, New project, New thread, New task). No second bar is drawn. A
+  row is 32px of 13px words on 20px a level, its bar the row radius
+  (8px), `foreground` at 5% in hand and at 9% selected or pressed, at
+  once. A project's name is the document title's recipe (18/26
+  semibold, -0.01em), edited in place. A card is `background` on a `card`
+  lane with a hairline (6px in a 12px lane), a stronger hairline in hand,
+  and no shadow; only a row or a card being dragged lifts. The peek is a
+  sheet (16px). A stage of work is a mark, never a word in its colour: a
+  state's 14px glyph and a meter's segment in `stage-doing`,
+  `stage-waiting` and `stage-done`, the rest of a meter a dotted line in
+  `chart-neutral-stale`; the meter is 4px, square, with no track, and
+  never moves. A count is said once: the list and the board say done of
+  all beside the meter, a project's page in its tabs. A task a thread
+  works on shows that thread's mark in its row, which opens the thread.
+  A Work project's settings are a sheet with its name, state, rules and
+  accounts and nothing of code; what LifeOS cannot take now is shown as
+  words, never as disabled controls.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
   guest can do, until when, and the guest's avatar. What a guest may not
