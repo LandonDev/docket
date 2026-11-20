@@ -9,7 +9,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
-import { WORK_VIEWS, type WorkViewId, type WorkViewProps } from "../views/registry";
+import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
 import { openWorkSettings } from "./open";
 import { reopenLifeos, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
@@ -46,12 +46,17 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const status = useLifeosStatus(environmentId);
   const session = useLifeosSession(environmentId, sector);
   const state: LifeosStateName | null = status?.lifeos.state ?? null;
-  // The header's controls come from the chunk: draw again once it lands, or they never show.
-  const [, landed] = useState(0);
+  // The header's controls come from the chunk. The module is kept in state: read from the chunk while rendering it is a
+  // constant to the React Compiler, so a first render before the chunk landed kept its null and the controls never showed.
+  const [loaded, setLoaded] = useState<WorkViewModule | null>(() => def.chunk.loaded());
   useEffect(() => {
-    if (!def.chunk.loaded()) void def.chunk.load().then(() => landed((n) => n + 1), () => {});
-  }, [def]);
-  const loaded = def.chunk.loaded();
+    if (loaded) return;
+    let live = true;
+    void def.chunk.load().then((module) => live && setLoaded(module), () => {});
+    return () => {
+      live = false;
+    };
+  }, [def, loaded]);
   const Head = loaded?.Head;
   const Title = loaded?.Title;
   const props = useMemo<WorkViewProps>(

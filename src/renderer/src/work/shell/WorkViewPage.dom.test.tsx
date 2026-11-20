@@ -74,6 +74,32 @@ describe("a view's boundary", () => {
   });
 });
 
+describe("a view opened before its chunk has landed", () => {
+  it("draws its header's controls and its own title once the chunk lands, in place of the bare name", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => ({})) } as never);
+    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
+    let land: (module: object) => void = () => {};
+    const was = WORK_VIEWS.agenda.chunk;
+    WORK_VIEWS.agenda.chunk = defineChunk("test-agenda", () => new Promise((resolve) => (land = resolve))) as never;
+    try {
+      render(<ViewFrame view="agenda" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+      await flush();
+      // Not landed: the view's name, and no control.
+      expect(screen.getByRole("region", { name: "Agenda" }).textContent).toContain("Agenda");
+      expect(screen.queryByRole("button", { name: "A verb" })).toBeNull();
+      await act(async () => {
+        land({ View: () => <p>The week</p>, Head: () => <button type="button">A verb</button>, Title: () => <span>The way back</span> });
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      await vi.waitFor(() => expect(screen.getByRole("button", { name: "A verb" })).toBeTruthy());
+      expect(screen.getByText("The way back")).toBeTruthy();
+      expect(screen.getByText("The week")).toBeTruthy();
+    } finally {
+      WORK_VIEWS.agenda.chunk = was;
+    }
+  });
+});
+
 describe("views outside LifeOS's gate, and a view that did not import", () => {
   it("draws Routines, its header and its body, while LifeOS is signed out: its data is the host's", async () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({
