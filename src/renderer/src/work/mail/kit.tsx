@@ -57,7 +57,7 @@ const toast = (input: string | MailToastInput): void => {
     };
     const words =
       t.countdown && t.lifetime ? (
-        <span className="inline-flex min-w-28 flex-col gap-1.5">
+        <span className="flex w-full min-w-28 flex-col gap-1.5">
           {t.message}
           <Countdown ms={t.lifetime} />
         </span>
