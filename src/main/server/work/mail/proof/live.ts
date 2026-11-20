@@ -15,8 +15,19 @@ import { check, failed, note, Proof, sleep, textOf, until, type Inst } from '../
  * LifeOS add-on (`app.addonCall`), as milestone 7 did; the owner's part
  * (take the rewrite, edit, Send) is pressed in the window over CDP.
  *
- * Shots of the test mail go to `OUT`; the Mail view, which shows real mail,
- * is looked at and never written to disk.
+ * The design pass added two things. The held draft's Send now waits in the
+ * window: the proof presses Send, presses Undo inside the wait and sees that
+ * nothing went, then presses Send again, lets the wait run out, and reads
+ * from LifeOS that the mail went on his press and waited once, not twice.
+ * Then a second mail, designed (a white page on a tinted ground, a picture
+ * from the web), goes from his own account to his own address by his own
+ * `compose:send`, comes back through Gmail, and is opened in the Mail view:
+ * its picture must paint from the bytes LifeOS's worker fetched, in a frame
+ * that asked the network for nothing.
+ *
+ * Shots of the test mails go to `OUT` (the reader's pane alone for the
+ * second); the Mail view's list, which shows real mail, is looked at and
+ * never written to disk.
  *
  * Run from the worktree after `electron-vite build`:
  *   env -u ELECTRON_RUN_AS_NODE bun src/main/server/work/mail/proof/live.ts /tmp/m23-live/box.token <out dir>
@@ -29,6 +40,10 @@ const SUBJECT = 'TempCode test, please ignore'
 const FIRST = 'A test from TempCode milestone 23, sent to myself. Please ignore it.'
 const REWRITE = 'A test from TempCode milestone 23, sent from my own account to my own address. Please ignore it.'
 const EDIT = ' Edited in the test.'
+/** The designed mail: its subject, a picture any browser may fetch, and a stamp that finds it again. */
+const DESIGNED = 'TempCode picture test, please ignore'
+const PICTURE = 'https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png'
+const STAMP = `proof-${Date.now()}`
 const PORT = 9283
 /** Only with M23_SEND=1 is Send pressed: a dry run stops before it and discards the draft. */
 const SEND = process.env.M23_SEND === '1'
@@ -116,8 +131,6 @@ async function attach(port: number, ms: number): Promise<Cdp> {
 }
 const page = <T>(e: string): Promise<T> => cdp!.eval<T>(e)
 const has = (text: string) => page<boolean>(`document.body.textContent.includes(${JSON.stringify(text)})`)
-const clickText = (sel: string, text: string, last = false) =>
-  page<boolean>(`(() => { const all = [...document.querySelectorAll(${JSON.stringify(sel)})].filter((e) => e.textContent.trim() === ${JSON.stringify(text)} && !e.disabled); const el = ${last ? 'all.at(-1)' : 'all[0]'}; if (!el) return false; el.click(); return true })()`)
 /** Opens a thread in the window: by id, then its row and its tab in the strip, whichever the window takes. */
 async function showThread(id: string, title: string): Promise<void> {
   await page(`window.__monocode.open(${JSON.stringify(id)})`)
@@ -153,6 +166,8 @@ let box: Inst | null = null
 let owner: ConvexHttpClient | null = null
 let taskId: string | null = null
 let helperId: string | null = null
+let designedId: string | null = null
+let designedThread: string | null = null
 const workspaces: string[] = []
 try {
   const inst = await proof.instance('box')
@@ -195,6 +210,9 @@ try {
   })
   check("both workspaces' keys and add-ons are ready", ready)
 
+  held: {
+  // `M23_ONLY=designed` runs the designed mail's part alone, so a rerun of it sends no second held mail.
+  if (process.env.M23_ONLY === 'designed') break held
   // The task the thread is about, made by a Work thread of the workspace, and the thread started from it.
   const helper = await call<{ id: string }>('session.create', { provider: 'claude', workspaceId: ws.id, threadType: 'chat', permission: 'auto', title: 'm23 proof helper' })
   const task = json<{ id: string }>(await tool(helper.id, 'add_task', { sector, title: 'Answer the TempCode test mail', reason: 'm23 proof: completed by the send', key: `m23-${Date.now()}` }))
@@ -288,16 +306,37 @@ try {
   await sleep(1500)
   await shot('04-edited')
   if (!SEND) throw new DryRun()
-  const pressed = await press(byText('Send', true))
-  check('Send pressed in the composer', pressed)
+  const settings = (await (await fresh(own)).query(makeFunctionReference<'query'>('settings:get'), {})) as { mail?: { undoSeconds?: number } }
+  const undoMs = (settings.mail?.undoSeconds ?? 10) * 1000
+  const statusNow = async () => ((await (await fresh(own)).query(makeFunctionReference<'query'>('compose:get'), { id: draftId })) as { row: { status: string } } | null)?.row.status
+
+  // Send, then Undo inside the wait: nothing has gone, and nothing goes.
+  check('Send pressed in the composer', await press(byText('Send', true)))
+  check('the window says it is sending, with Undo', await until('sending toast', 8_000, async () => (await has('Sending to')) && (await page<boolean>(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Undo')`))))
+  await shot('05-sending-with-undo')
+  check('while it waits LifeOS still holds a draft', (await statusNow()) === 'draft', String(await statusNow()))
+  check('Undo pressed', await press(byText('Undo', true)))
+  await sleep(undoMs + 4000)
+  check('after Undo, and past the undo time, nothing was sent', (await statusNow()) === 'draft', String(await statusNow()))
+  check('the draft is back in the composer with his words', await until('composer back', 20_000, () => page<boolean>(`document.querySelector('.mail-editor .tiptap')?.textContent.includes(${JSON.stringify(EDIT.trim())}) ?? false`)))
+  const heldStill = await call<{ items: { ref: { id?: string }; state: string }[] }>('work.outbox.list', {})
+  check('the Outbox still holds it', heldStill.items.some((i) => i.ref.id === draftId && i.state === 'held'))
+
+  // Send again, and let the wait run out.
+  const pressedAt = Date.now()
+  check('Send pressed again', await press(byText('Send', true)))
+  await sleep(Math.max(0, undoMs - 3000))
+  check('three seconds before the wait ends, still a draft', (await statusNow()) === 'draft', String(await statusNow()))
   const gone = await until('sent', 180_000, async () => {
     const r = (await (await fresh(own)).query(makeFunctionReference<'query'>('compose:get'), { id: draftId })) as { row: { status: string } } | null
     return r?.row.status === 'sent'
   })
-  const after = (await (await fresh(own)).query(makeFunctionReference<'query'>('compose:get'), { id: draftId })) as { row: { status: string; sentFrom?: string; cause?: string; message: { text: string; to: { address: string }[] } } }
+  const after = (await (await fresh(own)).query(makeFunctionReference<'query'>('compose:get'), { id: draftId })) as { row: { status: string; sentFrom?: string; cause?: string; sendAt?: number; message: { text: string; to: { address: string }[] } } }
   sent = ['queued', 'sending', 'sent'].includes(after.row.status)
   check('LifeOS sent it', gone, after.row.status)
   check('LifeOS records the press as the owner\'s, from this host\'s session', after.row.cause === 'press' && !!after.row.sentFrom, JSON.stringify({ sentFrom: after.row.sentFrom, cause: after.row.cause }))
+  // Due once the window's wait ended, not a second undo time after it: LifeOS did not queue it again.
+  check('the mail waited once: due when the window\'s wait ended', after.row.sendAt !== undefined && after.row.sendAt - pressedAt < undoMs + 7000, `${(after.row.sendAt ?? 0) - pressedAt} ms after the press, undo ${undoMs} ms`)
   check('what went is his edit of the rewrite, to his own address only', after.row.message.text.includes('sent from my own account') && after.row.message.text.includes(EDIT.trim()) && after.row.message.to.every((a) => a.address === mine!.address))
   const decided = await call<{ items: { ref: { id?: string }; state: string; decidedBy: string | null }[] }>('work.outbox.list', { show: 'all' })
   const rowHere = decided.items.find((i) => i.ref.id === draftId)
@@ -310,16 +349,55 @@ try {
   // get_task does not print the completion's thread link; LifeOS's activity log names the send as the reason.
   check('the linked task completed at the send', done, done ? '' : textOf(await tool(thread.id, 'get_task', { id: task.id })).slice(0, 300))
   await sleep(2000)
-  await shot('05-sent')
+  await shot('06-sent')
+  }
 
-  // The Mail view: looked at, never saved (it shows real mail).
+  // A designed mail to himself, by his own send: a white page on a tinted ground, with a picture from the web.
+  const designed =
+    `<table width="100%" cellpadding="0" cellspacing="0" bgcolor="#f1f5f9" style="background:#f1f5f9"><tr><td align="center" style="padding:24px">` +
+    `<table width="480" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;font-family:Helvetica,Arial,sans-serif;color:#0f172a"><tr><td style="padding:24px">` +
+    `<img src="${PICTURE}" width="92" height="30" alt="A logo"><h1 style="font-size:20px;margin:16px 0 8px">A designed test mail</h1>` +
+    `<p style="margin:0">Sent by the TempCode mail proof to myself. Please ignore it. ${STAMP}</p></td></tr></table></td></tr></table>`
+  designedId = (await (await fresh(own)).mutation(makeFunctionReference<'mutation'>('compose:send'), {
+    message: { kind: 'mail', accountId: mine!._id, to: [{ address: mine!.address }], cc: [], bcc: [], subject: DESIGNED, html: designed, text: `A designed test mail. Sent by the TempCode mail proof to myself. Please ignore it. ${STAMP}`, mode: 'new', attachments: [], forwardParts: [] },
+    cause: 'press'
+  })) as string
+  type Found = { _id: string; subject: string }
+  const search = async () => ((await (await fresh(own)).query(makeFunctionReference<'query'>('mail:search'), { text: STAMP })) as Found[]).filter((t) => t.subject === DESIGNED)
+  const arrived = await until('the designed mail back from Gmail', 240_000, async () => (await search()).length > 0)
+  if (!check('the designed mail came back through Gmail into LifeOS', arrived)) throw new Error('the designed mail did not arrive')
+  designedThread = (await search())[0]!._id
+
+  // The Mail view, in the window: found by its stamp, opened, its picture painted from bytes.
   const named = await page<boolean>(`(() => { const el = [...document.querySelectorAll('aside button, nav button')].find((b) => b.textContent.trim() === 'm23 proof'); if (!el) return false; el.click(); return true })()`)
-  if (named && (await until('Mail row', 10_000, () => clickText('aside button', 'Mail')))) {
-    check('the Mail view lists the sector\'s mail', await until('mail list', 30_000, () => page<boolean>(`document.querySelectorAll('.tc-mail button').length > 3`)))
-    const { data } = (await cdp.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
-    writeFileSync('/tmp/m23-live/mail-view.png', Buffer.from(data, 'base64'), { mode: 0o600 })
-    note('Mail view shot written to /tmp/m23-live/mail-view.png for a look, to be deleted')
-  } else note('could not open the Mail view from the rail')
+  // The row reads "Mail" with its unread count after it.
+  const mailRow = `[...document.querySelectorAll('aside button, aside [role=button], aside a')].find((e) => /^Mail(\\s|\\d|$)/.test(e.textContent.trim()))`
+  if (!check('the workspace opened from the rail', named) || !check('its Mail view opened', await until('Mail row', 20_000, () => press(mailRow)))) {
+    note(`rail rows: ${await page<string>(`JSON.stringify([...document.querySelectorAll('aside button, aside [role=button], aside a')].map((e) => e.textContent.trim().slice(0, 24)).filter(Boolean).slice(0, 40))`)}`)
+    throw new Error('could not open the Mail view')
+  }
+  check('the Mail view lists the sector\'s mail', await until('mail list', 45_000, () => page<boolean>(`document.querySelectorAll('.tc-mail [role=option]').length > 0`)))
+  await sleep(500)
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: '/', text: '/', windowsVirtualKeyCode: 191 })
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: '/', windowsVirtualKeyCode: 191 })
+  check('the / key put the caret in the search field', await until('search field', 10_000, () => page<boolean>(`document.activeElement?.getAttribute('aria-label') === 'Search mail'`)))
+  await cdp.send('Input.insertText', { text: STAMP })
+  const ROW = `[...document.querySelectorAll('.tc-mail [role=listbox][aria-label="Search results"] [role=option]')].find((r) => r.getAttribute('aria-label')?.includes(${JSON.stringify(DESIGNED)}))`
+  check('search finds it by its stamp', await until('search result', 30_000, () => page<boolean>(`!!(${ROW})`)))
+  check('its row opened it', await press(ROW))
+  const FRAME = `document.querySelector('.tc-mail [data-mail-pane] iframe[data-mail]')`
+  check('the reader drew it on its own white page', await until('frame', 30_000, () => page<boolean>(`!!${FRAME}?.contentDocument?.documentElement?.hasAttribute('data-designed')`)))
+  const painted = await until('picture', 90_000, () => page<boolean>(`(() => { const img = ${FRAME}?.contentDocument?.querySelector('img[data-pic]'); return !!img && img.src.startsWith('blob:') && img.complete && img.naturalWidth > 0 })()`))
+  check('its picture painted from bytes LifeOS fetched: a blob, never the sender\'s address', painted, await page<string>(`(() => { const img = ${FRAME}?.contentDocument?.querySelector('img[data-pic]'); return img ? img.src.slice(0, 40) + ' ' + img.naturalWidth : 'no picture' })()`))
+  check('the frame holds no address of the web', await page<boolean>(`!/https?:\\/\\/(?!www\\.w3\\.org)/.test(${FRAME}.srcdoc.replace(/<a [^>]*>/g, ''))`))
+  check('the frame may run nothing and open nothing', (await page<string>(`${FRAME}.getAttribute('sandbox')`)) === 'allow-same-origin')
+  await sleep(800)
+  // The pane alone: the list beside it shows real mail.
+  const pane = await page<{ x: number; y: number; width: number; height: number }>(`(() => { const r = document.querySelector('.tc-mail [data-mail-pane]').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()`)
+  const { data } = (await cdp.send('Page.captureScreenshot', { format: 'png', clip: { ...pane, scale: 1 } })) as { data: string }
+  writeFileSync(join(OUT, '07-designed-read-back.png'), Buffer.from(data, 'base64'))
+  note('shot 07-designed-read-back (the reader\'s pane alone)')
+
 } catch (err) {
   if (err instanceof DryRun) note('dry run: Send was not pressed')
   else check('the proof ran to its end', false, err instanceof Error ? err.message.slice(0, 400) : String(err))
@@ -332,6 +410,9 @@ try {
     await fresh(owner).catch(() => null)
     if (draftId && !sent) await owner.mutation(makeFunctionReference<'mutation'>('compose:discard'), { id: draftId }).then(() => note('the unsent draft was discarded'), (e: Error) => note(`discard: ${e.message.slice(0, 160)}`))
     if (taskId && helperId && !sent) await tool(helperId, 'drop_tasks', { ids: [taskId], reason: 'm23 proof: cleanup' }).catch(() => null)
+    // The designed test mail has done its work: out of his inbox, into Trash (30 days there; Gmail's copy is left archived).
+    if (designedThread) await owner.mutation(makeFunctionReference<'mutation'>('mail:trash'), { id: designedThread }).then(() => note('the designed test mail went to Trash'), (e: Error) => note(`mail:trash: ${e.message.slice(0, 160)}`))
+    else if (designedId) note(`the designed mail ${designedId} was sent but never seen back; it is in his own mailbox`)
     for (const id of workspaces) await call('workspace.delete', { workspaceId: id }).catch((e: Error) => note(`workspace.delete: ${e.message.slice(0, 160)}`))
     const live = async () => ((await (await fresh(owner!)).query(makeFunctionReference<'query'>('bots:list'), {})) as { _id: string; name: string; revokedAt?: number }[]).filter((b) => b.revokedAt === undefined && names.includes(b.name))
     await until('keys revoked', 60_000, async () => (await live()).length === 0).catch(() => false)

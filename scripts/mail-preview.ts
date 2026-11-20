@@ -10,6 +10,7 @@
  *   bun scripts/mail-preview.ts --serve            # print the address and keep serving
  *   bun scripts/mail-preview.ts --shots <dir>      # the review shots: every scene, dark and light, 1280 and 640
  *   bun scripts/mail-preview.ts --proof            # the reader's proof; exits 1 when a claim fails
+ *   taskset -c 0-3 bun scripts/mail-preview.ts --speed   # the list on 5,000 threads: first paint beside 50's, and a scroll through them all
  *   … --policy <index.html>                        # serve under another app's page policy (LifeOS desktop's)
  */
 import { compile } from '@tailwindcss/node'
@@ -21,6 +22,7 @@ import { parseArgs } from 'node:util'
 import { Chromium, type Page } from '../node_modules/work-kit/src/mail/proof/index'
 import { runProof } from '../src/renderer/src/work/mail/preview/proof'
 import { SCENES, shoot } from '../src/renderer/src/work/mail/preview/scenes'
+import { runSpeed } from '../src/renderer/src/work/mail/preview/speed'
 
 const root = resolve(import.meta.dirname, '..')
 const { values } = parseArgs({
@@ -28,6 +30,7 @@ const { values } = parseArgs({
     serve: { type: 'boolean' },
     shots: { type: 'string' },
     proof: { type: 'boolean' },
+    speed: { type: 'boolean' },
     policy: { type: 'string' },
     only: { type: 'string' }
   }
@@ -102,6 +105,16 @@ if (import.meta.main) {
         const claims = await runProof(page, site.url)
         for (const claim of claims) console.log(`${claim.ok ? 'ok  ' : 'FAIL'} ${claim.name}${claim.ok ? '' : `: ${claim.detail}`}`)
         failed = claims.some((claim) => !claim.ok)
+      }
+      if (values.speed) {
+        const speed = await runSpeed(browser, site.url)
+        console.log(`first paint of the list, ${speed.runs} runs each, turn about, ms from the mail being ready (load ${speed.load.join(' ')})`)
+        console.log(`  ${speed.small.threads} threads: median ${speed.small.median}  (${speed.small.all.join(', ')})`)
+        console.log(`  ${speed.large.threads} threads: median ${speed.large.median}  (${speed.large.all.join(', ')})`)
+        console.log(`  5,000 is ${speed.over} ms ${speed.over >= 0 ? 'later' : 'sooner'}; the budget is 16`)
+        console.log(`scroll through ${speed.scroll.rows} loaded rows (${speed.scroll.drawn} drawn at a time), ${speed.scroll.wheels} turns of the wheel over ${speed.scroll.frames} frames`)
+        console.log(`  tasks over 50 ms: ${speed.scroll.longTasks.length ? speed.scroll.longTasks.join(', ') : 'none'}; worst frame ${speed.scroll.worstFrame} ms`)
+        failed = failed || speed.over > 16 || speed.scroll.longTasks.length > 0 || speed.scroll.rows < 5000
       }
       if (values.shots) {
         mkdirSync(values.shots, { recursive: true })

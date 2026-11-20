@@ -225,7 +225,21 @@ writes the review shots: every scene in `preview/scenes.ts`, dark and
 light, at 1280 and 640 wide. The box's sans is DejaVu, so the shots use
 Selawik as the stand-in for the system face.
 
-The live proof against LifeOS:
+`taskset -c 0-3 bun scripts/mail-preview.ts --speed` times the list
+(`preview/speed.ts`): the first paint of a mailbox of 5,000 dummy threads
+beside one of 50, seven runs each, turn about, by the median, from the
+moment the dummy mail exists (the budget is one frame, 16ms); then a hard
+scroll with the wheel through all 5,000 once loaded, which must leave no
+task over 50ms. On 2026-11-19 (load 3.9): 67.2ms for 50 and 63.5ms for
+5,000, no long task, worst frame 34ms, 20 rows drawn at a time.
+
+The live proof against LifeOS (two mails, both from his own account to his
+own address): a held draft's Send is undone inside its wait and nothing
+goes; sent again, it goes when the window's wait ends, on his press, and
+LifeOS shows it waited once; then a designed mail with a picture from the
+web is sent, comes back through Gmail and is opened in the Mail view, where
+its picture must paint from a blob in a frame with no address of the web in
+it. `M23_ONLY=designed` runs the second part alone.
 
 `env -u ELECTRON_RUN_AS_NODE bun src/main/server/work/mail/proof/live.ts <0600 token file> <shots dir>`
 from the worktree after `electron-vite build`, with a token minted by

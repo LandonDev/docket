@@ -36,6 +36,9 @@ const client = createFixtureMailClient({
   outbox: corpusOutbox(),
 });
 
+// The dummy mail is made by now: what follows is Mail's own work, which the speed run times from here.
+(window as unknown as { __mailBuiltAt: number }).__mailBuiltAt = performance.now();
+
 declare global {
   interface Window {
     __mail: {
