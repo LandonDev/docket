@@ -3,14 +3,15 @@
 The box keeps one Windows 11 machine for Work threads to drive: the `standing` instance of the Windows rig
 (docs/agents/windows-vm.md), on the same read-only base image as the rig, with its own lasting disk. The plan is
 `.temp-code/plan-m1X24rQ6nikm.md`, Track B. This file covers the keeper (B3): its states, its methods, setup,
-sleep and wake, and the stop of the box's service; its restore points (B4); and the service on the box with the
-`windows_*` tools (B5). The hold's rules for a command line are B6's (work-outbox.md); the picture and Take over
-come with B7 and B8.
+sleep and wake, and the stop of the box's service; its restore points (B4); the service on the box with the
+`windows_*` tools (B5); and its picture (B7, below and in live-video.md "The Windows VM"). The hold's rules for a
+command line are B6's (work-outbox.md); Take over comes with B8.
 
 The code is `src/main/server/work/winvm/`: `keeper.ts` (the states, over a machine and a guest that are
 interfaces), `standing.ts` (the real machine, through `machine/`), `sshGuest.ts` (the real guest, over SSH),
 `setup.ts` (the guest's admin script), `watcher.ts` (the stop watcher), `points.ts` (restore points),
-`index.ts` (the Work module `winvm`).
+`index.ts` (the Work module `winvm`), `window.ts` (QEMU's window and its display), `picture.ts` and `host.ts` (the VM's
+row, its video and its 4 fps picture on the box's host).
 The wire is `src/shared/contract-work-winvm.ts`.
 
 ## States
@@ -38,7 +39,7 @@ and opens the door at the next call.
 | `work.winvm.wake` | operate | wakes it and answers once it is awake (about 13 s from hibernate, 20 to 26 s cold) |
 | `work.winvm.sleep` | operate | hibernates it and answers once QEMU has exited |
 | `work.winvm.setup` | admin | answers at once; the progress and the end come as pushes |
-| `work.winvm.settings` | admin | `{ sleepAfter }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter` |
+| `work.winvm.settings` | admin | `{ sleepAfter, screen }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter`; the guest's screen, `1280x800` (the default) or `1920x1200`, in `work.winvm.screen`, taken at the next wake (live-video.md "The Windows VM" has the numbers that offer it) |
 | `work.winvm.points` | read | `{ points }`, newest first |
 | `work.winvm.point.save` | operate | `{ name? }`: a point of the sleeping machine |
 | `work.winvm.point.restore` | admin | `{ id }`: back to a point; the machine stays asleep |
@@ -119,6 +120,19 @@ At a thread's first call (B5) or his Wake press. The call waits with "Waking the
    the answer counts, since the forward accepts a connection whether or not anything listens behind it.
 
 A box build with no `tc-computer.exe` wakes the machine and says so in `error`.
+
+## The picture
+
+Where the `qemu-window` tool (scripts/work-tools/winvm.json) and `screen-relay` are both installed, a wake starts a
+private X display of the VM's own at the guest's 1280×800 first (`VmScreen`, window.ts: the box browser's
+`BoxXDisplay` given a size), and QEMU draws the guest's screen in its GTK window there. QEMU's window dies with its X
+server, so the server starts with the stop signals blocked as QEMU does, and ends with SIGKILL: when QEMU has exited
+(the keeper's sleep, `stopped` and `keepTpm`), and after a service stop by the watcher, which ends the server it was
+started beside once QEMU has gone. A host started beside a running machine takes the display back from
+`<userData>/winvm/picture/display/kept.json`. Before each start QEMU is asked whether it loads the modules (a module of
+another QEMU build is refused); a tool missing, a refusal, a display that will not start, or QEMU failing with its
+window all start the machine with no window, and `pictureOnly` on its row takes Take over away. The rest, the engines
+and the numbers, is live-video.md "The Windows VM".
 
 ## Sleep
 
@@ -242,6 +256,9 @@ take 24 GB.
   through `stopBlocked` surviving SIGTERM, SIGINT and SIGHUP.
 - `index.test.ts`: the methods through the Work router, the model refusal, the capability rows, the push,
   the stored setting, the point methods.
+- `window.test.ts`, `picture.test.ts`: QEMU's window arguments and environment, the machine with no window and why,
+  the VM's row, its video source and its 4 fps picture over fakes. `pictureLive.test.ts`: the box's QEMU drawing on
+  the VM's display through a real engine and the relay, where the tools are installed.
 - `points.test.ts`: points over a real qcow2 overlay on a backing image (qemu-img, qemu-io): the disk, the
   firmware variables and the TPM put back, newest first, a delete, no path for an id.
 - `door.test.ts`: the spawn over a stand-in door (the knock first, `initialize` naming the guest's folder, a
@@ -256,4 +273,6 @@ take 24 GB.
   (TC_WIN_RIG=1, the rig) carries B6's live cases on the VM's sessions: a console's launch refused, a click in
   an open Windows Terminal held with `grantable: false`, typing in the Run box held.
 - The rig runs: `scripts/e2e-winvm-stop.ts` (the rig), `scripts/e2e-winvm-keeper.ts` and then
-  `scripts/e2e-winvm-points.ts` (the standing instance: save, change a file, go back, the file as it was).
+  `scripts/e2e-winvm-points.ts` (the standing instance: save, change a file, go back, the file as it was), and
+  `scripts/e2e-winvm-picture.ts` (a fresh standing disk with QEMU's window: frames a second through the relay, its
+  disk deleted after).

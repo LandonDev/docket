@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { WINVM_SLEEP_AFTER, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
+import { WINVM_SCREENS, WINVM_SLEEP_AFTER, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkCtx, WorkModule } from '../modules'
 import { Keeper, type KeeperDeps } from './keeper'
@@ -39,6 +39,28 @@ export function setSleepAfter(db: DatabaseSync, v: WinvmSleepAfter): void {
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(SLEEP_AFTER_SETTING, v)
 }
 
+/** The host setting that holds the guest's screen size, taken at the next wake. */
+export const SCREEN_SETTING = 'work.winvm.screen'
+
+export function screenSetting(db: DatabaseSync): WinvmScreen {
+  try {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(SCREEN_SETTING) as { value?: string } | undefined
+    return (WINVM_SCREENS as readonly string[]).includes(row?.value ?? '') ? (row!.value as WinvmScreen) : '1280x800'
+  } catch {
+    return '1280x800'
+  }
+}
+
+export function setScreen(db: DatabaseSync, v: WinvmScreen): void {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(SCREEN_SETTING, v)
+}
+
+/** A screen setting in the guest's pixels. */
+export const screenSize = (v: WinvmScreen): { width: number; height: number } => {
+  const [width, height] = v.split('x').map(Number) as [number, number]
+  return { width, height }
+}
+
 /** The door's token, in the keeper's folder under the app's data, readable by this user alone. */
 function tokenFile(dir: string): KeeperDeps['token'] {
   const file = join(dir, 'token')
@@ -57,7 +79,8 @@ export const hashFile = (path: string): string => createHash('sha256').update(re
 /** The keeper over the real standing machine and its guest. */
 export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push' | 'pushPoints'> {
   // QEMU's window on a display of its own, where its tools are installed (window.ts)
-  const machine = new StandingMachine('standing', process.env, vmScreen(ctx.dataDir, (line) => ctx.log(line)), (line) => ctx.log(line))
+  const screen = vmScreen(ctx.dataDir, (line) => ctx.log(line), () => screenSize(screenSetting(ctx.db)))
+  const machine = new StandingMachine('standing', process.env, screen, (line) => ctx.log(line))
   return {
     machine,
     guest: new SshGuest(machine.c, machine.p),
@@ -136,7 +159,8 @@ export const winvm: WorkModule = {
       }
       case 'work.winvm.settings': {
         if (by.kind === 'model') throw new Error(NOT_A_PERSON)
-        const answer: WinvmSettings = keeperOf(ctx).settings(req.params.sleepAfter)
+        if (req.params.screen !== undefined) setScreen(ctx.db, req.params.screen)
+        const answer: WinvmSettings = { ...keeperOf(ctx).settings(req.params.sleepAfter), screen: screenSetting(ctx.db) }
         return handled(answer)
       }
       case 'work.winvm.points':

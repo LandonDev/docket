@@ -217,7 +217,7 @@ export class BoxXDisplay {
       await this.stop()
       throw err
     }
-    this.opts.log?.(`box display: ${this.pair.DISPLAY} at ${width}×${height} (scale ${this.scale}), ${DISPLAY_HZ} Hz (pid ${child.pid})`)
+    this.opts.log?.(`box display: ${this.pair.DISPLAY} at ${width}×${height}${this.opts.size ? '' : ` (scale ${this.scale})`}, ${DISPLAY_HZ} Hz (pid ${child.pid})`)
     return this.pair
   }
 

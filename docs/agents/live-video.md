@@ -8,7 +8,8 @@ frames a second, in place of the 4 fps JPEG picture. The plan is
 stream's own socket on both servers, the relay, the two settings; the box's
 browser as a source, with his pointer and keys into the page he drives; a
 Mac's window as a source (`tc-computer`, `capture.video.*`) and a PC's
-(`tc-computer.exe`, the same calls; see "A Windows PC" below), and the
+(`tc-computer.exe`, the same calls; see "A Windows PC" below), the box's
+Windows VM ("The Windows VM"), and the
 publish leg that carries one to his other devices; the desktop's viewer,
 which every place that shows a live picture now asks first; the Computers
 page; and the phone's viewer ("The phone"). Every part of the plan is
@@ -695,6 +696,79 @@ every case of its test. The host side was already the Mac's: `ComputerVideo`
 asks any service that names `video`. Measured in the rig: "The proofs".
 Not proven: a hardware encoder (the rig has no GPU) and a PC's own desktop
 viewer on a real Windows host; the rig's proof reads the frames on the box.
+
+## The Windows VM
+
+The box's standing Windows machine (docs/agents/work-winvm.md) is a source
+of its own: QEMU draws the guest's whole screen in its GTK window on a
+private X display of the VM's, and screen-relay's engine captures that
+display. So the picture is the whole screen (the taskbar, every window, the
+UAC prompt and the lock screen), and nothing runs in the guest for it.
+
+- **The tools.** `scripts/work-tools/winvm.json` names one tool,
+  `qemu-window`: Ubuntu 24.04's own `qemu-system-gui`,
+  `qemu-system-modules-opengl`, `libvte-2.91-0` and `libvte-2.91-common`,
+  each pinned by sha256 from snapshot.ubuntu.com, for the box's QEMU
+  8.2.2+ds-0ubuntu1.18; its one build step copies `ui-gtk.so` and
+  `ui-opengl.so` into `mods/` (ui-gtk loads only beside ui-opengl, and a
+  missing one fails silently). Its probe asks the box's QEMU to open a GTK
+  window with no display: "gtk initialization failed" means the module
+  loaded. The display and the engine are `screen-relay`'s. Install with
+  `bun scripts/work-tools/install.ts --data <userData> --only qemu-window`.
+  A QEMU upgrade by apt leaves the modules of the old build: QEMU refuses
+  them, and the VM runs with no window until the manifest is moved to the
+  new build.
+- **The display** (`VmScreen`, work/winvm/window.ts): the box browser's
+  `BoxXDisplay` at the guest's own size (1280×800, or 1920×1200 by the
+  setting below), 120 Hz, under
+  `<userData>/winvm/picture/display/`, started before QEMU and started with
+  the stop signals blocked, as QEMU is, since QEMU's window dies with its X
+  server. It ends when QEMU exits, by the keeper or, after a stop of the
+  box's service, by the stop watcher. QEMU gets `DISPLAY`, `XAUTHORITY`,
+  `QEMU_MODULE_DIR` and `LD_LIBRARY_PATH` through `env` inside its command
+  (`sg` is setuid and its loader would drop `LD_LIBRARY_PATH`). With no
+  window manager the window maps at 0,0 at the guest's size, with no menu
+  bar or tabs, and the USB tablet puts X's pointer and the guest's at the
+  same pixel.
+- **The source** (`VmPicture`, work/winvm/picture.ts) answers `video.open`
+  whose `computer` is `vm:windows`, whatever `threadId` says: one engine for
+  each viewer, three at most (`busy` past that), `no-tools` where a tool is
+  missing, `unsupported` while it sleeps. While anyone watches, the keeper
+  does not put it to sleep. When it sleeps its streams end with `ended`.
+  Who may watch is `mayWatch`, as for the box's browser.
+- **Its row** is the VM's own while it is awake: `computer: 'vm:windows'`,
+  `threadId` the thread that holds it (B5's lease) or `vm:windows`, idle
+  when none does, and `pictureOnly` when it has no window. The desktop asks
+  for its picture by that name (`previewKey`), so the tile and its stream
+  stay as the holder changes.
+- **No window** (a tool missing, QEMU refusing the modules, a display that
+  will not start): the machine runs with `-display none`, the page shows the
+  4 fps picture from QMP's screenshots (`VmPreviews`, ids `vm-preview_N`,
+  JPEG by Electron's encoder) and offers no Take over, and Settings →
+  Connections' Windows VM group says which tool is missing ("Live picture").
+
+Measured by `scripts/e2e-winvm-picture.ts` on a fresh standing disk (deleted
+after; run it under `flock -o -n /srv/agents/win-vm/standing/.lock`), through the app's relay with a viewer that acks every frame, the
+engine pinned to cores 24 to 27, QEMU at nice 10, sizes interleaved with a
+cold boot each (A, B, A, B), 10 s a run:
+
+| scene, 6 runs each | 1280×800 | 1920×1200 |
+|---|---|---|
+| a window dragged by QMP's pointer (~110 moves a second) | **54.4 fps** (53.1 to 55.5), 3.6 Mbit/s | **51.7 fps** (50.1 to 55.0), 3.5 Mbit/s |
+| a maximized window redrawn every 10 ms | **58.7 fps** (57.2 to 59.5), 4.1 Mbit/s | **44.5 fps** (35.9 to 57.5), 3.0 Mbit/s |
+| a still desktop, 5 s | 0 frames | 0 and 19 frames (Windows' own animation in one) |
+| the engine / QEMU on the box (median, drag) | 0.30 / 0.91 cores | 0.54 / 2.44 cores |
+
+Load average 11 to 20 on the 32-core box, measured 2026-11-20. Frame gaps sit
+at 16.7 ms whenever the screen changes every frame: the guest presents at
+about 60, so 120 is never reached (the spike's finding, still true). Windows
+scales a 1920×1200 screen to 150%. The dragged window held 51.7, over the 45
+that offers the larger size, so Settings offers it: `work.winvm.settings
+{ screen: '1920x1200' }`, taken at the next wake (the display at that size,
+the same VGA told its EDID mode). The full-screen redraw at 1920×1200 spread
+too wide to rule on (one boot 36 to 41, the other 48 to 58, at load 12 to
+20); 1280×800 stays the default. Not proven: a wake from hibernate into the
+other size (the measurement cold-boots each one).
 
 ## The phone
 

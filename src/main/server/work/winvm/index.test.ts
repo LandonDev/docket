@@ -3,7 +3,8 @@ import { METHOD_CAPABILITY } from '@shared/capabilities'
 import type { WinvmPoint, WinvmSettings, WinvmState } from '@shared/contract-work-winvm'
 import { makeRig, type Rig } from '../outbox/rig'
 import type { DoorLink, KeeperDeps } from './keeper'
-import { configureWinvmKeeper, NOT_A_PERSON, setSleepAfter, sleepAfterSetting, winvm, winvmKeeper } from './index'
+import { WinvmRequestSchemas } from '@shared/contract-work-winvm'
+import { configureWinvmKeeper, NOT_A_PERSON, screenSetting, screenSize, setSleepAfter, sleepAfterSetting, winvm, winvmKeeper } from './index'
 
 /**
  * The pillar on a real database through the Work router, over a fake
@@ -89,10 +90,19 @@ describe('the Windows VM pillar', () => {
   })
 
   it('keeps sleep-after in the host settings, 30 minutes until he sets it', async () => {
-    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', {})).toEqual({ sleepAfter: '30m' })
-    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', { sleepAfter: '2h' })).toEqual({ sleepAfter: '2h' })
+    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', {})).toEqual({ sleepAfter: '30m', screen: '1280x800' })
+    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', { sleepAfter: '2h' })).toEqual({ sleepAfter: '2h', screen: '1280x800' })
     expect(sleepAfterSetting(workCtx().db)).toBe('2h')
     expect((await rig.rpc<WinvmState>('work.winvm.state', {})).sleepAfter).toBe('2h')
+  })
+
+  it('keeps the screen size in the host settings, the std VGA 1280×800 until he picks 1920×1200', async () => {
+    expect(await rig.rpc<WinvmSettings>('work.winvm.settings', { screen: '1920x1200' })).toEqual({ sleepAfter: '30m', screen: '1920x1200' })
+    expect(screenSetting(workCtx().db)).toBe('1920x1200')
+    expect(screenSize(screenSetting(workCtx().db))).toEqual({ width: 1920, height: 1200 })
+    // the wire offers the two sizes measured, no other
+    const settings = WinvmRequestSchemas.find((r) => r.shape.method.value === 'work.winvm.settings')!
+    expect(settings.safeParse({ id: '1', method: 'work.winvm.settings', params: { screen: '2560x1600' } }).success).toBe(false)
   })
 
   it('a model caller may wake it but not set it up, put it to sleep or change its settings', async () => {

@@ -20,6 +20,13 @@ export type WinvmStateName = (typeof WINVM_STATES)[number]
 export const WINVM_SLEEP_AFTER = ['15m', '30m', '2h', 'never'] as const
 export type WinvmSleepAfter = (typeof WINVM_SLEEP_AFTER)[number]
 
+/**
+ * The guest's screen, in its pixels: the std VGA's own 1280×800, or 1920×1200 (the dragged-window scene measured
+ * 51.7 frames a second there, over the 45 that offers it; live-video.md "The Windows VM"). Taken at the next wake.
+ */
+export const WINVM_SCREENS = ['1280x800', '1920x1200'] as const
+export type WinvmScreen = (typeof WINVM_SCREENS)[number]
+
 /** What a call that wakes the machine waits with, and what the state says meanwhile. */
 export const WAKING_WORDS = 'Waking the Windows VM'
 
@@ -55,6 +62,7 @@ export const WINVM_POINTS_KEPT = 3
 
 export interface WinvmSettings {
   sleepAfter: WinvmSleepAfter
+  screen: WinvmScreen
 }
 
 export const WinvmRequestSchemas = [
@@ -66,8 +74,8 @@ export const WinvmRequestSchemas = [
   request('work.winvm.sleep', z.object({})),
   /** → WinvmState: makes the disk from the base image and sets the guest up (the service, its logon task, hibernate, the policies). A person's alone. */
   request('work.winvm.setup', z.object({})),
-  /** → WinvmSettings, with `sleepAfter` set when given. A person's alone. */
-  request('work.winvm.settings', z.object({ sleepAfter: z.enum(WINVM_SLEEP_AFTER).optional() })),
+  /** → WinvmSettings, with `sleepAfter` and `screen` set when given; a new screen is taken at the next wake. A person's alone. */
+  request('work.winvm.settings', z.object({ sleepAfter: z.enum(WINVM_SLEEP_AFTER).optional(), screen: z.enum(WINVM_SCREENS).optional() })),
   /** → { points: WinvmPoint[] }, newest first */
   request('work.winvm.points', z.object({})),
   /** → WinvmPoint: only while it sleeps; past three, the oldest goes. A person's alone. */

@@ -249,8 +249,13 @@ function alive(pid: number, config: string): boolean {
 const screens = new Map<string, VmScreen>()
 
 /** The one screen of a data folder's VM: it outlives the Work switch, as the machine does. */
-export function vmScreen(dataDir: string, log?: (line: string) => void): VmScreen {
+export function vmScreen(dataDir: string, log?: (line: string) => void, size?: () => VmWindow): VmScreen {
+  const sizes = screenSizes.get(dataDir) ?? { now: size }
+  if (size) sizes.now = size
+  screenSizes.set(dataDir, sizes)
   let s = screens.get(dataDir)
-  if (!s) screens.set(dataDir, (s = new VmScreen({ root: join(dataDir, 'winvm', 'picture'), tools: () => pictureToolsAt(dataDir), log })))
+  if (!s) screens.set(dataDir, (s = new VmScreen({ root: join(dataDir, 'winvm', 'picture'), tools: () => pictureToolsAt(dataDir), size: () => sizes.now?.() ?? VGA_DEFAULT, log })))
   return s
 }
+/** the screen setting each data folder's keeper last gave: the one screen object reads it at every start */
+const screenSizes = new Map<string, { now?: () => VmWindow }>()

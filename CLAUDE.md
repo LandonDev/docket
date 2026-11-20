@@ -179,7 +179,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   pillar's states, `work.winvm.*`, setup with tcuser's policies, wake, hibernate on idle and at a stop of the
   box's service (stop signals blocked, a watcher), restore points taken asleep (disk snapshot, firmware, TPM);
   the `windows_*` Work tools on a third `ComputerService` through the guest's door (work/winvm/vm.ts), one
-  thread at a time. [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
+  thread at a time; QEMU's GTK window on a display of the VM's own (`qemu-window` tool, winvm/window.ts), its
+  `vm:windows` video source and idle row (winvm/picture.ts), QMP's 4 fps picture where the tools are missing.
+  [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
 - **Search across hosts** — one query fanned out to every host
   (lib/crossHostSearch.ts), an FTS5 index per host (turnIndex.ts).
   [docs/agents/search-across-hosts.md](docs/agents/search-across-hosts.md)

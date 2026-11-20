@@ -51,7 +51,9 @@ adding its file: neither the installer nor `base.json` changes. The schema is
     run in the tool's own folder, where it will stay, with the host's
     compiler. The steps take the probe's placeholders. Nothing is installed
     on the system and no root is used. The browser pillar's `screen-relay`
-    tool is the one that uses it ([live-video.md](live-video.md))
+    tool uses it ([live-video.md](live-video.md)), and the Windows VM's
+    `qemu-window`, whose one step puts QEMU's two window modules in a folder
+    of their own ([work-winvm.md](work-winvm.md))
   - `dmg`: mounted read-only and hidden (`hdiutil attach -nobrowse`), its
     `app` copied out
   - `npm`: package tarballs, each into its `into` (`node_modules/<name>`)
