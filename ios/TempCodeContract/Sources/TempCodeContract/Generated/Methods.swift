@@ -2515,11 +2515,13 @@ public enum Methods {
             public let ref: HeldRef
             public let rev: Int?
             public let again: Bool?
+            public let many: Bool?
 
-            public init(ref: HeldRef, rev: Int? = nil, again: Bool? = nil) {
+            public init(ref: HeldRef, rev: Int? = nil, again: Bool? = nil, many: Bool? = nil) {
                 self.ref = ref
                 self.rev = rev
                 self.again = again
+                self.many = many
             }
         }
 
