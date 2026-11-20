@@ -101,9 +101,11 @@ const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
 })
 if (work) {
   // What the phone's presses did, read back on the host (the server is still up unless the set quit it).
-  // TC_WORK_ONLY=m47 skipped milestone 46's presses, so their read-back would only say they did not happen.
-  const lines = process.env.TC_WORK_ONLY === 'm47' ? [] : await verifyWork(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the host back: ${String(err)}`])
-  if (items) {
+  // TC_WORK_ONLY=m47 skipped milestone 46's presses, and TC_WORK_ONLY=capture (the voice note's shots alone)
+  // every press, so their read-back would only say they did not happen.
+  const only = process.env.TC_WORK_ONLY
+  const lines = only === 'm47' || only === 'capture' ? [] : await verifyWork(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the host back: ${String(err)}`])
+  if (items && only !== 'capture') {
     lines.push(...items.lines)
     lines.push(...(await verifyWorkItems(ready as unknown as WorkSeedReady, items.sessionId).catch((err: unknown) => [`FAIL could not read the items back: ${String(err)}`])))
   }
