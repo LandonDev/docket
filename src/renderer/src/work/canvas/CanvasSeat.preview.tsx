@@ -16,9 +16,14 @@ import { setOpening } from "./fileDrop";
 import type { CanvasBodyProps, CanvasKindDef } from "./kind";
 import { CANVAS } from "./registry";
 import { SelectionTools } from "./SelectionBar";
+import { seedFetch } from "./fetched";
 import { applyCanvasPush, setFolded } from "./store";
 
-export type PreviewMoment = "three" | "one" | "folded" | "loading" | "unreachable" | "written" | "failed" | "opening" | "uploading";
+export type PreviewMoment = "three" | "one" | "folded" | "loading" | "unreachable" | "written" | "failed" | "opening" | "uploading" | "attachment" | "attachment-failed" | "attachment-open";
+
+/** A mail's attachment: its bytes on their way, failed, or here (Download in the bar). */
+const ATTACHMENT: CanvasSource = { at: "mail", threadId: "mt1", messageId: "mm1", partId: "2", name: "Ballroom contract.pdf", contentType: "application/pdf", size: 8_800_000 };
+const attachmentMoment = (moment: PreviewMoment): boolean => moment.startsWith("attachment");
 
 const source: CanvasSource = { at: "lifeos", table: "docs", id: "doc-1" };
 const item = (id: string, kind: CanvasKind, title: string, position: number, sessionId: string): CanvasItem => ({
@@ -137,10 +142,14 @@ export function CanvasPreview({ moment = "three" }: { moment?: PreviewMoment }) 
   const many = moment === "three" || moment === "folded";
   // A file dropped from the desktop on its way in: a small one in a pane with no item yet, a big one beside an item.
   setOpening(sessionId, previewToken, moment === "opening" ? { name: "Ballroom contract.pdf", sent: 0, total: 240_000, cancel: noop } : moment === "uploading" ? { name: "Keynote cut 3.mov", sent: 12 * 1024 * 1024, total: 48 * 1024 * 1024, cancel: noop } : null);
+  const docId = `${sessionId}-doc`;
+  if (moment === "attachment") seedFetch(docId, { phase: "fetching", received: 2.2 * 1024 * 1024, total: 8.4 * 1024 * 1024 });
+  if (moment === "attachment-failed") seedFetch(docId, { phase: "failed", message: "LifeOS could not get this file from the mail." });
+  if (moment === "attachment-open") seedFetch(docId, { phase: "ready", size: 8_800_000 });
   applyCanvasPush({
     sessionId,
     items: moment === "opening" ? [] : [
-      item(`${sessionId}-doc`, "document", "Spring LAN run of show", 0, sessionId),
+      attachmentMoment(moment) ? { ...item(docId, "document", "Ballroom contract.pdf", 0, sessionId), source: ATTACHMENT } : item(docId, "document", "Spring LAN run of show", 0, sessionId),
       ...(many ? [item(`${sessionId}-sheet`, "sheet", "Nationals travel budget", 1, sessionId), item(`${sessionId}-pdf`, "pdf", "Ballroom contract", 2, sessionId)] : []),
     ],
     opened: `${sessionId}-doc`,

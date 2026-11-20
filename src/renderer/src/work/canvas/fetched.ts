@@ -98,6 +98,9 @@ export async function downloadItem(env: string, item: Pick<CanvasItem, "id" | "t
   await saveDownload(item.source.at === "mail" ? item.source.name : item.title, whole);
 }
 
+/** A preview's seam: the item's fetch as it is drawn, with no host asked. */
+export const seedFetch = (itemId: string, fetch: Fetch): void => put(itemId, fetch);
+
 /** Test seam. */
 export function resetFetches(): void {
   states.clear();

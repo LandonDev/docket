@@ -9,4 +9,7 @@ export default [
   { name: "Couldn't open", props: { moment: "failed" } },
   { name: "A dropped file opening, no item yet", props: { moment: "opening" } },
   { name: "A big dropped file going up beside an item", props: { moment: "uploading" } },
+  { name: "A mail's attachment on its way", props: { moment: "attachment" } },
+  { name: "A mail's attachment the host could not get", props: { moment: "attachment-failed" } },
+  { name: "A mail's attachment, opened", props: { moment: "attachment-open" } },
 ];
