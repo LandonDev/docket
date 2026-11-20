@@ -291,10 +291,28 @@ take 24 GB.
 
 ## What the owner does
 
-- Nothing for the stop: it hibernates the VM by itself; no stage needs re-applying for it.
-- Set the machine up when B10's Settings press exists (or `work.winvm.setup` before then).
-- A box deploy built from source places the service the keeper copies in (docs/box.md, "What box-update
-  does with it"); that step runs once stage 85 has been reapplied.
+In order, once the box runs a build with all of Track B:
+
+1. **Re-apply stage 85 on the box once** (`scripts/box/apply.sh --from 85 --through 85` from the Mac). Not
+   for the stop: the keeper's watcher hibernates the VM at a stop of the service by itself, proven on the rig
+   (`e2e-winvm-stop.ts`), and the unit needs no `ExecStop`. It is for deploys: `box-update master` then builds
+   `tc-computer.exe` into the build's `resources/native` (docs/box.md, "What box-update does with it"), and
+   the keeper copies that service into the guest at each wake. A `box-update v1.0.N` release asset carries
+   none, so deploy the box from master for the VM; with no service, setup and wake say the build has no
+   `tc-computer.exe`.
+2. **Set it up**: Settings → Work → Windows VM → Set up. About ten minutes: the disk from the base image,
+   Windows' admin steps, one restart. The row says each step; it ends Awake.
+3. **Turn it on per workspace**: a Work workspace's page → "Computer use on the Windows VM". Off by default;
+   only those workspaces' threads get the `windows_*` tools.
+4. **Choose its sleep and screen** if the defaults do not suit: Sleeps after (30 minutes) and Screen size
+   (1280 × 800; 1920 × 1200 from the next wake).
+5. **Sign in to what threads should use**, in a Take over from the Computers page: the VM keeps it across
+   sleeps. A thread never types a password.
+6. **Before the evaluation ends** (about 17 February 2027, Settings' Edition row; Connections warns 14 days
+   ahead): buy and enter a real Windows key in a Take over, or rebuild the image (`install.sh --force` after
+   the standing disk is gone; what is signed in is lost).
+7. **Office, when he wants it** (B11): install Microsoft 365 Apps and classic Outlook in a Take over, sign in,
+   and say so; until then Settings' Office row says "Not installed".
 
 ## Proofs
 
