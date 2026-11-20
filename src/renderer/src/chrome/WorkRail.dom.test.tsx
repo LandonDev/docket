@@ -168,7 +168,7 @@ describe("the settings list", () => {
     expect(off.flat()).not.toContain("Purdue Esports");
     probe.act(() => setWorkOn("local", true));
     const on = groups();
-    expect(on.find((g) => g.includes("Work"))).toEqual(["Work", "Purdue Esports"]);
+    expect(on.find((g) => g.includes("Work"))).toEqual(["Work", "Connections", "Purdue Esports"]);
     expect(on.find((g) => g.includes("temp-code"))).toEqual(["temp-code"]);
   });
 });
