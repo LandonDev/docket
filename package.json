@@ -245,7 +245,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
     "vitest": "^3.2.4",
-    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#e6d75f77ec755b113f4957046d1ac2fd56344a14",
+    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#fa738d65f26755fe7d2b5359b77a54f8ecf20f39",
     "y-prosemirror": "1.3.7",
     "y-protocols": "1.0.7"
   },
