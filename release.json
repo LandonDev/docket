@@ -1,5 +1,5 @@
 {
-  "n": 351,
-  "notes": "Work, from the first day of live use: LifeOS documents open (the installed box serves them on its fixed port); the Work column's project cards keep LifeOS's order when clicked; @ in the composer offers mail, tasks, events, projects, documents and more; the Docs view has search, filters, grouping and saved views; a Files view for Teams libraries synced by OneDrive; the Mac's Office carrier reads an empty Excel as empty and says when New Outlook answers no accounts; the hold review's fixes and the design council's through round 6; the first commits of the light theme. 1.0.350 was tagged and never published: it did not build on the Mac (two file names that differed only in case).",
-  "ts": 1795133348610
+  "n": 352,
+  "notes": "Projects: the tracker's project screens in a Work workspace (list, board, a project's page with its description, tasks, linked documents and sheets, a share link), projects made from TempCode, a Work project's own settings, and tools agents work them through. Mail: the rebuilt reader, list and compose from the design pass, through its council's first round (pictures show, signatures and settings, attachments save to Downloads). The Computers page: a live picture of each computer an agent drives. Milestone 50: the hold review's fixes through its twenty-first pass and the design council's through round 14.",
+  "ts": 1795147129774
 }
