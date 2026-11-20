@@ -835,8 +835,8 @@ describe('MacBridge while the person is away', () => {
     b.mb.setPolicy('env_box', 'read+run')
     const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
     const work = { id: 'w1', title: 'a Work thread', permission: 'auto', scope: 'work' }
-    // full access and away at once: `osascript` drives Mail, so it still asks
-    const asked = b.mb.handle('mac.run', { thread: work, args: { argv: ['/usr/bin/osascript', '-e', 'return 1'], cwd: shared } } as never, ctx)
+    // full access and away at once: an `osascript` that drives Mail still asks
+    const asked = b.mb.handle('mac.run', { thread: work, args: { argv: ['/usr/bin/osascript', '-e', 'tell application "Mail" to activate'], cwd: shared } } as never, ctx)
     const card = await b.nextRequest()
     expect(card).toMatchObject({ kind: 'run', status: 'pending' })
     expect(card.quiet).toBeFalsy()
@@ -855,6 +855,30 @@ describe('MacBridge while the person is away', () => {
     await b.mb.handle('mac.run', { thread: code, args: { argv: ['/usr/bin/osascript', '-e', 'return 1'], cwd: shared } } as never, ctx).catch(() => undefined)
     expect(b.lines.slice(lines).some((l) => l.includes('mac.run → allowed (full access'))).toBe(true)
     expect(b.lines.some((l) => l.includes('w1') && l.includes('allowed (full access') && l.includes('osascript'))).toBe(false)
+  })
+
+  it("a Work thread in full access runs an osascript that drives only local apps with no prompt, under Away or not; one that could send still asks", async () => {
+    const away = { on: false }
+    const b = bridge({ away })
+    b.mb.setPolicy('env_box', 'read+run')
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const work = { id: 'w2', title: 'a Work thread', permission: 'auto', scope: 'work' }
+    const contacts = { argv: ['/usr/bin/osascript', '-l', 'JavaScript', '-e', "Application('Contacts'); 'counted'"], cwd: shared }
+    const lines = b.lines.length
+    await b.mb.handle('mac.run', { thread: work, args: contacts } as never, ctx).catch(() => undefined)
+    away.on = true
+    await b.mb.handle('mac.run', { thread: work, args: contacts } as never, ctx).catch(() => undefined)
+    const ran = b.lines.slice(lines).filter((l) => l.includes('thread=w2') && l.includes('allowed (full access') && l.endsWith('argv0=osascript'))
+    expect(ran).toHaveLength(2)
+    // the same thread's Mail script waits for the owner, Away or not
+    const before = b.requests().length
+    const mail = b.mb.handle('mac.run', { thread: work, args: { argv: ['/usr/bin/osascript', '-e', 'tell application "Mail" to send (make new outgoing message)'], cwd: shared } } as never, ctx)
+    const card = await b.nextRequest(before)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(b.lines.some((l) => l.includes('thread=w2') && l.includes('away'))).toBe(false)
+    expect(card).toMatchObject({ kind: 'run', status: 'pending', sessionId: 'w2' })
+    b.mb.decide(card.id, false, false)
+    await expect(mail).rejects.toThrow()
   })
 
   it('runs what needs no prompt: a remembered command, a read inside the shared roots, a full-access thread', async () => {

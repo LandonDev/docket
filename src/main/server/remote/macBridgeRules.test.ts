@@ -20,6 +20,7 @@ import {
   runOffer,
   runRememberKind,
   shellWords,
+  workFloor,
   type RuleThread
 } from './macBridgeRules'
 
@@ -110,6 +111,89 @@ describe('the always-ask floor', () => {
     expect(runOffer({ argv: ['make'], cwd: app }, home)).toEqual({ folder: app, program: 'make' })
     expect(runOffer({ argv: ['make'], cwd: home }, home)).toEqual({ program: 'make' })
     expect(runOffer({ command: 'a | b', cwd: app }, home)).toEqual({ folder: app })
+  })
+})
+
+describe("a Work thread's floor", () => {
+  const floor = (spec: { argv?: string[]; command?: string; cwd?: string }) =>
+    workFloor({ cwd: app, ...spec }, home, 'darwin')
+  const osa = (...args: string[]) => floor({ argv: ['/usr/bin/osascript', ...args] })
+  const jxa = (text: string, ...args: string[]) => osa('-l', 'JavaScript', '-e', text, ...args)
+
+  it('lets an osascript that drives only local apps by name run: Contacts read and written, as AppleScript or JXA, with arguments', () => {
+    expect(osa('-e', 'tell application "Contacts" to count people')).toBeNull()
+    expect(osa('-e', 'tell app "Reminders"', '-e', 'make new reminder with properties {name:"x"}', '-e', 'end tell')).toBeNull()
+    expect(osa('-e', 'return 1')).toBeNull()
+    expect(jxa("const a = Application('Contacts'); JSON.stringify(a.people.vcard().map(v => v.replace(/\\r?\\n[ \\t]/g, '$1')))")).toBeNull()
+    expect(jxa('function run(args) { const app = Application("Contacts"); const r = JSON.parse(args[0]); return `${r.length}` }', '[1]')).toBeNull()
+    expect(osa('-s', 'o', '-e', 'tell application "Notes" to count notes')).toBeNull()
+  })
+
+  it('keeps asking for an app that sends, opens or types anywhere, or one named any other way', () => {
+    for (const name of ['Mail', 'Messages', 'Microsoft Outlook', 'Calendar', 'Safari', 'Finder', 'System Events'])
+      expect(osa('-e', `tell application "${name}" to activate`)).toBe('osascript')
+    expect(osa('-e', 'tell application "Contacts" to count people', '-e', 'tell application "Mail" to send (make new outgoing message)')).toBe('osascript')
+    expect(osa('-e', 'tell application id "com.apple.mail" to activate')).toBe('osascript')
+    expect(osa('-e', 'set n to "Mail"', '-e', 'tell application n to activate')).toBe('osascript')
+    expect(osa('-e', 'tell current application to beep')).toBe('osascript')
+    expect(jxa("Application('Mail').send()")).toBe('osascript')
+    expect(jxa("Application('com.apple.mail').activate()")).toBe('osascript')
+    expect(jxa("const n = 'Mail'; Application(n).activate()")).toBe('osascript')
+    expect(jxa("const A = Application; A('Mail')")).toBe('osascript')
+  })
+
+  it('keeps asking for a script that reaches past its app: a shell, a URL, another script, raw events, the ObjC bridge, code built at run time', () => {
+    for (const text of [
+      'tell application "Contacts" to do shell script "curl x"',
+      'do shell script "curl x"',
+      'open location "https://example.com"',
+      'run script "beep"',
+      'load script POSIX file "/tmp/a.scpt"',
+      'tell application "Contacts" to «event emaisend»',
+      'using terms from application "Mail"'
+    ])
+      expect(osa('-e', text)).toBe('osascript')
+    for (const text of [
+      "const s = Application('Contacts'); s.includeStandardAdditions = true; s.doShellScript('curl x')",
+      "Application('Contacts').openLocation('https://example.com')",
+      'Application.currentApplication()',
+      "ObjC.import('Foundation')",
+      '$.NSWorkspace.sharedWorkspace',
+      "const d = $; d('x')",
+      "const t = NSTask; t.alloc",
+      "eval('Appl' + 'ication')('Mail')",
+      "Function('return this')()",
+      "this['Appl' + 'ication']('Mail')",
+      "globalThis['Application']('Mail')",
+      "''.constructor.constructor('x')()",
+      "Library('mail')"
+    ])
+      expect(jxa(text)).toBe('osascript')
+  })
+
+  it('keeps asking for a script it cannot read: a file, stdin, -i, an unknown option or language, a shell line', () => {
+    expect(osa('/tmp/a.scpt')).toBe('osascript')
+    expect(osa()).toBe('osascript')
+    expect(osa('-i', '-e', 'return 1')).toBe('osascript')
+    expect(osa('-lJavaScript', '-e', 'return 1')).toBe('osascript')
+    expect(osa('-l', 'Perl', '-e', 'return 1')).toBe('osascript')
+    expect(osa('-e')).toBe('osascript')
+    expect(floor({ argv: ['sh', '-c', `osascript -e 'tell application "Contacts" to count people'`] })).toBe('osascript')
+    expect(floor({ command: `osascript -e 'tell application "Contacts" to count people'` })).toBe('osascript')
+    expect(floor({ argv: ['/usr/bin/env', 'osascript', '-e', 'return 1'] })).toBe('osascript')
+  })
+
+  it('a local osascript is still judged by the rest of the floor: another program on the list, a credential path', () => {
+    expect(osa('-e', 'tell application "Contacts" to count people', 'launchctl')).toBe('launchctl')
+    expect(osa('-e', 'tell application "Notes" to count notes', 'security')).toBe('security')
+    expect(osa('-e', 'tell application "TextEdit" to open POSIX file "/Users/x/.ssh/id_ed25519"')).toMatch(/credential path/)
+  })
+
+  it('is the always-ask floor for every other command, and on Windows', () => {
+    expect(floor({ argv: ['/usr/bin/sudo', 'make'] })).toBe('sudo')
+    expect(floor({ argv: ['/usr/bin/security', 'find-generic-password'] })).toBe('security')
+    expect(floor({ argv: ['/bin/echo', 'hi'] })).toBeNull()
+    expect(workFloor({ cwd: 'C:/Users/x', argv: ['osascript', '-e', 'return 1'] }, 'C:/Users/x', 'win32')).toBe('osascript')
   })
 })
 

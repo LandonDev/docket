@@ -41,7 +41,7 @@ import {
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
 import { insideRoots, plainWindowsPath, realSpelling } from './fence'
 import { isSecretPath } from './harnessSet'
-import { alwaysAsks, coversHome, hostPath, MacBridgeRuleBook, readRemembers, runOffer, runRememberKind } from './macBridgeRules'
+import { coversHome, hostPath, MacBridgeRuleBook, readRemembers, runOffer, runRememberKind, workFloor } from './macBridgeRules'
 import { runMacCommand, type RunningCommand } from './macRunner'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
@@ -1157,8 +1157,8 @@ export class MacBridge {
     )
     if (askUntil <= Date.now()) throw new Error('the call left no time to ask the Mac')
     const rule = this.rules.runAllowed(env.id, thread.id, spec)
-    // A Work thread's command on the always-ask list stays a prompt for the owner: neither full access nor Away admits it.
-    const mustAsk = workMustAsk(thread, alwaysAsks(spec, this.home))
+    // A Work thread's command on its floor (workFloor: the always-ask list, save osascript that drives only local apps) stays a prompt for the owner: neither full access nor Away admits it.
+    const mustAsk = workMustAsk(thread, workFloor(spec, this.home))
     // Full access on the box: decided at once, as a remembered command is.
     const unattended = threadRunsUnattended(thread) && !mustAsk
     // Away: what would prompt is admitted the same way, always quiet, and never remembered.

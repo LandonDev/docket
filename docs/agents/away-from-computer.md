@@ -73,5 +73,6 @@
   outward or the model flagged is held for the owner's press and asks no
   card, and text into a password field is denied. Away never releases a
   held act and never makes a grant: neither is a card. On the Mac bridge a
-  Work thread's command on the always-ask list stays a prompt, under Away
-  and at the flip (`workMustAsk`, `awayKeeps`).
+  Work thread's command on its floor (`workFloor`: the always-ask list,
+  save an `osascript` that drives only local apps) stays a prompt, under
+  Away and at the flip (`workMustAsk`, `awayKeeps`).

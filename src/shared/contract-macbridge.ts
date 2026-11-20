@@ -194,18 +194,20 @@ export interface MacCallThread {
   paused?: true
   /**
    * The thread is a Work thread on its box (docs/agents/work-outbox.md): a
-   * command on the bridge's always-ask list (`osascript`, `security`, …)
-   * stays a prompt for the owner, whatever the thread's permission and
-   * whether or not he is away. Absent for a code thread and from an older box.
+   * command on its floor (macBridgeRules.ts `workFloor`: the always-ask
+   * list, `security` and the rest, save an `osascript` that drives only
+   * local apps) stays a prompt for the owner, whatever the thread's
+   * permission and whether or not he is away. Absent for a code thread and from an older box.
    */
   scope?: 'work'
 }
 
 /**
  * Whether a command of this thread must ask the owner at the Mac whatever
- * else would admit it: a Work thread's, on the always-ask list (`reason` is
- * macBridgeRules.ts `alwaysAsks`' answer). Full access on its box does not
- * admit it and neither does Away: `osascript` drives Mail and Outlook.
+ * else would admit it: a Work thread's, on its floor (`reason` is
+ * macBridgeRules.ts `workFloor`'s answer). Full access on its box does not
+ * admit it and neither does Away: an `osascript` that could drive Mail or
+ * Outlook, `security`, `sudo`.
  */
 export const workMustAsk = (thread: Pick<MacCallThread, 'scope'>, reason: string | null): boolean => thread.scope === 'work' && reason !== null
 

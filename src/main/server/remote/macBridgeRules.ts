@@ -316,11 +316,87 @@ function windowsWide(word: string, cwd: string, home: string, realHome: string, 
   return ['.', '*', '..'].includes(t) && coversHome(cwd, realHome, 'win32')
 }
 
-/** Why a command asks every time whatever is remembered, or null. */
-export function alwaysAsks(
+/**
+ * Apps whose scripting reaches no one: a Work thread's `osascript` that
+ * drives only these runs under full access and Away (workFloor). Mail,
+ * Messages, Outlook, Calendar (invites), the browsers, Finder (it opens
+ * anything) and System Events (keys into any app) are not here.
+ */
+export const WORK_LOCAL_SCRIPT_APPS = [
+  'Contacts',
+  'Reminders',
+  'Notes',
+  'Photos',
+  'TextEdit',
+  'Preview',
+  'Numbers',
+  'Pages',
+  'Keynote'
+] as const
+
+/** Script words that reach past the app they name: a shell, a URL, a loaded script, raw Apple Events, the ObjC bridge, code built at run time. */
+const OSA_LEAVES_AS = /do\s+shell\s+script|open\s+location|(run|load|store)\s+script|«|<<\s*event|using\s+terms\s+from|application\s+id\b/i
+const OSA_LEAVES_JS =
+  /\b(doShellScript|openLocation|runScript|loadScript|storeScript|currentApplication|ObjC|Library|eval|Function|constructor|__proto__|this|globalThis|Reflect|Proxy|import|require|NS[A-Z]\w*)\b|\$(?=\s*(?:[.(\[;,)]|$))/
+const localApp = (name: string): boolean => (WORK_LOCAL_SCRIPT_APPS as readonly string[]).includes(name)
+
+/**
+ * Whether an `osascript` run, as argv with `-e` text, drives only
+ * WORK_LOCAL_SCRIPT_APPS, each named as a plain string. Anything else asks:
+ * a script file or stdin, `-i`, an unknown option or language, an app named
+ * any other way. It reads an honest script; one written to get round it is
+ * the shell's, which full access already leaves unfenced (work-scope.md
+ * "What the fence does not do").
+ */
+export function osaStaysLocal(argv: readonly string[]): boolean {
+  if (strip(argv[0] ?? '') !== 'osascript') return false
+  let lang = 'AppleScript'
+  const texts: string[] = []
+  let i = 1
+  for (; i < argv.length && argv[i].startsWith('-'); i += 2) {
+    const value = argv[i + 1]
+    if (value === undefined) return false
+    if (argv[i] === '-e') texts.push(value)
+    else if (argv[i] === '-l') lang = value
+    else if (argv[i] !== '-s') return false
+  }
+  if (texts.length === 0) return false
+  const text = texts.join('\n')
+  if (lang === 'JavaScript') {
+    if (OSA_LEAVES_JS.test(text)) return false
+    return [...text.matchAll(/\bApplication\b/g)].every((m) => {
+      const named = /^\s*\(\s*(['"])([^'"\\]*)\1\s*\)/.exec(text.slice(m.index + m[0].length))
+      return !!named && localApp(named[2])
+    })
+  }
+  if (lang !== 'AppleScript' || OSA_LEAVES_AS.test(text)) return false
+  return [...text.matchAll(/\b(application|app)\b/gi)].every((m) => {
+    const named = /^\s*"([^"\\]*)"/.exec(text.slice(m.index + m[0].length))
+    return !!named && localApp(named[1])
+  })
+}
+
+/**
+ * The floor for a Work thread's command (contract-macbridge.ts
+ * `workMustAsk`): the always-ask floor, save an `osascript` that stays
+ * local (osaStaysLocal), which is judged as if it were not on the list.
+ */
+export function workFloor(
   spec: RunSpec,
   home: string = homedir(),
   platform: NodeJS.Platform = process.platform
+): string | null {
+  const reason = alwaysAsks(spec, home, platform)
+  if (reason !== 'osascript' || platform === 'win32' || !spec.argv || !osaStaysLocal(spec.argv)) return reason
+  return alwaysAsks(spec, home, platform, ['osascript'])
+}
+
+/** Why a command asks every time whatever is remembered, or null; `except` names list programs a caller has judged already. */
+export function alwaysAsks(
+  spec: RunSpec,
+  home: string = homedir(),
+  platform: NodeJS.Platform = process.platform,
+  except: readonly string[] = []
 ): string | null {
   const win = platform === 'win32'
   const pieces = spec.argv ?? (spec.command !== undefined ? [spec.command] : [])
@@ -331,7 +407,7 @@ export function alwaysAsks(
     ws.flatMap((w, i) => (i > 0 && SHELL_LINE_FLAG.test(ws[i - 1]) ? [w, ...split(w)] : [w]))
   const words = pieces.flatMap((p) => [p, ...(win ? lineOf(split(p)) : split(p))])
   const names = words.map(nameOf(platform))
-  for (const program of ALWAYS_ASK) if (names.includes(program)) return program
+  for (const program of ALWAYS_ASK) if (!except.includes(program) && names.includes(program)) return program
   if (win) {
     for (const program of WINDOWS_ALWAYS_ASK) if (names.includes(program)) return program
     if (opaquePowerShell(names, words)) return 'PowerShell with an encoded command or an execution policy'

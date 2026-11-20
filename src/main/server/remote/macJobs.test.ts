@@ -328,6 +328,20 @@ describe('limits and timers', () => {
     expect(m.requests().slice(before).map((r) => r.status)).toEqual(['pending', 'running'])
   })
 
+  it("a Work thread in full access starts a local osascript job with no prompt; one that drives Mail still asks", async () => {
+    const m = mac(() => new FakeProc())
+    const work = { id: 'w7', title: 'work', permission: 'auto', scope: 'work' }
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const before = m.requests().length
+    await m.mb.handle('mac.jobStart', { thread: work, args: { argv: ['osascript', '-e', 'tell application "Contacts" to count people'], cwd: root } } as never, ctx)
+    expect(m.requests().slice(before).map((r) => r.status)).toEqual(['pending', 'running'])
+    const asked = m.mb.handle('mac.jobStart', { thread: work, args: { argv: ['osascript', '-e', 'tell application "Mail" to activate'], cwd: root } } as never, ctx)
+    for (let i = 0; i < 50 && m.requests().length === before + 2; i++) await Promise.resolve()
+    expect(m.requests().at(-1)?.status).toBe('pending')
+    m.mb.decide(m.requests().at(-1)!.id, false)
+    await expect(asked).rejects.toThrow(/denied/)
+  })
+
   it('30 idle minutes with no call end the job; 30 more forget it; a read restarts the clock', async () => {
     vi.useFakeTimers()
     const procs: FakeProc[] = []

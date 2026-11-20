@@ -286,9 +286,16 @@ another language.
 A box thread's act on a Mac's screen is judged on the Mac but cannot be
 held there: the Mac answers `HELD_UNAVAILABLE` and nothing runs. The box
 sends a Work thread's act only to a Mac that offers `computer-hold`. A
-Work thread's `osascript`, `security` and the rest of the bridge's
-always-ask list stay a prompt on the Mac under full access and under Away,
-and its text into a password field is denied on the Mac under Away as it
+Work thread's `security`, `sudo` and the rest of the bridge's always-ask
+list stay a prompt on the Mac under full access and under Away, and so does
+its `osascript`, save one run as argv with `-e` text that names only apps
+in `WORK_LOCAL_SCRIPT_APPS` (Contacts, Reminders, Notes, Photos, TextEdit,
+Preview, Numbers, Pages, Keynote) as plain strings and nothing that reaches
+past them (a shell, a URL, another script, raw events, the ObjC bridge):
+that one runs as any full-access command does (`workFloor`,
+`osaStaysLocal` in remote/macBridgeRules.ts). Mail, Messages, Outlook,
+Calendar, the browsers, Finder and System Events are not on the list.
+Its text into a password field is denied on the Mac under Away as it
 is here (`req.awayDenies` in `MacComputer.ask`, `AWAY_PASSWORD`).
 
 ## Away

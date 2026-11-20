@@ -1,4 +1,4 @@
-import { alwaysAsks, hostPath, readRemembers } from './macBridgeRules'
+import { hostPath, readRemembers, workFloor } from './macBridgeRules'
 import type { MacDecideRemember } from '@shared/contract-macbridge-rules'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
@@ -402,8 +402,8 @@ export class MacJobs {
     const key = JSON.stringify([args.argv ?? null, args.argv ? null : (args.command ?? null), cwd])
     const memory = this.remembered.get(this.threadKey(env.id, thread.id)) ?? new Set<string>()
     // Remembered, or the thread runs in full access on its box: no prompt, the card shows it running.
-    // A Work thread's command on the always-ask list stays a prompt for the owner, whatever was remembered.
-    const mustAsk = workMustAsk(thread, alwaysAsks(spec, this.deps.home, this.deps.platform))
+    // A Work thread's command on its floor (workFloor) stays a prompt for the owner, whatever was remembered.
+    const mustAsk = workMustAsk(thread, workFloor(spec, this.deps.home, this.deps.platform))
     const remembered = !mustAsk && (memory.has(key) || threadRunsUnattended(thread))
     const until = Math.min(Date.now() + MAC_APPROVAL_WAIT_MS, deadlineAt - REPLY_MARGIN_MS)
     if (until <= Date.now()) throw new Error('the call left no time to ask the Mac')
