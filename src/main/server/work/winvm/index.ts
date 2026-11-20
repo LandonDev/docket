@@ -11,7 +11,9 @@ import { SshGuest } from './sshGuest'
 import { StandingMachine } from './standing'
 import { PendingCalls } from '../../computer/pending'
 import { VM_PREAMBLE, vmOffered, vmTools } from './tools'
-import { startVm } from './vm'
+import { restoreClipboard, saveClipboard, startVm, vmPaste } from './vm'
+import { configureVmClipboard } from './drive'
+import { configureVmPaste } from './picture'
 import { vmScreen } from './window'
 import { ensurePuts } from './files'
 
@@ -189,9 +191,17 @@ export const winvm: WorkModule = {
     const stopVm = startVm(winvmKeeper, (id, notice) => {
       ctx.threads.resume(id, notice).catch((e) => ctx.log(`winvm: could not tell ${id} the Windows VM is free: ${String(e)}`))
     })
+    // his paste goes to the guest's clipboard and Ctrl+V through the service; the guest's clipboard is kept across his
+    // Take over, so nothing he copied is left for a thread (drive.ts and picture.ts call these)
+    const clip = { save: saveClipboard, restore: restoreClipboard }
+    const paste = (text: string): Promise<void> => vmPaste(text)
+    configureVmClipboard(clip)
+    configureVmPaste(paste)
     // a keeper started beside a running machine takes it as awake, and says so to nobody else
     told(k.state())
     return () => {
+      configureVmClipboard(null)
+      configureVmPaste(null)
       stopVm()
       pending.closeAll()
       clearInterval(timer)

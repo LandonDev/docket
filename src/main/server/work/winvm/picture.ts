@@ -197,7 +197,7 @@ export class VmPicture implements VideoSource {
 
   /**
    * His paste into the VM he drives: his text on the guest's clipboard and Ctrl+V pressed, through the VM's
-   * service (B9's `vmPaste`, set by `configureVmPaste`). Until that is there, a paste is refused in words.
+   * service (vm.ts `vmPaste`, set by the pillar's start through `configureVmPaste`). While Work is off, a paste is refused in words.
    */
   async paste(stream: StreamInfo, text: string): Promise<void> {
     const feed = this.streams.get(stream.id)
@@ -214,17 +214,19 @@ export class VmPicture implements VideoSource {
 
 const refuse = (reason: VideoRefusal): VideoOpening => ({ ok: false, reason })
 
-export const NO_VM_PASTE = 'Paste into the Windows VM is not here yet: it comes with its clipboard.'
+export const NO_VM_PASTE = 'Paste into the Windows VM needs Work on.'
 
 /**
- * B9's paste into the guest (work/winvm, `vmPaste`): his text on the guest's clipboard, then Ctrl+V, typed on the
- * drive stream with `type`. Null until B9 sets it.
+ * His paste into the guest (vm.ts `vmPaste`): his text on the guest's clipboard, then Ctrl+V through the service.
+ * `type` is the drive stream's, for a paste that would press the keys itself. Null while Work is off.
  */
 export type VmPaste = (text: string, type: (event: InputEvent) => boolean) => Promise<void>
 let vmPaste: VmPaste | null = null
 export function configureVmPaste(fn: VmPaste | null): void {
   vmPaste = fn
 }
+/** Whether a paste reaches the guest now: the pillar's start set it. */
+export const vmPasteWired = (): boolean => vmPaste !== null
 
 interface Watcher {
   id: string

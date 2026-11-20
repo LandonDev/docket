@@ -628,9 +628,10 @@ phone's full screen ("The phone" below), and from then on:
   pointer go engine → XTEST on the VM's display → QEMU's GTK window → the
   guest's PS/2 keyboard and USB tablet, so they work at the UAC prompt and
   the lock screen. Hand back puts the guest's clipboard back as it was at
-  Take over (B9's `saveClipboard` and `restoreClipboard`, through
-  `configureVmClipboard`); his paste goes in through B9's `vmPaste`
-  (`configureVmPaste`) and is refused in words until B9 lands. A sleep
+  Take over (`saveClipboard` and `restoreClipboard`, set by the winvm
+  pillar's start through `configureVmClipboard`); his paste goes in through
+  `vmPaste` (`configureVmPaste`): his text on the guest's clipboard, then
+  Ctrl+V. A sleep
   while he drives hands back by itself.
 - **Take over keeps the picture.** The app makes one call,
   `computer.drive` (`takeOver`, lib/computers.ts; the full view and the

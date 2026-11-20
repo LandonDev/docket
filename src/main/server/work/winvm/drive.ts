@@ -21,8 +21,9 @@ export const VM_NO_WINDOW = 'The Windows VM has no window of its own on this hos
 export const WORK_OFF = 'Work is off on this host.'
 
 /**
- * B9's clipboard keeping (work/winvm `saveClipboard`, `restoreClipboard`): at Take over the guest's clipboard is
- * kept, at Hand back it is put back, so nothing he copied is left for a thread. Null until B9 sets it.
+ * The guest's clipboard kept across his Take over (vm.ts `saveClipboard`, `restoreClipboard`, set by the pillar's
+ * start): at Take over it is kept, at Hand back it is put back, so nothing he copied is left for a thread. Null
+ * while Work is off.
  */
 export interface VmClipboard {
   save(): Promise<void>
@@ -32,6 +33,8 @@ let clipboard: VmClipboard | null = null
 export function configureVmClipboard(c: VmClipboard | null): void {
   clipboard = c
 }
+/** Whether his Take over keeps the guest's clipboard now: the pillar's start set it. */
+export const vmClipboardWired = (): boolean => clipboard !== null
 
 export interface VmDriveAnswer {
   computer: typeof VM_COMPUTER

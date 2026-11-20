@@ -4,6 +4,8 @@ import type { WinvmPoint, WinvmSettings, WinvmState } from '@shared/contract-wor
 import { makeRig, type Rig } from '../outbox/rig'
 import type { DoorLink, KeeperDeps } from './keeper'
 import { WinvmRequestSchemas } from '@shared/contract-work-winvm'
+import { vmClipboardWired } from './drive'
+import { vmPasteWired } from './picture'
 import { configureWinvmKeeper, NOT_A_PERSON, screenSetting, screenSize, setSleepAfter, sleepAfterSetting, winvm, winvmKeeper } from './index'
 
 /**
@@ -143,5 +145,18 @@ describe('the Windows VM pillar', () => {
     await rig.close()
     expect(winvmKeeper()).toBeNull()
     rig = await makeRig({ modules: [winvm] })
+  })
+})
+
+describe("his paste and the guest's clipboard", () => {
+  it("are wired while the pillar runs and let go when it stops", async () => {
+    // the rig above started the pillar
+    expect(vmPasteWired()).toBe(true)
+    expect(vmClipboardWired()).toBe(true)
+    // a start's stop lets both go
+    const stop = winvm.start!(workCtx() as never) as () => void
+    stop()
+    expect(vmPasteWired()).toBe(false)
+    expect(vmClipboardWired()).toBe(false)
   })
 })
