@@ -29,7 +29,10 @@ export const runOsa: Osa = (lang, script, args, signal) =>
 
 /** osascript's stderr as a refusal in words. */
 export function osaError(stderr: string): OfficeError {
-  const code = /\((-\d+)\)\s*$/.exec(stderr.trim())?.[1]
+  // A script's own throw reaches stderr wrapped by JXA: "Error: Error: Microsoft Word is not open. (-600) (-2700)".
+  // The code the script gave is the one that says what went wrong; -2700 alone is the wrapper's.
+  const codes = [...stderr.matchAll(/\((-\d+)\)/g)].map((m) => m[1])
+  const code = codes.find((c) => c !== '-2700') ?? codes.at(-1)
   const app = /(Microsoft \w+)/.exec(stderr)?.[1] ?? 'the Office app'
   switch (code) {
     case '-1743':
@@ -47,6 +50,10 @@ export function osaError(stderr: string): OfficeError {
 
 const tail = (s: string): string => {
   const line = s.trim().split('\n').pop() ?? ''
-  const msg = line.replace(/^.*?execution error:\s*/, '').trim()
+  const msg = line
+    .replace(/^.*?execution error:\s*/, '')
+    .replace(/^(Error:\s*)+/, '')
+    .replace(/\s*\(-2700\)\s*$/, '')
+    .trim()
   return msg.length > 200 ? `${msg.slice(0, 200)}…` : msg || 'no answer'
 }

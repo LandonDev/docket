@@ -54,11 +54,27 @@ export const SCRIPTS = {
     return JSON.stringify(all(xl.workbooks()).map(function(b){ return { key: b.fullName(), name: b.name(), sheets: all(b.worksheets()).map(function(s){
       var u = s.usedRange; var r = u.rows.length, c = u.columns.length; if (r === 1 && c === 1 && cell(u.value()) === null) return { name: s.name(), rows: 0, columns: 0 };
       return { name: s.name(), rows: u.firstRowIndex() + r - 1, columns: u.firstColumnIndex() + c - 1 } }) } }))`),
-  readRange: js(`var r = book(app('Microsoft Excel'), a.book).worksheets.byName(a.sheet).ranges.byName(a.address);
-    var v = grid(r.value()), f = grid(r.formula2()), z = grid(r.numberFormat());
+  // A block's number format is one value, not a grid: the format when every cell shares it, "" when they
+  // differ. Then by row, then by cell, as the Windows helper does.
+  readRange: js(`var ws = book(app('Microsoft Excel'), a.book).worksheets.byName(a.sheet); var r = ws.ranges.byName(a.address);
+    var v = grid(r.value()), f = grid(r.formula2()), nr = v.length, nc = v[0].length;
+    var m = /^\\$?([A-Za-z]+)\\$?(\\d+)/.exec(a.address), c0 = 0, r0 = Number(m[2]);
+    for (var k = 0; k < m[1].length; k++) c0 = c0 * 26 + m[1].toUpperCase().charCodeAt(k) - 64;
+    function col(n){ var t = ''; while (n > 0) { t = String.fromCharCode(65 + (n - 1) % 26) + t; n = Math.floor((n - 1) / 26) } return t }
+    function at(i, j, n, w){ return col(c0 + j) + (r0 + i) + (n * w > 1 ? ':' + col(c0 + j + w - 1) + (r0 + i + n - 1) : '') }
+    var z = v.map(function(row){ return row.map(function(){ return '' }) });
+    function fmts(rng, i, j, n, w){
+      var g = grid(rng.numberFormat()), x, y;
+      if (n * w === 1) { z[i][j] = g[0][0] == null ? '' : String(g[0][0]); return }
+      if (g.length === n && g[0].length === w) { for (x = 0; x < n; x++) for (y = 0; y < w; y++) z[i + x][j + y] = g[x][y] == null ? '' : String(g[x][y]); return }
+      if (g[0][0] != null && g[0][0] !== '') { for (x = 0; x < n; x++) for (y = 0; y < w; y++) z[i + x][j + y] = String(g[0][0]); return }
+      if (n > 1) { for (x = 0; x < n; x++) fmts(ws.ranges.byName(at(i + x, j, 1, w)), i + x, j, 1, w); return }
+      for (y = 0; y < w; y++) fmts(ws.ranges.byName(at(i, j + y, 1, 1)), i, j + y, 1, 1)
+    }
+    fmts(r, 0, 0, nr, nc);
     return JSON.stringify({ values: v.map(function(row){ return row.map(cell) }),
       formulas: f.map(function(row){ return row.map(function(x){ return typeof x === 'string' && x.charAt(0) === '=' ? x : '' }) }),
-      formats: z.map(function(row){ return row.map(function(x){ return x == null ? '' : String(x) }) }) })`),
+      formats: z })`),
   writeRange: js(`var r = book(app('Microsoft Excel'), a.book).worksheets.byName(a.sheet).ranges.byName(a.address);
     var g = a.grid.map(function(row){ return row.map(out) });
     var one = g.length === 1 && g[0].length === 1;

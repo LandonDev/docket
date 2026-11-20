@@ -37,6 +37,54 @@ function excel(writes: [string, unknown][], cells: { value: unknown; formula2: u
   return { running: () => true, workbooks: () => [book] }
 }
 
+/**
+ * A sheet as Excel's dictionary answers it: a range's \`value\` and \`formula2\` are a grid (one cell, a bare
+ * value), its \`number format\` ONE value, the format when all its cells share it and "" when they differ.
+ */
+function excelSheet(cells: Record<string, { v: unknown; z: string }>, asked: string[]) {
+  const pos = (a: string) => {
+    const m = /^([A-Z]+)(\d+)$/.exec(a)!
+    return [Number(m[2]), [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0)] as const
+  }
+  const name = (r: number, c: number) => `${String.fromCharCode(64 + c)}${r}`
+  const range = (addr: string) => {
+    asked.push(addr)
+    const [a, b = a] = addr.split(':')
+    const [r1, c1] = pos(a)
+    const [r2, c2] = pos(b)
+    const at = (f: (x: { v: unknown; z: string }) => unknown) =>
+      Array.from({ length: r2 - r1 + 1 }, (_, i) => Array.from({ length: c2 - c1 + 1 }, (_, j) => f(cells[name(r1 + i, c1 + j)] ?? { v: '', z: 'General' })))
+    const one = r1 === r2 && c1 === c2
+    const zs = at((x) => x.z).flat()
+    return {
+      value: () => (one ? at((x) => x.v)[0][0] : at((x) => x.v)),
+      formula2: () => (one ? String(at((x) => x.v)[0][0]) : at((x) => String(x.v))),
+      numberFormat: () => (zs.every((z) => z === zs[0]) ? zs[0] : '')
+    }
+  }
+  const sheet = { name: () => 'Sheet1', ranges: { byName: range } }
+  const book = { fullName: () => '/tmp/Book.xlsx', name: () => 'Book.xlsx', worksheets: Object.assign(() => [sheet], { byName: () => sheet }) }
+  return { running: () => true, workbooks: () => [book] }
+}
+
+describe('number formats, as real Excel answers them', () => {
+  it('spread one shared format over the block in a single read', () => {
+    const asked: string[] = []
+    const got = runScript('readRange', { book: 'Book.xlsx', sheet: 'Sheet1', address: 'A1:C4' }, { 'Microsoft Excel': excelSheet({ A1: { v: 1, z: 'General' } }, asked) }) as { formats: string[][]; values: unknown[][] }
+    expect(got.formats).toEqual(Array.from({ length: 4 }, () => ['General', 'General', 'General']))
+    expect(got.values).toHaveLength(4)
+    expect(asked).toEqual(['A1:C4'])
+  })
+
+  it('read mixed formats by row, then by cell only in the row that differs', () => {
+    const asked: string[] = []
+    const cells = { B2: { v: 3, z: '0.00' }, C3: { v: 4, z: 'yyyy-mm-dd' }, A3: { v: 5, z: 'yyyy-mm-dd' }, B3: { v: 6, z: 'yyyy-mm-dd' } }
+    const got = runScript('readRange', { book: 'Book.xlsx', sheet: 'Sheet1', address: 'A2:C3' }, { 'Microsoft Excel': excelSheet(cells, asked) }) as { formats: string[][] }
+    expect(got.formats).toEqual([['General', '0.00', 'General'], ['yyyy-mm-dd', 'yyyy-mm-dd', 'yyyy-mm-dd']])
+    expect(asked).toEqual(['A2:C3', 'A2:C2', 'A2', 'B2', 'C2', 'A3:C3'])
+  })
+})
+
 describe('the Excel scripts', () => {
   it('list workbooks with each sheet used from A1 to its last cell', () => {
     expect(runScript('workbooks', {}, { 'Microsoft Excel': excel([], { value: 1, formula2: '', numberFormat: '' }) })).toEqual([
@@ -266,5 +314,14 @@ describe('the Mac carrier', () => {
     expect(osaError('Microsoft Outlook got an error: Application isn’t running. (-600)').code).toBe('not-running')
     expect(osaError('execution error: Microsoft Excel got an error: Not authorized. (-1744)').code).toBe('needs-consent')
     expect(osaError('execution error: Can’t get worksheet "X". (-1728)').code).toBe('not-found')
+  })
+
+  it('takes the code a script threw, not the -2700 JXA wraps it in (as stderr reads live)', () => {
+    const notOpen = osaError('execution error: Error: Error: Microsoft Word is not open. (-600) (-2700)')
+    expect(notOpen).toMatchObject({ code: 'not-running', message: 'Microsoft Word is not open.' })
+    const none = osaError('execution error: Error: Error: No open workbook /tmp/x.xlsx. (-1728) (-2700)')
+    expect(none.code).toBe('not-found')
+    expect(none.message).toContain('No open workbook /tmp/x.xlsx. (-1728)')
+    expect(osaError('execution error: Error: TypeError: null is not an object (-2700)')).toMatchObject({ code: 'failed', message: expect.stringContaining('TypeError: null is not an object') })
   })
 })
