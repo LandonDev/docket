@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { BoxXDisplay, DISPLAY_HEIGHT, DISPLAY_HZ, DISPLAY_WIDTH, displayEnv, withoutDisplay, xauthorityEntry, xorgArgs, xorgConfig } from './display'
+import { BoxXDisplay, DISPLAY_HZ, PAGE_HEIGHT, PAGE_WIDTH, displayEnv, displayPixels, withoutDisplay, xauthorityEntry, xorgArgs, xorgConfig } from './display'
 import { testVideoTools } from './testTools'
 import { videoToolsEnv, type VideoTools } from './videoSetting'
 
@@ -22,7 +22,7 @@ describe('the display the box browser draws on', () => {
   it('is one mode of 1280×800 at 120 Hz on the dummy driver, with none of the host’s input devices', () => {
     const conf = xorgConfig()
     expect(conf).toContain('Driver "dummy"')
-    expect(conf).toContain(`Virtual ${DISPLAY_WIDTH} ${DISPLAY_HEIGHT}`)
+    expect(conf).toContain(`Virtual ${PAGE_WIDTH} ${PAGE_HEIGHT}`)
     expect(conf).toContain('Option "AutoAddDevices" "false"')
     expect(conf).toContain('Option "DontVTSwitch" "true"')
     const [, clock, hd, , , ht, vd, , , vt] = /Modeline "m" ([\d.]+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)/.exec(conf)!.map(Number)
@@ -30,6 +30,20 @@ describe('the display the box browser draws on', () => {
     // the refresh rate a mode has is its pixel clock over its total size
     expect((clock * 1e6) / (ht * vt)).toBeCloseTo(DISPLAY_HZ, 1)
     expect(conf.match(/Modeline/g)).toHaveLength(1)
+  })
+
+  it('is the page’s 1280×800 times its scale, still at 120 Hz', () => {
+    expect(displayPixels(1)).toEqual({ width: 1280, height: 800 })
+    expect(displayPixels(2)).toEqual({ width: 2560, height: 1600 })
+    expect(displayPixels(1.5)).toEqual({ width: 1920, height: 1200 })
+    const conf = xorgConfig(2560, 1600)
+    expect(conf).toContain('Virtual 2560 1600')
+    expect(conf).toContain('DacSpeed 1000')
+    const [, clock, hd, , , ht, vd, , , vt] = /Modeline "m" ([\d.]+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)/.exec(conf)!.map(Number)
+    expect([hd, vd]).toEqual([2560, 1600])
+    expect((clock * 1e6) / (ht * vt)).toBeCloseTo(DISPLAY_HZ, 1)
+    // 2608 × 1610 × 120: about 504 MHz, which the dummy driver must take (the live test below reads its log)
+    expect(Math.round(clock)).toBe(504)
   })
 
   it('takes no TCP, needs the cookie, and picks its own free number', () => {
@@ -239,6 +253,24 @@ describe.skipIf(!tools)('the real server, from the installed tools', () => {
       const pid = display.pid!
       await display.stop()
       expect(() => process.kill(pid, 0)).toThrow()
+    }
+  }, 30_000)
+
+  it.each([
+    [2, '2560x1600'],
+    [1.5, '1920x1200']
+  ])('takes the larger mode at scale %s: %s at 120 Hz, by its own log', async (scale, size) => {
+    const display = new BoxXDisplay({ root, tools: tools!, scale })
+    await display.start()
+    try {
+      const log = readFileSync(join(root, 'display', 'Xorg.log'), 'utf8')
+      expect(log).toContain(`Virtual size is ${size}`)
+      expect(log).toMatch(/Modeline "m"x120\.0/)
+      // the driver's 300 MHz cap would refuse it and fall back to a mode of its own
+      expect(log).not.toContain('Not using mode "m"')
+      expect(log).toContain('using initial mode m +0+0')
+    } finally {
+      await display.stop()
     }
   }, 30_000)
 })

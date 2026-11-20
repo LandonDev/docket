@@ -29,7 +29,7 @@ class FakeSocket implements ViewerSocket {
 /** The box with two panes: `a` shows page A, `b` shows page B; `sub` is a subagent of pane a. */
 function rig(over: Partial<BoxVideoDeps> = {}) {
   const relay = new VideoRelay()
-  const state = { running: true, headed: true, setting: true, installed: true, owner: new Set<string>(), urls: new Map([['A', 'https://concur.example/report'], ['B', 'https://arbiter.example/']]), now: 1_000_000 }
+  const state = { running: true, headed: true, setting: true, installed: true, scale: 1, owner: new Set<string>(), urls: new Map([['A', 'https://concur.example/report'], ['B', 'https://arbiter.example/']]), now: 1_000_000 }
   const stage = {
     watching: null as string | null,
     driving: null as string | null,
@@ -87,6 +87,13 @@ function rig(over: Partial<BoxVideoDeps> = {}) {
       },
       get tools() {
         return state.running && state.headed ? tools : null
+      },
+      get scale() {
+        return state.running && state.headed ? state.scale : 1
+      },
+      // the display's own size, as its window manager reads it
+      get wm() {
+        return state.running && state.headed ? ({ screen: { width: 1280 * state.scale, height: 800 * state.scale } } as never) : null
       }
     },
     stage: stage as never,
@@ -133,6 +140,12 @@ describe('the box browser as a source of video', () => {
       ['a', 'a', 'box:A'],
       ['sub', 'a', 'box:A']
     ])
+  })
+
+  it('answers the display’s own pixels as the stream’s size: 2560×1600 on a display at scale 2', async () => {
+    const r = rig()
+    r.state.scale = 2
+    expect(await r.ask('a')).toMatchObject({ ok: true, width: 2560, height: 1600, fps: 120 })
   })
 
   it('is not asked about a thread that has no page here: another source may know it', async () => {

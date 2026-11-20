@@ -117,7 +117,8 @@ export function wireBoxBrowser(o: BoxWiring): BoxBrowserHost | null {
         touch: () => browser.touch(),
         headed: () => stage.headed(),
         open: (url) => stage.open(url),
-        ready: () => stage.ready()
+        ready: () => stage.ready(),
+        scale: () => browser.scale
       },
       onPage: (session, targetId) => {
         // his own look at a page he drives is no thread's use of it

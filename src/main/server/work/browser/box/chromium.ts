@@ -2,7 +2,7 @@ import { execFile, spawn as nodeSpawn, type ChildProcess } from 'node:child_proc
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
-import { BoxXDisplay, DISPLAY_HEIGHT, DISPLAY_WIDTH, displayEnv, type BoxDisplay } from './display'
+import { BoxXDisplay, DISPLAY_SCALE, PAGE_HEIGHT, PAGE_WIDTH, displayEnv, type BoxDisplay } from './display'
 import type { VideoTools } from './videoSetting'
 import { BoxWindowManager } from './xwm'
 
@@ -56,11 +56,19 @@ export function findChromium(env: NodeJS.ProcessEnv = process.env, exists: (p: s
  * - a Chrome for Testing build draws a bar that says so in every window, full
  *   screen too; `--test-type=gpu` is the one switch that leaves it out (a bare
  *   `--test-type` does not), so only such a build gets it
+ * - it draws at the display's scale, so a page lays out at 1280×800 on a
+ *   display of more pixels than that
  */
-export function chromiumArgs(profile: string, headed?: { testing: boolean }): string[] {
+export function chromiumArgs(profile: string, headed?: { testing: boolean; scale?: number }): string[] {
   return [
     ...(headed
-      ? ['--window-position=0,0', '--disable-backgrounding-occluded-windows', '--hide-crash-restore-bubble', ...(headed.testing ? ['--test-type=gpu'] : [])]
+      ? [
+          '--window-position=0,0',
+          '--disable-backgrounding-occluded-windows',
+          '--hide-crash-restore-bubble',
+          `--force-device-scale-factor=${headed.scale ?? 1}`,
+          ...(headed.testing ? ['--test-type=gpu'] : [])
+        ]
       : ['--headless=new']),
     `--user-data-dir=${profile}`,
     '--remote-debugging-address=127.0.0.1',
@@ -73,7 +81,7 @@ export function chromiumArgs(profile: string, headed?: { testing: boolean }): st
     '--disable-sync',
     '--renderer-process-limit=4',
     '--js-flags=--max-old-space-size=512',
-    `--window-size=${DISPLAY_WIDTH},${DISPLAY_HEIGHT}`,
+    `--window-size=${PAGE_WIDTH},${PAGE_HEIGHT}`,
     '--lang=en-US',
     'about:blank'
   ]
@@ -244,7 +252,9 @@ export interface BoxChromiumOptions {
   /** a Chrome for Testing build gets the switch that hides its bar; `isChromeForTesting` by default */
   testing?: (bin: string) => Promise<boolean>
   /** the private display a headed browser draws on; a `BoxXDisplay` on the tools by default */
-  makeDisplay?: (tools: VideoTools) => Pick<BoxXDisplay, 'start' | 'stop' | 'env'>
+  makeDisplay?: (tools: VideoTools) => Pick<BoxXDisplay, 'start' | 'stop' | 'env' | 'scale'>
+  /** the display's pixels for each of a page's, for the default display; DISPLAY_SCALE by default */
+  scale?: number
   /** takes that display in hand before the browser draws on it; `BoxWindowManager.start` by default */
   manage?: (display: BoxDisplay, log: (line: string) => void) => Promise<BoxWindowManager>
   log?: (line: string) => void
@@ -271,7 +281,7 @@ export class BoxChromium {
   /** moved by every stop: a start that a stop overtook does not go on to launch */
   private generation = 0
   /** the private display of a headed browser, for exactly as long as that browser runs */
-  private xdisplay: Pick<BoxXDisplay, 'start' | 'stop' | 'env'> | null = null
+  private xdisplay: Pick<BoxXDisplay, 'start' | 'stop' | 'env' | 'scale'> | null = null
   private videoTools: VideoTools | null = null
   private manager: BoxWindowManager | null = null
 
@@ -293,6 +303,10 @@ export class BoxChromium {
   /** The window manager of that display: what decides which of the browser's windows is on top of it. */
   get wm(): BoxWindowManager | null {
     return this.display ? this.manager : null
+  }
+  /** The display's pixels for each of a page's: the headed browser's scale, 1 when headless. */
+  get scale(): number {
+    return this.display ? (this.xdisplay?.scale ?? 1) : 1
   }
   /** The tools the running headed browser was started with. */
   get tools(): VideoTools | null {
@@ -346,7 +360,7 @@ export class BoxChromium {
     let args = chromiumArgs(this.profile)
     if (pair) {
       writeHeadedPrefs(this.profile, join(this.opts.root, 'downloads'))
-      args = chromiumArgs(this.profile, { testing: await (this.opts.testing ?? isChromeForTesting)(bin) })
+      args = chromiumArgs(this.profile, { testing: await (this.opts.testing ?? isChromeForTesting)(bin), scale: this.xdisplay?.scale ?? 1 })
       // the binary was asked what it is: a stop that came meanwhile still means no launch
       if (generation !== this.generation) {
         await this.stopDisplay()
@@ -435,7 +449,7 @@ export class BoxChromium {
   private async startDisplay(): Promise<BoxDisplay | null> {
     const tools = this.opts.video?.() ?? null
     if (!tools) return null
-    const xdisplay = this.opts.makeDisplay?.(tools) ?? new BoxXDisplay({ root: this.opts.root, tools, log: this.opts.log })
+    const xdisplay = this.opts.makeDisplay?.(tools) ?? new BoxXDisplay({ root: this.opts.root, tools, scale: this.opts.scale ?? DISPLAY_SCALE, log: this.opts.log })
     try {
       const pair = await xdisplay.start()
       // nothing draws on the display before it has its window manager: the browser's first window is asked about too

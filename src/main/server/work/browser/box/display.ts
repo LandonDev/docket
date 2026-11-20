@@ -8,20 +8,30 @@ import { videoToolsEnv, type VideoTools } from './videoSetting'
 /**
  * The private X display the box's browser draws on when its picture is video
  * (docs/agents/live-video.md "The box"): a rootless X.Org server with the
- * dummy video driver, one mode of 1280×800 at 120 Hz. Chromium reads the
- * refresh rate when it starts, so the display is 120 Hz for the browser's
- * whole life and lives exactly as long as the browser does.
+ * dummy video driver, one mode at 120 Hz: the page's 1280×800 times the
+ * display's scale, the browser drawing at that scale so the page still lays
+ * out at 1280×800. Chromium reads the refresh rate when it starts, so the
+ * display is 120 Hz for the browser's whole life and lives exactly as long as
+ * the browser does.
  *
  * Nothing but the browser and the engine may draw on it or read it: it takes
  * no TCP, and a client needs the cookie in an `XAUTHORITY` file kept 0600
  * under the browser's own folder.
  */
 
-export const DISPLAY_WIDTH = 1280
-export const DISPLAY_HEIGHT = 800
+/** What a page lays out at, in CSS pixels, whatever the display's scale. */
+export const PAGE_WIDTH = 1280
+export const PAGE_HEIGHT = 800
+/** The display's pixels for each of the page's: the browser draws at this scale. */
+export const DISPLAY_SCALE = 1
 export const DISPLAY_HZ = 120
 const START_MS = 10_000
 const STOP_MS = 3_000
+
+/** The display's own size, in its pixels, at a scale. */
+export function displayPixels(scale = DISPLAY_SCALE): { width: number; height: number } {
+  return { width: Math.round(PAGE_WIDTH * scale), height: Math.round(PAGE_HEIGHT * scale) }
+}
 
 /** What a program needs to reach the display, and nothing else of this host's X. */
 export interface BoxDisplay {
@@ -35,7 +45,7 @@ export interface BoxDisplay {
  * The modeline's blanking is small, so the pixel clock stays low: the clock
  * is the total size times the rate.
  */
-export function xorgConfig(width = DISPLAY_WIDTH, height = DISPLAY_HEIGHT, hz = DISPLAY_HZ): string {
+export function xorgConfig(width = PAGE_WIDTH, height = PAGE_HEIGHT, hz = DISPLAY_HZ): string {
   const hTotal = width + 48
   const vTotal = height + 10
   const clock = ((hTotal * vTotal * hz) / 1e6).toFixed(3)
@@ -50,6 +60,8 @@ export function xorgConfig(width = DISPLAY_WIDTH, height = DISPLAY_HEIGHT, hz = 
     ' Identifier "dummy"',
     ' Driver "dummy"',
     ' VideoRam 256000',
+    // the driver takes no pixel clock above 300 MHz unless told; a mode of 2560×1600 at 120 Hz needs about 504
+    ' DacSpeed 1000',
     'EndSection',
     'Section "Monitor"',
     ' Identifier "mon"',
@@ -117,6 +129,8 @@ export interface BoxXDisplayOptions {
   /** <dataDir>/work-browser/box: the cookie, the config and the log live in `display/` under it */
   root: string
   tools: VideoTools
+  /** the display's pixels for each of the page's; DISPLAY_SCALE by default */
+  scale?: number
   spawn?: typeof nodeSpawn
   log?: (line: string) => void
   startMs?: number
@@ -128,6 +142,9 @@ export class BoxXDisplay {
 
   constructor(private readonly opts: BoxXDisplayOptions) {}
 
+  get scale(): number {
+    return this.opts.scale ?? DISPLAY_SCALE
+  }
   get dir(): string {
     return join(this.opts.root, 'display')
   }
@@ -156,7 +173,8 @@ export class BoxXDisplay {
     this.sweep()
     // A new cookie for every server: one that leaked from the last is worth nothing.
     writeFileSync(files.auth, xauthorityEntry(randomBytes(16)), { mode: 0o600 })
-    writeFileSync(files.config, xorgConfig(), { mode: 0o600 })
+    const { width, height } = displayPixels(this.scale)
+    writeFileSync(files.config, xorgConfig(width, height), { mode: 0o600 })
     const child = (this.opts.spawn ?? nodeSpawn)(tools.xorg, xorgArgs(files), {
       // The server needs nothing of this process's X, and gets none of it.
       env: { ...withoutDisplay(), ...videoToolsEnv(tools) },
@@ -181,7 +199,7 @@ export class BoxXDisplay {
       await this.stop()
       throw err
     }
-    this.opts.log?.(`box display: ${this.pair.DISPLAY} at ${DISPLAY_WIDTH}×${DISPLAY_HEIGHT}, ${DISPLAY_HZ} Hz (pid ${child.pid})`)
+    this.opts.log?.(`box display: ${this.pair.DISPLAY} at ${width}×${height} (scale ${this.scale}), ${DISPLAY_HZ} Hz (pid ${child.pid})`)
     return this.pair
   }
 

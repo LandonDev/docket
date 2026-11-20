@@ -47,6 +47,22 @@ describe('the box browser', () => {
     expect(args.some((a) => a.startsWith('--test-type'))).toBe(false)
     expect(chromiumArgs('/p', { testing: true })).toContain('--test-type=gpu')
     expect(chromiumArgs('/p').some((a) => a.startsWith('--test-type'))).toBe(false)
+    // it draws at the display's scale; the page still lays out at 1280×800
+    expect(args).toContain('--force-device-scale-factor=1')
+    expect(chromiumArgs('/p', { testing: false, scale: 2 })).toEqual(expect.arrayContaining(['--force-device-scale-factor=2', '--window-size=1280,800']))
+    expect(chromiumArgs('/p').some((a) => a.startsWith('--force-device-scale-factor'))).toBe(false)
+  })
+
+  it('headed on a display of twice the pixels, draws at scale 2 and says so; headless, its scale is 1', async () => {
+    const fake = fakeBrowser()
+    const display = fakeDisplay(false, 2)
+    const b = new BoxChromium({ root: tmp(), bin: () => '/bin/chromium', spawn: fake.spawn, video: () => TOOLS, makeDisplay: display.make, manage: async () => ({ close: () => {} }) as unknown as BoxWindowManager, testing: async () => false })
+    expect(b.scale).toBe(1)
+    await b.endpoint()
+    expect(fake.calls[0].args).toContain('--force-device-scale-factor=2')
+    expect(b.scale).toBe(2)
+    await b.stop()
+    expect(b.scale).toBe(1)
   })
 
   it('headed, the profile saves no password, fills nothing, refuses every prompt and keeps what else it held', () => {
@@ -124,7 +140,7 @@ describe('the box browser', () => {
     return { calls, spawn }
   }
   const TOOLS = { engine: '/t/pkg/relay-engine', xorg: '/t/xorg', xclip: '/t/xclip', sys: '/t/sys', viewer: '/t/viewer' }
-  const fakeDisplay = (fail = false) => {
+  const fakeDisplay = (fail = false, scale = 1) => {
     const state = { started: 0, stopped: 0 }
     const pair = { DISPLAY: ':41', XAUTHORITY: '/d/Xauthority' }
     let up = false
@@ -143,7 +159,8 @@ describe('the box browser', () => {
         },
         get env() {
           return up ? pair : null
-        }
+        },
+        scale
       })
     }
   }

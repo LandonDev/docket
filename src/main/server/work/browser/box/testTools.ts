@@ -46,7 +46,8 @@ export function testBrowser(root: string, bin: string, o: { headed?: boolean; pi
       touch: () => browser.touch(),
       headed: () => stage.headed(),
       open: (url) => stage.open(url),
-      ready: () => stage.ready()
+      ready: () => stage.ready(),
+      scale: () => browser.scale
     }
   }
 }

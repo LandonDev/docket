@@ -1,4 +1,4 @@
-import type { BoxDisplay } from './display'
+import { PAGE_WIDTH, type BoxDisplay } from './display'
 import { ATOM, CONFIGURE, XClient, type XEvent, type XGeometry } from './xclient'
 
 /**
@@ -26,7 +26,13 @@ import { ATOM, CONFIGURE, XClient, type XEvent, type XGeometry } from './xclient
  *   the display in the two seconds before: then it is taken for his
  */
 
-/** Where a page's window is asked for, or asked to move to, so it can be told from the others: each ask gets its own place from here on, up to the end. */
+/**
+ * Where a page's window is asked for, or asked to move to, so it can be told
+ * from the others: each ask gets its own place from here on, up to the end.
+ * A place is in the page's own units, as DevTools places a window; on a
+ * display of more pixels than the page has, the window shows up at the place
+ * times the display's scale.
+ */
 export const STAGING_X = 2000
 const STAGING_END = 12_000
 /** How far short of the screen the browser leaves a window it was asked to make the screen's size. */
@@ -35,6 +41,16 @@ const SHORT = 2
 export const HIS_MENU_MS = 2_000
 
 type Role = 'page' | 'other'
+
+/**
+ * The place a window's X position on the display stands for: its pixels back
+ * in the page's units. The browser rounds a place times a scale like 1.5 to a
+ * whole pixel, which is never as much as half a place away, so the nearest
+ * place is the one asked for.
+ */
+export function placeAt(x: number, scale: number): number {
+  return Math.round(x / scale)
+}
 
 export class BoxWindowManager {
   /** every top-level window the display asked about, and what it is */
@@ -94,6 +110,10 @@ export class BoxWindowManager {
   }
   get screen(): { width: number; height: number } {
     return { width: this.x.width, height: this.x.height }
+  }
+  /** The display's pixels for each of the page's: the browser draws at this scale. */
+  get scale(): number {
+    return this.x.width / PAGE_WIDTH
   }
 
   /**
@@ -208,7 +228,7 @@ export class BoxWindowManager {
   }
 
   private roleOf(g: XGeometry): Role {
-    if (g.x >= STAGING_X) return 'page'
+    if (placeAt(g.x, this.scale) >= STAGING_X) return 'page'
     const { width, height } = this.screen
     const full = Math.abs(g.x) <= SHORT && Math.abs(g.y) <= SHORT && width - g.width >= 0 && width - g.width <= SHORT && height - g.height >= 0 && height - g.height <= SHORT
     return full ? 'page' : 'other'
@@ -270,12 +290,12 @@ export class BoxWindowManager {
         this.x.tell(event.window, { x: 0, y: 0, ...this.screen })
       } else this.x.configure(event.window, { stack })
       this.x.map(event.window)
-      this.waiters.get(g.x)?.(event.window)
+      this.waiters.get(placeAt(g.x, this.scale))?.(event.window)
       return
     }
     // an ask to move, size or restack
     const role = this.roles.get(event.window)
-    const named = role !== undefined && (event.mask & CONFIGURE.x) !== 0 ? this.waiters.get(event.geometry.x) : undefined
+    const named = role !== undefined && (event.mask & CONFIGURE.x) !== 0 ? this.waiters.get(placeAt(event.geometry.x, this.scale)) : undefined
     if (named) {
       // a window on the display asked for a place that was handed out: that says which window it is, and it stays where it is
       const at = await this.x.geometry(event.window).catch(() => null)

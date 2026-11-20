@@ -3,7 +3,7 @@ import { VIDEO_FPS, type VideoRefusal } from '@shared/contract-video'
 import type { StreamInfo, VideoRelay } from '../../../video/relay'
 import type { VideoAsk, VideoOpening, VideoSource } from '../../../video/rpc'
 import type { BoxChromium } from './chromium'
-import { DISPLAY_HEIGHT, DISPLAY_WIDTH, displayEnv } from './display'
+import { displayEnv, displayPixels } from './display'
 import type { BoxEngines } from './engine'
 import { EngineFeed } from './engineFeed'
 import type { BoxStage } from './stage'
@@ -35,7 +35,7 @@ const KEY_CONTROL = 224
 const KEY_V = 25
 
 export interface BoxVideoDeps {
-  browser: Pick<BoxChromium, 'running' | 'display' | 'tools'>
+  browser: Pick<BoxChromium, 'running' | 'display' | 'tools' | 'wm' | 'scale'>
   stage: BoxStage
   engines: BoxEngines
   relay: VideoRelay
@@ -129,11 +129,13 @@ export class BoxVideo implements VideoSource {
     const scope = ask.drive && driving ? 'drive' : 'watch'
     const feed: EngineFeed = new EngineFeed(lease, scope === 'drive', undefined, { close: () => void this.granted.delete(feed), input: () => deps.stage.touched() })
     this.granted.set(feed, tag)
+    // the engine captures the whole display: the stream is the display's own pixels, whatever its scale
+    const { width, height } = deps.browser.wm?.screen ?? displayPixels(deps.browser.scale)
     return {
       ok: true,
       feed,
-      width: DISPLAY_WIDTH,
-      height: DISPLAY_HEIGHT,
+      width,
+      height,
       fps: VIDEO_FPS,
       scope,
       group: pane,

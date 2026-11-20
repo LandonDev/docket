@@ -25,6 +25,7 @@ import {
 import { hasRoleDefault, parseKeyCombo, parseModifiers, type LineFrame, type Modifier } from '@shared/computer/observation'
 import { ADDRESS_NAME, IndexBook, observationText, readTree, withChrome, type AxNode, type ReadTree } from './ax'
 import { Cdp } from './cdp'
+import { PAGE_HEIGHT, PAGE_WIDTH } from './display'
 
 /**
  * The Linux computer-use service (docs/computer-protocol.md §28): the wire
@@ -51,6 +52,8 @@ export interface BrowserLink {
   open?(url: string): Promise<string>
   /** The browser's windows are in their places (the stage took in the one it started with). */
   ready?(): Promise<unknown>
+  /** The display's pixels for each of a page's (the headed browser draws at this scale); 1 when absent. */
+  scale?(): number
 }
 
 class Refused extends Error {
@@ -177,6 +180,11 @@ export class BoxComputerService {
     return (this.opts.now ?? Date.now)()
   }
 
+  /** Device pixels for each of a page's CSS pixels: what Chromium's pictures are in. */
+  private scale(): number {
+    return this.opts.browser.scale?.() ?? 1
+  }
+
   // ── the wire ─────────────────────────────────────────────────────────
 
   /** Reads frames from `input` and answers on `output` until EOF or `shutdown`. */
@@ -244,7 +252,7 @@ export class BoxComputerService {
           epoch: this.epoch,
           os: { version: `Linux ${release()}`, arch: arch() },
           permissions: { accessibility: true, screenRecording: true },
-          displays: [{ id: 1, frame: { x: 0, y: 0, w: 1280, h: 800 }, scale: 1 }],
+          displays: [{ id: 1, frame: { x: 0, y: 0, w: PAGE_WIDTH, h: PAGE_HEIGHT }, scale: this.scale() }],
           features: []
         } as ComputerResult<M>
       }
@@ -333,7 +341,10 @@ export class BoxComputerService {
     const edge = q.maxEdge ?? 960
     const gap = 1000 / (q.fps ?? 4)
     const m = await cdp.send<{ cssVisualViewport: { clientWidth: number; clientHeight: number } }>('Page.getLayoutMetrics', {}, sid)
-    const size = (w: number, h: number) => {
+    // the screencast's frames are the page's device pixels, cut down to the edge; its sizes are the page's own units
+    const dsf = this.scale()
+    const size = (cssW: number, cssH: number) => {
+      const [w, h] = [cssW * dsf, cssH * dsf]
       const k = Math.min(1, edge / Math.max(w, h, 1))
       return { width: Math.max(1, Math.round(w * k)), height: Math.max(1, Math.round(h * k)) }
     }
@@ -461,7 +472,7 @@ export class BoxComputerService {
             windows: pages.map((p) => ({
               id: p.window,
               title: p.title,
-              frame: { x: 0, y: 0, w: 1280, h: 800 },
+              frame: { x: 0, y: 0, w: PAGE_WIDTH, h: PAGE_HEIGHT },
               main: p === main,
               focused: p === main,
               minimized: false,
@@ -758,7 +769,9 @@ export class BoxComputerService {
     const format = o.format ?? 'jpeg'
     let data: string
     try {
-      ;({ data } = await cdp.send<{ data: string }>('Page.captureScreenshot', { format, ...(format === 'jpeg' ? { quality: 80 } : {}), clip: { x: x0, y: y0, width: w, height: h, scale } }, sid))
+      // a clip's scale is times the page's device pixels: divided by them, the picture is in the page's units, as its width and height say
+      const clip = { x: x0, y: y0, width: w, height: h, scale: scale / this.scale() }
+      ;({ data } = await cdp.send<{ data: string }>('Page.captureScreenshot', { format, ...(format === 'jpeg' ? { quality: 80 } : {}), clip }, sid))
     } catch (err) {
       return refuse('capture_failed', `the page could not be captured: ${(err as Error).message}`)
     }
