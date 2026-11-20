@@ -178,7 +178,8 @@ shared screens on TempCode's scale (subject 16/24, rows and fields 13/20,
 labels 12/16) and the menus' highlight to the muted fill through
 work-kit's `--ui-wash` (`HOST_WASH` in `work-kit/ui/host-rules`); it finds
 work-kit's pop-ups, which draw in a portal outside the view, by the
-`data-work-kit` attribute work-kit sets on each (never by a class). Snooze's
+`data-work-kit` attribute work-kit sets on each (never by a class), and
+gives a menu Mail draws (`data-mail-menu`) TempCode's 28px menu row. Snooze's
 dialog is new with this Mail, so its date picker shows the chosen day and
 today in both themes (`[data-mail-snooze]` gives the `--calendar-*` names
 the values light gives them); the picker's older home, Send later, keeps

@@ -56,6 +56,17 @@
   transition: transform var(--tc-mail-countdown) var(--ease-reveal);
 }
 
+/* A menu Mail draws (`data-mail-menu`, set by work-kit on each) takes TempCode's menu row
+   (docs/DESIGN.md "Spacing": 28px rows, 12px to a side; components/ui/menu-row.ts), where work-kit's
+   own row is 32px with 10px. A ticked row keeps its own end, where its mark sits. */
+[data-mail-menu] :is([data-slot="dropdown-menu-item"], [data-slot="dropdown-menu-sub-trigger"], [data-slot="context-menu-item"], [data-slot="context-menu-sub-trigger"]) {
+  padding: 4px 12px;
+}
+[data-mail-menu] :is([data-slot="dropdown-menu-checkbox-item"], [data-slot="context-menu-checkbox-item"]) {
+  padding-block: 4px;
+  padding-inline-start: 12px;
+}
+
 /* Snooze's dialog is new with this Mail and holds work-kit's date picker: its chosen day and today
    take the values light gives the picker (index.css), in both themes, so the dialog shows the date
    its button would snooze to. The picker's other homes keep what index.css gives them ("Held in
