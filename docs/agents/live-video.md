@@ -10,8 +10,9 @@ browser as a source, with his pointer and keys into the page he drives; a
 Mac's window as a source (`tc-computer`, `capture.video.*`) and a PC's
 (`tc-computer.exe`, the same calls; see "A Windows PC" below), and the
 publish leg that carries one to his other devices; the desktop's viewer,
-which every place that shows a live picture now asks first; and the
-Computers page. **Not built:** the phone's viewer.
+which every place that shows a live picture now asks first; the Computers
+page; and the phone's viewer ("The phone"). Every part of the plan is
+built. What no proof has shown yet is listed under "What is unproven".
 
 **What the owner must do before the box plays video:** run the tools
 installer on the box and update it (see "The box", "The tools"). Until then
@@ -589,6 +590,38 @@ every case of its test. The host side was already the Mac's: `ComputerVideo`
 asks any service that names `video`. Measured in the rig: "The proofs".
 Not proven: a hardware encoder (the rig has no GPU) and a PC's own desktop
 viewer on a real Windows host; the rig's proof reads the frames on the box.
+
+## The phone
+
+The iPhone plays a stream as the desktop's viewer does, natively
+(docs/IOS-DESIGN.md "Work on the phone"):
+
+- **The contract.** `video.open` (its answer flat on the wire to the phone,
+  `VideoOpenWireSchema`: the desktop's union is tagged by a boolean, which the
+  Swift generator cannot take), `video.close`, `computer.sessions` and the
+  `computer` push are in the phone's subset. The push already reached a key's
+  socket; it only joined `RemotePushSchema`.
+- **The stream** (`ios/TempCodeClient/Sources/TempCodeClient/Video/`):
+  `NSL1.swift` reads frames and writes acks byte for byte as nsl1.ts;
+  `AccessUnit.swift` turns an Annex B access unit into a `CMSampleBuffer` (the
+  format from the keyframe's SPS and PPS, made again when they change);
+  `VideoRules.swift` holds the player's rules (a generation starts with
+  keyframe 1, no gap, a layer that fails or a first frame that never comes
+  ends it; each frame acked once it is enqueued, with its wait), `afterClose`
+  and `streamUrl`; `LiveVideo.swift` runs one stream: `video.open`, the socket
+  beside the RPC socket (a relayed host's is the carrier's, as its RPC is,
+  `Connection/VideoStreamSocket.swift`), acks in order through one sender,
+  and the retry rule.
+- **The screens.** `LivePicture` (an `AVSampleBufferDisplayLayer`) in the
+  browser item above who drives and in each Computers tile; it plays while on
+  screen and the app is active, waits for a tap on mobile data, and opens full
+  screen. Home's Computers row and list follow `computerTiles`, ported as
+  `ComputerTiles.swift` (a bridged session's twin dropped while the box it
+  names is one of the phone's hosts).
+- **The proof** (`TC_PROOF_SET=video`, docs/agents/ios-client.md): the test
+  server plays the box engine's own 180 recorded frames
+  (`scripts/fixtures/ios-test-server/box-stream.nsl1`, `LoopFeed`) for a
+  seeded Work thread and lists it as driven.
 
 ## Settings
 

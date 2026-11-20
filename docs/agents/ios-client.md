@@ -709,7 +709,18 @@
   (`TC_PROOF_SET=work`) starts it with `TC_TEST_ADDONS=1` and
   `TC_TEST_NO_RELAY=1` (no relayed fake hosts: each is this server under
   another id and would list the same Outbox again). The test server seeds one
-  thread per type with realistic rows and a 2,000-row chat. Simulator proof:
+  thread per type with realistic rows and a 2,000-row chat. The video set
+  (`TC_PROOF_SET=video`, headless) runs it with Work on (workEnv) and seeds a
+  Work thread "Arena check-in" with a browser item; `POST /video { thread }`
+  then plays the box engine's recorded stream for it at about 120 frames a
+  second (scripts/lib/videoLoopFeed.ts, each pass a new generation) and lists
+  it among the computers driven (`server.computer.rpc.setBox`); `GET /video`
+  says how many frames went and were acked. The set pairs with the acting key
+  (`video.open` needs approve), shoots the browser item playing, full screen
+  (`TC_TEST_OPEN=live-full`), Home and the Computers list
+  (`TC_TEST_ROUTE=computers`) light and dark, and judges from the probe's
+  `videoFrames`, `videoPhase` and `computerTiles` (into
+  $OUT/video-report.txt). Simulator proof:
   `bun scripts/ios-sim-proof-local.ts` (every set compiles the Release configuration first and stops on a break, then every segment of every type, a chip
   opened, the diff, the agent detail, light and dark, then the scroll run
   whose frame report lands in /tmp/tc-ios-proof/scroll-report.json;

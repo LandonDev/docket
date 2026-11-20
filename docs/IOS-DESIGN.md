@@ -2454,13 +2454,35 @@ What milestone 47 added (approved pages `phone-life.html` and
   shown (a long one from the host's HLS proxy, a short one from its proxy
 or original; a key without admin sees "This file opens on the computer."
 for a short one); a picture from its tiles, or whole at phone size; a meeting's transcript (who, when, the
-  words); the browser's driver ("You are driving" or "The agent is
-  driving") with Take Over or Hand Back, and an act it holds as the one
-  prominent glass button, which opens the held detail; a form's responses
+  words); the browser: its page live where the kept picture goes, above
+  the driver ("You are driving" or "The agent is driving") with Take Over
+  or Hand Back, and an act it holds as the one prominent glass button,
+  which opens the held detail; a form's responses
   (each answer under its question); a dashboard's blocks; history as a
   version list, each opening a compare with now (what went struck through
   in red, what came underlined in green). A held mail shows as it will go;
   once sent, the rule his edits suggest is one muted line with Add Rule.
+- **The live picture** (`Work/Items/LivePicture.swift`, docs/agents/live-video.md):
+  the computer an agent drives as video, in the field corner with the
+  hairline, at its own aspect on the one gray fill until the first frame.
+  It plays while it is on screen and the app is active, and stops
+  otherwise. On mobile data it does not start by itself: one Watch pill
+  sits in its middle, and a tap starts it. Nothing says "live" and nothing
+  counts frames. A stream that ends leaves its last frame; where there is
+  no picture to show, one muted line under it says why in the desktop's
+  words ("Shown on <machine> only", "The preview stopped" with Retry, the
+  Screen Recording line). A tap opens it full screen on black with Done
+  (glass) at the top corner; it turns with the phone as every screen does.
+- **Computers** (`Work/ComputersScreen.swift`): while anything is driven on
+  a connected host, Home carries a Computers row after the Outbox, shaped
+  as it: the `macwindow` glyph in the 28 pt mark slot and "Computers", no
+  count (the desktop's rail row carries none). It opens a pushed list (the
+  sidebar in the split poses), one inset section per tile, the one that
+  acted last first: the live picture, then the thread's title (title step,
+  medium; it opens the thread) over one meta line, what it is doing (or
+  "You are driving") and where it runs. No Take Over on a tile: the
+  browser item has it. With nothing driven the list says "Nothing Is
+  Being Driven".
 - **Ask** from an item is a form sheet: the selection as its chip, his
   words, Send; then Chat shows.
 - **The guest link sheet**: a form sheet at medium height, For, Can (View,
@@ -2477,8 +2499,7 @@ Not on the phone, and why: the Docs row and LifeOS's project cards on a
 Work workspace's screen (no wire lists a workspace's documents yet); a
 native review row for a document or sheet (its suggestions live inside
 the hosted editor, which shows its own); the recording player of a
-meeting; the browser's picture (no wire carries its frames to a phone);
-a document or sheet that is a file on a computer (view only there, §19,
+meeting; a document or sheet that is a file on a computer (view only there, §19,
 not built).
 
 ## Visual system
@@ -3327,7 +3348,7 @@ third row. Unfolded, a form, a picker, a field or a confirm is a centered
 form sheet (`.presentationSizing(.form)`, a confirm fitted to its content)
 and a document (Notes, the research report, the deploy log) a page sheet;
 nothing in the app is a full-screen cover on the inner display except
-Safari. One `PresentationSizing` adapter carries every case, so a fold never
+Safari and the live picture's full screen. One `PresentationSizing` adapter carries every case, so a fold never
 gives the sheet a new identity: a sheet that is up stays up across a fold
 and takes the new shape with its draft. Every sheet opts into horizontal
 bars (`.toolbarVerticalBehavior(.disabled)` on its stack, iOS 27.1): Cancel,
