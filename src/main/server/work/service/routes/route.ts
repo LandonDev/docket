@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import type { CollabServer, ConvexCall, History } from 'work-kit/collab-server'
 import type { WebSocketServer } from 'ws'
-import type { ServiceConfig, ServiceLink } from '../wire'
+import type { ServiceConfig, ServiceLink, ServiceProject } from '../wire'
 
 /**
  * What a route of the Work service gets (docs/agents/work-service.md). The
@@ -18,6 +18,10 @@ export interface RouteCtx {
   convex: ConvexCall
   /** guest links by id, as main last pushed them */
   links(): ReadonlyMap<string, ServiceLink>
+  /** what each project link shows, by link id, as main last pushed it */
+  projects(): ReadonlyMap<string, ServiceProject>
+  /** whether a token's link still stands and, for a project's link, still lists the token's document or sheet */
+  claimLive(claims: { link?: string; doc?: string; sheet?: string }): boolean
   wss: WebSocketServer
   log(line: string): void
 }

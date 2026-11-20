@@ -17,6 +17,7 @@ import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { useAccounts } from "../../stores/accounts";
 import { dialogsChunk } from "../../surfaces/chunks";
+import { ProjectSharing } from "../guests/Share";
 import { reopenLifeos, sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession } from "./lifeos";
 
 // The rules dialog rides the dialogs chunk, as it does for a code project: asked for at the press on Edit.
@@ -87,6 +88,7 @@ export function WorkProjectFields({
   rules,
   onEditRules,
   accounts,
+  sharing,
 }: {
   name: string;
   onName: (name: string) => void;
@@ -99,6 +101,8 @@ export function WorkProjectFields({
   onEditRules: () => void;
   /** the account rows; the section is left out when there is none to draw */
   accounts?: ReactNode;
+  /** the project's guest links; left out for a project that mirrors nothing in LifeOS */
+  sharing?: ReactNode;
 }) {
   const failed = reach.status === "failed";
   const stateLabel = PROJECT_STATES.find((s) => s.value === state)?.label;
@@ -156,6 +160,7 @@ export function WorkProjectFields({
         </div>
       </Section>
       {accounts ? <Section label="Accounts">{accounts}</Section> : null}
+      {sharing ? <Section label="Sharing">{sharing}</Section> : null}
     </div>
   );
 }
@@ -281,6 +286,7 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
               rules={rulesLine(project)}
               onEditRules={() => setEditingRules(true)}
               accounts={accountRows}
+              sharing={lifeosId ? <ProjectSharing env={workspace.environmentId} projectId={lifeosId} title={project.name} /> : null}
             />
           </div>
           {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. The foot's Save, still live, is its retry. */}

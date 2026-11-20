@@ -39,6 +39,8 @@ A pick writes `work.projects.link`; a refusal stays in the picker as its one lin
 
 **The description** is a LifeOS document (`projects.docId`), mounted by `Description.tsx` in the shared editor through the Docs view's own `useOpened` and `useDocument`, with no title of its own. While the Work service cannot be reached it is the stored lead, read-only, with the reason and Retry.
 
+**Sharing.** A project is shown to one named person outside with a guest link ([work-guests.md](work-guests.md) "A project's link"): Share on the project's bar (`kit.share`, `ProjectShare`) and Sharing in its settings sheet list its links and make one; an agent asks with `guest_link {projectId}`, held. The link is view only. While it lives, LifeOS reads the project and every document and sheet it shows as shared, so an agent's document write there is a suggestion, and a thread may not link a document or sheet into the project.
+
 **From elsewhere.** A column card's menu has Open project, and a sent `project` chip and `card` chip open the view too: `openWorkView({ workspaceId, view: "projects", project | task })`. The view takes the target once, stands on it and clears it. A card chip names the task alone, so the view asks LifeOS which project holds it (`tasks:get`) and the task page's Back goes there.
 
 **The column's cards** are every project still under way, oldest first: the order the screens keep inside a state (`projectOrder` from `work-kit/projects/order`), with no grouping by state, so a card does not move when its state does, set in `columnProjects` (work/shell/WorkColumn.tsx) inside the Work shell's chunk.

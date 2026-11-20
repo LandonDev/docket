@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { createCollabVerifier, type VerifiedClaims } from 'work-kit/collab-server'
+import { projectionLists } from '../../../../../shared/work/guestProjection'
 import type { GuestServiceLink } from '../../guests/wire'
 import { HOSTED_CSP } from './hosted'
 import { BASE_HEADERS, refuseUpgrade, sendText, type InternalRoute, type PublicRoute, type RouteCtx } from './route'
@@ -22,14 +23,27 @@ import { sheetRoute } from './sheet'
  *   GET  /g/<id>/threads    a document's comments (Bearer: the token)
  *   POST /g/<id>/comment    {quote, text} or {threadId, text}: plain words; the service builds the comment and marks the words
  *
+ * A project's link (view only; "A project's link" in the same doc) opens to
+ * the projection main last sent for it and nothing else of the project:
+ *
+ *   POST /g/<id>/open       {secret} → who and what, and the projection; asked again every 15 s
+ *   POST /g/<id>/item       {secret, table, id} → one document or sheet the projection lists: a document's text as it stands now, a sheet's view token
+ *   GET  /g/ws/<id>/sheets/<sheet>   that sheet's socket, read only, while the projection lists it
+ *
+ * A project's document is handed as its present text and never as its live
+ * room: the room's state keeps words that were deleted and the marks of his
+ * comments, and a guest of the whole project is shown neither. Nothing on
+ * these routes writes for a project's link, and a document or sheet outside
+ * the projection answers as gone, like an unknown link.
+ *
  * Callers are told apart by `CF-Connecting-IP` (every request reaches us
  * from cloudflared on 127.0.0.1), else the peer address.
  */
 
 const ID = '([A-Za-z0-9_-]{1,40})'
 const PAGE = new RegExp(`^/g/${ID}$`)
-const ACTION = new RegExp(`^/g/${ID}/(open|threads|comment)$`)
-const SOCKET = new RegExp(`^/g/ws/${ID}$`)
+const ACTION = new RegExp(`^/g/${ID}/(open|item|threads|comment)$`)
+const SOCKET = new RegExp(`^/g/ws/${ID}(?:/sheets/([A-Za-z0-9]{1,64}))?$`)
 const MAX_BODY = 16 * 1024
 export const COMMENT_MAX = 4000
 
@@ -108,6 +122,9 @@ const sameHash = (secret: string, hex: string): boolean => {
   const got = sha(secret)
   return want.length === got.length && timingSafeEqual(got, want)
 }
+
+/** A sheet socket reached through a guest link's own address: the sheet route takes only that link's token on it. */
+export type GuestBound = IncomingMessage & { guestLink?: string }
 
 /** A live guest link by id, or null (a ticket's pass is never one). */
 export function guestLink(ctx: RouteCtx, id: string, now = Date.now()): (GuestServiceLink & { guest: NonNullable<GuestServiceLink['guest']> }) | null {
@@ -236,9 +253,10 @@ async function bearer(req: IncomingMessage, ctx: RouteCtx, id: string): Promise<
   if (!link || typeof auth !== 'string' || !auth.startsWith('Bearer ')) return null
   try {
     const claims = await verifier(ctx).verify(auth.slice(7))
-    const item = 'doc' in link.item ? { doc: link.item.doc } : { sheet: link.item.sheet }
     if (claims.link !== id || claims.principal !== `guest:${id}`) return null
-    if ('doc' in item ? claims.doc !== item.doc : claims.sheet !== item.sheet) return null
+    // A project's link has no token of its own: its items' tokens open their sockets and nothing here.
+    if ('project' in link.item) return null
+    if ('doc' in link.item ? claims.doc !== link.item.doc : claims.sheet !== link.item.sheet) return null
     return { link, claims }
   } catch {
     return null
@@ -257,6 +275,12 @@ async function open(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id
     return json(res, 403, { error: 'gone' })
   }
   opened(id)
+  if ('project' in link.item) {
+    // The projection is main's last read of LifeOS's cut; until it lands (a service just started) the page tries again.
+    const shown = ctx.projects().get(id)
+    if (!shown) return json(res, 503, { error: 'This page cannot be reached right now.' })
+    return json(res, 200, { kind: 'project', role: 'view', name: link.guest.name, title: shown.projection.project.name, owner: link.guest.owner, expiresAt: link.expiresAt, me: `guest:${id}`, projection: shown.projection })
+  }
   json(res, 200, {
     kind: 'doc' in link.item ? 'doc' : 'sheet',
     role: link.role,
@@ -269,6 +293,37 @@ async function open(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id
     me: `guest:${id}`,
     ...('doc' in link.item ? { doc: link.item.doc } : {})
   })
+}
+
+/** A project link's document or sheet, while the projection lists it: a document's text now, a sheet's view token. Anything else answers as an unknown link does. */
+async function item(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id: string): Promise<void> {
+  const caller = callerOf(req)
+  if (LIMITS.failures.over(caller)) return json(res, 429, { error: 'Too many tries from here. Try again in a few minutes.' })
+  const body = await readJson(req)
+  const secret = typeof body?.secret === 'string' && body.secret.length <= 100 ? body.secret : ''
+  const link = guestLink(ctx, id)
+  if (!link || !secret || !sameHash(secret, link.guest.secretHash)) {
+    LIMITS.failures.take(caller)
+    return json(res, 403, { error: 'gone' })
+  }
+  const table = body?.table === 'docs' || body?.table === 'sheets' ? body.table : null
+  const itemId = typeof body?.id === 'string' && /^[A-Za-z0-9]{1,64}$/.test(body.id) ? body.id : ''
+  const shown = 'project' in link.item ? ctx.projects().get(id) : undefined
+  if (!shown || !table || !itemId || !projectionLists(shown.projection, table, itemId)) return json(res, 403, { error: 'gone' })
+  const p = shown.projection
+  const facts = { role: 'view', name: link.guest.name, owner: link.guest.owner, expiresAt: link.expiresAt, me: `guest:${id}` }
+  if (table === 'docs') {
+    if (!ctx.config().lifeos.here) return json(res, 503, { error: 'This page cannot be reached right now.' })
+    // The text as it stands, read from the live document: no socket, so no deleted words, no comment marks and no one's caret.
+    const text = await ctx.collab.read(itemId)
+    // Listed still, now that the read is done: a document that left meanwhile is not handed over.
+    const still = ctx.projects().get(id)?.projection
+    if (!still || !projectionLists(still, 'docs', itemId) || !guestLink(ctx, id)) return json(res, 403, { error: 'gone' })
+    return json(res, 200, { ...facts, kind: 'doc', title: p.docs.find((d) => d.id === itemId)?.title ?? p.project.name, doc: itemId, markdown: text.markdown })
+  }
+  const token = shown.tokens[`sheets:${itemId}`]
+  if (!token) return json(res, 403, { error: 'gone' })
+  json(res, 200, { ...facts, kind: 'sheet', title: p.sheets.find((s) => s.id === itemId)!.title, token: token.token, tokenExp: token.exp, sheet: itemId })
 }
 
 async function threads(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx, id: string): Promise<void> {
@@ -317,17 +372,29 @@ export function cutDue(key: string, now = Date.now()): boolean {
   return true
 }
 
-function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, head: Buffer, ctx: RouteCtx, id: string): void {
+function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, head: Buffer, ctx: RouteCtx, id: string, sheet?: string): void {
   const link = guestLink(ctx, id)
   if (!link) return refuseUpgrade(socket, 404, 'gone')
+  // A project's link opens only a sheet its projection lists (its documents have no socket); any other link only its own item.
+  let item: { doc: string } | { sheet: string }
+  if ('project' in link.item) {
+    const shown = ctx.projects().get(id)?.projection
+    if (!sheet || !shown || !projectionLists(shown, 'sheets', sheet)) return refuseUpgrade(socket, 404, 'gone')
+    item = { sheet }
+  } else {
+    if (sheet) return refuseUpgrade(socket, 404, 'gone')
+    item = link.item
+  }
   sockets(id, 1)
   socket.once('close', () => sockets(id, -1))
-  if ('sheet' in link.item) {
-    // The sheet's own route, on the link's sheet: it checks the token, the link each second and every op.
-    req.url = `/w/sheet/${link.item.sheet}`
+  if ('sheet' in item) {
+    // The sheet's own route, on the link's sheet: it checks the token, the link each second and every op,
+    // and takes only a token of the link this address names.
+    req.url = `/w/sheet/${item.sheet}`
+    ;(req as GuestBound).guestLink = id
     return sheetRoute.upgrade!(req, socket, head, ctx, /.*/.exec(req.url)!)
   }
-  const doc = link.item.doc
+  const doc = item.doc
   ctx.wss.handleUpgrade(req, socket, head, (ws) => {
     const headers = new Headers()
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v)
@@ -358,12 +425,13 @@ export const guestsRoute: PublicRoute = {
     }
     const m = ACTION.exec(path)
     if (!m) return sendText(res, 404, 'not found')
-    const [, id, what] = m as unknown as [string, string, 'open' | 'threads' | 'comment']
+    const [, id, what] = m as unknown as [string, string, 'open' | 'item' | 'threads' | 'comment']
     if (what === 'threads' ? req.method !== 'GET' : req.method !== 'POST') return sendText(res, 405, what === 'threads' ? 'GET only' : 'POST only')
     // A body from a page of another origin is refused: the guest's page is this origin's.
     const origin = req.headers.origin
     if (what !== 'threads' && typeof origin === 'string' && origin !== 'null' && hostOf(origin) !== req.headers.host) return json(res, 403, { error: 'refused' })
     if (what === 'open') return open(req, res, ctx, id)
+    if (what === 'item') return item(req, res, ctx, id)
     if (what === 'threads') return threads(req, res, ctx, id)
     return comment(req, res, ctx, id)
   },
@@ -372,6 +440,6 @@ export const guestsRoute: PublicRoute = {
     const m = SOCKET.exec(path)
     if (!m) return refuseUpgrade(socket, 404, 'not found')
     if (!LIMITS.requests.take(callerOf(req))) return refuseUpgrade(socket, 503, 'too many requests')
-    upgrade(req, socket, head, ctx, m[1]!)
+    upgrade(req, socket, head, ctx, m[1]!, m[2])
   }
 }

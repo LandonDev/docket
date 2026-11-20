@@ -175,6 +175,7 @@ Settings → Work.
   | State | Backlog, Active, Paused, Done, Dropped | LifeOS, the same call |
   | Rules for its threads | the rules sent with a new thread's first message; Edit opens the rules dialog (`PreambleDialog`, with no `{{worktree}}` word for a Work project) | `projects.preamble` on the host |
   | Accounts | which Claude, Codex or Meta account its threads use; drawn only when the host has an account to pick | `projects.account_pins` on the host |
+  | Sharing | the project's guest links (who, until when; Revoke on hover) and New guest link…; drawn for a project that mirrors one in LifeOS | the guests pillar's rows on the host that serves LifeOS's documents ([work-guests.md](work-guests.md) "A project's link") |
   | Delete project | at the foot's start, asked first; its tasks stay as tasks with no project | LifeOS, `projects:remove`; the host archives the mirror |
 
   Save sends only what changed; a failed save keeps the sheet open with the

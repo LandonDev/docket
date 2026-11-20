@@ -20,7 +20,9 @@ import { WebSocketServer } from 'ws'
 import { notServedWords } from './config'
 import { INTERNAL_ROUTES, routeFor } from './routes'
 import { refuseUpgrade, RouteError, sendJson, sendText, type RouteCtx } from './routes/route'
-import type { ServiceConfig, ServiceLink } from './wire'
+// By its path, as every module this process reaches: the service's bundle and its boundary test follow relative imports.
+import { projectionLists } from '../../../../shared/work/guestProjection'
+import type { ServiceConfig, ServiceLink, ServiceProject } from './wire'
 
 /**
  * The Work service itself (docs/agents/work-service.md), as its utility
@@ -44,6 +46,7 @@ export interface RunningService {
   port: number
   collab: CollabServer
   setLinks(links: ServiceLink[]): void
+  setProject(linkId: string, project: ServiceProject | null): void
   setTrusted(trusted: TrustedIssuer[]): void
   stop(): Promise<void>
 }
@@ -113,12 +116,36 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   const fileStore = new FileDocStore()
   const notServed = config.lifeos.here ? null : notServedWords(config.lifeos.host)
 
+  const projects = new Map<string, ServiceProject>()
   const linkLive = (id: string): boolean => {
     const link = links.get(id)
     return !!link && link.revokedAt === null && Date.now() < link.expiresAt
   }
+  /**
+   * Whether a token's link still lets it in. A project's link signs a token for each sheet it lists
+   * and none for a document (a document is handed as its text, routes/guests.ts): a sheet's token
+   * stands only while the projection lists that sheet, so one that left the project is shut at once
+   * and opens nothing again, on any route, before the token runs out.
+   */
+  const claimLive = (claims: { link?: string; doc?: string; sheet?: string }): boolean => {
+    if (!claims.link) return true
+    if (!linkLive(claims.link)) return false
+    const link = links.get(claims.link)!
+    if (!('project' in link.item)) return true
+    const shown = projects.get(claims.link)?.projection
+    if (!shown) return false
+    return !!claims.sheet && projectionLists(shown, 'sheets', claims.sheet)
+  }
+  const verifier = createCollabVerifier(() => trusted)
   const collab = createCollabServer({
-    verify: createCollabVerifier(() => trusted),
+    verify: {
+      ...verifier,
+      async verify(token) {
+        const claims = await verifier.verify(token)
+        if (!claimLive(claims)) throw new Error('the link no longer shows this')
+        return claims
+      }
+    },
     storeFor: (name) => (name.startsWith('file:') ? fileStore : (notServed ?? lifeosStore)),
     journalDir: join(config.dataDir, 'journal'),
     linkLive,
@@ -135,7 +162,7 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   })
   // Yjs updates are small; an import's bulk comes through the internal routes, never a socket.
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 })
-  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, wss, log: io.log }
+  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, projects: () => projects, claimLive, wss, log: io.log }
 
   // ── public ────────────────────────────────────────────────────────────
   const pathOf = (req: IncomingMessage): string | null => {
@@ -241,7 +268,13 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     setLinks(next) {
       links = new Map(next.map((l) => [l.linkId, l]))
       // A link that went: its sockets close now, not at the next sweep.
-      collab.closeWhere((c) => !!c.link && !linkLive(c.link), 'the link was revoked')
+      collab.closeWhere((c, name) => !claimLive({ link: c.link, doc: name }), 'the link was revoked')
+    },
+    setProject(linkId, project) {
+      if (project) projects.set(linkId, project)
+      else projects.delete(linkId)
+      // No document socket ever stands on a project's link; were one to, it closes here.
+      collab.closeWhere((c, name) => c.link === linkId && !claimLive({ link: c.link, doc: name }), 'the link no longer shows this')
     },
     setTrusted(next) {
       trusted = next

@@ -111,7 +111,7 @@ async function rig(): Promise<Rig> {
       })
     }
   } as unknown as WorkCtx
-  const rt = new GuestRuntime(ctx, () => ({ tokenSigner: () => signer, setLinks: (links) => service.setLinks(links) }))
+  const rt = new GuestRuntime(ctx, () => ({ tokenSigner: () => signer, setLinks: (links) => service.setLinks(links), setProject: (id, project) => service.setProject(id, project) }))
   return { rt, service, convex, db, signer, shared, logs, base }
 }
 
@@ -327,7 +327,7 @@ describe('after the review', () => {
     const slow = new Promise<void>((res) => (release = res))
     // A signer that holds the next re-sign until released: the tick's sync sits in it while the owner revokes.
     const signer = { sign: async (c: never, s: number) => (await slow, r.signer.sign(c, s)) }
-    const rt = new GuestRuntime((r.rt as unknown as { ctx: WorkCtx }).ctx, () => ({ tokenSigner: () => signer as never, setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
+    const rt = new GuestRuntime((r.rt as unknown as { ctx: WorkCtx }).ctx, () => ({ tokenSigner: () => signer as never, setProject: (id, project) => r.service.setProject(id, project), setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
     const tick = rt.tick()
     await sleep(20)
     const revoked = rt.revoke(a.id)
@@ -342,7 +342,7 @@ describe('after the review', () => {
     const a = await make(r, 'view')
     const sent: string[][] = []
     const broken = { sign: async () => Promise.reject(new Error('no key')) }
-    const rt = new GuestRuntime((r.rt as unknown as { ctx: WorkCtx }).ctx, () => ({ tokenSigner: () => broken as never, setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
+    const rt = new GuestRuntime((r.rt as unknown as { ctx: WorkCtx }).ctx, () => ({ tokenSigner: () => broken as never, setProject: (id, project) => r.service.setProject(id, project), setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
     await rt.sync()
     expect(sent).toEqual([[]])
     expect((await opened(r, a.id, a.secret)).status).toBe(403)
@@ -365,7 +365,7 @@ describe('after the review', () => {
     const ctx = (r.rt as unknown as { ctx: WorkCtx }).ctx
     const sent: string[][] = []
     const down = { ...ctx, lifeos: { owner: () => ({ ...ctx.lifeos.owner(), mutation: async () => Promise.reject(new Error('LifeOS is down')) }) } } as unknown as WorkCtx
-    const rt = new GuestRuntime(down, () => ({ tokenSigner: () => r.signer, setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
+    const rt = new GuestRuntime(down, () => ({ tokenSigner: () => r.signer, setProject: (id, project) => r.service.setProject(id, project), setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
     const asked = { ...down, item: { sessionId: null }, threads: { resume: async () => {} } }
     const made = guestLinkKind.execute({ source: doc(), title: 'Run of show', name: 'Dana Lee', role: 'edit', expiresAt: inDays(7) }, asked as never)
     await expect(made).rejects.toBeInstanceOf(ActNotSent)
@@ -382,7 +382,7 @@ describe('after the review', () => {
     let up = false
     const flaky = { ...ctx, lifeos: { owner: () => ({ ...ctx.lifeos.owner(), mutation: async (fn: string, args: never) => (up ? ctx.lifeos.owner().mutation(fn, args) : Promise.reject(new Error('LifeOS is down'))) }) } } as unknown as WorkCtx
     const sent: string[][] = []
-    const rt = new GuestRuntime(flaky, () => ({ tokenSigner: () => r.signer, setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
+    const rt = new GuestRuntime(flaky, () => ({ tokenSigner: () => r.signer, setProject: (id, project) => r.service.setProject(id, project), setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
     await rt.tick()
     expect(sent.at(-1)).toEqual([])
     expect((await opened(r, a.id, a.secret)).status).toBe(403)

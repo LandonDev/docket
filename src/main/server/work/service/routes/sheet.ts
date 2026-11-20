@@ -19,7 +19,7 @@ import { refuseUpgrade, type PublicRoute, type RouteCtx } from './route'
  *
  * The token is a collab token naming this sheet (`sheet` claim), checked on
  * hello and then once a second: an expired one closes 4401, a revoked guest
- * link 4403. A view link writes nothing; a guest's ops pass `GUEST_OPS`. An
+ * link 4403, and so does a project link's sheet that left the project. A view link writes nothing; a guest's ops pass `GUEST_OPS`. An
  * edit made on an older revision is moved through the rows and columns it
  * missed, or refused so the client reloads.
  */
@@ -52,10 +52,8 @@ function listen(ctx: RouteCtx): void {
 
 function live(claims: VerifiedClaims, ctx: RouteCtx): { code: number; reason: string } | null {
   if (claims.exp * 1000 <= Date.now()) return { code: 4401, reason: 'the token ran out' }
-  if (claims.link) {
-    const link = ctx.links().get(claims.link)
-    if (!link || link.revokedAt || (link.expiresAt && link.expiresAt <= Date.now())) return { code: 4403, reason: 'the link was revoked' }
-  }
+  // A guest link's token: the link still stands, and a project's link still lists this sheet.
+  if (!ctx.claimLive(claims)) return { code: 4403, reason: 'the link was revoked' }
   return null
 }
 
@@ -111,6 +109,9 @@ export const sheetRoute: PublicRoute = {
             try {
               const got = await verifier.verify(msg.token)
               if (got.sheet !== sheetId) return close(4403, 'the token names another sheet')
+              // Reached through a guest link's address: only that link's token opens it.
+              const bound = (req as { guestLink?: string }).guestLink
+              if (bound && got.link !== bound) return close(4403, 'the token is another link\'s')
               const gone = live(got, ctx)
               if (gone) return close(gone.code, gone.reason)
               claims = got

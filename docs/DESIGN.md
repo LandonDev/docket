@@ -1254,7 +1254,17 @@ Around the canvas:
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
   guest can do, until when, and the guest's avatar. What a guest may not
-  do is absent, never disabled.
+  do is absent, never disabled. A project's link draws the project
+  screens there on the Projects view's own measures, read only: the line
+  holds the List or Board switch before the guest's facts, no way back
+  to a list of projects, and no Activity. A document or sheet of the
+  project opens in place with a 24px back arrow first in the line and
+  its own glyph and name after it; a document is drawn as text on the
+  document page's measure, with no editor.
+- **Sharing a project.** Share is one of the project bar's quiet 28px
+  verbs and opens the same 320px popover as a document's. The dialog has
+  no Can row: a project's guest views, and a choice of one is not drawn.
+  The project's settings sheet lists the same links under Sharing.
 
 ## Scrolling
 

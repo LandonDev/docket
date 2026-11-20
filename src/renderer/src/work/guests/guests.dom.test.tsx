@@ -132,6 +132,64 @@ describe("Share", () => {
   });
 });
 
+describe("a project's Share", () => {
+  const PROJECT_LINK = { ...LINK, id: "plink", name: "Dana Lee", role: "view" as const, source: { at: "lifeos" as const, table: "projects" as const, id: "kp1" }, title: "Spring LAN", open: 0 };
+
+  it("on the project's bar lists its links and makes one that can only view: the dialog asks who and until when", async () => {
+    const { ProjectShare } = await import("./Share");
+    calls.links = [PROJECT_LINK];
+    render(<ProjectShare env="box" project={{ id: "kp1", name: "Spring LAN" }} />);
+    const share = screen.getByRole("button", { name: "Share" });
+    // One of the bar's quiet 28px verbs.
+    expect(share.className.split(/\s+/)).toContain("h-7");
+    fireEvent.click(share);
+    await screen.findByText("Dana Lee");
+    // Every guest of a project views: the row says until when, not what they can do.
+    expect(screen.getByText(/^until /)).toBeTruthy();
+    expect(screen.queryByText(/^View, /)).toBeNull();
+    expect(calls.list[0]).toMatchObject({ method: "work.guests.forItem", params: { source: { at: "lifeos", table: "projects", id: "kp1" } } });
+    fireEvent.click(screen.getByRole("button", { name: "New guest link…" }));
+    fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Marcus Reed" } });
+    // A project's guest views: there is nothing to pick, so no Can row is drawn.
+    expect(screen.queryByText("Can")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Create link" }));
+    await screen.findByText("Link for Marcus Reed");
+    expect(calls.list.find((c) => c.method === "work.guests.create")?.params).toMatchObject({ source: { at: "lifeos", table: "projects", id: "kp1" }, title: "Spring LAN", name: "Marcus Reed", role: "view" });
+  });
+
+  it("in the project's settings lists its links in the sheet, revokes one, and reads the list again after a new one", async () => {
+    const { ProjectSharing } = await import("./Share");
+    calls.links = [PROJECT_LINK];
+    render(<ProjectSharing env="box" projectId="kp1" title="Spring LAN" />);
+    await screen.findByText("Dana Lee");
+    fireEvent.click(screen.getByRole("button", { name: "Revoke Dana Lee's link" }));
+    await waitFor(() => expect(screen.queryByText("Dana Lee")).toBeNull());
+    expect(calls.list.find((c) => c.method === "work.guests.revoke")?.params).toEqual({ linkId: "plink" });
+    expect(screen.getByText("Only you can open this")).toBeTruthy();
+    const reads = () => calls.list.filter((c) => c.method === "work.guests.forItem").length;
+    const before = reads();
+    fireEvent.click(screen.getByRole("button", { name: "New guest link…" }));
+    fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Marcus Reed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create link" }));
+    await screen.findByText("Link for Marcus Reed");
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(reads()).toBe(before + 1));
+  });
+
+  it("is named as a project in the held request and in the list of every link", async () => {
+    const { View } = await import("./ShareActView");
+    const item = { kind: "share.guestLink", payload: { source: PROJECT_LINK.source, title: "Spring LAN", name: "Dana Lee", role: "view", expiresAt: Date.UTC(2026, 11, 18, 12) } } as unknown as HeldItem;
+    const held = render(<View item={item} env="box" />);
+    for (const words of ["Spring LAN", "Dana Lee", "View"]) expect(screen.getByText(words)).toBeTruthy();
+    held.unmount();
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [PROJECT_LINK];
+    render(<GuestLinksSection hosts={["box"]} />);
+    expect(await screen.findByText(/^View, Spring LAN project, until .*, not opened yet$/)).toBeTruthy();
+  });
+});
+
 describe("the held request and the audit list", () => {
   it("shows the link an agent asked for, exactly", async () => {
     const { View } = await import("./ShareActView");

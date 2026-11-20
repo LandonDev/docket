@@ -15,6 +15,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
 import { registry } from "../../lib/connection";
+import { ProjectShare } from "../guests/Share";
 import { openLifeosProject } from "../shell/actions";
 import { Doc, File, Link, Table } from "../icons";
 import { useLinkedThread } from "../tasks/links";
@@ -218,6 +219,8 @@ export function projectsKitFor(env: string, workspaceId: string): ProjectsKit {
     },
     menuLead: (task) => [{ id: "code-thread", label: "Open a code thread…", run: () => hostOf(workspaceId).codeThread(task) }],
     addItems: (project) => addRows(env, workspaceId, project),
+    // Share on a project's bar: its guest links, and New guest link… (view only).
+    share: ({ project }) => <ProjectShare env={env} project={project} />,
   };
   kits.set(key, kit);
   return kit;

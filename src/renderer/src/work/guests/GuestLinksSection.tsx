@@ -147,7 +147,8 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
 
 /** "Can edit Spring LAN run of show until Dec 18, in it now": one line of facts. */
 function describe(link: GuestLinkRow, live: boolean): string {
-  const what = `${ROLE_WORDS[link.role]}, ${link.title}`;
+  // A project's link is named as one, so its name is not taken for a document's.
+  const what = `${ROLE_WORDS[link.role]}, ${link.source.table === "projects" ? `${link.title} project` : link.title}`;
   if (!live) return `${what}, ${link.revokedAt ? `revoked ${shortDay(link.revokedAt)}` : `ended ${shortDay(link.expiresAt)}`}`;
   const seen = link.open > 0 ? "in it now" : link.lastOpenedAt ? `opened ${shortDay(link.lastOpenedAt)} ${clockTime(link.lastOpenedAt)}` : "not opened yet";
   return `${what}, until ${shortDay(link.expiresAt)}, ${seen}`;

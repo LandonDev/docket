@@ -1,4 +1,5 @@
 import type { TrustedIssuer } from 'work-kit/collab-server'
+import type { GuestProjection } from '@shared/work/guestProjection'
 
 /**
  * The wire between main and the Work service's utility process
@@ -10,10 +11,21 @@ import type { TrustedIssuer } from 'work-kit/collab-server'
 /** A guest link as the service checks it (rows are main's; milestone 31 makes them). */
 export interface ServiceLink {
   linkId: string
-  item: { doc: string } | { sheet: string }
+  item: { doc: string } | { sheet: string } | { project: string }
   role: 'view' | 'comment' | 'edit'
   expiresAt: number
   revokedAt: number | null
+}
+
+/**
+ * What a project's link shows, sent in a message of its own (never inside `links`, which goes whole
+ * on every change): the projection as main last read it, and a view token main signed for each
+ * sheet it lists (`sheets:<id>`), for this link and that sheet alone. A document has none: the
+ * service hands its text as it stands.
+ */
+export interface ServiceProject {
+  projection: GuestProjection
+  tokens: Record<string, { token: string; exp: number }>
 }
 
 /** Who serves LifeOS's documents: this host, or the one named (the box); null for none (an isolated instance). */
@@ -41,6 +53,8 @@ export interface ServiceConfig {
 export type ToService =
   | { t: 'config'; config: ServiceConfig }
   | { t: 'links'; links: ServiceLink[] }
+  /** one project link's projection; null takes it away */
+  | { t: 'project'; linkId: string; project: ServiceProject | null }
   | { t: 'trusted'; trusted: TrustedIssuer[] }
   | { t: 'jwt'; id: number; jwt?: string; error?: string }
   | { t: 'stop' }

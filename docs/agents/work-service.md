@@ -29,7 +29,10 @@ and sheets (sheets: [work-sheets.md](work-sheets.md)), published forms
   (`ctx.lifeos.jwt()`, the owner's whole session) when it needs one and keeps
   it until a minute before it runs out. Main pushes link rows
   (`supervisor.setLinks`) and trusted issuers (`refreshTrusted`) as they
-  change.
+  change, and what each project's guest link shows in a message of its own
+  (`supervisor.setProject`, `{t: 'project'}`; work-guests.md "A project's
+  link"), which the supervisor keeps and sends again to a service it
+  starts again.
 - One service per store (§8.1, §19). `config.ts` `lifeosServerOf`: a Linux
   host serves LifeOS documents; a host with a saved Linux host is that
   host's client; a host with no box serves them itself. An isolated

@@ -1,6 +1,7 @@
 // Fixtures for `bun run ui:preview src/renderer/src/work/shell/ProjectSettings.preview.tsx#WorkProjectSheetPreview`.
 export default [
-  { name: "A Work project: name, state, rules, accounts; nothing of code", props: {} },
+  { name: "A Work project: name, state, rules, accounts, sharing; nothing of code", props: {} },
+  { name: "Shared with two guests", props: { sharing: "two" } },
   { name: "Changed, ready to save", props: { name: "Fall LAN", state: "paused", dirty: true } },
   { name: "Saving", props: { name: "Fall LAN", dirty: true, pending: true } },
   { name: "A save LifeOS refused", props: { name: "Fall LAN", dirty: true, error: "LifeOS refused the write" } },

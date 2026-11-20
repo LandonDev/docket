@@ -8,7 +8,9 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
  *
  * A guest link lets one named person open one LifeOS document or sheet on
  * the hosted page, with no sign-in, to view, comment or edit, until it ends
- * or the owner revokes it (architecture §8.6). The rows live on the host that
+ * or the owner revokes it (architecture §8.6); or one LifeOS project, to
+ * view: its tasks, and its documents and sheets read-only
+ * (src/shared/work/guestProjection.ts). The rows live on the host that
  * serves LifeOS's documents (the box); any other host answers
  * `served elsewhere: <env>` and the client asks that one (§19).
  */
@@ -16,8 +18,8 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
 export const GUEST_ROLES = ['view', 'comment', 'edit'] as const
 export type GuestRole = (typeof GUEST_ROLES)[number]
 
-/** What a link can be for: a LifeOS document or a LifeOS sheet. A file is moved to LifeOS first. */
-export const GuestSourceSchema = z.object({ at: z.literal('lifeos'), table: z.enum(['docs', 'sheets']), id: z.string().regex(/^[A-Za-z0-9]{1,64}$/) })
+/** What a link can be for: a LifeOS document, sheet or project. A file is moved to LifeOS first. */
+export const GuestSourceSchema = z.object({ at: z.literal('lifeos'), table: z.enum(['docs', 'sheets', 'projects']), id: z.string().regex(/^[A-Za-z0-9]{1,64}$/) })
 export type GuestSource = z.infer<typeof GuestSourceSchema>
 
 /** Ends: at least an hour away, at most a year. Thirty days unless he picks. */
@@ -97,6 +99,7 @@ export type GuestLinkAct = z.infer<typeof GuestLinkActSchema>
 /** Why a link cannot be made as asked, in words a screen shows; null when it can. */
 export function guestRefusal(p: { source: GuestSource; role: GuestRole; expiresAt: number }, now = Date.now()): string | null {
   if (p.source.table === 'sheets' && p.role === 'comment') return 'A sheet link can view or edit.'
+  if (p.source.table === 'projects' && p.role !== 'view') return 'A project link can view.'
   if (p.expiresAt < now + GUEST_MIN_MS) return 'A link ends at least an hour from now.'
   if (p.expiresAt > now + GUEST_MAX_MS) return 'A link ends within a year.'
   return null

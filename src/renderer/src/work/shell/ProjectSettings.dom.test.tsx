@@ -109,7 +109,11 @@ describe("which sheet a project gets", () => {
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
     const root = await sheet();
     expect(root.getAttribute("data-side")).toBe("right");
-    expect(headings(root)).toEqual(["Rules for its threads"]);
+    // Its rules, and who outside may see it: the project's guest links, read from the host.
+    expect(headings(root)).toEqual(["Rules for its threads", "Sharing"]);
+    expect(hostCalls.find((c) => c.method === "work.guests.forItem")?.params).toEqual({ source: { at: "lifeos", table: "projects", id: MIRROR.lifeosProjectId } });
+    expect(await within(root).findByText("Only you can open this")).toBeTruthy();
+    expect(within(root).getByRole("button", { name: "New guest link…" })).toBeTruthy();
     // No mode, folder, branch, completed turn, review, plans or build.
     expect(root.querySelector("[data-project-mode]")).toBeNull();
     expect(root.textContent).not.toContain(WORK.path);

@@ -23,6 +23,7 @@ let starting = false
 /** pushes that came while the service was starting: applied before it says it is ready */
 let heldLinks: Extract<ToService, { t: 'links' }>['links'] | null = null
 let heldTrusted: Extract<ToService, { t: 'trusted' }>['trusted'] | null = null
+const heldProjects = new Map<string, Extract<ToService, { t: 'project' }>['project']>()
 
 const jwt = (): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -52,6 +53,8 @@ parent.on('message', (event: { data: unknown }) => {
         running = service
         if (heldLinks) service.setLinks(heldLinks)
         if (heldTrusted) service.setTrusted(heldTrusted)
+        for (const [linkId, project] of heldProjects) service.setProject(linkId, project)
+        heldProjects.clear()
         heldLinks = heldTrusted = null
         send({ t: 'ready', port: service.port })
       },
@@ -60,6 +63,9 @@ parent.on('message', (event: { data: unknown }) => {
   } else if (m.t === 'links') {
     if (running) running.setLinks(m.links)
     else heldLinks = m.links
+  } else if (m.t === 'project') {
+    if (running) running.setProject(m.linkId, m.project)
+    else heldProjects.set(m.linkId, m.project)
   } else if (m.t === 'trusted') {
     if (running) running.setTrusted(m.trusted)
     else heldTrusted = m.trusted

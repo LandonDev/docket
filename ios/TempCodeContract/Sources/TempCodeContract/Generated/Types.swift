@@ -5464,6 +5464,7 @@ public struct GuestLinkRow: Codable, Hashable, Sendable {
         public enum Table: RawRepresentable, Codable, Hashable, Sendable {
             case docs
             case sheets
+            case projects
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -5471,6 +5472,7 @@ public struct GuestLinkRow: Codable, Hashable, Sendable {
                 switch rawValue {
                 case "docs": self = .docs
                 case "sheets": self = .sheets
+                case "projects": self = .projects
                 default: self = .unknown(rawValue)
                 }
             }
@@ -5479,6 +5481,7 @@ public struct GuestLinkRow: Codable, Hashable, Sendable {
                 switch self {
                 case .docs: "docs"
                 case .sheets: "sheets"
+                case .projects: "projects"
                 case .unknown(let value): value
                 }
             }

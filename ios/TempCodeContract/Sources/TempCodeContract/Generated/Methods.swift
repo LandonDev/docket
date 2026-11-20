@@ -3290,6 +3290,7 @@ public enum Methods {
                 public enum Table: RawRepresentable, Codable, Hashable, Sendable {
                     case docs
                     case sheets
+                    case projects
                     /// A value this build does not know; `rawValue` keeps it.
                     case unknown(String)
 
@@ -3297,6 +3298,7 @@ public enum Methods {
                         switch rawValue {
                         case "docs": self = .docs
                         case "sheets": self = .sheets
+                        case "projects": self = .projects
                         default: self = .unknown(rawValue)
                         }
                     }
@@ -3305,6 +3307,7 @@ public enum Methods {
                         switch self {
                         case .docs: "docs"
                         case .sheets: "sheets"
+                        case .projects: "projects"
                         case .unknown(let value): value
                         }
                     }
@@ -3349,6 +3352,7 @@ public enum Methods {
                 public enum Table: RawRepresentable, Codable, Hashable, Sendable {
                     case docs
                     case sheets
+                    case projects
                     /// A value this build does not know; `rawValue` keeps it.
                     case unknown(String)
 
@@ -3356,6 +3360,7 @@ public enum Methods {
                         switch rawValue {
                         case "docs": self = .docs
                         case "sheets": self = .sheets
+                        case "projects": self = .projects
                         default: self = .unknown(rawValue)
                         }
                     }
@@ -3364,6 +3369,7 @@ public enum Methods {
                         switch self {
                         case .docs: "docs"
                         case .sheets: "sheets"
+                        case .projects: "projects"
                         case .unknown(let value): value
                         }
                     }

@@ -10,6 +10,7 @@ import { GUEST_KEEP_MS, type GuestLinkRow, type GuestRole, type GuestSource } fr
  */
 
 export const GUEST_LINKS_TABLE = 'work_guest_links'
+export const GUEST_MARKS_TABLE = 'work_guest_marks'
 
 export function ensureGuestTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS ${GUEST_LINKS_TABLE} (
@@ -24,6 +25,9 @@ export function ensureGuestTables(db: DatabaseSync): void {
     revoked_at INTEGER,
     by_session TEXT
   )`)
+  // What this host has marked shared in LifeOS: a project link marks every document and sheet the
+  // project shows, and only this remembers them once the link is over and the host has restarted.
+  db.exec(`CREATE TABLE IF NOT EXISTS ${GUEST_MARKS_TABLE} (key TEXT PRIMARY KEY)`)
 }
 
 /** A link's row as main keeps it: the public row and what only the host may read. */
@@ -117,6 +121,16 @@ export class GuestStore {
 
   forSource(source: GuestSource, now = Date.now()): StoredLink[] {
     return this.listed(now).filter((l) => sourceKey(l.source) === sourceKey(source))
+  }
+
+  /** The LifeOS rows (`docs:<id>`, `sheets:<id>`, `projects:<id>`) this host marked shared and has not unmarked. */
+  marks(): string[] {
+    return (this.db.prepare(`SELECT key FROM ${GUEST_MARKS_TABLE}`).all() as { key: string }[]).map((r) => r.key)
+  }
+
+  setMark(key: string, on: boolean): void {
+    if (on) this.db.prepare(`INSERT OR IGNORE INTO ${GUEST_MARKS_TABLE} (key) VALUES (?)`).run(key)
+    else this.db.prepare(`DELETE FROM ${GUEST_MARKS_TABLE} WHERE key = ?`).run(key)
   }
 
   name(id: string): string | null {

@@ -16,7 +16,10 @@ export interface GuestLinkFacts {
   title: string
   /** the owner's name, for the page's line */
   owner: string
-  /** a collab token for the link's item, signed by main, `principal: guest:<id>`, `link: <id>`; refreshed before it runs out */
+  /**
+   * a collab token for the link's item, signed by main, `principal: guest:<id>`, `link: <id>`; refreshed before it runs out.
+   * A project's link has none (''): its documents' and sheets' tokens go with its projection (`ServiceProject`).
+   */
   token: string
   tokenExp: number
 }
@@ -33,7 +36,7 @@ export interface OpenPassFacts {
   tokenExp: number
 }
 
-export type GuestServiceLink = ServiceLink & { role: GuestRole } & ({ guest: GuestLinkFacts; pass?: never } | { pass: OpenPassFacts; guest?: never })
+export type GuestServiceLink = ServiceLink & { role: GuestRole } & ({ guest: GuestLinkFacts; pass?: never } | { pass: OpenPassFacts; guest?: never; item: { doc: string } | { sheet: string } })
 
 /** A pass is listed under this prefix, so no guest link id can be one. */
 export const PASS_PREFIX = 'open.'

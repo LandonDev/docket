@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { guestRefusal, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource } from '@shared/contract-work-guests'
+import { guestProjectionOf, projectionItems, type GuestProjection } from '@shared/work/guestProjection'
 import type { CollabClaims as KitClaims } from 'work-kit/collab-server'
 import type { WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
@@ -7,6 +8,7 @@ import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { isIsolatedInstance } from '../service/config'
 import { serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
+import type { ServiceProject } from '../service/wire'
 import { GuestStore, hashSecret, isLive, sourceKey, type StoredLink } from './store'
 import { PASS_PREFIX, type GuestServiceLink } from './wire'
 
@@ -21,6 +23,16 @@ import { PASS_PREFIX, type GuestServiceLink } from './wire'
  * found so after a restart waits out of the list. Revoking sends the list
  * at once without the link: its document sockets close then, its sheet
  * sockets at the next second's check.
+ *
+ * A project's link (view only) shows what LifeOS's `projects:guestView`
+ * answers, read live here for each project with a live link and sent to the
+ * service in a message of its own, with a view token for each sheet it
+ * lists (a document is handed as its text and has no token). Every document
+ * and sheet it lists is marked shared in LifeOS before the service hears of
+ * it, and unmarked once no link shows it: the service told first when
+ * something leaves, LifeOS first when something joins. While LifeOS cannot
+ * be reached the read may be old, so after a minute a project's link shows
+ * nothing until it answers again.
  */
 
 /** A guest's token lasts ten minutes and is signed again with five left. */
@@ -31,6 +43,10 @@ export const TICK_MS = 30_000
 /** A ticket opens within two minutes; the session it opens lasts eight hours. */
 export const TICKET_MS = 2 * 60_000
 export const PASS_MS = 8 * 60 * 60_000
+/** How long a new project link waits for LifeOS's first answer of what the project shows. */
+export const FIRST_VIEW_MS = 10_000
+/** How long a project's link goes on showing its last read while LifeOS cannot be reached. */
+export const STALE_VIEW_MS = 60_000
 
 export const DEFAULT_ORIGIN = 'https://tempcode.landonhale.com'
 
@@ -63,14 +79,21 @@ interface Pass {
 export class GuestRuntime {
   private readonly passes = new Map<string, Pass>()
   private readonly tokens = new Map<string, { token: string; exp: number; signer: unknown }>()
-  /** what LifeOS was last told of each item's `shared` */
+  /** what LifeOS was last told of each row's `shared`, by `docs:<id>`, `sheets:<id>` or `projects:<id>` */
   private readonly told = new Map<string, boolean>()
+  /** the live read of what each project with a live link shows; `undefined` until LifeOS first answers */
+  private readonly watched = new Map<string, { stop(): void; since: number; projection: GuestProjection | null | undefined }>()
+  /** what the service was last sent for each project link, to send it again only when it changed, and the documents and sheets it named */
+  private readonly sent = new Map<string, { json: string; items: Set<string> }>()
+  /** since when LifeOS has not been reachable; null while it is */
+  private lifeosDownSince: number | null = null
+  private viewWaiters: (() => void)[] = []
   readonly store: GuestStore
 
   constructor(
     private readonly ctx: WorkCtx,
     /** the host's Work service; a test hands in its own */
-    private readonly service: () => Pick<ServiceSupervisor, 'tokenSigner' | 'setLinks'> | undefined = () => serviceOf(ctx)
+    private readonly service: () => Pick<ServiceSupervisor, 'tokenSigner' | 'setLinks' | 'setProject'> | undefined = () => serviceOf(ctx)
   ) {
     this.store = new GuestStore(ctx.db)
   }
@@ -86,7 +109,8 @@ export class GuestRuntime {
   /** Throws `served elsewhere: <env>` on a host that does not serve LifeOS's documents, as every docs method does. */
   async servedHere(source: GuestSource): Promise<void> {
     try {
-      await this.ctx.service.token({ item: itemOf(source), role: 'view', principal: 'owner' })
+      // Asked as for a document: a project and its documents are served where LifeOS's documents are.
+      await this.ctx.service.token({ item: source.table === 'sheets' ? { sheet: source.id } : { doc: source.id }, role: 'view', principal: 'owner' })
     } catch (err) {
       if (err instanceof ServedElsewhere) throw new Error(`served elsewhere: ${err.host}`)
       throw err
@@ -95,6 +119,14 @@ export class GuestRuntime {
 
   /** The item exists in LifeOS, and its sector and title. */
   async itemRow(source: GuestSource): Promise<{ sector: string; title: string }> {
+    if (source.table === 'projects') {
+      const got = await this.ctx.lifeos
+        .owner()
+        .query<{ project?: { sector?: string; name?: string } } | null>('projects:get', { id: source.id })
+        .catch(() => null)
+      if (typeof got?.project?.sector !== 'string') throw new Error('LifeOS has no such project')
+      return { sector: got.project.sector, title: got.project.name?.trim() || 'Untitled' }
+    }
     const row = await this.ctx.lifeos
       .owner()
       .query<{ sector?: string; title?: string } | null>(source.table === 'docs' ? 'docs:get' : 'sheets:get', { id: source.id })
@@ -110,11 +142,18 @@ export class GuestRuntime {
     await this.itemRow(o.source)
     const { link, secret } = this.store.create(o)
     // The item reads shared to every write guard before a guest can reach it: if LifeOS does not take it, no link is made.
-    if (!(await this.setShared(o.source))) {
+    // In the passes' own turn, so this mark and a pass's unmark of the same row never reach LifeOS out of order.
+    if (!(await this.inTurn(() => this.tell(sourceKey(o.source), true)))) {
       this.store.forget(link.id)
       throw new ActNotSent(`LifeOS did not mark ${o.title} as shared, so no guest link was made. Nothing was made.`)
     }
-    await this.sync()
+    // A project's link shows what LifeOS answers for it: with no answer there is nothing to show, and no link.
+    if (o.source.table === 'projects' && !(await this.firstView(o.source.id))) {
+      this.store.forget(link.id)
+      await this.settle()
+      throw new ActNotSent(`LifeOS did not answer what ${o.title} shows a guest, so no guest link was made. Nothing was made.`)
+    }
+    await this.settle()
     this.ctx.push({ push: 'work.guests' })
     return { link: this.rowOf(link, {}), url: guestUrl(publicOrigin(this.ctx), link.id, secret) }
   }
@@ -132,9 +171,9 @@ export class GuestRuntime {
     const link = this.store.get(id)
     if (!link) throw new Error('no such guest link on this host')
     if (!this.store.revoke(id)) return
-    // The service first: the link's sockets close now, whatever LifeOS does next.
+    // The service first, ahead of any pass that is waiting on LifeOS: the link's sockets close now, whatever LifeOS does next.
     await this.sync()
-    await this.setShared(link.source)
+    await this.settle()
     this.ctx.push({ push: 'work.guests' })
   }
 
@@ -161,6 +200,7 @@ export class GuestRuntime {
 
   /** A ticket for the owner's hosted editor: the address holds it, once. */
   async ticket(source: GuestSource, title: string): Promise<{ url: string; expiresAt: number }> {
+    if (source.table === 'projects') throw new Error('The hosted editor opens a document or a sheet.')
     await this.servedHere(source)
     const ticket = randomBytes(32).toString('base64url')
     const now = Date.now()
@@ -170,17 +210,149 @@ export class GuestRuntime {
     return { url: `${publicOrigin(this.ctx)}/w/open#t=${ticket}`, expiresAt: pass.ticketUntil }
   }
 
-  /** LifeOS's `shared` on the item: on while any link to it is live. Answers whether LifeOS took it. */
-  async setShared(source: GuestSource): Promise<boolean> {
-    const shared = this.store.live().some((l) => sourceKey(l.source) === sourceKey(source))
+  /** LifeOS told one row's `shared`. Answers whether LifeOS took it. */
+  private async tell(key: string, shared: boolean): Promise<boolean> {
+    const [table, id] = key.split(':') as [GuestSource['table'], string]
     try {
-      await this.ctx.lifeos.owner().mutation(source.table === 'docs' ? 'docs:setShared' : 'sheets:setShared', { id: source.id, shared })
-      this.told.set(sourceKey(source), shared)
+      await this.ctx.lifeos.owner().mutation(`${table}:setShared`, { id, shared })
+      this.told.set(key, shared)
+      this.store.setMark(key, shared)
       return true
     } catch (err) {
-      this.ctx.log(`guests: ${sourceKey(source)} shared=${shared} was not set: ${String(err)}`)
+      this.ctx.log(`guests: ${key} shared=${shared} was not set: ${String(err)}`)
       return false
     }
+  }
+
+  /** Every LifeOS row a live link shows: each link's own item, and for a project every document and sheet its projection lists, the description's among them. */
+  private wanted(now = Date.now()): Set<string> {
+    const out = new Set<string>()
+    for (const l of this.store.live(now)) {
+      out.add(sourceKey(l.source))
+      const shown = l.source.table === 'projects' ? this.watched.get(l.source.id)?.projection : null
+      if (shown) for (const key of projectionItems(shown)) out.add(key)
+    }
+    return out
+  }
+
+  /**
+   * LifeOS told each row's `shared` where it differs from what the live links show: every row once
+   * after a start, a row a project's link gained, a row no link shows any more (those this host
+   * marked before a restart among them). Answers how many were told, and whether a known one changed.
+   */
+  private async reconcile(now = Date.now()): Promise<{ told: number; changed: boolean }> {
+    const wanted = this.wanted(now)
+    // A project whose first read has not landed yet: its documents are not known, so nothing is unmarked on a guess. Not for good: a read that never comes stops holding the rest back.
+    const unsure = this.store.live(now).some((l) => {
+      const held = l.source.table === 'projects' ? this.watched.get(l.source.id) : undefined
+      return !!held && held.projection === undefined && now - held.since < FIRST_VIEW_MS
+    })
+    // What the service was last sent: a document or sheet it still shows keeps its mark until the service has been told it left.
+    const shown = new Set([...this.sent.values()].flatMap((s) => [...s.items]))
+    const all = [...new Set([...wanted, ...this.told.keys(), ...this.store.listed(now).map((l) => sourceKey(l.source)), ...this.store.marks()])]
+    let told = 0
+    let changed = false
+    const pass = async (keys: string[]): Promise<void> => {
+      for (const key of keys) {
+        const want = wanted.has(key)
+        if (this.told.get(key) === want || (!want && (unsure || shown.has(key)))) continue
+        changed ||= this.told.has(key)
+        if (await this.tell(key, want)) told++
+        else if (want && key.startsWith('projects:')) await this.endIfGone(key.slice('projects:'.length))
+      }
+    }
+    // Projects first. LifeOS marks a project's description with the project, both ways, so a project told
+    // anything leaves what was told of the documents in doubt: every document a live link shows is told again.
+    const before = told
+    await pass(all.filter((key) => key.startsWith('projects:')))
+    if (told > before) for (const key of wanted) if (key.startsWith('docs:')) this.told.delete(key)
+    await pass(all.filter((key) => !key.startsWith('projects:')))
+    return { told, changed }
+  }
+
+  /** A project LifeOS no longer has shows nothing: its links end here, so they are not retried and not listed as live. */
+  private async endIfGone(projectId: string): Promise<void> {
+    const gone = await this.ctx.lifeos
+      .owner()
+      .query<unknown>('projects:get', { id: projectId })
+      .then(
+        (row) => row === null,
+        () => false
+      )
+    if (!gone) return
+    for (const l of this.store.live()) if (l.source.table === 'projects' && l.source.id === projectId) this.store.revoke(l.id)
+    this.ctx.log(`guests: project ${projectId} is no longer in LifeOS; its guest links have ended`)
+    this.ctx.push({ push: 'work.guests' })
+  }
+
+  /** One live read of `projects:guestView` for each project a live link shows; a project with none is let go. */
+  private watch(now = Date.now()): void {
+    const live = new Set(this.store.live(now).flatMap((l) => (l.source.table === 'projects' ? [l.source.id] : [])))
+    for (const [id, held] of this.watched) {
+      if (live.has(id)) continue
+      held.stop()
+      this.watched.delete(id)
+    }
+    for (const id of live) {
+      if (this.watched.has(id)) continue
+      const held: { stop(): void; since: number; projection: GuestProjection | null | undefined } = { stop: () => {}, since: now, projection: undefined }
+      this.watched.set(id, held)
+      held.stop = this.ctx.lifeos.subscribe<unknown>('projects:guestView', { id }, (raw) => {
+        if (this.watched.get(id) !== held) return
+        held.projection = guestProjectionOf(raw)
+        // LifeOS answers nothing for a project it does not read as shared: it is told again at the next pass.
+        if (!held.projection) this.told.delete(`projects:${id}`)
+        for (const w of this.viewWaiters.splice(0)) w()
+        void this.settle().catch((err: Error) => this.ctx.log(`guests: ${err.message}`))
+      })
+    }
+  }
+
+  /** Waits for LifeOS's first answer of what a project shows; false when none came in time, or it answered nothing. */
+  private async firstView(projectId: string): Promise<boolean> {
+    this.watch()
+    const end = Date.now() + FIRST_VIEW_MS
+    while (!this.watched.get(projectId)?.projection && Date.now() < end) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, Math.max(0, end - Date.now()))
+        this.viewWaiters.push(() => (clearTimeout(t), resolve()))
+      })
+    }
+    return !!this.watched.get(projectId)?.projection
+  }
+
+  private settling: Promise<void> = Promise.resolve()
+
+  /**
+   * Brings the service and LifeOS's marks in step with the links and what their projects show, one
+   * run at a time. The service first, so what left (a revoked link, a document moved out of a
+   * project) closes before its mark comes off; then the marks; then the service again, so what
+   * joined is sent only once LifeOS reads it shared.
+   */
+  settle(): Promise<{ changed: boolean }> {
+    return this.inTurn(async () => {
+      this.watch()
+      await this.sync()
+      const { told, changed } = await this.reconcile()
+      if (told) await this.sync()
+      return { changed }
+    })
+  }
+
+  /** One thing at a time that tells LifeOS a mark: a pass, or a new link's own mark. */
+  private inTurn<T>(run: () => Promise<T>): Promise<T> {
+    const turn = this.settling.then(run)
+    this.settling = turn.then(
+      () => {},
+      () => {}
+    )
+    return turn
+  }
+
+  /** Work went off: the live reads stop. */
+  stop(): void {
+    for (const held of this.watched.values()) held.stop()
+    this.watched.clear()
   }
 
   private async sign(key: string, claims: KitClaims): Promise<{ token: string; exp: number } | null> {
@@ -212,12 +384,25 @@ export class GuestRuntime {
     if (!supervisor) return
     const now = Date.now()
     const owner = this.ownerName()
+    const up = this.ctx.lifeos.connected?.() !== false
+    this.lifeosDownSince = up ? null : (this.lifeosDownSince ?? now)
+    const stale = this.lifeosDownSince !== null && now - this.lifeosDownSince >= STALE_VIEW_MS
     const out: GuestServiceLink[] = []
+    const projects = new Map<string, ServiceProject>()
     const keep = new Set<string>()
     for (const l of this.store.live(now)) {
       // Not before LifeOS reads its item shared: until then every write guard takes the item for private.
       if (this.told.get(sourceKey(l.source)) !== true) continue
       const principal = `guest:${l.id}` as const
+      if (l.source.table === 'projects') {
+        // A project's link goes only with what it shows; until LifeOS has answered, the service does not know it.
+        const shown = this.watched.get(l.source.id)?.projection
+        if (!shown) continue
+        // LifeOS out of reach for a minute: the read may be old (a document moved out, a task changed), so the link shows nothing until it answers.
+        if (!stale) projects.set(l.id, await this.projectFacts(l.id, shown, keep))
+        out.push({ linkId: l.id, item: { project: l.source.id }, role: 'view', expiresAt: l.expiresAt, revokedAt: null, guest: { secretHash: l.secretHash, name: l.name, title: l.title, owner, token: '', tokenExp: 0 } })
+        continue
+      }
       // A link that cannot be signed is left out, never left as it was: the service then refuses it.
       const t = await this.sign(l.id, { ...kitItem(l.source), role: l.role, principal, link: l.id }).catch((err: Error) => (this.ctx.log(`guests: ${l.id} was not signed: ${err.message}`), null))
       if (!t) continue
@@ -252,6 +437,14 @@ export class GuestRuntime {
     for (const key of this.tokens.keys()) if (!keep.has(key)) this.tokens.delete(key)
     // Read again now that the signing is done: a link revoked, rekeyed or ended meanwhile goes as it now stands.
     const fresh = new Map(this.store.live().map((l) => [l.id, l]))
+    // A projection goes before the list that names its link, and is taken away after the list that drops it.
+    for (const [linkId, project] of projects) {
+      if (!fresh.has(linkId)) continue
+      const json = JSON.stringify(project)
+      if (this.sent.get(linkId)?.json === json) continue
+      supervisor.setProject(linkId, project)
+      this.sent.set(linkId, { json, items: new Set(projectionItems(project.projection)) })
+    }
     supervisor.setLinks(
       out.flatMap((x): GuestServiceLink[] => {
         if (x.pass) return [x]
@@ -259,26 +452,43 @@ export class GuestRuntime {
         return l && x.guest ? [{ ...x, guest: { ...x.guest, secretHash: l.secretHash } }] : []
       })
     )
+    for (const linkId of [...this.sent.keys()]) {
+      if (projects.has(linkId) && fresh.has(linkId)) continue
+      supervisor.setProject(linkId, null)
+      this.sent.delete(linkId)
+    }
   }
 
   /**
-   * Every 30 s: LifeOS told each item's `shared` where it differs from what was last told (every item once after a
-   * start, and again until it takes it), then tokens signed again: a link goes to the service only once its item reads shared.
+   * What the service is told a project link shows: LifeOS's projection with only the documents and
+   * sheets LifeOS already reads as shared (one that just joined waits for its mark), and a view token
+   * for each sheet, signed for this link and that sheet. A document has no token: the service hands
+   * its text as it stands, never its live room.
    */
-  async tick(): Promise<void> {
-    const now = Date.now()
-    const live = new Set(this.store.live(now).map((l) => sourceKey(l.source)))
-    let changed = false
-    for (const l of this.store.listed(now)) {
-      const key = sourceKey(l.source)
-      if (this.told.get(key) === live.has(key)) continue
-      changed ||= this.told.has(key)
-      await this.setShared(l.source)
+  private async projectFacts(linkId: string, shown: GuestProjection, keep: Set<string>): Promise<ServiceProject> {
+    const marked = (key: string): boolean => this.told.get(key) === true
+    const docId = shown.project.docId && marked(`docs:${shown.project.docId}`) ? shown.project.docId : null
+    const projection: GuestProjection = { ...shown, project: { ...shown.project, docId }, docs: shown.docs.filter((d) => marked(`docs:${d.id}`)), sheets: shown.sheets.filter((sh) => marked(`sheets:${sh.id}`)) }
+    const tokens: ServiceProject['tokens'] = {}
+    for (const { id } of projection.sheets) {
+      const key = `sheets:${id}`
+      const claims = { sheet: id, role: 'view', principal: `guest:${linkId}`, link: linkId } as KitClaims
+      // A sheet that cannot be signed stays listed and opens nothing: the service answers it as gone.
+      const t = await this.sign(`${linkId}|${key}`, claims).catch((err: Error) => (this.ctx.log(`guests: ${linkId} ${key} was not signed: ${err.message}`), null))
+      if (!t) continue
+      keep.add(`${linkId}|${key}`)
+      tokens[key] = { token: t.token, exp: t.exp }
     }
-    await this.sync()
+    return { projection, tokens }
+  }
+
+  /** Every 30 s: links that ended, rows LifeOS has not marked yet, tokens near their end (`settle`). */
+  async tick(): Promise<void> {
+    const { changed } = await this.settle()
     if (changed) this.ctx.push({ push: 'work.guests' })
   }
 }
 
-export const itemOf = (s: GuestSource): { doc: string } | { sheet: string } => (s.table === 'docs' ? { doc: s.id } : { sheet: s.id })
-const kitItem = (s: GuestSource): { doc: string } | { sheet: string } => itemOf(s)
+/** A document's or a sheet's link as the service names its item; a project's link is built where its projection is. */
+export const itemOf = (s: GuestSource): { doc: string } | { sheet: string } => (s.table === 'sheets' ? { sheet: s.id } : { doc: s.id })
+const kitItem = itemOf

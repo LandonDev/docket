@@ -1,10 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { createElement, lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { RefreshCw } from "@renderer/chrome/icons";
-import { Doc, Table } from "@renderer/work/icons";
-import { initials, modeOf, OpenFailed, Session, untilDay, type Failure, type Opened } from "./session";
+import { ArrowLeft, RefreshCw } from "@renderer/chrome/icons";
+import { Doc, Project, Table } from "@renderer/work/icons";
+import { projectionLists, type GuestProjection } from "@shared/work/guestProjection";
+import { initials, modeOf, OpenFailed, Session, untilDay, type ChildItem, type Failure, type Opened } from "./session";
 // The type alone: the sheet stays in its own lazy chunk.
 import type { Refusal } from "./SheetPage";
 
@@ -13,11 +14,19 @@ import type { Refusal } from "./SheetPage";
  * one 44px line, the item's name, whose it is, what this person can do and
  * until when, their avatar; under it the owner's own editor or grid. No
  * sign-in: the address is the key. Nothing here reaches a thread, an agent
- * or any other item, and no control a link may not use is drawn.
+ * or any other item, and no control a link may not use is drawn. A project's
+ * link shows the project (ProjectPage.tsx); a document or sheet of it opens
+ * in place, read only, with the way back in the line.
  */
 
 const DocPage = lazy(() => import("./DocPage").then((m) => ({ default: m.DocPage })));
 const SheetPage = lazy(() => import("./SheetPage").then((m) => ({ default: m.SheetPage })));
+const ProjectPage = lazy(() => import("./ProjectPage").then((m) => ({ default: m.ProjectPage })));
+const DocText = lazy(() => import("./ProjectPage").then((m) => ({ default: m.DocText })));
+/** How often an open document of a project is read again: as often as the project itself. */
+const READ_EVERY = 15_000;
+
+const GLYPH = { doc: Doc, sheet: Table, project: Project } as const;
 
 const CAN: Record<Opened["role"], string> = { view: "Can view", comment: "Can comment", edit: "Can edit" };
 
@@ -67,6 +76,12 @@ export function GuestApp() {
     setLeft(standing);
     setState({ at: "failed", why: "down" });
   }, []);
+  // A project's link: the document or sheet open over the project, and where the screens' controls go in the line.
+  const [child, setChild] = useState<(ChildItem & { title: string }) | null>(null);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const back = useCallback(() => setChild(null), []);
+  // A document or sheet the project no longer lists is closed at the page's next read: its socket is already shut.
+  const shown = useCallback((p: GuestProjection) => setChild((open) => (open && !projectionLists(p, open.table, open.id) ? null : open)), []);
 
   if (state.at === "failed") return <Ended why={state.why} left={left} owner={session?.mode.kind === "owner"} retry={load} />;
   const opened = state.at === "open" ? state.opened : null;
@@ -75,9 +90,15 @@ export function GuestApp() {
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4 text-[13px]">
         {opened ? (
           <>
-            <span className="shrink-0 text-muted-foreground">{opened.kind === "doc" ? <Doc className="size-3.5" /> : <Table className="size-3.5" />}</span>
-            <span className="min-w-0 truncate text-sm font-semibold">{opened.title}</span>
+            {child ? (
+              <Button variant="ghost" size="icon-xs" aria-label={`Back to ${opened.title}`} className="-ms-1.5 text-muted-foreground" onClick={back}>
+                <ArrowLeft />
+              </Button>
+            ) : null}
+            <span className="shrink-0 text-muted-foreground">{createElement(GLYPH[child ? (child.table === "docs" ? "doc" : "sheet") : opened.kind], { className: "size-3.5" })}</span>
+            <span className="min-w-0 truncate text-sm font-semibold">{child ? child.title || "Untitled" : opened.title}</span>
             {opened.owner ? <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{opened.owner}</span> : null}
+            {opened.kind === "project" && !child ? <span ref={setSlot} data-project-bar className="flex min-w-0 flex-1 items-center justify-between gap-2" /> : null}
             {opened.name ? (
               <span className="ms-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                 <span className="hidden sm:inline">{CAN[opened.role]}</span>
@@ -99,7 +120,16 @@ export function GuestApp() {
       <main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
         {opened ? (
           <Suspense fallback={<Bones />}>
-            {opened.kind === "doc" ? <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} /> : <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} carried={left} />}
+            {opened.kind === "project" ? (
+              <>
+                <ProjectPage session={session!} opened={opened} slot={slot} hidden={!!child} onOpen={setChild} onShown={shown} onGone={gone} />
+                {child ? <ChildPage key={`${child.table}:${child.id}`} session={session!} item={child} onBack={back} onGone={gone} /> : null}
+              </>
+            ) : opened.kind === "doc" ? (
+              <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} />
+            ) : (
+              <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} carried={left} />
+            )}
           </Suspense>
         ) : (
           <Bones />
@@ -107,6 +137,59 @@ export function GuestApp() {
       </main>
     </div>
   );
+}
+
+/**
+ * A document or sheet of a project's link, read only, asked for with the link's secret and
+ * answered only while the project lists it: a document as its text now, read again every 15
+ * seconds and when the window comes forward; a sheet on its own socket. One that is gone (it left
+ * the project, or the link ended) goes back to the project, or to the end when the link itself is gone.
+ */
+function ChildPage({ session, item, onBack, onGone }: { session: Session; item: ChildItem; onBack(): void; onGone(): void }) {
+  const own = useMemo(() => session.child(item), [session, item]);
+  const [got, setGot] = useState<{ opened: Opened } | { failed: true } | null>(null);
+  // Gone: the link itself may have ended. The project's own answer says which, at once.
+  const left = useCallback(() => void session.refresh().then(onBack, (err: unknown) => (err instanceof OpenFailed && err.why === "gone" ? onGone() : onBack())), [session, onBack, onGone]);
+  const load = useCallback(
+    (quiet = false) => {
+      if (!quiet) setGot(null);
+      own.refresh().then(
+        (opened) => setGot({ opened }),
+        // A read that fails after one landed keeps what is shown.
+        (err: unknown) => (err instanceof OpenFailed && err.why === "gone" ? left() : quiet ? undefined : setGot({ failed: true })),
+      );
+    },
+    [own, left],
+  );
+  useEffect(() => load(), [load]);
+  const isDoc = item.table === "docs";
+  useEffect(() => {
+    if (!isDoc) return;
+    const again = () => document.visibilityState === "visible" && load(true);
+    const timer = setInterval(again, READ_EVERY);
+    window.addEventListener("focus", again);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", again);
+    };
+  }, [isDoc, load]);
+  if (!got) return <Bones />;
+  if ("failed" in got)
+    return (
+      <div className="grid flex-1 place-items-center px-6">
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>It did not open</EmptyTitle>
+          </EmptyHeader>
+          <Button variant="secondary" size="sm" onClick={() => load()}>
+            <RefreshCw />
+            Retry
+          </Button>
+        </Empty>
+      </div>
+    );
+  if (got.opened.kind === "sheet") return <SheetPage session={own} opened={got.opened} onGone={left} onDown={() => setGot({ failed: true })} />;
+  return <DocText id={item.id} title={got.opened.title} markdown={got.opened.markdown ?? ""} />;
 }
 
 function Bones() {

@@ -10,8 +10,8 @@ import { ensureGuestTables } from './store'
 
 /**
  * The guests pillar's server module (docs/agents/work-guests.md): one named
- * guest on one LifeOS document or sheet, to view, comment or edit, until the
- * link ends or is revoked. The owner makes one from Share; an agent can only
+ * guest on one LifeOS document or sheet, to view, comment or edit, or on one
+ * LifeOS project, to view, until the link ends or is revoked. The owner makes one from Share; an agent can only
  * ask, and its request waits in the Outbox as `share.guestLink` for his
  * press. The Work service serves the guest's page and checks every connect
  * and write against what this module tells it (service/routes/guests.ts).
@@ -60,21 +60,23 @@ export const guestsTools: WorkTool[] = [
   {
     name: 'guest_link',
     description:
-      'Asks for a guest link: one named person outside may open one LifeOS document or sheet on a web page with no sign-in, to view, comment or edit, until the day it ends. It is held: nothing is made until the owner presses Create in the Outbox; you are then told the link is made, and he sends its address himself (you never see it). Use it when he asks to send someone one of his documents.',
+      'Asks for a guest link: one named person outside may open one LifeOS document or sheet on a web page with no sign-in, to view, comment or edit, or one LifeOS project to view (its tasks, and its documents and sheets read-only), until the day it ends. It is held: nothing is made until the owner presses Create in the Outbox; you are then told the link is made, and he sends its address himself (you never see it). Use it when he asks to send someone one of his documents or to show someone a project.',
     input: z.object({
-      docId: z.string().optional().describe('A LifeOS document id (from the doc tools). Give this or sheetId.'),
-      sheetId: z.string().optional().describe('A LifeOS sheet id. Give this or docId.'),
+      docId: z.string().optional().describe('A LifeOS document id (from the doc tools). Give one of docId, sheetId and projectId.'),
+      sheetId: z.string().optional().describe('A LifeOS sheet id.'),
+      projectId: z.string().optional().describe('A LifeOS project id (from list_projects or get_project).'),
       name: z.string().min(1).max(80).describe('The one person the link is for, as he would name them.'),
-      role: z.enum(GUEST_ROLES).default('view').describe('view, comment or edit (a sheet: view or edit).'),
+      role: z.enum(GUEST_ROLES).default('view').describe('view, comment or edit (a sheet: view or edit; a project: view).'),
       days: z.number().int().min(1).max(365).default(GUEST_DEFAULT_DAYS).describe('How many days until it ends.')
     }),
     readOnly: false,
     run: async (args, ctx) => {
-      const a = args as { docId?: string; sheetId?: string; name: string; role: GuestLinkAct['role']; days: number }
-      if (!!a.docId === !!a.sheetId) return fail('Give a docId or a sheetId, one of the two.')
-      const id = (a.docId ?? a.sheetId)!
+      const a = args as { docId?: string; sheetId?: string; projectId?: string; name: string; role: GuestLinkAct['role']; days: number }
+      const named = ([['docs', a.docId], ['sheets', a.sheetId], ['projects', a.projectId]] as const).filter(([, id]) => !!id)
+      if (named.length !== 1) return fail('Give a docId, a sheetId or a projectId, one of the three.')
+      const [table, id] = named[0] as [GuestSource['table'], string]
       if (!/^[A-Za-z0-9]{1,64}$/.test(id)) return fail('LifeOS has no such item.')
-      const source: GuestSource = { at: 'lifeos', table: a.docId ? 'docs' : 'sheets', id }
+      const source: GuestSource = { at: 'lifeos', table, id }
       try {
         const rt = guestRuntime(ctx)
         const row = await rt.itemRow(source)
@@ -147,7 +149,7 @@ export const guests: WorkModule = {
   tools: () => guestsTools,
   acts: [guestLinkKind as ActKindDef],
   preamble: () =>
-    "To let someone outside open one of the owner's LifeOS documents or sheets, ask with `guest_link` (one named person, view, comment or edit, a number of days): it waits for his press, and he sends the address himself; you never see it. Sending one of his documents means such a link unless he asks for a file.",
+    "To let someone outside open one of the owner's LifeOS documents or sheets, ask with `guest_link` (one named person, view, comment or edit, a number of days): it waits for his press, and he sends the address himself; you never see it. Sending one of his documents means such a link unless he asks for a file. A whole project can be shown the same way (`guest_link` with `projectId`, view only): the guest sees its tasks as they stand, and its documents and sheets read-only.",
   start(ctx) {
     const rt = guestRuntime(ctx)
     const tick = (): void => void rt.tick().catch((err: Error) => ctx.log(`guests: ${err.message}`))
@@ -156,6 +158,9 @@ export const guests: WorkModule = {
     void serviceOf(ctx)?.ready().then((up) => up && tick())
     const timer = setInterval(tick, TICK_MS)
     timer.unref?.()
-    return () => clearInterval(timer)
+    return () => {
+      clearInterval(timer)
+      rt.stop()
+    }
   }
 }

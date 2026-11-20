@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -42,6 +43,7 @@ function inProcess(spawned: Child[]): () => ServiceChild {
       queueMicrotask(() => onExit.forEach((f) => f(code)))
     }
     const asked = new Map<number, (jwt: string) => void>()
+    const held = new Map<string, Extract<ToService, { t: 'project' }>['project']>()
     let n = 0
     const child: Child = {
       post(m: ToService) {
@@ -51,11 +53,18 @@ function inProcess(spawned: Child[]): () => ServiceChild {
             jwt: () => new Promise((resolve) => (asked.set(++n, resolve), emit({ t: 'jwt?', id: n }))),
             log: () => {}
           }).then(
-            (s) => ((running = s), emit({ t: 'ready', port: s.port })),
+            (s) => {
+              running = s
+              for (const [linkId, project] of held) s.setProject(linkId, project)
+              held.clear()
+              emit({ t: 'ready', port: s.port })
+            },
             (err: Error) => (emit({ t: 'fault', message: err.message }), exit(1))
           )
         else if (m.t === 'jwt') asked.get(m.id)?.(m.jwt ?? '')
         else if (m.t === 'links') running?.setLinks(m.links)
+        // As the real process does (workServiceProcess.ts): one that comes while it starts is kept for when it runs.
+        else if (m.t === 'project') running ? running.setProject(m.linkId, m.project) : held.set(m.linkId, m.project)
         else if (m.t === 'stop') void running?.stop().then(() => (emit({ t: 'stopped' }), exit(0)))
       },
       onMessage: (f) => void onMessage.push(f),
@@ -236,6 +245,30 @@ describe('ctx.service', () => {
     await until('tried twice', () => tries >= 2)
     expect(() => broken.ctx.service.url('/w/doc/x')).toThrow(/not running/)
     expect(broken.ctx.enabled()).toBe(true)
+  })
+
+  it("a service started again is told every project link's projection again, each in its own message", async () => {
+    const spawned: Child[] = []
+    const work = host('env_a', spawned)
+    work.settings.set({ enabled: true })
+    const supervisor = serviceOf(work.ctx)!
+    await until('running', () => supervisor.state() === 'running')
+    const secret = 'k'.repeat(43)
+    const link = { linkId: 'L1', item: { project: 'kproj1' }, role: 'view', expiresAt: Date.now() + 60_000, revokedAt: null, guest: { secretHash: createHash('sha256').update(secret).digest('hex'), name: 'Dana Lee', title: 'Spring LAN', owner: 'Landon', token: '', tokenExp: 0 } }
+    const projection = { project: { id: 'kproj1', name: 'Spring LAN', status: 'active' as const, description: '', docId: null }, counts: { todo: 0, doing: 0, waiting: 0, done: 0 }, tasks: [], truncated: false, docs: [], sheets: [] }
+    supervisor.setProject('L1', { projection, tokens: {} })
+    supervisor.setLinks([link as never])
+    const open = async () => fetch(`http://127.0.0.1:${supervisor.port()}/g/L1/open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret }) })
+    expect(((await (await open()).json()) as { projection: unknown }).projection).toEqual(projection)
+    spawned[0]!.die(1)
+    await until('restarted', () => spawned.length === 2 && supervisor.state() === 'running')
+    // The fresh process got the links in its config and the projection in a message after it.
+    const again = await open()
+    expect(again.status).toBe(200)
+    expect(((await again.json()) as { projection: unknown }).projection).toEqual(projection)
+    // Taken away, the link shows nothing: the page is told to try again.
+    supervisor.setProject('L1', null)
+    expect((await open()).status).toBe(503)
   })
 
   it('a call made while the service is still starting waits for it rather than failing', async () => {

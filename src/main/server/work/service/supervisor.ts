@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner, type TrustedIssuer } from 'work-kit/collab-server'
-import type { FromService, LifeosServer, ServiceConfig, ServiceLink, ToService } from './wire'
+import type { FromService, LifeosServer, ServiceConfig, ServiceLink, ServiceProject, ToService } from './wire'
 
 /**
  * Main's side of the Work service (docs/agents/work-service.md): forks the
@@ -50,6 +50,7 @@ export class ServiceSupervisor {
   private signer: CollabSigner | null = null
   private issuers: TrustedIssuer[] = []
   private links: ServiceLink[] = []
+  private readonly projects = new Map<string, ServiceProject>()
   private secret = ''
   private backoff: number
   private retry: ReturnType<typeof setTimeout> | null = null
@@ -193,6 +194,8 @@ export class ServiceSupervisor {
     }
     try {
       child.post({ t: 'config', config })
+      // A fresh child knows no projection: each goes again, in its own message.
+      for (const [linkId, project] of this.projects) child.post({ t: 'project', linkId, project })
     } catch (err) {
       this.deps.log(`[work-service] could not be configured: ${(err as Error).message}`)
       child.kill()
@@ -213,6 +216,13 @@ export class ServiceSupervisor {
   setLinks(links: ServiceLink[]): void {
     this.links = links
     this.child?.post({ t: 'links', links })
+  }
+
+  /** What a project link shows (null: nothing any more): kept here so a restarted service is told again. */
+  setProject(linkId: string, project: ServiceProject | null): void {
+    if (project) this.projects.set(linkId, project)
+    else this.projects.delete(linkId)
+    this.child?.post({ t: 'project', linkId, project })
   }
 
   /** LifeOS's keys changed: the service trusts the new set. */

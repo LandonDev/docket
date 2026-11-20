@@ -1,17 +1,18 @@
 import type { GuestLinkAct } from "@shared/contract-work-guests";
 import type { ActViewProps } from "../acts/registry";
-import { Doc, Table } from "../icons";
+import { Doc, Project, Table } from "../icons";
 import { dayOf, ROLE_WORDS } from "./api";
 
 /**
  * A held `share.guestLink` in the Outbox (prototype guest.html, "An agent
- * asks"): the link an agent asked for, its three facts and the item, exactly
- * as Create link will make it. The address is shown to the thread that
+ * asks"): the link an agent asked for, its three facts and the item (a
+ * document, a sheet or a whole project, each by its glyph), exactly as
+ * Create link will make it. The address is shown to the thread that
  * asked, once, after his press.
  */
 export function View({ item }: ActViewProps) {
   const p = item.payload as GuestLinkAct;
-  const Glyph = p.source.table === "sheets" ? Table : Doc;
+  const Glyph = p.source.table === "projects" ? Project : p.source.table === "sheets" ? Table : Doc;
   const rows: [string, React.ReactNode][] = [
     [
       "To",

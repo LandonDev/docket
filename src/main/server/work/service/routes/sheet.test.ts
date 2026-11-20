@@ -44,6 +44,11 @@ beforeAll(async () => {
     config: () => ({ lifeos: { here: true, host: null }, trusted: [{ by: 'host', iss: 'tempcode:test', aud: TEMPCODE_COLLAB_AUDIENCE, keys: [keys.publicJwk] }] }),
     convex,
     links: () => links,
+    // As the service answers it for a document's or a sheet's own link: the link stands.
+    claimLive: (c: { link?: string }) => {
+      const link = c.link ? links.get(c.link) : undefined
+      return !c.link || (!!link && !link.revokedAt && !(link.expiresAt && link.expiresAt <= Date.now()))
+    },
     wss,
     log: () => {}
   } as unknown as RouteCtx

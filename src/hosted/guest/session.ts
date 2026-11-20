@@ -1,3 +1,5 @@
+import type { GuestProjection } from "@shared/work/guestProjection";
+
 /**
  * The hosted page's side of the Work service (docs/agents/work-guests.md "The
  * page"): what the address holds, the one request that opens it, the token it
@@ -9,6 +11,12 @@
  *  - the owner: `/w/open#t=<ticket>`, a ticket that opens once; the renewal
  *    key it is traded for stays in this tab's session storage, so a reload
  *    of the tab keeps working and nothing else learns it.
+ *
+ * A guest's link may be for a project (view only): the open answers what the
+ * project shows (asked again every 15 seconds), and each document or sheet
+ * it lists opens through a session of its own (`child`), answered only while
+ * the project still lists that item: a document as its text now (no socket),
+ * a sheet with a view token for its socket.
  */
 
 export type Mode = { kind: "guest"; id: string; secret: string } | { kind: "owner"; ticket: string | null } | { kind: "none" };
@@ -27,7 +35,7 @@ export function modeOf(pathname: string, hash: string): Mode {
 export type Role = "view" | "comment" | "edit";
 
 export interface Opened {
-  kind: "doc" | "sheet";
+  kind: "doc" | "sheet" | "project";
   role: Role;
   title: string;
   /** the guest's name; absent for the owner */
@@ -42,7 +50,14 @@ export interface Opened {
   doc?: string;
   sheet?: string;
   renew?: string;
+  /** a project's link: what it shows now; it has no token of its own */
+  projection?: GuestProjection;
+  /** a document of a project's link: its text as it stands, in place of a token and a socket */
+  markdown?: string;
 }
+
+/** A document or sheet of a project's link. */
+export type ChildItem = { table: "docs" | "sheets"; id: string };
 
 /** Why the page could not open: the link is gone (ended, revoked, never made), too many tries, or the host cannot be reached. */
 export type Failure = "gone" | "busy" | "down";
@@ -74,7 +89,14 @@ export class Session {
     private readonly origin: string,
     private readonly renewKey: Storage,
     private readonly fetchFn: typeof fetch = (...a) => fetch(...a),
+    /** set on a session for one document or sheet of a project's link */
+    private readonly item: ChildItem | null = null,
   ) {}
+
+  /** A session for one document or sheet a project's link lists: its own token, asked for with the link's secret. */
+  child(item: ChildItem): Session {
+    return new Session(this.mode, this.origin, this.renewKey, this.fetchFn, item);
+  }
 
   private async post(path: string, body: unknown): Promise<Opened> {
     let res: Response;
@@ -91,7 +113,7 @@ export class Session {
 
   private ask(): Promise<Opened> {
     const m = this.mode;
-    if (m.kind === "guest") return this.post(`/g/${m.id}/open`, { secret: m.secret });
+    if (m.kind === "guest") return this.item ? this.post(`/g/${m.id}/item`, { secret: m.secret, table: this.item.table, id: this.item.id }) : this.post(`/g/${m.id}/open`, { secret: m.secret });
     const renew = this.renewKey.get();
     if (renew) return this.post("/w/open/renew", { renew });
     if (!m.ticket) return Promise.reject(new OpenFailed("gone"));
@@ -131,7 +153,7 @@ export class Session {
   /** The item's live socket: the link's own for a guest, the item's route for the owner. */
   socketUrl(o: Opened): string {
     const ws = this.origin.replace(/^http/, "ws");
-    if (this.mode.kind === "guest") return `${ws}/g/ws/${this.mode.id}`;
+    if (this.mode.kind === "guest") return `${ws}/g/ws/${this.mode.id}${this.item ? `/${this.item.table}/${this.item.id}` : ""}`;
     return o.kind === "doc" ? `${ws}/w/doc/${encodeURIComponent(o.doc!)}` : `${ws}/w/sheet/${encodeURIComponent(o.sheet!)}`;
   }
 
