@@ -38,6 +38,8 @@ export const inboxChunk = defineChunk("inbox", () => import("./InboxView"));
 export const computersChunk = defineChunk("computers", () => import("./ComputersView"));
 /** The full window of one computer, over the whole app (FullWindow, lib/fullWindow.ts). */
 export const fullWindowChunk = defineChunk("fullWindow", () => import("./threads/computer/FullWindow"));
+/** The pop-out of one computer, a floating child window the main window draws (PopOut, lib/popOut.ts). */
+export const popOutChunk = defineChunk("popOut", () => import("./threads/computer/PopOut"));
 /** The all-notes view (NotesView, focusNote). */
 export const notesChunk = defineChunk("notes", () => import("./NotesView"));
 /** Every select on the Base UI select: the dialogs' and settings' ChoiceSelect, and the composer's
@@ -141,5 +143,6 @@ export const allChunks = {
   workOutboxChunk,
   computersChunk,
   fullWindowChunk,
+  popOutChunk,
   messageQueueChunk,
 };

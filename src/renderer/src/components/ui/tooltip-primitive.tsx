@@ -26,12 +26,16 @@ function TooltipContent({
   sideOffset = 6,
   align = "center",
   alignOffset = 0,
+  container,
   children,
   ...props
 }: TooltipPrimitive.Popup.Props &
-  Pick<TooltipPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">) {
+  Pick<TooltipPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset"> & {
+    /** where the label mounts: another window's body for a control in it (the pop-out) */
+    container?: HTMLElement | null;
+  }) {
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal container={container ?? undefined}>
       <TooltipPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}

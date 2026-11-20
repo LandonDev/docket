@@ -116,6 +116,7 @@ export const webApi: Api = {
   win: {
     slot: "web",
     minimize: done,
+    popOutShape: done,
     toggleMaximize: done,
     close: done,
     isMaximized: () => Promise.resolve(false),

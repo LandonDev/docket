@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { POP_OUT_FRAME, popOutCreated, windowOpenHandler } from './popOut'
+import { POP_OUT_FRAME, POP_OUT_MIN, popOutCreated, readPopOutBounds, windowOpenHandler } from './popOut'
 
 describe('the pop-out window', () => {
   it('lets the page open its pop-out as a floating child with none of the main window\'s preload or slot', () => {
@@ -29,5 +29,16 @@ describe('the pop-out window', () => {
       showInactive: () => void did.push('showInactive')
     })
     expect(did).toEqual(['top true floating', 'spaces true true', 'showInactive'])
+  })
+})
+
+describe("the pop-out's place", () => {
+  it('opens where he left it, at the size he left it, and never smaller than it may be', () => {
+    const saved = { x: 40, y: 60, width: 500, height: 348 }
+    const answer = windowOpenHandler({ url: 'about:blank', frameName: POP_OUT_FRAME }, () => {}, saved)
+    expect(answer.action === 'allow' ? answer.overrideBrowserWindowOptions : null).toMatchObject(saved)
+    expect(readPopOutBounds({ x: 1, y: 2, width: 10, height: 10 })).toEqual({ x: 1, y: 2, ...POP_OUT_MIN })
+    expect(readPopOutBounds({ x: 1, y: 2, width: 'wide' })).toBeNull()
+    expect(readPopOutBounds(null)).toBeNull()
   })
 })

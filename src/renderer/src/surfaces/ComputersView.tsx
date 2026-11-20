@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { Button } from "@renderer/components/ui/button";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { StatusMark } from "@renderer/components/ui/status";
-import { Desktop, Maximize2 } from "../chrome/icons";
+import { Desktop, Maximize2, PictureInPicture } from "../chrome/icons";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDocumentVisible } from "../hooks/paneVisibility";
@@ -10,6 +10,7 @@ import { cn } from "../lib/cn";
 import { tileKey, useComputers, type ComputerTile } from "../lib/computers";
 import { previewContext } from "../lib/computerSessions";
 import { openFullWindow } from "../lib/fullWindow";
+import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
 import { fitStage, stageLayout, stageOf, type Size } from "../lib/stageLayout";
 import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
@@ -125,9 +126,14 @@ export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTo
           onTookOver={onTookOver}
           views={
             picture && !tile.shownOn ? (
-              <ViewButton label="Full window" onClick={() => openFullWindow({ host: tile.entry.host, threadId: tile.entry.row.threadId, name: tileLabel(tile) })}>
-                <Maximize2 className="size-4" />
-              </ViewButton>
+              <>
+                <ViewButton label="Pop out" onClick={() => openPopOut({ host: tile.entry.host, threadId: tile.entry.row.threadId, name: tileLabel(tile) })}>
+                  <PictureInPicture className="size-4" />
+                </ViewButton>
+                <ViewButton label="Full window" onClick={() => openFullWindow({ host: tile.entry.host, threadId: tile.entry.row.threadId, name: tileLabel(tile) })}>
+                  <Maximize2 className="size-4" />
+                </ViewButton>
+              </>
             ) : null
           }
         />
@@ -164,6 +170,14 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
   const [kept, setKept] = useState<string | null>(null);
   const focusOnDrive = useRef(false);
   const keyed = tiles.map((tile) => ({ tile, key: tileKey(tile, tiles), asking: !!tile.entry.row.asking, lastCallAt: tile.entry.row.lastCallAt }));
+  // back from the pop-out: that computer has the stage, as his pick
+  const asked = useStageRequest();
+  useEffect(() => {
+    if (!asked) return;
+    const found = tiles.find((tile) => tile.entry.host === asked.host && (tile.entry.row.threadId === asked.threadId || tile.pane === asked.threadId));
+    takeStageRequest();
+    if (found) setPick(tileKey(found, tiles));
+  }, [asked, tiles]);
   const front = stageOf(keyed, pick, kept);
   if (front !== kept) setKept(front);
   if (tiles.length === 0) return <EmptyState title="Nothing is being driven" line="A browser or an app an agent is using shows here, live." />;

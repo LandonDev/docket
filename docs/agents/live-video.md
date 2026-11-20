@@ -420,6 +420,32 @@ first wanted; nothing of it is in the first paint.
   stream's id rings the picture as a preview's does. No source sends one
   for a video stream yet (the box's browser never did for its picture).
 
+### The pop-out
+
+The pop-out (surfaces/threads/computer/PopOut.tsx) is a child window the
+main window opens with `window.open('about:blank', 'tc-popout')`; main's
+open handler lets that one frame name through as a frameless, floating
+panel with none of the main window's preload or slot argument
+(src/main/popOut.ts), shown without taking focus, on every Space, closed
+with its main window, its place and size kept in the window state file,
+its shape held to the picture's by `popout:shape` (`setAspectRatio` with
+the 36px bar as extra). The page portals into it and hands its canvas to
+the main window's own video worker: one stream for every place, as
+everywhere. Input, the pixel ratio and the tips are bound to the child's
+own window (`attachInput` listens for `blur` on the picture's window;
+`pixelRatioOf`; `TooltipContainerProvider`).
+
+Proven on the Mac on an isolated dev instance (2026-11-20, A6,
+scripts/popout-proof.ts, a worker drawing on `requestAnimationFrame` as
+the video worker does): the pop-out drew 143 frames a second with the main
+window minimized and 144 with a Finder window over the main window; it did
+not take focus when it opened; the child has no preload and no slot. The
+main window's own frame clock stopping does not stop the pop-out's: the
+worker draws on the frame clock of the canvas it was handed. Not run: the
+main window on another Space (that display has one desktop), and a picture
+of the pop-out drawn above a covering window (the window list put Finder
+ahead of it; no screenshot was taken).
+
 ## A window on a Mac or a PC
 
 `src/main/server/computer/videoFeed.ts` (`ComputerVideo`, a `VideoSource`;

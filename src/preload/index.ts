@@ -145,6 +145,8 @@ const api = {
     /** This window's slot: names its bounds and its workspace snapshot. */
     slot: process.argv.find((a) => a.startsWith('--tc-window-slot='))?.slice(17) ?? 'main',
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    /** This window's pop-out keeps a picture of this width over height, with its bar under it. */
+    popOutShape: (ratio: number): Promise<void> => ipcRenderer.invoke('popout:shape', ratio),
     toggleMaximize: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized'),

@@ -1,4 +1,4 @@
-import { POP_OUT_FRAME, popOutCreated, windowOpenHandler } from './popOut'
+import { POP_OUT_BAR, POP_OUT_FRAME, popOutCreated, readPopOutBounds, windowOpenHandler, type PopOutBounds } from './popOut'
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -52,6 +52,8 @@ interface WindowState {
 interface StateFile {
   windows: Record<string, WindowState>
   focused?: string
+  /** where the pop-out was left, and its size (popOut.ts) */
+  popOut?: PopOutBounds
 }
 
 const DEFAULT_STATE: WindowState = { width: 1280, height: 800, maximized: false }
@@ -93,7 +95,8 @@ function loadStateFile(): StateFile {
     stateFile = {
       windows,
       // A `glass` key from before the one neutral palette is ignored.
-      focused: typeof raw.focused === 'string' ? raw.focused : undefined
+      focused: typeof raw.focused === 'string' ? raw.focused : undefined,
+      popOut: readPopOutBounds(raw.popOut) ?? undefined
     }
   } catch {
     stateFile = { windows: {} }
@@ -120,6 +123,7 @@ function saveStateNow(): void {
   }
   const focused = entryOf(targetWindow())
   if (focused) file.focused = focused.slot
+  for (const child of popOuts.values()) if (!child.isDestroyed()) file.popOut = child.getBounds()
   try {
     writeFileSync(statePath(), JSON.stringify(file))
   } catch {
@@ -135,6 +139,8 @@ interface Entry {
 }
 
 /** Live windows by webContents id. */
+/** Each main window's pop-out, by the main window's webContents id. */
+const popOuts = new Map<number, BrowserWindow>()
 const windows = new Map<number, Entry>()
 /** The window the user last had in front; pushes go here when nothing is focused. */
 let lastFocusedId: number | null = null
@@ -292,10 +298,22 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
   win.webContents.on('did-fail-load', () => releaseTransferFor(id))
   win.webContents.on('render-process-gone', () => releaseTransferFor(id))
 
-  // The page's pop-out opens as a floating child of this window (popOut.ts); anything else goes to the system's browser.
-  win.webContents.setWindowOpenHandler((details) => windowOpenHandler(details, (url) => void shell.openExternal(url)))
+  // The page's pop-out opens as a floating child of this window (popOut.ts), where he left it; anything else goes to the
+  // system's browser. It goes with this window, and its place is kept.
+  win.webContents.setWindowOpenHandler((details) => windowOpenHandler(details, (url) => void shell.openExternal(url), loadStateFile().popOut ?? null))
   win.webContents.on('did-create-window', (child, details) => {
-    if (details.frameName === POP_OUT_FRAME) popOutCreated(child)
+    if (details.frameName !== POP_OUT_FRAME) return
+    popOuts.set(id, child)
+    popOutCreated(child)
+    child.on('moved', saveStateSoon)
+    child.on('resized', saveStateSoon)
+    child.on('closed', () => {
+      if (popOuts.get(id) === child) popOuts.delete(id)
+    })
+  })
+  win.on('closed', () => {
+    const child = popOuts.get(id)
+    if (child && !child.isDestroyed()) child.close()
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -418,6 +436,12 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
   if (hooks.dropSnapshot) dropSnapshot = hooks.dropSnapshot
 
   ipcMain.handle('window:minimize', (e) => windowOf(e)?.minimize())
+  // the pop-out keeps its picture's shape as he drags it to a size: the bar under the picture is extra
+  ipcMain.handle('popout:shape', (e, ratio: unknown) => {
+    const child = popOuts.get(e.sender.id)
+    if (!child || child.isDestroyed() || typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio <= 0) return
+    child.setAspectRatio(ratio, { width: 0, height: POP_OUT_BAR })
+  })
   ipcMain.handle('window:toggle-maximize', (e) => {
     const win = windowOf(e)
     if (!win) return

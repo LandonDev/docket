@@ -488,6 +488,11 @@ export function windowPersisted(): void {
   api().win.persisted();
 }
 
+/** This window's pop-out keeps a picture of this width over height, with its bar under it (main's popOut.ts). */
+export function setPopOutShape(ratio: number): void {
+  void api().win.popOutShape(ratio).catch(() => {});
+}
+
 export type NativeWindow = {
   minimize(): Promise<void>;
   toggleMaximize(): Promise<void>;

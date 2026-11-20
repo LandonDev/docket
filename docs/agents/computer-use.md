@@ -237,7 +237,9 @@ why and the measured headline.
   `canTakeOver`, Stop, Hand back), and a strip tile's picture asks without
   `take`. Every tile is one element in one grid, so a swap remakes no
   canvas. A click on a live picture opens the full window
-  (`FullWindow`, `openFullWindow` in lib/fullWindow.ts).
+  (`FullWindow`, `openFullWindow` in lib/fullWindow.ts); the stage's Pop
+  out opens the floating pop-out (`PopOut`, lib/popOut.ts), and its Back
+  to the page puts that computer on the stage (`requestStage`).
 - **Video.** A live picture is video where its host answers `video.open`
   and the 4 fps preview where it does not; the places that show it did not
   change ([live-video.md](live-video.md) "The viewer").

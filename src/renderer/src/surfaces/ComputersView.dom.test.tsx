@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComputerTile } from "../lib/computers";
 import { closeFullWindow, fullWindowTarget } from "../lib/fullWindow";
+import { closePopOut, popOutTarget, requestStage } from "../lib/popOut";
 import { registry } from "../lib/connection/registry";
 import { ComputersPage, ComputersView, Tile, tileLine } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
@@ -123,6 +124,19 @@ describe("the Computers page", () => {
     // the strip tile of the other carries no buttons of its own but the press
     const strip = screen.getByRole("article", { name: "Newer" });
     expect(within(strip).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Show Newer"]);
+  });
+
+  it("pops the stage's computer out, and puts the computer he came back from on the stage", () => {
+    const row = tile().entry.row;
+    const a = tile({ id: "box\na", title: "First", computer: "browser:a", pane: "a", entry: { ...tile().entry, row: { ...row, threadId: "a", lastCallAt: 9 } } });
+    const b = tile({ id: "box\nb", title: "Second", computer: "browser:b", pane: "b", entry: { ...tile().entry, row: { ...row, threadId: "b", lastCallAt: 1 } } });
+    h.tiles = [a, b];
+    render(<ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pop out" }));
+    expect(popOutTarget()).toMatchObject({ host: "box", threadId: "a" });
+    act(() => closePopOut());
+    act(() => requestStage({ host: "box", threadId: "b" }));
+    expect(document.querySelector("[data-stage]")!.getAttribute("aria-label")).toBe("Second");
   });
 
   it("a stage's caption says its thread, what it is doing and where, as one comma sentence; its title goes to the thread", () => {

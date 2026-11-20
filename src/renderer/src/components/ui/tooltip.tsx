@@ -1,5 +1,5 @@
 import type { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
-import { cloneElement, isValidElement, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import { cloneElement, createContext, isValidElement, useContext, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { defineChunk } from "@renderer/lib/lazyChunk";
 import { TOOLTIP } from "@renderer/lib/ease";
 import type * as Primitive from "./tooltip-primitive";
@@ -157,9 +157,14 @@ function TooltipTrigger<Payload>(props: TooltipPrimitive.Trigger.Props<Payload>)
   );
 }
 
+/** Where a tooltip's label mounts when its trigger is in another window (the pop-out): that window's body. */
+const TooltipContainer = createContext<HTMLElement | null>(null);
+export const TooltipContainerProvider = TooltipContainer.Provider;
+
 function TooltipContent(props: Parameters<typeof Primitive.TooltipContent>[0]) {
   const P = usePrimitive();
-  return P ? <P.TooltipContent {...props} /> : null;
+  const container = useContext(TooltipContainer);
+  return P ? <P.TooltipContent container={container} {...props} /> : null;
 }
 
 function TooltipArrow(props: TooltipPrimitive.Arrow.Props) {

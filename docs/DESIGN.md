@@ -981,8 +981,9 @@ Every computer being driven now, on every connected host, in one place
   Computers, ⌘⇧L.
 - **The page** covers the thread area as the Inbox and the Outbox do, on
   their 40px header (the `Desktop` glyph, "Computers"). Closing it returns
-  him to the thread he left. To keep it in view while he works he opens it
-  in a second window; nothing floats.
+  him to the thread he left. To keep one computer in view while he works
+  he pops it out: the one thing in the app that floats, because he asked
+  for it.
 - **The stage.** One computer has the page (`ComputersPage`, the layout
   in `lib/stageLayout.ts`). Its picture fits the room left by a 16px inset
   and the caption, both ways, in its own shape, at the top of the room and
@@ -1041,6 +1042,20 @@ Every computer being driven now, on every connected host, in one place
   the browser canvas's) or the stage's Full window button opens it; the
   lightbox no longer shows a live picture. It is another canvas on the
   stream the place already plays, never a second stream.
+- **Pop out** (`PopOut`, lib/popOut.ts, main's popOut.ts): a small
+  frameless window over every app, every Space and every workspace, with
+  no place in the Dock: the picture filling it and one 36px bar under it,
+  which is its handle: the title (12px medium, truncating), Take over or
+  Hand back (xs) and Stop where the stage has them, then Back to the page
+  (the Computers glyph) and Close, quiet icon buttons with tips that open
+  in its own window. It opens without taking the keyboard, at 384 by 276
+  the first time and where he left it after, keeps the picture's shape as
+  he drags it to a size (no smaller than 240 by 186), wears the main
+  window's styles and theme and follows a change, and closes when its
+  computer leaves or the main window closes. Back to the page brings the
+  main window in front with that computer on the stage. The main window
+  draws it, on the stream it already plays: it is never a second stream.
+  The stage's caption opens it (Pop out, before Full window).
 - **Nothing says "live".** No mark, no frame counter, no quality menu. The
   video is never eased or blurred; ours is only the first frame's arrival
   and a tile's entry.
