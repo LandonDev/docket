@@ -34,6 +34,8 @@ export function restamped(message: Uint8Array, generation: number, sequence: num
 export class LoopFeed implements VideoFeed {
   acks = 0
   sent = 0
+  /** his input messages, which the relay passes only on a drive stream while he is the driver */
+  inputs = 0
   closed = false
   private timer: NodeJS.Timeout | null = null
 
@@ -66,7 +68,9 @@ export class LoopFeed implements VideoFeed {
     this.acks++
   }
 
-  input(): void {}
+  input(): void {
+    this.inputs++
+  }
   release(): void {}
 
   close(): void {

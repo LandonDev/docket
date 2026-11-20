@@ -4342,6 +4342,22 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
+    public enum VideoPaste: ContractMethod {
+        public static let name = "video.paste"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let stream: String
+            public let text: String
+
+            public init(stream: String, text: String) {
+                self.stream = stream
+                self.text = text
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
     public enum ComputerSessions: ContractMethod {
         public static let name = "computer.sessions"
 
@@ -4350,5 +4366,93 @@ public enum Methods {
         }
 
         public typealias Output = ComputerSessionsAnswer
+    }
+
+    public enum ComputerStop: ContractMethod {
+        public static let name = "computer.stop"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let stopped: Bool
+
+            public init(stopped: Bool) {
+                self.stopped = stopped
+            }
+        }
+    }
+
+    public enum ComputerDrive: ContractMethod {
+        public static let name = "computer.drive"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Driver: RawRepresentable, Codable, Hashable, Sendable {
+                case owner
+                case agent
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "owner": self = .owner
+                    case "agent": self = .agent
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .owner: "owner"
+                    case .agent: "agent"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let computer: String
+            public let driver: Driver
+
+            public init(computer: String, driver: Driver) {
+                self.computer = computer
+                self.driver = driver
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public enum Driver: RawRepresentable, Codable, Hashable, Sendable {
+                case owner
+                case agent
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "owner": self = .owner
+                    case "agent": self = .agent
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .owner: "owner"
+                    case .agent: "agent"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let driver: Driver
+
+            public init(driver: Driver) {
+                self.driver = driver
+            }
+        }
     }
 }

@@ -18,10 +18,28 @@ public struct ComputerTile: Identifiable, Equatable, Sendable {
     public let driving: Bool
     /// when it acted last, epoch ms: the tiles run newest first
     public let lastCallAt: Int
+    /// its name on its host, which outlives a session: `browser:<pane>`, `vm:windows`, `window:<thread>`
+    public let computer: String
+    /// a page of the box's browser, which a Work pane holds
+    public let browser: Bool
+    /// the thread whose pane holds that browser
+    public let pane: String
+    /// nothing drives it now: the box's page after its last act, still there to watch and take over
+    public let idle: Bool
+
+    /// He can take over this computer from its picture: the box's browser's page and the Windows VM. A Mac's or a PC's
+    /// own window takes no input (`canTakeOver` in src/renderer/src/lib/computers.ts).
+    public var drivable: Bool { browser || computer.hasPrefix("vm:") }
+
+    /// The name the host knows its wheel by (`driveName`, computer/drive.ts): a browser tile's pane's page.
+    public var driveName: String { computer.hasPrefix("window:") ? "browser:\(pane)" : computer }
 }
 
 public enum ComputerTiles {
     public static func tileId(_ host: String, _ threadId: String) -> String { "\(host)\n\(threadId)" }
+
+    /// The Work browser's bundle (`BOX_BROWSER_BUNDLE` in src/renderer/src/lib/computerSessions.ts).
+    public static let boxBrowserBundle = "org.chromium.Chromium"
 
     /// The host a bridge key names (`macComputerKey` in contract-maccomputer.ts: `env_…:thread`), or nil.
     static func bridgedFrom(_ threadId: String) -> String? {
@@ -39,7 +57,8 @@ public enum ComputerTiles {
     public static func tiles(
         byHost: [String: [ComputerSessionRow]],
         titleOf: (String, String) -> String?,
-        nameOf: (String) -> String
+        nameOf: (String) -> String,
+        paneOf: (String, String) -> String = { _, thread in thread }
     ) -> [ComputerTile] {
         var tiles: [ComputerTile] = []
         for (host, rows) in byHost {
@@ -54,10 +73,21 @@ public enum ComputerTiles {
                     doing: owner ? nil : row.running?.words,
                     place: row.macName ?? nameOf(host),
                     driving: owner,
-                    lastCallAt: row.lastCallAt
+                    lastCallAt: row.lastCallAt,
+                    computer: row.computer ?? "window:\(row.threadId)",
+                    browser: row.macPeer == nil && row.apps.contains { $0.bundleId == boxBrowserBundle },
+                    pane: paneOf(host, row.threadId),
+                    idle: row.idle == true
                 ))
             }
         }
         return tiles.sorted { $0.lastCallAt != $1.lastCallAt ? $0.lastCallAt > $1.lastCallAt : $0.id < $1.id }
+    }
+
+    /// The tile a full screen opened on `threadId` shows now: that thread's, else the browser page of its pane. Take
+    /// Over moves a page's row from the thread that drove it to the pane's own thread, and the full screen opened before
+    /// it is still looking at that page (`findComputer`).
+    public static func find(_ tiles: [ComputerTile], host: String, threadId: String, pane: String) -> ComputerTile? {
+        tiles.first { $0.id == tileId(host, threadId) } ?? tiles.first { $0.browser && $0.host == host && $0.pane == pane }
     }
 }

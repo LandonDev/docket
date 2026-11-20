@@ -95,7 +95,8 @@ public final class VideoPlayerCore {
     private let send: (Data) -> Void
     private let now: () -> Double
     private var maker = SampleMaker()
-    private var generation: UInt32 = 0
+    /// the generation the last frame said
+    public private(set) var generation: UInt32 = 0
     private var sequence: UInt32 = 0
     private let openedAt: Double
     /// frames shown since the stream opened

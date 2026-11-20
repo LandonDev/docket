@@ -27,7 +27,11 @@
  *   POST /video { thread, window? } → a live video source for that thread: `video.open` answers a stream that plays
  *                                 the box engine's recorded frames (fixtures/ios-test-server/box-stream.nsl1) at about
  *                                 120 a second, round and round, each pass a new generation; and `computer.sessions`
- *                                 lists the thread as driven in the box's browser. GET /video → { sent, acks, open }
+ *                                 lists the thread as driven in the box's browser as `browser:<thread>`, which
+ *                                 `computer.drive` takes over: then `video.open` with `drive` answers a drive stream,
+ *                                 and his input and pastes are counted. GET /video → { sent, acks, open, opened,
+ *                                 inputs, pastes, driver }
+ *   POST /video/driver { driver } → hands the page to `owner` or back to `agent`, as computer.drive does
  *   POST /quiet                 → stops the load and a stream that still plays (its turn ends: turn-complete, idle)
  *   POST /load { seconds, children? }  → the host's other traffic for that long (the perf fixtures, TC_TEST_PERF_SEEDS=1):
  *                                 metas at 10 a second on 12 sessions outside the perf project, events at 20 a second
@@ -141,6 +145,7 @@ import { DEFAULT_REVIEW_SETTINGS } from '../src/shared/review'
 import { startLoopbackHosts } from '../src/main/server/remote/relayLoopback'
 import { LoopFeed, recordedMessages } from './lib/videoLoopFeed'
 import type { ComputerSessionRow } from '../src/shared/contract-computer'
+import { configureComputerDrive, type ComputerDriver } from '../src/main/server/computer/drive'
 
 // `POST /hold`: while it lasts, every WebSocket upgrade on any listener of
 // this process is refused at the socket (the listener's own handler never
@@ -312,6 +317,8 @@ const videoThreads = new Set<string>()
 const videoRows: ComputerSessionRow[] = []
 const videoRowListeners = new Set<() => void>()
 const videoFeeds: LoopFeed[] = []
+const videoPastes: string[] = []
+let videoDriver: ComputerDriver = 'agent'
 const videoMessages = existsSync(resolve(process.cwd(), 'scripts/fixtures/ios-test-server/box-stream.nsl1'))
   ? recordedMessages(resolve(process.cwd(), 'scripts/fixtures/ios-test-server/box-stream.nsl1'))
   : []
@@ -320,9 +327,28 @@ server.video.rpc.addSource({
     if (!videoThreads.has(ask.thread) || !videoMessages.length) return null
     const feed = new LoopFeed(videoMessages)
     videoFeeds.push(feed)
-    return { ok: true, feed, width: 1280, height: 800, fps: 120, scope: 'watch' }
-  }
+    // the thread is its own pane here: its page is `browser:<thread>`
+    const drive = ask.drive && videoDriver === 'owner'
+    return { ok: true, feed, width: 1280, height: 800, fps: 120, scope: drive ? 'drive' : 'watch', group: ask.thread }
+  },
+  paste: async (_stream, text) => void videoPastes.push(text)
 })
+/** The page's wheel, as the box's browser hands it: the relay passes his input only while he is the driver, and the rows say who drives. */
+function setVideoDriver(driver: ComputerDriver): void {
+  videoDriver = driver
+  for (const thread of videoThreads) server.video.relay.setDriver(thread, driver === 'owner')
+  const now = Date.now()
+  for (const row of videoRows) {
+    if (driver === 'owner') {
+      row.driver = 'owner'
+      row.running = null
+    } else {
+      delete row.driver
+      row.running = { tool: 'computer_act', words: 'Filling in the booking form', startedAt: now }
+    }
+  }
+  for (const fn of videoRowListeners) fn()
+}
 server.computer.rpc.setBox({
   rows: () => videoRows,
   onRows: (fn) => (videoRowListeners.add(fn), () => void videoRowListeners.delete(fn)),
@@ -2058,7 +2084,15 @@ const control = createServer((req, res) => {
     }
     if (url.pathname === '/actions') return answer(200, { actions })
     if (url.pathname === '/video' && req.method !== 'POST') {
-      return answer(200, { sent: videoFeeds.reduce((n, f) => n + f.sent, 0), acks: videoFeeds.reduce((n, f) => n + f.acks, 0), open: videoFeeds.filter((f) => !f.closed).length, opened: videoFeeds.length })
+      return answer(200, {
+        sent: videoFeeds.reduce((n, f) => n + f.sent, 0),
+        acks: videoFeeds.reduce((n, f) => n + f.acks, 0),
+        open: videoFeeds.filter((f) => !f.closed).length,
+        opened: videoFeeds.length,
+        inputs: videoFeeds.reduce((n, f) => n + f.inputs, 0),
+        pastes: videoPastes.length,
+        driver: videoDriver
+      })
     }
     if (req.method !== 'POST') return answer(404, { error: 'not found' })
     const body = await readJson(req)
@@ -2153,14 +2187,28 @@ const control = createServer((req, res) => {
         const thread = String(body.thread ?? '')
         if (!thread) return answer(400, { error: 'thread is required' })
         videoThreads.add(thread)
+        // Take Over and Hand Back of its page (computer.drive), in the Work browser's place
+        configureComputerDrive('browser', {
+          holds: (pane) => (threadId) => threadId === pane,
+          async drive(pane, driver) {
+            if (!videoThreads.has(pane)) throw new Error(`refused: there is no computer browser:${pane} to drive here`)
+            setVideoDriver(driver)
+            return { driver }
+          }
+        })
         const now = Date.now()
         videoRows.push({
-          threadId: thread, since: now, lastCallAt: now, tier: 'ax',
+          threadId: thread, since: now, lastCallAt: now, tier: 'ax', computer: `browser:${thread}`,
           apps: [{ name: 'Chromium', bundleId: 'org.chromium.Chromium', window: String(body.window ?? 'Arena booking') }],
           running: { tool: 'computer_act', words: 'Filling in the booking form', startedAt: now }
         })
         for (const fn of videoRowListeners) fn()
         return answer(200, { thread })
+      }
+      case '/video/driver': {
+        const driver = body.driver === 'owner' ? 'owner' : 'agent'
+        setVideoDriver(driver)
+        return answer(200, { driver })
       }
       case '/push': {
         // Any push to every remote socket: for a push with no machinery behind it here.

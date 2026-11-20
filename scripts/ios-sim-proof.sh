@@ -9,7 +9,8 @@
 # TC_PROOF_SET picks the shots:
 #   video   Live video against the local server (bun scripts/ios-sim-proof-local.ts, TC_PROOF_SET=video): a Work
 #           thread's browser item playing the box engine's recorded stream, full screen, Home's Computers row and
-#           its list, light and dark; judged from the app's probe and the server's acks ($OUT/video-report.txt).
+#           its list, the list's full screen watching and driving, light and dark; judged from the app's probe and
+#           the server's acks and input counts ($OUT/video-report.txt).
 #   work    Milestone 46, against the local server's work seeds (scripts/lib/ios-work-seeds.ts,
 #           pairs with the admin key): Home with the Outbox row and the Work band, the Outbox,
 #           a held mail, its Edit sheet, the mail edited and sent from the phone (the undo
@@ -1661,9 +1662,11 @@ perf_set() {
 
 # Live video (docs/agents/live-video.md): the seeded Work thread's browser item plays the box engine's recorded
 # stream from the test server (POST /video, scripts/lib/videoLoopFeed.ts), then full screen, then Home's Computers
-# row and its list, in both appearances. The app's probe says how many frames it showed and every phase its stream
-# went through: the frames must grow between two reads and no phase may be over or refused; the test server says
-# the viewer's acks reached the feed. Report: $OUT/video-report.txt.
+# row and its list, then the list's full screen watching (Take Over and Stop) and driving (TC_TEST_OPEN=live-drive
+# takes over, taps the middle and types "Hi"; Hand Back, Paste and the keyboard), in both appearances. The app's
+# probe says how many frames it showed and every phase its stream went through: the frames must grow between two
+# reads and no phase may be over or refused; the test server says the viewer's acks reached the feed, and that his
+# taps and keys came down the drive stream. Report: $OUT/video-report.txt.
 video_report() {
   local name=$1 container
   container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
@@ -1686,6 +1689,12 @@ video_set() {
     video_report "v3-$mode"
     ( shot "v4-computers-$mode" computers "" "" "" 14 )
     video_report "v4-$mode"
+    ( shot "v5-computers-full-$mode" computers "" "" live-full 16 )
+    video_report "v5-$mode"
+    ( shot "v6-driving-$mode" computers "" "" live-drive 22 )
+    video_report "v6-$mode"
+    # the page back to the agent, so the next appearance starts where this one did
+    curl -s -X POST -d '{"driver":"agent"}' "${TC_TEST_CONTROL_URL:-http://127.0.0.1:1}/video/driver" >/dev/null || true
   done
   local feed
   feed=$(curl -s "${TC_TEST_CONTROL_URL:-http://127.0.0.1:1}/video" || echo '{}')
@@ -1718,13 +1727,25 @@ for mode in ('light', 'dark'):
     ok = tiles >= 1
     failed |= not ok
     lines.append('%s computers list %s: %d tile(s)' % ('PASS' if ok else 'FAIL', mode, tiles))
-    for name in ('v1-%s-b' % mode, 'v2-%s' % mode, 'v4-%s' % mode):
+    full = int((report('v5-%s' % mode).get('notes') or {}).get('videoFrames', '0') or 0)
+    ok = full > 0
+    failed |= not ok
+    lines.append('%s computers full screen %s: %d frames shown' % ('PASS' if ok else 'FAIL', mode, full))
+    notes = report('v6-%s' % mode).get('notes') or {}
+    ok = notes.get('videoDriving') == '1' and int(notes.get('videoFrames', '0') or 0) > 0
+    failed |= not ok
+    lines.append('%s driving %s: driving %s, %s frames shown' % ('PASS' if ok else 'FAIL', mode, notes.get('videoDriving'), notes.get('videoFrames')))
+    for name in ('v1-%s-b' % mode, 'v2-%s' % mode, 'v4-%s' % mode, 'v5-%s' % mode, 'v6-%s' % mode):
         bad = phases(name)
         failed |= bool(bad)
         lines.append('%s %s: the stream %s' % ('FAIL' if bad else 'PASS', name, 'went ' + ', '.join(bad) if bad else 'never closed'))
 ok = feed.get('acks', 0) > 0 and feed.get('sent', 0) > 0
 failed |= not ok
 lines.append('%s the test server: %s frames sent, %s acked, %s streams opened, %s open now' % ('PASS' if ok else 'FAIL', feed.get('sent'), feed.get('acks'), feed.get('opened'), feed.get('open')))
+# each driving shot sends a click (move, down, up) and "Hi" (Shift down, H down, H up, Shift up, i down, i up): 9 records
+ok = feed.get('inputs', 0) >= 18
+failed |= not ok
+lines.append('%s his input on the drive streams: %s records' % ('PASS' if ok else 'FAIL', feed.get('inputs')))
 open(os.path.join(out, 'video-report.txt'), 'w').write('\n'.join(lines) + '\n')
 print('\n'.join(lines))
 sys.exit(1 if failed else 0)

@@ -9,14 +9,17 @@ private final class ScriptedSocket: VideoStreamSocket, @unchecked Sendable {
     private let lock = NSLock()
     private var queue: [Data]
     private let code: Int?
+    /// once the messages are out it stays open, as a still page's stream does, until it is cancelled
+    private let hold: Bool
     private var sentAcks: [Data] = []
     private var cancelled = false
     let url: URL
 
-    init(url: URL, messages: [Data], code: Int?) {
+    init(url: URL, messages: [Data], code: Int?, hold: Bool = false) {
         self.url = url
         queue = messages
         self.code = code
+        self.hold = hold
     }
 
     var acks: [Data] { lock.withLock { sentAcks } }
@@ -25,6 +28,7 @@ private final class ScriptedSocket: VideoStreamSocket, @unchecked Sendable {
 
     func receive() async throws -> Data {
         await Task.yield()
+        while hold, lock.withLock({ !cancelled && queue.isEmpty }) { try await Task.sleep(for: .milliseconds(5)) }
         let next: Data? = lock.withLock { cancelled || queue.isEmpty ? nil : queue.removeFirst() }
         guard let next else { throw URLError(.networkConnectionLost) }
         return next
@@ -135,5 +139,77 @@ private final class Layer: VideoSampleSink {
         #expect(closed == ["s9"])
         #expect(video.phase == .idle)
         #expect(socket.value != nil)
+    }
+
+    @Test func `the full screen opens again only for a turn, the display, his wheel or the page's new thread`() {
+        let list = LiveVideo.Ask(threadId: "t1", maxEdge: 1_088)
+        var full = list
+        full.take = true
+        // a tap: the same stream, though the full screen asks to take the display
+        #expect(!LiveVideo.reopens(asked: list, want: full, phase: .playing))
+        // he turns the phone: the picture's new size
+        var turned = full
+        turned.maxEdge = 2_560
+        #expect(LiveVideo.reopens(asked: list, want: turned, phase: .playing))
+        // the display showed another page: the list's open did not take it, the full screen's does
+        #expect(LiveVideo.reopens(asked: list, want: full, phase: .refused(.busy)))
+        #expect(LiveVideo.reopens(asked: list, want: full, phase: .over(.picture, retry: false)))
+        #expect(!LiveVideo.reopens(asked: full, want: full, phase: .refused(.busy)))
+        #expect(!LiveVideo.reopens(asked: list, want: full, phase: .refused(.off)))
+        #expect(!LiveVideo.reopens(asked: list, want: full, phase: .over(.stopped, retry: true)))
+        // Take Over: a watch stream never takes input, so a drive stream is asked for, for the pane's thread
+        var drive = full
+        drive.drive = true
+        drive.threadId = "pane"
+        #expect(LiveVideo.reopens(asked: full, want: drive, phase: .playing))
+        #expect(!LiveVideo.reopens(asked: drive, want: drive, phase: .playing))
+        #expect(!LiveVideo.reopens(asked: nil, want: drive, phase: .idle))
+    }
+
+    @Test func `his input goes down the socket he drives, numbered with the frame's generation, and paste through video.paste`() async throws {
+        let messages = try BoxStream.messages()
+        let sockets = Held<[ScriptedSocket]>([])
+        var asks: [LiveVideo.Ask] = []
+        var pasted: [String] = []
+        let video = LiveVideo(
+            threadId: "t1",
+            open: { ask in asks.append(ask); return .opened(.init(stream: "s\(asks.count)", ticket: "t")) },
+            close: { _ in },
+            paste: { stream, text in pasted.append("\(stream):\(text)") },
+            rpcURL: { URL(string: "ws://h")! },
+            socket: { url in
+                let made = ScriptedSocket(url: url, messages: Array(messages.prefix(20)), code: nil, hold: true)
+                sockets.value.append(made)
+                return made
+            }
+        )
+        let layer = Layer()
+        video.start(sink: layer, maxEdge: 1_088)
+        await until { video.frames > 3 }
+        // a watch stream takes none of it
+        video.input(.move(0.5, 0.5))
+        try await video.paste("hello")
+        #expect(pasted.isEmpty)
+        let shown = video.frames
+        video.want(.init(threadId: "pane", maxEdge: 1_088, take: true, drive: true))
+        await until { sockets.value.count == 2 && video.phase == .playing }
+        #expect(asks.map(\.drive) == [false, true])
+        #expect(asks.last?.threadId == "pane" && asks.last?.take == true)
+        // the picture is kept: the count goes on, so no spinner covers it
+        #expect(video.frames >= shown)
+        video.input(.move(0.5, 0.5))
+        let socket = sockets.value[1]
+        await until { socket.acks.contains { $0[5] == 3 } }
+        let input = try #require(socket.acks.first { $0[5] == 3 })
+        // the generation the box's recording starts at, then the record's own bytes
+        #expect(input.count == 36 && input[8...11] == Data([0, 0, 0, 1]) && input[20] == 3)
+        try await video.paste("hello")
+        #expect(pasted == ["s2:hello"])
+        // Hand Back: no new open, and nothing more goes down
+        video.want(.init(threadId: "pane", maxEdge: 1_088, take: true))
+        #expect(asks.count == 2)
+        try await video.paste("again")
+        #expect(pasted == ["s2:hello"])
+        video.stop()
     }
 }

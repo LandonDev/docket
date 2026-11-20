@@ -715,12 +715,18 @@
   then plays the box engine's recorded stream for it at about 120 frames a
   second (scripts/lib/videoLoopFeed.ts, each pass a new generation) and lists
   it among the computers driven (`server.computer.rpc.setBox`); `GET /video`
-  says how many frames went and were acked. The set pairs with the acting key
-  (`video.open` needs approve), shoots the browser item playing, full screen
-  (`TC_TEST_OPEN=live-full`), Home and the Computers list
-  (`TC_TEST_ROUTE=computers`) light and dark, and judges from the probe's
-  `videoFrames`, `videoPhase` and `computerTiles` (into
-  $OUT/video-report.txt). Simulator proof:
+  says how many frames went and were acked, and how much of his input and
+  how many pastes reached it. The seeded page is `browser:<thread>`, and the
+  server answers `computer.drive` for it (`configureComputerDrive`): the rows
+  say he drives, and `video.open` with `drive` answers a drive stream.
+  `POST /video/driver` hands it back. The set pairs with the acting key
+  (`video.open` needs approve, `computer.drive` operate), shoots the browser
+  item playing, full screen (`TC_TEST_OPEN=live-full`), Home, the Computers
+  list (`TC_TEST_ROUTE=computers`), the list's full screen watching, and
+  driving (`TC_TEST_OPEN=live-drive`: Take Over, then a tap in the middle and
+  "Hi" typed), light and dark, and judges from the probe's `videoFrames`,
+  `videoPhase`, `videoDriving` and `computerTiles` and the server's `inputs`
+  (into $OUT/video-report.txt). Simulator proof:
   `bun scripts/ios-sim-proof-local.ts` (every set compiles the Release configuration first and stops on a break, then every segment of every type, a chip
   opened, the diff, the agent detail, light and dark, then the scroll run
   whose frame report lands in /tmp/tc-ios-proof/scroll-report.json;

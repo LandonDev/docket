@@ -531,8 +531,12 @@ export const SUBSET: SubsetEntry[] = [
   type('VideoOpenAnswer', W.VideoOpenWireSchema),
   method('video.open', W.VideoOpenWireSchema),
   method('video.close', z.null()),
+  // the phone's full screen drives (A9): his text into the page, Take Over and Hand Back, Stop
+  method('video.paste', z.null()),
   type('ComputerSessionsAnswer', W.ComputerSessionsAnswerSchema),
-  method('computer.sessions', W.ComputerSessionsAnswerSchema)
+  method('computer.sessions', W.ComputerSessionsAnswerSchema),
+  method('computer.stop', z.object({ stopped: z.boolean() })),
+  method('computer.drive', z.object({ driver: z.enum(['owner', 'agent']) }))
 ]
 
 /** Enum values that need an explicit Swift case name. */

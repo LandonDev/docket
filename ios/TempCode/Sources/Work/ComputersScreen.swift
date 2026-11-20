@@ -11,8 +11,19 @@ enum ComputerEntries {
         return ComputerTiles.tiles(
             byHost: byId.mapValues(\.computerRows),
             titleOf: { host, thread in byId[host]?.session(thread)?.title },
-            nameOf: { host in byId[host]?.environment.name ?? host }
+            nameOf: { host in byId[host]?.environment.name ?? host },
+            paneOf: { host, thread in byId[host].map { pane(of: thread, on: $0) } ?? thread }
         )
+    }
+
+    /// The thread whose Work pane holds `thread`'s browser: its root, by the parent chain the phone holds (`threadRoot`).
+    static func pane(of thread: String, on client: EnvironmentClient) -> String {
+        var at = thread
+        for _ in 0..<64 {
+            guard let parent = client.session(at)?.parentId else { break }
+            at = parent
+        }
+        return at
     }
 }
 
@@ -50,8 +61,9 @@ enum ComputersGlyph {
 }
 
 /// The Computers list (docs/IOS-DESIGN.md "Work on the phone"): a tile per live session, the one that acted last
-/// first: the picture, live where the host gives a stream and one muted line where it does not; the thread's title,
-/// which opens the thread; what it is doing and where it runs. No Take Over here: the browser item has it.
+/// first: the picture at the list's width, live where the host gives a stream and one muted line where it does not;
+/// the thread's title, which opens the thread; what it is doing and where it runs. A tap on the picture opens it full
+/// screen, where Take Over, Hand Back and Stop are.
 struct ComputersScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(ShellNavigator.self) private var navigator

@@ -555,14 +555,15 @@ is publishing at once (`closeAll`).
 ## Driving
 
 Only the box's browser takes his input. He presses Take over
-(`computer.drive {computer: 'browser:<pane>', driver: 'owner'}`), and from then on:
+(`computer.drive {computer: 'browser:<pane>', driver: 'owner'}`), on the
+desktop or on the phone's full screen ("The phone" below), and from then on:
 
 - **The stream.** A place that drives asks `video.open` with `drive`. The
   host gives a `drive` stream only while he is the driver; a watch stream
   is never turned into one, so the window's streams ask for a new one at
   each take over (streams.ts). The Computer section and a Computers tile
-  show the page he drives and take no input; the browser canvas and the
-  full view do.
+  show the page he drives and take no input; the browser canvas, the full
+  view and the phone's full screen do.
 - **The picture is his keyboard and pointer** (`useDrivingInput`,
   Viewport.tsx): its box takes focus on a click and wears the focus ring
   for as long as it holds the keyboard (`focus-ring-held`); a click outside
@@ -702,27 +703,54 @@ The iPhone plays a stream as the desktop's viewer does, natively
 
 - **The contract.** `video.open` (its answer flat on the wire to the phone,
   `VideoOpenWireSchema`: the desktop's union is tagged by a boolean, which the
-  Swift generator cannot take), `video.close`, `computer.sessions` and the
-  `computer` push are in the phone's subset. The push already reached a key's
-  socket; it only joined `RemotePushSchema`. On a relayed lane
-  `computer.sessions` goes to the lane's host (`RELAY_METHODS`), and
-  `video.open` and `video.close` are the box's to answer and never cross
-  (`RELAY_NOT_CARRIED`).
+  Swift generator cannot take), `video.close`, `video.paste`,
+  `computer.sessions`, `computer.stop`, `computer.drive` and the `computer`
+  push are in the phone's subset. The push already reached a key's socket; it
+  only joined `RemotePushSchema`. On a relayed lane `computer.sessions` and
+  `computer.stop` go to the lane's host (`RELAY_METHODS`), so Stop reaches a
+  Mac's row; `video.open`, `video.close` and `video.paste` are the box's to
+  answer, and `computer.drive` names only the box's own page or VM, so none of
+  them crosses (`RELAY_NOT_CARRIED`).
 - **The stream** (`ios/TempCodeClient/Sources/TempCodeClient/Video/`):
   `NSL1.swift` reads frames and writes acks byte for byte as nsl1.ts;
   `AccessUnit.swift` turns an Annex B access unit into a `CMSampleBuffer` (the
   format from the keyframe's SPS and PPS, made again when they change);
+  `VideoInput.swift` writes input records byte for byte as `encodeInput` and
+  maps his touches and keys to them (`PhoneDriving`);
   `VideoRules.swift` holds the player's rules (a generation starts with
   keyframe 1, no gap, a layer that fails or a first frame that never comes
   ends it; each frame acked once it is enqueued, with its wait), `afterClose`
   and `streamUrl`; `LiveVideo.swift` runs one stream: `video.open`, the socket
   beside the RPC socket (a relayed host's is the carrier's, as its RPC is,
   `Connection/VideoStreamSocket.swift`), acks in order through one sender,
-  and the retry rule.
+  and the retry rule. One `LiveVideo` serves a picture and its full screen:
+  `want` opens it again only when the open it has cannot give what the full
+  screen needs (`reopens`): a turn of the phone (the picture's new width),
+  the display taken (`take`, after a `busy` refusal or a `moved`/`busy`
+  close), a stream he drives (Take Over), or the pane's thread the page's
+  row moved to. Hand Back opens nothing: the host made it a watch stream.
+  His input goes down the stream's socket through the acks' one ordered
+  sender, numbered with the last frame's generation.
 - **The screens.** `LivePicture` (an `AVSampleBufferDisplayLayer`) in the
   browser item above who drives and in each Computers tile; it plays while on
   screen and the app is active, waits for a tap on mobile data, and opens full
-  screen. Home's Computers row and list follow `computerTiles`, ported as
+  screen on the same stream: its one layer moves into the full screen and back
+  (`LiveLayer`). The full screen asks with `take` and has Take Over (where the
+  computer takes input: the box's page, a `vm:` row), Hand Back and Stop
+  (docs/IOS-DESIGN.md "Work on the phone"). A `busy` refusal says "Another
+  page is on screen", and a tap on that picture opens the full screen, which
+  takes the display.
+- **Driving from the phone** (`PhoneDriving`, VideoInput.swift): a tap is a
+  left click, a drag moves with the left button down, two fingers scroll in
+  whole notches (24 pt a notch, fingers up scroll the page down), a long
+  press is a right click, and a pinch zooms the picture on the phone alone.
+  The keyboard button raises the system keyboard with nothing changed on the
+  way (no autocorrection, capitals, smart quotes or dashes): what a US
+  keyboard has goes as key records by its HID usage (`HID_KEYS`), Shift held
+  for a capital or a shifted sign; any other character goes, a run at a time,
+  to `video.paste`, the source's own typing. Paste sends his clipboard's text
+  to `video.paste`. Closing the full screen or Hand Back sends release-all
+  when a button is held. Home's Computers row and list follow `computerTiles`, ported as
   `ComputerTiles.swift` (a bridged session's twin dropped while the box it
   names is one of the phone's hosts).
 - **The proof** (`TC_PROOF_SET=video`, docs/agents/ios-client.md): the test
@@ -732,7 +760,10 @@ The iPhone plays a stream as the desktop's viewer does, natively
   Pro simulator (iOS 27.0), light and dark: the browser item showed 1,452
   frames, then 1,753 three seconds later; full screen and the Computers
   list played; no stream closed; the server sent 10,530 frames and took
-  10,523 acks. The rate is a simulator's.
+  10,523 acks. The rate is a simulator's. A9 added the list's full screen
+  watching and driving to the set (`TC_TEST_OPEN=live-drive` takes over, taps
+  the middle and types "Hi"); the test server's page answers `computer.drive`
+  and counts the input that reaches its feed (`GET /video` `inputs`).
 
 ## Settings
 
@@ -940,6 +971,13 @@ is first seen in the owner's own use:
   `tests/video.rs` (the handlers over a fake desktop and an in-memory pipe).
   The live proof is `bun scripts/e2e-computer-win.ts --legs video` in the
   rig.
+- The phone, `swift test` in ios/TempCodeClient: `VideoTests` (the wire, the
+  player's rules, the access units), `LiveVideoTests` (a stream over a
+  scripted socket; `reopens`; input on a drive stream with the frame's
+  generation, and `video.paste`), `VideoInputTests` (the input records byte
+  for byte as `encodeInput`; a tap, a drag, two-finger scroll, a long press,
+  the key records and the paste runs) and `ComputerTilesTests` (the tiles,
+  which take over, by what name, and `find`)
 - `src/shared/video/nsl1.parity.test.ts`, `src/shared/video/access.test.ts`
 - `src/main/server/remote/auth.test.ts` "stream tickets"
 - `src/main/server/video/relay.test.ts`: the relay and the RPC, with fakes

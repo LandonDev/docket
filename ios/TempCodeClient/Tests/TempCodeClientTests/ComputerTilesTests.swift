@@ -5,12 +5,12 @@ import TempCodeContract
 /// The cases of `computerTiles` in src/renderer/src/lib/computers.test.ts that hold on a phone, which draws every
 /// session through `video.open` and so has no "this desktop may not draw it".
 @Suite struct ComputerTilesTests {
-    private func row(_ threadId: String, lastCallAt: Int = 1, apps: [ComputerSessionRow.App]? = nil, running: String? = nil, macName: String? = nil, driver: String? = nil) -> ComputerSessionRow {
+    private func row(_ threadId: String, lastCallAt: Int = 1, apps: [ComputerSessionRow.App]? = nil, running: String? = nil, macName: String? = nil, driver: String? = nil, computer: String? = nil, idle: Bool? = nil) -> ComputerSessionRow {
         ComputerSessionRow(
             threadId: threadId, since: 1, lastCallAt: lastCallAt,
             apps: apps ?? [.init(name: "TextEdit", bundleId: "com.apple.TextEdit", window: "Untitled")],
             running: running.map { .init(tool: "computer_click", words: $0, startedAt: 5, held: nil) },
-            tier: nil, macPeer: macName == nil ? nil : "env_studio", macName: macName, driver: driver
+            tier: nil, macPeer: macName == nil ? nil : "env_studio", macName: macName, driver: driver, computer: computer, idle: idle
         )
     }
     private let chromium: [ComputerSessionRow.App] = [.init(name: "Chromium", bundleId: "org.chromium.Chromium", window: "Concur")]
@@ -56,5 +56,31 @@ import TempCodeContract
         #expect(ComputerTiles.tiles(byHost: ["mac": [row("gone")]], titleOf: titleOf, nameOf: nameOf)[0].title == "Untitled")
         #expect(ComputerTiles.tiles(byHost: ["mac": [row("gone", apps: [.init(name: "Notes", bundleId: nil, window: nil)])]], titleOf: titleOf, nameOf: nameOf)[0].title == "Notes")
         #expect(ComputerTiles.tiles(byHost: ["mac": [], "box": []], titleOf: titleOf, nameOf: nameOf).isEmpty)
+    }
+
+    @Test func `the box's page and the Windows VM take over by their names; a person's own window never does`() {
+        let tiles = ComputerTiles.tiles(
+            byHost: [
+                "box": [row("b1", apps: chromium, computer: "browser:pane1"), row("b2", lastCallAt: 2, apps: chromium), row("v1", lastCallAt: 3, computer: "vm:windows", idle: true)],
+                "mac": [row("t1", lastCallAt: 4), row("b9", lastCallAt: 5, apps: chromium, macName: "Studio")],
+            ],
+            titleOf: titleOf, nameOf: nameOf, paneOf: { _, thread in thread == "b2" ? "pane2" : thread }
+        )
+        let by = Dictionary(uniqueKeysWithValues: tiles.map { ($0.threadId, $0) })
+        #expect(by["b1"]?.drivable == true && by["b1"]?.driveName == "browser:pane1")
+        // a browser row the host named no computer for: its pane's page
+        #expect(by["b2"]?.computer == "window:b2" && by["b2"]?.driveName == "browser:pane2")
+        #expect(by["v1"]?.drivable == true && by["v1"]?.driveName == "vm:windows" && by["v1"]?.idle == true)
+        #expect(by["t1"]?.drivable == false)
+        // the browser on a Mac a box thread drives is his own window there
+        #expect(by["b9"]?.drivable == false)
+    }
+
+    @Test func `a full screen follows its page to the pane's thread after Take Over`() {
+        let before = ComputerTiles.tiles(byHost: ["box": [row("child", apps: chromium)]], titleOf: titleOf, nameOf: nameOf, paneOf: { _, _ in "root" })
+        #expect(ComputerTiles.find(before, host: "box", threadId: "child", pane: "root")?.threadId == "child")
+        let after = ComputerTiles.tiles(byHost: ["box": [row("root", apps: chromium, driver: "owner")]], titleOf: titleOf, nameOf: nameOf)
+        #expect(ComputerTiles.find(after, host: "box", threadId: "child", pane: "root")?.threadId == "root")
+        #expect(ComputerTiles.find(after, host: "mac", threadId: "child", pane: "root") == nil)
     }
 }

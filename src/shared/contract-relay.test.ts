@@ -124,6 +124,13 @@ describe('the Outbox through the relay (milestone 46)', () => {
   })
 })
 
+describe('the computers through the relay', () => {
+  it("Stop on a Mac's row reaches the Mac; the wheel and a paste stay on the box, whose rows alone take input", () => {
+    expect(RELAY_METHODS['computer.stop']).toBe('link')
+    expect(RELAY_NOT_CARRIED).toEqual(expect.arrayContaining(['computer.drive', 'video.paste']))
+  })
+})
+
 describe('read marks through the relay', () => {
   it('a Mac thread read on the phone is marked on the Mac', () => {
     expect(RELAY_METHODS['session.markRead']).toBe('link')

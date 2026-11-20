@@ -2471,8 +2471,25 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   counts frames. A stream that ends leaves its last frame; where there is
   no picture to show, one muted line under it says why in the desktop's
   words ("Shown on <machine> only", "The preview stopped" with Retry, the
-  Screen Recording line). A tap opens it full screen on black with Done
-  (glass) at the top corner; it turns with the phone as every screen does.
+  Screen Recording line), and "Another page is on screen" when the box's
+  display shows another page (`busy`). A tap opens it full screen on the same
+  stream: black, Done (glass) at the top corner, the picture at its aspect,
+  and one row of glass controls at the foot, centred, at the large size. It
+  turns with the phone as every screen does, and a turn opens the stream
+  again at the picture's new width.
+- **The full screen's controls.** Watching: Stop (an icon button,
+  `stop.fill`) where something runs, and Take Over where the computer takes
+  input (the box's page, the Windows VM; never a person's own window).
+  Driving: the keyboard (an icon button, its glyph the keyboard down while it
+  is up), Paste (`doc.on.clipboard`) and Hand Back, the one prominent button.
+  A key that may not operate sees none of them. A failure is one short line
+  above the row. The full screen keeps the dark scheme in both appearances.
+- **Driving** on the full screen: a tap clicks, a drag moves with the button
+  down, two fingers scroll, a long press is a right click, a pinch zooms the
+  picture on the phone alone (1× to 4×, about the fingers; one finger pans a
+  zoomed picture while he watches; it settles inside the screen with a
+  quarter-second ease, at once under Reduce Motion). Nothing marks the
+  touch: the page's own pointer answers.
 - **Computers** (`Work/ComputersScreen.swift`): while anything is driven on
   a connected host, Home carries a Computers row after the Outbox, shaped
   as it: the `macwindow` glyph in the 28 pt mark slot and "Computers", no
@@ -2480,9 +2497,9 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   sidebar in the split poses), one inset section per tile, the one that
   acted last first: the live picture, then the thread's title (title step,
   medium; it opens the thread) over one meta line, what it is doing (or
-  "You are driving") and where it runs. No Take Over on a tile: the
-  browser item has it. With nothing driven the list says "Nothing Is
-  Being Driven".
+  "You are driving") and where it runs. No buttons on a tile: Take Over,
+  Hand Back and Stop are on its full screen. With nothing driven the list
+  says "Nothing Is Being Driven".
 - **Ask** from an item is a form sheet: the selection as its chip, his
   words, Send; then Chat shows.
 - **The guest link sheet**: a form sheet at medium height, For, Can (View,
