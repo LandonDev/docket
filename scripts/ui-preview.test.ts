@@ -9,10 +9,14 @@ const script = join(root, 'scripts/ui-preview.ts')
 const dirs: string[] = []
 const pages: string[] = []
 
-afterEach(() => {
+const clear = (): void => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
   for (const page of pages.splice(0)) rmSync(page, { force: true })
-})
+}
+afterEach(clear)
+// A run cut short (a timeout, a gate that stops the worker) skips afterEach; the worker's exit still clears what it made.
+// A kill with no exit can still leave one: .gitignore holds scripts/.ui-preview-test-*/, so it never makes the tree dirty.
+process.once('exit', clear)
 
 function run(args: string[], cwd = root) {
   return spawnSync('bun', [script, ...args], { cwd, encoding: 'utf8', timeout: 60_000 })
@@ -35,6 +39,11 @@ function temporaryComponent(source: (name: string) => string) {
 }
 
 describe('ui-preview', () => {
+  it("leaves nothing a publish would call a dirty tree: git ignores the sample folders, even one a killed run left", () => {
+    const left = spawnSync('git', ['check-ignore', '-q', 'scripts/.ui-preview-test-AbC123/sample.tsx'], { cwd: root })
+    expect(left.status).toBe(0)
+  })
+
   it('renders a named renderer export with JSON props in both themes', () => {
     const result = run([
       'src/renderer/src/components/ui/button.tsx#Button',

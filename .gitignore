@@ -33,3 +33,6 @@ ios/TempCodeContract/.swiftpm/
 ios/TempCode/Local.xcconfig
 __pycache__/
 *.pyc
+
+# scripts/ui-preview.test.ts writes its sample components here (under the repo, so Bun resolves React); a run killed mid-test leaves one, which must never make the tree dirty for release-publish.sh
+scripts/.ui-preview-test-*/
