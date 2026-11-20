@@ -106,10 +106,16 @@ export class SshGuest implements VmGuest {
     return (
       await this.admin(`
 $new = Join-Path $env:USERPROFILE ${psQuote(incoming)}
+$dest = ${psQuote(SERVICE_PATH)}
 Get-Process tc-computer -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 800
-Move-Item -Force -LiteralPath $new -Destination ${psQuote(SERVICE_PATH)}
-& ${psQuote(SERVICE_PATH)} version
+# a copy, not a move: a moved file keeps the admin profile's ACL, which tcuser may not run
+Remove-Item -Force -LiteralPath $dest -ErrorAction SilentlyContinue
+Copy-Item -LiteralPath $new -Destination $dest
+Remove-Item -Force -LiteralPath $new
+icacls $dest /reset /Q | Out-Null
+if ($LASTEXITCODE) { throw "icacls exited $LASTEXITCODE" }
+& $dest version
 `)
     ).trim()
   }
@@ -156,23 +162,7 @@ if ($task.State -ne 4) { $task.Run($null) | Out-Null }
   }
 
   knock(socket: string, token: string): Promise<boolean> {
-    // a wrong token, or nothing listening behind the forward, closes the connection at once; the door keeps a good one
-    return new Promise((resolve) => {
-      const s = connect(socket)
-      let done = false
-      const finish = (ok: boolean) => {
-        if (done) return
-        done = true
-        s.destroy()
-        resolve(ok)
-      }
-      s.on('connect', () => {
-        s.write(`${token}\n`)
-        setTimeout(() => finish(true), 1500)
-      })
-      s.on('error', () => finish(false))
-      s.on('close', () => finish(false))
-    })
+    return knockDoor(socket, token)
   }
 
   /**
@@ -214,4 +204,38 @@ if (Test-Path -LiteralPath $out) { Get-Content -Raw -LiteralPath $out; Remove-It
       (timeoutSec + 60) * 1000
     )
   }
+}
+
+/** The id of the knock's one request: an unknown method, which the service answers with an error before `initialize` too. */
+export const KNOCK_ID = 'keeper-knock'
+
+/**
+ * The door's knock (docs/computer-protocol.md §29.1) and one request behind it: true only when the service
+ * answers. A wrong token, nothing listening behind the forward, or a service that cannot start all end the
+ * connection with no answer; the connection staying open proves nothing, since the forward accepts it first.
+ */
+export function knockDoor(socket: string, token: string, timeoutMs = 8000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = connect(socket)
+    let done = false
+    let buf = ''
+    const finish = (ok: boolean) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      s.destroy()
+      resolve(ok)
+    }
+    const timer = setTimeout(() => finish(false), timeoutMs)
+    s.on('connect', () => {
+      s.write(`${token}\n`)
+      s.write(JSON.stringify({ jsonrpc: '2.0', id: KNOCK_ID, method: 'keeper.knock', params: {} }) + '\n')
+    })
+    s.on('data', (d: Buffer) => {
+      buf += d.toString()
+      if (buf.includes(`"${KNOCK_ID}"`)) finish(true)
+    })
+    s.on('error', () => finish(false))
+    s.on('close', () => finish(false))
+  })
 }

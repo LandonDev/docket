@@ -29,18 +29,21 @@ export const DISALLOWED = [
   'cmd.exe', 'powershell.exe', 'pwsh.exe', 'powershell_ise.exe', 'wt.exe', 'WindowsTerminal.exe', 'wsl.exe', 'bash.exe',
   'mshta.exe', 'wscript.exe', 'cscript.exe', 'regedit.exe', 'reg.exe', 'rundll32.exe', 'regsvr32.exe', 'msiexec.exe',
   'schtasks.exe', 'mmc.exe', 'certutil.exe', 'bitsadmin.exe', 'msbuild.exe', 'installutil.exe', 'ftp.exe', 'hh.exe',
-  'msconfig.exe', 'forfiles.exe'
+  'msconfig.exe', 'forfiles.exe',
+  // what would lift the deny on tcuser's folders from a command
+  'icacls.exe', 'cacls.exe', 'takeown.exe'
 ] as const
 
-/** tcuser's own folders nothing may run from (Software Restriction Policies, path rules at Disallowed). */
+/**
+ * tcuser's own folders no program may run from: an NTFS deny of execute for tcuser, inherited by every file and
+ * folder under them, with tcuser's Full Control there cut to Modify and the folders owned by Administrators, so
+ * tcuser cannot lift it from the folder. Windows' own policies were tried first on this image (Windows 11
+ * Enterprise Evaluation 25H2, the rig runs of 2026-11-20): Software Restriction Policies are not enforced, and
+ * an AppLocker policy that Test-AppLockerPolicy reads as Denied left its EXE cache empty and the program ran.
+ * A file's interpreter (a script, an installer) reads it rather than runs it: those are refused by the
+ * interpreters' own entries in `DISALLOWED` and by DisableCMD.
+ */
 export const NO_RUN_FOLDERS = ['Downloads', 'Documents', 'Desktop', 'AppData\\Local\\Temp'] as const
-
-/** The file types those rules cover: SRP's own list with the script types added. */
-export const RESTRICTED_TYPES = [
-  'ADE', 'ADP', 'BAS', 'BAT', 'CHM', 'CMD', 'COM', 'CPL', 'CRT', 'EXE', 'HLP', 'HTA', 'INF', 'INS', 'ISP', 'JS', 'JSE',
-  'LNK', 'MDB', 'MDE', 'MSC', 'MSI', 'MSP', 'MST', 'OCX', 'PCD', 'PIF', 'PS1', 'REG', 'SCR', 'SHS', 'URL', 'VB', 'VBE',
-  'VBS', 'WSC', 'WSF', 'WSH'
-] as const
 
 /** Windows Terminal as the default terminal: every console is hosted by it, so a console always reports as WindowsTerminal.exe. */
 export const TERMINAL_DELEGATION = {
@@ -135,26 +138,21 @@ try {
 }
 "step: tcuser's policies"
 
-# 6. Software Restriction Policies: nothing of these types runs from tcuser's own folders (admins are not bound).
-$safer = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers'
-Set-Value $safer 'DefaultLevel' 0x40000 DWord
-Set-Value $safer 'PolicyScope' 1 DWord
-Set-Value $safer 'TransparentEnabled' 1 DWord
-Set-Value $safer 'AuthenticodeEnabled' 0 DWord
-Set-Value $safer 'ExecutableTypes' ${list(RESTRICTED_TYPES)} MultiString
-$paths = "$safer\\0\\Paths"
-Ensure-Key $paths
-foreach ($k in @(Get-ChildItem -LiteralPath $paths)) { if ((Get-ItemProperty -LiteralPath $k.PSPath).Description -like 'TempCode:*') { Remove-Item -LiteralPath $k.PSPath -Recurse -Force } }
+# 6. No program runs from tcuser's own folders: execute denied to tcuser on everything under them.
 foreach ($sub in ${list(NO_RUN_FOLDERS)}) {
-  $key = "$paths\\{$([guid]::NewGuid())}"
-  Set-Value $key 'Description' "TempCode: nothing runs from $sub" String
-  Set-Value $key 'ItemData' "C:\\Users\\$user\\$sub" ExpandString
-  Set-Value $key 'SaferFlags' 0 DWord
+  $d = "C:\\Users\\$user\\$sub"
+  New-Item -ItemType Directory -Force $d | Out-Null
+  icacls $d /inheritance:d /Q | Out-Null
+  icacls $d /remove:g $user /Q | Out-Null
+  icacls $d /grant:r "$($user):(OI)(CI)M" /Q | Out-Null
+  icacls $d /deny "$($user):(OI)(CI)(IO)(X)" /Q | Out-Null
+  icacls $d /setowner Administrators /Q | Out-Null
+  if ($LASTEXITCODE) { throw "icacls $d exited $LASTEXITCODE" }
 }
-"step: software restriction"
+"step: no programs from tcuser's folders"
 "setup done"
 `
 }
 
 /** The steps a setup script must carry, by a line each prints; the keeper's test reads them back. */
-export const SETUP_STEPS = ['service folder and token', 'logon task', 'hibernate, no lock on resume', 'Windows Update', "tcuser's policies", 'software restriction'] as const
+export const SETUP_STEPS = ['service folder and token', 'logon task', 'hibernate, no lock on resume', 'Windows Update', "tcuser's policies", "no programs from tcuser's folders"] as const

@@ -313,6 +313,10 @@ describe('setup', () => {
     expect(script).toContain("'DisallowRun' 1 DWord")
     for (const exe of DISALLOWED) expect(script).toContain(`'${exe}'`)
     for (const folder of NO_RUN_FOLDERS) expect(script).toContain(`'${folder}'`)
+    // execute denied to tcuser under its folders, its rights there cut to Modify, the folders owned by Administrators
+    expect(script).toContain('icacls $d /deny "$($user):(OI)(CI)(IO)(X)"')
+    expect(script).toContain('icacls $d /grant:r "$($user):(OI)(CI)M"')
+    expect(script).toContain('icacls $d /setowner Administrators')
     expect(script).toContain(TERMINAL_DELEGATION.DelegationConsole)
     expect(script).toContain(TERMINAL_DELEGATION.DelegationTerminal)
     expect(script).toContain('powercfg /hibernate on')

@@ -5,8 +5,8 @@
  *
  *   1. setup: the disk from the base image, the admin steps, the service copied in, a restart, the door
  *      knocked (so the service runs under tcuser's new policies);
- *   2. the policies hold for tcuser: cmd refused, a program in Downloads refused, Windows Terminal the
- *      default terminal;
+ *   2. the policies hold for tcuser: cmd refused, a program in Downloads refused (the NTFS deny), one in System32
+ *      run, Windows Terminal the default terminal;
  *   3. Notepad with a file's text; sleep (hibernate); wake; the same Notepad process with its text and the
  *      same boot time, and the door knocked again.
  *
@@ -62,23 +62,35 @@ async function main(): Promise<number> {
   await keeper.setup()
   log(`setup done in ${((Date.now() - t) / 1000).toFixed(0)} s; state ${keeper.state().state}`)
 
-  const cmd = await asTcuser("try { $o = & cmd.exe /c 'echo cmd-ran' 2>&1; \"cmd: $o\" } catch { \"cmd: refused $($_.Exception.Message)\" }")
-  log(`tcuser runs cmd: ${cmd.split('\n').find((l) => l.startsWith('cmd:'))}`)
-  await guest.admin("Copy-Item -Force C:\\Windows\\System32\\whoami.exe C:\\Users\\tcuser\\Downloads\\tc-srp-test.exe")
-  const srp = await asTcuser("try { $o = & 'C:\\Users\\tcuser\\Downloads\\tc-srp-test.exe' 2>&1; \"srp: ran $o\" } catch { \"srp: refused $($_.Exception.Message)\" }")
-  log(`tcuser runs a program from Downloads: ${srp.split('\n').find((l) => l.startsWith('srp:'))}`)
+  // a program as tcuser on its desktop, its stdin closed (cmd refused asks for a key), its output or why it would not start
+  const tryRun = (exe: string, args: string) =>
+    asTcuser(`$psi = New-Object Diagnostics.ProcessStartInfo
+$psi.FileName = ${psQuote(exe)}
+$psi.Arguments = ${psQuote(args)}
+$psi.UseShellExecute = $false
+$psi.RedirectStandardInput = $true
+$psi.RedirectStandardOutput = $true
+try { $p = [Diagnostics.Process]::Start($psi); $p.StandardInput.Close(); $out = $p.StandardOutput.ReadToEndAsync(); if (-not $p.WaitForExit(15000)) { $p.Kill() }; "probe: ran, said: $($out.Result.Trim())" }
+catch { "probe: refused: $($_.Exception.InnerException.Message)$($_.Exception.Message)" }`)
+  const probe = (out: string) => out.split('\n').find((l) => l.startsWith('probe:'))?.replace(/\s+/g, ' ').trim() ?? out.trim()
+  log(`tcuser runs cmd /c echo: ${probe(await tryRun('C:\\Windows\\System32\\cmd.exe', '/c echo cmd-ran'))}`)
+  await guest.admin("Copy-Item -Force C:\\Windows\\System32\\whoami.exe C:\\Users\\tcuser\\Downloads\\tc-run-test.exe")
+  log(`tcuser runs a program from Downloads: ${probe(await tryRun('C:\\Users\\tcuser\\Downloads\\tc-run-test.exe', ''))}`)
+  log(`tcuser runs whoami from System32: ${probe(await tryRun('C:\\Windows\\System32\\whoami.exe', ''))}`)
   const policies = await guest.admin(`
 $sid = (New-Object Security.Principal.NTAccount('tcuser')).Translate([Security.Principal.SecurityIdentifier]).Value
 $e = Get-ItemProperty "Registry::HKEY_USERS\\$sid\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
 $c = Get-ItemProperty -LiteralPath "Registry::HKEY_USERS\\$sid\\Console\\%%Startup"
 $s = Get-ItemProperty "Registry::HKEY_USERS\\$sid\\Software\\Policies\\Microsoft\\Windows\\System"
-"policies: DisableCMD=$($s.DisableCMD) NoRun=$($e.NoRun) DisallowRun=$($e.DisallowRun) entries=$((Get-Item "Registry::HKEY_USERS\\$sid\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\DisallowRun").ValueCount) terminal=$($c.DelegationTerminal)"
-"service: $((Get-Process tc-computer -IncludeUserName -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Path) as $($_.UserName) in session $($_.SessionId)" }) -join '; ')"
-"lock on resume: $((powercfg /query SCHEME_CURRENT SUB_NONE CONSOLELOCK | Select-String 'Current AC Power Setting Index').ToString().Trim())"
-"hibernate: $((powercfg /a | Select-String -SimpleMatch 'Hibernate' | Select-Object -First 1).ToString().Trim())"
-Remove-Item -Force ${psQuote('C:\\Users\\tcuser\\Downloads\\tc-srp-test.exe')}
+$n = (Get-Item "Registry::HKEY_USERS\\$sid\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\DisallowRun").ValueCount
+"policies: DisableCMD=$($s.DisableCMD) NoRun=$($e.NoRun) DisallowRun=$($e.DisallowRun) ($n programs) terminal=$($c.DelegationTerminal)"
+"downloads: $((icacls 'C:\\Users\\tcuser\\Downloads' | Select-Object -First 2) -join ' ')"
+"service: $((Get-CimInstance Win32_Process -Filter "Name='tc-computer.exe'" | ForEach-Object { "$($_.ExecutablePath) in session $($_.SessionId): $($_.CommandLine)" }) -join '; ')"
+"lock on resume: $(powercfg /query SCHEME_CURRENT SUB_NONE CONSOLELOCK | Select-String 'Current AC Power Setting Index')"
+"hibernate: $(powercfg /a | Select-Object -First 3 | Out-String)"
+Remove-Item -Force 'C:\\Users\\tcuser\\Downloads\\tc-run-test.exe'
 `)
-  for (const l of policies.split('\n').filter((l) => /^(policies|service|lock on resume|hibernate):/.test(l))) log(l.trim())
+  for (const l of policies.split('\n').filter((l) => /^(policies|downloads|service|lock on resume|hibernate):/.test(l))) log(l.replace(/\s+/g, ' ').trim())
 
   await startNotepad(guest)
   const before = await readDesktop(guest)

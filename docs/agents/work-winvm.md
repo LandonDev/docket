@@ -67,14 +67,22 @@ One press later (B10, Settings → Work); `work.winvm.setup` now. It needs the b
      consoles, the script hosts, regedit, rundll32, msiexec, schtasks, mmc, certutil, msbuild and the
      rest), and Windows Terminal as the default terminal (`Console\%%Startup`), so a console is always
      hosted by `WindowsTerminal.exe`;
-   - Software Restriction Policies: nothing of the types in `RESTRICTED_TYPES` (`.exe .com .bat .cmd .ps1
-     .vbs .js .hta .msi .lnk` and SRP's own) runs from tcuser's Downloads, Documents, Desktop or
-     `AppData\Local\Temp`. Admins are not bound.
+   - no program runs from tcuser's Downloads, Documents, Desktop or `AppData\Local\Temp`: an NTFS deny of
+     execute for tcuser, inherited by everything under them, with tcuser's rights there cut from Full Control
+     to Modify and the folders owned by Administrators, so tcuser cannot lift it from the folder. A script
+     or an installer there is read by its interpreter, not run: cmd is off (DisableCMD) and the others are in
+     `DISALLOWED`. Windows' own policies were tried first on this image (Enterprise Evaluation 25H2): Software
+     Restriction Policies are not enforced, and an AppLocker policy that `Test-AppLockerPolicy` reads as
+     Denied leaves its EXE cache empty and the program runs.
 4. The box's service copied in (below), then a restart, since tcuser's policies are read at logon.
 5. The door knocked: the service runs under the new policies. The state is then `awake`.
 
-**These policies are the first line; the host's hold rules (B6) are the second.** A thread acts in the guest
-as tcuser and gets no command line there from Explorer, Run, Start, a double-click or a file it saved. The
+**These policies are the first line; the host's hold rules (B6) are the second.** A thread acts in the
+guest as tcuser: no cmd, no Run box, none of the consoles, script hosts or admin tools from Explorer, Start
+or a double-click, and no program it saved in those four folders. What the first line does not stop: tcuser
+owns each file it makes, and an owner may turn off a file's inherited entries from its Security tab and then
+run it (an inheritable OWNER RIGHTS limit is not inherited onto files here); a program saved anywhere else in
+tcuser's profile runs; and Explorer's address bar still starts a program `DISALLOWED` does not name. The
 owner in a Take over has the same limits as tcuser; he can lift them as the admin. After setup tcuser's own
 SSH runs nothing (sshd's shell is cmd.exe), so every command of the keeper and of `ssh.sh --instance
 standing` goes as the admin (`-a`), and a program on tcuser's desktop is started by the admin through a task
@@ -91,11 +99,13 @@ At a thread's first call (B5) or his Wake press. The call waits with "Waking the
 2. The keeper waits for SSH and tcuser's desktop.
 3. The service: the sha256 of the guest's `tc-computer.exe` against the box's own build (`tcComputerExe`,
    serviceBin.ts). When they differ, the box's copy goes in over SCP as the admin, the running door is
-   stopped and the file replaced; the new one's `version` goes to the log. So the guest's service updates
+   stopped and the file replaced by a copy (a moved file would keep the admin profile's rights, which
+   tcuser may not run); the new one's `version` goes to the log. So the guest's service updates
    with the box. Then the logon task is run unless the door already runs.
 4. One SSH connection as tcuser holds the forward: a unix socket beside the machine's run files
-   (`run/door.sock`, mode 0600) to the guest's 127.0.0.1:47800. The keeper knocks with the token; the door
-   keeps a connection that brings it and closes one that does not.
+   (`run/door.sock`, mode 0600) to the guest's 127.0.0.1:47800. The keeper knocks with the token and sends
+   one request (an unknown method, which the service answers with an error before `initialize` too): only
+   the answer counts, since the forward accepts a connection whether or not anything listens behind it.
 
 A box build with no `tc-computer.exe` wakes the machine and says so in `error`.
 
