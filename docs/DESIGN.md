@@ -980,7 +980,11 @@ Every computer being driven now, on every connected host, in one place
   while a session's card needs him; it never carries a count. Go →
   Computers, ⌘⇧L.
 - **The page** covers the thread area as the Inbox and the Outbox do, on
-  their 40px header (the `Desktop` glyph, "Computers"). Closing it returns
+  their 40px header (the `Desktop` glyph, "Computers"). While the Windows
+  VM sleeps the header's end has one quiet button, "Wake the Windows VM"
+  (ghost, small, 8px from the edge), there and nowhere else; it spins
+  ("Waking…") from the press until the VM is awake, when the button goes and
+  the VM is a tile. Closing it returns
   him to the thread he left. To keep one computer in view while he works
   he pops it out: the one thing in the app that floats, because he asked
   for it.
@@ -1014,7 +1018,8 @@ Every computer being driven now, on every connected host, in one place
   question, in foreground, and where it runs follows with no comma. At the
   row's end, always shown and never behind a hover: Take over (secondary,
   only where the computer takes input from its picture: the box's browser's
-  page and the Windows VM; a Mac's or a PC's own window has none) and Stop
+  page and the Windows VM while it has its window; a Mac's or a PC's own
+  window has none, and neither has the VM with no window, `pictureOnly`) and Stop
   (a quiet icon button with a tip; none on an idle page). While he drives,
   Hand back alone, the page's one primary button, with the chord that
   leaves the picture as a key cap inside it. Take over gives the picture
@@ -1025,6 +1030,10 @@ Every computer being driven now, on every connected host, in one place
   may not draw is one muted line in the box's place, naming the machine:
   "Shown on Studio only". The browser /ui lists the tiles with no picture
   at all.
+- **The Windows VM** is one tile while it is awake, titled by the thread
+  that holds it, or "Windows VM" when no thread does (then idle: no Stop,
+  no working mark). Its picture is the VM's own under its name, whichever
+  thread holds it, so the tile stays one element as the holder changes.
 - **Nothing driven** is the one `EmptyState`: "Nothing is being driven",
   "A browser or an app an agent is using shows here, live." No action.
 - **Full window** (`FullWindow`, lib/fullWindow.ts, its own chunk): the

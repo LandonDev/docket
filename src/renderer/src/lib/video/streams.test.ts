@@ -97,6 +97,13 @@ describe("where a stream's socket is, and what a closed one does next", () => {
 });
 
 describe("the window's streams", () => {
+  it("asks for a computer that outlives every thread by its name", async () => {
+    const r = rig();
+    r.streams.acquire("box", "vm:windows", { edge: 1280, take: true });
+    await settle();
+    expect(r.opens()).toEqual([{ threadId: "vm:windows", computer: "vm:windows", maxEdge: 1280, take: true }]);
+  });
+
   it("opens one stream for a host and thread, however many places show it, and tells the worker where its socket is", async () => {
     const r = rig();
     const a = r.streams.acquire("box", "thread-1", { edge: 1280, take: true });

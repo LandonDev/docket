@@ -5,7 +5,7 @@ import type { ComputerTile } from "../lib/computers";
 import { closeFullWindow, fullWindowTarget } from "../lib/fullWindow";
 import { closePopOut, popOutTarget, requestStage } from "../lib/popOut";
 import { registry } from "../lib/connection/registry";
-import { ComputersPage, ComputersView, Tile, tileLine } from "./ComputersView";
+import { ComputersPage, ComputersView, Tile, tileLine, WakeVm } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
 import { tile } from "./threads/computer/FullWindow.fixtures";
 
@@ -172,6 +172,10 @@ describe("the Computers page", () => {
     render(<Tile tile={tile({ browser: false, computer: "vm:windows" })} onOpenSession={() => undefined} />);
     expect(screen.getByRole("button", { name: "Take over" })).not.toBeNull();
     cleanup();
+    // ...unless it has no window of its own (its tools are missing): its 4 fps picture alone
+    render(<Tile tile={tile({ browser: false, computer: "vm:windows", pictureOnly: true })} onOpenSession={() => undefined} />);
+    expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+    cleanup();
     // an idle page has nothing to stop
     render(<Tile tile={tile({ idle: true, doing: null })} onOpenSession={() => undefined} />);
     expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();
@@ -234,5 +238,52 @@ describe("the Computers page", () => {
     expect(screen.getByRole("article")).not.toBeNull();
     expect(screen.queryByRole("button", { name: /^Live view/ })).toBeNull();
     expect(h.streams).toEqual([]);
+  });
+});
+
+describe("the Windows VM's Wake", () => {
+  const view = (): React.ReactElement => <ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />;
+
+  it("sits in the header while the VM sleeps on a Work host, and wakes it there", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const { workSwitch } = await import("../lib/workSwitch");
+    vi.spyOn(workSwitch, "hosts").mockReturnValue(new Set(["box"]));
+    vi.spyOn(registry, "link").mockImplementation(
+      () =>
+        ({
+          request: async (method: string, params: unknown) => {
+            calls.push({ method, params });
+            return method === "work.winvm.state" ? { state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1 } : null;
+          },
+          onPush: () => () => undefined,
+          onOpen: () => () => undefined,
+        }) as never,
+    );
+    render(view());
+    const wake = await screen.findByRole("button", { name: "Wake the Windows VM" });
+    // in the header, beside nothing else of its own
+    expect(wake.closest('[data-tauri-drag-region]')).not.toBeNull();
+    expect(wake.getAttribute("data-variant")).toBe("ghost");
+    fireEvent.click(wake);
+    await act(async () => {});
+    expect(calls.map((c) => c.method)).toEqual(["work.winvm.state", "work.winvm.wake"]);
+  });
+
+  it("is not offered where no host has a sleeping VM", async () => {
+    const { workSwitch } = await import("../lib/workSwitch");
+    vi.spyOn(workSwitch, "hosts").mockReturnValue(new Set(["mac"]));
+    vi.spyOn(registry, "link").mockImplementation(
+      () => ({ request: async () => ({ state: "none", step: null, error: null, cannot: "The Windows VM runs on the box.", sleepAfter: "30m", since: 1 }), onPush: () => () => undefined, onOpen: () => () => undefined }) as never,
+    );
+    render(view());
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Wake the Windows VM" })).toBeNull();
+  });
+
+  it("spins from the press while the VM wakes", () => {
+    render(<WakeVm vm={{ host: "box", waking: true }} onWake={async () => undefined} />);
+    const wake = screen.getByRole("button", { name: "Waking…" });
+    expect(wake.hasAttribute("disabled")).toBe(true);
+    expect(wake.querySelector('[data-busy]')).not.toBeNull();
   });
 });

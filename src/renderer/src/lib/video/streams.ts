@@ -251,7 +251,8 @@ export class VideoStreams {
     if (entry.view.status === "over") this.set(entry, { status: "opening" });
     const want = this.want(entry);
     link
-      .request<VideoOpenAnswer>("video.open", { threadId: entry.key, maxEdge: want.edge, ...(want.take ? { take: true } : {}), ...(want.drive ? { drive: true } : {}) })
+      // a computer that outlives every thread (the Windows VM) is asked for by its name
+      .request<VideoOpenAnswer>("video.open", { threadId: entry.key, ...(entry.key.startsWith("vm:") ? { computer: entry.key } : {}), maxEdge: want.edge, ...(want.take ? { take: true } : {}), ...(want.drive ? { drive: true } : {}) })
       .then((answer) => {
         if (entry.round !== round || !this.byId.has(entry.id)) {
           if (answer.ok) void link.request("video.close", { stream: answer.stream }).catch(() => undefined);

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
+import { loadToast } from "@renderer/components/ui/toaster";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Desktop, Maximize2, PictureInPicture } from "../chrome/icons";
@@ -15,6 +16,7 @@ import { fitStage, stageLayout, stageOf, type Size } from "../lib/stageLayout";
 import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
+import { useSleepingVm, wakeVm, type SleepingVm } from "../lib/winvmWake";
 import { EmptyState } from "./SurfaceSkeleton";
 import { ComputerCaption, ViewButton, tileLine } from "./threads/computer/ComputerCaption";
 import { ENDED_WORDS, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
@@ -222,6 +224,62 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
   );
 }
 
+/**
+ * The header's one action, while the Windows VM sleeps: Wake. It spins from the press until the VM is awake, when its
+ * tile is on the page and the button is gone.
+ */
+export function WakeVm({ vm, onWake }: { vm: SleepingVm; onWake: () => Promise<void> }) {
+  const [pressed, setPressed] = useState(false);
+  const busy = pressed || vm.waking;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={busy}
+      onClick={() => {
+        setPressed(true);
+        void onWake()
+          .catch((err: unknown) => loadToast().then((toast) => toast.error("Couldn't wake the Windows VM", { description: err instanceof Error ? err.message : String(err) })))
+          .finally(() => setPressed(false));
+      }}
+    >
+      <BusyLabel busy={busy} label="Wake the Windows VM" busyLabel="Waking…" />
+    </Button>
+  );
+}
+
+/** The page's 40px header: the glyph and its name, and Wake while the Windows VM sleeps. */
+export function ComputersHeader({
+  besideRail = false,
+  onClose,
+  onToggleSidebar,
+  vm,
+  onWake,
+}: {
+  besideRail?: boolean;
+  onClose: () => void;
+  onToggleSidebar: () => void;
+  vm: SleepingVm | null;
+  onWake: (vm: SleepingVm) => Promise<void>;
+}) {
+  return (
+    <div className="flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
+      {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
+      {besideRail ? null : <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />}
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
+        <Desktop className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 truncate font-medium">Computers</span>
+      </div>
+      {vm ? (
+        <div className="shrink-0 pe-2">
+          <WakeVm vm={vm} onWake={() => onWake(vm)} />
+        </div>
+      ) : null}
+      {IS_MAC ? null : <WindowControls />}
+    </div>
+  );
+}
+
 interface Props {
   besideRail?: boolean;
   onClose: () => void;
@@ -231,20 +289,13 @@ interface Props {
 
 export function ComputersView({ besideRail = false, onClose, onToggleSidebar, onOpenSession }: Props) {
   const tiles = useComputers();
+  const vm = useSleepingVm();
   const close = useRef(onClose);
   close.current = onClose;
   usePageEscape(() => close.current(), { fields: "blur" });
   return (
     <div role="region" aria-label="Computers" data-computers className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
-      <div className="flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
-        {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
-        {besideRail ? null : <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />}
-        <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
-          <Desktop className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 truncate font-medium">Computers</span>
-        </div>
-        {IS_MAC ? null : <WindowControls />}
-      </div>
+      <ComputersHeader besideRail={besideRail} onClose={onClose} onToggleSidebar={onToggleSidebar} vm={vm} onWake={(at) => wakeVm(at.host)} />
       <ComputersPage
         tiles={tiles}
         // the browser /ui draws no picture of any machine: the same tiles, their captions alone

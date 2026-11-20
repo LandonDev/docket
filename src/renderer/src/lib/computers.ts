@@ -38,6 +38,8 @@ export interface ComputerTile {
   computer: string;
   /** nothing drives it now: the box's page after its last act, still there to watch and take over */
   idle: boolean;
+  /** it shows its picture but takes none of his input now: the Windows VM with no window of its own */
+  pictureOnly?: boolean;
 }
 
 export const tileId = (host: string, threadId: string): string => `${host}\n${threadId}`;
@@ -76,6 +78,7 @@ export function computerTiles(
         shownOn: entry.previewable ? null : where,
         computer: row.computer ?? `window:${row.threadId}`,
         idle: !!row.idle,
+        ...(row.pictureOnly ? { pictureOnly: true } : {}),
       });
     }
   }
@@ -129,8 +132,8 @@ export function tileKey(tile: ComputerTile, all: readonly ComputerTile[]): strin
   return alone ? `${tile.entry.host}\n${tile.pane}\nbrowser` : tile.id;
 }
 
-/** He can take over this computer from its picture: the box's browser's page and the Windows VM. A Mac's or a PC's own window takes no input. */
-export const canTakeOver = (tile: Pick<ComputerTile, "browser" | "computer">): boolean => tile.browser || tile.computer.startsWith("vm:");
+/** He can take over this computer from its picture: the box's browser's page and the Windows VM while it has its window. A Mac's or a PC's own window takes no input. */
+export const canTakeOver = (tile: Pick<ComputerTile, "browser" | "computer" | "pictureOnly">): boolean => !tile.pictureOnly && (tile.browser || tile.computer.startsWith("vm:"));
 
 /** The name the host knows a tile's computer by for its wheel (computer/drive.ts): a browser tile's pane's page. */
 export const driveName = (tile: ComputerTile): string => (tile.computer.startsWith("window:") ? `browser:${tile.pane}` : tile.computer);

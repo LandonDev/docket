@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { macComputerKey } from "@server/shared/contract-maccomputer";
-import { computerTiles, computersMark, driveName, findComputer, handBack, takeOver, tileKey } from "./computers";
+import { canTakeOver, computerTiles, computersMark, driveName, findComputer, handBack, takeOver, tileKey } from "./computers";
+import { sleepingVm } from "./winvmWake";
 import { registry } from "./connection/registry";
 import { BOX_BROWSER_BUNDLE } from "./computerSessions";
 
@@ -144,5 +145,37 @@ describe("every computer being driven now", () => {
     expect(computersMark({ local: [row({ threadId: "t1" })], box: [row({ threadId: "b1", macPeer: "env_mac", asking: { line: "Allow TextEdit?" } })] })).toBe("waiting");
     // this Mac's own row of a session a box thread drives here is that thread's, counted once and never alone
     expect(computersMark({ local: [row({ threadId: macComputerKey(`env_${"b".repeat(22)}`, "b1") })] })).toBeNull();
+  });
+});
+
+describe("the Windows VM", () => {
+  const vm = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => row({ threadId: "vm:windows", apps: [{ name: "Windows VM", bundleId: null, window: null }], tier: null, computer: "vm:windows", idle: true, ...over });
+
+  it("is one tile titled by its own name while no thread holds it, its picture asked for by its name, and not working", () => {
+    const [tile] = computerTiles({ box: [vm()] }, titleOf, nameOf, mac);
+    expect(tile).toMatchObject({ title: "Windows VM", where: "The box", computer: "vm:windows", browser: false, idle: true });
+    expect(tile.entry).toMatchObject({ previewable: true, previewHost: "box", previewKey: "vm:windows" });
+    expect(canTakeOver(tile)).toBe(true);
+    expect(computersMark({ box: [vm()] })).toBeNull();
+  });
+
+  it("is titled by the thread that holds it, and keeps its picture's name", () => {
+    const [tile] = computerTiles({ box: [vm({ threadId: "b1", idle: undefined })] }, titleOf, nameOf, mac);
+    expect(tile.title).toBe("File the expense report");
+    expect(tile.entry.previewKey).toBe("vm:windows");
+    expect(computersMark({ box: [vm({ threadId: "b1", idle: undefined })] })).toBe("working");
+  });
+
+  it("offers no Take over with no window of its own", () => {
+    const [tile] = computerTiles({ box: [vm({ pictureOnly: true })] }, titleOf, nameOf, mac);
+    expect(tile.pictureOnly).toBe(true);
+    expect(canTakeOver(tile)).toBe(false);
+  });
+
+  it("is offered Wake by the first host whose VM sleeps or wakes, and by none where it is awake or absent", () => {
+    expect(sleepingVm({ mac: "none", box: "asleep" })).toEqual({ host: "box", waking: false });
+    expect(sleepingVm({ box: "waking" })).toEqual({ host: "box", waking: true });
+    expect(sleepingVm({ box: "awake", mac: "none" })).toBeNull();
+    expect(sleepingVm({ box: "setting-up" })).toBeNull();
   });
 });

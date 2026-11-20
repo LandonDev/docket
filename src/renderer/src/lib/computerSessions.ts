@@ -152,6 +152,10 @@ export function entriesOf(rows: readonly ComputerSessionRow[], tree: ReadonlySet
     if (!tree.has(row.threadId)) return []
     const entry: ComputerEntry = { host: threadHost, row, previewable: false }
     if (!ctx.desktop) return [entry]
+    // The Windows VM on the box (work/winvm/picture.ts): its picture is the VM's own, asked for by its name, whichever thread holds it.
+    if (threadHost !== LOCAL_ENVIRONMENT_ID && row.computer?.startsWith('vm:')) {
+      return [{ ...entry, previewable: true, previewHost: threadHost, previewKey: row.computer }]
+    }
     // The box's own browser (work/browser/box): the session lives on the thread's own host, which streams it.
     if (threadHost !== LOCAL_ENVIRONMENT_ID && !row.macPeer && row.apps.some((a) => a.bundleId === BOX_BROWSER_BUNDLE)) {
       return [{ ...entry, previewable: true, previewHost: threadHost, previewKey: row.threadId }]
