@@ -2516,7 +2516,8 @@ The voice note (capture from anywhere, docs/agents/work-capture.md "The
 phone"):
 
 - **The way in** is a microphone (`mic`) in Home's toolbar, before Settings,
-  while any host has Work on. It opens a form sheet, "Voice Note": the words
+  while any host has Work on. It opens a sheet that fills the height (the
+  editor kind), "Voice Note": the words
   (a field he can edit, "Note"), then Sector (Unsorted with the quiet dot, or
   a sector with its dot) and Start Thread, then the reason a save failed as
   the section's footer in destructive text. Cancel keeps the draft; Save is

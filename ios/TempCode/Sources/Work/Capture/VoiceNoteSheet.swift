@@ -70,7 +70,7 @@ struct VoiceNoteSheet: View {
             }
             .task { await note.find(hosts) }
         }
-        .tcSheet(.form)
+        .tcSheet(.editor)
         // A swipe down mid-take would end it; the draft survives a close either way.
         .interactiveDismissDisabled(note.dictation.isBusy)
         .sensoryFeedback(.impact(weight: .light), trigger: saved)
@@ -156,3 +156,6 @@ private struct HoldToTalk: View {
         }
     }
 }
+
+/// The sheet shows one note, by its identity.
+extension VoiceNote: @retroactive Identifiable {}

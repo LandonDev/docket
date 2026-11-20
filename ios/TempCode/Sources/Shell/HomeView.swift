@@ -21,8 +21,8 @@ struct HomeView: View {
     @State private var adding = false
     /// New Work workspace, from the Work header's +.
     @State private var addingWork = false
-    /// A voice note (Work/Capture), from the microphone while any host has Work on.
-    @State private var capturing = false
+    /// A voice note (Work/Capture), from the microphone while any host has Work on: the note shown.
+    @State private var capturing: VoiceNote?
     /// Made at the first press and kept, so a draft outlives the sheet.
     @State private var voiceNote: VoiceNote?
     @State private var pairingAgain: PairedEnvironment?
@@ -126,7 +126,7 @@ struct HomeView: View {
         .listOnScreen("home")
         .sheet(isPresented: $adding) { AddEnvironmentSheet() }
         .sheet(isPresented: $addingWork) { NewWorkWorkspaceSheet() }
-        .sheet(isPresented: $capturing) { if let voiceNote { VoiceNoteSheet(note: voiceNote) } }
+        .sheet(item: $capturing) { VoiceNoteSheet(note: $0) }
         #if DEBUG
         .task(id: model.ready) { if model.ready, TestHooks.sheet == "new-work" { try? await Task.sleep(for: .seconds(2)); addingWork = true } }
         .task(id: model.ready) { if model.ready, TestHooks.sheet == "voice-note" { try? await Task.sleep(for: .seconds(2)); captureVoice() } }
@@ -138,7 +138,7 @@ struct HomeView: View {
 
     private func captureVoice() {
         if voiceNote == nil { voiceNote = VoiceNote(source: OnDeviceSpeech()) }
-        capturing = true
+        capturing = voiceNote
     }
 
     /// A troubled host's status row and every host's one-off notes, at the top.

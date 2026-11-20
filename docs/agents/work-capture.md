@@ -102,8 +102,10 @@ A frame change in the main process, kept small:
 ## The phone: a voice note
 
 The iOS client's way in (built 2026-11-20). Home's toolbar carries a
-microphone (`mic`, "Voice Note") while any host has Work on; it opens a form
-sheet, "Voice Note":
+microphone (`mic`, "Voice Note") while any host has Work on; it opens a sheet
+that fills the height (`tcSheet(.editor)`: at the medium detent the hold
+control covered Start Thread and Home showed through the glass), "Voice
+Note":
 
 - **Hold to talk.** The 72 pt control at the sheet's foot (in `tcBottomBar`)
   listens while held: the press grows it at once on the layout spring (a
