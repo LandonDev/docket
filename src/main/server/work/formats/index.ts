@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkModule } from '../modules'
 import { runnerOf, type Converter } from './jobs'
+import { formatsHealth } from './health'
 import { formatsPillar } from './pillar'
 import { tailOf, toolsRoot } from './tools'
 
@@ -103,5 +104,7 @@ export const formats: WorkModule = {
     }
     return formatsPillar.handle ? formatsPillar.handle(req, ctx, by) : NOT_HANDLED
   },
-  convert: [...LIBREOFFICE_CONVERTERS, ...(formatsPillar.convert ?? [])]
+  convert: [...LIBREOFFICE_CONVERTERS, ...(formatsPillar.convert ?? [])],
+  // Connections: the conversion tools this host has, and each that did not install.
+  health: formatsHealth
 }

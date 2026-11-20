@@ -10,6 +10,7 @@ import { googleShare } from './held'
 import { clientIdOf, pick, setClientId } from './picker'
 import { googleChanges, startPoll, watch } from './poll'
 import { GOOGLE_TOOLS } from './tools'
+import { googleHealth } from './health'
 
 /**
  * The google pillar's server module (docs/agents/work-google.md): Google
@@ -67,6 +68,7 @@ const person = (by: Caller): boolean => by.kind !== 'model'
 
 export const google: WorkModule = {
   id: 'google',
+  health: googleHealth,
   ensure(db) {
     ensureGoogleTables(db)
   },

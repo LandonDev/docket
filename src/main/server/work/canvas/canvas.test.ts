@@ -223,7 +223,7 @@ describe('through the mount', () => {
 
     it('lists both tools to a Work thread and runs them for that thread alone', async () => {
       const session = sessions.get('t1')!
-      expect(work.tools.listing(session).map((t) => t.name)).toEqual(['canvas_open', 'canvas_close'])
+      expect(work.tools.listing(session).map((t) => t.name)).toEqual(['canvas_open', 'canvas_close', 'work_connections'])
       const signal = new AbortController().signal
       const opened = await work.tools.call(session, 'canvas_open', { kind: 'document', title: 'Draft', source: { at: 'thread' } }, signal)
       expect(opened.isError).toBeUndefined()

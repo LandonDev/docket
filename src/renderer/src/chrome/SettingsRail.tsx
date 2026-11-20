@@ -2,6 +2,7 @@ import {
   Globe,
   Archive,
   ArrowLeft,
+  Activity,
   Briefcase,
   BookOpen,
   Bot,
@@ -53,6 +54,7 @@ const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   remote: Globe,
   archive: Archive,
   work: Briefcase,
+  connections: Activity,
 };
 
 type Props = {
@@ -99,7 +101,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
             className={`flex flex-col ${index === 0 ? "" : "pt-4"}`}
           >
             <RailHeading id={`settings-group-${group.id}`}>{group.label}</RailHeading>
-            {visibleSettingsSections(isWebMode(), nativePlatform() === "darwin").filter((item) => item.group === group.id).map((item) => (
+            {visibleSettingsSections(isWebMode(), nativePlatform() === "darwin", workOn).filter((item) => item.group === group.id).map((item) => (
               <RailRow
                 key={item.id}
                 label={item.label}

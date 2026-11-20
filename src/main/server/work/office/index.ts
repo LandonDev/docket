@@ -18,6 +18,7 @@ import { officeTool, runHere, type Env } from './tools'
 import { dropCopies, filesHandle } from './files/handle'
 import { ensureFilesTables, librariesOf, libraryOf } from './files/library'
 import { teamsTools } from './files/tools'
+import { officeProbe, officeRows } from './health'
 
 /**
  * The office pillar's server module (docs/agents/work-office.md): one Office
@@ -123,6 +124,10 @@ export const office: WorkModule = {
       }
     }
     return NOT_HANDLED
+  },
+  // Connections: read as it lies; the route's state only if the running module already made it.
+  health: {
+    check: (ctx, signal) => officeRows(officeProbe(ctx, () => made.get(ctx.db)?.route.state ?? null), signal)
   },
   // A deleted thread's copies of Teams files go with it.
   sessionsRemoved(ids, ctx) {

@@ -323,7 +323,7 @@ describe('with Work on', () => {
     scopes.set('t-work', scopeFor('t-work'))
     scopes.set('t-code', scopeFor('t-code'))
     const mounted = work.tools.of(session('t-work', 'work'))!
-    expect(mounted.tools.map((t) => t.name)).toEqual(['mail_fake_search', 'mail_fake_slow'])
+    expect(mounted.tools.map((t) => t.name)).toEqual(['mail_fake_search', 'mail_fake_slow', 'work_connections'])
     expect(mounted.scope.sector).toBe('purdue')
     // the row decides: a thread whose scope is not 'work' gets none, whatever else is true of it
     expect(work.tools.of(session('t-code', 'code'))).toBeNull()
@@ -375,7 +375,7 @@ describe('with Work on', () => {
     const token = work.tools.tokenFor('t-work')
     expect(token).not.toBe(work.tools.tokenFor('t-other'))
     const listed = await work.handle(req('app.workTools', { sessionId: 't-work', token }), LOCAL_PRINCIPAL)
-    expect(listed.handled && (listed.result as { tools: { name: string }[] }).tools.map((t) => t.name)).toEqual(['mail_fake_search', 'mail_fake_slow'])
+    expect(listed.handled && (listed.result as { tools: { name: string }[] }).tools.map((t) => t.name)).toEqual(['mail_fake_search', 'mail_fake_slow', 'work_connections'])
     const called = await work.handle(req('app.workCall', { sessionId: 't-work', token, call: 9, tool: 'mail_fake_search', args: { query: 'q' } }), LOCAL_PRINCIPAL)
     expect(called).toEqual({ handled: true, result: { content: [{ type: 'text', text: 'found for q on env_test' }] } })
     // another thread's token, and a guess, are both refused before anything runs
@@ -498,7 +498,7 @@ describe('a fault in one pillar', () => {
     expect(ok.started).toBe(1)
     await expect(booted.handle(req('work.tasks.list', {}), LOCAL_PRINCIPAL)).rejects.toThrow(/^work: tasks could not make its tables: /)
     expect(await booted.handle(req('work.mail.ping', { n: 2 }), LOCAL_PRINCIPAL)).toEqual({ handled: true, result: { pong: 2 } })
-    expect(booted.tools.of(session('t-work', 'work'))!.tools.map((t) => t.name)).toEqual(['mail_fake_search', 'mail_fake_slow'])
+    expect(booted.tools.of(session('t-work', 'work'))!.tools.map((t) => t.name)).toEqual(['mail_fake_search', 'mail_fake_slow', 'work_connections'])
     booted.close()
   })
 })

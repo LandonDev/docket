@@ -57,6 +57,10 @@ export const WorkCoreRequestSchemas = [
   ),
   /** → ProjectMeta: the project that holds a Work workspace's threads about one LifeOS project, made at the first ask. The host asks LifeOS for the project and its name; `name` is what an older client still sends, and is not read. */
   request('work.project.open', z.object({ workspaceId: z.string(), lifeosProjectId: z.string().min(1), name: z.string().max(200).optional(), forSettings: z.boolean().optional() })),
+  /** → HealthReport: every connection Work leans on, as this host's pillars answer for them now (docs/agents/work-connections.md); checks that change nothing */
+  request('work.health', z.object({}).optional()),
+  /** → Lapse[]: what ends on this host and when, read from what it holds, soonest first */
+  request('work.lapses', z.object({}).optional()),
   // The codex and Muse bridge (scripts/app-mcp-bridge.mjs): `token` is the
   // thread's own, so one thread's bridge never lists or calls as another.
   /** → AppWorkToolsAnswer: the Work tools of the thread's scope, as the bridge lists them */
@@ -76,6 +80,8 @@ export const WORK_CORE_CAPS = {
   'work.workspace.get': 'read',
   'work.workspace.set': 'admin',
   'work.project.open': 'operate',
+  'work.health': 'read',
+  'work.lapses': 'read',
   'app.workTools': 'local',
   'app.workCall': 'local',
   'app.workCancel': 'local'

@@ -2,6 +2,7 @@ import type { LifeosJwtAnswer, LifeosStatus } from '@shared/contract-work-lifeos
 import { handled, NOT_HANDLED, workspaceKindOf } from '@shared/work'
 import type { WorkModule } from '../modules'
 import { lifeosHostOf } from './ctx'
+import { lifeosHealth } from './health'
 import { ensureKeysTable } from './keys'
 import { ensureLinksTable } from './links'
 import { LifeosUnavailable } from './session'
@@ -18,6 +19,7 @@ export const lifeos: WorkModule = {
   mentions: lifeosMentions,
   // A person's page, as the People view draws it (people.ts): read-only, in the thread's own sector.
   tools: () => [personPageTool],
+  health: lifeosHealth,
   ensure(db) {
     ensureKeysTable(db)
     ensureLinksTable(db)

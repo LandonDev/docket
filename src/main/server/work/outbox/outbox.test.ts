@@ -427,7 +427,9 @@ describe('who may decide', () => {
   })
 
   it('no tool of any thread is a way to press, grant or set a rule: the outbox lists none', () => {
-    expect(rig.work.tools.of({ id: 't-work', scope: 'work' })?.tools.map((x) => x.name) ?? []).toEqual([])
+    // The frame's own Connections read is the one tool every Work thread has, and it changes nothing.
+    const tools = rig.work.tools.of({ id: 't-work', scope: 'work' })?.tools ?? []
+    expect(tools.map((x) => [x.name, x.readOnly])).toEqual([['work_connections', true]])
     expect(outboxModule.tools).toBeUndefined()
   })
 })

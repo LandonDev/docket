@@ -15,6 +15,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces, workspaceByPath } from "../../lib/tcserver/workspaces";
 import { workRailPort, useWorkHosts } from "../../lib/workSwitch";
 import { FileDrops } from "../canvas/fileDrop";
+import { LapseNotices } from "../connections/lapseNotice";
 import { openWorkSettings } from "./open";
 import { PlaysHost } from "../routines/plays/PlaysHost";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
@@ -148,6 +149,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       <FileDrops />
       {/* Run a play… and Save as a play…, from wherever Work is on screen (work/routines/plays/PlaysHost.tsx). */}
       <PlaysHost />
+      {/* What Work leans on that ends soon, said once (work/connections/lapseNotice.tsx). */}
+      <LapseNotices />
       {naming && home ? (
         <NameWorkspaceDialog
           environmentId={home}

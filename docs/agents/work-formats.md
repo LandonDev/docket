@@ -192,10 +192,10 @@ host) from `job.from` into `job.to` (formats by extension) and resolves to
   (`read`) answers `ToolsReport`: the tools, the pairs this host runs itself,
   the queue. `work.formats.convert` (`operate`) is the forwarded job; it is
   never carried on a relayed lane.
-- **Settings**: `ToolchainRow` (src/renderer/src/work/formats/ToolchainRow.tsx)
-  is the one row Settings → Work's "Where it runs" shows: "Conversion tools",
-  the usable tools by release, what did not install in red, the size on disk.
-  The Work page (milestone 8) mounts it with the host's link.
+- **Settings**: the pillar's `health` (work/formats/health.ts) answers for
+  the toolchain on Settings → Connections ([work-connections.md](work-connections.md)):
+  "Conversion tools", the usable tools by release, and a broken row for each
+  that did not install, naming the command that installs it again.
 
 **Not yet:** the box reaching a Mac-only tool. The box cannot dial a Mac;
 that direction goes over `peer.call` (`ctx.peer`, built in milestone 6),
@@ -208,7 +208,7 @@ the debs and dmg paths ran only for real, on the box and the Mac),
 `work/formats/jobs.test.ts` (two runners as two hosts),
 `work/formats/forward.server.test.ts` (a real server and a key's link; with
 `TEMP_CODE_WORK_TOOLS_DATA=<a userData the installer filled>` it runs the
-real LibreOffice), `ToolchainRow.dom.test.tsx`.
+real LibreOffice), `work/formats/health.test.ts`.
 
 ## Import and export
 

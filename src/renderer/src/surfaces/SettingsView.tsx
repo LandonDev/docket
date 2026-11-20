@@ -32,10 +32,14 @@ import { WorkPage } from "./settings/Work";
 import { workShellChunk } from "./chunks";
 import { PageRowsSkeleton } from "../components/page";
 import { useWorkOn } from "../lib/workSwitch";
+import { defineChunk } from "../lib/lazyChunk";
 
 // A Work workspace's own page, and a code workspace's sector, ride Work's chunk (work/shell/settings.tsx).
 const WorkWorkspacePage = workShellChunk.surface("WorkWorkspacePage", <PageRowsSkeleton rows={4} description control="button" />);
 const CodeWorkspaceSector = workShellChunk.surface("CodeWorkspaceSector");
+// Connections is a chunk of its own (work/connections): nothing of it loads until the page opens.
+const connectionsChunk = defineChunk("work-connections", () => import("../work/connections/ConnectionsPage"));
+const ConnectionsPage = connectionsChunk.surface("ConnectionsPage", <PageRowsSkeleton rows={6} description control="button" />);
 
 type Props = {
   cwd: string;
@@ -112,6 +116,7 @@ export function SettingsView({
             </>
           ) : null}
           {section === "work" ? <WorkPage /> : null}
+          {section === "connections" && workOn ? <ConnectionsPage /> : null}
           {section === "appearance" ? <AppearancePage /> : null}
           {section === "editor" ? <EditorPage /> : null}
           {section === "keybindings" ? <KeybindingsPage /> : null}

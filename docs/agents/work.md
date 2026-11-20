@@ -145,11 +145,12 @@ Settings → Work.
 - **Settings**: a **Work** group after Threads holds the Work page, then
   (Work on) each Work workspace led by its dot; they leave the Workspaces
   group. The Work page (surfaces/settings/Work.tsx, then
-  `WorkSettingsBody`): the switch; LifeOS per host (sign in by pairing,
-  the code and its countdown, or with a device token; sign out); the
-  sectors LifeOS has; Work threads' model (the code threads' default,
-  opening Thread defaults); where new Work workspaces are made and each
-  host's conversion tools (`ToolchainRow`). A Work workspace's page
+  `WorkSettingsBody`): the switch; the sectors LifeOS has; Work threads'
+  model (the code threads' default, opening Thread defaults); where new
+  Work workspaces are made. **Connections** follows it in the group
+  ([work-connections.md](work-connections.md)): each host's LifeOS
+  sign-in (pairing, the code and its countdown, a device token, sign out),
+  its tools and every other sign-in and helper Work leans on. A Work workspace's page
   (`WorkWorkspacePage`): its sector, its key's state, the host its threads
   run on, "Computer use on <desktop>" per Mac or Windows host
   (`work.workspace.set {mayUseDesktop}`), its thread defaults. A code
@@ -531,6 +532,14 @@ workspace, or one a Work thread started, as a Work thread
 ([work-scope.md](work-scope.md)). The run that started a thread
 (`routineRunId`) is never a client's to say: it is not a create param;
 `ctx.threads.start` carries it host side.
+
+## Connections
+
+A pillar answers for its own sign-ins and helpers through the optional
+`health` on its module (`check`, and `lapses` for what ends); the frame
+gathers them in `work.health` and `work.lapses` and lists the read-only
+`work_connections` tool to every Work thread (work/health.ts). The account
+is [work-connections.md](work-connections.md).
 
 ## Tools
 

@@ -6,6 +6,7 @@ import { handled, NOT_HANDLED, workText } from '@shared/work'
 import type { ActKindDef, ToolCtx, WorkCtx, WorkModule, WorkTool } from '../modules'
 import { boxBrowserTools, boxDriveChanged, startBoxBrowser } from './box'
 import { DriveStore, ensureBrowserTables } from './drive'
+import { browserLapses, browserProbe, browserRows } from './health'
 import { browserVideoSetting, setBrowserVideo, videoToolsAt } from './box/videoSetting'
 import { TEAMS_UNAVAILABLE, teamsCarrier, TeamsPostSchema, teamsPostKind } from './teams'
 
@@ -169,6 +170,11 @@ export const browser: WorkModule = {
       configureComputerDrive('browser', null, wheel)
       stopBox()
     }
+  },
+  // Connections: the box browser, its video, its sign-ins by cookie name, and the Windows VM; nothing is started.
+  health: {
+    check: async (ctx) => browserRows(browserProbe(ctx)),
+    lapses: (ctx) => browserLapses(browserProbe(ctx))
   },
   tools: () => [...tools(), ...boxBrowserTools()],
   acts: [teamsPostKind as unknown as ActKindDef],

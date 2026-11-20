@@ -18,7 +18,8 @@ export type StaticSettingsSectionId =
   | "appshots"
   | "computer"
   | "archive"
-  | "work";
+  | "work"
+  | "connections";
 
 /** A fixed page, or one workspace's own page (`ws:<workspace id>`). */
 export type SettingsSectionId = StaticSettingsSectionId | `ws:${string}`;
@@ -42,6 +43,8 @@ export const SETTINGS_SECTIONS: {
   desktopOnly?: true;
   /** Only a window on a Mac can show it: absent from the list elsewhere. */
   macOnly?: true;
+  /** Only while Work is on for some host: absent from the list otherwise. */
+  workOnly?: true;
 }[] = [
   { id: "general", group: "app", label: "General", description: "How the app behaves, and the release you run." },
   { id: "appearance", group: "app", label: "Appearance", description: "Theme and the editor's type size." },
@@ -93,6 +96,8 @@ export const SETTINGS_SECTIONS: {
   },
   // With Work off on every host the page holds the switch alone (docs/agents/work.md "The switch").
   { id: "work", group: "work", label: "Work", description: "Threads for your jobs, and what they may do without you." },
+  // docs/agents/work-connections.md: every sign-in and helper Work leans on, per host.
+  { id: "connections", group: "work", label: "Connections", description: "The sign-ins and helpers Work leans on, on each host.", workOnly: true },
 ];
 
 export const SETTINGS_SECTION_DEFAULT: SettingsSectionId = "general";
@@ -104,8 +109,8 @@ export function normalizeSettingsSection(value: unknown): unknown {
 
 /** The sections this window can show: the desktop-only ones left out in
  *  web mode, the Mac-only ones in a window off macOS. */
-export function visibleSettingsSections(web: boolean, mac: boolean) {
-  return SETTINGS_SECTIONS.filter((section) => !(web && section.desktopOnly) && !(!mac && section.macOnly));
+export function visibleSettingsSections(web: boolean, mac: boolean, work = false) {
+  return SETTINGS_SECTIONS.filter((section) => !(web && section.desktopOnly) && !(!mac && section.macOnly) && !(!work && section.workOnly));
 }
 
 /** The keybinding groups this window handles: the terminal's only in the desktop app. */

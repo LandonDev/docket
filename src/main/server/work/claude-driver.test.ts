@@ -111,6 +111,6 @@ it('a Work thread gains the work server and its tool only while Work is on; its 
   work.settings.set({ enabled: true })
   const on = toolSurface(await spawnOptions({ id: 'cw-5', scope: 'work' }))
   expect(on.servers).toEqual([...code.servers, 'work'].sort())
-  expect(on.allowed).toEqual([...code.allowed, 'mcp__work__mail_fake_search'].sort())
+  expect(on.allowed).toEqual([...code.allowed, 'mcp__work__mail_fake_search', 'mcp__work__work_connections'].sort())
   expect(on.disallowed).toEqual(fenced)
 })

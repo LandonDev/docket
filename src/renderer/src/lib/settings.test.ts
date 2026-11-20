@@ -74,6 +74,13 @@ describe("settings sections", () => {
     expect(ids(true, true)).toContain("skills");
   });
 
+  it("lists Connections after the Work page, only while Work is on somewhere", () => {
+    const ids = (work: boolean) => visibleSettingsSections(false, true, work).map((section) => section.id);
+    expect(ids(false)).not.toContain("connections");
+    expect(ids(true).slice(-2)).toEqual(["work", "connections"]);
+    expect(settingsSectionLabel("connections")).toBe("Connections");
+  });
+
   it("names the remote page Hosts", () => {
     expect(settingsSectionLabel("remote")).toBe("Hosts");
   });

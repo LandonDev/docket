@@ -7,6 +7,7 @@ import { ActStale } from '../outbox/kinds'
 import { serviceOf } from '../service/ctx'
 import { GuestRuntime, TICK_MS } from './links'
 import { ensureGuestTables } from './store'
+import { guestsHealth } from './health'
 
 /**
  * The guests pillar's server module (docs/agents/work-guests.md): one named
@@ -117,6 +118,7 @@ const METHODS: ReadonlySet<string> = new Set(GuestsRequestSchemas.map((s) => s.s
 
 export const guests: WorkModule = {
   id: 'guests',
+  health: guestsHealth,
   ensure(db) {
     ensureGuestTables(db)
   },

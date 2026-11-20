@@ -40,6 +40,7 @@ import { canvasPart } from './canvas/ctx'
 import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
 import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
+import { checkHost, connectionsTool, lapsesOf, type HostHealth } from './health'
 import { heldPart } from './outbox/ctx'
 import { resultsPart } from './outbox/results'
 import { peerPart } from './peer'
@@ -347,6 +348,8 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           list.push(tool)
         }
       }
+      // The frame's own: every Work thread may read Connections.
+      if (!seen.has(healthTool.name)) list.push(healthTool)
       return { scope, tools: list }
     },
     listing(session) {
@@ -391,6 +394,21 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
   /** The bridge's running tool calls, by thread and the bridge's own request id, so a cancel reaches the tool's signal. */
   const running = new Map<string, AbortController>()
   const callKey = (sessionId: string, call: string | number): string => `${sessionId}\0${typeof call}:${call}`
+  // ── connections (work/health.ts) ────────────────────────────────────
+  const checkHere = (signal: AbortSignal) => checkHost(ctx, sound, broken, signal)
+  /** This host's rows, then every linked host's over the host link: one that is not connected is offline, never broken. */
+  const checkEverywhere = async (signal: AbortSignal): Promise<HostHealth[]> => {
+    const far = (deps.peers?.all() ?? []).map(async (link): Promise<HostHealth> => {
+      if (!link.connected) return { name: link.env.name, offline: true }
+      try {
+        return { name: link.env.name, report: await link.request('work.health', {}, { timeoutMs: 20_000 }) }
+      } catch (err) {
+        return link.connected ? { name: link.env.name, error: err instanceof Error ? err.message : String(err) } : { name: link.env.name, offline: true }
+      }
+    })
+    return [{ name: 'This host', report: await checkHere(signal) }, ...(await Promise.all(far))]
+  }
+  const healthTool = connectionsTool(checkEverywhere)
 
   return {
     ctx,
@@ -438,6 +456,14 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           }
           return handled(await making)
         }
+        case 'work.health': {
+          if (!settings.enabled()) throw new Error('Work is off on this host')
+          const signal = socket?.signal ? AbortSignal.any([socket.signal, period.signal]) : period.signal
+          return handled(await checkHere(signal))
+        }
+        case 'work.lapses':
+          if (!settings.enabled()) throw new Error('Work is off on this host')
+          return handled(lapsesOf(ctx, sound))
         case 'app.workTools':
           return handled({ tools: tools.listing(bridgeSession(req.params)) })
         case 'app.workCall': {

@@ -3,6 +3,7 @@ import { registerMediaSource } from '../media/sources'
 import type { WorkModule } from '../modules'
 import { dropHooks, frameioTrigger, rearmHooks, startHooks } from './hooks'
 import { ensureFrameioTables, frameioOf, removeSessionItems, setSetting, statusOf, stopFrameio } from './live'
+import { frameioHealth } from './health'
 import { frameioMedia, openFile } from './media'
 import { frameioPostKind, onPostDecided } from './post'
 import { browse, frameioTools } from './tools'
@@ -16,6 +17,7 @@ import { browse, frameioTools } from './tools'
  */
 export const frameio: WorkModule = {
   id: 'frameio',
+  health: frameioHealth,
   ensure: ensureFrameioTables,
   acts: [frameioPostKind as never],
   triggers: [frameioTrigger as unknown as TriggerSource],

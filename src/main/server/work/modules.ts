@@ -12,7 +12,9 @@ import type {
   ContextChip,
   ChipKind,
   Handled,
+  HealthRow,
   HeldItem,
+  Lapse,
   MentionHit,
   MentionReach,
   HostId,
@@ -89,6 +91,22 @@ export interface WorkModule {
   sessionsRemoved?(sessionIds: string[], ctx: WorkCtx): void
   /** A workspace was deleted: drop what the module kept for it. Called Work on or off. */
   workspaceRemoved?(workspaceId: string, ctx: WorkCtx): void
+  /** The pillar's own connections on this host, for Connections (docs/agents/work-connections.md). */
+  health?: HealthSource
+}
+
+/**
+ * How a pillar answers for its connections. `check` runs only when he opens
+ * Connections or presses Check again, or a thread reads `work_connections`:
+ * it must be cheap, and it never signs in, sends, starts or changes
+ * anything. A row for what this host does not have (Office on the box)
+ * is left out, not reported broken. `lapses` answers from what the host
+ * already holds, with no network and no child process: the frame reads it
+ * once a day to raise a notice before something ends.
+ */
+export interface HealthSource {
+  check(ctx: WorkCtx, signal: AbortSignal): Promise<HealthRow[]>
+  lapses?(ctx: WorkCtx): Lapse[]
 }
 
 /**

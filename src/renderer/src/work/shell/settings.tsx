@@ -9,7 +9,7 @@ import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
@@ -19,19 +19,20 @@ import { requestSettings } from "../../lib/monaco/debugTab";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
-import { ToolchainRow } from "../formats/ToolchainRow";
 import { AddinRow } from "../office/AddinRow";
 import { TeamsCopyRow } from "../office/TeamsCopyRow";
 import { TeamsFilesRow } from "../office/TeamsFilesRow";
 import { GuestLinksSection } from "../guests/GuestLinksSection";
 import { HouseRules } from "../rules/HouseRules";
 import { hostIdOfLink, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
-import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
+import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
 /**
  * Settings → Work while Work is on (prototype settings.html, "One Work
- * page"): LifeOS's sign-in per host, the model Work threads start on, and
- * where Work runs, and every guest link (milestone 31). A Work workspace's
+ * page"): the sectors LifeOS has, the model Work threads start on, where
+ * Work runs, and every guest link (milestone 31). Each host's LifeOS
+ * sign-in and its tools are on Connections (work/connections), so no
+ * fact is said on both pages. A Work workspace's
  * own page holds what is its own. Grants join this page with the Outbox
  * (milestone 14).
  */
@@ -62,12 +63,8 @@ export function WorkSettingsBody() {
   const [home, setHome] = useState(() => workHome(environments));
   return (
     <>
-      <PageSection title="LifeOS">
-        {hosts.map((host) => (
-          <LifeosHostRow key={host.id} environmentId={host.id} name={host.name} />
-        ))}
-        {home ? <SectorsRow environmentId={home} /> : null}
-      </PageSection>
+      {/* Each host's sign-in is on Connections; the sectors it reads are a fact of LifeOS, said once here. */}
+      {home ? <SectorsSection environmentId={home} /> : null}
       <PageSection title="Models">
         <PageRow title="Work threads" description="Same as code threads" onOpen={() => requestSettings("defaults")} openLabel="Thread defaults" />
       </PageSection>
@@ -87,9 +84,6 @@ export function WorkSettingsBody() {
           </PageRow>
         ) : null}
         {hosts.map((host) => (
-          <ToolchainRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Conversion tools on ${host.name}` : undefined} />
-        ))}
-        {hosts.map((host) => (
           <AddinRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Office add-in on ${host.name}` : "Office add-in"} />
         ))}
         {hosts
@@ -108,64 +102,21 @@ export function WorkSettingsBody() {
 const mailSettingsChunk = defineChunk("work-mail-settings", () => import("../mail/MailSettingsSection"));
 const MailSettingsSection = mailSettingsChunk.surface("Section", <PageRowsSkeleton rows={3} />);
 
-/** One host's LifeOS sign-in: its state, then Sign in… or Sign out. */
-export function LifeosHostRow({ environmentId, name }: { environmentId: string; name: string }) {
-  const status = useLifeosStatus(environmentId);
-  const [signingIn, setSigningIn] = useState(false);
-  const [pending, setPending] = useState<"signout" | "retry" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  if (!status) return <PageRowsSkeleton rows={1} description control="button" />;
-  const state = status.lifeos;
-  const { line, failed } = lifeosLine(state);
-  const press = async (what: "signout" | "retry"): Promise<void> => {
-    setPending(what);
-    setError(null);
-    try {
-      if (what === "retry") await refreshLifeos(environmentId);
-      else await registry.linkOf(environmentId).request<LifeosStatus>("work.lifeos.signOut", {});
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setPending(null);
-    }
-  };
-  const signedIn = state.state === "connected" || state.state === "unreachable" || state.state === "connecting";
-  return (
-    <>
-      <PageRow title={name} description={failed ? undefined : line} error={failed ? line : (error ?? undefined)}>
-        {state.state === "unreachable" ? (
-          <Button variant="ghost" size="sm" disabled={pending !== null} onClick={() => void press("retry")}>
-            <BusyLabel busy={pending === "retry"} label="Retry" />
-          </Button>
-        ) : null}
-        {signedIn ? (
-          <Button variant="ghost" size="sm" disabled={pending !== null} onClick={() => void press("signout")}>
-            <BusyLabel busy={pending === "signout"} label="Sign out" />
-          </Button>
-        ) : (
-          <Button variant="secondary" size="sm" onClick={() => setSigningIn(true)}>
-            {state.state === "pairing" ? "Show code…" : "Sign in…"}
-          </Button>
-        )}
-      </PageRow>
-      {signingIn ? <SignInDialog environmentId={environmentId} state={state} onClose={() => setSigningIn(false)} /> : null}
-    </>
-  );
-}
-
-/** The sectors LifeOS has, each with its dot: what this host's Work threads can be linked to. */
-function SectorsRow({ environmentId }: { environmentId: string }) {
+/** The sectors LifeOS has, each with its dot: what this host's Work threads can be linked to. Signed out, nothing: Connections holds the sign-in. */
+function SectorsSection({ environmentId }: { environmentId: string }) {
   const session = useLifeosSession(environmentId, null);
   const listed = useLifeosQuery<{ key: string; label: string; order: number }[]>(session, "sectors:list", {});
   if (session.state !== "connected") return null;
-  if (listed.status === "loading") return <PageRowsSkeleton rows={1} description control="none" />;
-  if (listed.status === "failed") return <PageError>{listed.error}</PageError>;
+  return <PageSection title="LifeOS">{listed.status === "loading" ? <PageRowsSkeleton rows={1} description control="none" /> : listed.status === "failed" ? <PageError>{listed.error}</PageError> : <SectorsRow sectors={listed.value} />}</PageSection>;
+}
+
+function SectorsRow({ sectors }: { sectors: { key: string; label: string; order: number }[] }) {
   return (
     <PageRow
       title="Sectors"
       description={
         <span className="flex flex-wrap gap-x-3 gap-y-1">
-          {[...listed.value]
+          {[...sectors]
             .sort((a, b) => a.order - b.order)
             .map((sector) => (
               <span key={sector.key} className="inline-flex items-center gap-1">
@@ -184,7 +135,7 @@ function SectorsRow({ environmentId }: { environmentId: string }) {
  * device token made in LifeOS (`auth:mint`) while LifeOS's approve screen
  * has not shipped. The code is shown only to this window, an admin.
  */
-function SignInDialog({ environmentId, state, onClose }: { environmentId: string; state: LifeosState; onClose: () => void }) {
+export function SignInDialog({ environmentId, state, onClose }: { environmentId: string; state: LifeosState; onClose: () => void }) {
   const link = registry.linkOf(environmentId);
   const [code, setCode] = useState<{ code: string; expiresAt: number } | null>(
     state.state === "pairing" && state.code ? { code: state.code, expiresAt: state.expiresAt } : null,
