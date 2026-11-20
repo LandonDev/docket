@@ -114,10 +114,10 @@ Settings → Work.
   adds a `lifeos:<id>` card for each one no project mirrors yet; its first
   pick or New thread calls `work.project.open`, which makes the project
   (`projects.lifeos_project_id`) in the card's place: its mirror ("Mirrors
-  follow LifeOS" below). The cards keep
-  the Projects view's own order (`projectOrder` from
-  `work-kit/projects/order`: oldest first) whatever is picked, made or
-  worked in; a project of the workspace that mirrors none of them follows,
+  follow LifeOS" below). The cards are
+  oldest first, the order the Projects view keeps inside a state
+  (`projectOrder` from `work-kit/projects/order`), with no grouping by
+  state, whatever is picked, made or worked in; a project of the workspace that mirrors none of them follows,
   newest first (`railOrder` in the same file). A view row opens `WorkViewSurface` over
   the thread panes under the strip; picking a thread or the row again
   closes it.

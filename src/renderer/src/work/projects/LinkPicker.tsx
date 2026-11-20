@@ -80,7 +80,10 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
     } else if (e.key === "Tab") e.preventDefault();
   };
 
-  const note = error ?? (found === null ? "Loading…" : rows.length === 0 ? (query.trim() ? "No match" : kind === "document" ? "Every document and sheet here is in this project already" : "No file or item to link") : null);
+  // Every LifeOS document and sheet the workspace lists, this project's own included: whether "all are here already" is true.
+  const any = useMemo(() => (found ?? []).some((e) => e.source.at === "lifeos" && (e.source.table === "docs" || e.source.table === "sheets")), [found]);
+  const none = kind === "item" ? "No file or item to link" : any ? "Every document and sheet here is in this project already" : "No document or sheet to link";
+  const note = error ?? (found === null ? "Loading…" : rows.length === 0 ? (query.trim() ? "No match" : none) : null);
   return (
     <PickerDialog
       label={`${LABEL[kind]} to ${project.name}`}
@@ -111,9 +114,8 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
               onClick={() => pick(entry)}
             >
               <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{entry.title || "Untitled"}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {FIND_KIND_WORDS[entry.kind]}, {FIND_WHERE_WORDS[entry.where]}
-              </span>
+              {/* Every row of the document picker is LifeOS's: the place is said only where places mix. */}
+              <span className="shrink-0 text-xs text-muted-foreground">{kind === "document" ? FIND_KIND_WORDS[entry.kind] : `${FIND_KIND_WORDS[entry.kind]}, ${FIND_WHERE_WORDS[entry.where]}`}</span>
             </button>
           ))}
         </div>

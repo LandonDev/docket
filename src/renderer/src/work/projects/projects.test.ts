@@ -36,7 +36,15 @@ describe("where a workspace's project screens stand", () => {
     expect(parsePlace({ at: "elsewhere", layout: "list", tab: "all" })).toEqual(LIST_PLACE);
     expect(parsePlace({ at: "project", layout: "list", tab: "all" })).toEqual(LIST_PLACE);
     expect(parsePlace({ at: "list", layout: "grid", tab: "all" })).toEqual(LIST_PLACE);
-    expect(parsePlace({ at: "new", layout: "board", tab: "all", state: "paused" })).toEqual({ at: "list", layout: "board", tab: "all", display: undefined });
+    expect(parsePlace({ at: "new", layout: "board", tab: "all", state: "paused" })).toEqual({ at: "list", layout: "board", tab: "all" });
+  });
+
+  it("keeps only the parts of a stored place that are what the screens read, so a bad value never breaks the view for good", () => {
+    const display = { order: "due", group: "state", show: ["key", "due"] };
+    expect(parsePlace({ at: "project", id: "p1", layout: "list", tab: "all", peek: "t1", display })).toEqual({ at: "project", id: "p1", layout: "list", tab: "all", peek: "t1", display });
+    expect(parsePlace({ at: "project", id: "p1", layout: "list", tab: "all", peek: 4, from: {}, display: { order: "due", group: "state", show: "key" } })).toEqual({ at: "project", id: "p1", layout: "list", tab: "all" });
+    expect(parsePlace({ at: "task", id: "t1", layout: "board", tab: "all", from: "p1", display: { order: "sideways", group: "none", show: [] } })).toEqual({ at: "task", id: "t1", layout: "board", tab: "all", from: "p1" });
+    expect(parsePlace({ at: "list", layout: "list", tab: "all", display: { order: "manual", group: "none", show: ["key", "colour"] } })).toEqual(LIST_PLACE);
   });
 });
 

@@ -49,7 +49,7 @@ vi.mock("../docs/DocumentCanvas", () => ({
 vi.mock("./Description", () => ({ Description: ({ docId, lead }: { docId: string; lead: string }) => <div data-description={docId}>{lead}</div> }));
 
 const { View, Head, Title } = await import("./ProjectsView");
-const { addRows, openItemIn, projectChip, taskChip } = await import("./kit");
+const { addRows, hintKeys, openItemIn, projectChip, taskChip } = await import("./kit");
 const { placeOf, resetPlaces } = await import("./place");
 const { openerOf } = await import("../canvas/SentChips");
 
@@ -62,7 +62,11 @@ let started: { about: ContextChip | readonly ContextChip[]; at?: { cwd: string; 
 let hostCalls: { method: string; params: Record<string, unknown> }[];
 let refuse: Record<string, string>;
 let convexCalls: { fn: string; args: Record<string, unknown> }[];
-const convex = { mutation: async (ref: never, args: Record<string, unknown>) => void convexCalls.push({ fn: getFunctionName(ref), args }) } as unknown as ConvexReactClient;
+const convex = {
+  mutation: async (ref: never, args: Record<string, unknown>) => void convexCalls.push({ fn: getFunctionName(ref), args }),
+  // `tasks:get`, asked for a card chip's way back: the task is the LAN's.
+  query: async () => ({ task: { projectId: "p-lan" } }),
+} as unknown as ConvexReactClient;
 
 const props = (over: Partial<WorkViewProps> = {}): WorkViewProps => ({
   env: BOX,
@@ -195,6 +199,14 @@ describe("the Projects view", () => {
   });
 });
 
+describe("the screens' tips", () => {
+  it("never name a chord the app takes first: ⌘B folds the sidebar, so List and Board promise no key", () => {
+    expect(hintKeys("mod+b")).toBeUndefined();
+    expect(hintKeys("c")).toBeTruthy();
+    expect(hintKeys(undefined)).toBeUndefined();
+  });
+});
+
 describe("a sent chip", () => {
   const at = { environmentId: BOX, sessionId: "th1", workspaceId: "ws" };
   const chip = (noun: string, ref: string) => ({ noun, label: "x", ref }) as Parameters<typeof openerOf>[0];
@@ -204,8 +216,11 @@ describe("a sent chip", () => {
     void openerOf(chip("project", "LifeOS projects p-tryouts"), at)!();
     await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-tryouts" }));
     void openerOf(chip("card", "LifeOS tasks t-network"), at)!();
-    await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "task", id: "t-network" }));
+    // The task's own page, and its Back goes to the project that holds it, which LifeOS names.
+    await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "task", id: "t-network", from: "p-lan" }));
     expect(screen.getByText("Network for 64 seats")).toBeTruthy();
+    fireEvent.click(within(head()).getByRole("button", { name: "Back" }));
+    expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-lan" });
     void openerOf(chip("task", "LifeOS tasks t-network"), at)!();
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks" });
   });
@@ -266,7 +281,7 @@ describe("Documents", () => {
   const row = (id: string) => addRows(BOX, "ws", LAN).find((r) => r.id === id)!;
 
   it("adds four rows of TempCode's own before the kit's Add link", () => {
-    expect(addRows(BOX, "ws", LAN).map((r) => r.label)).toEqual(["New document", "New sheet", "Link a document…", "Link a file or item…"]);
+    expect(addRows(BOX, "ws", LAN).map((r) => r.label)).toEqual(["New document", "New sheet", "Link a document or sheet…", "Link a file or item…"]);
   });
 
   it("New document makes one in the project and opens it in place, with the way back to the project", async () => {
@@ -274,7 +289,9 @@ describe("Documents", () => {
     await act(async () => row("new-document").run());
     expect(hostCalls.find((c) => c.method === "work.docs.create")?.params).toEqual({ sector: "purdue", projectId: "p-lan", title: "Untitled" });
     await waitFor(() => expect(document.querySelector("[data-document-frame='d-new']")).toBeTruthy());
-    const back = within(head().querySelector("[data-projects-title]") as HTMLElement).getByRole("button", { name: "Spring LAN" });
+    const title = head().querySelector("[data-projects-title]") as HTMLElement;
+    expect(title.textContent).toBe("Spring LAN");
+    const back = within(title).getByRole("button", { name: "Back to Spring LAN" });
     fireEvent.click(back);
     expect(document.querySelector("[data-document-frame]")).toBeNull();
     expect(screen.getByText("Network for 64 seats")).toBeTruthy();
@@ -291,6 +308,8 @@ describe("Documents", () => {
     act(() => row("link-document").run());
     const picker = await screen.findByRole("dialog");
     const option = await within(picker).findByRole("option", { name: /Sponsor deck notes/ });
+    // Every row here is LifeOS's, so a row says its kind and not its place.
+    expect(option.textContent).toBe("Sponsor deck notesDocument");
     expect(within(picker).queryByRole("option", { name: /budget\.xlsx/ })).toBeNull();
     await act(async () => {
       fireEvent.click(option);

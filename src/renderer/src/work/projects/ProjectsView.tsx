@@ -5,19 +5,20 @@ import { createLifeosProjectsClient, type SectorKey as KitSector } from "work-ki
 import { projectPlace, Projects, ProjectsClientProvider, ProjectsKitProvider, type Project, type ProjectsPlace, type ProjectTask } from "work-kit/projects";
 import "work-kit/projects/styles.css";
 import "./projects.css";
-import { ChevronLeft } from "../../chrome/icons";
+import { ArrowLeft } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { DocumentFrame, MARGIN_FROM, Scroller, useDocument, useOpened } from "../docs/DocumentCanvas";
-import { CodeThreadDialog, type CodeThreadStart } from "../tasks/CodeThreadDialog";
-import type { Task } from "../tasks/client";
+import { CodeThreadDialog } from "../tasks/CodeThreadDialog";
 import type { WorkViewProps } from "../views/registry";
 import { Bar, BarControls, BarTitle } from "./bar";
 import { projectsKitFor, setProjectsHost } from "./kit";
 import { LinkPicker, type LinkKind } from "./LinkPicker";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
+
+const TASK_GET = makeFunctionReference<"query", { id: string }, { task: { projectId?: string } } | null>("tasks:get");
 
 /**
  * A Work workspace's Projects (docs/agents/work-projects.md): the sector's
@@ -59,7 +60,16 @@ export function View(props: WorkViewProps) {
     openDoc(workspace.id, null);
     setPlace(workspace.id, task ? { at: "task", id: task, layout: was.layout, tab: "all", display: was.display } : projectPlace(project!, was));
     openWorkView({ workspaceId: workspace.id, view: "projects" });
-  }, [project, task, workspace.id]);
+    // A card's own page goes back to its project: the chip names the task alone, so LifeOS is asked which project holds it.
+    if (task && convex)
+      void convex.query(TASK_GET, { id: task }).then(
+        (got) => {
+          const now = placeOf(workspace.id);
+          if (got?.task.projectId && now.at === "task" && now.id === task && !now.from) setPlace(workspace.id, { ...now, from: got.task.projectId });
+        },
+        () => {},
+      );
+  }, [project, task, workspace.id, convex]);
   const [coding, setCoding] = useState<ProjectTask | null>(null);
   const [linking, setLinking] = useState<{ project: Project; kind: LinkKind } | null>(null);
   // What the kit reads at a press, set after each commit.
@@ -77,15 +87,14 @@ export function View(props: WorkViewProps) {
       },
     });
   });
-  const startCode: CodeThreadStart = (about, at) => startThread(about, at);
   // The frame says signed out and unreachable; with no client yet the session is on its way.
   if (!convex || !client) return <Bones />;
   return (
     <ConvexProvider client={convex}>
       <ProjectsKitProvider kit={kit}>
         <ProjectsClientProvider client={client}>
-          <div className="tc-projects h-full min-h-0">{doc ? <OpenedDoc env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</div>
-          {coding ? <CodeThreadDialog task={{ _id: coding.id, title: coding.title } as Task} sector={sector} onStart={startCode} onClose={() => setCoding(null)} /> : null}
+          <div className="tc-projects h-full min-h-0">{doc ? <DocInPlace env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</div>
+          {coding ? <CodeThreadDialog task={{ _id: coding.id, title: coding.title }} sector={sector} onStart={startThread} onClose={() => setCoding(null)} /> : null}
           {linking ? <LinkPicker env={env} workspaceId={workspace.id} project={linking.project} kind={linking.kind} onClose={() => setLinking(null)} /> : null}
         </ProjectsClientProvider>
       </ProjectsKitProvider>
@@ -109,7 +118,7 @@ function Bones() {
 }
 
 /** A LifeOS document of a project, opened in place in the shared editor, with the way back to its project in the header. */
-function OpenedDoc({ env, workspaceId, doc }: { env: string; workspaceId: string; doc: OpenedDoc }) {
+function DocInPlace({ env, workspaceId, doc }: { env: string; workspaceId: string; doc: OpenedDoc }) {
   const [attempt, setAttempt] = useState(0);
   const got = useOpened(env, doc.source, attempt);
   const [scrollTop, setScrollTop] = useState(0);
@@ -118,10 +127,12 @@ function OpenedDoc({ env, workspaceId, doc }: { env: string; workspaceId: string
     <div className="flex h-full min-h-0 flex-col">
       <Bar
         crumb={
-          <Button type="button" variant="ghost" size="sm" className="-ml-1.5 gap-1 px-1.5 font-medium" onClick={back}>
-            <ChevronLeft />
-            {doc.project.name}
-          </Button>
+          <>
+            <Button type="button" variant="ghost" size="icon-xs" aria-label={`Back to ${doc.project.name}`} className="text-muted-foreground" onClick={back}>
+              <ArrowLeft />
+            </Button>
+            <span className="min-w-0 truncate">{doc.project.name}</span>
+          </>
         }
       >
         {null}

@@ -650,6 +650,7 @@ html.theme-light {
   /* Semantic colours for thread boards: status dots, tints, tallies. */
   --color-success: var(--thread-success);
   --color-warning: var(--thread-warning);
+  --color-waiting: var(--thread-waiting);
   --color-danger: var(--thread-danger);
   --color-info: var(--thread-info);
   --color-violet: var(--thread-violet);

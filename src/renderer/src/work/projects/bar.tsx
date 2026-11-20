@@ -28,8 +28,8 @@ const setControls = (el: HTMLElement | null): void => set({ controls: el });
 
 /** The header's name: the way back when the screens stand inside a project, else "Projects". */
 export function BarTitle() {
-  // Until a screen's bar lands the slot is empty, and says the view's name itself.
-  return <span ref={setTitle} data-projects-title className="flex min-w-0 items-center gap-1.5 font-medium text-foreground empty:before:content-['Projects']" />;
+  // Until a screen's bar lands the slot is empty, and says the view's name itself. One weight, whatever the screen: the kit's own crumb is semibold.
+  return <span ref={setTitle} data-projects-title className="flex min-w-0 items-center gap-1.5 font-medium text-foreground empty:before:content-['Projects'] [&_.font-semibold]:font-medium" />;
 }
 
 /** The header's end: the screen's own controls. The row is theirs, so they collapse by its width (`@container/bar`). */

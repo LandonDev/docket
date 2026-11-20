@@ -6,6 +6,7 @@ import { requiredCapability } from '@shared/capabilities'
 import type { CanvasItem, CanvasSource, MentionReach, WorkScope } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import type { Caller, ToolCtx, WorkCtx } from '../modules'
+import { docs } from '../docs'
 import { projects, projectsTools } from '.'
 import { linkRefusal, linkToProject } from './link'
 import { cardMention } from './mentions'
@@ -61,6 +62,7 @@ beforeEach(() => {
     // A remote key reaches only what is under /managed.
     reaches: (by: Caller, path: string) => by.kind !== 'remote' || path.startsWith('/managed/'),
     lifeos: {
+      connected: () => true,
       owner: () => ({
         query: async (fn: string, args: { sector?: string; id?: string; keys?: string[] }) => {
           asked.push({ fn, args })
@@ -237,7 +239,7 @@ describe('project_link_item', () => {
     expect(projects.tools!(scope()).map((t) => t.name)).toEqual(['project_link_item'])
     expect(projects.preamble!(scope())).toContain('project_link_item')
     expect(projects.preamble!(scope())).toContain('get_project')
-    for (const word of ['expected_state', 'add_comment', 'add_tasks', 'stale_state']) expect(projects.preamble!(scope())).toContain(word)
+    for (const word of ['expected_state', 'add_comment', 'add_tasks', 'moved on']) expect(projects.preamble!(scope())).toContain(word)
   })
 })
 
@@ -274,5 +276,18 @@ describe("@ finds a project's card by its key", () => {
   it('is one of the module\'s kinds, read from LifeOS', () => {
     expect(projects.mentions).toEqual([cardMention])
     expect(cardMention.lifeos).toBe(true)
+  })
+})
+
+describe("a new document in a project (Documents' New document)", () => {
+  const create = (params: unknown) => docs.handle!({ id: '1', method: 'work.docs.create', params } as ClientRequest, ctx, LOCAL)
+
+  it("is made in a project of the sector the call names, and in no other sector's", async () => {
+    await create({ sector: 'purdue', projectId: 'lp_1', title: 'Untitled' })
+    expect(sent).toEqual([{ fn: 'docs:create', args: { projectId: 'lp_1', title: 'Untitled' } }])
+    sent = []
+    await expect(create({ sector: 'purdue', projectId: 'lp_far', title: 'Untitled' })).rejects.toThrow('LifeOS has no such project in this sector')
+    await expect(create({ sector: 'purdue', projectId: 'lp_none', title: 'Untitled' })).rejects.toThrow('LifeOS has no such project in this sector')
+    expect(sent).toEqual([])
   })
 })

@@ -138,6 +138,8 @@ export const docs: WorkModule = {
       case 'work.docs.create': {
         const { sector, projectId, title } = req.params
         if (!ctx.lifeos.connected()) throw new Error('LifeOS is not signed in on this host')
+        // A project is named by a client: it must be one of the sector the call names, as a link's is (work/projects).
+        if (projectId && !(await ctx.lifeos.owner().query<{ _id: string }[]>('projects:list', { sector })).some((p) => p._id === projectId)) throw new Error('LifeOS has no such project in this sector')
         const id = await ctx.lifeos.owner().mutation<string>('docs:create', { ...(projectId ? { projectId } : { sector }), title })
         return handled({ source: { at: 'lifeos' as const, table: 'docs' as const, id }, title })
       }

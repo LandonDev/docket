@@ -14,7 +14,7 @@ const LISTED = new Set(["backlog", "active", "paused"]);
 
 type LifeosProject = { _id: string; name: string; status: string; _creationTime?: number };
 
-/** LifeOS's projects of one sector as the column lists them: still under way, in the Projects view's own order (oldest first), so a card never moves for what is opened or worked in. */
+/** LifeOS's projects of one sector as the column lists them: still under way, oldest first (the order the Projects view keeps inside a state), so a card never moves for what is opened or worked in, or for a change of state. */
 export function columnProjects(rows: readonly LifeosProject[]): LifeosProjectRow[] {
   return rows
     .filter((p) => LISTED.has(p.status))

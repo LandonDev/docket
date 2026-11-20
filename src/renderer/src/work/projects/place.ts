@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { CanvasSource } from "@shared/work";
-import { LIST_PLACE, type ProjectsPlace } from "work-kit/projects";
+import { GROUPINGS, LIST_PLACE, ORDERS, SHOW_PARTS, type Display, type ProjectsPlace } from "work-kit/projects";
 
 /**
  * Where a workspace's project screens stand (docs/agents/work-projects.md
@@ -13,16 +13,28 @@ import { LIST_PLACE, type ProjectsPlace } from "work-kit/projects";
 
 const KEY = "work.projects.place.v1";
 const AT = new Set<ProjectsPlace["at"]>(["list", "new", "project", "task"]);
+const text = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 
-/** A stored place read back: anything that is not one is the list. */
+/** Display as stored, kept only when every part of it is one the screens know. */
+function parseDisplay(raw: unknown): Display | undefined {
+  const d = raw as Partial<Display> | null | undefined;
+  if (!d || typeof d !== "object" || !Array.isArray(d.show)) return undefined;
+  if (!ORDERS.some((o) => o.value === d.order) || !GROUPINGS.some((g) => g.value === d.group)) return undefined;
+  if (!d.show.every((part) => SHOW_PARTS.some((s) => s.value === part))) return undefined;
+  return { order: d.order!, group: d.group!, show: d.show };
+}
+
+/** A stored place read back, field by field: anything that is not one is the list, and a part that is not one is left out. */
 export function parsePlace(raw: unknown): ProjectsPlace {
   if (!raw || typeof raw !== "object") return LIST_PLACE;
   const p = raw as Partial<ProjectsPlace>;
   if (!p.at || !AT.has(p.at) || (p.layout !== "list" && p.layout !== "board") || typeof p.tab !== "string") return LIST_PLACE;
+  const display = parseDisplay(p.display);
   // A page with nothing to show, and a half-typed new project (the kit keeps its own draft), come back as the list.
-  if ((p.at === "project" || p.at === "task") && typeof p.id !== "string") return LIST_PLACE;
-  if (p.at === "new") return { ...LIST_PLACE, layout: p.layout, display: p.display };
-  return p as ProjectsPlace;
+  if (p.at === "new" || ((p.at === "project" || p.at === "task") && typeof p.id !== "string")) return { ...LIST_PLACE, layout: p.layout, ...(display ? { display } : {}) };
+  const peek = text(p.peek);
+  const from = text(p.from);
+  return { at: p.at, ...(p.id ? { id: p.id } : {}), layout: p.layout, tab: p.tab, ...(peek ? { peek } : {}), ...(from ? { from } : {}), ...(display ? { display } : {}) };
 }
 
 function readAll(): Record<string, unknown> {
@@ -65,7 +77,7 @@ export function usePlace(workspaceId: string): ProjectsPlace {
 }
 
 /** A LifeOS document opened in place from a project's Documents, and where Back returns. */
-export type OpenedDoc = { source: CanvasSource; title: string; project: { id: string; name: string } };
+export type OpenedDoc = { source: CanvasSource; project: { id: string; name: string } };
 const opened = new Map<string, OpenedDoc>();
 
 export function openDoc(workspaceId: string, doc: OpenedDoc | null): void {

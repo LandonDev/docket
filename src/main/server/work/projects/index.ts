@@ -71,7 +71,7 @@ export const projectsTools: WorkTool[] = [
 
 const PREAMBLE = [
   "Projects: a project's tasks, documents and comments are LifeOS's. Read a project with LifeOS's get_project before you work in it; it shows the tree with each task's key. Name a task by its key (PUR-41) everywhere: every tool takes it.",
-  'When you start a task, move it to doing (update_task with state "doing" and expected_state "todo", or move_tasks); if the answer is stale_state, read the task again before you go on.',
+  'When you start a task, move it to doing (update_task with state "doing" and expected_state "todo", or move_tasks); if the answer says the task moved on, read it again before you go on.',
   'When you stop, add_comment on the task: what you did, what is left, what you need from the owner. To file a plan, add_tasks with an indented outline under the project or a task.',
   "List a file or one of your canvas items with a project's documents with `project_link_item`."
 ].join(' ')

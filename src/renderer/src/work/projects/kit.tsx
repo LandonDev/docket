@@ -96,8 +96,14 @@ const SectorMark: ProjectsKit["SectorMark"] = ({ sector, label = true, className
     </span>
   ) : null;
 
+/** Chords the app's own key layer takes before the screens hear them (lib/appCommands.ts: the sidebar): a tip never names one. */
+const APP_CHORDS: ReadonlySet<string> = new Set(["mod+b"]);
+
+/** The chord a tip may name, as this platform writes it; none for one the screens never hear. */
+export const hintKeys = (keys: string | undefined): string | undefined => (keys && !APP_CHORDS.has(keys) ? keyHint(keys) : undefined);
+
 const Hint: ProjectsKit["Hint"] = ({ label, keys, children }) => (
-  <Tip label={label} shortcut={keys ? keyHint(keys) : undefined}>
+  <Tip label={label} shortcut={hintKeys(keys)}>
     {children}
   </Tip>
 );
@@ -129,7 +135,7 @@ export function openItemIn(workspaceId: string, item: ProjectItem, project: Pick
   switch (item.kind) {
     // A LifeOS document opens here, in the editor, with the way back to its project.
     case "doc":
-      return openDoc(workspaceId, { source: { at: "lifeos", table: "docs", id: item.id }, title: item.title, project: { id: project.id, name: project.name } });
+      return openDoc(workspaceId, { source: { at: "lifeos", table: "docs", id: item.id }, project: { id: project.id, name: project.name } });
     // A sheet, a note and any other source open beside a thread: the press starts one with the item in it, as the Docs view does.
     case "sheet":
       return host.startThread({ kind: "selection", label, ref: { at: "lifeos", table: "sheets", id: item.id } });
@@ -165,8 +171,8 @@ function ThreadMark({ task }: { task: ProjectTask }) {
 /** A new LifeOS document in the project, opened in place at once. */
 async function newDocument(env: string, workspaceId: string, project: Project): Promise<void> {
   try {
-    const made = await registry.linkOf(env).request<{ source: OpenedDoc["source"]; title: string }>("work.docs.create", { sector: hostOf(workspaceId).sector, projectId: project.id, title: "Untitled" });
-    openDoc(workspaceId, { source: made.source, title: made.title, project: { id: project.id, name: project.name } });
+    const made = await registry.linkOf(env).request<{ source: OpenedDoc["source"] }>("work.docs.create", { sector: hostOf(workspaceId).sector, projectId: project.id, title: "Untitled" });
+    openDoc(workspaceId, { source: made.source, project: { id: project.id, name: project.name } });
   } catch (error) {
     failed(error);
   }
@@ -182,7 +188,7 @@ export function addRows(env: string, workspaceId: string, project: Project): Men
   return [
     { id: "new-document", label: "New document", icon: Doc, run: () => void newDocument(env, workspaceId, project) },
     { id: "new-sheet", label: "New sheet", icon: Table, run: () => void hostOf(workspaceId).newSheet(project).catch(failed) },
-    { id: "link-document", label: "Link a document…", icon: Link, run: () => hostOf(workspaceId).link(project, "document") },
+    { id: "link-document", label: "Link a document or sheet…", icon: Link, run: () => hostOf(workspaceId).link(project, "document") },
     { id: "link-item", label: "Link a file or item…", icon: File, run: () => hostOf(workspaceId).link(project, "item") },
   ];
 }

@@ -49,7 +49,7 @@ function useNotes(id: string): Detail | undefined | "failed" {
 
 export type CodeThreadStart = (about: ContextChip, at: { cwd: string; projectId: string | null }) => void;
 
-export function CodeThreadDialog({ task, sector, onStart, onClose }: { task: Task; sector: string | null; onStart: CodeThreadStart; onClose: () => void }) {
+export function CodeThreadDialog({ task, sector, onStart, onClose }: { task: Pick<Task, "_id" | "title">; sector: string | null; onStart: CodeThreadStart; onClose: () => void }) {
   return (
     <Modal onClose={onClose} title="Open a code thread" description={task.title} size="sm">
       <Body task={task} sector={sector} onStart={onStart} onClose={onClose} />
@@ -68,7 +68,7 @@ function useCodeWorkspaces(): CodeWorkspace[] {
   }, [recents, workspaces, projects, workHosts]);
 }
 
-function Body({ task, sector, onStart, onClose }: { task: Task; sector: string | null; onStart: CodeThreadStart; onClose: () => void }) {
+function Body({ task, sector, onStart, onClose }: { task: Pick<Task, "_id" | "title">; sector: string | null; onStart: CodeThreadStart; onClose: () => void }) {
   const close = useModalClose();
   const all = useCodeWorkspaces();
   const detail = useNotes(task._id);
