@@ -23,7 +23,9 @@ why and the measured headline.
   said once in that thread's next result. Every restore of the person's
   front (the guard's, a `front` hold's, the session tier's) goes through
   `GiveFront` (Input/GiveFront.swift): `NSRunningApplication.activate`,
-  then `AXFrontmost`. `AXFrontmost` alone answers success and does nothing
+  and `AXFrontmost` only when that did not bring the app front within
+  100 ms (both at once let the next background launch take the front).
+  `AXFrontmost` alone answers success and does nothing
   for Finder with no window over the desktop, which failed the 1.0.358
   publish's tc-computer row three times (§14.5 "Giving the front back").
 - **The contract.** The zod in src/shared/computer/ (protocol.ts,

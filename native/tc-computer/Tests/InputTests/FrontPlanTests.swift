@@ -187,48 +187,61 @@ private func activeHold(at: Int = 1_000) -> FrontHoldPlan {
 }
 
 /// The give-back of every restore (GiveFront): the Mac of 2026-11-22, where AXFrontmost on Finder with no
-/// window answered success and did nothing, and NSRunningApplication.activate brought it back.
+/// window answered success and did nothing, NSRunningApplication.activate brought it back, and both written
+/// one after the other let the next background launch take the front.
 @Suite struct GiveFrontTests {
-    /// A Mac with the agent's app (9) in front; `windowless` apps ignore AXFrontmost, `refusing` ones `activate`.
+    /// A Mac with the agent's app (9) in front; `windowless` apps ignore AXFrontmost, `refusing` ones refuse
+    /// `activate`, `ignoring` ones accept it and stay behind.
     final class Mac {
         var front: Int32 = 9
         var windowless: Set<Int32> = []
         var refusing: Set<Int32> = []
+        var ignoring: Set<Int32> = []
         var writes: [GiveFront.Write] = []
+        var slept = 0
 
         func write(_ w: GiveFront.Write, _ pid: Int32) -> Bool {
             writes.append(w)
             switch w {
             case .activate:
                 guard !refusing.contains(pid) else { return false }
-                front = pid
+                if !ignoring.contains(pid) { front = pid }
             case .axFrontmost:
-                // the write is accepted either way; it moves only an app with a window
+                // accepted either way; it moves only an app with a window
                 if !windowless.contains(pid) { front = pid }
             }
             return true
         }
+
+        func give(_ pid: Int32) -> Bool {
+            GiveFront.give(pid: pid, write: write, isFront: { self.front == pid }, sleep: { self.slept += $0 })
+        }
     }
 
-    @Test func finderWithNoWindowComesBack() {
+    @Test func finderWithNoWindowComesBackByActivateAlone() {
         let mac = Mac()
         mac.windowless = [824]
-        #expect(GiveFront.give(pid: 824, write: mac.write))
+        #expect(mac.give(824))
         #expect(mac.front == 824)
-        #expect(mac.writes == [.activate, .axFrontmost])
+        #expect(mac.writes == [.activate])
+        #expect(mac.slept == 0)
     }
 
-    @Test func anAppWithAWindowComesBackWhenActivateIsRefused() {
+    @Test func aRefusedActivateFallsBackToAXFrontmostAtOnce() {
         let mac = Mac()
         mac.refusing = [1]
-        #expect(GiveFront.give(pid: 1, write: mac.write))
+        #expect(mac.give(1))
         #expect(mac.front == 1)
         #expect(mac.writes == [.activate, .axFrontmost])
+        #expect(mac.slept == 0)
     }
 
-    @Test func eachWriteRunsOnce() {
+    @Test func anActivateThatDoesNotTakeGetsAXFrontmostAfterTheFallbackTime() {
         let mac = Mac()
-        GiveFront.give(pid: 1, write: mac.write)
-        #expect(mac.writes == GiveFront.writes)
+        mac.ignoring = [1]
+        #expect(mac.give(1))
+        #expect(mac.front == 1)
+        #expect(mac.writes == [.activate, .axFrontmost])
+        #expect(mac.slept == GiveFront.fallbackMs)
     }
 }
