@@ -3,11 +3,11 @@
 import type { TeamsLibrary } from "@shared/contract-work-office";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { NoteEmpty, NoteLine, Places } from "./FilesView";
-import { placeGroups, type FilesNote } from "./files";
+import { placeGroups, type FilesNote, type ShownLibrary } from "./files";
 
 const workspace = { id: "w", environmentId: "box", path: "/w", name: "Purdue", kind: "work" } as unknown as WorkspaceMeta;
 const noop = (): void => undefined;
-const lib = (over: Partial<TeamsLibrary> & Pick<TeamsLibrary, "id" | "path" | "team" | "kind">) => ({ host: "env_box", env: "box", library: null, tenant: "Purdue University", channels: [], web: null, found: true, ...over });
+const lib = (over: Partial<ShownLibrary> & Pick<TeamsLibrary, "id" | "path" | "team" | "kind">): ShownLibrary => ({ host: "env_box", env: "box", library: null, tenant: "Purdue University", channels: [], web: null, found: true, ...over });
 const groups = placeGroups(
   [
     lib({ id: "b1", vm: true, path: "C:\\Users\\tcuser\\Purdue University\\RecWell - Documents", team: "RecWell", kind: "channels", channels: ["Team RecWell", "Sport Programs", "AI Task Force"] }),
