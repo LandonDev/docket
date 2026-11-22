@@ -92,7 +92,7 @@ public protocol FrontSource: Sendable {
     func frontmost() -> Int32?
     /// the CGWindowID of the app's focused window
     func focusedWindow(pid: Int32) -> UInt32?
-    /// AXFrontmost on the app element; never `NSRunningApplication.activate`, which macOS refuses a background caller
+    /// gives the front back to the person's app (`GiveFront`: `NSRunningApplication.activate`, then AXFrontmost)
     @discardableResult func setFrontmost(pid: Int32) -> Bool
     /// AXRaise and AXMain on the window, or on the app's focused window read fresh when `window` is nil
     @discardableResult func raise(pid: Int32, window: UInt32?) -> Bool

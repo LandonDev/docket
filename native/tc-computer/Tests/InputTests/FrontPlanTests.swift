@@ -185,3 +185,50 @@ private func activeHold(at: Int = 1_000) -> FrontHoldPlan {
         #expect(MenuValidation.pollMs + MenuValidation.openedMs < ComputerDefaults.Front.holdMaxMs / 2)
     }
 }
+
+/// The give-back of every restore (GiveFront): the Mac of 2026-11-22, where AXFrontmost on Finder with no
+/// window answered success and did nothing, and NSRunningApplication.activate brought it back.
+@Suite struct GiveFrontTests {
+    /// A Mac with the agent's app (9) in front; `windowless` apps ignore AXFrontmost, `refusing` ones `activate`.
+    final class Mac {
+        var front: Int32 = 9
+        var windowless: Set<Int32> = []
+        var refusing: Set<Int32> = []
+        var writes: [GiveFront.Write] = []
+
+        func write(_ w: GiveFront.Write, _ pid: Int32) -> Bool {
+            writes.append(w)
+            switch w {
+            case .activate:
+                guard !refusing.contains(pid) else { return false }
+                front = pid
+            case .axFrontmost:
+                // the write is accepted either way; it moves only an app with a window
+                if !windowless.contains(pid) { front = pid }
+            }
+            return true
+        }
+    }
+
+    @Test func finderWithNoWindowComesBack() {
+        let mac = Mac()
+        mac.windowless = [824]
+        #expect(GiveFront.give(pid: 824, write: mac.write))
+        #expect(mac.front == 824)
+        #expect(mac.writes == [.activate, .axFrontmost])
+    }
+
+    @Test func anAppWithAWindowComesBackWhenActivateIsRefused() {
+        let mac = Mac()
+        mac.refusing = [1]
+        #expect(GiveFront.give(pid: 1, write: mac.write))
+        #expect(mac.front == 1)
+        #expect(mac.writes == [.activate, .axFrontmost])
+    }
+
+    @Test func eachWriteRunsOnce() {
+        let mac = Mac()
+        GiveFront.give(pid: 1, write: mac.write)
+        #expect(mac.writes == GiveFront.writes)
+    }
+}

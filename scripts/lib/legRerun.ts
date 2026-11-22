@@ -36,6 +36,29 @@ export function legRerunVerdict(leg: string, first: readonly LegStep[], second: 
   return { red: false, flakes: failed.map((s) => ({ leg, step: s.name, why: s.why ?? '' })) }
 }
 
+/** The report's lists one try of a leg adds to: its steps, its waits and its `front` holds. */
+export interface TryLog {
+  steps: unknown[]
+  waits: unknown[]
+  frontHolds: unknown[]
+}
+
+export type TryMark = Record<keyof TryLog, number>
+
+/** Where a try starts in each list. */
+export const markTry = (r: TryLog): TryMark => ({ steps: r.steps.length, waits: r.waits.length, frontHolds: r.frontHolds.length })
+
+/**
+ * Drops all a try added, before a rerun or after the person cut it short: a hold left from the first run would
+ * fail the rerun's "every hold within its bound" with a hold the rerun never made (the Mac, 2026-11-22: one
+ * restore of 533 ms in the first run failed a clean rerun).
+ */
+export function dropTry(r: TryLog, mark: TryMark): void {
+  r.steps.splice(mark.steps)
+  r.waits.splice(mark.waits)
+  r.frontHolds.splice(mark.frontHolds)
+}
+
 export const flakeLine = (f: Flake): string => `${FLAKE_PREFIX}${f.leg} leg, ${f.step}: ${f.why}`
 
 /** The flake lines a step's log holds, for the gate's summary and last-run.json. */

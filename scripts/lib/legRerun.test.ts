@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { flakeLine, flakesInLog, legRerunVerdict, needsLegRerun, needsVoidRerun, type LegStep } from './legRerun'
+import { dropTry, flakeLine, flakesInLog, legRerunVerdict, markTry, needsLegRerun, needsVoidRerun, type LegStep } from './legRerun'
 
 const passed = (name: string): LegStep => ({ name, outcome: 'passed' })
 const failed = (name: string, why: string): LegStep => ({ name, outcome: 'failed', why })
@@ -47,5 +47,17 @@ describe('the void rerun', () => {
     expect(needsVoidRerun({ failed: 0, voided: 0, gate: true, rerun: false })).toBe(false)
     expect(needsVoidRerun({ failed: 0, voided: 2, gate: false, rerun: false })).toBe(false)
     expect(needsVoidRerun({ failed: 0, voided: 2, gate: true, rerun: true })).toBe(false)
+  })
+})
+
+describe('a try dropped', () => {
+  it('drops the steps, waits and front holds the try added, and keeps what came before', () => {
+    const report = { steps: ['setup'], waits: ['w0'], frontHolds: ['hold before'] }
+    const mark = markTry(report)
+    report.steps.push('active 5')
+    report.waits.push('w1')
+    report.frontHolds.push('active TextEdit 1: restoreMs 533')
+    dropTry(report, mark)
+    expect(report).toEqual({ steps: ['setup'], waits: ['w0'], frontHolds: ['hold before'] })
   })
 })

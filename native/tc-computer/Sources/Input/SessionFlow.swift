@@ -45,13 +45,13 @@ public protocol SessionHost: SessionHostBase {
     func isRunning(pid: Int) -> Bool
     func minimized(_ w: Window) -> Bool
     func unminimize(_ w: Window) throws
-    /// AXFrontmost on the app element: NSRunningApplication.activate asks for cooperative activation, which macOS refuses a background caller
+    /// AXFrontmost on the app element, to bring the target forward (it has a window, which AXFrontmost needs)
     func bringForward(pid: Int32) throws
     /// AXRaise and AXMain on the window
     func raise(_ w: Window) throws
     /// the app's AXFocusedWindow is this window
     func isFocusedWindow(_ w: Window, pid: Int32) -> Bool
-    /// restore: brings the recorded app back in front
+    /// restore: brings the recorded app back in front (GiveFront, so an app with no window comes back too)
     func activate(_ app: AppBrief) -> Bool
     /// restore: puts the pointer back without an event
     func warpPointer(to p: ScreenPoint)

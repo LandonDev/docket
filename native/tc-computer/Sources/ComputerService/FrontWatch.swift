@@ -490,7 +490,7 @@ final class LiveFrontSource: FrontSource, @unchecked Sendable {
     }
 
     func setFrontmost(pid: Int32) -> Bool {
-        AXUIElementSetAttributeValue(LiveFrontSource.app(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue) == .success
+        GiveFront.give(pid: pid)
     }
 
     func raise(pid: Int32, window: UInt32?) -> Bool {

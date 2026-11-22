@@ -7,8 +7,8 @@ import CoreGraphics
 import Foundation
 
 /// The session tier's reads and writes of the real Mac, over AX, NSWorkspace and CGEvent.
-/// Activation goes through AX (AXFrontmost, AXRaise, AXMain): NSRunningApplication.activate
-/// asks for cooperative activation, which macOS refuses to a background caller.
+/// The target's activation goes through AX (AXFrontmost, AXRaise, AXMain). The restore gives the person's
+/// app back through GiveFront, which activates it too: AXFrontmost does nothing for an app with no window.
 public final class LiveSessionHost: SessionHost, @unchecked Sendable {
     public typealias Window = AXUIElement
     private var observer: NSObjectProtocol?
@@ -88,7 +88,7 @@ public final class LiveSessionHost: SessionHost, @unchecked Sendable {
 
     public func activate(_ app: AppBrief) -> Bool {
         guard isRunning(pid: app.pid) else { return false }
-        AX.set(AX.app(pid_t(app.pid)), "AXFrontmost", kCFBooleanTrue)
+        GiveFront.give(pid: pid_t(app.pid))
         let deadline = Date().addingTimeInterval(Double(InputTiming.activationMs) / 1000)
         while Date() < deadline {
             if frontmost()?.pid == app.pid { return true }

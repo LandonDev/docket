@@ -7,9 +7,9 @@ import Foundation
 
 // The `front` tier, live (docs/computer-protocol.md §26.2–§26.5): one hold brings the agent's app
 // forward over AX, runs the step's AX calls or events posted to the app's pid, waits for the app
-// to take them, and gives the person their app and key window back. FrontPlan.swift decides every
-// move; this reads the Mac and writes it. Nothing here moves the pointer, posts at the HID or
-// session tap, or calls NSRunningApplication.activate.
+// to take them, and gives the person their app and key window back (GiveFront: NSRunningApplication.activate
+// and AXFrontmost, since AXFrontmost alone never brings back Finder with no window). FrontPlan.swift decides
+// every move; this reads the Mac and writes it. Nothing here moves the pointer or posts at the HID or session tap.
 
 /// What a step running inside a hold checks before each posted event or AX call.
 public final class FrontHoldContext: @unchecked Sendable {
@@ -426,7 +426,7 @@ final class FrontTier: @unchecked Sendable {
         }
     }
 
-    /// AXFrontmost on the person's app (it brings back its own last focused window), then AXRaise and
+    /// GiveFront on the person's app (it brings back its own last focused window), then AXRaise and
     /// AXMain on their recorded window if focus moved within the app; a third app they chose is kept.
     private func restore(personPid: pid_t?, personWindow: AXUIElement?, agentPid: pid_t, ctx: FrontHoldContext) {
         ctx.with { $0.beginRestore(now: nowMs()) }
@@ -444,7 +444,7 @@ final class FrontTier: @unchecked Sendable {
                 now = front == agentPid ? .agentApp : .personApp
             }
             if now == .agentApp, let personPid, !wrote {
-                try? host.bringForward(pid: personPid)
+                GiveFront.give(pid: personPid)
                 wrote = true
             }
             switch ctx.with({ $0.restore(now: nowMs(), front: now) }) {

@@ -73,7 +73,7 @@
  * Run on the Mac: bun run script:e2e-tc-computer
  */
 import { touchedSession } from '../src/shared/computer/scheduleRules'
-import { flakeLine, legRerunVerdict, needsLegRerun, type Flake } from './lib/legRerun'
+import { dropTry, flakeLine, legRerunVerdict, markTry, needsLegRerun, type Flake } from './lib/legRerun'
 import { gateScreenSkip, parseMacScreen, readyMacScreen } from './lib/macScreen'
 import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import {
@@ -323,12 +323,11 @@ class Chain {
  */
 async function legOnceMore(leg: string, run: () => Promise<void>): Promise<void> {
   const from = report.steps.length
-  const waitsFrom = report.waits.length
+  const mark = markTry(report)
   await run()
   const first = report.steps.slice(from)
   if (!needsLegRerun(first, GATE, tryAborted)) return
-  report.steps.splice(from)
-  report.waits.splice(waitsFrom)
+  dropTry(report, mark)
   console.log(`rerun: the ${leg} leg failed ${first.filter((s) => s.outcome === 'failed').map((s) => s.name).join('; ')}; running it once more from a clean launch`)
   await run()
   const second = report.steps.slice(from)
@@ -1057,8 +1056,7 @@ async function run(): Promise<void> {
       break
     }
     const at = new Date().toISOString()
-    const steps = report.steps.length
-    const waits = report.waits.length
+    const mark = markTry(report)
     const servicesFrom = services.length
     const t0 = Date.now()
     const abort = (): void => abortApps(servicesFrom)
@@ -1078,8 +1076,7 @@ async function run(): Promise<void> {
       break
     }
     // the person came back (or the time ran out): this try's results go, and the next gap tries again
-    report.steps.splice(steps)
-    report.waits.splice(waits)
+    dropTry(report, mark)
     report.gate.push({
       attempt,
       at,
