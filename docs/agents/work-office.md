@@ -205,6 +205,36 @@ not his, and answers "not open".
   answers no id.
 - New Outlook (`olk.exe`) has no COM: only classic Outlook is reached.
 
+**The Windows VM** (`vm/office.ts`). On the box, Excel, Word and PowerPoint
+are the ones in the Windows VM it keeps: the Windows carrier again, its
+helper not a child of the server but the one behind the guest's second door
+(`tc-office.exe serve --listen`, [work-winvm.md](work-winvm.md) "The
+helper"), so one socket is the helper's stdin and stdout
+(`comCarrier({start})`). It has its own `ExcelHelper` and shares the
+suggestions store. The carrier never wakes the machine by itself (its start
+fails "asleep"), so a watched workbook's safety pass leaves a sleeping VM
+asleep; a tool call wakes it first. A call the helper never answers ends
+the helper in the guest, since every later Office call would wait behind
+it. Microsoft 365 Apps for enterprise (Excel, Word, PowerPoint, classic
+Outlook; 64-bit, Current Channel) was installed there on 2026-11-22 with
+Microsoft's Office Deployment Tool; it is licensed by his own sign-in, and
+until then the apps are his to sign in to and nothing more
+(F-vm-files.md).
+
+**Where a tool runs** (`placesOf`, addin/index.ts). A host with the apps
+themselves (the Mac, a Windows PC) runs every tool itself, and so does a
+file open in our add-in. A host whose carrier has no Excel, Word or
+PowerPoint (the box, whose carrier is Outlook on the web) keeps mail and
+calendar and sends a file's tool by the file's key: a `C:\…` path to
+Office in the VM, a POSIX path to the workspace's desktop host, a URL or a
+bare name to the VM first and then the desktop (a file not open in the one
+is asked of the other). `office_files` asks every place and answers
+`computers: [{on, …}]` when more than one has something. The VM is a place
+only for a thread whose workspace has "Computer use on the Windows VM" on,
+and only once Office is installed there (`vmAllowed`, `vmHasOffice`).
+Before 2026-11-22 the box answered every file tool "Excel is not on the
+box" and never asked the Mac: its own carrier took the call.
+
 **Outlook on the web** (`owa/`, milestone 38). Mail and calendar only:
 Excel, Word and PowerPoint answer "not on the box". The carrier keeps its
 own tab of Outlook on the web in the box's browser

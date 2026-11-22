@@ -82,6 +82,8 @@ One press later (B10, Settings → Work); `work.winvm.setup` now. It needs the b
      `DISALLOWED`. Windows' own policies were tried first on this image (Enterprise Evaluation 25H2): Software
      Restriction Policies are not enforced, and an AppLocker policy that `Test-AppLockerPolicy` reads as
      Denied leaves its EXE cache empty and the program runs.
+   - OneDrive's machine policies (`ONEDRIVE_POLICY`): files on demand always, no folder backup offered, no
+     tutorial, and Storage Sense sending a downloaded file back to the cloud after a day unopened.
    The script notes each step it reaches in `C:\Windows\Temp\tc-setup.log`. On a fresh guest it has now
    and then hung before its first step while Windows was busy after its first logon (two of six fresh setups
    on 2026-11-20, nothing done in the guest), so the keeper gives it 4 minutes and runs it once more; a last
@@ -124,6 +126,50 @@ At a thread's first call (B5) or his Wake press. The call waits with "Waking the
    the answer counts, since the forward accepts a connection whether or not anything listens behind it.
 
 A box build with no `tc-computer.exe` wakes the machine and says so in `error`.
+
+## The helper
+
+A second door in the guest, for what is not computer use: `tc-office.exe`, the
+Office helper (native/tc-office-win/TcOffice.cs), as tcuser on its desktop,
+`serve --listen 127.0.0.1:47801 --token-file C:\ProgramData\TempCode\token`
+(helperDoor.ts). It reads OneDrive's folders for the Teams files
+([work-files.md](work-files.md) "The Windows VM") and drives Office by COM
+([work-office.md](work-office.md) "The Windows VM").
+
+- **No program ships for it.** The box carries the helper's C# source
+  (`TC_OFFICE_CS`); at the first use after each start of the box's service the
+  admin's script (`helperScript`) compares the guest's copy by a sha256 kept
+  beside it and compiles it with the guest's own `csc.exe` when it differs
+  (`/target:winexe`, so no console; `/define:UIA` for the sign-in walk), into
+  `C:\Program Files\TempCode\tc-office.exe`, which tcuser runs and cannot
+  replace. The logon task `\TempCode\office` starts it at each logon; the
+  script starts it when it is not running.
+- **The forward** is a second `-L` on the door's own SSH connection
+  (`KeeperDeps.forwards`, `run/office.sock`), so it opens and closes with the
+  door. `HelperDoor.open()` wakes the machine (the keeper's `door()`), makes
+  the helper ready once per wake (a knock, and the script only when the knock
+  gets no `ready`), and answers the socket and the token; `openIfAwake()`
+  never wakes it. A connection that dies before `ready` has the door made
+  ready again once (`doubt`).
+- **Many connections.** Each brings the token as its first line, then speaks
+  the helper's frames. Office's verbs run one at a time on the helper's STA
+  thread; the folder verbs run on their connection's own thread. A helper
+  that stops answering an Office call (a dialog open in the app) is ended as
+  the admin and started again at the next call.
+- **No lease.** These calls do not take the VM for a thread: a thread reads
+  Teams files or a workbook while another drives the desktop. `open` (the
+  switch) does show a window there.
+
+`Keeper.key(...qcodes)` presses keys on the machine's own keyboard (QMP
+`send-key`) while it is awake: Windows' security prompts take them where they
+take no click from a program in the guest (the sign-in walk's Escape).
+
+**No console window.** The door is a console program: started by itself it
+sat in a Windows Terminal window on tcuser's desktop, over everything he and
+a thread looked at (seen 2026-11-22). Its logon task now runs it under
+`conhost.exe --headless` (`doorTask`, setup.ts), and each wake registers a
+task from before that again and ends its door (`startDoorScript`). The
+keeper's own desktop scripts (`onDesktop` with `wait`) run the same way.
 
 ## The picture
 

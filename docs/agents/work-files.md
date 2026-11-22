@@ -74,6 +74,102 @@ What the disk says, and how it is read (`office/files/library.ts`):
   holds the host. A workbook is
   read through Excel (`office_range_read`), a PDF in the canvas.
 
+## The Windows VM
+
+The box has no OneDrive of its own, and a plain Linux client needs Microsoft
+Graph, which Purdue blocks. So the box's Teams files come from Microsoft's own
+OneDrive in the Windows VM it keeps ([work-winvm.md](work-winvm.md)), signed
+in as him, files on demand. The code is `office/vm/` (`link.ts`, `files.ts`,
+`signin.ts`) and the helper's door, `winvm/helperDoor.ts`.
+
+- **A library there is a library of the keeping host** with `vm: true`: its
+  `host` is the box, its `path` the guest's own (`C:\Users\tcuser\…`), its
+  id `<host>~<hash>`. Every `work.office.files*` verb takes it like a folder
+  of the host's disk and routes by the library (`admitted`, handle.ts). The
+  renderer and the tools need no second wire.
+- **Read as tcuser, through a helper.** `tc-office.exe` (the Office helper,
+  native/tc-office-win/TcOffice.cs) runs as tcuser on its desktop and serves
+  a loopback door behind the VM's own token (`serve --listen 127.0.0.1:47801`);
+  the keeper's SSH connection carries a second forward to it
+  (`run/office.sock`). It is the one caller OneDrive's Files On-Demand surely
+  downloads for: the admin's SSH session is another user in session 0. Its
+  folder verbs (`Guest`): `guest.status` (OneDrive installed, running, the
+  account; the mounts from OneDrive's own registry rows,
+  `HKCU\Software\SyncEngines\Providers\OneDrive` and the accounts'
+  `Tenants`, each with the web address it stands for; Office as installed
+  and signed in), `files.list`, `files.stat`, `files.search` (the guest walks
+  its own disk: names only), `files.read` (pieces of 4 MB), `files.fetch`,
+  `files.free`, `files.open`, `onedrive.signin`, `onedrive.sync`. A
+  connection per call (`vmCall`), so a long download never holds a list.
+- **Fenced twice.** On the box a guest path must lie in a library OneDrive
+  syncs there, by name alone (`vmLibraryOf`: a drive and backslashes, no `.`
+  or `..`, no other separator, no trailing dot or space, case-blind). In the
+  guest the helper holds every path to OneDrive's mounts again and refuses a
+  link on the way down (`Admit`). The listener's path fence has nothing to
+  say of a guest path, which is no file of the host: only the files verbs
+  that name one file may carry one (`guestPath`, remote/fence.ts), and a
+  Windows host's own paths stay fenced. So a remote key of his (the Mac's
+  window, the phone) reads the VM's libraries by its capability; the bytes
+  go to no caller (`filesRead {as: 'bytes'}` is refused: a copy is made on
+  the box by `filesCopy`).
+- **Who may.** His own windows always. A thread only where its workspace has
+  "Computer use on the Windows VM" on (`vmAllowed`, read at every call); a
+  Work Chat never. The file verbs do not take the VM's lease: a thread reads
+  Teams files while another drives the VM.
+- **Waking.** What OneDrive syncs is read while the machine is awake and
+  kept (`vm:status` in `work_office_files`, with each library's top
+  folders), so `filesLibraries` answers a sleeping VM from that and never
+  wakes it, save once when it has never been read. A folder, a search, a
+  read, a copy or an open wakes it (about 20 s). While it is awake the
+  pillar reads it again each minute until nothing is missing (signed in,
+  the wanted libraries there, Office licensed), then every ten: his
+  approval shows with no screen open (`watchVm`, office/index.ts).
+- **Never a full download.** Machine policies set at setup and at each
+  helper start (`ONEDRIVE_POLICY`, winvm/setup.ts): `FilesOnDemandEnabled`,
+  no folder backup offered, no tutorial, and Storage Sense sends a
+  downloaded file back to the cloud after a day unopened. A file a text
+  read downloaded only for that read is sent back at once (`files.free`:
+  Explorer's "Free up space"; one he pinned is left). A copy is 48 MB at
+  most, checked before anything downloads.
+- **Which libraries.** `work.office.vmSync {libraries}` (admin, a person's)
+  keeps the libraries OneDrive there should sync (`vm:wanted`: site, web and
+  list ids, the site's address, the two titles); whenever OneDrive is signed
+  in and lacks one, the helper opens that library's own Sync link
+  (`odopen://sync/?siteId=…`), at most once in ten minutes each. Set
+  2026-11-22 to the RecWell site's Documents (ids read from OneDrive's
+  settings on his Mac, where he syncs three of its folders one by one: the
+  VM syncs the whole library, names only).
+- **The same place on two machines.** `twinOf` (files/tools.ts) maps a file
+  between a Mac's folder-library and the VM's whole library by
+  `teamsPlaceKey`. `teams_libraries` lists a place once (the VM's copy: it is
+  on the thread's own host and needs no Mac); a call whose machine cannot be
+  asked (its failure starts "The Windows VM is unreachable:", or the Mac is
+  offline) runs on the twin at the same place, and only then fails.
+- **Places.** `filesLibraries` answers `places`: `folders` where the host has
+  a CloudStorage folder, `vm` where it keeps the VM, each with its state
+  (`TeamsPlace`): what the Files view and Connections say when nothing is
+  listed.
+
+### Signing in
+
+Only he signs in, and nothing types a password or a code.
+`work.office.vmSignIn` (operate; refused to a model caller) wakes the VM and
+walks OneDrive's own sign-in to the one step that is his (`walkSignIn`): the
+helper opens OneDrive's first screen with his address in its link (the
+address Outlook on the web is signed in as on the box), presses Sign in,
+Purdue's page asks for a passkey and Windows shows its security-key prompt,
+which takes no click from a program of tcuser's and is sent away with Escape
+from the machine's own keyboard (the keeper's `key`, QEMU's), then the walk
+presses "Sign in another way" and "Approve a request on my Microsoft
+Authenticator app" by the words on them (UI Automation, the helper's `ui.seen`
+and `ui.press`, compiled only into the guest's build). A number is then on the
+VM's screen for his phone. The answer names the computer (`vm:windows`) and
+says where the walk stopped; the window opens the Computers page there. Once
+OneDrive is signed in, a second press opens Word for Office's own sign-in.
+Found live 2026-11-22 up to the list that offers the Authenticator; his
+approval, what OneDrive asks after it, and whether Purdue takes the VM as a
+device are unproven (F-vm-files.md).
+
 ## Where the files live (the Purdue rule)
 
 University data may not be copied into an AI tool that is not cleared for it.
@@ -138,7 +234,10 @@ written, a folder he added himself included (`office/tools.ts` `judged`).
 | `filesOpen {source}` | operate | opens it in its app here: the Office carrier for a workbook, document or deck, else the system's opener |
 | `filesSetRoots {roots}` | local | his edits: only this computer's own window |
 | `filesCopyGet`, `filesCopySet {workspaceId, on}` | read, admin | the copy switch |
-| `filesCopy {sessionId, source}` | operate | the copy, on the workspace's host, pulled from the file's host over the link |
+| `filesCopy {sessionId, source}` | operate | the copy, on the workspace's host, pulled from the file's host over the link, or out of this host's VM |
+| `vmStatus {}` | read | Office and OneDrive in the VM as last read (`VmOfficeStatus`); never wakes it |
+| `vmSignIn {account?}` | operate | his sign-in walked to his phone's number ("Signing in"); a person's |
+| `vmSync {libraries}` | admin | the libraries OneDrive in the VM should sync; a person's |
 
 `teamsKindOf`, `teamsAppOf`, `teamsCanvasOf` and `teamsWebOf` in
 `src/shared/contract-work-office.ts` are shared by both sides: a workbook
@@ -170,7 +269,8 @@ use on <Mac>"); a library's id is `<host>~<hash>`, so each call runs on that
 host, here directly or through `ctx.peer`. A file is named by its library and
 its place in it (`General/Budget.xlsx`), never by a path of the host.
 
-- `teams_libraries`: each library's id, team, library, kind and channels;
+- `teams_libraries`: each library's id, team, library, kind and channels, a
+  place two machines hold listed once (`in: 'the Windows VM'` on the VM's);
 - `teams_list {library, folder?}`, `teams_search {query, library?, kind?}`;
 - `teams_read {library, file}`: the text above;
 - `teams_open {library, file}`: on the thread's own host (or from a copy he
