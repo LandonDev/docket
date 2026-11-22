@@ -64,6 +64,16 @@ impl Wire {
         Wire { notes: Vec::new(), send, out, next: 1, seen: 0 }
     }
 
+    /// As `start`, for the door's child: nobody sits at the desktop (`Service::without_person`).
+    pub fn start_without_person<D: Desktop>(fake: D) -> Wire {
+        let (send, recv) = channel();
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let sink = Sink(out.clone());
+        let service = Arc::new(Service::new(fake, "test").without_person());
+        std::thread::spawn(move || serve(service, Pipe(recv, Vec::new()), Box::new(sink)));
+        Wire { notes: Vec::new(), send, out, next: 1, seen: 0 }
+    }
+
     pub fn raw(&mut self, line: &str) {
         self.send.send(format!("{line}\n").into_bytes()).unwrap();
     }

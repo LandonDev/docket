@@ -22,11 +22,20 @@ import { fileTools, type GuestFiles } from './files'
 
 export const NOT_ON_VM = 'refused: computer use on the Windows VM is off for this workspace (Settings → Work)'
 export const NO_VM = 'refused: the Windows VM is not on this host'
+/** The Windows service has no save panel step (§26.7 is the Mac's): said before the call goes, not as a tier it lacks. */
+export const NO_SAVE_AS = "refused: save_as does not run on Windows; press ctrl+s, set_value the Save as dialog's File name box and press Return"
+
+/** Whether a computer call asks for `save_as`, alone or as a batch's step. */
+export function asksSaveAs(args: unknown): boolean {
+  const a = args as { action?: unknown; actions?: unknown } | null
+  return a?.action === 'save_as' || (Array.isArray(a?.actions) && a.actions.some((s) => (s as { action?: unknown } | null)?.action === 'save_as'))
+}
 
 const LEAD =
   'A Windows 11 PC on this host, his own, signed in as he left it: Notepad, Edge, Explorer and the apps he installed, as the standard user. ' +
   'One thread uses it at a time. A send, a post or a submit is held for his press on its own: drive up to it and stop. ' +
   'Never type a password: say he must take over. There is no command line here: the consoles and script hosts do not start. ' +
+  'To save, press ctrl+s, set_value the dialog\'s File name box and press Return; save_as does not run on Windows. ' +
   'Below, "computer_*" and "the computer" mean these windows_* tools and this PC.\n\n'
 
 const rename = (name: string): string => name.replace(/^computer_/, 'windows_')
@@ -104,6 +113,7 @@ function computerTools(d: VmToolsDeps): WorkTool[] {
           : refusal(hostErrorLine('invalid_args', parsed.error.issues[0]?.message ?? 'refused'))
         return computerContent(windowsWords(outcome), 'parts')
       }
+      if (asksSaveAs(args)) return { ...workText(NO_SAVE_AS), isError: true }
       const refused = h.lease.take(threadId)
       if (refused) return { ...workText(refused), isError: true }
       keeper.touch()

@@ -14,7 +14,7 @@ import type { ToolCtx, WorkCtx } from '../modules'
 import { VM_TIER_GATE } from './gate'
 import type { Keeper } from './keeper'
 import { LEASE_AFTER_TURN_MS, VM_FREE_NOTICE, VM_OWNER_DRIVES } from './lease'
-import { NOT_ON_VM, VM_PREAMBLE, vmOffered, vmTools } from './tools'
+import { asksSaveAs, NO_SAVE_AS, NOT_ON_VM, VM_PREAMBLE, vmOffered, vmTools } from './tools'
 import { setVmHost, startVm, VM_COMPUTER, wireVm, type VmHost } from './vm'
 
 /**
@@ -116,7 +116,8 @@ describe("the VM's sessions", () => {
     try {
       const inVm = await vm.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 0.1 })
       expect(inVm.steps).toEqual(['hold_key shift for 0.1 s · session · changed'])
-      expect(vm.requests().find((q) => q.method === 'action.run')!.params.tiers).toEqual(['ax', 'process', 'front', 'session'])
+      // the session tier in place of the posted ones (gate.ts vmTiers)
+      expect(vm.requests().find((q) => q.method === 'action.run')!.params.tiers).toEqual(['ax', 'session'])
       const onBox = await box.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 0.1 })
       expect(onBox.steps[0]).toMatch(/failed: needs the session tier/)
     } finally {
@@ -144,6 +145,21 @@ describe('the tools', () => {
     windowsVm = false
     expect(tools()).toEqual([])
     expect(vmOffered(ctx, scope('t-a'), keeper as unknown as Keeper)).toBe(false)
+  })
+
+  it('refuse save_as, alone or in a batch, before the machine is taken or woken, and say how to save instead', async () => {
+    keeper.name = 'asleep'
+    for (const [name, args] of [
+      ['windows_act', { app: 'Notepad', action: 'save_as', path: '~/Documents/a.txt' }],
+      ['windows_batch', { app: 'Notepad', actions: [{ action: 'key', text: 'ctrl+a' }, { action: 'save_as', path: '~/Documents/a.txt' }] }]
+    ] as const) {
+      const r = await call(name, args)
+      expect(r.isError).toBe(true)
+      expect(text(r)).toBe(NO_SAVE_AS)
+    }
+    expect(keeper.wakes).toBe(0)
+    expect(asksSaveAs({ action: 'key', text: 'ctrl+s' })).toBe(false)
+    expect(tools()[2].description).toMatch(/press ctrl\+s, set_value the dialog's File name box and press Return/)
   })
 
   it('read the setting again at every call', async () => {

@@ -36,6 +36,13 @@ struct Fake {
     frames: Arc<Mutex<u8>>,
     /// the person moves the pointer while a session step runs
     person_moves: Arc<Mutex<bool>>,
+    /// Ctrl+A went to the field: the next text replaces its value
+    all: Arc<Mutex<bool>>,
+    /// Return puts a lone CR in the field, as a RichEdit does
+    keeps_cr: Arc<Mutex<bool>>,
+    /// a launch opens a second Notepad window, seen from the second listing after it on (the service lists the
+    /// windows it knows right after the launch)
+    opened: Arc<Mutex<u8>>,
 }
 
 const FRAME: Rect = Rect { x: 100.0, y: 50.0, w: 800.0, h: 600.0 };
@@ -51,11 +58,21 @@ impl Desktop for Fake {
     fn apps(&self, windows: bool) -> Result<Vec<AppInfo>, ComputerError> {
         let window = WindowInfo { id: 70, title: "Untitled - Notepad".into(), frame: FRAME, main: true, focused: true, on_screen: true, space: WindowSpace::Current, ..Default::default() };
         Ok(vec![
-            AppInfo { pid: 10, bundle_id: Some("notepad.exe".into()), name: "Notepad".into(), active: self.front.lock().unwrap().is_some_and(|(p, _)| p == 10), hidden: false, windows: windows.then(|| vec![window]) },
+            AppInfo { pid: 10, bundle_id: Some("notepad.exe".into()), name: "Notepad".into(), active: self.front.lock().unwrap().is_some_and(|(p, _)| p == 10), hidden: false, windows: windows.then(|| {
+                let opened = WindowInfo { id: 71, title: "a.txt - Notepad".into(), ..window.clone() };
+                let mut seen = self.opened.lock().unwrap();
+                *seen = seen.saturating_add((*seen > 0) as u8);
+                if *seen > 2 { vec![window, opened] } else { vec![window] }
+            }) },
             AppInfo { pid: 20, bundle_id: Some("explorer.exe".into()), name: "Windows Explorer".into(), active: false, hidden: false, windows: None },
         ])
     }
-    fn read(&self, pid: i64, _window: Option<&WindowRef>, _from: Option<&&'static str>, _deadline: Instant) -> Result<RawWindow<&'static str>, ComputerError> {
+    fn read(&self, pid: i64, _window: Option<&WindowRef>, from: Option<&&'static str>, _deadline: Instant) -> Result<RawWindow<&'static str>, ComputerError> {
+        if let Some(&h) = from {
+            let role = if h == "field" { "text area" } else { "button" };
+            let root = RawNode { handle: h, key: vec![2], role: role.into(), value: (h == "field").then(|| self.value.lock().unwrap().clone()), ..Default::default() };
+            return Ok(RawWindow { pid, app_name: "Notepad".into(), bundle_id: Some("notepad.exe".into()), window_id: 70, title: "Untitled - Notepad".into(), frame: FRAME, others: vec![], root, partial: false, read_ms: 1 });
+        }
         let field = RawNode { handle: "field", key: vec![2], role: "text area".into(), name: Some("Text editor".into()), value: Some(self.value.lock().unwrap().clone()), frame: Some(Rect { x: 200.0, y: 150.0, w: 400.0, h: 300.0 }), ..Default::default() };
         let save = RawNode { handle: "save", key: vec![3], role: "button".into(), name: Some("Save".into()), frame: Some(Rect { x: 700.0, y: 600.0, w: 80.0, h: 30.0 }), ..Default::default() };
         let root = RawNode { handle: "window", key: vec![1], role: "window".into(), name: Some("Untitled - Notepad".into()), children: vec![field, save], ..Default::default() };
@@ -98,6 +115,11 @@ impl Desktop for Fake {
             std::thread::sleep(Duration::from_millis(20));
         }
         match e {
+            Event::Key { combo, .. } if combo.mods.ctrl && combo.key == Key::Vk(b'A' as u16) => *self.all.lock().unwrap() = true,
+            Event::Key { combo, .. } if combo.key == Key::Vk(0x2E) && std::mem::take(&mut *self.all.lock().unwrap()) => self.value.lock().unwrap().clear(),
+            // a RichEdit keeps a lone CR for a line break
+            Event::Text(t) if std::mem::take(&mut *self.all.lock().unwrap()) => *self.value.lock().unwrap() = t.clone(),
+            Event::Key { combo, .. } if combo.key == Key::Vk(0x0D) && *self.keeps_cr.lock().unwrap() => self.value.lock().unwrap().push('\r'),
             Event::Text(t) => self.value.lock().unwrap().push_str(t),
             Event::Paste => {
                 let c = self.clip.lock().unwrap().1.clone();
@@ -159,6 +181,12 @@ impl Desktop for Fake {
         Ok(())
     }
     fn launch(&self, exe: &str, _args: &[String]) -> Result<i64, ComputerError> {
+        if exe.to_lowercase().contains("notepad") {
+            // Notepad opens the item and takes the front
+            *self.front.lock().unwrap() = Some((10, 71));
+            *self.opened.lock().unwrap() = 1;
+            return Ok(10);
+        }
         if exe == "calc.exe" { Ok(30) } else { Err(fail(ComputerErrorKind::AppNotFound, "no such app")) }
     }
 }
@@ -425,4 +453,49 @@ fn a_launch_named_by_a_path_is_refused_by_its_file_name() {
     let (mut w, _) = start(&fake);
     assert_eq!(w.kind("apps.launch", json!({ "app": "C:\\Windows\\System32\\consent.exe", "refuse": ["consent.exe"] })), "open_refused");
     assert_eq!(w.kind("apps.launch", json!({ "app": "consent", "refuse": ["consent.exe"] })), "open_refused");
+}
+
+#[test]
+fn where_nobody_sits_set_value_types_a_field_with_real_keys_and_leaves_a_launched_app_in_front() {
+    // the door's child (a VM): set_value on a text field selects its text and types the value at the session tier
+    let fake = Fake::default();
+    *fake.value.lock().unwrap() = "VM proof line one".into();
+    *fake.keeps_cr.lock().unwrap() = true;
+    let mut w = Wire::start_without_person(fake.clone());
+    let epoch = init(&mut w)["epoch"].as_str().unwrap().to_string();
+    w.ok("session.open", json!({ "session": "s" }));
+    w.ok("state.get", json!({ "session": "s", "app": { "app": "Notepad" }, "screenshot": "never" }));
+    let r = w.ok("action.run", act(&epoch, json!(["ax", "session"]), json!({ "action": "set_value", "element": 2, "value": "vm-proof.txt" })));
+    assert_eq!((r["step"]["tier"].clone(), r["step"]["input"]["via"].clone(), r["step"]["effect"].clone()), (json!("session"), json!("keys"), json!("changed")), "{r}");
+    assert_eq!(*fake.value.lock().unwrap(), "vm-proof.txt");
+    let posted = fake.posted.lock().unwrap().clone();
+    assert!(matches!(posted[0], (Tier::Session, Event::Key { combo, .. }) if combo.mods.ctrl && combo.key == Key::Vk(b'A' as u16)), "{posted:?}");
+    // two lines: the field keeps a lone CR, and that is the value it was given
+    let r = w.ok("action.run", act(&epoch, json!(["ax", "session"]), json!({ "action": "set_value", "element": 2, "value": "one\r\ntwo" })));
+    assert_eq!(r["step"]["effect"], json!("changed"), "{r}");
+    assert_eq!(*fake.value.lock().unwrap(), "one\rtwo");
+    // an empty value: the text selected and deleted
+    w.ok("action.run", act(&epoch, json!(["ax", "session"]), json!({ "action": "set_value", "element": 2, "value": "" })));
+    assert_eq!(*fake.value.lock().unwrap(), "");
+    // without the session tier it is the ax tier's, as anywhere
+    let r = w.ok("action.run", act(&epoch, json!(["ax"]), json!({ "action": "set_value", "element": 2, "value": "x" })));
+    assert_eq!(r["step"]["error"]["kind"], json!("action_unsupported"), "{r}");
+    // a launch leaves the app it brought forward in front: there is no person's window to put back
+    *fake.front.lock().unwrap() = Some((20, 99));
+    let l = w.ok("apps.launch", json!({ "app": "notepad", "open": ["C:\\Users\\tcuser\\Documents\\a.txt"] }));
+    assert!(l["front"].is_null(), "{l}");
+    assert_eq!(*fake.front.lock().unwrap(), Some((10, 71)));
+}
+
+#[test]
+fn where_a_person_sits_a_launch_puts_their_window_back_and_set_value_stays_at_the_ax_tier() {
+    let fake = Fake::default();
+    let (mut w, epoch) = start(&fake);
+    let r = w.ok("action.run", act(&epoch, json!(["ax", "session"]), json!({ "action": "set_value", "element": 2, "value": "x" })));
+    assert_eq!(r["step"]["error"]["kind"], json!("action_unsupported"), "the fake's ax refuses: {r}");
+    assert!(fake.posted.lock().unwrap().is_empty());
+    *fake.front.lock().unwrap() = Some((20, 99));
+    let l = w.ok("apps.launch", json!({ "app": "notepad", "open": ["C:\\Users\\me\\Documents\\a.txt"] }));
+    assert_eq!(l["front"]["restored"], json!("restored"), "{l}");
+    assert_eq!(*fake.front.lock().unwrap(), Some((20, 99)));
 }
