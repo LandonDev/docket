@@ -20,7 +20,12 @@ why and the measured headline.
   §23): an app that takes the front anyway is put back within 400 ms
   unless the person chose it, a third steal hides it, and every result
   says `raised`; a steal after the call answered is `apps/frontRestored`,
-  said once in that thread's next result.
+  said once in that thread's next result. Every restore of the person's
+  front (the guard's, a `front` hold's, the session tier's) goes through
+  `GiveFront` (Input/GiveFront.swift): `NSRunningApplication.activate`,
+  then `AXFrontmost`. `AXFrontmost` alone answers success and does nothing
+  for Finder with no window over the desktop, which failed the 1.0.358
+  publish's tc-computer row three times (§14.5 "Giving the front back").
 - **The contract.** The zod in src/shared/computer/ (protocol.ts,
   observation.ts, tools.ts) is the one source; `bun run gen:swift-computer`
   writes the Swift under each target's Generated/, and
