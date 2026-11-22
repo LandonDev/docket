@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
-import { MAX_IMAGE_PARTS, OBSERVATION_FAILED_PREFIX, formatShotLine, formatStepLine, type ComputerToolResult } from '@shared/computer/tools'
+import { EFFECT_WORDS, MAX_IMAGE_PARTS, OBSERVATION_FAILED_PREFIX, STEP_SEPARATOR, formatShotLine, formatStepLine, type ComputerToolResult } from '@shared/computer/tools'
 import type { AppInfo, ComputerAction, ComputerError, FrontReport, LaunchedWindow, Observation, StepResult, WindowInfo } from '@shared/computer/protocol'
 import { hostErrorLine, type HostErrorKind, type RefusedApp } from '@shared/computer/hostErrors'
 import { openItemsWords } from '@shared/computer/words'
@@ -95,10 +95,15 @@ export function outcomeOf(
   ctx: ErrorContext = {},
   person?: string | null
 ): ComputerToolOutcome {
+  // the closing read found the window or the app gone after the last step ran: that step closed it (a close button,
+  // Alt+F4, File › Exit), and saying "can't tell" and a failed read sent the thread looking for it
+  const last = result.steps.length - 1
+  const closed = !!result.observationError && WINDOW_GONE.has(result.observationError.kind) && result.steps[last]?.status === 'ok'
   const steps = result.steps.map((step, i) => {
     const action = actions[i] ?? ({ action: step.action } as ComputerAction)
     const worded = step.status === 'failed' ? { ...step, error: { ...step.error, message: errorLine(step.error, { ...ctx, action, step: true }) } } : step
-    return hostLines.get(i) ?? formatStepLine(worded, action)
+    const line = hostLines.get(i) ?? formatStepLine(worded, action)
+    return closed && i === last && step.status === 'ok' && step.effect !== 'changed' ? line.replace(new RegExp(`${STEP_SEPARATOR}${EFFECT_WORDS[step.effect]}$`), `${STEP_SEPARATOR}${WINDOW_CLOSED}`) : line
   })
   if (result.observation?.selectedTab !== undefined)
     steps.unshift(`Selected tab ${JSON.stringify(result.observation.selectedTab)} in window ${JSON.stringify(result.observation.window.title)}`)
@@ -107,11 +112,20 @@ export function outcomeOf(
   if (result.menusLeftOpen?.length) steps.push(menuLeftOpenLine(result.menusLeftOpen))
   const body = result.observation
     ? result.observation.text
-    : result.observationError
-      ? OBSERVATION_FAILED_PREFIX + errorLine(result.observationError, { app: ctx.app, window: ctx.window })
-      : null
+    : closed
+      ? closedLine(ctx.app)
+      : result.observationError
+        ? OBSERVATION_FAILED_PREFIX + errorLine(result.observationError, { app: ctx.app, window: ctx.window })
+        : null
   return { steps, shots, body, isError: false }
 }
+
+/** The closing read's kinds that mean the window, or the whole app, is gone. */
+const WINDOW_GONE: ReadonlySet<string> = new Set(['window_not_found', 'app_not_found'])
+/** A step's effect words when the window it acted on closed under it. */
+export const WINDOW_CLOSED = 'the window closed'
+/** In place of the read that found no window after a step closed it. */
+export const closedLine = (app?: string | null): string => `${app ?? 'The app'}'s window closed; computer_apps lists the windows open now`
 
 /** Nothing ran, or the call ended before its result: one line, after any step lines that did run. */
 export function refusal(line: string, steps: string[] = []): ComputerToolOutcome {
