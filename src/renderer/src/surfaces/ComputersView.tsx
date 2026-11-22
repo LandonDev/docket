@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { BusyLabel, Button } from "@renderer/components/ui/button";
-import { loadToast } from "@renderer/components/ui/toaster";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { Button } from "@renderer/components/ui/button";
+import { Spinner } from "@renderer/components/ui/spinner";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Desktop, Maximize2, PictureInPicture } from "../chrome/icons";
@@ -16,7 +16,8 @@ import { fitStage, stageLayout, stageOf, type Size } from "../lib/stageLayout";
 import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
-import { useSleepingVm, wakeVm, type SleepingVm } from "../lib/winvmWake";
+import { restingVm, restingVmTiles, useVmStates, wakeVm, WAKING_LINE, type VmState } from "../lib/winvmWake";
+import { hostName } from "../lib/threadResources";
 import { EmptyState } from "./SurfaceSkeleton";
 import { ComputerCaption, ViewButton, tileLine } from "./threads/computer/ComputerCaption";
 import { ENDED_WORDS, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
@@ -102,6 +103,52 @@ function ElsewherePicture({ machine }: { machine: string }) {
   return <Viewport fill face={{ kind: "none" }} label={`Shown on ${machine} only`} line={<ViewportLine words={`Shown on ${machine} only`} />} />;
 }
 
+/** The Windows VM's picture box while it is not awake, in the stream's own 16:10 so nothing moves when the picture comes. */
+const VM_SIZE = { width: 1280, height: 800 };
+
+/**
+ * The Windows VM while it is not awake: its box keeps the picture's place, with one line in it. On the stage a VM
+ * asleep or going to sleep is woken by itself, so the page shows "Waking the Windows VM" until the picture arrives
+ * (the live tile then takes this one's place, the same element); in the strip it waits for his press. Not set up, it
+ * says where to set it up.
+ */
+export function RestingVmPicture({ host, vm, place, wake = wakeVm }: { host: string; vm: VmState; place: Place; wake?: (host: string) => Promise<void> }) {
+  const rest = restingVm(vm);
+  const stage = place.stage;
+  const [failed, setFailed] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const wakes = stage && rest.wakes;
+  useEffect(() => {
+    if (!wakes) return;
+    let live = true;
+    setFailed(null);
+    wake(host).catch((err: unknown) => live && setFailed(err instanceof Error ? err.message : String(err)));
+    return () => {
+      live = false;
+    };
+  }, [attempt, host, wake, wakes]);
+  // asleep on the stage reads as waking from the first frame: the wake is already asked
+  const busy = rest.busy || wakes;
+  const line =
+    failed !== null ? (
+      <ViewportLine words={`Couldn't wake the Windows VM: ${failed}`} onRetry={() => setAttempt((n) => n + 1)} />
+    ) : busy ? (
+      <span role="status" className="flex items-center gap-2 text-xs leading-4 text-muted-foreground">
+        <Spinner aria-hidden className="size-3.5" />
+        <span>{wakes ? WAKING_LINE : rest.line}</span>
+      </span>
+    ) : (
+      <ViewportLine words={rest.line} />
+    );
+  // on the stage, the room the picture will have, so it comes with nothing moving; in the strip, the strip's width
+  const fit = place.stage ? fitStage(place.room, VM_SIZE, pixelRatioOf(null)) : null;
+  return (
+    <div data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
+      <Viewport fill face={{ kind: "none" }} label="Windows VM" size={VM_SIZE} line={line} />
+    </div>
+  );
+}
+
 export interface TileProps {
   tile: ComputerTile;
   onOpenSession: (threadId: string, host: string) => void;
@@ -128,7 +175,7 @@ export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTo
           where={where}
           onTookOver={onTookOver}
           views={
-            picture && !tile.shownOn ? (
+            picture && !tile.shownOn && !tile.vm ? (
               <>
                 <ViewButton label="Pop out" onClick={() => openPopOut({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile) })}>
                   <PictureInPicture className="size-4" />
@@ -187,7 +234,14 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
   const layout = stageLayout(size, tiles.length);
   const picture =
     pictureOf ??
-    ((tile: ComputerTile, place: Place) => (tile.shownOn ? <ElsewherePicture machine={tile.shownOn} /> : <LivePicture tile={tile} place={place} focusOnDrive={focusOnDrive} />));
+    ((tile: ComputerTile, place: Place) =>
+      tile.vm ? (
+        <RestingVmPicture host={tile.entry.host} vm={tile.vm} place={place} />
+      ) : tile.shownOn ? (
+        <ElsewherePicture machine={tile.shownOn} />
+      ) : (
+        <LivePicture tile={tile} place={place} focusOnDrive={focusOnDrive} />
+      ));
   // the strip in the order they acted, the latest first; the elements stay in one order, so none is ever remade
   const rank = new Map([...keyed].sort((a, b) => b.lastCallAt - a.lastCallAt || a.key.localeCompare(b.key)).map((k, i) => [k.key, i]));
   const others = tiles.length - 1;
@@ -225,44 +279,8 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given }: 
   );
 }
 
-/**
- * The header's one action, while the Windows VM sleeps: Wake. It spins from the press until the VM is awake, when its
- * tile is on the page and the button is gone.
- */
-export function WakeVm({ vm, onWake }: { vm: SleepingVm; onWake: () => Promise<void> }) {
-  const [pressed, setPressed] = useState(false);
-  const busy = pressed || vm.waking;
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      disabled={busy}
-      onClick={() => {
-        setPressed(true);
-        void onWake()
-          .catch((err: unknown) => loadToast().then((toast) => toast.error("Couldn't wake the Windows VM", { description: err instanceof Error ? err.message : String(err) })))
-          .finally(() => setPressed(false));
-      }}
-    >
-      <BusyLabel busy={busy} label="Wake the Windows VM" busyLabel="Waking…" />
-    </Button>
-  );
-}
-
-/** The page's 40px header: the glyph and its name, and Wake while the Windows VM sleeps. */
-export function ComputersHeader({
-  besideRail = false,
-  onClose,
-  onToggleSidebar,
-  vm,
-  onWake,
-}: {
-  besideRail?: boolean;
-  onClose: () => void;
-  onToggleSidebar: () => void;
-  vm: SleepingVm | null;
-  onWake: (vm: SleepingVm) => Promise<void>;
-}) {
+/** The page's 40px header: the glyph and its name. */
+export function ComputersHeader({ besideRail = false, onClose, onToggleSidebar }: { besideRail?: boolean; onClose: () => void; onToggleSidebar: () => void }) {
   return (
     <div className="flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
       {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
@@ -271,11 +289,6 @@ export function ComputersHeader({
         <Desktop className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 truncate font-medium">Computers</span>
       </div>
-      {vm ? (
-        <div className="flex shrink-0 items-center pe-2">
-          <WakeVm vm={vm} onWake={() => onWake(vm)} />
-        </div>
-      ) : null}
       {IS_MAC ? null : <WindowControls />}
     </div>
   );
@@ -289,14 +302,16 @@ interface Props {
 }
 
 export function ComputersView({ besideRail = false, onClose, onToggleSidebar, onOpenSession }: Props) {
-  const tiles = useComputers();
-  const vm = useSleepingVm();
+  const live = useComputers();
+  const vms = useVmStates();
+  // the Windows VM is a tile in every state: drawn from its state while it has no row of its own
+  const tiles = useMemo(() => [...live, ...restingVmTiles(vms, live, hostName)], [live, vms]);
   const close = useRef(onClose);
   close.current = onClose;
   usePageEscape(() => close.current(), { fields: "blur" });
   return (
     <div role="region" aria-label="Computers" data-computers className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
-      <ComputersHeader besideRail={besideRail} onClose={onClose} onToggleSidebar={onToggleSidebar} vm={vm} onWake={(at) => wakeVm(at.host)} />
+      <ComputersHeader besideRail={besideRail} onClose={onClose} onToggleSidebar={onToggleSidebar} />
       <ComputersPage
         tiles={tiles}
         // the browser /ui draws no picture of any machine: the same tiles, their captions alone

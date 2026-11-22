@@ -980,11 +980,8 @@ Every computer being driven now, on every connected host, in one place
   while a session's card needs him; it never carries a count. Go →
   Computers, ⌘⇧L.
 - **The page** covers the thread area as the Inbox and the Outbox do, on
-  their 40px header (the `Desktop` glyph, "Computers"). While the Windows
-  VM sleeps the header's end has one quiet button, "Wake the Windows VM"
-  (ghost, small, 8px from the edge), there and nowhere else; it spins
-  ("Waking…") from the press until the VM is awake, when the button goes and
-  the VM is a tile. Closing it returns
+  their 40px header (the `Desktop` glyph, "Computers"), with nothing at its
+  end. Closing it returns
   him to the thread he left. To keep one computer in view while he works
   he pops it out: the one thing in the app that floats, because he asked
   for it.
@@ -992,7 +989,10 @@ Every computer being driven now, on every connected host, in one place
   in `lib/stageLayout.ts`). Its picture fits the room left by a 16px inset
   and the caption, both ways, in its own shape, at the top of the room and
   centred across it; it is never drawn past twice the stream's own pixels,
-  so a small window stays small instead of turning to blur. It takes the
+  so a small window stays small instead of turning to blur, and grown past
+  them it is drawn at a whole number of screen pixels to each of the
+  stream's (1:1, 2:1) when that costs at most a fifth of its width
+  (`fitStage`). It takes the
   box's one display and is where he drives.
 - **The strip.** Every other computer is a live tile beside the stage, 176
   to 240px wide, 16px from it and 16px apart: its picture, its thread's
@@ -1032,10 +1032,20 @@ Every computer being driven now, on every connected host, in one place
   may not draw is one muted line in the box's place, naming the machine:
   "Shown on Studio only". The browser /ui lists the tiles with no picture
   at all.
-- **The Windows VM** is one tile while it is awake, titled by the thread
-  that holds it, or "Windows VM" when no thread does (then idle: no Stop,
-  no working mark). Its picture is the VM's own under its name, whichever
-  thread holds it, so the tile stays one element as the holder changes.
+- **The Windows VM** is one tile in every state, titled by the thread that
+  holds it, or "Windows VM" when no thread does (then idle: no Stop, no
+  working mark). Its picture is the VM's own under its name, whichever
+  thread holds it, so the tile stays one element as the holder changes and
+  as it sleeps and wakes. While it is not awake its box keeps the picture's
+  16:10 at the size the picture will have, so nothing moves when it comes,
+  and says its state once, in the box, centred, 12px muted
+  (`RestingVmPicture`): on the stage a VM asleep or going to sleep wakes by
+  itself, with a spinner and "Waking the Windows VM" until the picture
+  arrives; in the strip "Asleep", and his press puts it on the stage, which
+  wakes it; "Not set up: Settings → Work → Windows VM" with no Take over; a
+  failed wake says why, with Retry. Take over on a VM that is not awake
+  wakes it and then takes over: one press. It has no Pop out or Full window
+  until it has a picture.
 - **Nothing driven** is the one `EmptyState`: "Nothing is being driven",
   "A browser or an app an agent is using shows here, live." No action.
 - **Full window** (`FullWindow`, lib/fullWindow.ts, its own chunk): the

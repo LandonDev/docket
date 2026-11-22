@@ -120,7 +120,7 @@ d('his Take over of the Windows VM, live', () => {
   beforeAll(async () => {
     if (machine.running() || machine.hasDisk()) throw new Error('the standing machine is in use or has a disk; this run starts from none')
     rpc.addSource(picture)
-    configureComputerDrive('vm', vmWheel({ picture, lease, keeper: () => ({ state: () => state, setDriving: () => {} }), sessions: () => [] }))
+    configureComputerDrive('vm', vmWheel({ picture, lease, keeper: () => ({ state: () => state, setDriving: () => {}, wake: async () => state }), sessions: () => [] }))
     await machine.makeDisk()
     await machine.start()
     await guest.ready(300_000)

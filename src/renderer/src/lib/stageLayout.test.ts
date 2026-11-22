@@ -40,6 +40,20 @@ describe("the Computers page's stage", () => {
     expect(fitStage({ width: 800, height: 800 }, null, 2)).toEqual({ width: 800, height: 500 });
   });
 
+  it("draws a picture grown past its pixels at a whole scale when that costs at most a fifth of its width", () => {
+    const vm = { width: 1280, height: 800 };
+    // 1x screen, room 1400 wide: 1280, one to one, not 1400 and soft
+    expect(fitStage({ width: 1400, height: 1000 }, vm, 1)).toEqual({ width: 1280, height: 800 });
+    // 1.3 times would lose more than a fifth at 1: the largest fit stays
+    expect(fitStage({ width: 1664, height: 1200 }, vm, 1)).toEqual({ width: 1664, height: 1040 });
+    // 2x screen, room 1150 wide: 1.8 device pixels a pixel would lose too much at 1; 2 is past the room
+    expect(fitStage({ width: 1150, height: 1000 }, vm, 2)).toEqual({ width: 1150, height: 718 });
+    // shrunk, it is never snapped
+    expect(fitStage({ width: 1000, height: 1000 }, vm, 1)).toEqual({ width: 1000, height: 625 });
+    // the 1920 by 1200 VM on a 1x screen 2000 wide: one to one
+    expect(fitStage({ width: 2000, height: 1300 }, { width: 1920, height: 1200 }, 1)).toEqual({ width: 1920, height: 1200 });
+  });
+
   it("keeps his pick while it is there, then what had the stage, then the one that needs him, then the one that acted last", () => {
     const tiles = [
       { key: "a", asking: false, lastCallAt: 3 },

@@ -7,6 +7,7 @@ import { BOX_BROWSER_BUNDLE, computerSessionsStore, entriesOf, previewContext, s
 import { threadRoot } from "./devServers";
 import { sessionStore, useSessionMetas } from "./tcserver/store";
 import { hostName } from "./threadResources";
+import type { VmState } from "./winvmWake";
 
 /**
  * Every computer being driven now, on every connected host
@@ -40,6 +41,8 @@ export interface ComputerTile {
   idle: boolean;
   /** it shows its picture but takes none of his input now: the Windows VM with no window of its own */
   pictureOnly?: boolean;
+  /** the Windows VM while it is not awake (or awake with no row yet): its tile is drawn from its state, with no stream */
+  vm?: VmState;
 }
 
 export const tileId = (host: string, threadId: string): string => `${host}\n${threadId}`;
@@ -140,7 +143,8 @@ export function tileKey(tile: ComputerTile, all: readonly ComputerTile[]): strin
 }
 
 /** He can take over this computer from its picture: the box's browser's page and the Windows VM while it has its window. A Mac's or a PC's own window takes no input. */
-export const canTakeOver = (tile: Pick<ComputerTile, "browser" | "computer" | "pictureOnly">): boolean => !tile.pictureOnly && (tile.browser || tile.computer.startsWith("vm:"));
+export const canTakeOver = (tile: Pick<ComputerTile, "browser" | "computer" | "pictureOnly" | "vm">): boolean =>
+  !tile.pictureOnly && (tile.vm ? tile.vm.state !== "none" && tile.vm.state !== "setting-up" : tile.browser || tile.computer.startsWith("vm:"));
 
 /** The name the host knows a tile's computer by for its wheel (computer/drive.ts): a browser tile's pane's page. */
 export const driveName = (tile: ComputerTile): string => (tile.computer.startsWith("window:") ? `browser:${tile.pane}` : tile.computer);
@@ -154,6 +158,8 @@ export const driveName = (tile: ComputerTile): string => (tile.computer.startsWi
 export async function takeOver(tile: ComputerTile): Promise<void> {
   const link = registry.link(tile.entry.host);
   if (!link) throw new Error("the host is not connected");
+  // a VM that is not awake is woken first: one press whatever its state (the host does it too since it learned how)
+  if (tile.vm) await link.request("work.winvm.wake", {});
   await link.request("computer.drive", { computer: driveName(tile), driver: "owner" });
 }
 
