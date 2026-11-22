@@ -63,6 +63,7 @@ function appRow(a: OfficeAppState, platform: NodeJS.Platform, outlook: { problem
   const name = NAME[a.app]
   const base = { id: `office.app:${a.app}`, pillar: 'office' as const, group: 'Office', title: name }
   if (outlook?.problem) return { ...base, state: 'needs-you', line: NEW_OUTLOOK_LINE[platform] ?? outlook.problem }
+  if (a.waiting) return { ...base, state: 'needs-you', line: `On the Mac, press Allow where macOS asks whether ${name} may access files managed by OneDrive.` }
   if (a.allowed === 'no') return { ...base, state: 'broken', line: `Allow TempCode to control ${name} in System Settings → Privacy & Security → Automation.` }
   if (a.allowed === 'ask') return { ...base, state: 'needs-you', line: `Answer the Mac's prompt to let TempCode control ${name}.` }
   if (outlook?.route?.error) return { ...base, state: 'broken', line: outlook.route.error }

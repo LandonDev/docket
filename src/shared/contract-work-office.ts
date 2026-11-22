@@ -27,6 +27,8 @@ export interface OfficeAppState {
   installed: boolean
   running: boolean
   allowed: OfficeAllowed
+  /** what the app waits on him for, in words, when it is known to answer nothing until he answers a prompt of the system's (macOS asking whether it may open OneDrive's files) */
+  waiting?: string
 }
 
 /** What this host can carry out: `mac` by osascript, `owa` by Outlook on the web in the box's browser (mail and calendar only), `com` by COM on Windows (tc-office.exe), `addin` by our Office add-in alone (milestone 29), null where no carrier runs. */

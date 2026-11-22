@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { OFFICE_APPS, type OfficeAllowed, type OfficeApp, type OfficeCell } from '@shared/contract-work-office'
 import { APP_NAMES, OfficeError, type OfficeCarrier } from './carrier'
-import { runOsa, type Osa } from './osa'
+import { OSA_TIMEOUT_MS, OsaTimeout, runOsa, type Osa } from './osa'
 
 /**
  * The Mac carrier (docs/agents/work-office.md "The Mac"): every verb is one
@@ -163,6 +163,41 @@ export type ScriptName = keyof typeof SCRIPTS
 /** Whether a call could drive an app, as the last call to it found. macOS will not say without asking him, so the first call finds out. */
 const allowedSeen = new Map<OfficeApp, OfficeAllowed>()
 
+/**
+ * An app known to wait on him: macOS asks, once for each app, whether it may "access files managed by" OneDrive
+ * the first time it opens a file under ~/Library/CloudStorage, and until he answers the app's main thread sits in
+ * that call and answers no script at all (found live on his Mac, 2026-11-22: a read through Excel hung for the
+ * link's 120 seconds, twice). Nothing can answer it for him. The words are kept so Connections says them.
+ */
+const waitingSeen = new Map<OfficeApp, string>()
+
+/**
+ * Prints the system prompt's sentence when one is up for the app named, else nothing; never throws. The prompt is a
+ * window of UserNotificationCenter. ASCII only: osascript misreads the prompt's curly quotes from a script on stdin.
+ */
+export const ACCESS_PROMPT_SCRIPT = `on run argv
+	set appName to item 1 of argv
+	try
+		with timeout of 2 seconds
+			tell application "System Events"
+				if not (exists process "UserNotificationCenter") then return ""
+				set texts to value of static texts of every window of process "UserNotificationCenter"
+			end tell
+		end timeout
+		repeat with perWindow in texts
+			repeat with t in perWindow
+				set s to t as text
+				if s contains " wants to access files managed by " and s contains (appName & ".app") then return s
+			end repeat
+		end repeat
+	end try
+	return ""
+end run`
+
+/** What a waiting app's call answers, and what its Connections row says. */
+export const waitingWords = (app: OfficeApp): string =>
+  `${APP_NAMES[app]} is waiting for the owner on this Mac: macOS asks whether it may access files managed by OneDrive. He presses Allow on that prompt once; until then it answers nothing.`
+
 const APP_OF: Record<ScriptName, OfficeApp> = {
   workbooks: 'excel',
   readRange: 'excel',
@@ -192,6 +227,9 @@ export interface MacDeps {
   open?: (args: string[]) => Promise<void>
   /** whether Outlook runs as New Outlook: its own setting, read without starting it */
   newOutlook?: () => Promise<boolean>
+  /** how long `open` looks for the system's file-access prompt after opening a file OneDrive manages, in looks of a second; default 3 */
+  promptLooks?: number
+  sleep?: (ms: number) => Promise<void>
 }
 
 /**
@@ -218,14 +256,27 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
   const osa = deps.osa ?? runOsa
   const installed = deps.installed ?? ((app: OfficeApp) => existsSync(appPath(app)))
   const running = deps.running ?? pgrep
+  /** Whether the system's file-access prompt is up for the app now; remembered while it is, forgotten once it has gone. */
+  const prompted = async (app: OfficeApp): Promise<boolean> => {
+    const said = await osa('AppleScript', ACCESS_PROMPT_SCRIPT, [APP_NAMES[app]]).catch(() => '')
+    if (said.trim()) waitingSeen.set(app, waitingWords(app))
+    else waitingSeen.delete(app)
+    return !!said.trim()
+  }
   const call = async <T>(name: ScriptName, args: unknown): Promise<T> => {
     const app = APP_OF[name]
     if (!installed(app)) throw new OfficeError(`${APP_NAMES[app]} is not installed on this Mac.`, 'not-installed')
     try {
       const out = await osa('JavaScript', SCRIPTS[name], [JSON.stringify(args)])
       allowedSeen.set(app, 'yes')
+      waitingSeen.delete(app)
       return JSON.parse(out || 'null') as T
     } catch (err) {
+      if (err instanceof OsaTimeout) {
+        // Nothing came back at all: the system's prompt holds the app, or a dialog of its own does.
+        if (await prompted(app)) throw new OfficeError(waitingWords(app), 'needs-consent')
+        throw new OfficeError(`${APP_NAMES[app]} did not answer within ${Math.round(OSA_TIMEOUT_MS / 1000)} s: a dialog may be open in it on this Mac.`, 'busy')
+      }
       // A refusal the script threw names no app: name the one it was for.
       if (err instanceof OfficeError && err.message.includes('the Office app')) err = new OfficeError(err.message.replace('the Office app', APP_NAMES[app]), err.code)
       // The app answered "no such item": it let us in.
@@ -250,7 +301,9 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
       return Promise.all(
         OFFICE_APPS.map(async (app) => {
           const has = installed(app)
-          return { app, installed: has, running: has && (await running(app)), allowed: allowedSeen.get(app) ?? 'unknown' }
+          // an app last seen waiting is looked at again: he may have answered since
+          const waiting = has && waitingSeen.has(app) && (await prompted(app)) ? waitingSeen.get(app) : undefined
+          return { app, installed: has, running: has && (await running(app)), allowed: allowedSeen.get(app) ?? 'unknown', ...(waiting ? { waiting } : {}) }
         })
       )
     },
@@ -278,6 +331,15 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
     async open(app, ref) {
       if (!installed(app)) throw new OfficeError(`${APP_NAMES[app]} is not installed on this Mac.`, 'not-installed')
       await (deps.open ?? openWith)(ref.kind === 'path' ? ['-a', APP_NAMES[app], ref.path] : [`ms-${app}:ofe|u|${ref.url}`])
+      // A file OneDrive manages: the first one an app opens raises the system's prompt within a few seconds, and the
+      // open is then no open at all. Said now, in words, not found out by the next call's two-minute silence.
+      if (ref.kind === 'path' && ref.path.includes('/Library/CloudStorage/') && app !== 'outlook') {
+        const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+        for (let i = 0; i < (deps.promptLooks ?? 3); i++) {
+          await sleep(1000)
+          if (await prompted(app)) throw new OfficeError(waitingWords(app), 'needs-consent')
+        }
+      }
     }
   }
 }

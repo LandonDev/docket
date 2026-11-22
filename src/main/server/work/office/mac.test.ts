@@ -1,7 +1,7 @@
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import { macCarrier, NEW_OUTLOOK, SCRIPTS, textAsHtml, type ScriptName } from './mac'
-import { osaError, type Osa } from './osa'
+import { ACCESS_PROMPT_SCRIPT, macCarrier, NEW_OUTLOOK, SCRIPTS, textAsHtml, waitingWords, type ScriptName } from './mac'
+import { OSA_TIMEOUT_MS, osaError, OsaTimeout, type Osa } from './osa'
 
 /**
  * The Mac carrier on the box: each JXA script is run in a sandbox against a
@@ -397,5 +397,53 @@ describe('the Mac carrier', () => {
     expect(none.code).toBe('not-found')
     expect(none.message).toContain('No open workbook /tmp/x.xlsx. (-1728)')
     expect(osaError('execution error: Error: TypeError: null is not an object (-2700)')).toMatchObject({ code: 'failed', message: expect.stringContaining('TypeError: null is not an object') })
+  })
+})
+
+describe("the system's prompt for OneDrive's files", () => {
+  const SENTENCE = '"Microsoft Excel.app" wants to access files managed by "OneDrive - purdue.edu".'
+  const FILE = '/Users/him/Library/CloudStorage/OneDrive-purdue.edu/Budget.xlsx'
+  /** An osascript whose app scripts never answer while the prompt is up, and whose detector prints the sentence. */
+  const mac = (state: { up: boolean }, opened: string[][] = []) =>
+    macCarrier({
+      osa: async (lang, script) => {
+        if (lang === 'AppleScript' && script === ACCESS_PROMPT_SCRIPT) return state.up ? SENTENCE : ''
+        if (state.up) throw new OsaTimeout()
+        return '[]'
+      },
+      installed: () => true,
+      running: async () => true,
+      open: async (args) => void opened.push(args),
+      sleep: async () => {}
+    })
+
+  it('stays under the link between hosts, so a call from the box hears this Mac say why', () => {
+    expect(OSA_TIMEOUT_MS).toBeLessThan(120_000)
+    expect(ACCESS_PROMPT_SCRIPT).toMatch(/^[\x00-\x7f]*$/)
+  })
+
+  it('says the app waits on him, not a bare timeout, when a call gets no answer while the prompt is up', async () => {
+    const state = { up: true }
+    const c = mac(state)
+    await expect(c.workbooks()).rejects.toMatchObject({ code: 'needs-consent', message: waitingWords('excel') })
+    expect((await c.apps()).find((a) => a.app === 'excel')!.waiting).toBe(waitingWords('excel'))
+    // he pressed Allow: the next look forgets it, and a call answers
+    state.up = false
+    expect((await c.apps()).find((a) => a.app === 'excel')!.waiting).toBeUndefined()
+    await expect(c.workbooks()).resolves.toEqual([])
+  })
+
+  it('says so at the open itself for a file OneDrive manages, and not for any other file', async () => {
+    const opened: string[][] = []
+    const c = mac({ up: true }, opened)
+    await expect(c.open('excel', { kind: 'path', path: FILE })).rejects.toMatchObject({ code: 'needs-consent' })
+    expect(opened).toEqual([['-a', 'Microsoft Excel', FILE]])
+    await expect(mac({ up: false }).open('excel', { kind: 'path', path: FILE })).resolves.toBeUndefined()
+    await expect(mac({ up: true }).open('excel', { kind: 'path', path: '/Users/him/Documents/b.xlsx' })).resolves.toBeUndefined()
+  })
+
+  it('with no prompt up, an app that does not answer is said to have a dialog open', async () => {
+    const c = macCarrier({ osa: async (lang) => (lang === 'AppleScript' ? '' : Promise.reject(new OsaTimeout())), installed: () => true, running: async () => true })
+    await expect(c.documents()).rejects.toMatchObject({ code: 'busy', message: expect.stringMatching(/Microsoft Word did not answer within 100 s: a dialog may be open/) })
   })
 })

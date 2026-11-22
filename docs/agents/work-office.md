@@ -102,6 +102,25 @@ What the apps answer, as found live:
   through the app's own `open` once the app is up, and checks that it stayed
   open.
 
+- **OneDrive's files.** The first time each app opens a file under
+  `~/Library/CloudStorage`, macOS asks "“Microsoft Excel.app” wants to
+  access files managed by “OneDrive - purdue.edu”" (Don't Allow, Allow), once
+  for each app. Until he answers, the app's main thread sits in that call
+  and answers no script: found live on his Mac on 2026-11-22, where a read
+  through Excel from a box thread got the host link's bare "the Mac did not
+  answer thread.start within 120 s", twice. Nothing can answer it for him,
+  and the TCC database that records it is closed to TempCode, so it cannot
+  be known in advance. So: a script gets 100 seconds (`OSA_TIMEOUT_MS`,
+  under the link's 120); one that gets no answer has the prompt looked for
+  (`ACCESS_PROMPT_SCRIPT`: a window of UserNotificationCenter whose text
+  names the app, through System Events, about 0.1 s) and answers
+  `needs-consent` with "Microsoft Excel is waiting for the owner on this
+  Mac…" (`waitingWords`), else `busy`, "a dialog may be open in it"; `open`
+  of a file there looks for the prompt for three seconds and says the same
+  at once; `apps()` carries `waiting` while the prompt is up, and
+  Connections' row for the app reads "On the Mac, press Allow where macOS
+  asks whether Excel may access files managed by OneDrive."
+
 macOS charges osascript's Apple Events to TempCode, so the Automation prompt
 reads "TempCode wants to control Microsoft Excel", once per app. The
 packaged app carries `NSAppleEventsUsageDescription` (electron-builder.yml)

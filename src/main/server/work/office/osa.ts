@@ -12,8 +12,19 @@ import { OfficeError } from './carrier'
 export type OsaLang = 'JavaScript' | 'AppleScript'
 export type Osa = (lang: OsaLang, script: string, args: readonly string[], signal?: AbortSignal) => Promise<string>
 
-/** A long range read is one Apple Event, but Excel may take a while to pack it. */
-export const OSA_TIMEOUT_MS = 120_000
+/**
+ * A long range read is one Apple Event, but Excel may take a while to pack it. Under the host link's 120
+ * seconds, so a call from another host of his hears this Mac's own words for an app that does not answer
+ * rather than the link's bare "did not answer".
+ */
+export const OSA_TIMEOUT_MS = 100_000
+
+/** The app never answered the script: something modal holds it (a dialog of its own, or a prompt of the system's). */
+export class OsaTimeout extends OfficeError {
+  constructor() {
+    super('the Office app did not answer.', 'busy')
+  }
+}
 
 export const runOsa: Osa = (lang, script, args, signal) =>
   new Promise((resolve, reject) => {
@@ -23,7 +34,8 @@ export const runOsa: Osa = (lang, script, args, signal) =>
     child.stdout.setEncoding('utf8').on('data', (d: string) => (out += d))
     child.stderr.setEncoding('utf8').on('data', (d: string) => (err += d))
     child.on('error', (e) => reject(new OfficeError(`osascript did not run: ${e.message}`)))
-    child.on('close', (code) => (code === 0 ? resolve(out.replace(/\n$/, '')) : reject(osaError(err))))
+    // killed at the time limit: no exit code, and nothing on stderr to read
+    child.on('close', (code, sig) => (code === 0 ? resolve(out.replace(/\n$/, '')) : code === null && sig && !signal?.aborted ? reject(new OsaTimeout()) : reject(osaError(err))))
     child.stdin.end(script)
   })
 

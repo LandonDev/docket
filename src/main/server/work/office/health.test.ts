@@ -49,6 +49,12 @@ describe('the Office apps', () => {
     expect(rows['office.app:word']).toMatchObject({ state: 'needs-you', line: expect.stringContaining('prompt') })
   })
 
+  it("names the system's prompt an app waits behind, as his one press on the Mac", async () => {
+    const rows = byId(await officeRows(probe({ apps: async () => [app('excel', { running: true, waiting: 'Microsoft Excel is waiting for the owner on this Mac' })] }), signal))
+    expect(rows['office.app:excel']).toMatchObject({ state: 'needs-you', line: 'On the Mac, press Allow where macOS asks whether Excel may access files managed by OneDrive.' })
+    expect(rows['office.app:excel']!.fix).toBeUndefined()
+  })
+
   it("shows the route's failure on Outlook", async () => {
     const rows = byId(await officeRows(probe({ route: () => ({ accounts: [], error: 'LifeOS did not answer' }) }), signal))
     expect(rows['office.app:outlook']).toMatchObject({ state: 'broken', line: 'LifeOS did not answer' })
