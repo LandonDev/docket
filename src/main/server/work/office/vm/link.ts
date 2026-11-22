@@ -29,6 +29,17 @@ export class VmAsleep extends Error {
 /** The connection ended before the helper answered: the helper may be gone, so its door is checked again. */
 class LinkDown extends Error {}
 
+/**
+ * The machine could not be asked at all (it would not wake, its door or helper did not answer, the link
+ * dropped): not a refusal about a file. The words start the same way whatever went wrong, so a caller that
+ * holds the same place on another machine knows to ask there (files/tools.ts `unreachable`, the Files view's).
+ */
+export class VmUnreachable extends Error {
+  constructor(why: unknown) {
+    super(`The Windows VM is unreachable: ${why instanceof Error ? why.message : String(why)}`)
+  }
+}
+
 const CODES = new Set<OfficeError['code']>(['not-installed', 'not-running', 'not-allowed', 'needs-consent', 'not-found', 'busy', 'refused', 'failed'])
 
 /** The helper's own stdin and stdout, as one socket: what the Windows carrier drives (com/carrier.ts `HelperProcess`). */
@@ -58,7 +69,7 @@ function once(door: { socket: string; token: string }, verb: string, args: Recor
       else resolve(value)
     }
     const aborted = () => finish(new Error('cancelled'))
-    const timer = setTimeout(() => finish(new Error(`The Windows VM did not answer ${verb} in time.`)), opts.timeoutMs ?? 120_000)
+    const timer = setTimeout(() => finish(new VmUnreachable(`it did not answer ${verb} in time`)), opts.timeoutMs ?? 120_000)
     if (opts.signal?.aborted) return finish(new Error('cancelled'))
     opts.signal?.addEventListener('abort', aborted, { once: true })
     s.on('connect', () => s.write(`${door.token}\n`))
@@ -85,15 +96,20 @@ function once(door: { socket: string; token: string }, verb: string, args: Recor
         }
       }
     })
-    s.on('error', (err) => finish(ready ? new Error(`The link to the Windows VM dropped: ${err.message}`) : new LinkDown(err.message)))
-    s.on('close', () => finish(ready ? new Error('The link to the Windows VM dropped.') : new LinkDown('closed')))
+    s.on('error', (err) => finish(ready ? new VmUnreachable(`the link dropped (${err.message})`) : new LinkDown(err.message)))
+    s.on('close', () => finish(ready ? new VmUnreachable('the link dropped') : new LinkDown('closed')))
   })
 }
 
 async function real(verb: string, args: Record<string, unknown> = {}, opts: VmCallOpts = {}): Promise<unknown> {
   const helper = vmHelper()
   const open = async () => {
-    const door = opts.wake === false ? await helper.openIfAwake() : await helper.open()
+    let door: { socket: string; token: string } | null
+    try {
+      door = opts.wake === false ? await helper.openIfAwake() : await helper.open()
+    } catch (err) {
+      throw new VmUnreachable(err)
+    }
     if (!door) throw new VmAsleep()
     return door
   }
@@ -106,7 +122,7 @@ async function real(verb: string, args: Record<string, unknown> = {}, opts: VmCa
     try {
       return await once(await open(), verb, args, opts)
     } catch (again) {
-      throw again instanceof LinkDown ? new Error('The helper in the Windows VM did not answer.') : again
+      throw again instanceof LinkDown ? new VmUnreachable('its helper did not answer') : again
     }
   }
 }

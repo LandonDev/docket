@@ -37,6 +37,10 @@ class FakeMachine implements VmMachine {
   async keepTpm() {
     this.tpmKept++
   }
+  keys: string[] = []
+  async key(...qcodes: string[]) {
+    this.keys.push(...qcodes)
+  }
 }
 
 /** Points over the fake machine: each holds the machine's "disk" as it was. */
@@ -97,7 +101,9 @@ class FakeGuest implements VmGuest {
   async startService() {
     this.log.push('start-service')
   }
-  async openDoor(): Promise<DoorLink> {
+  also: readonly { socket: string; port: number }[] | undefined
+  async openDoor(_socket: string, _port: number, also?: readonly { socket: string; port: number }[]): Promise<DoorLink> {
+    this.also = also
     this.log.push('open-door')
     const l = { closed: false }
     this.links.push(l)
@@ -137,6 +143,7 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
     hashFile: () => 'new',
     token: { get: () => token, set: (t) => (token = t) },
     doorSocket: '/run/door.sock',
+    forwards: [{ socket: '/run/office.sock', port: 47801 }],
     sleepAfter: () => sleepAfter,
     setSleepAfter: (v) => (sleepAfter = v),
     points,
@@ -227,6 +234,21 @@ describe('wake', () => {
     const r = make()
     expect(await r.keeper.door()).toEqual({ socket: '/run/door.sock', token: 'T'.repeat(64) })
     expect(r.keeper.state().state).toBe('awake')
+  })
+})
+
+describe("the guest's other doors and the machine's keyboard", () => {
+  it("carries the helper's forward on the door's own connection", async () => {
+    const t = make({ disk: true })
+    await t.keeper.wake()
+    expect(t.guest.also).toEqual([{ socket: '/run/office.sock', port: 47801 }])
+  })
+  it("presses keys on the machine's own keyboard only while it is awake", async () => {
+    const t = make({ disk: true })
+    await expect(t.keeper.key('esc')).rejects.toThrow('not awake')
+    await t.keeper.wake()
+    await t.keeper.key('esc')
+    expect(t.machine.keys).toEqual(['esc'])
   })
 })
 

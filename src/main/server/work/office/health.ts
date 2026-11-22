@@ -1,12 +1,14 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { OFFICE_APPS, type OfficeApp, type OfficeAppState, type TeamsLibrary } from '@shared/contract-work-office'
+import { OFFICE_APPS, type OfficeApp, type OfficeAppState, type TeamsLibrary, type VmOfficeStatus } from '@shared/contract-work-office'
 import type { HealthFix, HealthRow } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import { isIsolatedInstance } from '../service/config'
 import { AddinKeys } from './addin/keys'
 import { librariesOf, libraryId, rootsOf } from './files/library'
+import { missingLibraries, vmLibraries, vmOfficeStatus } from './vm/files'
+import { vmState } from './vm/office'
 import { macCarrier } from './mac'
 
 /**
@@ -33,11 +35,19 @@ export interface OfficeProbe {
   libraries(): TeamsLibrary[]
   /** folders he added to Teams files that are no longer on disk */
   gone(): string[]
+  /**
+   * OneDrive and Office in the Windows VM this host keeps, as last read while it was awake, with how many
+   * Teams libraries it syncs and how many it was asked for and does not hold yet; null where this host
+   * keeps no VM, it is not set up, or it has never been read. Never wakes it.
+   */
+  vm?(): (VmOfficeStatus & { libraries: number; coming: number }) | null
 }
 
 const NAME: Record<OfficeApp, string> = { excel: 'Excel', word: 'Word', powerpoint: 'PowerPoint', outlook: 'Outlook' }
 const PAIR: HealthFix = { kind: 'page', label: 'Pair…', page: 'settings:work' }
 const EDIT_LIST: HealthFix = { kind: 'page', label: 'Edit', page: 'settings:work' }
+/** His sign-in in the Windows VM: the page walks OneDrive's sign-in to his phone's number and opens the Computers page on the VM. */
+const VM_SIGN_IN: HealthFix = { kind: 'page', label: 'Sign in…', page: 'windows-vm-sign-in' }
 
 
 const listOf = (names: readonly string[]): string => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
@@ -94,6 +104,25 @@ async function filesRows(p: OfficeProbe, signal: AbortSignal): Promise<HealthRow
   return [{ ...base, state: 'working', line: `Syncing ${count}${tenants.length ? ` for ${listOf(tenants)}` : ''}` }, ...rows]
 }
 
+/** OneDrive and Office in the Windows VM: one row each, with the one press that is his where a sign-in is missing. Left out until the VM has been read. */
+export function vmRows(vm: ReturnType<NonNullable<OfficeProbe['vm']>>): HealthRow[] {
+  if (!vm || vm.at === null) return []
+  const rows: HealthRow[] = []
+  const od = { id: 'office.vm.onedrive', pillar: 'office' as const, group: 'Files', title: 'OneDrive on the Windows VM', personal: true as const }
+  const libs = `${vm.libraries} Teams ${vm.libraries === 1 ? 'library' : 'libraries'}`
+  if (vm.onedrive.state === 'ok') rows.push({ ...od, state: 'working', line: `Signed in as ${vm.onedrive.account ?? 'him'}, ${libs}` })
+  else if (vm.onedrive.state === 'no-libraries') rows.push({ ...od, state: 'working', line: vm.coming ? `Signed in as ${vm.onedrive.account}, its libraries are on their way` : `Signed in as ${vm.onedrive.account}, no Teams library synced` })
+  else if (vm.onedrive.state === 'signed-out') rows.push({ ...od, state: 'needs-you', line: 'Signed out', fix: VM_SIGN_IN })
+  else if (vm.onedrive.state === 'no-onedrive') rows.push({ ...od, state: 'broken', line: 'OneDrive is not installed in the Windows VM.' })
+  if (vm.office?.installed) {
+    const base = { id: 'office.vm.office', pillar: 'office' as const, group: 'Office', title: 'Office on the Windows VM' }
+    const apps = listOf(vm.office.apps.filter((a) => a !== 'outlook').map((a) => NAME[a]))
+    if (vm.office.licensed === true) rows.push({ ...base, state: 'working', line: `${apps}${vm.office.account ? `, signed in as ${vm.office.account}` : ''}`, ...(vm.office.account ? { personal: true as const } : {}) })
+    else rows.push({ ...base, state: 'needs-you', line: `${apps} are installed. Sign in to finish.`, fix: VM_SIGN_IN })
+  }
+  return rows
+}
+
 export async function officeRows(p: OfficeProbe, signal: AbortSignal): Promise<HealthRow[]> {
   const desktop = p.platform === 'darwin' || p.platform === 'win32'
   const rows: HealthRow[] = []
@@ -105,6 +134,7 @@ export async function officeRows(p: OfficeProbe, signal: AbortSignal): Promise<H
   const addin = addinRow(p.addin())
   if (addin) rows.push(addin)
   if (desktop) rows.push(...(await filesRows(p, signal)))
+  rows.push(...vmRows(p.vm?.() ?? null))
   return rows
 }
 
@@ -172,6 +202,11 @@ export function officeProbe(ctx: WorkCtx, route: () => { accounts: string[]; err
       return { installed, running: installed && (await tasks(signal)).has('onedrive.exe') }
     },
     libraries: () => librariesOf(ctx.db, ctx.host),
-    gone: () => rootsOf(ctx.db).filter((r) => !r.off && !existsSync(r.folder)).map((r) => r.folder)
+    gone: () => rootsOf(ctx.db).filter((r) => !r.off && !existsSync(r.folder)).map((r) => r.folder),
+    vm: () => {
+      const state = vmState()
+      if (!state || state.cannot || state.state === 'none' || state.state === 'setting-up') return null
+      return { ...vmOfficeStatus(ctx.db, state), libraries: vmLibraries(ctx.db, ctx.host).filter((l) => l.kind !== 'mine').length, coming: missingLibraries(ctx.db).length }
+    }
   }
 }

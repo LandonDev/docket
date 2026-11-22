@@ -5,7 +5,7 @@ import type { OfficeAppState, TeamsLibrary } from '@shared/contract-work-office'
 import type { WorkCtx } from '../modules'
 import { AddinKeys, ensureAddinTables } from './addin/keys'
 import { ensureFilesTables, setRoots } from './files/library'
-import { officeProbe, officeRows, parseTasklist, windowsOffice, type OfficeProbe } from './health'
+import { officeProbe, officeRows, parseTasklist, vmRows, windowsOffice, type OfficeProbe } from './health'
 
 /** Connections' office rows: each app, the add-in and OneDrive, read from a probe that starts nothing. */
 const signal = new AbortController().signal
@@ -110,6 +110,37 @@ describe('Teams files', () => {
   it('names a folder he added that is gone, with the list as its fix', async () => {
     const rows = await officeRows(probe({ gone: () => ['/Users/o/Purdue/Esports - Documents'] }), signal)
     expect(rows.find((r) => r.group === 'Files')).toMatchObject({ title: 'Esports - Documents', state: 'broken', fix: { kind: 'page', page: 'settings:work' } })
+  })
+})
+
+describe('OneDrive and Office in the Windows VM', () => {
+  type Vm = NonNullable<ReturnType<NonNullable<OfficeProbe['vm']>>>
+  const vm = (o: Partial<Vm> = {}): Vm => ({ office: { installed: true, version: '16.0', apps: ['excel', 'word', 'powerpoint', 'outlook'], account: null, licensed: false }, onedrive: { kind: 'vm', state: 'signed-out', account: null }, at: 5, libraries: 0, coming: 0, ...o })
+  const SIGN_IN = { kind: 'page', label: 'Sign in…', page: 'windows-vm-sign-in' }
+
+  it('asks for his sign-in, one press, while OneDrive is signed out or Office has no licence', async () => {
+    const rows = byId(await officeRows(probe({ platform: 'linux', vm: () => vm() }), signal))
+    expect(rows['office.vm.onedrive']).toMatchObject({ group: 'Files', title: 'OneDrive on the Windows VM', state: 'needs-you', line: 'Signed out', fix: SIGN_IN })
+    expect(rows['office.vm.office']).toMatchObject({ group: 'Office', title: 'Office on the Windows VM', state: 'needs-you', line: 'Excel, Word and PowerPoint are installed. Sign in to finish.', fix: SIGN_IN })
+  })
+
+  it('says who is signed in and how much is synced once it works', () => {
+    const rows = byId(vmRows(vm({ onedrive: { kind: 'vm', state: 'ok', account: 'him@purdue.edu' }, libraries: 1, office: { installed: true, version: '16.0', apps: ['excel', 'word'], account: 'him@purdue.edu', licensed: true } })))
+    expect(rows['office.vm.onedrive']).toMatchObject({ state: 'working', line: 'Signed in as him@purdue.edu, 1 Teams library' })
+    expect(rows['office.vm.office']).toMatchObject({ state: 'working', line: 'Excel and Word, signed in as him@purdue.edu' })
+    expect(rows['office.vm.onedrive']!.fix).toBeUndefined()
+  })
+
+  it('says the libraries asked of OneDrive are on their way, and leaves Office out where it is not installed', () => {
+    const rows = byId(vmRows(vm({ onedrive: { kind: 'vm', state: 'no-libraries', account: 'him@purdue.edu' }, coming: 1, office: { installed: false, version: null, apps: [], account: null, licensed: null } })))
+    expect(rows['office.vm.onedrive']).toMatchObject({ state: 'working', line: 'Signed in as him@purdue.edu, its libraries are on their way' })
+    expect(rows['office.vm.office']).toBeUndefined()
+  })
+
+  it('is left out where this host keeps no VM, and until the VM has been read', async () => {
+    expect(vmRows(null)).toEqual([])
+    expect(vmRows(vm({ at: null }))).toEqual([])
+    expect(Object.keys(byId(await officeRows(probe({ platform: 'linux' }), signal)))).toEqual([])
   })
 })
 

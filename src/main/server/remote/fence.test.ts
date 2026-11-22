@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
-import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceDenied, fenceRequest, fencedPaths, insideRoots, plainWindowsPath, requestBases, workSourcePaths } from './fence'
+import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceDenied, fenceRequest, fencedPaths, guestPath, insideRoots, plainWindowsPath, requestBases, workSourcePaths } from './fence'
 import { isWorkMethod } from '@shared/work/wire'
 
 /** R2 H1/H2: the real-path fence every remote request passes before a handler runs. */
@@ -356,6 +356,25 @@ describe('Work: a file named inside a CanvasSource', () => {
   it('a Work workspace names no folder, so workspace.create fences only a path it is given', () => {
     expect(fencedPaths(req('workspace.create', { kind: 'work', name: 'Purdue', sector: 'purdue' }))).toEqual([])
     expect(fencedPaths(req('workspace.create', { path: '/w' }))).toEqual(['/w'])
+  })
+})
+
+describe("a file in the Windows VM a host keeps", () => {
+  const guest = 'C:\\Users\\tcuser\\Purdue University\\RecWell - Documents\\Team RecWell\\Budget.xlsx'
+  const list = (path: string, method = 'work.office.filesList') => ({ id: '1', method, params: { source: { at: 'file', host: 'env_box', path } } }) as unknown as ClientRequest
+
+  it("passes the listener's fence only in a Teams files verb, by the guest's own path: the pillar holds it to OneDrive's libraries there", () => {
+    expect(guestPath('work.office.filesList', guest, 'linux')).toBe(true)
+    for (const method of ['work.office.filesList', 'work.office.filesFetch', 'work.office.filesRead', 'work.office.filesOpen', 'work.office.filesCopy']) expect(() => fenceRequest(list(guest, method), ['/srv/work'])).not.toThrow()
+  })
+
+  it('stays fenced in every other Work method, with a slash in it, and on a Windows host, whose own paths look the same', () => {
+    expect(() => fenceRequest(list(guest, 'work.office.switch'), ['/srv/work'])).toThrow(FenceError)
+    expect(() => fenceRequest(list(guest, 'work.canvas.open'), ['/srv/work'])).toThrow(FenceError)
+    expect(guestPath('work.office.filesList', 'C:\\Users/../../etc/passwd', 'linux')).toBe(false)
+    expect(guestPath('work.office.filesList', '/etc/passwd', 'linux')).toBe(false)
+    expect(guestPath('work.office.filesList', guest, 'win32')).toBe(false)
+    expect(() => fenceRequest(list('/etc/passwd'), ['/srv/work'])).toThrow(FenceError)
   })
 })
 

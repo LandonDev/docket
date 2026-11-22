@@ -4,7 +4,7 @@ import { existsSync, rmSync } from 'node:fs'
 import { connect } from 'node:net'
 import { ADMIN_USER, STANDARD_USER, daemonEnv, type RigConfig, type RigPaths } from './machine/config'
 import { encodePowerShell, psQuote, psStdin, waitedProgramScript, winQuote } from './machine/guest'
-import { SERVICE_PATH, startDoorScript } from './setup'
+import { CONHOST_PATH, SERVICE_PATH, startDoorScript } from './setup'
 import type { DoorLink, VmGuest } from './keeper'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -205,7 +205,8 @@ if ($LASTEXITCODE) { throw "icacls exited $LASTEXITCODE" }
     const name = `tc-keeper-${randomBytes(4).toString('hex')}`
     const [program, ...rest] = argv
     const [path, args] = wait
-      ? ['powershell.exe', `-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand ${encodePowerShell(waitedProgramScript(argv, name))}`]
+      ? // under the headless console host: a console program started by itself opens a terminal window on his desktop
+        [CONHOST_PATH, `--headless powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand ${encodePowerShell(waitedProgramScript(argv, name))}`]
       : [program, rest.map(winQuote).join(' ')]
     return this.admin(
       `

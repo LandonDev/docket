@@ -63,6 +63,8 @@ async function vmListing(ctx: WorkCtx, signal?: AbortSignal): Promise<{ librarie
 /** Whether the caller may use what is in the VM: a thread only where its workspace turns the VM on; his own windows always. */
 const vmFor = (ctx: WorkCtx, by: Caller): boolean => {
   if (by.kind !== 'model') return true
+  // a host that keeps no VM has nothing to ask a thread's workspace about
+  if (!vmState()) return false
   const scope = by.sessionId ? ctx.scopeOf(by.sessionId) : null
   return !!scope && vmAllowed(ctx, scope)
 }
